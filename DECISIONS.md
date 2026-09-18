@@ -18,6 +18,11 @@ Durable decisions already established in `VISION.md`, recorded here for quick re
 
 - The Customer File owns shared context (customer/contact info, plan/surfaces, etc.) so it's entered once and used everywhere it's needed.
 
+- The Customer File is a full customer/contact record for Toolbox, not a form limited to fields Distress Survey or Floor Survey currently require. Useful customer information may be captured even when no current workspace consumes it; Toolbox can use it later.
+- Customer Files may be incomplete. Only the minimum information needed to create and recognize a file should gate creation; other contact information can be added or corrected later.
+- Distress Survey and Floor Survey were built as standalone applications before the Toolbox Customer File model existed. Their standalone setup/data plumbing does not define Toolbox architecture.
+- **Integration rule: plumbing may change; proven capture behavior is protected.** Toolbox may change shared-data ownership, file identity, persistence, synchronization, and how known context reaches a workspace. Integration must not casually redesign proven field-capture interactions.
+
 ## Distress Survey
 
 - Supports multiple user-named surfaces within one continuous survey. Rationale: real jobs span more than one building surface, and the surfaces shouldn't be hard-coded or forced into separate jobs.
