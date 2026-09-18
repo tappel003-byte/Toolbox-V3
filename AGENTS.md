@@ -1,0 +1,46 @@
+# Toolbox-V3 — Agent Rules
+
+Operational guardrails for anyone (human or AI) implementing Toolbox. This is enforcement, not product philosophy — see `VISION.md` for that.
+
+## Before doing anything
+
+- Read `VISION.md` before doing work. If code, a milestone, or any other document conflicts with `VISION.md`, **VISION.md wins** — unless the product owner explicitly changes the Vision.
+- Work only on the current `MILESTONE.md`. Do not implement future milestones early, even when the work is already understood conceptually.
+
+## Authorization
+
+- A stated need is not an approved architecture.
+- Brainstorming is not implementation authorization.
+- Routine implementation details do not require product-owner approval.
+- If ambiguity would materially affect workflow, data ownership, proven behavior, architecture, or the professional deliverable, **stop and ask** rather than silently choosing. Batch non-blocking questions for a meaningful review checkpoint when practical, instead of interrupting for each one.
+- One implementer modifies a given problem at a time.
+- Do not "helpfully" redesign a proven workflow that's outside the current milestone's scope, even if the redesign seems better.
+
+## Proven behavior
+
+- Proven field behavior is presumed correct and carries a high burden of proof before it changes.
+- High-risk changes to proven behavior require design review before implementation.
+- Preserve proven behavior, not inherited architecture — the interaction that's field-tested is protected; the system that happened to produce it is not.
+- Toolbox-V2 is evidence and reference only. It is not V3's architecture — do not force V3 around it.
+- **Never modify the standalone repositories:** `field-reporter-pro`, `floorplan-topo-maker`. Integrated Toolbox copies of this capture behavior, and the plumbing that connects them, may evolve.
+- Emergency standalone import into a Customer File is a **permanent** recovery path, not temporary migration scaffolding.
+
+## Verification
+
+- Read the actual current source or diff before claiming what code does or that behavior was preserved. Diff is proof — a claim of "unchanged" is not.
+- If a shared data field changes, check its relevant downstream consumers as part of the same piece of work.
+- If a bug class is found, search for structurally similar occurrences elsewhere before considering it fixed.
+- Data acknowledged as saved must actually persist before navigation, reload, close, a connectivity change, or synchronization is allowed to silently discard it.
+
+## Product shape
+
+- Offline field capture is a core requirement, not an add-on.
+- Normal internal workflow must not require exporting from one Toolbox workspace and importing into another.
+- Do not expose implementation complexity to the investigator.
+- Do not ask for information Toolbox already knows.
+- Protect the canvas — the working surface takes priority over application chrome.
+
+## Deployment and review
+
+- Live deployment is required for meaningful product review.
+- Product review happens at meaningful checkpoints, not for every minor implementation detail.

@@ -144,9 +144,29 @@ Floor Survey operates inside an open Customer File. It does not need a redundant
 
 Floor Survey's existing support for multiple topo areas on the same physical plan is valuable, proven, and should not be reinvented. This is a different concept from multiple named building surfaces, and the two must not be confused with each other.
 
-### NOT YET DECIDED
+### Multiple named surfaces / levels — DECIDED
 
-Whether and how Floor Survey supports multiple named building surfaces (as decided for Distress Survey in Section 5) is not decided here. Do not assume Floor Survey automatically inherits that exact behavior.
+Floor Survey supports multiple user-named surfaces/levels within the same Customer File. Each surface/level represents its own measured plane and owns its own Floor Survey dataset.
+
+Examples include:
+
+- Basement
+- Ground Floor
+- Second Floor
+- other user-named surfaces where a separate floor-level survey is appropriate
+
+A normal one-level survey remains simple.
+
+The investigator may complete one level and then move to another level within the same Customer File. For example:
+
+- Ground Floor → complete its floor-level survey
+- Second Floor → complete a separate floor-level survey
+
+These are separate measured datasets belonging to the same Customer File.
+
+Do not confuse multiple building levels/surfaces with Floor Survey's existing multiple topo areas on the same physical plan. Those remain separate concepts.
+
+This section describes required product behavior only. It does not specify the underlying persistence architecture — how levels and their datasets are actually stored and implemented is an implementation decision, made separately from this Vision.
 
 ---
 
