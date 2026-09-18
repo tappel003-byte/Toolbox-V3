@@ -243,15 +243,35 @@ body {
   margin-bottom: 4px;
 }
 
+/* line-height and appearance are explicit, not left to the browser
+   default, on purpose: without them, a control's height depends on the
+   platform's native form-control chrome and its own font-metric-derived
+   "normal" line-height, which iOS Safari can compute differently than
+   desktop for the same declared font-size -- the Property/site address
+   field (an <input>, same as Cell phone/Home phone/Email) was rendering
+   visibly taller than its siblings on a live iPhone despite identical
+   markup and CSS. Pinning both explicitly, on every field alike, means
+   every control's height is computed the same deterministic way on every
+   platform, so a field can't render taller than its siblings just because
+   one browser's implicit sizing differs from another's. 17px matches what
+   this browser's own default "normal" line-height already computed for
+   15px text, so already-correct fields keep their existing pixel height;
+   only the platform-dependent guesswork is removed. */
 .field input,
 .field textarea {
   font: inherit;
   font-size: 15px;
+  line-height: 17px;
   padding: 9px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
   color: var(--ink);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.field textarea {
   resize: vertical;
 }
 

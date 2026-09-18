@@ -311,7 +311,7 @@
     // visible text diverges from it, the coordinates are stale and get
     // cleared (see invalidateStaleCoordinatesIfNeeded).
     const ADDRESS_MIN_CHARS = 3;
-    const ADDRESS_DEBOUNCE_MS = 300;
+    const ADDRESS_DEBOUNCE_MS = 150;
     let lastGeocodedAddressText = null;
     let currentSuggestions = [];
     let activeSuggestionIndex = -1;
