@@ -317,6 +317,64 @@ body {
   justify-content: flex-end;
 }
 
+/* ---- Property address: Geoapify autocomplete + Use Current Location.
+   A convenience layered on the existing address field — manual typing and
+   saving always work whether or not these controls ever produce a result. */
+.address-autocomplete-wrap {
+  position: relative;
+}
+
+.address-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(26, 26, 26, 0.16);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.address-suggestions[hidden] {
+  display: none;
+}
+
+.address-suggestion {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.address-suggestion:hover,
+.address-suggestion.is-active {
+  background: var(--bg);
+}
+
+.address-actions {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn--location {
+  align-self: flex-start;
+}
+
+.address-feedback {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
 /* ---- Small phones: single-column form, form fields stack ---- */
 @media (max-width: 560px) {
   .customer-form {

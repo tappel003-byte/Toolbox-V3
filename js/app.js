@@ -63,6 +63,8 @@
       spouseEmail: '',
       mailingSameAsProperty: false,
       mailingAddress: '',
+      propertyAddressLat: null,
+      propertyAddressLon: null,
     };
   }
 
@@ -211,6 +213,8 @@
   // ---- Customer File (open/edit) view --------------------------------
 
   function fieldRowHtml(field) {
+    if (field.id === 'propertyAddress') return propertyAddressFieldHtml();
+
     const widthClass = field.full ? ' field--full' : '';
     const inputHtml = field.type === 'textarea'
       ? '<textarea id="field-' + field.id + '" rows="' + (field.rows || 3) + '" placeholder="' + (field.placeholder || '') + '"></textarea>'
@@ -220,6 +224,28 @@
       '<label for="field-' + field.id + '">' + field.label + '</label>' +
       inputHtml +
       '</div>';
+  }
+
+  // Property address gets the same underlying #field-propertyAddress
+  // textarea (populateForm/collectFormIntoRecord bind to it exactly like
+  // any other field) plus a Geoapify autocomplete suggestion list and a
+  // "Use Current Location" convenience. Both are optional layers: the
+  // textarea is directly typable with or without them.
+  function propertyAddressFieldHtml() {
+    return (
+      '<div class="field field--full field--address">' +
+      '  <label for="field-propertyAddress">Property / site address</label>' +
+      '  <div class="address-autocomplete-wrap">' +
+      '    <textarea id="field-propertyAddress" rows="2" placeholder="Street address, city, state, ZIP" autocomplete="off" ' +
+      '      role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="address-suggestions" aria-haspopup="listbox"></textarea>' +
+      '    <ul class="address-suggestions" id="address-suggestions" role="listbox" aria-label="Address suggestions" hidden></ul>' +
+      '  </div>' +
+      '  <div class="address-actions">' +
+      '    <button type="button" id="use-current-location" class="btn btn--ghost btn--location">Use Current Location</button>' +
+      '    <span class="address-feedback" id="address-feedback" aria-live="polite"></span>' +
+      '  </div>' +
+      '</div>'
+    );
   }
 
   function renderFile(app, id) {
@@ -262,10 +288,27 @@
     const sameAddressCheckbox = app.querySelector('#field-mailingSameAsProperty');
     const mailingTextarea = app.querySelector('#field-mailingAddress');
     const propertyTextarea = app.querySelector('#field-propertyAddress');
+    const addressSuggestionsEl = app.querySelector('#address-suggestions');
+    const addressFeedbackEl = app.querySelector('#address-feedback');
+    const useLocationBtn = app.querySelector('#use-current-location');
 
     let record = null;
     let saveTimer = null;
     let dirty = false;
+
+    // Address-derived coordinates are convenience metadata layered on top
+    // of the plain text field, not something the generic form-field loop
+    // below knows about. lastGeocodedAddressText is the address text the
+    // currently-stored lat/lon actually correspond to; whenever the
+    // visible text diverges from it, the coordinates are stale and get
+    // cleared (see invalidateStaleCoordinatesIfNeeded).
+    const ADDRESS_MIN_CHARS = 3;
+    const ADDRESS_DEBOUNCE_MS = 300;
+    let lastGeocodedAddressText = null;
+    let currentSuggestions = [];
+    let activeSuggestionIndex = -1;
+    let addressDebounceTimer = null;
+    let addressFeedbackTimer = null;
 
     function fieldEl(fieldId) {
       return app.querySelector('#field-' + fieldId);
@@ -279,6 +322,11 @@
       sameAddressCheckbox.checked = !!rec.mailingSameAsProperty;
       mailingTextarea.value = rec.mailingAddress || '';
       updateMailingVisibility();
+
+      lastGeocodedAddressText = (rec.propertyAddressLat != null && rec.propertyAddressLon != null)
+        ? (rec.propertyAddress || null)
+        : null;
+      closeSuggestions();
     }
 
     function updateMailingVisibility() {
@@ -289,6 +337,206 @@
         mailingTextarea.value = propertyTextarea.value;
       }
     }
+
+    // Property address text can now change programmatically (suggestion
+    // pick, GPS fill) as well as by typing. Any of those paths that touch
+    // propertyTextarea.value must keep a checked "same as property" mailing
+    // address in sync, since programmatic value changes don't fire 'input'.
+    function syncMailingIfSame() {
+      if (sameAddressCheckbox.checked) mailingTextarea.value = propertyTextarea.value;
+    }
+
+    // ---- Address autocomplete + Use Current Location (Geoapify) --------
+    // Convenience only: every path here must leave manual typing and saving
+    // fully usable, with or without a configured key, online or offline.
+
+    function setAddressFeedback(text) {
+      addressFeedbackEl.textContent = text || '';
+      if (addressFeedbackTimer) {
+        clearTimeout(addressFeedbackTimer);
+        addressFeedbackTimer = null;
+      }
+      if (text) {
+        addressFeedbackTimer = setTimeout(function () {
+          addressFeedbackEl.textContent = '';
+        }, 6000);
+      }
+    }
+
+    function closeSuggestions() {
+      currentSuggestions = [];
+      activeSuggestionIndex = -1;
+      addressSuggestionsEl.innerHTML = '';
+      addressSuggestionsEl.hidden = true;
+      propertyTextarea.setAttribute('aria-expanded', 'false');
+      propertyTextarea.removeAttribute('aria-activedescendant');
+    }
+
+    function selectSuggestion(index) {
+      const s = currentSuggestions[index];
+      if (!s || !record) return;
+      propertyTextarea.value = s.label;
+      syncMailingIfSame();
+      record.propertyAddressLat = s.lat;
+      record.propertyAddressLon = s.lon;
+      lastGeocodedAddressText = s.label;
+      closeSuggestions();
+      scheduleSave();
+      propertyTextarea.focus();
+    }
+
+    function updateActiveSuggestion() {
+      const items = addressSuggestionsEl.querySelectorAll('.address-suggestion');
+      items.forEach(function (li, i) {
+        li.classList.toggle('is-active', i === activeSuggestionIndex);
+      });
+      if (activeSuggestionIndex >= 0 && items[activeSuggestionIndex]) {
+        propertyTextarea.setAttribute('aria-activedescendant', items[activeSuggestionIndex].id);
+        items[activeSuggestionIndex].scrollIntoView({ block: 'nearest' });
+      } else {
+        propertyTextarea.removeAttribute('aria-activedescendant');
+      }
+    }
+
+    function renderSuggestions(list) {
+      currentSuggestions = list || [];
+      activeSuggestionIndex = -1;
+      addressSuggestionsEl.innerHTML = '';
+
+      if (currentSuggestions.length === 0) {
+        closeSuggestions();
+        return;
+      }
+
+      currentSuggestions.forEach(function (s, i) {
+        const li = document.createElement('li');
+        li.className = 'address-suggestion';
+        li.id = 'address-suggestion-' + i;
+        li.setAttribute('role', 'option');
+        li.textContent = s.label;
+        li.addEventListener('click', function () {
+          selectSuggestion(i);
+        });
+        addressSuggestionsEl.appendChild(li);
+      });
+
+      addressSuggestionsEl.hidden = false;
+      propertyTextarea.setAttribute('aria-expanded', 'true');
+    }
+
+    // A suggestion is picked via click, which blurs the textarea first.
+    // Intercepting mousedown (before blur fires) keeps focus in the field
+    // so the click still lands on the right element.
+    addressSuggestionsEl.addEventListener('mousedown', function (e) {
+      e.preventDefault();
+    });
+
+    function invalidateStaleCoordinatesIfNeeded() {
+      if (lastGeocodedAddressText != null && propertyTextarea.value !== lastGeocodedAddressText) {
+        if (record) {
+          record.propertyAddressLat = null;
+          record.propertyAddressLon = null;
+        }
+        lastGeocodedAddressText = null;
+      }
+    }
+
+    function scheduleAddressAutocomplete() {
+      if (addressDebounceTimer) clearTimeout(addressDebounceTimer);
+      const text = propertyTextarea.value.trim();
+
+      if (text.length < ADDRESS_MIN_CHARS || !window.ToolboxGeo || !window.ToolboxGeo.isAvailable() || navigator.onLine === false) {
+        closeSuggestions();
+        return;
+      }
+
+      addressDebounceTimer = setTimeout(function () {
+        window.ToolboxGeo.fetchAutocomplete(text).then(function (results) {
+          if (results === null) return; // superseded by a newer request
+          if (propertyTextarea.value.trim() !== text) return; // stale response
+          renderSuggestions(results);
+        });
+      }, ADDRESS_DEBOUNCE_MS);
+    }
+
+    propertyTextarea.addEventListener('input', function () {
+      invalidateStaleCoordinatesIfNeeded();
+      scheduleAddressAutocomplete();
+    });
+
+    propertyTextarea.addEventListener('keydown', function (e) {
+      if (addressSuggestionsEl.hidden) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeSuggestionIndex = Math.min(activeSuggestionIndex + 1, currentSuggestions.length - 1);
+        updateActiveSuggestion();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeSuggestionIndex = Math.max(activeSuggestionIndex - 1, 0);
+        updateActiveSuggestion();
+      } else if (e.key === 'Enter') {
+        if (activeSuggestionIndex >= 0) {
+          e.preventDefault();
+          selectSuggestion(activeSuggestionIndex);
+        }
+      } else if (e.key === 'Escape') {
+        closeSuggestions();
+      }
+    });
+
+    propertyTextarea.addEventListener('blur', function () {
+      closeSuggestions();
+    });
+
+    useLocationBtn.addEventListener('click', function () {
+      if (!('geolocation' in navigator)) {
+        setAddressFeedback("This device doesn't support location.");
+        return;
+      }
+
+      useLocationBtn.disabled = true;
+      setAddressFeedback('Getting your location…');
+
+      navigator.geolocation.getCurrentPosition(
+        function (pos) {
+          useLocationBtn.disabled = false;
+          if (!record) return;
+
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          record.propertyAddressLat = lat;
+          record.propertyAddressLon = lon;
+          lastGeocodedAddressText = propertyTextarea.value;
+          scheduleSave();
+
+          if (!window.ToolboxGeo || !window.ToolboxGeo.isAvailable()) {
+            setAddressFeedback('Location captured. Enter the address manually.');
+            return;
+          }
+
+          setAddressFeedback('Location captured — looking up the address…');
+          window.ToolboxGeo.reverseGeocode(lat, lon).then(function (result) {
+            if (!record) return;
+            if (result && result.label) {
+              propertyTextarea.value = result.label;
+              syncMailingIfSame();
+              record.propertyAddressLat = result.lat;
+              record.propertyAddressLon = result.lon;
+              lastGeocodedAddressText = result.label;
+              scheduleSave();
+              setAddressFeedback('Address filled from your location — review and edit if needed.');
+            } else {
+              setAddressFeedback('Location captured. Enter the address manually.');
+            }
+          });
+        },
+        function () {
+          useLocationBtn.disabled = false;
+          setAddressFeedback("Couldn't get your location. Enter the address manually.");
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    });
 
     function updateIdentityBar() {
       identityName.textContent = displayName(record);
@@ -349,9 +597,7 @@
       scheduleSave();
     });
 
-    propertyTextarea.addEventListener('input', function () {
-      if (sameAddressCheckbox.checked) mailingTextarea.value = propertyTextarea.value;
-    });
+    propertyTextarea.addEventListener('input', syncMailingIfSame);
 
     app.addEventListener('input', function (e) {
       if (e.target && e.target.id && e.target.id.indexOf('field-') === 0) {
