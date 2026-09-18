@@ -19,7 +19,7 @@
     primary: [
       { id: 'firstName', label: 'First name', type: 'text' },
       { id: 'lastName', label: 'Last name', type: 'text' },
-      { id: 'propertyAddress', label: 'Property / site address', type: 'textarea', placeholder: 'Street address, city, state, ZIP', rows: 2, full: true },
+      { id: 'propertyAddress', label: 'Property / site address', type: 'text', placeholder: 'Street address, city, state, ZIP', full: true },
       { id: 'cellPhone', label: 'Cell phone', type: 'tel' },
       { id: 'homePhone', label: 'Home phone', type: 'tel' },
       { id: 'email', label: 'Email', type: 'email', full: true },
@@ -227,15 +227,18 @@
   }
 
   // Property address gets the same underlying #field-propertyAddress
-  // textarea (populateForm/collectFormIntoRecord bind to it exactly like
-  // any other field) plus a Geoapify autocomplete suggestion list and a
-  // "Use Current Location" convenience. Both are optional layers: the
-  // textarea is directly typable with or without them.
+  // control (populateForm/collectFormIntoRecord bind to it exactly like any
+  // other field) plus a Geoapify autocomplete suggestion list and a "Use
+  // Current Location" convenience. Both are optional layers: the field is
+  // directly typable with or without them.
   //
-  // "Use Current Location" lives in the label row rather than a separate
-  // row below the field, and the feedback line only occupies space while
-  // it has something to say — the field's resting height matches every
-  // other field in the form; nothing here permanently taxes the canvas.
+  // A plain single-line <input>, not a <textarea> -- a full standardized
+  // address ("123 Main St, San Diego, CA 92101, United States") reads fine
+  // scrolling horizontally in one line, same as every other single-line
+  // field in this form; there's no product reason for it to permanently
+  // occupy two rows of canvas. "Use Current Location" lives in the label
+  // row rather than a separate row below the field, and the feedback line
+  // only occupies space while it has something to say.
   function propertyAddressFieldHtml() {
     return (
       '<div class="field field--full field--address">' +
@@ -244,8 +247,8 @@
       '    <button type="button" id="use-current-location" class="address-location-link">Use Current Location</button>' +
       '  </div>' +
       '  <div class="address-autocomplete-wrap">' +
-      '    <textarea id="field-propertyAddress" rows="2" placeholder="Street address, city, state, ZIP" autocomplete="off" ' +
-      '      role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="address-suggestions" aria-haspopup="listbox"></textarea>' +
+      '    <input type="text" id="field-propertyAddress" placeholder="Street address, city, state, ZIP" autocomplete="off" ' +
+      '      role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="address-suggestions" aria-haspopup="listbox">' +
       '    <ul class="address-suggestions" id="address-suggestions" role="listbox" aria-label="Address suggestions" hidden></ul>' +
       '  </div>' +
       '  <p class="address-feedback" id="address-feedback" aria-live="polite" hidden></p>' +
@@ -461,6 +464,15 @@
         window.ToolboxGeo.fetchAutocomplete(text).then(function (results) {
           if (results === null) return; // superseded by a newer request
           if (propertyTextarea.value.trim() !== text) return; // stale response
+          if (results.length === 0) {
+            // An empty result can mean "genuinely no matches" (say nothing,
+            // per spec) or "the request itself failed" -- only the latter
+            // has something worth telling the investigator.
+            const reason = window.ToolboxGeo.getLastAutocompleteError();
+            if (reason) setAddressFeedback('Address suggestions unavailable (' + reason + ').');
+            closeSuggestions();
+            return;
+          }
           renderSuggestions(results);
         });
       }, ADDRESS_DEBOUNCE_MS);
@@ -533,7 +545,10 @@
               scheduleSave();
               setAddressFeedback('Address filled from your location — review and edit if needed.');
             } else {
-              setAddressFeedback('Location captured. Enter the address manually.');
+              const reason = window.ToolboxGeo.getLastReverseError();
+              setAddressFeedback(reason
+                ? 'Location captured, but the address lookup failed (' + reason + '). Enter it manually.'
+                : 'Location captured. Enter the address manually.');
             }
           });
         },

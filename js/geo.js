@@ -22,6 +22,22 @@
     return !!getApiKey();
   }
 
+  // Every failure (network error, non-2xx response, bad JSON) is swallowed
+  // into an empty result by design, so a caller can never be broken by a
+  // Geoapify problem. That silence is also exactly why a live failure is
+  // invisible on-device -- lastAutocompleteError/lastReverseError record
+  // *why* the last request came back empty (e.g. "HTTP 401") so the UI can
+  // show a short, honest status instead of pretending nothing happened.
+  // They say nothing about a genuine zero-result search.
+  let lastAutocompleteError = null;
+  let lastReverseError = null;
+
+  function describeFailure(err) {
+    if (err && typeof err.status === 'number') return 'HTTP ' + err.status;
+    if (err && err.message) return err.message;
+    return 'request failed';
+  }
+
   // Aborting the previous in-flight autocomplete request (rather than just
   // ignoring its response) is the primary defense against a slow keystroke
   // response landing after a newer one — callers add a second guard of
@@ -35,13 +51,18 @@
     if (autocompleteController) autocompleteController.abort();
     const controller = new AbortController();
     autocompleteController = controller;
+    lastAutocompleteError = null;
 
     const url = AUTOCOMPLETE_URL + '?text=' + encodeURIComponent(text) +
       '&format=json&limit=5&apiKey=' + encodeURIComponent(apiKey);
 
     return fetch(url, { signal: controller.signal })
       .then(function (res) {
-        if (!res.ok) throw new Error('Geoapify autocomplete failed: ' + res.status);
+        if (!res.ok) {
+          const err = new Error('Geoapify autocomplete failed: ' + res.status);
+          err.status = res.status;
+          throw err;
+        }
         return res.json();
       })
       .then(function (data) {
@@ -52,6 +73,7 @@
       })
       .catch(function (err) {
         if (err && err.name === 'AbortError') return null; // superseded by a newer request
+        lastAutocompleteError = describeFailure(err);
         console.warn('Geoapify autocomplete unavailable:', err);
         return [];
       });
@@ -60,13 +82,18 @@
   function reverseGeocode(lat, lon) {
     const apiKey = getApiKey();
     if (!apiKey) return Promise.resolve(null);
+    lastReverseError = null;
 
     const url = REVERSE_URL + '?lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lon) +
       '&format=json&limit=1&apiKey=' + encodeURIComponent(apiKey);
 
     return fetch(url)
       .then(function (res) {
-        if (!res.ok) throw new Error('Geoapify reverse geocode failed: ' + res.status);
+        if (!res.ok) {
+          const err = new Error('Geoapify reverse geocode failed: ' + res.status);
+          err.status = res.status;
+          throw err;
+        }
         return res.json();
       })
       .then(function (data) {
@@ -79,6 +106,7 @@
         };
       })
       .catch(function (err) {
+        lastReverseError = describeFailure(err);
         console.warn('Geoapify reverse geocode unavailable:', err);
         return null;
       });
@@ -88,5 +116,7 @@
     isAvailable: isAvailable,
     fetchAutocomplete: fetchAutocomplete,
     reverseGeocode: reverseGeocode,
+    getLastAutocompleteError: function () { return lastAutocompleteError; },
+    getLastReverseError: function () { return lastReverseError; },
   };
 })();
