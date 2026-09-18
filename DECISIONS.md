@@ -19,9 +19,18 @@ Durable decisions already established in `VISION.md`, recorded here for quick re
 - The Customer File owns shared context (customer/contact info, plan/surfaces, etc.) so it's entered once and used everywhere it's needed.
 
 - The Customer File is a full customer/contact record for Toolbox, not a form limited to fields Distress Survey or Floor Survey currently require. Useful customer information may be captured even when no current workspace consumes it; Toolbox can use it later.
-- Customer Files may be incomplete. Only the minimum information needed to create and recognize a file should gate creation; other contact information can be added or corrected later.
+- A Customer File has a stable internal identity independent of editable customer/contact fields. No human-entered customer, contact, or address field gates creation. A new unnamed file may use **TBD** as its temporary human-readable identifier until meaningful information is entered.
+- Customer File sections and future workspaces are independently accessible and may be completed in whatever order the investigation requires. Pills communicate navigation/status; they do not gate access based on completion of another section. Toolbox may silently establish and maintain the internal file/job identity when work begins before customer information is completed.
 - Distress Survey and Floor Survey were built as standalone applications before the Toolbox Customer File model existed. Their standalone setup/data plumbing does not define Toolbox architecture.
 - **Integration rule: plumbing may change; proven capture behavior is protected.** Toolbox may change shared-data ownership, file identity, persistence, synchronization, and how known context reaches a workspace. Integration must not casually redesign proven field-capture interactions.
+
+## Product-area boundaries
+
+- Toolbox should be organized around recognizable workflow/product areas: shared/core foundation, Customer File, Plan Setup, Distress Survey, Floor Survey, Diagnostics, and Report Builder.
+- Shared functionality and data contracts belong in shared/core areas; workspace-specific behavior, wording, and implementation should remain within the workspace that owns them.
+- This segmentation is both a maintainability and AI-context boundary. As the repository grows, implementation agents should always read the complete authority layer, then read the complete relevant product area and the shared interfaces/dependencies it uses. Unrelated workspace implementations should not be consumed or modified unless an actual dependency requires it.
+- Organize for human legibility as well as machine efficiency: the product owner should be able to locate and change workspace-specific wording or behavior without searching through an undifferentiated application.
+- These boundaries must not be used to duplicate shared data, create internal export/import choreography, or weaken the Customer File as the central organizing object.
 
 ## Distress Survey
 
