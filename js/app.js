@@ -646,6 +646,17 @@
   document.addEventListener('visibilitychange', flushActiveFile);
   window.addEventListener('pagehide', flushActiveFile);
 
+  // App-level Refresh control: reloads the current view (hash preserved)
+  // to pick up a newly deployed shell. Flushes any pending autosave first
+  // so a refresh never discards an in-progress edit.
+  const refreshBtn = document.getElementById('app-refresh');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', function () {
+      flushActiveFile();
+      window.location.reload();
+    });
+  }
+
   window.addEventListener('hashchange', render);
   window.addEventListener('DOMContentLoaded', render);
 })();
