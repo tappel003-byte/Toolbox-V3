@@ -239,15 +239,13 @@
   function propertyAddressFieldHtml() {
     return (
       '<div class="field field--full field--address">' +
-      '  <div class="field-label-row">' +
-      '    <label for="field-propertyAddress">Property / site address</label>' +
-      '    <button type="button" id="use-current-location" class="address-location-link">Use Current Location</button>' +
-      '  </div>' +
+      '  <label for="field-propertyAddress">Property / site address</label>' +
       '  <div class="address-autocomplete-wrap">' +
       '    <textarea id="field-propertyAddress" rows="2" placeholder="Street address, city, state, ZIP" autocomplete="off" ' +
       '      role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="address-suggestions" aria-haspopup="listbox"></textarea>' +
       '    <ul class="address-suggestions" id="address-suggestions" role="listbox" aria-label="Address suggestions" hidden></ul>' +
       '  </div>' +
+      '  <button type="button" id="use-current-location" class="address-location-link address-location-link--below">Use Current Location</button>' +
       '  <p class="address-feedback" id="address-feedback" aria-live="polite" hidden></p>' +
       '</div>'
     );
