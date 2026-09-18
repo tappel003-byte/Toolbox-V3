@@ -457,3 +457,11 @@ body {
     flex-basis: 100%;
   }
 }
+
+/* Property address: compact two-line wrap on narrow screens. */
+.address-autocomplete-wrap textarea {
+  display: block;
+  width: 100%;
+  min-width: 100%;
+  resize: none;
+}
