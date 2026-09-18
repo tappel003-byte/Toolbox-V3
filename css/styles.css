@@ -37,6 +37,8 @@ body {
   height: var(--app-bar-height);
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 0 16px;
   padding-top: env(safe-area-inset-top);
   height: calc(var(--app-bar-height) + env(safe-area-inset-top));
@@ -48,6 +50,19 @@ body {
   font-weight: 700;
   font-size: 16px;
   letter-spacing: 0.01em;
+}
+
+.app-bar__refresh {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 /* The canvas: the working surface. Takes all remaining space at every
