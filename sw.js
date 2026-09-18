@@ -9,7 +9,13 @@
 // Therefore the offline document is fetched explicitly, converted to a fresh
 // non-redirected Response, and cached under one canonical key.
 
-const CACHE_NAME = 'toolbox-shell-v4';
+// Bump CACHE_NAME whenever any file in STATIC_SHELL changes content,
+// including a content-only edit like adding a key to config.js. The
+// browser only re-runs install() (and re-fetches STATIC_SHELL) when this
+// sw.js file's own bytes change; a precached static asset edited without
+// bumping this stays served from the stale cache indefinitely on already
+// installed devices, invisibly, no matter how many times it's redeployed.
+const CACHE_NAME = 'toolbox-shell-v5';
 const OFFLINE_DOCUMENT = '/index.html';
 
 const STATIC_SHELL = [

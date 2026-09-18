@@ -231,19 +231,24 @@
   // any other field) plus a Geoapify autocomplete suggestion list and a
   // "Use Current Location" convenience. Both are optional layers: the
   // textarea is directly typable with or without them.
+  //
+  // "Use Current Location" lives in the label row rather than a separate
+  // row below the field, and the feedback line only occupies space while
+  // it has something to say — the field's resting height matches every
+  // other field in the form; nothing here permanently taxes the canvas.
   function propertyAddressFieldHtml() {
     return (
       '<div class="field field--full field--address">' +
-      '  <label for="field-propertyAddress">Property / site address</label>' +
+      '  <div class="field-label-row">' +
+      '    <label for="field-propertyAddress">Property / site address</label>' +
+      '    <button type="button" id="use-current-location" class="address-location-link">Use Current Location</button>' +
+      '  </div>' +
       '  <div class="address-autocomplete-wrap">' +
       '    <textarea id="field-propertyAddress" rows="2" placeholder="Street address, city, state, ZIP" autocomplete="off" ' +
       '      role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="address-suggestions" aria-haspopup="listbox"></textarea>' +
       '    <ul class="address-suggestions" id="address-suggestions" role="listbox" aria-label="Address suggestions" hidden></ul>' +
       '  </div>' +
-      '  <div class="address-actions">' +
-      '    <button type="button" id="use-current-location" class="btn btn--ghost btn--location">Use Current Location</button>' +
-      '    <span class="address-feedback" id="address-feedback" aria-live="polite"></span>' +
-      '  </div>' +
+      '  <p class="address-feedback" id="address-feedback" aria-live="polite" hidden></p>' +
       '</div>'
     );
   }
@@ -352,6 +357,7 @@
 
     function setAddressFeedback(text) {
       addressFeedbackEl.textContent = text || '';
+      addressFeedbackEl.hidden = !text;
       if (addressFeedbackTimer) {
         clearTimeout(addressFeedbackTimer);
         addressFeedbackTimer = null;
@@ -359,6 +365,7 @@
       if (text) {
         addressFeedbackTimer = setTimeout(function () {
           addressFeedbackEl.textContent = '';
+          addressFeedbackEl.hidden = true;
         }, 6000);
       }
     }

@@ -319,7 +319,37 @@ body {
 
 /* ---- Property address: Geoapify autocomplete + Use Current Location.
    A convenience layered on the existing address field — manual typing and
-   saving always work whether or not these controls ever produce a result. */
+   saving always work whether or not these controls ever produce a result.
+   "Use Current Location" sits in the label row instead of a separate row
+   below the field, and the feedback line only takes space while it has
+   something to say, so the field's resting height matches every other
+   field in the form — the convenience costs no permanent canvas. */
+.field-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.field-label-row label {
+  margin-bottom: 0;
+}
+
+.address-location-link {
+  flex: 0 0 auto;
+  border: none;
+  background: none;
+  padding: 6px 2px;
+  margin: -6px -2px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 .address-autocomplete-wrap {
   position: relative;
 }
@@ -358,21 +388,14 @@ body {
   background: var(--bg);
 }
 
-.address-actions {
-  margin-top: 8px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.btn--location {
-  align-self: flex-start;
-}
-
 .address-feedback {
+  margin: 4px 0 0;
   font-size: 12px;
   color: var(--ink-soft);
+}
+
+.address-feedback[hidden] {
+  display: none;
 }
 
 /* ---- Small phones: single-column form, form fields stack ---- */
