@@ -110,7 +110,7 @@
   function renderCabinet(app) {
     activeFileFlush = null;
     app.innerHTML =
-      '<div class="view-bar">' +
+      '<div class="view-bar view-bar--cabinet">' +
       '  <input type="search" id="cabinet-search" class="cabinet-search" placeholder="Search by name or address" autocomplete="off">' +
       '  <button type="button" id="cabinet-new" class="btn btn--accent">+ New Customer File</button>' +
       '</div>' +

@@ -323,7 +323,22 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .view-bar {
+  /* Cabinet bar: search and "New Customer File" don't have room to sit
+     side by side at phone width. Stack them explicitly rather than
+     relying on flex-wrap, whose line-breaking depends on each browser's
+     content-based sizing of the search input and was producing a
+     compressed, squeezed-together layout on iOS Safari. */
+  .view-bar--cabinet {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .view-bar--cabinet .cabinet-search,
+  .view-bar--cabinet .btn {
+    width: 100%;
+  }
+
+  .view-bar--file {
     flex-wrap: wrap;
   }
 
