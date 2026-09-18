@@ -1,17 +1,18 @@
 // Toolbox — minimal app-shell service worker.
 //
-// This app is served from the origin root, so registering here at the
-// default (root) scope is intentional, not the root-scope-registered-from-
-// a-subpath mistake documented in Toolbox-V2's history. Even so, this
-// deliberately uses network-first for navigations (not cache-first) so a
-// stale or redirected response is never what a real page load sees —
-// the same shape of bug already found and fixed once in V2.
+// Milestone 0 goal: after one connected load, the installed Toolbox shell
+// must reopen offline on phone, iPad, and desktop.
+//
+// Important: cache.add()/cache.addAll() may follow a redirect and store a
+// redirected Response. WebKit refuses to use such a Response for an offline
+// navigation ("Response served by service worker has redirections").
+// Therefore the offline document is fetched explicitly, converted to a fresh
+// non-redirected Response, and cached under one canonical key.
 
-const CACHE_NAME = 'toolbox-shell-v1';
+const CACHE_NAME = 'toolbox-shell-v2';
+const OFFLINE_DOCUMENT = '/index.html';
 
-const APP_SHELL = [
-  '/',
-  '/index.html',
+const STATIC_SHELL = [
   '/css/styles.css',
   '/js/sw-register.js',
   '/manifest.webmanifest',
@@ -19,12 +20,34 @@ const APP_SHELL = [
   '/icons/icon-512.png',
 ];
 
+async function cacheOfflineDocument(cache) {
+  const response = await fetch(OFFLINE_DOCUMENT, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`Unable to cache Toolbox shell: ${response.status}`);
+  }
+
+  const body = await response.blob();
+  const headers = new Headers(response.headers);
+  headers.delete('location');
+
+  const cleanResponse = new Response(body, {
+    status: 200,
+    statusText: 'OK',
+    headers,
+  });
+
+  await cache.put(OFFLINE_DOCUMENT, cleanResponse);
+}
+
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting())
-  );
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await Promise.all([
+      cacheOfflineDocument(cache),
+      cache.addAll(STATIC_SHELL),
+    ]);
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
@@ -44,17 +67,11 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // Navigations: network first, so a real connection always wins; the
-  // cached shell is only a fallback for offline reopening.
+  // Navigations are network-first. A connected launch gets the current app;
+  // an offline launch gets the clean cached document from installation.
   if (req.mode === 'navigate') {
     event.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy));
-          return res;
-        })
-        .catch(() => caches.match('/index.html', { ignoreSearch: true }))
+      fetch(req).catch(() => caches.match(OFFLINE_DOCUMENT))
     );
     return;
   }
@@ -63,7 +80,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(req).then((cached) => {
       const network = fetch(req).then((res) => {
-        if (res && res.ok) {
+        if (res && res.ok && !res.redirected) {
           const copy = res.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
         }
