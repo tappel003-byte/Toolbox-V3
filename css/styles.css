@@ -374,6 +374,13 @@ body {
   position: relative;
 }
 
+/* The address input is nested inside the autocomplete wrapper, so unlike
+   direct .field inputs it does not inherit the field's flex stretch. Make
+   it explicitly fill the full-width Property/site address row. */
+.address-autocomplete-wrap input {
+  width: 100%;
+}
+
 .address-suggestions {
   position: absolute;
   top: 100%;
