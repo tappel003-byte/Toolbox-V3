@@ -378,7 +378,9 @@ body {
    direct .field inputs it does not inherit the field's flex stretch. Make
    it explicitly fill the full-width Property/site address row. */
 .address-autocomplete-wrap input {
+  display: block;
   width: 100%;
+  min-width: 100%;
 }
 
 .address-suggestions {
