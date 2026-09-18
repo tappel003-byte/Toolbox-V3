@@ -37,7 +37,7 @@ body {
   height: var(--app-bar-height);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   padding: 0 16px;
   padding-top: env(safe-area-inset-top);
@@ -52,8 +52,12 @@ body {
   letter-spacing: 0.01em;
 }
 
+/* margin-left: auto anchors Refresh to the far right of the bar and keeps
+   it there even if other controls are ever added between the title and
+   it — it must never end up crowding the Toolbox title on the left. */
 .app-bar__refresh {
   flex: 0 0 auto;
+  margin-left: auto;
   padding: 6px 12px;
   font-size: 13px;
   font-weight: 600;
