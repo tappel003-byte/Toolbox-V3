@@ -7,6 +7,14 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
 - Read `VISION.md` before doing work. If code, a milestone, or any other document conflicts with `VISION.md`, **VISION.md wins** — unless the product owner explicitly changes the Vision.
 - Work only on the current `MILESTONE.md`. Do not implement future milestones early, even when the work is already understood conceptually.
 
+## Implementation prompt protocol
+
+- Every implementation prompt given to an AI coding agent must begin by requiring the agent to read the entire current `Toolbox-V3` repository before making changes.
+- The prompt must explicitly re-establish repository authority: `VISION.md` first, then `AGENTS.md`, `MILESTONE.md`, and `DECISIONS.md`. Current code follows those documents. V2 and standalone applications are evidence/reference only unless the task specifically calls for inspecting them.
+- The agent must inspect the current implementation relevant to the task before editing it, work only within the current milestone and prompt scope, and stop/report any material conflict rather than silently resolving it.
+- Every implementation prompt must end by requiring the agent to report exactly which files changed, what changed, any decisions or assumptions made, and the commit SHA.
+- This protocol applies to small prompts as well as substantial implementation work so every coding task begins from the same source of truth.
+
 ## Authorization
 
 - A stated need is not an approved architecture.
