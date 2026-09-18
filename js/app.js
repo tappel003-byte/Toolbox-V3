@@ -232,13 +232,10 @@
   // Current Location" convenience. Both are optional layers: the field is
   // directly typable with or without them.
   //
-  // A plain single-line <input>, not a <textarea> -- a full standardized
-  // address ("123 Main St, San Diego, CA 92101, United States") reads fine
-  // scrolling horizontally in one line, same as every other single-line
-  // field in this form; there's no product reason for it to permanently
-  // occupy two rows of canvas. "Use Current Location" lives in the label
-  // row rather than a separate row below the field, and the feedback line
-  // only occupies space while it has something to say.
+  // Use a compact two-row textarea so a complete standardized address can
+  // wrap naturally on narrow screens while preserving the full address text.
+  // "Use Current Location" lives in the label row and feedback only occupies
+  // space while it has something to say.
   function propertyAddressFieldHtml() {
     return (
       '<div class="field field--full field--address">' +
@@ -247,8 +244,8 @@
       '    <button type="button" id="use-current-location" class="address-location-link">Use Current Location</button>' +
       '  </div>' +
       '  <div class="address-autocomplete-wrap">' +
-      '    <input type="text" id="field-propertyAddress" placeholder="Street address, city, state, ZIP" autocomplete="off" ' +
-      '      role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="address-suggestions" aria-haspopup="listbox">' +
+      '    <textarea id="field-propertyAddress" rows="2" placeholder="Street address, city, state, ZIP" autocomplete="off" ' +
+      '      role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="address-suggestions" aria-haspopup="listbox"></textarea>' +
       '    <ul class="address-suggestions" id="address-suggestions" role="listbox" aria-label="Address suggestions" hidden></ul>' +
       '  </div>' +
       '  <p class="address-feedback" id="address-feedback" aria-live="polite" hidden></p>' +
