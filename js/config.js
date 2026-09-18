@@ -16,5 +16,5 @@
 // Leave it as an empty string until then — an empty key simply disables
 // the Geoapify conveniences. Manual address entry is unaffected either way.
 window.ToolboxConfig = {
-  geoapifyApiKey: '',
+  geoapifyApiKey: 'c77231dd6511494cb976808bf46fd35c',
 };
