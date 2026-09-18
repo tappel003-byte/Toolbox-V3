@@ -9,13 +9,15 @@
 // Therefore the offline document is fetched explicitly, converted to a fresh
 // non-redirected Response, and cached under one canonical key.
 
-const CACHE_NAME = 'toolbox-shell-v3';
+const CACHE_NAME = 'toolbox-shell-v4';
 const OFFLINE_DOCUMENT = '/index.html';
 
 const STATIC_SHELL = [
   '/css/styles.css',
   '/js/sw-register.js',
   '/js/db.js',
+  '/js/config.js',
+  '/js/geo.js',
   '/js/app.js',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
