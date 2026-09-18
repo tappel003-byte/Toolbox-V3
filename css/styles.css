@@ -465,3 +465,9 @@ body {
   min-width: 100%;
   resize: none;
 }
+
+.address-location-link--below {
+  display: block;
+  width: fit-content;
+  margin-top: 8px;
+}
