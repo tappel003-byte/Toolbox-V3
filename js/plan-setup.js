@@ -240,12 +240,19 @@
   function buildingTypeSelectHtml(selected) {
     const types = window.ToolboxBuildingTypes.BUILDING_TYPES;
     let html = '';
+    let matched = false;
     Object.keys(types).forEach(function (key) {
       const sel = key === selected ? ' selected' : '';
+      if (key === selected) matched = true;
       html += '<option value="' + key + '"' + sel + '>' + types[key].label + '</option>';
     });
     const allSel = selected === 'all' ? ' selected' : '';
+    if (selected === 'all') matched = true;
     html += '<option value="all"' + allSel + '>All / Mixed</option>';
+    // Preserve migrated/unknown values so they remain visible and selectable.
+    if (selected && !matched) {
+      html += '<option value="' + selected + '" selected>' + selected + ' (saved)</option>';
+    }
     return html;
   }
 

@@ -1,7 +1,6 @@
 // Toolbox — Building types + orientation helpers from field-reporter-pro.
 // Adapted from public/survey.html BUILDING_TYPES / frontDoorToNorthRotation.
-// Building type is survey-level in FRP (project.buildingType); Toolbox keeps
-// the same ownership on record.distress.buildingType.
+// Building type is shared Plan Setup data (record.planSetup.buildingType).
 
 (function () {
   'use strict';
