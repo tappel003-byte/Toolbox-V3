@@ -1,4 +1,4 @@
-// Toolbox — Customer File + Distress media persistence.
+// Toolbox — Customer File + Plan Setup / Distress media persistence.
 //
 // Milestone 1 needs local, offline-durable storage that survives reload and
 // close/reopen on one device. It does not need cross-device sync (that is
@@ -10,10 +10,11 @@
 // This module is the only place that knows storage is IndexedDB. Callers
 // work with plain Customer File objects and opaque media ids.
 //
-// DB_VERSION 2 adds a media object store for Distress plan (and later photo)
-// bytes. Plan metadata (id/width/height) lives on the Customer File record;
-// the image bytes live here so large dataURLs do not inflate every CF write
-// beyond what is necessary, matching the proven field-reporter-pro split.
+// DB_VERSION 2 adds a media object store for Plan Setup plan images (and
+// later Distress photo bytes). Plan metadata (id/width/height) lives on the
+// shared planSetup canvases on the Customer File record; the image bytes
+// live here so large dataURLs do not inflate every CF write beyond what is
+// necessary, matching the proven field-reporter-pro split.
 
 const DB_NAME = 'toolbox';
 const DB_VERSION = 2;

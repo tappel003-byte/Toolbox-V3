@@ -491,12 +491,13 @@ body {
   margin-top: 8px;
 }
 
-/* ---- Customer File → Distress entry (compact, below Save) ---- */
+/* ---- Customer File → Plan Setup / Distress entry ---- */
 .file-workspaces {
   margin-top: 20px;
   padding-top: 16px;
   border-top: 1px solid var(--line);
   display: flex;
+  flex-direction: column;
   gap: 10px;
 }
 
@@ -504,8 +505,14 @@ body {
   width: 100%;
 }
 
-/* ---- Distress Plan Setup ---- */
-.distress-setup {
+@media (min-width: 560px) {
+  .file-workspaces {
+    flex-direction: row;
+  }
+}
+
+/* ---- Standalone Plan Setup ---- */
+.plan-setup {
   flex: 1 1 auto;
   padding: 16px 16px 32px;
   max-width: 44rem;
@@ -514,31 +521,35 @@ body {
   box-sizing: border-box;
 }
 
-.distress-setup__head {
+.plan-setup__head {
   margin-bottom: 14px;
 }
 
-.distress-setup__title {
+.plan-setup__title {
   margin: 0 0 4px;
   font-size: 18px;
   font-weight: 700;
 }
 
-.distress-setup__hint {
+.plan-setup__hint {
   margin: 0;
   font-size: 13px;
   color: var(--ink-soft);
   line-height: 1.4;
 }
 
-.surface-roster {
+.canvas-roster {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 8px;
 }
 
-.surface-chip {
+.canvas-roster--compact {
+  margin-bottom: 12px;
+}
+
+.canvas-chip {
   padding: 7px 12px;
   border-radius: 999px;
   border: 1px solid var(--line);
@@ -550,21 +561,21 @@ body {
   cursor: pointer;
 }
 
-.surface-chip.is-active {
+.canvas-chip.is-active {
   background: var(--ink);
   border-color: var(--ink);
   color: var(--panel);
 }
 
-.surface-add-row {
+.canvas-add-row {
   margin-bottom: 16px;
 }
 
-.distress-surface-name {
+.plan-canvas-name {
   margin-bottom: 16px;
 }
 
-.distress-surface-name label {
+.plan-canvas-name label {
   display: block;
   font-size: 12px;
   font-weight: 600;
@@ -572,13 +583,13 @@ body {
   margin-bottom: 4px;
 }
 
-.distress-surface-name__row {
+.plan-canvas-name__row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.surface-name-input,
+.canvas-name-input,
 .setup-select {
   flex: 1 1 auto;
   min-width: 0;
@@ -595,13 +606,13 @@ body {
   appearance: none;
 }
 
-.surface-name-input:focus,
+.canvas-name-input:focus,
 .setup-select:focus {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
 }
 
-.surface-icon-btn {
+.canvas-icon-btn {
   flex: 0 0 auto;
   width: 40px;
   height: 40px;
@@ -613,7 +624,7 @@ body {
   cursor: pointer;
 }
 
-.surface-icon-btn:active {
+.canvas-icon-btn:active {
   background: var(--bg);
 }
 
@@ -676,6 +687,10 @@ body {
   background: var(--panel);
 }
 
+.plan-preview--consume {
+  margin-top: 8px;
+}
+
 .plan-preview__change,
 .plan-preview__rooms {
   position: absolute;
@@ -715,6 +730,11 @@ body {
   border-radius: 6px;
   background: #fff;
   cursor: zoom-in;
+}
+
+.plan-preview--consume img {
+  cursor: default;
+  max-height: min(58vh, 520px);
 }
 
 .plan-preview__meta {
@@ -767,7 +787,7 @@ body {
   border-color: var(--ink);
 }
 
-.distress-feedback {
+.plan-feedback {
   margin: 12px 0 0;
   padding: 10px 12px;
   border-radius: 8px;
@@ -778,11 +798,75 @@ body {
   line-height: 1.35;
 }
 
-.distress-feedback[hidden],
+.plan-feedback[hidden],
 .plan-drop-zone[hidden],
 .plan-preview[hidden],
-#rooms-field[hidden] {
+#rooms-field[hidden],
+.distress-need-setup[hidden],
+.distress-canvas-panel[hidden],
+.canvas-roster[hidden] {
   display: none;
+}
+
+/* ---- Distress Survey (consumes shared canvases) ---- */
+.distress-view {
+  flex: 1 1 auto;
+  padding: 16px 16px 32px;
+  max-width: 44rem;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.distress-view__head {
+  margin-bottom: 12px;
+}
+
+.distress-view__title {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.distress-view__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.distress-need-setup {
+  margin-top: 8px;
+  padding: 16px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  text-align: center;
+}
+
+.distress-need-setup__msg {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.distress-canvas-panel__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  margin-bottom: 4px;
+}
+
+.distress-canvas-panel__name {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.distress-canvas-panel__rooms {
+  font-size: 12px;
+  color: var(--ink-soft);
 }
 
 /* Room verify overlay (FRP-adapted) */

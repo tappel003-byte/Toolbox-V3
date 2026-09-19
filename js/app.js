@@ -10,11 +10,11 @@
 
   const AUTOSAVE_DELAY_MS = 900;
 
-  // Registered by whichever view is currently mounted (Customer File or
-  // Distress) so a single, persistent listener can flush pending edits
-  // when the tab is hidden or closed — avoids adding/removing per-view
-  // listeners on every navigation. Exposed via window.ToolboxApp so
-  // other product-area modules can register/clear it too.
+  // Registered by whichever view is currently mounted (Customer File,
+  // Plan Setup, or Distress) so a single, persistent listener can flush
+  // pending edits when the tab is hidden or closed — avoids adding/removing
+  // per-view listeners on every navigation. Exposed via window.ToolboxApp
+  // so other product-area modules can register/clear it too.
   let activeFileFlush = null;
   function registerActiveFlush(fn) {
     activeFileFlush = fn;
@@ -94,14 +94,16 @@
 
   // ---- Routing ----------------------------------------------------------
   //
-  // Customer File → Distress (Plan Setup when no usable plan). Distress is
-  // a sub-route of the open file: #/file/<id>/distress.
+  // Customer File → Plan Setup (#/file/<id>/plan) establishes shared
+  // canvases/levels. Customer File → Distress (#/file/<id>/distress)
+  // consumes those same canvases — it does not own setup.
 
   function parseRoute() {
     const hash = window.location.hash || '#/';
-    const match = hash.match(/^#\/file\/([^/]+)(?:\/(distress))?$/);
+    const match = hash.match(/^#\/file\/([^/]+)(?:\/(plan|distress))?$/);
     if (match) {
       const id = decodeURIComponent(match[1]);
+      if (match[2] === 'plan') return { view: 'plan', id: id };
       if (match[2] === 'distress') return { view: 'distress', id: id };
       return { view: 'file', id: id };
     }
@@ -112,7 +114,9 @@
     const app = document.getElementById('app-view');
     if (!app) return;
     const route = parseRoute();
-    if (route.view === 'distress') {
+    if (route.view === 'plan') {
+      window.ToolboxPlanSetup.renderPlanSetup(app, route.id);
+    } else if (route.view === 'distress') {
       window.ToolboxDistress.renderDistress(app, route.id);
     } else if (route.view === 'file') {
       renderFile(app, route.id);
@@ -296,12 +300,14 @@
       '    <button type="button" id="file-save" class="btn btn--accent">Save</button>' +
       '  </div>' +
       '  <div class="file-workspaces">' +
-      '    <button type="button" id="file-distress" class="btn btn--accent">Distress ›</button>' +
+      '    <button type="button" id="file-plan" class="btn btn--accent">Plan Setup ›</button>' +
+      '    <button type="button" id="file-distress" class="btn btn--ghost">Distress ›</button>' +
       '  </div>' +
       '</div>';
 
     const backBtn = app.querySelector('#file-back');
     const saveBtn = app.querySelector('#file-save');
+    const planBtn = app.querySelector('#file-plan');
     const distressBtn = app.querySelector('#file-distress');
     const statusEl = app.querySelector('#file-status');
     const identityName = app.querySelector('#file-identity-name');
@@ -652,6 +658,14 @@
 
     registerActiveFlush(flushSave);
 
+    planBtn.addEventListener('click', function () {
+      flushSave().then(function () {
+        window.location.hash = '#/file/' + encodeURIComponent(id) + '/plan';
+      }).catch(function () {
+        // Stay on Customer File so the investigator can retry save.
+      });
+    });
+
     distressBtn.addEventListener('click', function () {
       flushSave().then(function () {
         window.location.hash = '#/file/' + encodeURIComponent(id) + '/distress';
@@ -664,6 +678,21 @@
 
     window.ToolboxDB.getCustomerFile(id).then(function (existing) {
       record = existing || blankCustomerFile(id);
+      // Migrate legacy Distress-owned Plan Setup into shared planSetup when
+      // opening an existing development Customer File, without inventing
+      // canvases for brand-new empty files until Plan Setup is entered.
+      if (existing && window.ToolboxPlanSetup &&
+          ((record.distress && Array.isArray(record.distress.surfaces) && record.distress.surfaces.length) ||
+           (record.planSetup && Array.isArray(record.planSetup.canvases)))) {
+        if (window.ToolboxPlanSetup.ensurePlanSetup(record)) {
+          dirty = true;
+          return flushSave().then(function () {
+            populateForm(record);
+            updateIdentityBar();
+            setStatus('Saved ' + formatUpdated(record.updatedAt));
+          });
+        }
+      }
       populateForm(record);
       updateIdentityBar();
       setStatus(existing ? 'Saved ' + formatUpdated(record.updatedAt) : 'New — not yet saved');
@@ -699,7 +728,7 @@
   window.addEventListener('hashchange', render);
   window.addEventListener('DOMContentLoaded', render);
 
-  // Shared helpers for other product-area modules (Distress Plan Setup).
+  // Shared helpers for other product-area modules (Plan Setup, Distress).
   window.ToolboxApp = {
     registerActiveFlush: registerActiveFlush,
     blankCustomerFile: blankCustomerFile,
