@@ -435,7 +435,7 @@
       '  <div id="cf-plans-panel" class="cf-plans-panel"></div>' +
       '  <div class="file-actions file-actions--edit">' +
       '    <button type="button" id="file-save" class="btn btn--ghost">Save</button>' +
-      '    <button type="button" id="file-done" class="btn btn--accent">Done</button>' +
+      '    <button type="button" id="file-done" class="btn btn--accent">Complete</button>' +
       '  </div>' +
       '</div>';
 
@@ -817,7 +817,7 @@
   window.addEventListener('hashchange', render);
   window.addEventListener('DOMContentLoaded', render);
 
-  // Shared helpers for other product-area modules (Plan Setup, Distress).
+  // Shared helpers for other product-area modules (Customer File plans).
   window.ToolboxApp = {
     registerActiveFlush: registerActiveFlush,
     blankCustomerFile: blankCustomerFile,

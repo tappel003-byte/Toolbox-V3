@@ -232,7 +232,8 @@ body {
 /* ---- Customer File form ---- */
 .file-form-wrap {
   flex: 1 1 auto;
-  padding: 16px 16px 32px;
+  padding: 16px 16px 16px;
+  padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
   max-width: 44rem;
   width: 100%;
   margin: 0 auto;
@@ -615,14 +616,20 @@ body {
 }
 
 .file-actions--edit {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
   display: flex;
   gap: 10px;
   margin-top: 20px;
-  padding-bottom: 24px;
+  padding: 12px 0 calc(12px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
+  box-sizing: border-box;
 }
 
 .file-actions--edit .btn {
   flex: 1;
+  min-height: 44px;
 }
 
 /* ---- Customer File → Plan Setup / Distress entry ---- */

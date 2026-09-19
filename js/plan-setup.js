@@ -306,7 +306,7 @@
       '    <button type="button" id="canvas-add-btn" class="btn btn--ghost">+ Add another level</button>' +
       '  </div>' +
       '  <div class="plan-canvas-name" id="plan-canvas-name-wrap">' +
-      '    <label for="canvas-name-input">Level name</label>' +
+      '    <label for="canvas-name-input">Plan / level name</label>' +
       '    <div class="plan-canvas-name__row">' +
       '      <input type="text" id="canvas-name-input" class="canvas-name-input" autocomplete="off" aria-label="Level name">' +
       '      <button type="button" id="canvas-rename-btn" class="canvas-icon-btn" aria-label="Rename level" title="Rename">✎</button>' +
