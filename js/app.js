@@ -10,15 +10,10 @@
 
   const AUTOSAVE_DELAY_MS = 900;
 
-  // Registered by whichever view is currently mounted (Customer File, Plan
-  // Setup, or the Distress seam) so a single, persistent listener can flush
-  // pending edits when the tab is hidden or closed — avoids adding/removing
-  // per-view listeners on every navigation. Exposed via window.ToolboxApp
-  // so those other product-area modules can register/clear it too.
-  let activeFlush = null;
-  function registerActiveFlush(fn) {
-    activeFlush = fn;
-  }
+  // Set by the active Customer File view so a single, persistent listener
+  // can flush pending edits when the tab is hidden or closed — avoids
+  // adding/removing per-view listeners on every navigation.
+  let activeFileFlush = null;
 
   const FIELD_DEFS = {
     primary: [
@@ -93,20 +88,11 @@
   }
 
   // ---- Routing ----------------------------------------------------------
-  //
-  // Customer File → Plan Setup → Distress capture is a linear pipeline, so
-  // Plan Setup and the Distress seam are sub-routes of the file, not peer
-  // top-level views: #/file/<id>, #/file/<id>/plan, #/file/<id>/distress.
 
   function parseRoute() {
     const hash = window.location.hash || '#/';
-    const match = hash.match(/^#\/file\/([^/]+)(?:\/(plan|distress))?$/);
-    if (match) {
-      const id = decodeURIComponent(match[1]);
-      if (match[2] === 'plan') return { view: 'plan', id: id };
-      if (match[2] === 'distress') return { view: 'distress', id: id };
-      return { view: 'file', id: id };
-    }
+    const match = hash.match(/^#\/file\/(.+)$/);
+    if (match) return { view: 'file', id: decodeURIComponent(match[1]) };
     return { view: 'cabinet' };
   }
 
@@ -114,55 +100,17 @@
     const app = document.getElementById('app-view');
     if (!app) return;
     const route = parseRoute();
-    if (route.view === 'plan') {
-      window.ToolboxPlanSetup.renderPlanSetup(app, route.id);
-    } else if (route.view === 'distress') {
-      window.ToolboxDistressSeam.renderDistressSeam(app, route.id);
-    } else if (route.view === 'file') {
+    if (route.view === 'file') {
       renderFile(app, route.id);
     } else {
       renderCabinet(app);
     }
   }
 
-  // ---- Shared Customer File section nav ------------------------------
-  //
-  // "Customer Info" and "Plan Setup" are peer sections of the same open
-  // Customer File (per DECISIONS.md: pills communicate navigation/status,
-  // they don't gate access). Owned here because Customer File identity is
-  // this module's responsibility; Plan Setup reuses it rather than
-  // duplicating the markup/wiring.
-
-  function sectionNavHtml(activeSection) {
-    return (
-      '<div class="file-nav">' +
-      '  <button type="button" class="file-nav__pill' + (activeSection === 'info' ? ' is-active' : '') + '" data-nav="info">Customer Info</button>' +
-      '  <button type="button" class="file-nav__pill' + (activeSection === 'plan' ? ' is-active' : '') + '" data-nav="plan">Plan Setup</button>' +
-      '</div>'
-    );
-  }
-
-  function wireSectionNav(app, id, flushFn) {
-    const nav = app.querySelector('.file-nav');
-    if (!nav) return;
-    nav.addEventListener('click', function (e) {
-      const btn = e.target.closest('[data-nav]');
-      if (!btn) return;
-      const dest = '#/file/' + encodeURIComponent(id) + (btn.getAttribute('data-nav') === 'plan' ? '/plan' : '');
-      if (window.location.hash === dest) return;
-      Promise.resolve(flushFn ? flushFn() : null).then(function () {
-        window.location.hash = dest;
-      }).catch(function () {
-        // The active view owns the save-failure message. Remaining on the
-        // current route protects unsaved work.
-      });
-    });
-  }
-
   // ---- Cabinet view -------------------------------------------------
 
   function renderCabinet(app) {
-    registerActiveFlush(null);
+    activeFileFlush = null;
     app.innerHTML =
       '<div class="view-bar view-bar--cabinet">' +
       '  <input type="search" id="cabinet-search" class="cabinet-search" placeholder="Search by name or address" autocomplete="off">' +
@@ -313,7 +261,6 @@
       '  </div>' +
       '  <span class="file-status" id="file-status"></span>' +
       '</div>' +
-      sectionNavHtml('info') +
       '<div class="file-form-wrap">' +
       '  <div class="customer-form" id="customer-form">' +
       FIELD_DEFS.primary.map(fieldRowHtml).join('') +
@@ -675,8 +622,7 @@
       }
     });
 
-    wireSectionNav(app, id, flushSave);
-    registerActiveFlush(flushSave);
+    activeFileFlush = flushSave;
 
     setStatus('Loading…');
 
@@ -695,31 +641,10 @@
   }
 
   function flushActiveFile() {
-    if (activeFlush) {
-      Promise.resolve(activeFlush()).catch(function (err) {
-        console.error('Failed to persist the active view:', err);
-      });
-    }
+    if (activeFileFlush) activeFileFlush();
   }
   document.addEventListener('visibilitychange', flushActiveFile);
   window.addEventListener('pagehide', flushActiveFile);
-
-  // Shared surface for the Plan Setup / Distress-seam modules (loaded
-  // before this file — see index.html): Customer File identity formatting
-  // and record shape are this module's responsibility, and the
-  // active-flush registry is core/shared, so both are exposed here rather
-  // than duplicated in each product-area module.
-  window.ToolboxApp = {
-    registerActiveFlush: registerActiveFlush,
-    blankCustomerFile: blankCustomerFile,
-    sectionNavHtml: sectionNavHtml,
-    wireSectionNav: wireSectionNav,
-    customerIdentity: {
-      displayName: displayName,
-      displayAddress: displayAddress,
-      formatUpdated: formatUpdated,
-    },
-  };
 
   // App-level Refresh control: reloads the current view (hash preserved)
   // to pick up a newly deployed shell. Flushes any pending autosave first
