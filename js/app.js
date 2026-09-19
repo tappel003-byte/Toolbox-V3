@@ -104,7 +104,10 @@
       const sub = match[2] || null;
       if (sub === 'plan') return { view: 'edit', id: id, legacyPlan: true };
       if (sub === 'edit') return { view: 'edit', id: id };
-      if (sub === 'distress' || sub === 'floor' || sub === 'diagnostics' || sub === 'report') {
+      if (sub === 'floor') {
+        return { view: 'floor', id: id };
+      }
+      if (sub === 'distress' || sub === 'diagnostics' || sub === 'report') {
         return { view: 'app-stub', id: id, app: sub };
       }
       return { view: 'home', id: id };
@@ -116,6 +119,13 @@
     const app = document.getElementById('app-view');
     if (!app) return;
     const route = parseRoute();
+    if (route.view !== 'floor') {
+      document.body.classList.remove('floor-survey-open');
+      app.classList.remove('canvas--floor-survey');
+      if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
+        window.ToolboxFloorSurvey.unmount();
+      }
+    }
     if (route.legacyPlan) {
       window.location.replace('#/file/' + encodeURIComponent(route.id) + '/edit');
       return;
@@ -124,6 +134,8 @@
       renderFileEdit(app, route.id);
     } else if (route.view === 'home') {
       renderFileHome(app, route.id);
+    } else if (route.view === 'floor') {
+      renderFloorSurvey(app, route.id);
     } else if (route.view === 'app-stub') {
       renderAppStub(app, route.id, route.app);
     } else {
@@ -340,8 +352,48 @@
     });
   }
 
+  function renderFloorSurvey(app, id) {
+    registerActiveFlush(null);
+    if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
+      window.ToolboxFloorSurvey.unmount();
+    }
+    document.body.classList.add('floor-survey-open');
+    app.innerHTML = '';
+    app.classList.add('canvas--floor-survey');
+
+    function leave() {
+      if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
+        window.ToolboxFloorSurvey.unmount();
+      }
+      document.body.classList.remove('floor-survey-open');
+      app.classList.remove('canvas--floor-survey');
+      window.location.hash = '#/file/' + encodeURIComponent(id);
+    }
+
+    if (!window.ToolboxFloorSurvey || typeof window.ToolboxFloorSurvey.mount !== 'function') {
+      app.innerHTML =
+        '<div class="cf-stub">' +
+        '  <h2 class="cf-stub__title">Floor Survey</h2>' +
+        '  <p class="cf-stub__msg">Floor Survey bundle failed to load.</p>' +
+        '  <button type="button" id="fs-fail-back" class="btn btn--accent">Back to Customer File</button>' +
+        '</div>';
+      app.querySelector('#fs-fail-back').addEventListener('click', leave);
+      return;
+    }
+
+    window.ToolboxFloorSurvey.mount(app, {
+      customerFileId: id,
+      onBack: leave,
+    });
+  }
+
   function renderAppStub(app, id, appKey) {
     registerActiveFlush(null);
+    document.body.classList.remove('floor-survey-open');
+    app.classList.remove('canvas--floor-survey');
+    if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
+      window.ToolboxFloorSurvey.unmount();
+    }
     const label = APP_LABELS[appKey] || 'Application';
     app.innerHTML =
       '<div class="view-bar view-bar--file">' +
