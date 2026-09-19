@@ -19,6 +19,14 @@
 
 html, body {
   height: 100%;
+  width: 100%;
+  max-width: 100%;
+  /* Lock the document to the viewport width. Physical phones were able to
+     pan/rubber-band the page sideways even when layout fit — see .canvas
+     overflow notes below. This is a real containment rule, not a mask over
+     an unidentified wide child. */
+  overflow-x: clip;
+  overscroll-behavior-x: none;
 }
 
 body {
@@ -29,11 +37,14 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100svh;
+  min-width: 0;
 }
 
 /* Compact, fixed app bar — chrome stays out of the canvas's way. */
 .app-bar {
   flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
   height: var(--app-bar-height);
   display: flex;
   align-items: center;
@@ -44,6 +55,7 @@ body {
   height: calc(var(--app-bar-height) + env(safe-area-inset-top));
   background: var(--panel);
   border-bottom: 1px solid var(--line);
+  box-sizing: border-box;
 }
 
 .app-bar__title {
@@ -70,13 +82,25 @@ body {
 }
 
 /* The canvas: the working surface. Takes all remaining space at every
-   viewport size — phone, tablet, desktop alike. */
+   viewport size — phone, tablet, desktop alike.
+
+   overflow-y alone is not enough: per CSS Overflow, when overflow-y is
+   not "visible", a missing overflow-x computes to "auto", which creates a
+   horizontal scrollport. On iOS Safari that scrollport rubber-bands even
+   when scrollWidth === clientWidth — the page feels unlocked sideways.
+   Explicit overflow-x: clip removes that scrollport; overscroll-behavior-x
+   stops residual chain/bounce. min-width: 0 lets this flex child shrink
+   instead of forcing the body wider than the viewport. */
 .canvas {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  overflow-x: clip;
   overflow-y: auto;
+  overscroll-behavior-x: none;
 }
 
 /* ---- View bar: context-sensitive strip below the app bar. Compact so it
@@ -87,6 +111,9 @@ body {
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
@@ -209,9 +236,13 @@ body {
 }
 
 .file-identity__name {
+  flex: 0 1 auto;
+  min-width: 0;
   font-weight: 700;
   font-size: 14px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .file-identity__address {
@@ -287,6 +318,10 @@ body {
   border-radius: 8px;
   background: var(--panel);
   color: var(--ink);
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   -webkit-appearance: none;
   appearance: none;
 }
@@ -396,11 +431,15 @@ body {
 
 /* The address input is nested inside the autocomplete wrapper, so unlike
    direct .field inputs it does not inherit the field's flex stretch. Make
-   it explicitly fill the full-width Property/site address row. */
+   it explicitly fill the full-width Property/site address row.
+   min-width: 0 (not 100%) so grid/flex parents can shrink on narrow phones
+   instead of the control's percentage minimum forcing horizontal growth. */
 .address-autocomplete-wrap input {
   display: block;
   width: 100%;
-  min-width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .address-suggestions {
@@ -482,7 +521,9 @@ body {
 .address-autocomplete-wrap textarea {
   display: block;
   width: 100%;
-  min-width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   resize: none;
 }
 
@@ -492,7 +533,10 @@ body {
   margin-top: 8px;
 }
 
-/* ---- Customer File home hub ---- */
+/* ---- Customer File home hub ----
+   Four equal, independent application drawers — not workflow steps.
+   Phone: one column for readable tap targets.
+   Tablet/desktop (≥560px): clear 2 × 2 grid. */
 .cf-home {
   flex: 1 1 auto;
   padding: 16px 16px 32px;
@@ -500,6 +544,7 @@ body {
   width: 100%;
   margin: 0 auto;
   box-sizing: border-box;
+  min-width: 0;
 }
 
 .cf-home__card {
@@ -507,7 +552,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--panel);
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .cf-home__name {
@@ -530,37 +575,64 @@ body {
 .cf-home__apps {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 10px;
+  gap: 12px;
+  min-width: 0;
 }
 
 @media (min-width: 560px) {
   .cf-home__apps {
     grid-template-columns: 1fr 1fr;
+    gap: 14px;
   }
 }
 
+/* Light field-tool drawers — restrained chrome, not heavy black blocks. */
 .cf-app-btn {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  justify-content: center;
   gap: 4px;
   width: 100%;
-  padding: 16px 14px;
+  min-width: 0;
+  min-height: 88px;
+  padding: 18px 16px;
   border-radius: 12px;
   border: 1px solid var(--line);
-  background: var(--ink);
-  color: var(--panel);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.06);
   font: inherit;
   font-size: 16px;
   font-weight: 700;
+  letter-spacing: 0.01em;
   text-align: left;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cf-app-btn:hover {
+  background: #fff;
+  border-color: #cfc6b4;
+  box-shadow: 0 2px 6px rgba(26, 26, 26, 0.08);
+}
+
+.cf-app-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.cf-app-btn:active {
+  background: var(--bg);
+  border-color: #c4bba8;
+  box-shadow: none;
 }
 
 .cf-app-btn__sub {
   font-size: 12px;
   font-weight: 500;
-  opacity: 0.8;
+  color: var(--ink-soft);
+  letter-spacing: 0;
 }
 
 .cf-home__hint {
@@ -572,6 +644,7 @@ body {
 
 .cf-home__edit {
   width: 100%;
+  min-width: 0;
 }
 
 .cf-stub {
