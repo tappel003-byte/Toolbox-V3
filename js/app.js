@@ -107,7 +107,10 @@
       if (sub === 'floor') {
         return { view: 'floor', id: id };
       }
-      if (sub === 'distress' || sub === 'diagnostics' || sub === 'report') {
+      if (sub === 'distress') {
+        return { view: 'distress', id: id };
+      }
+      if (sub === 'diagnostics' || sub === 'report') {
         return { view: 'app-stub', id: id, app: sub };
       }
       return { view: 'home', id: id };
@@ -126,6 +129,13 @@
         window.ToolboxFloorSurvey.unmount();
       }
     }
+    if (route.view !== 'distress') {
+      document.body.classList.remove('distress-survey-open');
+      app.classList.remove('canvas--distress-survey');
+      if (window.ToolboxDistress && typeof window.ToolboxDistress.unmount === 'function') {
+        window.ToolboxDistress.unmount();
+      }
+    }
     if (route.legacyPlan) {
       window.location.replace('#/file/' + encodeURIComponent(route.id) + '/edit');
       return;
@@ -136,6 +146,8 @@
       renderFileHome(app, route.id);
     } else if (route.view === 'floor') {
       renderFloorSurvey(app, route.id);
+    } else if (route.view === 'distress') {
+      renderDistressSurvey(app, route.id);
     } else if (route.view === 'app-stub') {
       renderAppStub(app, route.id, route.app);
     } else {
@@ -352,8 +364,50 @@
     });
   }
 
+  function renderDistressSurvey(app, id) {
+    registerActiveFlush(null);
+    if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
+      window.ToolboxFloorSurvey.unmount();
+    }
+    document.body.classList.remove('floor-survey-open');
+    app.classList.remove('canvas--floor-survey');
+    document.body.classList.add('distress-survey-open');
+    app.innerHTML = '';
+    app.classList.add('canvas--distress-survey');
+
+    function leave() {
+      if (window.ToolboxDistress && typeof window.ToolboxDistress.unmount === 'function') {
+        window.ToolboxDistress.unmount();
+      }
+      document.body.classList.remove('distress-survey-open');
+      app.classList.remove('canvas--distress-survey');
+      window.location.hash = '#/file/' + encodeURIComponent(id);
+    }
+
+    if (!window.ToolboxDistress || typeof window.ToolboxDistress.mount !== 'function') {
+      app.innerHTML =
+        '<div class="cf-stub">' +
+        '  <h2 class="cf-stub__title">Distress Survey</h2>' +
+        '  <p class="cf-stub__msg">Distress Survey failed to load.</p>' +
+        '  <button type="button" id="ds-fail-back" class="btn btn--accent">Back to Customer File</button>' +
+        '</div>';
+      app.querySelector('#ds-fail-back').addEventListener('click', leave);
+      return;
+    }
+
+    window.ToolboxDistress.mount(app, {
+      customerFileId: id,
+      onBack: leave,
+    });
+  }
+
   function renderFloorSurvey(app, id) {
     registerActiveFlush(null);
+    if (window.ToolboxDistress && typeof window.ToolboxDistress.unmount === 'function') {
+      window.ToolboxDistress.unmount();
+    }
+    document.body.classList.remove('distress-survey-open');
+    app.classList.remove('canvas--distress-survey');
     if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
       window.ToolboxFloorSurvey.unmount();
     }
@@ -391,8 +445,13 @@
     registerActiveFlush(null);
     document.body.classList.remove('floor-survey-open');
     app.classList.remove('canvas--floor-survey');
+    document.body.classList.remove('distress-survey-open');
+    app.classList.remove('canvas--distress-survey');
     if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
       window.ToolboxFloorSurvey.unmount();
+    }
+    if (window.ToolboxDistress && typeof window.ToolboxDistress.unmount === 'function') {
+      window.ToolboxDistress.unmount();
     }
     const label = APP_LABELS[appKey] || 'Application';
     app.innerHTML =
