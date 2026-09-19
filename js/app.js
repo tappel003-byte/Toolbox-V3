@@ -595,7 +595,12 @@
       dirty = true;
       setStatus('Unsaved changes…');
       if (saveTimer) clearTimeout(saveTimer);
-      saveTimer = setTimeout(flushSave, AUTOSAVE_DELAY_MS);
+      // Autosave must not leave an unhandled rejection when IndexedDB fails;
+      // status already shows "Save failed — will retry". Callers that navigate
+      // on success (Distress, Cabinet) use their own .then/.catch.
+      saveTimer = setTimeout(function () {
+        flushSave().catch(function () { /* status already set */ });
+      }, AUTOSAVE_DELAY_MS);
     }
 
     function flushSave() {
@@ -613,18 +618,23 @@
       }).catch(function (err) {
         console.error('Failed to save Customer File:', err);
         setStatus('Save failed — will retry');
+        // Keep dirty true so retry still has the edit. Re-throw so navigation
+        // callers (Distress ›, ‹ Cabinet) do not proceed after a failed save.
+        throw err;
       });
     }
 
     backBtn.addEventListener('click', function () {
       flushSave().then(function () {
         window.location.hash = '#/';
+      }).catch(function () {
+        // Stay on Customer File so the investigator can retry save.
       });
     });
 
     saveBtn.addEventListener('click', function () {
       dirty = true;
-      flushSave();
+      flushSave().catch(function () { /* status already set */ });
     });
 
     sameAddressCheckbox.addEventListener('change', function () {
@@ -667,7 +677,10 @@
   }
 
   function flushActiveFile() {
-    if (activeFileFlush) activeFileFlush();
+    if (!activeFileFlush) return;
+    Promise.resolve(activeFileFlush()).catch(function () {
+      // Status already set by the active view's flushSave.
+    });
   }
   document.addEventListener('visibilitychange', flushActiveFile);
   window.addEventListener('pagehide', flushActiveFile);
