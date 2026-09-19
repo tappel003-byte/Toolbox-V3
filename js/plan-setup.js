@@ -448,8 +448,9 @@
       const rec = record();
       const multi = rec.planSetup.canvases.length > 1;
       rosterEl.hidden = !multi;
-      nameWrap.hidden = !multi;
-      addCanvasBtn.textContent = multi ? '+ Add another level' : '+ Add another level';
+      // Level name always available (even for one-level jobs); roster only when multi.
+      nameWrap.hidden = false;
+      addCanvasBtn.textContent = '+ Add another level';
     }
 
     function renderRoster() {
