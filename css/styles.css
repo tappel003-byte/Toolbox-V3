@@ -1335,6 +1335,10 @@ body {
 
 
 /* ---- Floor Survey host (proven app fills the canvas) ---- */
+body.floor-survey-open {
+  background: #ffffff;
+}
+
 body.floor-survey-open .app-bar {
   display: none;
 }

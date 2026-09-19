@@ -20,8 +20,10 @@ interface Props {
   onFloorsChange: (floors: Floor[]) => void;
   onActiveFloorChange: (id: string) => void;
   onStartSurveying?: () => void;
-  /** Toolbox host: CF owns Details/Plan — only Topo boundary + Excluded (+ Survey Date). */
-  hostMode?: boolean;
+  /** Host adapter: land on proven Setup step when CF already supplied the plan. */
+  initialTab?: "details" | "plan" | "areas" | "excluded";
+  /** Host adapter: CF owns plan/levels — hide upload/add/delete on Plan step. */
+  planLocked?: boolean;
 }
 
 export function SetupTab({
@@ -32,49 +34,35 @@ export function SetupTab({
   onFloorsChange,
   onActiveFloorChange,
   onStartSurveying,
-  hostMode = false,
+  initialTab = "details",
+  planLocked = false,
 }: Props) {
-  const [tab, setTab] = useState<"details" | "plan" | "areas" | "excluded">(
-    hostMode ? "areas" : "details",
-  );
+  const [tab, setTab] = useState<"details" | "plan" | "areas" | "excluded">(initialTab);
   const hasPlan = !!activeFloor?.planDataUrl;
   const anyAreaClosed = getAreas(activeFloor).some((a) => a.polygon.length >= 3);
 
   type StepKey = "details" | "plan" | "areas" | "excluded";
-  const steps: Array<{ key: StepKey; label: string; disabled?: boolean; title?: string }> = hostMode
-    ? [
-        { key: "details", label: "1. Survey date" },
-        { key: "areas", label: "2. Topo boundary", disabled: !hasPlan, title: hasPlan ? undefined : "Add a plan in Customer File first" },
-        {
-          key: "excluded",
-          label: "3. Excluded",
-          disabled: !anyAreaClosed,
-          title: anyAreaClosed ? undefined : "Draw a topo boundary first",
-        },
-      ]
-    : [
-        { key: "details", label: "1. Details" },
-        { key: "plan", label: "2. Plan" },
-        { key: "areas", label: "3. Topo boundary" },
-        {
-          key: "excluded",
-          label: "4. Excluded",
-          disabled: !anyAreaClosed,
-          title: anyAreaClosed ? undefined : "Draw a topo boundary first",
-        },
-      ];
+  const steps: Array<{ key: StepKey; label: string; disabled?: boolean; title?: string }> = [
+    { key: "details", label: "1. Details" },
+    { key: "plan", label: "2. Plan" },
+    { key: "areas", label: "3. Topo boundary" },
+    {
+      key: "excluded",
+      label: "4. Excluded",
+      disabled: !anyAreaClosed,
+      title: anyAreaClosed ? undefined : "Draw a topo boundary first",
+    },
+  ];
   const stepIndex = steps.findIndex((s) => s.key === tab);
   const prevStep = stepIndex > 0 ? steps[stepIndex - 1] : null;
   const nextStep = stepIndex < steps.length - 1 ? steps[stepIndex + 1] : null;
 
   // Next / Start conditions
   const nextDisabled =
-    (tab === "plan" && !hasPlan) ||
-    (tab === "areas" && !anyAreaClosed) ||
-    (hostMode && tab === "details" && !hasPlan);
+    (tab === "plan" && !hasPlan) || (tab === "areas" && !anyAreaClosed);
   const startDisabled = !hasPlan;
   const stepNames: Record<StepKey, string> = {
-    details: hostMode ? "Survey date" : "Details",
+    details: "Details",
     plan: "Plan",
     areas: "Topo boundary",
     excluded: "Excluded",
@@ -103,20 +91,15 @@ export function SetupTab({
       </div>
 
       <div className={tab === "areas" || tab === "excluded" ? "flex-1 min-h-0 overflow-hidden" : "flex-1 min-h-0 overflow-auto"}>
-        {tab === "details" && (
-          hostMode ? (
-            <HostDetailsPanel project={project} onChange={onProjectChange} />
-          ) : (
-            <DetailsPanel project={project} onChange={onProjectChange} />
-          )
-        )}
-        {tab === "plan" && !hostMode && (
+        {tab === "details" && <DetailsPanel project={project} onChange={onProjectChange} />}
+        {tab === "plan" && (
           <PlanPanel
             projectId={project.id}
             floors={floors}
             activeFloor={activeFloor}
             onFloorsChange={onFloorsChange}
             onActiveFloorChange={onActiveFloorChange}
+            planLocked={planLocked}
           />
         )}
         {tab === "areas" && (
@@ -152,16 +135,14 @@ export function SetupTab({
           {tab === "plan" && !hasPlan && (
             <span className="text-xs text-muted-foreground">Upload a plan first</span>
           )}
-          {(tab === "areas" || (hostMode && tab === "details")) && !hasPlan && (
-            <span className="text-xs text-muted-foreground">
-              {hostMode ? "Add a plan in Customer File first" : "Upload a plan first"}
-            </span>
+          {tab === "areas" && !hasPlan && (
+            <span className="text-xs text-muted-foreground">Upload a plan first</span>
           )}
           {tab === "areas" && hasPlan && !anyAreaClosed && (
             <span className="text-xs text-muted-foreground">Draw a topo boundary first</span>
           )}
           {nextStep ? (
-            <Button onClick={() => setTab(nextStep.key)} disabled={nextDisabled || !!nextStep.disabled}>
+            <Button onClick={() => setTab(nextStep.key)} disabled={nextDisabled}>
               Next: {stepNames[nextStep.key]}
               <ArrowRight className="h-4 w-4 ml-1" />
             </Button>
@@ -179,63 +160,6 @@ export function SetupTab({
   );
 }
 
-
-function HostDetailsPanel({
-  project,
-  onChange,
-}: {
-  project: ProjectMeta;
-  onChange: (p: ProjectMeta) => void;
-}) {
-  const [local, setLocal] = useState(project);
-  useEffect(() => setLocal(project), [project.id]);
-  const latest = useRef(local);
-  latest.current = local;
-
-  const save = useCallback(async () => {
-    const snapshot = latest.current;
-    await saveProject(snapshot);
-    onChange(snapshot);
-  }, [onChange]);
-
-  useEffect(() => {
-    if (local === project) return;
-    const t = setTimeout(() => {
-      void save();
-    }, 800);
-    return () => clearTimeout(t);
-  }, [local, project, save]);
-
-  return (
-    <div className="max-w-2xl mx-auto p-4 space-y-3">
-      <p className="text-sm text-muted-foreground">
-        Customer and plan come from the Customer File. Floor Survey keeps Survey Date as its own
-        measurement metadata.
-      </p>
-      <div>
-        <Label className="label-micro">Survey date</Label>
-        <Input
-          type="date"
-          value={local.inspectionDate || ""}
-          onChange={(e) => setLocal({ ...local, inspectionDate: e.target.value })}
-        />
-      </div>
-      <div>
-        <Label className="label-micro">Survey notes</Label>
-        <Textarea
-          rows={3}
-          value={local.notes || ""}
-          onChange={(e) => setLocal({ ...local, notes: e.target.value })}
-          placeholder="Optional notes for this floor survey…"
-        />
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Job: <span className="font-medium text-foreground">{project.name}</span>
-        {project.address ? ` · ${project.address}` : ""}
-      </p>
-    </div>
-  );
-}
 
 function DetailsPanel({
   project,
@@ -351,12 +275,14 @@ function PlanPanel({
   activeFloor,
   onFloorsChange,
   onActiveFloorChange,
+  planLocked = false,
 }: {
   projectId: string;
   floors: Floor[];
   activeFloor: Floor;
   onFloorsChange: (f: Floor[]) => void;
   onActiveFloorChange: (id: string) => void;
+  planLocked?: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -365,6 +291,7 @@ function PlanPanel({
   }
 
   async function addFloor() {
+    if (planLocked) return;
     const name = prompt("Floor name", `Floor ${floors.length + 1}`);
     if (!name) return;
     const now = Date.now();
@@ -381,6 +308,7 @@ function PlanPanel({
   }
 
   async function removeFloor(id: string) {
+    if (planLocked) return;
     if (floors.length <= 1) return alert("Keep at least one floor.");
     if (!confirm("Delete this floor and its points?")) return;
     await deleteFloor(id);
@@ -388,6 +316,7 @@ function PlanPanel({
   }
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    if (planLocked) return;
     const file = e.target.files?.[0];
     if (!file) return;
     const dataUrl = await new Promise<string>((res, rej) => {
@@ -417,9 +346,11 @@ function PlanPanel({
       <Card className="p-3">
         <div className="flex items-center justify-between mb-3">
           <div className="text-sm font-medium">Floors</div>
-          <Button size="sm" variant="outline" onClick={addFloor}>
-            <Plus className="h-4 w-4 mr-1" /> Add floor
-          </Button>
+          {!planLocked && (
+            <Button size="sm" variant="outline" onClick={addFloor}>
+              <Plus className="h-4 w-4 mr-1" /> Add floor
+            </Button>
+          )}
         </div>
         <div className="space-y-2">
           {floors.map((f) => (
@@ -434,19 +365,22 @@ function PlanPanel({
               <div>
                 <div className="text-sm font-medium">{f.name}</div>
                 <div className="text-xs text-muted-foreground">
-                  {f.planDataUrl ? "Plan uploaded" : "No plan"} · {f.boundary.length} boundary pts
+                  {f.planDataUrl ? (planLocked ? "Plan from Customer File" : "Plan uploaded") : "No plan"} ·{" "}
+                  {f.boundary.length} boundary pts
                 </div>
               </div>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeFloor(f.id);
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              {!planLocked && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeFloor(f.id);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           ))}
         </div>
@@ -454,14 +388,24 @@ function PlanPanel({
 
       <Card className="p-3">
         <div className="text-sm font-medium mb-1">Plan image · {activeFloor.name}</div>
-        <div className="text-xs text-muted-foreground mb-3">
-          Upload a floor plan for this floor. Any image (photo, PDF export, sketch).
-        </div>
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
-        <Button onClick={() => fileRef.current?.click()} variant="outline">
-          <Upload className="h-4 w-4 mr-2" />
-          {activeFloor.planDataUrl ? "Replace plan" : "Upload plan"}
-        </Button>
+        {planLocked ? (
+          <div className="text-xs text-muted-foreground">
+            {activeFloor.planDataUrl
+              ? "Plan supplied by the Customer File. Edit plans in the Customer File."
+              : "No plan on this Customer File level yet. Add a plan in the Customer File, then return."}
+          </div>
+        ) : (
+          <>
+            <div className="text-xs text-muted-foreground mb-3">
+              Upload a floor plan for this floor. Any image (photo, PDF export, sketch).
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
+            <Button onClick={() => fileRef.current?.click()} variant="outline">
+              <Upload className="h-4 w-4 mr-2" />
+              {activeFloor.planDataUrl ? "Replace plan" : "Upload plan"}
+            </Button>
+          </>
+        )}
       </Card>
     </div>
   );

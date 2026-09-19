@@ -29,7 +29,7 @@ import { TransitionsSheet } from "@/components/TransitionsSheet";
 import { useFloorHistory, useUndoRedoEvents, type FloorSnapshot } from "@/lib/useFloorHistory";
 import { withCorrectedValues, migrateSurfaceName, transitionGroupKey } from "@/lib/transitions";
 import { computeExclusionMap } from "@/lib/exclusions";
-import { closedAreas, pointsInAnyArea } from "@/lib/areas";
+import { closedAreas, getAreas, pointsInAnyArea } from "@/lib/areas";
 
 const ThreeDTab = lazy(() =>
   import("@/components/ThreeDTab").then((m) => ({ default: m.ThreeDTab })),
@@ -171,9 +171,14 @@ export function HostWorkspace({ customerFileId, onBack }: HostWorkspaceProps) {
         });
         setFloors(migrated);
         if (migrated[0]) setActiveFloorId(migrated[0].id);
-        // Host: if CF has no plan yet, land on setup (topo boundary still needs plan).
-        // Skip Details/Plan — CF owns those. Setup opens on Topo boundary.
-        if (!fs.some((f) => !!f.planDataUrl)) setMode("setup");
+        // CF supplies the plan. Equivalent proven point after Plan step:
+        // Setup → Topo boundary, ready to draw. If a closed boundary already
+        // exists (returning to an in-progress survey), open Field like proven.
+        const hasPlan = migrated.some((f) => !!f.planDataUrl);
+        const hasClosedBoundary = migrated.some((f) =>
+          getAreas(f).some((a) => a.polygon.length >= 3),
+        );
+        if (!hasPlan || !hasClosedBoundary) setMode("setup");
         else setMode("field");
         setLoading(false);
       } catch (err) {
@@ -346,7 +351,6 @@ export function HostWorkspace({ customerFileId, onBack }: HostWorkspaceProps) {
       <main className="flex-1 min-h-0 overflow-hidden relative">
         {mode === "setup" && (
           <SetupTab
-            hostMode
             project={project}
             floors={floors}
             activeFloor={activeFloor}
@@ -357,6 +361,8 @@ export function HostWorkspace({ customerFileId, onBack }: HostWorkspaceProps) {
             }}
             onActiveFloorChange={setActiveFloorId}
             onStartSurveying={() => setMode("field")}
+            initialTab={activeFloor.planDataUrl ? "areas" : "details"}
+            planLocked
           />
         )}
         {mode === "field" && (
