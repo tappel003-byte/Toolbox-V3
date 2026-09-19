@@ -1,4 +1,4 @@
-// Toolbox — Customer File plans (canvases/levels).
+// Toolbox — Customer File plans (canvases/levels) + app ownership containers.
 //
 // Plans belong to the Customer File: contact info + plan(s) = Customer File.
 // This module is implementation plumbing for plan images, rooms, FD, and
@@ -6,6 +6,13 @@
 //
 // Data currently lives on record.planSetup (transitional key; physically on
 // the Customer File). Migration from legacy distress.surfaces is preserved.
+//
+// Application ownership (KISS):
+//   - Customer File owns canvases (via planSetup.canvases).
+//   - Distress owns survey/pins; each pin references a CF canvas via canvasId.
+//   - Floor Survey owns record.floorSurvey; layers keyed by CF canvasId.
+// Apps never duplicate plan/rooms/media. Canvas deletion is not implemented;
+// when it is, consult findOrphanedCanvasRefs before destroying field data.
 
 (function () {
   'use strict';
@@ -58,6 +65,21 @@
       startNum: 1,
       nextNum: 1,
       pins: [],
+    };
+  }
+
+  // Minimal Floor Survey application container. No plan images, rooms, or
+  // topo-boundary modeling here — only ownership + canvasId association.
+  function blankFloorSurvey() {
+    const now = new Date().toISOString();
+    return {
+      id: newId('floorSurvey'),
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1,
+      // Floor Survey–owned layers keyed by Customer File canvasId.
+      // Values stay application-only; never copy plan/rooms/media into them.
+      byCanvasId: {},
     };
   }
 
@@ -181,9 +203,101 @@
         d.activeCanvasId = ps.activeCanvasId;
         changed = true;
       }
+      if (normalizeDistressPinCanvasRefs(record)) changed = true;
     }
 
+    // Floor Survey application container (tolerant init; no IDB version bump).
+    if (ensureFloorSurvey(record)) changed = true;
+
     return changed;
+  }
+
+  function ensureFloorSurvey(record) {
+    if (!record || typeof record !== 'object') return false;
+    let changed = false;
+    if (!record.floorSurvey || typeof record.floorSurvey !== 'object') {
+      record.floorSurvey = blankFloorSurvey();
+      return true;
+    }
+    const fs = record.floorSurvey;
+    if (!fs.id) { fs.id = newId('floorSurvey'); changed = true; }
+    if (typeof fs.schemaVersion !== 'number') { fs.schemaVersion = 1; changed = true; }
+    if (!fs.byCanvasId || typeof fs.byCanvasId !== 'object' || Array.isArray(fs.byCanvasId)) {
+      fs.byCanvasId = {};
+      changed = true;
+    }
+    return changed;
+  }
+
+  // Distress observations reference a shared CF canvas by id only — no plan copy.
+  // Missing canvasId is backfilled from the survey's active canvas when possible.
+  function normalizeDistressPinCanvasRefs(record) {
+    const d = record && record.distress;
+    if (!d || !Array.isArray(d.pins)) return false;
+    const fallback = d.activeCanvasId ||
+      (record.planSetup && record.planSetup.activeCanvasId) ||
+      null;
+    let changed = false;
+    d.pins.forEach(function (pin) {
+      if (!pin || typeof pin !== 'object') return;
+      if (typeof pin.canvasId !== 'string' || !pin.canvasId) {
+        if (fallback) {
+          pin.canvasId = fallback;
+          changed = true;
+        }
+      }
+    });
+    return changed;
+  }
+
+  // Associate Floor Survey application data with an existing CF canvas.
+  // Creates an empty layer slot; does not copy plan/rooms/media.
+  function ensureFloorSurveyCanvasRef(record, canvasId) {
+    if (!record || typeof canvasId !== 'string' || !canvasId) return false;
+    ensurePlanSetup(record);
+    if (!canvasById(record, canvasId)) return false;
+    const fs = record.floorSurvey;
+    const existing = fs.byCanvasId[canvasId];
+    if (!existing || typeof existing !== 'object') {
+      fs.byCanvasId[canvasId] = { canvasId: canvasId };
+      fs.updatedAt = new Date().toISOString();
+      return true;
+    }
+    if (existing.canvasId !== canvasId) {
+      existing.canvasId = canvasId;
+      fs.updatedAt = new Date().toISOString();
+      return true;
+    }
+    return false;
+  }
+
+  // Detect application refs whose canvasId no longer exists on the Customer File.
+  // Canvas deletion is not product-implemented yet; this enables a future guard
+  // that must not silently destroy field observations.
+  function findOrphanedCanvasRefs(record) {
+    const known = {};
+    const canvases = (record && record.planSetup && record.planSetup.canvases) || [];
+    canvases.forEach(function (c) {
+      if (c && typeof c.id === 'string' && c.id) known[c.id] = true;
+    });
+    const distressPins = [];
+    const pins = (record && record.distress && record.distress.pins) || [];
+    pins.forEach(function (pin, index) {
+      if (!pin || typeof pin !== 'object') return;
+      if (typeof pin.canvasId === 'string' && pin.canvasId && !known[pin.canvasId]) {
+        distressPins.push({
+          index: index,
+          pinId: typeof pin.id === 'string' ? pin.id : null,
+          canvasId: pin.canvasId,
+        });
+      }
+    });
+    const floorSurveyCanvasIds = [];
+    const by = (record && record.floorSurvey && record.floorSurvey.byCanvasId) || {};
+    Object.keys(by).forEach(function (cid) {
+      if (!known[cid]) floorSurveyCanvasIds.push(cid);
+    });
+    return { distressPins: distressPins, floorSurveyCanvasIds: floorSurveyCanvasIds };
   }
 
   function activeCanvas(record) {
@@ -794,6 +908,11 @@
     blankCanvas: blankCanvas,
     blankPlanSetup: blankPlanSetup,
     blankDistressSurvey: blankDistressSurvey,
+    blankFloorSurvey: blankFloorSurvey,
+    ensureFloorSurvey: ensureFloorSurvey,
+    ensureFloorSurveyCanvasRef: ensureFloorSurveyCanvasRef,
+    normalizeDistressPinCanvasRefs: normalizeDistressPinCanvasRefs,
+    findOrphanedCanvasRefs: findOrphanedCanvasRefs,
     mountPlansPanel: mountPlansPanel,
     DEFAULT_CANVAS_NAME: DEFAULT_CANVAS_NAME,
   };
