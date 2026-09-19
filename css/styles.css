@@ -25,6 +25,7 @@ html, body {
      pan/rubber-band the page sideways even when layout fit — see .canvas
      overflow notes below. This is a real containment rule, not a mask over
      an unidentified wide child. */
+  overflow-x: hidden; /* fallback where clip is unsupported */
   overflow-x: clip;
   overscroll-behavior-x: none;
 }
@@ -98,6 +99,7 @@ body {
   min-height: 0;
   min-width: 0;
   width: 100%;
+  overflow-x: hidden; /* fallback where clip is unsupported */
   overflow-x: clip;
   overflow-y: auto;
   overscroll-behavior-x: none;
