@@ -491,6 +491,140 @@ body {
   margin-top: 8px;
 }
 
+/* ---- Customer File home hub ---- */
+.cf-home {
+  flex: 1 1 auto;
+  padding: 16px 16px 32px;
+  max-width: 44rem;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.cf-home__card {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  margin-bottom: 16px;
+}
+
+.cf-home__name {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.cf-home__address {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.cf-home__meta {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.cf-home__apps {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+@media (min-width: 560px) {
+  .cf-home__apps {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.cf-app-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 16px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--ink);
+  color: var(--panel);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cf-app-btn__sub {
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.cf-home__hint {
+  margin: 14px 0 16px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.cf-home__edit {
+  width: 100%;
+}
+
+.cf-stub {
+  flex: 1 1 auto;
+  padding: 24px 16px;
+  max-width: 44rem;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.cf-stub__title {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+
+.cf-stub__msg {
+  margin: 0 0 18px;
+  font-size: 14px;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.cf-plans-panel {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.cf-plans__title {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.cf-plans__hint {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.file-actions--edit {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  padding-bottom: 24px;
+}
+
+.file-actions--edit .btn {
+  flex: 1;
+}
+
 /* ---- Customer File → Plan Setup / Distress entry ---- */
 .file-workspaces {
   margin-top: 20px;
@@ -511,14 +645,18 @@ body {
   }
 }
 
-/* ---- Standalone Plan Setup ---- */
-.plan-setup {
+/* ---- Customer File floor plans (edit) ---- */
+.plan-setup,
+.cf-plans {
   flex: 1 1 auto;
-  padding: 16px 16px 32px;
   max-width: 44rem;
   width: 100%;
   margin: 0 auto;
   box-sizing: border-box;
+}
+
+.plan-setup {
+  padding: 16px 16px 32px;
 }
 
 .plan-setup__head {
@@ -802,9 +940,12 @@ body {
 .plan-drop-zone[hidden],
 .plan-preview[hidden],
 #rooms-field[hidden],
+#ocr-message[hidden],
 .distress-need-setup[hidden],
 .distress-canvas-panel[hidden],
-.canvas-roster[hidden] {
+.canvas-roster[hidden],
+.plan-canvas-name[hidden],
+#rooms-ocr-more-btn[hidden] {
   display: none;
 }
 

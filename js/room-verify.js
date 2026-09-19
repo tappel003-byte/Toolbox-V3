@@ -25,7 +25,7 @@
     overlay.innerHTML =
       '<div class="rv-head">' +
       '  <span id="rvTitle">Rooms — pinch zoom, drag move, tap plan to add</span>' +
-      '  <button type="button" class="rv-btn" id="rvCloseBtn" aria-label="Close">✕</button>' +
+      '  <button type="button" class="rv-btn" id="rvCloseBtn" aria-label="Done">Done</button>' +
       '</div>' +
       '<div class="rv-stage" id="rvStage">' +
       '  <div class="rv-content" id="rvWrap">' +

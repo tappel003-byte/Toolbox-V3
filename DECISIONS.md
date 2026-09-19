@@ -15,24 +15,23 @@ Durable decisions already established in `VISION.md`, recorded here for quick re
 - The standalone repositories (`field-reporter-pro`, `floorplan-topo-maker`) remain untouched, permanent field fallbacks — not just historical reference.
 
 
-## Customer File and Plan Setup
+## Customer File
 
-- The Customer File is the central organizing object and owns shared customer/job context.
-- **100% LOCKED:** Plan Setup is a standalone, first-class Toolbox component and gatekeeper. A plan/level/canvas is established once and reused by the field applications.
-- The established canvas/level is shared spatial building data. It is not owned by Distress Survey or Floor Survey.
-- Rooms, room names/locations, usable plan image, orientation information, and other genuinely shared spatial setup belong to Plan Setup.
-- Field applications add their own application-specific layers to the same established canvases/levels.
-- Changing applications changes the application-specific layer; it does not create, copy, rename, redefine, or replace the underlying established canvas/level.
-- When multiple canvases/levels exist, the investigator switches among those established canvases/levels inside the active field application.
-- Distress and Floor Survey were built as standalone applications before the Toolbox shared Plan Setup model existed. Their standalone setup/data plumbing does not define Toolbox architecture.
-- **Integration rule: shared plumbing may change; proven capture behavior is protected.** Field applications consume shared setup rather than recreating it.
-- A Customer File has a stable internal identity independent of editable customer/contact fields. No human-entered customer, contact, or address field gates creation. A new unnamed file may use **TBD** as its temporary human-readable identifier.
+- **Contact information + plan(s)/canvas(es) = Customer File.**
+- Plans belong to the Customer File. They are not owned by Distress Survey or Floor Survey.
+- There is no fifth “Plan Setup” application and no Plan Setup gatekeeper in the product model.
+- Rooms, room names/locations, plan images, orientation/front door, and related shared spatial setup are Customer File data.
+- Applications pull what they need from the Customer File and add their own application-specific layers.
+- Changing applications does not copy or recreate Customer File plans.
+- **KISS:** If a change cannot be explained in 2–3 plain sentences, simplify before implementing.
+- **Integration rule: shared plumbing may change; proven capture behavior is protected.**
+- A Customer File has a stable internal identity independent of editable contact fields. A new unnamed file may use **TBD** as its temporary human-readable identifier.
 
 ---
 
 ## Product-area boundaries
 
-- Toolbox should be organized around recognizable workflow/product areas: shared/core foundation, Customer File, Plan Setup, Distress Survey, Floor Survey, Diagnostics, and Report Builder.
+- Toolbox should be organized around recognizable workflow/product areas: shared/core foundation, Customer File, Distress Survey, Floor Survey, Diagnostics, and Report Builder.
 - Shared functionality and data contracts belong in shared/core areas; workspace-specific behavior, wording, and implementation should remain within the workspace that owns them.
 - This segmentation is both a maintainability and AI-context boundary. As the repository grows, implementation agents should always read the complete authority layer, then read the complete relevant product area and the shared interfaces/dependencies it uses. Unrelated workspace implementations should not be consumed or modified unless an actual dependency requires it.
 - Organize for human legibility as well as machine efficiency: the product owner should be able to locate and change workspace-specific wording or behavior without searching through an undifferentiated application.
@@ -41,7 +40,7 @@ Durable decisions already established in `VISION.md`, recorded here for quick re
 
 ## Distress Survey
 
-- Distress Survey operates on the canvases/levels already established in Plan Setup and adds Distress-specific data layers; it does not own or recreate plan/level setup.
+- Distress Survey operates on the canvases/levels already established on the Customer File and adds Distress-specific data layers; it does not own or recreate plan/level setup.
 - Multiple established canvases/levels may be switched within one continuous Distress Survey.
 - Each observation retains its canvas/level identity for downstream use.
 - **100% LOCKED:** photograph/pin numbering preserves the exact proven `field-reporter-pro` behavior across all canvases/levels. A pin's displayed number follows the continuous photograph sequence; multiple photographs consume a contiguous range; adding/deleting earlier photographs or deleting a pin recomputes and shifts subsequent numbers to close/open the sequence as the proven standalone does.
@@ -54,11 +53,11 @@ Durable decisions already established in `VISION.md`, recorded here for quick re
 
 ## Floor Survey
 
-- Floor Survey consumes the same canvases/levels already established by Plan Setup; it does not own or recreate them.
+- Floor Survey consumes the same canvases/levels already established on the Customer File; it does not own or recreate them.
 - Floor Survey adds its own application-specific data/layers to each applicable established canvas/level.
-- Topo Boundary and exclusions are Floor-Survey-specific setup associated with an established canvas/level, not shared Plan Setup data.
+- Topo Boundary and exclusions are Floor-Survey-specific setup associated with an established canvas/level, not shared Customer File plan data.
 - Measurement points, topo data, and Survey Date belong to Floor Survey datasets.
-- Shared room information from Plan Setup is available to Floor Survey so room context can be reused rather than entered again. The exact future mechanism for automatic spatial room membership is not yet decided.
+- Shared room information from the Customer File is available to Floor Survey so room context can be reused rather than entered again. The exact future mechanism for automatic spatial room membership is not yet decided.
 - Multiple established levels may each have Floor Survey data. This is not a separate set of Floor-Survey-owned canvases.
 - Floor Survey's proven multiple topo areas on the same physical plan remain a separate concept and must not be confused with established canvases/levels.
 - The existing "three-dots → Edit" is presentation editing only; it must not silently change underlying measured data.

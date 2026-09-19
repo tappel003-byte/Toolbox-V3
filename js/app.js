@@ -10,11 +10,8 @@
 
   const AUTOSAVE_DELAY_MS = 900;
 
-  // Registered by whichever view is currently mounted (Customer File,
-  // Plan Setup, or Distress) so a single, persistent listener can flush
-  // pending edits when the tab is hidden or closed — avoids adding/removing
-  // per-view listeners on every navigation. Exposed via window.ToolboxApp
-  // so other product-area modules can register/clear it too.
+  // Registered by whichever view is currently mounted so a single listener
+  // can flush pending edits when the tab is hidden or closed.
   let activeFileFlush = null;
   function registerActiveFlush(fn) {
     activeFileFlush = fn;
@@ -94,18 +91,23 @@
 
   // ---- Routing ----------------------------------------------------------
   //
-  // Customer File → Plan Setup (#/file/<id>/plan) establishes shared
-  // canvases/levels. Customer File → Distress (#/file/<id>/distress)
-  // consumes those same canvases — it does not own setup.
+  // #/file/:id          → Customer File home (hub)
+  // #/file/:id/edit     → edit contact + plans
+  // #/file/:id/plan     → redirect to edit (legacy)
+  // #/file/:id/<app>    → not-yet-connected stub (Distress, Floor, etc.)
 
   function parseRoute() {
     const hash = window.location.hash || '#/';
-    const match = hash.match(/^#\/file\/([^/]+)(?:\/(plan|distress))?$/);
+    const match = hash.match(/^#\/file\/([^/]+)(?:\/(edit|plan|distress|floor|diagnostics|report))?$/);
     if (match) {
       const id = decodeURIComponent(match[1]);
-      if (match[2] === 'plan') return { view: 'plan', id: id };
-      if (match[2] === 'distress') return { view: 'distress', id: id };
-      return { view: 'file', id: id };
+      const sub = match[2] || null;
+      if (sub === 'plan') return { view: 'edit', id: id, legacyPlan: true };
+      if (sub === 'edit') return { view: 'edit', id: id };
+      if (sub === 'distress' || sub === 'floor' || sub === 'diagnostics' || sub === 'report') {
+        return { view: 'app-stub', id: id, app: sub };
+      }
+      return { view: 'home', id: id };
     }
     return { view: 'cabinet' };
   }
@@ -114,12 +116,16 @@
     const app = document.getElementById('app-view');
     if (!app) return;
     const route = parseRoute();
-    if (route.view === 'plan') {
-      window.ToolboxPlanSetup.renderPlanSetup(app, route.id);
-    } else if (route.view === 'distress') {
-      window.ToolboxDistress.renderDistress(app, route.id);
-    } else if (route.view === 'file') {
-      renderFile(app, route.id);
+    if (route.legacyPlan) {
+      window.location.replace('#/file/' + encodeURIComponent(route.id) + '/edit');
+      return;
+    }
+    if (route.view === 'edit') {
+      renderFileEdit(app, route.id);
+    } else if (route.view === 'home') {
+      renderFileHome(app, route.id);
+    } else if (route.view === 'app-stub') {
+      renderAppStub(app, route.id, route.app);
     } else {
       renderCabinet(app);
     }
@@ -141,7 +147,7 @@
     const newBtn = app.querySelector('#cabinet-new');
 
     newBtn.addEventListener('click', function () {
-      window.location.hash = '#/file/' + generateId();
+      window.location.hash = '#/file/' + generateId() + '/edit';
     });
 
     listEl.innerHTML = '<p class="cabinet-empty">Loading Customer Files…</p>';
@@ -228,7 +234,136 @@
     return row;
   }
 
-  // ---- Customer File (open/edit) view --------------------------------
+  // ---- Customer File home (hub) -----------------------------------------
+
+  const APP_LABELS = {
+    distress: 'Distress Survey',
+    floor: 'Floor Survey',
+    diagnostics: 'Diagnostics',
+    report: 'Report Builder',
+  };
+
+  function planSummaryText(record) {
+    if (!record.planSetup || !Array.isArray(record.planSetup.canvases)) {
+      return 'No floor plan yet';
+    }
+    const canvases = record.planSetup.canvases;
+    const withPlan = canvases.filter(function (c) {
+      return window.ToolboxPlanSetup && window.ToolboxPlanSetup.hasUsablePlan(c);
+    });
+    if (!withPlan.length) return 'No floor plan yet';
+    if (canvases.length === 1) {
+      const rooms = (canvases[0].rooms && canvases[0].rooms.length) || 0;
+      return '1 plan' + (rooms ? ' · ' + rooms + ' room' + (rooms === 1 ? '' : 's') : '');
+    }
+    return canvases.length + ' levels · ' + withPlan.length + ' with plans';
+  }
+
+  function renderFileHome(app, id) {
+    registerActiveFlush(null);
+    app.innerHTML =
+      '<div class="view-bar view-bar--file">' +
+      '  <button type="button" id="home-back" class="btn btn--ghost">‹ Cabinet</button>' +
+      '  <div class="file-identity">' +
+      '    <span class="file-identity__name" id="home-identity-name"></span>' +
+      '    <span class="file-identity__address" id="home-identity-address"></span>' +
+      '  </div>' +
+      '  <span class="file-status" id="home-status"></span>' +
+      '</div>' +
+      '<div class="cf-home" id="cf-home">' +
+      '  <div class="cf-home__card">' +
+      '    <div class="cf-home__name" id="home-card-name"></div>' +
+      '    <div class="cf-home__address" id="home-card-address"></div>' +
+      '    <div class="cf-home__meta" id="home-card-meta"></div>' +
+      '  </div>' +
+      '  <div class="cf-home__apps" id="home-apps">' +
+      '    <button type="button" class="cf-app-btn" data-app="distress">Distress Survey<span class="cf-app-btn__sub">pin capture</span></button>' +
+      '    <button type="button" class="cf-app-btn" data-app="floor">Floor Survey<span class="cf-app-btn__sub">boundary + points</span></button>' +
+      '    <button type="button" class="cf-app-btn" data-app="diagnostics">Diagnostics<span class="cf-app-btn__sub">3D view</span></button>' +
+      '    <button type="button" class="cf-app-btn" data-app="report">Report Builder<span class="cf-app-btn__sub">pin schedule</span></button>' +
+      '  </div>' +
+      '  <p class="cf-home__hint">Applications open with this Customer File. They are independent — not a required sequence.</p>' +
+      '  <button type="button" id="home-edit" class="btn btn--ghost cf-home__edit">Edit Customer File</button>' +
+      '</div>';
+
+    const backBtn = app.querySelector('#home-back');
+    const editBtn = app.querySelector('#home-edit');
+    const statusEl = app.querySelector('#home-status');
+    const identityName = app.querySelector('#home-identity-name');
+    const identityAddress = app.querySelector('#home-identity-address');
+    const cardName = app.querySelector('#home-card-name');
+    const cardAddress = app.querySelector('#home-card-address');
+    const cardMeta = app.querySelector('#home-card-meta');
+
+    backBtn.addEventListener('click', function () {
+      window.location.hash = '#/';
+    });
+    editBtn.addEventListener('click', function () {
+      window.location.hash = '#/file/' + encodeURIComponent(id) + '/edit';
+    });
+    app.querySelectorAll('.cf-app-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const appKey = btn.getAttribute('data-app');
+        window.location.hash = '#/file/' + encodeURIComponent(id) + '/' + appKey;
+      });
+    });
+
+    statusEl.textContent = 'Loading…';
+    window.ToolboxDB.getCustomerFile(id).then(function (existing) {
+      if (!existing) {
+        // Brand-new id opened as home → send to edit
+        window.location.replace('#/file/' + encodeURIComponent(id) + '/edit');
+        return;
+      }
+      if (window.ToolboxPlanSetup &&
+          ((existing.distress && Array.isArray(existing.distress.surfaces) && existing.distress.surfaces.length) ||
+           (existing.planSetup && Array.isArray(existing.planSetup.canvases)))) {
+        if (window.ToolboxPlanSetup.ensurePlanSetup(existing)) {
+          return window.ToolboxDB.saveCustomerFile(existing).then(function () {
+            return existing;
+          });
+        }
+      }
+      return existing;
+    }).then(function (record) {
+      if (!record) return;
+      identityName.textContent = displayName(record);
+      identityAddress.textContent = displayAddress(record);
+      cardName.textContent = displayName(record);
+      cardAddress.textContent = displayAddress(record);
+      cardMeta.textContent = planSummaryText(record) +
+        (record.updatedAt ? ' · updated ' + formatUpdated(record.updatedAt) : '');
+      statusEl.textContent = '';
+    }).catch(function (err) {
+      console.error('Failed to load Customer File home:', err);
+      statusEl.textContent = 'Unable to load';
+    });
+  }
+
+  function renderAppStub(app, id, appKey) {
+    registerActiveFlush(null);
+    const label = APP_LABELS[appKey] || 'Application';
+    app.innerHTML =
+      '<div class="view-bar view-bar--file">' +
+      '  <button type="button" id="stub-back" class="btn btn--ghost">‹ Customer File</button>' +
+      '  <div class="file-identity">' +
+      '    <span class="file-identity__name">' + label + '</span>' +
+      '  </div>' +
+      '  <span class="file-status"></span>' +
+      '</div>' +
+      '<div class="cf-stub">' +
+      '  <h2 class="cf-stub__title">' + label + '</h2>' +
+      '  <p class="cf-stub__msg">Not connected in Toolbox V3 yet. The Customer File is ready; this application will use it in a later slice. Proven field apps are not redesigned here.</p>' +
+      '  <button type="button" id="stub-home" class="btn btn--accent">Back to Customer File</button>' +
+      '</div>';
+    function goHome() {
+      window.location.hash = '#/file/' + encodeURIComponent(id);
+    }
+    app.querySelector('#stub-back').addEventListener('click', goHome);
+    app.querySelector('#stub-home').addEventListener('click', goHome);
+  }
+
+  // ---- Customer File edit (contact + plans) -----------------------------
 
   function fieldRowHtml(field) {
     if (field.id === 'propertyAddress') return propertyAddressFieldHtml();
@@ -269,10 +404,11 @@
     );
   }
 
-  function renderFile(app, id) {
+
+  function renderFileEdit(app, id) {
     app.innerHTML =
       '<div class="view-bar view-bar--file">' +
-      '  <button type="button" id="file-back" class="btn btn--ghost">‹ Cabinet</button>' +
+      '  <button type="button" id="file-back" class="btn btn--ghost">‹ Customer File</button>' +
       '  <div class="file-identity">' +
       '    <span class="file-identity__name" id="file-identity-name"></span>' +
       '    <span class="file-identity__address" id="file-identity-address"></span>' +
@@ -296,19 +432,16 @@
       '      </div>' +
       '    </div>' +
       '  </details>' +
-      '  <div class="file-actions">' +
-      '    <button type="button" id="file-save" class="btn btn--accent">Save</button>' +
-      '  </div>' +
-      '  <div class="file-workspaces">' +
-      '    <button type="button" id="file-plan" class="btn btn--accent">Plan Setup ›</button>' +
-      '    <button type="button" id="file-distress" class="btn btn--ghost">Distress ›</button>' +
+      '  <div id="cf-plans-panel" class="cf-plans-panel"></div>' +
+      '  <div class="file-actions file-actions--edit">' +
+      '    <button type="button" id="file-save" class="btn btn--ghost">Save</button>' +
+      '    <button type="button" id="file-done" class="btn btn--accent">Done</button>' +
       '  </div>' +
       '</div>';
 
     const backBtn = app.querySelector('#file-back');
     const saveBtn = app.querySelector('#file-save');
-    const planBtn = app.querySelector('#file-plan');
-    const distressBtn = app.querySelector('#file-distress');
+    const doneBtn = app.querySelector('#file-done');
     const statusEl = app.querySelector('#file-status');
     const identityName = app.querySelector('#file-identity-name');
     const identityAddress = app.querySelector('#file-identity-address');
@@ -318,17 +451,14 @@
     const addressSuggestionsEl = app.querySelector('#address-suggestions');
     const addressFeedbackEl = app.querySelector('#address-feedback');
     const useLocationBtn = app.querySelector('#use-current-location');
+    const plansPanel = app.querySelector('#cf-plans-panel');
 
     let record = null;
     let saveTimer = null;
     let dirty = false;
+    let isNewFile = false;
+    let plansApi = null;
 
-    // Address-derived coordinates are convenience metadata layered on top
-    // of the plain text field, not something the generic form-field loop
-    // below knows about. lastGeocodedAddressText is the address text the
-    // currently-stored lat/lon actually correspond to; whenever the
-    // visible text diverges from it, the coordinates are stale and get
-    // cleared (see invalidateStaleCoordinatesIfNeeded).
     const ADDRESS_MIN_CHARS = 3;
     const ADDRESS_DEBOUNCE_MS = 150;
     let lastGeocodedAddressText = null;
@@ -349,7 +479,6 @@
       sameAddressCheckbox.checked = !!rec.mailingSameAsProperty;
       mailingTextarea.value = rec.mailingAddress || '';
       updateMailingVisibility();
-
       lastGeocodedAddressText = (rec.propertyAddressLat != null && rec.propertyAddressLon != null)
         ? (rec.propertyAddress || null)
         : null;
@@ -360,22 +489,12 @@
       const same = sameAddressCheckbox.checked;
       mailingTextarea.disabled = same;
       mailingTextarea.classList.toggle('is-mirrored', same);
-      if (same) {
-        mailingTextarea.value = propertyTextarea.value;
-      }
+      if (same) mailingTextarea.value = propertyTextarea.value;
     }
 
-    // Property address text can now change programmatically (suggestion
-    // pick, GPS fill) as well as by typing. Any of those paths that touch
-    // propertyTextarea.value must keep a checked "same as property" mailing
-    // address in sync, since programmatic value changes don't fire 'input'.
     function syncMailingIfSame() {
       if (sameAddressCheckbox.checked) mailingTextarea.value = propertyTextarea.value;
     }
-
-    // ---- Address autocomplete + Use Current Location (Geoapify) --------
-    // Convenience only: every path here must leave manual typing and saving
-    // fully usable, with or without a configured key, online or offline.
 
     function setAddressFeedback(text) {
       addressFeedbackEl.textContent = text || '';
@@ -431,34 +550,24 @@
       currentSuggestions = list || [];
       activeSuggestionIndex = -1;
       addressSuggestionsEl.innerHTML = '';
-
       if (currentSuggestions.length === 0) {
         closeSuggestions();
         return;
       }
-
       currentSuggestions.forEach(function (s, i) {
         const li = document.createElement('li');
         li.className = 'address-suggestion';
         li.id = 'address-suggestion-' + i;
         li.setAttribute('role', 'option');
         li.textContent = s.label;
-        li.addEventListener('click', function () {
-          selectSuggestion(i);
-        });
+        li.addEventListener('click', function () { selectSuggestion(i); });
         addressSuggestionsEl.appendChild(li);
       });
-
       addressSuggestionsEl.hidden = false;
       propertyTextarea.setAttribute('aria-expanded', 'true');
     }
 
-    // A suggestion is picked via click, which blurs the textarea first.
-    // Intercepting mousedown (before blur fires) keeps focus in the field
-    // so the click still lands on the right element.
-    addressSuggestionsEl.addEventListener('mousedown', function (e) {
-      e.preventDefault();
-    });
+    addressSuggestionsEl.addEventListener('mousedown', function (e) { e.preventDefault(); });
 
     function invalidateStaleCoordinatesIfNeeded() {
       if (lastGeocodedAddressText != null && propertyTextarea.value !== lastGeocodedAddressText) {
@@ -473,20 +582,15 @@
     function scheduleAddressAutocomplete() {
       if (addressDebounceTimer) clearTimeout(addressDebounceTimer);
       const text = propertyTextarea.value.trim();
-
       if (text.length < ADDRESS_MIN_CHARS || !window.ToolboxGeo || !window.ToolboxGeo.isAvailable() || navigator.onLine === false) {
         closeSuggestions();
         return;
       }
-
       addressDebounceTimer = setTimeout(function () {
         window.ToolboxGeo.fetchAutocomplete(text).then(function (results) {
-          if (results === null) return; // superseded by a newer request
-          if (propertyTextarea.value.trim() !== text) return; // stale response
+          if (results === null) return;
+          if (propertyTextarea.value.trim() !== text) return;
           if (results.length === 0) {
-            // An empty result can mean "genuinely no matches" (say nothing,
-            // per spec) or "the request itself failed" -- only the latter
-            // has something worth telling the investigator.
             const reason = window.ToolboxGeo.getLastAutocompleteError();
             if (reason) setAddressFeedback('Address suggestions unavailable (' + reason + ').');
             closeSuggestions();
@@ -522,38 +626,29 @@
       }
     });
 
-    propertyTextarea.addEventListener('blur', function () {
-      closeSuggestions();
-    });
+    propertyTextarea.addEventListener('blur', function () { closeSuggestions(); });
 
     useLocationBtn.addEventListener('click', function () {
       if (!('geolocation' in navigator)) {
         setAddressFeedback("This device doesn't support location.");
         return;
       }
-
       useLocationBtn.disabled = true;
       setAddressFeedback('Getting your location…');
-
       navigator.geolocation.getCurrentPosition(
         function (pos) {
           useLocationBtn.disabled = false;
           if (!record) return;
-
-          const lat = pos.coords.latitude;
-          const lon = pos.coords.longitude;
-          record.propertyAddressLat = lat;
-          record.propertyAddressLon = lon;
+          record.propertyAddressLat = pos.coords.latitude;
+          record.propertyAddressLon = pos.coords.longitude;
           lastGeocodedAddressText = propertyTextarea.value;
           scheduleSave();
-
           if (!window.ToolboxGeo || !window.ToolboxGeo.isAvailable()) {
             setAddressFeedback('Location captured. Enter the address manually.');
             return;
           }
-
           setAddressFeedback('Location captured — looking up the address…');
-          window.ToolboxGeo.reverseGeocode(lat, lon).then(function (result) {
+          window.ToolboxGeo.reverseGeocode(pos.coords.latitude, pos.coords.longitude).then(function (result) {
             if (!record) return;
             if (result && result.label) {
               propertyTextarea.value = result.label;
@@ -593,19 +688,14 @@
       record.mailingAddress = mailingTextarea.value;
     }
 
-    function setStatus(text) {
-      statusEl.textContent = text;
-    }
+    function setStatus(text) { statusEl.textContent = text; }
 
     function scheduleSave() {
       dirty = true;
       setStatus('Unsaved changes…');
       if (saveTimer) clearTimeout(saveTimer);
-      // Autosave must not leave an unhandled rejection when IndexedDB fails;
-      // status already shows "Save failed — will retry". Callers that navigate
-      // on success (Distress, Cabinet) use their own .then/.catch.
       saveTimer = setTimeout(function () {
-        flushSave().catch(function () { /* status already set */ });
+        flushSave().catch(function () {});
       }, AUTOSAVE_DELAY_MS);
     }
 
@@ -615,92 +705,91 @@
         saveTimer = null;
       }
       if (!dirty || !record) return Promise.resolve();
+      if (plansApi) plansApi.commitPending();
       collectFormIntoRecord();
+      if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
       record.updatedAt = new Date().toISOString();
       return window.ToolboxDB.saveCustomerFile(record).then(function () {
         dirty = false;
+        isNewFile = false;
         setStatus('Saved ' + formatUpdated(record.updatedAt));
         updateIdentityBar();
+        backBtn.textContent = '‹ Customer File';
       }).catch(function (err) {
         console.error('Failed to save Customer File:', err);
         setStatus('Save failed — will retry');
-        // Keep dirty true so retry still has the edit. Re-throw so navigation
-        // callers (Distress ›, ‹ Cabinet) do not proceed after a failed save.
         throw err;
       });
     }
 
-    backBtn.addEventListener('click', function () {
+    function leaveEdit() {
+      dirty = true;
       flushSave().then(function () {
-        window.location.hash = '#/';
-      }).catch(function () {
-        // Stay on Customer File so the investigator can retry save.
-      });
+        window.location.hash = '#/file/' + encodeURIComponent(id);
+      }).catch(function () {});
+    }
+
+    backBtn.addEventListener('click', function () {
+      if (isNewFile) {
+        dirty = true;
+        flushSave().then(function () {
+          window.location.hash = '#/';
+        }).catch(function () {});
+        return;
+      }
+      leaveEdit();
     });
 
     saveBtn.addEventListener('click', function () {
       dirty = true;
-      flushSave().catch(function () { /* status already set */ });
+      flushSave().catch(function () {});
     });
+
+    doneBtn.addEventListener('click', leaveEdit);
 
     sameAddressCheckbox.addEventListener('change', function () {
       updateMailingVisibility();
       scheduleSave();
     });
-
     propertyTextarea.addEventListener('input', syncMailingIfSame);
-
     app.addEventListener('input', function (e) {
-      if (e.target && e.target.id && e.target.id.indexOf('field-') === 0) {
-        scheduleSave();
-      }
+      if (e.target && e.target.id && e.target.id.indexOf('field-') === 0) scheduleSave();
     });
 
     registerActiveFlush(flushSave);
 
-    planBtn.addEventListener('click', function () {
-      flushSave().then(function () {
-        window.location.hash = '#/file/' + encodeURIComponent(id) + '/plan';
-      }).catch(function () {
-        // Stay on Customer File so the investigator can retry save.
-      });
-    });
-
-    distressBtn.addEventListener('click', function () {
-      flushSave().then(function () {
-        window.location.hash = '#/file/' + encodeURIComponent(id) + '/distress';
-      }).catch(function () {
-        // Stay on Customer File so the investigator can retry save.
-      });
+    plansApi = window.ToolboxPlanSetup.mountPlansPanel(plansPanel, {
+      getRecord: function () { return record; },
+      setDirty: function (v) { dirty = !!v; },
+      scheduleSave: scheduleSave,
+      flushSave: flushSave,
+      setStatus: setStatus,
+      setFeedback: function () {},
     });
 
     setStatus('Loading…');
-
     window.ToolboxDB.getCustomerFile(id).then(function (existing) {
+      isNewFile = !existing;
       record = existing || blankCustomerFile(id);
-      // Migrate legacy Distress-owned Plan Setup into shared planSetup when
-      // opening an existing development Customer File, without inventing
-      // canvases for brand-new empty files until Plan Setup is entered.
-      if (existing && window.ToolboxPlanSetup &&
-          ((record.distress && Array.isArray(record.distress.surfaces) && record.distress.surfaces.length) ||
-           (record.planSetup && Array.isArray(record.planSetup.canvases)))) {
-        if (window.ToolboxPlanSetup.ensurePlanSetup(record)) {
-          dirty = true;
-          return flushSave().then(function () {
-            populateForm(record);
-            updateIdentityBar();
-            setStatus('Saved ' + formatUpdated(record.updatedAt));
-          });
-        }
+      if (window.ToolboxPlanSetup && window.ToolboxPlanSetup.ensurePlanSetup(record) && existing) {
+        dirty = true;
+      } else if (!existing && window.ToolboxPlanSetup) {
+        window.ToolboxPlanSetup.ensurePlanSetup(record);
       }
       populateForm(record);
       updateIdentityBar();
-      setStatus(existing ? 'Saved ' + formatUpdated(record.updatedAt) : 'New — not yet saved');
+      backBtn.textContent = isNewFile ? '‹ Cabinet' : '‹ Customer File';
+      return plansApi.syncFromRecord().then(function () {
+        if (dirty) return flushSave();
+        setStatus(existing ? 'Saved ' + formatUpdated(record.updatedAt) : 'New — not yet saved');
+      });
     }).catch(function (err) {
       console.error('Failed to load Customer File:', err);
       record = blankCustomerFile(id);
+      if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
       populateForm(record);
       updateIdentityBar();
+      plansApi.syncFromRecord();
       setStatus('New — not yet saved');
     });
   }

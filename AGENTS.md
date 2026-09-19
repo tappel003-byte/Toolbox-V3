@@ -46,7 +46,7 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
 - Normal internal workflow must not require exporting from one Toolbox workspace and importing into another.
 - Do not expose implementation complexity to the investigator.
 - Do not ask for information Toolbox already knows.
-- **Plan Setup ownership is 100% locked:** Plan Setup is standalone shared setup. Field applications consume the same established canvases/levels and add their own application-specific layers; they must not create workspace-owned copies or parallel plan/level setup.
+- **Customer File owns plans:** Contact + plan(s) = Customer File. Apps pull plans; no Plan Setup application/gatekeeper. KISS: explain in 2–3 sentences or simplify.
 - Switching applications changes the application-specific layer, not the underlying established canvas/level. Switching canvases/levels happens within the field application when multiple canvases/levels exist.
 - Distress photograph/pin numbering must preserve the exact proven standalone recomputation behavior across all canvases/levels. Never simplify it into permanent per-pin or per-canvas numbering.
 - Protect the canvas — the working surface takes priority over application chrome.

@@ -96,33 +96,23 @@ The long-term system should feel like **one professional instrument with four sp
 ---
 
 
-## 4. Customer File and Shared Plan Setup
+## 4. Customer File
 
-### DECIDED — 100% LOCKED ARCHITECTURE
+### DECIDED — controlling model
 
-The Customer File is the central organizing object. Information that belongs to the customer/job is entered once and made available wherever it is needed.
+**Contact information + plan(s)/canvas(es) = Customer File.**
 
-**Plan Setup is a standalone, first-class Toolbox component and gatekeeper.** It does not belong to Distress Survey or Floor Survey. A plan/level is set up once for the Customer File and is then available to the field applications that need it.
+The Customer File is the central persistent object. Contact/job information and the floor plan(s) for that job belong to the Customer File — not to Distress Survey, Floor Survey, or any fifth “Plan Setup” application.
 
-Plan Setup owns the shared spatial/building information for each established plan/level, including the usable plan image and shared setup information such as room names/locations and orientation information. The exact future richness of that shared spatial information may evolve, but its ownership does not move into a field application merely because that application consumes it.
+There is no Plan Setup gatekeeper and no standalone Plan Setup workspace in the product model. Implementation modules for plan editing may exist for maintainability; they are not a separate product.
 
-A useful internal distinction is:
+After the Customer File is set up, the Customer File home provides independent access to the four applications. Applications pull what they need from the Customer File. They do not own or duplicate its plans.
 
-- **Canvas / level** — the persistent plan/level established once in Plan Setup.
-- **Layer** — application-specific data associated with that canvas/level.
-- **Application** — the field tool that creates and edits its own layer while using the established canvas/level.
+When multiple levels exist (for example Basement, Ground Level, Second Floor), each may have its own plan image on the Customer File. Applications may switch among those same plans; switching applications does not copy plans.
 
-Changing applications does **not** create, copy, rename, redefine, or replace the established canvases/levels. The same Basement, Ground Level, Second Floor, or other established plan/level remains the same underlying canvas wherever Toolbox uses it.
-
-For example, if Plan Setup establishes Basement, Ground Level, and Second Floor, those same three established canvases/levels are available to Distress Survey and Floor Survey as applicable. The investigator may switch among those canvases/levels **inside each field application**. Switching canvases changes the spatial context being worked on; switching applications changes the application-specific layer being worked on.
-
-The Customer File also owns other genuinely shared job context such as property address; customer/homeowner name and contact information; billing information where needed; general job information; customer-level voice memos; interview information; and other genuinely shared job context.
-
-Individual workspaces own only information specific to their own work.
+> **KISS:** If a proposed product or architecture change cannot be explained clearly in 2–3 sentences, stop and simplify it before implementation.
 
 > **Information already known by Toolbox should not be requested again.**
-
-If the Customer File is already open, a workspace should not ask which customer it belongs to. If a plan/level has already been established in Plan Setup, a field application should not ask the investigator to upload, recreate, rename, or set up that plan/level again.
 
 ---
 
@@ -131,7 +121,7 @@ If the Customer File is already open, a workspace should not ask which customer 
 
 ### DECIDED — 100% LOCKED ARCHITECTURE
 
-Distress Survey is one continuous survey that operates on the canvases/levels already established by Plan Setup. Distress Survey does **not** own or recreate those canvases.
+Distress Survey is one continuous survey that operates on the canvases/levels already established on the Customer File. Distress Survey does **not** own or recreate those canvases.
 
 Within Distress Survey, the investigator can switch among the established canvases/levels. Each distress observation remains associated with the canvas/level where it was recorded, while all observations remain part of the same continuous Distress Survey.
 
@@ -164,7 +154,7 @@ A compact active-canvas/level control may be used in Distress capture so the inv
 
 ### NOT YET DECIDED
 
-Exactly how non-level spatial areas such as Exterior, Patio, Roof Parapet, Rear Addition, or other unusual planes participate in Plan Setup and downstream field layers is not yet decided. Do not silently treat these as Distress-owned setup, and do not invent a universal rule. Stop for product-owner clarification when implementation reaches this boundary.
+Exactly how non-level spatial areas such as Exterior, Patio, Roof Parapet, Rear Addition, or other unusual planes participate in Customer File plans and downstream field layers is not yet decided. Do not silently treat these as Distress-owned setup, and do not invent a universal rule. Stop for product-owner clarification when implementation reaches this boundary.
 
 ---
 
@@ -173,9 +163,9 @@ Exactly how non-level spatial areas such as Exterior, Patio, Roof Parapet, Rear 
 
 ### DECIDED — 100% LOCKED ARCHITECTURE
 
-Floor Survey operates inside an open Customer File on the same canvases/levels already established by Plan Setup. It does **not** own, recreate, or independently configure those plans/levels.
+Floor Survey operates inside an open Customer File on the same canvases/levels already established on the Customer File. It does **not** own, recreate, or independently configure those plans/levels.
 
-If Plan Setup establishes one level, that established canvas is the base spatial context for both Distress Survey and Floor Survey. If Plan Setup establishes three levels, those same three established canvases/levels are available within Floor Survey as applicable, and the investigator can switch among them inside Floor Survey.
+If the Customer File establishes one level, that established canvas is the base spatial context for both Distress Survey and Floor Survey. If the Customer File establishes three levels, those same three established canvases/levels are available within Floor Survey as applicable, and the investigator can switch among them inside Floor Survey.
 
 Floor-Survey-specific information is stored as Floor Survey data/layers associated with the applicable established canvas/level. This includes measurement data and Floor-Survey-specific setup such as **Topo Boundary** and exclusions. Those items do not become shared Plan Setup data merely because they are drawn on the same underlying plan.
 
@@ -187,7 +177,7 @@ Floor Survey's proven support for multiple topo areas on the same physical plan 
 
 A normal one-level survey remains simple. Multiple established levels may each have their own Floor Survey data while remaining part of the same Customer File.
 
-A manual plan-upload back door may remain available for resilience and unusual recovery cases, but it does not redefine normal ownership: normal Toolbox workflow establishes the plan/level once in Plan Setup and reuses it.
+A manual plan-upload back door may remain available for resilience and unusual recovery cases, but it does not redefine normal ownership: normal Toolbox workflow establishes the plan/level once on the Customer File and reuses it.
 
 ---
 

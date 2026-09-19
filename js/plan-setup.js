@@ -1,12 +1,11 @@
-// Toolbox — Standalone Plan Setup.
+// Toolbox — Customer File plans (canvases/levels).
 //
-// Customer File → Plan Setup. Establishes shared canvases/levels once:
-// plan image, canvas identity/name, rooms, front-door/orientation,
-// building type. Field applications (Distress, later Floor Survey) consume
-// these same canvases; they do not own or copy them.
+// Plans belong to the Customer File: contact info + plan(s) = Customer File.
+// This module is implementation plumbing for plan images, rooms, FD, and
+// building type — not a separate product application or gatekeeper.
 //
-// Data lives on record.planSetup. Migration from the incorrect prior
-// record.distress.surfaces ownership preserves canvas ids and media.
+// Data currently lives on record.planSetup (transitional key; physically on
+// the Customer File). Migration from legacy distress.surfaces is preserved.
 
 (function () {
   'use strict';
@@ -256,39 +255,63 @@
     return html;
   }
 
-  function renderPlanSetup(app, customerFileId) {
-    if (window.ToolboxApp && window.ToolboxApp.registerActiveFlush) {
-      window.ToolboxApp.registerActiveFlush(null);
-    }
+  function newRoomId() {
+    return newId('room');
+  }
 
-    app.innerHTML =
-      '<div class="view-bar view-bar--file">' +
-      '  <button type="button" id="plan-back" class="btn btn--ghost">‹ Customer File</button>' +
-      '  <div class="file-identity">' +
-      '    <span class="file-identity__name" id="plan-identity-name"></span>' +
-      '    <span class="file-identity__address" id="plan-identity-address"></span>' +
-      '  </div>' +
-      '  <span class="file-status" id="plan-status"></span>' +
-      '</div>' +
-      '<div class="plan-setup" id="plan-setup">' +
-      '  <div class="plan-setup__head">' +
-      '    <h2 class="plan-setup__title">Plan Setup</h2>' +
-      '    <p class="plan-setup__hint">Establish each plan/level once for this Customer File. Distress and Floor Survey will use these same levels.</p>' +
-      '  </div>' +
+  function assignRoomIds(list) {
+    return (list || []).map(function (r) {
+      if (r.id) return r;
+      return { id: newRoomId(), name: r.name, x: r.x, y: r.y };
+    });
+  }
 
-      '  <div class="canvas-roster" id="canvas-roster"></div>' +
-      '  <div class="canvas-add-row">' +
-      '    <button type="button" id="canvas-add-btn" class="btn btn--ghost">+ Add level</button>' +
-      '  </div>' +
+  function mergeScannedRooms(canvas, found) {
+    const rooms = (canvas.rooms || []).slice();
+    let addedCount = 0;
+    found.forEach(function (f) {
+      const nearby = rooms.find(function (r) {
+        return typeof r.x === 'number' && typeof r.y === 'number' &&
+          Math.hypot(r.x - f.x, r.y - f.y) < 0.05;
+      });
+      if (nearby) return;
+      const byName = rooms.find(function (r) {
+        return (r.name || '').trim().toLowerCase() === (f.name || '').trim().toLowerCase() &&
+          typeof r.x !== 'number';
+      });
+      if (byName) {
+        byName.x = f.x;
+        byName.y = f.y;
+        addedCount += 1;
+        return;
+      }
+      rooms.push({ id: newRoomId(), name: f.name, x: f.x, y: f.y });
+      addedCount += 1;
+    });
+    canvas.rooms = rooms;
+    return addedCount;
+  }
 
-      '  <div class="plan-canvas-name">' +
-      '    <label for="canvas-name-input">Active level</label>' +
+  // Mount plans UI into a panel inside Customer File edit.
+  // ctx: { getRecord, setDirty, scheduleSave, flushSave, setStatus, setFeedback }
+  function mountPlansPanel(panel, ctx) {
+    panel.innerHTML =
+      '<div class="cf-plans" id="cf-plans">' +
+      '  <div class="cf-plans__head">' +
+      '    <h2 class="cf-plans__title">Floor plans</h2>' +
+      '    <p class="cf-plans__hint">Part of this Customer File. Applications use these same plans.</p>' +
+      '  </div>' +
+      '  <div class="canvas-roster" id="canvas-roster" hidden></div>' +
+      '  <div class="canvas-add-row" id="canvas-add-row">' +
+      '    <button type="button" id="canvas-add-btn" class="btn btn--ghost">+ Add another level</button>' +
+      '  </div>' +
+      '  <div class="plan-canvas-name" id="plan-canvas-name-wrap">' +
+      '    <label for="canvas-name-input">Level name</label>' +
       '    <div class="plan-canvas-name__row">' +
       '      <input type="text" id="canvas-name-input" class="canvas-name-input" autocomplete="off" aria-label="Level name">' +
       '      <button type="button" id="canvas-rename-btn" class="canvas-icon-btn" aria-label="Rename level" title="Rename">✎</button>' +
       '    </div>' +
       '  </div>' +
-
       '  <div class="field field--full">' +
       '    <label>Floor plan</label>' +
       '    <div id="plan-drop-zone" class="plan-drop-zone">' +
@@ -300,112 +323,78 @@
       '    </div>' +
       '    <div id="plan-preview" class="plan-preview" hidden>' +
       '      <button type="button" class="plan-preview__change" id="plan-change-btn">Change</button>' +
-      '      <button type="button" class="plan-preview__rooms" id="plan-rooms-btn">➕ Rooms / FD</button>' +
+      '      <button type="button" class="plan-preview__rooms" id="plan-rooms-btn">Verify rooms / FD</button>' +
       '      <img id="plan-preview-img" alt="Floor plan preview">' +
       '      <p class="plan-preview__meta" id="plan-preview-meta"></p>' +
       '    </div>' +
       '    <input type="file" id="plan-file" accept="image/*" hidden>' +
       '  </div>' +
-
       '  <div class="field field--full" id="rooms-field" hidden>' +
       '    <label>Rooms <span id="rooms-status" class="field-hint-inline"></span></label>' +
       '    <div id="rooms-chips" class="rooms-chips"></div>' +
       '    <div class="room-actions">' +
-      '      <button type="button" class="room-action-btn room-action-btn--primary" id="rooms-manual-btn">➕ Manual rooms</button>' +
+      '      <button type="button" class="room-action-btn room-action-btn--primary" id="rooms-ocr-btn">🔍 Read labels</button>' +
+      '      <button type="button" class="room-action-btn" id="rooms-ocr-more-btn" hidden>➕ Find more</button>' +
       '    </div>' +
+      '    <div class="room-actions">' +
+      '      <button type="button" class="room-action-btn" id="rooms-manual-btn">Verify / edit rooms</button>' +
+      '    </div>' +
+      '    <p class="field-hint" id="ocr-message" hidden></p>' +
       '  </div>' +
-
       '  <div class="field field--full">' +
       '    <label for="front-door-select">Front door faces</label>' +
       '    <select id="front-door-select" class="setup-select"></select>' +
-      '    <p class="field-hint">For sharper geometry, open Rooms / FD and place an FD marker on the plan.</p>' +
+      '    <p class="field-hint">Open Verify rooms / FD to place a front-door marker on the plan.</p>' +
       '  </div>' +
-
       '  <div class="field field--full">' +
       '    <label for="building-type-select">Building type</label>' +
       '    <select id="building-type-select" class="setup-select"></select>' +
-      '    <p class="field-hint">Sets which rooms appear in the picker. Shared across levels for this Customer File.</p>' +
+      '    <p class="field-hint">Guides room recognition and the room name picker.</p>' +
       '  </div>' +
-
-      '  <p class="plan-feedback" id="plan-feedback" hidden></p>' +
+      '  <p class="plan-feedback" id="plan-panel-feedback" hidden></p>' +
       '</div>';
 
-    const backBtn = app.querySelector('#plan-back');
-    const statusEl = app.querySelector('#plan-status');
-    const identityName = app.querySelector('#plan-identity-name');
-    const identityAddress = app.querySelector('#plan-identity-address');
-    const rosterEl = app.querySelector('#canvas-roster');
-    const addCanvasBtn = app.querySelector('#canvas-add-btn');
-    const nameInput = app.querySelector('#canvas-name-input');
-    const renameBtn = app.querySelector('#canvas-rename-btn');
-    const dropZone = app.querySelector('#plan-drop-zone');
-    const dropBtn = app.querySelector('#plan-drop-btn');
-    const preview = app.querySelector('#plan-preview');
-    const previewImg = app.querySelector('#plan-preview-img');
-    const previewMeta = app.querySelector('#plan-preview-meta');
-    const changeBtn = app.querySelector('#plan-change-btn');
-    const roomsOverlayBtn = app.querySelector('#plan-rooms-btn');
-    const fileInput = app.querySelector('#plan-file');
-    const roomsField = app.querySelector('#rooms-field');
-    const roomsChips = app.querySelector('#rooms-chips');
-    const roomsStatus = app.querySelector('#rooms-status');
-    const roomsManualBtn = app.querySelector('#rooms-manual-btn');
-    const frontDoorSelect = app.querySelector('#front-door-select');
-    const buildingTypeSelect = app.querySelector('#building-type-select');
-    const feedbackEl = app.querySelector('#plan-feedback');
+    const rosterEl = panel.querySelector('#canvas-roster');
+    const addRow = panel.querySelector('#canvas-add-row');
+    const addCanvasBtn = panel.querySelector('#canvas-add-btn');
+    const nameWrap = panel.querySelector('#plan-canvas-name-wrap');
+    const nameInput = panel.querySelector('#canvas-name-input');
+    const renameBtn = panel.querySelector('#canvas-rename-btn');
+    const dropZone = panel.querySelector('#plan-drop-zone');
+    const dropBtn = panel.querySelector('#plan-drop-btn');
+    const preview = panel.querySelector('#plan-preview');
+    const previewImg = panel.querySelector('#plan-preview-img');
+    const previewMeta = panel.querySelector('#plan-preview-meta');
+    const changeBtn = panel.querySelector('#plan-change-btn');
+    const roomsOverlayBtn = panel.querySelector('#plan-rooms-btn');
+    const fileInput = panel.querySelector('#plan-file');
+    const roomsField = panel.querySelector('#rooms-field');
+    const roomsChips = panel.querySelector('#rooms-chips');
+    const roomsStatus = panel.querySelector('#rooms-status');
+    const roomsManualBtn = panel.querySelector('#rooms-manual-btn');
+    const ocrBtn = panel.querySelector('#rooms-ocr-btn');
+    const ocrMoreBtn = panel.querySelector('#rooms-ocr-more-btn');
+    const ocrMessage = panel.querySelector('#ocr-message');
+    const frontDoorSelect = panel.querySelector('#front-door-select');
+    const buildingTypeSelect = panel.querySelector('#building-type-select');
+    const panelFeedback = panel.querySelector('#plan-panel-feedback');
 
-    let record = null;
-    let saveTimer = null;
-    let dirty = false;
-    let savingPlan = false;
     let hydratedPlanDataUrl = null;
+    let savingPlan = false;
+    let ocrBusy = false;
     const planCache = Object.create(null);
 
-    function setStatus(text) {
-      statusEl.textContent = text || '';
-    }
+    function record() { return ctx.getRecord(); }
 
     function setFeedback(text) {
-      feedbackEl.textContent = text || '';
-      feedbackEl.hidden = !text;
+      panelFeedback.textContent = text || '';
+      panelFeedback.hidden = !text;
+      if (ctx.setFeedback) ctx.setFeedback(text);
     }
 
-    function scheduleSave() {
-      dirty = true;
-      setStatus('Unsaved changes…');
-      if (saveTimer) clearTimeout(saveTimer);
-      saveTimer = setTimeout(function () {
-        flushSave().catch(function () { /* status already set */ });
-      }, AUTOSAVE_DELAY_MS);
-    }
-
-    function flushSave() {
-      if (saveTimer) {
-        clearTimeout(saveTimer);
-        saveTimer = null;
-      }
-      if (!dirty || !record) return Promise.resolve();
-      const canvas = activeCanvas(record);
-      if (canvas) canvas.updatedAt = new Date().toISOString();
-      record.planSetup.updatedAt = new Date().toISOString();
-      record.updatedAt = new Date().toISOString();
-      return window.ToolboxDB.saveCustomerFile(record).then(function () {
-        dirty = false;
-        setStatus('Saved ' + formatUpdated(record.updatedAt));
-      }).catch(function (err) {
-        console.error('Failed to save Plan Setup:', err);
-        setStatus('Save failed — will retry');
-        throw err;
-      });
-    }
-
-    if (window.ToolboxApp && window.ToolboxApp.registerActiveFlush) {
-      window.ToolboxApp.registerActiveFlush(flushSave);
-    }
-
-    function updateIdentityBar() {
-      identityName.textContent = displayName(record);
-      identityAddress.textContent = displayAddress(record);
+    function setOcrMessage(text) {
+      ocrMessage.textContent = text || '';
+      ocrMessage.hidden = !text;
     }
 
     function showNoPlan() {
@@ -415,6 +404,8 @@
       previewMeta.textContent = '';
       hydratedPlanDataUrl = null;
       roomsOverlayBtn.disabled = true;
+      ocrBtn.disabled = true;
+      ocrMoreBtn.hidden = true;
     }
 
     function showPlanPreview(dataUrl, width, height) {
@@ -424,11 +415,13 @@
       preview.hidden = false;
       dropZone.hidden = true;
       roomsOverlayBtn.disabled = false;
+      ocrBtn.disabled = false;
     }
 
     function hydrateAndShowPlan(canvas) {
       if (!hasUsablePlan(canvas)) {
         showNoPlan();
+        roomsField.hidden = true;
         return Promise.resolve();
       }
       const planId = canvas.plan.id;
@@ -451,18 +444,27 @@
       });
     }
 
+    function updateLevelChrome() {
+      const rec = record();
+      const multi = rec.planSetup.canvases.length > 1;
+      rosterEl.hidden = !multi;
+      nameWrap.hidden = !multi;
+      addCanvasBtn.textContent = multi ? '+ Add another level' : '+ Add another level';
+    }
+
     function renderRoster() {
+      const rec = record();
       rosterEl.innerHTML = '';
-      record.planSetup.canvases.forEach(function (canvas) {
+      updateLevelChrome();
+      if (rec.planSetup.canvases.length <= 1) return;
+      rec.planSetup.canvases.forEach(function (canvas) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'canvas-chip';
-        if (canvas.id === record.planSetup.activeCanvasId) btn.classList.add('is-active');
-        const hasPlan = hasUsablePlan(canvas);
-        btn.textContent = canvas.name + (hasPlan ? '' : ' · no plan');
-        btn.setAttribute('aria-pressed', canvas.id === record.planSetup.activeCanvasId ? 'true' : 'false');
+        if (canvas.id === rec.planSetup.activeCanvasId) btn.classList.add('is-active');
+        btn.textContent = canvas.name + (hasUsablePlan(canvas) ? '' : ' · no plan');
         btn.addEventListener('click', function () {
-          if (canvas.id === record.planSetup.activeCanvasId) return;
+          if (canvas.id === rec.planSetup.activeCanvasId) return;
           switchToCanvas(canvas.id);
         });
         rosterEl.appendChild(btn);
@@ -470,16 +472,16 @@
     }
 
     function renderRoomsChips() {
-      const canvas = activeCanvas(record);
+      const canvas = activeCanvas(record());
       const list = (canvas && canvas.rooms) || [];
       roomsChips.innerHTML = '';
-      if (!list.length) {
-        roomsField.hidden = !hasUsablePlan(canvas);
+      if (!hasUsablePlan(canvas)) {
+        roomsField.hidden = true;
         roomsStatus.textContent = '';
         return;
       }
       roomsField.hidden = false;
-      roomsStatus.textContent = '(' + list.length + ')';
+      roomsStatus.textContent = list.length ? '(' + list.length + ')' : '';
       list.forEach(function (room, idx) {
         const chip = document.createElement('button');
         chip.type = 'button';
@@ -489,7 +491,7 @@
         chip.addEventListener('click', function () {
           canvas.rooms = canvas.rooms.slice();
           canvas.rooms.splice(idx, 1);
-          scheduleSave();
+          ctx.scheduleSave();
           renderRoomsChips();
         });
         roomsChips.appendChild(chip);
@@ -497,31 +499,18 @@
     }
 
     function syncActiveCanvasForm() {
-      const canvas = activeCanvas(record);
+      const rec = record();
+      const canvas = activeCanvas(rec);
       if (!canvas) return;
       nameInput.value = canvas.name;
       frontDoorSelect.innerHTML = frontDoorSelectHtml(canvas.frontDoorFacing || '');
-      buildingTypeSelect.innerHTML = buildingTypeSelectHtml(record.planSetup.buildingType || 'residential');
+      buildingTypeSelect.innerHTML = buildingTypeSelectHtml(rec.planSetup.buildingType || 'residential');
       renderRoster();
       renderRoomsChips();
     }
 
-    function switchToCanvas(canvasId) {
-      commitRename();
-      const outgoing = activeCanvas(record);
-      if (outgoing) {
-        outgoing.frontDoorFacing = frontDoorSelect.value;
-      }
-      record.planSetup.activeCanvasId = canvasId;
-      if (record.distress) record.distress.activeCanvasId = canvasId;
-      scheduleSave();
-      syncActiveCanvasForm();
-      setFeedback('');
-      return hydrateAndShowPlan(activeCanvas(record));
-    }
-
     function commitRename() {
-      const canvas = activeCanvas(record);
+      const canvas = activeCanvas(record());
       if (!canvas) return;
       const value = nameInput.value.trim();
       if (!value) {
@@ -530,17 +519,107 @@
       }
       if (value !== canvas.name) {
         canvas.name = value;
-        scheduleSave();
+        ctx.scheduleSave();
         renderRoster();
       }
     }
 
+    function switchToCanvas(canvasId) {
+      commitRename();
+      const outgoing = activeCanvas(record());
+      if (outgoing) outgoing.frontDoorFacing = frontDoorSelect.value;
+      const rec = record();
+      rec.planSetup.activeCanvasId = canvasId;
+      if (rec.distress) rec.distress.activeCanvasId = canvasId;
+      ctx.scheduleSave();
+      syncActiveCanvasForm();
+      setFeedback('');
+      setOcrMessage('');
+      ocrMoreBtn.hidden = true;
+      return hydrateAndShowPlan(activeCanvas(rec));
+    }
+
+    function runOcrScan(auto) {
+      const canvas = activeCanvas(record());
+      if (!hasUsablePlan(canvas) || !hydratedPlanDataUrl || ocrBusy) return Promise.resolve();
+      if (!window.ToolboxRoomOCR) {
+        setOcrMessage('Room recognition is unavailable.');
+        return Promise.resolve();
+      }
+      ocrBusy = true;
+      ocrBtn.disabled = true;
+      const oldText = ocrBtn.textContent;
+      ocrBtn.textContent = 'Reading…';
+      setOcrMessage(auto ? 'Reading room labels…' : 'Loading text reader…');
+      const buildingType = record().planSetup.buildingType || 'residential';
+      return window.ToolboxRoomOCR.scan(hydratedPlanDataUrl, buildingType, function (msg) {
+        ocrBtn.textContent = msg;
+        setOcrMessage(msg);
+      }).then(function (result) {
+        const found = result.rooms || [];
+        const droppedCount = result.droppedCount || 0;
+        const addedCount = mergeScannedRooms(canvas, found);
+        ctx.scheduleSave();
+        renderRoomsChips();
+        ocrMoreBtn.hidden = false;
+        const msg = addedCount
+          ? 'Read ' + addedCount + ' label' + (addedCount === 1 ? '' : 's') +
+            (droppedCount ? ' (dropped ' + droppedCount + ' low-confidence)' : '') +
+            '. Verify below or open Verify rooms / FD.'
+          : 'No room labels found. Use Verify / edit rooms to add them manually.';
+        setOcrMessage(msg);
+      }).catch(function (err) {
+        console.error('OCR scan failed:', err);
+        setOcrMessage((err && err.message) || 'Could not read labels. Add rooms manually.');
+      }).then(function () {
+        ocrBusy = false;
+        ocrBtn.disabled = !hasUsablePlan(activeCanvas(record()));
+        ocrBtn.textContent = oldText;
+      });
+    }
+
+    function runOcrFindMore() {
+      const canvas = activeCanvas(record());
+      if (!hasUsablePlan(canvas) || !hydratedPlanDataUrl || ocrBusy) return;
+      ocrBusy = true;
+      ocrMoreBtn.disabled = true;
+      const oldText = ocrMoreBtn.textContent;
+      ocrMoreBtn.textContent = 'Scanning…';
+      setOcrMessage('Preparing deep scan…');
+      const existing = (canvas.rooms || []).map(function (r) {
+        return { name: r.name, x: r.x, y: r.y };
+      });
+      const buildingType = record().planSetup.buildingType || 'residential';
+      window.ToolboxRoomOCR.findMore(hydratedPlanDataUrl, buildingType, existing, function (msg) {
+        ocrMoreBtn.textContent = msg;
+        setOcrMessage(msg);
+      }).then(function (result) {
+        const merged = assignRoomIds(result.rooms || []);
+        // Preserve ids for rooms that match by approximate position/name
+        const prev = canvas.rooms || [];
+        canvas.rooms = merged.map(function (r, i) {
+          if (prev[i] && prev[i].id) return Object.assign({}, r, { id: prev[i].id });
+          return r.id ? r : Object.assign({}, r, { id: newRoomId() });
+        });
+        ctx.scheduleSave();
+        renderRoomsChips();
+        const addedCount = result.addedCount || 0;
+        setOcrMessage(addedCount
+          ? 'Found ' + addedCount + ' more. Verify or edit as needed.'
+          : 'No additional labels found.');
+      }).catch(function (err) {
+        console.error('OCR findMore failed:', err);
+        setOcrMessage((err && err.message) || 'Deep scan failed.');
+      }).then(function () {
+        ocrBusy = false;
+        ocrMoreBtn.disabled = false;
+        ocrMoreBtn.textContent = oldText;
+      });
+    }
+
     nameInput.addEventListener('change', commitRename);
     nameInput.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        nameInput.blur();
-      }
+      if (e.key === 'Enter') { e.preventDefault(); nameInput.blur(); }
     });
     renameBtn.addEventListener('click', function () {
       nameInput.focus();
@@ -548,30 +627,33 @@
     });
 
     addCanvasBtn.addEventListener('click', function () {
-      const suggested = 'Level ' + (record.planSetup.canvases.length + 1);
+      const rec = record();
+      const suggested = 'Level ' + (rec.planSetup.canvases.length + 1);
       const name = (prompt('Name for the new level:', suggested) || '').trim();
       if (!name) return;
       commitRename();
       const canvas = blankCanvas(name);
-      record.planSetup.canvases.push(canvas);
-      record.planSetup.activeCanvasId = canvas.id;
-      if (record.distress) record.distress.activeCanvasId = canvas.id;
-      scheduleSave();
+      rec.planSetup.canvases.push(canvas);
+      rec.planSetup.activeCanvasId = canvas.id;
+      if (rec.distress) rec.distress.activeCanvasId = canvas.id;
+      ctx.scheduleSave();
       syncActiveCanvasForm();
       showNoPlan();
       setFeedback('');
+      setOcrMessage('');
+      ocrMoreBtn.hidden = true;
     });
 
     frontDoorSelect.addEventListener('change', function () {
-      const canvas = activeCanvas(record);
+      const canvas = activeCanvas(record());
       if (!canvas) return;
       canvas.frontDoorFacing = frontDoorSelect.value;
-      scheduleSave();
+      ctx.scheduleSave();
     });
 
     buildingTypeSelect.addEventListener('change', function () {
-      record.planSetup.buildingType = buildingTypeSelect.value || 'residential';
-      scheduleSave();
+      record().planSetup.buildingType = buildingTypeSelect.value || 'residential';
+      ctx.scheduleSave();
     });
 
     function openFilePicker() {
@@ -579,31 +661,26 @@
       fileInput.value = '';
       fileInput.click();
     }
-
     dropBtn.addEventListener('click', openFilePicker);
     changeBtn.addEventListener('click', openFilePicker);
 
     function openRoomsOverlay() {
-      const canvas = activeCanvas(record);
+      const canvas = activeCanvas(record());
       if (!hasUsablePlan(canvas) || !hydratedPlanDataUrl) {
-        setFeedback('Load a plan before adding rooms.');
+        setFeedback('Load a plan before verifying rooms.');
         return;
       }
       window.ToolboxRoomVerify.open({
         getPlan: function () {
-          return {
-            dataUrl: hydratedPlanDataUrl,
-            width: canvas.plan.width,
-            height: canvas.plan.height,
-          };
+          return { dataUrl: hydratedPlanDataUrl, width: canvas.plan.width, height: canvas.plan.height };
         },
         getRooms: function () { return canvas.rooms || []; },
         setRooms: function (list) { canvas.rooms = list; },
         getFrontDoor: function () { return canvas.frontDoor; },
         setFrontDoor: function (fd) { canvas.frontDoor = fd; },
-        getBuildingType: function () { return record.planSetup.buildingType || 'residential'; },
+        getBuildingType: function () { return record().planSetup.buildingType || 'residential'; },
         onChange: function () {
-          scheduleSave();
+          ctx.scheduleSave();
           renderRoomsChips();
         },
       });
@@ -612,57 +689,54 @@
     roomsOverlayBtn.addEventListener('click', openRoomsOverlay);
     roomsManualBtn.addEventListener('click', openRoomsOverlay);
     previewImg.addEventListener('click', openRoomsOverlay);
+    ocrBtn.addEventListener('click', function () { runOcrScan(false); });
+    ocrMoreBtn.addEventListener('click', runOcrFindMore);
 
     fileInput.addEventListener('change', function (e) {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
       setFeedback('');
-      setStatus('Processing plan…');
+      setOcrMessage('');
+      if (ctx.setStatus) ctx.setStatus('Processing plan…');
       savingPlan = true;
       dropBtn.disabled = true;
       changeBtn.disabled = true;
 
       window.ToolboxPlanImage.processPlanFile(file, function (processed) {
-        const canvas = activeCanvas(record);
+        const canvas = activeCanvas(record());
         if (!canvas) {
           savingPlan = false;
           dropBtn.disabled = false;
           changeBtn.disabled = false;
           return;
         }
-
         const oldPlanId = canvas.plan && canvas.plan.id ? canvas.plan.id : null;
         const planId = window.ToolboxPlanImage.newPlanId();
 
         window.ToolboxDB.putMedia(planId, processed.dataUrl).then(function () {
-          canvas.plan = {
-            id: planId,
-            width: processed.width,
-            height: processed.height,
-          };
-          // Match FRP onPlanFileChange: new plan clears FD and rooms
+          canvas.plan = { id: planId, width: processed.width, height: processed.height };
           canvas.frontDoor = null;
           canvas.rooms = [];
           canvas.updatedAt = new Date().toISOString();
-          record.planSetup.updatedAt = canvas.updatedAt;
-          record.updatedAt = canvas.updatedAt;
-          dirty = true;
+          record().planSetup.updatedAt = canvas.updatedAt;
           planCache[planId] = processed.dataUrl;
           if (oldPlanId) delete planCache[oldPlanId];
-
-          return flushSave().then(function () {
+          ctx.setDirty(true);
+          return ctx.flushSave().then(function () {
             if (oldPlanId && oldPlanId !== planId) {
-              window.ToolboxDB.deleteMedia(oldPlanId).catch(function () { /* best-effort */ });
+              window.ToolboxDB.deleteMedia(oldPlanId).catch(function () {});
             }
             showPlanPreview(processed.dataUrl, processed.width, processed.height);
             renderRoomsChips();
             renderRoster();
             setFeedback('');
+            // Automatic room recognition after plan load
+            return runOcrScan(true);
           });
         }).catch(function (err) {
           console.error('Failed to save plan:', err);
           setFeedback('Could not save floor plan — try again.');
-          setStatus('Save failed — will retry');
+          if (ctx.setStatus) ctx.setStatus('Save failed — will retry');
         }).then(function () {
           savingPlan = false;
           dropBtn.disabled = false;
@@ -673,48 +747,27 @@
         dropBtn.disabled = false;
         changeBtn.disabled = false;
         setFeedback((err && err.message) || 'Could not load that image.');
-        setStatus('');
+        if (ctx.setStatus) ctx.setStatus('');
       });
     });
 
-    backBtn.addEventListener('click', function () {
-      commitRename();
-      const canvas = activeCanvas(record);
-      if (canvas) canvas.frontDoorFacing = frontDoorSelect.value;
-      record.planSetup.buildingType = buildingTypeSelect.value || record.planSetup.buildingType;
-      dirty = true;
-      flushSave().then(function () {
-        window.location.hash = '#/file/' + encodeURIComponent(customerFileId);
-      }).catch(function () {
-        // Stay on Plan Setup so the investigator can retry save.
-      });
-    });
-
-    setStatus('Loading…');
-
-    window.ToolboxDB.getCustomerFile(customerFileId).then(function (existing) {
-      record = existing || (window.ToolboxApp && window.ToolboxApp.blankCustomerFile
-        ? window.ToolboxApp.blankCustomerFile(customerFileId)
-        : { id: customerFileId });
-      const created = ensurePlanSetup(record);
-      updateIdentityBar();
-      syncActiveCanvasForm();
-      return hydrateAndShowPlan(activeCanvas(record)).then(function () {
-        if (created || !existing) {
-          dirty = true;
-          return flushSave();
-        }
-        setStatus(existing ? 'Saved ' + formatUpdated(record.updatedAt) : 'New — not yet saved');
-      });
-    }).catch(function (err) {
-      console.error('Failed to load Customer File for Plan Setup:', err);
-      setStatus('Unable to load');
-      setFeedback('Unable to open Plan Setup for this Customer File.');
-    });
+    // Public hooks for parent edit view
+    return {
+      syncFromRecord: function () {
+        ensurePlanSetup(record());
+        syncActiveCanvasForm();
+        return hydrateAndShowPlan(activeCanvas(record()));
+      },
+      commitPending: function () {
+        commitRename();
+        const canvas = activeCanvas(record());
+        if (canvas) canvas.frontDoorFacing = frontDoorSelect.value;
+        record().planSetup.buildingType = buildingTypeSelect.value || record().planSetup.buildingType;
+      },
+    };
   }
 
   window.ToolboxPlanSetup = {
-    renderPlanSetup: renderPlanSetup,
     ensurePlanSetup: ensurePlanSetup,
     migrateLegacyDistressSurfaces: migrateLegacyDistressSurfaces,
     activeCanvas: activeCanvas,
@@ -723,6 +776,7 @@
     blankCanvas: blankCanvas,
     blankPlanSetup: blankPlanSetup,
     blankDistressSurvey: blankDistressSurvey,
+    mountPlansPanel: mountPlansPanel,
     DEFAULT_CANVAS_NAME: DEFAULT_CANVAS_NAME,
   };
 })();
