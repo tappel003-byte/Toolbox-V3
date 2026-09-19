@@ -1,88 +1,90 @@
-# Milestone 1 — Customer File
+# Milestone 2 — Plan Setup and Distress Seam
 
 ## Purpose
 
-Build the first real Toolbox workflow: create, save, reopen, and work from a Customer File that owns the shared customer/job context used by later Toolbox workspaces.
+Build the first working Plan Setup workflow inside an open Customer File and establish the clean seam into the proven Distress capture workflow.
+
+Milestone 1 — Customer File is complete. The live Toolbox can create, save, find, reopen, and edit Customer Files; Customer File identity and shared information persist across reload/close/reopen and appropriate offline use; the workflow has been reviewed on desktop, iPhone, and iPad Mini.
 
 ## Status
 
 **Current milestone.**
 
-Milestone 0 — Live Foundation was completed on September 18, 2026.
+Milestone 0 — Live Foundation and Milestone 1 — Customer File are complete.
 
-Proven Milestone 0 foundation:
+## Milestone 2 scope
 
-- `main` continuously deploys to the live Toolbox application.
-- Live production domain: `sandiageotoolbox.com`.
-- Product UI is branded **Toolbox**, not "Toolbox V3."
-- Installed standalone PWA behavior is working on desktop, iPhone, and iPad Mini.
-- Home-screen/application icon support is working.
-- Responsive shell works across desktop, phone, and iPad Mini.
-- After a connected load, the application shell reopens offline on field devices.
-- iOS offline reopening was specifically tested after correcting redirected-response caching in the service worker.
-- No Customer File or downstream workspace functionality was built during Milestone 0.
+The current slice is **Plan Setup first**.
 
-## Milestone 1 scope
+The intended workflow is:
 
-Milestone 1 is the **Customer File only**.
+Customer File → Plan Setup → proven Distress capture
 
-The Customer File is the central organizing object inside Toolbox. Toolbox is the file cabinet; a Customer File is the customer/job file. Later workspaces operate inside an already-open Customer File.
-
-This milestone must establish the Customer File workflow and the minimum persistence needed to prove it reliably. It must not become an excuse to build Distress, Floor, Report Builder, Diagnostics, synchronization, or speculative future infrastructure early.
+Plan Setup is a legitimate prerequisite to Distress capture because capture needs a usable plan/surface. Customer/contact/address fields are not gates.
 
 ### In scope
 
-- Customer File cabinet/list view sufficient to find and reopen a file.
-- Create a new Customer File.
-- Open an existing Customer File.
-- Edit the shared customer/job information owned by the Customer File.
-- Save that information reliably.
-- Customer File identity persists across navigation, reload, close/reopen, and ordinary connectivity changes.
-- A clear open-file context so later workspaces can inherit the Customer File without asking the investigator to select or recreate the customer.
-- Responsive desktop/iPad/phone behavior.
-- Offline behavior appropriate to the Customer File slice being built.
-- Live deployment and real-device review.
-- The minimum persistence architecture required for this milestone, chosen deliberately from the actual Customer File needs rather than from speculative future work.
+- Expose Plan Setup naturally from an open Customer File.
+- Create/define the initial Distress surface, named **Floor Plan** by default.
+- Add and name additional Distress plan/surfaces/levels.
+- Make the active/current surface unmistakable without wasting canvas.
+- Persist Plan Setup data with the Customer File across reload, close/reopen, and appropriate offline use.
+- Reuse Customer File context rather than requesting known customer/property information again.
+- Inspect the proven standalone Distress Survey read-only and identify the setup-to-capture seam and single-plan assumptions.
+- Structure Plan Setup so proven Distress capture can attach next without redesigning protected capture behavior.
+- Responsive desktop, iPad, and phone behavior.
+- Keep implementation legible within the documented product-area segmentation.
+- Live deployment and meaningful owner review of the first working cut.
 
-### Shared context
+### Multiple surfaces
 
-The Customer File owns shared information described in `VISION.md`, including customer/job context such as property address, customer/homeowner/contact information, billing information where needed, general job information, plan/surface context, customer-level voice memos/interview information, and other genuinely shared job context.
+Multiple named Distress surfaces are a real requirement, not placeholder text.
 
-**Not every possible shared field must be implemented in the first slice.** The first implementation should establish the Customer File model and workflow with the smallest useful set of fields, then expand deliberately within this milestone.
+The first/default Distress surface is **Floor Plan**. Additional named surfaces must be possible without forcing every surface into one global-plan assumption.
+
+Do not conflate Distress surfaces with future Floor Survey measured levels. Do not force a universal viewport across unrelated surfaces.
+
+### Protected behavior
+
+The standalone Distress Survey is evidence/reference and remains untouched.
+
+Preserve proven Distress capture behavior. Replace standalone setup/customer plumbing where Toolbox Customer File and Plan Setup now own that responsibility. Do not copy the standalone application wholesale.
 
 ## Acceptance
 
-Milestone 1 is complete when:
+This Plan Setup slice is complete when:
 
-- A user can create a Customer File from the live Toolbox application.
-- Saved Customer Files can be found and reopened.
-- Shared information entered into a Customer File is not requested again merely because the user navigates within Toolbox.
-- Information acknowledged as saved survives reload and close/reopen.
-- The open Customer File is unmistakable to the investigator without wasting working canvas.
-- The workflow is usable on desktop, iPad, and phone.
-- The implemented Customer File behavior has been tested with loss/restoration of connectivity appropriate to this milestone.
-- No Distress, Floor, Diagnostics, or Report Builder workflow has been implemented early.
-- The actual diff has been reviewed against `VISION.md` and `AGENTS.md`.
+- Plan Setup is accessible from an open Customer File.
+- The initial Floor Plan can be established.
+- Additional named surfaces can be added and identified.
+- Active/current surface context is clear.
+- Plan Setup state persists reliably with the Customer File.
+- Known Customer File information is not requested again.
+- The implementation establishes a clear attachment seam for proven Distress capture.
+- Desktop, iPad, and phone layouts are usable.
+- Appropriate offline/reopen behavior is tested.
+- Standalone Distress code was inspected read-only and remains unchanged.
+- User-visible changes receive the visual/layout review required by AGENTS.md; code inspection alone is not represented as rendered verification.
+- The actual diff is reviewed against VISION.md, AGENTS.md, and DECISIONS.md.
+- The first working cut is deployed live for owner review.
 
-## Out of scope
+## Out of scope for this slice
 
-- Distress Survey integration or capture.
-- Floor Survey integration or capture.
-- Distress Edit.
-- Multiple-surface Distress implementation.
-- Floor Survey multiple-level implementation.
+- Redesigning proven Distress capture behavior.
+- Wholesale copying of the standalone Distress app.
+- Floor Survey implementation.
+- Distress Edit beyond what is strictly required by this slice.
 - Report Builder.
 - Diagnostics.
 - AI integration.
-- Standalone import/recovery implementation.
-- Full cloud synchronization unless the minimum Customer File persistence proof specifically requires a narrowly scoped piece of it.
-- SaaS-style roles, billing, invitations, or enterprise administration.
-- Speculative infrastructure for future workspaces.
+- Full cloud synchronization/auth unless narrowly required by an actual current need.
+- Speculative future-workspace infrastructure.
+- Unrelated Refresh troubleshooting.
 
 ## Important
 
-Customer File is the first product workflow, not a generic database exercise.
+This milestone deliberately advances beyond Customer File. Plan Setup is now authorized work.
 
-Do not expose storage, synchronization, IDs, schemas, or other implementation machinery to the investigator. Do not ask for information Toolbox already knows. Keep the correct workflow obvious and preserve the canvas.
+Make routine implementation decisions without requiring owner approval. Stop only when an ambiguity materially affects workflow, data ownership, protected behavior, architecture, or a professional deliverable.
 
-Before choosing persistence architecture, inspect the actual Customer File requirements and choose only what this milestone needs. A stated future need is not authorization to build future architecture now.
+The owner reviews meaningful working product checkpoints rather than supervising routine implementation.
