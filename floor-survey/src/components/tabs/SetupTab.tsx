@@ -105,6 +105,8 @@ export function SetupTab({
         {tab === "areas" && (
           <AreasPanel
             floor={activeFloor}
+            project={project}
+            onProjectChange={onProjectChange}
             onChange={async (f) => {
               await saveFloor(f);
               onFloorsChange(await listFloors(project.id));
@@ -411,22 +413,83 @@ function PlanPanel({
   );
 }
 
-function AreasPanel(props: { floor: Floor; onChange: (f: Floor) => void }) {
-  return <DrawingPanel {...props} mode="areas" />;
+function AreasPanel({
+  floor,
+  onChange,
+  project,
+  onProjectChange,
+}: {
+  floor: Floor;
+  onChange: (f: Floor) => void;
+  project: ProjectMeta;
+  onProjectChange: (p: ProjectMeta) => void;
+}) {
+  return (
+    <DrawingPanel
+      floor={floor}
+      onChange={onChange}
+      mode="areas"
+      project={project}
+      onProjectChange={onProjectChange}
+    />
+  );
 }
 
 function ExcludedPanel(props: { floor: Floor; onChange: (f: Floor) => void }) {
   return <DrawingPanel {...props} mode="excluded" />;
 }
 
+/** Proven Floor Survey inspection-date control (same Input type="date" as Details). */
+function InspectionDateControl({
+  project,
+  onChange,
+}: {
+  project: ProjectMeta;
+  onChange: (p: ProjectMeta) => void;
+}) {
+  const [localDate, setLocalDate] = useState(project.inspectionDate || "");
+  useEffect(() => {
+    setLocalDate(project.inspectionDate || "");
+  }, [project.id, project.inspectionDate]);
+
+  async function commit(nextDate: string) {
+    setLocalDate(nextDate);
+    const snapshot = { ...project, inspectionDate: nextDate };
+    await saveProject(snapshot);
+    onChange(snapshot);
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 shrink-0" data-fs-inspection-date>
+      <Label htmlFor="fs-inspection-date" className="label-micro whitespace-nowrap">
+        Inspection date
+      </Label>
+      <Input
+        id="fs-inspection-date"
+        type="date"
+        className="h-8 w-auto min-w-[9.5rem] text-xs"
+        value={localDate}
+        onChange={(e) => {
+          void commit(e.target.value);
+        }}
+        aria-label="Inspection date"
+      />
+    </div>
+  );
+}
+
 function DrawingPanel({
   floor,
   onChange,
   mode,
+  project,
+  onProjectChange,
 }: {
   floor: Floor;
   onChange: (f: Floor) => void;
   mode: "areas" | "excluded";
+  project?: ProjectMeta;
+  onProjectChange?: (p: ProjectMeta) => void;
 }) {
   const areas = getAreas(floor);
   const exclusions = floor.exclusions ?? [];
@@ -558,6 +621,9 @@ function DrawingPanel({
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {/* Toolbar */}
       <div className="shrink-0 border-b bg-background/70 px-2 py-1.5 flex items-center gap-2 overflow-x-auto overscroll-x-contain [&_button]:shrink-0">
+          {tool === "area" && project && onProjectChange && (
+            <InspectionDateControl project={project} onChange={onProjectChange} />
+          )}
           {tool === "area" && !drafting && (
             <>
               <span className="text-xs text-muted-foreground hidden sm:inline">
