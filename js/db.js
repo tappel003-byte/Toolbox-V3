@@ -1,4 +1,4 @@
-// Toolbox — Customer File persistence.
+// Toolbox — Customer File + Distress media persistence.
 //
 // Milestone 1 needs local, offline-durable storage that survives reload and
 // close/reopen on one device. It does not need cross-device sync (that is
@@ -8,11 +8,17 @@
 // more disposable under storage pressure).
 //
 // This module is the only place that knows storage is IndexedDB. Callers
-// work with plain Customer File objects.
+// work with plain Customer File objects and opaque media ids.
+//
+// DB_VERSION 2 adds a media object store for Distress plan (and later photo)
+// bytes. Plan metadata (id/width/height) lives on the Customer File record;
+// the image bytes live here so large dataURLs do not inflate every CF write
+// beyond what is necessary, matching the proven field-reporter-pro split.
 
 const DB_NAME = 'toolbox';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_CUSTOMER_FILES = 'customerFiles';
+const STORE_MEDIA = 'media';
 
 let dbPromise = null;
 
@@ -25,6 +31,9 @@ function openDatabase() {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_CUSTOMER_FILES)) {
         db.createObjectStore(STORE_CUSTOMER_FILES, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_MEDIA)) {
+        db.createObjectStore(STORE_MEDIA);
       }
     };
 
@@ -70,8 +79,34 @@ function getAllCustomerFiles() {
   }));
 }
 
+function putMedia(id, value) {
+  return runTransaction(STORE_MEDIA, 'readwrite', (store) => {
+    store.put(value, id);
+    return id;
+  });
+}
+
+function getMedia(id) {
+  return openDatabase().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_MEDIA, 'readonly');
+    const request = tx.objectStore(STORE_MEDIA).get(id);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+  }));
+}
+
+function deleteMedia(id) {
+  return runTransaction(STORE_MEDIA, 'readwrite', (store) => {
+    store.delete(id);
+    return true;
+  });
+}
+
 window.ToolboxDB = {
   saveCustomerFile,
   getCustomerFile,
   getAllCustomerFiles,
+  putMedia,
+  getMedia,
+  deleteMedia,
 };

@@ -10,10 +10,15 @@
 
   const AUTOSAVE_DELAY_MS = 900;
 
-  // Set by the active Customer File view so a single, persistent listener
-  // can flush pending edits when the tab is hidden or closed — avoids
-  // adding/removing per-view listeners on every navigation.
+  // Registered by whichever view is currently mounted (Customer File or
+  // Distress) so a single, persistent listener can flush pending edits
+  // when the tab is hidden or closed — avoids adding/removing per-view
+  // listeners on every navigation. Exposed via window.ToolboxApp so
+  // other product-area modules can register/clear it too.
   let activeFileFlush = null;
+  function registerActiveFlush(fn) {
+    activeFileFlush = fn;
+  }
 
   const FIELD_DEFS = {
     primary: [
@@ -88,11 +93,18 @@
   }
 
   // ---- Routing ----------------------------------------------------------
+  //
+  // Customer File → Distress (Plan Setup when no usable plan). Distress is
+  // a sub-route of the open file: #/file/<id>/distress.
 
   function parseRoute() {
     const hash = window.location.hash || '#/';
-    const match = hash.match(/^#\/file\/(.+)$/);
-    if (match) return { view: 'file', id: decodeURIComponent(match[1]) };
+    const match = hash.match(/^#\/file\/([^/]+)(?:\/(distress))?$/);
+    if (match) {
+      const id = decodeURIComponent(match[1]);
+      if (match[2] === 'distress') return { view: 'distress', id: id };
+      return { view: 'file', id: id };
+    }
     return { view: 'cabinet' };
   }
 
@@ -100,7 +112,9 @@
     const app = document.getElementById('app-view');
     if (!app) return;
     const route = parseRoute();
-    if (route.view === 'file') {
+    if (route.view === 'distress') {
+      window.ToolboxDistress.renderDistress(app, route.id);
+    } else if (route.view === 'file') {
       renderFile(app, route.id);
     } else {
       renderCabinet(app);
@@ -110,7 +124,7 @@
   // ---- Cabinet view -------------------------------------------------
 
   function renderCabinet(app) {
-    activeFileFlush = null;
+    registerActiveFlush(null);
     app.innerHTML =
       '<div class="view-bar view-bar--cabinet">' +
       '  <input type="search" id="cabinet-search" class="cabinet-search" placeholder="Search by name or address" autocomplete="off">' +
@@ -281,10 +295,14 @@
       '  <div class="file-actions">' +
       '    <button type="button" id="file-save" class="btn btn--accent">Save</button>' +
       '  </div>' +
+      '  <div class="file-workspaces">' +
+      '    <button type="button" id="file-distress" class="btn btn--accent">Distress ›</button>' +
+      '  </div>' +
       '</div>';
 
     const backBtn = app.querySelector('#file-back');
     const saveBtn = app.querySelector('#file-save');
+    const distressBtn = app.querySelector('#file-distress');
     const statusEl = app.querySelector('#file-status');
     const identityName = app.querySelector('#file-identity-name');
     const identityAddress = app.querySelector('#file-identity-address');
@@ -622,7 +640,15 @@
       }
     });
 
-    activeFileFlush = flushSave;
+    registerActiveFlush(flushSave);
+
+    distressBtn.addEventListener('click', function () {
+      flushSave().then(function () {
+        window.location.hash = '#/file/' + encodeURIComponent(id) + '/distress';
+      }).catch(function () {
+        // Stay on Customer File so the investigator can retry save.
+      });
+    });
 
     setStatus('Loading…');
 
@@ -659,4 +685,15 @@
 
   window.addEventListener('hashchange', render);
   window.addEventListener('DOMContentLoaded', render);
+
+  // Shared helpers for other product-area modules (Distress Plan Setup).
+  window.ToolboxApp = {
+    registerActiveFlush: registerActiveFlush,
+    blankCustomerFile: blankCustomerFile,
+    customerIdentity: {
+      displayName: displayName,
+      displayAddress: displayAddress,
+      formatUpdated: formatUpdated,
+    },
+  };
 })();
