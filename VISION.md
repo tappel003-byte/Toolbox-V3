@@ -95,78 +95,99 @@ The long-term system should feel like **one professional instrument with four sp
 
 ---
 
-## 4. The Customer File Owns Shared Context
 
-### DECIDED
+## 4. Customer File and Shared Plan Setup
 
-Information that belongs to the customer/job is entered once and made available wherever it's needed. The Customer File owns shared information such as: property address; customer/homeowner name and contact information; billing information where needed; general job information; the plan(s)/survey surface(s); customer-level voice memos; interview information; and other genuinely shared job context.
+### DECIDED — 100% LOCKED ARCHITECTURE
 
-Individual workspaces own information specific to their own work.
+The Customer File is the central organizing object. Information that belongs to the customer/job is entered once and made available wherever it is needed.
+
+**Plan Setup is a standalone, first-class Toolbox component and gatekeeper.** It does not belong to Distress Survey or Floor Survey. A plan/level is set up once for the Customer File and is then available to the field applications that need it.
+
+Plan Setup owns the shared spatial/building information for each established plan/level, including the usable plan image and shared setup information such as room names/locations and orientation information. The exact future richness of that shared spatial information may evolve, but its ownership does not move into a field application merely because that application consumes it.
+
+A useful internal distinction is:
+
+- **Canvas / level** — the persistent plan/level established once in Plan Setup.
+- **Layer** — application-specific data associated with that canvas/level.
+- **Application** — the field tool that creates and edits its own layer while using the established canvas/level.
+
+Changing applications does **not** create, copy, rename, redefine, or replace the established canvases/levels. The same Basement, Ground Level, Second Floor, or other established plan/level remains the same underlying canvas wherever Toolbox uses it.
+
+For example, if Plan Setup establishes Basement, Ground Level, and Second Floor, those same three established canvases/levels are available to Distress Survey and Floor Survey as applicable. The investigator may switch among those canvases/levels **inside each field application**. Switching canvases changes the spatial context being worked on; switching applications changes the application-specific layer being worked on.
+
+The Customer File also owns other genuinely shared job context such as property address; customer/homeowner name and contact information; billing information where needed; general job information; customer-level voice memos; interview information; and other genuinely shared job context.
+
+Individual workspaces own only information specific to their own work.
 
 > **Information already known by Toolbox should not be requested again.**
 
-If the Customer File is already open, a workspace should not ask which customer it belongs to. If a plan is already associated with the Customer File, the normal workflow should not ask the investigator to upload it again.
+If the Customer File is already open, a workspace should not ask which customer it belongs to. If a plan/level has already been established in Plan Setup, a field application should not ask the investigator to upload, recreate, rename, or set up that plan/level again.
 
 ---
 
-## 5. Multiple Named Surfaces — Distress Survey
 
-### DECIDED
+## 5. Distress Survey Layers on Shared Canvases
 
-Distress Survey supports **multiple user-named surfaces within one continuous survey.**
+### DECIDED — 100% LOCKED ARCHITECTURE
 
-Do not hard-code specific surface names such as "Basement" or "Main Level." A surface may be a Ground Floor, a Basement, a Second Floor, an Exterior, a Patio, a Roof Parapet, a Rear Addition, or any other user-defined area or plane.
+Distress Survey is one continuous survey that operates on the canvases/levels already established by Plan Setup. Distress Survey does **not** own or recreate those canvases.
 
-Behavior:
+Within Distress Survey, the investigator can switch among the established canvases/levels. Each distress observation remains associated with the canvas/level where it was recorded, while all observations remain part of the same continuous Distress Survey.
 
-- During setup, the first surface defaults to the name **"Floor Plan."**
-- It may be renamed using a simple pencil/edit affordance.
-- Additional surfaces may be added and named from the existing Floor Plan setup area.
-- On the main Distress capture canvas, a compact active-surface pill (for example, "Ground Floor ▾") shows the current surface. Selecting another surface switches the canvas to that surface's plan and associated Distress information.
-- The normal, common one-surface job remains almost identical in simplicity to today's single-plan workflow. Additional surfaces should appear only when actually needed.
-- **Pin numbering is one continuous chronological sequence across the entire survey.** For example: Ground Floor pins 1–12, Basement 13–17, and returning to Ground Floor afterward, the next new pin is 18 — not a renumbered or regrouped sequence.
-- Existing assigned pin numbers remain stable. Pins are never later renumbered or regrouped by surface.
-- Surface identity must remain associated with each observation and propagate downstream through Diagnostics and Report Builder — a report or analysis must be able to show which surface an observation belongs to.
+Example:
 
-This section describes required product behavior only. It does not specify a persistence model, data shape, or migration mechanism — how surfaces, pins, and numbering are actually stored and implemented is an implementation decision, made separately from this Vision.
+- Basement — Distress observations/photos beginning with numbers 1–10
+- Ground Level — subsequent Distress observations/photos 11–15
+- Second Floor — subsequent Distress observations/photos 16–20
+
+Switching to another canvas/level does not restart the Distress Survey or its numbering. Returning to an earlier canvas/level does not regroup observations by canvas.
+
+### Distress photograph/pin numbering — 100% LOCKED, MUST PRESERVE EXACTLY
+
+The proven standalone `field-reporter-pro` numbering behavior is authoritative and must be preserved exactly in integrated Toolbox Distress capture:
+
+- A pin represents an observation/location.
+- Photographs remain attached to that pin.
+- Photograph numbering is one continuous sequence across the entire Distress Survey, including all canvases/levels.
+- A pin with multiple photographs consumes a contiguous number range.
+- If an earlier photograph is deleted, the next photograph in the survey shifts down to close the gap; subsequent photograph numbers recompute accordingly.
+- If an earlier photograph is added, subsequent photograph numbers shift accordingly.
+- The next pin's displayed starting number shifts with the photograph sequence exactly as the proven standalone behavior does.
+- Deleting an observation/pin and its photographs closes that number range and subsequent photograph numbers shift accordingly.
+- Canvas/level identity never interferes with the chronological photograph sequence.
+- Switching canvases/levels never restarts numbering.
+
+This behavior is not a preference and is not open to reinterpretation, optimization, simplification, or replacement during integration.
+
+A compact active-canvas/level control may be used in Distress capture so the investigator can switch spatial context without sacrificing working canvas area.
+
+### NOT YET DECIDED
+
+Exactly how non-level spatial areas such as Exterior, Patio, Roof Parapet, Rear Addition, or other unusual planes participate in Plan Setup and downstream field layers is not yet decided. Do not silently treat these as Distress-owned setup, and do not invent a universal rule. Stop for product-owner clarification when implementation reaches this boundary.
 
 ---
 
-## 6. Floor Survey
 
-### DECIDED
+## 6. Floor Survey Layers on Shared Canvases
 
-Floor Survey operates inside an open Customer File. It does not need a redundant "New Project" workflow for information Toolbox already knows — customer context, address, and project information are already known, and the plan/surface comes from the Customer File. A manual plan-upload back door may remain available for resilience and unusual cases.
+### DECIDED — 100% LOCKED ARCHITECTURE
 
-**Survey Date** is required measurement/dataset metadata belonging to the Floor Survey dataset. It is not a generic job date — it identifies when a particular set of measurements was collected, and it must remain associated with that dataset and its resulting figures.
+Floor Survey operates inside an open Customer File on the same canvases/levels already established by Plan Setup. It does **not** own, recreate, or independently configure those plans/levels.
 
-**Topo Boundary** is Floor-Survey-specific information. It is not the same thing as the shared Customer File plan/surface — it defines the area of a plan that a topo survey actually measures, and it belongs to Floor Survey.
+If Plan Setup establishes one level, that established canvas is the base spatial context for both Distress Survey and Floor Survey. If Plan Setup establishes three levels, those same three established canvases/levels are available within Floor Survey as applicable, and the investigator can switch among them inside Floor Survey.
 
-Floor Survey's existing support for multiple topo areas on the same physical plan is valuable, proven, and should not be reinvented. This is a different concept from multiple named building surfaces, and the two must not be confused with each other.
+Floor-Survey-specific information is stored as Floor Survey data/layers associated with the applicable established canvas/level. This includes measurement data and Floor-Survey-specific setup such as **Topo Boundary** and exclusions. Those items do not become shared Plan Setup data merely because they are drawn on the same underlying plan.
 
-### Multiple named surfaces / levels — DECIDED
+Room names and other shared spatial information established in Plan Setup remain available to Floor Survey. This allows Floor Survey to use that shared context — for example, associating a measurement with a room such as Bedroom 1 — without asking the investigator to define Bedroom 1 again. The exact future mechanism for spatial room membership is not yet decided and should not be invented prematurely.
 
-Floor Survey supports multiple user-named surfaces/levels within the same Customer File. Each surface/level represents its own measured plane and owns its own Floor Survey dataset.
+**Survey Date** is required measurement/dataset metadata belonging to the Floor Survey dataset. It is not a generic job date.
 
-Examples include:
+Floor Survey's proven support for multiple topo areas on the same physical plan remains valuable and must not be confused with the shared canvases/levels established in Plan Setup.
 
-- Basement
-- Ground Floor
-- Second Floor
-- other user-named surfaces where a separate floor-level survey is appropriate
+A normal one-level survey remains simple. Multiple established levels may each have their own Floor Survey data while remaining part of the same Customer File.
 
-A normal one-level survey remains simple.
-
-The investigator may complete one level and then move to another level within the same Customer File. For example:
-
-- Ground Floor → complete its floor-level survey
-- Second Floor → complete a separate floor-level survey
-
-These are separate measured datasets belonging to the same Customer File.
-
-Do not confuse multiple building levels/surfaces with Floor Survey's existing multiple topo areas on the same physical plan. Those remain separate concepts.
-
-This section describes required product behavior only. It does not specify the underlying persistence architecture — how levels and their datasets are actually stored and implemented is an implementation decision, made separately from this Vision.
+A manual plan-upload back door may remain available for resilience and unusual recovery cases, but it does not redefine normal ownership: normal Toolbox workflow establishes the plan/level once in Plan Setup and reuses it.
 
 ---
 
