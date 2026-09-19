@@ -1,90 +1,113 @@
-# Milestone 2 — Plan Setup and Distress Seam
+# Milestone 2 — Standalone Plan Setup and Distress Seam
 
 ## Purpose
 
-Build the first working Plan Setup workflow inside an open Customer File and establish the clean seam into the proven Distress capture workflow.
+Correct and complete the first working standalone Plan Setup workflow inside an open Customer File, then establish the clean seam from those shared canvases/levels into proven Distress capture.
 
-Milestone 1 — Customer File is complete. The live Toolbox can create, save, find, reopen, and edit Customer Files; Customer File identity and shared information persist across reload/close/reopen and appropriate offline use; the workflow has been reviewed on desktop, iPhone, and iPad Mini.
+Milestone 1 — Customer File is complete.
 
 ## Status
 
 **Current milestone.**
 
-Milestone 0 — Live Foundation and Milestone 1 — Customer File are complete.
+The first live Plan Setup cut exposed an architectural documentation error: Plan Setup was incorrectly modeled as Distress-owned setup. That interpretation is superseded. The architecture below is authoritative for this milestone and must agree with `VISION.md` and `DECISIONS.md`.
 
-## Milestone 2 scope
+## 100% locked architecture
 
-The current slice is **Plan Setup first**.
+**Plan Setup is a standalone, first-class Toolbox component and gatekeeper.**
 
-The intended workflow is:
+A plan/level/canvas is established once in Plan Setup for the Customer File. Distress Survey, Floor Survey, and future consumers use that same established canvas/level and add their own application-specific data layers.
 
-Customer File → Plan Setup → proven Distress capture
+Do not create a Distress-owned plan setup, a Floor-Survey-owned plan setup, or workspace-specific copies of an established plan/level.
 
-Plan Setup is a legitimate prerequisite to Distress capture because capture needs a usable plan/surface. Customer/contact/address fields are not gates.
+Changing applications changes the application-specific layer, not the underlying canvas/level. When multiple canvases/levels exist, the investigator switches among those established canvases/levels inside the active field application.
 
-### In scope
+Examples:
 
-- Expose Plan Setup naturally from an open Customer File.
-- Create/define the initial Distress surface, named **Floor Plan** by default.
-- Add and name additional Distress plan/surfaces/levels.
-- Make the active/current surface unmistakable without wasting canvas.
-- Persist Plan Setup data with the Customer File across reload, close/reopen, and appropriate offline use.
-- Reuse Customer File context rather than requesting known customer/property information again.
-- Inspect the proven standalone Distress Survey read-only and identify the setup-to-capture seam and single-plan assumptions.
-- Structure Plan Setup so proven Distress capture can attach next without redesigning protected capture behavior.
+- One established level → the same underlying canvas is available to Distress and Floor Survey.
+- Basement + Ground Level + Second Floor → those same three established canvases/levels are available within each applicable field application.
+- Distress may contain observations across all three while remaining one continuous Distress Survey.
+- Floor Survey may hold its own boundaries, exclusions, measurements, and topo data for each applicable established canvas/level.
+
+## Current implementation correction
+
+The live implementation currently places shared Plan Setup data under Distress ownership. Correct that ownership without discarding working Plan Setup functionality unnecessarily.
+
+Shared Plan Setup should own the established plan/level data such as:
+
+- plan/level identity and user-visible name
+- usable plan image
+- room names/locations and other shared room setup
+- orientation/front-door setup where applicable
+- other genuinely shared spatial setup information
+
+Distress should own only Distress-specific survey data associated with an established canvas/level.
+
+Floor Survey is not being implemented in this slice, but the corrected data boundary must allow Floor Survey to consume the same established canvases/levels later without recreating them.
+
+## Distress seam
+
+After standalone Plan Setup ownership is corrected, integrated Distress capture attaches its Distress layer to the selected established canvas/level.
+
+Distress is one continuous survey across canvas/level switches.
+
+### 100% LOCKED — Distress numbering must preserve exactly
+
+The integrated implementation must preserve the proven `field-reporter-pro` behavior exactly:
+
+- pins represent observation/locations and photographs remain attached to them
+- photograph numbering is one continuous sequence across the entire Distress Survey
+- multiple photographs at one pin consume a contiguous number range
+- adding/deleting earlier photographs recomputes subsequent photograph numbers
+- deleting a pin and its photographs closes that range and subsequent numbers shift
+- the next pin's displayed starting number follows that sequence
+- switching canvases/levels never restarts or groups the numbering
+
+This is not open to reinterpretation or simplification.
+
+## In scope
+
+- Correct Plan Setup from Distress-owned to standalone shared ownership.
+- Preserve the useful working Plan Setup functionality already built where it fits the corrected architecture.
+- Expose standalone Plan Setup naturally from an open Customer File.
+- Establish and name one or more plans/levels/canvases once.
+- Persist shared Plan Setup data reliably across reload, close/reopen, and appropriate offline use.
+- Reuse Customer File context without re-requesting known information.
+- Make established canvases/levels available to Distress without copying or recreating them.
+- Provide compact canvas/level switching within Distress when multiple established canvases/levels exist.
+- Attach proven Distress capture behavior to the selected canvas/level.
+- Preserve exact locked Distress numbering across canvas switches.
 - Responsive desktop, iPad, and phone behavior.
-- Keep implementation legible within the documented product-area segmentation.
-- Live deployment and meaningful owner review of the first working cut.
+- Live deployment and meaningful owner review.
 
-### Multiple surfaces
+## Out of scope / unresolved
 
-Multiple named Distress surfaces are a real requirement, not placeholder text.
-
-The first/default Distress surface is **Floor Plan**. Additional named surfaces must be possible without forcing every surface into one global-plan assumption.
-
-Do not conflate Distress surfaces with future Floor Survey measured levels. Do not force a universal viewport across unrelated surfaces.
-
-### Protected behavior
-
-The standalone Distress Survey is evidence/reference and remains untouched.
-
-Preserve proven Distress capture behavior. Replace standalone setup/customer plumbing where Toolbox Customer File and Plan Setup now own that responsibility. Do not copy the standalone application wholesale.
+- Floor Survey implementation itself.
+- Redesigning proven Distress capture behavior.
+- Modifying either standalone reference repository.
+- Report Builder, Diagnostics, or AI integration.
+- Speculative future infrastructure.
+- Exact treatment of non-level spatial areas such as Exterior, Patio, Roof Parapet, Rear Addition, and other unusual planes. This remains **NOT YET DECIDED**; stop for product-owner clarification rather than inventing ownership or workflow.
 
 ## Acceptance
 
-This Plan Setup slice is complete when:
+This milestone is complete when:
 
-- Plan Setup is accessible from an open Customer File.
-- The initial Floor Plan can be established.
-- Additional named surfaces can be added and identified.
-- Active/current surface context is clear.
-- Plan Setup state persists reliably with the Customer File.
-- Known Customer File information is not requested again.
-- The implementation establishes a clear attachment seam for proven Distress capture.
-- Desktop, iPad, and phone layouts are usable.
+- Plan Setup is visibly and architecturally standalone, not a Distress setup screen.
+- A plan/level is established once and persists as shared Customer File spatial data.
+- Multiple established canvases/levels can be named and switched where needed.
+- Distress consumes those established canvases/levels without recreating them.
+- Distress capture works on the selected canvas/level.
+- Distress numbering follows the exact 100% locked proven standalone behavior across canvas switches.
+- Known Customer File and Plan Setup information is not requested again.
 - Appropriate offline/reopen behavior is tested.
-- Standalone Distress code was inspected read-only and remains unchanged.
-- User-visible changes receive the visual/layout review required by AGENTS.md; code inspection alone is not represented as rendered verification.
-- The actual diff is reviewed against VISION.md, AGENTS.md, and DECISIONS.md.
-- The first working cut is deployed live for owner review.
-
-## Out of scope for this slice
-
-- Redesigning proven Distress capture behavior.
-- Wholesale copying of the standalone Distress app.
-- Floor Survey implementation.
-- Distress Edit beyond what is strictly required by this slice.
-- Report Builder.
-- Diagnostics.
-- AI integration.
-- Full cloud synchronization/auth unless narrowly required by an actual current need.
-- Speculative future-workspace infrastructure.
-- Unrelated Refresh troubleshooting.
+- Desktop, iPad, and phone layouts are usable.
+- Standalone reference repositories remain unchanged.
+- The actual diff is reviewed against `VISION.md`, `AGENTS.md`, and `DECISIONS.md`.
+- The working cut is deployed live for owner review.
 
 ## Important
 
-This milestone deliberately advances beyond Customer File. Plan Setup is now authorized work.
-
-Make routine implementation decisions without requiring owner approval. Stop only when an ambiguity materially affects workflow, data ownership, protected behavior, architecture, or a professional deliverable.
+A stated need is not permission to invent ownership. If an ambiguity materially affects shared Plan Setup ownership, canvas/level identity, application-layer ownership, locked Distress behavior, or the professional deliverable, stop and ask.
 
 The owner reviews meaningful working product checkpoints rather than supervising routine implementation.
