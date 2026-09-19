@@ -1068,6 +1068,18 @@ body {
   cursor: pointer;
 }
 
+#rvCloseBtn {
+  width: auto;
+  min-width: 64px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  background: #fff;
+  color: #111;
+}
+
 #rvFdBtn {
   background: #2563eb;
   position: absolute;

@@ -724,7 +724,11 @@
 
     function leaveEdit() {
       dirty = true;
-      flushSave().then(function () {
+      setStatus('Finishing…');
+      const idle = plansApi && plansApi.whenIdle ? plansApi.whenIdle() : Promise.resolve();
+      idle.then(function () {
+        return flushSave();
+      }).then(function () {
         window.location.hash = '#/file/' + encodeURIComponent(id);
       }).catch(function () {});
     }

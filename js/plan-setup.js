@@ -382,7 +382,15 @@
     let hydratedPlanDataUrl = null;
     let savingPlan = false;
     let ocrBusy = false;
+    let ocrWaiters = [];
     const planCache = Object.create(null);
+
+    function notifyOcrIdle() {
+      if (ocrBusy || savingPlan) return;
+      const waiters = ocrWaiters.slice();
+      ocrWaiters = [];
+      waiters.forEach(function (resolve) { resolve(); });
+    }
 
     function record() { return ctx.getRecord(); }
 
@@ -576,12 +584,13 @@
         ocrBusy = false;
         ocrBtn.disabled = !hasUsablePlan(activeCanvas(record()));
         ocrBtn.textContent = oldText;
+        notifyOcrIdle();
       });
     }
 
     function runOcrFindMore() {
       const canvas = activeCanvas(record());
-      if (!hasUsablePlan(canvas) || !hydratedPlanDataUrl || ocrBusy) return;
+      if (!hasUsablePlan(canvas) || !hydratedPlanDataUrl || ocrBusy) return Promise.resolve();
       ocrBusy = true;
       ocrMoreBtn.disabled = true;
       const oldText = ocrMoreBtn.textContent;
@@ -591,7 +600,7 @@
         return { name: r.name, x: r.x, y: r.y };
       });
       const buildingType = record().planSetup.buildingType || 'residential';
-      window.ToolboxRoomOCR.findMore(hydratedPlanDataUrl, buildingType, existing, function (msg) {
+      return window.ToolboxRoomOCR.findMore(hydratedPlanDataUrl, buildingType, existing, function (msg) {
         ocrMoreBtn.textContent = msg;
         setOcrMessage(msg);
       }).then(function (result) {
@@ -615,6 +624,7 @@
         ocrBusy = false;
         ocrMoreBtn.disabled = false;
         ocrMoreBtn.textContent = oldText;
+        notifyOcrIdle();
       });
     }
 
@@ -742,11 +752,13 @@
           savingPlan = false;
           dropBtn.disabled = false;
           changeBtn.disabled = false;
+          notifyOcrIdle();
         });
       }, function (err) {
         savingPlan = false;
         dropBtn.disabled = false;
         changeBtn.disabled = false;
+        notifyOcrIdle();
         setFeedback((err && err.message) || 'Could not load that image.');
         if (ctx.setStatus) ctx.setStatus('');
       });
@@ -765,6 +777,11 @@
         if (canvas) canvas.frontDoorFacing = frontDoorSelect.value;
         record().planSetup.buildingType = buildingTypeSelect.value || record().planSetup.buildingType;
       },
+      whenIdle: function () {
+        if (!ocrBusy && !savingPlan) return Promise.resolve();
+        return new Promise(function (resolve) { ocrWaiters.push(resolve); });
+      },
+      isBusy: function () { return !!ocrBusy || !!savingPlan; },
     };
   }
 
