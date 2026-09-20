@@ -9,8 +9,8 @@ import { TransitionDetailDialog } from "../TransitionDetailDialog";
 import { Button } from "@/components/ui/button";
 import { Pencil, List, Trash2 } from "lucide-react";
 
-import type { Floor, NotePin, SurveyPoint, Transition } from "@/lib/types";
-import { savePoint, deletePoint, reindexFloorPoints, saveFloor, uid } from "@/lib/db";
+import type { Bp1Gps, Floor, NotePin, SurveyPoint, Transition } from "@/lib/types";
+import { savePoint, deletePoint, reindexFloorPoints, saveFloor, saveBp1Gps, uid } from "@/lib/db";
 import { transitionDelta, formatDelta, getChainBaselineSurface } from "@/lib/transitions";
 import { drawExclusionShape, zoneOfXY } from "@/lib/exclusions";
 import type { FloorSnapshot } from "@/lib/useFloorHistory";
@@ -90,6 +90,8 @@ export function FieldTab({
   const [transform, setTransform] = useState<CanvasTransform>({ scale: 1, tx: 0, ty: 0 });
   const [pending, setPending] = useState<{ x: number; y: number } | null>(null);
   const [bpPromptOpen, setBpPromptOpen] = useState(false);
+  const [bpGpsStatus, setBpGpsStatus] = useState<"idle" | "getting" | "ok" | "fail">("idle");
+  const [bpGpsAccuracyFt, setBpGpsAccuracyFt] = useState<number | null>(null);
   const [editingPoint, setEditingPoint] = useState<SurveyPoint | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const [dragging, setDragging] = useState<DragState | null>(null);
@@ -1414,21 +1416,84 @@ export function FieldTab({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-background rounded-xl shadow-2xl max-w-sm w-full p-5">
             <h3 className="text-lg font-semibold mb-1">Set Base Point</h3>
-            <p className="text-sm text-muted-foreground mb-4">
+            <p className="text-sm text-muted-foreground mb-3">
               This is your first point. It becomes <span className="font-mono">BP1</span>, the
               reference elevation. Default is 9.0". Tap Continue to enter its value.
             </p>
+            <div className="mb-4 space-y-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={bpGpsStatus === "getting" || bpGpsStatus === "ok"}
+                onClick={() => {
+                  if (!("geolocation" in navigator)) {
+                    setBpGpsStatus("fail");
+                    setBpGpsAccuracyFt(null);
+                    return;
+                  }
+                  setBpGpsStatus("getting");
+                  setBpGpsAccuracyFt(null);
+                  navigator.geolocation.getCurrentPosition(
+                    async (pos) => {
+                      const gps: Bp1Gps = {
+                        latitude: pos.coords.latitude,
+                        longitude: pos.coords.longitude,
+                        accuracyMeters: pos.coords.accuracy,
+                        capturedAt: Date.now(),
+                      };
+                      try {
+                        await saveBp1Gps(floor.id, gps);
+                        const nextFloor = { ...floor, bp1Gps: gps };
+                        onFloorChange?.(nextFloor);
+                        setBpGpsAccuracyFt(gps.accuracyMeters * 3.28084);
+                        setBpGpsStatus("ok");
+                      } catch {
+                        setBpGpsStatus("fail");
+                      }
+                    },
+                    () => {
+                      setBpGpsStatus("fail");
+                      setBpGpsAccuracyFt(null);
+                    },
+                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+                  );
+                }}
+              >
+                {bpGpsStatus === "getting" ? "Getting GPS…" : "Capture GPS"}
+              </Button>
+              {bpGpsStatus === "ok" && bpGpsAccuracyFt != null && (
+                <p className="text-sm text-muted-foreground text-center">
+                  Location captured · ±{Math.round(bpGpsAccuracyFt)} ft
+                </p>
+              )}
+              {bpGpsStatus === "fail" && (
+                <p className="text-sm text-muted-foreground text-center">
+                  Couldn&apos;t get GPS. You can continue without it.
+                </p>
+              )}
+            </div>
             <div className="flex justify-end gap-2">
               <Button
                 variant="ghost"
                 onClick={() => {
                   setPending(null);
                   setBpPromptOpen(false);
+                  setBpGpsStatus("idle");
+                  setBpGpsAccuracyFt(null);
                 }}
               >
                 Cancel
               </Button>
-              <Button onClick={() => setBpPromptOpen(false)}>Continue</Button>
+              <Button
+                onClick={() => {
+                  setBpPromptOpen(false);
+                  setBpGpsStatus("idle");
+                  setBpGpsAccuracyFt(null);
+                }}
+              >
+                {bpGpsStatus === "fail" ? "Continue Without GPS" : "Continue"}
+              </Button>
             </div>
           </div>
         </div>

@@ -496,7 +496,7 @@ check(
 );
 await page.screenshot({ path: `${OUT}/fs_parity_multi_level.png` });
 
-// Sand token absence in loaded CSS
+// Sand token absence in loaded Floor Survey CSS (not Toolbox chrome tokens)
 const cssCheck = await page.evaluate(async () => {
   const hrefs = [...document.querySelectorAll('link[rel=stylesheet]')].map((l) => l.href);
   let text = '';
@@ -504,8 +504,6 @@ const cssCheck = await page.evaluate(async () => {
     if (!/floor-survey/.test(h)) continue;
     text += await (await fetch(h)).text();
   }
-  // also inline
-  for (const s of document.querySelectorAll('style')) text += s.textContent || '';
   return {
     sand: /0\.949 0\.012 82|f4f0e8|soft peach|warm sand|#fffaf0|#f3d8ce/.test(text),
     white: /--background:#fff|--background: #fff|--background:oklch\(1 0 0\)/.test(text.replace(/\s/g, '')),

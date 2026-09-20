@@ -420,11 +420,19 @@ body {
   padding: 6px 2px;
   margin: -6px -2px;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--accent);
+  /* Explicit Toolbox terracotta — Floor Survey CSS redefines :root --accent to a
+     near-white shadcn token, which made this control invisible on cream. */
+  color: #c14a2b;
+  text-decoration: underline;
+  text-underline-offset: 2px;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.address-location-link:active {
+  opacity: 0.75;
 }
 
 .address-autocomplete-wrap {
@@ -533,6 +541,12 @@ body {
   display: block;
   width: fit-content;
   margin-top: 8px;
+  margin-left: 0;
+  margin-right: 0;
+  margin-bottom: 0;
+  padding: 8px 0;
+  min-height: 44px;
+  box-sizing: border-box;
 }
 
 /* ---- Customer File home hub ----
