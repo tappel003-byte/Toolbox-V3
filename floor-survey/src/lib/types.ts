@@ -33,6 +33,15 @@ export interface PlanTransform {
   rotation: number; // radians, around image center
 }
 
+export interface Bp1Gps {
+  latitude: number;
+  longitude: number;
+  /** Device-reported accuracy in meters (GeolocationCoordinates.accuracy). */
+  accuracyMeters: number;
+  /** Capture time as epoch ms. */
+  capturedAt: number;
+}
+
 export interface Floor {
   id: string;
   projectId: string;
@@ -81,7 +90,9 @@ export interface Floor {
   // beneath them so a replaced photo/screenshot can be re-aligned to
   // existing points. Only mutated inside Align mode on a duplicated project.
   planTransform?: PlanTransform;
-
+  // Optional GPS fix captured at BP1 / base station establishment (field tap).
+  // Not the Customer File property geocode — physical location of the base.
+  bp1Gps?: Bp1Gps;
 }
 
 export interface TopoArea {

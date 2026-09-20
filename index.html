@@ -18,6 +18,14 @@
 
 <link rel="stylesheet" href="css/styles.css">
 <link rel="stylesheet" href="js/floor-survey/floor-survey.css">
+<!-- Reassert Toolbox accent tokens outside Floor Survey. FS CSS defines shadcn
+     --accent on :root (near-white), which washed out CF chrome that uses --accent. -->
+<style>
+body:not(.floor-survey-open) {
+  --accent: #c14a2b;
+  --accent-soft: #f3d8ce;
+}
+</style>
 </head>
 <body>
 
@@ -37,7 +45,7 @@
 <script src="js/room-ocr.js"></script>
 <script src="js/room-verify.js"></script>
 <script src="js/plan-setup.js"></script>
-<script src="js/distress.js"></script>
+<script src="js/distress-survey/mount.js"></script>
 <script src="js/floor-survey/floor-survey.js"></script>
 <script src="js/app.js"></script>
 </body>

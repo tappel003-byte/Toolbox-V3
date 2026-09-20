@@ -65,6 +65,7 @@
       startNum: 1,
       nextNum: 1,
       pins: [],
+      drawings: [],
     };
   }
 

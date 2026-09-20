@@ -292,10 +292,20 @@ const cab = await page.evaluate(() => !!document.querySelector('#cabinet-new') |
 check('Cabinet still works', cab);
 await page.screenshot({ path: '/opt/cursor/artifacts/fs_cabinet_unaffected.png' });
 
+// Distress integration is live on this branch — confirm it still mounts (not stubbed).
 await page.goto(BASE + '#/file/fs-int-1/distress', { waitUntil: 'networkidle0' });
-await new Promise((r) => setTimeout(r, 400));
-const distressStub = await page.evaluate(() => (document.body.innerText || '').includes('Not connected'));
-check('Distress remains stubbed/untouched', distressStub);
+await new Promise((r) => setTimeout(r, 1500));
+const distressLive = await page.evaluate(() => {
+  const stub = (document.body.innerText || '').includes('Not connected');
+  const iframe = document.querySelector('iframe[src*="distress-survey"]');
+  const mounted = !!(window.ToolboxDistress && typeof window.ToolboxDistress.mount === 'function');
+  return { stub, hasIframe: !!iframe, mounted };
+});
+check(
+  'Distress mounts (integrated; not stubbed)',
+  !distressLive.stub && distressLive.mounted && distressLive.hasIframe,
+  JSON.stringify(distressLive),
+);
 
 await browser.close();
 const failed = results.filter((r) => !r.ok);

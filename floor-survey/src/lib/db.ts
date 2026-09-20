@@ -5,7 +5,7 @@
  * Floor Survey–specific data lives on record.floorSurvey (byCanvasId[canvasId]).
  * Plan bytes are never stored here — hydrated from ToolboxDB media for render only.
  */
-import type { Floor, ProjectMeta, SurveyPoint } from "./types";
+import type { Bp1Gps, Floor, ProjectMeta, SurveyPoint } from "./types";
 
 declare global {
   interface Window {
@@ -46,6 +46,8 @@ type FloorLayer = {
   exclusions?: Floor["exclusions"];
   planTransform?: Floor["planTransform"];
   points: SurveyPoint[];
+  /** GPS captured at BP1 establishment — for Report Builder later. */
+  bp1Gps?: Bp1Gps;
 };
 
 type FloorSurveyRoot = {
@@ -160,6 +162,7 @@ function layerToFloor(
     transitionGroupAverages: layer.transitionGroupAverages,
     exclusions: layer.exclusions,
     planTransform: layer.planTransform,
+    bp1Gps: layer.bp1Gps,
   };
 }
 
@@ -176,6 +179,7 @@ function persistFloorFields(layer: FloorLayer, floor: Floor) {
   layer.transitionGroupAverages = floor.transitionGroupAverages;
   layer.exclusions = floor.exclusions;
   layer.planTransform = floor.planTransform;
+  layer.bp1Gps = floor.bp1Gps;
   layer.updatedAt = Date.now();
   // Never persist planDataUrl / dimensions — CF canvas owns the plan.
 }
@@ -290,6 +294,16 @@ export async function savePoint(p: SurveyPoint) {
   const idx = layer.points.findIndex((x) => x.id === p.id);
   if (idx >= 0) layer.points[idx] = p;
   else layer.points.push(p);
+  layer.updatedAt = Date.now();
+  await saveRecord(record);
+}
+
+/** Persist GPS captured at BP1 / base station (field tap). Report Builder reads later. */
+export async function saveBp1Gps(floorId: string, gps: Bp1Gps) {
+  const cfId = requireCfId();
+  const record = await loadRecord(cfId);
+  const layer = ensureLayer(record, floorId);
+  layer.bp1Gps = gps;
   layer.updatedAt = Date.now();
   await saveRecord(record);
 }
