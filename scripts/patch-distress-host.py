@@ -5,19 +5,21 @@ from pathlib import Path
 path = Path("/workspace/distress-survey/survey.html")
 html = path.read_text()
 
-# --- CSS: level pill ---
+# --- CSS: level pill (second row under proven work-head) ---
 LEVEL_CSS = """
   /* ---------- Toolbox host: level pill (multi-canvas selector) ---------- */
-  .level-pill{position:relative;flex-shrink:0;margin-top:3px;align-self:flex-start;max-width:100%}
+  /* Second row under proven work-head — keeps back/title/icons geometry intact. */
+  body.host-mode .work-head{flex-wrap:wrap}
+  .level-pill{position:relative;flex:1 0 100%;order:1;align-self:stretch;margin:0;padding:0 0 2px 48px;box-sizing:border-box}
   .level-pill > button{
-    display:inline-flex;align-items:center;gap:4px;max-width:100%;
-    height:26px;padding:0 10px;border-radius:999px;border:1px solid var(--line);
+    display:inline-flex;align-items:center;gap:3px;max-width:min(12rem,100%);
+    height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--line);
     background:var(--paper);color:var(--ink);font-size:12px;font-weight:600;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .level-pill > button:active{transform:scale(.97)}
   .level-pill .lp-caret{font-size:10px;color:var(--muted);flex-shrink:0}
   .level-pill .lp-menu{
-    display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:11rem;
+    display:none;position:absolute;top:calc(100% + 2px);left:48px;min-width:11rem;
     background:var(--paper);border:1px solid var(--line);border-radius:10px;
     box-shadow:0 8px 24px rgba(0,0,0,.14);z-index:80;padding:4px;max-height:50vh;overflow:auto}
   .level-pill.open .lp-menu{display:block}
@@ -32,22 +34,24 @@ LEVEL_CSS = """
   body.host-mode .host-hide{display:none !important}
 """
 
-if "level-pill{position:relative" not in html:
-    html = html.replace(
-        "  .work-head .title small{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600}",
-        "  .work-head .title small{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600}\n"
-        + LEVEL_CSS,
-        1,
-    )
+# Keep subtitle on one line (proven header is a horizontal flex row).
+TITLE_SMALL = "  .work-head .title small{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600}"
+TITLE_SMALL_HOST = (
+    "  .work-head .title small{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;\n"
+    "    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+)
 
-# --- HTML: level pill under title (keeps proven icon row intact on phones) ---
+if "level-pill{position:relative" not in html:
+    html = html.replace(TITLE_SMALL, TITLE_SMALL_HOST + "\n" + LEVEL_CSS, 1)
+
+# --- HTML: level pill after title; CSS order:1 + basis 100% → second row ---
 LEVEL_HTML = """
-      <div class="level-pill host-only" id="levelPill" hidden>
-        <button type="button" id="levelPillBtn" onclick="toggleLevelPill(event)" aria-haspopup="listbox" aria-expanded="false">
-          <span id="levelPillLabel">Level</span><span class="lp-caret">▾</span>
-        </button>
-        <div class="lp-menu" id="levelPillMenu" role="listbox"></div>
-      </div>
+    <div class="level-pill host-only" id="levelPill" hidden>
+      <button type="button" id="levelPillBtn" onclick="toggleLevelPill(event)" aria-haspopup="listbox" aria-expanded="false">
+        <span id="levelPillLabel">Level</span><span class="lp-caret">▾</span>
+      </button>
+      <div class="lp-menu" id="levelPillMenu" role="listbox"></div>
+    </div>
 """
 
 if 'id="levelPill"' not in html:
@@ -60,10 +64,10 @@ if 'id="levelPill"' not in html:
         """    <div class="title">
       <b id="wTitle"></b>
       <small id="wSub"></small>
+    </div>
 """
         + LEVEL_HTML
-        + """    </div>
-    <button class="icon-btn" id="wSave" onclick="manualSave()" title="Save">💾</button>""",
+        + """    <button class="icon-btn" id="wSave" onclick="manualSave()" title="Save">💾</button>""",
         1,
     )
 
@@ -475,9 +479,11 @@ refreshSubtitle = function () {
   const pics = pins.reduce((a, p) => a + (isExternal ? (p.extPhotoCount || 0) : ((p.photos || []).length)), 0);
   const pinLabel = n + ' pin' + (n === 1 ? '' : 's');
   const picLabel = pics + ' pic' + (pics === 1 ? '' : 's');
+  // Proven format: mode · pins · pics; append global total only when level filter hides some.
   const total = all.length;
-  document.getElementById('wSub').textContent =
-    pinLabel + ' · ' + picLabel + (total !== n ? ' · ' + total + ' total' : '');
+  let sub = project.mode + ' · ' + pinLabel + ' · ' + picLabel;
+  if (total !== n) sub += ' · ' + total + ' total';
+  document.getElementById('wSub').textContent = sub;
   const btn = document.getElementById('pinPickerBtn');
   const cnt = document.getElementById('pinPickerCount');
   if (btn && cnt) {

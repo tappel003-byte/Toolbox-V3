@@ -1361,6 +1361,9 @@ body.floor-survey-open .app-bar {
 /* ---- Distress Survey host (proven FRP fills the canvas) ---- */
 body.distress-survey-open {
   background: #f4f0e8;
+  height: 100%;
+  max-height: 100dvh;
+  overflow: hidden;
 }
 
 body.distress-survey-open .app-bar {
@@ -1374,6 +1377,7 @@ body.distress-survey-open .app-bar {
   width: 100%;
   height: 100%;
   min-height: 0;
+  flex: 1 1 auto;
 }
 
 .distress-survey-host {
@@ -1381,4 +1385,13 @@ body.distress-survey-open .app-bar {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+.distress-survey-host iframe {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  background: #f4f0e8;
 }
