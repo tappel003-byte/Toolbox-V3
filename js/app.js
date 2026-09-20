@@ -787,8 +787,6 @@
       editorPanels.forEach(function (panel) {
         panel.hidden = panel.getAttribute('data-edit-panel') !== next;
       });
-      const activePanel = app.querySelector('[data-edit-panel="' + next + '"]');
-      if (activePanel) activePanel.scrollIntoView({ block: 'start' });
     }
 
     editorTabs.forEach(function (tab) {

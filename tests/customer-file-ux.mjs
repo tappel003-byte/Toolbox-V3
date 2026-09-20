@@ -123,8 +123,13 @@ for (const viewport of viewports) {
     tabs: document.querySelectorAll('[data-edit-section]').length,
     visiblePanels: [...document.querySelectorAll('[data-edit-panel]')].filter((panel) => !panel.hidden).length,
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    scrollTop: document.querySelector('#app-view')?.scrollTop || 0,
   }));
-  check(`${viewport.name}: sectioned editor remains contained`, editorLayout.tabs === 3 && editorLayout.visiblePanels === 1 && !editorLayout.overflow, JSON.stringify(editorLayout));
+  check(
+    `${viewport.name}: sectioned editor remains contained`,
+    editorLayout.tabs === 3 && editorLayout.visiblePanels === 1 && !editorLayout.overflow && editorLayout.scrollTop === 0,
+    JSON.stringify(editorLayout),
+  );
   await page.screenshot({
     path: `${OUT}/customer-file-editor-${viewport.name}.png`,
     fullPage: true,
