@@ -15,7 +15,7 @@
 // sw.js file's own bytes change; a precached static asset edited without
 // bumping this stays served from the stale cache indefinitely on already
 // installed devices, invisibly, no matter how many times it's redeployed.
-const CACHE_NAME = 'toolbox-shell-v24';
+const CACHE_NAME = 'toolbox-shell-v25';
 const OFFLINE_DOCUMENT = '/index.html';
 
 const STATIC_SHELL = [
@@ -37,6 +37,10 @@ const STATIC_SHELL = [
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/icons/Distress%20Survey.png',
+  '/icons/Floor%20Survey.png',
+  '/icons/Diagnostics.png',
+  '/icons/report-builder.png',
 ];
 
 async function cacheOfflineDocument(cache) {
