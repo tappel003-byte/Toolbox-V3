@@ -116,6 +116,21 @@ const initial = await page.evaluate(async () => ({
 check('Expired Trash file auto-purges after 120 days', !initial.expiredRecord && !initial.expiredMedia, JSON.stringify(initial));
 check('Setup-only file is not classified as investigation data', initial.setupClassifiedWorked === false, JSON.stringify(initial));
 check('Distress pin classifies file as investigation data', initial.workedClassifiedWorked === true, JSON.stringify(initial));
+await page.screenshot({ path: `${OUT}/customer-file-cabinet-trash-phone.png`, fullPage: true });
+for (const viewport of [
+  { name: 'ipad', width: 820, height: 1180 },
+  { name: 'desktop', width: 1440, height: 960 },
+]) {
+  await page.setViewport({ width: viewport.width, height: viewport.height, deviceScaleFactor: 1 });
+  const cabinetLayout = await page.evaluate(() => ({
+    rows: document.querySelectorAll('.cabinet-row').length,
+    trashButton: document.querySelector('#cabinet-trash')?.textContent?.trim(),
+    overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  }));
+  check(`${viewport.name}: cabinet Trash controls remain contained`, cabinetLayout.rows === 3 && /Trash/.test(cabinetLayout.trashButton || '') && !cabinetLayout.overflow, JSON.stringify(cabinetLayout));
+  await page.screenshot({ path: `${OUT}/customer-file-cabinet-trash-${viewport.name}.png`, fullPage: true });
+}
+await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
 
 async function openRowMenu(name) {
   await page.evaluate((target) => {
