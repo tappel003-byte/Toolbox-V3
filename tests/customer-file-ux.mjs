@@ -116,6 +116,19 @@ for (const viewport of viewports) {
     path: `${OUT}/customer-file-ux-${viewport.name}.png`,
     fullPage: true,
   });
+
+  await page.goto(`${BASE}#/file/ux-ready/edit/customer`, { waitUntil: 'networkidle0' });
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  const editorLayout = await page.evaluate(() => ({
+    tabs: document.querySelectorAll('[data-edit-section]').length,
+    visiblePanels: [...document.querySelectorAll('[data-edit-panel]')].filter((panel) => !panel.hidden).length,
+    overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  }));
+  check(`${viewport.name}: sectioned editor remains contained`, editorLayout.tabs === 3 && editorLayout.visiblePanels === 1 && !editorLayout.overflow, JSON.stringify(editorLayout));
+  await page.screenshot({
+    path: `${OUT}/customer-file-editor-${viewport.name}.png`,
+    fullPage: true,
+  });
 }
 
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
