@@ -100,6 +100,17 @@ Concrete Customer File record ownership for later app plug-in. Architecture is c
 
 - Will be model-agnostic — no permanent dependency on a single AI vendor. This is future architecture, not an early milestone.
 
+## Open product questions / possibilities — NOT YET DECIDED
+
+These notes preserve active product possibilities so they are not lost. They are **not implementation authorization or requirements**. Do not implement them unless the product owner explicitly decides and authorizes the relevant scope.
+
+- **Quick Capture / Customer File photos:** Quick Capture may remain conveniently accessible from Distress Survey while the resulting photographs are stored with the Customer File. A possible workflow is to choose a subject such as Interior, Exterior, Grading & Drainage, or Other, with the resulting photo folder named from the subject plus the date the photographs were taken. Exact workflow, storage shape, and UI are not yet decided.
+- **Report Builder startup:** Report Builder may substantially self-populate from information Toolbox already knows rather than beginning with a gateway questionnaire. Questions may instead appear only for particular report pages/sections where Toolbox cannot infer the needed context. Exact workflow is not yet decided.
+- **AI-assisted reporting:** Future model-agnostic AI connectors may use structured Customer File and application information to help organize evidence, summarize material, ask targeted questions where professional context is missing, and assist with technical report drafting. Exact interaction and architecture are not yet decided.
+- **Distress visual/menu cleanup:** Possible changes include removing the unused Clear all drawings command, reconsidering how Quick Capture is presented, and evaluating visual/chrome consistency with the other Toolbox applications. None of these changes is decided.
+
+---
+
 ## Cloud, offline, and access
 
 - Cloud-backed does not mean cloud-dependent — loss of internet in the field must not remove the ability to capture data, only synchronization.
