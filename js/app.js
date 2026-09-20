@@ -89,6 +89,27 @@
       ' · ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   }
 
+  function customerInitials(record) {
+    const first = (record && record.firstName || '').trim();
+    const last = (record && record.lastName || '').trim();
+    const letters = (first ? first.charAt(0) : '') + (last ? last.charAt(0) : '');
+    return letters.toUpperCase() || 'CF';
+  }
+
+  function planReadiness(record) {
+    const canvases = record && record.planSetup && Array.isArray(record.planSetup.canvases)
+      ? record.planSetup.canvases
+      : [];
+    const ready = canvases.filter(function (canvas) {
+      return window.ToolboxPlanSetup && window.ToolboxPlanSetup.hasUsablePlan(canvas);
+    });
+    return {
+      canvases: canvases,
+      ready: ready,
+      hasPlan: ready.length > 0,
+    };
+  }
+
   // ---- Routing ----------------------------------------------------------
   //
   // #/file/:id          → Customer File home (hub)
@@ -98,12 +119,13 @@
 
   function parseRoute() {
     const hash = window.location.hash || '#/';
-    const match = hash.match(/^#\/file\/([^/]+)(?:\/(edit|plan|distress|floor|diagnostics|report))?$/);
+    const match = hash.match(/^#\/file\/([^/]+)(?:\/(edit|plan|distress|floor|diagnostics|report))?(?:\/(customer|contacts|plans))?$/);
     if (match) {
       const id = decodeURIComponent(match[1]);
       const sub = match[2] || null;
-      if (sub === 'plan') return { view: 'edit', id: id, legacyPlan: true };
-      if (sub === 'edit') return { view: 'edit', id: id };
+      const section = match[3] || null;
+      if (sub === 'plan') return { view: 'edit', id: id, section: 'plans', legacyPlan: true };
+      if (sub === 'edit') return { view: 'edit', id: id, section: section };
       if (sub === 'floor') {
         return { view: 'floor', id: id };
       }
@@ -137,11 +159,11 @@
       }
     }
     if (route.legacyPlan) {
-      window.location.replace('#/file/' + encodeURIComponent(route.id) + '/edit');
+      window.location.replace('#/file/' + encodeURIComponent(route.id) + '/edit/plans');
       return;
     }
     if (route.view === 'edit') {
-      renderFileEdit(app, route.id);
+      renderFileEdit(app, route.id, route.section);
     } else if (route.view === 'home') {
       renderFileHome(app, route.id);
     } else if (route.view === 'floor') {
@@ -160,9 +182,20 @@
   function renderCabinet(app) {
     registerActiveFlush(null);
     app.innerHTML =
+      '<section class="cabinet-hero">' +
+      '  <div>' +
+      '    <p class="eyebrow">Toolbox file cabinet</p>' +
+      '    <h1>Customer Files</h1>' +
+      '    <p>Open a job or create a file. Customer details and plans stay together.</p>' +
+      '  </div>' +
+      '  <button type="button" id="cabinet-new" class="btn btn--accent cabinet-new">+ New Customer File</button>' +
+      '</section>' +
       '<div class="view-bar view-bar--cabinet">' +
-      '  <input type="search" id="cabinet-search" class="cabinet-search" placeholder="Search by name or address" autocomplete="off">' +
-      '  <button type="button" id="cabinet-new" class="btn btn--accent">+ New Customer FILE</button>' +
+      '  <label class="cabinet-search-wrap">' +
+      '    <span class="cabinet-search-icon" aria-hidden="true">⌕</span>' +
+      '    <span class="sr-only">Search Customer Files</span>' +
+      '    <input type="search" id="cabinet-search" class="cabinet-search" placeholder="Search by customer or address" autocomplete="off">' +
+      '  </label>' +
       '</div>' +
       '<div class="cabinet-list" id="cabinet-list"></div>';
 
@@ -235,6 +268,10 @@
       window.location.hash = '#/file/' + encodeURIComponent(record.id);
     });
 
+    const avatar = document.createElement('span');
+    avatar.className = 'cabinet-row__avatar';
+    avatar.textContent = customerInitials(record);
+
     const main = document.createElement('span');
     main.className = 'cabinet-row__main';
 
@@ -251,10 +288,26 @@
 
     const meta = document.createElement('span');
     meta.className = 'cabinet-row__meta';
-    meta.textContent = formatUpdated(record.updatedAt);
+    const readiness = planReadiness(record);
+    const planState = document.createElement('span');
+    planState.className = 'cabinet-row__plan-state' + (readiness.hasPlan ? ' is-ready' : '');
+    planState.textContent = readiness.hasPlan
+      ? readiness.ready.length + (readiness.ready.length === 1 ? ' plan ready' : ' plans ready')
+      : 'Plan needed';
+    const updated = document.createElement('span');
+    updated.textContent = formatUpdated(record.updatedAt);
+    meta.appendChild(planState);
+    meta.appendChild(updated);
 
+    const chevron = document.createElement('span');
+    chevron.className = 'cabinet-row__chevron';
+    chevron.setAttribute('aria-hidden', 'true');
+    chevron.textContent = '›';
+
+    row.appendChild(avatar);
     row.appendChild(main);
     row.appendChild(meta);
+    row.appendChild(chevron);
     return row;
   }
 
@@ -266,6 +319,43 @@
     diagnostics: 'Diagnostics',
     report: 'Report Builder',
   };
+
+  const APP_META = {
+    distress: {
+      label: 'Distress Survey',
+      detail: 'Observation and photo capture',
+      icon: 'icons/Distress%20Survey.png',
+    },
+    floor: {
+      label: 'Floor Survey',
+      detail: 'Elevation capture and mapping',
+      icon: 'icons/Floor%20Survey.png',
+    },
+    diagnostics: {
+      label: 'Diagnostics',
+      detail: 'Interpret evidence and patterns',
+      icon: 'icons/Diagnostics.png',
+    },
+    report: {
+      label: 'Report Builder',
+      detail: 'Assemble the professional deliverable',
+      icon: 'icons/report-builder.png',
+    },
+  };
+
+  function appTileHtml(key) {
+    const meta = APP_META[key];
+    return (
+      '<button type="button" class="cf-app-btn" data-app="' + key + '" aria-label="' + meta.label + '">' +
+      '  <span class="cf-app-btn__art"><img src="' + meta.icon + '" alt="" loading="eager"></span>' +
+      '  <span class="cf-app-btn__copy">' +
+      '    <span class="cf-app-btn__name">' + meta.label + '</span>' +
+      '    <span class="cf-app-btn__sub">' + meta.detail + '</span>' +
+      '    <span class="cf-app-btn__state">Loading…</span>' +
+      '  </span>' +
+      '</button>'
+    );
+  }
 
   function planSummaryText(record) {
     if (!record.planSetup || !Array.isArray(record.planSetup.canvases)) {
@@ -293,40 +383,78 @@
       '    <span class="file-identity__address" id="home-identity-address"></span>' +
       '  </div>' +
       '  <span class="file-status" id="home-status"></span>' +
+      '  <button type="button" id="home-edit-top" class="btn btn--quiet">Edit</button>' +
       '</div>' +
       '<div class="cf-home" id="cf-home">' +
-      '  <div class="cf-home__card">' +
-      '    <div class="cf-home__name" id="home-card-name"></div>' +
-      '    <div class="cf-home__address" id="home-card-address"></div>' +
-      '    <div class="cf-home__meta" id="home-card-meta"></div>' +
+      '  <section class="cf-home__hero">' +
+      '    <div class="cf-home__avatar" id="home-avatar" aria-hidden="true">CF</div>' +
+      '    <div class="cf-home__summary">' +
+      '      <p class="eyebrow">Open Customer File</p>' +
+      '      <h1 class="cf-home__name" id="home-card-name"></h1>' +
+      '      <p class="cf-home__address" id="home-card-address"></p>' +
+      '      <div class="cf-home__badges">' +
+      '        <span class="status-badge" id="home-contact-badge">Customer details</span>' +
+      '        <span class="status-badge" id="home-plan-badge">Checking plans…</span>' +
+      '      </div>' +
+      '    </div>' +
+      '  </section>' +
+      '  <section class="cf-setup-callout" id="home-plan-callout" hidden>' +
+      '    <div class="cf-setup-callout__icon" aria-hidden="true">⌂</div>' +
+      '    <div class="cf-setup-callout__copy">' +
+      '      <strong>Add a floor plan to begin field work</strong>' +
+      '      <span>The applications share the plan stored on this Customer File.</span>' +
+      '    </div>' +
+      '    <button type="button" id="home-plan-cta" class="btn btn--accent">Add floor plan</button>' +
+      '  </section>' +
+      '  <div class="cf-home__section-head">' +
+      '    <div>' +
+      '      <p class="eyebrow">Workspaces</p>' +
+      '      <h2>Choose where to work</h2>' +
+      '    </div>' +
+      '    <span class="cf-home__meta" id="home-card-meta"></span>' +
       '  </div>' +
       '  <div class="cf-home__apps" id="home-apps">' +
-      '    <button type="button" class="cf-app-btn" data-app="distress">Distress Survey<span class="cf-app-btn__sub">pin capture</span></button>' +
-      '    <button type="button" class="cf-app-btn" data-app="floor">Floor Survey<span class="cf-app-btn__sub">boundary + points</span></button>' +
-      '    <button type="button" class="cf-app-btn" data-app="diagnostics">Diagnostics<span class="cf-app-btn__sub">3D view</span></button>' +
-      '    <button type="button" class="cf-app-btn" data-app="report">Report Builder<span class="cf-app-btn__sub">pin schedule</span></button>' +
+      appTileHtml('distress') +
+      appTileHtml('floor') +
+      appTileHtml('diagnostics') +
+      appTileHtml('report') +
       '  </div>' +
-      '  <p class="cf-home__hint">Applications open with this Customer File. They are independent — not a required sequence.</p>' +
-      '  <button type="button" id="home-edit" class="btn btn--ghost cf-home__edit">Edit Customer File</button>' +
+      '  <p class="cf-home__hint">Each workspace opens with this Customer File. They are independent—not required steps.</p>' +
+      '  <button type="button" id="home-edit" class="btn btn--secondary cf-home__edit">Edit customer details and plans</button>' +
       '</div>';
 
     const backBtn = app.querySelector('#home-back');
     const editBtn = app.querySelector('#home-edit');
+    const editTopBtn = app.querySelector('#home-edit-top');
+    const planCta = app.querySelector('#home-plan-cta');
+    const planCallout = app.querySelector('#home-plan-callout');
     const statusEl = app.querySelector('#home-status');
     const identityName = app.querySelector('#home-identity-name');
     const identityAddress = app.querySelector('#home-identity-address');
     const cardName = app.querySelector('#home-card-name');
     const cardAddress = app.querySelector('#home-card-address');
     const cardMeta = app.querySelector('#home-card-meta');
+    const avatar = app.querySelector('#home-avatar');
+    const contactBadge = app.querySelector('#home-contact-badge');
+    const planBadge = app.querySelector('#home-plan-badge');
+    let currentRecord = null;
 
     backBtn.addEventListener('click', function () {
       window.location.hash = '#/';
     });
-    editBtn.addEventListener('click', function () {
-      window.location.hash = '#/file/' + encodeURIComponent(id) + '/edit';
-    });
+    function editFile(section) {
+      window.location.hash = '#/file/' + encodeURIComponent(id) + '/edit' + (section ? '/' + section : '');
+    }
+    editBtn.addEventListener('click', function () { editFile('customer'); });
+    editTopBtn.addEventListener('click', function () { editFile('customer'); });
+    planCta.addEventListener('click', function () { editFile('plans'); });
     app.querySelectorAll('.cf-app-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
+        if (!currentRecord) return;
+        if (!planReadiness(currentRecord).hasPlan) {
+          editFile('plans');
+          return;
+        }
         const appKey = btn.getAttribute('data-app');
         window.location.hash = '#/file/' + encodeURIComponent(id) + '/' + appKey;
       });
@@ -351,12 +479,26 @@
       return existing;
     }).then(function (record) {
       if (!record) return;
+      currentRecord = record;
+      const readiness = planReadiness(record);
+      const hasName = !!((record.firstName || '').trim() || (record.lastName || '').trim());
+      const hasAddress = !!(record.propertyAddress || '').trim();
       identityName.textContent = displayName(record);
       identityAddress.textContent = displayAddress(record);
       cardName.textContent = displayName(record);
       cardAddress.textContent = displayAddress(record);
-      cardMeta.textContent = planSummaryText(record) +
-        (record.updatedAt ? ' · updated ' + formatUpdated(record.updatedAt) : '');
+      avatar.textContent = customerInitials(record);
+      contactBadge.textContent = hasName && hasAddress ? 'Customer details ready' : 'Customer details started';
+      contactBadge.classList.toggle('is-ready', hasName && hasAddress);
+      planBadge.textContent = readiness.hasPlan ? planSummaryText(record) : 'Floor plan required';
+      planBadge.classList.toggle('is-ready', readiness.hasPlan);
+      planCallout.hidden = readiness.hasPlan;
+      cardMeta.textContent = record.updatedAt ? 'Updated ' + formatUpdated(record.updatedAt) : '';
+      app.querySelectorAll('.cf-app-btn').forEach(function (btn) {
+        const state = btn.querySelector('.cf-app-btn__state');
+        btn.classList.toggle('is-locked', !readiness.hasPlan);
+        state.textContent = readiness.hasPlan ? 'Open workspace →' : 'Add a floor plan first';
+      });
       statusEl.textContent = '';
     }).catch(function (err) {
       console.error('Failed to load Customer File home:', err);
@@ -464,7 +606,7 @@
       '</div>' +
       '<div class="cf-stub">' +
       '  <h2 class="cf-stub__title">' + label + '</h2>' +
-      '  <p class="cf-stub__msg">Not connected in Toolbox V3 yet. The Customer File is ready; this application will use it in a later slice. Proven field apps are not redesigned here.</p>' +
+      '  <p class="cf-stub__msg">Not connected in Toolbox yet. The Customer File is ready; this application will use it in a later slice. Proven field apps are not redesigned here.</p>' +
       '  <button type="button" id="stub-home" class="btn btn--accent">Back to Customer File</button>' +
       '</div>';
     function goHome() {
@@ -515,8 +657,15 @@
     );
   }
 
+  function fieldsById(list, ids) {
+    return ids.map(function (id) {
+      return list.find(function (field) { return field.id === id; });
+    }).filter(Boolean);
+  }
 
-  function renderFileEdit(app, id) {
+  function renderFileEdit(app, id, requestedSection) {
+    const customerFields = fieldsById(FIELD_DEFS.primary, ['firstName', 'lastName', 'propertyAddress', 'notes']);
+    const contactFields = fieldsById(FIELD_DEFS.primary, ['cellPhone', 'homePhone', 'email']);
     app.innerHTML =
       '<div class="view-bar view-bar--file">' +
       '  <button type="button" id="file-back" class="btn btn--ghost">‹ Customer File</button>' +
@@ -526,27 +675,72 @@
       '  </div>' +
       '  <span class="file-status" id="file-status"></span>' +
       '</div>' +
-      '<div class="file-form-wrap">' +
-      '  <div class="customer-form" id="customer-form">' +
-      FIELD_DEFS.primary.map(fieldRowHtml).join('') +
-      '  </div>' +
-      '  <details class="additional-info" id="additional-info">' +
-      '    <summary>Additional Information</summary>' +
-      '    <div class="customer-form">' +
-      FIELD_DEFS.additional.map(fieldRowHtml).join('') +
-      '      <div class="field field--full field--checkbox">' +
-      '        <label class="checkbox-label"><input type="checkbox" id="field-mailingSameAsProperty"> Mailing / billing address same as property address</label>' +
-      '      </div>' +
-      '      <div class="field field--full" id="mailing-address-field">' +
-      '        <label for="field-mailingAddress">Mailing / billing address</label>' +
-      '        <textarea id="field-mailingAddress" rows="2" placeholder="Street address, city, state, ZIP"></textarea>' +
-      '      </div>' +
+      '<div class="cf-editor">' +
+      '  <nav class="cf-editor__nav" aria-label="Customer File sections">' +
+      '    <div class="cf-editor__nav-head">' +
+      '      <p class="eyebrow">Customer File</p>' +
+      '      <strong>Setup and details</strong>' +
       '    </div>' +
-      '  </details>' +
-      '  <div id="cf-plans-panel" class="cf-plans-panel"></div>' +
-      '  <div class="file-actions file-actions--edit">' +
-      '    <button type="button" id="file-save" class="btn btn--ghost">Save</button>' +
-      '    <button type="button" id="file-done" class="btn btn--accent">Complete</button>' +
+      '    <button type="button" class="cf-editor-tab" data-edit-section="customer">' +
+      '      <span class="cf-editor-tab__number">1</span>' +
+      '      <span class="cf-editor-tab__copy"><strong>Customer &amp; property</strong><small id="customer-section-status">Add customer details</small></span>' +
+      '      <span class="cf-editor-tab__check" aria-hidden="true">✓</span>' +
+      '    </button>' +
+      '    <button type="button" class="cf-editor-tab" data-edit-section="contacts">' +
+      '      <span class="cf-editor-tab__number">2</span>' +
+      '      <span class="cf-editor-tab__copy"><strong>Contacts</strong><small id="contacts-section-status">Optional details</small></span>' +
+      '      <span class="cf-editor-tab__check" aria-hidden="true">✓</span>' +
+      '    </button>' +
+      '    <button type="button" class="cf-editor-tab" data-edit-section="plans">' +
+      '      <span class="cf-editor-tab__number">3</span>' +
+      '      <span class="cf-editor-tab__copy"><strong>Plans &amp; levels</strong><small id="plans-section-status">Floor plan required</small></span>' +
+      '      <span class="cf-editor-tab__check" aria-hidden="true">✓</span>' +
+      '    </button>' +
+      '    <p class="cf-editor__nav-note">Changes save automatically and remain available offline.</p>' +
+      '  </nav>' +
+      '  <div class="file-form-wrap">' +
+      '    <section class="cf-editor-panel" data-edit-panel="customer">' +
+      '      <header class="cf-editor-panel__head">' +
+      '        <span class="cf-editor-panel__step">1</span>' +
+      '        <div><p class="eyebrow">Customer &amp; property</p><h1>Who and where is this file for?</h1><p>Capture the identity Toolbox will reuse throughout the investigation and report.</p></div>' +
+      '      </header>' +
+      '      <div class="customer-form" id="customer-form">' +
+      customerFields.map(fieldRowHtml).join('') +
+      '      </div>' +
+      '    </section>' +
+      '    <section class="cf-editor-panel" data-edit-panel="contacts" hidden>' +
+      '      <header class="cf-editor-panel__head">' +
+      '        <span class="cf-editor-panel__step">2</span>' +
+      '        <div><p class="eyebrow">Contacts</p><h1>How should we reach them?</h1><p>Keep useful contact information with the file so downstream work never asks twice.</p></div>' +
+      '      </header>' +
+      '      <div class="customer-form">' +
+      contactFields.map(fieldRowHtml).join('') +
+      '      </div>' +
+      '      <details class="additional-info" id="additional-info">' +
+      '        <summary>Additional contact information</summary>' +
+      '        <div class="customer-form">' +
+      FIELD_DEFS.additional.map(fieldRowHtml).join('') +
+      '          <div class="field field--full field--checkbox">' +
+      '            <label class="checkbox-label"><input type="checkbox" id="field-mailingSameAsProperty"> Mailing / billing address same as property address</label>' +
+      '          </div>' +
+      '          <div class="field field--full" id="mailing-address-field">' +
+      '            <label for="field-mailingAddress">Mailing / billing address</label>' +
+      '            <textarea id="field-mailingAddress" rows="2" placeholder="Street address, city, state, ZIP"></textarea>' +
+      '          </div>' +
+      '        </div>' +
+      '      </details>' +
+      '    </section>' +
+      '    <section class="cf-editor-panel cf-editor-panel--plans" data-edit-panel="plans" hidden>' +
+      '      <header class="cf-editor-panel__head">' +
+      '        <span class="cf-editor-panel__step">3</span>' +
+      '        <div><p class="eyebrow">Plans &amp; levels</p><h1>Establish the shared working plan</h1><p>One saved floor plan unlocks every workspace. Rooms and additional levels can be refined later.</p></div>' +
+      '      </header>' +
+      '      <div id="cf-plans-panel" class="cf-plans-panel"></div>' +
+      '    </section>' +
+      '    <div class="file-actions file-actions--edit">' +
+      '      <button type="button" id="file-save" class="btn btn--secondary">Save now</button>' +
+      '      <button type="button" id="file-done" class="btn btn--accent">Done</button>' +
+      '    </div>' +
       '  </div>' +
       '</div>';
 
@@ -563,6 +757,11 @@
     const addressFeedbackEl = app.querySelector('#address-feedback');
     const useLocationBtn = app.querySelector('#use-current-location');
     const plansPanel = app.querySelector('#cf-plans-panel');
+    const editorTabs = app.querySelectorAll('[data-edit-section]');
+    const editorPanels = app.querySelectorAll('[data-edit-panel]');
+    const customerSectionStatus = app.querySelector('#customer-section-status');
+    const contactsSectionStatus = app.querySelector('#contacts-section-status');
+    const plansSectionStatus = app.querySelector('#plans-section-status');
 
     let record = null;
     let saveTimer = null;
@@ -577,6 +776,25 @@
     let activeSuggestionIndex = -1;
     let addressDebounceTimer = null;
     let addressFeedbackTimer = null;
+
+    function switchEditorSection(section) {
+      const next = ['customer', 'contacts', 'plans'].indexOf(section) !== -1 ? section : 'customer';
+      editorTabs.forEach(function (tab) {
+        const active = tab.getAttribute('data-edit-section') === next;
+        tab.classList.toggle('is-active', active);
+        tab.setAttribute('aria-current', active ? 'step' : 'false');
+      });
+      editorPanels.forEach(function (panel) {
+        panel.hidden = panel.getAttribute('data-edit-panel') !== next;
+      });
+    }
+
+    editorTabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        switchEditorSection(tab.getAttribute('data-edit-section'));
+      });
+    });
+    switchEditorSection(requestedSection || 'customer');
 
     function fieldEl(fieldId) {
       return app.querySelector('#field-' + fieldId);
@@ -801,9 +1019,31 @@
 
     function setStatus(text) { statusEl.textContent = text; }
 
+    function refreshEditorProgress() {
+      if (!record) return;
+      const hasName = !!((fieldEl('firstName').value || '').trim() || (fieldEl('lastName').value || '').trim());
+      const hasAddress = !!(propertyTextarea.value || '').trim();
+      const hasContact = !!(
+        (fieldEl('cellPhone').value || '').trim() ||
+        (fieldEl('homePhone').value || '').trim() ||
+        (fieldEl('email').value || '').trim()
+      );
+      const readiness = planReadiness(record);
+      const customerReady = hasName && hasAddress;
+      customerSectionStatus.textContent = customerReady ? 'Name and address ready' : 'Add name and address';
+      contactsSectionStatus.textContent = hasContact ? 'Contact details added' : 'Optional details';
+      plansSectionStatus.textContent = readiness.hasPlan ? planSummaryText(record) : 'Floor plan required';
+      editorTabs.forEach(function (tab) {
+        const section = tab.getAttribute('data-edit-section');
+        const ready = section === 'customer' ? customerReady : section === 'contacts' ? hasContact : readiness.hasPlan;
+        tab.classList.toggle('is-complete', ready);
+      });
+    }
+
     function scheduleSave() {
       dirty = true;
       setStatus('Unsaved changes…');
+      refreshEditorProgress();
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(function () {
         flushSave().catch(function () {});
@@ -875,7 +1115,10 @@
 
     plansApi = window.ToolboxPlanSetup.mountPlansPanel(plansPanel, {
       getRecord: function () { return record; },
-      setDirty: function (v) { dirty = !!v; },
+      setDirty: function (v) {
+        dirty = !!v;
+        refreshEditorProgress();
+      },
       scheduleSave: scheduleSave,
       flushSave: flushSave,
       setStatus: setStatus,
@@ -895,8 +1138,10 @@
       updateIdentityBar();
       backBtn.textContent = isNewFile ? '‹ Cabinet' : '‹ Customer File';
       return plansApi.syncFromRecord().then(function () {
+        refreshEditorProgress();
+        if (!existing) dirty = true;
         if (dirty) return flushSave();
-        setStatus(existing ? 'Saved ' + formatUpdated(record.updatedAt) : 'New — not yet saved');
+        setStatus('Saved ' + formatUpdated(record.updatedAt));
       });
     }).catch(function (err) {
       console.error('Failed to load Customer File:', err);
