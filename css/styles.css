@@ -1535,6 +1535,21 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   background: #fff;
 }
 
+.btn--danger {
+  color: #fff;
+  background: #a53f32;
+  border-color: #a53f32;
+}
+
+.btn--danger:hover {
+  background: #883329;
+}
+
+.btn--danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .btn--ghost {
   color: var(--navy);
   font-weight: 700;
@@ -1579,6 +1594,33 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 .cabinet-new {
   min-height: 46px;
   padding: 11px 18px;
+}
+
+.cabinet-hero__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.cabinet-trash {
+  min-height: 46px;
+}
+
+.cabinet-notice {
+  width: calc(100% - 40px);
+  max-width: calc(62rem - 40px);
+  margin: 0 auto 12px;
+  padding: 10px 12px;
+  color: var(--success);
+  background: var(--success-soft);
+  border: 1px solid #c7e3d6;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.cabinet-notice[hidden] {
+  display: none;
 }
 
 .view-bar--cabinet {
@@ -1644,6 +1686,18 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
+.cabinet-row-shell {
+  position: relative;
+}
+
+.cabinet-row-shell .cabinet-row {
+  padding-right: 62px;
+}
+
+.cabinet-row-shell .cabinet-row__chevron {
+  display: none;
+}
+
 .cabinet-row:hover {
   border-color: #b8c3c9;
   box-shadow: var(--shadow-md);
@@ -1701,6 +1755,209 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   color: #8e9aa3;
   font-size: 28px;
   font-weight: 300;
+}
+
+.cabinet-row-menu {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  z-index: 6;
+  transform: translateY(-50%);
+}
+
+.cabinet-row-menu__toggle {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  padding: 0;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+
+.cabinet-row-menu__toggle:hover,
+.cabinet-row-menu.is-open .cabinet-row-menu__toggle {
+  color: var(--navy);
+  background: #edf2f4;
+}
+
+.cabinet-row-menu__danger {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  display: none;
+  width: max-content;
+  min-width: 178px;
+  padding: 11px 13px;
+  color: #8e3329;
+  background: #fff;
+  border: 1px solid #e3c8c3;
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cabinet-row-menu.is-open .cabinet-row-menu__danger {
+  display: block;
+}
+
+.cabinet-row-menu__danger:hover {
+  background: #fff4f1;
+}
+
+/* Customer File Trash */
+.trash-view {
+  width: 100%;
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 30px 20px 42px;
+}
+
+.trash-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.trash-head h1 {
+  margin: 0;
+  color: var(--navy);
+  font-size: clamp(28px, 4vw, 40px);
+  letter-spacing: -0.035em;
+}
+
+.trash-head p:last-child {
+  max-width: 38rem;
+  margin: 7px 0 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.trash-view .cabinet-notice {
+  width: 100%;
+  max-width: none;
+}
+
+.trash-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.trash-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 82px;
+  padding: 13px 16px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.trash-row__main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trash-row__main strong {
+  overflow: hidden;
+  color: var(--navy);
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trash-row__main span {
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trash-row__main small {
+  margin-top: 3px;
+  color: var(--accent-dark);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.trash-empty-state {
+  width: 100%;
+  margin: 0;
+  padding: 42px 16px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+}
+
+/* Explicit yes/no confirmation for destructive Customer File actions. */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  padding: 18px;
+  place-items: center;
+  background: rgba(3, 22, 36, 0.62);
+  backdrop-filter: blur(5px);
+}
+
+.confirm-overlay[hidden] {
+  display: none;
+}
+
+.confirm-card {
+  width: 100%;
+  max-width: 430px;
+  padding: 22px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  box-shadow: 0 24px 70px rgba(3, 22, 36, 0.3);
+}
+
+.confirm-card h2 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 21px;
+  letter-spacing: -0.02em;
+}
+
+.confirm-card p {
+  margin: 10px 0 20px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.confirm-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.confirm-card__actions .btn {
+  white-space: normal;
 }
 
 /* Open Customer File */
@@ -2388,6 +2645,19 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
     width: 100%;
   }
 
+  .cabinet-hero__actions {
+    width: 100%;
+    flex-direction: column-reverse;
+  }
+
+  .cabinet-hero__actions .btn {
+    width: 100%;
+  }
+
+  .cabinet-notice {
+    width: calc(100% - 28px);
+  }
+
   .view-bar--cabinet {
     padding: 0 14px 12px;
   }
@@ -2410,6 +2680,39 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 
   .cabinet-row__meta {
     display: none;
+  }
+
+  .trash-view {
+    padding: 23px 14px 30px;
+  }
+
+  .trash-head {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .trash-head .btn {
+    width: 100%;
+  }
+
+  .trash-row {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .trash-row > .btn {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .confirm-card__actions {
+    flex-direction: column;
+  }
+
+  .confirm-card__actions .btn {
+    width: 100%;
   }
 
   .cf-home {

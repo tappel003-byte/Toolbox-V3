@@ -20,6 +20,9 @@ const DB_NAME = 'toolbox';
 const DB_VERSION = 2;
 const STORE_CUSTOMER_FILES = 'customerFiles';
 const STORE_MEDIA = 'media';
+const TRASH_RETENTION_DAYS = 120;
+const DISTRESS_MEDIA_DB = 'pgg_photos_v1';
+const DISTRESS_MEDIA_STORE = 'photos';
 
 let dbPromise = null;
 
@@ -103,6 +106,114 @@ function deleteMedia(id) {
   });
 }
 
+function moveCustomerFileToTrash(id) {
+  return getCustomerFile(id).then((record) => {
+    if (!record) return null;
+    const deletedAt = new Date();
+    const purgeAt = new Date(deletedAt.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    record.deletedAt = deletedAt.toISOString();
+    record.purgeAfter = purgeAt.toISOString();
+    record.updatedAt = deletedAt.toISOString();
+    return saveCustomerFile(record);
+  });
+}
+
+function restoreCustomerFile(id) {
+  return getCustomerFile(id).then((record) => {
+    if (!record) return null;
+    delete record.deletedAt;
+    delete record.purgeAfter;
+    record.updatedAt = new Date().toISOString();
+    return saveCustomerFile(record);
+  });
+}
+
+function planMediaIds(record) {
+  const canvases = record && record.planSetup && Array.isArray(record.planSetup.canvases)
+    ? record.planSetup.canvases
+    : [];
+  return canvases.map((canvas) => canvas && canvas.plan && canvas.plan.id).filter(Boolean);
+}
+
+function distressPhotoIds(record) {
+  const pins = record && record.distress && Array.isArray(record.distress.pins)
+    ? record.distress.pins
+    : [];
+  const ids = [];
+  pins.forEach((pin) => {
+    const photos = pin && Array.isArray(pin.photos) ? pin.photos : [];
+    photos.forEach((id) => {
+      if (typeof id === 'string' && id.indexOf('ph_') === 0) ids.push(id);
+    });
+  });
+  return ids;
+}
+
+function deleteDistressMedia(ids) {
+  const unique = Array.from(new Set(ids || []));
+  if (!unique.length) return Promise.resolve(0);
+  return new Promise((resolve) => {
+    const request = indexedDB.open(DISTRESS_MEDIA_DB);
+    request.onerror = () => resolve(0);
+    request.onsuccess = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(DISTRESS_MEDIA_STORE)) {
+        db.close();
+        resolve(0);
+        return;
+      }
+      const tx = db.transaction(DISTRESS_MEDIA_STORE, 'readwrite');
+      const store = tx.objectStore(DISTRESS_MEDIA_STORE);
+      unique.forEach((id) => store.delete(id));
+      tx.oncomplete = () => {
+        db.close();
+        resolve(unique.length);
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve(0);
+      };
+      tx.onabort = () => {
+        db.close();
+        resolve(0);
+      };
+    };
+  });
+}
+
+function permanentlyDeleteCustomerFiles(records) {
+  const list = (records || []).filter((record) => record && record.id);
+  if (!list.length) return Promise.resolve({ deletedCount: 0, mediaDeletedCount: 0 });
+  const planIds = Array.from(new Set(list.flatMap(planMediaIds)));
+  const photoIds = Array.from(new Set(list.flatMap(distressPhotoIds)));
+
+  return openDatabase().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE_CUSTOMER_FILES, STORE_MEDIA], 'readwrite');
+    const files = tx.objectStore(STORE_CUSTOMER_FILES);
+    const media = tx.objectStore(STORE_MEDIA);
+    list.forEach((record) => files.delete(record.id));
+    planIds.forEach((id) => media.delete(id));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  })).then(() => deleteDistressMedia(photoIds)).then((photoCount) => ({
+    deletedCount: list.length,
+    mediaDeletedCount: planIds.length + photoCount,
+  }));
+}
+
+function purgeExpiredCustomerFiles(now) {
+  const time = now instanceof Date ? now.getTime() : Date.now();
+  return getAllCustomerFiles().then((records) => {
+    const expired = records.filter((record) => {
+      if (!record || !record.deletedAt || !record.purgeAfter) return false;
+      const purgeAt = Date.parse(record.purgeAfter);
+      return Number.isFinite(purgeAt) && purgeAt <= time;
+    });
+    return permanentlyDeleteCustomerFiles(expired);
+  });
+}
+
 window.ToolboxDB = {
   saveCustomerFile,
   getCustomerFile,
@@ -110,4 +221,9 @@ window.ToolboxDB = {
   putMedia,
   getMedia,
   deleteMedia,
+  moveCustomerFileToTrash,
+  restoreCustomerFile,
+  permanentlyDeleteCustomerFiles,
+  purgeExpiredCustomerFiles,
+  TRASH_RETENTION_DAYS,
 };

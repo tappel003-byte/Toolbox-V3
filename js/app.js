@@ -110,6 +110,104 @@
     };
   }
 
+  function hasInvestigationData(record) {
+    if (!record) return false;
+    const distress = record.distress || {};
+    if ((Array.isArray(distress.pins) && distress.pins.length) ||
+        (Array.isArray(distress.drawings) && distress.drawings.length)) {
+      return true;
+    }
+
+    const floor = record.floorSurvey || {};
+    if ((typeof floor.inspectionDate === 'string' && floor.inspectionDate.trim()) ||
+        (typeof floor.surveyNotes === 'string' && floor.surveyNotes.trim()) ||
+        (Array.isArray(floor.customSurfaces) && floor.customSurfaces.length) ||
+        floor.lastExportedAt) {
+      return true;
+    }
+    const floorLayers = floor.byCanvasId && typeof floor.byCanvasId === 'object'
+      ? Object.values(floor.byCanvasId)
+      : [];
+    if (floorLayers.some(function (layer) {
+      if (!layer || typeof layer !== 'object') return false;
+      return (
+        (Array.isArray(layer.points) && layer.points.length) ||
+        (Array.isArray(layer.boundary) && layer.boundary.length) ||
+        (Array.isArray(layer.areas) && layer.areas.length) ||
+        (Array.isArray(layer.notes) && layer.notes.length) ||
+        (Array.isArray(layer.transitions) && layer.transitions.length) ||
+        (Array.isArray(layer.exclusions) && layer.exclusions.length) ||
+        (layer.transitionGroupAverages && Object.keys(layer.transitionGroupAverages).length) ||
+        !!layer.scale ||
+        !!layer.bp1Gps ||
+        !!layer.planTransform
+      );
+    })) {
+      return true;
+    }
+
+    return ['diagnostics', 'report', 'reportBuilder'].some(function (key) {
+      const container = record[key];
+      return !!(container && typeof container === 'object' && Object.keys(container).length);
+    });
+  }
+
+  function daysUntilPurge(record) {
+    const purgeAt = record && Date.parse(record.purgeAfter);
+    if (!Number.isFinite(purgeAt)) return 0;
+    return Math.max(0, Math.ceil((purgeAt - Date.now()) / (24 * 60 * 60 * 1000)));
+  }
+
+  function confirmAction(options) {
+    let overlay = document.getElementById('toolbox-confirm');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'toolbox-confirm';
+      overlay.className = 'confirm-overlay';
+      overlay.hidden = true;
+      overlay.innerHTML =
+        '<section class="confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">' +
+        '  <h2 id="confirm-title"></h2>' +
+        '  <p id="confirm-message"></p>' +
+        '  <div class="confirm-card__actions">' +
+        '    <button type="button" id="confirm-no" class="btn btn--secondary">No, keep it</button>' +
+        '    <button type="button" id="confirm-yes" class="btn btn--danger">Yes</button>' +
+        '  </div>' +
+        '</section>';
+      document.body.appendChild(overlay);
+    }
+
+    const title = overlay.querySelector('#confirm-title');
+    const message = overlay.querySelector('#confirm-message');
+    const noBtn = overlay.querySelector('#confirm-no');
+    const yesBtn = overlay.querySelector('#confirm-yes');
+    title.textContent = options.title;
+    message.textContent = options.message;
+    noBtn.textContent = options.cancelLabel || 'No, keep it';
+    yesBtn.textContent = options.confirmLabel || 'Yes';
+    overlay.hidden = false;
+    noBtn.focus();
+
+    return new Promise(function (resolve) {
+      function finish(result) {
+        overlay.hidden = true;
+        noBtn.removeEventListener('click', cancel);
+        yesBtn.removeEventListener('click', confirm);
+        overlay.removeEventListener('click', outside);
+        document.removeEventListener('keydown', escape);
+        resolve(result);
+      }
+      function cancel() { finish(false); }
+      function confirm() { finish(true); }
+      function outside(event) { if (event.target === overlay) cancel(); }
+      function escape(event) { if (event.key === 'Escape') cancel(); }
+      noBtn.addEventListener('click', cancel);
+      yesBtn.addEventListener('click', confirm);
+      overlay.addEventListener('click', outside);
+      document.addEventListener('keydown', escape);
+    });
+  }
+
   // ---- Routing ----------------------------------------------------------
   //
   // #/file/:id          → Customer File home (hub)
@@ -119,6 +217,7 @@
 
   function parseRoute() {
     const hash = window.location.hash || '#/';
+    if (hash === '#/trash') return { view: 'trash' };
     const match = hash.match(/^#\/file\/([^/]+)(?:\/(edit|plan|distress|floor|diagnostics|report))?(?:\/(customer|contacts|plans))?$/);
     if (match) {
       const id = decodeURIComponent(match[1]);
@@ -172,12 +271,16 @@
       renderDistressSurvey(app, route.id);
     } else if (route.view === 'app-stub') {
       renderAppStub(app, route.id, route.app);
+    } else if (route.view === 'trash') {
+      renderTrash(app);
     } else {
       renderCabinet(app);
     }
   }
 
   // ---- Cabinet view -------------------------------------------------
+
+  let cabinetNotice = '';
 
   function renderCabinet(app) {
     registerActiveFlush(null);
@@ -188,8 +291,12 @@
       '    <h1>Customer Files</h1>' +
       '    <p>Open a job or create a file. Customer details and plans stay together.</p>' +
       '  </div>' +
-      '  <button type="button" id="cabinet-new" class="btn btn--accent cabinet-new">+ New Customer File</button>' +
+      '  <div class="cabinet-hero__actions">' +
+      '    <button type="button" id="cabinet-trash" class="btn btn--secondary cabinet-trash">🗑 Trash <span id="cabinet-trash-count"></span></button>' +
+      '    <button type="button" id="cabinet-new" class="btn btn--accent cabinet-new">+ New Customer File</button>' +
+      '  </div>' +
       '</section>' +
+      '  <p class="cabinet-notice" id="cabinet-notice" hidden></p>' +
       '<div class="view-bar view-bar--cabinet">' +
       '  <label class="cabinet-search-wrap">' +
       '    <span class="cabinet-search-icon" aria-hidden="true">⌕</span>' +
@@ -202,14 +309,33 @@
     const listEl = app.querySelector('#cabinet-list');
     const searchInput = app.querySelector('#cabinet-search');
     const newBtn = app.querySelector('#cabinet-new');
+    const trashBtn = app.querySelector('#cabinet-trash');
+    const trashCount = app.querySelector('#cabinet-trash-count');
+    const notice = app.querySelector('#cabinet-notice');
+
+    if (cabinetNotice) {
+      notice.textContent = cabinetNotice;
+      notice.hidden = false;
+      cabinetNotice = '';
+    }
 
     newBtn.addEventListener('click', function () {
       window.location.hash = '#/file/' + generateId() + '/edit';
     });
+    trashBtn.addEventListener('click', function () {
+      window.location.hash = '#/trash';
+    });
 
     listEl.innerHTML = '<p class="cabinet-empty">Loading Customer Files…</p>';
 
-    window.ToolboxDB.getAllCustomerFiles().then(function (records) {
+    window.ToolboxDB.purgeExpiredCustomerFiles().catch(function (err) {
+      console.warn('Could not purge expired Customer Files:', err);
+    }).then(function () {
+      return window.ToolboxDB.getAllCustomerFiles();
+    }).then(function (allRecords) {
+      const trashed = allRecords.filter(function (record) { return !!record.deletedAt; });
+      const records = allRecords.filter(function (record) { return !record.deletedAt; });
+      trashCount.textContent = trashed.length ? '(' + trashed.length + ')' : '';
       records.sort(function (a, b) {
         return (b.updatedAt || '').localeCompare(a.updatedAt || '');
       });
@@ -241,7 +367,17 @@
         }
 
         filtered.forEach(function (record) {
-          listEl.appendChild(cabinetRowNode(record));
+          listEl.appendChild(cabinetRowNode(record, function () {
+            requestCustomerFileRemoval(record).then(function (result) {
+              if (!result) return;
+              cabinetNotice = result;
+              renderCabinet(app);
+            }).catch(function (err) {
+              console.error('Could not remove Customer File:', err);
+              cabinetNotice = 'Could not remove that Customer File. Try again.';
+              renderCabinet(app);
+            });
+          }));
         });
       }
 
@@ -258,9 +394,49 @@
       p.textContent = 'Unable to load Customer Files right now.';
       listEl.appendChild(p);
     });
+
+    app.onclick = function (event) {
+      if (event.target.closest('.cabinet-row-menu')) return;
+      app.querySelectorAll('.cabinet-row-menu.is-open').forEach(function (menu) {
+        menu.classList.remove('is-open');
+      });
+    };
   }
 
-  function cabinetRowNode(record) {
+  function requestCustomerFileRemoval(record) {
+    const worked = hasInvestigationData(record);
+    const name = displayName(record);
+    if (!worked) {
+      return confirmAction({
+        title: 'Delete setup-only file?',
+        message: name + ' has no captured survey data. This permanently deletes its contact information and plans.',
+        cancelLabel: 'No, keep file',
+        confirmLabel: 'Yes, delete permanently',
+      }).then(function (confirmed) {
+        if (!confirmed) return null;
+        return window.ToolboxDB.permanentlyDeleteCustomerFiles([record]).then(function () {
+          return name + ' was permanently deleted.';
+        });
+      });
+    }
+
+    return confirmAction({
+      title: 'Move Customer File to Trash?',
+      message: name + ' contains investigation data. The complete file will remain recoverable for 120 days.',
+      cancelLabel: 'No, keep file',
+      confirmLabel: 'Yes, move to Trash',
+    }).then(function (confirmed) {
+      if (!confirmed) return null;
+      return window.ToolboxDB.moveCustomerFileToTrash(record.id).then(function () {
+        return name + ' was moved to Trash for 120 days.';
+      });
+    });
+  }
+
+  function cabinetRowNode(record, onRemove) {
+    const shell = document.createElement('div');
+    shell.className = 'cabinet-row-shell';
+
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'cabinet-row';
@@ -308,6 +484,159 @@
     row.appendChild(main);
     row.appendChild(meta);
     row.appendChild(chevron);
+
+    const menu = document.createElement('div');
+    menu.className = 'cabinet-row-menu';
+
+    const menuToggle = document.createElement('button');
+    menuToggle.type = 'button';
+    menuToggle.className = 'cabinet-row-menu__toggle';
+    menuToggle.setAttribute('aria-label', 'More options for ' + displayName(record));
+    menuToggle.textContent = '•••';
+    menuToggle.addEventListener('click', function (event) {
+      event.stopPropagation();
+      const open = menu.classList.contains('is-open');
+      document.querySelectorAll('.cabinet-row-menu.is-open').forEach(function (other) {
+        other.classList.remove('is-open');
+      });
+      menu.classList.toggle('is-open', !open);
+    });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'cabinet-row-menu__danger';
+    removeBtn.textContent = hasInvestigationData(record) ? 'Move to Trash' : 'Delete setup-only file';
+    removeBtn.addEventListener('click', function (event) {
+      event.stopPropagation();
+      menu.classList.remove('is-open');
+      onRemove();
+    });
+
+    menu.appendChild(menuToggle);
+    menu.appendChild(removeBtn);
+    shell.appendChild(row);
+    shell.appendChild(menu);
+    return shell;
+  }
+
+  // ---- Trash ------------------------------------------------------------
+
+  function renderTrash(app) {
+    registerActiveFlush(null);
+    app.innerHTML =
+      '<div class="view-bar view-bar--file">' +
+      '  <button type="button" id="trash-back" class="btn btn--ghost">‹ Customer Files</button>' +
+      '  <div class="file-identity"><span class="file-identity__name">Trash</span></div>' +
+      '</div>' +
+      '<section class="trash-view">' +
+      '  <header class="trash-head">' +
+      '    <div><p class="eyebrow">Recoverable files</p><h1>Trash</h1><p>Customer Files containing investigation data remain recoverable for 120 days.</p></div>' +
+      '    <button type="button" id="trash-empty" class="btn btn--danger">Empty Trash</button>' +
+      '  </header>' +
+      '  <p class="cabinet-notice" id="trash-notice" hidden></p>' +
+      '  <div class="trash-list" id="trash-list"><p class="cabinet-empty">Loading Trash…</p></div>' +
+      '</section>';
+
+    const list = app.querySelector('#trash-list');
+    const emptyBtn = app.querySelector('#trash-empty');
+    const notice = app.querySelector('#trash-notice');
+
+    app.querySelector('#trash-back').addEventListener('click', function () {
+      window.location.hash = '#/';
+    });
+
+    function loadTrash(message) {
+      if (message) {
+        notice.textContent = message;
+        notice.hidden = false;
+      } else {
+        notice.hidden = true;
+      }
+      window.ToolboxDB.purgeExpiredCustomerFiles().catch(function (err) {
+        console.warn('Could not purge expired Customer Files:', err);
+      }).then(function () {
+        return window.ToolboxDB.getAllCustomerFiles();
+      }).then(function (records) {
+        const trashed = records.filter(function (record) { return !!record.deletedAt; });
+        trashed.sort(function (a, b) {
+          return (b.deletedAt || '').localeCompare(a.deletedAt || '');
+        });
+        emptyBtn.disabled = trashed.length === 0;
+        list.innerHTML = '';
+        if (!trashed.length) {
+          const p = document.createElement('p');
+          p.className = 'cabinet-empty trash-empty-state';
+          p.textContent = 'Trash is empty.';
+          list.appendChild(p);
+          return;
+        }
+        trashed.forEach(function (record) {
+          list.appendChild(trashRowNode(record, function () {
+            window.ToolboxDB.restoreCustomerFile(record.id).then(function () {
+              loadTrash(displayName(record) + ' was restored to Customer Files.');
+            }).catch(function (err) {
+              console.error('Could not restore Customer File:', err);
+              loadTrash('Could not restore that Customer File. Try again.');
+            });
+          }));
+        });
+
+        emptyBtn.onclick = function () {
+          confirmAction({
+            title: 'Permanently empty Trash?',
+            message: 'This permanently deletes ' + trashed.length + ' Customer File' + (trashed.length === 1 ? '' : 's') + ' and associated plans and photographs. This cannot be undone.',
+            cancelLabel: 'No, keep files',
+            confirmLabel: 'Yes, empty Trash',
+          }).then(function (confirmed) {
+            if (!confirmed) return;
+            emptyBtn.disabled = true;
+            window.ToolboxDB.permanentlyDeleteCustomerFiles(trashed).then(function () {
+              loadTrash('Trash was permanently emptied.');
+            }).catch(function (err) {
+              console.error('Could not empty Trash:', err);
+              loadTrash('Could not empty Trash. Try again.');
+            });
+          });
+        };
+      }).catch(function (err) {
+        console.error('Could not load Trash:', err);
+        list.innerHTML = '<p class="cabinet-empty">Unable to load Trash right now.</p>';
+      });
+    }
+
+    loadTrash('');
+  }
+
+  function trashRowNode(record, onRestore) {
+    const row = document.createElement('article');
+    row.className = 'trash-row';
+
+    const avatar = document.createElement('span');
+    avatar.className = 'cabinet-row__avatar';
+    avatar.textContent = customerInitials(record);
+
+    const main = document.createElement('div');
+    main.className = 'trash-row__main';
+    const name = document.createElement('strong');
+    name.textContent = displayName(record);
+    const address = document.createElement('span');
+    address.textContent = displayAddress(record);
+    const retention = document.createElement('small');
+    const days = daysUntilPurge(record);
+    retention.textContent = 'Permanently deletes in ' + days + ' day' + (days === 1 ? '' : 's');
+    main.appendChild(name);
+    main.appendChild(address);
+    main.appendChild(retention);
+
+    const restore = document.createElement('button');
+    restore.type = 'button';
+    restore.className = 'btn btn--secondary';
+    restore.textContent = 'Restore';
+    restore.addEventListener('click', onRestore);
+
+    row.appendChild(avatar);
+    row.appendChild(main);
+    row.appendChild(restore);
     return row;
   }
 
@@ -462,6 +791,10 @@
 
     statusEl.textContent = 'Loading…';
     window.ToolboxDB.getCustomerFile(id).then(function (existing) {
+      if (existing && existing.deletedAt) {
+        window.location.replace('#/trash');
+        return null;
+      }
       if (!existing) {
         // Brand-new id opened as home → send to edit
         window.location.replace('#/file/' + encodeURIComponent(id) + '/edit');
@@ -1115,6 +1448,10 @@
 
     setStatus('Loading…');
     window.ToolboxDB.getCustomerFile(id).then(function (existing) {
+      if (existing && existing.deletedAt) {
+        window.location.replace('#/trash');
+        return null;
+      }
       isNewFile = !existing;
       record = existing || blankCustomerFile(id);
       if (window.ToolboxPlanSetup && window.ToolboxPlanSetup.ensurePlanSetup(record) && existing) {
@@ -1122,6 +1459,7 @@
       } else if (!existing && window.ToolboxPlanSetup) {
         window.ToolboxPlanSetup.ensurePlanSetup(record);
       }
+      if (!record) return null;
       populateForm(record);
       updateIdentityBar();
       backBtn.textContent = isNewFile ? '‹ Cabinet' : '‹ Customer File';
@@ -1169,6 +1507,7 @@
   window.ToolboxApp = {
     registerActiveFlush: registerActiveFlush,
     blankCustomerFile: blankCustomerFile,
+    hasInvestigationData: hasInvestigationData,
     customerIdentity: {
       displayName: displayName,
       displayAddress: displayAddress,
