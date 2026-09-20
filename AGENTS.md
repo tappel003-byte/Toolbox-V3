@@ -51,6 +51,12 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
 - Distress photograph/pin numbering must preserve the exact proven standalone recomputation behavior across all canvases/levels. Never simplify it into permanent per-pin or per-canvas numbering.
 - Protect the canvas — the working surface takes priority over application chrome.
 
+## Device intent
+
+- **Field/mobile-first:** Customer File setup, Distress Survey, and Floor Survey must be designed first for practical field use on iPhone/iPad, touch-first and offline-capable.
+- **Desktop-first, mobile-capable:** Distress Edit, Diagnostics, and Report Builder should exploit desktop screen space and pointer precision for editing, analysis, plots, calculations, and report composition. They should still open and provide useful functionality on iPhone/iPad, but identical layout or full desktop equivalence is not required.
+- Responsive design means each workspace should fit its actual use context; do not force one identical UI across phone, tablet, and desktop.
+
 ## Deployment and review
 
 - Live deployment is required for meaningful product review.
