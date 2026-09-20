@@ -189,6 +189,20 @@ const trashView = await page.evaluate(() => ({
 check('Trash shows retention and Restore action', trashView.title === 'Trash' && trashView.row === 'Worked Survey' && /120 days/.test(trashView.retention || '') && trashView.restore === 'Restore', JSON.stringify(trashView));
 await page.screenshot({ path: `${OUT}/customer-file-trash-phone.png`, fullPage: true });
 
+for (const viewport of [
+  { name: 'ipad', width: 820, height: 1180 },
+  { name: 'desktop', width: 1440, height: 960 },
+]) {
+  await page.setViewport({ width: viewport.width, height: viewport.height, deviceScaleFactor: 1 });
+  const layout = await page.evaluate(() => ({
+    rows: document.querySelectorAll('.trash-row').length,
+    overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  }));
+  check(`${viewport.name}: Trash remains contained`, layout.rows === 1 && !layout.overflow, JSON.stringify(layout));
+  await page.screenshot({ path: `${OUT}/customer-file-trash-${viewport.name}.png`, fullPage: true });
+}
+await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
+
 await page.click('.trash-row .btn');
 await page.waitForFunction(() => document.querySelector('.trash-empty-state'));
 const restored = await page.evaluate(async () => {
