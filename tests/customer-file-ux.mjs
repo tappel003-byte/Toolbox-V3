@@ -124,10 +124,15 @@ for (const viewport of viewports) {
     visiblePanels: [...document.querySelectorAll('[data-edit-panel]')].filter((panel) => !panel.hidden).length,
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
     scrollTop: document.querySelector('#app-view')?.scrollTop || 0,
+    repeatedHeader: !!document.querySelector('.cf-editor-panel__head'),
   }));
   check(
     `${viewport.name}: sectioned editor remains contained`,
-    editorLayout.tabs === 3 && editorLayout.visiblePanels === 1 && !editorLayout.overflow && editorLayout.scrollTop === 0,
+    editorLayout.tabs === 3 &&
+      editorLayout.visiblePanels === 1 &&
+      !editorLayout.overflow &&
+      editorLayout.scrollTop === 0 &&
+      !editorLayout.repeatedHeader,
     JSON.stringify(editorLayout),
   );
   await page.screenshot({
