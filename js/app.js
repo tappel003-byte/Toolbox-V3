@@ -700,19 +700,11 @@
       '  </nav>' +
       '  <div class="file-form-wrap">' +
       '    <section class="cf-editor-panel" data-edit-panel="customer">' +
-      '      <header class="cf-editor-panel__head">' +
-      '        <span class="cf-editor-panel__step">1</span>' +
-      '        <div><p class="eyebrow">Customer &amp; property</p><h1>Who and where is this file for?</h1><p>Capture the identity Toolbox will reuse throughout the investigation and report.</p></div>' +
-      '      </header>' +
       '      <div class="customer-form" id="customer-form">' +
       customerFields.map(fieldRowHtml).join('') +
       '      </div>' +
       '    </section>' +
       '    <section class="cf-editor-panel" data-edit-panel="contacts" hidden>' +
-      '      <header class="cf-editor-panel__head">' +
-      '        <span class="cf-editor-panel__step">2</span>' +
-      '        <div><p class="eyebrow">Contacts</p><h1>How should we reach them?</h1><p>Keep useful contact information with the file so downstream work never asks twice.</p></div>' +
-      '      </header>' +
       '      <div class="customer-form">' +
       contactFields.map(fieldRowHtml).join('') +
       '      </div>' +
@@ -731,10 +723,6 @@
       '      </details>' +
       '    </section>' +
       '    <section class="cf-editor-panel cf-editor-panel--plans" data-edit-panel="plans" hidden>' +
-      '      <header class="cf-editor-panel__head">' +
-      '        <span class="cf-editor-panel__step">3</span>' +
-      '        <div><p class="eyebrow">Plans &amp; levels</p><h1>Establish the shared working plan</h1><p>One saved floor plan unlocks every workspace. Rooms and additional levels can be refined later.</p></div>' +
-      '      </header>' +
       '      <div id="cf-plans-panel" class="cf-plans-panel"></div>' +
       '    </section>' +
       '    <div class="file-actions file-actions--edit">' +
