@@ -96,6 +96,25 @@ for (const viewport of viewports) {
   const layout = await page.evaluate(() => {
     const grid = document.querySelector('.cf-home__apps');
     const cards = [...document.querySelectorAll('.cf-app-btn')];
+    const iconStyles = cards.map((card) => {
+      const art = card.querySelector('.cf-app-btn__art');
+      const image = art.querySelector('img');
+      const artRect = art.getBoundingClientRect();
+      const imageRect = image.getBoundingClientRect();
+      const style = getComputedStyle(image);
+      return {
+        width: imageRect.width,
+        height: imageRect.height,
+        offsetX: imageRect.left - artRect.left,
+        offsetY: imageRect.top - artRect.top,
+        margin: style.margin,
+        padding: style.padding,
+        objectFit: style.objectFit,
+        objectPosition: style.objectPosition,
+        filter: style.filter,
+        borderRadius: style.borderRadius,
+      };
+    });
     return {
       columns: getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length,
       cards: cards.length,
@@ -105,11 +124,14 @@ for (const viewport of viewports) {
       }),
       overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       hasPlanNeeded: cards.some((card) => card.classList.contains('is-locked')),
+      iconStyles,
+      iconStylesMatch: iconStyles.every((style) => JSON.stringify(style) === JSON.stringify(iconStyles[0])),
     };
   });
 
   check(`${viewport.name}: workspace home remains 2×2`, layout.columns === 2 && layout.cards === 4, JSON.stringify(layout));
   check(`${viewport.name}: all four app icons load`, layout.iconsLoaded, JSON.stringify(layout));
+  check(`${viewport.name}: all four app icons share identical computed presentation`, layout.iconStylesMatch, JSON.stringify(layout.iconStyles));
   check(`${viewport.name}: no horizontal overflow`, !layout.overflow, JSON.stringify(layout));
   check(`${viewport.name}: ready plan unlocks workspaces`, !layout.hasPlanNeeded, JSON.stringify(layout));
   await page.screenshot({
