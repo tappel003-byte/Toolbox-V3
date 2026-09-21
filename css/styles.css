@@ -2143,7 +2143,7 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 .cf-app-btn__art {
   display: grid;
   width: 100%;
-  overflow: hidden;
+  overflow: visible;
   place-items: center;
   aspect-ratio: 1;
   border-radius: 14px;
