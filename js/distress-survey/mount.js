@@ -48,9 +48,7 @@
     iframe.style.background = '#f4f0e8';
     var src =
       'distress-survey/survey.html?cf=' +
-      encodeURIComponent(options.customerFileId) +
-      '&_=' +
-      Date.now();
+      encodeURIComponent(options.customerFileId);
     iframe.src = src;
     el.appendChild(iframe);
 

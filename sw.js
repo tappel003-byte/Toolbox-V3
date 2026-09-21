@@ -15,8 +15,9 @@
 // sw.js file's own bytes change; a precached static asset edited without
 // bumping this stays served from the stale cache indefinitely on already
 // installed devices, invisibly, no matter how many times it's redeployed.
-const CACHE_NAME = 'toolbox-shell-v31';
+const CACHE_NAME = 'toolbox-shell-v32';
 const OFFLINE_DOCUMENT = '/index.html';
+const DISTRESS_DOCUMENT = '/distress-survey/survey.html';
 
 const STATIC_SHELL = [
   '/css/styles.css',
@@ -92,11 +93,14 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // Navigations are network-first. A connected launch gets the current app;
-  // an offline launch gets the clean cached document from installation.
+  // Navigations are network-first. Distress runs in an iframe with Customer
+  // File query parameters, so its offline fallback must be its own cached
+  // document — never the Toolbox index shell.
   if (req.mode === 'navigate') {
+    const fallbackDocument =
+      url.pathname === DISTRESS_DOCUMENT ? DISTRESS_DOCUMENT : OFFLINE_DOCUMENT;
     event.respondWith(
-      fetch(req).catch(() => caches.match(OFFLINE_DOCUMENT))
+      fetch(req).catch(() => caches.match(fallbackDocument))
     );
     return;
   }
