@@ -2635,17 +2635,15 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   }
 
   .cf-app-btn__art {
-    /* Crop the tiny baked-in PNG title; chrome name is the readable label */
-    overflow: hidden;
-    background: transparent;
+    overflow: visible;
+    background: #fff;
   }
 
   .cf-app-btn__art img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: center 28%;
-    filter: drop-shadow(0 2px 3px rgba(3, 22, 36, 0.10));
+    width: 72%;
+    height: 72%;
+    object-fit: contain;
+    object-position: center;
   }
 
   .cf-app-btn__copy {
@@ -2657,7 +2655,7 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   .cf-app-btn__name {
     display: block;
     color: var(--navy);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 800;
     line-height: 1.2;
     letter-spacing: 0.01em;
