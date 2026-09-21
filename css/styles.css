@@ -2152,8 +2152,8 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 
 .cf-app-btn__art img {
   display: block;
-  width: 100%;
-  height: 100%;
+  width: 85%;
+  height: 85%;
   margin: 0;
   padding: 0;
   object-fit: contain;
