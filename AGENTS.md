@@ -47,14 +47,33 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
 - Do not expose implementation complexity to the investigator.
 - Do not ask for information Toolbox already knows.
 - **Customer File owns plans:** Contact + plan(s) = Customer File. Apps pull plans; no Plan Setup application/gatekeeper. KISS: explain in 2–3 sentences or simplify.
+- The Customer File is a **job container**; Customer Information, Plans/Canvases, Distress, Floor Survey, and future Diagnostics/Report Builder are components inside it — not one undifferentiated synchronized blob.
 - Switching applications changes the application-specific layer, not the underlying established canvas/level. Switching canvases/levels happens within the field application when multiple canvases/levels exist.
 - Distress photograph/pin numbering must preserve the exact proven standalone recomputation behavior across all canvases/levels. Never simplify it into permanent per-pin or per-canvas numbering.
 - Protect the canvas — the working surface takes priority over application chrome.
+
+## Cross-device synchronization (when in current milestone)
+
+- **Local-first:** apps continue to read/write the local Customer File (IndexedDB). Do not rewrite Distress or Floor Survey to operate directly against cloud storage.
+- **Save ≠ Sync:** Save remains local, immediate, and offline-capable. Sync Now is a separate visible action that exchanges changed components and required media with the central cloud cabinet.
+- **Component-level sync:** synchronize Customer Information, Plans, Distress, Floor Survey, and future Diagnostics/Report Builder independently. Do not treat the entire Customer File as one last-write-wins document.
+- Same-component conflict for v1: newest component version wins. Do not build CRDTs, live collaboration, or merge UIs.
+- Cloud connectivity must never be required for ordinary field capture or for opening already-local Customer Files.
+- Authentication may gate Sync Now; it must not gate offline use of local data.
+- Minimum cloud shape: Cloudflare Worker + private R2, with Cloudflare Access for Tim and Lee, unless implementation proves a concrete need for something else.
+- Do **not** add D1, KV, Durable Objects, Queues, Firebase, Supabase, SaaS tenancy, roles, invitations, billing, or a Control Panel unless explicitly authorized.
+- Do **not** redesign Distress capture, Floor Survey capture, or Customer File as part of sync work.
+- Do **not** build Report Builder or Diagnostics as part of sync work.
+- Plans and Distress photos must sync as actual media bytes, not references alone.
+- Preserve existing Trash/recovery behavior and 120-day retention intent; deletion/restore state must synchronize.
+- Manual Sync Now is v1; quiet automatic sync is later polish only after manual sync is trusted.
+- Creating Cloudflare infrastructure, Access configuration, or deployment of sync services requires explicit product-owner authorization beyond documentation updates.
 
 ## Device intent
 
 - **Field/mobile-first:** Customer File setup, Distress Survey, and Floor Survey must be designed first for practical field use on iPhone/iPad, touch-first and offline-capable.
 - **Desktop-first, mobile-capable:** Distress Edit, Diagnostics, and Report Builder should exploit desktop screen space and pointer precision for editing, analysis, plots, calculations, and report composition. They should still open and provide useful functionality on iPhone/iPad, but identical layout or full desktop equivalence is not required.
+- For Customer File library and Sync Now, iPhone, iPad, installed PWA, and desktop browser are equal Toolbox devices.
 - Responsive design means each workspace should fit its actual use context; do not force one identical UI across phone, tablet, and desktop.
 
 ## Deployment and review

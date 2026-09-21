@@ -80,7 +80,9 @@ A useful conceptual progression is: **Capture → Review/Edit → Understand →
 
 ### DECIDED
 
-The central object inside Toolbox is the **Customer File**. The working metaphor is a file cabinet: Toolbox is the cabinet, each customer/job is a file, and specialized workspaces operate inside the already-open Customer File.
+The central object inside Toolbox is the **Customer File**. The working metaphor is a file cabinet: Toolbox is the cabinet, each customer/job is one file, and specialized workspaces operate inside the already-open Customer File.
+
+Each Customer File is a **job container**. Inside it are sub-files/components: Customer Information, Plans/Canvases, Distress Survey, Floor Survey, and (when built) Diagnostics and Report Builder. Plans, photos, and other media belong to or are referenced by the appropriate component. The Customer File is not one undifferentiated blob of job data.
 
 The four principal workspaces are:
 
@@ -242,9 +244,15 @@ This recovery/import path is **permanent operational resilience, not temporary m
 
 Toolbox should be **continuously deployed live** during development, so the product owner can inspect the real, current application on phone, iPad, and desktop at meaningful checkpoints. Live deployment does not mean every routine implementation detail requires product-owner approval before it ships.
 
-Toolbox is intended to be cloud-backed and usable across multiple devices, but **cloud-backed must not mean cloud-dependent for field capture.** Loss of internet at the property must remove synchronization, not the ability to perform the investigation. Offline behavior must be tested continuously throughout development, not bolted on at the end. PWA / home-screen installation is part of the intended product from early on.
+Toolbox is **local-first and cloud-backed**. Devices keep working copies in local storage. Cloudflare is the private central cabinet that exchanges Customer File components between devices. **Cloud-backed must not mean cloud-dependent for field capture or for opening already-local Customer Files.** Loss of internet removes the ability to synchronize, not the ability to investigate. Offline behavior must be tested continuously throughout development, not bolted on at the end. PWA / home-screen installation is part of the intended product from early on.
 
-Initial access is simple: **two known internal users**, both with access to the Customer Files their work requires. Do not introduce SaaS-style roles, billing, invitations, or enterprise administration unless a real future need requires it. Authentication should not become the product.
+**Save** means work is safely stored on this device — local, immediate, and independent of connectivity. **Sync Now** is a separate, visible action that exchanges changed Customer File components and their required media with the central cloud copy. Manual Sync Now is the first synchronization mechanism; quiet automatic synchronization may be considered only after manual sync is proven. Plans and Distress photos must travel as actual media, not merely references.
+
+Customer File components synchronize **independently**. A change to Distress must not overwrite a newer change to Customer Information or Floor Survey on another device. The entire Customer File is not one last-write-wins document. If the same component is changed independently on two devices, newest-component-version-wins is acceptable for the first implementation.
+
+iPhone, iPad, installed PWA, and desktop browser are equal Toolbox devices for this purpose.
+
+Initial access is simple: **Tim and Lee**, sharing the same Customer File library. Do not introduce SaaS-style roles, billing, invitations, tenancy, or enterprise administration unless a real future need requires it. Authentication may be required to Sync Now; it must not be required to use already-local data offline. Authentication should not become the product.
 
 ---
 
@@ -395,21 +403,15 @@ The full vision can be large. The current implementation task must be small.
 
 > **Build and prove one vertical slice at a time.** At any point, the repository should have one current milestone. Do not work ahead merely because later functionality is already understood conceptually.
 
-**Milestone 0 — tiny live foundation.** Durable project documentation and guardrails; a shared visual foundation; live Cloudflare deployment; PWA manifest/installability; the same deployed application accessible on phone, iPad, and desktop.
+Earlier foundation and Customer File / field-capture integration slices established the live PWA, Customer File container, integrated Distress and Floor Survey capture on shared plans, local persistence, and emergency standalone recovery import. That work stands.
 
-**Milestone 1 — Customer File.** Create/open a Customer File; shared customer/contact information; plan/surface ownership required by the first field workflow; persistence; close and reopen correctly. Build only what the first real field workflow actually requires.
-
-**Milestone 2 — Distress Survey end-to-end.** Customer File → only necessary Distress-specific setup → multiple named surfaces (Section 5) → proven capture behavior → offline capability from the beginning.
-
-**Milestone 3 — Distress Edit.** Live source review/edit; correct pins, descriptions, photo relationships, and room/location information; persist changes; close/reopen correctly; the permanent emergency standalone-import recovery path (Section 9).
-
-**Milestone 4 — Shared/cloud Distress proof.** Cloud persistence/synchronization; cross-device access; a second authorized internal user sees the same Customer File; offline local capture; reconnect and synchronize safely; standalone Distress remains available as fallback throughout.
-
-**Then Floor Survey**, integrated using the Customer File/cloud/offline architecture already proven through Distress — not reinvented.
+**Current authorized infrastructure work — cross-device Customer File synchronization.** Local-first component sync via Sync Now so Tim and Lee share one Customer File library across iPhone, iPad, PWA, and desktop, including required plan/photo media, with offline use of already-local files. This work is intentionally ahead of Report Builder and Diagnostics. Older sequencing that deferred cloud synchronization until after further Distress-only or Report Builder slices is **superseded**.
 
 **Then Report Builder** — an operational Toolbox should be possible with Customer File → Distress → Floor → Report Builder before Diagnostics exists.
 
 **Then Diagnostics.**
+
+Cross-device sync must not redesign Distress capture, Floor Survey capture, or the Customer File model, and must not build Report Builder, Diagnostics, or a Control Panel as part of that slice.
 
 Do not build infrastructure for a future workspace merely because it may someday need it. Build the smallest shared infrastructure the current vertical slice actually needs, while avoiding obvious dead ends.
 
@@ -450,7 +452,7 @@ The development loop: **Decide → document → build a small slice → deploy l
 
 This document describes the product and the principles that protect it. It is not intended to specify every technical mechanism. Detailed implementation decisions belong in the appropriate milestone, decision record, technical specification, or code — not here.
 
-Examples of things that should not automatically become permanent Vision requirements: exact database schema; exact persistence architecture for multiple named surfaces (for example, whether or how something like `project.plans[]` is implemented); exact Cloudflare storage service; exact synchronization algorithm; exact CSS implementation; exact authentication mechanism; exact Diagnostics mathematical method; exact screen/tab arrangement that has not been approved; or speculative future features.
+Examples of things that should not automatically become permanent Vision requirements: exact database schema; exact object-key layout inside approved cloud storage; exact CSS implementation; exact Diagnostics mathematical method; exact screen/tab arrangement that has not been approved; or speculative future features. Durable product decisions already recorded (local-first component sync, Sync Now, Worker + R2 minimum cloud shape, Cloudflare Access for Tim/Lee, and related rules) belong in `DECISIONS.md` / the current milestone and must not be re-litigated as undecided.
 
 This distinction is intentional. The Vision should be durable enough to survive major changes in implementation. Toolbox may look and work differently, on completely different technology, years from now, while still honoring this Vision.
 

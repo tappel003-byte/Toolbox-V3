@@ -18,6 +18,7 @@ Durable decisions already established in `VISION.md`, recorded here for quick re
 ## Customer File
 
 - **Contact information + plan(s)/canvas(es) = Customer File.**
+- The Customer File is one **job container**. Sub-files/components inside it: Customer Information, Plans/Canvases, Distress Survey, Floor Survey, and (when built) Diagnostics and Report Builder. Media belongs to or is referenced by the appropriate component.
 - Plans belong to the Customer File. They are not owned by Distress Survey or Floor Survey.
 - There is no fifth “Plan Setup” application and no Plan Setup gatekeeper in the product model.
 - Rooms, room names/locations, plan images, orientation/front door, and related shared spatial setup are Customer File data.
@@ -90,7 +91,8 @@ Concrete Customer File record ownership for later app plug-in. Architecture is c
 - The 1515 Los Nietos report is the initial build baseline (structure, hierarchy, figures, presentation) — a baseline to reproduce first, not a permanent immutable template.
 - Will support basic drawing/annotation on report content; the exact toolbar is not yet decided.
 - Follows "protect the canvas" — compact pills and collapsible tools, not a permanent desktop-style ribbon.
-- Comes before Diagnostics: an operational Toolbox (Customer File → Distress/Floor → Report Builder) should be possible before Diagnostics is required.
+- Comes before Diagnostics in the **application** build order: an operational Toolbox (Customer File → Distress/Floor → Report Builder) should be possible before Diagnostics is required.
+- Cross-device Customer File synchronization is authorized **ahead of** building Report Builder or Diagnostics.
 
 ## Diagnostics
 
@@ -111,12 +113,23 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ---
 
-## Cloud, offline, and access
+## Cloud, offline, sync, and access
 
-- Cloud-backed does not mean cloud-dependent — loss of internet in the field must not remove the ability to capture data, only synchronization.
-- Offline field capture is a required, continuously-tested capability, not an add-on.
-- Initial access is two known internal users; no SaaS-style roles, billing, or enterprise administration unless a real future need arises.
-- Continuous live deployment is required during development so the product owner can inspect real progress on phone, iPad, and desktop.
+- **Local-first:** local IndexedDB remains the working storage apps use. Cloudflare is the private central cabinet for exchanging Customer File components between devices.
+- **Save** = local, immediate, offline-capable persistence on this device.
+- **Sync Now** = separate visible action that exchanges changed components and their required media with the cloud cabinet. Manual Sync Now is v1; quiet automatic sync may be considered later after manual sync is trusted.
+- **Component-level synchronization:** Customer Information, Plans/Canvases, Distress, Floor Survey, and future Diagnostics/Report Builder sync independently. The entire Customer File is not one last-write-wins document. Unrelated component edits on different devices must not overwrite each other.
+- **Same-component conflict (v1):** newest component version wins. No CRDTs, live collaboration, presence, or merge UIs.
+- Plans and Distress photos must synchronize as **actual media**, not references alone.
+- After a Customer File has synchronized onto a device, that device must open and work on it offline without cloud dependency.
+- Authentication may be required to Sync Now; it must **not** be required to open or use already-local Customer Files offline.
+- **Starting access:** Cloudflare Access for Tim and Lee, provided it does not interfere with required offline local use.
+- **Shared library:** Tim and Lee share the same Customer File library. No SaaS tenancy, roles, invitations, billing, customer accounts, or per-file permissions.
+- **Minimum cloud infrastructure:** Cloudflare Worker + private R2 unless implementation proves a concrete need for something else. Do not add D1, KV, Durable Objects, Queues, Firebase, Supabase, or similar without that proof.
+- Preserve existing recoverable Customer File Trash and 120-day retention intent; delete/restore state must synchronize so old device copies do not silently resurrect active files.
+- Cross-device synchronization is **current authorized work** and is ahead of Report Builder / Diagnostics implementation. Do not redesign Distress capture, Floor Survey capture, or Customer File; do not build a Control Panel as part of this work.
+- iPhone, iPad, installed PWA, and desktop browser are equal Toolbox devices for sync.
+- Continuous live deployment remains required during development so the product owner can inspect real progress on those devices.
 
 ## Closeout
 
