@@ -218,7 +218,7 @@
   function parseRoute() {
     const hash = window.location.hash || '#/';
     if (hash === '#/trash') return { view: 'trash' };
-    const match = hash.match(/^#\/file\/([^/]+)(?:\/(edit|plan|distress|floor|diagnostics|report))?(?:\/(customer|contacts|plans))?$/);
+    const match = hash.match(/^#\/file\/([^/]+)(?:\/(edit|plan|import|distress|floor|diagnostics|report))?(?:\/(customer|contacts|plans))?$/);
     if (match) {
       const id = decodeURIComponent(match[1]);
       const sub = match[2] || null;
@@ -230,6 +230,9 @@
       }
       if (sub === 'distress') {
         return { view: 'distress', id: id };
+      }
+      if (sub === 'import') {
+        return { view: 'import', id: id };
       }
       if (sub === 'diagnostics' || sub === 'report') {
         return { view: 'app-stub', id: id, app: sub };
@@ -269,6 +272,8 @@
       renderFloorSurvey(app, route.id);
     } else if (route.view === 'distress') {
       renderDistressSurvey(app, route.id);
+    } else if (route.view === 'import') {
+      renderCustomerFileImport(app, route.id);
     } else if (route.view === 'app-stub') {
       renderAppStub(app, route.id, route.app);
     } else if (route.view === 'trash') {
@@ -293,6 +298,7 @@
       '  </div>' +
       '  <div class="cabinet-hero__actions">' +
       '    <button type="button" id="cabinet-trash" class="btn btn--secondary cabinet-trash">🗑 Trash <span id="cabinet-trash-count"></span></button>' +
+      '    <button type="button" id="cabinet-import" class="btn btn--secondary">Import standalone export</button>' +
       '    <button type="button" id="cabinet-new" class="btn btn--accent cabinet-new">+ New Customer File</button>' +
       '  </div>' +
       '</section>' +
@@ -309,6 +315,7 @@
     const listEl = app.querySelector('#cabinet-list');
     const searchInput = app.querySelector('#cabinet-search');
     const newBtn = app.querySelector('#cabinet-new');
+    const importBtn = app.querySelector('#cabinet-import');
     const trashBtn = app.querySelector('#cabinet-trash');
     const trashCount = app.querySelector('#cabinet-trash-count');
     const notice = app.querySelector('#cabinet-notice');
@@ -321,6 +328,9 @@
 
     newBtn.addEventListener('click', function () {
       window.location.hash = '#/file/' + generateId() + '/edit';
+    });
+    importBtn.addEventListener('click', function () {
+      window.location.hash = '#/file/' + generateId() + '/import';
     });
     trashBtn.addEventListener('click', function () {
       window.location.hash = '#/trash';
@@ -749,11 +759,15 @@
       appTileHtml('report') +
       '  </div>' +
       '  <p class="cf-home__hint">Each workspace opens with this Customer File. They are independent—not required steps.</p>' +
-      '  <button type="button" id="home-edit" class="btn btn--secondary cf-home__edit">Edit customer details and plans</button>' +
+      '  <div class="cf-home__file-actions">' +
+      '    <button type="button" id="home-import" class="btn btn--secondary">Import standalone export</button>' +
+      '    <button type="button" id="home-edit" class="btn btn--secondary cf-home__edit">Edit customer details and plans</button>' +
+      '  </div>' +
       '</div>';
 
     const backBtn = app.querySelector('#home-back');
     const editBtn = app.querySelector('#home-edit');
+    const importBtn = app.querySelector('#home-import');
     const editTopBtn = app.querySelector('#home-edit-top');
     const planCta = app.querySelector('#home-plan-cta');
     const planCallout = app.querySelector('#home-plan-callout');
@@ -775,6 +789,9 @@
       window.location.hash = '#/file/' + encodeURIComponent(id) + '/edit' + (section ? '/' + section : '');
     }
     editBtn.addEventListener('click', function () { editFile('customer'); });
+    importBtn.addEventListener('click', function () {
+      window.location.hash = '#/file/' + encodeURIComponent(id) + '/import';
+    });
     editTopBtn.addEventListener('click', function () { editFile('customer'); });
     planCta.addEventListener('click', function () { editFile('plans'); });
     app.querySelectorAll('.cf-app-btn').forEach(function (btn) {
@@ -836,6 +853,34 @@
     }).catch(function (err) {
       console.error('Failed to load Customer File home:', err);
       statusEl.textContent = 'Unable to load';
+    });
+  }
+
+  function renderCustomerFileImport(app, id) {
+    registerActiveFlush(null);
+    app.innerHTML =
+      '<div class="view-bar view-bar--file">' +
+      '  <button type="button" id="import-back" class="btn btn--ghost">‹ Back</button>' +
+      '  <div class="file-identity"><span class="file-identity__name">Customer File Import</span></div>' +
+      '</div>' +
+      '<div id="customer-file-import"></div>';
+
+    app.querySelector('#import-back').addEventListener('click', function () {
+      window.ToolboxDB.getCustomerFile(id).then(function (record) {
+        window.location.hash = record ? '#/file/' + encodeURIComponent(id) : '#/';
+      });
+    });
+
+    if (!window.ToolboxCustomerFileImport) {
+      app.querySelector('#customer-file-import').innerHTML =
+        '<p class="cabinet-empty">Customer File import is unavailable.</p>';
+      return;
+    }
+    window.ToolboxCustomerFileImport.mount(app.querySelector('#customer-file-import'), {
+      customerFileId: id,
+      onDone: function (kind) {
+        window.location.hash = '#/file/' + encodeURIComponent(id) + '/' + (kind === 'floor' ? 'floor' : 'distress');
+      },
     });
   }
 

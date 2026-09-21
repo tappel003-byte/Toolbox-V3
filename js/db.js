@@ -214,6 +214,38 @@ function purgeExpiredCustomerFiles(now) {
   });
 }
 
+// Recovery import commits the complete Customer File record and all recovered
+// Customer File plan bytes in one IndexedDB transaction. Distress photos live
+// in their proven separate database and are staged/rolled back by the importer.
+function importCustomerFileRecovery(record, mediaEntries, expectedUpdatedAt, expectMissing) {
+  if (!record || !record.id) return Promise.reject(new Error('Customer File is required.'));
+  const entries = Array.isArray(mediaEntries) ? mediaEntries : [];
+  if (entries.some((entry) => !entry || !entry.id || typeof entry.value !== 'string')) {
+    return Promise.reject(new Error('Recovered plan media is incomplete.'));
+  }
+  return openDatabase().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE_CUSTOMER_FILES, STORE_MEDIA], 'readwrite');
+    const files = tx.objectStore(STORE_CUSTOMER_FILES);
+    const media = tx.objectStore(STORE_MEDIA);
+    let guardError = null;
+    const currentRequest = files.get(record.id);
+    currentRequest.onsuccess = () => {
+      const current = currentRequest.result || null;
+      if ((expectMissing && current) ||
+          (!expectMissing && (!current || current.updatedAt !== expectedUpdatedAt))) {
+        guardError = new Error('This Customer File changed during import. Nothing was imported; review it again.');
+        tx.abort();
+        return;
+      }
+      entries.forEach((entry) => media.put(entry.value, entry.id));
+      files.put(record);
+    };
+    tx.oncomplete = () => resolve(record);
+    tx.onerror = () => reject(guardError || tx.error || new Error('Recovery import transaction failed.'));
+    tx.onabort = () => reject(guardError || tx.error || new Error('Recovery import transaction was cancelled.'));
+  }));
+}
+
 window.ToolboxDB = {
   saveCustomerFile,
   getCustomerFile,
@@ -225,5 +257,6 @@ window.ToolboxDB = {
   restoreCustomerFile,
   permanentlyDeleteCustomerFiles,
   purgeExpiredCustomerFiles,
+  importCustomerFileRecovery,
   TRASH_RETENTION_DAYS,
 };

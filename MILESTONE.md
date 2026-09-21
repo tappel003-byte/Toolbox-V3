@@ -24,6 +24,7 @@ If a proposed product or architecture change cannot be explained clearly in 2–
 - Multi-level plans (each level may have its own plan image); one-level jobs stay simple
 - Customer File home with independent entry to Distress, Floor Survey, Diagnostics, Report Builder
 - Edit Customer File (contact + plans) and return to home
+- Permanent Customer File recovery import for standalone Distress ZIP exports and Floor Survey bundle v1 exports, translated once into native Customer File/app data
 - Correct authority docs that incorrectly called Plan Setup a standalone gatekeeper application
 
 ## Out of scope
@@ -31,7 +32,7 @@ If a proposed product or architecture change cannot be explained clearly in 2–
 - Distress capture integration or redesign
 - Floor Survey internals
 - Diagnostics / Report Builder implementation
-- Voice memos, quick capture, emergency import
+- Voice memos and Quick Capture ownership/management (recovery import may inventory Quick Capture without persisting it)
 - Unusual non-level planes (Exterior, Patio, Roof Parapet, Rear Addition) — NOT YET DECIDED
 
 ## Acceptance

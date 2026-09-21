@@ -897,6 +897,7 @@
     <button class="loc-clear" id="pinLocClear" type="button" onclick="clearPinLocation()" style="display:none" aria-label="Clear location">✕</button>
   </div>
   <div id="pinLocDebug" class="loc-debug">source: none</div>
+  <div id="pinLegacyDirection" class="loc-debug" style="display:none"></div>
   <div class="ext-count-row" id="extCountRow" style="display:none">
     <div class="ext-count-label">
       External camera photos for this pin
@@ -3937,7 +3938,15 @@ function onPointerMove(e) {
   if (_dragPin) {
     const imgPt = clientToImage(e.clientX, e.clientY);
     const p = (project.pins||[]).find(pp => pp.id === _dragPin.pinId);
-    if (p) { p.x = imgPt.x; p.y = imgPt.y; renderPins(); }
+    if (p) {
+      p.x = imgPt.x;
+      p.y = imgPt.y;
+      // Imported legacy direction is source evidence used only while the
+      // original orientation is unavailable. Moving the pin makes native
+      // geometry authoritative.
+      delete p.importedLegacyDirection;
+      renderPins();
+    }
     return;
   }
 
@@ -4245,6 +4254,14 @@ function renderPinSheetContent(p) {
   document.getElementById('pinTitle').textContent =
     'Pin #' + p.num + (p.location ? ' — ' + p.location : '');
   document.getElementById('pinDesc').value = p.description || '';
+  const recoveredDirection = document.getElementById('pinLegacyDirection');
+  if (recoveredDirection) {
+    const useLegacyDirection = !!p.importedLegacyDirection && _orientationOffset(project) == null;
+    recoveredDirection.style.display = useLegacyDirection ? '' : 'none';
+    recoveredDirection.textContent = useLegacyDirection
+      ? 'Recovered direction: ' + p.importedLegacyDirection
+      : '';
+  }
   // External mode: show counter + photo strip (upload only), hide int/ext toggle. Internal mode: full strip + toggle.
   document.getElementById('extCountRow').style.display = isExternal ? '' : 'none';
   document.getElementById('internalPhotoWrap').style.display = '';
@@ -4305,7 +4322,7 @@ function _originXY(proj) {
   return { x: 0.5, y: 0.5 };
 }
 function pinCardinal(proj, p, offset) {
-  if (offset == null) return '';
+  if (offset == null) return (p && p.importedLegacyDirection) || '';
   const pw = proj.plan.width, ph = proj.plan.height;
   const o = _originXY(proj);
   const dx = (p.x / pw) - o.x;
