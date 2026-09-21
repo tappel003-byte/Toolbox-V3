@@ -2113,12 +2113,12 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 .cf-app-btn {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(120px, 42%) 1fr;
+  grid-template-columns: minmax(96px, 34%) 1fr;
   align-items: center;
   justify-content: initial;
-  gap: 16px;
-  min-height: 176px;
-  padding: 12px;
+  gap: 14px;
+  min-height: 148px;
+  padding: 10px 12px;
   overflow: hidden;
   background: #fff;
   border-color: var(--line);
@@ -2132,7 +2132,7 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   background: #fff;
   border-color: #b9c4ca;
   box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .cf-app-btn:focus-visible {
@@ -2152,14 +2152,14 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 
 .cf-app-btn__art img {
   display: block;
-  width: 85%;
-  height: 85%;
+  width: 72%;
+  height: 72%;
   margin: 0;
   padding: 0;
   object-fit: contain;
   object-position: center;
   border-radius: inherit;
-  filter: drop-shadow(0 7px 7px rgba(3, 22, 36, 0.24));
+  filter: drop-shadow(0 2px 3px rgba(3, 22, 36, 0.10));
 }
 
 .cf-app-btn__copy {
@@ -2629,9 +2629,14 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 @media (max-width: 780px) {
   .cf-app-btn {
     grid-template-columns: 1fr;
-    gap: 7px;
+    gap: 6px;
     min-height: 0;
-    padding: 9px 9px 12px;
+    padding: 10px 10px 12px;
+  }
+
+  .cf-app-btn__art img {
+    width: 68%;
+    height: 68%;
   }
 
   .cf-app-btn__copy {
