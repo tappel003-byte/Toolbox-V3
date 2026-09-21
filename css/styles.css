@@ -2629,28 +2629,46 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 @media (max-width: 780px) {
   .cf-app-btn {
     grid-template-columns: 1fr;
-    gap: 6px;
+    gap: 8px;
     min-height: 0;
     padding: 10px 10px 12px;
   }
 
+  .cf-app-btn__art {
+    /* Crop the tiny baked-in PNG title; chrome name is the readable label */
+    overflow: hidden;
+    background: transparent;
+  }
+
   .cf-app-btn__art img {
-    width: 68%;
-    height: 68%;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 28%;
+    filter: drop-shadow(0 2px 3px rgba(3, 22, 36, 0.10));
   }
 
   .cf-app-btn__copy {
     align-items: center;
     text-align: center;
+    gap: 2px;
   }
 
-  .cf-app-btn__name,
+  .cf-app-btn__name {
+    display: block;
+    color: var(--navy);
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: 0.01em;
+  }
+
   .cf-app-btn__sub {
     display: none;
   }
 
   .cf-app-btn__state {
-    margin-top: 2px;
+    margin-top: 4px;
     font-size: 10px;
   }
 
