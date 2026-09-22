@@ -1570,6 +1570,16 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   font-weight: 700;
 }
 
+/* View-bar back controls (‹ Cabinet, ‹ Customer File, …) — accent so
+   the return path reads as navigation, not body text. */
+.view-bar .btn--ghost {
+  color: var(--accent);
+}
+
+.view-bar .btn--ghost:hover {
+  color: var(--accent-dark);
+}
+
 .view-bar {
   min-height: 54px;
   padding: 8px 18px;
