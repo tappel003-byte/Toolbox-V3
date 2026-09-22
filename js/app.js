@@ -1585,8 +1585,7 @@
     function setSyncLabel(text) {
       syncBtn.textContent = text;
     }
-    setSyncLabel('Sync Now');
-    syncBtn.addEventListener('click', function () {
+    function runSyncNow() {
       if (syncing) return;
       if (!window.ToolboxSync || typeof window.ToolboxSync.syncNow !== 'function') {
         setSyncLabel('Sync unavailable');
@@ -1624,7 +1623,27 @@
           syncBtn.disabled = false;
           setTimeout(function () { setSyncLabel('Sync Now'); }, 2800);
         });
-    });
+    }
+    setSyncLabel('Sync Now');
+    syncBtn.addEventListener('click', runSyncNow);
+
+    // Resume Sync Now after full-page Cloudflare Access sign-in (iPhone PWA).
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      const resume = params.get('resumeSync') === '1';
+      let pending = false;
+      try { pending = sessionStorage.getItem('toolboxPendingSync') === '1'; } catch (_) {}
+      if (resume || pending) {
+        try { sessionStorage.removeItem('toolboxPendingSync'); } catch (_) {}
+        if (resume) {
+          params.delete('resumeSync');
+          const q = params.toString();
+          const next = window.location.pathname + (q ? '?' + q : '') + (window.location.hash || '');
+          history.replaceState({}, '', next);
+        }
+        setTimeout(runSyncNow, 350);
+      }
+    } catch (_) {}
   }
 
   window.addEventListener('hashchange', render);

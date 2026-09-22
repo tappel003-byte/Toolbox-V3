@@ -296,12 +296,33 @@
     return false;
   }
 
-  function ensureAccessSession() {
+  function needsSameTabAccessLogin() {
+    try {
+      if (window.navigator && window.navigator.standalone === true) return true;
+      if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+    } catch (_) {}
+    return /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+  }
+
+  function accessLoginUrl() {
     const base = syncApiBase();
+    // Land on Worker /auth-done (same Sync host) so Access can set its cookie,
+    // then bounce back to the PWA in this same app/browser cookie jar.
+    return base + '/cdn-cgi/access/login?redirect_url=' + encodeURIComponent('/auth-done');
+  }
+
+  function ensureAccessSession() {
     return new Promise(function (resolve, reject) {
-      // Prefer full-tab login on phones / installed PWAs where popups are blocked.
-      // Same-site Sync hostname (sync.sandiageotoolbox.com) keeps Access cookies usable.
-      const loginUrl = base + '/cdn-cgi/access/login?redirect_url=' + encodeURIComponent('/health');
+      const loginUrl = accessLoginUrl();
+      try { sessionStorage.setItem('toolboxPendingSync', '1'); } catch (_) {}
+
+      // iPhone Safari + home-screen PWA: popups use a different cookie jar.
+      // Full-page Access sign-in keeps session and Sync Now in one jar.
+      if (needsSameTabAccessLogin()) {
+        window.location.assign(loginUrl);
+        return;
+      }
+
       let popup = null;
       try {
         popup = window.open(loginUrl, 'toolbox-sync-access', 'width=520,height=720');
@@ -309,11 +330,7 @@
         popup = null;
       }
       if (!popup) {
-        // Same-tab fallback: user signs in, sees health JSON, then returns via Back.
-        try {
-          window.location.assign(loginUrl);
-        } catch (_) {}
-        reject(new SyncError('auth', 'Sign in on the Sync page, then return and tap Sync Now again.'));
+        window.location.assign(loginUrl);
         return;
       }
       const started = Date.now();

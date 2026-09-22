@@ -87,18 +87,47 @@ async function listIndexes(env) {
   return files;
 }
 
+const PWA_ORIGIN = 'https://sandiageotoolbox.com';
+
+function authDoneResponse() {
+  const dest = PWA_ORIGIN + '/?resumeSync=1';
+  const html = '<!DOCTYPE html><html><head><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width, initial-scale=1">'
+    + '<meta http-equiv="refresh" content="0;url=' + dest + '">'
+    + '<title>Signed in</title>'
+    + '<style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:2rem;text-align:center;color:#123}</style>'
+    + '</head><body>'
+    + '<p>Signed in. Returning to Toolbox…</p>'
+    + '<p><a href="' + dest + '">Continue</a></p>'
+    + '<script>location.replace(' + JSON.stringify(dest) + ');</script>'
+    + '</body></html>';
+  return new Response(html, {
+    status: 200,
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders(request) });
     }
 
+    const url = new URL(request.url);
+    const path = url.pathname.replace(/^\/+/, '');
+
+    // After Cloudflare Access login, land here then bounce back to the PWA
+    // in the same browser/PWA cookie jar (required on iPhone home-screen PWA).
+    if (path === 'auth-done' && request.method === 'GET') {
+      return authDoneResponse();
+    }
+
     if (!env.CABINET) {
       return text(request, 'R2 cabinet binding missing', 500);
     }
-
-    const url = new URL(request.url);
-    const path = url.pathname.replace(/^\/+/, '');
 
     if (path === 'health' && request.method === 'GET') {
       return json(request, { ok: true, service: 'toolbox-sync' });
