@@ -594,6 +594,34 @@
     return { id: record.id, changed: changed };
   }
 
+  /**
+   * Empty local shell for a Customer File that exists only in the cloud.
+   *
+   * blankCustomerFile + ensurePlanSetup stamp "now" on every component clock.
+   * componentRevision() also calls ensurePlanSetup, which backfills empty clocks
+   * with "now" again — so a naive shell would beat older remote revisions and
+   * push empty data over real work.
+   *
+   * Use an epoch sentinel (truthy, so ensurePlanSetup will not backfill) that
+   * is older than any real cloud revision, forcing the first sync to pull.
+   */
+  const REMOTE_PULL_EPOCH = '1970-01-01T00:00:00.000Z';
+
+  function shellForRemotePull(id, remote) {
+    const shell = window.ToolboxApp.blankCustomerFile(id);
+    if (remote && remote.createdAt) shell.createdAt = remote.createdAt;
+    if (remote && remote.deletedAt) shell.deletedAt = remote.deletedAt;
+    if (remote && remote.purgeAfter) shell.purgeAfter = remote.purgeAfter;
+    if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(shell);
+    shell.updatedAt = REMOTE_PULL_EPOCH;
+    shell.customerUpdatedAt = REMOTE_PULL_EPOCH;
+    shell.trashUpdatedAt = REMOTE_PULL_EPOCH;
+    if (shell.planSetup) shell.planSetup.updatedAt = REMOTE_PULL_EPOCH;
+    if (shell.distress) shell.distress.updatedAt = REMOTE_PULL_EPOCH;
+    if (shell.floorSurvey) shell.floorSurvey.updatedAt = REMOTE_PULL_EPOCH;
+    return shell;
+  }
+
   async function syncNow(options) {
     options = options || {};
     if (typeof options.beforeSync === 'function') {
@@ -623,16 +651,12 @@
       const id = onlyRemoteIds[i];
       const remote = remoteById[id];
       if (remote && remote.deletedAt) {
-        const shell = window.ToolboxApp.blankCustomerFile(id);
-        if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(shell);
-        if (remote.createdAt) shell.createdAt = remote.createdAt;
+        const shell = shellForRemotePull(id, remote);
         await syncOneRecord(shell, remote);
         results.push({ id: id, changed: true, created: true, trashed: true });
         continue;
       }
-      const shell = window.ToolboxApp.blankCustomerFile(id);
-      if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(shell);
-      if (remote.createdAt) shell.createdAt = remote.createdAt;
+      const shell = shellForRemotePull(id, remote);
       await syncOneRecord(shell, remote);
       results.push({ id: id, changed: true, created: true });
     }
@@ -666,6 +690,7 @@
       newerIso: newerIso,
       dataUrlToBytes: dataUrlToBytes,
       bytesToDataUrl: bytesToDataUrl,
+      shellForRemotePull: shellForRemotePull,
     },
   };
 })();
