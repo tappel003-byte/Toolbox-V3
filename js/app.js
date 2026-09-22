@@ -689,12 +689,8 @@
   function renderFileHome(app, id) {
     registerActiveFlush(null);
     app.innerHTML =
-      '<div class="view-bar view-bar--file">' +
+      '<div class="view-bar view-bar--file view-bar--cf-home">' +
       '  <button type="button" id="home-back" class="btn btn--ghost">‹ Cabinet</button>' +
-      '  <div class="file-identity">' +
-      '    <span class="file-identity__name" id="home-identity-name"></span>' +
-      '    <span class="file-identity__address" id="home-identity-address"></span>' +
-      '  </div>' +
       '  <span class="file-status" id="home-status"></span>' +
       '  <button type="button" id="home-edit-top" class="btn btn--quiet">Edit</button>' +
       '</div>' +
@@ -744,8 +740,6 @@
     const planCta = app.querySelector('#home-plan-cta');
     const planCallout = app.querySelector('#home-plan-callout');
     const statusEl = app.querySelector('#home-status');
-    const identityName = app.querySelector('#home-identity-name');
-    const identityAddress = app.querySelector('#home-identity-address');
     const cardName = app.querySelector('#home-card-name');
     const cardAddress = app.querySelector('#home-card-address');
     const cardMeta = app.querySelector('#home-card-meta');
@@ -804,8 +798,6 @@
       const readiness = planReadiness(record);
       const hasName = !!((record.firstName || '').trim() || (record.lastName || '').trim());
       const hasAddress = !!(record.propertyAddress || '').trim();
-      identityName.textContent = displayName(record);
-      identityAddress.textContent = displayAddress(record);
       cardName.textContent = displayName(record);
       cardAddress.textContent = displayAddress(record);
       contactBadge.textContent = hasName && hasAddress ? 'Customer details ready' : 'Customer details started';
