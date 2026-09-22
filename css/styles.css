@@ -2135,6 +2135,10 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   letter-spacing: 0.015em;
 }
 
+.cf-app-btn__state:empty {
+  display: none;
+}
+
 .cf-app-btn.is-locked .cf-app-btn__state {
   color: var(--accent-dark);
 }
@@ -2159,7 +2163,7 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 
 .cf-home__file-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 
