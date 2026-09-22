@@ -230,6 +230,16 @@ body {
   gap: 10px;
 }
 
+.view-bar--cf-home {
+  justify-content: space-between;
+}
+
+.view-bar--cf-home .file-status {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+}
+
 .file-identity {
   flex: 1 1 auto;
   min-width: 0;
@@ -2688,6 +2698,11 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 7px;
     padding: 7px 14px;
+  }
+
+  .view-bar--cf-home {
+    display: flex;
+    grid-template-columns: none;
   }
 
   .view-bar--file .file-identity {
