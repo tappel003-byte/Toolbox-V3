@@ -46,13 +46,16 @@
   }
 
   function blankCustomerFile(id) {
+    // trashUpdatedAt uses the sync epoch sentinel so ordinary create/edit clocks
+    // cannot manufacture trash authority that beats a legitimate Trash event.
     const now = new Date().toISOString();
+    const trashEpoch = '1970-01-01T00:00:00.001Z';
     return {
       id: id,
       createdAt: now,
       updatedAt: now,
       customerUpdatedAt: now,
-      trashUpdatedAt: now,
+      trashUpdatedAt: trashEpoch,
       firstName: '',
       lastName: '',
       propertyAddress: '',
@@ -447,6 +450,7 @@
   function cabinetRowNode(record, onRemove) {
     const shell = document.createElement('div');
     shell.className = 'cabinet-row-shell';
+    shell.dataset.customerFileId = record.id;
 
     const row = document.createElement('button');
     row.type = 'button';
@@ -511,7 +515,7 @@
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'cabinet-row-menu__danger';
-    removeBtn.textContent = hasInvestigationData(record) ? 'Move to Trash' : 'Delete setup-only file';
+    removeBtn.textContent = isEmptyCustomerFileStub(record) ? 'Delete empty file' : 'Move to Trash';
     removeBtn.addEventListener('click', function (event) {
       event.stopPropagation();
       menu.classList.remove('is-open');
@@ -1588,9 +1592,15 @@
         .then(function () {
           return window.ToolboxSync.syncNow();
         })
-        .then(function () {
-          setSyncLabel('Synced');
-          // Refresh cabinet/view so newly pulled files appear.
+        .then(function (result) {
+          if (result && result.ok === false) {
+            setSyncLabel('Sync incomplete');
+            console.warn('Sync Now incomplete:', result);
+            return;
+          }
+          // Transition wording: success means this device's local working files
+          // synced — not that the whole File Cabinet is on this device.
+          setSyncLabel('Local files synced');
           try { window.dispatchEvent(new HashChangeEvent('hashchange')); } catch (_) {
             window.location.hash = window.location.hash;
           }
@@ -1600,6 +1610,7 @@
           if (code === 'offline' || code === 'network') setSyncLabel('Offline');
           else if (code === 'auth') setSyncLabel('Sign in to sync');
           else if (code === 'config') setSyncLabel('Sync not configured');
+          else if (code === 'incomplete') setSyncLabel('Sync incomplete');
           else setSyncLabel('Sync failed');
           console.warn('Sync Now failed:', err);
         })

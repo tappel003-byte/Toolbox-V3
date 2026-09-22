@@ -58,6 +58,10 @@ function mediaKey(mediaId) {
   return 'media/' + mediaId;
 }
 
+function purgeKey(id) {
+  return 'purge/' + id + '.json';
+}
+
 const COMPONENT_NAMES = {
   customer: true,
   plans: true,
@@ -85,6 +89,58 @@ async function listIndexes(env) {
     cursor = listed.cursor;
   }
   return files;
+}
+
+async function listPurges(env) {
+  const purged = [];
+  let cursor;
+  for (;;) {
+    const listed = await env.CABINET.list(cursor ? { prefix: 'purge/', cursor: cursor } : { prefix: 'purge/' });
+    for (const obj of listed.objects || []) {
+      if (!obj.key.endsWith('.json')) continue;
+      const got = await env.CABINET.get(obj.key);
+      if (!got) continue;
+      try {
+        const body = await got.json();
+        if (body && body.id) purged.push(body);
+        else {
+          const id = obj.key.slice('purge/'.length, -'.json'.length);
+          if (id) purged.push({ id: id, purgedAt: null });
+        }
+      } catch (_) {
+        const id = obj.key.slice('purge/'.length, -'.json'.length);
+        if (id) purged.push({ id: id, purgedAt: null });
+      }
+    }
+    if (!listed.truncated) break;
+    cursor = listed.cursor;
+  }
+  return purged;
+}
+
+async function writePurgeTombstone(env, id) {
+  const body = {
+    id: id,
+    purgedAt: new Date().toISOString(),
+    reason: 'permanent-delete',
+  };
+  await env.CABINET.put(purgeKey(id), JSON.stringify(body), {
+    httpMetadata: { contentType: 'application/json' },
+  });
+  return body;
+}
+
+async function deleteCustomerFilePrefix(env, id) {
+  const prefix = 'cf/' + id + '/';
+  let cursor;
+  for (;;) {
+    const listed = await env.CABINET.list(cursor ? { prefix: prefix, cursor: cursor } : { prefix: prefix });
+    for (const obj of listed.objects || []) {
+      await env.CABINET.delete(obj.key);
+    }
+    if (!listed.truncated) break;
+    cursor = listed.cursor;
+  }
 }
 
 const PWA_ORIGIN = 'https://sandiageotoolbox.com';
@@ -135,23 +191,18 @@ export default {
 
     if (path === 'files' && request.method === 'GET') {
       const files = await listIndexes(env);
-      return json(request, { files: files });
+      const purged = await listPurges(env);
+      return json(request, { files: files, purged: purged });
     }
 
     let match = /^files\/([^/]+)$/.exec(path);
     if (match && request.method === 'DELETE') {
       const id = decodeURIComponent(match[1]);
-      const prefix = 'cf/' + id + '/';
-      let cursor;
-      for (;;) {
-        const listed = await env.CABINET.list(cursor ? { prefix: prefix, cursor: cursor } : { prefix: prefix });
-        for (const obj of listed.objects || []) {
-          await env.CABINET.delete(obj.key);
-        }
-        if (!listed.truncated) break;
-        cursor = listed.cursor;
-      }
-      return json(request, { ok: true, deleted: id });
+      // Tombstone first: a crash after delete-but-before-tombstone would leave
+      // a resurrection window. Write the durable purge marker, then remove objects.
+      const tombstone = await writePurgeTombstone(env, id);
+      await deleteCustomerFilePrefix(env, id);
+      return json(request, { ok: true, deleted: id, purged: tombstone });
     }
 
     match = /^files\/([^/]+)\/index$/.exec(path);
@@ -163,6 +214,8 @@ export default {
         return json(request, await got.json());
       }
       if (request.method === 'PUT') {
+        const tomb = await env.CABINET.head(purgeKey(id));
+        if (tomb) return text(request, 'Customer File permanently deleted', 409);
         let body;
         try {
           body = await request.json();
@@ -188,6 +241,8 @@ export default {
         return json(request, await got.json());
       }
       if (request.method === 'PUT') {
+        const tomb = await env.CABINET.head(purgeKey(id));
+        if (tomb) return text(request, 'Customer File permanently deleted', 409);
         let body;
         try {
           body = await request.json();

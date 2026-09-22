@@ -815,7 +815,7 @@
     if ((customerUpdates && customerUpdates.length) || isNew || !record.customerUpdatedAt) {
       record.customerUpdatedAt = now;
     }
-    if (!record.trashUpdatedAt) record.trashUpdatedAt = now;
+    if (!record.trashUpdatedAt) record.trashUpdatedAt = '1970-01-01T00:00:00.001Z';
     record.recoveryImports = recoveryImports(record).concat([{
       fingerprint: parsed.fingerprint,
       kind: parsed.kind,

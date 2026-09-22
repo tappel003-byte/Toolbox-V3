@@ -115,21 +115,25 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ## Cloud, offline, sync, and access
 
-- **Local-first:** local IndexedDB remains the working storage apps use. Cloudflare is the private central cabinet for exchanging Customer File components between devices.
+- **Local-first:** local IndexedDB remains the working storage apps use.
+- **File Cabinet:** Cloudflare (Worker + private R2) is the authoritative shared inventory of Customer Files. Devices do **not** keep complete synchronized copies of the Cabinet. Cloud-only files are normal. Local-only drafts are normal until placed in the Cabinet.
 - **Save** = local, immediate, offline-capable persistence on this device.
-- **Sync Now** = separate visible action that exchanges changed components and their required media with the cloud cabinet. Manual Sync Now is v1; quiet automatic sync may be considered later after manual sync is trusted.
-- **Component-level synchronization:** Customer Information, Plans/Canvases, Distress, Floor Survey, and future Diagnostics/Report Builder sync independently. The entire Customer File is not one last-write-wins document. Unrelated component edits on different devices must not overwrite each other.
-- **Same-component conflict (v1):** newest component version wins. No CRDTs, live collaboration, presence, or merge UIs.
+- **Sync Now** = update cloud copies of this device’s **local working** Customer Files and required media. Manual Sync Now is v1. Sync success means the local working set processed safely — **not** local inventory == cloud inventory. Sync must **not** auto-materialize every remote-only Customer File.
+- **Check Out / Check In** (authorized next slice, not fully built): exclusive edit authority (user + device). Sync backs up without releasing. Check In verifies cloud completeness before release. Remove From This Device is local-only and is not Trash.
+- **Component-level synchronization:** Customer Information, Plans/Canvases, Distress, Floor Survey, and future Diagnostics/Report Builder sync independently. Component LWW remains defensive/recovery plumbing until exclusive checkout makes normal multi-writer editing unnecessary.
 - Plans and Distress photos must synchronize as **actual media**, not references alone.
-- After a Customer File has synchronized onto a device, that device must open and work on it offline without cloud dependency.
+- After a Customer File is local on a device, that device must open and work on it offline without cloud dependency.
 - Authentication may be required to Sync Now; it must **not** be required to open or use already-local Customer Files offline.
-- **Starting access:** Cloudflare Access for Tim and Lee, provided it does not interfere with required offline local use.
-- **Shared library:** Tim and Lee share the same Customer File library. No SaaS tenancy, roles, invitations, billing, customer accounts, or per-file permissions.
+- **Starting access:** Cloudflare Access for Tim and Lee (small authorized set). No SaaS tenancy, roles, invitations, billing, or per-file ACL product.
 - **Minimum cloud infrastructure:** Cloudflare Worker + private R2 unless implementation proves a concrete need for something else. Do not add D1, KV, Durable Objects, Queues, Firebase, Supabase, or similar without that proof.
-- Preserve existing recoverable Customer File Trash and 120-day retention intent; delete/restore state must synchronize so old device copies do not silently resurrect active files.
-- Cross-device synchronization is **current authorized work** and is ahead of Report Builder / Diagnostics implementation. Do not redesign Distress capture, Floor Survey capture, or Customer File; do not build a Control Panel as part of this work.
-- iPhone, iPad, installed PWA, and desktop browser are equal Toolbox devices for sync.
+- Preserve recoverable Customer File Trash and durable permanent-delete tombstones so stale copies cannot resurrect deleted files.
+- Do not redesign Distress capture, Floor Survey capture, or Customer File; do not build a Control Panel as part of this work.
+- iPhone, iPad, installed PWA, and desktop browser are equal Toolbox devices.
 - Continuous live deployment remains required during development so the product owner can inspect real progress on those devices.
+
+### Superseded
+
+- Full-cabinet convergence across devices after Sync Now (“Device B Sync receives Device A’s entire library automatically”) is **superseded** by the File Cabinet + selective local + exclusive checkout model.
 
 ## Closeout
 
