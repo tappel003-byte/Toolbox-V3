@@ -12,10 +12,56 @@
   // Epoch sentinel: truthy so ensurePlanSetup will not backfill with "now".
   // .001Z avoids Date.parse(.000Z) === 0 colliding with missing-revision behavior.
   const REMOTE_PULL_EPOCH = '1970-01-01T00:00:00.001Z';
+  const DEVICE_ID_KEY = 'toolboxDeviceId';
 
   function syncApiBase() {
     const cfg = window.ToolboxConfig || {};
     return typeof cfg.syncApiBase === 'string' ? cfg.syncApiBase.replace(/\/$/, '') : '';
+  }
+
+  function trimStr(value) {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  function normalizeEmail(value) {
+    return typeof value === 'string' ? value.trim().toLowerCase() : '';
+  }
+
+  /**
+   * Stable opaque device id for this Toolbox installation / browser storage.
+   * Created once; reused across sessions; not a device-management product.
+   */
+  function getDeviceId() {
+    try {
+      const existing = window.localStorage && window.localStorage.getItem(DEVICE_ID_KEY);
+      if (existing && typeof existing === 'string' && existing.trim()) return existing.trim();
+    } catch (_) {}
+
+    let id = '';
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        id = window.crypto.randomUUID();
+      }
+    } catch (_) {}
+    if (!id) {
+      id = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 12);
+    }
+    try {
+      if (window.localStorage) window.localStorage.setItem(DEVICE_ID_KEY, id);
+    } catch (_) {}
+    return id;
+  }
+
+  function displayNameFromRecord(record) {
+    if (!record) return 'New Customer File';
+    const name = [trimStr(record.firstName), trimStr(record.lastName)].filter(Boolean).join(' ');
+    return name || 'New Customer File';
+  }
+
+  function checkoutOwnerMatches(checkout, email, deviceId) {
+    if (!checkout) return false;
+    return normalizeEmail(checkout.email) === normalizeEmail(email) &&
+      trimStr(checkout.deviceId) === trimStr(deviceId);
   }
 
   function iso(value) {
@@ -103,6 +149,9 @@
       trashUpdatedAt: componentRevision(record, 'trash'),
       deletedAt: record.deletedAt || null,
       purgeAfter: record.purgeAfter || null,
+      // Lightweight Cabinet browse fields (not a full component download).
+      displayName: displayNameFromRecord(record),
+      propertyAddress: trimStr(record.propertyAddress),
     };
   }
 
@@ -200,10 +249,6 @@
     if (!localRev && remoteRev) return 'pull';
     if (localRev && !remoteRev) return 'push';
     return 'skip';
-  }
-
-  function trimStr(value) {
-    return typeof value === 'string' ? value.trim() : '';
   }
 
   /**
@@ -512,6 +557,9 @@
     }
     const opts = options || {};
     const headers = Object.assign({}, opts.headers || {});
+    if (!headers['x-toolbox-device-id'] && !headers['X-Toolbox-Device-Id']) {
+      headers['x-toolbox-device-id'] = getDeviceId();
+    }
     const attempt = async function () {
       return fetch(base + path, Object.assign({}, opts, {
         headers: headers,
@@ -561,9 +609,18 @@
     }
 
     if (response.status === 401 || response.status === 403) {
+      if (opts.allowForbidden) return response;
+      let detail = '';
+      try { detail = await response.clone().text(); } catch (_) {}
+      if (response.status === 403 && /checked out/i.test(detail)) {
+        throw new SyncError('checkout', detail || 'Customer File is checked out elsewhere.');
+      }
       throw new SyncError('auth', 'Sign in required to sync.');
     }
     if (opts.allow404 && response.status === 404) {
+      return response;
+    }
+    if (opts.allowConflict && response.status === 409) {
       return response;
     }
     if (!response.ok) {
@@ -572,6 +629,15 @@
       throw new SyncError('sync', detail || ('Sync failed (' + response.status + ').'));
     }
     return response;
+  }
+
+  async function fetchAccessIdentity() {
+    const response = await apiFetch('/me');
+    const data = await response.json();
+    return {
+      email: normalizeEmail(data && data.email),
+      sub: data && typeof data.sub === 'string' ? data.sub : '',
+    };
   }
 
   async function probeAccessSession() {
@@ -626,6 +692,169 @@
       method: 'DELETE',
       allow404: true,
     });
+  }
+
+  async function acquireRemoteCheckout(id) {
+    const deviceId = getDeviceId();
+    const response = await apiFetch('/files/' + encodeURIComponent(id) + '/checkout', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-toolbox-device-id': deviceId,
+      },
+      body: JSON.stringify({ deviceId: deviceId }),
+      allowConflict: true,
+    });
+    let data = null;
+    try { data = await response.json(); } catch (_) { data = null; }
+    if (response.status === 409) {
+      const err = new SyncError('checkout', (data && data.message) || 'Customer File is checked out elsewhere.');
+      err.checkout = data && data.checkout ? data.checkout : null;
+      throw err;
+    }
+    if (!response.ok) {
+      throw new SyncError('sync', (data && data.message) || ('Check Out failed (' + response.status + ').'));
+    }
+    return data;
+  }
+
+  async function releaseRemoteCheckout(id) {
+    const deviceId = getDeviceId();
+    const response = await apiFetch('/files/' + encodeURIComponent(id) + '/checkout/release', {
+      method: 'POST',
+      headers: { 'x-toolbox-device-id': deviceId },
+      allowForbidden: true,
+      allowConflict: true,
+    });
+    let data = null;
+    try { data = await response.json(); } catch (_) { data = null; }
+    if (!response.ok) {
+      throw new SyncError(
+        response.status === 403 ? 'checkout' : 'sync',
+        (data && data.message) || ('Could not release checkout (' + response.status + ').'),
+      );
+    }
+    return data;
+  }
+
+  /**
+   * Explicit Check Out + materialize one cloud Customer File locally.
+   * Acquire first; on materialization failure release the lease (same user+device).
+   */
+  async function checkOutCustomerFile(id) {
+    if (!id) throw new SyncError('sync', 'Customer File id required.');
+    const existingLocal = await window.ToolboxDB.getCustomerFile(id);
+    if (existingLocal && !existingLocal.deletedAt) {
+      // Already local: acquire ownership if possible, but do not re-shell.
+      const acquired = await acquireRemoteCheckout(id);
+      return {
+        ok: true,
+        id: id,
+        alreadyLocal: true,
+        idempotent: !!(acquired && acquired.idempotent),
+        checkout: acquired && acquired.checkout,
+        record: existingLocal,
+      };
+    }
+
+    const acquired = await acquireRemoteCheckout(id);
+    const remote = (acquired && acquired.index) || await getRemoteIndex(id);
+    if (!remote) {
+      try { await releaseRemoteCheckout(id); } catch (_) {}
+      throw new SyncError('sync', 'Checked out Customer File index missing.');
+    }
+
+    try {
+      const shell = shellForRemotePull(id, remote);
+      const synced = await syncOneRecord(shell, remote, {
+        materializeOnly: true,
+      });
+      const saved = await window.ToolboxDB.getCustomerFile(id);
+      if (!saved) {
+        throw new SyncError('sync', 'Check Out materialization did not persist locally.');
+      }
+      // Required media integrity: plans/distress media must be present when referenced.
+      const planIds = planMediaIds(saved);
+      for (let i = 0; i < planIds.length; i++) {
+        const media = await getLocalMedia(planIds[i], 'plan');
+        if (media == null || media === '') {
+          throw new SyncError('incomplete', 'Required plan media missing after Check Out.');
+        }
+      }
+      const photoIds = distressPhotoIds(saved);
+      for (let i = 0; i < photoIds.length; i++) {
+        const media = await getLocalMedia(photoIds[i], 'distress');
+        if (media == null || media === '') {
+          throw new SyncError('incomplete', 'Required Distress media missing after Check Out.');
+        }
+      }
+      return {
+        ok: true,
+        id: id,
+        alreadyLocal: false,
+        idempotent: !!(acquired && acquired.idempotent),
+        checkout: acquired && acquired.checkout,
+        record: saved,
+        sync: synced,
+      };
+    } catch (err) {
+      // Do not leave an invisible ownership lease after failed materialization.
+      try { await releaseRemoteCheckout(id); } catch (_) {}
+      throw err;
+    }
+  }
+
+  /**
+   * Lightweight Cabinet browse: remote indexes + local presence, no materialize.
+   */
+  async function browseCabinet() {
+    const deviceId = getDeviceId();
+    let identity = null;
+    try {
+      identity = await fetchAccessIdentity();
+    } catch (_) {
+      identity = null;
+    }
+    const cabinet = await listRemoteCabinet();
+    const localRecords = await window.ToolboxDB.getAllCustomerFiles();
+    const localById = {};
+    (localRecords || []).forEach(function (record) {
+      if (record && record.id) localById[record.id] = record;
+    });
+
+    const entries = (cabinet.files || []).map(function (index) {
+      const local = localById[index.id] || null;
+      const checkout = index.checkout || null;
+      const ownedHere = !!(identity && checkout &&
+        checkoutOwnerMatches(checkout, identity.email, deviceId));
+      let presence = 'cloud-only';
+      if (local && !local.deletedAt) presence = 'local';
+      else if (local && local.deletedAt) presence = 'local-trash';
+
+      let availability = 'available';
+      if (checkout && trimStr(checkout.deviceId) && normalizeEmail(checkout.email)) {
+        availability = ownedHere ? 'checked-out-here' : 'checked-out-elsewhere';
+      }
+
+      return {
+        id: index.id,
+        displayName: trimStr(index.displayName) || (local ? displayNameFromRecord(local) : 'Customer File'),
+        propertyAddress: trimStr(index.propertyAddress) || (local ? trimStr(local.propertyAddress) : ''),
+        deletedAt: index.deletedAt || null,
+        checkout: checkout,
+        presence: presence,
+        availability: availability,
+        local: !!local,
+      };
+    });
+
+    return {
+      ok: true,
+      deviceId: deviceId,
+      identity: identity,
+      entries: entries,
+      purged: cabinet.purged || [],
+    };
   }
 
   async function getRemoteComponent(id, name) {
@@ -763,10 +992,30 @@
     return decision;
   }
 
-  async function syncOneRecord(record, remoteIndex) {
+  async function syncOneRecord(record, remoteIndex, options) {
+    options = options || {};
     const remote = remoteIndex || null;
     let changed = false;
     const componentResults = [];
+
+    // Ownership gate: once a Cabinet file has explicit checkout metadata,
+    // only the owning user+device may push. Local data is preserved.
+    let mayPush = !options.materializeOnly;
+    let checkoutBlocked = false;
+    if (mayPush && remote && remote.checkout && trimStr(remote.checkout.deviceId) &&
+        normalizeEmail(remote.checkout.email) && !options.bypassCheckoutPushGate) {
+      let identity = null;
+      try {
+        identity = await fetchAccessIdentity();
+      } catch (_) {
+        identity = null;
+      }
+      const deviceId = getDeviceId();
+      if (!identity || !checkoutOwnerMatches(remote.checkout, identity.email, deviceId)) {
+        mayPush = false;
+        checkoutBlocked = true;
+      }
+    }
 
     for (let i = 0; i < COMPONENTS.length; i++) {
       const name = COMPONENTS[i];
@@ -776,7 +1025,14 @@
         componentResults.push({ name: name, action: 'skip' });
         continue;
       }
-      const decision = await decideComponentAction(record, name, remote);
+      let decision = options.materializeOnly
+        ? 'pull'
+        : await decideComponentAction(record, name, remote);
+      if (options.materializeOnly && decision === 'push') decision = 'skip';
+      if (decision === 'push' && !mayPush) {
+        componentResults.push({ name: name, action: 'blocked-checkout' });
+        continue;
+      }
       if (decision === 'push') {
         await pushComponent(record, name);
         changed = true;
@@ -791,14 +1047,19 @@
     }
 
     const nextIndex = buildIndex(record);
-    if (changed || !remote) {
+    if ((changed || !remote) && mayPush && !options.materializeOnly) {
       await putRemoteIndex(nextIndex);
     }
     if (changed) {
       record.updatedAt = new Date().toISOString();
       await window.ToolboxDB.saveCustomerFile(record);
     }
-    return { id: record.id, changed: changed, components: componentResults };
+    return {
+      id: record.id,
+      changed: changed,
+      components: componentResults,
+      checkoutBlocked: checkoutBlocked,
+    };
   }
 
   /**
@@ -1010,6 +1271,7 @@
     COMPONENTS: COMPONENTS,
     REMOTE_PULL_EPOCH: REMOTE_PULL_EPOCH,
     syncApiBase: syncApiBase,
+    getDeviceId: getDeviceId,
     componentRevision: componentRevision,
     buildIndex: buildIndex,
     extractComponent: extractComponent,
@@ -1022,6 +1284,11 @@
     distressPhotoIds: distressPhotoIds,
     SyncError: SyncError,
     syncNow: syncNow,
+    browseCabinet: browseCabinet,
+    checkOutCustomerFile: checkOutCustomerFile,
+    acquireRemoteCheckout: acquireRemoteCheckout,
+    releaseRemoteCheckout: releaseRemoteCheckout,
+    fetchAccessIdentity: fetchAccessIdentity,
     ensureAccessSession: ensureAccessSession,
     probeAccessSession: probeAccessSession,
     deleteRemoteCustomerFile: deleteRemoteCustomerFile,
@@ -1040,6 +1307,9 @@
       isDefaultPlansShellPayload: isDefaultPlansShellPayload,
       isDefaultDistressShellPayload: isDefaultDistressShellPayload,
       isDefaultFloorShellPayload: isDefaultFloorShellPayload,
+      checkoutOwnerMatches: checkoutOwnerMatches,
+      displayNameFromRecord: displayNameFromRecord,
+      syncOneRecord: syncOneRecord,
     },
   };
 })();
