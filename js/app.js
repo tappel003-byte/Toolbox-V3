@@ -701,7 +701,7 @@
       '<div class="cf-home" id="cf-home">' +
       '  <section class="cf-home__hero">' +
       '    <div class="cf-home__summary">' +
-      '      <p class="eyebrow">Open Customer File</p>' +
+      '      <p class="eyebrow">Customer File</p>' +
       '      <h1 class="cf-home__name" id="home-card-name"></h1>' +
       '      <p class="cf-home__address" id="home-card-address"></p>' +
       '      <div class="cf-home__badges">' +

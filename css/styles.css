@@ -1914,7 +1914,7 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   white-space: normal;
 }
 
-/* Open Customer File */
+/* Customer File home */
 .cf-home {
   max-width: 64rem;
   padding: 24px 20px 42px;
