@@ -306,9 +306,9 @@
 
   function accessLoginUrl() {
     const base = syncApiBase();
-    // Land on Worker /auth-done (same Sync host) so Access can set its cookie,
-    // then bounce back to the PWA in this same app/browser cookie jar.
-    return base + '/cdn-cgi/access/login?redirect_url=' + encodeURIComponent('/auth-done');
+    // Do NOT use /cdn-cgi/access/login on the Worker host — that path 404s blank.
+    // Hit a protected page instead; Access intercepts, then returns here after sign-in.
+    return base + '/auth-done';
   }
 
   function ensureAccessSession() {
