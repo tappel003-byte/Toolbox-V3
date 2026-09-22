@@ -686,6 +686,10 @@
       : prepareFloor(record, parsed, isNew, options);
     const now = new Date().toISOString();
     record.updatedAt = now;
+    if ((customerUpdates && customerUpdates.length) || isNew || !record.customerUpdatedAt) {
+      record.customerUpdatedAt = now;
+    }
+    if (!record.trashUpdatedAt) record.trashUpdatedAt = now;
     record.recoveryImports = recoveryImports(record).concat([{
       fingerprint: parsed.fingerprint,
       kind: parsed.kind,

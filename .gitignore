@@ -1,3 +1,5 @@
 node_modules/
 floor-survey/node_modules/
 js/floor-survey/*.map
+
+sync-worker/.wrangler/

@@ -65,12 +65,19 @@ body {
   letter-spacing: 0.01em;
 }
 
-/* margin-left: auto anchors Refresh to the far right of the bar and keeps
-   it there even if other controls are ever added between the title and
-   it — it must never end up crowding the Toolbox title on the left. */
-.app-bar__refresh {
+/* margin-left: auto anchors action buttons to the far right of the bar. */
+.app-bar__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   flex: 0 0 auto;
   margin-left: auto;
+}
+
+.app-bar__refresh,
+.app-bar__sync {
+  flex: 0 0 auto;
+  margin-left: 0;
   padding: 6px 12px;
   font-size: 13px;
   font-weight: 600;
@@ -80,6 +87,12 @@ body {
   color: var(--ink);
   cursor: pointer;
   white-space: nowrap;
+}
+
+.app-bar__sync:disabled,
+.app-bar__refresh:disabled {
+  opacity: 0.65;
+  cursor: default;
 }
 
 /* The canvas: the working surface. Takes all remaining space at every
@@ -1490,13 +1503,15 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
 }
 
-.app-bar__refresh {
+.app-bar__refresh,
+.app-bar__sync {
   color: rgba(255, 255, 255, 0.9);
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.22);
 }
 
-.app-bar__refresh:hover {
+.app-bar__refresh:hover,
+.app-bar__sync:hover {
   background: rgba(255, 255, 255, 0.17);
 }
 
@@ -2738,7 +2753,8 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
     border-radius: 8px;
   }
 
-  .app-bar__refresh {
+  .app-bar__refresh,
+  .app-bar__sync {
     padding: 6px 9px;
     font-size: 12px;
   }

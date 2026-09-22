@@ -31,7 +31,10 @@ body:not(.floor-survey-open) {
 
 <header class="app-bar">
   <span class="app-bar__title">Toolbox</span>
-  <button type="button" id="app-refresh" class="app-bar__refresh" aria-label="Refresh Toolbox">↻ Refresh</button>
+  <span class="app-bar__actions">
+    <button type="button" id="app-sync" class="app-bar__sync" aria-label="Sync Customer Files now">Sync Now</button>
+    <button type="button" id="app-refresh" class="app-bar__refresh" aria-label="Refresh Toolbox">↻ Refresh</button>
+  </span>
 </header>
 
 <main class="canvas" id="app-view"></main>
@@ -49,6 +52,7 @@ body:not(.floor-survey-open) {
 <script src="js/customer-file-import.js"></script>
 <script src="js/distress-survey/mount.js"></script>
 <script src="js/floor-survey/floor-survey.js"></script>
+<script src="js/sync.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

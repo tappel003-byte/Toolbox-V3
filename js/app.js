@@ -51,6 +51,8 @@
       id: id,
       createdAt: now,
       updatedAt: now,
+      customerUpdatedAt: now,
+      trashUpdatedAt: now,
       firstName: '',
       lastName: '',
       propertyAddress: '',
@@ -1132,6 +1134,8 @@
     let record = null;
     let saveTimer = null;
     let dirty = false;
+    let pendingCustomerBump = false;
+    let pendingPlansBump = false;
     let isNewFile = false;
     let plansApi = null;
 
@@ -1425,7 +1429,16 @@
       if (plansApi) plansApi.commitPending();
       collectFormIntoRecord();
       if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
-      record.updatedAt = new Date().toISOString();
+      const now = new Date().toISOString();
+      record.updatedAt = now;
+      if (pendingCustomerBump || !record.customerUpdatedAt) {
+        record.customerUpdatedAt = now;
+      }
+      if (pendingPlansBump && record.planSetup) {
+        record.planSetup.updatedAt = now;
+      }
+      pendingCustomerBump = false;
+      pendingPlansBump = false;
       return window.ToolboxDB.saveCustomerFile(record).then(function () {
         dirty = false;
         isNewFile = false;
@@ -1470,11 +1483,18 @@
 
     sameAddressCheckbox.addEventListener('change', function () {
       updateMailingVisibility();
+      pendingCustomerBump = true;
       scheduleSave();
     });
-    propertyTextarea.addEventListener('input', syncMailingIfSame);
+    propertyTextarea.addEventListener('input', function () {
+      pendingCustomerBump = true;
+      syncMailingIfSame();
+    });
     app.addEventListener('input', function (e) {
-      if (e.target && e.target.id && e.target.id.indexOf('field-') === 0) scheduleSave();
+      if (e.target && e.target.id && e.target.id.indexOf('field-') === 0) {
+        pendingCustomerBump = true;
+        scheduleSave();
+      }
     });
 
     registerActiveFlush(flushSave);
@@ -1485,8 +1505,20 @@
         dirty = !!v;
         refreshEditorProgress();
       },
-      scheduleSave: scheduleSave,
-      flushSave: flushSave,
+      scheduleSave: function () {
+        pendingPlansBump = true;
+        if (record && record.planSetup) {
+          record.planSetup.updatedAt = new Date().toISOString();
+        }
+        scheduleSave();
+      },
+      flushSave: function () {
+        pendingPlansBump = true;
+        if (record && record.planSetup) {
+          record.planSetup.updatedAt = new Date().toISOString();
+        }
+        return flushSave();
+      },
       setStatus: setStatus,
       setFeedback: function () {},
     });
@@ -1526,8 +1558,8 @@
   }
 
   function flushActiveFile() {
-    if (!activeFileFlush) return;
-    Promise.resolve(activeFileFlush()).catch(function () {
+    if (!activeFileFlush) return Promise.resolve();
+    return Promise.resolve(activeFileFlush()).catch(function () {
       // Status already set by the active view's flushSave.
     });
   }
@@ -1542,6 +1574,56 @@
     refreshBtn.addEventListener('click', function () {
       flushActiveFile();
       window.location.reload();
+    });
+  }
+
+  // Sync Now: exchange changed Customer File components with the cloud cabinet.
+  // Save remains local; this control never blocks offline use of local files.
+  const syncBtn = document.getElementById('app-sync');
+  if (syncBtn) {
+    let syncing = false;
+    function setSyncLabel(text) {
+      syncBtn.textContent = text;
+    }
+    setSyncLabel('Sync Now');
+    syncBtn.addEventListener('click', function () {
+      if (syncing) return;
+      if (!window.ToolboxSync || typeof window.ToolboxSync.syncNow !== 'function') {
+        setSyncLabel('Sync unavailable');
+        return;
+      }
+      if (!window.ToolboxSync.syncApiBase()) {
+        setSyncLabel('Sync not configured');
+        setTimeout(function () { setSyncLabel('Sync Now'); }, 2500);
+        return;
+      }
+      syncing = true;
+      syncBtn.disabled = true;
+      setSyncLabel('Syncing…');
+      Promise.resolve(flushActiveFile())
+        .then(function () {
+          return window.ToolboxSync.syncNow();
+        })
+        .then(function () {
+          setSyncLabel('Synced');
+          // Refresh cabinet/view so newly pulled files appear.
+          try { window.dispatchEvent(new HashChangeEvent('hashchange')); } catch (_) {
+            window.location.hash = window.location.hash;
+          }
+        })
+        .catch(function (err) {
+          const code = err && err.code;
+          if (code === 'offline' || code === 'network') setSyncLabel('Offline');
+          else if (code === 'auth') setSyncLabel('Sign in to sync');
+          else if (code === 'config') setSyncLabel('Sync not configured');
+          else setSyncLabel('Sync failed');
+          console.warn('Sync Now failed:', err);
+        })
+        .then(function () {
+          syncing = false;
+          syncBtn.disabled = false;
+          setTimeout(function () { setSyncLabel('Sync Now'); }, 2800);
+        });
     });
   }
 

@@ -113,6 +113,7 @@ function moveCustomerFileToTrash(id) {
     const purgeAt = new Date(deletedAt.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
     record.deletedAt = deletedAt.toISOString();
     record.purgeAfter = purgeAt.toISOString();
+    record.trashUpdatedAt = deletedAt.toISOString();
     record.updatedAt = deletedAt.toISOString();
     return saveCustomerFile(record);
   });
@@ -123,7 +124,9 @@ function restoreCustomerFile(id) {
     if (!record) return null;
     delete record.deletedAt;
     delete record.purgeAfter;
-    record.updatedAt = new Date().toISOString();
+    const now = new Date().toISOString();
+    record.trashUpdatedAt = now;
+    record.updatedAt = now;
     return saveCustomerFile(record);
   });
 }

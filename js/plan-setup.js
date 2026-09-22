@@ -158,6 +158,15 @@
   function ensurePlanSetup(record) {
     let changed = migrateLegacyDistressSurfaces(record);
 
+    if (!record.customerUpdatedAt) {
+      record.customerUpdatedAt = record.updatedAt || new Date().toISOString();
+      changed = true;
+    }
+    if (!record.trashUpdatedAt) {
+      record.trashUpdatedAt = record.deletedAt || record.updatedAt || new Date().toISOString();
+      changed = true;
+    }
+
     if (!record.planSetup || typeof record.planSetup !== 'object') {
       record.planSetup = blankPlanSetup();
       changed = true;

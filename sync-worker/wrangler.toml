@@ -1,0 +1,14 @@
+name = "toolbox-sync"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+workers_dev = true
+
+# Private Customer File cabinet. Create the bucket in Cloudflare, then bind it:
+#   wrangler r2 bucket create toolbox-cabinet
+#   (binding below must match)
+[[r2_buckets]]
+binding = "CABINET"
+bucket_name = "toolbox-cabinet"
+
+# Protect THIS Worker with Cloudflare Access (Tim + Lee).
+# Do NOT put the static Toolbox PWA origin behind Access.

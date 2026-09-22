@@ -7210,6 +7210,7 @@ async function hostPersistSurvey() {
   d.activeCanvasId = _hostActiveCanvasId;
   d.updatedAt = new Date().toISOString();
   if (!d.createdAt) d.createdAt = new Date().toISOString();
+  rec.updatedAt = d.updatedAt;
   _hostRecord = rec;
   await db.saveCustomerFile(rec);
 }
