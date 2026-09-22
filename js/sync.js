@@ -605,7 +605,7 @@
    * Use an epoch sentinel (truthy, so ensurePlanSetup will not backfill) that
    * is older than any real cloud revision, forcing the first sync to pull.
    */
-  const REMOTE_PULL_EPOCH = '1970-01-01T00:00:00.000Z';
+  const REMOTE_PULL_EPOCH = '1970-01-01T00:00:00.001Z';
 
   function shellForRemotePull(id, remote) {
     const shell = window.ToolboxApp.blankCustomerFile(id);
