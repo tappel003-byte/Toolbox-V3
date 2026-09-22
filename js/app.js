@@ -305,17 +305,9 @@
       '  </div>' +
       '</section>' +
       '  <p class="cabinet-notice" id="cabinet-notice" hidden></p>' +
-      '<div class="view-bar view-bar--cabinet">' +
-      '  <label class="cabinet-search-wrap">' +
-      '    <span class="cabinet-search-icon" aria-hidden="true">⌕</span>' +
-      '    <span class="sr-only">Search Customer Files</span>' +
-      '    <input type="search" id="cabinet-search" class="cabinet-search" placeholder="Search by customer or address" autocomplete="off">' +
-      '  </label>' +
-      '</div>' +
       '<div class="cabinet-list" id="cabinet-list"></div>';
 
     const listEl = app.querySelector('#cabinet-list');
-    const searchInput = app.querySelector('#cabinet-search');
     const newBtn = app.querySelector('#cabinet-new');
     const importBtn = app.querySelector('#cabinet-import');
     const trashBtn = app.querySelector('#cabinet-trash');
@@ -352,52 +344,29 @@
         return (b.updatedAt || '').localeCompare(a.updatedAt || '');
       });
 
-      function renderList(filterText) {
-        const term = (filterText || '').trim().toLowerCase();
-        const filtered = term
-          ? records.filter(function (r) {
-              return (displayName(r) + ' ' + displayAddress(r)).toLowerCase().indexOf(term) !== -1;
-            })
-          : records;
+      listEl.innerHTML = '';
 
-        listEl.innerHTML = '';
-
-        if (records.length === 0) {
-          const p = document.createElement('p');
-          p.className = 'cabinet-empty';
-          p.textContent = 'No Customer Files yet. Create your first Customer File to get started.';
-          listEl.appendChild(p);
-          return;
-        }
-
-        if (filtered.length === 0) {
-          const p = document.createElement('p');
-          p.className = 'cabinet-empty';
-          p.textContent = 'No Customer Files match "' + filterText + '".';
-          listEl.appendChild(p);
-          return;
-        }
-
-        filtered.forEach(function (record) {
-          listEl.appendChild(cabinetRowNode(record, function () {
-            requestCustomerFileRemoval(record).then(function (result) {
-              if (!result) return;
-              cabinetNotice = result;
-              renderCabinet(app);
-            }).catch(function (err) {
-              console.error('Could not remove Customer File:', err);
-              cabinetNotice = 'Could not remove that Customer File. Try again.';
-              renderCabinet(app);
-            });
-          }));
-        });
+      if (records.length === 0) {
+        const p = document.createElement('p');
+        p.className = 'cabinet-empty';
+        p.textContent = 'No Customer Files yet. Create your first Customer File to get started.';
+        listEl.appendChild(p);
+        return;
       }
 
-      searchInput.addEventListener('input', function () {
-        renderList(searchInput.value);
+      records.forEach(function (record) {
+        listEl.appendChild(cabinetRowNode(record, function () {
+          requestCustomerFileRemoval(record).then(function (result) {
+            if (!result) return;
+            cabinetNotice = result;
+            renderCabinet(app);
+          }).catch(function (err) {
+            console.error('Could not remove Customer File:', err);
+            cabinetNotice = 'Could not remove that Customer File. Try again.';
+            renderCabinet(app);
+          });
+        }));
       });
-
-      renderList('');
     }).catch(function (err) {
       console.error('Failed to load Customer Files:', err);
       listEl.innerHTML = '';

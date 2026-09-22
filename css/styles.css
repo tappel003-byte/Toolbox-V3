@@ -133,17 +133,6 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
-.cabinet-search {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 8px 12px;
-  font-size: 14px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--bg);
-  color: var(--ink);
-}
-
 .btn {
   flex: 0 0 auto;
   padding: 8px 14px;
@@ -509,25 +498,10 @@ body {
   display: none;
 }
 
-/* ---- Small phones: single-column form, form fields stack ---- */
+  /* ---- Small phones: single-column form, form fields stack ---- */
 @media (max-width: 560px) {
   .customer-form {
     grid-template-columns: 1fr;
-  }
-
-  /* Cabinet bar: search and "New Customer File" don't have room to sit
-     side by side at phone width. Stack them explicitly rather than
-     relying on flex-wrap, whose line-breaking depends on each browser's
-     content-based sizing of the search input and was producing a
-     compressed, squeezed-together layout on iOS Safari. */
-  .view-bar--cabinet {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .view-bar--cabinet .cabinet-search,
-  .view-bar--cabinet .btn {
-    width: 100%;
   }
 
   .view-bar--file {
@@ -1654,50 +1628,6 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 
 .cabinet-notice[hidden] {
   display: none;
-}
-
-.view-bar--cabinet {
-  max-width: 62rem;
-  min-height: auto;
-  margin: 0 auto;
-  padding: 0 20px 14px;
-  background: transparent;
-  border: 0;
-  backdrop-filter: none;
-}
-
-.cabinet-search-wrap {
-  position: relative;
-  display: block;
-  width: 100%;
-}
-
-.cabinet-search-icon {
-  position: absolute;
-  top: 50%;
-  left: 14px;
-  z-index: 1;
-  color: var(--ink-soft);
-  font-size: 22px;
-  line-height: 1;
-  transform: translateY(-54%);
-  pointer-events: none;
-}
-
-.cabinet-search {
-  width: 100%;
-  min-height: 46px;
-  padding: 10px 14px 10px 42px;
-  color: var(--ink);
-  background: #fff;
-  border-color: var(--line);
-  border-radius: 12px;
-  box-shadow: var(--shadow-sm);
-}
-
-.cabinet-search:focus {
-  outline: 2px solid rgba(198, 83, 50, 0.35);
-  border-color: var(--accent);
 }
 
 .cabinet-list {
