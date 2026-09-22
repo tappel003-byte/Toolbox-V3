@@ -8,6 +8,8 @@
  * Do not trust unverified convenience email headers.
  */
 
+import { requireObjectEtag, conditionalPutOptions } from './r2-conditional.js';
+
 /** PWA origin only — Access cookie sync uses credentials:include (no *). */
 const ALLOWED_ORIGINS = {
   'https://sandiageotoolbox.com': true,
@@ -345,13 +347,21 @@ async function deleteCustomerFilePrefix(env, id) {
 /**
  * Atomic checkout acquire using R2 conditional put (etagMatches).
  * R2 alone is sufficient: only one writer can satisfy the etag precondition.
+ * Uses object.etag only (never httpEtag). Missing ETag → fail safe (no unconditional put).
  */
 async function acquireCheckout(env, id, identity, deviceId) {
   const key = indexKey(id);
   const got = await env.CABINET.get(key);
   if (!got) return { status: 404 };
 
-  const etag = got.httpEtag || got.etag;
+  const etag = requireObjectEtag(got);
+  if (!etag) {
+    return {
+      status: 500,
+      message: 'Missing object ETag; refusing unsafe checkout acquire',
+    };
+  }
+
   let index;
   try {
     index = await got.json();
@@ -376,12 +386,14 @@ async function acquireCheckout(env, id, identity, deviceId) {
     checkout: checkoutPayload(identity, deviceId, null),
   });
 
-  const putOpts = {
-    httpMetadata: { contentType: 'application/json' },
-  };
-  if (etag) {
-    putOpts.onlyIf = { etagMatches: etag };
+  const putOpts = conditionalPutOptions(etag, { contentType: 'application/json' });
+  if (!putOpts) {
+    return {
+      status: 500,
+      message: 'Missing object ETag; refusing unsafe checkout acquire',
+    };
   }
+
   const putResult = await env.CABINET.put(key, JSON.stringify(next), putOpts);
   // Conditional put returns null when the precondition fails.
   if (putResult === null) {
@@ -407,7 +419,14 @@ async function releaseCheckout(env, id, identity, deviceId) {
   const got = await env.CABINET.get(key);
   if (!got) return { status: 404 };
 
-  const etag = got.httpEtag || got.etag;
+  const etag = requireObjectEtag(got);
+  if (!etag) {
+    return {
+      status: 500,
+      message: 'Missing object ETag; refusing unsafe checkout release',
+    };
+  }
+
   let index;
   try {
     index = await got.json();
@@ -430,10 +449,14 @@ async function releaseCheckout(env, id, identity, deviceId) {
   const next = Object.assign({}, index);
   delete next.checkout;
 
-  const putOpts = {
-    httpMetadata: { contentType: 'application/json' },
-  };
-  if (etag) putOpts.onlyIf = { etagMatches: etag };
+  const putOpts = conditionalPutOptions(etag, { contentType: 'application/json' });
+  if (!putOpts) {
+    return {
+      status: 500,
+      message: 'Missing object ETag; refusing unsafe checkout release',
+    };
+  }
+
   const putResult = await env.CABINET.put(key, JSON.stringify(next), putOpts);
   if (putResult === null) {
     return { status: 409, message: 'Customer File checkout changed during release' };

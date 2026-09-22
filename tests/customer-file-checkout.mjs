@@ -147,9 +147,20 @@ try {
             checkout: existing,
           }), { status: 409, headers: { 'content-type': 'application/json' } });
         }
+        // Mirror Worker: object.etag required; never unconditional put.
         const prevEtag = state.etags[id];
-        // Simulate atomic acquire: bump etag; concurrent losers not modeled beyond etag check.
-        state.etags[id] = (prevEtag || 0) + 1;
+        if (!prevEtag || typeof prevEtag !== 'string') {
+          return new Response('Missing object ETag; refusing unsafe checkout acquire', { status: 500 });
+        }
+        if (state.forceEtagPreconditionFail && state.forceEtagPreconditionFail[id]) {
+          return new Response(JSON.stringify({
+            ok: false, code: 'checked_out',
+            message: 'Customer File checkout changed during acquire',
+            checkout: state.forceEtagPreconditionFail[id],
+          }), { status: 409, headers: { 'content-type': 'application/json' } });
+        }
+        state.etags[id] = 'etag-' + (Number(String(prevEtag).replace(/\D/g, '') || 0) + 1);
+        state.lastConditionalAcquire = { id: id, etagMatches: prevEtag };
         state.indexes[id] = Object.assign({}, state.indexes[id], {
           checkout: {
             email: normalizeEmail(state.identity.email),
@@ -177,10 +188,15 @@ try {
         if (!sameOwner(existing, state.identity.email, deviceId)) {
           return new Response('Only the checkout owner can release this lease', { status: 403 });
         }
+        const prevEtag = state.etags[id];
+        if (!prevEtag || typeof prevEtag !== 'string') {
+          return new Response('Missing object ETag; refusing unsafe checkout release', { status: 500 });
+        }
         const next = Object.assign({}, state.indexes[id]);
         delete next.checkout;
         state.indexes[id] = next;
-        state.etags[id] = (state.etags[id] || 0) + 1;
+        state.etags[id] = 'etag-' + (Number(String(prevEtag).replace(/\D/g, '') || 0) + 1);
+        state.lastConditionalRelease = { id: id, etagMatches: prevEtag };
         return new Response(JSON.stringify({ ok: true, released: true, index: next }), {
           status: 200, headers: { 'content-type': 'application/json' },
         });
@@ -224,7 +240,10 @@ try {
             delete body.checkout;
           }
           state.indexes[id] = body;
-          state.etags[id] = (state.etags[id] || 0) + 1;
+          const prev = state.etags[id];
+          state.etags[id] = typeof prev === 'string'
+            ? ('etag-' + (Number(String(prev).replace(/\D/g, '') || 0) + 1))
+            : 'etag-1';
           return new Response(JSON.stringify({ ok: true }), {
             status: 200, headers: { 'content-type': 'application/json' },
           });
@@ -345,7 +364,7 @@ try {
         displayName: 'Cloud Job',
         propertyAddress: '9 Cabinet Rd',
       };
-      state.etags[id] = 1;
+      state.etags[id] = 'etag-1';
       // tiny PNG-ish bytes
       state.media['plan-cloud'] = { bytes: new Uint8Array([1, 2, 3, 4]), contentType: 'image/png' };
       state.media['ph_cloud'] = { bytes: new Uint8Array([5, 6, 7, 8]), contentType: 'image/jpeg' };
@@ -372,7 +391,7 @@ try {
     report.K_syncOk = syncK.ok === true && syncK.remoteOnlySkipped >= 2;
     report.K_stillRemote = !(await ToolboxDB.getCustomerFile('cf-cloud-1'));
 
-    // B: Check Out acquires for this user+device
+    // B: Check Out acquires for this user+device (conditional ETag write)
     localStorage.setItem('toolboxDeviceId', 'device-ipad');
     const co = await ToolboxSync.checkOutCustomerFile('cf-cloud-1');
     report.B_ok = co.ok === true;
@@ -380,6 +399,10 @@ try {
     report.B_owner = report.B_checkout &&
       report.B_checkout.email === 'tim@example.com' &&
       report.B_checkout.deviceId === 'device-ipad';
+    report.B_etagConditional = !!(state.lastConditionalAcquire &&
+      state.lastConditionalAcquire.id === 'cf-cloud-1' &&
+      typeof state.lastConditionalAcquire.etagMatches === 'string' &&
+      state.lastConditionalAcquire.etagMatches.length > 0);
 
     // F + G: only selected file materialized + media present
     report.F_selectedLocal = !!(await ToolboxDB.getCustomerFile('cf-cloud-1'));
@@ -510,11 +533,71 @@ try {
     } catch (_) {}
     report.N_409 = put409;
 
+    // O: missing ETag fails safely (no unconditional acquire)
+    seedRemote('cf-no-etag');
+    delete state.etags['cf-no-etag'];
+    let oStatus = 0;
+    let oBody = '';
+    try {
+      const resp = await fetch(base + '/files/cf-no-etag/checkout', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-toolbox-device-id': 'device-ipad' },
+        body: JSON.stringify({ deviceId: 'device-ipad' }),
+      });
+      oStatus = resp.status;
+      oBody = await resp.text();
+    } catch (_) {}
+    report.O_missingEtagFail = oStatus === 500 && /Missing object ETag/i.test(oBody);
+    report.O_noOwnership = !state.indexes['cf-no-etag'].checkout;
+
+    // P: failed ETag precondition cannot acquire ownership
+    seedRemote('cf-etag-race');
+    state.forceEtagPreconditionFail = state.forceEtagPreconditionFail || Object.create(null);
+    state.forceEtagPreconditionFail['cf-etag-race'] = {
+      email: 'lee@example.com', sub: 'sub-lee', deviceId: 'device-lee',
+      checkedOutAt: '2026-09-22T19:00:00.000Z',
+    };
+    let pRefused = false;
+    try {
+      localStorage.setItem('toolboxDeviceId', 'device-ipad');
+      await ToolboxSync.acquireRemoteCheckout('cf-etag-race');
+    } catch (err) {
+      pRefused = err && err.code === 'checkout';
+    }
+    report.P_preconditionRefused = pRefused;
+    report.P_noLocalOwnership = !(state.indexes['cf-etag-race'].checkout &&
+      state.indexes['cf-etag-race'].checkout.deviceId === 'device-ipad');
+    delete state.forceEtagPreconditionFail['cf-etag-race'];
+
+    // Q: release fails safely when ETag unavailable
+    seedRemote('cf-release-no-etag');
+    state.indexes['cf-release-no-etag'] = Object.assign({}, state.indexes['cf-release-no-etag'], {
+      checkout: {
+        email: 'tim@example.com', sub: 'sub-tim', deviceId: 'device-ipad',
+        checkedOutAt: '2026-09-22T20:00:00.000Z',
+      },
+    });
+    delete state.etags['cf-release-no-etag'];
+    let qStatus = 0;
+    let qBody = '';
+    try {
+      const resp = await fetch(base + '/files/cf-release-no-etag/checkout/release', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-toolbox-device-id': 'device-ipad' },
+        body: JSON.stringify({ deviceId: 'device-ipad' }),
+      });
+      qStatus = resp.status;
+      qBody = await resp.text();
+    } catch (_) {}
+    report.Q_releaseMissingEtagFail = qStatus === 500 && /Missing object ETag/i.test(qBody);
+    report.Q_leaseKept = !!(state.indexes['cf-release-no-etag'].checkout &&
+      state.indexes['cf-release-no-etag'].checkout.deviceId === 'device-ipad');
+
     return report;
   });
 
   check('A: cloud-only browse without materialize', out.A_browseCount >= 2 && out.A_cloudOnly && out.A_noLocal, JSON.stringify(out));
-  check('B: Check Out acquires user+device ownership', out.B_ok && out.B_owner, JSON.stringify(out));
+  check('B: Check Out acquires user+device ownership', out.B_ok && out.B_owner && out.B_etagConditional, JSON.stringify(out));
   check('C: same user+device acquire is idempotent', out.C_idempotent, JSON.stringify(out));
   check('D: same user different device refused', out.D_refused, JSON.stringify(out));
   check('E: different user refused', out.E_refused, JSON.stringify(out));
@@ -527,6 +610,9 @@ try {
   check('L: local-only first-upload still works', out.L_upload && out.L_noCheckoutForced, JSON.stringify(out));
   check('M: shell/epoch protections remain', out.M_epoch, JSON.stringify(out));
   check('N: permanent-delete tombstone / 409 remains', out.N_tombstone && out.N_409, JSON.stringify(out));
+  check('O: missing ETag fails safely (no unconditional acquire)', out.O_missingEtagFail && out.O_noOwnership, JSON.stringify(out));
+  check('P: failed ETag precondition cannot acquire ownership', out.P_preconditionRefused && out.P_noLocalOwnership, JSON.stringify(out));
+  check('Q: release fails safely when ETag unavailable', out.Q_releaseMissingEtagFail && out.Q_leaseKept, JSON.stringify(out));
 } finally {
   await browser.close();
   server.kill('SIGTERM');
