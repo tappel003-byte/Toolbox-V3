@@ -2207,8 +2207,49 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 }
 
 .cf-import__picker input,
-.cf-import__conflict select {
+.cf-import__conflict select,
+.cf-import__conflict input[type="text"] {
   max-width: 55%;
+}
+
+.cf-import__destination {
+  margin: 12px 0 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.cf-import__destination legend {
+  padding: 0 4px;
+  color: var(--navy);
+  font-weight: 700;
+}
+
+.cf-import__dest-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.cf-import__client-name {
+  margin: 12px 0;
+}
+
+.cf-import__warning--action {
+  display: grid;
+  gap: 10px;
+}
+
+.cf-import__confirm-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--navy);
+  font-weight: 700;
 }
 
 .cf-import__preview,

@@ -277,6 +277,14 @@
     }
   }
 
+  /** Declared plan size must match image pixels (1px rounding only). */
+  function dimensionMismatchMessage(floorName, declared, intrinsic) {
+    return 'The recovered plan dimensions do not match the coordinate space recorded in the survey, so Toolbox cannot safely guarantee point placement.'
+      + (floorName ? ' Level: “' + floorName + '”.' : '')
+      + ' Declared ' + declared.width + '×' + declared.height
+      + ', image ' + intrinsic.width + '×' + intrinsic.height + '.';
+  }
+
   async function parseFloor(file, bytes, packageFingerprint) {
     let bundle;
     try {
@@ -302,12 +310,32 @@
         throw new Error('A Floor Survey floor is missing its original embedded plan.');
       }
       const intrinsic = await imageDimensions(source.planDataUrl);
-      const width = Number(source.planWidth) > 0 ? Number(source.planWidth) : intrinsic.width;
-      const height = Number(source.planHeight) > 0 ? Number(source.planHeight) : intrinsic.height;
+      const declaredW = Number(source.planWidth);
+      const declaredH = Number(source.planHeight);
+      const hasDeclared = declaredW > 0 && declaredH > 0;
+      if (hasDeclared &&
+          (Math.abs(declaredW - intrinsic.width) > 1 || Math.abs(declaredH - intrinsic.height) > 1)) {
+        throw new Error(dimensionMismatchMessage(
+          cleanText(source.name),
+          { width: declaredW, height: declaredH },
+          intrinsic
+        ));
+      }
+      const width = hasDeclared ? declaredW : intrinsic.width;
+      const height = hasDeclared ? declaredH : intrinsic.height;
       requirePointArray(source.boundary || [], 'survey boundary');
       if (source.areas) source.areas.forEach((area) => requirePointArray(area.polygon || [], 'topo area'));
       if (source.exclusions) source.exclusions.forEach((area) => requirePointArray(area.polygon || [], 'exclusion'));
-      floors.push({ source, width, height, sourceIndex });
+      floors.push({
+        source,
+        width,
+        height,
+        sourceIndex,
+        intrinsicWidth: intrinsic.width,
+        intrinsicHeight: intrinsic.height,
+        hasBoundary: Array.isArray(source.boundary) && source.boundary.length >= 3,
+        transitionCount: Array.isArray(source.transitions) ? source.transitions.length : 0,
+      });
     }
     floors.sort((a, b) => {
       const aOrder = Number.isFinite(Number(a.source.order)) ? Number(a.source.order) : a.sourceIndex;
@@ -321,6 +349,7 @@
     });
 
     const client = parseClientName(bundle.project.client);
+    const bp1 = bundle.points.find((point) => point && point.isBasePoint);
     return {
       kind: 'floor',
       label: 'Floor Survey',
@@ -329,13 +358,17 @@
       bundle,
       floors,
       pointCount: bundle.points.length,
-      transitionCount: floors.reduce((total, item) => total + (Array.isArray(item.source.transitions) ? item.source.transitions.length : 0), 0),
+      transitionCount: floors.reduce((total, item) => total + item.transitionCount, 0),
+      hasBoundary: floors.some((item) => item.hasBoundary),
+      hasBp1: !!(bp1),
+      levelNames: floors.map((item) => cleanText(item.source.name) || 'Recovered Floor'),
       customerCandidates: {
         firstName: client ? client.firstName : '',
         lastName: client ? client.lastName : '',
         propertyAddress: cleanText(bundle.project.address),
       },
       unparsedClient: client ? '' : cleanText(bundle.project.client),
+      needsClientNameEntry: !client && !!cleanText(bundle.project.client),
     };
   }
 
@@ -354,6 +387,51 @@
     return record && Array.isArray(record.recoveryImports) ? record.recoveryImports : [];
   }
 
+  function layerHasFloorWork(layer) {
+    if (!layer || typeof layer !== 'object') return false;
+    if (Array.isArray(layer.points) && layer.points.length) return true;
+    if (Array.isArray(layer.boundary) && layer.boundary.length >= 3) return true;
+    if (Array.isArray(layer.transitions) && layer.transitions.length) return true;
+    if (Array.isArray(layer.areas) && layer.areas.length) return true;
+    if (Array.isArray(layer.exclusions) && layer.exclusions.length) return true;
+    return false;
+  }
+
+  function recordHasFloorWork(record) {
+    const byCanvas = record && record.floorSurvey && record.floorSurvey.byCanvasId;
+    if (!byCanvas || typeof byCanvas !== 'object') return false;
+    return Object.keys(byCanvas).some(function (id) {
+      return layerHasFloorWork(byCanvas[id]);
+    });
+  }
+
+  function isMeaninglessBlankCanvas(canvas, record) {
+    if (!canvas) return false;
+    if (canvas.plan && canvas.plan.id) return false;
+    if (Array.isArray(canvas.rooms) && canvas.rooms.length) return false;
+    if (canvas.frontDoor) return false;
+    const layer = record.floorSurvey && record.floorSurvey.byCanvasId
+      ? record.floorSurvey.byCanvasId[canvas.id]
+      : null;
+    if (layerHasFloorWork(layer)) return false;
+    const pins = record.distress && Array.isArray(record.distress.pins) ? record.distress.pins : [];
+    if (pins.some(function (pin) { return pin && pin.canvasId === canvas.id; })) return false;
+    return true;
+  }
+
+  function displayCustomerLabel(record) {
+    if (!record) return 'Customer File';
+    if (window.ToolboxApp && window.ToolboxApp.customerIdentity) {
+      const name = window.ToolboxApp.customerIdentity.displayName(record);
+      const address = window.ToolboxApp.customerIdentity.displayAddress(record);
+      if (name && address && address !== 'No property address yet') return name + ' — ' + address;
+      return name || address || 'Untitled Customer File';
+    }
+    const name = [cleanText(record.firstName), cleanText(record.lastName)].filter(Boolean).join(' ');
+    const address = cleanText(record.propertyAddress);
+    return name && address ? name + ' — ' + address : (name || address || 'Untitled Customer File');
+  }
+
   function fieldConflicts(record, parsed) {
     const candidates = parsed.customerCandidates || {};
     const conflicts = Object.keys(candidates).filter((field) => {
@@ -362,7 +440,7 @@
       return imported && existing && imported !== existing;
     }).map((field) => ({
       field,
-      label: field,
+      label: field === 'firstName' ? 'First name' : field === 'lastName' ? 'Last name' : field === 'propertyAddress' ? 'Property address' : field,
       existing: cleanText(record[field]),
       imported: cleanText(candidates[field]),
     }));
@@ -394,10 +472,26 @@
     return conflicts;
   }
 
+  async function listImportDestinations() {
+    const all = await window.ToolboxDB.getAllCustomerFiles();
+    return all
+      .filter(function (record) { return record && !record.deletedAt; })
+      .sort(function (a, b) {
+        return (b.updatedAt || '').localeCompare(a.updatedAt || '');
+      })
+      .map(function (record) {
+        return {
+          id: record.id,
+          label: displayCustomerLabel(record),
+          hasFloorWork: recordHasFloorWork(record),
+        };
+      });
+  }
+
   async function getImportContext(parsed, customerFileId) {
-    const existing = await window.ToolboxDB.getCustomerFile(customerFileId);
+    const existing = customerFileId ? await window.ToolboxDB.getCustomerFile(customerFileId) : null;
     if (existing && existing.deletedAt) throw new Error('Restore this Customer File before importing into it.');
-    const record = existing ? clone(existing) : window.ToolboxApp.blankCustomerFile(customerFileId);
+    const record = existing ? clone(existing) : window.ToolboxApp.blankCustomerFile(customerFileId || newId('cf'));
     window.ToolboxPlanSetup.ensurePlanSetup(record);
     const duplicate = recoveryImports(record).some((entry) => entry && entry.fingerprint === parsed.fingerprint);
     const existingDistressPins = record.distress && Array.isArray(record.distress.pins)
@@ -406,18 +500,27 @@
     const existingDistressDrawings = record.distress && Array.isArray(record.distress.drawings)
       ? record.distress.drawings.length
       : 0;
+    const hasFloorWork = recordHasFloorWork(record);
     return {
       isNew: !existing,
       record,
+      destinationId: record.id,
+      destinationLabel: existing ? displayCustomerLabel(existing) : 'New Customer File',
       targetUpdatedAt: existing ? existing.updatedAt : null,
       duplicate,
       conflicts: fieldConflicts(record, parsed),
       blocksDistressMerge: parsed.kind === 'distress' && (existingDistressPins > 0 || existingDistressDrawings > 0),
+      hasFloorWork: hasFloorWork,
+      requiresFloorAddConfirm: parsed.kind === 'floor' && !!existing && hasFloorWork,
     };
   }
 
   function applyCustomerFields(record, parsed, options) {
-    const candidates = parsed.customerCandidates || {};
+    const candidates = Object.assign({}, parsed.customerCandidates || {});
+    if (options.clientFirstName != null || options.clientLastName != null) {
+      candidates.firstName = cleanText(options.clientFirstName);
+      candidates.lastName = cleanText(options.clientLastName);
+    }
     const choices = options.fieldChoices || {};
     const updates = [];
     Object.keys(candidates).forEach((field) => {
@@ -503,7 +606,12 @@
     if (isNew) {
       record.planSetup.canvases = canvases;
     } else {
-      record.planSetup.canvases = canvases.concat(record.planSetup.canvases || []);
+      const importedIds = {};
+      canvases.forEach(function (canvas) { importedIds[canvas.id] = true; });
+      const kept = (record.planSetup.canvases || []).filter(function (canvas) {
+        return importedIds[canvas.id] || !isMeaninglessBlankCanvas(canvas, record);
+      });
+      record.planSetup.canvases = canvases.concat(kept);
     }
     record.planSetup.activeCanvasId = canvases[0].id;
     record.planSetup.updatedAt = new Date().toISOString();
@@ -654,6 +762,7 @@
 
   async function applyImport(parsed, customerFileId, options) {
     options = options || {};
+    if (!cleanText(customerFileId)) throw new Error('Choose where the recovered work should go.');
     const current = await window.ToolboxDB.getCustomerFile(customerFileId);
     if (current && current.deletedAt) throw new Error('Restore this Customer File before importing into it.');
     const isNew = !current;
@@ -668,8 +777,25 @@
     if (!isNew && options.canvasChoice !== 'add') {
       throw new Error('Choose how the recovered original plan should be added.');
     }
-    const conflicts = fieldConflicts(record, parsed);
-    conflicts.forEach((conflict) => {
+    if (parsed.kind === 'floor' && !isNew && recordHasFloorWork(record) && !options.confirmAddFloorLevels) {
+      throw new Error('This Customer File already has Floor Survey work. Confirm adding the recovered survey as additional level(s).');
+    }
+    if (parsed.needsClientNameEntry) {
+      const first = cleanText(options.clientFirstName);
+      const last = cleanText(options.clientLastName);
+      if (!first && !last) {
+        throw new Error('Enter the customer first and last name before importing.');
+      }
+    }
+    const effectiveParsed = Object.assign({}, parsed, {
+      customerCandidates: Object.assign({}, parsed.customerCandidates || {}),
+    });
+    if (options.clientFirstName != null || options.clientLastName != null) {
+      effectiveParsed.customerCandidates.firstName = cleanText(options.clientFirstName);
+      effectiveParsed.customerCandidates.lastName = cleanText(options.clientLastName);
+    }
+    const resolvedConflicts = fieldConflicts(record, effectiveParsed);
+    resolvedConflicts.forEach((conflict) => {
       if (!['keep', 'import'].includes(options.fieldChoices && options.fieldChoices[conflict.field])) {
         throw new Error('Resolve the ' + conflict.field + ' conflict before importing.');
       }
@@ -680,7 +806,7 @@
       throw new Error('This Customer File already has Distress work. Use a new Customer File so existing work and historical numbering are not changed.');
     }
 
-    const customerUpdates = applyCustomerFields(record, parsed, options);
+    const customerUpdates = applyCustomerFields(record, effectiveParsed, options);
     const prepared = parsed.kind === 'distress'
       ? prepareDistress(record, parsed, isNew)
       : prepareFloor(record, parsed, isNew, options);
@@ -716,35 +842,50 @@
       }
       throw error;
     }
-    return { record, customerUpdates, ...prepared.result };
+    return { record, customerUpdates, destinationId: record.id, ...prepared.result };
   }
 
-  function summaryRows(parsed) {
+  function summaryRows(parsed, context) {
     if (parsed.kind === 'distress') {
       return [
         ['Plan', 'Original plan found'],
-        ['Observations', parsed.pins.length],
-        ['Attached photos', parsed.attachedPhotoCount],
+        ['Observations', String(parsed.pins.length)],
+        ['Attached photos', String(parsed.attachedPhotoCount)],
         ['Quick Capture', parsed.quickCapture.count + ' photo' + (parsed.quickCapture.count === 1 ? '' : 's') + ' found — not imported yet'],
+        ['Destination', context && context.destinationLabel ? context.destinationLabel : '—'],
       ];
     }
+    const notes = cleanText(parsed.bundle.project.notes);
+    const surfaces = Array.isArray(parsed.bundle.project.customSurfaces) ? parsed.bundle.project.customSurfaces : [];
+    const levelLabel = (parsed.levelNames || []).join(', ') || 'Recovered Floor';
+    const customerLabel = [parsed.customerCandidates.firstName, parsed.customerCandidates.lastName].filter(Boolean).join(' ')
+      || (parsed.unparsedClient ? parsed.unparsedClient + ' — enter name below' : 'Not provided');
     return [
-      ['Customer', [parsed.customerCandidates.firstName, parsed.customerCandidates.lastName].filter(Boolean).join(' ') ||
-        (parsed.unparsedClient ? parsed.unparsedClient + ' — not mapped automatically' : 'Not provided')],
+      ['Customer', customerLabel],
       ['Property', parsed.customerCandidates.propertyAddress || 'Not provided'],
       ['Survey date', cleanText(parsed.bundle.project.inspectionDate) || 'Not provided'],
-      ['Inspector', cleanText(parsed.bundle.project.inspector) ?
-        cleanText(parsed.bundle.project.inspector) + ' — no native Customer File field' : 'Not provided'],
-      ['Plan', parsed.floors.length + ' floor plan' + (parsed.floors.length === 1 ? '' : 's')],
-      ['Floor Survey', parsed.pointCount + ' readings'],
-      ['Flooring corrections', parsed.transitionCount],
+      ['Destination', context && context.destinationLabel ? context.destinationLabel : '—'],
+      ['Recovered level', levelLabel],
+      ['Plan recovered', parsed.floors.length ? 'Yes' : 'No'],
+      ['Boundary recovered', parsed.hasBoundary ? 'Yes' : 'No'],
+      ['Survey readings', String(parsed.pointCount)],
+      ['BP1 recovered', parsed.hasBp1 ? 'Yes' : 'No'],
+      ['Transitions / corrections', String(parsed.transitionCount)],
+      ['Notes', notes ? 'Yes' : 'None'],
+      ['Custom surfaces', surfaces.length ? surfaces.join(', ') : 'None'],
     ];
   }
 
   function mount(container, options) {
-    const customerFileId = options.customerFileId;
+    options = options || {};
+    const allowDestinationChoice = !!options.allowDestinationChoice;
+    let presetCustomerFileId = cleanText(options.customerFileId) || null;
     let parsed = null;
     let context = null;
+    let destinations = [];
+    let destinationMode = allowDestinationChoice ? '' : (presetCustomerFileId ? 'existing' : 'new');
+    let selectedExistingId = allowDestinationChoice ? '' : (presetCustomerFileId || '');
+    let pendingNewId = allowDestinationChoice ? '' : (presetCustomerFileId || newId('cf'));
 
     container.innerHTML =
       '<section class="cf-import">' +
@@ -759,29 +900,131 @@
     const status = container.querySelector('#cf-import-status');
     const preview = container.querySelector('#cf-import-preview');
 
+    function activeDestinationId() {
+      if (destinationMode === 'new') return pendingNewId;
+      if (destinationMode === 'existing') return selectedExistingId;
+      return '';
+    }
+
     function choicesFromPreview() {
       const fieldChoices = {};
       preview.querySelectorAll('[data-import-conflict]').forEach((select) => {
         fieldChoices[select.getAttribute('data-import-conflict')] = select.value;
       });
+      const firstInput = preview.querySelector('#cf-import-client-first');
+      const lastInput = preview.querySelector('#cf-import-client-last');
       return {
         targetUpdatedAt: context.targetUpdatedAt,
-        canvasChoice: context.isNew ? 'new' : (preview.querySelector('#cf-import-canvas-choice') || {}).value,
+        canvasChoice: context.isNew ? 'new' : 'add',
         fieldChoices,
         useSuggestedAddress: !!(preview.querySelector('#cf-import-suggested-address') || {}).checked,
+        confirmAddFloorLevels: !!(preview.querySelector('#cf-import-confirm-floor-add') || {}).checked,
+        clientFirstName: firstInput ? firstInput.value : undefined,
+        clientLastName: lastInput ? lastInput.value : undefined,
       };
     }
 
     function updateImportButton() {
       const button = preview.querySelector('#cf-import-confirm');
-      if (!button) return;
+      if (!button || !context) return;
       const unresolved = [...preview.querySelectorAll('[data-import-conflict]')].some((select) => !select.value);
-      const canvasUnresolved = !context.isNew && !(preview.querySelector('#cf-import-canvas-choice') || {}).value;
-      button.disabled = context.duplicate || context.blocksDistressMerge || unresolved || canvasUnresolved;
+      const floorConfirmNeeded = context.requiresFloorAddConfirm &&
+        !(preview.querySelector('#cf-import-confirm-floor-add') || {}).checked;
+      let nameBlocked = false;
+      if (parsed && parsed.needsClientNameEntry) {
+        const first = cleanText((preview.querySelector('#cf-import-client-first') || {}).value);
+        const last = cleanText((preview.querySelector('#cf-import-client-last') || {}).value);
+        nameBlocked = !first && !last;
+      }
+      button.disabled = context.duplicate || context.blocksDistressMerge || unresolved ||
+        floorConfirmNeeded || nameBlocked;
     }
 
-    function renderPreview() {
-      const rows = summaryRows(parsed).map((row) =>
+    async function loadContextForDestination() {
+      const destinationId = activeDestinationId();
+      if (!destinationId) {
+        context = null;
+        return;
+      }
+      context = await getImportContext(parsed, destinationMode === 'new' ? destinationId : destinationId);
+      if (destinationMode === 'new') {
+        context.destinationLabel = 'New Customer File';
+      }
+    }
+
+    function destinationPanelHtml() {
+      if (!allowDestinationChoice) {
+        return '<p class="cf-import__note">Destination: ' + escapeHtml(context.destinationLabel) +
+          (context.isNew
+            ? ' — recovered work becomes this new Customer File.'
+            : ' — recovered plan(s) will be added as new canvas/level(s).') +
+          '</p>';
+      }
+      const optionsHtml = destinations.map(function (item) {
+        return '<option value="' + escapeHtml(item.id) + '"' +
+          (item.id === selectedExistingId ? ' selected' : '') + '>' +
+          escapeHtml(item.label) + '</option>';
+      }).join('');
+      return '<fieldset class="cf-import__destination">' +
+        '<legend>Where should this recovered work go?</legend>' +
+        '<label class="cf-import__dest-option"><input type="radio" name="cf-import-dest-mode" value="new"' +
+        (destinationMode === 'new' ? ' checked' : '') + '> Create new Customer File</label>' +
+        '<label class="cf-import__dest-option"><input type="radio" name="cf-import-dest-mode" value="existing"' +
+        (destinationMode === 'existing' ? ' checked' : '') + '> Add to existing Customer File</label>' +
+        (destinationMode === 'existing'
+          ? '<label class="cf-import__conflict"><span>Existing Customer File</span>' +
+            '<select id="cf-import-dest-file"><option value="">Choose…</option>' + optionsHtml + '</select></label>'
+          : '') +
+        '</fieldset>';
+    }
+
+    function floorProtectionHtml() {
+      if (!context.requiresFloorAddConfirm) return '';
+      return '<div class="cf-import__warning cf-import__warning--action">' +
+        '<p>This Customer File already has Floor Survey work (readings, boundary, transitions, areas, or exclusions). ' +
+        'Toolbox will not overwrite or merge into that existing survey.</p>' +
+        '<label class="cf-import__confirm-check"><input type="checkbox" id="cf-import-confirm-floor-add"> ' +
+        'Add recovered survey as additional level(s)</label></div>';
+    }
+
+    function clientNameHtml() {
+      if (!parsed.needsClientNameEntry) return '';
+      return '<div class="cf-import__client-name">' +
+        '<p class="cf-import__note">Client name “' + escapeHtml(parsed.unparsedClient) +
+        '” could not be split into first and last name. Enter them below.</p>' +
+        '<label class="cf-import__conflict"><span>First name</span>' +
+        '<input id="cf-import-client-first" type="text" autocomplete="given-name"></label>' +
+        '<label class="cf-import__conflict"><span>Last name</span>' +
+        '<input id="cf-import-client-last" type="text" autocomplete="family-name"></label></div>';
+    }
+
+    function canvasNoteHtml() {
+      if (context.isNew) {
+        return '<p class="cf-import__note">The recovered original plan' +
+          (parsed.kind === 'floor' && parsed.floors.length > 1 ? 's' : '') +
+          ' will become this Customer File’s canvas' +
+          (parsed.kind === 'floor' && parsed.floors.length > 1 ? 'es' : '') +
+          '. Empty default canvases will not be kept.</p>';
+      }
+      return '<p class="cf-import__note">Recovered plan' +
+        (parsed.kind === 'floor' && parsed.floors.length > 1 ? 's are' : ' is') +
+        ' added as new canvas/level' +
+        (parsed.kind === 'floor' && parsed.floors.length > 1 ? 's' : '') +
+        '. Existing meaningful canvases stay; an empty default blank canvas may be removed.</p>';
+    }
+
+    function renderPreviewShell() {
+      if (!parsed) return;
+      if (!context) {
+        preview.innerHTML =
+          '<section class="cf-import__preview"><h2 tabindex="-1">Choose destination</h2>' +
+          destinationPanelHtml() +
+          '<p class="cf-import__note">Select Create new or an existing Customer File to continue.</p></section>';
+        bindDestinationControls();
+        preview.querySelector('h2').focus();
+        return;
+      }
+      const rows = summaryRows(parsed, context).map((row) =>
         '<div class="cf-import__row"><dt>' + escapeHtml(row[0]) + '</dt><dd>' + escapeHtml(row[1]) + '</dd></div>'
       ).join('');
       const conflicts = context.conflicts.map((conflict) =>
@@ -796,11 +1039,6 @@
           (existingAddress ? 'Lower-confidence property suggestion (existing address will be kept): ' : 'Use lower-confidence property suggestion: ') +
           escapeHtml(parsed.suggestedPropertyAddress) + '</label>'
         : '';
-      const canvasChoice = context.isNew
-        ? '<p class="cf-import__note">The recovered original plan will become this Customer File’s canvas.</p>'
-        : '<label class="cf-import__conflict"><span>Recovered plan placement</span><select id="cf-import-canvas-choice">' +
-          '<option value="">Choose…</option><option value="add">Add recovered original plan as new canvas' +
-          (parsed.kind === 'floor' && parsed.floors.length > 1 ? 'es' : '') + '</option></select></label>';
       const duplicate = context.duplicate
         ? '<p class="cf-import__warning">This exact recovery package has already been imported into this Customer File.</p>'
         : '';
@@ -808,16 +1046,24 @@
         ? '<p class="cf-import__warning">This Customer File already contains Distress work. Import into a new Customer File to preserve the existing work and historical numbering.</p>'
         : '';
       preview.innerHTML =
-        '<section class="cf-import__preview"><h2 tabindex="-1">Import ' + escapeHtml(parsed.label) + '</h2><dl>' + rows + '</dl>' +
-        suggestion + conflicts + canvasChoice + duplicate + blocked +
+        '<section class="cf-import__preview"><h2 tabindex="-1">Confirm ' + escapeHtml(parsed.label) + ' recovery</h2>' +
+        destinationPanelHtml() +
+        '<dl>' + rows + '</dl>' +
+        clientNameHtml() +
+        suggestion + conflicts + floorProtectionHtml() + canvasNoteHtml() + duplicate + blocked +
         '<div class="cf-import__actions"><button type="button" id="cf-import-confirm" class="btn btn--accent">Import</button></div></section>';
+      bindDestinationControls();
       preview.querySelectorAll('select,input').forEach((control) => control.addEventListener('change', updateImportButton));
+      preview.querySelectorAll('#cf-import-client-first,#cf-import-client-last').forEach(function (control) {
+        control.addEventListener('input', updateImportButton);
+      });
       preview.querySelector('#cf-import-confirm').addEventListener('click', async function () {
         const button = this;
         button.disabled = true;
         status.textContent = 'Importing…';
         try {
-          const result = await applyImport(parsed, customerFileId, choicesFromPreview());
+          const destinationId = activeDestinationId();
+          const result = await applyImport(parsed, destinationId, choicesFromPreview());
           const lines = result.kind === 'distress'
             ? [
                 result.observations + ' observations recovered',
@@ -847,7 +1093,7 @@
             '<button type="button" id="cf-import-open" class="btn btn--accent">Open ' + escapeHtml(parsed.label) + '</button></section>';
           preview.querySelector('h2').focus();
           preview.querySelector('#cf-import-open').addEventListener('click', function () {
-            options.onDone(result.kind);
+            if (typeof options.onDone === 'function') options.onDone(result.kind, result.destinationId);
           });
         } catch (error) {
           console.error('Recovery import failed:', error);
@@ -856,6 +1102,55 @@
         }
       });
       updateImportButton();
+      preview.querySelector('h2').focus();
+    }
+
+    function bindDestinationControls() {
+      preview.querySelectorAll('input[name="cf-import-dest-mode"]').forEach(function (radio) {
+        radio.addEventListener('change', async function () {
+          destinationMode = radio.value;
+          if (destinationMode === 'new') {
+            if (!pendingNewId) pendingNewId = newId('cf');
+            selectedExistingId = '';
+          }
+          status.textContent = 'Updating destination…';
+          try {
+            if (destinationMode === 'existing' && !selectedExistingId) {
+              context = null;
+              status.textContent = '';
+              renderPreviewShell();
+              return;
+            }
+            await loadContextForDestination();
+            status.textContent = '';
+            renderPreviewShell();
+          } catch (error) {
+            console.error('Could not load import destination:', error);
+            status.textContent = error && error.message ? error.message : 'That destination could not be opened.';
+          }
+        });
+      });
+      const destSelect = preview.querySelector('#cf-import-dest-file');
+      if (destSelect) {
+        destSelect.addEventListener('change', async function () {
+          selectedExistingId = destSelect.value || '';
+          status.textContent = 'Updating destination…';
+          try {
+            if (!selectedExistingId) {
+              context = null;
+              status.textContent = '';
+              renderPreviewShell();
+              return;
+            }
+            await loadContextForDestination();
+            status.textContent = '';
+            renderPreviewShell();
+          } catch (error) {
+            console.error('Could not load import destination:', error);
+            status.textContent = error && error.message ? error.message : 'That destination could not be opened.';
+          }
+        });
+      }
     }
 
     input.addEventListener('change', async function () {
@@ -865,10 +1160,22 @@
       status.textContent = 'Inspecting export…';
       try {
         parsed = await inspectFile(file);
-        context = await getImportContext(parsed, customerFileId);
+        destinations = allowDestinationChoice ? await listImportDestinations() : [];
+        if (allowDestinationChoice) {
+          destinationMode = '';
+          selectedExistingId = '';
+          pendingNewId = newId('cf');
+          context = null;
+          status.textContent = '';
+          renderPreviewShell();
+          return;
+        }
+        if (!presetCustomerFileId) pendingNewId = newId('cf');
+        destinationMode = presetCustomerFileId ? 'existing' : 'new';
+        selectedExistingId = presetCustomerFileId || '';
+        await loadContextForDestination();
         status.textContent = '';
-        renderPreview();
-        preview.querySelector('h2').focus();
+        renderPreviewShell();
       } catch (error) {
         console.error('Could not inspect recovery export:', error);
         status.textContent = error && error.message ? error.message : 'That recovery export could not be read.';
@@ -880,6 +1187,7 @@
     inspectFile,
     getImportContext,
     applyImport,
+    listImportDestinations,
     mount,
   };
 })();
