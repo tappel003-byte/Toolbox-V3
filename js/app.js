@@ -693,7 +693,7 @@
       '<div class="view-bar view-bar--file view-bar--cf-home">' +
       '  <button type="button" id="home-back" class="btn btn--ghost">‹ Cabinet</button>' +
       '  <span class="file-status" id="home-status"></span>' +
-      '  <button type="button" id="home-edit-top" class="btn btn--quiet">Edit</button>' +
+      '  <button type="button" id="home-edit-top" class="btn btn--quiet">Edit customer</button>' +
       '</div>' +
       '<div class="cf-home" id="cf-home">' +
       '  <section class="cf-home__hero">' +
@@ -730,12 +730,10 @@
       '  <p class="cf-home__hint">Each workspace opens with this Customer File. They are independent—not required steps.</p>' +
       '  <div class="cf-home__file-actions">' +
       '    <button type="button" id="home-import" class="btn btn--secondary">Import standalone export</button>' +
-      '    <button type="button" id="home-edit" class="btn btn--secondary cf-home__edit">Edit customer details and plans</button>' +
       '  </div>' +
       '</div>';
 
     const backBtn = app.querySelector('#home-back');
-    const editBtn = app.querySelector('#home-edit');
     const importBtn = app.querySelector('#home-import');
     const editTopBtn = app.querySelector('#home-edit-top');
     const planCta = app.querySelector('#home-plan-cta');
@@ -754,7 +752,6 @@
     function editFile(section) {
       window.location.hash = '#/file/' + encodeURIComponent(id) + '/edit' + (section ? '/' + section : '');
     }
-    editBtn.addEventListener('click', function () { editFile('customer'); });
     importBtn.addEventListener('click', function () {
       window.location.hash = '#/file/' + encodeURIComponent(id) + '/import';
     });
@@ -810,7 +807,8 @@
       app.querySelectorAll('.cf-app-btn').forEach(function (btn) {
         const state = btn.querySelector('.cf-app-btn__state');
         btn.classList.toggle('is-locked', !readiness.hasPlan);
-        state.textContent = readiness.hasPlan ? 'Open workspace →' : 'Add a floor plan first';
+        // Ready tiles stay quiet; locked tiles still say why they need a plan.
+        state.textContent = readiness.hasPlan ? '' : 'Add a floor plan first';
       });
       statusEl.textContent = '';
     }).catch(function (err) {
