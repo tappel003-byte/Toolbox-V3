@@ -206,15 +206,13 @@ function permanentlyDeleteCustomerFiles(records) {
 }
 
 function purgeExpiredCustomerFiles(now) {
-  const time = now instanceof Date ? now.getTime() : Date.now();
-  return getAllCustomerFiles().then((records) => {
-    const expired = records.filter((record) => {
-      if (!record || !record.deletedAt || !record.purgeAfter) return false;
-      const purgeAt = Date.parse(record.purgeAfter);
-      return Number.isFinite(purgeAt) && purgeAt <= time;
-    });
-    return permanentlyDeleteCustomerFiles(expired);
-  });
+  // Data preservation: do not auto-hard-delete on the 120-day timer.
+  // Silent local purge left cloud Trash state able to return on Sync, and
+  // creating a permanent cloud purge tombstone from a background heuristic
+  // is not an explicit owner permanent-delete action.
+  // Expired rows remain recoverable in Trash until Empty Trash (or stub delete).
+  void now;
+  return Promise.resolve({ deletedCount: 0, mediaDeletedCount: 0, deferred: true });
 }
 
 // Recovery import commits the complete Customer File record and all recovered

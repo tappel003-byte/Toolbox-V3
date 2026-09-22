@@ -8,6 +8,10 @@
   'use strict';
 
   const COMPONENTS = ['customer', 'plans', 'distress', 'floor', 'diagnostics', 'report', 'trash'];
+  const SHELL_GUARD_COMPONENTS = { customer: true, plans: true, distress: true, floor: true };
+  // Epoch sentinel: truthy so ensurePlanSetup will not backfill with "now".
+  // .001Z avoids Date.parse(.000Z) === 0 colliding with missing-revision behavior.
+  const REMOTE_PULL_EPOCH = '1970-01-01T00:00:00.001Z';
 
   function syncApiBase() {
     const cfg = window.ToolboxConfig || {};
@@ -196,6 +200,155 @@
     if (!localRev && remoteRev) return 'pull';
     if (localRev && !remoteRev) return 'push';
     return 'skip';
+  }
+
+  function trimStr(value) {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  /**
+   * Narrow predicate: true only when a component matches Toolbox's manufactured
+   * blank/default shell (blankCustomerFile / ensurePlanSetup). Uncertain or
+   * partially edited state returns false — preservation wins.
+   */
+  function isDefaultCustomerShellFields(fields) {
+    if (!fields || typeof fields !== 'object') return true;
+    if (trimStr(fields.firstName) || trimStr(fields.lastName)) return false;
+    if (trimStr(fields.propertyAddress) || trimStr(fields.mailingAddress)) return false;
+    if (trimStr(fields.cellPhone) || trimStr(fields.homePhone) || trimStr(fields.email)) return false;
+    if (trimStr(fields.notes) || trimStr(fields.companyName) || trimStr(fields.spouseName)) return false;
+    if (trimStr(fields.spouseCellPhone) || trimStr(fields.spouseHomePhone) || trimStr(fields.spouseEmail)) return false;
+    if (fields.mailingSameAsProperty) return false;
+    if (fields.propertyAddressLat != null || fields.propertyAddressLon != null) return false;
+    return true;
+  }
+
+  function isDefaultPlansShellPayload(planSetup) {
+    if (!planSetup || typeof planSetup !== 'object') return true;
+    if (planSetup.buildingType && planSetup.buildingType !== 'residential') return false;
+    const canvases = Array.isArray(planSetup.canvases) ? planSetup.canvases : [];
+    if (!canvases.length) return true;
+    for (let i = 0; i < canvases.length; i++) {
+      const c = canvases[i];
+      if (!c || typeof c !== 'object') continue;
+      if (c.plan && c.plan.id) return false;
+      if (Array.isArray(c.rooms) && c.rooms.length) return false;
+      if (c.frontDoor && typeof c.frontDoor.x === 'number' && typeof c.frontDoor.y === 'number') return false;
+    }
+    return true;
+  }
+
+  function isDefaultDistressShellPayload(distress) {
+    if (!distress || typeof distress !== 'object') return true;
+    if (Array.isArray(distress.pins) && distress.pins.length) return false;
+    if (Array.isArray(distress.drawings) && distress.drawings.length) return false;
+    // Numbering advanced with no pins/drawings is unusual — do not classify as shell.
+    if (typeof distress.startNum === 'number' && distress.startNum !== 1) return false;
+    if (typeof distress.nextNum === 'number' && distress.nextNum !== 1) return false;
+    return true;
+  }
+
+  function floorLayerHasWork(layer) {
+    if (!layer || typeof layer !== 'object') return false;
+    return (
+      (Array.isArray(layer.points) && layer.points.length > 0) ||
+      (Array.isArray(layer.boundary) && layer.boundary.length > 0) ||
+      (Array.isArray(layer.areas) && layer.areas.length > 0) ||
+      (Array.isArray(layer.notes) && layer.notes.length > 0) ||
+      (Array.isArray(layer.transitions) && layer.transitions.length > 0) ||
+      (Array.isArray(layer.exclusions) && layer.exclusions.length > 0) ||
+      (layer.transitionGroupAverages && Object.keys(layer.transitionGroupAverages).length > 0) ||
+      !!layer.scale ||
+      !!layer.bp1Gps ||
+      !!layer.planTransform
+    );
+  }
+
+  function isDefaultFloorShellPayload(floor) {
+    if (!floor || typeof floor !== 'object') return true;
+    if (trimStr(floor.inspectionDate) || trimStr(floor.surveyNotes)) return false;
+    if (Array.isArray(floor.customSurfaces) && floor.customSurfaces.length) return false;
+    if (floor.lastExportedAt) return false;
+    const layers = floor.byCanvasId && typeof floor.byCanvasId === 'object'
+      ? Object.values(floor.byCanvasId)
+      : [];
+    if (layers.some(floorLayerHasWork)) return false;
+    return true;
+  }
+
+  function isMeaningfulComponentPayload(payload, name) {
+    if (payload == null) return false;
+    switch (name) {
+      case 'customer':
+        return !isDefaultCustomerShellFields(payload);
+      case 'plans':
+        return !isDefaultPlansShellPayload(payload);
+      case 'distress':
+        return !isDefaultDistressShellPayload(payload);
+      case 'floor':
+        return !isDefaultFloorShellPayload(payload);
+      default:
+        return false;
+    }
+  }
+
+  function isDefaultShellComponent(record, name) {
+    if (!record || !SHELL_GUARD_COMPONENTS[name]) return false;
+    switch (name) {
+      case 'customer':
+        return isDefaultCustomerShellFields(record);
+      case 'plans':
+        return isDefaultPlansShellPayload(record.planSetup);
+      case 'distress':
+        return isDefaultDistressShellPayload(record.distress);
+      case 'floor':
+        return isDefaultFloorShellPayload(record.floorSurvey);
+      default:
+        return false;
+    }
+  }
+
+  function mediaIdsFromPayload(payload, name) {
+    if (!payload || typeof payload !== 'object') return [];
+    if (name === 'plans') {
+      const canvases = Array.isArray(payload.canvases) ? payload.canvases : [];
+      return canvases.map(function (c) { return c && c.plan && c.plan.id; }).filter(Boolean);
+    }
+    if (name === 'distress') {
+      const pins = Array.isArray(payload.pins) ? payload.pins : [];
+      const ids = [];
+      pins.forEach(function (pin) {
+        const photos = pin && Array.isArray(pin.photos) ? pin.photos : [];
+        photos.forEach(function (id) {
+          if (typeof id === 'string' && id.indexOf('ph_') === 0) ids.push(id);
+        });
+      });
+      return Array.from(new Set(ids));
+    }
+    return [];
+  }
+
+  function stampComponentRevision(record, name, revision) {
+    const rev = iso(revision) || REMOTE_PULL_EPOCH;
+    switch (name) {
+      case 'customer':
+        record.customerUpdatedAt = rev;
+        break;
+      case 'plans':
+        if (!record.planSetup || typeof record.planSetup !== 'object') record.planSetup = {};
+        record.planSetup.updatedAt = rev;
+        break;
+      case 'distress':
+        if (!record.distress || typeof record.distress !== 'object') record.distress = {};
+        record.distress.updatedAt = rev;
+        break;
+      case 'floor':
+        if (!record.floorSurvey || typeof record.floorSurvey !== 'object') record.floorSurvey = {};
+        record.floorSurvey.updatedAt = rev;
+        break;
+      default:
+        break;
+    }
   }
 
   function dataUrlToBytes(value) {
@@ -435,10 +588,18 @@
     }
   }
 
-  async function listRemoteIndexes() {
+  async function listRemoteCabinet() {
     const response = await apiFetch('/files');
     const data = await response.json();
-    return Array.isArray(data.files) ? data.files : [];
+    return {
+      files: Array.isArray(data.files) ? data.files : [],
+      purged: Array.isArray(data.purged) ? data.purged : [],
+    };
+  }
+
+  async function listRemoteIndexes() {
+    const cabinet = await listRemoteCabinet();
+    return cabinet.files;
   }
 
   async function getRemoteIndex(id) {
@@ -455,6 +616,10 @@
     });
   }
 
+  /**
+   * Explicit permanent delete: remove cf/{id}/* and write a durable purge tombstone.
+   * Soft Trash / ordinary Sync must never call this.
+   */
   async function deleteRemoteCustomerFile(id) {
     if (!id) return;
     await apiFetch('/files/' + encodeURIComponent(id), {
@@ -538,13 +703,15 @@
 
   async function pullComponent(record, name) {
     const payload = await getRemoteComponent(record.id, name);
-    if (payload == null) return;
-    applyComponent(record, name, payload);
-    const mediaIds = mediaIdsForComponent(record, name);
+    if (payload == null) return { pulled: false, mediaOk: true };
+    // Required media must be local before the component becomes authoritative.
+    const mediaIds = mediaIdsFromPayload(payload, name);
     const kind = name === 'distress' ? 'distress' : 'plan';
     for (let i = 0; i < mediaIds.length; i++) {
       await ensureLocalMedia(mediaIds[i], kind === 'distress' ? 'distress' : 'plan');
     }
+    applyComponent(record, name, payload);
+    return { pulled: true, mediaOk: true };
   }
 
   function indexRev(index, name) {
@@ -561,25 +728,65 @@
     }
   }
 
+  /**
+   * LWW with narrow manufactured-shell guard for customer/plans/distress/floor.
+   * Trash/diagnostics/report stay pure clock comparison.
+   */
+  async function decideComponentAction(record, name, remote) {
+    const localRev = componentRevision(record, name);
+    const remoteRev = indexRev(remote, name);
+    let decision = chooseSide(localRev, remoteRev);
+    if (!SHELL_GUARD_COMPONENTS[name] || decision === 'skip' || !remote) {
+      return decision;
+    }
+
+    const localIsShell = isDefaultShellComponent(record, name);
+
+    if (decision === 'push' && localIsShell && remoteRev) {
+      const remotePayload = await getRemoteComponent(record.id, name);
+      if (isMeaningfulComponentPayload(remotePayload, name)) {
+        return 'pull';
+      }
+      return decision;
+    }
+
+    if (decision === 'pull' && !localIsShell && remoteRev) {
+      const remotePayload = await getRemoteComponent(record.id, name);
+      if (remotePayload != null && !isMeaningfulComponentPayload(remotePayload, name) &&
+          isMeaningfulComponentPayload(extractComponent(record, name), name)) {
+        // Poisoned/default remote must not destroy meaningful older local data.
+        return 'push';
+      }
+      return decision;
+    }
+
+    return decision;
+  }
+
   async function syncOneRecord(record, remoteIndex) {
-    const localIndex = buildIndex(record);
     const remote = remoteIndex || null;
     let changed = false;
+    const componentResults = [];
 
     for (let i = 0; i < COMPONENTS.length; i++) {
       const name = COMPONENTS[i];
       // Stage A recognizes future diagnostics/report without inventing empty product data.
       if ((name === 'diagnostics' || name === 'report') &&
           !componentRevision(record, name) && !indexRev(remote, name)) {
+        componentResults.push({ name: name, action: 'skip' });
         continue;
       }
-      const decision = chooseSide(componentRevision(record, name), indexRev(remote, name));
+      const decision = await decideComponentAction(record, name, remote);
       if (decision === 'push') {
         await pushComponent(record, name);
         changed = true;
+        componentResults.push({ name: name, action: 'push' });
       } else if (decision === 'pull') {
-        await pullComponent(record, name);
-        changed = true;
+        const pulled = await pullComponent(record, name);
+        if (pulled.pulled) changed = true;
+        componentResults.push({ name: name, action: 'pull' });
+      } else {
+        componentResults.push({ name: name, action: 'skip' });
       }
     }
 
@@ -591,7 +798,7 @@
       record.updatedAt = new Date().toISOString();
       await window.ToolboxDB.saveCustomerFile(record);
     }
-    return { id: record.id, changed: changed };
+    return { id: record.id, changed: changed, components: componentResults };
   }
 
   /**
@@ -605,8 +812,6 @@
    * Use an epoch sentinel (truthy, so ensurePlanSetup will not backfill) that
    * is older than any real cloud revision, forcing the first sync to pull.
    */
-  const REMOTE_PULL_EPOCH = '1970-01-01T00:00:00.001Z';
-
   function shellForRemotePull(id, remote) {
     const shell = window.ToolboxApp.blankCustomerFile(id);
     if (remote && remote.createdAt) shell.createdAt = remote.createdAt;
@@ -622,6 +827,82 @@
     return shell;
   }
 
+  function inventoryEntry(id, deletedAt) {
+    return {
+      id: id,
+      trashed: !!deletedAt,
+    };
+  }
+
+  /**
+   * Selective-local inventory report (File Cabinet model).
+   * Remote-only and local-only are NORMAL — they are not mismatches.
+   * Only flags trash-state disagreement for IDs present on BOTH sides.
+   */
+  function compareInventories(localRecords, remoteFiles, purgedIds) {
+    const localById = {};
+    (localRecords || []).forEach(function (record) {
+      if (!record || !record.id) return;
+      if (purgedIds && purgedIds[record.id]) return;
+      localById[record.id] = inventoryEntry(record.id, record.deletedAt);
+    });
+    const remoteById = {};
+    (remoteFiles || []).forEach(function (idx) {
+      if (!idx || !idx.id) return;
+      if (purgedIds && purgedIds[idx.id]) return;
+      remoteById[idx.id] = inventoryEntry(idx.id, idx.deletedAt);
+    });
+
+    const localOnly = [];
+    const remoteOnly = [];
+    const mismatches = [];
+
+    Object.keys(localById).forEach(function (id) {
+      const local = localById[id];
+      const remote = remoteById[id];
+      if (!remote) {
+        localOnly.push(id);
+        return;
+      }
+      if (local.trashed !== remote.trashed) {
+        mismatches.push({ id: id, reason: 'trash-state-mismatch' });
+      }
+    });
+    Object.keys(remoteById).forEach(function (id) {
+      if (!localById[id]) remoteOnly.push(id);
+    });
+
+    return {
+      // Selective local storage: unequal inventories are healthy.
+      ok: mismatches.length === 0,
+      mismatches: mismatches,
+      localOnly: localOnly,
+      remoteOnly: remoteOnly,
+      localCount: Object.keys(localById).length,
+      remoteCount: Object.keys(remoteById).length,
+    };
+  }
+
+  async function retirePurgedLocal(record) {
+    if (!record || !window.ToolboxDB || typeof window.ToolboxDB.permanentlyDeleteCustomerFiles !== 'function') {
+      return;
+    }
+    await window.ToolboxDB.permanentlyDeleteCustomerFiles([record]);
+  }
+
+  /**
+   * Sync Now — transition File Cabinet behavior.
+   *
+   * Processes this device's LOCAL working Customer Files only:
+   * - retire locals that have a durable purge tombstone
+   * - exchange components/media for each remaining local (LWW + shell guards)
+   * - first-upload: local with no remote still pushes into the Cabinet
+   *
+   * Does NOT auto-materialize remote-only Cabinet entries.
+   * Cloud-only files remaining remote is normal (future: Check Out).
+   * Success = every local working file processed without component/media errors.
+   * Does NOT mean local inventory equals cloud inventory.
+   */
   async function syncNow(options) {
     options = options || {};
     if (typeof options.beforeSync === 'function') {
@@ -631,51 +912,111 @@
     localRecords.forEach(function (record) {
       if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
     });
-    const remoteIndexes = await listRemoteIndexes();
+
+    const cabinet = await listRemoteCabinet();
+    const remoteIndexes = cabinet.files;
+    const purgedList = cabinet.purged || [];
+    const purgedIds = {};
+    purgedList.forEach(function (entry) {
+      const id = entry && (entry.id || entry);
+      if (id) purgedIds[id] = true;
+    });
+
     const remoteById = {};
     remoteIndexes.forEach(function (idx) {
       if (idx && idx.id) remoteById[idx.id] = idx;
     });
 
     const results = [];
+    const errors = [];
+    let remoteOnlySkipped = 0;
+    const localIdSet = {};
+    localRecords.forEach(function (record) {
+      if (record && record.id) localIdSet[record.id] = true;
+    });
+
     for (let i = 0; i < localRecords.length; i++) {
       const record = localRecords[i];
-      results.push(await syncOneRecord(record, remoteById[record.id] || null));
-      delete remoteById[record.id];
+      try {
+        if (purgedIds[record.id]) {
+          await retirePurgedLocal(record);
+          results.push({ id: record.id, changed: true, retired: true, purged: true });
+          continue;
+        }
+        results.push(await syncOneRecord(record, remoteById[record.id] || null));
+      } catch (err) {
+        errors.push({
+          id: record.id,
+          code: err && err.code,
+          message: (err && err.message) || String(err),
+        });
+      }
     }
 
-    // Pull Customer Files that exist only in the cloud.
-    // Skip cloud copies already marked deleted — they belong in Trash sync, not Cabinet.
-    const onlyRemoteIds = Object.keys(remoteById);
-    for (let i = 0; i < onlyRemoteIds.length; i++) {
-      const id = onlyRemoteIds[i];
-      const remote = remoteById[id];
-      if (remote && remote.deletedAt) {
-        const shell = shellForRemotePull(id, remote);
-        await syncOneRecord(shell, remote);
-        results.push({ id: id, changed: true, created: true, trashed: true });
-        continue;
-      }
-      const shell = shellForRemotePull(id, remote);
-      await syncOneRecord(shell, remote);
-      results.push({ id: id, changed: true, created: true });
+    // File Cabinet model: remote-only entries stay remote until explicit Check Out.
+    // Count them for diagnostics; do not materialize; do not fail Sync because of them.
+    Object.keys(remoteById).forEach(function (id) {
+      if (localIdSet[id]) return;
+      if (purgedIds[id]) return;
+      remoteOnlySkipped += 1;
+      results.push({ id: id, skipped: true, remoteOnly: true });
+    });
+
+    const localAfter = await window.ToolboxDB.getAllCustomerFiles();
+    const cabinetAfter = await listRemoteCabinet();
+    const purgedAfter = {};
+    (cabinetAfter.purged || []).forEach(function (entry) {
+      const id = entry && (entry.id || entry);
+      if (id) purgedAfter[id] = true;
+    });
+    const inventory = compareInventories(localAfter, cabinetAfter.files, purgedAfter);
+
+    const syncedAt = new Date().toISOString();
+    if (errors.length) {
+      const detail = errors[0].message || 'component or media exchange failed';
+      const err = new SyncError('incomplete', 'Sync incomplete: ' + detail);
+      err.results = results;
+      err.errors = errors;
+      err.inventory = inventory;
+      err.remoteOnlySkipped = remoteOnlySkipped;
+      err.syncedAt = syncedAt;
+      throw err;
+    }
+
+    // Trash-state disagreement on an ID present locally AND remotely is still a real problem.
+    if (inventory.mismatches && inventory.mismatches.length) {
+      const detail = inventory.mismatches.map(function (m) { return m.id + ':' + m.reason; }).join(', ');
+      const err = new SyncError('incomplete', 'Sync incomplete: ' + detail);
+      err.results = results;
+      err.errors = errors;
+      err.inventory = inventory;
+      err.remoteOnlySkipped = remoteOnlySkipped;
+      err.syncedAt = syncedAt;
+      throw err;
     }
 
     return {
       ok: true,
-      syncedAt: new Date().toISOString(),
+      syncedAt: syncedAt,
       results: results,
+      inventory: inventory,
+      remoteOnlySkipped: remoteOnlySkipped,
+      // Explicit: success is working-set sync, not full-cabinet agreement.
+      scope: 'local-working-set',
     };
   }
 
   window.ToolboxSync = {
     COMPONENTS: COMPONENTS,
+    REMOTE_PULL_EPOCH: REMOTE_PULL_EPOCH,
     syncApiBase: syncApiBase,
     componentRevision: componentRevision,
     buildIndex: buildIndex,
     extractComponent: extractComponent,
     applyComponent: applyComponent,
     chooseSide: chooseSide,
+    isDefaultShellComponent: isDefaultShellComponent,
+    isMeaningfulComponentPayload: isMeaningfulComponentPayload,
     mediaIdsForComponent: mediaIdsForComponent,
     planMediaIds: planMediaIds,
     distressPhotoIds: distressPhotoIds,
@@ -691,6 +1032,14 @@
       dataUrlToBytes: dataUrlToBytes,
       bytesToDataUrl: bytesToDataUrl,
       shellForRemotePull: shellForRemotePull,
+      decideComponentAction: decideComponentAction,
+      compareInventories: compareInventories,
+      mediaIdsFromPayload: mediaIdsFromPayload,
+      stampComponentRevision: stampComponentRevision,
+      isDefaultCustomerShellFields: isDefaultCustomerShellFields,
+      isDefaultPlansShellPayload: isDefaultPlansShellPayload,
+      isDefaultDistressShellPayload: isDefaultDistressShellPayload,
+      isDefaultFloorShellPayload: isDefaultFloorShellPayload,
     },
   };
 })();

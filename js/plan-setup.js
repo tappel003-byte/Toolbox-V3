@@ -163,7 +163,9 @@
       changed = true;
     }
     if (!record.trashUpdatedAt) {
-      record.trashUpdatedAt = record.deletedAt || record.updatedAt || new Date().toISOString();
+      // Never backfill trash from updatedAt/"now" — that manufactures trash
+      // authority and can beat a legitimate peer Trash/Restore event.
+      record.trashUpdatedAt = record.deletedAt || '1970-01-01T00:00:00.001Z';
       changed = true;
     }
 
