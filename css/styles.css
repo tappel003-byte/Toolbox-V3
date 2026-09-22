@@ -1568,16 +1568,24 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 .btn--ghost {
   color: var(--navy);
   font-weight: 700;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 /* View-bar back controls (‹ Cabinet, ‹ Customer File, …) — accent so
    the return path reads as navigation, not body text. */
 .view-bar .btn--ghost {
   color: var(--accent);
+  background: transparent;
+  border-color: transparent;
+  padding-left: 2px;
+  padding-right: 8px;
 }
 
 .view-bar .btn--ghost:hover {
   color: var(--accent-dark);
+  background: transparent;
 }
 
 .view-bar {
@@ -2765,15 +2773,19 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 
   .app-bar__refresh,
   .app-bar__sync {
-    padding: 6px 9px;
-    font-size: 12px;
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+
+  .app-bar__actions {
+    gap: 6px;
   }
 
   .view-bar--file {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 7px;
-    padding: 7px 11px;
+    padding: 7px 14px;
   }
 
   .view-bar--file .file-identity {
@@ -2881,7 +2893,7 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   }
 
   .cf-home {
-    padding: 14px 11px 30px;
+    padding: 14px 14px 30px;
   }
 
   .cf-home__hero {
