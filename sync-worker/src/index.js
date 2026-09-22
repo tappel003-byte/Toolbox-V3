@@ -12,7 +12,7 @@ const ALLOWED_ORIGINS = {
 function corsHeaders(request) {
   const origin = (request && request.headers && request.headers.get('Origin')) || '';
   const headers = {
-    'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'content-type, x-toolbox-encoding',
     'Access-Control-Max-Age': '86400',
   };
@@ -138,7 +138,23 @@ export default {
       return json(request, { files: files });
     }
 
-    let match = /^files\/([^/]+)\/index$/.exec(path);
+    let match = /^files\/([^/]+)$/.exec(path);
+    if (match && request.method === 'DELETE') {
+      const id = decodeURIComponent(match[1]);
+      const prefix = 'cf/' + id + '/';
+      let cursor;
+      for (;;) {
+        const listed = await env.CABINET.list(cursor ? { prefix: prefix, cursor: cursor } : { prefix: prefix });
+        for (const obj of listed.objects || []) {
+          await env.CABINET.delete(obj.key);
+        }
+        if (!listed.truncated) break;
+        cursor = listed.cursor;
+      }
+      return json(request, { ok: true, deleted: id });
+    }
+
+    match = /^files\/([^/]+)\/index$/.exec(path);
     if (match) {
       const id = decodeURIComponent(match[1]);
       if (request.method === 'GET') {

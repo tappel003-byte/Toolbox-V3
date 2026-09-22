@@ -384,6 +384,22 @@
     };
   }
 
+  function removeCloudCopies(records) {
+    if (!window.ToolboxSync || typeof window.ToolboxSync.deleteRemoteCustomerFile !== 'function') {
+      return Promise.resolve();
+    }
+    if (!window.ToolboxSync.syncApiBase || !window.ToolboxSync.syncApiBase()) {
+      return Promise.resolve();
+    }
+    const list = (records || []).filter(function (r) { return r && r.id; });
+    if (!list.length) return Promise.resolve();
+    return Promise.all(list.map(function (record) {
+      return window.ToolboxSync.deleteRemoteCustomerFile(record.id).catch(function (err) {
+        console.warn('Could not remove cloud copy of Customer File', record.id, err);
+      });
+    }));
+  }
+
   function requestCustomerFileRemoval(record) {
     const worked = hasInvestigationData(record);
     const name = displayName(record);
@@ -396,7 +412,9 @@
       }).then(function (confirmed) {
         if (!confirmed) return null;
         return window.ToolboxDB.permanentlyDeleteCustomerFiles([record]).then(function () {
-          return name + ' was permanently deleted.';
+          return removeCloudCopies([record]).then(function () {
+            return name + ' was permanently deleted.';
+          });
         });
       });
     }
@@ -572,6 +590,8 @@
             if (!confirmed) return;
             emptyBtn.disabled = true;
             window.ToolboxDB.permanentlyDeleteCustomerFiles(trashed).then(function () {
+              return removeCloudCopies(trashed);
+            }).then(function () {
               loadTrash('Trash was permanently emptied.');
             }).catch(function (err) {
               console.error('Could not empty Trash:', err);

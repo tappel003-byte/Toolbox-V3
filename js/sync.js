@@ -455,6 +455,14 @@
     });
   }
 
+  async function deleteRemoteCustomerFile(id) {
+    if (!id) return;
+    await apiFetch('/files/' + encodeURIComponent(id), {
+      method: 'DELETE',
+      allow404: true,
+    });
+  }
+
   async function getRemoteComponent(id, name) {
     const response = await apiFetch(
       '/files/' + encodeURIComponent(id) + '/components/' + encodeURIComponent(name),
@@ -609,12 +617,21 @@
     }
 
     // Pull Customer Files that exist only in the cloud.
+    // Skip cloud copies already marked deleted — they belong in Trash sync, not Cabinet.
     const onlyRemoteIds = Object.keys(remoteById);
     for (let i = 0; i < onlyRemoteIds.length; i++) {
       const id = onlyRemoteIds[i];
+      const remote = remoteById[id];
+      if (remote && remote.deletedAt) {
+        const shell = window.ToolboxApp.blankCustomerFile(id);
+        if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(shell);
+        if (remote.createdAt) shell.createdAt = remote.createdAt;
+        await syncOneRecord(shell, remote);
+        results.push({ id: id, changed: true, created: true, trashed: true });
+        continue;
+      }
       const shell = window.ToolboxApp.blankCustomerFile(id);
       if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(shell);
-      const remote = remoteById[id];
       if (remote.createdAt) shell.createdAt = remote.createdAt;
       await syncOneRecord(shell, remote);
       results.push({ id: id, changed: true, created: true });
@@ -642,6 +659,7 @@
     syncNow: syncNow,
     ensureAccessSession: ensureAccessSession,
     probeAccessSession: probeAccessSession,
+    deleteRemoteCustomerFile: deleteRemoteCustomerFile,
     // test helpers
     _test: {
       pickCustomerFields: pickCustomerFields,
