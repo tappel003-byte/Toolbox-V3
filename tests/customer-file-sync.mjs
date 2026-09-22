@@ -232,6 +232,67 @@ try {
     JSON.stringify(independentBump),
   );
 
+  const remotePullShell = await page.evaluate(() => {
+    const remote = {
+      id: 'cf-remote-only',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-06-01T00:00:00.000Z',
+      customerUpdatedAt: '2026-06-01T00:00:00.000Z',
+      plansUpdatedAt: '2026-06-01T00:00:00.000Z',
+      distressUpdatedAt: '2026-06-01T00:00:00.000Z',
+      floorUpdatedAt: '2026-06-01T00:00:00.000Z',
+      trashUpdatedAt: '2026-01-01T00:00:00.000Z',
+      deletedAt: null,
+    };
+    const naive = ToolboxApp.blankCustomerFile(remote.id);
+    ToolboxPlanSetup.ensurePlanSetup(naive);
+    if (remote.createdAt) naive.createdAt = remote.createdAt;
+    const naiveCustomer = ToolboxSync.chooseSide(
+      ToolboxSync.componentRevision(naive, 'customer'),
+      remote.customerUpdatedAt,
+    );
+    const naivePlans = ToolboxSync.chooseSide(
+      ToolboxSync.componentRevision(naive, 'plans'),
+      remote.plansUpdatedAt,
+    );
+    const shell = ToolboxSync._test.shellForRemotePull(remote.id, remote);
+    const decisions = {
+      customer: ToolboxSync.chooseSide(ToolboxSync.componentRevision(shell, 'customer'), remote.customerUpdatedAt),
+      plans: ToolboxSync.chooseSide(ToolboxSync.componentRevision(shell, 'plans'), remote.plansUpdatedAt),
+      distress: ToolboxSync.chooseSide(ToolboxSync.componentRevision(shell, 'distress'), remote.distressUpdatedAt),
+      floor: ToolboxSync.chooseSide(ToolboxSync.componentRevision(shell, 'floor'), remote.floorUpdatedAt),
+      trash: ToolboxSync.chooseSide(ToolboxSync.componentRevision(shell, 'trash'), remote.trashUpdatedAt),
+    };
+    return {
+      naiveWouldPushCustomer: naiveCustomer === 'push',
+      naiveWouldPushPlans: naivePlans === 'push',
+      decisions,
+      epochClocks: shell.customerUpdatedAt === '1970-01-01T00:00:00.000Z' &&
+        shell.planSetup.updatedAt === '1970-01-01T00:00:00.000Z' &&
+        shell.distress.updatedAt === '1970-01-01T00:00:00.000Z' &&
+        shell.floorSurvey.updatedAt === '1970-01-01T00:00:00.000Z' &&
+        shell.trashUpdatedAt === '1970-01-01T00:00:00.000Z',
+      // componentRevision calls ensurePlanSetup; epoch must survive that backfill.
+      afterRevisionStillEpoch: ToolboxSync.componentRevision(shell, 'customer') === '1970-01-01T00:00:00.000Z',
+    };
+  });
+  check(
+    'Naive remote-only shell would push empty clocks over older cloud data',
+    remotePullShell.naiveWouldPushCustomer && remotePullShell.naiveWouldPushPlans,
+    JSON.stringify(remotePullShell),
+  );
+  check(
+    'Remote-only pull shell uses epoch clocks so every component pulls',
+    remotePullShell.epochClocks &&
+      remotePullShell.afterRevisionStillEpoch &&
+      remotePullShell.decisions.customer === 'pull' &&
+      remotePullShell.decisions.plans === 'pull' &&
+      remotePullShell.decisions.distress === 'pull' &&
+      remotePullShell.decisions.floor === 'pull' &&
+      remotePullShell.decisions.trash === 'pull',
+    JSON.stringify(remotePullShell),
+  );
+
   const syncBtn = await page.$('#app-sync');
   check('Sync Now control is present', !!syncBtn);
 } finally {
