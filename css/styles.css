@@ -1547,19 +1547,24 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   box-shadow: none;
 }
 
-/* View-bar back controls (‹ Cabinet, ‹ Customer File, …) — accent so
-   the return path reads as navigation, not body text. */
+/* View-bar back controls (‹ Cabinet, ‹ Customer File, …).
+   Solid navy chip — clearer “leave this screen” than terracotta text alone.
+   Keep terracotta for section eyebrows; don’t mix blue+red on one control. */
 .view-bar .btn--ghost {
-  color: var(--accent);
-  background: transparent;
-  border-color: transparent;
-  padding-left: 2px;
-  padding-right: 8px;
+  color: #fff;
+  background: var(--navy);
+  border-color: var(--navy);
+  font-weight: 700;
+  min-height: 34px;
+  padding: 6px 12px 6px 10px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(7, 40, 61, 0.2);
 }
 
 .view-bar .btn--ghost:hover {
-  color: var(--accent-dark);
-  background: transparent;
+  color: #fff;
+  background: var(--navy-2);
+  border-color: var(--navy-2);
 }
 
 .view-bar {
@@ -2763,10 +2768,6 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 
   .cabinet-notice {
     width: calc(100% - 28px);
-  }
-
-  .view-bar--cabinet {
-    padding: 0 14px 12px;
   }
 
   .cabinet-list {
