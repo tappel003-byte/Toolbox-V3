@@ -299,10 +299,21 @@
   function ensureAccessSession() {
     const base = syncApiBase();
     return new Promise(function (resolve, reject) {
+      // Prefer full-tab login on phones / installed PWAs where popups are blocked.
+      // Same-site Sync hostname (sync.sandiageotoolbox.com) keeps Access cookies usable.
       const loginUrl = base + '/cdn-cgi/access/login?redirect_url=' + encodeURIComponent('/health');
-      const popup = window.open(loginUrl, 'toolbox-sync-access', 'width=520,height=720');
+      let popup = null;
+      try {
+        popup = window.open(loginUrl, 'toolbox-sync-access', 'width=520,height=720');
+      } catch (_) {
+        popup = null;
+      }
       if (!popup) {
-        reject(new SyncError('auth', 'Sign in required to sync. Allow popups, then try Sync Now again.'));
+        // Same-tab fallback: user signs in, sees health JSON, then returns via Back.
+        try {
+          window.location.assign(loginUrl);
+        } catch (_) {}
+        reject(new SyncError('auth', 'Sign in on the Sync page, then return and tap Sync Now again.'));
         return;
       }
       const started = Date.now();

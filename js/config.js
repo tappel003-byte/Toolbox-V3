@@ -19,5 +19,5 @@ window.ToolboxConfig = {
   geoapifyApiKey: 'c77231dd6511494cb976808bf46fd35c',
   // Public Sync API base URL (Worker hostname). Empty disables Sync Now until configured.
   // Do not put secrets here. Cloudflare Access protects the Worker.
-  syncApiBase: 'https://toolbox-sync.tappel003.workers.dev',
+  syncApiBase: 'https://sync.sandiageotoolbox.com',
 };
