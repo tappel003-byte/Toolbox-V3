@@ -91,13 +91,6 @@
       ' · ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   }
 
-  function customerInitials(record) {
-    const first = (record && record.firstName || '').trim();
-    const last = (record && record.lastName || '').trim();
-    const letters = (first ? first.charAt(0) : '') + (last ? last.charAt(0) : '');
-    return letters.toUpperCase() || 'CF';
-  }
-
   function planReadiness(record) {
     const canvases = record && record.planSetup && Array.isArray(record.planSetup.canvases)
       ? record.planSetup.canvases
@@ -443,10 +436,6 @@
       window.location.hash = '#/file/' + encodeURIComponent(record.id);
     });
 
-    const avatar = document.createElement('span');
-    avatar.className = 'cabinet-row__avatar';
-    avatar.textContent = customerInitials(record);
-
     const main = document.createElement('span');
     main.className = 'cabinet-row__main';
 
@@ -479,7 +468,6 @@
     chevron.setAttribute('aria-hidden', 'true');
     chevron.textContent = '›';
 
-    row.appendChild(avatar);
     row.appendChild(main);
     row.appendChild(meta);
     row.appendChild(chevron);
@@ -612,10 +600,6 @@
     const row = document.createElement('article');
     row.className = 'trash-row';
 
-    const avatar = document.createElement('span');
-    avatar.className = 'cabinet-row__avatar';
-    avatar.textContent = customerInitials(record);
-
     const main = document.createElement('div');
     main.className = 'trash-row__main';
     const name = document.createElement('strong');
@@ -635,7 +619,6 @@
     restore.textContent = 'Restore';
     restore.addEventListener('click', onRestore);
 
-    row.appendChild(avatar);
     row.appendChild(main);
     row.appendChild(restore);
     return row;
@@ -717,7 +700,6 @@
       '</div>' +
       '<div class="cf-home" id="cf-home">' +
       '  <section class="cf-home__hero">' +
-      '    <div class="cf-home__avatar" id="home-avatar" aria-hidden="true">CF</div>' +
       '    <div class="cf-home__summary">' +
       '      <p class="eyebrow">Open Customer File</p>' +
       '      <h1 class="cf-home__name" id="home-card-name"></h1>' +
@@ -768,7 +750,6 @@
     const cardName = app.querySelector('#home-card-name');
     const cardAddress = app.querySelector('#home-card-address');
     const cardMeta = app.querySelector('#home-card-meta');
-    const avatar = app.querySelector('#home-avatar');
     const contactBadge = app.querySelector('#home-contact-badge');
     const planBadge = app.querySelector('#home-plan-badge');
     let currentRecord = null;
@@ -828,7 +809,6 @@
       identityAddress.textContent = displayAddress(record);
       cardName.textContent = displayName(record);
       cardAddress.textContent = displayAddress(record);
-      avatar.textContent = customerInitials(record);
       contactBadge.textContent = hasName && hasAddress ? 'Customer details ready' : 'Customer details started';
       contactBadge.classList.toggle('is-ready', hasName && hasAddress);
       planBadge.textContent = readiness.hasPlan ? planSummaryText(record) : 'Floor plan required';

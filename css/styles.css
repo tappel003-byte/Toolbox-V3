@@ -1672,21 +1672,6 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   transform: translateY(-1px);
 }
 
-.cabinet-row__avatar {
-  display: grid;
-  flex: 0 0 46px;
-  width: 46px;
-  height: 46px;
-  place-items: center;
-  border-radius: 13px;
-  color: var(--navy);
-  background: #fff;
-  border: 2px solid var(--navy);
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-}
-
 .cabinet-row__main {
   flex: 1 1 auto;
 }
@@ -1829,7 +1814,7 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 
 .trash-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
   min-height: 82px;
@@ -1936,9 +1921,7 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 }
 
 .cf-home__hero {
-  display: flex;
-  align-items: center;
-  gap: 18px;
+  display: block;
   padding: 22px;
   overflow: hidden;
   background:
@@ -1947,23 +1930,6 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   border: 1px solid var(--line);
   border-radius: 18px;
   box-shadow: var(--shadow-sm);
-}
-
-.cf-home__avatar {
-  display: grid;
-  flex: 0 0 68px;
-  width: 68px;
-  height: 68px;
-  place-items: center;
-  border-radius: 19px;
-  color: #fff;
-  background:
-    linear-gradient(150deg, rgba(255, 255, 255, 0.13), transparent 42%),
-    var(--navy);
-  box-shadow: 0 8px 22px rgba(7, 40, 61, 0.2);
-  font-size: 21px;
-  font-weight: 850;
-  letter-spacing: 0.05em;
 }
 
 .cf-home__summary {
@@ -2781,12 +2747,6 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
     padding: 11px 12px;
   }
 
-  .cabinet-row__avatar {
-    flex-basis: 42px;
-    width: 42px;
-    height: 42px;
-  }
-
   .cabinet-row__meta {
     display: none;
   }
@@ -2806,7 +2766,7 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   }
 
   .trash-row {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 10px;
     padding: 12px;
   }
@@ -2829,17 +2789,8 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   }
 
   .cf-home__hero {
-    gap: 12px;
     padding: 16px;
     border-radius: 15px;
-  }
-
-  .cf-home__avatar {
-    flex-basis: 52px;
-    width: 52px;
-    height: 52px;
-    border-radius: 15px;
-    font-size: 16px;
   }
 
   .cf-home__name {
