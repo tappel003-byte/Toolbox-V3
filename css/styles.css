@@ -655,11 +655,6 @@ body {
   line-height: 1.4;
 }
 
-.cf-home__edit {
-  width: 100%;
-  min-width: 0;
-}
-
 .cf-stub {
   flex: 1 1 auto;
   padding: 24px 16px;
@@ -2165,10 +2160,6 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
-}
-
-.cf-home__edit {
-  min-height: 46px;
 }
 
 /* Customer File standalone recovery import */
