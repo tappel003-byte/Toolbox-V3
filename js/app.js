@@ -147,6 +147,22 @@
     });
   }
 
+  /**
+   * Only a brand-new empty stub may be hard-deleted from Cabinet + cloud.
+   * Name, address, or a usable plan means Soft Trash — permanent cloud DELETE
+   * from one phone would wipe the shared Tim/Lee cabinet for every device.
+   */
+  function isEmptyCustomerFileStub(record) {
+    if (!record) return true;
+    if (hasInvestigationData(record)) return false;
+    if (planReadiness(record).hasPlan) return false;
+    if ((record.firstName || '').trim() || (record.lastName || '').trim()) return false;
+    if ((record.propertyAddress || '').trim()) return false;
+    if ((record.companyName || '').trim()) return false;
+    if ((record.notes || '').trim()) return false;
+    return true;
+  }
+
   function daysUntilPurge(record) {
     const purgeAt = record && Date.parse(record.purgeAfter);
     if (!Number.isFinite(purgeAt)) return 0;
@@ -395,12 +411,14 @@
   }
 
   function requestCustomerFileRemoval(record) {
-    const worked = hasInvestigationData(record);
     const name = displayName(record);
-    if (!worked) {
+    // Multi-device: only truly empty stubs may hard-delete local+cloud.
+    // Named jobs, addressed jobs, and plan-bearing files go to Trash so one
+    // device cannot wipe the shared cabinet for Tim/Lee.
+    if (isEmptyCustomerFileStub(record)) {
       return confirmAction({
-        title: 'Delete setup-only file?',
-        message: name + ' has no captured survey data. This permanently deletes its contact information and plans.',
+        title: 'Delete empty file?',
+        message: name + ' has no customer details, plans, or survey data. This permanently deletes it.',
         cancelLabel: 'No, keep file',
         confirmLabel: 'Yes, delete permanently',
       }).then(function (confirmed) {
@@ -415,7 +433,7 @@
 
     return confirmAction({
       title: 'Move Customer File to Trash?',
-      message: name + ' contains investigation data. The complete file will remain recoverable for 120 days.',
+      message: name + ' will remain recoverable for 120 days. Sync Now will update your other devices.',
       cancelLabel: 'No, keep file',
       confirmLabel: 'Yes, move to Trash',
     }).then(function (confirmed) {
@@ -1621,6 +1639,7 @@
     registerActiveFlush: registerActiveFlush,
     blankCustomerFile: blankCustomerFile,
     hasInvestigationData: hasInvestigationData,
+    isEmptyCustomerFileStub: isEmptyCustomerFileStub,
     customerIdentity: {
       displayName: displayName,
       displayAddress: displayAddress,

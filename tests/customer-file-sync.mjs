@@ -267,13 +267,13 @@ try {
       naiveWouldPushCustomer: naiveCustomer === 'push',
       naiveWouldPushPlans: naivePlans === 'push',
       decisions,
-      epochClocks: shell.customerUpdatedAt === '1970-01-01T00:00:00.000Z' &&
-        shell.planSetup.updatedAt === '1970-01-01T00:00:00.000Z' &&
-        shell.distress.updatedAt === '1970-01-01T00:00:00.000Z' &&
-        shell.floorSurvey.updatedAt === '1970-01-01T00:00:00.000Z' &&
-        shell.trashUpdatedAt === '1970-01-01T00:00:00.000Z',
+      epochClocks: shell.customerUpdatedAt === '1970-01-01T00:00:00.001Z' &&
+        shell.planSetup.updatedAt === '1970-01-01T00:00:00.001Z' &&
+        shell.distress.updatedAt === '1970-01-01T00:00:00.001Z' &&
+        shell.floorSurvey.updatedAt === '1970-01-01T00:00:00.001Z' &&
+        shell.trashUpdatedAt === '1970-01-01T00:00:00.001Z',
       // componentRevision calls ensurePlanSetup; epoch must survive that backfill.
-      afterRevisionStillEpoch: ToolboxSync.componentRevision(shell, 'customer') === '1970-01-01T00:00:00.000Z',
+      afterRevisionStillEpoch: ToolboxSync.componentRevision(shell, 'customer') === '1970-01-01T00:00:00.001Z',
     };
   });
   check(
@@ -291,6 +291,31 @@ try {
       remotePullShell.decisions.floor === 'pull' &&
       remotePullShell.decisions.trash === 'pull',
     JSON.stringify(remotePullShell),
+  );
+
+  const deleteProtect = await page.evaluate(() => {
+    const named = ToolboxApp.blankCustomerFile('del-named');
+    ToolboxPlanSetup.ensurePlanSetup(named);
+    named.firstName = 'Tim';
+    named.lastName = 'Appel';
+    named.propertyAddress = '50 Steeplechase';
+    const planned = ToolboxApp.blankCustomerFile('del-plan');
+    ToolboxPlanSetup.ensurePlanSetup(planned);
+    planned.planSetup.canvases[0].plan = { id: 'plan-1', width: 10, height: 10 };
+    const empty = ToolboxApp.blankCustomerFile('del-empty');
+    ToolboxPlanSetup.ensurePlanSetup(empty);
+    return {
+      namedIsStub: ToolboxApp.isEmptyCustomerFileStub(named),
+      plannedIsStub: ToolboxApp.isEmptyCustomerFileStub(planned),
+      emptyIsStub: ToolboxApp.isEmptyCustomerFileStub(empty),
+    };
+  });
+  check(
+    'Named or plan-bearing Customer Files are not empty stubs',
+    deleteProtect.namedIsStub === false &&
+      deleteProtect.plannedIsStub === false &&
+      deleteProtect.emptyIsStub === true,
+    JSON.stringify(deleteProtect),
   );
 
   const syncBtn = await page.$('#app-sync');
