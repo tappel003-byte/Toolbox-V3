@@ -213,6 +213,7 @@
   function parseRoute() {
     const hash = window.location.hash || '#/';
     if (hash === '#/trash') return { view: 'trash' };
+    if (hash === '#/import') return { view: 'import', id: null, allowDestinationChoice: true };
     const match = hash.match(/^#\/file\/([^/]+)(?:\/(edit|plan|import|distress|floor|diagnostics|report))?(?:\/(customer|contacts|plans))?$/);
     if (match) {
       const id = decodeURIComponent(match[1]);
@@ -227,7 +228,7 @@
         return { view: 'distress', id: id };
       }
       if (sub === 'import') {
-        return { view: 'import', id: id };
+        return { view: 'import', id: id, allowDestinationChoice: false };
       }
       if (sub === 'diagnostics' || sub === 'report') {
         return { view: 'app-stub', id: id, app: sub };
@@ -268,7 +269,7 @@
     } else if (route.view === 'distress') {
       renderDistressSurvey(app, route.id);
     } else if (route.view === 'import') {
-      renderCustomerFileImport(app, route.id);
+      renderCustomerFileImport(app, route.id, { allowDestinationChoice: !!route.allowDestinationChoice });
     } else if (route.view === 'app-stub') {
       renderAppStub(app, route.id, route.app);
     } else if (route.view === 'trash') {
@@ -317,7 +318,7 @@
       window.location.hash = '#/file/' + generateId() + '/edit';
     });
     importBtn.addEventListener('click', function () {
-      window.location.hash = '#/file/' + generateId() + '/import';
+      window.location.hash = '#/import';
     });
     trashBtn.addEventListener('click', function () {
       window.location.hash = '#/trash';
@@ -818,7 +819,9 @@
     });
   }
 
-  function renderCustomerFileImport(app, id) {
+  function renderCustomerFileImport(app, id, options) {
+    options = options || {};
+    const allowDestinationChoice = !!options.allowDestinationChoice || !id;
     registerActiveFlush(null);
     app.innerHTML =
       '<div class="view-bar view-bar--file">' +
@@ -828,6 +831,10 @@
       '<div id="customer-file-import"></div>';
 
     app.querySelector('#import-back').addEventListener('click', function () {
+      if (!id) {
+        window.location.hash = '#/';
+        return;
+      }
       window.ToolboxDB.getCustomerFile(id).then(function (record) {
         window.location.hash = record ? '#/file/' + encodeURIComponent(id) : '#/';
       });
@@ -839,9 +846,11 @@
       return;
     }
     window.ToolboxCustomerFileImport.mount(app.querySelector('#customer-file-import'), {
-      customerFileId: id,
-      onDone: function (kind) {
-        window.location.hash = '#/file/' + encodeURIComponent(id) + '/' + (kind === 'floor' ? 'floor' : 'distress');
+      customerFileId: id || null,
+      allowDestinationChoice: allowDestinationChoice,
+      onDone: function (kind, destinationId) {
+        const dest = destinationId || id;
+        window.location.hash = '#/file/' + encodeURIComponent(dest) + '/' + (kind === 'floor' ? 'floor' : 'distress');
       },
     });
   }

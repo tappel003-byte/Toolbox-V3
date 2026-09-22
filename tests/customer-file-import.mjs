@@ -109,8 +109,13 @@ const fixtures = await page.evaluate(async () => {
     return new File([await zip.generateAsync({ type: 'blob' })], missingPhoto ? 'missing.zip' : 'distress.zip', { type: 'application/zip' });
   }
 
-  function floorFile(version = 1) {
-    const plan = planDataUrl(120, 90);
+  function floorFile(version = 1, overrides = {}) {
+    const planWidth = overrides.planWidth != null ? overrides.planWidth : 120;
+    const planHeight = overrides.planHeight != null ? overrides.planHeight : 90;
+    const imageWidth = overrides.imageWidth != null ? overrides.imageWidth : 120;
+    const imageHeight = overrides.imageHeight != null ? overrides.imageHeight : 90;
+    const plan = planDataUrl(imageWidth, imageHeight);
+    const client = Object.prototype.hasOwnProperty.call(overrides, 'client') ? overrides.client : 'Fred Keulen';
     const bundle = {
       kind: 'floor-survey-bundle',
       bundleVersion: version,
@@ -119,7 +124,7 @@ const fixtures = await page.evaluate(async () => {
         id: 'project-old',
         name: 'Keulen',
         address: '44 El Cielo Azul Circle, Edgewood, NM',
-        client: 'Fred Keulen',
+        client,
         inspector: 'Tim',
         inspectionDate: '2026-07-28',
         notes: 'Field notes',
@@ -133,8 +138,8 @@ const fixtures = await page.evaluate(async () => {
         name: '1st Floor',
         order: 0,
         planDataUrl: plan,
-        planWidth: 120,
-        planHeight: 90,
+        planWidth,
+        planHeight,
         boundary: [{ x: 5, y: 5 }, { x: 115, y: 5 }, { x: 115, y: 85 }, { x: 5, y: 85 }],
         areas: [{ id: 'area-old', name: 'Area 1', polygon: [{ x: 5, y: 5 }, { x: 115, y: 5 }, { x: 115, y: 85 }], createdAt: 1 }],
         scale: { a: { x: 10, y: 10 }, b: { x: 30, y: 10 }, lengthInches: 240 },
@@ -528,7 +533,165 @@ const existingSafety = await page.evaluate(async () => {
   };
 });
 check('Existing Customer File and Floor metadata conflicts are exposed', existingSafety.conflicts.join(',') === 'firstName,floorSurvey.customSurfaces,floorSurvey.inspectionDate,floorSurvey.surveyNotes,lastName,propertyAddress', JSON.stringify(existingSafety.conflicts));
-check('Existing populated fields, Floor metadata, and canvas remain intact', existingSafety.identity.join('|') === 'Existing|Customer|Keep This Address|555-0101' && existingSafety.floorMetadata.join('|') === '2025-01-01|Keep existing survey notes|Carpet' && existingSafety.canvases.includes(existingSafety.originalCanvasId) && existingSafety.importedLayer, JSON.stringify(existingSafety));
+check('Existing populated fields and Floor metadata remain intact; blank default canvas may be removed', existingSafety.identity.join('|') === 'Existing|Customer|Keep This Address|555-0101' && existingSafety.floorMetadata.join('|') === '2025-01-01|Keep existing survey notes|Carpet' && !existingSafety.canvases.includes(existingSafety.originalCanvasId) && existingSafety.importedLayer, JSON.stringify(existingSafety));
+
+const dimensionMismatch = await page.evaluate(async () => {
+  try {
+    await ToolboxCustomerFileImport.inspectFile(window.__importFixtures.floorFile(1, {
+      planWidth: 200,
+      planHeight: 150,
+      imageWidth: 120,
+      imageHeight: 90,
+    }));
+    return { error: '' };
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+check('Declared/intrinsic plan dimension mismatch blocks import', /cannot safely guarantee point placement/.test(dimensionMismatch.error) && /200×150/.test(dimensionMismatch.error) && /120×90/.test(dimensionMismatch.error), dimensionMismatch.error);
+
+const pointExact = await page.evaluate(async () => {
+  const record = await ToolboxDB.getCustomerFile('import-floor-new');
+  const canvas = record.planSetup.canvases[0];
+  const layer = record.floorSurvey.byCanvasId[canvas.id];
+  return layer.points.map((point) => [point.x, point.y, point.isBasePoint || false]);
+});
+check('Matching dimensions preserve point x/y exactly', JSON.stringify(pointExact) === JSON.stringify([[20, 20, true], [60, 45, false]]), JSON.stringify(pointExact));
+
+const clientNameFallback = await page.evaluate(async () => {
+  const parsed = await ToolboxCustomerFileImport.inspectFile(window.__importFixtures.floorFile(1, {
+    client: 'Sandia Geo Consulting LLC',
+  }));
+  return {
+    needs: parsed.needsClientNameEntry,
+    unparsed: parsed.unparsedClient,
+    first: parsed.customerCandidates.firstName,
+    last: parsed.customerCandidates.lastName,
+  };
+});
+check('Non-two-token client name requires editable fallback', clientNameFallback.needs && clientNameFallback.unparsed === 'Sandia Geo Consulting LLC' && !clientNameFallback.first && !clientNameFallback.last, JSON.stringify(clientNameFallback));
+
+const clientNameApplied = await page.evaluate(async () => {
+  const parsed = await ToolboxCustomerFileImport.inspectFile(window.__importFixtures.floorFile(1, {
+    client: 'Sandia Geo Consulting LLC',
+  }));
+  const context = await ToolboxCustomerFileImport.getImportContext(parsed, 'import-floor-name');
+  await ToolboxCustomerFileImport.applyImport(parsed, 'import-floor-name', {
+    targetUpdatedAt: context.targetUpdatedAt,
+    canvasChoice: 'new',
+    fieldChoices: {},
+    clientFirstName: 'Sandia',
+    clientLastName: 'Consulting',
+  });
+  const record = await ToolboxDB.getCustomerFile('import-floor-name');
+  return [record.firstName, record.lastName];
+});
+check('Editable client name fallback is applied on import', clientNameApplied.join('|') === 'Sandia|Consulting', JSON.stringify(clientNameApplied));
+
+const floorWorkGuard = await page.evaluate(async () => {
+  const existing = ToolboxApp.blankCustomerFile('import-floor-work');
+  ToolboxPlanSetup.ensurePlanSetup(existing);
+  existing.firstName = 'Pat';
+  existing.lastName = 'Owner';
+  existing.propertyAddress = '12 Existing Lane';
+  const canvasId = existing.planSetup.canvases[0].id;
+  existing.planSetup.canvases[0].plan = { id: 'plan-keep', width: 50, height: 40 };
+  existing.floorSurvey.byCanvasId[canvasId] = {
+    canvasId,
+    boundary: [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 2, y: 2 }],
+    points: [{ id: 'keep-point', floorId: canvasId, x: 11, y: 12, value: 1, createdAt: 1 }],
+    transitions: [],
+    areas: [],
+    exclusions: [],
+  };
+  await ToolboxDB.saveCustomerFile(existing);
+  await ToolboxDB.putMedia('plan-keep', 'data:image/png;base64,aaa');
+  const context = await ToolboxCustomerFileImport.getImportContext(window.__floorParsed, existing.id);
+  let blockedError = '';
+  try {
+    await ToolboxCustomerFileImport.applyImport(window.__floorParsed, existing.id, {
+      targetUpdatedAt: context.targetUpdatedAt,
+      canvasChoice: 'add',
+      fieldChoices: {
+        firstName: 'keep',
+        lastName: 'keep',
+        propertyAddress: 'keep',
+      },
+    });
+  } catch (error) {
+    blockedError = error.message;
+  }
+  const before = await ToolboxDB.getCustomerFile(existing.id);
+  await ToolboxCustomerFileImport.applyImport(window.__floorParsed, existing.id, {
+    targetUpdatedAt: before.updatedAt,
+    canvasChoice: 'add',
+    fieldChoices: {
+      firstName: 'keep',
+      lastName: 'keep',
+      propertyAddress: 'keep',
+    },
+    confirmAddFloorLevels: true,
+  });
+  const after = await ToolboxDB.getCustomerFile(existing.id);
+  const keptLayer = after.floorSurvey.byCanvasId[canvasId];
+  return {
+    requiresConfirm: context.requiresFloorAddConfirm,
+    blockedError,
+    canvasCount: after.planSetup.canvases.length,
+    keptCanvas: after.planSetup.canvases.some((canvas) => canvas.id === canvasId),
+    keptPoints: keptLayer && keptLayer.points.map((point) => [point.x, point.y]),
+    destinationLabel: context.destinationLabel,
+  };
+});
+check('Existing Floor Survey work requires explicit add-levels confirmation', floorWorkGuard.requiresConfirm && /additional level/.test(floorWorkGuard.blockedError), JSON.stringify(floorWorkGuard));
+check('Existing Floor geometry is preserved when recovered levels are added', floorWorkGuard.keptCanvas && floorWorkGuard.canvasCount >= 2 && JSON.stringify(floorWorkGuard.keptPoints) === JSON.stringify([[11, 12]]), JSON.stringify(floorWorkGuard));
+
+const destinations = await page.evaluate(async () => {
+  const list = await ToolboxCustomerFileImport.listImportDestinations();
+  return {
+    ids: list.map((item) => item.id),
+    labels: list.map((item) => item.label),
+    hasFloorWork: list.find((item) => item.id === 'import-floor-work')?.hasFloorWork,
+  };
+});
+check('Destination picker lists existing non-trashed Customer Files with identity', destinations.ids.includes('import-floor-work') && /Pat Owner/.test(destinations.labels.join(' | ')) && /12 Existing Lane/.test(destinations.labels.join(' | ')) && destinations.hasFloorWork === true, JSON.stringify(destinations));
+
+const newCanvasCleanup = await page.evaluate(async () => {
+  const record = await ToolboxDB.getCustomerFile('import-floor-new');
+  return {
+    count: record.planSetup.canvases.length,
+    names: record.planSetup.canvases.map((canvas) => canvas.name),
+    plans: record.planSetup.canvases.every((canvas) => !!(canvas.plan && canvas.plan.id)),
+  };
+});
+check('New Floor import does not retain a meaningless default blank canvas', newCanvasCleanup.count === 1 && newCanvasCleanup.names[0] === '1st Floor' && newCanvasCleanup.plans, JSON.stringify(newCanvasCleanup));
+
+const syncRecognition = await page.evaluate(async () => {
+  const record = await ToolboxDB.getCustomerFile('import-floor-new');
+  return {
+    customer: ToolboxSync.componentRevision(record, 'customer'),
+    plans: ToolboxSync.componentRevision(record, 'plans'),
+    floor: ToolboxSync.componentRevision(record, 'floor'),
+    components: ToolboxSync.COMPONENTS.slice(),
+  };
+});
+check('Imported Customer File remains recognized by sync as customer/plans/floor', !!(syncRecognition.customer && syncRecognition.plans && syncRecognition.floor) && syncRecognition.components.includes('customer') && syncRecognition.components.includes('plans') && syncRecognition.components.includes('floor'), JSON.stringify(syncRecognition));
+
+const floorDuplicate = await page.evaluate(async () => {
+  const context = await ToolboxCustomerFileImport.getImportContext(window.__floorParsed, 'import-floor-new');
+  try {
+    await ToolboxCustomerFileImport.applyImport(window.__floorParsed, 'import-floor-new', {
+      targetUpdatedAt: context.targetUpdatedAt,
+      canvasChoice: 'add',
+      fieldChoices: {},
+      confirmAddFloorLevels: true,
+    });
+    return { error: '' };
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+check('Floor duplicate fingerprint protection still works locally', /already been imported/.test(floorDuplicate.error), floorDuplicate.error);
 
 await page.goto(`${BASE}#/`, { waitUntil: 'networkidle0' });
 await page.waitForSelector('#cabinet-import');
@@ -536,7 +699,7 @@ const uiEntry = await page.evaluate(() => document.querySelector('#cabinet-impor
 check('Cabinet exposes normal Import control', /Import standalone export/.test(uiEntry || ''), uiEntry);
 await page.click('#cabinet-import');
 await page.waitForSelector('#cf-import-file');
-check('New Customer File Import route exposes file picker', /\/import$/.test(await page.evaluate(() => location.hash)));
+check('Cabinet Import route allows destination choice', (await page.evaluate(() => location.hash)) === '#/import');
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
 await page.evaluate((base64) => {
   const binary = atob(base64);
@@ -548,13 +711,56 @@ await page.evaluate((base64) => {
   input.files = transfer.files;
   input.dispatchEvent(new Event('change', { bubbles: true }));
 }, fixtures.previewZipBase64);
-await page.waitForSelector('.cf-import__preview');
+await page.waitForFunction(() => document.querySelector('input[name="cf-import-dest-mode"]'));
+const destChoiceUi = await page.evaluate(() => ({
+  text: document.querySelector('.cf-import__preview')?.innerText || '',
+  create: !!document.querySelector('input[name="cf-import-dest-mode"][value="new"]'),
+  existing: !!document.querySelector('input[name="cf-import-dest-mode"][value="existing"]'),
+}));
+check('Cabinet import can choose Create New or existing Customer File', destChoiceUi.create && destChoiceUi.existing && /Where should this recovered work go/.test(destChoiceUi.text), destChoiceUi.text.replace(/\n/g, ' | '));
+await page.click('input[name="cf-import-dest-mode"][value="new"]');
+await page.waitForSelector('#cf-import-confirm');
 const previewUi = await page.evaluate(() => ({
   text: document.querySelector('.cf-import__preview')?.innerText || '',
   overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
 }));
-check('Import preview inventories Distress and deferred Quick Capture data', /Observations\s+2/i.test(previewUi.text) && /Quick Capture\s+2 photos found — not imported yet/i.test(previewUi.text), previewUi.text.replace(/\n/g, ' | '));
+check('Import preview inventories Distress and deferred Quick Capture data', /Observations\s+2/i.test(previewUi.text) && /Quick Capture\s+2 photos found — not imported yet/i.test(previewUi.text) && /New Customer File/i.test(previewUi.text), previewUi.text.replace(/\n/g, ' | '));
 check('Import preview remains contained on phone', !previewUi.overflow, JSON.stringify(previewUi));
+
+const floorPreview = await page.evaluate(async () => {
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  ToolboxCustomerFileImport.mount(host, {
+    allowDestinationChoice: true,
+    onDone: function () {},
+  });
+  const file = await window.__importFixtures.floorFile();
+  const input = host.querySelector('#cf-import-file');
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  input.files = transfer.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  host.querySelector('input[name="cf-import-dest-mode"][value="existing"]').click();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const select = host.querySelector('#cf-import-dest-file');
+  select.value = 'import-floor-work';
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise((resolve) => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (host.querySelector('#cf-import-confirm-floor-add') || Date.now() - started > 3000) {
+        clearInterval(timer);
+        resolve();
+      }
+    }, 40);
+  });
+  const text = host.querySelector('.cf-import__preview')?.innerText || '';
+  host.remove();
+  return text;
+});
+check('Floor preview reports boundary/BP1/readings/transitions and destination identity', /Boundary recovered\s+Yes/i.test(floorPreview) && /BP1 recovered\s+Yes/i.test(floorPreview) && /Survey readings\s+2/i.test(floorPreview) && /Transitions \/ corrections\s+1/i.test(floorPreview) && /Pat Owner/.test(floorPreview) && /additional level/i.test(floorPreview), floorPreview.replace(/\n/g, ' | '));
+
 await page.screenshot({ path: '/opt/cursor/artifacts/customer-file-import-preview-phone.png', fullPage: true });
 await page.setViewport({ width: 1440, height: 960, deviceScaleFactor: 1 });
 await page.screenshot({ path: '/opt/cursor/artifacts/customer-file-import-preview-desktop.png', fullPage: true });
