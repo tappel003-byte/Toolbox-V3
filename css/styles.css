@@ -1640,6 +1640,34 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   display: none;
 }
 
+.cabinet-section-title {
+  margin: 1.25rem 1rem 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.cabinet-section-note {
+  margin: 0 1rem 0.5rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.cabinet-list--cloud {
+  margin-bottom: 2rem;
+}
+
+.cabinet-row--cloud {
+  cursor: default;
+}
+
+.cabinet-checkout-btn {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-right: 0.75rem;
+  white-space: nowrap;
+}
+
 .cabinet-list {
   max-width: 62rem;
   padding: 0 20px 36px;

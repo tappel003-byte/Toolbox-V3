@@ -40,39 +40,42 @@ Full-cabinet convergence (“every authorized device’s local Cabinet must matc
 - Soft Trash as shared recoverable state
 - Durable permanent-delete tombstones (no stale resurrection)
 
-### Stage E — File Cabinet checkout (NEXT)
+### Stage E — File Cabinet checkout (IN PROGRESS)
 - Cabinet browse from lightweight indexes (no full CF download)
 - Authenticated user + device checkout ownership
-- Check Out / Sync while checked out / Check In with completeness verify / release
-- Remove From This Device (local only)
-- Take Over (explicit recovery)
+- Check Out / Sync while checked out
+- Check In with completeness verify / release — not in this foundation slice
+- Remove From This Device (local only) — not in this foundation slice
+- Take Over (explicit recovery) — not in this foundation slice
 
 ### Stage F — Later polish
 - Clearer status wording
 - Optional quiet auto-sync only after manual Sync + checkout are trusted
 
-## In scope (this transition)
+## In scope (current checkout foundation slice)
 
-- Preserve data-integrity hardening
-- Sync local working set only; leave remote-only remote
-- Docs that prevent rebuilding full-cabinet convergence
-- Keep LWW as defensive plumbing until checkout ships
+- Stable deviceId persistence
+- Verified Cloudflare Access JWT identity for checkout ownership
+- Lightweight Cabinet browse + explicit Check Out materialize
+- Atomic checkout acquire (R2 conditional put) + Sync ownership gate
+- Preserve selective-local Sync Now / tombstone / shell-epoch protections
 
 ## Out of scope
 
-- Building the complete checkout/lock UI or state machine in this transition
+- Check In ceremony, Take Over, Remove From This Device
+- Explicit local-draft / Place-In-Cabinet product
 - Redesigning Distress / Floor / Customer File capture
 - Report Builder or Diagnostics
 - SaaS tenancy, roles, invitations, billing, per-file ACLs
 - Live collaboration, CRDTs, merge UIs
 - D1/KV/DO/Queues/Firebase/Supabase unless Worker+R2 is proven insufficient
 
-## Acceptance (transition / owner-facing)
+## Acceptance (owner-facing)
 
 1. Device can create a Customer File offline, Save locally, and later Sync that local file into the File Cabinet without requiring other remote jobs to download.
 2. Remote-only Cabinet entries do not auto-appear on the device after Sync Now, and do not make Sync fail merely by existing.
 3. Media/component failures still fail Sync honestly for the affected local working file(s).
 4. Permanent delete tombstones still prevent stale local resurrection.
-5. Next slice acceptance (not yet): Check Out → offline work → Sync → Check In → other user can Check Out.
+5. Check Out foundation: browse cloud indexes → Check Out acquires user+device lease → materialize only that file → non-owner cannot push → owner can Sync while checked out.
 
 Fred Keulen remains a real-world candidate after checkout is live — not for permanent-delete testing.

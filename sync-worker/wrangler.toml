@@ -12,3 +12,13 @@ bucket_name = "toolbox-cabinet"
 
 # Protect THIS Worker with Cloudflare Access (Tim + Lee).
 # Do NOT put the static Toolbox PWA origin behind Access.
+#
+# Checkout identity verification requires:
+#   CF_ACCESS_TEAM_DOMAIN  — Access team FQDN (no scheme), e.g. <team>.cloudflareaccess.com
+#   CF_ACCESS_AUD          — Access application AUD for sync.sandiageotoolbox.com (secret)
+#
+# Team domain below is the live Access host observed for this deployment.
+# AUD must be set by Tim before deploy:
+#   cd sync-worker && wrangler secret put CF_ACCESS_AUD
+[vars]
+CF_ACCESS_TEAM_DOMAIN = "super-feather-6ae4.cloudflareaccess.com"

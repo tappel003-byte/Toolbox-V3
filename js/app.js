@@ -318,9 +318,16 @@
       '  </div>' +
       '</section>' +
       '  <p class="cabinet-notice" id="cabinet-notice" hidden></p>' +
-      '<div class="cabinet-list" id="cabinet-list"></div>';
+      '<h2 class="cabinet-section-title">On this device</h2>' +
+      '<div class="cabinet-list" id="cabinet-list"></div>' +
+      '<h2 class="cabinet-section-title">File Cabinet</h2>' +
+      '<p class="cabinet-section-note">Cloud-only jobs stay in the Cabinet until you Check Out.</p>' +
+      '<div class="cabinet-list cabinet-list--cloud" id="cabinet-cloud-list">' +
+      '  <p class="cabinet-empty">Loading File Cabinet…</p>' +
+      '</div>';
 
     const listEl = app.querySelector('#cabinet-list');
+    const cloudListEl = app.querySelector('#cabinet-cloud-list');
     const newBtn = app.querySelector('#cabinet-new');
     const importBtn = app.querySelector('#cabinet-import');
     const trashBtn = app.querySelector('#cabinet-trash');
@@ -362,24 +369,25 @@
       if (records.length === 0) {
         const p = document.createElement('p');
         p.className = 'cabinet-empty';
-        p.textContent = 'No Customer Files yet. Create your first Customer File to get started.';
+        p.textContent = 'No Customer Files on this device yet.';
         listEl.appendChild(p);
-        return;
+      } else {
+        records.forEach(function (record) {
+          listEl.appendChild(cabinetRowNode(record, function () {
+            requestCustomerFileRemoval(record).then(function (result) {
+              if (!result) return;
+              cabinetNotice = result;
+              renderCabinet(app);
+            }).catch(function (err) {
+              console.error('Could not remove Customer File:', err);
+              cabinetNotice = 'Could not remove that Customer File. Try again.';
+              renderCabinet(app);
+            });
+          }));
+        });
       }
 
-      records.forEach(function (record) {
-        listEl.appendChild(cabinetRowNode(record, function () {
-          requestCustomerFileRemoval(record).then(function (result) {
-            if (!result) return;
-            cabinetNotice = result;
-            renderCabinet(app);
-          }).catch(function (err) {
-            console.error('Could not remove Customer File:', err);
-            cabinetNotice = 'Could not remove that Customer File. Try again.';
-            renderCabinet(app);
-          });
-        }));
-      });
+      return loadCabinetBrowse(cloudListEl, app);
     }).catch(function (err) {
       console.error('Failed to load Customer Files:', err);
       listEl.innerHTML = '';
@@ -395,6 +403,127 @@
         menu.classList.remove('is-open');
       });
     };
+  }
+
+  function cloudAvailabilityLabel(entry) {
+    if (!entry) return '';
+    if (entry.availability === 'checked-out-here') return 'Checked out on this device';
+    if (entry.availability === 'checked-out-elsewhere') {
+      const who = entry.checkout && entry.checkout.email ? entry.checkout.email : 'another user/device';
+      return 'Checked out elsewhere (' + who + ')';
+    }
+    if (entry.presence === 'local') return 'Also on this device';
+    return 'Available to Check Out';
+  }
+
+  function loadCabinetBrowse(cloudListEl, app) {
+    if (!cloudListEl) return Promise.resolve();
+    if (!window.ToolboxSync || typeof window.ToolboxSync.browseCabinet !== 'function' ||
+        !window.ToolboxSync.syncApiBase || !window.ToolboxSync.syncApiBase()) {
+      cloudListEl.innerHTML = '<p class="cabinet-empty">Sign in / Sync not configured — File Cabinet browse unavailable.</p>';
+      return Promise.resolve();
+    }
+
+    return window.ToolboxSync.browseCabinet().then(function (browse) {
+      const entries = (browse.entries || []).filter(function (entry) {
+        return entry && !entry.deletedAt;
+      });
+      // Cloud section focuses on remote inventory; local-only presence is above.
+      const cloudish = entries.filter(function (entry) {
+        return entry.presence !== 'local' || entry.availability === 'checked-out-elsewhere' ||
+          entry.availability === 'checked-out-here';
+      });
+
+      cloudListEl.innerHTML = '';
+      if (!cloudish.length) {
+        const p = document.createElement('p');
+        p.className = 'cabinet-empty';
+        p.textContent = 'No cloud Customer Files in the File Cabinet yet.';
+        cloudListEl.appendChild(p);
+        return;
+      }
+
+      cloudish.sort(function (a, b) {
+        return String(a.displayName || '').localeCompare(String(b.displayName || ''));
+      });
+
+      cloudish.forEach(function (entry) {
+        cloudListEl.appendChild(cabinetCloudRowNode(entry, app));
+      });
+    }).catch(function (err) {
+      const code = err && err.code;
+      cloudListEl.innerHTML = '';
+      const p = document.createElement('p');
+      p.className = 'cabinet-empty';
+      if (code === 'auth') p.textContent = 'Sign in to browse the File Cabinet.';
+      else if (code === 'offline' || code === 'network') p.textContent = 'Offline — File Cabinet browse needs a network connection.';
+      else if (code === 'config') p.textContent = 'Sync is not configured yet.';
+      else p.textContent = 'Unable to load File Cabinet right now.';
+      cloudListEl.appendChild(p);
+      console.warn('File Cabinet browse failed:', err);
+    });
+  }
+
+  function cabinetCloudRowNode(entry, app) {
+    const shell = document.createElement('div');
+    shell.className = 'cabinet-row-shell cabinet-row-shell--cloud';
+    shell.dataset.customerFileId = entry.id;
+
+    const row = document.createElement('div');
+    row.className = 'cabinet-row cabinet-row--cloud';
+
+    const main = document.createElement('div');
+    main.className = 'cabinet-row__main';
+
+    const name = document.createElement('div');
+    name.className = 'cabinet-row__name';
+    name.textContent = entry.displayName || 'Customer File';
+
+    const address = document.createElement('div');
+    address.className = 'cabinet-row__address';
+    address.textContent = entry.propertyAddress || 'No property address';
+
+    const meta = document.createElement('div');
+    meta.className = 'cabinet-row__meta';
+    meta.textContent = cloudAvailabilityLabel(entry);
+
+    main.appendChild(name);
+    main.appendChild(address);
+    main.appendChild(meta);
+    row.appendChild(main);
+
+    if (entry.availability === 'available' && entry.presence !== 'local') {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn--secondary cabinet-checkout-btn';
+      btn.textContent = 'Check Out';
+      btn.addEventListener('click', function (event) {
+        event.stopPropagation();
+        btn.disabled = true;
+        btn.textContent = 'Checking out…';
+        window.ToolboxSync.checkOutCustomerFile(entry.id).then(function () {
+          cabinetNotice = (entry.displayName || 'Customer File') + ' checked out to this device.';
+          renderCabinet(app);
+        }).catch(function (err) {
+          console.warn('Check Out failed:', err);
+          cabinetNotice = (err && err.message) || 'Check Out failed.';
+          renderCabinet(app);
+        });
+      });
+      row.appendChild(btn);
+    } else if (entry.presence === 'local') {
+      const openBtn = document.createElement('button');
+      openBtn.type = 'button';
+      openBtn.className = 'btn btn--secondary cabinet-checkout-btn';
+      openBtn.textContent = 'Open';
+      openBtn.addEventListener('click', function () {
+        window.location.hash = '#/file/' + encodeURIComponent(entry.id);
+      });
+      row.appendChild(openBtn);
+    }
+
+    shell.appendChild(row);
+    return shell;
   }
 
   function removeCloudCopies(records) {
