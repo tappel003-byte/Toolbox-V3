@@ -227,7 +227,8 @@ function purgeExpiredCustomerFiles(now) {
   // Silent local purge left cloud Trash state able to return on Sync, and
   // creating a permanent cloud purge tombstone from a background heuristic
   // is not an explicit owner permanent-delete action.
-  // Expired rows remain recoverable in Trash until Empty Trash (or stub delete).
+  // The 120-day mark is not an automatic delete. Expired rows stay until a person
+  // permanently deletes them from File Cabinet Trash, or a local-only file is deleted.
   void now;
   return Promise.resolve({ deletedCount: 0, mediaDeletedCount: 0, deferred: true });
 }

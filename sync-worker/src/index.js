@@ -320,16 +320,129 @@ async function listPurges(env) {
   return purged;
 }
 
-async function writePurgeTombstone(env, id) {
+function safeMediaId(id) {
+  return typeof id === 'string' &&
+    !!id &&
+    id.indexOf('/') === -1 &&
+    id.indexOf('\\') === -1 &&
+    id.indexOf('..') === -1;
+}
+
+function mediaIdsFromPlansComponent(plans) {
+  const canvases = plans && Array.isArray(plans.canvases) ? plans.canvases : [];
+  const ids = [];
+  canvases.forEach(function (canvas) {
+    const id = canvas && canvas.plan && canvas.plan.id;
+    if (safeMediaId(id)) ids.push(id);
+  });
+  return ids;
+}
+
+function mediaIdsFromDistressComponent(distress) {
+  const pins = distress && Array.isArray(distress.pins) ? distress.pins : [];
+  const ids = [];
+  pins.forEach(function (pin) {
+    const photos = pin && Array.isArray(pin.photos) ? pin.photos : [];
+    photos.forEach(function (id) {
+      if (safeMediaId(id) && id.indexOf('ph_') === 0) ids.push(id);
+    });
+  });
+  const quick = distress && Array.isArray(distress.quickCapture) ? distress.quickCapture : [];
+  quick.forEach(function (item) {
+    const id = item && item.id;
+    if (safeMediaId(id) && id.indexOf('ph_') === 0) ids.push(id);
+  });
+  return ids;
+}
+
+function uniqueMediaIds(ids) {
+  const seen = Object.create(null);
+  const out = [];
+  (ids || []).forEach(function (id) {
+    if (!safeMediaId(id) || seen[id]) return;
+    seen[id] = true;
+    out.push(id);
+  });
+  return out;
+}
+
+async function readStoredJson(object) {
+  if (!object) return { missing: true, body: null };
+  try {
+    return { missing: false, body: await object.json() };
+  } catch (_) {
+    return { missing: false, corrupt: true, body: null };
+  }
+}
+
+/**
+ * Plan and Distress bytes referenced by this Customer File.
+ * Stops before any delete when a present component cannot be read.
+ */
+async function referencedMediaIds(env, id) {
+  const plansRead = await readStoredJson(await env.CABINET.get(componentKey(id, 'plans')));
+  if (plansRead.corrupt) {
+    return { error: 'Plans component is unreadable; refusing permanent delete' };
+  }
+  const distressRead = await readStoredJson(await env.CABINET.get(componentKey(id, 'distress')));
+  if (distressRead.corrupt) {
+    return { error: 'Distress component is unreadable; refusing permanent delete' };
+  }
+  const tombRead = await readStoredJson(await env.CABINET.get(purgeKey(id)));
+  const prior = tombRead.body && Array.isArray(tombRead.body.mediaIds) ? tombRead.body.mediaIds : [];
+  return {
+    ids: uniqueMediaIds(
+      mediaIdsFromPlansComponent(plansRead.body)
+        .concat(mediaIdsFromDistressComponent(distressRead.body))
+        .concat(prior),
+    ),
+    tomb: tombRead.body,
+  };
+}
+
+async function writePurgeTombstone(env, id, mediaIds, previous) {
   const body = {
     id: id,
-    purgedAt: new Date().toISOString(),
+    purgedAt: (previous && previous.purgedAt) || new Date().toISOString(),
     reason: 'permanent-delete',
+    mediaIds: uniqueMediaIds(mediaIds),
   };
   await env.CABINET.put(purgeKey(id), JSON.stringify(body), {
     httpMetadata: { contentType: 'application/json' },
   });
   return body;
+}
+
+/**
+ * Explicit permanent delete.
+ * Refuses an active checkout lease before any write.
+ * Tombstone is written before media or prefix removal so a crash cannot
+ * resurrect the Customer File. Referenced media/{id} keys are deleted;
+ * unrelated media keys are left alone.
+ */
+async function purgeCustomerFile(env, id) {
+  const indexRead = await readStoredJson(await env.CABINET.get(indexKey(id)));
+  if (indexRead.corrupt) {
+    return { status: 500, message: 'Corrupt Customer File index; refusing permanent delete' };
+  }
+  const index = indexRead.body;
+  const checkout = index && index.checkout;
+  if (checkout && trimStr(checkout.deviceId) && normalizeEmail(checkout.email)) {
+    return {
+      status: 403,
+      message: 'Customer File is checked out. Check it in before permanently deleting it.',
+    };
+  }
+
+  const media = await referencedMediaIds(env, id);
+  if (media.error) return { status: 500, message: media.error };
+
+  const tombstone = await writePurgeTombstone(env, id, media.ids, media.tomb);
+  for (let i = 0; i < tombstone.mediaIds.length; i++) {
+    await env.CABINET.delete(mediaKey(tombstone.mediaIds[i]));
+  }
+  await deleteCustomerFilePrefix(env, id);
+  return { status: 200, deleted: id, purged: tombstone };
 }
 
 async function deleteCustomerFilePrefix(env, id) {
@@ -578,11 +691,10 @@ export default {
     let match = /^files\/([^/]+)$/.exec(path);
     if (match && request.method === 'DELETE') {
       const id = decodeURIComponent(match[1]);
-      // Tombstone first: a crash after delete-but-before-tombstone would leave
-      // a resurrection window. Write the durable purge marker, then remove objects.
-      const tombstone = await writePurgeTombstone(env, id);
-      await deleteCustomerFilePrefix(env, id);
-      return json(request, { ok: true, deleted: id, purged: tombstone });
+      const result = await purgeCustomerFile(env, id);
+      if (result.status === 403) return forbidden(request, result.message);
+      if (result.status === 500) return text(request, result.message || 'Server error', 500);
+      return json(request, { ok: true, deleted: result.deleted, purged: result.purged });
     }
 
     match = /^files\/([^/]+)\/checkout$/.exec(path);
