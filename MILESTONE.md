@@ -44,6 +44,7 @@ Full-cabinet convergence (“every authorized device’s local Cabinet must matc
 - Cabinet browse from lightweight indexes (no full CF download)
 - Authenticated user + device checkout ownership
 - Check Out / Sync while checked out
+- Customer Files screen = on-device working area; File Cabinet is a dedicated `#/cabinet` browse/manage screen (closed card entry, search by name/address, Check Out returns to working area)
 - Check In with completeness verify / release — not in this foundation slice
 - Remove From This Device (local only) — not in this foundation slice
 - Take Over (explicit recovery) — not in this foundation slice
