@@ -320,19 +320,20 @@
   function renderCabinet(app) {
     registerActiveFlush(null);
     app.innerHTML =
+      '<div class="customer-files">' +
       '<section class="cabinet-hero">' +
-      '  <div>' +
+      '  <div class="cabinet-hero__heading">' +
       '    <p class="eyebrow">Toolbox</p>' +
       '    <h1>Customer Files</h1>' +
-      '    <p>Open a job or create a file. Customer details and plans stay together.</p>' +
       '  </div>' +
       '  <div class="cabinet-hero__actions">' +
       '    <button type="button" id="cabinet-trash" class="btn btn--secondary cabinet-trash">🗑 Trash <span id="cabinet-trash-count"></span></button>' +
       '    <button type="button" id="cabinet-import" class="btn btn--secondary">Import standalone export</button>' +
       '    <button type="button" id="cabinet-new" class="btn btn--accent cabinet-new">+ New Customer File</button>' +
       '  </div>' +
+      '  <p class="cabinet-hero__lead">Open a job or create a file. Customer details and plans stay together.</p>' +
       '</section>' +
-      '  <p class="cabinet-notice" id="cabinet-notice" hidden></p>' +
+      '<p class="cabinet-notice" id="cabinet-notice" hidden></p>' +
       '<h2 class="cabinet-section-title">On this device</h2>' +
       '<div class="cabinet-list" id="cabinet-list"></div>' +
       '<button type="button" class="file-cabinet-entry" id="open-file-cabinet" aria-label="Open File Cabinet">' +
@@ -341,7 +342,8 @@
       '    <div class="file-cabinet-entry__note">Browse cloud Customer Files. Check Out brings one onto this device.</div>' +
       '  </div>' +
       '  <span class="file-cabinet-entry__cta">Open File Cabinet ›</span>' +
-      '</button>';
+      '</button>' +
+      '</div>';
 
     const listEl = app.querySelector('#cabinet-list');
     const newBtn = app.querySelector('#cabinet-new');

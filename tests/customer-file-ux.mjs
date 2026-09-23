@@ -180,15 +180,66 @@ await new Promise((resolve) => setTimeout(resolve, 500));
 const draftPersisted = await page.evaluate(async () => !!(await window.ToolboxDB.getCustomerFile('ux-brand-new')));
 check('A newly opened Customer File draft persists immediately', draftPersisted);
 
-await page.goto(`${BASE}#/`, { waitUntil: 'networkidle0' });
-await new Promise((resolve) => setTimeout(resolve, 350));
-const cabinet = await page.evaluate(() => ({
-  title: document.querySelector('.cabinet-hero h1')?.textContent,
-  rows: document.querySelectorAll('.cabinet-row').length,
-  newButton: document.querySelector('#cabinet-new')?.textContent,
-}));
-check('Cabinet presents clear file-finding and creation actions', cabinet.title === 'Customer Files' && cabinet.rows >= 3 && /New Customer File/.test(cabinet.newButton || ''), JSON.stringify(cabinet));
-await page.screenshot({ path: `${OUT}/customer-file-ux-cabinet-phone.png`, fullPage: true });
+for (const viewport of viewports) {
+  await page.setViewport({
+    width: viewport.width,
+    height: viewport.height,
+    deviceScaleFactor: viewport.scale,
+  });
+  await page.goto(`${BASE}#/`, { waitUntil: 'networkidle0' });
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  const cabinet = await page.evaluate(() => {
+    const list = document.querySelector('#cabinet-list');
+    const entry = document.querySelector('#open-file-cabinet');
+    const title = document.querySelector('.cabinet-section-title');
+    const hero = document.querySelector('.cabinet-hero');
+    const trash = document.querySelector('#cabinet-trash');
+    const listRect = list.getBoundingClientRect();
+    const entryRect = entry.getBoundingClientRect();
+    const titleRect = title.getBoundingClientRect();
+    const heroRect = hero.getBoundingClientRect();
+    return {
+      title: document.querySelector('.cabinet-hero h1')?.textContent,
+      rows: document.querySelectorAll('.cabinet-row').length,
+      newButton: document.querySelector('#cabinet-new')?.textContent,
+      trashInActions: !!trash && !!trash.closest('.cabinet-hero__actions'),
+      closedEntry: entry?.tagName === 'BUTTON',
+      gap: Math.round(entryRect.top - listRect.bottom),
+      sameLeft: Math.abs(listRect.left - entryRect.left) < 1.5 &&
+        Math.abs(titleRect.left - listRect.left) < 1.5 &&
+        Math.abs(heroRect.left - listRect.left) < 1.5,
+      sameRight: Math.abs(listRect.right - entryRect.right) < 1.5 &&
+        Math.abs(heroRect.right - listRect.right) < 1.5,
+      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    };
+  });
+  check(
+    `${viewport.name}: Customer Files home is a compact aligned column`,
+    cabinet.title === 'Customer Files' &&
+      cabinet.rows >= 3 &&
+      /New Customer File/.test(cabinet.newButton || '') &&
+      cabinet.trashInActions &&
+      cabinet.closedEntry &&
+      cabinet.gap >= 8 &&
+      cabinet.gap <= 40 &&
+      cabinet.sameLeft &&
+      cabinet.sameRight &&
+      !cabinet.overflow,
+    JSON.stringify(cabinet),
+  );
+  await page.screenshot({
+    path: `${OUT}/customer-files-home-${viewport.name}.png`,
+    fullPage: true,
+  });
+  if (viewport.name === 'phone') {
+    check(
+      'Cabinet presents clear file-finding and creation actions',
+      cabinet.title === 'Customer Files' && cabinet.rows >= 3 && /New Customer File/.test(cabinet.newButton || ''),
+      JSON.stringify(cabinet),
+    );
+    await page.screenshot({ path: `${OUT}/customer-file-ux-cabinet-phone.png`, fullPage: true });
+  }
+}
 
 await browser.close();
 const failed = results.filter((result) => !result.ok);
