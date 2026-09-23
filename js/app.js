@@ -232,6 +232,7 @@
   function parseRoute() {
     const hash = window.location.hash || '#/';
     if (hash === '#/trash') return { view: 'trash' };
+    if (hash === '#/cabinet') return { view: 'file-cabinet' };
     if (hash === '#/import') return { view: 'import', id: null, allowDestinationChoice: true };
     const match = hash.match(/^#\/file\/([^/]+)(?:\/(edit|plan|import|distress|floor|diagnostics|report))?(?:\/(customer|contacts|plans))?$/);
     if (match) {
@@ -293,12 +294,14 @@
       renderAppStub(app, route.id, route.app);
     } else if (route.view === 'trash') {
       renderTrash(app);
+    } else if (route.view === 'file-cabinet') {
+      renderFileCabinet(app);
     } else {
       renderCabinet(app);
     }
   }
 
-  // ---- Cabinet view -------------------------------------------------
+  // ---- Customer Files (working area) + dedicated File Cabinet ----------
 
   let cabinetNotice = '';
 
@@ -307,7 +310,7 @@
     app.innerHTML =
       '<section class="cabinet-hero">' +
       '  <div>' +
-      '    <p class="eyebrow">Toolbox file cabinet</p>' +
+      '    <p class="eyebrow">Toolbox</p>' +
       '    <h1>Customer Files</h1>' +
       '    <p>Open a job or create a file. Customer details and plans stay together.</p>' +
       '  </div>' +
@@ -320,19 +323,21 @@
       '  <p class="cabinet-notice" id="cabinet-notice" hidden></p>' +
       '<h2 class="cabinet-section-title">On this device</h2>' +
       '<div class="cabinet-list" id="cabinet-list"></div>' +
-      '<h2 class="cabinet-section-title">File Cabinet</h2>' +
-      '<p class="cabinet-section-note">Cloud-only jobs stay in the Cabinet until you Check Out.</p>' +
-      '<div class="cabinet-list cabinet-list--cloud" id="cabinet-cloud-list">' +
-      '  <p class="cabinet-empty">Loading File Cabinet…</p>' +
-      '</div>';
+      '<button type="button" class="file-cabinet-entry" id="open-file-cabinet" aria-label="Open File Cabinet">' +
+      '  <div class="file-cabinet-entry__main">' +
+      '    <div class="file-cabinet-entry__title">File Cabinet</div>' +
+      '    <div class="file-cabinet-entry__note">Browse cloud Customer Files. Check Out brings one onto this device.</div>' +
+      '  </div>' +
+      '  <span class="file-cabinet-entry__cta">Open File Cabinet ›</span>' +
+      '</button>';
 
     const listEl = app.querySelector('#cabinet-list');
-    const cloudListEl = app.querySelector('#cabinet-cloud-list');
     const newBtn = app.querySelector('#cabinet-new');
     const importBtn = app.querySelector('#cabinet-import');
     const trashBtn = app.querySelector('#cabinet-trash');
     const trashCount = app.querySelector('#cabinet-trash-count');
     const notice = app.querySelector('#cabinet-notice');
+    const openCabinetBtn = app.querySelector('#open-file-cabinet');
 
     if (cabinetNotice) {
       notice.textContent = cabinetNotice;
@@ -348,6 +353,9 @@
     });
     trashBtn.addEventListener('click', function () {
       window.location.hash = '#/trash';
+    });
+    openCabinetBtn.addEventListener('click', function () {
+      window.location.hash = '#/cabinet';
     });
 
     listEl.innerHTML = '<p class="cabinet-empty">Loading Customer Files…</p>';
@@ -386,8 +394,6 @@
           }));
         });
       }
-
-      return loadCabinetBrowse(cloudListEl, app);
     }).catch(function (err) {
       console.error('Failed to load Customer Files:', err);
       listEl.innerHTML = '';
@@ -416,50 +422,103 @@
     return 'Available to Check Out';
   }
 
-  function loadCabinetBrowse(cloudListEl, app) {
-    if (!cloudListEl) return Promise.resolve();
-    if (!window.ToolboxSync || typeof window.ToolboxSync.browseCabinet !== 'function' ||
-        !window.ToolboxSync.syncApiBase || !window.ToolboxSync.syncApiBase()) {
-      cloudListEl.innerHTML = '<p class="cabinet-empty">Sign in / Sync not configured — File Cabinet browse unavailable.</p>';
-      return Promise.resolve();
-    }
+  function filterCabinetEntries(entries, query) {
+    const list = Array.isArray(entries) ? entries : [];
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return list.slice();
+    return list.filter(function (entry) {
+      if (!entry) return false;
+      const name = String(entry.displayName || '').toLowerCase();
+      const address = String(entry.propertyAddress || '').toLowerCase();
+      return name.indexOf(q) !== -1 || address.indexOf(q) !== -1;
+    });
+  }
 
-    return window.ToolboxSync.browseCabinet().then(function (browse) {
-      const entries = (browse.entries || []).filter(function (entry) {
-        return entry && !entry.deletedAt;
-      });
-      // Cloud section focuses on remote inventory; local-only presence is above.
-      const cloudish = entries.filter(function (entry) {
-        return entry.presence !== 'local' || entry.availability === 'checked-out-elsewhere' ||
-          entry.availability === 'checked-out-here';
-      });
+  function cabinetInventoryEntries(browse) {
+    const entries = ((browse && browse.entries) || []).filter(function (entry) {
+      return entry && !entry.deletedAt;
+    });
+    // Dedicated Cabinet focuses on cloud inventory; local-only drafts stay on Customer Files.
+    return entries.filter(function (entry) {
+      return entry.presence !== 'local' || entry.availability === 'checked-out-elsewhere' ||
+        entry.availability === 'checked-out-here';
+    });
+  }
 
-      cloudListEl.innerHTML = '';
-      if (!cloudish.length) {
+  function renderFileCabinet(app) {
+    registerActiveFlush(null);
+    app.innerHTML =
+      '<div class="view-bar view-bar--file">' +
+      '  <button type="button" id="file-cabinet-back" class="btn btn--ghost">‹ Customer Files</button>' +
+      '  <div class="file-identity"><span class="file-identity__name">File Cabinet</span></div>' +
+      '</div>' +
+      '<section class="file-cabinet-view">' +
+      '  <header class="file-cabinet-head">' +
+      '    <div>' +
+      '      <p class="eyebrow">Cloud file management</p>' +
+      '      <h1>File Cabinet</h1>' +
+      '      <p>Browse cloud Customer Files. Check Out brings one selected file onto this device.</p>' +
+      '    </div>' +
+      '  </header>' +
+      '  <label class="file-cabinet-search">' +
+      '    <span class="sr-only">Search File Cabinet</span>' +
+      '    <input type="search" id="file-cabinet-search" placeholder="Search by customer or address" autocomplete="off" />' +
+      '  </label>' +
+      '  <p class="cabinet-notice" id="file-cabinet-notice" hidden></p>' +
+      '  <div class="cabinet-list cabinet-list--cloud" id="file-cabinet-list">' +
+      '    <p class="cabinet-empty">Loading File Cabinet…</p>' +
+      '  </div>' +
+      '</section>';
+
+    const listEl = app.querySelector('#file-cabinet-list');
+    const searchInput = app.querySelector('#file-cabinet-search');
+    let inventory = [];
+
+    app.querySelector('#file-cabinet-back').addEventListener('click', function () {
+      window.location.hash = '#/';
+    });
+
+    function paintList() {
+      const filtered = filterCabinetEntries(inventory, searchInput.value);
+      listEl.innerHTML = '';
+      if (!filtered.length) {
         const p = document.createElement('p');
         p.className = 'cabinet-empty';
-        p.textContent = 'No cloud Customer Files in the File Cabinet yet.';
-        cloudListEl.appendChild(p);
+        p.textContent = inventory.length
+          ? 'No Customer Files match that search.'
+          : 'No cloud Customer Files in the File Cabinet yet.';
+        listEl.appendChild(p);
         return;
       }
-
-      cloudish.sort(function (a, b) {
+      filtered.sort(function (a, b) {
         return String(a.displayName || '').localeCompare(String(b.displayName || ''));
       });
-
-      cloudish.forEach(function (entry) {
-        cloudListEl.appendChild(cabinetCloudRowNode(entry, app));
+      filtered.forEach(function (entry) {
+        listEl.appendChild(cabinetCloudRowNode(entry, app));
       });
+    }
+
+    searchInput.addEventListener('input', paintList);
+
+    if (!window.ToolboxSync || typeof window.ToolboxSync.browseCabinet !== 'function' ||
+        !window.ToolboxSync.syncApiBase || !window.ToolboxSync.syncApiBase()) {
+      listEl.innerHTML = '<p class="cabinet-empty">Sign in / Sync not configured — File Cabinet browse unavailable.</p>';
+      return;
+    }
+
+    window.ToolboxSync.browseCabinet().then(function (browse) {
+      inventory = cabinetInventoryEntries(browse);
+      paintList();
     }).catch(function (err) {
       const code = err && err.code;
-      cloudListEl.innerHTML = '';
+      listEl.innerHTML = '';
       const p = document.createElement('p');
       p.className = 'cabinet-empty';
       if (code === 'auth') p.textContent = 'Sign in to browse the File Cabinet.';
       else if (code === 'offline' || code === 'network') p.textContent = 'Offline — File Cabinet browse needs a network connection.';
       else if (code === 'config') p.textContent = 'Sync is not configured yet.';
       else p.textContent = 'Unable to load File Cabinet right now.';
-      cloudListEl.appendChild(p);
+      listEl.appendChild(p);
       console.warn('File Cabinet browse failed:', err);
     });
   }
@@ -503,11 +562,18 @@
         btn.textContent = 'Checking out…';
         window.ToolboxSync.checkOutCustomerFile(entry.id).then(function () {
           cabinetNotice = (entry.displayName || 'Customer File') + ' checked out to this device.';
-          renderCabinet(app);
+          window.location.hash = '#/';
         }).catch(function (err) {
           console.warn('Check Out failed:', err);
           cabinetNotice = (err && err.message) || 'Check Out failed.';
-          renderCabinet(app);
+          // Stay on File Cabinet so the failure notice is visible after re-render.
+          renderFileCabinet(app);
+          const notice = app.querySelector('#file-cabinet-notice');
+          if (notice && cabinetNotice) {
+            notice.textContent = cabinetNotice;
+            notice.hidden = false;
+            cabinetNotice = '';
+          }
         });
       });
       row.appendChild(btn);
