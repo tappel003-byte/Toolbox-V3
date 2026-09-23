@@ -222,6 +222,16 @@ body {
   overflow-wrap: anywhere;
 }
 
+.cabinet-row__location {
+  margin-top: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--ink-soft);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .cabinet-row__meta {
   flex: 0 0 auto;
   font-size: 12px;
@@ -1835,6 +1845,17 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 
 .cabinet-row__address {
   margin-top: 3px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.cabinet-row__location {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--ink-soft);
   white-space: normal;
   overflow-wrap: anywhere;
 }
