@@ -425,17 +425,6 @@
     };
   }
 
-  function cloudAvailabilityLabel(entry) {
-    if (!entry) return '';
-    if (entry.availability === 'checked-out-here') return 'Checked out on this device';
-    if (entry.availability === 'checked-out-elsewhere') {
-      const who = entry.checkout && entry.checkout.email ? entry.checkout.email : 'another user/device';
-      return 'Checked out elsewhere (' + who + ')';
-    }
-    if (entry.presence === 'local') return 'Also on this device';
-    return 'Available to Check Out';
-  }
-
   /**
    * Quiet file-location helper for Customer File cards.
    * Uses only authoritative state already available to the row — never guesses.
@@ -471,12 +460,75 @@
     const list = Array.isArray(entries) ? entries : [];
     const q = String(query || '').trim().toLowerCase();
     if (!q) return list.slice();
+    const digits = q.replace(/\D/g, '');
     return list.filter(function (entry) {
       if (!entry) return false;
-      const name = String(entry.displayName || '').toLowerCase();
-      const address = String(entry.propertyAddress || '').toLowerCase();
-      return name.indexOf(q) !== -1 || address.indexOf(q) !== -1;
+      const hay = cabinetSearchHaystack(entry);
+      if (hay.indexOf(q) !== -1) return true;
+      // Phone numbers are stored with punctuation. A digit query still matches.
+      return digits.length >= 3 && hay.replace(/\D/g, '').indexOf(digits) !== -1;
     });
+  }
+
+  function cabinetSearchHaystack(entry) {
+    const keys = [
+      'displayName', 'displayNameSearch',
+      'propertyAddress', 'propertyAddressSearch',
+      'mailingAddress', 'companyName', 'spouseName',
+      'email', 'spouseEmail',
+      'cellPhone', 'homePhone', 'spouseCellPhone', 'spouseHomePhone',
+      'firstName', 'lastName',
+    ];
+    return keys.map(function (key) {
+      return String(entry[key] || '');
+    }).join('\n').toLowerCase();
+  }
+
+  function cabinetIndexAddress(entry) {
+    const address = String(entry && entry.propertyAddress || '').split('\n')[0].trim();
+    return address || 'No property address';
+  }
+
+  function cabinetIndexOwner(entry) {
+    return String(entry && entry.displayName || '').trim() || 'Customer File';
+  }
+
+  function cabinetIndexStatus(entry) {
+    if (!entry) return 'Available';
+    if (entry.availability === 'checked-out-here') return 'On this device';
+    if (entry.availability === 'checked-out-elsewhere') {
+      const who = entry.checkout && entry.checkout.email ? entry.checkout.email : '';
+      return who ? 'Checked out elsewhere (' + who + ')' : 'Checked out elsewhere';
+    }
+    if (entry.presence === 'local') return 'On this device';
+    return 'Available';
+  }
+
+  /**
+   * Field-work date for a browse row. Survey date wins. Customer File
+   * createdAt is the only fallback. updatedAt and checkout times are not dates.
+   */
+  function cabinetIndexDateValue(entry) {
+    if (!entry) return '';
+    const survey = String(entry.fieldWorkDate || '').trim();
+    if (survey) return survey;
+    return String(entry.createdAt || '').trim();
+  }
+
+  function formatFieldWorkDate(value) {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+    let date;
+    if (day) {
+      date = new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3]));
+    } else {
+      const parsed = Date.parse(text);
+      if (!Number.isFinite(parsed)) return '';
+      date = new Date(parsed);
+    }
+    if (isNaN(date.getTime())) return '';
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   }
 
   function cabinetInventoryEntries(browse) {
@@ -507,7 +559,7 @@
       '  </header>' +
       '  <label class="file-cabinet-search">' +
       '    <span class="sr-only">Search File Cabinet</span>' +
-      '    <input type="search" id="file-cabinet-search" placeholder="Search by customer or address" autocomplete="off" />' +
+      '    <input type="search" id="file-cabinet-search" placeholder="Search name, address, or contact" autocomplete="off" />' +
       '  </label>' +
       '  <p class="cabinet-notice" id="file-cabinet-notice" hidden></p>' +
       '  <div class="cabinet-list cabinet-list--cloud" id="file-cabinet-list">' +
@@ -536,7 +588,14 @@
         return;
       }
       filtered.sort(function (a, b) {
-        return String(a.displayName || '').localeCompare(String(b.displayName || ''));
+        const addressA = String(a.propertyAddress || '').trim().toLocaleLowerCase();
+        const addressB = String(b.propertyAddress || '').trim().toLocaleLowerCase();
+        if (!addressA && addressB) return 1;
+        if (addressA && !addressB) return -1;
+        const byAddress = addressA.localeCompare(addressB);
+        if (byAddress) return byAddress;
+        return String(a.displayName || '').trim().toLocaleLowerCase()
+          .localeCompare(String(b.displayName || '').trim().toLocaleLowerCase());
       });
       filtered.forEach(function (entry) {
         listEl.appendChild(cabinetCloudRowNode(entry, app));
@@ -579,23 +638,43 @@
     const main = document.createElement('div');
     main.className = 'cabinet-row__main';
 
-    const name = document.createElement('div');
-    name.className = 'cabinet-row__name';
-    name.textContent = entry.displayName || 'Customer File';
+    const index = document.createElement('div');
+    index.className = 'cabinet-index';
 
-    const address = document.createElement('div');
-    address.className = 'cabinet-row__address';
-    address.textContent = entry.propertyAddress || 'No property address';
+    const address = document.createElement('span');
+    address.className = 'cabinet-index__address';
+    address.textContent = cabinetIndexAddress(entry);
 
-    main.appendChild(name);
-    main.appendChild(address);
-    // Remote inventory row — authoritative File Cabinet presence from browseCabinet.
-    appendLocationStatus(main, customerFileLocationLabel('remoteCabinet', null));
+    const meta = document.createElement('span');
+    meta.className = 'cabinet-index__meta';
+    meta.appendChild(document.createTextNode('— '));
 
-    const meta = document.createElement('div');
-    meta.className = 'cabinet-row__meta';
-    meta.textContent = cloudAvailabilityLabel(entry);
-    main.appendChild(meta);
+    const owner = document.createElement('span');
+    owner.className = 'cabinet-index__owner';
+    owner.textContent = cabinetIndexOwner(entry);
+    meta.appendChild(owner);
+
+    const dateValue = cabinetIndexDateValue(entry);
+    const dateLabel = formatFieldWorkDate(dateValue);
+    if (dateLabel) {
+      meta.appendChild(document.createTextNode(' · '));
+      const date = document.createElement('time');
+      date.className = 'cabinet-index__date';
+      date.dateTime = dateValue;
+      date.textContent = dateLabel;
+      meta.appendChild(date);
+    }
+
+    meta.appendChild(document.createTextNode(' · '));
+    const status = document.createElement('span');
+    status.className = 'cabinet-index__status';
+    status.textContent = cabinetIndexStatus(entry);
+    meta.appendChild(status);
+
+    index.appendChild(address);
+    index.appendChild(meta);
+    main.appendChild(index);
+    row.classList.add('cabinet-row--index');
     row.appendChild(main);
 
     if (entry.availability === 'available' && entry.presence !== 'local') {

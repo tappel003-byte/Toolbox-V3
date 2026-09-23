@@ -135,8 +135,104 @@
     }
   }
 
+  // Contact identifiers already stored on the Customer File. City and ZIP are
+  // not separate columns — they live inside propertyAddress / mailingAddress.
+  const CABINET_SEARCH_FIELDS = [
+    'mailingAddress',
+    'companyName',
+    'spouseName',
+    'email',
+    'spouseEmail',
+    'cellPhone',
+    'homePhone',
+    'spouseCellPhone',
+    'spouseHomePhone',
+  ];
+
+  /**
+   * A stored calendar/survey date. YYYY-MM-DD is the Floor Survey date input.
+   * Full ISO is accepted only when the caller already knows the field is a
+   * survey date. Revision clocks are never passed in.
+   */
+  function storedSurveyDate(value) {
+    const text = trimStr(value);
+    if (!text) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+      const parts = text.split('-');
+      const year = Number(parts[0]);
+      const month = Number(parts[1]);
+      const day = Number(parts[2]);
+      const utc = Date.UTC(year, month - 1, day);
+      const check = new Date(utc);
+      if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) {
+        return '';
+      }
+      return text;
+    }
+    const parsed = Date.parse(text);
+    return Number.isFinite(parsed) ? text : '';
+  }
+
+  function surveyDateTime(value) {
+    const text = storedSurveyDate(value);
+    if (!text) return null;
+    const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+    if (day) return Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3]));
+    const parsed = Date.parse(text);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function mostRecentSurveyDate(values) {
+    let best = '';
+    let bestTime = -Infinity;
+    (values || []).forEach(function (value) {
+      const time = surveyDateTime(value);
+      if (time == null || time < bestTime) return;
+      bestTime = time;
+      best = storedSurveyDate(value);
+    });
+    return best;
+  }
+
+  function floorSurveyDates(floor) {
+    const dates = [];
+    if (!floor || typeof floor !== 'object') return dates;
+    const root = storedSurveyDate(floor.inspectionDate);
+    if (root) dates.push(root);
+    const layers = floor.byCanvasId && typeof floor.byCanvasId === 'object'
+      ? Object.values(floor.byCanvasId)
+      : [];
+    layers.forEach(function (layer) {
+      const date = storedSurveyDate(layer && layer.inspectionDate);
+      if (date) dates.push(date);
+    });
+    return dates;
+  }
+
+  /**
+   * Distress capture has no survey-date field today (createdAt/updatedAt are
+   * system clocks). Use a date only when an actual inspection/survey field
+   * is stored on the distress component.
+   */
+  function distressSurveyDate(distress) {
+    if (!distress || typeof distress !== 'object') return '';
+    return storedSurveyDate(distress.inspectionDate) || storedSurveyDate(distress.surveyDate) || '';
+  }
+
+  /**
+   * Most recent Floor Survey inspection date, else a real Distress survey
+   * date. Empty when neither exists — callers fall back to Customer File
+   * createdAt and must not substitute sync/checkout/updatedAt clocks.
+   */
+  function fieldWorkSurveyDate(record) {
+    if (!record) return '';
+    const floor = mostRecentSurveyDate(floorSurveyDates(record.floorSurvey));
+    if (floor) return floor;
+    return distressSurveyDate(record.distress);
+  }
+
   function buildIndex(record) {
-    return {
+    const index = {
       id: record.id,
       createdAt: record.createdAt || '',
       updatedAt: record.updatedAt || '',
@@ -153,6 +249,12 @@
       displayName: displayNameFromRecord(record),
       propertyAddress: trimStr(record.propertyAddress),
     };
+    const surveyDate = fieldWorkSurveyDate(record);
+    if (surveyDate) index.fieldWorkDate = surveyDate;
+    CABINET_SEARCH_FIELDS.forEach(function (key) {
+      index[key] = trimStr(record[key]);
+    });
+    return index;
   }
 
   function planMediaIds(record) {
@@ -1037,16 +1139,40 @@
         availability = ownedHere ? 'checked-out-here' : 'checked-out-elsewhere';
       }
 
-      return {
+      const entry = {
         id: index.id,
         displayName: trimStr(index.displayName) || (local ? displayNameFromRecord(local) : 'Customer File'),
         propertyAddress: trimStr(index.propertyAddress) || (local ? trimStr(local.propertyAddress) : ''),
         deletedAt: index.deletedAt || null,
+        createdAt: trimStr(index.createdAt) || (local ? trimStr(local.createdAt) : ''),
+        // Survey date only. createdAt is the display fallback, never updatedAt
+        // or checkout.checkedOutAt.
+        fieldWorkDate: (local && !local.deletedAt)
+          ? (fieldWorkSurveyDate(local) || '')
+          : trimStr(index.fieldWorkDate),
         checkout: checkout,
         presence: presence,
         availability: availability,
         local: !!local,
       };
+      CABINET_SEARCH_FIELDS.forEach(function (key) {
+        const fromIndex = trimStr(index[key]);
+        const fromLocal = local ? trimStr(local[key]) : '';
+        if (fromIndex && fromLocal && fromIndex.toLowerCase() !== fromLocal.toLowerCase()) {
+          entry[key] = fromIndex + '\n' + fromLocal;
+        } else {
+          entry[key] = fromIndex || fromLocal;
+        }
+      });
+      const localName = local ? displayNameFromRecord(local) : '';
+      const localAddress = local ? trimStr(local.propertyAddress) : '';
+      if (localName && localName.toLowerCase() !== entry.displayName.toLowerCase()) {
+        entry.displayNameSearch = entry.displayName + '\n' + localName;
+      }
+      if (localAddress && localAddress.toLowerCase() !== entry.propertyAddress.toLowerCase()) {
+        entry.propertyAddressSearch = entry.propertyAddress + '\n' + localAddress;
+      }
+      return entry;
     });
 
     return {
@@ -1513,6 +1639,8 @@
       isDefaultFloorShellPayload: isDefaultFloorShellPayload,
       checkoutOwnerMatches: checkoutOwnerMatches,
       displayNameFromRecord: displayNameFromRecord,
+      fieldWorkSurveyDate: fieldWorkSurveyDate,
+      CABINET_SEARCH_FIELDS: CABINET_SEARCH_FIELDS,
       syncOneRecord: syncOneRecord,
     },
   };

@@ -106,6 +106,89 @@ const Sync = loadSyncModule();
 }
 
 {
+  const dated = {
+    id: 'cf-date',
+    createdAt: '2024-01-02T18:00:00.000Z',
+    updatedAt: '2026-09-01T18:00:00.000Z',
+    firstName: 'Ada',
+    lastName: 'Address',
+    propertyAddress: '44 Test Circle, Boulder, CO 80302',
+    mailingAddress: 'PO Box 44, Denver, CO 80202',
+    companyName: 'Pine Street Holdings',
+    spouseName: 'Owen Address',
+    email: 'ada@example.com',
+    cellPhone: '555-0148',
+    floorSurvey: {
+      inspectionDate: '2025-03-12',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+      lastExportedAt: Date.parse('2026-09-22T00:00:00.000Z'),
+      byCanvasId: {
+        older: { inspectionDate: '2025-01-04' },
+        newer: { inspectionDate: '2025-06-02' },
+      },
+    },
+    distress: {
+      createdAt: '2026-09-20T00:00:00.000Z',
+      updatedAt: '2026-09-22T00:00:00.000Z',
+      surveyDate: '2020-01-01',
+    },
+  };
+  const index = Sync.buildIndex(dated);
+  check(
+    'Field-work date is the most recent Floor Survey inspection date',
+    index.fieldWorkDate === '2025-06-02',
+    index.fieldWorkDate,
+  );
+  check(
+    'Index keeps contact identifiers for Cabinet search',
+    index.displayName === 'Ada Address' &&
+      index.propertyAddress === '44 Test Circle, Boulder, CO 80302' &&
+      index.mailingAddress === 'PO Box 44, Denver, CO 80202' &&
+      index.companyName === 'Pine Street Holdings' &&
+      index.spouseName === 'Owen Address' &&
+      index.email === 'ada@example.com' &&
+      index.cellPhone === '555-0148',
+  );
+  check(
+    'Field-work date ignores distress, export, and updatedAt clocks when a floor date exists',
+    index.fieldWorkDate !== dated.updatedAt &&
+      index.fieldWorkDate !== dated.distress.updatedAt &&
+      index.fieldWorkDate !== dated.distress.surveyDate &&
+      index.createdAt === dated.createdAt,
+  );
+
+  const distressOnly = {
+    id: 'cf-distress-date',
+    createdAt: '2023-05-01T18:00:00.000Z',
+    updatedAt: '2026-09-01T18:00:00.000Z',
+    floorSurvey: { inspectionDate: '', updatedAt: '2026-09-01T18:00:00.000Z', byCanvasId: {} },
+    distress: { updatedAt: '2026-09-22T00:00:00.000Z', createdAt: '2026-09-20T00:00:00.000Z', surveyDate: '2024-11-03' },
+  };
+  check(
+    'Distress survey date is used only when no Floor Survey date is stored',
+    Sync.buildIndex(distressOnly).fieldWorkDate === '2024-11-03',
+  );
+
+  const clocksOnly = {
+    id: 'cf-clocks',
+    createdAt: '2022-02-02T18:00:00.000Z',
+    updatedAt: '2026-09-01T18:00:00.000Z',
+    floorSurvey: { updatedAt: '2026-07-01T00:00:00.000Z', lastExportedAt: 1700000000000, byCanvasId: {} },
+    distress: { createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z', pins: [] },
+  };
+  const clocksIndex = Sync.buildIndex(clocksOnly);
+  check(
+    'No survey date leaves fieldWorkDate unset so createdAt can be the fallback',
+    !clocksIndex.fieldWorkDate && clocksIndex.createdAt === '2022-02-02T18:00:00.000Z',
+    JSON.stringify({ fieldWorkDate: clocksIndex.fieldWorkDate, createdAt: clocksIndex.createdAt }),
+  );
+  check(
+    'Invalid floor date is ignored',
+    Sync._test.fieldWorkSurveyDate({ floorSurvey: { inspectionDate: '2025-02-31' }, distress: {} }) === '',
+  );
+}
+
+{
   const record = {
     trashUpdatedAt: '2026-02-01T00:00:00.000Z',
     deletedAt: '2026-02-01T00:00:00.000Z',

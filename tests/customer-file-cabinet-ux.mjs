@@ -250,8 +250,8 @@ try {
       state.components[compKey(id, 'trash')] = trash;
       state.indexes[id] = Object.assign({
         id: id,
-        createdAt: '2026-02-01T00:00:00.000Z',
-        updatedAt: '2026-02-01T00:00:00.000Z',
+        createdAt: '2026-02-01T18:00:00.000Z',
+        updatedAt: '2026-09-01T18:00:00.000Z',
         customerUpdatedAt: customer.customerUpdatedAt,
         plansUpdatedAt: plans.updatedAt,
         distressUpdatedAt: distress.updatedAt,
@@ -263,6 +263,15 @@ try {
         purgeAfter: null,
         displayName: ((customer.firstName || '') + ' ' + (customer.lastName || '')).trim() || 'Customer File',
         propertyAddress: customer.propertyAddress || '',
+        mailingAddress: customer.mailingAddress || '',
+        companyName: customer.companyName || '',
+        spouseName: customer.spouseName || '',
+        email: customer.email || '',
+        spouseEmail: customer.spouseEmail || '',
+        cellPhone: customer.cellPhone || '',
+        homePhone: customer.homePhone || '',
+        spouseCellPhone: customer.spouseCellPhone || '',
+        spouseHomePhone: customer.spouseHomePhone || '',
       }, (overrides && overrides.index) || {});
       state.etags[id] = 'etag-1';
       state.media['plan-' + id] = { bytes: new Uint8Array([1, 2, 3, 4]), contentType: 'image/png' };
@@ -286,6 +295,24 @@ try {
     });
     seedRemote('cf-gamma', {
       customer: { firstName: 'Gamma', lastName: 'Three', propertyAddress: '300 Gamma Gate' },
+      index: { createdAt: '2026-09-23T18:00:00.000Z' },
+    });
+    seedRemote('cf-delta', {
+      customer: {
+        firstName: 'Nora',
+        lastName: 'Quinn',
+        propertyAddress: '1246 Mountain Valley Rd, Boulder, CO 80302',
+        mailingAddress: 'PO Box 44, Denver, CO 80202',
+        companyName: 'Pine Street Holdings',
+        spouseName: 'Owen Quinn',
+        email: 'nora.quinn@example.com',
+        cellPhone: '555-0148',
+      },
+      index: {
+        fieldWorkDate: '2025-03-12',
+        createdAt: '2020-01-15T18:00:00.000Z',
+        updatedAt: '2026-09-22T12:00:00.000Z',
+      },
     });
 
     localStorage.setItem('toolboxDeviceId', 'device-ipad');
@@ -329,29 +356,86 @@ try {
     report.browseHadFilesGet = browseFetches.some((f) => f.path === 'files' && f.method === 'GET');
     void beforeBrowse;
 
-    // Status labels present
-    const metas = Array.from(document.querySelectorAll('.cabinet-row--cloud .cabinet-row__meta'))
-      .map((el) => el.textContent || '');
-    report.statusAvailable = metas.some((t) => /Available to Check Out/i.test(t));
-    report.statusElsewhere = metas.some((t) => /Checked out elsewhere/i.test(t));
+    function rowSnapshot(id) {
+      const shell = document.querySelector('.cabinet-row-shell--cloud[data-customer-file-id="' + id + '"]');
+      if (!shell) return null;
+      const address = shell.querySelector('.cabinet-index__address');
+      const owner = shell.querySelector('.cabinet-index__owner');
+      const date = shell.querySelector('.cabinet-index__date');
+      const status = shell.querySelector('.cabinet-index__status');
+      const row = shell.querySelector('.cabinet-row--index');
+      return {
+        address: address ? address.textContent : '',
+        owner: owner ? owner.textContent : '',
+        date: date ? date.textContent : '',
+        dateTime: date ? date.getAttribute('datetime') : '',
+        status: status ? status.textContent : '',
+        rowHeight: row ? row.getBoundingClientRect().height : 0,
+        addressWeight: address ? getComputedStyle(address).fontWeight : '',
+        ownerWeight: owner ? getComputedStyle(owner).fontWeight : '',
+      };
+    }
+
+    // Address-first compact rows. Dates come from fieldWorkDate or createdAt, not updatedAt.
+    report.rows = {
+      alpha: rowSnapshot('cf-alpha'),
+      beta: rowSnapshot('cf-beta'),
+      gamma: rowSnapshot('cf-gamma'),
+      delta: rowSnapshot('cf-delta'),
+    };
+    report.addressPrimary = !!(report.rows.delta &&
+      report.rows.delta.address.indexOf('1246 Mountain Valley Rd') === 0 &&
+      report.rows.delta.owner === 'Nora Quinn');
+    report.ownerSecondary = !!(report.rows.alpha &&
+      report.rows.alpha.address === '100 Alpha Ave' &&
+      report.rows.alpha.owner === 'Alpha One');
+    report.deltaSurveyDate = report.rows.delta && report.rows.delta.dateTime === '2025-03-12';
+    report.deltaNotUpdated = report.rows.delta &&
+      report.rows.delta.date.indexOf('2026') === -1 &&
+      report.rows.delta.date.indexOf('2020') === -1;
+    report.alphaCreatedFallback = report.rows.alpha &&
+      report.rows.alpha.dateTime === '2026-02-01T18:00:00.000Z' &&
+      report.rows.alpha.date.indexOf('2026') !== -1 &&
+      report.rows.alpha.date.indexOf('Sep') === -1;
+    report.statusAvailable = !!(report.rows.alpha && /Available/i.test(report.rows.alpha.status) &&
+      report.rows.alpha.status.indexOf('Check Out') === -1);
+    report.statusElsewhere = !!(report.rows.beta && /Checked out elsewhere/i.test(report.rows.beta.status));
     report.checkoutButtons = document.querySelectorAll('.cabinet-checkout-btn').length;
+    report.noOnlineLocationLine = !document.querySelector('.cabinet-row--cloud .cabinet-row__location');
+    const weights = report.rows.delta || {};
+    report.addressBolder = Number(weights.addressWeight) > Number(weights.ownerWeight);
 
     // Name search
     const search = document.querySelector('#file-cabinet-search');
     search.value = 'alpha';
     search.dispatchEvent(new Event('input', { bubbles: true }));
     await new Promise((r) => setTimeout(r, 40));
-    let names = Array.from(document.querySelectorAll('.cabinet-row--cloud .cabinet-row__name'))
+    let owners = Array.from(document.querySelectorAll('.cabinet-row--cloud .cabinet-index__owner'))
       .map((el) => el.textContent || '');
-    report.nameSearch = names.length === 1 && /Alpha/i.test(names[0]);
+    report.nameSearch = owners.length === 1 && owners[0] === 'Alpha One';
 
     // Address search
     search.value = 'beta blvd';
     search.dispatchEvent(new Event('input', { bubbles: true }));
     await new Promise((r) => setTimeout(r, 40));
-    names = Array.from(document.querySelectorAll('.cabinet-row--cloud .cabinet-row__name'))
+    owners = Array.from(document.querySelectorAll('.cabinet-row--cloud .cabinet-index__owner'))
       .map((el) => el.textContent || '');
-    report.addressSearch = names.length === 1 && /Beta/i.test(names[0]);
+    report.addressSearch = owners.length === 1 && owners[0] === 'Beta Two';
+
+    async function searchHits(query) {
+      search.value = query;
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 30));
+      return Array.from(document.querySelectorAll('.cabinet-row--cloud .cabinet-index__owner'))
+        .map((el) => el.textContent || '');
+    }
+    report.zipSearch = (await searchHits('80302')).join('|') === 'Nora Quinn';
+    report.citySearch = (await searchHits('boulder')).join('|') === 'Nora Quinn';
+    report.mailingSearch = (await searchHits('80202')).join('|') === 'Nora Quinn';
+    report.companySearch = (await searchHits('pine street')).join('|') === 'Nora Quinn';
+    report.spouseSearch = (await searchHits('owen')).join('|') === 'Nora Quinn';
+    report.emailSearch = (await searchHits('nora.quinn@')).join('|') === 'Nora Quinn';
+    report.phoneSearch = (await searchHits('5550148')).join('|') === 'Nora Quinn';
 
     // Clear search — still no materialization from typing
     const fetchesBeforeSearch = state.fetchLog.length;
@@ -397,6 +481,35 @@ try {
     return report;
   });
 
+  const layout = {};
+  for (const viewport of [
+    { name: 'desktop', width: 1280, height: 800 },
+    { name: 'ipad', width: 768, height: 1024 },
+    { name: 'phone', width: 390, height: 844 },
+  ]) {
+    await page.setViewport({ width: viewport.width, height: viewport.height, deviceScaleFactor: 1 });
+    await page.evaluate(() => { window.location.hash = '#/cabinet'; });
+    await page.waitForFunction(() => document.querySelectorAll('.cabinet-row--index').length >= 4);
+    layout[viewport.name] = await page.evaluate(() => {
+      const doc = document.documentElement;
+      const rows = Array.from(document.querySelectorAll('.cabinet-row--index'));
+      const button = document.querySelector('.cabinet-checkout-btn');
+      const buttonBox = button ? button.getBoundingClientRect() : null;
+      const search = document.querySelector('#file-cabinet-search');
+      const searchBox = search ? search.getBoundingClientRect() : null;
+      return {
+        overflow: doc.scrollWidth > doc.clientWidth + 1,
+        scrollWidth: doc.scrollWidth,
+        clientWidth: doc.clientWidth,
+        rowHeights: rows.map((row) => Math.round(row.getBoundingClientRect().height)),
+        buttonHeight: buttonBox ? Math.round(buttonBox.height) : 0,
+        buttonWidth: buttonBox ? Math.round(buttonBox.width) : 0,
+        searchWidth: searchBox ? Math.round(searchBox.width) : 0,
+        searchOverflows: searchBox ? searchBox.right > window.innerWidth + 1 : true,
+      };
+    });
+  }
+
   check('#/ has On this device', out.homeHasOnDevice, JSON.stringify(out));
   check('#/ eyebrow is Toolbox', /Toolbox/i.test(out.homeEyebrow) && !/file cabinet/i.test(out.homeEyebrow), out.homeEyebrow);
   check('#/ has no cloud inventory list', out.homeNoCloudList && out.homeNoCloudRows, JSON.stringify(out));
@@ -406,11 +519,25 @@ try {
   check('search causes no component/media materialization', out.searchNoMaterialize && out.searchNoExtraNetwork, JSON.stringify(out));
   check('name search filters Cabinet rows', out.nameSearch, JSON.stringify(out));
   check('address search filters Cabinet rows', out.addressSearch, JSON.stringify(out));
-  check('checkout statuses visible', out.statusAvailable && out.statusElsewhere && out.checkoutButtons >= 1, JSON.stringify(out));
+  check('address is the bold primary identifier', out.addressPrimary && out.ownerSecondary && out.addressBolder, JSON.stringify(out.rows));
+  check('field-work date prefers stored survey date over created/updated clocks', out.deltaSurveyDate && out.deltaNotUpdated && out.alphaCreatedFallback, JSON.stringify(out.rows));
+  check('search matches city, ZIP, mailing address, company, spouse, email, and phone', out.zipSearch && out.citySearch && out.mailingSearch && out.companySearch && out.spouseSearch && out.emailSearch && out.phoneSearch, JSON.stringify(out));
+  check('checkout statuses visible', out.statusAvailable && out.statusElsewhere && out.checkoutButtons >= 1 && out.noOnlineLocationLine, JSON.stringify(out));
   check('Check Out returns to #/ with confirmation', out.afterCheckoutHash === '#/' && /Gamma.*checked out to this device/i.test(out.afterCheckoutNotice), JSON.stringify(out));
   check('Check Out materializes and shows under On this device', out.afterCheckoutLocal && out.afterCheckoutOnDeviceVisible && out.materializeHadComponents, JSON.stringify(out));
   check('selective-local Sync leaves remote-only remote', out.syncOk && out.syncSkippedRemote && out.alphaStillRemote, JSON.stringify(out));
   check('Trash still reachable from Customer Files', out.trashHash === '#/trash' && out.trashHeading, JSON.stringify(out));
+  check(
+    'compact File Cabinet rows fit desktop, iPad, and phone',
+    ['desktop', 'ipad', 'phone'].every((name) => {
+      const shot = layout[name];
+      return shot && !shot.overflow && !shot.searchOverflows &&
+        shot.buttonHeight >= 44 && shot.buttonWidth >= 44 &&
+        shot.rowHeights.length >= 4 &&
+        shot.rowHeights.every((height) => height > 0 && height < 120);
+    }),
+    JSON.stringify(layout),
+  );
 } finally {
   await browser.close();
   server.kill('SIGTERM');
