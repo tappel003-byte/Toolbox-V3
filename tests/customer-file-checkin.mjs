@@ -413,6 +413,109 @@ try {
     // release failed — lease should still be present (mock only clears on success)
     report.ciRelFailLeaseKept = !!(state.indexes['cf-ci-relfail'] && state.indexes['cf-ci-relfail'].checkout);
 
+    // --- Legacy same-id remote + no marker (Test 1 class) ---
+    seedRemote('cf-legacy-1', {
+      customer: { firstName: 'Legacy', lastName: 'One', propertyAddress: '10 Legacy Ln' },
+    });
+    // Simulate pre-v56 local working copy: same id, already remote, NO checkedOutFromCabinet.
+    const legacyLocal = ToolboxApp.blankCustomerFile('cf-legacy-1');
+    ToolboxPlanSetup.ensurePlanSetup(legacyLocal);
+    legacyLocal.firstName = 'Legacy';
+    legacyLocal.lastName = 'LocalNewer';
+    legacyLocal.propertyAddress = '10 Legacy Ln';
+    legacyLocal.customerUpdatedAt = '2026-09-23T03:00:00.000Z';
+    delete legacyLocal.checkedOutFromCabinet;
+    await ToolboxDB.saveCustomerFile(legacyLocal);
+    // Keep remote plan media so verifyRemoteCabinetCopy can pass after reconcile.
+    state.deleteCalls = [];
+    const legacySend = await ToolboxSync.sendToFileCabinet('cf-legacy-1');
+    report.legacyOk = legacySend && legacySend.ok === true && legacySend.path === 'reconcile-existing';
+    report.legacyLocalGone = !(await ToolboxDB.getCustomerFile('cf-legacy-1'));
+    report.legacyRemoteRemains = !!state.indexes['cf-legacy-1'];
+    report.legacyPushed = state.components['cf-legacy-1::customer'] &&
+      state.components['cf-legacy-1::customer'].lastName === 'LocalNewer';
+    report.legacyNoCloudDelete = state.deleteCalls.length === 0;
+    report.legacyNoLease = !(state.indexes['cf-legacy-1'] && state.indexes['cf-legacy-1'].checkout);
+
+    // Legacy + own lease (no marker) → Send completes Check In ceremony
+    seedRemote('cf-legacy-own', {
+      customer: { firstName: 'Own', lastName: 'Lease', propertyAddress: '11 Own Rd' },
+    });
+    state.indexes['cf-legacy-own'].checkout = {
+      email: 'tim@example.com', sub: 'sub-tim', deviceId: 'device-ipad',
+      checkedOutAt: '2026-09-23T02:50:00.000Z',
+    };
+    const ownLocal = ToolboxApp.blankCustomerFile('cf-legacy-own');
+    ToolboxPlanSetup.ensurePlanSetup(ownLocal);
+    ownLocal.firstName = 'Own';
+    ownLocal.lastName = 'Updated';
+    ownLocal.propertyAddress = '11 Own Rd';
+    ownLocal.customerUpdatedAt = '2026-09-23T03:05:00.000Z';
+    delete ownLocal.checkedOutFromCabinet;
+    await ToolboxDB.saveCustomerFile(ownLocal);
+    state.deleteCalls = [];
+    const ownSend = await ToolboxSync.sendToFileCabinet('cf-legacy-own');
+    report.ownLeaseOk = ownSend && ownSend.ok === true && ownSend.path === 'own-lease';
+    report.ownLeaseLocalGone = !(await ToolboxDB.getCustomerFile('cf-legacy-own'));
+    report.ownLeaseReleased = !(state.indexes['cf-legacy-own'] && state.indexes['cf-legacy-own'].checkout);
+    report.ownLeaseRemoteRemains = !!state.indexes['cf-legacy-own'];
+    report.ownLeaseNoCloudDelete = state.deleteCalls.length === 0;
+
+    // Legacy + foreign lease → refuse
+    seedRemote('cf-legacy-foreign', {
+      customer: { firstName: 'Foreign', lastName: 'Lease', propertyAddress: '12 Foreign Rd' },
+    });
+    state.indexes['cf-legacy-foreign'].checkout = {
+      email: 'lee@example.com', sub: 'sub-lee', deviceId: 'device-lee',
+      checkedOutAt: '2026-09-23T02:55:00.000Z',
+    };
+    const foreignLocal = ToolboxApp.blankCustomerFile('cf-legacy-foreign');
+    ToolboxPlanSetup.ensurePlanSetup(foreignLocal);
+    foreignLocal.firstName = 'Foreign';
+    foreignLocal.lastName = 'Local';
+    foreignLocal.customerUpdatedAt = '2026-09-23T03:06:00.000Z';
+    delete foreignLocal.checkedOutFromCabinet;
+    await ToolboxDB.saveCustomerFile(foreignLocal);
+    let foreignRefused = false;
+    let foreignCode = '';
+    try {
+      await ToolboxSync.sendToFileCabinet('cf-legacy-foreign');
+    } catch (err) {
+      foreignRefused = true;
+      foreignCode = err && err.code;
+    }
+    report.foreignRefused = foreignRefused && foreignCode === 'checkout';
+    report.foreignLocalKept = !!(await ToolboxDB.getCustomerFile('cf-legacy-foreign'));
+    report.foreignLeaseKept = !!(state.indexes['cf-legacy-foreign'] &&
+      state.indexes['cf-legacy-foreign'].checkout &&
+      state.indexes['cf-legacy-foreign'].checkout.deviceId === 'device-lee');
+
+    // Legacy reconcile + release failure keeps local
+    seedRemote('cf-legacy-relfail', {
+      customer: { firstName: 'Rel', lastName: 'SendFail', propertyAddress: '13 Rel Ln' },
+    });
+    state.indexes['cf-legacy-relfail'].checkout = {
+      email: 'tim@example.com', sub: 'sub-tim', deviceId: 'device-ipad',
+      checkedOutAt: '2026-09-23T02:56:00.000Z',
+    };
+    const relSendLocal = ToolboxApp.blankCustomerFile('cf-legacy-relfail');
+    ToolboxPlanSetup.ensurePlanSetup(relSendLocal);
+    relSendLocal.firstName = 'Rel';
+    relSendLocal.lastName = 'SendFail';
+    relSendLocal.customerUpdatedAt = '2026-09-23T03:07:00.000Z';
+    delete relSendLocal.checkedOutFromCabinet;
+    await ToolboxDB.saveCustomerFile(relSendLocal);
+    state.failNextRelease = true;
+    let legacyRelFailed = false;
+    try {
+      await ToolboxSync.sendToFileCabinet('cf-legacy-relfail');
+    } catch (_) {
+      legacyRelFailed = true;
+    }
+    report.legacyRelFailKeptLocal = legacyRelFailed && !!(await ToolboxDB.getCustomerFile('cf-legacy-relfail'));
+    report.legacyRelFailLeaseKept = !!(state.indexes['cf-legacy-relfail'] &&
+      state.indexes['cf-legacy-relfail'].checkout);
+
     // Browse still lightweight (no auto materialize of remaining cloud-only)
     const beforeBrowse = state.fetchLog.length;
     const browse = await ToolboxSync.browseCabinet();
@@ -451,6 +554,10 @@ try {
   check('Check In does not cloud-delete', out.ciNoCloudDelete, JSON.stringify(out));
   check('Failed Check In write keeps local + lease', out.ciFailKeptLocal && out.ciFailLeaseKept, JSON.stringify(out));
   check('Failed lease release keeps local', out.ciRelFailKeptLocal && out.ciRelFailLeaseKept, JSON.stringify(out));
+  check('Legacy same-id/no-lease Send reconciles and clears local', out.legacyOk && out.legacyLocalGone && out.legacyRemoteRemains && out.legacyPushed && out.legacyNoLease && out.legacyNoCloudDelete, JSON.stringify(out));
+  check('Legacy same-id/own-lease Send releases and clears local', out.ownLeaseOk && out.ownLeaseLocalGone && out.ownLeaseReleased && out.ownLeaseRemoteRemains && out.ownLeaseNoCloudDelete, JSON.stringify(out));
+  check('Legacy same-id/foreign-lease Send refused', out.foreignRefused && out.foreignLocalKept && out.foreignLeaseKept, JSON.stringify(out));
+  check('Legacy own-lease Send release failure keeps local', out.legacyRelFailKeptLocal && out.legacyRelFailLeaseKept, JSON.stringify(out));
   check('Cabinet browse remains lightweight', out.browseOk && out.browseHasCloudOnly && out.browseNoMaterialize, JSON.stringify(out));
   check('Existing Check Out still works', out.co2Ok, JSON.stringify(out));
   check('Local-only remove primitive exists; stub hard-delete still local', out.removeLocalExists && out.stubLocalGone, JSON.stringify(out));
