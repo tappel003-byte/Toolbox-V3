@@ -45,8 +45,8 @@ Full-cabinet convergence (“every authorized device’s local Cabinet must matc
 - Authenticated user + device checkout ownership
 - Check Out / Sync while checked out
 - Customer Files screen = on-device working area; File Cabinet is a dedicated `#/cabinet` browse/manage screen (closed card entry, search by name/address, Check Out returns to working area)
-- Check In with completeness verify / release — not in this foundation slice
-- Remove From This Device (local only) — not in this foundation slice
+- Check In / Send to File Cabinet from Customer Files ⋯ menu (sync/verify, release lease when checking in, local-only remove — never cloud-delete)
+- Remove From This Device (standalone local remove without Check In) — not in this slice
 - Take Over (explicit recovery) — not in this foundation slice
 
 ### Stage F — Later polish
@@ -59,12 +59,14 @@ Full-cabinet convergence (“every authorized device’s local Cabinet must matc
 - Verified Cloudflare Access JWT identity for checkout ownership
 - Lightweight Cabinet browse + explicit Check Out materialize
 - Atomic checkout acquire (R2 conditional put) + Sync ownership gate
+- Check In / Send to File Cabinet using existing Sync write paths + local-only working-copy removal
 - Preserve selective-local Sync Now / tombstone / shell-epoch protections
 
 ## Out of scope
 
-- Check In ceremony, Take Over, Remove From This Device
-- Explicit local-draft / Place-In-Cabinet product
+- Standalone Remove From This Device without Check In / Send
+- Take Over
+- Explicit local-draft / Place-In-Cabinet product beyond Send to File Cabinet
 - Redesigning Distress / Floor / Customer File capture
 - Report Builder or Diagnostics
 - SaaS tenancy, roles, invitations, billing, per-file ACLs
@@ -78,5 +80,6 @@ Full-cabinet convergence (“every authorized device’s local Cabinet must matc
 3. Media/component failures still fail Sync honestly for the affected local working file(s).
 4. Permanent delete tombstones still prevent stale local resurrection.
 5. Check Out foundation: browse cloud indexes → Check Out acquires user+device lease → materialize only that file → non-owner cannot push → owner can Sync while checked out.
+6. Send to File Cabinet / Check In: verify remote write, release lease on Check In, remove local working copy only — Cabinet copy survives.
 
 Fred Keulen remains a real-world candidate after checkout is live — not for permanent-delete testing.

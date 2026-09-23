@@ -740,6 +740,8 @@
   /**
    * Explicit Check Out + materialize one cloud Customer File locally.
    * Acquire first; on materialization failure release the lease (same user+device).
+   * Durable local marker checkedOutFromCabinet survives restart/offline so the
+   * Customer Files ⋯ menu can offer Check In without a live Cabinet lookup.
    */
   async function checkOutCustomerFile(id) {
     if (!id) throw new SyncError('sync', 'Customer File id required.');
@@ -747,13 +749,14 @@
     if (existingLocal && !existingLocal.deletedAt) {
       // Already local: acquire ownership if possible, but do not re-shell.
       const acquired = await acquireRemoteCheckout(id);
+      const marked = await ensureCheckedOutFromCabinetMarker(existingLocal);
       return {
         ok: true,
         id: id,
         alreadyLocal: true,
         idempotent: !!(acquired && acquired.idempotent),
         checkout: acquired && acquired.checkout,
-        record: existingLocal,
+        record: marked,
       };
     }
 
@@ -769,7 +772,7 @@
       const synced = await syncOneRecord(shell, remote, {
         materializeOnly: true,
       });
-      const saved = await window.ToolboxDB.getCustomerFile(id);
+      let saved = await window.ToolboxDB.getCustomerFile(id);
       if (!saved) {
         throw new SyncError('sync', 'Check Out materialization did not persist locally.');
       }
@@ -788,6 +791,7 @@
           throw new SyncError('incomplete', 'Required Distress media missing after Check Out.');
         }
       }
+      saved = await ensureCheckedOutFromCabinetMarker(saved);
       return {
         ok: true,
         id: id,
@@ -802,6 +806,148 @@
       try { await releaseRemoteCheckout(id); } catch (_) {}
       throw err;
     }
+  }
+
+  function isCheckedOutFromCabinet(record) {
+    return !!(record && record.checkedOutFromCabinet === true);
+  }
+
+  async function ensureCheckedOutFromCabinetMarker(record) {
+    if (!record || !record.id) return record;
+    if (record.checkedOutFromCabinet === true) return record;
+    record.checkedOutFromCabinet = true;
+    await window.ToolboxDB.saveCustomerFile(record);
+    return record;
+  }
+
+  /**
+   * After Sync write-back / first upload: confirm the Cabinet still holds this
+   * Customer File index and required media. Fail closed — keep local.
+   */
+  async function verifyRemoteCabinetCopy(record) {
+    if (!record || !record.id) {
+      throw new SyncError('incomplete', 'Cannot verify Cabinet copy without a Customer File.');
+    }
+    const remote = await getRemoteIndex(record.id);
+    if (!remote || remote.id !== record.id) {
+      throw new SyncError('incomplete', 'Cabinet verification failed: remote index missing.');
+    }
+    const planIds = planMediaIds(record);
+    for (let i = 0; i < planIds.length; i++) {
+      if (!(await remoteMediaExists(planIds[i]))) {
+        throw new SyncError('incomplete', 'Cabinet verification failed: plan media missing remotely.');
+      }
+    }
+    const photoIds = distressPhotoIds(record);
+    for (let i = 0; i < photoIds.length; i++) {
+      if (!(await remoteMediaExists(photoIds[i]))) {
+        throw new SyncError('incomplete', 'Cabinet verification failed: Distress media missing remotely.');
+      }
+    }
+    return remote;
+  }
+
+  async function removeLocalWorkingCopyOnly(record) {
+    if (!record || !record.id) return;
+    if (!window.ToolboxDB || typeof window.ToolboxDB.removeLocalWorkingCopy !== 'function') {
+      throw new SyncError('sync', 'Local-only removal is unavailable.');
+    }
+    // Intentionally does NOT call deleteRemoteCustomerFile / removeCloudCopies.
+    await window.ToolboxDB.removeLocalWorkingCopy([record]);
+  }
+
+  /**
+   * First-time place: Sync local-only Customer File into the Cabinet, verify,
+   * then remove the local working copy (Cabinet retains the authoritative copy).
+   */
+  async function sendToFileCabinet(id) {
+    if (!id) throw new SyncError('sync', 'Customer File id required.');
+    const record = await window.ToolboxDB.getCustomerFile(id);
+    if (!record || record.deletedAt) {
+      throw new SyncError('sync', 'Customer File is not available on this device.');
+    }
+    if (isCheckedOutFromCabinet(record)) {
+      throw new SyncError('sync', 'This Customer File is checked out from the Cabinet. Use Check In.');
+    }
+    if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
+
+    let remote = await getRemoteIndex(id);
+    if (remote) {
+      throw new SyncError('sync', 'This Customer File already exists in the File Cabinet.');
+    }
+
+    const synced = await syncOneRecord(record, null);
+    if (synced && synced.checkoutBlocked) {
+      throw new SyncError('checkout', 'Could not write to the File Cabinet (checkout blocked).');
+    }
+
+    remote = await verifyRemoteCabinetCopy(record);
+    await removeLocalWorkingCopyOnly(record);
+    const stillLocal = await window.ToolboxDB.getCustomerFile(id);
+    if (stillLocal) {
+      throw new SyncError('sync', 'Cabinet copy verified, but local working copy could not be cleared.');
+    }
+
+    return {
+      ok: true,
+      id: id,
+      action: 'send-to-file-cabinet',
+      remote: remote,
+      sync: synced,
+    };
+  }
+
+  /**
+   * Check In: Sync write-back, verify Cabinet copy, release lease, then remove
+   * local working copy only (cloud/cabinet copy remains).
+   */
+  async function checkInCustomerFile(id) {
+    if (!id) throw new SyncError('sync', 'Customer File id required.');
+    const record = await window.ToolboxDB.getCustomerFile(id);
+    if (!record || record.deletedAt) {
+      throw new SyncError('sync', 'Customer File is not available on this device.');
+    }
+    if (!isCheckedOutFromCabinet(record)) {
+      throw new SyncError('sync', 'This Customer File is not a checked-out Cabinet file. Use Send to File Cabinet.');
+    }
+    if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
+
+    let remote = await getRemoteIndex(id);
+    if (!remote) {
+      throw new SyncError('incomplete', 'Checked-out Customer File is missing from the File Cabinet.');
+    }
+
+    const synced = await syncOneRecord(record, remote);
+    if (synced && synced.checkoutBlocked) {
+      throw new SyncError('checkout', 'Could not write checked-out changes (ownership blocked).');
+    }
+
+    remote = await verifyRemoteCabinetCopy(record);
+
+    const released = await releaseRemoteCheckout(id);
+    const afterRelease = await getRemoteIndex(id);
+    if (!afterRelease) {
+      throw new SyncError('incomplete', 'Check In verification failed: Cabinet index missing after release.');
+    }
+    if (afterRelease.checkout && trimStr(afterRelease.checkout.deviceId) &&
+        normalizeEmail(afterRelease.checkout.email)) {
+      throw new SyncError('incomplete', 'Check In verification failed: checkout lease still present.');
+    }
+
+    await removeLocalWorkingCopyOnly(record);
+    const stillLocal = await window.ToolboxDB.getCustomerFile(id);
+    if (stillLocal) {
+      throw new SyncError('sync', 'Check In verified remotely, but local working copy could not be cleared.');
+    }
+
+    return {
+      ok: true,
+      id: id,
+      action: 'check-in',
+      remote: afterRelease,
+      released: released,
+      sync: synced,
+    };
   }
 
   /**
@@ -1286,6 +1432,9 @@
     syncNow: syncNow,
     browseCabinet: browseCabinet,
     checkOutCustomerFile: checkOutCustomerFile,
+    sendToFileCabinet: sendToFileCabinet,
+    checkInCustomerFile: checkInCustomerFile,
+    isCheckedOutFromCabinet: isCheckedOutFromCabinet,
     acquireRemoteCheckout: acquireRemoteCheckout,
     releaseRemoteCheckout: releaseRemoteCheckout,
     fetchAccessIdentity: fetchAccessIdentity,
