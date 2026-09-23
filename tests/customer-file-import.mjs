@@ -164,6 +164,50 @@ const fixtures = await page.evaluate(async () => {
     return new File([await zip.generateAsync({ type: 'blob' })], 'legacy-bad-y.zip', { type: 'application/zip' });
   }
 
+  async function partialDistressFile() {
+    const zip = new JSZip();
+    const root = zip.folder('Sample Court');
+    const plan = planDataUrl(100, 80);
+    root.file('plan.png', plan.split(',')[1], { base64: true });
+    root.folder('photos').file('photo-01.jpg', 'photo-one');
+    root.file('pins.json', JSON.stringify([
+      {
+        id: 'keep-1',
+        num: 1,
+        type: 'Interior',
+        description: 'Crack at window',
+        room: 'Living Room',
+        direction: 'NE',
+        x: '0.25000',
+        y: '0.50000',
+        photos: ['photo-01.jpg'],
+      },
+      {
+        id: 'bad-y',
+        num: 2,
+        type: 'Exterior',
+        description: 'Unreadable pin',
+        room: '',
+        direction: '',
+        x: '0.40000',
+        y: 'not-a-coordinate',
+        photos: [],
+      },
+      {
+        id: 'keep-3',
+        num: 3,
+        type: 'Exterior',
+        description: 'Stucco crack',
+        room: '',
+        direction: 'S',
+        x: '0.50000',
+        y: '0.25000',
+        photos: [],
+      },
+    ]));
+    return new File([await zip.generateAsync({ type: 'blob' })], 'partial-distress.zip', { type: 'application/zip' });
+  }
+
   function floorFile(version = 1, overrides = {}) {
     const planWidth = overrides.planWidth != null ? overrides.planWidth : 120;
     const planHeight = overrides.planHeight != null ? overrides.planHeight : 90;
@@ -223,7 +267,7 @@ const fixtures = await page.evaluate(async () => {
     return new File([JSON.stringify(bundle)], 'keulen.floorsurvey.json', { type: 'application/json' });
   }
 
-  window.__importFixtures = { distressFile, floorFile, legacyOutOfRangeYFile, nonNumericYFile };
+  window.__importFixtures = { distressFile, floorFile, legacyOutOfRangeYFile, nonNumericYFile, partialDistressFile };
   const previewFile = await distressFile();
   const previewBytes = new Uint8Array(await previewFile.arrayBuffer());
   let previewBinary = '';
@@ -249,6 +293,7 @@ const distressInspection = await page.evaluate(async () => {
     derivatives: parsed.ignoredDerivativeCount,
     first: parsed.pins[0],
     second: parsed.pins[1],
+    excluded: parsed.excludedObservations.length,
   };
 });
 check('Valid Distress ZIP recognized', distressInspection.kind === 'distress', JSON.stringify(distressInspection));
@@ -257,6 +302,7 @@ check('Distress observations and relationships recovered', distressInspection.pi
 check('Quick Capture inventoried but isolated', distressInspection.quick.count === 2 && distressInspection.quick.metadataCount === 2, JSON.stringify(distressInspection.quick));
 check('Derivative outputs ignored as survey data', distressInspection.derivatives === 3, JSON.stringify(distressInspection));
 check('Legacy direction and observation fields retained', distressInspection.first.importedLegacyDirection === 'NE' && distressInspection.first.description === 'Crack at window' && distressInspection.first.location === 'Living Room', JSON.stringify(distressInspection.first));
+check('Valid Distress import leaves nothing out', distressInspection.excluded === 0, JSON.stringify(distressInspection.excluded));
 
 const invalidDistress = await page.evaluate(async () => {
   const empty = new JSZip();
@@ -272,14 +318,25 @@ check('Invalid Distress ZIP rejected safely', /pins\.json/.test(invalidDistress)
 
 const missingPhoto = await page.evaluate(async () => {
   const file = await window.__importFixtures.distressFile({ missingPhoto: true });
-  try {
-    await ToolboxCustomerFileImport.inspectFile(file);
-    return '';
-  } catch (error) {
-    return error.message;
-  }
+  const parsed = await ToolboxCustomerFileImport.inspectFile(file);
+  return {
+    pins: parsed.pins.map((pin) => [pin.num, pin.description, pin.xNormalized, pin.yNormalized]),
+    excluded: parsed.excludedObservations.map((item) => [item.num, item.heading, item.reason]),
+  };
 });
-check('Missing required Distress photo rejects before import', /missing/.test(missingPhoto), missingPhoto);
+check(
+  'Missing Distress photo leaves that observation out and keeps the valid one',
+  missingPhoto.pins.length === 1 &&
+    missingPhoto.pins[0][0] === 3 &&
+    missingPhoto.pins[0][1] === 'Brick separation' &&
+    missingPhoto.pins[0][2] === 0.75 &&
+    missingPhoto.pins[0][3] === 0.625 &&
+    missingPhoto.excluded.length === 1 &&
+    missingPhoto.excluded[0][0] === 1 &&
+    missingPhoto.excluded[0][1] === 'Observation 1 — Crack at window' &&
+    /photo-02\.jpg/.test(missingPhoto.excluded[0][2]),
+  JSON.stringify(missingPhoto),
+);
 
 const legacyOutOfRange = await page.evaluate(async () => {
   const file = await window.__importFixtures.legacyOutOfRangeYFile();
@@ -297,6 +354,7 @@ const legacyOutOfRange = await page.evaluate(async () => {
     normalized: parsed.pins.map((pin) => [pin.xNormalized, pin.yNormalized, pin.description]),
     pixels: record.distress.pins.map((pin) => [pin.x, pin.y, pin.num, pin.description]),
     numbering: [record.distress.startNum, record.distress.nextNum],
+    excluded: parsed.excludedObservations.length,
   };
 });
 check(
@@ -306,7 +364,8 @@ check(
     legacyOutOfRange.normalized[0][1] === 1.125 &&
     legacyOutOfRange.pixels[0][0] === 25 &&
     legacyOutOfRange.pixels[0][1] === 90 &&
-    legacyOutOfRange.pixels[0][3] === 'Downspout at grade',
+    legacyOutOfRange.pixels[0][3] === 'Downspout at grade' &&
+    legacyOutOfRange.excluded === 0,
   JSON.stringify(legacyOutOfRange),
 );
 check(
@@ -322,14 +381,108 @@ check(
 
 const nonNumericY = await page.evaluate(async () => {
   const file = await window.__importFixtures.nonNumericYFile();
+  const parsed = await ToolboxCustomerFileImport.inspectFile(file);
+  let writeError = '';
   try {
-    await ToolboxCustomerFileImport.inspectFile(file);
-    return '';
+    await ToolboxCustomerFileImport.applyImport(parsed, 'import-bad-y-only', {
+      targetUpdatedAt: null,
+      canvasChoice: 'new',
+      fieldChoices: {},
+      acknowledgeExcludedObservations: true,
+    });
   } catch (error) {
-    return error.message;
+    writeError = error.message;
   }
+  return {
+    pins: parsed.pins.length,
+    heading: parsed.excludedObservations[0] && parsed.excludedObservations[0].heading,
+    reason: parsed.excludedObservations[0] && parsed.excludedObservations[0].reason,
+    writeError,
+    record: !!(await ToolboxDB.getCustomerFile('import-bad-y-only')),
+  };
 });
-check('Non-numeric Distress y is still rejected', nonNumericY === 'A Distress observation has an invalid y coordinate.', nonNumericY);
+check(
+  'Non-numeric Distress y is left out and not written',
+  nonNumericY.pins === 0 &&
+    nonNumericY.heading === 'Observation 1 — Unreadable' &&
+    nonNumericY.reason === 'A Distress observation has an invalid y coordinate.' &&
+    /cannot be imported/.test(nonNumericY.writeError) &&
+    nonNumericY.record === false,
+  JSON.stringify(nonNumericY),
+);
+
+const partialDistress = await page.evaluate(async () => {
+  const file = await window.__importFixtures.partialDistressFile();
+  const parsed = await ToolboxCustomerFileImport.inspectFile(file);
+  const context = await ToolboxCustomerFileImport.getImportContext(parsed, 'import-partial-distress');
+  let silentError = '';
+  try {
+    await ToolboxCustomerFileImport.applyImport(parsed, 'import-partial-distress', {
+      targetUpdatedAt: context.targetUpdatedAt,
+      canvasChoice: 'new',
+      fieldChoices: {},
+      useSuggestedAddress: false,
+    });
+  } catch (error) {
+    silentError = error.message;
+  }
+  const before = await ToolboxDB.getCustomerFile('import-partial-distress');
+  await ToolboxCustomerFileImport.applyImport(parsed, 'import-partial-distress', {
+    targetUpdatedAt: context.targetUpdatedAt,
+    canvasChoice: 'new',
+    fieldChoices: {},
+    useSuggestedAddress: false,
+    acknowledgeExcludedObservations: true,
+  });
+  const record = await ToolboxDB.getCustomerFile('import-partial-distress');
+  return {
+    silentError,
+    writtenBeforeAck: !!before,
+    kept: parsed.pins.map((pin) => [pin.num, pin.description, pin.xNormalized, pin.yNormalized, pin.photos.length]),
+    excluded: parsed.excludedObservations.map((item) => [item.num, item.heading, item.reason, item.sourceId]),
+    saved: record.distress.pins.map((pin) => [pin.num, pin.description, pin.x, pin.y]),
+    numbering: [record.distress.startNum, record.distress.nextNum],
+    history: record.recoveryImports[0].excludedObservations,
+    photoCount: record.distress.pins.reduce((total, pin) => total + pin.photos.length, 0),
+  };
+});
+check(
+  'Malformed Distress pin does not block the valid observations',
+  partialDistress.kept.length === 2 &&
+    partialDistress.kept[0][0] === 1 &&
+    partialDistress.kept[0][1] === 'Crack at window' &&
+    partialDistress.kept[0][2] === 0.25 &&
+    partialDistress.kept[0][3] === 0.5 &&
+    partialDistress.kept[0][4] === 1 &&
+    partialDistress.kept[1][0] === 3 &&
+    partialDistress.kept[1][1] === 'Stucco crack' &&
+    partialDistress.kept[1][2] === 0.5 &&
+    partialDistress.kept[1][3] === 0.25 &&
+    partialDistress.saved.length === 2 &&
+    partialDistress.saved[0][2] === 25 &&
+    partialDistress.saved[0][3] === 40 &&
+    partialDistress.saved[1][2] === 50 &&
+    partialDistress.saved[1][3] === 20 &&
+    partialDistress.numbering[0] === 1 &&
+    partialDistress.numbering[1] === 4 &&
+    partialDistress.photoCount === 1,
+  JSON.stringify(partialDistress),
+);
+check(
+  'Malformed Distress pin is explicit and is not fabricated',
+  /Review the observations/.test(partialDistress.silentError) &&
+    partialDistress.writtenBeforeAck === false &&
+    partialDistress.excluded.length === 1 &&
+    partialDistress.excluded[0][0] === 2 &&
+    partialDistress.excluded[0][1] === 'Observation 2 — Unreadable pin' &&
+    partialDistress.excluded[0][2] === 'A Distress observation has an invalid y coordinate.' &&
+    partialDistress.excluded[0][3] === 'bad-y' &&
+    partialDistress.saved.every((pin) => pin[1] !== 'Unreadable pin') &&
+    partialDistress.history.length === 1 &&
+    partialDistress.history[0].heading === 'Observation 2 — Unreadable pin' &&
+    partialDistress.history[0].reason === 'A Distress observation has an invalid y coordinate.',
+  JSON.stringify(partialDistress),
+);
 
 const distressApplied = await page.evaluate(async () => {
   const context = await ToolboxCustomerFileImport.getImportContext(window.__distressParsed, 'import-distress');
@@ -924,6 +1077,115 @@ const nativeFloor = await page.evaluate(async () => {
   };
 });
 check('Imported Floor Survey opens through normal native workspace', nativeFloor.mounted && nativeFloor.points === 2 && nativeFloor.boundary === 4 && nativeFloor.transitions === 1, JSON.stringify(nativeFloor));
+
+await page.goto(`${BASE}#/file/partial-recovery-ui/import`, { waitUntil: 'networkidle0' });
+await page.waitForSelector('#cf-import-file');
+await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
+await page.evaluate(async () => {
+  const file = await window.__importFixtures.partialDistressFile();
+  const input = document.querySelector('#cf-import-file');
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  input.files = transfer.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+});
+await page.waitForSelector('#cf-import-ack-excluded');
+const partialPreview = await page.evaluate(() => {
+  const confirm = document.querySelector('#cf-import-confirm');
+  return {
+    status: document.querySelector('#cf-import-status')?.textContent || '',
+    text: document.querySelector('.cf-import__preview')?.innerText || '',
+    back: document.querySelector('#import-back')?.textContent || '',
+    fileKept: (document.querySelector('#cf-import-file')?.files || []).length === 1,
+    confirmDisabled: !!(confirm && confirm.disabled),
+    confirmLabel: confirm ? confirm.textContent.trim() : '',
+    overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+  };
+});
+check(
+  'Partial Distress preview names the bad observation and stays recoverable',
+  /1 observation cannot be imported/.test(partialPreview.status) &&
+    /Observation 2 — Unreadable pin/.test(partialPreview.text) &&
+    /invalid y coordinate/.test(partialPreview.text) &&
+    /2 ready, 1 left out/.test(partialPreview.text) &&
+    partialPreview.back.includes('Back') &&
+    partialPreview.fileKept &&
+    partialPreview.confirmDisabled &&
+    partialPreview.confirmLabel === 'Import valid observations' &&
+    !partialPreview.overflow,
+  JSON.stringify(partialPreview),
+);
+await page.screenshot({ path: '/opt/cursor/artifacts/distress-import-excluded-phone.png', fullPage: true });
+await page.setViewport({ width: 834, height: 1194, deviceScaleFactor: 1 });
+await page.screenshot({ path: '/opt/cursor/artifacts/distress-import-excluded-ipad.png', fullPage: true });
+await page.setViewport({ width: 1440, height: 960, deviceScaleFactor: 1 });
+const partialDesktop = await page.evaluate(() => ({
+  overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+}));
+check('Partial Distress preview stays contained on desktop', !partialDesktop.overflow, JSON.stringify(partialDesktop));
+await page.screenshot({ path: '/opt/cursor/artifacts/distress-import-excluded-desktop.png', fullPage: true });
+
+await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
+await page.click('#cf-import-ack-excluded');
+await page.waitForFunction(() => {
+  const button = document.querySelector('#cf-import-confirm');
+  return button && !button.disabled;
+});
+await page.click('#cf-import-confirm');
+await page.waitForSelector('.cf-import__result');
+const partialResult = await page.evaluate(async () => {
+  const record = await ToolboxDB.getCustomerFile('partial-recovery-ui');
+  return {
+    text: document.querySelector('.cf-import__result')?.innerText || '',
+    descriptions: record.distress.pins.map((pin) => pin.description),
+    coords: record.distress.pins.map((pin) => [pin.x, pin.y]),
+    excluded: record.recoveryImports[0].excludedObservations.map((item) => item.heading),
+  };
+});
+check(
+  'Partial Distress confirmation keeps valid work and repeats what was left out',
+  /2 observations recovered/.test(partialResult.text) &&
+    /1 observation left out/.test(partialResult.text) &&
+    /Observation 2 — Unreadable pin/.test(partialResult.text) &&
+    /original ZIP was not changed/.test(partialResult.text) &&
+    partialResult.descriptions.join('|') === 'Crack at window|Stucco crack' &&
+    partialResult.coords[0][0] === 25 &&
+    partialResult.coords[0][1] === 40 &&
+    partialResult.coords[1][0] === 50 &&
+    partialResult.coords[1][1] === 20 &&
+    partialResult.excluded[0] === 'Observation 2 — Unreadable pin',
+  JSON.stringify(partialResult),
+);
+await page.screenshot({ path: '/opt/cursor/artifacts/distress-import-excluded-result-phone.png', fullPage: true });
+
+await page.evaluate(async () => {
+  const file = await window.__importFixtures.nonNumericYFile();
+  const input = document.querySelector('#cf-import-file');
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  input.files = transfer.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+});
+await page.waitForFunction(() => /No observations in this export can be imported/.test(document.body.innerText));
+const nothingRecoverable = await page.evaluate(() => ({
+  text: document.querySelector('.cf-import__preview')?.innerText || '',
+  back: !!document.querySelector('#import-back'),
+  confirm: !!document.querySelector('#cf-import-confirm'),
+  fileKept: (document.querySelector('#cf-import-file')?.files || []).length === 1,
+  overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+}));
+check(
+  'A wholly unreadable Distress observation explains itself and does not trap the screen',
+  /Observation 1 — Unreadable/.test(nothingRecoverable.text) &&
+    /invalid y coordinate/.test(nothingRecoverable.text) &&
+    /Use Back/.test(nothingRecoverable.text) &&
+    nothingRecoverable.back &&
+    !nothingRecoverable.confirm &&
+    nothingRecoverable.fileKept &&
+    !nothingRecoverable.overflow,
+  JSON.stringify(nothingRecoverable),
+);
+await page.screenshot({ path: '/opt/cursor/artifacts/distress-import-none-recoverable-phone.png', fullPage: true });
 
 await browser.close();
 const failed = results.filter((result) => !result.ok);
