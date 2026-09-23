@@ -138,9 +138,12 @@
     return raw;
   }
 
+  // Standalone export writes x/y as plan-relative fractions and does not clamp
+  // a pin to the image. A pin above or below the plan is a real coordinate
+  // (y < 0 or y > 1). Keep that fraction and scale it back to pixels.
   function parseNormalized(value, label) {
     const parsed = Number(value);
-    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    if (!Number.isFinite(parsed)) {
       throw new Error('A Distress observation has an invalid ' + label + ' coordinate.');
     }
     return parsed;
