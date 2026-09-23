@@ -406,7 +406,7 @@ check(
   nonNumericY.pins === 0 &&
     nonNumericY.heading === 'Observation 1 — Unreadable' &&
     nonNumericY.reason === 'A Distress observation has an invalid y coordinate.' &&
-    /cannot be imported/.test(nonNumericY.writeError) &&
+    /No Distress observations in this export can be imported/.test(nonNumericY.writeError) &&
     nonNumericY.record === false,
   JSON.stringify(nonNumericY),
 );
