@@ -109,6 +109,61 @@ const fixtures = await page.evaluate(async () => {
     return new File([await zip.generateAsync({ type: 'blob' })], missingPhoto ? 'missing.zip' : 'distress.zip', { type: 'application/zip' });
   }
 
+  async function legacyOutOfRangeYFile() {
+    const zip = new JSZip();
+    const root = zip.folder('Legacy Distress');
+    const plan = planDataUrl(100, 80);
+    root.file('plan.png', plan.split(',')[1], { base64: true });
+    // Same strings the standalone exporter writes: unclamped plan fractions.
+    // x stays inside [0, 1], so the old checker failed on y only.
+    root.file('pins.json', JSON.stringify([
+      {
+        id: 'legacy-below',
+        num: 1,
+        type: 'Exterior',
+        description: 'Downspout at grade',
+        room: '',
+        direction: 'S',
+        x: '0.25000',
+        y: '1.12500',
+        photos: [],
+      },
+      {
+        id: 'legacy-above',
+        num: 2,
+        type: 'Exterior',
+        description: 'Fascia stain',
+        room: '',
+        direction: 'N',
+        x: '0.50000',
+        y: '-0.12500',
+        photos: [],
+      },
+    ]));
+    return new File([await zip.generateAsync({ type: 'blob' })], 'legacy-out-of-range-y.zip', { type: 'application/zip' });
+  }
+
+  async function nonNumericYFile() {
+    const zip = new JSZip();
+    const root = zip.folder('Legacy Distress');
+    const plan = planDataUrl(100, 80);
+    root.file('plan.png', plan.split(',')[1], { base64: true });
+    root.file('pins.json', JSON.stringify([
+      {
+        id: 'legacy-bad-y',
+        num: 1,
+        type: 'Interior',
+        description: 'Unreadable',
+        room: '',
+        direction: '',
+        x: '0.25000',
+        y: 'not-a-coordinate',
+        photos: [],
+      },
+    ]));
+    return new File([await zip.generateAsync({ type: 'blob' })], 'legacy-bad-y.zip', { type: 'application/zip' });
+  }
+
   function floorFile(version = 1, overrides = {}) {
     const planWidth = overrides.planWidth != null ? overrides.planWidth : 120;
     const planHeight = overrides.planHeight != null ? overrides.planHeight : 90;
@@ -168,7 +223,7 @@ const fixtures = await page.evaluate(async () => {
     return new File([JSON.stringify(bundle)], 'keulen.floorsurvey.json', { type: 'application/json' });
   }
 
-  window.__importFixtures = { distressFile, floorFile };
+  window.__importFixtures = { distressFile, floorFile, legacyOutOfRangeYFile, nonNumericYFile };
   const previewFile = await distressFile();
   const previewBytes = new Uint8Array(await previewFile.arrayBuffer());
   let previewBinary = '';
@@ -225,6 +280,56 @@ const missingPhoto = await page.evaluate(async () => {
   }
 });
 check('Missing required Distress photo rejects before import', /missing/.test(missingPhoto), missingPhoto);
+
+const legacyOutOfRange = await page.evaluate(async () => {
+  const file = await window.__importFixtures.legacyOutOfRangeYFile();
+  const parsed = await ToolboxCustomerFileImport.inspectFile(file);
+  const context = await ToolboxCustomerFileImport.getImportContext(parsed, 'import-distress-y');
+  await ToolboxCustomerFileImport.applyImport(parsed, 'import-distress-y', {
+    targetUpdatedAt: context.targetUpdatedAt,
+    canvasChoice: 'new',
+    fieldChoices: {},
+    useSuggestedAddress: false,
+  });
+  const record = await ToolboxDB.getCustomerFile('import-distress-y');
+  return {
+    kind: parsed.kind,
+    normalized: parsed.pins.map((pin) => [pin.xNormalized, pin.yNormalized, pin.description]),
+    pixels: record.distress.pins.map((pin) => [pin.x, pin.y, pin.num, pin.description]),
+    numbering: [record.distress.startNum, record.distress.nextNum],
+  };
+});
+check(
+  'Legacy pin below the plan keeps its y fraction',
+  legacyOutOfRange.kind === 'distress' &&
+    legacyOutOfRange.normalized[0][0] === 0.25 &&
+    legacyOutOfRange.normalized[0][1] === 1.125 &&
+    legacyOutOfRange.pixels[0][0] === 25 &&
+    legacyOutOfRange.pixels[0][1] === 90 &&
+    legacyOutOfRange.pixels[0][3] === 'Downspout at grade',
+  JSON.stringify(legacyOutOfRange),
+);
+check(
+  'Legacy pin above the plan keeps its negative y',
+  legacyOutOfRange.normalized[1][1] === -0.125 &&
+    legacyOutOfRange.pixels[1][0] === 50 &&
+    legacyOutOfRange.pixels[1][1] === -10 &&
+    legacyOutOfRange.pixels[1][2] === 2 &&
+    legacyOutOfRange.numbering[0] === 1 &&
+    legacyOutOfRange.numbering[1] === 3,
+  JSON.stringify(legacyOutOfRange),
+);
+
+const nonNumericY = await page.evaluate(async () => {
+  const file = await window.__importFixtures.nonNumericYFile();
+  try {
+    await ToolboxCustomerFileImport.inspectFile(file);
+    return '';
+  } catch (error) {
+    return error.message;
+  }
+});
+check('Non-numeric Distress y is still rejected', nonNumericY === 'A Distress observation has an invalid y coordinate.', nonNumericY);
 
 const distressApplied = await page.evaluate(async () => {
   const context = await ToolboxCustomerFileImport.getImportContext(window.__distressParsed, 'import-distress');
