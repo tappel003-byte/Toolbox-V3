@@ -422,6 +422,37 @@
     return 'Available to Check Out';
   }
 
+  /**
+   * Quiet file-location helper for Customer File cards.
+   * Uses only authoritative state already available to the row — never guesses.
+   *
+   * - remoteCabinet: entry came from File Cabinet remote inventory (browseCabinet).
+   * - localWorking: local Customer Files list row; checkedOutFromCabinet is durable
+   *   checkout provenance. Unmarked locals are ambiguous (true local-only vs legacy
+   *   local + same-id remote) without remote presence already loaded on this screen,
+   *   so no "On this device only" label is emitted until that can be decided safely.
+   */
+  function customerFileLocationLabel(kind, record) {
+    if (kind === 'remoteCabinet') return 'File Cabinet — Online';
+    if (kind === 'localWorking') {
+      if (record && window.ToolboxSync &&
+          typeof window.ToolboxSync.isCheckedOutFromCabinet === 'function' &&
+          window.ToolboxSync.isCheckedOutFromCabinet(record)) {
+        return 'Checked out to this device — Check in when finished';
+      }
+      return '';
+    }
+    return '';
+  }
+
+  function appendLocationStatus(parent, label) {
+    if (!parent || !label) return;
+    const location = document.createElement(parent.tagName === 'SPAN' ? 'span' : 'div');
+    location.className = 'cabinet-row__location';
+    location.textContent = label;
+    parent.appendChild(location);
+  }
+
   function filterCabinetEntries(entries, query) {
     const list = Array.isArray(entries) ? entries : [];
     const q = String(query || '').trim().toLowerCase();
@@ -542,12 +573,14 @@
     address.className = 'cabinet-row__address';
     address.textContent = entry.propertyAddress || 'No property address';
 
+    main.appendChild(name);
+    main.appendChild(address);
+    // Remote inventory row — authoritative File Cabinet presence from browseCabinet.
+    appendLocationStatus(main, customerFileLocationLabel('remoteCabinet', null));
+
     const meta = document.createElement('div');
     meta.className = 'cabinet-row__meta';
     meta.textContent = cloudAvailabilityLabel(entry);
-
-    main.appendChild(name);
-    main.appendChild(address);
     main.appendChild(meta);
     row.appendChild(main);
 
@@ -667,6 +700,7 @@
 
     main.appendChild(name);
     main.appendChild(addr);
+    appendLocationStatus(main, customerFileLocationLabel('localWorking', record));
 
     const meta = document.createElement('span');
     meta.className = 'cabinet-row__meta';
@@ -1931,6 +1965,7 @@
     blankCustomerFile: blankCustomerFile,
     hasInvestigationData: hasInvestigationData,
     isEmptyCustomerFileStub: isEmptyCustomerFileStub,
+    customerFileLocationLabel: customerFileLocationLabel,
     customerIdentity: {
       displayName: displayName,
       displayAddress: displayAddress,
