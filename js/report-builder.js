@@ -38,6 +38,43 @@
   };
 
   var mountGeneration = 0;
+  var fitObserver = null;
+  var fitOnResize = null;
+  var SHEET_RATIO = 17 / 11;
+
+  function fitSheet(root) {
+    var stage = root && root.querySelector('.rb-stage');
+    var sheet = root && root.querySelector('.rb-sheet');
+    if (!stage || !sheet) return;
+    var styles = window.getComputedStyle(stage);
+    var padX = (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0);
+    var padY = (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0);
+    var availW = Math.max(0, stage.clientWidth - padX);
+    var availH = Math.max(0, stage.clientHeight - padY);
+    if (availW < 40 || availH < 40) return;
+    var width = availW;
+    var height = width / SHEET_RATIO;
+    if (height > availH) {
+      height = availH;
+      width = height * SHEET_RATIO;
+    }
+    sheet.style.width = Math.floor(width) + 'px';
+    sheet.style.height = Math.floor(height) + 'px';
+  }
+
+  function watchSheet(root) {
+    if (fitObserver) fitObserver.disconnect();
+    if (fitOnResize) window.removeEventListener('resize', fitOnResize);
+    var stage = root.querySelector('.rb-stage');
+    fitOnResize = function () { fitSheet(root); };
+    window.addEventListener('resize', fitOnResize);
+    if (typeof window.ResizeObserver === 'function' && stage) {
+      fitObserver = new window.ResizeObserver(function () { fitSheet(root); });
+      fitObserver.observe(stage);
+    }
+    fitSheet(root);
+    window.requestAnimationFrame(function () { fitSheet(root); });
+  }
 
   function identityApi() {
     return window.ToolboxApp && window.ToolboxApp.customerIdentity;
@@ -203,6 +240,7 @@
 
     setToolStatus();
     renderPages();
+    watchSheet(root);
     fileLabelEl.textContent = 'Loading Customer File…';
 
     if (!window.ToolboxDB || typeof window.ToolboxDB.getCustomerFile !== 'function' || !customerFileId) {
@@ -301,6 +339,14 @@
 
   function unmount() {
     mountGeneration += 1;
+    if (fitObserver) {
+      fitObserver.disconnect();
+      fitObserver = null;
+    }
+    if (fitOnResize) {
+      window.removeEventListener('resize', fitOnResize);
+      fitOnResize = null;
+    }
   }
 
   window.ToolboxReportBuilder = {

@@ -196,7 +196,6 @@ body.report-builder-open .canvas {
 }
 
 .rb-stage {
-  container-type: size;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -206,27 +205,21 @@ body.report-builder-open .canvas {
   background:
     linear-gradient(180deg, rgba(8, 32, 54, 0.04), rgba(8, 32, 54, 0.02)),
     #e5e0d6;
-  overflow: auto;
+  overflow: hidden;
   box-sizing: border-box;
 }
 
 .rb-sheet {
-  aspect-ratio: 17 / 11;
-  width: min(100%, 1100px);
-  max-height: 100%;
+  flex: 0 0 auto;
+  align-self: center;
+  width: 680px;
+  height: 440px;
+  max-width: 100%;
   background: #fff;
   color: #111;
   border: 1px solid #1a1a1a;
   box-shadow: 0 14px 36px rgba(8, 32, 54, 0.16);
   box-sizing: border-box;
-}
-
-@supports (width: 1cqi) {
-  .rb-sheet {
-    width: min(100cqi, calc(100cqb * 17 / 11));
-    max-width: calc(100% - 0px);
-    max-height: none;
-  }
 }
 
 .rb-sheet__margin {
@@ -338,6 +331,7 @@ body.report-builder-open .canvas {
   .rb-workspace {
     grid-template-columns: 132px minmax(0, 1fr);
     grid-template-rows: minmax(240px, 1fr) auto;
+    overflow: auto;
   }
 
   .rb-panel {
