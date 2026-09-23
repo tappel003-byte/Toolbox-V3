@@ -227,7 +227,8 @@
   // #/file/:id          → Customer File home (hub)
   // #/file/:id/edit     → edit contact + plans
   // #/file/:id/plan     → redirect to edit (legacy)
-  // #/file/:id/<app>    → not-yet-connected stub (Distress, Floor, etc.)
+  // #/file/:id/report   → Report Builder workspace shell
+  // #/file/:id/<app>    → connected workspace, or a not-yet-connected stub
 
   function parseRoute() {
     const hash = window.location.hash || '#/';
@@ -250,7 +251,10 @@
       if (sub === 'import') {
         return { view: 'import', id: id, allowDestinationChoice: false };
       }
-      if (sub === 'diagnostics' || sub === 'report') {
+      if (sub === 'report') {
+        return { view: 'report', id: id };
+      }
+      if (sub === 'diagnostics') {
         return { view: 'app-stub', id: id, app: sub };
       }
       return { view: 'home', id: id };
@@ -276,6 +280,12 @@
         window.ToolboxDistress.unmount();
       }
     }
+    if (route.view !== 'report') {
+      document.body.classList.remove('report-builder-open');
+      if (window.ToolboxReportBuilder && typeof window.ToolboxReportBuilder.unmount === 'function') {
+        window.ToolboxReportBuilder.unmount();
+      }
+    }
     if (route.legacyPlan) {
       window.location.replace('#/file/' + encodeURIComponent(route.id) + '/edit/plans');
       return;
@@ -290,6 +300,8 @@
       renderDistressSurvey(app, route.id);
     } else if (route.view === 'import') {
       renderCustomerFileImport(app, route.id, { allowDestinationChoice: !!route.allowDestinationChoice });
+    } else if (route.view === 'report') {
+      renderReportBuilder(app, route.id);
     } else if (route.view === 'app-stub') {
       renderAppStub(app, route.id, route.app);
     } else if (route.view === 'trash') {
@@ -1263,6 +1275,44 @@
     window.ToolboxFloorSurvey.mount(app, {
       customerFileId: id,
       onBack: leave,
+    });
+  }
+
+  function renderReportBuilder(app, id) {
+    registerActiveFlush(null);
+    document.body.classList.remove('floor-survey-open', 'distress-survey-open');
+    document.body.classList.add('report-builder-open');
+    app.classList.remove('canvas--floor-survey', 'canvas--distress-survey');
+    if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
+      window.ToolboxFloorSurvey.unmount();
+    }
+    if (window.ToolboxDistress && typeof window.ToolboxDistress.unmount === 'function') {
+      window.ToolboxDistress.unmount();
+    }
+    app.innerHTML = '';
+
+    function leave() {
+      window.location.hash = '#/file/' + encodeURIComponent(id);
+    }
+
+    if (!window.ToolboxReportBuilder || typeof window.ToolboxReportBuilder.mount !== 'function') {
+      document.body.classList.remove('report-builder-open');
+      app.innerHTML =
+        '<div class="cf-stub">' +
+        '  <h2 class="cf-stub__title">Report Builder</h2>' +
+        '  <p class="cf-stub__msg">Report Builder failed to load.</p>' +
+        '  <button type="button" id="rb-fail-back" class="btn btn--accent">Back to Customer File</button>' +
+        '</div>';
+      app.querySelector('#rb-fail-back').addEventListener('click', leave);
+      return;
+    }
+
+    window.ToolboxReportBuilder.mount(app, {
+      customerFileId: id,
+      onBack: leave,
+      onOpenSource: function (appKey) {
+        window.location.hash = '#/file/' + encodeURIComponent(id) + '/' + appKey;
+      },
     });
   }
 
