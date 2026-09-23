@@ -707,6 +707,36 @@
       menu.classList.toggle('is-open', !open);
     });
 
+    const cabinetBacked = !!(window.ToolboxSync &&
+      typeof window.ToolboxSync.isCheckedOutFromCabinet === 'function' &&
+      window.ToolboxSync.isCheckedOutFromCabinet(record));
+
+    if (cabinetBacked) {
+      const checkInBtn = document.createElement('button');
+      checkInBtn.type = 'button';
+      checkInBtn.className = 'cabinet-row-menu__action';
+      checkInBtn.textContent = 'Check In';
+      checkInBtn.addEventListener('click', function (event) {
+        event.stopPropagation();
+        menu.classList.remove('is-open');
+        requestCheckInCustomerFile(record);
+      });
+      menu.appendChild(menuToggle);
+      menu.appendChild(checkInBtn);
+    } else {
+      const sendBtn = document.createElement('button');
+      sendBtn.type = 'button';
+      sendBtn.className = 'cabinet-row-menu__action';
+      sendBtn.textContent = 'Send to File Cabinet';
+      sendBtn.addEventListener('click', function (event) {
+        event.stopPropagation();
+        menu.classList.remove('is-open');
+        requestSendToFileCabinet(record);
+      });
+      menu.appendChild(menuToggle);
+      menu.appendChild(sendBtn);
+    }
+
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'cabinet-row-menu__danger';
@@ -717,11 +747,66 @@
       onRemove();
     });
 
-    menu.appendChild(menuToggle);
     menu.appendChild(removeBtn);
     shell.appendChild(row);
     shell.appendChild(menu);
     return shell;
+  }
+
+  function requestSendToFileCabinet(record) {
+    const name = displayName(record);
+    if (!window.ToolboxSync || typeof window.ToolboxSync.sendToFileCabinet !== 'function') {
+      cabinetNotice = 'Send to File Cabinet is unavailable.';
+      window.location.hash = '#/';
+      render();
+      return;
+    }
+    confirmAction({
+      title: 'Send to File Cabinet?',
+      message: name + ' will be placed in the File Cabinet and removed from this device.',
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Send to File Cabinet',
+    }).then(function (confirmed) {
+      if (!confirmed) return;
+      return window.ToolboxSync.sendToFileCabinet(record.id).then(function () {
+        cabinetNotice = name + ' was sent to the File Cabinet.';
+        window.location.hash = '#/';
+        render();
+      }).catch(function (err) {
+        console.warn('Send to File Cabinet failed:', err);
+        cabinetNotice = (err && err.message) || 'Send to File Cabinet failed.';
+        window.location.hash = '#/';
+        render();
+      });
+    });
+  }
+
+  function requestCheckInCustomerFile(record) {
+    const name = displayName(record);
+    if (!window.ToolboxSync || typeof window.ToolboxSync.checkInCustomerFile !== 'function') {
+      cabinetNotice = 'Check In is unavailable.';
+      window.location.hash = '#/';
+      render();
+      return;
+    }
+    confirmAction({
+      title: 'Check In Customer File?',
+      message: name + ' will sync to the File Cabinet, release the Check Out, and be removed from this device.',
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Check In',
+    }).then(function (confirmed) {
+      if (!confirmed) return;
+      return window.ToolboxSync.checkInCustomerFile(record.id).then(function () {
+        cabinetNotice = name + ' was checked in.';
+        window.location.hash = '#/';
+        render();
+      }).catch(function (err) {
+        console.warn('Check In failed:', err);
+        cabinetNotice = (err && err.message) || 'Check In failed.';
+        window.location.hash = '#/';
+        render();
+      });
+    });
   }
 
   // ---- Trash ------------------------------------------------------------

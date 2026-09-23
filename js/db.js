@@ -185,6 +185,20 @@ function deleteDistressMedia(ids) {
 }
 
 function permanentlyDeleteCustomerFiles(records) {
+  // Hard-delete local Customer File + required local media.
+  // Callers that also intend to destroy the cloud copy must invoke cloud
+  // deletion separately (e.g. removeCloudCopies). Prefer removeLocalWorkingCopy
+  // for Check In / Send to File Cabinet — those must never cloud-delete.
+  return removeLocalWorkingCopy(records);
+}
+
+/**
+ * Remove a local working Customer File from this device only.
+ * Does NOT write Trash metadata, does NOT call the Sync Worker, and must
+ * never be paired with deleteRemoteCustomerFile / removeCloudCopies when used
+ * for Check In or Send to File Cabinet completion.
+ */
+function removeLocalWorkingCopy(records) {
   const list = (records || []).filter((record) => record && record.id);
   if (!list.length) return Promise.resolve({ deletedCount: 0, mediaDeletedCount: 0 });
   const planIds = Array.from(new Set(list.flatMap(planMediaIds)));
@@ -257,6 +271,7 @@ window.ToolboxDB = {
   moveCustomerFileToTrash,
   restoreCustomerFile,
   permanentlyDeleteCustomerFiles,
+  removeLocalWorkingCopy,
   purgeExpiredCustomerFiles,
   importCustomerFileRecovery,
   TRASH_RETENTION_DAYS,
