@@ -856,9 +856,33 @@
     await window.ToolboxDB.removeLocalWorkingCopy([record]);
   }
 
+  function hasActiveCheckoutLease(remote) {
+    return !!(remote && remote.checkout &&
+      trimStr(remote.checkout.deviceId) &&
+      normalizeEmail(remote.checkout.email));
+  }
+
+  async function releaseCheckoutAndVerify(id) {
+    const released = await releaseRemoteCheckout(id);
+    const afterRelease = await getRemoteIndex(id);
+    if (!afterRelease) {
+      throw new SyncError('incomplete', 'Verification failed: Cabinet index missing after lease release.');
+    }
+    if (hasActiveCheckoutLease(afterRelease)) {
+      throw new SyncError('incomplete', 'Verification failed: checkout lease still present.');
+    }
+    return { released: released, remote: afterRelease };
+  }
+
   /**
-   * First-time place: Sync local-only Customer File into the Cabinet, verify,
-   * then remove the local working copy (Cabinet retains the authoritative copy).
+   * Place / clear working copy into the File Cabinet.
+   *
+   * - No remote: first-upload Sync, verify, local-only remove.
+   * - Same-id remote, no lease: reconcile via existing syncOneRecord LWW, verify, local-only remove.
+   * - Same-id remote, own lease (even without local checkedOutFromCabinet): Check In ceremony.
+   * - Same-id remote, foreign lease: refuse; keep local.
+   *
+   * Never cloud-deletes. Local removal only after successful verification.
    */
   async function sendToFileCabinet(id) {
     if (!id) throw new SyncError('sync', 'Customer File id required.');
@@ -872,16 +896,52 @@
     if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
 
     let remote = await getRemoteIndex(id);
-    if (remote) {
-      throw new SyncError('sync', 'This Customer File already exists in the File Cabinet.');
+    let synced = null;
+    let released = null;
+    let path = 'first-upload';
+
+    if (!remote) {
+      synced = await syncOneRecord(record, null);
+      if (synced && synced.checkoutBlocked) {
+        throw new SyncError('checkout', 'Could not write to the File Cabinet (checkout blocked).');
+      }
+      remote = await verifyRemoteCabinetCopy(record);
+    } else if (hasActiveCheckoutLease(remote)) {
+      let identity = null;
+      try {
+        identity = await fetchAccessIdentity();
+      } catch (_) {
+        identity = null;
+      }
+      const deviceId = getDeviceId();
+      if (!identity || !checkoutOwnerMatches(remote.checkout, identity.email, deviceId)) {
+        const err = new SyncError(
+          'checkout',
+          'This Customer File is checked out elsewhere and cannot be sent from this device.',
+        );
+        err.checkout = remote.checkout;
+        throw err;
+      }
+      // Own lease without local provenance — complete Check In safety ceremony.
+      path = 'own-lease';
+      synced = await syncOneRecord(record, remote);
+      if (synced && synced.checkoutBlocked) {
+        throw new SyncError('checkout', 'Could not write checked-out changes (ownership blocked).');
+      }
+      await verifyRemoteCabinetCopy(record);
+      const releaseResult = await releaseCheckoutAndVerify(id);
+      released = releaseResult.released;
+      remote = releaseResult.remote;
+    } else {
+      // Legacy already-synced: same id remote, no lease — reconcile then clear local.
+      path = 'reconcile-existing';
+      synced = await syncOneRecord(record, remote);
+      if (synced && synced.checkoutBlocked) {
+        throw new SyncError('checkout', 'Could not write to the File Cabinet (checkout blocked).');
+      }
+      remote = await verifyRemoteCabinetCopy(record);
     }
 
-    const synced = await syncOneRecord(record, null);
-    if (synced && synced.checkoutBlocked) {
-      throw new SyncError('checkout', 'Could not write to the File Cabinet (checkout blocked).');
-    }
-
-    remote = await verifyRemoteCabinetCopy(record);
     await removeLocalWorkingCopyOnly(record);
     const stillLocal = await window.ToolboxDB.getCustomerFile(id);
     if (stillLocal) {
@@ -892,7 +952,9 @@
       ok: true,
       id: id,
       action: 'send-to-file-cabinet',
+      path: path,
       remote: remote,
+      released: released,
       sync: synced,
     };
   }
@@ -924,15 +986,8 @@
 
     remote = await verifyRemoteCabinetCopy(record);
 
-    const released = await releaseRemoteCheckout(id);
-    const afterRelease = await getRemoteIndex(id);
-    if (!afterRelease) {
-      throw new SyncError('incomplete', 'Check In verification failed: Cabinet index missing after release.');
-    }
-    if (afterRelease.checkout && trimStr(afterRelease.checkout.deviceId) &&
-        normalizeEmail(afterRelease.checkout.email)) {
-      throw new SyncError('incomplete', 'Check In verification failed: checkout lease still present.');
-    }
+    const releaseResult = await releaseCheckoutAndVerify(id);
+    remote = releaseResult.remote;
 
     await removeLocalWorkingCopyOnly(record);
     const stillLocal = await window.ToolboxDB.getCustomerFile(id);
@@ -944,8 +999,8 @@
       ok: true,
       id: id,
       action: 'check-in',
-      remote: afterRelease,
-      released: released,
+      remote: remote,
+      released: releaseResult.released,
       sync: synced,
     };
   }
