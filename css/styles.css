@@ -592,14 +592,13 @@ body {
 
 .cf-home__apps {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   min-width: 0;
 }
 
 @media (min-width: 560px) {
   .cf-home__apps {
-    grid-template-columns: 1fr 1fr;
     gap: 14px;
   }
 }
@@ -2236,16 +2235,10 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   text-align: right;
 }
 
-/* Phone: one column. iPad/desktop: 2×2 workspace grid. */
+/* Required 2×2 workspace grid at phone, iPad, and desktop. */
 .cf-home__apps {
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
-}
-
-@media (min-width: 561px) {
-  .cf-home__apps {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 .cf-app-btn {
@@ -3087,7 +3080,6 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   }
 
   .cf-home__apps {
-    grid-template-columns: 1fr;
     gap: 9px;
   }
 
