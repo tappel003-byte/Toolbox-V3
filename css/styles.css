@@ -1721,6 +1721,129 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   white-space: nowrap;
 }
 
+/* Customer Files home is one centered column. The list must not flex-grow:
+   growing it pins File Cabinet to the bottom of the viewport and leaves a
+   hole under the local cards. Trash stays in the hero action row; Issue #38
+   owns any later relocation. */
+.customer-files {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 22px 20px 32px;
+  box-sizing: border-box;
+}
+
+.customer-files .cabinet-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "heading actions"
+    "lead lead";
+  align-items: center;
+  column-gap: 20px;
+  row-gap: 8px;
+  width: 100%;
+  max-width: none;
+  margin: 0 0 18px;
+  padding: 0;
+}
+
+.customer-files .cabinet-hero__heading {
+  grid-area: heading;
+  min-width: 0;
+}
+
+.customer-files .cabinet-hero h1 {
+  font-size: clamp(26px, 2.2vw, 32px);
+  line-height: 1.08;
+}
+
+.customer-files .cabinet-hero__lead {
+  grid-area: lead;
+  max-width: 40rem;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.customer-files .cabinet-hero__actions {
+  grid-area: actions;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.customer-files .cabinet-hero__actions .btn,
+.customer-files .cabinet-new,
+.customer-files .cabinet-trash {
+  min-height: 44px;
+}
+
+.customer-files .cabinet-notice {
+  width: 100%;
+  max-width: none;
+  margin: 0 0 12px;
+}
+
+.customer-files .cabinet-section-title {
+  margin: 4px 0 8px;
+  padding: 0;
+  color: var(--navy);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.customer-files .cabinet-list {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.customer-files .file-cabinet-entry {
+  width: 100%;
+  max-width: none;
+  margin: 20px 0 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 244, 236, 0.98));
+  border-color: #c5d0d6;
+  border-left: 4px solid var(--navy);
+}
+
+@media (max-width: 780px) {
+  .customer-files .cabinet-hero {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "heading"
+      "lead"
+      "actions";
+    row-gap: 12px;
+  }
+
+  .customer-files .cabinet-hero__actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .customer-files {
+    padding: 18px 14px calc(22px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .customer-files .cabinet-hero h1 {
+    font-size: 28px;
+  }
+
+  .customer-files .file-cabinet-entry {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
 .file-cabinet-view {
   width: 100%;
   min-width: 0;
