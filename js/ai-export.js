@@ -13,8 +13,9 @@
   var DISTRESS_MEDIA_STORE = 'photos';
 
   var LIMITS = [
-    'Legacy Distress recovery does not store Quick Capture photos on the Customer File. Those photos stay in the original recovery ZIP.',
-    'Integrated Distress save stores pins, drawings, and photograph numbering. It does not copy Quick Capture onto the Customer File.',
+    'Distress pin photos and Quick Capture are separate collections. Quick Capture is not placed on the plan. Stored bytes are copied as stored and are not rewritten.',
+    'A photo is included only when its bytes are already stored. Missing bytes are listed. This package does not invent them.',
+    'Original photo file names are included when the Customer File recorded them.',
     'This package does not render new diagnostic plots. Diagnostics are included only when already stored.',
     'Report Builder shell pages are not saved on the Customer File. Only stored report state is included.',
   ];
@@ -471,6 +472,13 @@
     return scored[0].name;
   }
 
+  function recordedFileName(distress, ref, source) {
+    if (source && typeof source.sourceName === 'string' && source.sourceName.trim()) return source.sourceName.trim();
+    var sources = distress && distress.photoSources;
+    if (ref && ref.id && sources && typeof sources[ref.id] === 'string' && sources[ref.id].trim()) return sources[ref.id].trim();
+    return '';
+  }
+
   function photoRef(entry) {
     if (typeof entry === 'string') {
       if (entry.indexOf('data:') === 0) return { inline: entry, id: null };
@@ -607,6 +615,7 @@
         var baseName = distress.mode === 'external'
           ? 'pin-' + numbering.num + '-' + pad(photoIndex + 1, 2)
           : 'photo-' + pad(displayNumber, width);
+        var sourceFileName = recordedFileName(distress, ref, entry);
         photoJobs.push({
           role: 'pin-linked',
           ref: ref,
@@ -616,13 +625,14 @@
           pinIndex: index,
           canvasId: pin && pin.canvasId || null,
           levelName: cleaned.levelName,
-          meta: {},
+          meta: sourceFileName ? { sourceFileName: sourceFileName } : {},
         });
       });
     });
 
     collectionEntries(distress.quickCapture).forEach(function (ref, index) {
       var source = distress.quickCapture[index] || {};
+      var sourceFileName = recordedFileName(distress, ref, source);
       photoJobs.push({
         role: 'quick-capture',
         ref: ref,
@@ -635,6 +645,7 @@
           timestamp: source.ts || source.timestamp || null,
           latitude: source.lat != null ? source.lat : (source.latitude != null ? source.latitude : null),
           longitude: source.lng != null ? source.lng : (source.longitude != null ? source.longitude : null),
+          sourceFileName: sourceFileName || null,
         },
       });
     });
@@ -1099,7 +1110,10 @@
       if (entry && Array.isArray(entry.excludedObservations)) leftOutCount += entry.excludedObservations.length;
     });
     if (imports.some(function (entry) { return entry && entry.kind === 'distress'; })) {
-      gaps.push('This Customer File has a Distress recovery import. Quick Capture photos from that legacy ZIP are not stored on the Customer File unless they appear in the photo index.');
+      var quickCount = distressBuilt.document && distressBuilt.document.quickCaptureCount || 0;
+      if (!quickCount) {
+        gaps.push('This Customer File has a Distress recovery import and no stored Quick Capture collection. Quick Capture photos are included only when their bytes are already on the file.');
+      }
     }
     if (leftOutCount) {
       gaps.push(leftOutCount + ' Distress observation' + (leftOutCount === 1 ? ' was' : 's were') +
@@ -1255,7 +1269,7 @@
     }).sort();
     packed.push({ path: 'manifest.json', text: JSON.stringify(manifest, null, 2) });
     packed.forEach(function (entry) {
-      if (entry.bytes) zip.file(entry.path, entry.bytes);
+      if (entry.bytes) zip.file(entry.path, entry.bytes, { compression: 'STORE' });
       else zip.file(entry.path, entry.text);
     });
     return {

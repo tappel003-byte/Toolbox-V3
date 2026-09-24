@@ -83,8 +83,20 @@ const report = await page.evaluate(async (png) => {
     ];
   }
 
+  function storedPngBytes() {
+    const raw = atob(png.split(',')[1] || '');
+    const out = [];
+    for (let i = 0; i < raw.length; i += 1) out.push(raw.charCodeAt(i));
+    return out;
+  }
+
+  function sameBytes(left, right) {
+    return !!left && !!right && left.length === right.length && left.every(function (byte, index) { return byte === right[index]; });
+  }
+
   async function readZip(zip) {
     const text = {};
+    const binary = {};
     const names = [];
     const jobs = [];
     zip.forEach(function (path, entry) {
@@ -92,10 +104,12 @@ const report = await page.evaluate(async (png) => {
       names.push(path);
       if (/\.(json|txt|csv)$/i.test(path)) {
         jobs.push(entry.async('string').then(function (value) { text[path] = value; }));
+      } else if (/\.(png|jpe?g|webp|gif)$/i.test(path)) {
+        jobs.push(entry.async('uint8array').then(function (value) { binary[path] = Array.from(value); }));
       }
     });
     await Promise.all(jobs);
-    return { names: names, text: text };
+    return { names: names, text: text, binary: binary };
   }
 
   function joined(text) {
@@ -186,7 +200,11 @@ const report = await page.evaluate(async (png) => {
         },
       ],
       drawings: [],
-      quickCapture: [{ id: 'ph_quick', ts: 1710000000000, lat: 35.1, lng: -106.5 }],
+      photoSources: {
+        'ph_import-11111111-1111-1111-1111-111111111111': 'window-crack.jpg',
+        ph_quick: 'quick-porch.jpg',
+      },
+      quickCapture: [{ id: 'ph_quick', sourceName: 'quick-porch.jpg', ts: 1710000000000, lat: 35.1, lng: -106.5 }],
       unassignedPhotos: ['ph_loose'],
       generalPhotos: [{ id: 'ph_general', subject: 'Exterior overview' }],
     },
@@ -307,13 +325,21 @@ const report = await page.evaluate(async (png) => {
     return photo.pinId === 'pin-base' && photo.photoId === 'ph_import-11111111-1111-1111-1111-111111111111' && photo.path.indexOf('photo-01') !== -1;
   }) && linked.some(function (photo) { return photo.pinId === 'pin-main' && photo.path.indexOf('photo-02') !== -1; }));
   assert('missing photo is a gap, not a failed export', inventory.components.photos.missingBytes === 1 && blob.indexOf('ph_missing') !== -1);
-  assert('quick capture is separate from pins', (byRole['quick-capture'] || []).length === 1 && (byRole['quick-capture'][0].path || '').indexOf('photos/quick-capture/') === 0 && (byRole['quick-capture'][0].pinId == null));
+  const quickPhoto = (byRole['quick-capture'] || [])[0] || {};
+  const pinPhoto = linked.filter(function (photo) { return photo.pinId === 'pin-base'; })[0] || {};
+  const originalPng = storedPngBytes();
+  assert('quick capture is separate from pins', (byRole['quick-capture'] || []).length === 1 && (quickPhoto.path || '').indexOf('photos/quick-capture/') === 0 && quickPhoto.pinId == null && quickPhoto.sourceFileName === 'quick-porch.jpg');
+  assert('stored photo bytes and original names are copied',
+    pinPhoto.sourceFileName === 'window-crack.jpg' &&
+    sameBytes(zip.binary[quickPhoto.path], originalPng) &&
+    sameBytes(zip.binary[pinPhoto.path], originalPng) &&
+    blob.indexOf('does not store Quick Capture') === -1);
   assert('unassigned photos are separate', (byRole.unassigned || []).some(function (photo) { return photo.stored && photo.path.indexOf('photos/unassigned/') === 0; }));
   assert('general photos are separate', (byRole.general || []).some(function (photo) { return photo.stored && photo.subject === 'Exterior overview'; }));
   assert('plan images are stored and the missing plan is named', inventory.components.plans.imagesStored === 2 && inventory.components.plans.imagesMissing === 1 && zip.names.indexOf('plans/images/canvas-basement.png') !== -1);
   assert('diagnostics and report state are included', inventory.components.diagnostics.status === 'present' && inventory.components.reportBuilder.status === 'present' && blob.indexOf('Stored tilt note') !== -1 && blob.indexOf('Draft discussion') !== -1);
   assert('diagnostic plot bytes are a file, not base64 in JSON', (zip.text['diagnostics/diagnostics.json'] || '').indexOf('iVBORw0KGgo') === -1 && zip.names.some(function (name) { return name.indexOf('diagnostics/images/') === 0; }));
-  assert('recovery provenance is included and quick capture limit is stated', blob.indexOf('sample-distress.zip') !== -1 && blob.indexOf('Legacy Distress recovery does not store Quick Capture') !== -1);
+  assert('recovery provenance is included and quick capture stays a stored collection', blob.indexOf('sample-distress.zip') !== -1 && blob.indexOf('separate collections') !== -1 && blob.indexOf('no stored Quick Capture collection') === -1);
   assert('left-out recovery observations are listed and not invented as pins',
     inventory.components.provenance.excludedObservationCount === 1 &&
     blob.indexOf('Observation 9 — Unplaced crack') !== -1 &&
@@ -370,6 +396,21 @@ const report = await page.evaluate(async (png) => {
   const distressBuilt = await window.ToolboxAiExport.buildPackage(distressOnly, deps);
   const distressInv = distressBuilt.inventory;
   assert('floor can be absent while distress export succeeds', distressInv.components.floorSurvey.status === 'absent' && distressInv.components.distress.status === 'present' && distressInv.components.distress.pinCount === 1);
+
+  const recoveryWithoutQuick = {
+    id: 'cf-recovery-no-quick',
+    firstName: 'Mara',
+    lastName: 'Ellison',
+    propertyAddress: '18 Cedar Court',
+    planSetup: { canvases: canvases().slice(0, 1) },
+    distress: { pins: [], drawings: [], quickCapture: [] },
+    recoveryImports: [{ kind: 'distress', sourceName: 'older-distress.zip', fingerprint: 'older', canvasIds: ['canvas-basement'] }],
+  };
+  const olderBuilt = await window.ToolboxAiExport.buildPackage(recoveryWithoutQuick, deps);
+  assert('a recovery without Quick Capture does not invent photos',
+    olderBuilt.inventory.components.photos.quickCapture === 0 &&
+    olderBuilt.inventory.gaps.some(function (gap) { return gap.indexOf('no stored Quick Capture collection') !== -1; }) &&
+    olderBuilt.inventoryText.indexOf('ph_invented') === -1);
 
   const empty = {
     id: 'cf-empty',
