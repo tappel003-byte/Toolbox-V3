@@ -2,17 +2,19 @@
  * Hosted Floor Survey workspace — proven ProjectWorkspace adapted for Toolbox.
  * No TanStack route; Customer File id is the project id; onBack returns to CF home.
  */
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   deletePoint,
   getProject,
   listFloors,
   listPoints,
+  persistFloorSurveyRecoveryPdf,
   savePoint,
   saveFloor,
   saveProject,
   setHostCustomerFileId,
 } from "@/lib/db";
+import { blobToDataUrl, recoveryCanvasToPdfBlob, renderRecoveryForSave } from "@/lib/recovery-pdf";
 import type { Floor, ProjectMeta, RenderSettings, SurveyPoint } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { SetupTab } from "@/components/tabs/SetupTab";
@@ -261,6 +263,56 @@ export function HostWorkspace({ customerFileId, onBack }: HostWorkspaceProps) {
   );
 
   const [transitionsSheetOpen, setTransitionsSheetOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [saveTone, setSaveTone] = useState<"ok" | "err" | null>(null);
+  const saveTimer = useRef<number | null>(null);
+  const saveLock = useRef(false);
+  const showSaveStatus = useCallback((text: string, tone: "ok" | "err") => {
+    setSaveStatus(text);
+    setSaveTone(tone);
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      setSaveStatus(null);
+      setSaveTone(null);
+    }, 3200);
+  }, []);
+  const handleSave = useCallback(async () => {
+    if (saveLock.current || !activeFloor) return;
+    saveLock.current = true;
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    setSaving(true);
+    setSaveStatus(null);
+    setSaveTone(null);
+    try {
+      await saveFloor(activeFloor);
+      for (const point of points) await savePoint(point);
+    } catch (err) {
+      console.error(err);
+      showSaveStatus("Save failed", "err");
+      setSaving(false);
+      saveLock.current = false;
+      return;
+    }
+    try {
+      const canvas = await renderRecoveryForSave({
+        floor: activeFloor,
+        points,
+        viewport: null,
+      });
+      const dataUrl = await blobToDataUrl(recoveryCanvasToPdfBlob(canvas));
+      await persistFloorSurveyRecoveryPdf(activeFloor.id, dataUrl);
+    } catch (err) {
+      console.error(err);
+      showSaveStatus("Survey saved · Recovery PDF not updated", "err");
+      setSaving(false);
+      saveLock.current = false;
+      return;
+    }
+    showSaveStatus("Saved · Recovery PDF updated.", "ok");
+    setSaving(false);
+    saveLock.current = false;
+  }, [activeFloor, points, showSaveStatus]);
   const [threeDOpen, setThreeDOpen] = useState(false);
   const handleFloorChange = useCallback((f: Floor) => {
     setFloors((prev) => prev.map((p) => (p.id === f.id ? f : p)));
@@ -326,6 +378,10 @@ export function HostWorkspace({ customerFileId, onBack }: HostWorkspaceProps) {
         onOpen3D={() => setThreeDOpen(true)}
         undoEnabled={undoActive && history.canUndo}
         redoEnabled={undoActive && history.canRedo}
+        onSave={handleSave}
+        saving={saving}
+        saveStatus={saveStatus}
+        saveTone={saveTone}
       />
 
       {floors.length > 1 && (

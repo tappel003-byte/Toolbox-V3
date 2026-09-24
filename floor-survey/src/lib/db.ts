@@ -13,6 +13,8 @@ declare global {
       getCustomerFile(id: string): Promise<any>;
       saveCustomerFile(record: any): Promise<any>;
       getMedia(id: string): Promise<string | null>;
+      putMedia(id: string, value: string): Promise<string>;
+      deleteMedia(id: string): Promise<boolean>;
     };
     ToolboxPlanSetup: {
       ensurePlanSetup(record: any): boolean;
@@ -48,6 +50,12 @@ type FloorLayer = {
   points: SurveyPoint[];
   /** GPS captured at BP1 establishment — for Report Builder later. */
   bp1Gps?: Bp1Gps;
+  /**
+   * One current field-evidence PDF for this canvas. Bytes live in Toolbox
+   * media under this id; each successful Save overwrites those bytes.
+   */
+  recoveryPdfMediaId?: string;
+  recoveryPdfUpdatedAt?: string;
 };
 
 type FloorSurveyRoot = {
@@ -296,6 +304,40 @@ export async function savePoint(p: SurveyPoint) {
   else layer.points.push(p);
   layer.updatedAt = Date.now();
   await saveRecord(record);
+}
+
+/** Stable media id — Save replaces this object instead of storing PDF 1/2/3. */
+export function recoveryPdfMediaIdFor(canvasId: string) {
+  return `fsrec_${canvasId}`;
+}
+
+/**
+ * Store the recovery PDF for one Floor Survey canvas.
+ * The previous PDF is restored if the Customer File record cannot be updated.
+ */
+export async function persistFloorSurveyRecoveryPdf(canvasId: string, dataUrl: string) {
+  if (!dataUrl || !dataUrl.startsWith("data:application/pdf")) {
+    throw new Error("Recovery PDF was not produced");
+  }
+  const record = await loadRecord(requireCfId());
+  if (!window.ToolboxPlanSetup.canvasById(record, canvasId)) {
+    throw new Error("Floor Survey canvas not found");
+  }
+  const layer = ensureLayer(record, canvasId);
+  const mediaId = recoveryPdfMediaIdFor(canvasId);
+  const prior = await window.ToolboxDB.getMedia(mediaId);
+  await window.ToolboxDB.putMedia(mediaId, dataUrl);
+  try {
+    layer.recoveryPdfMediaId = mediaId;
+    layer.recoveryPdfUpdatedAt = new Date().toISOString();
+    layer.updatedAt = Date.now();
+    await saveRecord(record);
+  } catch (err) {
+    if (prior) await window.ToolboxDB.putMedia(mediaId, prior);
+    else await window.ToolboxDB.deleteMedia(mediaId);
+    throw err;
+  }
+  return mediaId;
 }
 
 /** Persist GPS captured at BP1 / base station (field tap). Report Builder reads later. */
