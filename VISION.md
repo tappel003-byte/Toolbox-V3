@@ -48,6 +48,7 @@ The investigator should not spend unnecessary time entering information Toolbox 
 - **Protect the canvas.** The primary working surface — a plan, a topo view, a diagnostic view, or a report page — takes priority over application chrome. Favor compact pills, collapsed or contextual toolbars, and controls that expand when needed and collapse when finished.
 - Mobile success is not merely controls fitting on the screen. Enough of the working canvas must remain visible for the investigator to actually perform the work.
 - Common controls must remain obvious. Compact must not mean buried or hard to find.
+- **Occam’s razor, with KISS.** Do not add complexity unless it solves a real problem. When two designs protect the data and satisfy the workflow equally well, prefer fewer states, buttons, decisions, assumptions, dependencies, and failure modes. Complexity that is invisible to the investigator still carries a burden of proof if it makes the code fragile. The full statement is in §4.
 
 If using Toolbox requires substantially more thought or effort than doing the same field task manually, the design has failed.
 
@@ -82,7 +83,7 @@ A useful conceptual progression is: **Capture → Review/Edit → Understand →
 
 The central object inside Toolbox is the **Customer File**. The working metaphor is a file cabinet: Toolbox is the cabinet, each customer/job is one file, and specialized workspaces operate inside the already-open Customer File.
 
-Each Customer File is a **job container**. Inside it are sub-files/components: Customer Information, Plans/Canvases, Distress Survey, Floor Survey, and (when built) Diagnostics and Report Builder. Plans, photos, and other media belong to or are referenced by the appropriate component. The Customer File is not one undifferentiated blob of job data.
+Each Customer File is a **job container**. Inside it are sub-files/components: Customer Information, Plans/Canvases, Distress Survey, Floor Survey, Diagnostics, and Report Builder. Plans, photos, and other media belong to or are referenced by the appropriate component. The Customer File is not one undifferentiated blob of job data. All of those components obey the same lifecycle (§10). Diagnostics and Report Builder integration is underway in the repository and in active pull requests; they are not wholly future work, and they are not a separate sync model.
 
 The four principal workspaces are:
 
@@ -112,7 +113,7 @@ After the Customer File is set up, the Customer File home provides independent a
 
 When multiple levels exist (for example Basement, Ground Level, Second Floor), each may have its own plan image on the Customer File. Applications may switch among those same plans; switching applications does not copy plans.
 
-> **KISS:** If a proposed product or architecture change cannot be explained clearly in 2–3 sentences, stop and simplify it before implementation.
+> **KISS and Occam’s razor:** If a proposed product or architecture change cannot be explained clearly in 2–3 sentences, stop and simplify it before implementation. Do not add complexity unless it solves a real problem. When two designs protect the data and satisfy the workflow equally well, prefer fewer states, buttons, decisions, assumptions, dependencies, and failure modes. Complexity that is invisible to the investigator still carries a burden of proof if it makes the code fragile.
 
 > **Information already known by Toolbox should not be requested again.**
 
@@ -244,11 +245,55 @@ This recovery/import path is **permanent operational resilience, not temporary m
 
 Toolbox should be **continuously deployed live** during development, so the product owner can inspect the real, current application on phone, iPad, and desktop at meaningful checkpoints. Live deployment does not mean every routine implementation detail requires product-owner approval before it ships.
 
-Toolbox is **local-first and cloud-backed**. Cloudflare is the authoritative shared **File Cabinet**. Devices keep only **local working Customer Files** (created on this device and/or deliberately checked out/downloaded) — they do **not** maintain complete synchronized copies of the entire Cabinet. Cloud-only Customer Files are normal. **Cloud-backed must not mean cloud-dependent for field capture or for opening already-local Customer Files.** Loss of internet removes the ability to synchronize, not the ability to investigate. Offline behavior must be tested continuously throughout development, not bolted on at the end. PWA / home-screen installation is part of the intended product from early on.
+Toolbox is **local-first and cloud-backed**. The device in hand is where capture and editing happen. **Cloud-backed must not mean cloud-dependent for field capture or for opening already-local Customer Files.** Loss of internet removes mirroring and transfer, not the ability to investigate. Offline behavior must be tested continuously throughout development, not bolted on at the end. PWA / home-screen installation is part of the intended product from early on.
 
-**Save** means work is safely stored on this device — local, immediate, and independent of connectivity. **Sync Now** updates the cloud copy of this device’s local working Customer File(s) and required media without implying the whole Cabinet lives on the device. **Check Out / Check In** (exclusive edit authority) is the intended shared-editing model and is the next infrastructure slice; until that ships, Sync operates on the local working set only and must not auto-materialize every remote Cabinet entry. Manual Sync Now is the first synchronization mechanism. Plans and Distress photos must travel as actual media, not merely references.
+### Working authority — DECIDED (Sept 24, 2026)
 
-Customer File components synchronize **independently**. Component-level last-write-wins remains defensive/recovery plumbing, not the intended normal multi-writer collaboration model. Exclusive checkout will prevent normal concurrent editing of the same Customer File.
+A Customer File that is actively being worked on has **one editing/working authority: the active local device.** Apps keep reading and writing that device’s local Customer File. The Cloudflare copy is not a second concurrent editor and is not the live editing authority.
+
+When that device is online, the active working Customer File is **quietly mirrored** to Cloudflare for device-loss protection. Quiet mirroring is decided. It is not later polish, and it does not wait for the investigator to press Sync Now.
+
+**File Cabinet** (Cloudflare Worker + private R2) is the shared, transfer, and filed location. It is where a Customer File is kept for other devices and where exclusive editing authority is handed off. It is not the place the investigator edits. Devices do **not** keep a complete synchronized copy of the entire Cabinet. Cloud-only Customer Files are normal. A device keeps the local working files it created or checked out, and it may keep a complete local safety copy of a file it already holds.
+
+**Check Out** transfers exclusive editing authority to the receiving device. Other devices may retain their complete local safety copies. After a device learns the file is checked out elsewhere, that local copy is gray and read-only: it cannot be mutated, and it cannot sync over the checked-out file. Viewing stays available.
+
+**File Explorer** is a direct, read-only window onto server File Cabinet data. It is the back door for seeing what is actually stored. It is not a second Customer File editor. It does not check out a file and it does not materialize a working Customer File.
+
+Customer Information, plans/media, Distress, Floor Survey, Diagnostics, and Report Builder all obey this same lifecycle. They synchronize **independently**. Component-level last-write-wins remains defensive/recovery plumbing, not the intended normal multi-writer collaboration model. Exclusive checkout prevents normal concurrent editing of the same Customer File. Plans and Distress photos travel as actual media, not merely references.
+
+**Check In** on the editing device syncs, verifies the Cabinet copy, and releases exclusive authority. It never deletes the Cabinet copy. In the checkout foundation already in the repository, that same action also removes the checking-in device’s own working copy. That removal is not Trash. It does not delete another device’s local safety copy. The later Remove / Keep / Archive choice below is a different step, for a device that still holds a local copy after someone else’s work is released.
+
+### Sync Now — DECIDED
+
+**Sync Now** remains the manual confidence and safety action, especially after poor signal. The quiet mirror does not replace it. Sync Now updates this device’s local working Customer File(s) and required media. It does not download every remote Cabinet entry, and success does not mean local inventory equals cloud inventory.
+
+It must answer truthfully:
+
+- **“Sync complete.”** when changes upload.
+- **“Everything is already synced.”** when nothing changed.
+- A failure is a failure. Wording must not imply success.
+
+### Field Save checkpoint — DECIDED (Sept 24, 2026)
+
+Save has a deliberate second meaning for field survey work. It is distinct from ordinary autosave and from cloud sync.
+
+- **Autosave** protects ongoing local work. It is immediate and offline-capable.
+- **Cloud sync** — the quiet mirror when online, and Sync Now when the investigator asks — protects against device loss.
+- **Deliberate Save** in integrated Floor Survey or Distress Survey creates or replaces **one** protected field checkpoint for that survey at that moment.
+
+Repeated Save safely replaces the prior checkpoint. Do not create Save 1 / Save 2 / Save 3 histories. Write the replacement successfully before retiring the previous checkpoint.
+
+The checkpoint contains the structured information needed to reconstruct that survey, plus its recovery visual or PDF where that survey has one. Existing photos, plans, and other media are referenced, not duplicated.
+
+The protected checkpoint syncs to Cloudflare and remains recovery material visible through File Explorer. When another device checks out the Customer File, the checkpoint is not automatically downloaded or materialized as the normal working survey.
+
+Floor Survey already has this Save / recovery-PDF checkpoint. Distress follows the same deliberate checkpoint principle. That does not change Distress’s protected capture flow, photograph/pin numbering, or the standalone `field-reporter-pro` repository.
+
+### Later local-copy cleanup — DECIDED, not current work
+
+After another device’s work is released and the cloud / File Cabinet copy is verified complete, the older local device may offer **Remove From This Device**, **Keep Local Copy**, or **Archive as Revision**. This is a later small slice. It must not complicate ordinary capture, Save, sync, or Check Out. Remove From This Device stays local-only and is not Trash. Documenting the choice is not authorization to build it.
+
+### Devices and access — DECIDED
 
 iPhone, iPad, installed PWA, and desktop browser are equal Toolbox devices for this purpose.
 
@@ -290,7 +335,7 @@ This is a **build baseline, not an immutable permanent template.** It may evolve
 
 ### DECIDED DIRECTION
 
-Diagnostics is a future technical workbench between source evidence and authorship/reporting. It should help an experienced investigator understand and communicate evidence. It should not become an automated professional-judgment engine.
+Diagnostics is the technical workbench between source evidence and authorship/reporting. Integration has started; it is not wholly future work. It should help an experienced investigator understand and communicate evidence. It should not become an automated professional-judgment engine.
 
 **Report Builder comes before Diagnostics.** An operational Toolbox should be possible with Customer File → Distress/Floor → Report Builder before Diagnostics becomes a required part of the system. Diagnostics is not a mandatory gate for every report.
 
@@ -405,11 +450,11 @@ The full vision can be large. The current implementation task must be small.
 
 Earlier foundation and Customer File / field-capture integration slices established the live PWA, Customer File container, integrated Distress and Floor Survey capture on shared plans, local persistence, and emergency standalone recovery import. That work stands.
 
-**Current authorized infrastructure work — File Cabinet synchronization foundation.** Cloudflare is the authoritative File Cabinet. Devices keep selective local working Customer Files. Sync Now backs up the local working set (components + required media) without requiring every device to hold every Customer File. Exclusive Check Out / Check In is the next authorized slice. Older language that required full-cabinet convergence across devices (“Sync Now makes Device B receive Device A’s entire library”) is **superseded**. This work remains ahead of Report Builder and Diagnostics.
+**Settled sharing model.** The active local device is the editing authority. The File Cabinet is the shared, transfer, and filed location and the device-loss mirror. Devices keep selective local working Customer Files and may keep local safety copies of files they already hold. Sync Now backs up the local working set (components + required media) without requiring every device to hold every Customer File. Check Out transfers exclusive editing authority. Older language that required full-cabinet convergence across devices (“Sync Now makes Device B receive Device A’s entire library”) is **superseded**. Older language that called quiet mirroring “later polish,” or that can be read as making Cloudflare the live editor, is **superseded** by §10.
 
-**Then Report Builder** — an operational Toolbox should be possible with Customer File → Distress → Floor → Report Builder before Diagnostics exists.
+**Report Builder and Diagnostics are not wholly future work.** An operational Toolbox should still be possible with Customer File → Distress → Floor → Report Builder before Diagnostics is required for every report. Both now have work in the repository and in active pull requests, and both obey the same Customer File lifecycle. The current milestone records what that means for sync. It does not build those workspaces.
 
-**Then Diagnostics.**
+**Post-release local-copy cleanup** (Remove From This Device / Keep Local Copy / Archive as Revision) is decided and is a later small slice. It must not complicate normal work.
 
 Cross-device sync must not redesign Distress capture, Floor Survey capture, or the Customer File model, and must not build Report Builder, Diagnostics, or a Control Panel as part of that slice.
 
@@ -452,7 +497,7 @@ The development loop: **Decide → document → build a small slice → deploy l
 
 This document describes the product and the principles that protect it. It is not intended to specify every technical mechanism. Detailed implementation decisions belong in the appropriate milestone, decision record, technical specification, or code — not here.
 
-Examples of things that should not automatically become permanent Vision requirements: exact database schema; exact object-key layout inside approved cloud storage; exact CSS implementation; exact Diagnostics mathematical method; exact screen/tab arrangement that has not been approved; or speculative future features. Durable product decisions already recorded (local-first component sync, Sync Now, Worker + R2 minimum cloud shape, Cloudflare Access for Tim/Lee, and related rules) belong in `DECISIONS.md` / the current milestone and must not be re-litigated as undecided.
+Examples of things that should not automatically become permanent Vision requirements: exact database schema; exact object-key layout inside approved cloud storage; exact CSS implementation; exact Diagnostics mathematical method; exact screen/tab arrangement that has not been approved; or speculative future features. Durable product decisions already recorded (local-first component sync, one editing authority on the active device, quiet device-loss mirror, Sync Now’s truthful answers, the single field Save checkpoint, Worker + R2 minimum cloud shape, Cloudflare Access for Tim/Lee, and related rules) belong in `DECISIONS.md` / the current milestone and must not be re-litigated as undecided.
 
 This distinction is intentional. The Vision should be durable enough to survive major changes in implementation. Toolbox may look and work differently, on completely different technology, years from now, while still honoring this Vision.
 
@@ -469,6 +514,8 @@ When considering a feature, workflow, abstraction, or implementation change, ask
 > Does this require the investigator to provide information Toolbox already knows?
 
 > Are we changing proven behavior because the investigator benefits, or because the implementation benefits?
+
+> When two designs protect the data and satisfy the workflow equally well, are we choosing the one with fewer states, buttons, decisions, assumptions, dependencies, and failure modes?
 
 > If the internet disappears at the property, can the investigation still be completed?
 
