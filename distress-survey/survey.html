@@ -815,6 +815,7 @@
     <button onclick="editSetup()" class="host-hide">⚙️ Edit setup</button>
     <div class="sep"></div>
     <button onclick="confirmQuickCapture()">📸 Quick Capture</button>
+    <button type="button" id="openPhotoFolders" hidden onclick="openRecoveredPhotoFolders()">Photo folders</button>
     <button onclick="toggleVoiceMemo()">🎙️ Voice memo</button>
     <div class="sep"></div>
     <button onclick="clearDrawings()">✎ Clear all drawings</button>
@@ -7309,6 +7310,14 @@ async function switchHostCanvas(canvasId) {
   });
 }
 
+function openRecoveredPhotoFolders() {
+  closeMenu();
+  const parentWin = hostParent();
+  if (parentWin && parentWin.ToolboxRecoveredPhotos && TOOLBOX_CF_ID) {
+    parentWin.ToolboxRecoveredPhotos.open(TOOLBOX_CF_ID);
+  }
+}
+
 async function hostBoot() {
   document.body.classList.add('host-mode');
   document.querySelectorAll('.host-hide').forEach(el => { el.style.display = 'none'; });
@@ -7325,6 +7334,13 @@ async function hostBoot() {
     project = await hostBuildProjectFromCF();
     // Recompute numbering from persisted pins (creation order) so nextNum stays consistent
     recomputeNumbering();
+    const foldersBtn = document.getElementById('openPhotoFolders');
+    if (foldersBtn) {
+      const d = _hostRecord && _hostRecord.distress;
+      const hasPinPhotos = !!(d && (d.pins || []).some(p => p && (p.photos || []).length));
+      const hasQuick = !!(d && Array.isArray(d.quickCapture) && d.quickCapture.length);
+      foldersBtn.hidden = !(hasPinPhotos || hasQuick);
+    }
     document.getElementById('wTitle').textContent = project.address;
     refreshLevelPill();
     enterWork();

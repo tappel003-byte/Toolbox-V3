@@ -1239,6 +1239,21 @@
         // Ready tiles stay quiet; locked tiles still say why they need a plan.
         state.textContent = readiness.hasPlan ? '' : 'Add a floor plan first';
       });
+      if (window.ToolboxRecoveredPhotos && window.ToolboxRecoveredPhotos.hasAny(record)) {
+        const actions = app.querySelector('.cf-home__file-actions');
+        const tally = window.ToolboxRecoveredPhotos.counts(record);
+        const photoBtn = document.createElement('button');
+        photoBtn.type = 'button';
+        photoBtn.className = 'btn btn--secondary cf-home__photo-folders';
+        photoBtn.id = 'home-photo-folders';
+        photoBtn.innerHTML = '<span>Photo folders</span><small>' +
+          tally.pins + ' pin photo' + (tally.pins === 1 ? '' : 's') +
+          ' · ' + tally.quick + ' Quick Capture</small>';
+        photoBtn.addEventListener('click', function () {
+          window.ToolboxRecoveredPhotos.open(id);
+        });
+        actions.appendChild(photoBtn);
+      }
       statusEl.textContent = '';
     }).catch(function (err) {
       console.error('Failed to load Customer File home:', err);

@@ -267,7 +267,66 @@ const fixtures = await page.evaluate(async () => {
     return new File([JSON.stringify(bundle)], 'keulen.floorsurvey.json', { type: 'application/json' });
   }
 
-  window.__importFixtures = { distressFile, floorFile, legacyOutOfRangeYFile, nonNumericYFile, partialDistressFile };
+  async function tinyJpeg() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 16;
+    canvas.height = 16;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#c14a2b';
+    ctx.fillRect(0, 0, 16, 16);
+    return canvas.toDataURL('image/jpeg').split(',')[1];
+  }
+
+  async function lodgeStyleFile({ appleDouble = false, bom = false } = {}) {
+    const zip = new JSZip();
+    const root = zip.folder('59 Lodge Trail');
+    const plan = planDataUrl(200, 120);
+    const jpeg = await tinyJpeg();
+    root.file('plan.png', plan.split(',')[1], { base64: true });
+    root.file('map.png', 'derivative');
+    root.file('pinlog.pdf', 'derivative');
+    root.file('pins.csv', 'derivative');
+    const pinsJson = JSON.stringify([
+      {
+        id: 'lodge-1',
+        num: 1,
+        type: 'Interior',
+        description: 'Crack at window',
+        room: 'Living Room',
+        direction: 'NE',
+        x: '0.25000',
+        y: '0.40000',
+        photos: ['photos/photo-01.jpg'],
+      },
+      {
+        id: 'lodge-2',
+        num: 2,
+        type: 'Exterior',
+        description: 'Brick separation',
+        room: '',
+        direction: 'S',
+        x: '0.50000',
+        y: '0.60000',
+        photos: ['photos/photo-02.jpg', 'photos/photo-03.jpg'],
+      },
+    ], null, 2);
+    root.file('pins.json', (bom ? '\uFEFF' : '') + pinsJson);
+    const photos = root.folder('photos');
+    ['photo-01.jpg', 'photo-02.jpg', 'photo-03.jpg'].forEach((name) => photos.file(name, jpeg, { base64: true }));
+    const quick = root.folder('quick-capture');
+    ['quick-01.jpg', 'quick-02.jpg', 'quick-03.jpg'].forEach((name) => quick.file(name, jpeg, { base64: true }));
+    quick.file(
+      'quick-capture.csv',
+      'File,Timestamp,Latitude,Longitude\r\nquick-01.jpg,2026-07-28T10:00:00Z,35.1,-106.2\r\nquick-02.jpg,2026-07-28T10:01:00Z,,\r\nquick-03.jpg,2026-07-28T10:02:00Z,,\r\n',
+    );
+    if (appleDouble) {
+      zip.file('__MACOSX/59 Lodge Trail/._pins.json', 'appledouble');
+      zip.file('__MACOSX/59 Lodge Trail/photos/._photo-01.jpg', 'appledouble');
+    }
+    return new File([await zip.generateAsync({ type: 'blob' })], '59-lodge-trail.zip', { type: 'application/zip' });
+  }
+
+  window.__importFixtures = { distressFile, floorFile, legacyOutOfRangeYFile, nonNumericYFile, partialDistressFile, lodgeStyleFile };
   const previewFile = await distressFile();
   const previewBytes = new Uint8Array(await previewFile.arrayBuffer());
   let previewBinary = '';
@@ -289,7 +348,11 @@ const distressInspection = await page.evaluate(async () => {
     plan: [parsed.planWidth, parsed.planHeight],
     pins: parsed.pins.length,
     photos: parsed.attachedPhotoCount,
-    quick: parsed.quickCapture,
+    quick: {
+      count: parsed.quickCapture.count,
+      metadataCount: parsed.quickCapture.metadataCount,
+      files: (parsed.quickCapture.files || []).map((file) => file.sourceName),
+    },
     derivatives: parsed.ignoredDerivativeCount,
     first: parsed.pins[0],
     second: parsed.pins[1],
@@ -299,7 +362,7 @@ const distressInspection = await page.evaluate(async () => {
 check('Valid Distress ZIP recognized', distressInspection.kind === 'distress', JSON.stringify(distressInspection));
 check('Distress plan and normalized coordinates recovered', distressInspection.plan[0] === 100 && distressInspection.plan[1] === 80 && distressInspection.first.xNormalized === 0.25 && distressInspection.first.yNormalized === 0.5, JSON.stringify(distressInspection));
 check('Distress observations and relationships recovered', distressInspection.pins === 2 && distressInspection.photos === 2 && distressInspection.first.photos.length === 2 && distressInspection.second.photos.length === 0, JSON.stringify(distressInspection));
-check('Quick Capture inventoried but isolated', distressInspection.quick.count === 2 && distressInspection.quick.metadataCount === 2, JSON.stringify(distressInspection.quick));
+check('Quick Capture inventoried as its own folder', distressInspection.quick.count === 2 && distressInspection.quick.metadataCount === 2 && distressInspection.quick.files.join(',') === 'quick-01.jpg,quick-02.jpg', JSON.stringify(distressInspection.quick));
 check('Derivative outputs ignored as survey data', distressInspection.derivatives === 3, JSON.stringify(distressInspection));
 check('Legacy direction and observation fields retained', distressInspection.first.importedLegacyDirection === 'NE' && distressInspection.first.description === 'Crack at window' && distressInspection.first.location === 'Living Room', JSON.stringify(distressInspection.first));
 check('Valid Distress import leaves nothing out', distressInspection.excluded === 0, JSON.stringify(distressInspection.excluded));
@@ -500,12 +563,16 @@ const distressApplied = await page.evaluate(async () => {
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
   });
-  const photoValues = await Promise.all(record.distress.pins[0].photos.map((id) => new Promise((resolve, reject) => {
-    const tx = photoDb.transaction('photos', 'readonly');
-    const request = tx.objectStore('photos').get(id);
-    request.onsuccess = () => resolve(request.result || null);
-    request.onerror = () => reject(request.error);
-  })));
+  async function readPhoto(id) {
+    return new Promise((resolve, reject) => {
+      const tx = photoDb.transaction('photos', 'readonly');
+      const request = tx.objectStore('photos').get(id);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+  const photoValues = await Promise.all(record.distress.pins[0].photos.map((id) => readPhoto(id)));
+  const quickValues = await Promise.all((record.distress.quickCapture || []).map((item) => readPhoto(item.id)));
   photoDb.close();
   return {
     result,
@@ -514,7 +581,13 @@ const distressApplied = await page.evaluate(async () => {
     pins: record.distress.pins,
     numbering: [record.distress.startNum, record.distress.nextNum],
     photoValues,
-    quickPersisted: Object.prototype.hasOwnProperty.call(record.distress, 'quickCapture'),
+    quick: (record.distress.quickCapture || []).map((item, index) => ({
+      name: item.sourceName,
+      timestamp: item.timestamp,
+      stored: typeof quickValues[index] === 'string' && quickValues[index].indexOf('data:image/') === 0,
+    })),
+    pinNames: record.distress.pins[0].photos.map((id) => record.distress.photoSources[id]),
+    quickOnPins: record.distress.pins.some((pin) => (pin.photos || []).some((id) => String(record.distress.photoSources[id] || '').indexOf('quick-') === 0)),
     history: record.recoveryImports,
   };
 });
@@ -522,7 +595,17 @@ check('Distress import creates native Customer File canvas and plan media', dist
 check('Distress import denormalizes native pixel positions', distressApplied.pins[0].x === 25 && distressApplied.pins[0].y === 40 && distressApplied.pins[1].x === 75 && distressApplied.pins[1].y === 50, JSON.stringify(distressApplied.pins));
 check('Distress numbering preserves multi/zero-photo semantics', distressApplied.numbering[0] === 1 && distressApplied.numbering[1] === 4 && distressApplied.pins[0].num === 1 && distressApplied.pins[1].num === 3, JSON.stringify(distressApplied.numbering));
 check('Distress photo bytes staged and attached', distressApplied.photoValues.length === 2 && distressApplied.photoValues.every(Boolean), JSON.stringify(distressApplied.photoValues));
-check('Quick Capture is not falsely persisted', distressApplied.result.quickCaptureCount === 2 && !distressApplied.quickPersisted, JSON.stringify(distressApplied.result));
+check(
+  'Quick Capture is saved as its own folder and not attached to pins',
+  distressApplied.result.quickCaptureCount === 2 &&
+    distressApplied.quick.length === 2 &&
+    distressApplied.quick[0].name === 'quick-01.jpg' &&
+    distressApplied.quick[0].timestamp === '2026-07-28T10:00:00Z' &&
+    distressApplied.quick.every((item) => item.stored) &&
+    distressApplied.pinNames.join(',') === 'photo-01.jpg,photo-02.jpg' &&
+    distressApplied.quickOnPins === false,
+  JSON.stringify({ quick: distressApplied.quick, pinNames: distressApplied.pinNames, quickOnPins: distressApplied.quickOnPins }),
+);
 check('Import fingerprint recorded without legacy payload', distressApplied.history.length === 1 && distressApplied.history[0].fingerprint, JSON.stringify(distressApplied.history));
 
 const duplicateResult = await page.evaluate(async () => {
@@ -982,7 +1065,7 @@ const previewUi = await page.evaluate(() => ({
   text: document.querySelector('.cf-import__preview')?.innerText || '',
   overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
 }));
-check('Import preview inventories Distress and deferred Quick Capture data', /Observations\s+2/i.test(previewUi.text) && /Quick Capture\s+2 photos found — not imported yet/i.test(previewUi.text) && /New Customer File/i.test(previewUi.text), previewUi.text.replace(/\n/g, ' | '));
+check('Import preview inventories Distress and Quick Capture folders', /Observations\s+2/i.test(previewUi.text) && /Quick Capture\s+2 photos — separate folder, not placed on the plan/i.test(previewUi.text) && /New Customer File/i.test(previewUi.text), previewUi.text.replace(/\n/g, ' | '));
 check('Import preview remains contained on phone', !previewUi.overflow, JSON.stringify(previewUi));
 
 const floorPreview = await page.evaluate(async () => {
@@ -1595,6 +1678,251 @@ const afterUiRemoval = await page.evaluate(async () => {
   };
 });
 check('Confirmed removal keeps the Customer File and clears the imported Distress Survey', afterUiRemoval.pins === 0 && afterUiRemoval.address === '8 Continuation Court' && afterUiRemoval.name === 'Ada Field' && afterUiRemoval.imports === 0 && /kept/.test(afterUiRemoval.status), JSON.stringify(afterUiRemoval));
+
+
+const lodgeRecovery = await page.evaluate(async () => {
+  async function readIds(ids) {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('pgg_photos_v1', 1);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+    });
+    const values = await Promise.all(ids.map((id) => new Promise((resolve, reject) => {
+      const tx = db.transaction('photos', 'readonly');
+      const request = tx.objectStore('photos').get(id);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    })));
+    db.close();
+    return values;
+  }
+  const plain = await ToolboxCustomerFileImport.inspectFile(await window.__importFixtures.lodgeStyleFile());
+  const mac = await ToolboxCustomerFileImport.inspectFile(await window.__importFixtures.lodgeStyleFile({ appleDouble: true }));
+  const bom = await ToolboxCustomerFileImport.inspectFile(await window.__importFixtures.lodgeStyleFile({ bom: true }));
+  const context = await ToolboxCustomerFileImport.getImportContext(plain, 'import-lodge');
+  const result = await ToolboxCustomerFileImport.applyImport(plain, 'import-lodge', {
+    targetUpdatedAt: context.targetUpdatedAt,
+    canvasChoice: 'new',
+    fieldChoices: {},
+  });
+  const record = await ToolboxDB.getCustomerFile('import-lodge');
+  const pinIds = record.distress.pins.flatMap((pin) => pin.photos);
+  const quickIds = record.distress.quickCapture.map((item) => item.id);
+  const pinBytes = await readIds(pinIds);
+  const quickBytes = await readIds(quickIds);
+  return {
+    plain: {
+      pins: plain.pins.map((pin) => [pin.num, pin.xNormalized, pin.yNormalized, pin.photos.map((photo) => photo.sourceName).join('+'), pin.description]),
+      excluded: plain.excludedObservations.length,
+      quick: plain.quickCapture.files.map((file) => file.sourceName),
+    },
+    macPins: mac.pins.length,
+    macPhotos: mac.attachedPhotoCount,
+    macQuick: mac.quickCapture.count,
+    macExcluded: mac.excludedObservations.length,
+    bomPins: bom.pins.length,
+    bomPhotos: bom.attachedPhotoCount,
+    saved: record.distress.pins.map((pin) => [pin.num, pin.x, pin.y, pin.photos.length, pin.description, pin.canvasId === record.distress.activeCanvasId]),
+    quick: record.distress.quickCapture.map((item) => [item.sourceName, item.timestamp, item.latitude]),
+    pinBytesOk: pinBytes.every((value) => typeof value === 'string' && value.indexOf('data:image/jpeg') === 0),
+    quickBytesOk: quickBytes.every((value) => typeof value === 'string' && value.indexOf('data:image/jpeg') === 0),
+    quickNotOnPins: !pinIds.some((id) => quickIds.includes(id)),
+    observations: result.observations,
+    photos: result.photos,
+    quickCount: result.quickCaptureCount,
+  };
+});
+check(
+  'Lodge-style pins.json keeps original coordinates and photo names',
+  lodgeRecovery.plain.excluded === 0 &&
+    lodgeRecovery.plain.pins[0].join('|') === '1|0.25|0.4|photo-01.jpg|Crack at window' &&
+    lodgeRecovery.plain.pins[1].join('|') === '2|0.5|0.6|photo-02.jpg+photo-03.jpg|Brick separation' &&
+    lodgeRecovery.plain.quick.join(',') === 'quick-01.jpg,quick-02.jpg,quick-03.jpg',
+  JSON.stringify(lodgeRecovery.plain),
+);
+check(
+  'Mac resource-fork pins.json and a BOM do not drop the survey',
+  lodgeRecovery.macPins === 2 &&
+    lodgeRecovery.macPhotos === 3 &&
+    lodgeRecovery.macQuick === 3 &&
+    lodgeRecovery.macExcluded === 0 &&
+    lodgeRecovery.bomPins === 2 &&
+    lodgeRecovery.bomPhotos === 3,
+  JSON.stringify({ mac: [lodgeRecovery.macPins, lodgeRecovery.macPhotos, lodgeRecovery.macQuick], bom: lodgeRecovery.bomPins }),
+);
+check(
+  'Lodge-style import writes pin pixels, both photo folders, and no invented links',
+  lodgeRecovery.observations === 2 &&
+    lodgeRecovery.photos === 3 &&
+    lodgeRecovery.quickCount === 3 &&
+    lodgeRecovery.saved[0][0] === 1 &&
+    lodgeRecovery.saved[0][1] === 50 &&
+    lodgeRecovery.saved[0][2] === 48 &&
+    lodgeRecovery.saved[0][3] === 1 &&
+    lodgeRecovery.saved[0][5] === true &&
+    lodgeRecovery.saved[1][0] === 2 &&
+    lodgeRecovery.saved[1][1] === 100 &&
+    lodgeRecovery.saved[1][2] === 72 &&
+    lodgeRecovery.saved[1][3] === 2 &&
+    lodgeRecovery.pinBytesOk &&
+    lodgeRecovery.quickBytesOk &&
+    lodgeRecovery.quickNotOnPins &&
+    lodgeRecovery.quick[0][0] === 'quick-01.jpg' &&
+    lodgeRecovery.quick[0][1] === '2026-07-28T10:00:00Z' &&
+    lodgeRecovery.quick[0][2] === '35.1',
+  JSON.stringify(lodgeRecovery),
+);
+
+await page.goto(`${BASE}#/file/import-lodge/distress`, { waitUntil: 'networkidle0' });
+await page.waitForSelector('iframe');
+await page.waitForFunction(() => {
+  const frame = document.querySelector('iframe');
+  try {
+    const sub = frame && frame.contentDocument && frame.contentDocument.getElementById('wSub');
+    return sub && /2 pins/.test(sub.textContent || '');
+  } catch (_) {
+    return false;
+  }
+});
+const lodgeDistress = await page.evaluate(() => {
+  const doc = document.querySelector('iframe').contentDocument;
+  const menuBtn = doc.getElementById('openPhotoFolders');
+  return {
+    sub: doc.getElementById('wSub').textContent,
+    foldersVisible: !!(menuBtn && !menuBtn.hidden),
+    apps: document.querySelectorAll('.cf-app-btn').length,
+  };
+});
+check(
+  'Imported Distress opens with the recovered pin and photo counts',
+  lodgeDistress.sub === 'internal · 2 pins · 3 pics' && lodgeDistress.foldersVisible,
+  JSON.stringify(lodgeDistress),
+);
+await page.evaluate(() => {
+  document.querySelector('iframe').contentDocument.getElementById('openPhotoFolders').click();
+});
+await page.waitForSelector('.photo-folders__card');
+const fromDistress = await page.evaluate(() => ({
+  title: document.querySelector('#photo-folders-title')?.textContent || '',
+  cards: document.querySelectorAll('.photo-folders__card').length,
+}));
+check(
+  'Distress Photo folders opens the recovered pin photos without adding them to the plan',
+  fromDistress.title === 'Recovered photos' && fromDistress.cards === 3,
+  JSON.stringify(fromDistress),
+);
+await page.click('#photo-folders-close');
+await page.waitForFunction(() => !document.querySelector('.photo-folders'));
+
+await page.evaluate(() => { window.location.hash = '#/file/import-lodge'; });
+await page.waitForSelector('#home-photo-folders', { timeout: 10000 });
+const homeGrid = await page.evaluate(() => ({
+  apps: [...document.querySelectorAll('.cf-app-btn')].map((btn) => btn.getAttribute('data-app')),
+  folders: document.querySelector('#home-photo-folders')?.innerText || '',
+}));
+check(
+  'Customer File home keeps the 2×2 workspaces and offers photo folders',
+  homeGrid.apps.join(',') === 'distress,floor,diagnostics,report' &&
+    /Photo folders/.test(homeGrid.folders) &&
+    /3 pin photos/.test(homeGrid.folders) &&
+    /3 Quick Capture/.test(homeGrid.folders),
+  JSON.stringify(homeGrid),
+);
+
+async function shootFolders(width, height, name) {
+  await page.setViewport({ width, height, deviceScaleFactor: width < 500 ? 2 : 1 });
+  await page.click('#home-photo-folders');
+  await page.waitForSelector('.photo-folders__card');
+  const state = await page.evaluate(() => {
+    const cards = [...document.querySelectorAll('.photo-folders__card')].map((card) => card.innerText.replace(/\s+/g, ' ').trim());
+    const panel = document.querySelector('.photo-folders__panel').getBoundingClientRect();
+    const close = document.querySelector('#photo-folders-close').getBoundingClientRect();
+    return {
+      cards,
+      note: document.querySelector('.photo-folders__note')?.textContent || '',
+      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+      closeInside: close.right <= panel.right + 1 && close.top >= panel.top - 1,
+      gridApps: document.querySelectorAll('.cf-app-btn').length,
+    };
+  });
+  check(
+    'Photo folders stay usable at ' + name,
+    state.cards[0].includes('photo-01.jpg') &&
+      state.cards[0].includes('Pin 1') &&
+      state.cards.length === 3 &&
+      /not placed on the plan/.test(state.note) &&
+      !state.overflow &&
+      state.closeInside &&
+      state.gridApps === 4,
+    JSON.stringify(state),
+  );
+  await page.screenshot({ path: '/opt/cursor/artifacts/photo-folders-pins-' + name + '.png', fullPage: true });
+  await page.click('[data-photo-folder="quick"]');
+  await page.waitForFunction(() => /quick-01\.jpg/.test(document.body.innerText));
+  const quick = await page.evaluate(() => ({
+    cards: [...document.querySelectorAll('.photo-folders__card')].map((card) => card.innerText.replace(/\s+/g, ' ').trim()),
+    overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+  }));
+  check(
+    'Quick Capture folder is separate at ' + name,
+    quick.cards.length === 3 &&
+      quick.cards[0].includes('quick-01.jpg') &&
+      quick.cards.every((card) => !/Pin /.test(card)) &&
+      !quick.overflow,
+    JSON.stringify(quick),
+  );
+  await page.screenshot({ path: '/opt/cursor/artifacts/photo-folders-quick-' + name + '.png', fullPage: true });
+  await page.click('#photo-folders-close');
+  await page.waitForFunction(() => !document.querySelector('.photo-folders'));
+}
+
+await shootFolders(390, 844, 'phone');
+await shootFolders(834, 1112, 'ipad');
+await shootFolders(1280, 800, 'desktop');
+
+
+const lodgeRemoval = await page.evaluate(async () => {
+  async function readIds(ids) {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('pgg_photos_v1', 1);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+    });
+    const values = await Promise.all(ids.map((id) => new Promise((resolve, reject) => {
+      const tx = db.transaction('photos', 'readonly');
+      const request = tx.objectStore('photos').get(id);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    })));
+    db.close();
+    return values;
+  }
+  const before = await ToolboxDB.getCustomerFile('import-lodge');
+  const entry = (before.recoveryImports || []).find((item) => item.kind === 'distress');
+  const photoIds = before.distress.pins.flatMap((pin) => pin.photos)
+    .concat(before.distress.quickCapture.map((item) => item.id));
+  const removed = await ToolboxCustomerFileImport.removeImportedComponent('import-lodge', entry.fingerprint);
+  const after = await ToolboxDB.getCustomerFile('import-lodge');
+  const bytes = await readIds(photoIds);
+  return {
+    photosRemoved: removed.photosRemoved,
+    pins: (after.distress.pins || []).length,
+    quick: (after.distress.quickCapture || []).length,
+    sources: Object.keys(after.distress.photoSources || {}).length,
+    imports: (after.recoveryImports || []).length,
+    bytesGone: bytes.every((value) => value == null),
+  };
+});
+check(
+  'Removing the imported Distress Survey also clears its Quick Capture photos',
+  lodgeRemoval.photosRemoved === 6 &&
+    lodgeRemoval.pins === 0 &&
+    lodgeRemoval.quick === 0 &&
+    lodgeRemoval.sources === 0 &&
+    lodgeRemoval.imports === 0 &&
+    lodgeRemoval.bytesGone,
+  JSON.stringify(lodgeRemoval),
+);
 
 await browser.close();
 const failed = results.filter((result) => !result.ok);

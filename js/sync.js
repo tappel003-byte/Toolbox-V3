@@ -264,17 +264,20 @@
     return canvases.map(function (c) { return c && c.plan && c.plan.id; }).filter(Boolean);
   }
 
+  function collectDistressPhotoId(ids, id) {
+    if (typeof id === 'string' && id.indexOf('ph_') === 0) ids.push(id);
+  }
+
   function distressPhotoIds(record) {
-    const pins = record && record.distress && Array.isArray(record.distress.pins)
-      ? record.distress.pins
-      : [];
+    const distress = record && record.distress ? record.distress : {};
+    const pins = Array.isArray(distress.pins) ? distress.pins : [];
     const ids = [];
     pins.forEach(function (pin) {
       const photos = pin && Array.isArray(pin.photos) ? pin.photos : [];
-      photos.forEach(function (id) {
-        if (typeof id === 'string' && id.indexOf('ph_') === 0) ids.push(id);
-      });
+      photos.forEach(function (id) { collectDistressPhotoId(ids, id); });
     });
+    const quick = Array.isArray(distress.quickCapture) ? distress.quickCapture : [];
+    quick.forEach(function (item) { collectDistressPhotoId(ids, item && item.id); });
     return Array.from(new Set(ids));
   }
 
@@ -389,6 +392,8 @@
     if (!distress || typeof distress !== 'object') return true;
     if (Array.isArray(distress.pins) && distress.pins.length) return false;
     if (Array.isArray(distress.drawings) && distress.drawings.length) return false;
+    if (Array.isArray(distress.quickCapture) && distress.quickCapture.length) return false;
+    if (distress.photoSources && typeof distress.photoSources === 'object' && Object.keys(distress.photoSources).length) return false;
     // Numbering advanced with no pins/drawings is unusual — do not classify as shell.
     if (typeof distress.startNum === 'number' && distress.startNum !== 1) return false;
     if (typeof distress.nextNum === 'number' && distress.nextNum !== 1) return false;

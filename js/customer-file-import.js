@@ -79,17 +79,45 @@
     return String(path || '').replace(/\\/g, '/').replace(/^\/+/, '');
   }
 
+  // macOS zips the export with __MACOSX resource forks whose names still end in
+  // pins.json (._pins.json). Those are not a second survey.
+  function isIgnoredZipEntry(name, entry) {
+    if (entry && entry.dir) return true;
+    const normalized = normalizeZipPath(name);
+    if (!normalized) return true;
+    const parts = normalized.split('/');
+    return parts.some((part) => part === '__MACOSX' || part.indexOf('._') === 0);
+  }
+
   function zipEntryByPath(zip, path) {
     const wanted = normalizeZipPath(path).toLowerCase();
-    const key = Object.keys(zip.files).find((name) => normalizeZipPath(name).toLowerCase() === wanted);
+    const key = Object.keys(zip.files).find((name) => {
+      if (isIgnoredZipEntry(name, zip.files[name])) return false;
+      return normalizeZipPath(name).toLowerCase() === wanted;
+    });
     return key ? zip.files[key] : null;
   }
 
   function zipEntriesEnding(zip, suffix) {
     const wanted = String(suffix).toLowerCase();
     return Object.keys(zip.files)
-      .filter((name) => !zip.files[name].dir && normalizeZipPath(name).toLowerCase().endsWith(wanted))
+      .filter((name) => !isIgnoredZipEntry(name, zip.files[name]) && normalizeZipPath(name).toLowerCase().endsWith(wanted))
       .map((name) => zip.files[name]);
+  }
+
+  function stripBom(text) {
+    const value = String(text || '');
+    return value.charCodeAt(0) === 0xFEFF ? value.slice(1) : value;
+  }
+
+  function photoFileName(photoName) {
+    let raw = '';
+    if (typeof photoName === 'string') raw = photoName;
+    else if (photoName && typeof photoName === 'object') {
+      raw = photoName.file || photoName.name || photoName.path || photoName.src || photoName.filename || '';
+    }
+    const base = normalizeZipPath(raw).split('/').pop();
+    return base && base !== '.' && base !== '..' ? base : '';
   }
 
   function parseCsv(text) {
@@ -189,7 +217,7 @@
 
     let sourcePins;
     try {
-      sourcePins = JSON.parse(await pinEntries[0].async('text'));
+      sourcePins = JSON.parse(stripBom(await pinEntries[0].async('text')));
     } catch (_) {
       throw new Error('pins.json is malformed.');
     }
@@ -228,7 +256,7 @@
         reason = 'This observation has an invalid photos list.';
       } else {
         for (const photoName of photoNames) {
-          const safeName = normalizeZipPath(photoName).split('/').pop();
+          const safeName = photoFileName(photoName);
           if (!safeName) {
             reason = 'This observation references a photo without a file name.';
             break;
@@ -286,19 +314,32 @@
 
     const quickPrefix = (basePath + 'quick-capture/').toLowerCase();
     const quickFiles = Object.keys(zip.files).filter((name) => {
+      if (isIgnoredZipEntry(name, zip.files[name])) return false;
       const normalized = normalizeZipPath(name).toLowerCase();
-      return !zip.files[name].dir && normalized.startsWith(quickPrefix) &&
+      return normalized.startsWith(quickPrefix) &&
         !normalized.endsWith('/quick-capture.csv') && /\.(jpe?g|png|webp|gif)$/i.test(normalized);
-    });
+    }).sort((a, b) => normalizeZipPath(a).localeCompare(normalizeZipPath(b), undefined, { numeric: true }));
     const quickCsvEntry = zipEntryByPath(zip, basePath + 'quick-capture/quick-capture.csv');
     let quickMetadata = [];
     if (quickCsvEntry) {
-      quickMetadata = parseCsv(await quickCsvEntry.async('text')).map((row) => ({
+      quickMetadata = parseCsv(stripBom(await quickCsvEntry.async('text'))).map((row) => ({
         file: cleanText(row.File || row.file),
         timestamp: cleanText(row.Timestamp || row.timestamp),
         latitude: cleanText(row.Latitude || row.latitude),
         longitude: cleanText(row.Longitude || row.longitude),
       }));
+    }
+    const quickItems = [];
+    for (const name of quickFiles) {
+      const sourceName = normalizeZipPath(name).split('/').pop();
+      const meta = quickMetadata.find((row) => row.file.toLowerCase() === sourceName.toLowerCase()) || {};
+      quickItems.push({
+        sourceName: sourceName,
+        timestamp: meta.timestamp || '',
+        latitude: meta.latitude || '',
+        longitude: meta.longitude || '',
+        dataUrl: dataUrlFromBase64(await zip.files[name].async('base64'), mimeForName(sourceName)),
+      });
     }
 
     return {
@@ -318,9 +359,10 @@
       excludedObservations,
       attachedPhotoCount,
       quickCapture: {
-        count: quickFiles.length,
+        count: quickItems.length,
         metadataCount: quickMetadata.length,
         metadata: quickMetadata,
+        files: quickItems,
       },
       suggestedPropertyAddress: suggestedAddress(file.name, basePath),
       ignoredDerivativeCount: ['map.png', 'pinlog.pdf', 'pins.csv'].filter((name) => !!zipEntryByPath(zip, basePath + name)).length,
@@ -554,6 +596,12 @@
           if (id === photoId) count += 1;
         });
       });
+      const quick = record && record.distress && Array.isArray(record.distress.quickCapture)
+        ? record.distress.quickCapture
+        : [];
+      quick.forEach(function (item) {
+        if (item && item.id === photoId) count += 1;
+      });
     });
     return count;
   }
@@ -777,10 +825,12 @@
     addImportedCanvases(record, [canvas], isNew);
 
     const photoEntries = [];
+    const photoSources = {};
     const pins = parsed.pins.map((source) => {
       const photoIds = source.photos.map((photo) => {
         const id = newId('ph_import');
         photoEntries.push({ id, value: photo.dataUrl });
+        if (photo.sourceName) photoSources[id] = photo.sourceName;
         return id;
       });
       return {
@@ -798,12 +848,29 @@
         importedLegacyDirection: source.importedLegacyDirection || '',
       };
     });
+    const quickFiles = parsed.quickCapture && Array.isArray(parsed.quickCapture.files)
+      ? parsed.quickCapture.files
+      : [];
+    const quickCapture = quickFiles.map((photo) => {
+      const id = newId('ph_import');
+      photoEntries.push({ id, value: photo.dataUrl });
+      if (photo.sourceName) photoSources[id] = photo.sourceName;
+      return {
+        id: id,
+        sourceName: photo.sourceName || '',
+        timestamp: photo.timestamp || '',
+        latitude: photo.latitude || '',
+        longitude: photo.longitude || '',
+      };
+    });
 
     record.distress.pins = pins;
     record.distress.drawings = [];
     record.distress.startNum = parsed.startNum;
     record.distress.nextNum = parsed.nextNum;
     record.distress.activeCanvasId = canvas.id;
+    record.distress.quickCapture = quickCapture;
+    record.distress.photoSources = photoSources;
     record.distress.updatedAt = new Date().toISOString();
 
     return {
@@ -814,8 +881,8 @@
       result: {
         kind: 'distress',
         observations: pins.length,
-        photos: photoEntries.length,
-        quickCaptureCount: parsed.quickCapture.count,
+        photos: pins.reduce((total, pin) => total + pin.photos.length, 0),
+        quickCaptureCount: quickCapture.length,
         canvasName: canvas.name,
       },
     };
@@ -1189,6 +1256,32 @@
         plan.blockReason = 'Photographs were added to this recovered Distress Survey after import. Toolbox will not remove it, because those photographs are later field work.';
         return plan;
       }
+      const quickItems = next.distress && Array.isArray(next.distress.quickCapture) ? next.distress.quickCapture : [];
+      const keptQuick = [];
+      const laterQuick = [];
+      quickItems.forEach(function (item) {
+        const id = item && item.id;
+        if (typeof id !== 'string' || id.indexOf('ph_') !== 0) {
+          keptQuick.push(item);
+          return;
+        }
+        const ownedPhoto = explicit ? !!ownedPhotoIds[id] : id.indexOf('ph_import-') === 0;
+        if (!ownedPhoto) laterQuick.push(id);
+        else photoCandidates.push(id);
+      });
+      if (laterQuick.length) {
+        plan.blocked = true;
+        plan.blockReason = 'Photographs were added to this recovered Distress Survey after import. Toolbox will not remove it, because those photographs are later field work.';
+        return plan;
+      }
+      next.distress.quickCapture = keptQuick;
+      if (next.distress.photoSources && typeof next.distress.photoSources === 'object') {
+        const sources = {};
+        Object.keys(next.distress.photoSources).forEach(function (id) {
+          if (photoCandidates.indexOf(id) === -1) sources[id] = next.distress.photoSources[id];
+        });
+        next.distress.photoSources = sources;
+      }
       next.distress.pins = otherPins;
       if (!otherPins.length) {
         const drawings = next.distress.drawings || [];
@@ -1326,7 +1419,7 @@
           ? (parsed.pins.length + ' ready, ' + parsed.excludedObservations.length + ' left out')
           : String(parsed.pins.length)],
         ['Attached photos', String(parsed.attachedPhotoCount)],
-        ['Quick Capture', parsed.quickCapture.count + ' photo' + (parsed.quickCapture.count === 1 ? '' : 's') + ' found — not imported yet'],
+        ['Quick Capture', parsed.quickCapture.count + ' photo' + (parsed.quickCapture.count === 1 ? '' : 's') + ' — separate folder, not placed on the plan'],
         ['Destination', context && context.destinationLabel ? context.destinationLabel : '—'],
       ];
     }
@@ -1787,10 +1880,9 @@
           const lines = result.kind === 'distress'
             ? [
                 result.observations + ' observations recovered',
-                result.photos + ' attached photos recovered',
+                result.photos + ' attached photo' + (result.photos === 1 ? '' : 's') + ' recovered',
                 'Plan added to ' + result.canvasName,
-                result.quickCaptureCount + ' Quick Capture photos found — not imported yet',
-                ...(result.quickCaptureCount ? ['Keep the original ZIP as the recovery source for Quick Capture.'] : []),
+                result.quickCaptureCount + ' Quick Capture photo' + (result.quickCaptureCount === 1 ? '' : 's') + ' saved in Photo folders',
               ]
             : [
                 result.readings + ' readings recovered',

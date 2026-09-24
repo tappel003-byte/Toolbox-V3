@@ -138,17 +138,20 @@ function planMediaIds(record) {
   return canvases.map((canvas) => canvas && canvas.plan && canvas.plan.id).filter(Boolean);
 }
 
+function collectDistressPhotoId(ids, id) {
+  if (typeof id === 'string' && id.indexOf('ph_') === 0) ids.push(id);
+}
+
 function distressPhotoIds(record) {
-  const pins = record && record.distress && Array.isArray(record.distress.pins)
-    ? record.distress.pins
-    : [];
+  const distress = record && record.distress ? record.distress : {};
+  const pins = Array.isArray(distress.pins) ? distress.pins : [];
   const ids = [];
   pins.forEach((pin) => {
     const photos = pin && Array.isArray(pin.photos) ? pin.photos : [];
-    photos.forEach((id) => {
-      if (typeof id === 'string' && id.indexOf('ph_') === 0) ids.push(id);
-    });
+    photos.forEach((id) => collectDistressPhotoId(ids, id));
   });
+  const quick = Array.isArray(distress.quickCapture) ? distress.quickCapture : [];
+  quick.forEach((item) => collectDistressPhotoId(ids, item && item.id));
   return ids;
 }
 
