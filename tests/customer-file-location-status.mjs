@@ -179,12 +179,22 @@ try {
     await new Promise((r) => setTimeout(r, 400));
 
     const cloudShell = document.querySelector('.cabinet-row-shell--cloud[data-customer-file-id="cf-remote"]');
-    const cloudLoc = cloudShell && cloudShell.querySelector('.cabinet-row__location');
     const cloud = {
       found: !!cloudShell,
-      location: cloudLoc ? cloudLoc.textContent : null,
-      availability: cloudShell && cloudShell.querySelector('.cabinet-row__meta')
-        ? cloudShell.querySelector('.cabinet-row__meta').textContent
+      address: cloudShell && cloudShell.querySelector('.cabinet-index__address')
+        ? cloudShell.querySelector('.cabinet-index__address').textContent
+        : null,
+      owner: cloudShell && cloudShell.querySelector('.cabinet-index__owner')
+        ? cloudShell.querySelector('.cabinet-index__owner').textContent
+        : null,
+      location: cloudShell && cloudShell.querySelector('.cabinet-row__location')
+        ? cloudShell.querySelector('.cabinet-row__location').textContent
+        : null,
+      status: cloudShell && cloudShell.querySelector('.cabinet-index__status')
+        ? cloudShell.querySelector('.cabinet-index__status').textContent
+        : null,
+      date: cloudShell && cloudShell.querySelector('.cabinet-index__date')
+        ? cloudShell.querySelector('.cabinet-index__date').textContent
         : null,
     };
 
@@ -223,14 +233,17 @@ try {
 
   check('File Cabinet remote row found', out.cloud.found);
   check(
-    'File Cabinet shows Online location',
-    out.cloud.location === 'File Cabinet — Online',
+    'File Cabinet row is address-first and does not invent a date from updatedAt',
+    out.cloud.address === '100 Cabinet Way, Suite 12, Springfield, IL 62701' &&
+      out.cloud.owner === 'Remote Only Customer' &&
+      out.cloud.location == null &&
+      out.cloud.date == null,
     JSON.stringify(out.cloud),
   );
   check(
-    'File Cabinet availability meta preserved',
-    !!out.cloud.availability && out.cloud.availability.indexOf('Available') !== -1,
-    out.cloud.availability,
+    'File Cabinet availability status preserved',
+    out.cloud.status === 'Available',
+    JSON.stringify(out.cloud),
   );
 
   check(
