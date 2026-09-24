@@ -281,9 +281,17 @@
     return Array.from(new Set(ids));
   }
 
+  function diagnosticsFigureMediaIds(source) {
+    if (window.ToolboxDiagnostics && typeof window.ToolboxDiagnostics.figureMediaIds === 'function') {
+      return window.ToolboxDiagnostics.figureMediaIds(source);
+    }
+    return [];
+  }
+
   function mediaIdsForComponent(record, name) {
     if (name === 'plans') return planMediaIds(record);
     if (name === 'distress') return distressPhotoIds(record);
+    if (name === 'diagnostics') return diagnosticsFigureMediaIds(record);
     return [];
   }
 
@@ -477,6 +485,7 @@
       });
       return Array.from(new Set(ids));
     }
+    if (name === 'diagnostics') return diagnosticsFigureMediaIds(payload);
     return [];
   }
 

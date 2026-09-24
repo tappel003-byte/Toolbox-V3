@@ -19,6 +19,11 @@ interface Props {
   /** When more than one level is supplied, the existing header can switch floors. */
   levels?: Array<{ id: string; name: string }>;
   onLevelChange?: (id: string) => void;
+  /**
+   * overlay = full-screen (Floor Survey route).
+   * fill = occupy the Diagnostics workbench stage. Rendering is unchanged.
+   */
+  frame?: "overlay" | "fill";
 }
 
 /**
@@ -27,7 +32,15 @@ interface Props {
  * slider, optional survey-point spheres, PNG screenshot export. View state
  * is session-only; nothing persists to the Floor.
  */
-export function ThreeDTab({ floor, points, settings, onClose, levels, onLevelChange }: Props) {
+export function ThreeDTab({
+  floor,
+  points,
+  settings,
+  onClose,
+  levels,
+  onLevelChange,
+  frame = "overlay",
+}: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -315,7 +328,13 @@ export function ThreeDTab({ floor, points, settings, onClose, levels, onLevelCha
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-neutral-950 text-white flex flex-col">
+    <div
+      className={
+        frame === "fill"
+          ? "relative z-0 min-h-0 w-full flex-1 bg-neutral-950 text-white flex flex-col"
+          : "fixed inset-0 z-[60] bg-neutral-950 text-white flex flex-col"
+      }
+    >
       <div className="flex items-center gap-2 px-3 h-11 border-b border-white/10 bg-black/40 backdrop-blur">
         <button
           onClick={onClose}

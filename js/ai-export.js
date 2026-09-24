@@ -1091,6 +1091,25 @@
     if (diagnosticsPresent) {
       diagnosticsDocument.status = 'present';
       extractDataUrls(diagnosticsDocument, binaries, 'diagnostics/images');
+      var figureSlugUse = {};
+      var figures = Array.isArray(diagnosticsDocument.figures) ? diagnosticsDocument.figures : [];
+      for (var fi = 0; fi < figures.length; fi += 1) {
+        var figure = figures[fi];
+        if (!figure || typeof figure.mediaId !== 'string' || !figure.mediaId) continue;
+        var figMedia = null;
+        try {
+          figMedia = await mediaBytes(await options.getPlanMedia(figure.mediaId));
+        } catch (err) {
+          figMedia = null;
+        }
+        if (!figMedia || !figMedia.bytes) {
+          gaps.push('Diagnostics figure ' + figure.mediaId + ' is not stored on this device.');
+          continue;
+        }
+        var figPath = 'diagnostics/images/' + uniqueSlug(figureSlugUse, figure.id || figure.mediaId, 'figure-' + (fi + 1)) + '.' + extFromMime(figMedia.mime);
+        figure.file = figPath;
+        binaries.push({ path: figPath, bytes: figMedia.bytes });
+      }
     }
 
     var reportRaw = source.reportBuilder || source.report || null;

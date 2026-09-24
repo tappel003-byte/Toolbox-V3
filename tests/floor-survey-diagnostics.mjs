@@ -183,7 +183,45 @@ check('Diagnostics can switch floors', opened.floorOptions.join('|') === 'First 
 check('3D canvas is present', opened.canvas, opened.message);
 check('Field capture menu is not on the 3D view', !opened.fieldMenu);
 check('3D image export control remains with the engine', opened.exportImage);
-await page.screenshot({ path: OUT + '/diagnostics-3d-desktop.png' });
+
+const ribbon = await page.evaluate(() => {
+  const bar = document.querySelector('[data-diagnostics-ribbon]');
+  const back = document.querySelector('[data-diagnostics-back]');
+  const view = document.querySelector('[data-diagnostics-view="3d"]');
+  const add = document.querySelector('[data-diagnostics-add-report]');
+  const placeholders = [...document.querySelectorAll('[data-diagnostics-placeholder]')].map((el) => ({
+    id: el.getAttribute('data-diagnostics-placeholder'),
+    disabled: el.disabled,
+    title: el.getAttribute('title') || '',
+  }));
+  const groups = [...document.querySelectorAll('.dx-ribbon__group')].map((el) => el.getAttribute('aria-label'));
+  return {
+    bar: !!bar,
+    back: back ? (back.textContent || '').trim() : '',
+    viewPressed: view ? view.getAttribute('aria-pressed') : '',
+    add: !!add,
+    placeholders,
+    groups,
+  };
+});
+check(
+  'Workbench ribbon has View, Capture, Imaging, Plots, and Epochs',
+  ribbon.bar && ribbon.groups.join(',') === 'View,Capture,Imaging,Plots,Epochs',
+  ribbon.groups.join(','),
+);
+check(
+  'Back path is labeled Customer File',
+  ribbon.back === '‹ Customer File',
+  ribbon.back,
+);
+check('3D is the current view', ribbon.viewPressed === 'true');
+const placeholderOk = ribbon.placeholders.length === 6 && ribbon.placeholders.every((item) => item.disabled && item.title === 'Not available yet');
+check(
+  'Unimplemented ribbon controls are disabled',
+  placeholderOk,
+  JSON.stringify(ribbon.placeholders),
+);
+check('Add to Report is on the ribbon', ribbon.add);
 
 if (opened.floorOptions.length === 2) {
   await page.select('[data-diagnostics-floor]', 'canvas-dx-2');
@@ -221,6 +259,128 @@ check(
   JSON.stringify(unchanged),
 );
 
+async function waitForCaptureReady(timeoutMs) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const ready = await page.evaluate(() => {
+      const button = document.querySelector('[data-diagnostics-add-report]');
+      const canvas = document.querySelector('.dx-stage canvas');
+      return {
+        enabled: !!(button && !button.disabled),
+        canvas: canvas ? { w: canvas.width, h: canvas.height } : null,
+        status: (document.querySelector('[data-diagnostics-status]') || {}).textContent || '',
+      };
+    });
+    if (ready.enabled) return ready;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return page.evaluate(() => ({
+    enabled: false,
+    text: (document.body.innerText || '').slice(0, 240),
+  }));
+}
+
+await page.select('[data-diagnostics-floor]', 'canvas-dx-1');
+await new Promise((r) => setTimeout(r, 400));
+const ready = await waitForCaptureReady(8000);
+check('Add to Report enables when the 3D surface is ready', ready.enabled, JSON.stringify(ready));
+if (ready.enabled) {
+  await page.screenshot({ path: OUT + '/diagnostics-3d-desktop.png' });
+}
+if (ready.enabled) {
+  await page.click('[data-diagnostics-add-report]');
+  await page.waitForFunction(() => {
+    const status = document.querySelector('[data-diagnostics-status]');
+    return status && /Added to Report|did not save|could not be captured/i.test(status.textContent || '');
+  }, { timeout: 8000 });
+}
+const captured = await page.evaluate(async () => {
+  const saved = await window.ToolboxDB.getCustomerFile('dx-3d-1');
+  const figures = window.ToolboxDiagnostics.listReportFigures(saved);
+  const figure = figures[0] || null;
+  const media = figure ? await window.ToolboxDB.getMedia(figure.mediaId) : null;
+  const placement = figure && figure.reportPlacement;
+  return {
+    status: (document.querySelector('[data-diagnostics-status]') || {}).textContent || '',
+    floorUpdatedAt: saved.floorSurvey.updatedAt,
+    points1: saved.floorSurvey.byCanvasId['canvas-dx-1'].points.map((p) => p.value).join(','),
+    count: figures.length,
+    kind: figure && figure.kind,
+    canvasId: figure && figure.canvasId,
+    sequence: figure && figure.sequence,
+    narrative: placement ? placement.narrative : 'missing',
+    caption: placement ? placement.caption : 'missing',
+    sheet: placement && placement.sheet,
+    box: placement && placement.box,
+    mediaId: figure && figure.mediaId,
+    mediaPng: typeof media === 'string' && media.indexOf('data:image/png') === 0 && media.length > 32,
+    syncIds: window.ToolboxSync.mediaIdsForComponent(saved, 'diagnostics'),
+    payloadIds: window.ToolboxSync._test.mediaIdsFromPayload(saved.diagnostics, 'diagnostics'),
+    floorMedia: window.ToolboxSync.mediaIdsForComponent(saved, 'floor'),
+  };
+});
+check(
+  'Add to Report stores a Diagnostics figure without changing Floor Survey',
+  ready.enabled &&
+    captured.count === 1 &&
+    captured.kind === '3d-elevation' &&
+    captured.canvasId === 'canvas-dx-1' &&
+    captured.sequence === 1 &&
+    captured.narrative === null &&
+    captured.caption === null &&
+    captured.sheet === '11x17-landscape' &&
+    captured.box && captured.box.width === 0.88 && captured.box.height === 0.58 &&
+    typeof captured.mediaId === 'string' && captured.mediaId.indexOf('dxfig_') === 0 &&
+    captured.mediaPng &&
+    captured.floorUpdatedAt === seeded.floorUpdatedAt &&
+    captured.points1 === '0.1,0.4,0.8,1.2' &&
+    captured.syncIds.length === 1 &&
+    captured.syncIds[0] === captured.mediaId &&
+    captured.payloadIds.length === 1 &&
+    captured.payloadIds[0] === captured.mediaId &&
+    captured.floorMedia.length === 0 &&
+    /No conclusion was written/.test(captured.status),
+  JSON.stringify(captured),
+);
+
+const exported = await page.evaluate(async () => {
+  const saved = await window.ToolboxDB.getCustomerFile('dx-3d-1');
+  const built = await window.ToolboxAiExport.buildPackage(saved);
+  const names = built.manifest.files;
+  const image = names.find((path) => path.indexOf('diagnostics/images/') === 0) || '';
+  const text = await built.zip.file('diagnostics/diagnostics.json').async('string');
+  const doc = JSON.parse(text);
+  const fig = doc.figures && doc.figures[0];
+  return {
+    image,
+    file: fig && fig.file,
+    narrative: fig && fig.reportPlacement ? fig.reportPlacement.narrative : 'missing',
+    floorUntouched: saved.floorSurvey.updatedAt,
+  };
+});
+check(
+  'AI export carries the Diagnostics figure bytes and blank caption',
+  exported.image && exported.file === exported.image && exported.narrative === null && exported.floorUntouched === seeded.floorUpdatedAt,
+  JSON.stringify(exported),
+);
+
+await page.select('[data-diagnostics-floor]', 'canvas-dx-2');
+await new Promise((r) => setTimeout(r, 700));
+const blocked = await page.evaluate(() => {
+  const button = document.querySelector('[data-diagnostics-add-report]');
+  return {
+    disabled: !!(button && button.disabled),
+    needsPoints: (document.body.innerText || '').includes('Need at least 3 survey points'),
+  };
+});
+check(
+  'Add to Report stays disabled when the 3D view cannot be built',
+  blocked.disabled && blocked.needsPoints,
+  JSON.stringify(blocked),
+);
+await page.select('[data-diagnostics-floor]', 'canvas-dx-1');
+await new Promise((r) => setTimeout(r, 400));
+
 await page.click('[aria-label="Close 3D view"]');
 await new Promise((r) => setTimeout(r, 700));
 const home = await page.evaluate(() => ({
@@ -234,9 +394,28 @@ check(
   JSON.stringify(home),
 );
 
+await page.goto(BASE + '#/file/dx-3d-1/diagnostics', { waitUntil: 'networkidle0' });
+await new Promise((r) => setTimeout(r, 800));
+await page.click('[data-diagnostics-back]');
+await new Promise((r) => setTimeout(r, 700));
+const ribbonHome = await page.evaluate(() => ({
+  hash: location.hash,
+  ribbon: !!document.querySelector('[data-diagnostics-ribbon]'),
+  apps: [...document.querySelectorAll('[data-app]')].map((el) => el.getAttribute('data-app')).join(','),
+}));
+check(
+  'Ribbon Customer File returns to this Customer File',
+  ribbonHome.hash === '#/file/dx-3d-1' && !ribbonHome.ribbon && ribbonHome.apps === 'distress,floor,diagnostics,report',
+  JSON.stringify(ribbonHome),
+);
+
 await page.setViewport({ width: 768, height: 1024, deviceScaleFactor: 2 });
 await page.goto(BASE + '#/file/dx-3d-1/diagnostics', { waitUntil: 'networkidle0' });
-await new Promise((r) => setTimeout(r, 1000));
+await page.waitForFunction(() => {
+  const canvas = document.querySelector('canvas');
+  const text = document.body.innerText || '';
+  return canvas && canvas.width > 10 && !text.includes('Building surface');
+}, { timeout: 8000 }).catch(() => {});
 const ipad = await page.evaluate(() => {
   const close = document.querySelector('[aria-label="Close 3D view"]');
   const exportBtn = [...document.querySelectorAll('button')].find((el) => (el.textContent || '').includes('Export image'));
@@ -256,33 +435,42 @@ const ipad = await page.evaluate(() => {
     if (!a || !b) return false;
     return a.right > b.left + 1 && a.left < b.right - 1 && a.bottom > b.top + 1 && a.top < b.bottom - 1;
   }
+  const ribbon = document.querySelector('[data-diagnostics-ribbon]');
   const closeBox = box(close);
   const exportBox = box(exportBtn);
   const floorBox = box(floor);
   const panelBox = box(panel);
+  const ribbonBox = box(ribbon);
   return {
     close: !!close,
     panel: !!panelBox,
+    ribbon: !!ribbonBox,
     headerOverlap: overlaps(closeBox, exportBox) || overlaps(closeBox, floorBox) || overlaps(exportBox, floorBox),
     panelOverlap: overlaps(closeBox, panelBox) || overlaps(exportBox, panelBox) || overlaps(floorBox, panelBox),
+    ribbonOverlap: overlaps(ribbonBox, closeBox) || overlaps(ribbonBox, exportBox) || overlaps(ribbonBox, floorBox) || overlaps(ribbonBox, panelBox),
     vw: window.innerWidth,
   };
 });
 check(
   'iPad 3D header and height controls stay apart',
-  ipad.close && ipad.panel && !ipad.headerOverlap && !ipad.panelOverlap,
+  ipad.close && ipad.panel && ipad.ribbon && !ipad.headerOverlap && !ipad.panelOverlap && !ipad.ribbonOverlap,
   JSON.stringify(ipad),
 );
 await page.screenshot({ path: OUT + '/diagnostics-3d-ipad.png' });
 
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
 await page.goto(BASE + '#/file/dx-3d-1/diagnostics', { waitUntil: 'networkidle0' });
-await new Promise((r) => setTimeout(r, 1000));
+await page.waitForFunction(() => {
+  const canvas = document.querySelector('canvas');
+  const text = document.body.innerText || '';
+  return canvas && canvas.width > 10 && !text.includes('Building surface');
+}, { timeout: 8000 }).catch(() => {});
 const phone = await page.evaluate(() => {
   const close = document.querySelector('[aria-label="Close 3D view"]');
   const exportBtn = [...document.querySelectorAll('button')].find((el) => (el.textContent || '').includes('Export image'));
   const floor = document.querySelector('[data-diagnostics-floor]');
-  const boxes = [close, exportBtn, floor].filter(Boolean).map((el) => {
+  const ribbon = document.querySelector('[data-diagnostics-ribbon]');
+  const boxes = [close, exportBtn, floor, ribbon].filter(Boolean).map((el) => {
     const r = el.getBoundingClientRect();
     return { label: el.getAttribute('aria-label') || el.textContent.trim().slice(0, 20), left: r.left, right: r.right, top: r.top, bottom: r.bottom, w: r.width };
   });
@@ -296,9 +484,12 @@ const phone = await page.evaluate(() => {
     }
   }
   const offscreen = boxes.some((b) => b.left < 0 || b.right > window.innerWidth + 1);
-  return { crowded, offscreen, boxes, vw: window.innerWidth };
+  const add = document.querySelector('[data-diagnostics-add-report]');
+  const addBox = add ? add.getBoundingClientRect() : null;
+  const addVisible = !!addBox && addBox.left >= 0 && addBox.right <= window.innerWidth + 1 && addBox.bottom > addBox.top;
+  return { crowded, offscreen, addVisible, boxes, vw: window.innerWidth };
 });
-check('Phone 3D header controls do not overlap', !phone.crowded && !phone.offscreen, JSON.stringify(phone));
+check('Phone 3D header controls do not overlap', !phone.crowded && !phone.offscreen && phone.addVisible, JSON.stringify(phone));
 await page.screenshot({ path: OUT + '/diagnostics-3d-phone.png' });
 
 await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1, isMobile: false, hasTouch: false });

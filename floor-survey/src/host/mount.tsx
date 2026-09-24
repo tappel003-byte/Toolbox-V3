@@ -13,7 +13,7 @@ import "../styles.css";
 export type MountOptions = {
   customerFileId: string;
   onBack: () => void;
-  /** survey = Floor Survey field capture. diagnostics = existing 3D view only. */
+  /** survey = Floor Survey field capture. diagnostics = workbench around the existing 3D view. */
   workspace?: "survey" | "diagnostics";
 };
 
