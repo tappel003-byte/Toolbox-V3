@@ -30,7 +30,14 @@ const tiny =
 const browser = await puppeteer.launch({
   headless: 'new',
   executablePath: '/usr/bin/google-chrome-stable',
-  args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--use-gl=angle'],
+  args: [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
+  ],
 });
 const page = await browser.newPage();
 await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
@@ -126,9 +133,9 @@ check('synthetic Customer File saved', seeded.points1 === 4 && seeded.points2 ==
 await page.goto(BASE + '#/file/dx-3d-1/floor', { waitUntil: 'networkidle0' });
 await new Promise((r) => setTimeout(r, 1200));
 
+await page.click('[aria-label="More"]');
+await new Promise((r) => setTimeout(r, 300));
 const fieldChrome = await page.evaluate(() => {
-  const more = document.querySelector('[aria-label="More"]');
-  if (more) more.click();
   const items = [...document.querySelectorAll('[role="menuitem"]')].map((el) => (el.textContent || '').trim());
   const text = document.body.innerText || '';
   return {
@@ -165,8 +172,7 @@ const opened = await page.evaluate(() => {
     floorOptions: floor ? [...floor.options].map((o) => o.textContent) : [],
     selected: floor ? floor.value : '',
     canvas: !!canvas,
-    webgl: !!(canvas && canvas.getContext('webgl')),
-    message: /Need at least 3 survey points|Boundary is missing|Building surface/.test(text) ? text.slice(0, 180) : '',
+    message: /Need at least 3 survey points|Boundary is missing|Building surface|could not start/.test(text) ? text.slice(0, 180) : '',
     fieldMenu: !!document.querySelector('[aria-label="More"]'),
     exportImage: /Export image/.test(text),
     diagnosticsOpen: document.body.classList.contains('diagnostics-open'),
@@ -233,20 +239,40 @@ await page.goto(BASE + '#/file/dx-3d-1/diagnostics', { waitUntil: 'networkidle0'
 await new Promise((r) => setTimeout(r, 1000));
 const ipad = await page.evaluate(() => {
   const close = document.querySelector('[aria-label="Close 3D view"]');
-  const panel = [...document.querySelectorAll('div')].find((el) => (el.textContent || '').includes('Height exaggeration'));
-  const closeBox = close ? close.getBoundingClientRect() : null;
-  const panelBox = panel ? panel.getBoundingClientRect() : null;
-  const overlap = !!(closeBox && panelBox &&
-    closeBox.right > panelBox.left && closeBox.left < panelBox.right &&
-    closeBox.bottom > panelBox.top && closeBox.top < panelBox.bottom);
+  const exportBtn = [...document.querySelectorAll('button')].find((el) => (el.textContent || '').includes('Export image'));
+  const floor = document.querySelector('[data-diagnostics-floor]');
+  const cards = [...document.querySelectorAll('div')].filter((el) => {
+    const text = el.textContent || '';
+    return text.includes('Height exaggeration') && text.includes('Show survey points');
+  });
+  cards.sort((a, b) => a.getBoundingClientRect().width - b.getBoundingClientRect().width);
+  const panel = cards[0] || null;
+  function box(el) {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+  }
+  function overlaps(a, b) {
+    if (!a || !b) return false;
+    return a.right > b.left + 1 && a.left < b.right - 1 && a.bottom > b.top + 1 && a.top < b.bottom - 1;
+  }
+  const closeBox = box(close);
+  const exportBox = box(exportBtn);
+  const floorBox = box(floor);
+  const panelBox = box(panel);
   return {
     close: !!close,
     panel: !!panelBox,
-    overlap,
+    headerOverlap: overlaps(closeBox, exportBox) || overlaps(closeBox, floorBox) || overlaps(exportBox, floorBox),
+    panelOverlap: overlaps(closeBox, panelBox) || overlaps(exportBox, panelBox) || overlaps(floorBox, panelBox),
     vw: window.innerWidth,
   };
 });
-check('iPad 3D view keeps close and height controls apart', ipad.close && ipad.panel && !ipad.overlap, JSON.stringify(ipad));
+check(
+  'iPad 3D header and height controls stay apart',
+  ipad.close && ipad.panel && !ipad.headerOverlap && !ipad.panelOverlap,
+  JSON.stringify(ipad),
+);
 await page.screenshot({ path: OUT + '/diagnostics-3d-ipad.png' });
 
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });

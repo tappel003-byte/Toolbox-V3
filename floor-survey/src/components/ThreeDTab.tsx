@@ -65,10 +65,17 @@ export function ThreeDTab({ floor, points, settings, onClose, levels, onLevelCha
     const mount = mountRef.current;
     if (!mount) return;
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      preserveDrawingBuffer: true,
-    });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        preserveDrawingBuffer: true,
+      });
+    } catch (err) {
+      console.error(err);
+      setError("3D view could not start on this device.");
+      return;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x0b0b0b, 1);
     mount.appendChild(renderer.domElement);
