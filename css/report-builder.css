@@ -91,6 +91,28 @@ body.report-builder-open .canvas {
   line-height: 1.35;
 }
 
+.rb-export {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.rb-ai-status {
+  flex: 1 1 100%;
+  min-width: 0;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.rb-ai-status:empty {
+  display: none;
+}
+
 .rb-workspace {
   flex: 1 1 auto;
   display: grid;

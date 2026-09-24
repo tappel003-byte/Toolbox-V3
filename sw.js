@@ -39,6 +39,7 @@ const STATIC_SHELL = [
   '/js/floor-survey/floor-survey.js',
   '/js/floor-survey/floor-survey.css',
   '/js/sync.js',
+  '/js/ai-export.js',
   '/js/report-builder.js',
   '/js/app.js',
   '/manifest.webmanifest',

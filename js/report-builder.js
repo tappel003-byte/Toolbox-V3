@@ -4,6 +4,8 @@
 // and jump links back to the source workspaces. This module does not write
 // the Customer File, does not assemble a report, and does not load a template.
 // Pages exist only while this workspace stays open.
+// Export for AI reads the open Customer File and downloads one ZIP.
+// It does not write the Customer File.
 
 (function () {
   'use strict';
@@ -238,6 +240,27 @@
       renderPages();
     });
 
+    var exportBtn = root.querySelector('#rb-export-ai');
+    var exportStatus = root.querySelector('#rb-ai-status');
+    exportBtn.addEventListener('click', function () {
+      if (!window.ToolboxAiExport || typeof window.ToolboxAiExport.exportCheckedOutFile !== 'function') {
+        exportStatus.textContent = 'Export for AI is not available in this session.';
+        return;
+      }
+      exportBtn.disabled = true;
+      exportStatus.textContent = 'Preparing the AI package…';
+      window.ToolboxAiExport.exportCheckedOutFile(customerFileId).then(function (result) {
+        var name = result && result.filename ? result.filename : 'the AI package';
+        exportStatus.textContent = 'Downloaded ' + name + '.';
+      }).catch(function (error) {
+        exportStatus.textContent = error && error.message
+          ? error.message
+          : 'Export failed. This Customer File was not changed.';
+      }).then(function () {
+        exportBtn.disabled = false;
+      });
+    });
+
     setToolStatus();
     renderPages();
     watchSheet(root);
@@ -276,7 +299,9 @@
       '    <div class="rb-toolbar__tools" role="toolbar" aria-label="Report composition">' +
              toolButtons() +
       '    </div>' +
+      '    <button type="button" id="rb-export-ai" class="btn btn--accent rb-export">Export for AI</button>' +
       '    <p class="rb-toolbar__status" id="rb-tool-status" aria-live="polite"></p>' +
+      '    <p class="rb-ai-status" id="rb-ai-status" aria-live="polite"></p>' +
       '  </div>' +
       '  <div class="rb-workspace">' +
       '    <aside class="rb-rail" aria-label="Report pages">' +
