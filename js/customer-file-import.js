@@ -1459,6 +1459,9 @@
     let recoveryCustomerFileId = presetCustomerFileId;
     let lastImport = null;
     let removalReturn = 'idle';
+    // Once a recovery in this visit succeeds, later files stay in that Customer File.
+    let lockedCustomerFileId = presetCustomerFileId;
+    let lockedDestinationLabel = '';
 
     container.innerHTML =
       '<section class="cf-import">' +
@@ -1531,8 +1534,30 @@
       }
     }
 
+    function lockToCustomerFile(destinationId, record) {
+      const id = cleanText(destinationId);
+      if (!id) return;
+      lockedCustomerFileId = id;
+      recoveryCustomerFileId = id;
+      presetCustomerFileId = id;
+      destinationMode = 'existing';
+      selectedExistingId = id;
+      pendingNewId = '';
+      lockedDestinationLabel = record ? displayCustomerLabel(record) : lockedDestinationLabel;
+    }
+
+    async function resetChooserForSameFile() {
+      parsed = null;
+      context = null;
+      input.value = '';
+      const label = lockedDestinationLabel || 'this Customer File';
+      status.textContent = 'Choose another legacy export for ' + label + '.';
+      await renderRecovered();
+      input.focus();
+    }
+
     function destinationPanelHtml() {
-      if (!allowDestinationChoice) {
+      if (!allowDestinationChoice || lockedCustomerFileId) {
         return '<p class="cf-import__note">Destination: ' + escapeHtml(context.destinationLabel) +
           (context.isNew
             ? ' — recovered work becomes this new Customer File.'
@@ -1675,12 +1700,17 @@
         '<section class="cf-import__result"><p class="eyebrow">Recovery complete</p><h2 tabindex="-1">' + escapeHtml(info.label) + ' imported</h2>' +
         '<ul>' + info.lines.map(function (line) { return '<li>' + escapeHtml(line) + '</li>'; }).join('') + '</ul>' +
         (info.excludedHtml || '') +
+        '<p class="cf-import__note">This import stays in this Customer File.</p>' +
         '<div class="cf-import__actions">' +
+        '<button type="button" id="cf-import-another" class="btn btn--secondary">Import another legacy file</button>' +
         '<button type="button" id="cf-import-replace" class="btn btn--secondary">Replace imported ' + escapeHtml(info.label) + '</button>' +
         '<button type="button" id="cf-import-remove" class="btn btn--secondary">Remove imported ' + escapeHtml(info.label) + '</button>' +
         '<button type="button" id="cf-import-open" class="btn btn--accent">Open ' + escapeHtml(info.label) + '</button>' +
         '</div></section>';
       preview.querySelector('h2').focus();
+      preview.querySelector('#cf-import-another').addEventListener('click', function () {
+        resetChooserForSameFile();
+      });
       preview.querySelector('#cf-import-open').addEventListener('click', function () {
         if (typeof options.onDone === 'function') options.onDone(info.kind, info.destinationId);
       });
@@ -1906,6 +1936,7 @@
               ' left out — not placed on the plan');
             lines.push('The original ZIP was not changed.');
           }
+          lockToCustomerFile(result.destinationId, result.record);
           status.textContent = '';
           showImportResult({
             kind: result.kind,
@@ -1980,8 +2011,9 @@
       status.textContent = 'Inspecting export…';
       try {
         parsed = await inspectFile(file);
-        destinations = allowDestinationChoice ? await listImportDestinations() : [];
-        if (allowDestinationChoice) {
+        const stayWithFile = cleanText(lockedCustomerFileId);
+        if (allowDestinationChoice && !stayWithFile) {
+          destinations = await listImportDestinations();
           destinationMode = '';
           selectedExistingId = '';
           pendingNewId = newId('cf');
@@ -1990,9 +2022,16 @@
           renderPreviewShell();
           return;
         }
-        if (!presetCustomerFileId) pendingNewId = newId('cf');
-        destinationMode = presetCustomerFileId ? 'existing' : 'new';
-        selectedExistingId = presetCustomerFileId || '';
+        destinations = [];
+        if (stayWithFile) {
+          destinationMode = 'existing';
+          selectedExistingId = stayWithFile;
+          pendingNewId = '';
+        } else {
+          if (!presetCustomerFileId) pendingNewId = newId('cf');
+          destinationMode = presetCustomerFileId ? 'existing' : 'new';
+          selectedExistingId = presetCustomerFileId || '';
+        }
         await loadContextForDestination();
         status.textContent = '';
         renderPreviewShell();
