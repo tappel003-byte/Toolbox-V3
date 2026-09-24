@@ -215,14 +215,17 @@ const fixtures = await page.evaluate(async () => {
     const imageHeight = overrides.imageHeight != null ? overrides.imageHeight : 90;
     const plan = planDataUrl(imageWidth, imageHeight);
     const client = Object.prototype.hasOwnProperty.call(overrides, 'client') ? overrides.client : 'Fred Keulen';
+    const projectName = Object.prototype.hasOwnProperty.call(overrides, 'projectName') ? overrides.projectName : 'Keulen';
+    const address = Object.prototype.hasOwnProperty.call(overrides, 'address') ? overrides.address : '44 El Cielo Azul Circle, Edgewood, NM';
+    const fileName = overrides.fileName || 'keulen.floorsurvey.json';
     const bundle = {
       kind: 'floor-survey-bundle',
       bundleVersion: version,
       exportedAt: Date.now(),
       project: {
         id: 'project-old',
-        name: 'Keulen',
-        address: '44 El Cielo Azul Circle, Edgewood, NM',
+        name: projectName,
+        address,
         client,
         inspector: 'Tim',
         inspectionDate: '2026-07-28',
@@ -264,7 +267,7 @@ const fixtures = await page.evaluate(async () => {
         { id: 'point-2', floorId: 'floor-old', index: 2, x: 60, y: 45, value: 9.3, transitionId: 'transition-old', createdAt: 2 },
       ],
     };
-    return new File([JSON.stringify(bundle)], 'keulen.floorsurvey.json', { type: 'application/json' });
+    return new File([JSON.stringify(bundle)], fileName, { type: 'application/json' });
   }
 
   async function tinyJpeg() {
@@ -1679,7 +1682,6 @@ const afterUiRemoval = await page.evaluate(async () => {
 });
 check('Confirmed removal keeps the Customer File and clears the imported Distress Survey', afterUiRemoval.pins === 0 && afterUiRemoval.address === '8 Continuation Court' && afterUiRemoval.name === 'Ada Field' && afterUiRemoval.imports === 0 && /kept/.test(afterUiRemoval.status), JSON.stringify(afterUiRemoval));
 
-
 const lodgeRecovery = await page.evaluate(async () => {
   async function readIds(ids) {
     const db = await new Promise((resolve, reject) => {
@@ -2039,6 +2041,191 @@ check(
     lodgeRemoval.bytesGone,
   JSON.stringify(lodgeRemoval),
 );
+
+async function chooseLegacyFile(kind, overrides) {
+  await page.evaluate(async (spec) => {
+    const file = spec.kind === 'distress'
+      ? await window.__importFixtures.distressFile()
+      : await window.__importFixtures.floorFile(1, spec.overrides || {});
+    const input = document.querySelector('#cf-import-file');
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    input.files = transfer.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }, { kind, overrides });
+}
+
+async function readContinuationRecord(id) {
+  return page.evaluate(async (fileId) => {
+    const record = await ToolboxDB.getCustomerFile(fileId);
+    if (!record) return null;
+    const floorLayers = record.floorSurvey && record.floorSurvey.byCanvasId ? record.floorSurvey.byCanvasId : {};
+    const floorPoints = Object.keys(floorLayers).reduce((sum, canvasId) => {
+      const layer = floorLayers[canvasId];
+      return sum + (layer && Array.isArray(layer.points) ? layer.points.length : 0);
+    }, 0);
+    return {
+      id: record.id,
+      name: [record.firstName, record.lastName].filter(Boolean).join(' '),
+      address: record.propertyAddress || '',
+      floorLayers: Object.keys(floorLayers).length,
+      floorPoints,
+      distressPins: record.distress && Array.isArray(record.distress.pins) ? record.distress.pins.length : 0,
+      recoveryCount: Array.isArray(record.recoveryImports) ? record.recoveryImports.length : 0,
+    };
+  }, id);
+}
+
+await page.evaluate(async () => {
+  const record = ToolboxApp.blankCustomerFile('continuation-ada');
+  record.firstName = 'Ada';
+  record.lastName = 'Field';
+  record.propertyAddress = '10 Recovery Lane';
+  await ToolboxDB.saveCustomerFile(record);
+});
+await page.goto(`${BASE}#/file/continuation-ada/import`, { waitUntil: 'networkidle0' });
+await page.waitForSelector('#cf-import-file');
+await chooseLegacyFile('floor', {
+  client: 'Ada Field',
+  projectName: 'Field House',
+  address: '10 Recovery Lane',
+  fileName: 'field-house.floorsurvey.json',
+});
+await page.waitForSelector('#cf-import-confirm');
+await page.click('#cf-import-confirm');
+await page.waitForSelector('#cf-import-another');
+const floorComplete = await page.evaluate(() => ({
+  another: document.querySelector('#cf-import-another')?.textContent || '',
+  open: document.querySelector('#cf-import-open')?.textContent || '',
+  heading: document.querySelector('.cf-import__result h2')?.textContent || '',
+  note: document.querySelector('.cf-import__result .cf-import__note')?.textContent || '',
+}));
+check('Floor recovery complete offers another legacy file and Open Floor Survey', floorComplete.another === 'Import another legacy file' && floorComplete.open === 'Open Floor Survey' && /Floor Survey imported/.test(floorComplete.heading), JSON.stringify(floorComplete));
+const floorSaved = await readContinuationRecord('continuation-ada');
+check('Floor recovery persisted before continuation', floorSaved && floorSaved.floorPoints === 2 && floorSaved.distressPins === 0 && floorSaved.recoveryCount === 1, JSON.stringify(floorSaved));
+
+await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
+await page.screenshot({ path: '/opt/cursor/artifacts/recovery-complete-phone.png', fullPage: true });
+await page.setViewport({ width: 820, height: 1180, deviceScaleFactor: 2 });
+await page.screenshot({ path: '/opt/cursor/artifacts/recovery-complete-ipad.png', fullPage: true });
+await page.setViewport({ width: 1440, height: 960, deviceScaleFactor: 1 });
+await page.screenshot({ path: '/opt/cursor/artifacts/recovery-complete-desktop.png', fullPage: true });
+
+const filesBeforeAnother = await page.evaluate(async () => (await ToolboxDB.getAllCustomerFiles()).map((record) => record.id));
+await page.click('#cf-import-another');
+await page.waitForFunction(() => !document.querySelector('.cf-import__result') && document.querySelector('#cf-import-file'));
+await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
+await page.screenshot({ path: '/opt/cursor/artifacts/recovery-chooser-reset-phone.png', fullPage: true });
+await page.setViewport({ width: 1440, height: 960, deviceScaleFactor: 1 });
+const chooserReset = await page.evaluate(() => ({
+  fileValue: document.querySelector('#cf-import-file')?.value || '',
+  status: document.querySelector('#cf-import-status')?.textContent || '',
+  createNew: !!document.querySelector('input[name="cf-import-dest-mode"][value="new"]'),
+  result: !!document.querySelector('.cf-import__result'),
+  preview: document.querySelector('#cf-import-preview')?.innerText || '',
+}));
+const floorAfterReset = await readContinuationRecord('continuation-ada');
+check('Import another legacy file returns to a chooser for the same Customer File', chooserReset.fileValue === '' && /Ada Field/.test(chooserReset.status) && !chooserReset.result && !chooserReset.createNew && /Recovered imports/.test(chooserReset.preview) && /Floor Survey/.test(chooserReset.preview), JSON.stringify(chooserReset));
+check('Already imported Floor Survey remains after returning to the chooser', floorAfterReset && floorAfterReset.floorPoints === 2 && floorAfterReset.recoveryCount === 1 && floorAfterReset.name === 'Ada Field', JSON.stringify(floorAfterReset));
+
+await chooseLegacyFile('floor', {
+  client: 'Blake Moss',
+  projectName: 'Moss House',
+  address: '22 Other Street',
+  fileName: 'moss-house.floorsurvey.json',
+});
+await page.waitForSelector('#cf-import-confirm-floor-add');
+const secondFloorGate = await page.evaluate(() => ({
+  text: document.querySelector('.cf-import__preview')?.innerText || '',
+  disabled: !!document.querySelector('#cf-import-confirm')?.disabled,
+  destination: (document.querySelector('.cf-import__note')?.textContent || ''),
+}));
+const floorUntouched = await readContinuationRecord('continuation-ada');
+check('Second Floor Survey preview still requires additional-level confirmation and does not write', secondFloorGate.disabled && /additional level/i.test(secondFloorGate.text) && /Ada Field/.test(secondFloorGate.destination) && floorUntouched.recoveryCount === 1 && floorUntouched.floorLayers === 1, JSON.stringify({ secondFloorGate, floorUntouched }));
+
+await page.click('#import-back');
+await page.waitForFunction(() => location.hash === '#/file/continuation-ada');
+const afterBack = await readContinuationRecord('continuation-ada');
+check('Back from a second-file preview leaves the completed import intact', afterBack && afterBack.floorPoints === 2 && afterBack.distressPins === 0 && afterBack.recoveryCount === 1, JSON.stringify(afterBack));
+
+await page.goto(`${BASE}#/file/continuation-ada/import`, { waitUntil: 'networkidle0' });
+await page.waitForSelector('#cf-import-file');
+await chooseLegacyFile('distress');
+await page.waitForSelector('#cf-import-confirm');
+const distressDestination = await page.evaluate(() => document.querySelector('.cf-import__preview')?.innerText || '');
+check('Distress continuation preview stays on the same Customer File', /Ada Field/.test(distressDestination) && /10 Recovery Lane/.test(distressDestination) && !/Create new Customer File/.test(distressDestination), distressDestination.replace(/\n/g, ' | '));
+await page.click('#cf-import-confirm');
+await page.waitForSelector('#cf-import-another');
+const distressComplete = await page.evaluate(() => ({
+  another: document.querySelector('#cf-import-another')?.textContent || '',
+  open: document.querySelector('#cf-import-open')?.textContent || '',
+  heading: document.querySelector('.cf-import__result h2')?.textContent || '',
+}));
+const bothSaved = await readContinuationRecord('continuation-ada');
+check('Distress recovery complete offers another legacy file and Open Distress Survey', distressComplete.another === 'Import another legacy file' && distressComplete.open === 'Open Distress Survey' && /Distress Survey imported/.test(distressComplete.heading), JSON.stringify(distressComplete));
+await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
+await page.screenshot({ path: '/opt/cursor/artifacts/recovery-complete-distress-phone.png', fullPage: true });
+await page.setViewport({ width: 820, height: 1180, deviceScaleFactor: 2 });
+await page.screenshot({ path: '/opt/cursor/artifacts/recovery-complete-distress-ipad.png', fullPage: true });
+await page.setViewport({ width: 1440, height: 960, deviceScaleFactor: 1 });
+await page.screenshot({ path: '/opt/cursor/artifacts/recovery-complete-distress-desktop.png', fullPage: true });
+check('Floor Survey remains intact after Distress is added to the same Customer File', bothSaved && bothSaved.floorPoints === 2 && bothSaved.distressPins === 2 && bothSaved.recoveryCount === 2 && bothSaved.id === 'continuation-ada', JSON.stringify(bothSaved));
+
+await page.click('#cf-import-another');
+await page.waitForFunction(() => !document.querySelector('.cf-import__result'));
+await page.click('#import-back');
+await page.waitForFunction(() => location.hash === '#/file/continuation-ada');
+const afterDistressBack = await readContinuationRecord('continuation-ada');
+check('Back after Import another leaves both recovered surveys in the Customer File', afterDistressBack && afterDistressBack.floorPoints === 2 && afterDistressBack.distressPins === 2 && afterDistressBack.name === 'Ada Field', JSON.stringify(afterDistressBack));
+
+await page.goto(`${BASE}#/import`, { waitUntil: 'networkidle0' });
+await page.waitForSelector('#cf-import-file');
+const idsBeforeNew = await page.evaluate(async () => (await ToolboxDB.getAllCustomerFiles()).map((record) => record.id));
+await chooseLegacyFile('floor', {
+  client: 'Riley North',
+  projectName: 'North House',
+  address: '8 Continuation Court',
+  fileName: 'north-house.floorsurvey.json',
+});
+await page.waitForSelector('input[name="cf-import-dest-mode"][value="new"]');
+await page.click('input[name="cf-import-dest-mode"][value="new"]');
+await page.waitForSelector('#cf-import-confirm');
+await page.click('#cf-import-confirm');
+await page.waitForSelector('#cf-import-another');
+await page.click('#cf-import-another');
+await page.waitForFunction(() => !document.querySelector('.cf-import__result'));
+await chooseLegacyFile('distress');
+await page.waitForSelector('#cf-import-confirm');
+const lockedPreview = await page.evaluate(() => ({
+  radios: document.querySelectorAll('input[name="cf-import-dest-mode"]').length,
+  text: document.querySelector('.cf-import__preview')?.innerText || '',
+}));
+check('Import another after creating a Customer File does not offer a new file', lockedPreview.radios === 0 && /Riley North/.test(lockedPreview.text) && /8 Continuation Court/.test(lockedPreview.text), lockedPreview.text.replace(/\n/g, ' | '));
+await page.click('#cf-import-confirm');
+await page.waitForSelector('#cf-import-open');
+const createdIds = await page.evaluate(async (before) => {
+  const records = await ToolboxDB.getAllCustomerFiles();
+  return records.filter((record) => !before.includes(record.id)).map((record) => record.id);
+}, idsBeforeNew);
+check('Continuation created one Customer File', createdIds.length === 1, JSON.stringify(createdIds));
+const created = createdIds[0] ? await readContinuationRecord(createdIds[0]) : null;
+const adaUntouched = await readContinuationRecord('continuation-ada');
+check('New Customer File holds both the Floor Survey and the later Distress Survey', created && created.name === 'Riley North' && created.floorPoints === 2 && created.distressPins === 2 && created.recoveryCount === 2, JSON.stringify(created));
+check('Continuing into the new Customer File left the earlier file unchanged', adaUntouched && adaUntouched.floorPoints === 2 && adaUntouched.distressPins === 2 && adaUntouched.recoveryCount === 2, JSON.stringify(adaUntouched));
+check('No extra Customer File was created while continuing', filesBeforeAnother.includes('continuation-ada') && createdIds.length === 1, String(filesBeforeAnother.length));
+
+await page.click('#cf-import-open');
+await page.waitForFunction(() => /#\/file\/[^/]+\/distress$/.test(location.hash));
+const openedDistress = await page.evaluate(async () => {
+  const id = decodeURIComponent((location.hash.match(/^#\/file\/([^/]+)\/distress$/) || [])[1] || '');
+  const record = await ToolboxDB.getCustomerFile(id);
+  return {
+    hash: location.hash,
+    pins: record && record.distress && record.distress.pins ? record.distress.pins.length : 0,
+    floorLayers: record && record.floorSurvey ? Object.keys(record.floorSurvey.byCanvasId || {}).length : 0,
+  };
+});
+check('Open Distress Survey still leaves the recovered Customer File', /\/distress$/.test(openedDistress.hash) && openedDistress.pins === 2 && openedDistress.floorLayers >= 1, JSON.stringify(openedDistress));
 
 await browser.close();
 const failed = results.filter((result) => !result.ok);
