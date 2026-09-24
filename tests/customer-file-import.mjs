@@ -1187,6 +1187,415 @@ check(
 );
 await page.screenshot({ path: '/opt/cursor/artifacts/distress-import-none-recoverable-phone.png', fullPage: true });
 
+const mistakeRecovery = await page.evaluate(async () => {
+  function tinyPlan() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 80;
+    canvas.height = 60;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#efe6d2';
+    context.fillRect(0, 0, 80, 60);
+    context.strokeStyle = '#082036';
+    context.strokeRect(4, 4, 72, 52);
+    return canvas.toDataURL('image/png');
+  }
+
+  async function distressZip(folder, fileName, description) {
+    const zip = new JSZip();
+    const root = zip.folder(folder);
+    const plan = tinyPlan();
+    root.file('plan.png', plan.split(',')[1], { base64: true });
+    root.file('pins.json', JSON.stringify([{
+      id: 'legacy-' + fileName,
+      num: 1,
+      type: 'Interior',
+      description,
+      room: 'Kitchen',
+      direction: 'N',
+      x: '0.50000',
+      y: '0.40000',
+      photos: ['photo-01.jpg'],
+    }]));
+    root.folder('photos').file('photo-01.jpg', 'photo-' + fileName);
+    return new File([await zip.generateAsync({ type: 'blob' })], fileName, { type: 'application/zip' });
+  }
+
+  function floorBundleFile(fileName, address, client, date) {
+    const plan = tinyPlan();
+    const bundle = {
+      kind: 'floor-survey-bundle',
+      bundleVersion: 1,
+      project: {
+        client,
+        address,
+        inspectionDate: date,
+        notes: 'Synthetic survey notes',
+        customSurfaces: ['Carpet'],
+      },
+      floors: [{
+        id: 'floor-synthetic',
+        name: 'Main Level',
+        order: 0,
+        planDataUrl: plan,
+        planWidth: 80,
+        planHeight: 60,
+        boundary: [{ x: 4, y: 4 }, { x: 70, y: 4 }, { x: 70, y: 50 }],
+      }],
+      points: [
+        { id: 'reading-1', floorId: 'floor-synthetic', x: 12, y: 14, value: 1.25, createdAt: 1 },
+        { id: 'reading-2', floorId: 'floor-synthetic', x: 30, y: 28, value: 1.4, createdAt: 2 },
+      ],
+    };
+    return new File([JSON.stringify(bundle)], fileName, { type: 'application/json' });
+  }
+
+  async function readPhoto(id) {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('pgg_photos_v1', 1);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+    });
+    const value = await new Promise((resolve, reject) => {
+      const tx = db.transaction('photos', 'readonly');
+      const request = tx.objectStore('photos').get(id);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return value;
+  }
+
+  async function seedCustomer(id, address) {
+    const record = ToolboxApp.blankCustomerFile(id);
+    ToolboxPlanSetup.ensurePlanSetup(record);
+    record.firstName = 'Ada';
+    record.lastName = 'Field';
+    record.propertyAddress = address;
+    record.customerUpdatedAt = '2026-04-01T00:00:00.000Z';
+    await ToolboxDB.saveCustomerFile(record);
+    return record;
+  }
+
+  async function importFloor(id, file) {
+    const parsed = await ToolboxCustomerFileImport.inspectFile(file);
+    const context = await ToolboxCustomerFileImport.getImportContext(parsed, id);
+    const current = await ToolboxDB.getCustomerFile(id);
+    await ToolboxCustomerFileImport.applyImport(parsed, id, {
+      targetUpdatedAt: current.updatedAt,
+      canvasChoice: context.isNew ? 'new' : 'add',
+      fieldChoices: { firstName: 'keep', lastName: 'keep', propertyAddress: 'keep' },
+      confirmAddFloorLevels: !!context.requiresFloorAddConfirm,
+    });
+    return parsed;
+  }
+
+  async function importDistress(id, file) {
+    const parsed = await ToolboxCustomerFileImport.inspectFile(file);
+    const current = await ToolboxDB.getCustomerFile(id);
+    await ToolboxCustomerFileImport.applyImport(parsed, id, {
+      targetUpdatedAt: current.updatedAt,
+      canvasChoice: 'add',
+      fieldChoices: {},
+      useSuggestedAddress: false,
+    });
+    return parsed;
+  }
+
+  const wrongFile = await distressZip('59_Lodge_Trail', 'wrong-distress.zip', 'Wrong house crack');
+  const wrongParsed = await ToolboxCustomerFileImport.inspectFile(wrongFile);
+  await seedCustomer('cf-preview-warn', '8 Continuation Court');
+  const warnContext = await ToolboxCustomerFileImport.getImportContext(wrongParsed, 'cf-preview-warn');
+  const beforeWarn = await ToolboxDB.getCustomerFile('cf-preview-warn');
+
+  const rightDistress = await distressZip('8_Continuation_Court', 'right-distress.zip', 'Right house crack');
+  const rightFloor = floorBundleFile('right-floor.json', '8 Continuation Court', 'Ada Field', '2026-03-01');
+  await seedCustomer('cf-undo-distress', '8 Continuation Court');
+  await importFloor('cf-undo-distress', rightFloor);
+  const distressParsed = await importDistress('cf-undo-distress', rightDistress);
+  const withBoth = await ToolboxDB.getCustomerFile('cf-undo-distress');
+  const floorCanvasId = withBoth.recoveryImports.find((entry) => entry.kind === 'floor').canvasIds[0];
+  const distressCanvasId = withBoth.recoveryImports.find((entry) => entry.kind === 'distress').canvasIds[0];
+  const floorPlanId = withBoth.planSetup.canvases.find((canvas) => canvas.id === floorCanvasId).plan.id;
+  const distressPlanId = withBoth.planSetup.canvases.find((canvas) => canvas.id === distressCanvasId).plan.id;
+  const distressPhotoId = withBoth.distress.pins[0].photos[0];
+  const floorPointsBefore = withBoth.floorSurvey.byCanvasId[floorCanvasId].points.map((point) => [point.x, point.y]);
+  const removedDistress = await ToolboxCustomerFileImport.removeImportedComponent('cf-undo-distress', distressParsed.fingerprint);
+  const afterDistressRemoval = await ToolboxDB.getCustomerFile('cf-undo-distress');
+  const distressPhotoAfter = await readPhoto(distressPhotoId);
+  const floorPlanAfter = await ToolboxDB.getMedia(floorPlanId);
+  const distressPlanAfter = await ToolboxDB.getMedia(distressPlanId);
+
+  const floorOnly = floorBundleFile('other-floor.json', '8 Continuation Court', 'Ada Field', '2026-03-01');
+  const distressForFloor = await distressZip('8_Continuation_Court', 'keep-distress.zip', 'Keep this crack');
+  await seedCustomer('cf-undo-floor', '8 Continuation Court');
+  const floorParsed = await importFloor('cf-undo-floor', floorOnly);
+  await importDistress('cf-undo-floor', distressForFloor);
+  const beforeFloorRemoval = await ToolboxDB.getCustomerFile('cf-undo-floor');
+  const keptPhotoId = beforeFloorRemoval.distress.pins[0].photos[0];
+  const keptDistressPlanId = beforeFloorRemoval.planSetup.canvases.find((canvas) =>
+    canvas.id === beforeFloorRemoval.recoveryImports.find((entry) => entry.kind === 'distress').canvasIds[0]).plan.id;
+  const removedFloor = await ToolboxCustomerFileImport.removeImportedComponent('cf-undo-floor', floorParsed.fingerprint);
+  const afterFloorRemoval = await ToolboxDB.getCustomerFile('cf-undo-floor');
+  const keptPhotoAfter = await readPhoto(keptPhotoId);
+  const keptDistressPlanAfter = await ToolboxDB.getMedia(keptDistressPlanId);
+
+  await seedCustomer('cf-undo-block', '8 Continuation Court');
+  const blockedParsed = await importDistress('cf-undo-block', await distressZip('8_Continuation_Court', 'blocked-distress.zip', 'Blocked crack'));
+  const blockedRecord = await ToolboxDB.getCustomerFile('cf-undo-block');
+  blockedRecord.distress.pins[0].photos.push('ph_field_later');
+  await ToolboxDB.saveCustomerFile(blockedRecord);
+  const blockedUpdatedAt = (await ToolboxDB.getCustomerFile('cf-undo-block')).updatedAt;
+  let blockedError = '';
+  try {
+    await ToolboxCustomerFileImport.removeImportedComponent('cf-undo-block', blockedParsed.fingerprint);
+  } catch (error) {
+    blockedError = error.message;
+  }
+  const blockedAfter = await ToolboxDB.getCustomerFile('cf-undo-block');
+
+  await seedCustomer('cf-undo-share', '8 Continuation Court');
+  const sharedParsed = await importDistress('cf-undo-share', await distressZip('8_Continuation_Court', 'shared-distress.zip', 'Shared photo crack'));
+  const sharedRecord = await ToolboxDB.getCustomerFile('cf-undo-share');
+  const sharedPhotoId = sharedRecord.distress.pins[0].photos[0];
+  const sharedPlanId = sharedRecord.planSetup.canvases.find((canvas) => canvas.plan && canvas.plan.id).plan.id;
+  const holder = ToolboxApp.blankCustomerFile('cf-photo-holder');
+  ToolboxPlanSetup.ensurePlanSetup(holder);
+  holder.deletedAt = '2026-09-01T00:00:00.000Z';
+  holder.distress.pins = [{ id: 'pin-holder', canvasId: holder.planSetup.canvases[0].id, num: 1, photos: [sharedPhotoId] }];
+  await ToolboxDB.saveCustomerFile(holder);
+  await ToolboxDB.putMedia('plan-unrelated-neighbor', 'data:image/png;base64,bmVpZ2hib3I=');
+  const sharedRemoval = await ToolboxCustomerFileImport.removeImportedComponent('cf-undo-share', sharedParsed.fingerprint);
+  const sharedPhotoAfter = await readPhoto(sharedPhotoId);
+  const sharedPlanAfter = await ToolboxDB.getMedia(sharedPlanId);
+  const neighborPlan = await ToolboxDB.getMedia('plan-unrelated-neighbor');
+  const holderAfter = await ToolboxDB.getCustomerFile('cf-photo-holder');
+
+  await seedCustomer('cf-undo-legacy', '8 Continuation Court');
+  const legacyParsed = await importDistress('cf-undo-legacy', await distressZip('8_Continuation_Court', 'legacy-distress.zip', 'Legacy crack'));
+  const legacyRecord = await ToolboxDB.getCustomerFile('cf-undo-legacy');
+  const legacyEntry = legacyRecord.recoveryImports[0];
+  delete legacyEntry.pinIds;
+  delete legacyEntry.photoIds;
+  delete legacyEntry.planMediaIds;
+  const importedCanvasId = legacyEntry.canvasIds[0];
+  legacyRecord.distress.pins.push({
+    id: 'native-pin',
+    num: 9,
+    x: 8,
+    y: 8,
+    photos: [],
+    description: 'Added after import',
+    canvasId: importedCanvasId,
+  });
+  await ToolboxDB.saveCustomerFile(legacyRecord);
+  const legacyRemoval = await ToolboxCustomerFileImport.removeImportedComponent('cf-undo-legacy', legacyParsed.fingerprint);
+  const legacyAfter = await ToolboxDB.getCustomerFile('cf-undo-legacy');
+
+  await seedCustomer('cf-undo-date', '8 Continuation Court');
+  const datedFloor = await importFloor('cf-undo-date', floorBundleFile('dated-floor.json', '8 Continuation Court', 'Ada Field', '2026-03-01'));
+  const dated = await ToolboxDB.getCustomerFile('cf-undo-date');
+  dated.floorSurvey.inspectionDate = '2026-09-01';
+  await ToolboxDB.saveCustomerFile(dated);
+  await ToolboxCustomerFileImport.removeImportedComponent('cf-undo-date', datedFloor.fingerprint);
+  const datedAfter = await ToolboxDB.getCustomerFile('cf-undo-date');
+
+  return {
+    warning: warnContext.addressWarning,
+    sourceFile: wrongParsed.fileName,
+    suggested: wrongParsed.suggestedPropertyAddress,
+    unchangedPins: beforeWarn.distress ? (beforeWarn.distress.pins || []).length : 0,
+    unchangedAddress: beforeWarn.propertyAddress,
+    distressRemoval: {
+      observations: removedDistress.observationsRemoved,
+      photos: removedDistress.photosRemoved,
+      floorPoints: afterDistressRemoval.floorSurvey.byCanvasId[floorCanvasId]
+        ? afterDistressRemoval.floorSurvey.byCanvasId[floorCanvasId].points.map((point) => [point.x, point.y])
+        : null,
+      floorPointsBefore,
+      pins: (afterDistressRemoval.distress.pins || []).length,
+      name: [afterDistressRemoval.firstName, afterDistressRemoval.lastName, afterDistressRemoval.propertyAddress],
+      customerClock: afterDistressRemoval.customerUpdatedAt,
+      photoGone: distressPhotoAfter == null,
+      floorPlanKept: !!floorPlanAfter,
+      distressPlanGone: distressPlanAfter == null,
+      floorImportRemains: afterDistressRemoval.recoveryImports.some((entry) => entry.kind === 'floor'),
+      distressImportGone: !afterDistressRemoval.recoveryImports.some((entry) => entry.kind === 'distress'),
+    },
+    floorRemoval: {
+      readings: removedFloor.readingsRemoved,
+      metadataRestored: removedFloor.floorMetadataRestored,
+      pins: (afterFloorRemoval.distress.pins || []).length,
+      photoKept: !!keptPhotoAfter,
+      distressPlanKept: !!keptDistressPlanAfter,
+      name: [afterFloorRemoval.firstName, afterFloorRemoval.lastName, afterFloorRemoval.propertyAddress],
+      date: afterFloorRemoval.floorSurvey.inspectionDate || '',
+      notes: afterFloorRemoval.floorSurvey.surveyNotes || '',
+      surfaces: afterFloorRemoval.floorSurvey.customSurfaces || [],
+      floorLayers: Object.keys(afterFloorRemoval.floorSurvey.byCanvasId || {}).length,
+      distressImportRemains: afterFloorRemoval.recoveryImports.some((entry) => entry.kind === 'distress'),
+    },
+    blocked: {
+      error: blockedError,
+      pins: blockedAfter.distress.pins.length,
+      photos: blockedAfter.distress.pins[0].photos.slice(),
+      updatedAt: blockedAfter.updatedAt,
+      sameClock: blockedAfter.updatedAt === blockedUpdatedAt,
+    },
+    shared: {
+      photosKeptShared: sharedRemoval.photosKeptShared,
+      photoRemains: !!sharedPhotoAfter,
+      planGone: sharedPlanAfter == null,
+      neighborRemains: neighborPlan === 'data:image/png;base64,bmVpZ2hib3I=',
+      holderStillReferences: holderAfter.distress.pins[0].photos[0] === sharedPhotoId,
+      pins: (await ToolboxDB.getCustomerFile('cf-undo-share')).distress.pins.length,
+    },
+    legacy: {
+      kept: legacyAfter.distress.pins.map((pin) => pin.id),
+      keptObservations: legacyRemoval.keptObservations,
+      observationsRemoved: legacyRemoval.observationsRemoved,
+    },
+    editedDate: datedAfter.floorSurvey.inspectionDate,
+    editedNotes: datedAfter.floorSurvey.surveyNotes || '',
+  };
+});
+
+check('Wrong-address Distress export is recognizable before commit', mistakeRecovery.warning && mistakeRecovery.warning.source === '59 Lodge Trail' && mistakeRecovery.warning.destination === '8 Continuation Court' && mistakeRecovery.sourceFile === 'wrong-distress.zip' && mistakeRecovery.suggested === '59 Lodge Trail', JSON.stringify(mistakeRecovery.warning));
+check('Inspecting a mismatched export writes nothing', mistakeRecovery.unchangedPins === 0 && mistakeRecovery.unchangedAddress === '8 Continuation Court', JSON.stringify(mistakeRecovery));
+check('Imported Distress can be removed without deleting customer or Floor Survey', mistakeRecovery.distressRemoval.observations === 1 && mistakeRecovery.distressRemoval.pins === 0 && JSON.stringify(mistakeRecovery.distressRemoval.floorPoints) === JSON.stringify(mistakeRecovery.distressRemoval.floorPointsBefore) && mistakeRecovery.distressRemoval.name.join('|') === 'Ada|Field|8 Continuation Court' && mistakeRecovery.distressRemoval.customerClock === '2026-04-01T00:00:00.000Z' && mistakeRecovery.distressRemoval.floorImportRemains && mistakeRecovery.distressRemoval.distressImportGone, JSON.stringify(mistakeRecovery.distressRemoval));
+check('Distress removal deletes only that component’s unreferenced media', mistakeRecovery.distressRemoval.photoGone && mistakeRecovery.distressRemoval.floorPlanKept && mistakeRecovery.distressRemoval.distressPlanGone && mistakeRecovery.distressRemoval.photos === 1, JSON.stringify(mistakeRecovery.distressRemoval));
+check('Imported Floor Survey can be removed without deleting customer or Distress', mistakeRecovery.floorRemoval.readings === 2 && mistakeRecovery.floorRemoval.pins === 1 && mistakeRecovery.floorRemoval.photoKept && mistakeRecovery.floorRemoval.distressPlanKept && mistakeRecovery.floorRemoval.name.join('|') === 'Ada|Field|8 Continuation Court' && mistakeRecovery.floorRemoval.distressImportRemains && mistakeRecovery.floorRemoval.floorLayers === 0, JSON.stringify(mistakeRecovery.floorRemoval));
+check('Floor metadata written by the import is restored when that was the only Floor Survey', mistakeRecovery.floorRemoval.metadataRestored && mistakeRecovery.floorRemoval.date === '' && mistakeRecovery.floorRemoval.notes === '' && mistakeRecovery.floorRemoval.surfaces.length === 0, JSON.stringify(mistakeRecovery.floorRemoval));
+check('A survey date edited after import is not rolled back', mistakeRecovery.editedDate === '2026-09-01' && mistakeRecovery.editedNotes === '', JSON.stringify({ date: mistakeRecovery.editedDate, notes: mistakeRecovery.editedNotes }));
+check('Later photographs block Distress removal before anything is deleted', /later field work/.test(mistakeRecovery.blocked.error) && mistakeRecovery.blocked.pins === 1 && mistakeRecovery.blocked.photos.indexOf('ph_field_later') !== -1 && mistakeRecovery.blocked.sameClock, JSON.stringify(mistakeRecovery.blocked));
+check('Photo bytes still used by another Customer File are not deleted', mistakeRecovery.shared.photosKeptShared === 1 && mistakeRecovery.shared.photoRemains && mistakeRecovery.shared.holderStillReferences && mistakeRecovery.shared.pins === 0 && mistakeRecovery.shared.planGone && mistakeRecovery.shared.neighborRemains, JSON.stringify(mistakeRecovery.shared));
+check('Legacy canvas provenance removes imported pins and keeps later observations', mistakeRecovery.legacy.observationsRemoved === 1 && mistakeRecovery.legacy.keptObservations === 1 && mistakeRecovery.legacy.kept.join(',') === 'native-pin', JSON.stringify(mistakeRecovery.legacy));
+
+await page.goto(`${BASE}#/file/cf-preview-warn/import`, { waitUntil: 'networkidle0' });
+await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
+await page.waitForSelector('#cf-import-file');
+const previewUiCase = await page.evaluate(async () => {
+  const zip = new JSZip();
+  const root = zip.folder('59_Lodge_Trail');
+  const canvas = document.createElement('canvas');
+  canvas.width = 80;
+  canvas.height = 60;
+  canvas.getContext('2d').fillRect(0, 0, 80, 60);
+  const plan = canvas.toDataURL('image/png');
+  root.file('plan.png', plan.split(',')[1], { base64: true });
+  root.file('pins.json', JSON.stringify([{
+    id: 'legacy-ui',
+    num: 1,
+    type: 'Interior',
+    description: 'Wrong house crack',
+    room: 'Kitchen',
+    direction: 'N',
+    x: '0.5',
+    y: '0.4',
+    photos: [],
+  }]));
+  const file = new File([await zip.generateAsync({ type: 'blob' })], 'wrong-distress.zip', { type: 'application/zip' });
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  const input = document.querySelector('#cf-import-file');
+  input.files = transfer.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+});
+await page.waitForSelector('#cf-import-confirm');
+const mismatchPreview = await page.evaluate(async () => {
+  const before = await ToolboxDB.getCustomerFile('cf-preview-warn');
+  return {
+    text: document.querySelector('.cf-import__preview')?.innerText || '',
+    pins: before.distress ? (before.distress.pins || []).length : 0,
+    address: before.propertyAddress,
+    updatedAt: before.updatedAt,
+    overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+  };
+});
+check('Preview shows Distress identity and warns before write', /Distress Survey/.test(mismatchPreview.text) && /wrong-distress\.zip/.test(mismatchPreview.text) && /59 Lodge Trail/.test(mismatchPreview.text) && /8 Continuation Court/.test(mismatchPreview.text) && /Nothing has been written/.test(mismatchPreview.text) && /Observations\s+1/.test(mismatchPreview.text) && mismatchPreview.pins === 0, mismatchPreview.text.replace(/\n/g, ' | '));
+check('Mismatch preview stays inside the phone width', !mismatchPreview.overflow, JSON.stringify({ overflow: mismatchPreview.overflow }));
+await page.screenshot({ path: '/opt/cursor/artifacts/import-mismatch-preview-phone.png', fullPage: true });
+await page.click('#cf-import-cancel');
+const afterCancel = await page.evaluate(async () => {
+  const record = await ToolboxDB.getCustomerFile('cf-preview-warn');
+  return {
+    status: document.querySelector('#cf-import-status')?.textContent || '',
+    preview: document.querySelector('.cf-import__preview')?.innerText || '',
+    pins: record.distress ? (record.distress.pins || []).length : 0,
+    updatedAt: record.updatedAt,
+    address: record.propertyAddress,
+  };
+});
+check('Cancel at preview writes nothing', afterCancel.status === 'Nothing was imported.' && afterCancel.preview === '' && afterCancel.pins === 0 && afterCancel.updatedAt === mismatchPreview.updatedAt && afterCancel.address === '8 Continuation Court', JSON.stringify(afterCancel));
+
+await page.evaluate(async () => {
+  const zip = new JSZip();
+  const root = zip.folder('8_Continuation_Court');
+  const canvas = document.createElement('canvas');
+  canvas.width = 80;
+  canvas.height = 60;
+  canvas.getContext('2d').fillRect(0, 0, 80, 60);
+  root.file('plan.png', canvas.toDataURL('image/png').split(',')[1], { base64: true });
+  root.file('pins.json', JSON.stringify([{
+    id: 'legacy-right-ui',
+    num: 1,
+    type: 'Interior',
+    description: 'Right house crack',
+    room: 'Kitchen',
+    direction: 'N',
+    x: '0.25',
+    y: '0.25',
+    photos: [],
+  }]));
+  const file = new File([await zip.generateAsync({ type: 'blob' })], 'right-distress.zip', { type: 'application/zip' });
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  const input = document.querySelector('#cf-import-file');
+  input.files = transfer.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+});
+await page.waitForSelector('#cf-import-confirm');
+const matchedPreview = await page.evaluate(() => document.querySelector('.cf-import__preview')?.innerText || '');
+check('Matching address does not show a mismatch warning', /8 Continuation Court/.test(matchedPreview) && !/Nothing has been written/.test(matchedPreview) && /right-distress\.zip/.test(matchedPreview), matchedPreview.replace(/\n/g, ' | '));
+await page.click('#cf-import-confirm');
+await page.waitForSelector('#cf-import-open');
+const confirmed = await page.evaluate(async () => {
+  const record = await ToolboxDB.getCustomerFile('cf-preview-warn');
+  return {
+    open: document.querySelector('#cf-import-open')?.textContent || '',
+    replace: document.querySelector('#cf-import-replace')?.textContent || '',
+    remove: document.querySelector('#cf-import-remove')?.textContent || '',
+    fileStillThere: !!document.querySelector('#cf-import-file'),
+    pins: record.distress.pins.length,
+    address: record.propertyAddress,
+    name: record.firstName + ' ' + record.lastName,
+  };
+});
+check('Confirmed import still writes the matching Distress Survey', confirmed.pins === 1 && confirmed.address === '8 Continuation Court' && confirmed.name === 'Ada Field' && confirmed.open === 'Open Distress Survey' && confirmed.replace === 'Replace imported Distress Survey' && confirmed.remove === 'Remove imported Distress Survey' && confirmed.fileStillThere, JSON.stringify(confirmed));
+await page.click('#cf-import-remove');
+await page.waitForSelector('#cf-import-removal-confirm');
+const removalConfirm = await page.evaluate(() => ({
+  text: document.querySelector('.cf-import__preview')?.innerText || '',
+  overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+}));
+check('Removal confirmation states what stays and what goes', /Remove imported Distress Survey/.test(removalConfirm.text) && /1 recovered observation/.test(removalConfirm.text) && /Customer information will not be changed/.test(removalConfirm.text) && /Floor Survey will not be changed/.test(removalConfirm.text), removalConfirm.text.replace(/\n/g, ' | '));
+check('Removal confirmation stays inside the phone width', !removalConfirm.overflow, JSON.stringify(removalConfirm));
+await page.screenshot({ path: '/opt/cursor/artifacts/import-removal-confirm-phone.png', fullPage: true });
+await page.setViewport({ width: 1440, height: 960, deviceScaleFactor: 1 });
+await page.screenshot({ path: '/opt/cursor/artifacts/import-removal-confirm-desktop.png', fullPage: true });
+await page.click('#cf-import-removal-confirm');
+await page.waitForFunction(() => /This Customer File was kept/.test(document.querySelector('#cf-import-status')?.textContent || ''));
+const afterUiRemoval = await page.evaluate(async () => {
+  const record = await ToolboxDB.getCustomerFile('cf-preview-warn');
+  return {
+    status: document.querySelector('#cf-import-status')?.textContent || '',
+    pins: record.distress.pins.length,
+    address: record.propertyAddress,
+    name: record.firstName + ' ' + record.lastName,
+    imports: (record.recoveryImports || []).length,
+  };
+});
+check('Confirmed removal keeps the Customer File and clears the imported Distress Survey', afterUiRemoval.pins === 0 && afterUiRemoval.address === '8 Continuation Court' && afterUiRemoval.name === 'Ada Field' && afterUiRemoval.imports === 0 && /kept/.test(afterUiRemoval.status), JSON.stringify(afterUiRemoval));
+
 await browser.close();
 const failed = results.filter((result) => !result.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);

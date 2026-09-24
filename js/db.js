@@ -261,6 +261,34 @@ function importCustomerFileRecovery(record, mediaEntries, expectedUpdatedAt, exp
   }));
 }
 
+// Remove or replace a recovered component: write the updated Customer File
+// and drop only the plan media ids the caller has already proved are
+// unreferenced. Distress photo bytes stay in their own database.
+function commitCustomerFileRecoveryUpdate(record, expectedUpdatedAt, mediaIdsToDelete) {
+  if (!record || !record.id) return Promise.reject(new Error('Customer File is required.'));
+  const deleteIds = Array.isArray(mediaIdsToDelete) ? mediaIdsToDelete.filter(Boolean) : [];
+  return openDatabase().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE_CUSTOMER_FILES, STORE_MEDIA], 'readwrite');
+    const files = tx.objectStore(STORE_CUSTOMER_FILES);
+    const media = tx.objectStore(STORE_MEDIA);
+    let guardError = null;
+    const currentRequest = files.get(record.id);
+    currentRequest.onsuccess = () => {
+      const current = currentRequest.result || null;
+      if (!current || current.updatedAt !== expectedUpdatedAt) {
+        guardError = new Error('This Customer File changed. Nothing was removed; review it again.');
+        tx.abort();
+        return;
+      }
+      deleteIds.forEach((id) => media.delete(id));
+      files.put(record);
+    };
+    tx.oncomplete = () => resolve(record);
+    tx.onerror = () => reject(guardError || tx.error || new Error('Recovery update failed.'));
+    tx.onabort = () => reject(guardError || tx.error || new Error('Recovery update was cancelled.'));
+  }));
+}
+
 window.ToolboxDB = {
   saveCustomerFile,
   getCustomerFile,
@@ -274,5 +302,6 @@ window.ToolboxDB = {
   removeLocalWorkingCopy,
   purgeExpiredCustomerFiles,
   importCustomerFileRecovery,
+  commitCustomerFileRecoveryUpdate,
   TRASH_RETENTION_DAYS,
 };

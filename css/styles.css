@@ -2731,10 +2731,42 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 
 .cf-import__actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 10px;
   margin-top: 18px;
 }
 
+.cf-import__actions .btn {
+  white-space: normal;
+  text-align: center;
+}
+
+.cf-import__recovered-list {
+  margin-top: 18px;
+}
+
+.cf-import__recovered-list h2,
+.cf-import__recovered h3 {
+  margin: 0 0 8px;
+  color: var(--navy);
+}
+
+.cf-import__recovered {
+  margin-top: 12px;
+  padding: 16px 18px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.cf-import__preview ul,
+.cf-import__result ul {
+  margin: 12px 0 0;
+  padding-left: 1.2rem;
+}
+
+.cf-import__preview li,
 .cf-import__result li {
   margin: 8px 0;
 }
