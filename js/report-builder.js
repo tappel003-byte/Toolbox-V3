@@ -1,17 +1,18 @@
-// Toolbox — Report Builder workspace shell.
+// Toolbox — Report Builder workspace.
 //
-// First shell only: page rail, 11×17 landscape sheet, composition controls,
-// and jump links back to the source workspaces. This module does not write
-// the Customer File, does not assemble a report, and does not load a template.
+// 11×17 landscape sheet, page rail, composition controls, and jump links
+// back to the source workspaces. Evidence pages are read from the open
+// Customer File through ToolboxReportSource. This module does not write
+// the Customer File and does not invent report narrative.
 // Pages exist only while this workspace stays open.
 // Export for AI reads the open Customer File and downloads one ZIP.
-// It does not write the Customer File.
 
 (function () {
   'use strict';
 
   var SHEET_RATIO_LABEL = '11 × 17 landscape';
-  var MAX_PAGES = 30;
+  var MAX_PAGES = 40;
+  var SHEET_RATIO = 17 / 11;
 
   var COMPOSE_TOOLS = [
     { id: 'select', label: 'Select' },
@@ -42,7 +43,6 @@
   var mountGeneration = 0;
   var fitObserver = null;
   var fitOnResize = null;
-  var SHEET_RATIO = 17 / 11;
 
   function fitSheet(root) {
     var stage = root && root.querySelector('.rb-stage');
@@ -91,8 +91,189 @@
     return name + ' · ' + address;
   }
 
-  function createPage(seq) {
-    return { id: 'page-' + seq, seq: seq };
+  function clonePage(page) {
+    return JSON.parse(JSON.stringify(page));
+  }
+
+  function blankPage(seq, identity, reason) {
+    return {
+      id: 'page-' + seq,
+      seq: seq,
+      kind: 'blank',
+      title: 'Blank report sheet',
+      sourceKey: null,
+      canvasId: null,
+      identity: identity || null,
+      reason: reason || 'blank',
+    };
+  }
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function identityLine(identity) {
+    if (!identity) return '';
+    var parts = [];
+    if (identity.name) parts.push(identity.name);
+    if (identity.address) parts.push(identity.address);
+    return parts.join(' · ');
+  }
+
+  function numberLabel(pin) {
+    if (!pin) return '';
+    if (pin.numberEnd && pin.numberEnd !== pin.number) return pin.number + '–' + pin.numberEnd;
+    return String(pin.number);
+  }
+
+  function renderBlank(margin, page, index) {
+    margin.classList.remove('rb-sheet__margin--evidence');
+    margin.appendChild(el('p', 'rb-sheet__kicker', SHEET_RATIO_LABEL));
+    var who = identityLine(page.identity);
+    if (who) margin.appendChild(el('p', 'rb-sheet__note', who));
+    margin.appendChild(el('h1', 'rb-sheet__title', 'Blank report sheet'));
+    var note = 'Blank sheet. Nothing has been placed on it.';
+    if (page.reason === 'pending') note = 'Reading the Customer File.';
+    else if (page.reason === 'empty') note = 'No Distress or Floor Survey evidence is stored on this Customer File yet.';
+    margin.appendChild(el('p', 'rb-sheet__note', note));
+    margin.appendChild(el('p', 'rb-sheet__page', 'Page ' + (index + 1)));
+  }
+
+  function renderEvidenceHead(page) {
+    var head = el('header', 'rb-evidence__head');
+    var who = identityLine(page.identity);
+    if (who) head.appendChild(el('p', 'rb-evidence__identity', who));
+    var dateText = '';
+    if (page.kind === 'floor-topo' && page.surveyDate) dateText = 'Survey date ' + page.surveyDate;
+    else if (page.identity && page.identity.fileDate) dateText = 'File updated ' + page.identity.fileDate;
+    if (dateText) head.appendChild(el('p', 'rb-evidence__date', dateText));
+    head.appendChild(el('h1', 'rb-evidence__title', page.title || 'Report sheet'));
+    return head;
+  }
+
+  function renderJump(page) {
+    var label = page.sourceKey === 'floor' ? 'Open Floor Survey' : 'Open Distress Survey';
+    var button = el('button', 'rb-jump', label);
+    button.type = 'button';
+    button.setAttribute('data-rb-source', page.sourceKey);
+    if (page.canvasId) button.setAttribute('data-rb-canvas', page.canvasId);
+    return button;
+  }
+
+  function renderDistress(margin, page, index) {
+    margin.classList.add('rb-sheet__margin--evidence');
+    margin.appendChild(renderEvidenceHead(page));
+    var body = el('div', 'rb-evidence');
+    var planSlot = el('div', 'rb-plan-slot');
+    var plan = page.plan || {};
+    var ratio = plan.width && plan.height ? (plan.width / plan.height) : 1;
+    var frame = el('div', 'rb-plan-frame');
+    frame.style.setProperty('--plan-ratio', String(ratio));
+    if (plan.dataUrl) {
+      var image = el('img', 'rb-plan-frame__img');
+      image.alt = page.levelName ? page.levelName + ' plan' : 'Floor plan';
+      image.src = plan.dataUrl;
+      frame.appendChild(image);
+    } else {
+      frame.appendChild(el('p', 'rb-plan-frame__missing', 'Plan image is not on this device.'));
+    }
+    (page.pins || []).forEach(function (pin) {
+      if (!pin.position) return;
+      var mark = el('span', 'rb-pin', numberLabel(pin));
+      var x = Math.max(0, Math.min(1, pin.position.x));
+      var y = Math.max(0, Math.min(1, pin.position.y));
+      mark.style.left = (x * 100) + '%';
+      mark.style.top = (y * 100) + '%';
+      frame.appendChild(mark);
+    });
+    planSlot.appendChild(frame);
+    body.appendChild(planSlot);
+
+    var list = el('div', 'rb-obs-list');
+    if (!(page.pins || []).length) {
+      list.appendChild(el('p', 'rb-obs__empty', 'No observations on this level.'));
+    }
+    (page.pins || []).forEach(function (pin) {
+      var item = el('article', 'rb-obs');
+      item.appendChild(el('h2', 'rb-obs__num', numberLabel(pin)));
+      var place = [pin.location, pin.category].filter(Boolean).join(' · ');
+      if (pin.isExterior) place = place ? place + ' · Exterior' : 'Exterior';
+      if (place) item.appendChild(el('p', 'rb-obs__place', place));
+      if (pin.text) item.appendChild(el('p', 'rb-obs__text', pin.text));
+      var photos = el('div', 'rb-obs__photos');
+      (pin.photos || []).forEach(function (photo) {
+        var fig = el('figure', 'rb-photo');
+        fig.appendChild(el('figcaption', 'rb-photo__num', String(photo.displayNumber)));
+        if (photo.dataUrl) {
+          var img = el('img', 'rb-photo__img');
+          img.alt = 'Photo ' + photo.displayNumber;
+          img.src = photo.dataUrl;
+          fig.appendChild(img);
+        } else {
+          fig.appendChild(el('span', 'rb-photo__missing', 'Not on this device'));
+        }
+        photos.appendChild(fig);
+      });
+      if ((pin.photos || []).length) item.appendChild(photos);
+      list.appendChild(item);
+    });
+    body.appendChild(list);
+    margin.appendChild(body);
+    var foot = el('footer', 'rb-evidence__foot');
+    foot.appendChild(renderJump(page));
+    foot.appendChild(el('p', 'rb-sheet__page', 'Page ' + (index + 1)));
+    margin.appendChild(foot);
+  }
+
+  function renderFloor(margin, page, index) {
+    margin.classList.add('rb-sheet__margin--evidence');
+    margin.appendChild(renderEvidenceHead(page));
+    var figure = page.figure || {};
+    var frame = el('div', 'rb-figure');
+    frame.setAttribute('data-figure-kind', figure.kind || 'unavailable');
+    if (figure.mediaId) frame.setAttribute('data-media-id', figure.mediaId);
+    if (figure.kind === 'stored-rendering' && figure.dataUrl && figure.mime === 'pdf') {
+      var object = document.createElement('object');
+      object.className = 'rb-figure__pdf';
+      object.type = 'application/pdf';
+      object.data = figure.dataUrl;
+      object.appendChild(el('p', 'rb-figure__fallback', 'Finished Floor Survey rendering'));
+      frame.appendChild(object);
+    } else if (figure.kind === 'stored-rendering' && figure.dataUrl && figure.mime === 'image') {
+      var image = el('img', 'rb-figure__img');
+      image.alt = page.title || 'Floor Survey rendering';
+      image.src = figure.dataUrl;
+      frame.appendChild(image);
+    } else {
+      frame.appendChild(el('p', 'rb-figure__note', page.note || 'The finished Floor Survey rendering is not stored for this level. Readings were not redrawn here.'));
+    }
+    if (page.areaNames && page.areaNames.length && !page.areaName) {
+      frame.appendChild(el('p', 'rb-figure__areas', 'Areas: ' + page.areaNames.join(', ')));
+    }
+    margin.appendChild(frame);
+    var foot = el('footer', 'rb-evidence__foot');
+    foot.appendChild(renderJump(page));
+    foot.appendChild(el('p', 'rb-sheet__page', 'Page ' + (index + 1)));
+    margin.appendChild(foot);
+  }
+
+  function renderSheet(root, page, index) {
+    var sheet = root.querySelector('.rb-sheet');
+    var margin = root.querySelector('#rb-sheet-margin');
+    if (!sheet || !margin || !page) return;
+    var evidence = page.kind === 'distress-level' || page.kind === 'floor-topo';
+    sheet.classList.toggle('is-evidence', evidence);
+    sheet.setAttribute('aria-label', (page.title || SHEET_RATIO_LABEL) + ' report sheet');
+    sheet.setAttribute('data-page-kind', page.kind || 'blank');
+    if (page.canvasId) sheet.setAttribute('data-canvas-id', page.canvasId);
+    else sheet.removeAttribute('data-canvas-id');
+    margin.textContent = '';
+    if (page.kind === 'distress-level') renderDistress(margin, page, index);
+    else if (page.kind === 'floor-topo') renderFloor(margin, page, index);
+    else renderBlank(margin, page, index);
   }
 
   function mount(host, options) {
@@ -103,17 +284,18 @@
     var onOpenSource = options && options.onOpenSource;
 
     var nextSeq = 1;
-    var pages = [createPage(nextSeq)];
+    var pages = [blankPage(nextSeq, null, 'pending')];
     nextSeq += 1;
     var activeId = pages[0].id;
     var activeTool = 'select';
+    var loadedIdentity = null;
 
     host.innerHTML = shellHtml();
     var root = host.querySelector('.rb-shell');
     var fileLabelEl = root.querySelector('#rb-file-label');
+    var modeEl = root.querySelector('#rb-mode');
     var statusEl = root.querySelector('#rb-tool-status');
     var listEl = root.querySelector('#rb-page-list');
-    var sheetPageEl = root.querySelector('#rb-sheet-page');
     var addBtn = root.querySelector('#rb-add-page');
     var duplicateBtn = root.querySelector('#rb-duplicate-page');
     var removeBtn = root.querySelector('#rb-remove-page');
@@ -134,6 +316,11 @@
     function renderPages() {
       var index = activeIndex();
       if (index < 0) index = 0;
+      if (!pages.length) {
+        pages = [blankPage(nextSeq, loadedIdentity, 'blank')];
+        nextSeq += 1;
+        index = 0;
+      }
       activeId = pages[index].id;
       listEl.textContent = '';
       pages.forEach(function (page, pageIndex) {
@@ -141,7 +328,7 @@
         button.type = 'button';
         button.className = 'rb-thumb' + (page.id === activeId ? ' is-active' : '');
         button.setAttribute('aria-pressed', page.id === activeId ? 'true' : 'false');
-        button.setAttribute('aria-label', 'Page ' + (pageIndex + 1));
+        button.setAttribute('aria-label', 'Page ' + (pageIndex + 1) + ', ' + (page.title || 'Report sheet'));
 
         var sheet = document.createElement('span');
         sheet.className = 'rb-thumb__sheet';
@@ -153,7 +340,7 @@
 
         var caption = document.createElement('span');
         caption.className = 'rb-thumb__caption';
-        caption.textContent = 'Page ' + (pageIndex + 1);
+        caption.textContent = page.title || ('Page ' + (pageIndex + 1));
 
         button.appendChild(sheet);
         button.appendChild(caption);
@@ -164,7 +351,7 @@
         listEl.appendChild(button);
       });
 
-      sheetPageEl.textContent = 'Page ' + (index + 1);
+      renderSheet(root, pages[index], index);
       addBtn.disabled = pages.length >= MAX_PAGES;
       removeBtn.disabled = pages.length <= 1;
       earlierBtn.disabled = index <= 0;
@@ -176,11 +363,14 @@
       if (typeof onBack === 'function') onBack();
     });
 
-    root.querySelectorAll('[data-rb-source]').forEach(function (button) {
-      button.addEventListener('click', function () {
-        var key = button.getAttribute('data-rb-source');
-        if (typeof onOpenSource === 'function') onOpenSource(key);
-      });
+    root.addEventListener('click', function (event) {
+      var button = event.target.closest('[data-rb-source]');
+      if (!button || !root.contains(button)) return;
+      var key = button.getAttribute('data-rb-source');
+      var canvasId = button.getAttribute('data-rb-canvas');
+      if (typeof onOpenSource === 'function') {
+        onOpenSource(key, canvasId ? { canvasId: canvasId } : undefined);
+      }
     });
 
     root.querySelectorAll('[data-rb-tool]').forEach(function (button) {
@@ -197,7 +387,7 @@
 
     addBtn.addEventListener('click', function () {
       if (pages.length >= MAX_PAGES) return;
-      var page = createPage(nextSeq);
+      var page = blankPage(nextSeq, loadedIdentity, 'blank');
       nextSeq += 1;
       pages.push(page);
       activeId = page.id;
@@ -207,7 +397,9 @@
     duplicateBtn.addEventListener('click', function () {
       if (pages.length >= MAX_PAGES) return;
       var index = activeIndex();
-      var page = createPage(nextSeq);
+      var page = clonePage(pages[index]);
+      page.seq = nextSeq;
+      page.id = 'page-' + nextSeq;
       nextSeq += 1;
       pages.splice(index + 1, 0, page);
       activeId = page.id;
@@ -266,6 +458,28 @@
     watchSheet(root);
     fileLabelEl.textContent = 'Loading Customer File…';
 
+    function applySource(record, source) {
+      loadedIdentity = source && source.identity ? source.identity : null;
+      var evidence = source && Array.isArray(source.pages) ? source.pages : [];
+      if (evidence.length) {
+        pages = evidence.map(function (page) {
+          var copy = clonePage(page);
+          copy.seq = nextSeq;
+          nextSeq += 1;
+          return copy;
+        });
+        modeEl.textContent = 'Evidence';
+      } else {
+        pages = [blankPage(nextSeq, loadedIdentity, 'empty')];
+        nextSeq += 1;
+        modeEl.textContent = 'Shell';
+      }
+      activeId = pages[0].id;
+      fileLabelEl.textContent = record ? fileLabel(record) : 'Customer File not on this device';
+      renderPages();
+      fitSheet(root);
+    }
+
     if (!window.ToolboxDB || typeof window.ToolboxDB.getCustomerFile !== 'function' || !customerFileId) {
       fileLabelEl.textContent = 'Customer File';
       return;
@@ -277,7 +491,14 @@
         window.location.replace('#/trash');
         return;
       }
-      fileLabelEl.textContent = record ? fileLabel(record) : 'Customer File not on this device';
+      if (!record || !window.ToolboxReportSource || typeof window.ToolboxReportSource.assemble !== 'function') {
+        fileLabelEl.textContent = record ? fileLabel(record) : 'Customer File not on this device';
+        return;
+      }
+      return window.ToolboxReportSource.assemble(record).then(function (source) {
+        if (token !== mountGeneration) return;
+        applySource(record, source);
+      });
     }).catch(function () {
       if (token !== mountGeneration) return;
       fileLabelEl.textContent = 'Customer File';
@@ -293,7 +514,7 @@
       '      <span class="file-identity__name">Report Builder</span>' +
       '      <span class="file-identity__address" id="rb-file-label"></span>' +
       '    </div>' +
-      '    <span class="file-status">Shell</span>' +
+      '    <span class="file-status" id="rb-mode">Shell</span>' +
       '  </div>' +
       '  <div class="rb-toolbar">' +
       '    <div class="rb-toolbar__tools" role="toolbar" aria-label="Report composition">' +
@@ -308,7 +529,7 @@
       '      <div class="rb-rail__head">' +
       '        <p class="eyebrow">Pages</p>' +
       '        <strong>Report sheets</strong>' +
-      '        <span>Not saved</span>' +
+      '        <span id="rb-rail-note">Not saved</span>' +
       '      </div>' +
       '      <div class="rb-rail__list" id="rb-page-list"></div>' +
       '      <div class="rb-rail__actions">' +
@@ -320,12 +541,12 @@
       '      </div>' +
       '    </aside>' +
       '    <div class="rb-stage">' +
-      '      <article class="rb-sheet" aria-label="' + SHEET_RATIO_LABEL + ' report sheet">' +
-      '        <div class="rb-sheet__margin">' +
+      '      <article class="rb-sheet" id="rb-sheet" aria-label="' + SHEET_RATIO_LABEL + ' report sheet">' +
+      '        <div class="rb-sheet__margin" id="rb-sheet-margin">' +
       '          <p class="rb-sheet__kicker">' + SHEET_RATIO_LABEL + '</p>' +
       '          <h1 class="rb-sheet__title">Blank report sheet</h1>' +
-      '          <p class="rb-sheet__note">Template not loaded. This sheet is the composition surface only.</p>' +
-      '          <p class="rb-sheet__page" id="rb-sheet-page">Page 1</p>' +
+      '          <p class="rb-sheet__note">Reading the Customer File.</p>' +
+      '          <p class="rb-sheet__page">Page 1</p>' +
       '        </div>' +
       '      </article>' +
       '    </div>' +
@@ -338,11 +559,6 @@
       '        <button type="button" class="btn btn--secondary" data-rb-source="distress">Open Distress Survey</button>' +
       '        <button type="button" class="btn btn--secondary" data-rb-source="diagnostics">Open Diagnostics</button>' +
       '      </div>' +
-      '      <section class="rb-panel__reserve" aria-label="Template">' +
-      '        <p class="eyebrow">Report</p>' +
-      '        <h3>Template</h3>' +
-      '        <p>Reserved for the existing black-and-white report. No template content is placed on the sheet in this shell.</p>' +
-      '      </section>' +
       '    </aside>' +
       '  </div>' +
       '</div>'
