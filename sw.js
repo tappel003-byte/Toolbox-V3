@@ -15,7 +15,7 @@
 // sw.js file's own bytes change; a precached static asset edited without
 // bumping this stays served from the stale cache indefinitely on already
 // installed devices, invisibly, no matter how many times it's redeployed.
-const CACHE_NAME = 'toolbox-shell-v64';
+const CACHE_NAME = 'toolbox-shell-v66';
 const OFFLINE_DOCUMENT = '/index.html';
 const DISTRESS_DOCUMENT = '/distress-survey/survey.html';
 
@@ -33,6 +33,7 @@ const STATIC_SHELL = [
   '/js/plan-setup.js',
   '/js/vendor/jszip.min.js',
   '/js/customer-file-import.js',
+  '/js/recovered-photos.js',
   '/js/distress-survey/mount.js',
   '/distress-survey/survey.html',
   '/js/floor-survey/floor-survey.js',
