@@ -70,6 +70,7 @@ Concrete Customer File record ownership for later app plug-in. Architecture is c
 - Floor Survey adds its own application-specific data/layers to each applicable established canvas/level.
 - Topo Boundary and exclusions are Floor-Survey-specific setup associated with an established canvas/level, not shared Customer File plan data.
 - Measurement points, topo data, and Survey Date belong to Floor Survey datasets.
+- Survey Date is stored on that Customer File's `floorSurvey`. A second Customer File is a second record, including when both files are for the same property. Legacy bundles that reuse a source project id, floor id, or point id do not alias the two records: import mints new Customer File, canvas, plan, point, and Floor Survey ids. Editing one file's survey date writes only that file.
 - Shared room information from the Customer File is available to Floor Survey so room context can be reused rather than entered again. The exact future mechanism for automatic spatial room membership is not yet decided.
 - Multiple established levels may each have Floor Survey data. This is not a separate set of Floor-Survey-owned canvases.
 - Floor Survey's proven multiple topo areas on the same physical plan remain a separate concept and must not be confused with established canvases/levels.
