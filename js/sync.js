@@ -426,10 +426,23 @@
     return [];
   }
 
+  function recoveryPdfIdsFromFloor(floor) {
+    const layers = floor && floor.byCanvasId && typeof floor.byCanvasId === 'object' ? floor.byCanvasId : {};
+    const ids = [];
+    Object.keys(layers).forEach(function (key) {
+      const id = layers[key] && layers[key].recoveryPdfMediaId;
+      if (typeof id !== 'string' || id.indexOf('fsrec_') !== 0) return;
+      if (id.indexOf('/') !== -1 || id.indexOf('\\') !== -1 || id.indexOf('..') !== -1) return;
+      ids.push(id);
+    });
+    return Array.from(new Set(ids));
+  }
+
   function mediaIdsForComponent(record, name) {
     if (name === 'plans') return planMediaIds(record);
     if (name === 'distress') return distressPhotoIds(record);
     if (name === 'diagnostics') return diagnosticsFigureMediaIds(record);
+    if (name === 'floor') return recoveryPdfIdsFromFloor(record && record.floorSurvey);
     return [];
   }
 
@@ -626,6 +639,7 @@
       return Array.from(new Set(ids));
     }
     if (name === 'diagnostics') return diagnosticsFigureMediaIds(payload);
+    if (name === 'floor') return recoveryPdfIdsFromFloor(payload);
     return [];
   }
 
@@ -1099,6 +1113,12 @@
     for (let i = 0; i < photoIds.length; i++) {
       if (!(await remoteMediaExists(photoIds[i]))) {
         throw new SyncError('incomplete', 'Cabinet verification failed: Distress media missing remotely.');
+      }
+    }
+    const pdfIds = recoveryPdfIdsFromFloor(record.floorSurvey);
+    for (let i = 0; i < pdfIds.length; i++) {
+      if (!(await remoteMediaExists(pdfIds[i]))) {
+        throw new SyncError('incomplete', 'Cabinet verification failed: Floor Survey recovery PDF missing remotely.');
       }
     }
     return remote;

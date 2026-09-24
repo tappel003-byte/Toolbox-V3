@@ -77,16 +77,28 @@ const distress = {
   pins: [{ photos: ['ph_job', 'not-a-photo', 'ph_../no'] }],
   quickCapture: [{ id: 'ph_quick' }, { id: 'not-quick' }],
 };
+const floor = {
+  byCanvasId: {
+    'canvas-job': { recoveryPdfMediaId: 'fsrec_canvas-job' },
+    bad: { recoveryPdfMediaId: 'fsrec_../no' },
+    other: { recoveryPdfMediaId: 'not-a-pdf' },
+  },
+};
 
 const cabinet = createCabinet({
   'cf/job/index.json': { id: 'job', deletedAt: '2026-01-01T00:00:00.000Z' },
   'cf/job/plans.json': plans,
   'cf/job/distress.json': distress,
+  'cf/job/floor.json': floor,
   'cf/job/customer.json': { firstName: 'Ada' },
   'media/plan-job': 'plan-bytes',
   'media/ph_job': 'photo-bytes',
   'media/ph_quick': 'quick-bytes',
+  'media/fsrec_canvas-job': 'pdf-bytes',
   'media/other-plan': 'keep-me',
+  'cf/badfloor/index.json': { id: 'badfloor', deletedAt: '2026-01-03T00:00:00.000Z' },
+  'cf/badfloor/floor.json': '{',
+  'media/fsrec_badfloor': 'pdf-bytes',
   'cf/leased/index.json': {
     id: 'leased',
     deletedAt: '2026-01-02T00:00:00.000Z',
@@ -127,6 +139,17 @@ check(
   JSON.stringify({ status: corrupt.status, ops: corrupt.ops, text: corrupt.text }),
 );
 
+const badFloor = await callDelete(cabinet, 'badfloor');
+check(
+  'DELETE stops when the Floor Survey component cannot be read',
+  badFloor.status === 500 &&
+    /Floor Survey/i.test(badFloor.text) &&
+    badFloor.ops.length === 0 &&
+    cabinet.store['media/fsrec_badfloor'] === 'pdf-bytes' &&
+    !cabinet.store['purge/badfloor.json'],
+  JSON.stringify({ status: badFloor.status, ops: badFloor.ops, text: badFloor.text }),
+);
+
 const purged = await callDelete(cabinet, 'job');
 const tomb = cabinet.store['purge/job.json'] ? JSON.parse(cabinet.store['purge/job.json']) : null;
 const tombPut = purged.ops.findIndex(function (op) { return op.op === 'put' && op.key === 'purge/job.json'; });
@@ -142,7 +165,10 @@ check(
     tomb.mediaIds.indexOf('plan-job') !== -1 &&
     tomb.mediaIds.indexOf('ph_job') !== -1 &&
     tomb.mediaIds.indexOf('ph_quick') !== -1 &&
+    tomb.mediaIds.indexOf('fsrec_canvas-job') !== -1 &&
     tomb.mediaIds.indexOf('not-quick') === -1 &&
+    tomb.mediaIds.indexOf('fsrec_../no') === -1 &&
+    tomb.mediaIds.indexOf('not-a-pdf') === -1 &&
     tomb.mediaIds.indexOf('../escape') === -1 &&
     tomb.mediaIds.indexOf('not-a-photo') === -1 &&
     tombPut !== -1 &&
@@ -152,7 +178,10 @@ check(
     !cabinet.store['media/plan-job'] &&
     !cabinet.store['media/ph_job'] &&
     !cabinet.store['media/ph_quick'] &&
+    !cabinet.store['media/fsrec_canvas-job'] &&
+    !cabinet.store['cf/job/floor.json'] &&
     cabinet.store['media/other-plan'] === 'keep-me' &&
+    cabinet.store['media/fsrec_badfloor'] === 'pdf-bytes' &&
     cabinet.store['media/plan-leased'] === 'leased-bytes' &&
     !cabinet.store['cf/job/index.json'] &&
     !cabinet.store['cf/job/plans.json'] &&

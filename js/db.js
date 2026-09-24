@@ -155,6 +155,19 @@ function distressPhotoIds(record) {
   return ids;
 }
 
+function recoveryPdfIds(record) {
+  const floor = record && record.floorSurvey ? record.floorSurvey : {};
+  const layers = floor.byCanvasId && typeof floor.byCanvasId === 'object' ? floor.byCanvasId : {};
+  const ids = [];
+  Object.keys(layers).forEach((key) => {
+    const id = layers[key] && layers[key].recoveryPdfMediaId;
+    if (typeof id !== 'string' || id.indexOf('fsrec_') !== 0) return;
+    if (id.indexOf('/') !== -1 || id.indexOf('\\') !== -1 || id.indexOf('..') !== -1) return;
+    ids.push(id);
+  });
+  return ids;
+}
+
 function deleteDistressMedia(ids) {
   const unique = Array.from(new Set(ids || []));
   if (!unique.length) return Promise.resolve(0);
@@ -204,7 +217,7 @@ function permanentlyDeleteCustomerFiles(records) {
 function removeLocalWorkingCopy(records) {
   const list = (records || []).filter((record) => record && record.id);
   if (!list.length) return Promise.resolve({ deletedCount: 0, mediaDeletedCount: 0 });
-  const planIds = Array.from(new Set(list.flatMap(planMediaIds)));
+  const planIds = Array.from(new Set(list.flatMap(planMediaIds).concat(list.flatMap(recoveryPdfIds))));
   const photoIds = Array.from(new Set(list.flatMap(distressPhotoIds)));
 
   return openDatabase().then((db) => new Promise((resolve, reject) => {
