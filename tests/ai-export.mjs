@@ -205,6 +205,18 @@ const report = await page.evaluate(async (png) => {
       importedAt: '2026-01-01T00:00:00.000Z',
       canvasIds: ['canvas-basement'],
       fingerprint: 'abc',
+      pinIds: ['pin-base'],
+      photoIds: ['ph_import-11111111-1111-1111-1111-111111111111'],
+      planMediaIds: ['plan-basement'],
+      floorMetadataBefore: {
+        inspectionDate: '1999-01-01',
+        surveyNotes: 'before-import-note',
+        byCanvasId: {
+          'canvas-ghost': {
+            points: [{ id: 'removed-reading-should-not-export', value: 1.01 }],
+          },
+        },
+      },
       excludedObservations: [{
         num: 9,
         description: 'Unplaced crack',
@@ -218,8 +230,10 @@ const report = await page.evaluate(async (png) => {
   const before = JSON.stringify(full);
   let saves = 0;
   let listed = 0;
+  let recoveryWrites = 0;
   const origSave = window.ToolboxDB.saveCustomerFile;
   const origList = window.ToolboxDB.getAllCustomerFiles;
+  const origRecoveryWrite = window.ToolboxDB.commitCustomerFileRecoveryUpdate;
   window.ToolboxDB.saveCustomerFile = function () {
     saves += 1;
     return Promise.resolve();
@@ -227,6 +241,10 @@ const report = await page.evaluate(async (png) => {
   window.ToolboxDB.getAllCustomerFiles = function () {
     listed += 1;
     return Promise.resolve([]);
+  };
+  window.ToolboxDB.commitCustomerFileRecoveryUpdate = function () {
+    recoveryWrites += 1;
+    return Promise.resolve();
   };
 
   let built;
@@ -239,9 +257,11 @@ const report = await page.evaluate(async (png) => {
   assert('full package builds', true);
   assert('export does not save the Customer File', saves === 0, 'saves=' + saves);
   assert('export does not list other Customer Files', listed === 0, 'listed=' + listed);
+  assert('export does not remove a recovered component', recoveryWrites === 0, 'recoveryWrites=' + recoveryWrites);
   assert('source record is unchanged', JSON.stringify(full) === before);
   window.ToolboxDB.saveCustomerFile = origSave;
   window.ToolboxDB.getAllCustomerFiles = origList;
+  window.ToolboxDB.commitCustomerFileRecoveryUpdate = origRecoveryWrite;
 
   const zip = await readZip(built.zip);
   const blob = joined(zip.text);
@@ -299,6 +319,18 @@ const report = await page.evaluate(async (png) => {
     blob.indexOf('Observation 9 — Unplaced crack') !== -1 &&
     blob.indexOf('does not invent pins or photos') !== -1 &&
     survey.pins.every(function (pin) { return pin.description !== 'Unplaced crack' && pin.id !== 'src-left-out'; }));
+  const provenance = JSON.parse(zip.text['provenance/recovery-imports.json']);
+  const recoveryEntry = provenance[0] || {};
+  assert('import identity stays provenance and is not applied as survey data',
+    recoveryEntry.pinIds && recoveryEntry.pinIds[0] === 'pin-base' &&
+    recoveryEntry.photoIds && recoveryEntry.photoIds[0] === 'ph_import-11111111-1111-1111-1111-111111111111' &&
+    recoveryEntry.planMediaIds && recoveryEntry.planMediaIds[0] === 'plan-basement' &&
+    recoveryEntry.floorMetadataBefore && recoveryEntry.floorMetadataBefore.surveyNotes === 'before-import-note' &&
+    inventory.components.floorSurvey.epochCount === 2 &&
+    epoch2024.indexOf('removed-reading-should-not-export') === -1 &&
+    epoch2026Base.indexOf('removed-reading-should-not-export') === -1 &&
+    epoch2026Main.indexOf('removed-reading-should-not-export') === -1 &&
+    survey.pins.every(function (pin) { return pin.id !== 'pin-import-ghost'; }));
 
   const floorOnly = {
     id: 'cf-floor-only',
