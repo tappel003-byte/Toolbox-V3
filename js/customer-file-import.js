@@ -498,6 +498,93 @@
     return name && address ? name + ' — ' + address : (name || address || 'Untitled Customer File');
   }
 
+  function sourcePropertyAddress(parsed) {
+    if (!parsed) return '';
+    if (parsed.kind === 'floor') {
+      return cleanText(parsed.customerCandidates && parsed.customerCandidates.propertyAddress);
+    }
+    return cleanText(parsed.suggestedPropertyAddress);
+  }
+
+  function normalizeAddress(value) {
+    return cleanText(value).toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function addressMismatch(parsed, record) {
+    const source = sourcePropertyAddress(parsed);
+    const destination = cleanText(record && record.propertyAddress);
+    if (!source || !destination) return null;
+    if (normalizeAddress(source) === normalizeAddress(destination)) return null;
+    return { source: source, destination: destination };
+  }
+
+  function uniqueIds(ids) {
+    const seen = {};
+    const list = [];
+    (ids || []).forEach(function (id) {
+      if (!id || seen[id]) return;
+      seen[id] = true;
+      list.push(id);
+    });
+    return list;
+  }
+
+  function planMediaRefCount(records, planId) {
+    let count = 0;
+    (records || []).forEach(function (record) {
+      const canvases = record && record.planSetup && Array.isArray(record.planSetup.canvases)
+        ? record.planSetup.canvases
+        : [];
+      canvases.forEach(function (canvas) {
+        if (canvas && canvas.plan && canvas.plan.id === planId) count += 1;
+      });
+    });
+    return count;
+  }
+
+  function photoRefCount(records, photoId) {
+    let count = 0;
+    (records || []).forEach(function (record) {
+      const pins = record && record.distress && Array.isArray(record.distress.pins)
+        ? record.distress.pins
+        : [];
+      pins.forEach(function (pin) {
+        const photos = pin && Array.isArray(pin.photos) ? pin.photos : [];
+        photos.forEach(function (id) {
+          if (id === photoId) count += 1;
+        });
+      });
+    });
+    return count;
+  }
+
+  function canvasHasInvestigatorPlanWork(canvas) {
+    if (!canvas) return true;
+    if (Array.isArray(canvas.rooms) && canvas.rooms.length) return true;
+    if (canvas.frontDoor && typeof canvas.frontDoor.x === 'number' && typeof canvas.frontDoor.y === 'number') return true;
+    if (cleanText(canvas.frontDoorFacing)) return true;
+    return false;
+  }
+
+  function canvasRetentionReason(record, canvas) {
+    if (canvasHasInvestigatorPlanWork(canvas)) return 'plan details on this Customer File still use it';
+    const pins = record.distress && Array.isArray(record.distress.pins) ? record.distress.pins : [];
+    if (pins.some(function (pin) { return pin && pin.canvasId === canvas.id; })) {
+      return 'Distress observations still use it';
+    }
+    const layer = record.floorSurvey && record.floorSurvey.byCanvasId
+      ? record.floorSurvey.byCanvasId[canvas.id]
+      : null;
+    if (layerHasFloorWork(layer)) return 'Floor Survey still uses it';
+    const drawings = record.distress && Array.isArray(record.distress.drawings) ? record.distress.drawings : [];
+    if (drawings.length && drawings.some(function (drawing) {
+      return drawing && (!drawing.canvasId || drawing.canvasId === canvas.id);
+    })) {
+      return 'Distress drawings still use it';
+    }
+    return '';
+  }
+
   function fieldConflicts(record, parsed) {
     const candidates = parsed.customerCandidates || {};
     const conflicts = Object.keys(candidates).filter((field) => {
@@ -578,6 +665,7 @@
       blocksDistressMerge: parsed.kind === 'distress' && (existingDistressPins > 0 || existingDistressDrawings > 0),
       hasFloorWork: hasFloorWork,
       requiresFloorAddConfirm: parsed.kind === 'floor' && !!existing && hasFloorWork,
+      addressWarning: addressMismatch(parsed, record),
     };
   }
 
@@ -721,6 +809,7 @@
     return {
       mediaEntries: [{ id: planId, value: parsed.planDataUrl }],
       photoEntries,
+      pinIds: pins.map(function (pin) { return pin.id; }),
       canvasIds: [canvas.id],
       result: {
         kind: 'distress',
@@ -795,6 +884,43 @@
          choices['floorSurvey.customSurfaces'] === 'import')) {
       record.floorSurvey.customSurfaces = surfaces;
     }
+  }
+
+  function floorMetadataSnapshot(record) {
+    const floor = record && record.floorSurvey ? record.floorSurvey : {};
+    return {
+      inspectionDate: cleanText(floor.inspectionDate),
+      surveyNotes: cleanText(floor.surveyNotes),
+      customSurfaces: Array.isArray(floor.customSurfaces) ? floor.customSurfaces.slice() : [],
+    };
+  }
+
+  function sameSurfaceList(left, right) {
+    const a = Array.isArray(left) ? left : [];
+    const b = Array.isArray(right) ? right : [];
+    return a.length === b.length && a.every(function (item, index) { return item === b[index]; });
+  }
+
+  // Restore date/notes/surfaces only when this import was the last Floor Survey
+  // and the investigator has not edited those shared fields since.
+  function maybeRestoreFloorMetadata(record, entry) {
+    if (!entry || !entry.floorMetadataBefore || !entry.floorMetadataWritten) return false;
+    if (recordHasFloorWork(record)) return false;
+    if (recoveryImports(record).some(function (item) { return item && item.kind === 'floor'; })) return false;
+    const before = entry.floorMetadataBefore;
+    const written = entry.floorMetadataWritten;
+    const floor = record.floorSurvey;
+    if (cleanText(floor.inspectionDate) === cleanText(written.inspectionDate)) {
+      floor.inspectionDate = before.inspectionDate || '';
+    }
+    if (cleanText(floor.surveyNotes) === cleanText(written.surveyNotes)) {
+      floor.surveyNotes = before.surveyNotes || '';
+    }
+    const currentSurfaces = Array.isArray(floor.customSurfaces) ? floor.customSurfaces : [];
+    if (sameSurfaceList(currentSurfaces, written.customSurfaces)) {
+      floor.customSurfaces = Array.isArray(before.customSurfaces) ? before.customSurfaces.slice() : [];
+    }
+    return true;
   }
 
   function prepareFloor(record, parsed, isNew, options) {
@@ -882,6 +1008,7 @@
     }
 
     const customerUpdates = applyCustomerFields(record, effectiveParsed, options);
+    const floorMetadataBefore = parsed.kind === 'floor' ? floorMetadataSnapshot(record) : null;
     const prepared = parsed.kind === 'distress'
       ? prepareDistress(record, parsed, isNew)
       : prepareFloor(record, parsed, isNew, options);
@@ -897,6 +1024,9 @@
       sourceName: parsed.fileName,
       importedAt: now,
       canvasIds: prepared.canvasIds,
+      planMediaIds: prepared.mediaEntries.map(function (entry) { return entry.id; }),
+      pinIds: prepared.pinIds || [],
+      photoIds: prepared.photoEntries.map(function (entry) { return entry.id; }),
     };
     if (excludedObservations.length) {
       recoveryEntry.excludedObservations = excludedObservations.map(function (item) {
@@ -908,6 +1038,10 @@
           reason: item.reason,
         };
       });
+    }
+    if (floorMetadataBefore) {
+      recoveryEntry.floorMetadataBefore = floorMetadataBefore;
+      recoveryEntry.floorMetadataWritten = floorMetadataSnapshot(record);
     }
     record.recoveryImports = recoveryImports(record).concat([recoveryEntry]);
 
@@ -929,12 +1063,264 @@
       }
       throw error;
     }
-    return { record, customerUpdates, destinationId: record.id, ...prepared.result };
+    return {
+      record,
+      customerUpdates,
+      destinationId: record.id,
+      fingerprint: parsed.fingerprint,
+      ...prepared.result,
+    };
+  }
+
+  function removalSummaryLines(plan) {
+    const lines = [];
+    if (plan.kind === 'distress') {
+      lines.push(plan.observationsRemoved + ' recovered observation' + (plan.observationsRemoved === 1 ? '' : 's'));
+      lines.push(plan.photosRemoved + ' recovered photo' + (plan.photosRemoved === 1 ? '' : 's') + ' will be deleted');
+      if (plan.photosKeptShared) {
+        lines.push(plan.photosKeptShared + ' photo' + (plan.photosKeptShared === 1 ? '' : 's') +
+          ' will stay because another Customer File still uses ' + (plan.photosKeptShared === 1 ? 'it' : 'them'));
+      }
+      if (plan.keptObservations) {
+        lines.push(plan.keptObservations + ' observation' + (plan.keptObservations === 1 ? '' : 's') +
+          ' added after this import will stay');
+      }
+      lines.push('Floor Survey will not be changed.');
+    } else {
+      lines.push(plan.readingsRemoved + ' recovered reading' + (plan.readingsRemoved === 1 ? '' : 's'));
+      lines.push(plan.layersRemoved + ' recovered level' + (plan.layersRemoved === 1 ? '' : 's'));
+      lines.push('Distress Survey will not be changed.');
+      lines.push(plan.floorMetadataRestored
+        ? 'Floor Survey date, notes, and custom surfaces return to what they were before this import, where they were not edited afterward.'
+        : 'Floor Survey date, notes, and custom surfaces stay. They are shared on the Customer File.');
+    }
+    if (plan.canvasesRemoved) {
+      lines.push(plan.canvasesRemoved + ' recovered plan' + (plan.canvasesRemoved === 1 ? '' : 's') + ' will be removed');
+    }
+    (plan.canvasNamesKept || []).forEach(function (line) { lines.push(line); });
+    lines.push('Customer information will not be changed' +
+      (plan.customerLabel ? ' (' + plan.customerLabel + ').' : '.'));
+    return lines;
+  }
+
+  // Prove which pins, photos, and plan bytes belong to one recoveryImports
+  // entry, then build the Customer File that remains. Nothing is written here.
+  // Legacy entries recorded only canvas ids. New entries also record pin,
+  // photo, and plan media ids. Media bytes are deleted only when no Customer
+  // File, including Trash, still references them.
+  function planImportedRemoval(record, entry, allRecords) {
+    const plan = {
+      fingerprint: entry && entry.fingerprint,
+      kind: entry && entry.kind,
+      label: entry && entry.kind === 'floor' ? 'Floor Survey' : 'Distress Survey',
+      sourceName: entry && entry.sourceName ? entry.sourceName : '',
+      blocked: false,
+      blockReason: '',
+      observationsRemoved: 0,
+      keptObservations: 0,
+      photosOnComponent: 0,
+      photosRemoved: 0,
+      photosKeptShared: 0,
+      readingsRemoved: 0,
+      layersRemoved: 0,
+      canvasesRemoved: 0,
+      canvasNamesKept: [],
+      planMediaIdsToDelete: [],
+      photoIdsToDelete: [],
+      floorMetadataRestored: false,
+      customerLabel: displayCustomerLabel(record),
+      nextRecord: null,
+    };
+    if (!record || !entry || (entry.kind !== 'distress' && entry.kind !== 'floor')) {
+      plan.blocked = true;
+      plan.blockReason = 'This recovered import cannot be identified.';
+      return plan;
+    }
+    const canvasIds = Array.isArray(entry.canvasIds) ? entry.canvasIds.filter(Boolean) : [];
+    if (!canvasIds.length) {
+      plan.blocked = true;
+      plan.blockReason = 'This import did not record which canvas it created, so Toolbox will not guess what to remove.';
+      return plan;
+    }
+
+    const next = clone(record);
+    window.ToolboxPlanSetup.ensurePlanSetup(next);
+    const canvasIdSet = {};
+    canvasIds.forEach(function (id) { canvasIdSet[id] = true; });
+    const photoCandidates = [];
+
+    if (entry.kind === 'distress') {
+      const explicit = Array.isArray(entry.pinIds) && Array.isArray(entry.photoIds);
+      const ownedPhotoIds = {};
+      if (explicit) entry.photoIds.forEach(function (id) { if (id) ownedPhotoIds[id] = true; });
+      const ownedPinIds = {};
+      if (explicit) entry.pinIds.forEach(function (id) { if (id) ownedPinIds[id] = true; });
+      const pins = next.distress && Array.isArray(next.distress.pins) ? next.distress.pins : [];
+      const ownedPins = [];
+      const otherPins = [];
+      let foreignOnImportedCanvas = false;
+      pins.forEach(function (pin) {
+        if (!pin) return;
+        const onCanvas = !!canvasIdSet[pin.canvasId];
+        const importedId = typeof pin.id === 'string' && pin.id.indexOf('pin-import-') === 0;
+        const owned = explicit ? !!ownedPinIds[pin.id] : onCanvas && importedId;
+        if (owned) ownedPins.push(pin);
+        else {
+          otherPins.push(pin);
+          if (!explicit && onCanvas && !importedId) foreignOnImportedCanvas = true;
+        }
+      });
+      if (!explicit && !ownedPins.length && foreignOnImportedCanvas) {
+        plan.blocked = true;
+        plan.blockReason = 'Toolbox cannot prove which Distress observations belong to this import, so nothing was removed.';
+        return plan;
+      }
+      const laterPhotos = [];
+      ownedPins.forEach(function (pin) {
+        (pin.photos || []).forEach(function (id) {
+          if (typeof id !== 'string' || id.indexOf('ph_') !== 0) return;
+          const ownedPhoto = explicit ? !!ownedPhotoIds[id] : id.indexOf('ph_import-') === 0;
+          if (!ownedPhoto) laterPhotos.push(id);
+          else photoCandidates.push(id);
+        });
+      });
+      if (laterPhotos.length) {
+        plan.blocked = true;
+        plan.blockReason = 'Photographs were added to this recovered Distress Survey after import. Toolbox will not remove it, because those photographs are later field work.';
+        return plan;
+      }
+      next.distress.pins = otherPins;
+      if (!otherPins.length) {
+        const drawings = next.distress.drawings || [];
+        if (!drawings.length) {
+          next.distress.startNum = 1;
+          next.distress.nextNum = 1;
+        } else {
+          next.distress.nextNum = next.distress.startNum || 1;
+        }
+      } else {
+        let nextNum = next.distress.startNum || 1;
+        otherPins.forEach(function (pin) {
+          pin.num = nextNum;
+          nextNum += Math.max(1, (pin.photos || []).length);
+        });
+        next.distress.nextNum = nextNum;
+      }
+      plan.observationsRemoved = ownedPins.length;
+      plan.keptObservations = otherPins.length;
+    } else {
+      canvasIds.forEach(function (id) {
+        const layer = next.floorSurvey && next.floorSurvey.byCanvasId
+          ? next.floorSurvey.byCanvasId[id]
+          : null;
+        if (!layer) return;
+        plan.readingsRemoved += Array.isArray(layer.points) ? layer.points.length : 0;
+        plan.layersRemoved += 1;
+        delete next.floorSurvey.byCanvasId[id];
+      });
+    }
+
+    const planIdByCanvas = {};
+    canvasIds.forEach(function (id) {
+      const canvas = (record.planSetup && record.planSetup.canvases || []).find(function (item) {
+        return item && item.id === id;
+      });
+      if (canvas && canvas.plan && canvas.plan.id) planIdByCanvas[id] = canvas.plan.id;
+    });
+    const removeCanvasIds = [];
+    canvasIds.forEach(function (id) {
+      const canvas = (next.planSetup.canvases || []).find(function (item) { return item && item.id === id; });
+      if (!canvas) return;
+      const reason = canvasRetentionReason(next, canvas);
+      if (reason) {
+        plan.canvasNamesKept.push((canvas.name || 'Recovered plan') + ' stays because ' + reason + '.');
+        return;
+      }
+      removeCanvasIds.push(id);
+    });
+    if (removeCanvasIds.length) {
+      const removing = {};
+      removeCanvasIds.forEach(function (id) { removing[id] = true; });
+      next.planSetup.canvases = (next.planSetup.canvases || []).filter(function (canvas) {
+        return canvas && !removing[canvas.id];
+      });
+    }
+    next.recoveryImports = recoveryImports(next).filter(function (item) {
+      return !item || item.fingerprint !== entry.fingerprint;
+    });
+    if (entry.kind === 'floor') {
+      plan.floorMetadataRestored = maybeRestoreFloorMetadata(next, entry);
+    }
+
+    const now = new Date().toISOString();
+    window.ToolboxPlanSetup.ensurePlanSetup(next);
+    next.updatedAt = now;
+    if (entry.kind === 'distress' && next.distress) next.distress.updatedAt = now;
+    if (entry.kind === 'floor' && next.floorSurvey) next.floorSurvey.updatedAt = now;
+    const originalCanvases = record.planSetup && record.planSetup.canvases ? record.planSetup.canvases : [];
+    const canvasesChanged = next.planSetup.canvases.length !== originalCanvases.length ||
+      next.planSetup.activeCanvasId !== record.planSetup.activeCanvasId;
+    if (canvasesChanged && next.planSetup) next.planSetup.updatedAt = now;
+
+    const universe = (allRecords || [record]).filter(function (item) {
+      return item && item.id !== record.id;
+    }).concat([next]);
+    const planCandidates = [];
+    removeCanvasIds.forEach(function (id) {
+      if (planIdByCanvas[id]) planCandidates.push(planIdByCanvas[id]);
+    });
+    if (Array.isArray(entry.planMediaIds)) {
+      entry.planMediaIds.forEach(function (id) {
+        if (id && planMediaRefCount(universe, id) === 0) planCandidates.push(id);
+      });
+    }
+    const photoList = uniqueIds(photoCandidates);
+    plan.photosOnComponent = photoList.length;
+    plan.photoIdsToDelete = photoList.filter(function (id) { return photoRefCount(universe, id) === 0; });
+    plan.photosRemoved = plan.photoIdsToDelete.length;
+    plan.photosKeptShared = photoList.length - plan.photoIdsToDelete.length;
+    plan.planMediaIdsToDelete = uniqueIds(planCandidates).filter(function (id) {
+      return planMediaRefCount(universe, id) === 0;
+    });
+    plan.canvasesRemoved = removeCanvasIds.length;
+    plan.nextRecord = next;
+    return plan;
+  }
+
+  async function removeImportedComponent(customerFileId, fingerprint) {
+    const current = await window.ToolboxDB.getCustomerFile(customerFileId);
+    if (!current) throw new Error('Customer File was not found.');
+    if (current.deletedAt) throw new Error('Restore this Customer File before changing a recovered import.');
+    const entry = recoveryImports(current).find(function (item) {
+      return item && item.fingerprint === fingerprint;
+    });
+    if (!entry) throw new Error('That recovered import is no longer on this Customer File.');
+    const all = await window.ToolboxDB.getAllCustomerFiles();
+    const plan = planImportedRemoval(current, entry, all);
+    if (plan.blocked) throw new Error(plan.blockReason);
+    const expectedUpdatedAt = current.updatedAt;
+    await window.ToolboxDB.commitCustomerFileRecoveryUpdate(
+      plan.nextRecord,
+      expectedUpdatedAt,
+      plan.planMediaIdsToDelete,
+    );
+    try {
+      await deleteDistressPhotos(plan.photoIdsToDelete);
+    } catch (cleanupError) {
+      throw new Error('The imported ' + plan.label + ' was removed, but photo cleanup failed. Unrelated media was not deleted.');
+    }
+    return plan;
   }
 
   function summaryRows(parsed, context) {
+    const sourceFile = parsed.fileName || 'Unnamed file';
     if (parsed.kind === 'distress') {
       return [
+        ['Import', 'Distress Survey'],
+        ['Source file', sourceFile],
+        ['Property address', parsed.suggestedPropertyAddress || 'Not in this export'],
+        ['Customer', 'Not in this export'],
+        ['Survey date', 'Not in this export'],
         ['Plan', 'Original plan found'],
         ['Observations', parsed.excludedObservations && parsed.excludedObservations.length
           ? (parsed.pins.length + ' ready, ' + parsed.excludedObservations.length + ' left out')
@@ -950,6 +1336,8 @@
     const customerLabel = [parsed.customerCandidates.firstName, parsed.customerCandidates.lastName].filter(Boolean).join(' ')
       || (parsed.unparsedClient ? parsed.unparsedClient + ' — enter name below' : 'Not provided');
     return [
+      ['Import', 'Floor Survey'],
+      ['Source file', sourceFile],
       ['Customer', customerLabel],
       ['Property', parsed.customerCandidates.propertyAddress || 'Not provided'],
       ['Survey date', cleanText(parsed.bundle.project.inspectionDate) || 'Not provided'],
@@ -975,6 +1363,9 @@
     let destinationMode = allowDestinationChoice ? '' : (presetCustomerFileId ? 'existing' : 'new');
     let selectedExistingId = allowDestinationChoice ? '' : (presetCustomerFileId || '');
     let pendingNewId = allowDestinationChoice ? '' : (presetCustomerFileId || newId('cf'));
+    let recoveryCustomerFileId = presetCustomerFileId;
+    let lastImport = null;
+    let removalReturn = 'idle';
 
     container.innerHTML =
       '<section class="cf-import">' +
@@ -1152,6 +1543,173 @@
         '<ul class="cf-import__excluded">' + items + '</ul>' + choice + '</div>';
     }
 
+    function addressWarningHtml() {
+      if (!context || !context.addressWarning) return '';
+      const warning = context.addressWarning;
+      return '<p class="cf-import__warning">The property address in this export (“' + escapeHtml(warning.source) +
+        '”) does not match this Customer File (“' + escapeHtml(warning.destination) +
+        '”). Nothing has been written. Import only if this is the correct file.</p>';
+    }
+
+    function distressAddressNoteHtml() {
+      if (!parsed || parsed.kind !== 'distress' || !parsed.suggestedPropertyAddress) return '';
+      return '<p class="cf-import__note">Property address is the folder name inside the Distress export.</p>';
+    }
+
+    function componentCountText(plan) {
+      if (!plan || plan.blocked) return '';
+      if (plan.kind === 'distress') {
+        return plan.observationsRemoved + ' observation' + (plan.observationsRemoved === 1 ? '' : 's') +
+          ', ' + plan.photosOnComponent + ' photo' + (plan.photosOnComponent === 1 ? '' : 's');
+      }
+      return plan.readingsRemoved + ' reading' + (plan.readingsRemoved === 1 ? '' : 's') +
+        ', ' + plan.layersRemoved + ' level' + (plan.layersRemoved === 1 ? '' : 's');
+    }
+
+    async function returnFromRemoval() {
+      status.textContent = '';
+      if (removalReturn === 'result' && lastImport) {
+        showImportResult(lastImport);
+        return;
+      }
+      await renderRecovered();
+    }
+
+    function showImportResult(info) {
+      lastImport = info;
+      recoveryCustomerFileId = info.destinationId;
+      preview.innerHTML =
+        '<section class="cf-import__result"><p class="eyebrow">Recovery complete</p><h2 tabindex="-1">' + escapeHtml(info.label) + ' imported</h2>' +
+        '<ul>' + info.lines.map(function (line) { return '<li>' + escapeHtml(line) + '</li>'; }).join('') + '</ul>' +
+        (info.excludedHtml || '') +
+        '<div class="cf-import__actions">' +
+        '<button type="button" id="cf-import-replace" class="btn btn--secondary">Replace imported ' + escapeHtml(info.label) + '</button>' +
+        '<button type="button" id="cf-import-remove" class="btn btn--secondary">Remove imported ' + escapeHtml(info.label) + '</button>' +
+        '<button type="button" id="cf-import-open" class="btn btn--accent">Open ' + escapeHtml(info.label) + '</button>' +
+        '</div></section>';
+      preview.querySelector('h2').focus();
+      preview.querySelector('#cf-import-open').addEventListener('click', function () {
+        if (typeof options.onDone === 'function') options.onDone(info.kind, info.destinationId);
+      });
+      preview.querySelector('#cf-import-replace').addEventListener('click', function () {
+        removalReturn = 'result';
+        openRemovalConfirm(info.fingerprint, 'replace');
+      });
+      preview.querySelector('#cf-import-remove').addEventListener('click', function () {
+        removalReturn = 'result';
+        openRemovalConfirm(info.fingerprint, 'remove');
+      });
+    }
+
+    async function openRemovalConfirm(fingerprint, mode) {
+      const id = recoveryCustomerFileId;
+      const record = id ? await window.ToolboxDB.getCustomerFile(id) : null;
+      const entry = record && recoveryImports(record).find(function (item) {
+        return item && item.fingerprint === fingerprint;
+      });
+      if (!record || !entry) {
+        status.textContent = 'That recovered import is no longer on this Customer File.';
+        parsed = null;
+        await renderRecovered();
+        return;
+      }
+      const all = await window.ToolboxDB.getAllCustomerFiles();
+      const plan = planImportedRemoval(record, entry, all);
+      if (plan.blocked) {
+        preview.innerHTML =
+          '<section class="cf-import__preview"><h2 tabindex="-1">Cannot remove imported ' + escapeHtml(plan.label) + '</h2>' +
+          '<p class="cf-import__warning">' + escapeHtml(plan.blockReason) + '</p>' +
+          '<div class="cf-import__actions"><button type="button" id="cf-import-removal-cancel" class="btn btn--ghost">Back</button></div></section>';
+        preview.querySelector('#cf-import-removal-cancel').addEventListener('click', returnFromRemoval);
+        preview.querySelector('h2').focus();
+        return;
+      }
+      const verb = mode === 'replace' ? 'Replace' : 'Remove';
+      const lines = removalSummaryLines(plan);
+      preview.innerHTML =
+        '<section class="cf-import__preview"><h2 tabindex="-1">' + escapeHtml(verb + ' imported ' + plan.label) + '?</h2>' +
+        (plan.sourceName ? '<p class="cf-import__note">Source file: ' + escapeHtml(plan.sourceName) + '</p>' : '') +
+        '<ul>' + lines.map(function (line) { return '<li>' + escapeHtml(line) + '</li>'; }).join('') + '</ul>' +
+        '<div class="cf-import__actions">' +
+        '<button type="button" id="cf-import-removal-cancel" class="btn btn--ghost">Cancel</button>' +
+        '<button type="button" id="cf-import-removal-confirm" class="btn btn--danger">' + escapeHtml(verb + ' imported ' + plan.label) + '</button>' +
+        '</div></section>';
+      preview.querySelector('h2').focus();
+      preview.querySelector('#cf-import-removal-cancel').addEventListener('click', returnFromRemoval);
+      preview.querySelector('#cf-import-removal-confirm').addEventListener('click', async function () {
+        const button = this;
+        button.disabled = true;
+        status.textContent = 'Removing imported ' + plan.label + '…';
+        try {
+          const removed = await removeImportedComponent(id, fingerprint);
+          parsed = null;
+          context = null;
+          input.value = '';
+          lastImport = null;
+          status.textContent = mode === 'replace'
+            ? 'Removed the imported ' + removed.label + '. Choose the correct export for this Customer File.'
+            : 'Removed the imported ' + removed.label + '. This Customer File was kept.';
+          await renderRecovered();
+          if (mode === 'replace') input.focus();
+        } catch (error) {
+          console.error('Could not remove recovered import:', error);
+          status.textContent = error && error.message ? error.message : 'Nothing was removed.';
+          button.disabled = false;
+        }
+      });
+    }
+
+    async function renderRecovered() {
+      if (parsed) return;
+      const id = recoveryCustomerFileId;
+      if (!id) {
+        preview.innerHTML = '';
+        return;
+      }
+      const record = await window.ToolboxDB.getCustomerFile(id);
+      if (parsed) return;
+      if (!record || record.deletedAt || !recoveryImports(record).length) {
+        preview.innerHTML = '';
+        return;
+      }
+      const all = await window.ToolboxDB.getAllCustomerFiles();
+      if (parsed) return;
+      const cards = recoveryImports(record).map(function (entry) {
+        const plan = planImportedRemoval(record, entry, all);
+        const title = entry.kind === 'floor' ? 'Floor Survey' : 'Distress Survey';
+        const count = componentCountText(plan);
+        const actions = plan.blocked
+          ? '<p class="cf-import__warning">' + escapeHtml(plan.blockReason) + '</p>'
+          : '<div class="cf-import__actions">' +
+            '<button type="button" class="btn btn--secondary" data-recovery-action="replace" data-recovery-fingerprint="' + escapeHtml(entry.fingerprint) + '">Replace imported ' + escapeHtml(title) + '</button>' +
+            '<button type="button" class="btn btn--secondary" data-recovery-action="remove" data-recovery-fingerprint="' + escapeHtml(entry.fingerprint) + '">Remove imported ' + escapeHtml(title) + '</button>' +
+            '</div>';
+        return '<article class="cf-import__recovered">' +
+          '<h3>' + escapeHtml(title) + '</h3>' +
+          '<p class="cf-import__note">' + escapeHtml(entry.sourceName || 'Unnamed file') +
+          (count ? ' · ' + escapeHtml(count) : '') + '</p>' +
+          actions + '</article>';
+      }).join('');
+      preview.innerHTML =
+        '<section class="cf-import__recovered-list"><h2>Recovered imports</h2>' +
+        '<p class="cf-import__note">Wrong file? Remove or replace only that recovered survey. The Customer File stays.</p>' +
+        cards + '</section>';
+      preview.querySelectorAll('[data-recovery-action]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          removalReturn = 'idle';
+          openRemovalConfirm(button.getAttribute('data-recovery-fingerprint'), button.getAttribute('data-recovery-action'));
+        });
+      });
+    }
+
+    async function cancelPreview() {
+      parsed = null;
+      context = null;
+      input.value = '';
+      status.textContent = 'Nothing was imported.';
+      await renderRecovered();
+    }
+
     function renderPreviewShell() {
       if (!parsed) return;
       const announced = exclusionStatusText();
@@ -1170,8 +1728,10 @@
           '<section class="cf-import__preview"><h2 tabindex="-1">Choose destination</h2>' +
           destinationPanelHtml() +
           excludedListHtml(false) +
-          '<p class="cf-import__note">Select Create new or an existing Customer File to continue.</p></section>';
+          '<p class="cf-import__note">Select Create new or an existing Customer File to continue.</p>' +
+          '<div class="cf-import__actions"><button type="button" id="cf-import-cancel" class="btn btn--ghost">Cancel</button></div></section>';
         bindDestinationControls();
+        preview.querySelector('#cf-import-cancel').addEventListener('click', cancelPreview);
         preview.querySelector('h2').focus();
         return;
       }
@@ -1205,14 +1765,18 @@
         '<dl>' + rows + '</dl>' +
         excludedListHtml(true) +
         clientNameHtml() +
-        suggestion + conflicts + floorProtectionHtml() + canvasNoteHtml() + duplicate + blocked +
-        '<div class="cf-import__actions"><button type="button" id="cf-import-confirm" class="btn btn--accent">' +
-        importLabel + '</button></div></section>';
+        distressAddressNoteHtml() +
+        suggestion + conflicts + floorProtectionHtml() + canvasNoteHtml() +
+        addressWarningHtml() + duplicate + blocked +
+        '<div class="cf-import__actions">' +
+        '<button type="button" id="cf-import-cancel" class="btn btn--ghost">Cancel</button>' +
+        '<button type="button" id="cf-import-confirm" class="btn btn--accent">' + importLabel + '</button></div></section>';
       bindDestinationControls();
       preview.querySelectorAll('select,input').forEach((control) => control.addEventListener('change', updateImportButton));
       preview.querySelectorAll('#cf-import-client-first,#cf-import-client-last').forEach(function (control) {
         control.addEventListener('input', updateImportButton);
       });
+      preview.querySelector('#cf-import-cancel').addEventListener('click', cancelPreview);
       preview.querySelector('#cf-import-confirm').addEventListener('click', async function () {
         const button = this;
         button.disabled = true;
@@ -1251,14 +1815,13 @@
             lines.push('The original ZIP was not changed.');
           }
           status.textContent = '';
-          preview.innerHTML =
-            '<section class="cf-import__result"><p class="eyebrow">Recovery complete</p><h2 tabindex="-1">' + escapeHtml(parsed.label) + ' imported</h2>' +
-            '<ul>' + lines.map((line) => '<li>' + escapeHtml(line) + '</li>').join('') + '</ul>' +
-            (leftOut.length ? excludedListHtml(false) : '') +
-            '<button type="button" id="cf-import-open" class="btn btn--accent">Open ' + escapeHtml(parsed.label) + '</button></section>';
-          preview.querySelector('h2').focus();
-          preview.querySelector('#cf-import-open').addEventListener('click', function () {
-            if (typeof options.onDone === 'function') options.onDone(result.kind, result.destinationId);
+          showImportResult({
+            kind: result.kind,
+            label: parsed.label,
+            destinationId: result.destinationId,
+            fingerprint: result.fingerprint,
+            lines: lines,
+            excludedHtml: leftOut.length ? excludedListHtml(false) : '',
           });
         } catch (error) {
           console.error('Recovery import failed:', error);
@@ -1346,6 +1909,8 @@
         status.textContent = error && error.message ? error.message : 'That recovery export could not be read.';
       }
     });
+
+    renderRecovered();
   }
 
   window.ToolboxCustomerFileImport = {
@@ -1353,6 +1918,8 @@
     getImportContext,
     applyImport,
     listImportDestinations,
+    planImportedRemoval,
+    removeImportedComponent,
     mount,
   };
 })();
