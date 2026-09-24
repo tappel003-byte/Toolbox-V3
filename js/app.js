@@ -234,6 +234,9 @@
     const hash = window.location.hash || '#/';
     if (hash === '#/trash') return { view: 'trash' };
     if (hash === '#/cabinet') return { view: 'file-cabinet' };
+    if (hash === '#/explore' || hash === '#/explore/') return { view: 'explore', id: null };
+    const exploreMatch = hash.match(/^#\/explore\/([^/]+)$/);
+    if (exploreMatch) return { view: 'explore', id: decodeURIComponent(exploreMatch[1]) };
     if (hash === '#/import') return { view: 'import', id: null, allowDestinationChoice: true };
     const match = hash.match(/^#\/file\/([^/]+)(?:\/(edit|plan|import|distress|floor|diagnostics|report))?(?:\/(customer|contacts|plans))?$/);
     if (match) {
@@ -308,6 +311,12 @@
       renderTrash(app);
     } else if (route.view === 'file-cabinet') {
       renderFileCabinet(app);
+    } else if (route.view === 'explore') {
+      if (window.ToolboxFileExplorer && typeof window.ToolboxFileExplorer.render === 'function') {
+        window.ToolboxFileExplorer.render(app, route.id || null);
+      } else {
+        app.innerHTML = '<p class="cabinet-empty">File Explorer is unavailable.</p>';
+      }
     } else {
       renderCabinet(app);
     }

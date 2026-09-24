@@ -1599,6 +1599,29 @@
     };
   }
 
+  /**
+   * File Explorer reads. These never check out, write IndexedDB, or upload.
+   */
+  async function exploreListFiles() {
+    const response = await apiFetch('/explore/files');
+    return response.json();
+  }
+
+  async function exploreListCustomerFile(id) {
+    const response = await apiFetch('/explore/files/' + encodeURIComponent(id));
+    return response.json();
+  }
+
+  async function exploreFetchObject(id, key) {
+    return apiFetch(
+      '/explore/files/' + encodeURIComponent(id) + '/object?key=' + encodeURIComponent(key),
+    );
+  }
+
+  async function exploreFetchArchive(id) {
+    return apiFetch('/explore/files/' + encodeURIComponent(id) + '/archive');
+  }
+
   window.ToolboxSync = {
     COMPONENTS: COMPONENTS,
     REMOTE_PULL_EPOCH: REMOTE_PULL_EPOCH,
@@ -1627,6 +1650,10 @@
     ensureAccessSession: ensureAccessSession,
     probeAccessSession: probeAccessSession,
     deleteRemoteCustomerFile: deleteRemoteCustomerFile,
+    exploreListFiles: exploreListFiles,
+    exploreListCustomerFile: exploreListCustomerFile,
+    exploreFetchObject: exploreFetchObject,
+    exploreFetchArchive: exploreFetchArchive,
     // test helpers
     _test: {
       pickCustomerFields: pickCustomerFields,
