@@ -13,6 +13,10 @@ type Props = {
   
   undoEnabled?: boolean;
   redoEnabled?: boolean;
+  onSave?: () => void | Promise<void>;
+  saving?: boolean;
+  saveStatus?: string | null;
+  saveTone?: "ok" | "err" | null;
 };
 
 
@@ -34,11 +38,14 @@ export function AppTopBar({
   
   undoEnabled = true,
   redoEnabled = true,
+  onSave,
+  saving = false,
+  saveStatus = null,
+  saveTone = null,
 }: Props) {
 
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -74,21 +81,46 @@ export function AppTopBar({
         >
           <ArrowLeft className="h-4 w-4" />
         </button>
-        <div className="flex-1 min-w-0 truncate">
-          <span className="font-medium">{projectName}</span>
-          <span className="text-muted-foreground"> · {floorName}</span>
+        <div
+          className="flex-1 min-w-0 truncate"
+          role="status"
+          aria-live="polite"
+          data-save-status={saveStatus || ""}
+          data-save-tone={saveTone || ""}
+        >
+          {saveStatus ? (
+            <span
+              className={
+                saveTone === "err"
+                  ? "font-medium text-amber-900"
+                  : saveTone === "ok"
+                    ? "font-medium text-emerald-900"
+                    : "text-muted-foreground"
+              }
+              title={saveStatus}
+            >
+              {saveStatus}
+            </span>
+          ) : (
+            <>
+              <span className="font-medium">{projectName}</span>
+              <span className="text-muted-foreground"> · {floorName}</span>
+            </>
+          )}
         </div>
         <button
           type="button"
           onClick={() => {
-            setJustSaved(true);
-            window.setTimeout(() => setJustSaved(false), 1500);
+            if (saving || !onSave) return;
+            void onSave();
           }}
-          className="inline-flex items-center justify-center h-8 w-8 rounded text-muted-foreground hover:text-foreground hover:bg-accent text-base"
+          disabled={saving || !onSave}
+          className="inline-flex items-center justify-center h-8 w-8 rounded text-muted-foreground hover:text-foreground hover:bg-accent text-base disabled:opacity-40"
           aria-label="Save"
           title="Save"
+          aria-busy={saving}
         >
-          {justSaved ? "✅" : "💾"}
+          {saveTone === "ok" ? "✅" : "💾"}
         </button>
         <button
           type="button"

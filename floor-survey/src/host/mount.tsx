@@ -1,5 +1,12 @@
 import { createRoot, type Root } from "react-dom/client";
 import { HostWorkspace } from "./HostWorkspace";
+import { recoveryPdfMediaIdFor } from "@/lib/db";
+import {
+  recoveryCanvasSize,
+  recoveryReadingLabel,
+  renderFloorSurveyRecoveryCanvas,
+  setRecoveryRendererForTests,
+} from "@/lib/recovery-pdf";
 import "../styles.css";
 
 export type MountOptions = {
@@ -43,8 +50,32 @@ declare global {
     ToolboxFloorSurvey?: {
       mount: typeof mount;
       unmount: typeof unmount;
+      renderFloorSurveyRecoveryCanvas: typeof renderFloorSurveyRecoveryCanvas;
+      recoveryCanvasSize: typeof recoveryCanvasSize;
+      recoveryReadingLabel: typeof recoveryReadingLabel;
+      recoveryPdfMediaIdFor: typeof recoveryPdfMediaIdFor;
+      setRecoveryRendererForTests: typeof setRecoveryRendererForTests;
     };
   }
 }
 
-window.ToolboxFloorSurvey = { mount, unmount };
+window.ToolboxFloorSurvey = {
+  mount,
+  unmount,
+  renderFloorSurveyRecoveryCanvas,
+  recoveryCanvasSize,
+  recoveryReadingLabel,
+  recoveryPdfMediaIdFor,
+  setRecoveryRendererForTests,
+};
+
+// Vite's IIFE assigns this module's exports onto the ToolboxFloorSurvey global
+// after the window assignment above. Export the Save helpers so that overwrite
+// keeps them.
+export {
+  renderFloorSurveyRecoveryCanvas,
+  recoveryCanvasSize,
+  recoveryReadingLabel,
+  recoveryPdfMediaIdFor,
+  setRecoveryRendererForTests,
+};

@@ -416,6 +416,10 @@ export function PlanCanvas({
       {badge}
       <div
         ref={wrapRef}
+        data-floor-viewport=""
+        data-canvas-scale={transform.scale}
+        data-canvas-tx={transform.tx}
+        data-canvas-ty={transform.ty}
         className="absolute inset-0 touch-none overflow-hidden select-none"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
