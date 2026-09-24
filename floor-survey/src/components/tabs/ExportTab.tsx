@@ -1,3 +1,8 @@
+/**
+ * Reusable topo/points figure export (PNG, JPEG, PDF, CSV).
+ * The Toolbox Floor Survey field menu no longer opens this screen.
+ * Keep the renderer for the preserved in-repo route and for recovery PDF / Report Builder.
+ */
 import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";

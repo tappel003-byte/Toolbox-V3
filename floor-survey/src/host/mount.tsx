@@ -1,4 +1,5 @@
 import { createRoot, type Root } from "react-dom/client";
+import { DiagnosticsWorkspace } from "./DiagnosticsWorkspace";
 import { HostWorkspace } from "./HostWorkspace";
 import { recoveryPdfMediaIdFor } from "@/lib/db";
 import {
@@ -12,6 +13,8 @@ import "../styles.css";
 export type MountOptions = {
   customerFileId: string;
   onBack: () => void;
+  /** survey = Floor Survey field capture. diagnostics = existing 3D view only. */
+  workspace?: "survey" | "diagnostics";
 };
 
 let root: Root | null = null;
@@ -27,7 +30,11 @@ export function mount(el: HTMLElement, options: MountOptions) {
   el.style.flexDirection = "column";
   root = createRoot(el);
   root.render(
-    <HostWorkspace customerFileId={options.customerFileId} onBack={options.onBack} />,
+    options.workspace === "diagnostics" ? (
+      <DiagnosticsWorkspace customerFileId={options.customerFileId} onBack={options.onBack} />
+    ) : (
+      <HostWorkspace customerFileId={options.customerFileId} onBack={options.onBack} />
+    ),
   );
   return {
     unmount,

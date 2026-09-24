@@ -2,7 +2,7 @@
  * Hosted Floor Survey workspace — proven ProjectWorkspace adapted for Toolbox.
  * No TanStack route; Customer File id is the project id; onBack returns to CF home.
  */
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   deletePoint,
   getProject,
@@ -21,7 +21,6 @@ import { SetupTab } from "@/components/tabs/SetupTab";
 import { FieldTab } from "@/components/tabs/FieldTab";
 import { ReviewTab } from "@/components/tabs/ReviewTab";
 import { TopoTab } from "@/components/tabs/TopoTab";
-import { ExportTab } from "@/components/tabs/ExportTab";
 import { AppTopBar } from "@/components/chrome/AppTopBar";
 import { ModeToggle } from "@/components/chrome/ModeToggle";
 import { DataPointsPanel } from "@/components/DataPointsPanel";
@@ -33,11 +32,7 @@ import { withCorrectedValues, migrateSurfaceName, transitionGroupKey } from "@/l
 import { computeExclusionMap } from "@/lib/exclusions";
 import { closedAreas, getAreas, pointsInAnyArea } from "@/lib/areas";
 
-const ThreeDTab = lazy(() =>
-  import("@/components/ThreeDTab").then((m) => ({ default: m.ThreeDTab })),
-);
-
-type Mode = "setup" | "field" | "review" | "topo" | "export";
+type Mode = "setup" | "field" | "review" | "topo";
 
 export type HostWorkspaceProps = {
   customerFileId: string;
@@ -313,7 +308,6 @@ export function HostWorkspace({ customerFileId, onBack }: HostWorkspaceProps) {
     setSaving(false);
     saveLock.current = false;
   }, [activeFloor, points, showSaveStatus]);
-  const [threeDOpen, setThreeDOpen] = useState(false);
   const handleFloorChange = useCallback((f: Floor) => {
     setFloors((prev) => prev.map((p) => (p.id === f.id ? f : p)));
   }, []);
@@ -373,9 +367,7 @@ export function HostWorkspace({ customerFileId, onBack }: HostWorkspaceProps) {
         onBack={onBack}
         onOpenSetup={() => setMode("setup")}
         onOpenReview={() => setMode("review")}
-        onOpenExport={() => setMode("export")}
         onOpenTransitions={() => setTransitionsSheetOpen(true)}
-        onOpen3D={() => setThreeDOpen(true)}
         undoEnabled={undoActive && history.canUndo}
         redoEnabled={undoActive && history.canRedo}
         onSave={handleSave}
@@ -474,14 +466,6 @@ export function HostWorkspace({ customerFileId, onBack }: HostWorkspaceProps) {
             onHighlight={(p) => setTopoHighlightIds(new Set([p.id]))}
           />
         )}
-        {mode === "export" && (
-          <ExportTab
-            project={project}
-            floor={activeFloor}
-            points={correctedPoints}
-            settings={settings}
-          />
-        )}
       </main>
 
       {(mode === "field" || mode === "topo") && (
@@ -547,22 +531,6 @@ export function HostWorkspace({ customerFileId, onBack }: HostWorkspaceProps) {
         onClose={() => setTransitionsSheetOpen(false)}
         onFloorChange={handleFloorAveragesChange}
       />
-      {threeDOpen && (
-        <Suspense
-          fallback={
-            <div className="fixed inset-0 z-[60] bg-neutral-950 text-white/60 flex items-center justify-center text-sm">
-              Loading 3D…
-            </div>
-          }
-        >
-          <ThreeDTab
-            floor={activeFloor}
-            points={correctedPoints}
-            settings={settings}
-            onClose={() => setThreeDOpen(false)}
-          />
-        </Suspense>
-      )}
     </div>
   );
 }
