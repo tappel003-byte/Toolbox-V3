@@ -1601,25 +1601,216 @@
 
   /**
    * File Explorer reads. These never check out, write IndexedDB, or upload.
+   *
+   * The live Sync Worker serves GET /files. GET /explore/files is 404 with
+   * body "Not found" until that Worker build is deployed. A 404 must fall
+   * back to the cabinet routes already in the field, or the screen shows
+   * "Not found" instead of the Customer Files that are stored.
    */
+  function exploreCustomerIdSafe(id) {
+    return typeof id === 'string' &&
+      /^[A-Za-z0-9][A-Za-z0-9._-]{0,128}$/.test(id) &&
+      id.indexOf('..') === -1;
+  }
+
+  function exploreMediaIdSafe(id) {
+    return typeof id === 'string' &&
+      /^[A-Za-z0-9][A-Za-z0-9._-]{0,180}$/.test(id) &&
+      id.indexOf('..') === -1;
+  }
+
+  function rowFromCabinetIndex(index) {
+    if (!exploreCustomerIdSafe(index && index.id)) return null;
+    const row = { id: index.id, key: 'cf/' + index.id + '/index.json' };
+    const name = trimStr(index.displayName);
+    const address = trimStr(index.propertyAddress);
+    if (name) row.displayName = name;
+    if (address) row.propertyAddress = address;
+    return row;
+  }
+
+  function compareKeys(a, b) {
+    if (a.key < b.key) return -1;
+    if (a.key > b.key) return 1;
+    return 0;
+  }
+
+  function noteUnsafeMedia(notes, source) {
+    const text = 'Referenced media id in ' + source + ' is not a single storage key and was not fetched.';
+    if (notes.indexOf(text) === -1) notes.push(text);
+  }
+
+  function mediaIdsForCabinetListing(plans, distress, notes) {
+    const ids = [];
+    mediaIdsFromPayload(plans, 'plans').forEach(function (id) {
+      if (!exploreMediaIdSafe(id)) {
+        noteUnsafeMedia(notes, 'plans.json');
+        return;
+      }
+      ids.push(id);
+    });
+    distressPhotoIds({ distress: distress || {} }).forEach(function (id) {
+      if (!exploreMediaIdSafe(id)) {
+        noteUnsafeMedia(notes, 'distress.json');
+        return;
+      }
+      ids.push(id);
+    });
+    const seen = Object.create(null);
+    return ids.filter(function (id) {
+      if (seen[id]) return false;
+      seen[id] = true;
+      return true;
+    });
+  }
+
+  async function listingFromCabinetIndexes() {
+    const cabinet = await listRemoteCabinet();
+    const files = [];
+    (cabinet.files || []).forEach(function (index) {
+      const row = rowFromCabinetIndex(index);
+      if (row) files.push(row);
+    });
+    files.sort(compareKeys);
+    return { files: files };
+  }
+
+  async function readCabinetComponent(id, name) {
+    const response = await apiFetch(
+      '/files/' + encodeURIComponent(id) + '/components/' + encodeURIComponent(name),
+      { allow404: true },
+    );
+    if (response.status === 404) return { missing: true };
+    try {
+      return { payload: await response.json() };
+    } catch (_) {
+      return { unreadable: true };
+    }
+  }
+
+  async function listingFromCabinetFile(id) {
+    if (!exploreCustomerIdSafe(id)) throw new SyncError('sync', 'Not found');
+    const index = await getRemoteIndex(id);
+    if (!index) throw new SyncError('sync', 'Not found');
+    const notes = [];
+    const objects = [{
+      key: 'cf/' + id + '/index.json',
+      contentType: 'application/json',
+    }];
+    let plans = null;
+    let distress = null;
+    for (let i = 0; i < COMPONENTS.length; i++) {
+      const name = COMPONENTS[i];
+      const read = await readCabinetComponent(id, name);
+      if (read.missing) continue;
+      objects.push({
+        key: 'cf/' + id + '/' + name + '.json',
+        contentType: 'application/json',
+      });
+      if (read.unreadable) {
+        notes.push('cf/' + id + '/' + name + '.json could not be read; its media references are not listed.');
+        continue;
+      }
+      if (name === 'plans') plans = read.payload;
+      if (name === 'distress') distress = read.payload;
+    }
+    const mediaIds = mediaIdsForCabinetListing(plans, distress, notes);
+    for (let i = 0; i < mediaIds.length; i++) {
+      const key = 'media/' + mediaIds[i];
+      const exists = await remoteMediaExists(mediaIds[i]);
+      if (exists) objects.push({ key: key });
+      else objects.push({ key: key, missing: true });
+    }
+    objects.sort(compareKeys);
+    return {
+      id: id,
+      prefix: 'cf/' + id + '/',
+      objects: objects,
+      referenceNotes: notes,
+    };
+  }
+
+  async function fetchCabinetObject(id, key) {
+    if (!exploreCustomerIdSafe(id)) throw new SyncError('sync', 'Not found');
+    if (key === 'cf/' + id + '/index.json') {
+      const response = await apiFetch('/files/' + encodeURIComponent(id) + '/index', { allow404: true });
+      if (response.status === 404) throw new SyncError('sync', 'Not found');
+      return response;
+    }
+    const prefix = 'cf/' + id + '/';
+    if (typeof key === 'string' && key.indexOf(prefix) === 0) {
+      const name = key.slice(prefix.length, -'.json'.length);
+      if (key === prefix + name + '.json' && COMPONENTS.indexOf(name) !== -1) {
+        const response = await apiFetch(
+          '/files/' + encodeURIComponent(id) + '/components/' + encodeURIComponent(name),
+          { allow404: true },
+        );
+        if (response.status === 404) throw new SyncError('sync', 'Not stored');
+        return response;
+      }
+    }
+    if (typeof key === 'string' && key.indexOf('media/') === 0) {
+      const mediaId = key.slice('media/'.length);
+      if (!exploreMediaIdSafe(mediaId)) throw new SyncError('sync', 'Not found');
+      const response = await apiFetch('/media/' + encodeURIComponent(mediaId), { allow404: true });
+      if (response.status === 404) throw new SyncError('sync', 'Not stored');
+      return response;
+    }
+    throw new SyncError('sync', 'Not found');
+  }
+
+  async function archiveFromCabinet(id) {
+    if (typeof JSZip !== 'function') throw new SyncError('sync', 'ZIP is unavailable.');
+    const listing = await listingFromCabinetFile(id);
+    const zip = new JSZip();
+    const missing = [];
+    const objects = listing.objects || [];
+    for (let i = 0; i < objects.length; i++) {
+      const entry = objects[i];
+      if (!entry || !entry.key) continue;
+      if (entry.missing) {
+        missing.push(entry.key);
+        continue;
+      }
+      const response = await fetchCabinetObject(id, entry.key);
+      zip.file(entry.key, new Uint8Array(await response.arrayBuffer()));
+    }
+    zip.file('missing.txt', missing.length ? missing.join('\n') + '\n' : '');
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+    return new Response(blob, {
+      status: 200,
+      headers: {
+        'content-type': 'application/zip',
+        'content-disposition': 'attachment; filename="cf-' + id + '.zip"',
+      },
+    });
+  }
+
   async function exploreListFiles() {
-    const response = await apiFetch('/explore/files');
-    return response.json();
+    const response = await apiFetch('/explore/files', { allow404: true });
+    if (response.status !== 404) return response.json();
+    return listingFromCabinetIndexes();
   }
 
   async function exploreListCustomerFile(id) {
-    const response = await apiFetch('/explore/files/' + encodeURIComponent(id));
-    return response.json();
+    const response = await apiFetch('/explore/files/' + encodeURIComponent(id), { allow404: true });
+    if (response.status !== 404) return response.json();
+    return listingFromCabinetFile(id);
   }
 
   async function exploreFetchObject(id, key) {
-    return apiFetch(
+    const response = await apiFetch(
       '/explore/files/' + encodeURIComponent(id) + '/object?key=' + encodeURIComponent(key),
+      { allow404: true },
     );
+    if (response.status !== 404) return response;
+    return fetchCabinetObject(id, key);
   }
 
   async function exploreFetchArchive(id) {
-    return apiFetch('/explore/files/' + encodeURIComponent(id) + '/archive');
+    const response = await apiFetch('/explore/files/' + encodeURIComponent(id) + '/archive', { allow404: true });
+    if (response.status !== 404) return response;
+    return archiveFromCabinet(id);
   }
 
   window.ToolboxSync = {

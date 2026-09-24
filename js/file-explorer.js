@@ -325,16 +325,14 @@
       const actions = document.createElement('div');
       actions.className = 'explorer-row__actions';
       if (row && !row.missing) {
-        if (previewKind(row.contentType)) {
-          const open = document.createElement('button');
-          open.type = 'button';
-          open.className = 'btn btn--secondary';
-          open.textContent = 'Open';
-          open.addEventListener('click', function () {
-            openObject(id, key, preview, showNotice);
-          });
-          actions.appendChild(open);
-        }
+        const open = document.createElement('button');
+        open.type = 'button';
+        open.className = 'btn btn--secondary';
+        open.textContent = 'Open';
+        open.addEventListener('click', function () {
+          openObject(id, key, preview, showNotice);
+        });
+        actions.appendChild(open);
         const download = document.createElement('button');
         download.type = 'button';
         download.className = 'btn btn--secondary';
