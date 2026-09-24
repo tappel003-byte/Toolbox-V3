@@ -9,6 +9,7 @@
  */
 
 import { requireObjectEtag, conditionalPutOptions } from './r2-conditional.js';
+import { exploreResult } from './explore.js';
 
 /** PWA origin only — Access cookie sync uses credentials:include (no *). */
 const ALLOWED_ORIGINS = {
@@ -550,6 +551,22 @@ export default {
         email: identityResult.email,
         sub: identityResult.sub,
       });
+    }
+
+    // File Explorer is a read-only window onto real keys. It must not fall
+    // through to checkout, sync writes, or delete. Identity is required here
+    // even though Cloudflare Access also sits in front of the Worker.
+    if (path === 'explore' || path.startsWith('explore/')) {
+      const identityResult = await requireIdentity(request, env);
+      if (identityResult.errorResponse) return identityResult.errorResponse;
+      if (request.method !== 'GET') return text(request, 'Method not allowed', 405);
+      const result = await exploreResult(request, env);
+      if (result && result.body) {
+        const headers = Object.assign({}, corsHeaders(request), result.headers || {});
+        return new Response(result.body, { status: result.status || 200, headers: headers });
+      }
+      if (result && result.json !== undefined) return json(request, result.json, result.status);
+      return text(request, (result && result.text) || 'Not found', (result && result.status) || 404);
     }
 
     if (path === 'files' && request.method === 'GET') {
