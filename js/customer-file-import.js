@@ -149,6 +149,26 @@
     return parsed;
   }
 
+  function observationHeading(source, index) {
+    if (!source || typeof source !== 'object') return 'Item ' + (index + 1) + ' in the export';
+    const num = Number(source.num);
+    const description = cleanText(source.description);
+    const head = Number.isFinite(num) ? ('Observation ' + num) : ('Item ' + (index + 1) + ' in the export');
+    return description ? (head + ' — ' + description) : head;
+  }
+
+  function excludeObservation(excluded, source, index, reason) {
+    const num = source && typeof source === 'object' ? Number(source.num) : NaN;
+    excluded.push({
+      index: index,
+      sourceId: source && typeof source === 'object' ? cleanText(source.id) : '',
+      num: Number.isFinite(num) ? num : null,
+      description: source && typeof source === 'object' ? cleanText(source.description) : '',
+      heading: observationHeading(source, index),
+      reason: reason,
+    });
+  }
+
   async function parseDistress(file, bytes, packageFingerprint) {
     if (!window.JSZip) throw new Error('ZIP recovery support is unavailable.');
     let zip;
@@ -184,42 +204,82 @@
       return a.index - b.index;
     });
 
-    const firstNum = ordered.length && Number.isFinite(Number(ordered[0].pin.num))
+    const firstNum = ordered.length && ordered[0].pin && Number.isFinite(Number(ordered[0].pin.num))
       ? Number(ordered[0].pin.num)
       : 1;
     let expectedNum = firstNum;
     let attachedPhotoCount = 0;
     const pins = [];
+    const excludedObservations = [];
 
     for (const entry of ordered) {
       const source = entry.pin;
-      if (!source || typeof source !== 'object') throw new Error('pins.json contains an invalid observation.');
+      const index = entry.index;
+      if (!source || typeof source !== 'object') {
+        excludeObservation(excludedObservations, source, index, 'This entry is not a Distress observation.');
+        continue;
+      }
+
       const sourceNum = Number(source.num);
-      if (!Number.isFinite(sourceNum) || sourceNum !== expectedNum) {
-        throw new Error('Distress numbering is inconsistent in pins.json.');
-      }
-      if (!Array.isArray(source.photos)) throw new Error('A Distress observation has an invalid photos list.');
+      const photoNames = Array.isArray(source.photos) ? source.photos : null;
+      let reason = '';
       const photos = [];
-      for (const photoName of source.photos) {
-        const safeName = normalizeZipPath(photoName).split('/').pop();
-        const photoEntry = zipEntryByPath(zip, basePath + 'photos/' + safeName);
-        if (!photoEntry) throw new Error('A referenced Distress photo is missing: ' + safeName);
-        photos.push({
-          sourceName: safeName,
-          dataUrl: dataUrlFromBase64(await photoEntry.async('base64'), mimeForName(safeName)),
-        });
+      if (!photoNames) {
+        reason = 'This observation has an invalid photos list.';
+      } else {
+        for (const photoName of photoNames) {
+          const safeName = normalizeZipPath(photoName).split('/').pop();
+          if (!safeName) {
+            reason = 'This observation references a photo without a file name.';
+            break;
+          }
+          const photoEntry = zipEntryByPath(zip, basePath + 'photos/' + safeName);
+          if (!photoEntry) {
+            reason = 'A referenced Distress photo is missing: ' + safeName;
+            break;
+          }
+          photos.push({
+            sourceName: safeName,
+            dataUrl: dataUrlFromBase64(await photoEntry.async('base64'), mimeForName(safeName)),
+          });
+        }
       }
+
+      let xNormalized = null;
+      let yNormalized = null;
+      if (!reason) {
+        try {
+          xNormalized = parseNormalized(source.x, 'x');
+          yNormalized = parseNormalized(source.y, 'y');
+        } catch (error) {
+          reason = error && error.message ? error.message : 'This observation has an invalid coordinate.';
+        }
+      }
+      if (!reason && !Number.isFinite(sourceNum)) {
+        reason = 'This observation has no usable number.';
+      } else if (!reason && sourceNum !== expectedNum) {
+        reason = 'Distress numbering is inconsistent here (expected ' + expectedNum + ', found ' + sourceNum + ').';
+      }
+
+      if (reason) {
+        excludeObservation(excludedObservations, source, index, reason);
+        // The photo list still says how many numbers this slot used, so a later
+        // valid observation keeps the number from the export.
+        if (photoNames) expectedNum += Math.max(1, photoNames.length);
+        continue;
+      }
+
       attachedPhotoCount += photos.length;
       pins.push({
         sourceId: cleanText(source.id),
         num: sourceNum,
-        xNormalized: parseNormalized(source.x, 'x'),
-        yNormalized: parseNormalized(source.y, 'y'),
+        xNormalized: xNormalized,
+        yNormalized: yNormalized,
         description: cleanText(source.description),
         location: cleanText(source.room),
         importedLegacyDirection: cleanText(source.direction),
         isExterior: cleanText(source.type).toLowerCase() === 'exterior',
-        photos,
+        photos: photos,
       });
       expectedNum += Math.max(1, photos.length);
     }
@@ -250,9 +310,12 @@
       planWidth: dimensions.width,
       planHeight: dimensions.height,
       canvasName: 'Recovered Plan',
-      startNum: firstNum,
-      nextNum: expectedNum,
+      startNum: pins.length ? pins[0].num : firstNum,
+      nextNum: pins.length
+        ? pins[pins.length - 1].num + Math.max(1, pins[pins.length - 1].photos.length)
+        : firstNum,
       pins,
+      excludedObservations,
       attachedPhotoCount,
       quickCapture: {
         count: quickFiles.length,
@@ -808,6 +871,15 @@
          (record.distress.drawings && record.distress.drawings.length))) {
       throw new Error('This Customer File already has Distress work. Use a new Customer File so existing work and historical numbering are not changed.');
     }
+    const excludedObservations = parsed.kind === 'distress' && Array.isArray(parsed.excludedObservations)
+      ? parsed.excludedObservations
+      : [];
+    if (excludedObservations.length && !parsed.pins.length) {
+      throw new Error('No Distress observations in this export can be imported. The original file was not changed.');
+    }
+    if (excludedObservations.length && !options.acknowledgeExcludedObservations) {
+      throw new Error('Review the observations that cannot be imported before continuing.');
+    }
 
     const customerUpdates = applyCustomerFields(record, effectiveParsed, options);
     const prepared = parsed.kind === 'distress'
@@ -819,13 +891,25 @@
       record.customerUpdatedAt = now;
     }
     if (!record.trashUpdatedAt) record.trashUpdatedAt = '1970-01-01T00:00:00.001Z';
-    record.recoveryImports = recoveryImports(record).concat([{
+    const recoveryEntry = {
       fingerprint: parsed.fingerprint,
       kind: parsed.kind,
       sourceName: parsed.fileName,
       importedAt: now,
       canvasIds: prepared.canvasIds,
-    }]);
+    };
+    if (excludedObservations.length) {
+      recoveryEntry.excludedObservations = excludedObservations.map(function (item) {
+        return {
+          num: item.num,
+          description: item.description,
+          sourceId: item.sourceId,
+          heading: item.heading,
+          reason: item.reason,
+        };
+      });
+    }
+    record.recoveryImports = recoveryImports(record).concat([recoveryEntry]);
 
     const stagedPhotoIds = prepared.photoEntries.map((entry) => entry.id);
     try {
@@ -852,7 +936,9 @@
     if (parsed.kind === 'distress') {
       return [
         ['Plan', 'Original plan found'],
-        ['Observations', String(parsed.pins.length)],
+        ['Observations', parsed.excludedObservations && parsed.excludedObservations.length
+          ? (parsed.pins.length + ' ready, ' + parsed.excludedObservations.length + ' left out')
+          : String(parsed.pins.length)],
         ['Attached photos', String(parsed.attachedPhotoCount)],
         ['Quick Capture', parsed.quickCapture.count + ' photo' + (parsed.quickCapture.count === 1 ? '' : 's') + ' found — not imported yet'],
         ['Destination', context && context.destinationLabel ? context.destinationLabel : '—'],
@@ -922,6 +1008,7 @@
         fieldChoices,
         useSuggestedAddress: !!(preview.querySelector('#cf-import-suggested-address') || {}).checked,
         confirmAddFloorLevels: !!(preview.querySelector('#cf-import-confirm-floor-add') || {}).checked,
+        acknowledgeExcludedObservations: !!(preview.querySelector('#cf-import-ack-excluded') || {}).checked,
         clientFirstName: firstInput ? firstInput.value : undefined,
         clientLastName: lastInput ? lastInput.value : undefined,
       };
@@ -939,8 +1026,13 @@
         const last = cleanText((preview.querySelector('#cf-import-client-last') || {}).value);
         nameBlocked = !first && !last;
       }
+      const excluded = parsed && parsed.kind === 'distress' && parsed.excludedObservations
+        ? parsed.excludedObservations.length
+        : 0;
+      const exclusionUnacked = excluded > 0 &&
+        !(preview.querySelector('#cf-import-ack-excluded') || {}).checked;
       button.disabled = context.duplicate || context.blocksDistressMerge || unresolved ||
-        floorConfirmNeeded || nameBlocked;
+        floorConfirmNeeded || nameBlocked || exclusionUnacked;
     }
 
     async function loadContextForDestination() {
@@ -1016,12 +1108,68 @@
         '. Existing meaningful canvases stay; an empty default blank canvas may be removed.</p>';
     }
 
+    function exclusionStatusText() {
+      const excluded = parsed && parsed.excludedObservations ? parsed.excludedObservations : [];
+      if (!excluded.length) return '';
+      if (!parsed.pins.length) {
+        return excluded.length === 1
+          ? '1 observation cannot be imported. Nothing was written. The original ZIP is unchanged.'
+          : excluded.length + ' observations cannot be imported. Nothing was written. The original ZIP is unchanged.';
+      }
+      return excluded.length === 1
+        ? '1 observation cannot be imported. Review it below before continuing.'
+        : excluded.length + ' observations cannot be imported. Review them below before continuing.';
+    }
+
+    function excludedListHtml(includeChoice) {
+      const excluded = parsed && parsed.excludedObservations ? parsed.excludedObservations : [];
+      if (!excluded.length) return '';
+      const count = excluded.length;
+      const recoverable = parsed.pins ? parsed.pins.length : 0;
+      const items = excluded.map(function (item) {
+        return '<li><span class="cf-import__excluded-title">' + escapeHtml(item.heading) + '</span>' +
+          '<span class="cf-import__excluded-reason">' + escapeHtml(item.reason) + '</span></li>';
+      }).join('');
+      if (!recoverable) {
+        return '<div class="cf-import__warning cf-import__warning--action">' +
+          '<p><strong>No observations in this export can be imported.</strong> ' +
+          'The original ZIP was not changed, and nothing was written to this Customer File. ' +
+          'Locations were not guessed.</p>' +
+          '<ul class="cf-import__excluded">' + items + '</ul>' +
+          '<p>Use Back to return to the Customer File, or choose a different export above.</p></div>';
+      }
+      const choice = includeChoice
+        ? '<label class="cf-import__confirm-check"><input type="checkbox" id="cf-import-ack-excluded"> ' +
+          'Import the observations that can be recovered and leave ' +
+          (count === 1 ? 'this one' : 'these') + ' out</label>'
+        : '';
+      return '<div class="cf-import__warning cf-import__warning--action">' +
+        '<p><strong>' + count + ' ' + (count === 1 ? 'observation' : 'observations') +
+        ' cannot be imported.</strong> ' +
+        (count === 1 ? 'It stays' : 'They stay') +
+        ' in the original ZIP and ' + (count === 1 ? 'is' : 'are') +
+        ' not placed on the plan. Toolbox did not guess a location.</p>' +
+        '<ul class="cf-import__excluded">' + items + '</ul>' + choice + '</div>';
+    }
+
     function renderPreviewShell() {
       if (!parsed) return;
+      const announced = exclusionStatusText();
+      if (announced) status.textContent = announced;
+      if (parsed.kind === 'distress' && !(parsed.pins && parsed.pins.length) &&
+          parsed.excludedObservations && parsed.excludedObservations.length) {
+        preview.innerHTML =
+          '<section class="cf-import__preview"><h2 tabindex="-1">Distress observations left out</h2>' +
+          excludedListHtml(false) +
+          '</section>';
+        preview.querySelector('h2').focus();
+        return;
+      }
       if (!context) {
         preview.innerHTML =
           '<section class="cf-import__preview"><h2 tabindex="-1">Choose destination</h2>' +
           destinationPanelHtml() +
+          excludedListHtml(false) +
           '<p class="cf-import__note">Select Create new or an existing Customer File to continue.</p></section>';
         bindDestinationControls();
         preview.querySelector('h2').focus();
@@ -1048,13 +1196,18 @@
       const blocked = context.blocksDistressMerge
         ? '<p class="cf-import__warning">This Customer File already contains Distress work. Import into a new Customer File to preserve the existing work and historical numbering.</p>'
         : '';
+      const importLabel = parsed.kind === 'distress' && parsed.excludedObservations && parsed.excludedObservations.length
+        ? 'Import valid observations'
+        : 'Import';
       preview.innerHTML =
         '<section class="cf-import__preview"><h2 tabindex="-1">Confirm ' + escapeHtml(parsed.label) + ' recovery</h2>' +
         destinationPanelHtml() +
         '<dl>' + rows + '</dl>' +
+        excludedListHtml(true) +
         clientNameHtml() +
         suggestion + conflicts + floorProtectionHtml() + canvasNoteHtml() + duplicate + blocked +
-        '<div class="cf-import__actions"><button type="button" id="cf-import-confirm" class="btn btn--accent">Import</button></div></section>';
+        '<div class="cf-import__actions"><button type="button" id="cf-import-confirm" class="btn btn--accent">' +
+        importLabel + '</button></div></section>';
       bindDestinationControls();
       preview.querySelectorAll('select,input').forEach((control) => control.addEventListener('change', updateImportButton));
       preview.querySelectorAll('#cf-import-client-first,#cf-import-client-last').forEach(function (control) {
@@ -1089,10 +1242,19 @@
               if (!lines.some((line) => line.indexOf('Customer name ') === 0)) lines.push(label);
             }
           });
+          const leftOut = parsed.kind === 'distress' && parsed.excludedObservations
+            ? parsed.excludedObservations
+            : [];
+          if (leftOut.length) {
+            lines.push(leftOut.length + ' observation' + (leftOut.length === 1 ? '' : 's') +
+              ' left out — not placed on the plan');
+            lines.push('The original ZIP was not changed.');
+          }
           status.textContent = '';
           preview.innerHTML =
             '<section class="cf-import__result"><p class="eyebrow">Recovery complete</p><h2 tabindex="-1">' + escapeHtml(parsed.label) + ' imported</h2>' +
             '<ul>' + lines.map((line) => '<li>' + escapeHtml(line) + '</li>').join('') + '</ul>' +
+            (leftOut.length ? excludedListHtml(false) : '') +
             '<button type="button" id="cf-import-open" class="btn btn--accent">Open ' + escapeHtml(parsed.label) + '</button></section>';
           preview.querySelector('h2').focus();
           preview.querySelector('#cf-import-open').addEventListener('click', function () {

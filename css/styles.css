@@ -2582,6 +2582,11 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   font-weight: 700;
 }
 
+.cf-import__confirm-check input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
 .cf-import__preview,
 .cf-import__result {
   margin-top: 18px;
@@ -2633,6 +2638,34 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   color: #8e3329;
   background: #fff4f1;
   border: 1px solid #e3c8c3;
+}
+
+.cf-import__excluded {
+  margin: 0;
+  padding-left: 1.15rem;
+}
+
+.cf-import__excluded li {
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+
+.cf-import__excluded-title,
+.cf-import__excluded-reason {
+  display: block;
+}
+
+.cf-import__excluded-title {
+  font-weight: 700;
+}
+
+.cf-import__excluded-reason {
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+.cf-import__result .cf-import__warning {
+  margin-top: 16px;
 }
 
 .cf-import__actions {
