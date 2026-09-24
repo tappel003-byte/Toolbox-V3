@@ -42,7 +42,7 @@ const report = await page.evaluate(async (png) => {
 
   const plans = { 'plan-basement': png, 'plan-main': png };
   const photos = {
-    ph_pin_a: png,
+    'ph_import-11111111-1111-1111-1111-111111111111': png,
     ph_pin_b: png,
     ph_quick: png,
     ph_loose: png,
@@ -166,7 +166,7 @@ const report = await page.evaluate(async (png) => {
           canvasId: 'canvas-basement',
           x: 50,
           y: 10,
-          photos: ['ph_pin_a'],
+          photos: ['ph_import-11111111-1111-1111-1111-111111111111'],
           description: 'Hairline at the window',
           location: 'Laundry',
           category: 'Crack',
@@ -205,6 +205,13 @@ const report = await page.evaluate(async (png) => {
       importedAt: '2026-01-01T00:00:00.000Z',
       canvasIds: ['canvas-basement'],
       fingerprint: 'abc',
+      excludedObservations: [{
+        num: 9,
+        description: 'Unplaced crack',
+        sourceId: 'src-left-out',
+        heading: 'Observation 9 — Unplaced crack',
+        reason: 'This observation has an invalid coordinate.',
+      }],
     }],
   };
 
@@ -276,7 +283,9 @@ const report = await page.evaluate(async (png) => {
     byRole[photo.role].push(photo);
   });
   const linked = (byRole['pin-linked'] || []).filter(function (photo) { return photo.stored; });
-  assert('pin photos keep their pin', linked.length === 2 && linked.some(function (photo) { return photo.pinId === 'pin-base' && photo.path.indexOf('photo-01') !== -1; }) && linked.some(function (photo) { return photo.pinId === 'pin-main' && photo.path.indexOf('photo-02') !== -1; }));
+  assert('pin photos keep their pin', linked.length === 2 && linked.some(function (photo) {
+    return photo.pinId === 'pin-base' && photo.photoId === 'ph_import-11111111-1111-1111-1111-111111111111' && photo.path.indexOf('photo-01') !== -1;
+  }) && linked.some(function (photo) { return photo.pinId === 'pin-main' && photo.path.indexOf('photo-02') !== -1; }));
   assert('missing photo is a gap, not a failed export', inventory.components.photos.missingBytes === 1 && blob.indexOf('ph_missing') !== -1);
   assert('quick capture is separate from pins', (byRole['quick-capture'] || []).length === 1 && (byRole['quick-capture'][0].path || '').indexOf('photos/quick-capture/') === 0 && (byRole['quick-capture'][0].pinId == null));
   assert('unassigned photos are separate', (byRole.unassigned || []).some(function (photo) { return photo.stored && photo.path.indexOf('photos/unassigned/') === 0; }));
@@ -285,6 +294,11 @@ const report = await page.evaluate(async (png) => {
   assert('diagnostics and report state are included', inventory.components.diagnostics.status === 'present' && inventory.components.reportBuilder.status === 'present' && blob.indexOf('Stored tilt note') !== -1 && blob.indexOf('Draft discussion') !== -1);
   assert('diagnostic plot bytes are a file, not base64 in JSON', (zip.text['diagnostics/diagnostics.json'] || '').indexOf('iVBORw0KGgo') === -1 && zip.names.some(function (name) { return name.indexOf('diagnostics/images/') === 0; }));
   assert('recovery provenance is included and quick capture limit is stated', blob.indexOf('sample-distress.zip') !== -1 && blob.indexOf('Legacy Distress recovery does not store Quick Capture') !== -1);
+  assert('left-out recovery observations are listed and not invented as pins',
+    inventory.components.provenance.excludedObservationCount === 1 &&
+    blob.indexOf('Observation 9 — Unplaced crack') !== -1 &&
+    blob.indexOf('does not invent pins or photos') !== -1 &&
+    survey.pins.every(function (pin) { return pin.description !== 'Unplaced crack' && pin.id !== 'src-left-out'; }));
 
   const floorOnly = {
     id: 'cf-floor-only',

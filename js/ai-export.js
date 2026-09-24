@@ -898,6 +898,7 @@
     lines.push('');
     section('Provenance');
     lines.push('recovery imports: ' + inventory.components.provenance.recoveryImportCount);
+    lines.push('observations left out of recovery: ' + (inventory.components.provenance.excludedObservationCount || 0));
     lines.push('');
     section('Limits');
     inventory.limits.forEach(function (limit) { lines.push('- ' + limit); });
@@ -1093,8 +1094,18 @@
 
     var imports = Array.isArray(source.recoveryImports) ? source.recoveryImports : [];
     var provenance = stripSecrets(clone(imports), 'recoveryImports', omitted);
+    var leftOutCount = 0;
+    imports.forEach(function (entry) {
+      if (entry && Array.isArray(entry.excludedObservations)) leftOutCount += entry.excludedObservations.length;
+    });
     if (imports.some(function (entry) { return entry && entry.kind === 'distress'; })) {
       gaps.push('This Customer File has a Distress recovery import. Quick Capture photos from that legacy ZIP are not stored on the Customer File unless they appear in the photo index.');
+    }
+    if (leftOutCount) {
+      gaps.push(leftOutCount + ' Distress observation' + (leftOutCount === 1 ? ' was' : 's were') +
+        ' left out of recovery and ' + (leftOutCount === 1 ? 'is' : 'are') +
+        ' listed in provenance/recovery-imports.json. This package does not invent pins or photos for ' +
+        (leftOutCount === 1 ? 'it' : 'them') + '.');
     }
 
     var photoCounts = distressBuilt.counts || { 'pin-linked': 0, 'quick-capture': 0, unassigned: 0, general: 0, missing: 0 };
@@ -1169,7 +1180,10 @@
         },
         diagnostics: { status: diagnosticsPresent ? 'present' : 'absent' },
         reportBuilder: { status: reportPresent ? 'present' : 'absent' },
-        provenance: { recoveryImportCount: imports.length },
+        provenance: {
+          recoveryImportCount: imports.length,
+          excludedObservationCount: leftOutCount,
+        },
       },
       limits: LIMITS.slice(),
       gaps: gaps,
