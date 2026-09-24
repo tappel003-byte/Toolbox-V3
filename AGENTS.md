@@ -46,27 +46,30 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
 - Normal internal workflow must not require exporting from one Toolbox workspace and importing into another.
 - Do not expose implementation complexity to the investigator.
 - Do not ask for information Toolbox already knows.
-- **Customer File owns plans:** Contact + plan(s) = Customer File. Apps pull plans; no Plan Setup application/gatekeeper. KISS: explain in 2–3 sentences or simplify.
-- The Customer File is a **job container**; Customer Information, Plans/Canvases, Distress, Floor Survey, and future Diagnostics/Report Builder are components inside it — not one undifferentiated synchronized blob.
+- **Customer File owns plans:** Contact + plan(s) = Customer File. Apps pull plans; no Plan Setup application/gatekeeper. **KISS and Occam’s razor:** explain in 2–3 sentences or simplify. Do not add complexity unless it solves a real problem. When two designs protect the data and satisfy the workflow equally well, prefer fewer states, buttons, decisions, assumptions, dependencies, and failure modes. Complexity that is invisible to the investigator still carries a burden of proof if it makes the code fragile.
+- The Customer File is a **job container**; Customer Information, Plans/Canvases, Distress, Floor Survey, Diagnostics, and Report Builder are components inside it and obey the same lifecycle — not one undifferentiated synchronized blob.
 - Switching applications changes the application-specific layer, not the underlying established canvas/level. Switching canvases/levels happens within the field application when multiple canvases/levels exist.
 - Distress photograph/pin numbering must preserve the exact proven standalone recomputation behavior across all canvases/levels. Never simplify it into permanent per-pin or per-canvas numbering.
 - Protect the canvas — the working surface takes priority over application chrome.
 
-## Cross-device synchronization (when in current milestone)
+## Cross-device synchronization
 
-- **Local-first:** apps continue to read/write the local Customer File (IndexedDB). Do not rewrite Distress or Floor Survey to operate directly against cloud storage.
-- **Save ≠ Sync:** Save remains local, immediate, and offline-capable. Sync Now is a separate visible action that exchanges changed components and required media with the central cloud cabinet.
-- **Component-level sync:** synchronize Customer Information, Plans, Distress, Floor Survey, and future Diagnostics/Report Builder independently. Do not treat the entire Customer File as one last-write-wins document.
-- Same-component conflict for v1: newest component version wins. Do not build CRDTs, live collaboration, or merge UIs.
+- **Local-first:** apps continue to read/write the local Customer File (IndexedDB). Do not rewrite Distress or Floor Survey to operate directly against cloud storage. A Customer File actively being worked on has one editing/working authority: the active local device. The File Cabinet mirror is not a second concurrent editor.
+- **Autosave, field checkpoint, and sync are different.** Autosave protects ongoing local work and stays immediate and offline-capable. A deliberate Save in integrated Floor Survey or Distress Survey creates or replaces one protected field checkpoint for that survey: replace in place, write the new checkpoint successfully before retiring the previous one, reference existing photos/plans/media, and do not create Save 1/2/3 histories. The checkpoint syncs as recovery material. Checking out a Customer File must not automatically materialize that checkpoint as the normal working survey. Distress follows the same checkpoint principle without a change to protected capture flow.
+- **Quiet mirror:** when online, the active working Customer File is quietly mirrored to the File Cabinet for device-loss protection. Quiet mirroring is decided. It is not later polish. It does not replace Sync Now.
+- **Sync Now** is the manual confidence/safety action after poor signal. It must say **“Sync complete.”** when changes upload, **“Everything is already synced.”** when nothing changed, and it must not describe a failure as success. It exchanges changed components and required media for this device’s local working files. It does not download the entire Cabinet.
+- **File Cabinet** is the shared, transfer, and filed location. **Check Out** transfers exclusive editing authority to the receiving device. Other devices may keep complete local safety copies; after they learn the file is checked out elsewhere those copies are gray/read-only and must not mutate or sync over it. **File Explorer** is the read-only server back door, not a second Customer File editor.
+- **Component-level sync:** Customer Information, plans/media, Distress, Floor Survey, Diagnostics, and Report Builder obey the same lifecycle and synchronize independently. Do not treat the entire Customer File as one last-write-wins document.
+- Same-component conflict for v1: newest component version wins, as defensive/recovery plumbing. Do not build CRDTs, live collaboration, or merge UIs.
 - Cloud connectivity must never be required for ordinary field capture or for opening already-local Customer Files.
 - Authentication may gate Sync Now; it must not gate offline use of local data.
 - Minimum cloud shape: Cloudflare Worker + private R2, with Cloudflare Access for Tim and Lee, unless implementation proves a concrete need for something else.
 - Do **not** add D1, KV, Durable Objects, Queues, Firebase, Supabase, SaaS tenancy, roles, invitations, billing, or a Control Panel unless explicitly authorized.
 - Do **not** redesign Distress capture, Floor Survey capture, or Customer File as part of sync work.
-- Do **not** build Report Builder or Diagnostics as part of sync work.
+- Do **not** build Report Builder or Diagnostics as part of sync work. Their integration is underway separately; do not treat them as outside the lifecycle above.
 - Plans and Distress photos must sync as actual media bytes, not references alone.
 - Preserve existing Trash/recovery behavior and 120-day retention intent; deletion/restore state must synchronize.
-- Manual Sync Now is v1; quiet automatic sync is later polish only after manual sync is trusted.
+- Post-release local-copy cleanup is decided and is a later small slice: after another device’s work is released and the File Cabinet copy is verified complete, the older device may offer Remove From This Device / Keep Local Copy / Archive as Revision. Do not implement that choice inside ordinary sync or capture work, and do not let it complicate normal work. Remove From This Device is local-only and is not Trash.
 - Creating Cloudflare infrastructure, Access configuration, or deployment of sync services requires explicit product-owner authorization beyond documentation updates.
 
 ## Device intent

@@ -18,13 +18,13 @@ Durable decisions already established in `VISION.md`, recorded here for quick re
 ## Customer File
 
 - **Contact information + plan(s)/canvas(es) = Customer File.**
-- The Customer File is one **job container**. Sub-files/components inside it: Customer Information, Plans/Canvases, Distress Survey, Floor Survey, and (when built) Diagnostics and Report Builder. Media belongs to or is referenced by the appropriate component.
+- The Customer File is one **job container**. Sub-files/components inside it: Customer Information, Plans/Canvases, Distress Survey, Floor Survey, Diagnostics, and Report Builder. All of them obey the same lifecycle. Media belongs to or is referenced by the appropriate component. Diagnostics and Report Builder integration is underway; they are not wholly future work and they are not a separate sync model.
 - Plans belong to the Customer File. They are not owned by Distress Survey or Floor Survey.
 - There is no fifth “Plan Setup” application and no Plan Setup gatekeeper in the product model.
 - Rooms, room names/locations, plan images, orientation/front door, and related shared spatial setup are Customer File data.
 - Applications pull what they need from the Customer File and add their own application-specific layers.
 - Changing applications does not copy or recreate Customer File plans.
-- **KISS:** If a change cannot be explained in 2–3 plain sentences, simplify before implementing.
+- **KISS and Occam’s razor:** If a change cannot be explained in 2–3 plain sentences, simplify before implementing. Do not add complexity unless it solves a real problem. When two designs protect the data and satisfy the workflow equally well, prefer fewer states, buttons, decisions, assumptions, dependencies, and failure modes. Complexity that is invisible to the investigator still carries a burden of proof if it makes the code fragile.
 - **Integration rule: shared plumbing may change; proven capture behavior is protected.**
 - A Customer File has a stable internal identity independent of editable contact fields. A new unnamed file may use **TBD** as its temporary human-readable identifier.
 
@@ -93,11 +93,11 @@ Concrete Customer File record ownership for later app plug-in. Architecture is c
 - Will support basic drawing/annotation on report content; the exact toolbar is not yet decided.
 - Follows "protect the canvas" — compact pills and collapsible tools, not a permanent desktop-style ribbon.
 - Comes before Diagnostics in the **application** build order: an operational Toolbox (Customer File → Distress/Floor → Report Builder) should be possible before Diagnostics is required.
-- Cross-device Customer File synchronization is authorized **ahead of** building Report Builder or Diagnostics.
+- Report Builder and Diagnostics are not wholly future work. As of Sept 24, 2026, this repository has a Report Builder shell and a Diagnostics entry, and further integration is in active pull requests (#68 Diagnostics workbench, #69 Report Builder evidence, #70 Report Builder skeleton). They obey the same Customer File lifecycle. Sync work must not redesign them or field capture.
 
 ## Diagnostics
 
-- Exact analytical tools/methods are not yet decided. Not a mandatory gate for every report.
+- Integration has started. Exact analytical tools/methods are not yet decided. Not a mandatory gate for every report.
 
 ## AI collaboration
 
@@ -116,14 +116,18 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ## Cloud, offline, sync, and access
 
-- **Local-first:** local IndexedDB remains the working storage apps use.
-- **File Cabinet:** Cloudflare (Worker + private R2) is the authoritative shared inventory of Customer Files. Devices do **not** keep complete synchronized copies of the Cabinet. Cloud-only files are normal. Local-only drafts are normal until placed in the Cabinet.
-- **Save** = local, immediate, offline-capable persistence on this device.
-- **Sync Now** = update cloud copies of this device’s **local working** Customer Files and required media. Manual Sync Now is v1. Sync success means the local working set processed safely — **not** local inventory == cloud inventory. Sync must **not** auto-materialize every remote-only Customer File.
-- **Check Out / Check In** (authorized next slice, not fully built): exclusive edit authority (user + device). Sync backs up without releasing. Check In verifies cloud completeness before release. Remove From This Device is local-only and is not Trash.
-- **Component-level synchronization:** Customer Information, Plans/Canvases, Distress, Floor Survey, and future Diagnostics/Report Builder sync independently. Component LWW remains defensive/recovery plumbing until exclusive checkout makes normal multi-writer editing unnecessary.
+- **Local-first:** local IndexedDB remains the working storage apps use. A Customer File actively being worked on has one editing/working authority: the active local device.
+- **File Cabinet:** Cloudflare (Worker + private R2) is the shared, transfer, and filed location, and the device-loss mirror of the active working Customer File. It is not the live editing authority and not a second concurrent editor. Devices do **not** keep complete synchronized copies of the entire Cabinet. Cloud-only files are normal. Local-only drafts are normal until placed in the Cabinet. A device may keep a complete local safety copy of a file it already holds.
+- **Quiet mirror (decided Sept 24, 2026):** when online, the active working Customer File is quietly mirrored to the File Cabinet for device-loss protection. This is not later polish. It does not replace Sync Now.
+- **Autosave** = ongoing local work; immediate and offline-capable. It is not the field checkpoint and it is not cloud sync.
+- **Field Save checkpoint (decided Sept 24, 2026):** a deliberate Save in integrated Floor Survey or Distress Survey creates or replaces **one** protected field checkpoint for that survey. Repeated Save replaces the prior checkpoint; do not create Save 1/2/3 histories. Write the replacement successfully before retiring the previous checkpoint. The checkpoint holds the structured information needed to reconstruct that survey, plus its recovery visual/PDF as applicable. Existing photos, plans, and other media are referenced, not duplicated. The checkpoint syncs to Cloudflare / File Explorer as recovery material. Check Out must not automatically download or materialize it as the normal working survey. Floor Survey’s recovery PDF is the existing checkpoint. Distress follows the same principle without a change to protected capture flow or to `field-reporter-pro`.
+- **Sync Now** = the manual confidence/safety action after poor signal. It updates cloud copies of this device’s **local working** Customer Files and required media. It must say **“Sync complete.”** when changes upload and **“Everything is already synced.”** when nothing changed. A failure must not be worded as success. Sync success is not local inventory == cloud inventory. Sync must **not** auto-materialize every remote-only Customer File.
+- **Check Out** transfers exclusive editing authority to the receiving device (user + device). The checkout foundation is in the repository. Other devices may retain complete local safety copies; after they learn the file is checked out elsewhere those copies are gray/read-only and cannot mutate or sync over it. **File Explorer** is the read-only server back door, not a second Customer File editor.
+- **Check In** on the editing device syncs, verifies the Cabinet copy, and releases exclusive authority. It never cloud-deletes. The foundation in the repository also removes that device’s own working copy; that removal is not Trash and does not delete another device’s safety copy. Sync while checked out backs up without releasing.
+- **Later local-copy cleanup (decided, not current work):** after another device’s work is released and the File Cabinet copy is verified complete, the older local device may offer Remove From This Device / Keep Local Copy / Archive as Revision. Do not implement it in ordinary work. Remove From This Device is local-only and is not Trash.
+- **Component-level synchronization:** Customer Information, Plans/Canvases, Distress, Floor Survey, Diagnostics, and Report Builder sync independently and obey the same lifecycle. Component LWW remains defensive/recovery plumbing. Exclusive checkout prevents normal multi-writer editing.
 - Plans and Distress photos must synchronize as **actual media**, not references alone.
-- After a Customer File is local on a device, that device must open and work on it offline without cloud dependency.
+- After a Customer File is local on a device, that device must open and work on it offline without cloud dependency. A gray read-only copy may still be viewed offline; it must not mutate or sync over a checkout held elsewhere.
 - Authentication may be required to Sync Now; it must **not** be required to open or use already-local Customer Files offline.
 - **Starting access:** Cloudflare Access for Tim and Lee (small authorized set). No SaaS tenancy, roles, invitations, billing, or per-file ACL product.
 - **Minimum cloud infrastructure:** Cloudflare Worker + private R2 unless implementation proves a concrete need for something else. Do not add D1, KV, Durable Objects, Queues, Firebase, Supabase, or similar without that proof.
@@ -135,6 +139,8 @@ These notes preserve active product possibilities so they are not lost. They are
 ### Superseded
 
 - Full-cabinet convergence across devices after Sync Now (“Device B Sync receives Device A’s entire library automatically”) is **superseded** by the File Cabinet + selective local + exclusive checkout model.
+- “Manual Sync Now is v1; quiet automatic sync is later polish only after manual sync is trusted” is **superseded**. Quiet mirroring of the active working Customer File is decided. Sync Now remains the manual confidence action and must use the truthful wording above.
+- Reading “Cloudflare is the authoritative File Cabinet” as “the cloud is the live editing authority” is **superseded**. Editing authority is the active local device. The File Cabinet is the shared, transfer, and filed location and the device-loss mirror.
 
 ## Closeout
 
