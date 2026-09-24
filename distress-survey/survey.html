@@ -811,16 +811,16 @@
     <button class="icon-btn" onclick="toggleMenu()" title="More">⋯</button>
   </div>
   <div class="menu" id="workMenu">
-    <button onclick="openExport()">📤 Export</button>
+    <!-- Standalone file transfer. Hidden in Toolbox; ZIP/PDF functions stay in this file. -->
+    <button onclick="openExport()" class="host-hide">📤 Export</button>
     <button onclick="editSetup()" class="host-hide">⚙️ Edit setup</button>
-    <div class="sep"></div>
+    <div class="sep host-hide"></div>
     <button onclick="confirmQuickCapture()">📸 Quick Capture</button>
     <button type="button" id="openPhotoFolders" hidden onclick="openRecoveredPhotoFolders()">Photo folders</button>
     <button onclick="toggleVoiceMemo()">🎙️ Voice memo</button>
     <div class="sep"></div>
     <button onclick="clearDrawings()">✎ Clear all drawings</button>
-    
-    <div class="sep"></div>
+    <div class="sep host-hide"></div>
     <button class="danger host-hide" onclick="confirmDeleteProject()">🗑 Move to trash</button>
   </div>
 
@@ -3260,6 +3260,7 @@ function useGpsCoordsOnly() {
   }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
 }
 function editSetup() {
+  if (typeof HOST_MODE !== 'undefined' && HOST_MODE) return;
   if (!project) return;
   closeMenu();
   _editingProjectId = project.id;
@@ -3503,6 +3504,7 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 function confirmDeleteProject() {
+  if (typeof HOST_MODE !== 'undefined' && HOST_MODE) return;
   closeMenu();
   if (!project) return;
   if (!confirm('Move "' + project.address + '" to trash?\n\nIt will be deleted forever after 30 days. You can restore it before then.')) return;
@@ -5949,6 +5951,7 @@ function setupNorthWidget() {
 
 // ---------- Export ----------
 function openExport() {
+  if (typeof HOST_MODE !== 'undefined' && HOST_MODE) return;
   closeSheets();
   closeMenu();
   if (!project) return;

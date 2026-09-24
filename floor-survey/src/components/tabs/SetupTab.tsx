@@ -91,7 +91,9 @@ export function SetupTab({
       </div>
 
       <div className={tab === "areas" || tab === "excluded" ? "flex-1 min-h-0 overflow-hidden" : "flex-1 min-h-0 overflow-auto"}>
-        {tab === "details" && <DetailsPanel project={project} onChange={onProjectChange} />}
+        {tab === "details" && (
+          <DetailsPanel project={project} onChange={onProjectChange} planLocked={planLocked} />
+        )}
         {tab === "plan" && (
           <PlanPanel
             projectId={project.id}
@@ -166,9 +168,12 @@ export function SetupTab({
 function DetailsPanel({
   project,
   onChange,
+  planLocked = false,
 }: {
   project: ProjectMeta;
   onChange: (p: ProjectMeta) => void;
+  /** Toolbox host: Customer File already owns name, address, and client. */
+  planLocked?: boolean;
 }) {
   const [local, setLocal] = useState(project);
   const [saved, setSaved] = useState(false);
@@ -215,37 +220,41 @@ function DetailsPanel({
           onChange={(e) => setLocal({ ...local, inspectionDate: e.target.value })}
         />
       </div>
-      <div>
-        <Label className="label-micro">Project name</Label>
-        <Input value={local.name} onChange={(e) => setLocal({ ...local, name: e.target.value })} />
-      </div>
-      <div>
-        <Label className="label-micro">Address</Label>
-        <Input
-          value={local.address}
-          onChange={(e) => setLocal({ ...local, address: e.target.value })}
-        />
-        <AddressGpsButtons
-          onAddress={(addr) => setLocal((prev) => ({ ...prev, address: addr }))}
-        />
-      </div>
+      {!planLocked && (
+        <>
+          <div>
+            <Label className="label-micro">Project name</Label>
+            <Input value={local.name} onChange={(e) => setLocal({ ...local, name: e.target.value })} />
+          </div>
+          <div>
+            <Label className="label-micro">Address</Label>
+            <Input
+              value={local.address}
+              onChange={(e) => setLocal({ ...local, address: e.target.value })}
+            />
+            <AddressGpsButtons
+              onAddress={(addr) => setLocal((prev) => ({ ...prev, address: addr }))}
+            />
+          </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label className="label-micro">Client</Label>
-          <Input
-            value={local.client}
-            onChange={(e) => setLocal({ ...local, client: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label className="label-micro">Inspector</Label>
-          <Input
-            value={local.inspector}
-            onChange={(e) => setLocal({ ...local, inspector: e.target.value })}
-          />
-        </div>
-      </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="label-micro">Client</Label>
+              <Input
+                value={local.client}
+                onChange={(e) => setLocal({ ...local, client: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label className="label-micro">Inspector</Label>
+              <Input
+                value={local.inspector}
+                onChange={(e) => setLocal({ ...local, inspector: e.target.value })}
+              />
+            </div>
+          </div>
+        </>
+      )}
       <div>
         <Label className="label-micro">Notes</Label>
         <Textarea
