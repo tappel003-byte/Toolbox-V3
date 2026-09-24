@@ -228,6 +228,7 @@
   // #/file/:id/edit     → edit contact + plans
   // #/file/:id/plan     → redirect to edit (legacy)
   // #/file/:id/report   → Report Builder workspace shell
+  // #/file/:id/diagnostics → existing Floor Survey 3D view
   // #/file/:id/<app>    → connected workspace, or a not-yet-connected stub
 
   function parseRoute() {
@@ -258,7 +259,7 @@
         return { view: 'report', id: id };
       }
       if (sub === 'diagnostics') {
-        return { view: 'app-stub', id: id, app: sub };
+        return { view: 'diagnostics', id: id };
       }
       return { view: 'home', id: id };
     }
@@ -269,12 +270,14 @@
     const app = document.getElementById('app-view');
     if (!app) return;
     const route = parseRoute();
-    if (route.view !== 'floor') {
-      document.body.classList.remove('floor-survey-open');
+    if (route.view !== 'floor' && route.view !== 'diagnostics') {
+      document.body.classList.remove('floor-survey-open', 'diagnostics-open');
       app.classList.remove('canvas--floor-survey');
       if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
         window.ToolboxFloorSurvey.unmount();
       }
+    } else if (route.view === 'floor') {
+      document.body.classList.remove('diagnostics-open');
     }
     if (route.view !== 'distress') {
       document.body.classList.remove('distress-survey-open');
@@ -305,6 +308,8 @@
       renderCustomerFileImport(app, route.id, { allowDestinationChoice: !!route.allowDestinationChoice });
     } else if (route.view === 'report') {
       renderReportBuilder(app, route.id);
+    } else if (route.view === 'diagnostics') {
+      renderDiagnostics(app, route.id);
     } else if (route.view === 'app-stub') {
       renderAppStub(app, route.id, route.app);
     } else if (route.view === 'trash') {
@@ -1361,7 +1366,7 @@
       if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
         window.ToolboxFloorSurvey.unmount();
       }
-      document.body.classList.remove('floor-survey-open');
+      document.body.classList.remove('floor-survey-open', 'diagnostics-open');
       app.classList.remove('canvas--floor-survey');
       window.location.hash = '#/file/' + encodeURIComponent(id);
     }
@@ -1379,13 +1384,57 @@
 
     window.ToolboxFloorSurvey.mount(app, {
       customerFileId: id,
+      workspace: 'survey',
+      onBack: leave,
+    });
+  }
+
+  function renderDiagnostics(app, id) {
+    registerActiveFlush(null);
+    if (window.ToolboxDistress && typeof window.ToolboxDistress.unmount === 'function') {
+      window.ToolboxDistress.unmount();
+    }
+    document.body.classList.remove('distress-survey-open', 'report-builder-open');
+    app.classList.remove('canvas--distress-survey');
+    if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
+      window.ToolboxFloorSurvey.unmount();
+    }
+    document.body.classList.add('floor-survey-open', 'diagnostics-open');
+    app.innerHTML = '';
+    app.classList.add('canvas--floor-survey');
+
+    function leave() {
+      if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
+        window.ToolboxFloorSurvey.unmount();
+      }
+      document.body.classList.remove('floor-survey-open', 'diagnostics-open');
+      app.classList.remove('canvas--floor-survey');
+      window.location.hash = '#/file/' + encodeURIComponent(id);
+    }
+
+    if (!window.ToolboxFloorSurvey || typeof window.ToolboxFloorSurvey.mount !== 'function') {
+      document.body.classList.remove('floor-survey-open', 'diagnostics-open');
+      app.classList.remove('canvas--floor-survey');
+      app.innerHTML =
+        '<div class="cf-stub">' +
+        '  <h2 class="cf-stub__title">Diagnostics</h2>' +
+        '  <p class="cf-stub__msg">Diagnostics failed to load.</p>' +
+        '  <button type="button" id="dx-fail-back" class="btn btn--accent">Back to Customer File</button>' +
+        '</div>';
+      app.querySelector('#dx-fail-back').addEventListener('click', leave);
+      return;
+    }
+
+    window.ToolboxFloorSurvey.mount(app, {
+      customerFileId: id,
+      workspace: 'diagnostics',
       onBack: leave,
     });
   }
 
   function renderReportBuilder(app, id) {
     registerActiveFlush(null);
-    document.body.classList.remove('floor-survey-open', 'distress-survey-open');
+    document.body.classList.remove('floor-survey-open', 'distress-survey-open', 'diagnostics-open');
     document.body.classList.add('report-builder-open');
     app.classList.remove('canvas--floor-survey', 'canvas--distress-survey');
     if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
@@ -1423,7 +1472,7 @@
 
   function renderAppStub(app, id, appKey) {
     registerActiveFlush(null);
-    document.body.classList.remove('floor-survey-open');
+    document.body.classList.remove('floor-survey-open', 'diagnostics-open');
     app.classList.remove('canvas--floor-survey');
     document.body.classList.remove('distress-survey-open');
     app.classList.remove('canvas--distress-survey');

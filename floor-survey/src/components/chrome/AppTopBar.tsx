@@ -7,7 +7,7 @@ type Props = {
   onBack?: () => void;
   onOpenSetup: () => void;
   onOpenReview: () => void;
-  onOpenExport: () => void;
+  onOpenExport?: () => void;
   onOpenTransitions?: () => void;
   onOpen3D?: () => void;
   
@@ -187,13 +187,15 @@ export function AppTopBar({
                   }}
                 />
               )}
-              <MenuItem
-                label="Export"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onOpenExport();
-                }}
-              />
+              {onOpenExport && (
+                <MenuItem
+                  label="Export"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenExport();
+                  }}
+                />
+              )}
 
 
             </div>

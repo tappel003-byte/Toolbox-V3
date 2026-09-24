@@ -16,6 +16,9 @@ interface Props {
   points: SurveyPoint[];
   settings: RenderSettings;
   onClose: () => void;
+  /** When more than one level is supplied, the existing header can switch floors. */
+  levels?: Array<{ id: string; name: string }>;
+  onLevelChange?: (id: string) => void;
 }
 
 /**
@@ -24,7 +27,7 @@ interface Props {
  * slider, optional survey-point spheres, PNG screenshot export. View state
  * is session-only; nothing persists to the Floor.
  */
-export function ThreeDTab({ floor, points, settings, onClose }: Props) {
+export function ThreeDTab({ floor, points, settings, onClose, levels, onLevelChange }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -314,7 +317,28 @@ export function ThreeDTab({ floor, points, settings, onClose }: Props) {
         >
           <X className="h-4 w-4" />
         </button>
-        <div className="text-sm font-medium truncate">{floor.name} · 3D</div>
+        <div className="text-sm font-medium truncate min-w-0">
+          {levels && levels.length > 1 && onLevelChange ? (
+            <span className="inline-flex items-center gap-1 min-w-0 max-w-full">
+              <select
+                aria-label="Floor"
+                data-diagnostics-floor
+                value={floor.id}
+                onChange={(e) => onLevelChange(e.target.value)}
+                className="max-w-[9rem] truncate bg-transparent text-sm font-medium"
+              >
+                {levels.map((level) => (
+                  <option key={level.id} value={level.id}>
+                    {level.name}
+                  </option>
+                ))}
+              </select>
+              <span>· 3D</span>
+            </span>
+          ) : (
+            <span>{floor.name} · 3D</span>
+          )}
+        </div>
         <div className="ml-auto flex items-center gap-2">
           <Button
             size="sm"
