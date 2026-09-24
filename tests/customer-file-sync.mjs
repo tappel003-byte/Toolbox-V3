@@ -87,6 +87,24 @@ const Sync = loadSyncModule();
 
 {
   const record = {
+    distress: {
+      pins: [{ num: 1, photos: ['ph_pin'], description: 'Crack' }],
+      quickCapture: [{ id: 'ph_quick', sourceName: 'quick-01.jpg', timestamp: '2026-07-28T10:00:00Z' }],
+      photoSources: { ph_pin: 'photo-01.jpg', ph_quick: 'quick-01.jpg' },
+    },
+  };
+  const payload = Sync.extractComponent(record, 'distress');
+  check(
+    'Distress and Quick Capture collections stay on the synced component',
+    Sync.mediaIdsForComponent(record, 'distress').sort().join(',') === 'ph_pin,ph_quick' &&
+      payload.quickCapture[0].sourceName === 'quick-01.jpg' &&
+      payload.photoSources.ph_pin === 'photo-01.jpg' &&
+      Sync.isDefaultShellComponent(record, 'distress') === false,
+  );
+}
+
+{
+  const record = {
     id: 'cf-import',
     customerUpdatedAt: '2026-01-01T00:00:00.000Z',
     planSetup: { updatedAt: '2026-01-01T00:00:00.000Z', canvases: [{ id: 'c', plan: { id: 'plan-import-1' } }] },

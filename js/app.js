@@ -1247,7 +1247,7 @@
         photoBtn.className = 'btn btn--secondary cf-home__photo-folders';
         photoBtn.id = 'home-photo-folders';
         photoBtn.innerHTML = '<span>Photo folders</span><small>' +
-          tally.pins + ' pin photo' + (tally.pins === 1 ? '' : 's') +
+          tally.pins + ' Distress photo' + (tally.pins === 1 ? '' : 's') +
           ' · ' + tally.quick + ' Quick Capture</small>';
         photoBtn.addEventListener('click', function () {
           window.ToolboxRecoveredPhotos.open(id);

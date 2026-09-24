@@ -1773,6 +1773,84 @@ check(
   JSON.stringify(lodgeRecovery),
 );
 
+const folderDownload = await page.evaluate(async () => {
+  function openPhotos() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('pgg_photos_v1', 1);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+    });
+  }
+  async function readPhoto(db, id) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('photos', 'readonly');
+      const request = tx.objectStore('photos').get(id);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+  async function putPhoto(db, id, value) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('photos', 'readwrite');
+      tx.objectStore('photos').put(value, id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  const record = await ToolboxDB.getCustomerFile('import-lodge');
+  const before = JSON.stringify({
+    pins: record.distress.pins,
+    quick: record.distress.quickCapture,
+    sources: record.distress.photoSources,
+  });
+  const pack = await ToolboxRecoveredPhotos.buildDownload(record);
+  const after = await ToolboxDB.getCustomerFile('import-lodge');
+  const db = await openPhotos();
+  const sample = await readPhoto(db, record.distress.pins[0].photos[0]);
+  await putPhoto(db, 'ph_field_pin', sample);
+  await putPhoto(db, 'ph_field_qc', sample);
+  db.close();
+  const fieldPack = await ToolboxRecoveredPhotos.buildDownload({
+    distress: {
+      pins: [{ id: 'pin-new', num: 4, photos: ['ph_field_pin'], description: 'New crack' }],
+      quickCapture: [{ id: 'ph_field_qc', ts: Date.parse('2026-08-01T15:04:05Z'), lat: 35.2, lng: -106.4 }],
+      photoSources: { ph_field_pin: 'new-crack.jpg' },
+    },
+  });
+  return {
+    unchanged: before === JSON.stringify({
+      pins: after.distress.pins,
+      quick: after.distress.quickCapture,
+      sources: after.distress.photoSources,
+    }),
+    paths: pack.entries.map((entry) => entry.path),
+    csv: pack.csv,
+    matches: pack.entries.every((entry) => entry.matchesStored),
+    zipRoundTrip: pack.zipRoundTrip && pack.csvStored,
+    fieldPaths: fieldPack.entries.map((entry) => entry.path),
+    fieldCsv: fieldPack.csv,
+    fieldMatches: fieldPack.entries.every((entry) => entry.matchesStored) && fieldPack.zipRoundTrip,
+  };
+});
+check(
+  'Photo folder download copies original bytes and leaves the Customer File unchanged',
+  folderDownload.unchanged &&
+    folderDownload.matches &&
+    folderDownload.zipRoundTrip &&
+    folderDownload.paths.join(',') === 'distress-photos/photo-01.jpg,distress-photos/photo-02.jpg,distress-photos/photo-03.jpg,quick-capture/quick-01.jpg,quick-capture/quick-02.jpg,quick-capture/quick-03.jpg' &&
+    /Distress photos,photo-01\.jpg,1,Crack at window/.test(folderDownload.csv) &&
+    /Quick Capture,quick-01\.jpg,,,2026-07-28T10:00:00Z,35\.1,-106\.2/.test(folderDownload.csv),
+  JSON.stringify({ paths: folderDownload.paths, csv: folderDownload.csv, matches: folderDownload.matches }),
+);
+check(
+  'A newly captured Quick Capture photo downloads beside its Distress photo',
+  folderDownload.fieldMatches &&
+    folderDownload.fieldPaths.join(',') === 'distress-photos/new-crack.jpg,quick-capture/quick-1.jpg' &&
+    /Distress photos,new-crack\.jpg,4,New crack/.test(folderDownload.fieldCsv) &&
+    /Quick Capture,quick-1\.jpg,,,2026-08-01T15:04:05\.000Z,35\.2,-106\.4/.test(folderDownload.fieldCsv),
+  JSON.stringify({ paths: folderDownload.fieldPaths, csv: folderDownload.fieldCsv }),
+);
+
 await page.goto(`${BASE}#/file/import-lodge/distress`, { waitUntil: 'networkidle0' });
 await page.waitForSelector('iframe');
 await page.waitForFunction(() => {
@@ -1808,7 +1886,7 @@ const fromDistress = await page.evaluate(() => ({
 }));
 check(
   'Distress Photo folders opens the recovered pin photos without adding them to the plan',
-  fromDistress.title === 'Recovered photos' && fromDistress.cards === 3,
+  fromDistress.title === 'Photo folders' && fromDistress.cards === 3,
   JSON.stringify(fromDistress),
 );
 await page.click('#photo-folders-close');
@@ -1824,7 +1902,7 @@ check(
   'Customer File home keeps the 2×2 workspaces and offers photo folders',
   homeGrid.apps.join(',') === 'distress,floor,diagnostics,report' &&
     /Photo folders/.test(homeGrid.folders) &&
-    /3 pin photos/.test(homeGrid.folders) &&
+    /3 Distress photos/.test(homeGrid.folders) &&
     /3 Quick Capture/.test(homeGrid.folders),
   JSON.stringify(homeGrid),
 );
@@ -1837,11 +1915,16 @@ async function shootFolders(width, height, name) {
     const cards = [...document.querySelectorAll('.photo-folders__card')].map((card) => card.innerText.replace(/\s+/g, ' ').trim());
     const panel = document.querySelector('.photo-folders__panel').getBoundingClientRect();
     const close = document.querySelector('#photo-folders-close').getBoundingClientRect();
+    const downloadAll = document.querySelector('#photo-folders-download-all').getBoundingClientRect();
+    const one = document.querySelector('#photo-folders-download-one').getBoundingClientRect();
     return {
       cards,
       note: document.querySelector('.photo-folders__note')?.textContent || '',
+      oneLabel: document.querySelector('#photo-folders-download-one')?.textContent || '',
       overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
       closeInside: close.right <= panel.right + 1 && close.top >= panel.top - 1,
+      downloadInside: downloadAll.right <= panel.right + 1 && downloadAll.top >= panel.top - 1 && downloadAll.height >= 40,
+      oneInside: one.top >= panel.top - 1 && one.left >= panel.left - 1 && one.right <= panel.right + 1,
       gridApps: document.querySelectorAll('.cf-app-btn').length,
     };
   });
@@ -1851,11 +1934,18 @@ async function shootFolders(width, height, name) {
       state.cards[0].includes('Pin 1') &&
       state.cards.length === 3 &&
       /not placed on the plan/.test(state.note) &&
+      state.oneLabel === 'Download' &&
       !state.overflow &&
       state.closeInside &&
+      state.downloadInside &&
+      state.oneInside &&
       state.gridApps === 4,
     JSON.stringify(state),
   );
+  await page.waitForFunction(() => {
+    const img = document.querySelector('.photo-folders__viewer img');
+    return !!(img && img.getAttribute('src') && img.getAttribute('src').indexOf('data:image/') === 0);
+  });
   await page.screenshot({ path: '/opt/cursor/artifacts/photo-folders-pins-' + name + '.png', fullPage: true });
   await page.click('[data-photo-folder="quick"]');
   await page.waitForFunction(() => /quick-01\.jpg/.test(document.body.innerText));
@@ -1871,6 +1961,10 @@ async function shootFolders(width, height, name) {
       !quick.overflow,
     JSON.stringify(quick),
   );
+  await page.waitForFunction(() => {
+    const img = document.querySelector('.photo-folders__viewer img');
+    return !!(img && img.getAttribute('src') && img.getAttribute('src').indexOf('data:image/') === 0);
+  });
   await page.screenshot({ path: '/opt/cursor/artifacts/photo-folders-quick-' + name + '.png', fullPage: true });
   await page.click('#photo-folders-close');
   await page.waitForFunction(() => !document.querySelector('.photo-folders'));
@@ -1879,6 +1973,28 @@ async function shootFolders(width, height, name) {
 await shootFolders(390, 844, 'phone');
 await shootFolders(834, 1112, 'ipad');
 await shootFolders(1280, 800, 'desktop');
+
+await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
+await page.click('#home-photo-folders');
+await page.waitForSelector('#photo-folders-download-all');
+const downloadClick = await page.evaluate(async () => {
+  const before = await ToolboxDB.getCustomerFile('import-lodge');
+  document.querySelector('#photo-folders-download-all').click();
+  document.querySelector('#photo-folders-download-one').click();
+  const after = await ToolboxDB.getCustomerFile('import-lodge');
+  return {
+    pins: after.distress.pins.length,
+    quick: after.distress.quickCapture.length,
+    same: JSON.stringify(before.distress) === JSON.stringify(after.distress),
+  };
+});
+check(
+  'Download buttons do not change the stored Distress photos or Quick Capture',
+  downloadClick.same && downloadClick.pins === 2 && downloadClick.quick === 3,
+  JSON.stringify(downloadClick),
+);
+await page.click('#photo-folders-close');
+await page.waitForFunction(() => !document.querySelector('.photo-folders'));
 
 
 const lodgeRemoval = await page.evaluate(async () => {

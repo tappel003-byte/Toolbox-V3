@@ -7186,6 +7186,7 @@ async function hostBuildProjectFromCF() {
       ? { x: canvas.frontDoor.x, y: canvas.frontDoor.y }
       : null,
     rooms,
+    quickCapture: Array.isArray(d.quickCapture) ? d.quickCapture.map(function (item) { return Object.assign({}, item); }) : [],
     buildingType: (rec.planSetup && rec.planSetup.buildingType) || rec.buildingType || 'residential',
     north: { x: w * 0.92, y: h * 0.08, rotation: 0 },
     createdAt: Date.parse(d.createdAt) || Date.now(),
@@ -7206,6 +7207,7 @@ async function hostPersistSurvey() {
   const d = rec.distress;
   d.pins = (project.pins || []).slice();
   d.drawings = (project.drawings || []).slice();
+  if (Array.isArray(project.quickCapture)) d.quickCapture = project.quickCapture.slice();
   d.startNum = project.startNum || 1;
   d.nextNum = project.nextNum || 1;
   d.activeCanvasId = _hostActiveCanvasId;
