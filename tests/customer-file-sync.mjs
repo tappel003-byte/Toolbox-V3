@@ -99,7 +99,7 @@ const Sync = loadSyncModule();
   check(
     'Floor Survey recovery PDF ids detected',
     Sync.mediaIdsForComponent(record, 'floor').join(',') === 'fsrec_c1' &&
-      Sync.mediaIdsFromPayload(payload, 'floor').join(',') === 'fsrec_c1',
+      Sync._test.mediaIdsFromPayload(payload, 'floor').join(',') === 'fsrec_c1',
   );
 }
 
