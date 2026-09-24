@@ -17,6 +17,7 @@ function check(name, ok, detail = '') {
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
+const TRASH_ID = 'trashedjob';
 const PLAN_ID = 'plan-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const UPLOADED = new Date('2026-03-04T15:06:07.000Z');
 
@@ -65,6 +66,25 @@ const customerBody = JSON.stringify({
   firstName: 'Ada',
   lastName: 'Mitchell',
   generalPhotos: [{ id: 'ph_file_general', subject: 'File overview' }, { id: 'ph_file_missing' }],
+});
+const trashIndexBody = JSON.stringify({
+  id: TRASH_ID,
+  displayName: 'Held Copy',
+  propertyAddress: '6 Held Way',
+  deletedAt: '2026-09-01T00:00:00.000Z',
+  purgeAfter: '2026-12-30T00:00:00.000Z',
+});
+const trashComponentBody = JSON.stringify({
+  trashUpdatedAt: '2026-09-01T00:00:00.000Z',
+  deletedAt: '2026-09-01T00:00:00.000Z',
+  purgeAfter: '2026-12-30T00:00:00.000Z',
+});
+const trashFloorBody = JSON.stringify({
+  byCanvasId: {
+    canvas1: { recoveryPdfMediaId: 'fsrec_canvas1' },
+    bad: { recoveryPdfMediaId: 'fsrec_../no' },
+    other: { recoveryPdfMediaId: 'not-a-pdf' },
+  },
 });
 const otherIndexBody = JSON.stringify({
   id: OTHER,
@@ -168,6 +188,10 @@ function seedCabinet() {
     { key: `cf/${ID}/diagnostics.json`, body: diagnosticsBody, contentType: 'application/json' },
     { key: `cf/${ID}/report.json`, body: reportBody, contentType: 'application/json' },
     { key: `cf/${ID}/field-notes.txt`, body: 'a note', contentType: 'text/plain' },
+    { key: `cf/${TRASH_ID}/index.json`, body: trashIndexBody, contentType: 'application/json' },
+    { key: `cf/${TRASH_ID}/trash.json`, body: trashComponentBody, contentType: 'application/json' },
+    { key: `cf/${TRASH_ID}/floor.json`, body: trashFloorBody, contentType: 'application/json' },
+    { key: 'media/fsrec_canvas1', body: pdf, contentType: 'application/pdf' },
     { key: `cf/${ID}/customer.json`, body: customerBody, contentType: 'application/json' },
     { key: `cf/${OTHER}/index.json`, body: otherIndexBody, contentType: 'application/json' },
     { key: 'cf/badjson/index.json', body: badIndexBody, contentType: 'application/json' },
@@ -263,6 +287,7 @@ const keys = (listing.files || []).map((row) => row.key).sort();
 check('root lists only index.json keys', JSON.stringify(keys) === JSON.stringify([
   `cf/${ID}/index.json`,
   `cf/${OTHER}/index.json`,
+  `cf/${TRASH_ID}/index.json`,
   'cf/badjson/index.json',
   'cf/plainindex/index.json',
 ].sort()), JSON.stringify(keys));
@@ -494,6 +519,27 @@ check('zip pdf bytes match storage', Buffer.compare(readFileSync(join(outDir, 'm
 check('missing.txt lists only the absent referenced keys',
   readFileSync(join(outDir, 'missing.txt'), 'utf8') === 'media/dxfig_missing\nmedia/fsrec_missing\nmedia/ph_file_missing\nmedia/ph_general_missing\nmedia/ph_missing\nmedia/ph_unassigned_missing\n');
 rmSync(dir, { recursive: true, force: true });
+
+const trashDetail = await call(`explore/files/${TRASH_ID}`, cabinet);
+check('trashed Customer File is inspectable', trashDetail.status === 200, String(trashDetail.status));
+const trashJson = await trashDetail.json();
+const trashKeys = (trashJson.objects || []).map((row) => row.key);
+check('File Explorer shows the trash component, floor data, and recovery PDF', JSON.stringify(trashKeys) === JSON.stringify([
+  `cf/${TRASH_ID}/floor.json`,
+  `cf/${TRASH_ID}/index.json`,
+  `cf/${TRASH_ID}/trash.json`,
+  'media/fsrec_canvas1',
+  'media/not-a-pdf',
+].sort()), JSON.stringify(trashKeys));
+const trashPdf = (trashJson.objects || []).find((row) => row.key === 'media/fsrec_canvas1');
+check('recovery PDF keeps its stored bytes metadata',
+  trashPdf && trashPdf.contentType === 'application/pdf' && trashPdf.purpose === 'floor-pdf' && trashPdf.missing !== true);
+const trashOther = (trashJson.objects || []).find((row) => row.key === 'media/not-a-pdf');
+check('a safe non-prefix recovery id stays visible as missing',
+  trashOther && trashOther.missing === true && trashOther.purpose === 'floor-pdf');
+check('unsafe recovery PDF ids are not fetched',
+  !trashKeys.some((key) => key.includes('..')) &&
+  (trashJson.referenceNotes || []).some((note) => /floor\.json/.test(note) && /not a single storage key/.test(note)));
 
 const posted = await call(`explore/files/${ID}`, cabinet, { method: 'POST' });
 check('explore does not accept writes', posted.status === 405, String(posted.status));
