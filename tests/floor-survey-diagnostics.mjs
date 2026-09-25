@@ -5,7 +5,7 @@
  * Requires: Chrome, puppeteer-core, static server on :8765
  */
 import { createRequire } from 'module';
-import { mkdirSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 const require = createRequire(import.meta.url);
 let puppeteer;
 try {
@@ -114,6 +114,7 @@ const seeded = await page.evaluate(async (planUrl) => {
   rec.floorSurvey.byCanvasId['canvas-dx-2'].points = [
     { id: 'q1', floorId: 'canvas-dx-2', index: 1, x: 50, y: 50, value: 2.0, createdAt: 1 },
   ];
+  rec.floorSurvey.inspectionDate = '2026-04-18';
   rec.floorSurvey.updatedAt = '2026-09-24T12:00:00.000Z';
   rec.updatedAt = '2026-09-24T12:00:00.000Z';
   delete rec.diagnostics;
@@ -228,14 +229,19 @@ if (opened.floorOptions.length === 2) {
   await new Promise((r) => setTimeout(r, 600));
   const second = await page.evaluate(() => {
     const text = document.body.innerText || '';
+    const readout = document.querySelector('[data-diagnostics-readout]');
     return {
       selected: document.querySelector('[data-diagnostics-floor]')?.value || '',
       needsPoints: text.includes('Need at least 3 survey points'),
+      surface: readout ? readout.getAttribute('data-surface') : '',
+      tooFew: text.includes('Too few survey points for a surface.'),
+      level: text.includes('Second Floor'),
+      legend: !!document.querySelector('[data-diagnostics-legend]'),
     };
   });
   check(
     'Second floor uses its own survey in 3D',
-    second.selected === 'canvas-dx-2' && second.needsPoints,
+    second.selected === 'canvas-dx-2' && second.needsPoints && second.surface === 'too-few-points' && second.tooFew && second.level && !second.legend,
     JSON.stringify(second),
   );
   await page.screenshot({ path: OUT + '/diagnostics-3d-second-floor.png' });
@@ -284,6 +290,49 @@ await page.select('[data-diagnostics-floor]', 'canvas-dx-1');
 await new Promise((r) => setTimeout(r, 400));
 const ready = await waitForCaptureReady(8000);
 check('Add to Report enables when the 3D surface is ready', ready.enabled, JSON.stringify(ready));
+const readout = await page.evaluate(() => {
+  const root = document.querySelector('[data-diagnostics-readout]');
+  const legend = document.querySelector('[data-diagnostics-legend]');
+  const text = root ? root.innerText : '';
+  const height = (document.body.innerText || '').match(/Height exaggeration · ([0-9.]+)×/);
+  return {
+    text,
+    surface: root ? root.getAttribute('data-surface') : '',
+    exaggeration: root ? root.getAttribute('data-exaggeration') : '',
+    heightLabel: height ? height[1] : '',
+    legendLow: legend ? legend.getAttribute('data-legend-low') : '',
+    legendHigh: legend ? legend.getAttribute('data-legend-high') : '',
+    palette: legend ? legend.getAttribute('data-palette') : '',
+    colors: legend ? (legend.getAttribute('data-legend-colors') || '') : '',
+    notice: !!document.querySelector('[data-diagnostics-notice]'),
+    evidence: (document.querySelector('[data-diagnostics-evidence]') || {}).textContent || '',
+  };
+});
+check(
+  'Readout shows the active level, survey date, count, and measured range in inches',
+  readout.surface === 'ready' &&
+    readout.text.includes('First Floor') &&
+    readout.text.includes('Survey date 2026-04-18') &&
+    readout.text.includes('4 usable survey points') &&
+    readout.text.includes('High 1.20 in · Low 0.10 in · Range 1.10 in') &&
+    readout.text.includes('High and low are measured readings.') &&
+    readout.text.includes('No base-point reference recorded.') &&
+    !readout.text.includes('9.0'),
+  readout.text,
+);
+check(
+  'Legend matches the displayed range and the exaggeration matches the slider',
+  readout.legendLow === '0.1' &&
+    readout.legendHigh === '1.2' &&
+    readout.palette === 'brown' &&
+    readout.colors.startsWith('rgb(130, 90, 55)') &&
+    readout.exaggeration === '3.0' &&
+    readout.heightLabel === '3.0' &&
+    readout.text.includes('Vertical exaggeration 3.0×') &&
+    readout.notice &&
+    readout.evidence.includes('does not infer heave, settlement, cause, or repair'),
+  JSON.stringify(readout),
+);
 if (ready.enabled) {
   await page.screenshot({ path: OUT + '/diagnostics-3d-desktop.png' });
 }
@@ -314,6 +363,8 @@ const captured = await page.evaluate(async () => {
     box: placement && placement.box,
     mediaId: figure && figure.mediaId,
     mediaPng: typeof media === 'string' && media.indexOf('data:image/png') === 0 && media.length > 32,
+    context: figure && figure.context,
+    media,
     syncIds: window.ToolboxSync.mediaIdsForComponent(saved, 'diagnostics'),
     payloadIds: window.ToolboxSync._test.mediaIdsFromPayload(saved.diagnostics, 'diagnostics'),
     floorMedia: window.ToolboxSync.mediaIdsForComponent(saved, 'floor'),
@@ -339,9 +390,50 @@ check(
     captured.payloadIds.length === 1 &&
     captured.payloadIds[0] === captured.mediaId &&
     captured.floorMedia.length === 0 &&
-    /No conclusion was written/.test(captured.status),
-  JSON.stringify(captured),
+    /No conclusion was written/.test(captured.status) &&
+    captured.context &&
+    captured.context.canvasId === 'canvas-dx-1' &&
+    captured.context.levelName === 'First Floor' &&
+    captured.context.surveyDate === '2026-04-18' &&
+    captured.context.unit === 'in' &&
+    captured.context.high === 1.2 &&
+    captured.context.low === 0.1 &&
+    captured.context.range === 1.1 &&
+    captured.context.reference === null &&
+    captured.context.exaggeration === 3 &&
+    captured.context.legendLow === 0.1 &&
+    captured.context.legendHigh === 1.2 &&
+    captured.context.palette === 'brown' &&
+    Array.isArray(captured.context.lines) &&
+    captured.context.lines.join('\n').includes('Vertical exaggeration. Visualization is not to scale.') &&
+    captured.context.lines.join('\n').includes('Vertical exaggeration 3.0×'),
+  JSON.stringify({ status: captured.status, context: captured.context, count: captured.count }),
 );
+
+if (captured.mediaPng) {
+  const shot = await page.evaluate(async (url) => {
+    const canvas = document.querySelector('.dx-stage canvas');
+    const dims = await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+    return {
+      image: dims,
+      canvas: canvas ? { w: canvas.width, h: canvas.height } : null,
+    };
+  }, captured.media);
+  check(
+    'Captured figure is taller than the bare 3D canvas so the context band is in the image',
+    !!(shot.image && shot.canvas && shot.image.w === shot.canvas.w && shot.image.h > shot.canvas.h),
+    JSON.stringify(shot),
+  );
+  const png = Buffer.from(captured.media.split(',')[1], 'base64');
+  writeFileSync(OUT + '/diagnostics-3d-capture.png', png);
+} else {
+  check('Captured figure is taller than the bare 3D canvas so the context band is in the image', false, 'no png');
+}
 
 const exported = await page.evaluate(async () => {
   const saved = await window.ToolboxDB.getCustomerFile('dx-3d-1');
@@ -436,24 +528,34 @@ const ipad = await page.evaluate(() => {
     return a.right > b.left + 1 && a.left < b.right - 1 && a.bottom > b.top + 1 && a.top < b.bottom - 1;
   }
   const ribbon = document.querySelector('[data-diagnostics-ribbon]');
+  const readout = document.querySelector('[data-diagnostics-readout]');
   const closeBox = box(close);
   const exportBox = box(exportBtn);
   const floorBox = box(floor);
   const panelBox = box(panel);
   const ribbonBox = box(ribbon);
+  const readoutBox = box(readout);
+  const stage = document.querySelector('.dx-stage');
+  const stageBox = box(stage);
+  const canvasShare = stageBox && readoutBox
+    ? 1 - ((readoutBox.bottom - readoutBox.top) * (readoutBox.right - readoutBox.left)) / (stageBox.width || (stageBox.right - stageBox.left) || 1) / ((stageBox.bottom - stageBox.top) || 1)
+    : 0;
   return {
     close: !!close,
     panel: !!panelBox,
     ribbon: !!ribbonBox,
+    readout: !!readoutBox,
     headerOverlap: overlaps(closeBox, exportBox) || overlaps(closeBox, floorBox) || overlaps(exportBox, floorBox),
     panelOverlap: overlaps(closeBox, panelBox) || overlaps(exportBox, panelBox) || overlaps(floorBox, panelBox),
     ribbonOverlap: overlaps(ribbonBox, closeBox) || overlaps(ribbonBox, exportBox) || overlaps(ribbonBox, floorBox) || overlaps(ribbonBox, panelBox),
+    readoutOverlap: overlaps(readoutBox, panelBox) || overlaps(readoutBox, closeBox) || overlaps(readoutBox, exportBox) || overlaps(readoutBox, ribbonBox),
+    canvasShare,
     vw: window.innerWidth,
   };
 });
 check(
-  'iPad 3D header and height controls stay apart',
-  ipad.close && ipad.panel && ipad.ribbon && !ipad.headerOverlap && !ipad.panelOverlap && !ipad.ribbonOverlap,
+  'iPad 3D header, height controls, and readout stay apart',
+  ipad.close && ipad.panel && ipad.ribbon && ipad.readout && !ipad.headerOverlap && !ipad.panelOverlap && !ipad.ribbonOverlap && !ipad.readoutOverlap && ipad.canvasShare > 0.45,
   JSON.stringify(ipad),
 );
 await page.screenshot({ path: OUT + '/diagnostics-3d-ipad.png' });
@@ -487,9 +589,32 @@ const phone = await page.evaluate(() => {
   const add = document.querySelector('[data-diagnostics-add-report]');
   const addBox = add ? add.getBoundingClientRect() : null;
   const addVisible = !!addBox && addBox.left >= 0 && addBox.right <= window.innerWidth + 1 && addBox.bottom > addBox.top;
-  return { crowded, offscreen, addVisible, boxes, vw: window.innerWidth };
+  const readout = document.querySelector('[data-diagnostics-readout]');
+  const height = document.querySelector('[data-diagnostics-height]');
+  function box(el) {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, w: r.width, h: r.height };
+  }
+  const readoutBox = box(readout);
+  const heightBox = box(height);
+  const stage = document.querySelector('.dx-stage');
+  const stageBox = box(stage);
+  const readoutOff = readoutBox && (readoutBox.left < -1 || readoutBox.right > window.innerWidth + 1);
+  const readoutHeightOverlap = overlaps(readoutBox, heightBox);
+  const stageH = stageBox ? stageBox.bottom - stageBox.top : 0;
+  const readoutH = readoutBox ? readoutBox.bottom - readoutBox.top : 0;
+  return {
+    crowded, offscreen, addVisible, boxes, vw: window.innerWidth,
+    readoutOff, readoutHeightOverlap, stageH, readoutH,
+    notice: !!document.querySelector('[data-diagnostics-notice]'),
+  };
 });
-check('Phone 3D header controls do not overlap', !phone.crowded && !phone.offscreen && phone.addVisible, JSON.stringify(phone));
+check(
+  'Phone 3D header controls do not overlap',
+  !phone.crowded && !phone.offscreen && phone.addVisible && !phone.readoutOff && !phone.readoutHeightOverlap && phone.notice && phone.stageH > 0 && phone.readoutH < phone.stageH * 0.5,
+  JSON.stringify(phone),
+);
 await page.screenshot({ path: OUT + '/diagnostics-3d-phone.png' });
 
 await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1, isMobile: false, hasTouch: false });
