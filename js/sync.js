@@ -169,9 +169,13 @@
     try {
       const localRecords = await window.ToolboxDB.getAllCustomerFiles();
       const cabinet = await listRemoteCabinet();
-    const next = applyLocksFromRemoteIndexes(localRecords, cabinet.files);
-    await rememberMirrorsFromIndexes(localRecords, cabinet.files);
-    return { ok: true, locks: next };
+      const next = applyLocksFromRemoteIndexes(localRecords, cabinet.files);
+      try {
+        await rememberMirrorsFromIndexes(localRecords, cabinet.files);
+      } catch (_) {
+        // The lock map is already current. A mirror stamp must not hide that.
+      }
+      return { ok: true, locks: next };
     } catch (err) {
       return {
         ok: false,
@@ -2456,12 +2460,8 @@
   }
 
   async function rememberCabinetMirror(id) {
-    if (!id || !window.ToolboxDB) return;
-    const fresh = await window.ToolboxDB.getCustomerFile(id);
-    if (!fresh || fresh.cabinetMirroredAt) return;
-    if (fresh.deletedAt && !fresh.cabinetTrashRequestedAt) return;
-    fresh.cabinetMirroredAt = new Date().toISOString();
-    await window.ToolboxDB.saveCustomerFile(fresh);
+    if (!id || !window.ToolboxDB || typeof window.ToolboxDB.noteCabinetMirror !== 'function') return;
+    await window.ToolboxDB.noteCabinetMirror(id);
   }
 
   async function rememberMirrorsFromIndexes(localRecords, remoteIndexes) {

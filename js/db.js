@@ -65,6 +65,21 @@ function saveCustomerFile(record) {
   });
 }
 
+// Local evidence that a File Cabinet copy was seen or written. Not a customer
+// edit: it does not change updatedAt and is not wrapped by the checkout guard.
+function noteCabinetMirror(id) {
+  if (!id) return Promise.resolve(null);
+  return getCustomerFile(id).then((record) => {
+    if (!record || record.cabinetMirroredAt) return record;
+    if (record.deletedAt && !record.cabinetTrashRequestedAt) return record;
+    record.cabinetMirroredAt = new Date().toISOString();
+    return runTransaction(STORE_CUSTOMER_FILES, 'readwrite', (store) => {
+      store.put(record);
+      return record;
+    });
+  });
+}
+
 function getCustomerFile(id) {
   return openDatabase().then((db) => new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_CUSTOMER_FILES, 'readonly');
@@ -325,6 +340,7 @@ function commitCustomerFileRecoveryUpdate(record, expectedUpdatedAt, mediaIdsToD
 
 window.ToolboxDB = {
   saveCustomerFile,
+  noteCabinetMirror,
   getCustomerFile,
   getAllCustomerFiles,
   putMedia,
