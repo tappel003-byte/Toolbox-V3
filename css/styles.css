@@ -4051,6 +4051,13 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
     align-items: stretch;
   }
 
+  /* The 16rem basis is a desktop width. In a column it becomes a 16rem
+     height and pins Open to the bottom of an empty card. */
+  .explorer-row__main {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
   .explorer-row__actions {
     justify-content: flex-start;
     margin-left: 0;

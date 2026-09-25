@@ -436,14 +436,51 @@ try {
   const shotDir = '/opt/cursor/artifacts/screenshots';
   mkdirSync(shotDir, { recursive: true });
 
+  async function cardFit() {
+    return page.evaluate(() => {
+      return [...document.querySelectorAll('.explorer-row')].slice(0, 4).map((row) => {
+        const main = row.querySelector('.explorer-row__main');
+        const actions = row.querySelector('.explorer-row__actions');
+        const mainBox = main.getBoundingClientRect();
+        const actionsBox = actions.getBoundingClientRect();
+        const contentBottom = [...main.children].reduce(
+          (max, el) => Math.max(max, el.getBoundingClientRect().bottom),
+          mainBox.top,
+        );
+        const open = [...actions.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Open');
+        return {
+          mainSlack: Math.round(mainBox.bottom - contentBottom),
+          actionGap: Math.round(actionsBox.top - mainBox.bottom),
+          cardHeight: Math.round(row.getBoundingClientRect().height),
+          direction: getComputedStyle(row).flexDirection,
+          openHeight: open ? Math.round(open.getBoundingClientRect().height) : 0,
+          actionsBeside: actionsBox.left >= mainBox.right - 2,
+        };
+      });
+    });
+  }
+
+  function cardsPacked(cards) {
+    return cards.length > 0 && cards.every((card) => (
+      card.direction === 'column'
+      && card.mainSlack < 12
+      && card.actionGap >= 0
+      && card.actionGap < 20
+      && card.cardHeight < 220
+      && (card.openHeight === 0 || card.openHeight >= 44)
+    ));
+  }
+
   async function layoutSnapshot(width, height, name) {
     await page.setViewport({ width, height });
     await page.evaluate(() => { window.location.hash = '#/explore'; });
     await page.waitForFunction(() => document.querySelector('.explorer-row__key'));
+    const listCards = await cardFit();
     const rootShot = join(shotDir, `file-explorer-${name}-list.png`);
     await page.screenshot({ path: rootShot, fullPage: true });
     await page.click('.explorer-row__key');
     await page.waitForFunction(() => document.querySelector('[data-key="media/ph_missing"]'));
+    const detailCards = await cardFit();
     const detailShot = join(shotDir, `file-explorer-${name}-detail.png`);
     await page.screenshot({ path: detailShot, fullPage: true });
     const metrics = await page.evaluate(() => {
@@ -482,7 +519,7 @@ try {
         rowCount: rows.length,
       };
     });
-    return { metrics, rootShot, detailShot };
+    return { metrics, listCards, detailCards, rootShot, detailShot };
   }
 
   const desktop = await layoutSnapshot(1280, 800, 'desktop');
@@ -497,6 +534,20 @@ try {
   check('phone layout does not crowd the app bar or rows',
     !phone.metrics.crowded && !phone.metrics.rowOverflow && !phone.metrics.pageOverflow,
     JSON.stringify(phone.metrics));
+  check('phone cards wrap their content and keep actions directly below',
+    cardsPacked(phone.listCards) && cardsPacked(phone.detailCards),
+    JSON.stringify({ list: phone.listCards, detail: phone.detailCards }));
+  check('iPad cards wrap their content and keep actions directly below',
+    cardsPacked(tablet.listCards) && cardsPacked(tablet.detailCards),
+    JSON.stringify({ list: tablet.listCards, detail: tablet.detailCards }));
+  check('desktop cards keep actions beside the content',
+    desktop.listCards[0].direction === 'row'
+      && desktop.listCards[0].actionsBeside
+      && desktop.listCards[0].mainSlack < 12
+      && desktop.detailCards[0].direction === 'row'
+      && desktop.detailCards[0].actionsBeside
+      && desktop.detailCards[0].mainSlack < 12,
+    JSON.stringify({ list: desktop.listCards[0], detail: desktop.detailCards[0] }));
 
   await page.setViewport({ width: 1280, height: 800 });
   await page.evaluate((planId) => {
