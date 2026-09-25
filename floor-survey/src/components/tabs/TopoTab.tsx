@@ -61,6 +61,24 @@ function hiLoOf(pts: SurveyPoint[]) {
   return { hi, lo };
 }
 
+/**
+ * Grid the color/elevation legend should label.
+ * One surface uses that surface. Several surfaces share the measured high/low
+ * so one legend still describes the combined view.
+ */
+export function legendGridFor(areaTopos: AreaTopo[]): Grid | null {
+  if (areaTopos.length === 0) return null;
+  if (areaTopos.length === 1) return areaTopos[0].grid;
+  let minValue = Infinity;
+  let maxValue = -Infinity;
+  for (const at of areaTopos) {
+    minValue = Math.min(minValue, at.grid.minValue);
+    maxValue = Math.max(maxValue, at.grid.maxValue);
+  }
+  if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) return areaTopos[0].grid;
+  return { ...areaTopos[0].grid, minValue, maxValue };
+}
+
 /** Build one contour surface + High/Low per area with at least 3 usable points. */
 export function buildAreaTopos(
   floor: Floor,
@@ -633,7 +651,8 @@ export function TopoTab({
           onTransform={(t) => setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s))}
           onImagePointerDown={(x, y) => {
             // Legend tap: start drag only. Size is edited in Labels & layers.
-            if (resolved.showLegend && gridAndContours?.grid && resolved.mode !== "points-only") {
+            // Any rendered surface can show the legend, including combined areas.
+            if (resolved.showLegend && areaTopos.length > 0 && resolved.mode !== "points-only") {
               const box = legendBox(resolved);
               const inBox = x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h;
               if (inBox) {
@@ -1300,12 +1319,18 @@ function renderTopoBaseLayer(
     }
   };
 
+  // Combined view uses one elevation range so the shared legend matches every area's colors.
+  const sharedLegend = areaTopos.length > 1 ? legendGridFor(areaTopos) : null;
   for (const at of areaTopos) {
     const g = at.grid;
     const cs = at.contours;
     const polygon = at.area.polygon;
-    const areaPaletteMin = resolved.minClamp ?? g.minValue;
-    const areaPaletteMax = resolved.maxClamp ?? g.maxValue;
+    const areaPaletteMin = sharedLegend
+      ? (resolved.minClamp ?? sharedLegend.minValue)
+      : (resolved.minClamp ?? g.minValue);
+    const areaPaletteMax = sharedLegend
+      ? (resolved.maxClamp ?? sharedLegend.maxValue)
+      : (resolved.maxClamp ?? g.maxValue);
     ctx.save();
     ctx.beginPath();
     polygon.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
@@ -1434,8 +1459,7 @@ function renderTopoTop(
   },
 ) {
   const resolved = resolveSettings(settings);
-  // The shared color legend only makes sense for a single surface.
-  const soloGrid = areaTopos.length === 1 ? areaTopos[0] : null;
+  const legendGrid = legendGridFor(areaTopos);
   const live = overlay?.liveDrag ?? null;
   const highlightId = overlay?.highlightId ?? null;
   const livePinHigh = overlay?.livePinHigh ?? null;
@@ -1571,9 +1595,10 @@ function renderTopoTop(
 
   // Legend + High/Low pins
   if (areaTopos.length && resolved.mode !== "points-only") {
-    // Shared color legend is suppressed in the combined "All areas" view.
-    if (resolved.showLegend && soloGrid)
-      drawLegend(ctx, resolved, soloGrid.grid, soloGrid.contours, false);
+    // Proven baseline: Legend ON draws the color/elevation legend for the
+    // surface on screen, including the combined multi-area view.
+    if (resolved.showLegend && legendGrid)
+      drawLegend(ctx, resolved, legendGrid, areaTopos.length === 1 ? areaTopos[0].contours : null, false);
     // Each area gets its own High/Low pins, scoped to that area's polygon and
     // outside the exclusion zones inside it.
     if (resolved.showHighLow) {
