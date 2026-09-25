@@ -24,6 +24,9 @@ const indexBody = JSON.stringify({
   id: ID,
   displayName: 'Mitchell',
   propertyAddress: '10 Oak Street',
+  createdAt: '2026-01-15T12:00:00.000Z',
+  fieldWorkDate: '2026-03-01',
+  updatedAt: '2026-09-01T12:00:00.000Z',
   checkout: {
     email: 'tim@example.com',
     deviceId: 'device-a',
@@ -32,22 +35,36 @@ const indexBody = JSON.stringify({
 });
 const plansBody = JSON.stringify({
   canvases: [
-    { name: 'Ground', plan: { id: PLAN_ID, width: 20, height: 10 } },
-    { name: 'Empty', plan: null },
+    { id: 'canvas-ground', name: 'Ground', plan: { id: PLAN_ID, width: 20, height: 10 } },
+    { id: 'canvas-empty', name: 'Empty', plan: null },
   ],
 });
 const distressBody = JSON.stringify({
   pins: [{
     photos: ['ph_present', 'data:image/jpeg;base64,abc', 'room-note', 'ph_missing', 'ph_../secret'],
   }],
-  quickCapture: [{ id: 'ph_quick' }, { id: 'not-a-photo' }],
+  quickCapture: [{ id: 'ph_quick', sourceName: 'porch.jpg' }, { id: 'not-a-photo' }],
 });
-const floorBody = JSON.stringify({ schemaVersion: 1, byCanvasId: {} });
+const floorBody = JSON.stringify({
+  schemaVersion: 1,
+  byCanvasId: {
+    'canvas-ground': { recoveryPdfMediaId: 'fsrec_canvas-ground', points: [{ id: 'p1' }] },
+    'canvas-empty': { recoveryPdfMediaId: 'fsrec_missing' },
+  },
+});
+const diagnosticsBody = JSON.stringify({
+  figures: [
+    { id: 'dxf_1', mediaId: 'dxfig_ground', canvasName: 'Ground' },
+    { mediaId: 'dxfig_missing' },
+  ],
+});
+const reportBody = JSON.stringify({ updatedAt: '2026-03-02T00:00:00.000Z' });
 const customerBody = JSON.stringify({ firstName: 'Ada', lastName: 'Mitchell' });
 const otherIndexBody = JSON.stringify({
   id: OTHER,
   displayName: 'Keulen',
   propertyAddress: '5 Pine Road',
+  createdAt: '2024-11-02T00:00:00.000Z',
 });
 const badIndexBody = JSON.stringify({ id: 'badjson', displayName: 'Unreadable plans' });
 const badPlansBody = '{';
@@ -142,6 +159,9 @@ function seedCabinet() {
     { key: `cf/${ID}/plans.json`, body: plansBody, contentType: 'application/json' },
     { key: `cf/${ID}/distress.json`, body: distressBody, contentType: 'application/json' },
     { key: `cf/${ID}/floor.json`, body: floorBody, contentType: 'application/json' },
+    { key: `cf/${ID}/diagnostics.json`, body: diagnosticsBody, contentType: 'application/json' },
+    { key: `cf/${ID}/report.json`, body: reportBody, contentType: 'application/json' },
+    { key: `cf/${ID}/field-notes.txt`, body: 'a note', contentType: 'text/plain' },
     { key: `cf/${ID}/customer.json`, body: customerBody, contentType: 'application/json' },
     { key: `cf/${OTHER}/index.json`, body: otherIndexBody, contentType: 'application/json' },
     { key: 'cf/badjson/index.json', body: badIndexBody, contentType: 'application/json' },
@@ -150,7 +170,9 @@ function seedCabinet() {
     { key: 'cf/orphan/plans.json', body: plansBody, contentType: 'application/json' },
     { key: `media/${PLAN_ID}`, body: jpeg, contentType: 'image/jpeg' },
     { key: 'media/ph_present', body: jpeg, contentType: 'image/jpeg' },
-    { key: 'media/ph_quick', body: pdf, contentType: 'application/pdf' },
+    { key: 'media/ph_quick', body: jpeg, contentType: 'image/jpeg' },
+    { key: 'media/fsrec_canvas-ground', body: pdf, contentType: 'application/pdf' },
+    { key: 'media/dxfig_ground', body: png, contentType: 'image/png' },
     { key: 'media/ph_unreferenced', body: png, contentType: 'image/png' },
     { key: 'media/other-plan', body: jpeg, contentType: 'image/jpeg' },
     { key: `purge/${ID}.json`, body: '{"id":"nope"}', contentType: 'application/json' },
@@ -238,6 +260,10 @@ check('root lists only index.json keys', JSON.stringify(keys) === JSON.stringify
 const mitchell = (listing.files || []).find((row) => row.id === ID);
 check('display name and address are labels from index.json',
   mitchell && mitchell.displayName === 'Mitchell' && mitchell.propertyAddress === '10 Oak Street');
+check('useful dates come from the index and sync clocks are not substituted',
+  mitchell && mitchell.fieldWorkDate === '2026-03-01' &&
+  mitchell.createdAt === '2026-01-15T12:00:00.000Z' &&
+  !('updatedAt' in mitchell));
 check('listing does not publish the checkout lease', mitchell && !('checkout' in mitchell));
 check('index metadata is the stored type, size, and upload time',
   mitchell && mitchell.contentType === 'application/json' &&
@@ -255,34 +281,88 @@ const detailResponse = await call(`explore/files/${ID}`, cabinet);
 check('customer listing is 200', detailResponse.status === 200, String(detailResponse.status));
 const detail = await detailResponse.json();
 const objectKeys = (detail.objects || []).map((row) => row.key);
-check('customer listing is the stored prefix plus referenced media only', JSON.stringify(objectKeys) === JSON.stringify([
+const expectedKeys = [
   `cf/${ID}/customer.json`,
+  `cf/${ID}/diagnostics.json`,
   `cf/${ID}/distress.json`,
+  `cf/${ID}/field-notes.txt`,
   `cf/${ID}/floor.json`,
   `cf/${ID}/index.json`,
   `cf/${ID}/plans.json`,
+  `cf/${ID}/report.json`,
+  'media/dxfig_ground',
+  'media/dxfig_missing',
+  'media/fsrec_canvas-ground',
+  'media/fsrec_missing',
   'media/ph_missing',
   'media/ph_present',
   'media/ph_quick',
   `media/${PLAN_ID}`,
-]), JSON.stringify(objectKeys));
+].sort();
+check('customer listing is the stored prefix plus referenced media only',
+  JSON.stringify(objectKeys) === JSON.stringify(expectedKeys), JSON.stringify(objectKeys));
+const prefixKeys = [...cabinet.objects.keys()].filter((key) => key.startsWith(`cf/${ID}/`));
+check('no stored customer object is dropped',
+  prefixKeys.every((key) => objectKeys.includes(key)) && prefixKeys.length === 8,
+  prefixKeys.filter((key) => !objectKeys.includes(key)).join(', '));
 const missing = (detail.objects || []).find((row) => row.key === 'media/ph_missing');
 check('referenced missing media is visible and has no invented metadata',
-  missing && missing.missing === true && !('size' in missing) && !('contentType' in missing) && !('uploaded' in missing));
+  missing && missing.missing === true && missing.purpose === 'distress-photo' &&
+  missing.label === 'Distress Survey photograph' &&
+  !('size' in missing) && !('contentType' in missing) && !('uploaded' in missing));
+const missingPdf = (detail.objects || []).find((row) => row.key === 'media/fsrec_missing');
+check('missing recovery PDF stays visible',
+  missingPdf && missingPdf.missing === true && missingPdf.purpose === 'floor-pdf' &&
+  missingPdf.label === 'Floor Survey recovery PDF — Empty');
 const quick = (detail.objects || []).find((row) => row.key === 'media/ph_quick');
-check('present media keeps its stored content type and size',
-  quick && quick.contentType === 'application/pdf' && quick.size === pdf.byteLength && !quick.missing);
+check('Quick Capture is labeled from the manifest, not the filename',
+  quick && quick.purpose === 'quick-capture' && quick.label === 'Quick Capture photo — porch.jpg' &&
+  quick.contentType === 'image/jpeg' && !quick.missing);
+const distressPhoto = (detail.objects || []).find((row) => row.key === 'media/ph_present');
+check('Distress photograph is distinct from Quick Capture',
+  distressPhoto && distressPhoto.purpose === 'distress-photo' && distressPhoto.label === 'Distress Survey photograph');
+const recovery = (detail.objects || []).find((row) => row.key === 'media/fsrec_canvas-ground');
+check('Floor Survey recovery PDF is labeled from the canvas name',
+  recovery && recovery.purpose === 'floor-pdf' && recovery.contentType === 'application/pdf' &&
+  recovery.label === 'Floor Survey recovery PDF — Ground' && recovery.size === pdf.byteLength);
+const figure = (detail.objects || []).find((row) => row.key === 'media/dxfig_ground');
+check('Diagnostics figure is labeled from the manifest',
+  figure && figure.purpose === 'diagnostics-figure' && figure.label === 'Diagnostics figure — Ground');
+const notesFile = (detail.objects || []).find((row) => row.key === `cf/${ID}/field-notes.txt`);
+check('unknown stored file stays visible with its exact name',
+  notesFile && notesFile.purpose === 'other' && notesFile.label === 'field-notes.txt');
+const planImage = (detail.objects || []).find((row) => row.key === `media/${PLAN_ID}`);
+check('plan image uses the canvas name',
+  planImage && planImage.purpose === 'plan' && planImage.label === 'Floor plan — Ground');
+check('detail identity is the customer, not the checkout lease',
+  detail.displayName === 'Mitchell' && detail.fieldWorkDate === '2026-03-01' && !('checkout' in detail));
 check('unreadable-id note is visible', (detail.referenceNotes || []).some((note) => /not a single storage key/.test(note)));
 check('detail does not list unreferenced, other-customer, or purge objects',
   !objectKeys.some((key) => key.includes('unreferenced') || key.includes('other-plan') || key.startsWith('purge/')));
 const detailOps = cabinet.ops.slice(opsBeforeDetail);
+const mediaHeads = [
+  'media/' + PLAN_ID,
+  'media/ph_present',
+  'media/ph_quick',
+  'media/ph_missing',
+  'media/fsrec_canvas-ground',
+  'media/fsrec_missing',
+  'media/dxfig_ground',
+  'media/dxfig_missing',
+];
 check('detail lists only this customer prefix and referenced media heads',
   detailOps.every((op) => {
     if (op.startsWith('list ')) return op === `list cf/${ID}/`;
-    if (op.startsWith('head ')) {
-      return ['media/' + PLAN_ID, 'media/ph_present', 'media/ph_quick', 'media/ph_missing'].includes(op.slice(5));
+    if (op.startsWith('head ')) return mediaHeads.includes(op.slice(5));
+    if (op.startsWith('read ')) {
+      return [
+        `read cf/${ID}/index.json`,
+        `read cf/${ID}/plans.json`,
+        `read cf/${ID}/distress.json`,
+        `read cf/${ID}/floor.json`,
+        `read cf/${ID}/diagnostics.json`,
+      ].includes(op);
     }
-    if (op.startsWith('read ')) return op.startsWith(`read cf/${ID}/`);
     return false;
   }), detailOps.join(' | '));
 
@@ -304,7 +384,7 @@ check('image download returns the stored bytes and content type',
   image.headers.get('content-type') === 'image/jpeg' &&
   imageBytes.length === jpeg.length &&
   imageBytes.every((byte, index) => byte === jpeg[index]));
-const pdfResponse = await call(`explore/files/${ID}/object?key=${encodeURIComponent('media/ph_quick')}`, cabinet);
+const pdfResponse = await call(`explore/files/${ID}/object?key=${encodeURIComponent('media/fsrec_canvas-ground')}`, cabinet);
 check('pdf download keeps the stored pdf content type',
   pdfResponse.status === 200 && pdfResponse.headers.get('content-type') === 'application/pdf');
 const jsonResponse = await call(`explore/files/${ID}/object?key=${encodeURIComponent(`cf/${ID}/index.json`)}`, cabinet);
@@ -346,11 +426,16 @@ check('zip CRC is valid', unzipped.status === 0, unzipped.status === 0 ? '' : (u
 const names = (unzipped.stdout || '').trim().split('\n').filter(Boolean).sort();
 check('zip paths are the real keys plus missing.txt', JSON.stringify(names) === JSON.stringify([
   `cf/${ID}/customer.json`,
+  `cf/${ID}/diagnostics.json`,
   `cf/${ID}/distress.json`,
+  `cf/${ID}/field-notes.txt`,
   `cf/${ID}/floor.json`,
   `cf/${ID}/index.json`,
   `cf/${ID}/plans.json`,
+  `cf/${ID}/report.json`,
   `media/${PLAN_ID}`,
+  'media/dxfig_ground',
+  'media/fsrec_canvas-ground',
   'media/ph_present',
   'media/ph_quick',
   'missing.txt',
@@ -358,9 +443,9 @@ check('zip paths are the real keys plus missing.txt', JSON.stringify(names) === 
 const outDir = join(dir, 'out');
 check('zip index bytes match storage', readFileSync(join(outDir, 'cf', ID, 'index.json'), 'utf8') === indexBody);
 check('zip plan bytes match storage', Buffer.compare(readFileSync(join(outDir, 'media', PLAN_ID)), Buffer.from(jpeg)) === 0);
-check('zip pdf bytes match storage', Buffer.compare(readFileSync(join(outDir, 'media', 'ph_quick')), Buffer.from(pdf)) === 0);
-check('missing.txt lists only the absent referenced key',
-  readFileSync(join(outDir, 'missing.txt'), 'utf8') === 'media/ph_missing\n');
+check('zip pdf bytes match storage', Buffer.compare(readFileSync(join(outDir, 'media', 'fsrec_canvas-ground')), Buffer.from(pdf)) === 0);
+check('missing.txt lists only the absent referenced keys',
+  readFileSync(join(outDir, 'missing.txt'), 'utf8') === 'media/dxfig_missing\nmedia/fsrec_missing\nmedia/ph_missing\n');
 rmSync(dir, { recursive: true, force: true });
 
 const posted = await call(`explore/files/${ID}`, cabinet, { method: 'POST' });

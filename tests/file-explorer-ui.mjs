@@ -50,6 +50,7 @@ async function freePort() {
 }
 
 const ID = '11111111-1111-4111-8111-111111111111';
+const OTHER = '22222222-2222-4222-8222-222222222222';
 const PLAN_ID = 'plan-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -58,8 +59,10 @@ const PNG = Buffer.from(
 const PDF = Buffer.from('%PDF-1.1\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
 const INDEX_TEXT = JSON.stringify({
   id: ID,
-  displayName: 'Mitchell',
+  displayName: 'Ada Mitchell',
   propertyAddress: '10 Oak Street',
+  fieldWorkDate: '2026-03-01',
+  createdAt: '2026-01-15T12:00:00.000Z',
   checkout: { email: 'tim@example.com', deviceId: 'device-a' },
 });
 
@@ -73,7 +76,7 @@ await new Promise((resolve) => setTimeout(resolve, 400));
 const browser = await puppeteer.launch({
   executablePath: findChrome(),
   headless: 'new',
-  args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  args: ['--no-sandbox', '--disable-setuid-sandbox', '--lang=en-US'],
 });
 
 function jsonResponse(body, status = 200) {
@@ -130,22 +133,44 @@ try {
       size: fixture.indexText.length,
       uploaded: '2026-03-04T15:06:07.000Z',
       contentType: 'application/json',
-      displayName: 'Mitchell',
+      displayName: 'Ada Mitchell',
       propertyAddress: '10 Oak Street',
+      fieldWorkDate: '2026-03-01',
+      createdAt: '2026-01-15T12:00:00.000Z',
+    }, {
+      key: `cf/${fixture.other}/index.json`,
+      id: fixture.other,
+      displayName: 'Fred Keulen',
+      propertyAddress: '5 Pine Road',
+      createdAt: '2024-11-02T00:00:00.000Z',
     }];
     const objects = [
-      { key: `cf/${fixture.id}/index.json`, size: fixture.indexText.length, uploaded: '2026-03-04T15:06:07.000Z', contentType: 'application/json' },
-      { key: `cf/${fixture.id}/plans.json`, size: 42, uploaded: '2026-03-04T15:06:07.000Z', contentType: 'application/json' },
-      { key: `cf/${fixture.id}/distress.json`, size: 80, uploaded: '2026-03-04T15:06:07.000Z', contentType: 'application/json' },
-      { key: `media/${fixture.planId}`, size: fixture.png.length, uploaded: '2026-03-04T15:06:07.000Z', contentType: 'image/png' },
-      { key: 'media/ph_quick', size: fixture.pdf.length, uploaded: '2026-03-04T15:06:07.000Z', contentType: 'application/pdf' },
-      { key: 'media/ph_missing', missing: true },
+      { key: `cf/${fixture.id}/index.json`, size: fixture.indexText.length, contentType: 'application/json', purpose: 'technical', label: 'Cabinet index' },
+      { key: `cf/${fixture.id}/customer.json`, size: 40, contentType: 'application/json', purpose: 'customer', label: 'Customer information' },
+      { key: `cf/${fixture.id}/plans.json`, size: 42, contentType: 'application/json', purpose: 'plans', label: 'Plans and canvases' },
+      { key: `cf/${fixture.id}/distress.json`, size: 80, contentType: 'application/json', purpose: 'distress', label: 'Distress Survey' },
+      { key: `cf/${fixture.id}/floor.json`, size: 60, contentType: 'application/json', purpose: 'floor', label: 'Floor Survey' },
+      { key: `cf/${fixture.id}/diagnostics.json`, size: 30, contentType: 'application/json', purpose: 'diagnostics', label: 'Diagnostics' },
+      { key: `cf/${fixture.id}/report.json`, size: 20, contentType: 'application/json', purpose: 'report', label: 'Report Builder' },
+      { key: `cf/${fixture.id}/field-notes.txt`, size: 6, contentType: 'text/plain', purpose: 'other', label: 'field-notes.txt' },
+      { key: `media/${fixture.planId}`, size: fixture.png.length, contentType: 'image/png', purpose: 'plan', label: 'Floor plan — Ground' },
+      { key: 'media/ph_present', size: fixture.png.length, contentType: 'image/jpeg', purpose: 'distress-photo', label: 'Distress Survey photograph' },
+      { key: 'media/ph_quick', size: fixture.png.length, contentType: 'image/jpeg', purpose: 'quick-capture', label: 'Quick Capture photo — porch.jpg' },
+      { key: 'media/fsrec_canvas-ground', size: fixture.pdf.length, contentType: 'application/pdf', purpose: 'floor-pdf', label: 'Floor Survey recovery PDF — Ground' },
+      { key: 'media/dxfig_ground', size: fixture.png.length, contentType: 'image/png', purpose: 'diagnostics-figure', label: 'Diagnostics figure — Ground' },
+      { key: 'media/ph_missing', missing: true, purpose: 'distress-photo', label: 'Distress Survey photograph' },
+      { key: 'media/fsrec_missing', missing: true, purpose: 'floor-pdf', label: 'Floor Survey recovery PDF — Empty' },
     ];
     const bytes = {
       [`cf/${fixture.id}/index.json`]: { type: 'application/json', body: fixture.indexText },
       [`cf/${fixture.id}/plans.json`]: { type: 'application/json', body: '{"canvases":[]}' },
+      [`cf/${fixture.id}/customer.json`]: { type: 'application/json', body: '{"firstName":"Ada"}' },
+      [`cf/${fixture.id}/field-notes.txt`]: { type: 'text/plain', body: 'a note' },
       [`media/${fixture.planId}`]: { type: 'image/png', body: fixture.png },
-      'media/ph_quick': { type: 'application/pdf', body: fixture.pdf },
+      'media/ph_present': { type: 'image/jpeg', body: fixture.png },
+      'media/ph_quick': { type: 'image/jpeg', body: fixture.png },
+      'media/fsrec_canvas-ground': { type: 'application/pdf', body: fixture.pdf },
+      'media/dxfig_ground': { type: 'image/png', body: fixture.png },
     };
 
     const realFetch = window.fetch.bind(window);
@@ -159,9 +184,28 @@ try {
       if (path === `explore/files/${fixture.id}` && method === 'GET') {
         return jsonResponse({
           id: fixture.id,
+          displayName: 'Ada Mitchell',
+          propertyAddress: '10 Oak Street',
+          fieldWorkDate: '2026-03-01',
           prefix: `cf/${fixture.id}/`,
           objects,
           referenceNotes: ['Referenced media id in distress.json is not a single storage key and was not fetched.'],
+        });
+      }
+      if (path === `explore/files/${fixture.other}` && method === 'GET') {
+        return jsonResponse({
+          id: fixture.other,
+          displayName: 'Fred Keulen',
+          propertyAddress: '5 Pine Road',
+          createdAt: '2024-11-02T00:00:00.000Z',
+          prefix: `cf/${fixture.other}/`,
+          objects: [{
+            key: `cf/${fixture.other}/index.json`,
+            contentType: 'application/json',
+            purpose: 'technical',
+            label: 'Cabinet index',
+          }],
+          referenceNotes: [],
         });
       }
       const objectMatch = new RegExp(`^explore/files/${fixture.id}/object\\?key=(.+)$`).exec(path);
@@ -201,13 +245,32 @@ try {
     document.getElementById('app-explorer').click();
     await new Promise((resolve) => setTimeout(resolve, 50));
     const rootText = document.getElementById('explorer-list').innerText;
-    const rootRawKey = document.querySelector('.explorer-row__technical code').textContent;
+    const rootLead = document.getElementById('explorer-lead').textContent;
+    const columnHead = document.querySelector('.explorer-columns');
+    const adaCard = document.querySelector(`[data-key="cf/${fixture.id}/index.json"]`);
+    const rootRawKey = adaCard.querySelector('.explorer-row__technical code').textContent;
+    const search = document.getElementById('explorer-search');
+    search.value = 'Keulen';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    const searched = document.getElementById('explorer-list').innerText;
+    const searchedCount = document.querySelectorAll('.explorer-row__key').length;
+    search.value = '';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
     const rootKey = document.querySelector('.explorer-row__key');
     rootKey.click();
     await new Promise((resolve) => setTimeout(resolve, 50));
     const detailText = document.getElementById('explorer-list').innerText;
+    const detailTitle = document.getElementById('explorer-title').textContent;
+    const detailLead = document.getElementById('explorer-lead').textContent;
     const detailRawKey = document.querySelector('.explorer-row__technical code').textContent;
     const missingRow = document.querySelector('[data-key="media/ph_missing"]');
+    const missingPdf = document.querySelector('[data-key="media/fsrec_missing"]');
+    const recoveryRow = document.querySelector('[data-key="media/fsrec_canvas-ground"]');
+    const quickRow = document.querySelector('[data-key="media/ph_quick"]');
+    const distressRow = document.querySelector('[data-key="media/ph_present"]');
+    const notesRow = document.querySelector(`[data-key="cf/${fixture.id}/field-notes.txt"]`);
+    const groups = [...document.querySelectorAll('.explorer-group')].map((group) => group.dataset.group);
+    const objectCount = document.querySelectorAll('.explorer-row[data-key]').length;
     const note = document.querySelector('.explorer-note');
     const unreferenced = document.querySelector('[data-key="media/ph_unreferenced"]');
 
@@ -218,6 +281,7 @@ try {
       await new Promise((resolve) => setTimeout(resolve, 40));
     }
 
+    await clickAction('media/fsrec_canvas-ground', 'Download');
     await clickAction(`media/${fixture.planId}`, 'Open');
     const image = document.querySelector('.explorer-preview__image');
     if (image && !image.complete) {
@@ -228,7 +292,7 @@ try {
     const jsonText = document.querySelector('.explorer-preview__text')
       ? document.querySelector('.explorer-preview__text').textContent
       : '';
-    await clickAction('media/ph_quick', 'Open');
+    await clickAction('media/fsrec_canvas-ground', 'Open');
     const pdf = document.querySelector('.explorer-preview__pdf');
     await clickAction(`media/${fixture.planId}`, 'Download');
     document.getElementById('explorer-zip').click();
@@ -239,11 +303,26 @@ try {
       hash: window.location.hash,
       hasExplorerButton: !!document.getElementById('app-explorer'),
       rootText,
+      rootLead,
       rootRawKey,
+      columnHead: !!columnHead,
+      searched,
+      searchedCount,
       detailText,
+      detailTitle,
+      detailLead,
       detailRawKey,
+      groups,
+      objectCount,
+      recoveryText: recoveryRow ? recoveryRow.innerText : '',
+      recoveryActions: recoveryRow ? [...recoveryRow.querySelectorAll('button')].map((button) => button.textContent) : [],
+      quickText: quickRow ? quickRow.innerText : '',
+      distressText: distressRow ? distressRow.innerText : '',
+      notesText: notesRow ? notesRow.innerText : '',
       missingText: missingRow ? missingRow.innerText : '',
       missingDownloads: missingRow ? missingRow.querySelectorAll('button').length : -1,
+      missingPdfText: missingPdf ? missingPdf.innerText : '',
+      missingPdfDownloads: missingPdf ? missingPdf.querySelectorAll('button').length : -1,
       note: note ? note.textContent : '',
       unreferenced: !!unreferenced,
       imageOpened,
@@ -258,6 +337,7 @@ try {
     };
   }, {
     id: ID,
+    other: OTHER,
     planId: PLAN_ID,
     indexText: INDEX_TEXT,
     png: [...PNG],
@@ -265,24 +345,55 @@ try {
   });
 
   check('app bar has a File Explorer entry', flow.hasExplorerButton);
-  check('root leads with customer and property; raw key stays in Technical details',
+  check('root leads with customer, address, and one useful date; raw key stays in Technical details',
     !flow.rootText.includes(`cf/${ID}/index.json`) && flow.rootRawKey === `cf/${ID}/index.json` &&
-    flow.rootText.includes('Mitchell') &&
-    flow.rootText.includes('10 Oak Street'));
-  check('detail shows readable content labels with raw keys available',
+    flow.rootText.includes('Ada Mitchell') &&
+    flow.rootText.includes('Fred Keulen') &&
+    flow.rootText.includes('10 Oak Street') &&
+    flow.rootText.includes('Mar 1, 2026') &&
+    !flow.rootText.includes('Jan 15') &&
+    !flow.rootText.includes('Mar 4') &&
+    !flow.columnHead &&
+    !/\bType\b/.test(flow.rootText) &&
+    !/\bUploaded\b/.test(flow.rootText));
+  check('root copy is plain language',
+    flow.rootLead === 'Customer Files stored on the server. Open a file to view its stored surveys, photos, plans, and other data.');
+  check('search finds one Customer File by name',
+    flow.searchedCount === 1 && flow.searched.includes('Fred Keulen') && !flow.searched.includes('Ada Mitchell'));
+  check('detail groups every stored piece and keeps raw keys available',
+    flow.detailTitle === 'Ada Mitchell' &&
+    flow.detailLead.includes('10 Oak Street') &&
+    flow.detailLead.includes('Mar 1, 2026') &&
     flow.detailRawKey.startsWith(`cf/${ID}/`) &&
+    flow.groups.join(',') === 'customer,plans,distress,quick-capture,floor,diagnostics,report,other,technical' &&
+    flow.objectCount === 15 &&
     flow.detailText.includes('Plans and canvases') &&
-    flow.detailText.includes('Floor plan image') &&
+    flow.detailText.includes('Floor plan — Ground') &&
     !flow.detailText.includes(`media/${PLAN_ID}`));
+  check('Distress and Quick Capture stay distinct',
+    flow.distressText.includes('Distress Survey photograph') &&
+    !flow.distressText.includes('Quick Capture') &&
+    flow.quickText.includes('Quick Capture photo — porch.jpg') &&
+    !flow.detailText.includes('Distress or Quick Capture'));
+  check('Floor Survey recovery PDF can be opened and downloaded',
+    flow.recoveryText.includes('Floor Survey recovery PDF — Ground') &&
+    flow.recoveryActions.includes('Open') &&
+    flow.recoveryActions.includes('Download'));
+  check('unknown stored file is shown with its name',
+    flow.notesText.includes('field-notes.txt'));
   check('missing media is visibly not stored and cannot be downloaded',
-    /Not stored/.test(flow.missingText) && flow.missingDownloads === 0 && !/image\/|application\//.test(flow.missingText));
+    /Not stored/.test(flow.missingText) && flow.missingDownloads === 0 && !/image\/|application\//.test(flow.missingText) &&
+    /Not stored/.test(flow.missingPdfText) && flow.missingPdfDownloads === 0 &&
+    flow.missingPdfText.includes('Floor Survey recovery PDF — Empty'));
   check('unsafe reference note is visible', /not a single storage key/.test(flow.note));
   check('unreferenced media is absent', flow.unreferenced === false);
   check('image preview uses the stored image', flow.imageOpened);
   check('JSON preview is the stored text', flow.jsonText === INDEX_TEXT);
-  check('PDF preview uses the stored PDF', flow.pdfSrc.startsWith('blob:') && flow.pdfTitle === 'Distress or Quick Capture photo');
+  check('PDF preview uses the stored recovery PDF',
+    flow.pdfSrc.startsWith('blob:') && flow.pdfTitle === 'Floor Survey recovery PDF — Ground');
   check('individual download saves the object bytes',
-    flow.downloads.some((item) => item.clicked && item.type === 'image/png' && item.size === PNG.length && item.name.includes(PLAN_ID)));
+    flow.downloads.some((item) => item.clicked && item.type === 'image/png' && item.size === PNG.length && item.name.includes(PLAN_ID)) &&
+    flow.downloads.some((item) => item.clicked && item.type === 'application/pdf' && item.size === PDF.length && item.name.includes('fsrec_canvas-ground')));
   check('ZIP download uses the archive response',
     flow.downloads.some((item) => item.clicked && item.type === 'application/zip' && item.name === `cf-${ID}.zip`));
   check('browsing does not check out or write the cabinet',

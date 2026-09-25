@@ -1903,8 +1903,12 @@
     const row = { id: index.id, key: 'cf/' + index.id + '/index.json' };
     const name = trimStr(index.displayName);
     const address = trimStr(index.propertyAddress);
+    const survey = trimStr(index.fieldWorkDate);
+    const created = trimStr(index.createdAt);
     if (name) row.displayName = name;
     if (address) row.propertyAddress = address;
+    if (survey) row.fieldWorkDate = survey;
+    if (created) row.createdAt = created;
     return row;
   }
 
@@ -1919,26 +1923,138 @@
     if (notes.indexOf(text) === -1) notes.push(text);
   }
 
-  function mediaIdsForCabinetListing(plans, distress, notes) {
-    const ids = [];
-    mediaIdsFromPayload(plans, 'plans').forEach(function (id) {
-      if (!exploreMediaIdSafe(id)) {
-        noteUnsafeMedia(notes, 'plans.json');
-        return;
-      }
-      ids.push(id);
+  const EXPLORE_COMPONENT = {
+    customer: { purpose: 'customer', label: 'Customer information' },
+    plans: { purpose: 'plans', label: 'Plans and canvases' },
+    distress: { purpose: 'distress', label: 'Distress Survey' },
+    floor: { purpose: 'floor', label: 'Floor Survey' },
+    diagnostics: { purpose: 'diagnostics', label: 'Diagnostics' },
+    report: { purpose: 'report', label: 'Report Builder' },
+    trash: { purpose: 'technical', label: 'Trash record' },
+  };
+
+  function exploreConsiderMedia(refs, notes, source, id, purpose, label) {
+    if (typeof id !== 'string' || !id) return;
+    if (!exploreMediaIdSafe(id)) {
+      noteUnsafeMedia(notes, source);
+      return;
+    }
+    refs.push({ id: id, purpose: purpose, label: label });
+  }
+
+  function exploreCanvasNames(plans) {
+    const names = Object.create(null);
+    const canvases = plans && Array.isArray(plans.canvases) ? plans.canvases : [];
+    canvases.forEach(function (canvas) {
+      if (!canvas || typeof canvas.id !== 'string' || !trimStr(canvas.name)) return;
+      names[canvas.id] = trimStr(canvas.name);
     });
-    distressPhotoIds({ distress: distress || {} }).forEach(function (id) {
-      if (!exploreMediaIdSafe(id)) {
-        noteUnsafeMedia(notes, 'distress.json');
-        return;
+    return names;
+  }
+
+  function exploreTakeFloorLayer(refs, notes, layer, canvasId, canvasNames) {
+    if (!layer || typeof layer !== 'object' || Array.isArray(layer)) return;
+    const level = (canvasId && canvasNames[canvasId]) || trimStr(layer.name);
+    const suffix = level ? ' — ' + level : '';
+    exploreConsiderMedia(refs, notes, 'floor.json', layer.recoveryPdfMediaId, 'floor-pdf', 'Floor Survey recovery PDF' + suffix);
+    ['figureMediaId', 'topoFigureMediaId', 'renderedFigureMediaId'].forEach(function (key) {
+      exploreConsiderMedia(refs, notes, 'floor.json', layer[key], 'floor-figure', 'Floor Survey figure' + suffix);
+    });
+    const areas = Array.isArray(layer.areas) ? layer.areas : [];
+    areas.forEach(function (area) {
+      if (!area || typeof area !== 'object') return;
+      exploreConsiderMedia(refs, notes, 'floor.json', area.recoveryPdfMediaId, 'floor-pdf', 'Floor Survey recovery PDF' + suffix);
+      ['figureMediaId', 'renderedFigureMediaId', 'topoFigureMediaId'].forEach(function (key) {
+        exploreConsiderMedia(refs, notes, 'floor.json', area[key], 'floor-figure', 'Floor Survey figure' + suffix);
+      });
+    });
+  }
+
+  /**
+   * Media cited by stored manifests. The cabinet component routes do not
+   * list arbitrary keys under cf/{id}/, so this fallback cannot see an
+   * object that is not a known component or a cited media id.
+   */
+  function exploreMediaRefs(payloads, notes) {
+    const plans = payloads.plans;
+    const distress = payloads.distress;
+    const floor = payloads.floor;
+    const diagnostics = payloads.diagnostics;
+    const refs = [];
+    const canvases = plans && Array.isArray(plans.canvases) ? plans.canvases : [];
+    canvases.forEach(function (canvas) {
+      const name = trimStr(canvas && canvas.name);
+      exploreConsiderMedia(
+        refs,
+        notes,
+        'plans.json',
+        canvas && canvas.plan && canvas.plan.id,
+        'plan',
+        name ? 'Floor plan — ' + name : 'Floor plan image',
+      );
+    });
+    const pins = distress && Array.isArray(distress.pins) ? distress.pins : [];
+    pins.forEach(function (pin) {
+      const photos = pin && Array.isArray(pin.photos) ? pin.photos : [];
+      photos.forEach(function (id) {
+        if (typeof id !== 'string' || id.indexOf('ph_') !== 0) return;
+        exploreConsiderMedia(refs, notes, 'distress.json', id, 'distress-photo', 'Distress Survey photograph');
+      });
+    });
+    const quick = distress && Array.isArray(distress.quickCapture) ? distress.quickCapture : [];
+    quick.forEach(function (item) {
+      if (!item || typeof item.id !== 'string' || item.id.indexOf('ph_') !== 0) return;
+      const sourceName = trimStr(item.sourceName);
+      exploreConsiderMedia(
+        refs,
+        notes,
+        'distress.json',
+        item.id,
+        'quick-capture',
+        sourceName ? 'Quick Capture photo — ' + sourceName : 'Quick Capture photo',
+      );
+    });
+    const canvasNames = exploreCanvasNames(plans);
+    if (floor && typeof floor === 'object') {
+      const map = floor.byCanvasId;
+      if (map && typeof map === 'object' && !Array.isArray(map)) {
+        Object.keys(map).forEach(function (canvasId) {
+          exploreTakeFloorLayer(refs, notes, map[canvasId], canvasId, canvasNames);
+        });
       }
-      ids.push(id);
+      ['epochs', 'sessions', 'surveys'].forEach(function (group) {
+        const list = floor[group];
+        if (!Array.isArray(list)) return;
+        list.forEach(function (entry) {
+          if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+          const nested = entry.byCanvasId;
+          if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+            Object.keys(nested).forEach(function (canvasId) {
+              exploreTakeFloorLayer(refs, notes, nested[canvasId], canvasId, canvasNames);
+            });
+            return;
+          }
+          exploreTakeFloorLayer(refs, notes, entry, typeof entry.canvasId === 'string' ? entry.canvasId : '', canvasNames);
+        });
+      });
+    }
+    const figures = diagnostics && Array.isArray(diagnostics.figures) ? diagnostics.figures : [];
+    figures.forEach(function (fig) {
+      if (!fig || typeof fig !== 'object') return;
+      const canvas = trimStr(fig.canvasName);
+      exploreConsiderMedia(
+        refs,
+        notes,
+        'diagnostics.json',
+        fig.mediaId,
+        'diagnostics-figure',
+        canvas ? 'Diagnostics figure — ' + canvas : 'Diagnostics figure',
+      );
     });
     const seen = Object.create(null);
-    return ids.filter(function (id) {
-      if (seen[id]) return false;
-      seen[id] = true;
+    return refs.filter(function (ref) {
+      if (seen[ref.id]) return false;
+      seen[ref.id] = true;
       return true;
     });
   }
@@ -1975,38 +2091,53 @@
     const objects = [{
       key: 'cf/' + id + '/index.json',
       contentType: 'application/json',
+      purpose: 'technical',
+      label: 'Cabinet index',
     }];
-    let plans = null;
-    let distress = null;
+    const payloads = {};
     for (let i = 0; i < COMPONENTS.length; i++) {
       const name = COMPONENTS[i];
       const read = await readCabinetComponent(id, name);
       if (read.missing) continue;
+      const known = EXPLORE_COMPONENT[name] || { purpose: 'other', label: name + '.json' };
       objects.push({
         key: 'cf/' + id + '/' + name + '.json',
         contentType: 'application/json',
+        purpose: known.purpose,
+        label: known.label,
       });
       if (read.unreadable) {
         notes.push('cf/' + id + '/' + name + '.json could not be read; its media references are not listed.');
         continue;
       }
-      if (name === 'plans') plans = read.payload;
-      if (name === 'distress') distress = read.payload;
+      payloads[name] = read.payload;
     }
-    const mediaIds = mediaIdsForCabinetListing(plans, distress, notes);
-    for (let i = 0; i < mediaIds.length; i++) {
-      const key = 'media/' + mediaIds[i];
-      const exists = await remoteMediaExists(mediaIds[i]);
-      if (exists) objects.push({ key: key });
-      else objects.push({ key: key, missing: true });
+    const mediaRefs = exploreMediaRefs(payloads, notes);
+    for (let i = 0; i < mediaRefs.length; i++) {
+      const ref = mediaRefs[i];
+      const key = 'media/' + ref.id;
+      const exists = await remoteMediaExists(ref.id);
+      const row = exists ? { key: key } : { key: key, missing: true };
+      row.purpose = ref.purpose;
+      row.label = ref.label;
+      objects.push(row);
     }
     objects.sort(compareKeys);
-    return {
+    const body = {
       id: id,
       prefix: 'cf/' + id + '/',
       objects: objects,
       referenceNotes: notes,
     };
+    const name = trimStr(index.displayName);
+    const address = trimStr(index.propertyAddress);
+    const survey = trimStr(index.fieldWorkDate);
+    const created = trimStr(index.createdAt);
+    if (name) body.displayName = name;
+    if (address) body.propertyAddress = address;
+    if (survey) body.fieldWorkDate = survey;
+    if (created) body.createdAt = created;
+    return body;
   }
 
   async function fetchCabinetObject(id, key) {

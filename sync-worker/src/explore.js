@@ -4,8 +4,9 @@
  * Storage is not a folder of photos and plans. Each Customer File is
  * cf/{id}/*.json. Plan images and distress photos are flat media/{id}
  * objects. This module lists those keys and only the media ids cited by
- * the stored plans.json / distress.json. It does not invent folders,
- * names, or bytes, and it never writes the bucket.
+ * the stored plans.json, distress.json, floor.json, and diagnostics.json
+ * manifests. It does not invent folders, names, or bytes, and it never
+ * writes the bucket. A media id is included only when a manifest cites it.
  */
 
 const CRC_TABLE = (() => {
@@ -88,58 +89,250 @@ function noteUnsafe(notes, source) {
   if (notes.indexOf(text) === -1) notes.push(text);
 }
 
-function considerPlanId(ids, notes, id) {
+function trimmed(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function considerMedia(refs, notes, source, id, purpose, label, detail) {
   if (typeof id !== 'string' || !id) return;
   if (!safeMediaId(id)) {
-    noteUnsafe(notes, 'plans.json');
+    noteUnsafe(notes, source);
     return;
   }
-  ids.push(id);
+  refs.push({
+    id: id,
+    purpose: purpose,
+    label: label,
+    detail: detail || '',
+  });
 }
 
-function considerPhotoId(ids, notes, id) {
-  if (typeof id !== 'string' || id.indexOf('ph_') !== 0) return;
-  if (!safeMediaId(id)) {
-    noteUnsafe(notes, 'distress.json');
-    return;
-  }
-  ids.push(id);
+function canvasNameMap(plans) {
+  const names = Object.create(null);
+  const canvases = plans && Array.isArray(plans.canvases) ? plans.canvases : [];
+  canvases.forEach(function (canvas) {
+    if (!canvas || typeof canvas.id !== 'string' || !canvas.id) return;
+    const name = trimmed(canvas.name);
+    if (name) names[canvas.id] = name;
+  });
+  return names;
 }
 
-export function mediaIdsFromPlans(payload, notes) {
-  const ids = [];
-  const list = notes || [];
-  if (!payload || typeof payload !== 'object') return ids;
+function mediaRefsFromPlans(payload, notes) {
+  const refs = [];
+  if (!payload || typeof payload !== 'object') return refs;
   const canvases = Array.isArray(payload.canvases) ? payload.canvases : [];
   canvases.forEach(function (canvas) {
-    considerPlanId(ids, list, canvas && canvas.plan && canvas.plan.id);
+    const name = trimmed(canvas && canvas.name);
+    considerMedia(
+      refs,
+      notes,
+      'plans.json',
+      canvas && canvas.plan && canvas.plan.id,
+      'plan',
+      name ? 'Floor plan — ' + name : 'Floor plan image',
+      '',
+    );
   });
-  return ids;
+  return refs;
 }
 
-export function mediaIdsFromDistress(payload, notes) {
-  const ids = [];
-  const list = notes || [];
-  if (!payload || typeof payload !== 'object') return ids;
+function mediaRefsFromDistress(payload, notes) {
+  const refs = [];
+  if (!payload || typeof payload !== 'object') return refs;
   const pins = Array.isArray(payload.pins) ? payload.pins : [];
   pins.forEach(function (pin) {
     const photos = pin && Array.isArray(pin.photos) ? pin.photos : [];
-    photos.forEach(function (id) { considerPhotoId(ids, list, id); });
+    photos.forEach(function (id) {
+      if (typeof id !== 'string' || id.indexOf('ph_') !== 0) return;
+      considerMedia(refs, notes, 'distress.json', id, 'distress-photo', 'Distress Survey photograph', '');
+    });
   });
   const quick = Array.isArray(payload.quickCapture) ? payload.quickCapture : [];
-  quick.forEach(function (item) { considerPhotoId(ids, list, item && item.id); });
-  return ids;
+  quick.forEach(function (item) {
+    if (!item || typeof item.id !== 'string' || item.id.indexOf('ph_') !== 0) return;
+    const sourceName = trimmed(item.sourceName);
+    considerMedia(
+      refs,
+      notes,
+      'distress.json',
+      item.id,
+      'quick-capture',
+      sourceName ? 'Quick Capture photo — ' + sourceName : 'Quick Capture photo',
+      '',
+    );
+  });
+  return refs;
 }
 
-function uniqueIds(ids) {
-  const seen = Object.create(null);
-  const out = [];
-  ids.forEach(function (id) {
-    if (seen[id]) return;
-    seen[id] = true;
-    out.push(id);
+function floorLevelLabel(canvasId, layer, canvasNames) {
+  const fromPlan = canvasId && canvasNames ? canvasNames[canvasId] : '';
+  if (fromPlan) return fromPlan;
+  return trimmed(layer && layer.name);
+}
+
+function takeFloorLayer(refs, notes, layer, canvasId, canvasNames) {
+  if (!layer || typeof layer !== 'object' || Array.isArray(layer)) return;
+  const level = floorLevelLabel(canvasId, layer, canvasNames);
+  const suffix = level ? ' — ' + level : '';
+  considerMedia(
+    refs,
+    notes,
+    'floor.json',
+    layer.recoveryPdfMediaId,
+    'floor-pdf',
+    'Floor Survey recovery PDF' + suffix,
+    '',
+  );
+  ['figureMediaId', 'topoFigureMediaId', 'renderedFigureMediaId'].forEach(function (key) {
+    considerMedia(refs, notes, 'floor.json', layer[key], 'floor-figure', 'Floor Survey figure' + suffix, '');
   });
-  return out;
+  const areas = Array.isArray(layer.areas) ? layer.areas : [];
+  areas.forEach(function (area) {
+    if (!area || typeof area !== 'object') return;
+    ['figureMediaId', 'recoveryPdfMediaId', 'renderedFigureMediaId', 'topoFigureMediaId'].forEach(function (key) {
+      const purpose = key === 'recoveryPdfMediaId' ? 'floor-pdf' : 'floor-figure';
+      const label = (key === 'recoveryPdfMediaId' ? 'Floor Survey recovery PDF' : 'Floor Survey figure') + suffix;
+      considerMedia(refs, notes, 'floor.json', area[key], purpose, label, '');
+    });
+  });
+}
+
+function mediaRefsFromFloor(payload, notes, canvasNames) {
+  const refs = [];
+  if (!payload || typeof payload !== 'object') return refs;
+  const map = payload.byCanvasId;
+  if (map && typeof map === 'object' && !Array.isArray(map)) {
+    Object.keys(map).forEach(function (canvasId) {
+      takeFloorLayer(refs, notes, map[canvasId], canvasId, canvasNames);
+    });
+  }
+  ['epochs', 'sessions', 'surveys'].forEach(function (group) {
+    const list = payload[group];
+    if (!Array.isArray(list)) return;
+    list.forEach(function (entry) {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+      const nested = entry.byCanvasId;
+      if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+        Object.keys(nested).forEach(function (canvasId) {
+          takeFloorLayer(refs, notes, nested[canvasId], canvasId, canvasNames);
+        });
+        return;
+      }
+      takeFloorLayer(refs, notes, entry, typeof entry.canvasId === 'string' ? entry.canvasId : '', canvasNames);
+    });
+  });
+  return refs;
+}
+
+function mediaRefsFromDiagnostics(payload, notes) {
+  const refs = [];
+  if (!payload || typeof payload !== 'object') return refs;
+  const figures = Array.isArray(payload.figures) ? payload.figures : [];
+  figures.forEach(function (fig) {
+    if (!fig || typeof fig !== 'object') return;
+    const canvas = trimmed(fig.canvasName);
+    considerMedia(
+      refs,
+      notes,
+      'diagnostics.json',
+      fig.mediaId,
+      'diagnostics-figure',
+      canvas ? 'Diagnostics figure — ' + canvas : 'Diagnostics figure',
+      '',
+    );
+  });
+  return refs;
+}
+
+const PURPOSE_RANK = {
+  'distress-photo': 1,
+  'quick-capture': 2,
+  plan: 1,
+  'floor-pdf': 1,
+  'floor-figure': 2,
+  'diagnostics-figure': 1,
+};
+
+function mergeMediaRefs(refs) {
+  const map = Object.create(null);
+  const order = [];
+  refs.forEach(function (ref) {
+    if (!ref || !ref.id) return;
+    const prev = map[ref.id];
+    if (!prev) {
+      map[ref.id] = {
+        id: ref.id,
+        purpose: ref.purpose,
+        label: ref.label,
+        detail: ref.detail || '',
+        also: [],
+      };
+      order.push(ref.id);
+      return;
+    }
+    if (prev.purpose === ref.purpose) {
+      if (!prev.detail && ref.detail) prev.detail = ref.detail;
+      if (ref.label && ref.label.length > prev.label.length) prev.label = ref.label;
+      return;
+    }
+    const prevRank = PURPOSE_RANK[prev.purpose] || 9;
+    const nextRank = PURPOSE_RANK[ref.purpose] || 9;
+    if (nextRank < prevRank) {
+      prev.also.push(prev.purpose);
+      prev.purpose = ref.purpose;
+      prev.label = ref.label;
+      prev.detail = ref.detail || prev.detail;
+    } else if (prev.also.indexOf(ref.purpose) === -1) {
+      prev.also.push(ref.purpose);
+    }
+  });
+  return order.map(function (id) { return map[id]; });
+}
+
+export function mediaIdsFromPlans(payload, notes) {
+  return mediaRefsFromPlans(payload, notes).map(function (ref) { return ref.id; });
+}
+
+export function mediaIdsFromDistress(payload, notes) {
+  return mediaRefsFromDistress(payload, notes).map(function (ref) { return ref.id; });
+}
+
+const STORED_FILE = {
+  'index.json': { purpose: 'technical', label: 'Cabinet index' },
+  'customer.json': { purpose: 'customer', label: 'Customer information' },
+  'plans.json': { purpose: 'plans', label: 'Plans and canvases' },
+  'distress.json': { purpose: 'distress', label: 'Distress Survey' },
+  'floor.json': { purpose: 'floor', label: 'Floor Survey' },
+  'diagnostics.json': { purpose: 'diagnostics', label: 'Diagnostics' },
+  'report.json': { purpose: 'report', label: 'Report Builder' },
+  'trash.json': { purpose: 'technical', label: 'Trash record' },
+};
+
+function annotateStoredFile(row, id) {
+  const prefix = 'cf/' + id + '/';
+  const filename = row.key.indexOf(prefix) === 0 ? row.key.slice(prefix.length) : '';
+  const known = STORED_FILE[filename];
+  if (known) {
+    row.purpose = known.purpose;
+    row.label = known.label;
+  } else {
+    row.purpose = 'other';
+    row.label = filename || 'Stored file';
+  }
+  return row;
+}
+
+function copyIdentity(target, value) {
+  if (!value || typeof value !== 'object') return;
+  const name = trimmed(value.displayName);
+  const address = trimmed(value.propertyAddress);
+  const survey = trimmed(value.fieldWorkDate);
+  const created = trimmed(value.createdAt);
+  if (name) target.displayName = name;
+  if (address) target.propertyAddress = address;
+  if (survey) target.fieldWorkDate = survey;
+  if (created) target.createdAt = created;
 }
 
 export async function readCabinetIndexListing(cabinet) {
@@ -156,10 +349,7 @@ export async function readCabinetIndexListing(cabinet) {
     if (!parsed.ok || !parsed.value || typeof parsed.value !== 'object') {
       row.unreadable = true;
     } else {
-      const name = typeof parsed.value.displayName === 'string' ? parsed.value.displayName.trim() : '';
-      const address = typeof parsed.value.propertyAddress === 'string' ? parsed.value.propertyAddress.trim() : '';
-      if (name) row.displayName = name;
-      if (address) row.propertyAddress = address;
+      copyIdentity(row, parsed.value);
       const storedType = got && got.httpMetadata && got.httpMetadata.contentType;
       if (!row.contentType && typeof storedType === 'string' && storedType.trim()) {
         row.contentType = storedType;
@@ -176,27 +366,29 @@ export async function readCabinetIndexListing(cabinet) {
   return { files: files };
 }
 
+async function readManifest(cabinet, id, name, storedByKey, notes) {
+  const key = 'cf/' + id + '/' + name + '.json';
+  if (!storedByKey[key]) return null;
+  const parsed = await readJson(await cabinet.get(key));
+  if (!parsed.ok) {
+    notes.push(key + ' could not be read; its media references are not listed.');
+    return null;
+  }
+  return parsed.value;
+}
+
 async function referencedMedia(cabinet, id, storedByKey, notes) {
-  const ids = [];
-  const plansKey = 'cf/' + id + '/plans.json';
-  const distressKey = 'cf/' + id + '/distress.json';
-  if (storedByKey[plansKey]) {
-    const parsed = await readJson(await cabinet.get(plansKey));
-    if (!parsed.ok) {
-      notes.push('cf/' + id + '/plans.json could not be read; its media references are not listed.');
-    } else {
-      mediaIdsFromPlans(parsed.value, notes).forEach(function (mediaId) { ids.push(mediaId); });
-    }
-  }
-  if (storedByKey[distressKey]) {
-    const parsed = await readJson(await cabinet.get(distressKey));
-    if (!parsed.ok) {
-      notes.push('cf/' + id + '/distress.json could not be read; its media references are not listed.');
-    } else {
-      mediaIdsFromDistress(parsed.value, notes).forEach(function (mediaId) { ids.push(mediaId); });
-    }
-  }
-  return uniqueIds(ids);
+  const plans = await readManifest(cabinet, id, 'plans', storedByKey, notes);
+  const distress = await readManifest(cabinet, id, 'distress', storedByKey, notes);
+  const floor = await readManifest(cabinet, id, 'floor', storedByKey, notes);
+  const diagnostics = await readManifest(cabinet, id, 'diagnostics', storedByKey, notes);
+  const names = canvasNameMap(plans);
+  return mergeMediaRefs(
+    mediaRefsFromPlans(plans, notes)
+      .concat(mediaRefsFromDistress(distress, notes))
+      .concat(mediaRefsFromFloor(floor, notes, names))
+      .concat(mediaRefsFromDiagnostics(diagnostics, notes)),
+  );
 }
 
 export async function readCustomerFileListing(cabinet, id) {
@@ -212,29 +404,36 @@ export async function readCustomerFileListing(cabinet, id) {
     if (!obj || typeof obj.key !== 'string') return;
     if (!obj.key.startsWith(prefix) || obj.key.indexOf('..') !== -1) return;
     storedByKey[obj.key] = obj;
-    stored.push(objectMeta(obj.key, obj));
+    stored.push(annotateStoredFile(objectMeta(obj.key, obj), id));
   });
   if (!storedByKey[indexKey]) return { status: 404, text: 'Not found' };
 
   const notes = [];
-  const mediaIds = await referencedMedia(cabinet, id, storedByKey, notes);
+  const identity = {};
+  const indexParsed = await readJson(await cabinet.get(indexKey));
+  if (indexParsed.ok) copyIdentity(identity, indexParsed.value);
+  const mediaRefs = await referencedMedia(cabinet, id, storedByKey, notes);
   const objects = stored.slice();
-  for (let i = 0; i < mediaIds.length; i++) {
-    const key = 'media/' + mediaIds[i];
+  for (let i = 0; i < mediaRefs.length; i++) {
+    const ref = mediaRefs[i];
+    const key = 'media/' + ref.id;
     const head = await cabinet.head(key);
-    if (head) objects.push(objectMeta(key, head));
-    else objects.push({ key: key, missing: true });
+    const row = head ? objectMeta(key, head) : { key: key, missing: true };
+    row.purpose = ref.purpose;
+    row.label = ref.label;
+    if (ref.detail) row.detail = ref.detail;
+    if (ref.also && ref.also.length) row.also = ref.also.slice();
+    objects.push(row);
   }
   objects.sort(function (a, b) { return a.key < b.key ? -1 : a.key > b.key ? 1 : 0; });
-  return {
-    status: 200,
-    json: {
-      id: id,
-      prefix: prefix,
-      objects: objects,
-      referenceNotes: notes,
-    },
+  const body = {
+    id: id,
+    prefix: prefix,
+    objects: objects,
+    referenceNotes: notes,
   };
+  copyIdentity(body, identity);
+  return { status: 200, json: body };
 }
 
 function findEntry(listing, key) {
