@@ -1952,7 +1952,7 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   font-weight: 750;
   letter-spacing: -0.011em;
   line-height: 1.3;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .cabinet-index__meta {
@@ -1961,7 +1961,7 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   font-size: 13px;
   font-weight: 550;
   line-height: 1.35;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .cabinet-index__status {
@@ -1976,30 +1976,38 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 }
 
 @media (max-width: 560px) {
+  /* Address keeps the full card width. Name and date share the next row
+     with Check Out, so the action stays a 44px target without squeezing
+     the address or occupying a row of its own. */
   .cabinet-row-shell--cloud .cabinet-row.cabinet-row--index {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 4px 8px;
+    align-items: center;
+    column-gap: 10px;
+    row-gap: 4px;
     padding: 8px 10px;
   }
 
-  .cabinet-row--index .cabinet-row__main {
+  .cabinet-row-shell--cloud .cabinet-row--index .cabinet-row__main,
+  .cabinet-row-shell--cloud .cabinet-row--index .cabinet-index {
+    display: contents;
+  }
+
+  .cabinet-row-shell--cloud .cabinet-row--index .cabinet-index__address {
     grid-column: 1 / -1;
-    min-width: 0;
   }
 
-  .cabinet-row--index .cabinet-index {
-    display: block;
+  .cabinet-row-shell--cloud .cabinet-row--index .cabinet-index__meta {
+    grid-column: 1;
+    align-self: center;
   }
 
-  .cabinet-row--index .cabinet-index__address,
-  .cabinet-row--index .cabinet-index__meta {
-    display: block;
-  }
-
-  .cabinet-row--index .cabinet-checkout-btn {
+  .cabinet-row-shell--cloud .cabinet-row--index .cabinet-checkout-btn {
     grid-column: 2;
+    grid-row: 2;
     justify-self: end;
+    align-self: center;
+    min-width: 44px;
   }
 }
 
@@ -2065,7 +2073,12 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 .cabinet-row-shell.is-checked-out-elsewhere .cabinet-row__address,
 .cabinet-row-shell.is-checked-out-elsewhere .cabinet-row__meta,
 .cabinet-row-shell.is-checked-out-elsewhere .cabinet-row__location,
-.cabinet-row-shell.is-checked-out-elsewhere .cabinet-row__plan-state {
+.cabinet-row-shell.is-checked-out-elsewhere .cabinet-row__plan-state,
+.cabinet-row-shell.is-checked-out-elsewhere .cabinet-index__address,
+.cabinet-row-shell.is-checked-out-elsewhere .cabinet-index__meta,
+.cabinet-row-shell.is-checked-out-elsewhere .cabinet-index__owner,
+.cabinet-row-shell.is-checked-out-elsewhere .cabinet-index__date,
+.cabinet-row-shell.is-checked-out-elsewhere .cabinet-index__status {
   color: #5f5c56;
 }
 

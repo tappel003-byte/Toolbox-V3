@@ -670,7 +670,8 @@
 
   function cabinetCloudRowNode(entry, app) {
     const shell = document.createElement('div');
-    shell.className = 'cabinet-row-shell cabinet-row-shell--cloud';
+    shell.className = 'cabinet-row-shell cabinet-row-shell--cloud' +
+      (entry.availability === 'checked-out-elsewhere' ? ' is-checked-out-elsewhere' : '');
     shell.dataset.customerFileId = entry.id;
 
     const row = document.createElement('div');

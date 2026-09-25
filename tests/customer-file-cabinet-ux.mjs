@@ -497,6 +497,21 @@ try {
       const buttonBox = button ? button.getBoundingClientRect() : null;
       const search = document.querySelector('#file-cabinet-search');
       const searchBox = search ? search.getBoundingClientRect() : null;
+      const beta = document.querySelector('.cabinet-row-shell--cloud[data-customer-file-id="cf-beta"]');
+      const alpha = document.querySelector('.cabinet-row-shell--cloud[data-customer-file-id="cf-alpha"]');
+      const delta = document.querySelector('.cabinet-row-shell--cloud[data-customer-file-id="cf-delta"]');
+      const alphaAddress = alpha && alpha.querySelector('.cabinet-index__address');
+      const alphaMeta = alpha && alpha.querySelector('.cabinet-index__meta');
+      const alphaButton = alpha && alpha.querySelector('.cabinet-checkout-btn');
+      const deltaAddress = delta && delta.querySelector('.cabinet-index__address');
+      const addrBox = alphaAddress ? alphaAddress.getBoundingClientRect() : null;
+      const metaBox = alphaMeta ? alphaMeta.getBoundingClientRect() : null;
+      const alphaBtnBox = alphaButton ? alphaButton.getBoundingClientRect() : null;
+      function overlaps(a, b) {
+        if (!a || !b) return false;
+        return !(a.right <= b.left + 1 || a.left >= b.right - 1 || a.bottom <= b.top + 1 || a.top >= b.bottom - 1);
+      }
+      const betaRow = beta && beta.querySelector('.cabinet-row');
       return {
         overflow: doc.scrollWidth > doc.clientWidth + 1,
         scrollWidth: doc.scrollWidth,
@@ -506,6 +521,15 @@ try {
         buttonWidth: buttonBox ? Math.round(buttonBox.width) : 0,
         searchWidth: searchBox ? Math.round(searchBox.width) : 0,
         searchOverflows: searchBox ? searchBox.right > window.innerWidth + 1 : true,
+        betaGray: !!(beta && beta.classList.contains('is-checked-out-elsewhere')),
+        betaHasAction: !!(beta && beta.querySelector('.cabinet-checkout-btn')),
+        betaBackground: betaRow ? getComputedStyle(betaRow).backgroundColor : '',
+        alphaButtonBelowAddress: !!(addrBox && alphaBtnBox && alphaBtnBox.top >= addrBox.bottom - 2),
+        alphaButtonBesideMeta: !!(metaBox && alphaBtnBox && alphaBtnBox.top < metaBox.bottom && alphaBtnBox.bottom > metaBox.top),
+        alphaAddressClearOfButton: !overlaps(addrBox, alphaBtnBox),
+        alphaAddressClipped: alphaAddress ? alphaAddress.scrollWidth > alphaAddress.clientWidth + 2 : true,
+        deltaAddressClipped: deltaAddress ? deltaAddress.scrollWidth > deltaAddress.clientWidth + 2 : true,
+        listHasAvailable: /Available/i.test((document.querySelector('#file-cabinet-list') || {}).textContent || ''),
       };
     });
   }
@@ -534,7 +558,23 @@ try {
       return shot && !shot.overflow && !shot.searchOverflows &&
         shot.buttonHeight >= 44 && shot.buttonWidth >= 44 &&
         shot.rowHeights.length >= 4 &&
-        shot.rowHeights.every((height) => height > 0 && height < 120);
+        shot.rowHeights.every((height) => height > 0 && height < 120) &&
+        !shot.listHasAvailable;
+    }),
+    JSON.stringify(layout),
+  );
+  check(
+    'phone address stays full width with Check Out beside the name and date',
+    !!(layout.phone && layout.phone.alphaButtonBelowAddress && layout.phone.alphaButtonBesideMeta &&
+      layout.phone.alphaAddressClearOfButton && !layout.phone.alphaAddressClipped &&
+      !layout.phone.deltaAddressClipped),
+    JSON.stringify(layout.phone),
+  );
+  check(
+    'file checked out elsewhere is gray with no Check Out action',
+    ['desktop', 'ipad', 'phone'].every((name) => {
+      const shot = layout[name];
+      return shot && shot.betaGray && !shot.betaHasAction && /228,\s*225,\s*218/.test(shot.betaBackground);
     }),
     JSON.stringify(layout),
   );
