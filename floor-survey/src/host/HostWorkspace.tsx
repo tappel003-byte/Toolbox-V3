@@ -376,6 +376,7 @@ export function HostWorkspace({ customerFileId, onBack }: HostWorkspaceProps) {
         saveTone={saveTone}
       />
 
+      {/* Customer File levels. A topo boundary is drawn inside one level and is not a level. */}
       {floors.length > 1 && (
         <div
           data-floor-selector
@@ -474,16 +475,25 @@ export function HostWorkspace({ customerFileId, onBack }: HostWorkspaceProps) {
             mode={mode === "topo" ? "topo" : "data"}
             onChange={(m) => setMode(m === "topo" ? "topo" : "field")}
           />
-          {mode === "field" && (
-            <StatsChip
-              storageKey={`stats-chip-pos:${activeFloor.id}:solo`}
-              points={statsPoints}
-              onHighlight={(p) => {
+          {/* Proven baseline: the floating H / L / Δ chip is on both Data and Topo.
+              One chip for this level. Several boundaries on the same level are a
+              separate Topo control and do not replace this readout. */}
+          <StatsChip
+            storageKey={`stats-chip-pos:${activeFloor.id}:solo`}
+            points={
+              mode === "topo" && topoExcludedIds.size
+                ? statsPoints.filter((p) => !topoExcludedIds.has(p.id))
+                : statsPoints
+            }
+            onHighlight={(p) => {
+              if (mode === "field") {
                 setSelectedIds(new Set([p.id]));
                 setFocusRequest({ x: p.x, y: p.y, nonce: Date.now() });
-              }}
-            />
-          )}
+              } else {
+                setTopoHighlightIds(new Set([p.id]));
+              }
+            }}
+          />
         </>
       )}
       {mode === "field" && (
