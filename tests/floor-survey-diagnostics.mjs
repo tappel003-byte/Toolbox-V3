@@ -325,7 +325,7 @@ check(
   readout.legendLow === '0.1' &&
     readout.legendHigh === '1.2' &&
     readout.palette === 'brown' &&
-    readout.colors.startsWith('rgb(130, 90, 55)') &&
+    readout.colors.startsWith('rgb(130,90,55)') &&
     readout.exaggeration === '3.0' &&
     readout.heightLabel === '3.0' &&
     readout.text.includes('Vertical exaggeration 3.0×') &&
@@ -454,6 +454,29 @@ check(
   'AI export carries the Diagnostics figure bytes and blank caption',
   exported.image && exported.file === exported.image && exported.narrative === null && exported.floorUntouched === seeded.floorUpdatedAt,
   JSON.stringify(exported),
+);
+
+const sliderMoved = await page.evaluate(() => {
+  const slider = document.querySelector('[role="slider"]');
+  if (slider) slider.focus();
+  return !!slider;
+});
+if (sliderMoved) await page.keyboard.press('ArrowRight');
+await new Promise((r) => setTimeout(r, 250));
+const exaggerated = await page.evaluate(() => {
+  const root = document.querySelector('[data-diagnostics-readout]');
+  const height = (document.body.innerText || '').match(/Height exaggeration · ([0-9.]+)×/);
+  const text = root ? root.innerText : '';
+  return {
+    exaggeration: root ? root.getAttribute('data-exaggeration') : '',
+    heightLabel: height ? height[1] : '',
+    line: text.includes('Vertical exaggeration ' + (height ? height[1] : '') + '×'),
+  };
+});
+check(
+  'Current exaggeration stays tied to the height control',
+  sliderMoved && exaggerated.exaggeration === '3.1' && exaggerated.heightLabel === '3.1' && exaggerated.line,
+  JSON.stringify(exaggerated),
 );
 
 await page.select('[data-diagnostics-floor]', 'canvas-dx-2');
