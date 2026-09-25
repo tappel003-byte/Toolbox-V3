@@ -1,9 +1,7 @@
 // Toolbox — File Explorer.
 //
-// A direct window onto server File Cabinet keys. It lists cf/{id}/index.json,
-// then the objects stored under that prefix plus media/{id} keys cited by
-// the stored JSON. It does not check out, and it does not write a local
-// Customer File.
+// Read-only view of server Customer Files and their stored content.
+// Raw storage keys remain available under Technical details.
 
 (function () {
   'use strict';
@@ -24,6 +22,15 @@
     if (ct === 'application/pdf') return 'pdf';
     if (ct === 'application/json' || ct.slice(-5) === '+json' || ct.indexOf('text/') === 0) return 'text';
     return '';
+  }
+
+  function typeLabel(contentType) {
+    const type = String(contentType || '').toLowerCase().split(';')[0].trim();
+    if (type === 'application/pdf') return 'PDF';
+    if (type.indexOf('image/') === 0) return 'Image';
+    if (type === 'application/json' || type.slice(-5) === '+json') return 'File data';
+    if (type.indexOf('text/') === 0) return 'Text';
+    return type ? 'File' : '';
   }
 
   function formatBytes(size) {
@@ -51,6 +58,47 @@
 
   function downloadName(key) {
     return String(key || 'object').replace(/[^A-Za-z0-9._-]+/g, '_') || 'object';
+  }
+
+  function objectLabel(row, id) {
+    const key = String(row && row.key || '');
+    const prefix = 'cf/' + id + '/';
+    const names = {
+      'index.json': 'Customer information',
+      'plans.json': 'Plans and canvases',
+      'distress.json': 'Distress Survey',
+      'floor.json': 'Floor Survey',
+      'diagnostics.json': 'Diagnostics',
+      'report.json': 'Report Builder',
+      'trash.json': 'Trash record',
+    };
+    if (key.indexOf(prefix) === 0) {
+      const filename = key.slice(prefix.length);
+      return names[filename] || filename.replace(/\.json$/i, '').replace(/[-_]/g, ' ');
+    }
+    if (key.indexOf('media/') === 0) {
+      const mediaId = key.slice('media/'.length);
+      if (mediaId.indexOf('fsrec_') === 0) return 'Floor Survey recovery PDF';
+      if (mediaId.indexOf('dxfig_') === 0) return 'Diagnostics figure';
+      if (mediaId.indexOf('ph_') === 0) return 'Distress or Quick Capture photo';
+      if (mediaId.indexOf('plan-') === 0) return 'Floor plan image';
+      if (previewKind(row && row.contentType) === 'image') return 'Stored image';
+      if (previewKind(row && row.contentType) === 'pdf') return 'Stored PDF';
+      return 'Stored media';
+    }
+    return 'Stored file';
+  }
+
+  function technicalKey(key) {
+    const details = document.createElement('details');
+    details.className = 'explorer-row__technical';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Technical details';
+    const code = document.createElement('code');
+    code.textContent = key;
+    details.appendChild(summary);
+    details.appendChild(code);
+    return details;
   }
 
   function errorText(err) {
@@ -113,7 +161,7 @@
       '  <section class="explorer-view">' +
       '    <header class="explorer-head">' +
       '      <div class="explorer-head__copy">' +
-      '        <p class="eyebrow">Server storage</p>' +
+      '        <p class="eyebrow">File Cabinet</p>' +
       '        <h1>File Explorer</h1>' +
       '        <p id="explorer-lead"></p>' +
       '      </div>' +
@@ -140,9 +188,9 @@
     const preview = app.querySelector('#explorer-preview');
 
     lead.textContent = inside
-      ? 'Objects stored for this Customer File, plus media keys cited by the stored JSON. Referenced media that is not stored is marked not stored.'
-      : 'Customer Files stored on the server. Each row is the cf/…/index.json object. Opening one shows the keys stored with it.';
-    crumb.textContent = inside ? 'File Explorer  /  cf/' + customerId + '/' : 'File Explorer';
+      ? 'Stored Customer File information, surveys, plans, and media. Missing items are marked not stored.'
+      : 'Customer Files stored on the server. Open a file to see its contents.';
+    crumb.textContent = inside ? 'File Explorer / Customer File contents' : '';
 
     app.querySelector('#explorer-back').addEventListener('click', function () {
       window.location.hash = inside ? '#/explore' : '#/';
@@ -197,13 +245,13 @@
       if (!files.length) {
         const empty = document.createElement('p');
         empty.className = 'cabinet-empty';
-        empty.textContent = 'No cf/*/index.json objects are stored.';
+        empty.textContent = 'No Customer Files are stored.';
         listEl.appendChild(empty);
         return;
       }
       const head = document.createElement('div');
       head.className = 'explorer-columns';
-      head.innerHTML = '<span>Key</span><span>Type</span><span>Size</span><span>Uploaded</span><span></span>';
+      head.innerHTML = '<span>Customer File</span><span>Type</span><span>Size</span><span>Uploaded</span><span></span>';
       listEl.appendChild(head);
       files.forEach(function (row) {
         listEl.appendChild(rootRow(row));
@@ -215,24 +263,20 @@
       article.className = 'explorer-row';
       const key = row && row.key ? row.key : '';
       article.dataset.key = key;
-      const labels = [];
-      if (row && row.displayName) labels.push(row.displayName);
-      if (row && row.propertyAddress) labels.push(row.propertyAddress);
-      const label = labels.join(' · ');
       const main = document.createElement('div');
       main.className = 'explorer-row__main';
       const keyBtn = document.createElement('button');
       keyBtn.type = 'button';
       keyBtn.className = 'explorer-row__key';
-      keyBtn.textContent = key;
+      keyBtn.textContent = row && row.displayName || row && row.propertyAddress || 'Customer File';
       keyBtn.addEventListener('click', function () {
         if (row && row.id) window.location.hash = '#/explore/' + encodeURIComponent(row.id);
       });
       main.appendChild(keyBtn);
-      if (label) {
+      if (row && row.propertyAddress && row.displayName) {
         const p = document.createElement('p');
         p.className = 'explorer-row__label';
-        p.textContent = label;
+        p.textContent = row.propertyAddress;
         main.appendChild(p);
       } else if (row && row.unreadable) {
         const p = document.createElement('p');
@@ -240,6 +284,7 @@
         p.textContent = 'Stored object could not be read as JSON.';
         main.appendChild(p);
       }
+      main.appendChild(technicalKey(key));
       article.appendChild(main);
       article.appendChild(metaNode(row));
       const actions = document.createElement('div');
@@ -276,7 +321,7 @@
       }
       const head = document.createElement('div');
       head.className = 'explorer-columns';
-      head.innerHTML = '<span>Key</span><span>Type</span><span>Size</span><span>Uploaded</span><span></span>';
+      head.innerHTML = '<span>Stored item</span><span>Type</span><span>Size</span><span>Uploaded</span><span></span>';
       listEl.appendChild(head);
       objects.forEach(function (row) {
         listEl.appendChild(objectRow(id, row));
@@ -296,7 +341,7 @@
         type.textContent = 'Not stored';
       } else {
         type.className = 'explorer-row__type';
-        type.textContent = (row && row.contentType) || '';
+        type.textContent = typeLabel(row && row.contentType);
         size.textContent = formatBytes(row && row.size);
         if (row && row.uploaded) {
           time.dateTime = row.uploaded;
@@ -316,10 +361,11 @@
       article.dataset.key = key;
       const main = document.createElement('div');
       main.className = 'explorer-row__main';
-      const keyEl = document.createElement('code');
-      keyEl.className = 'explorer-row__key-text';
-      keyEl.textContent = key;
-      main.appendChild(keyEl);
+      const title = document.createElement('strong');
+      title.className = 'explorer-row__title';
+      title.textContent = objectLabel(row, id);
+      main.appendChild(title);
+      main.appendChild(technicalKey(key));
       article.appendChild(main);
       article.appendChild(metaNode(row));
       const actions = document.createElement('div');
@@ -330,7 +376,7 @@
         open.className = 'btn btn--secondary';
         open.textContent = 'Open';
         open.addEventListener('click', function () {
-          openObject(id, key, preview, showNotice);
+          openObject(id, key, objectLabel(row, id), preview, showNotice);
         });
         actions.appendChild(open);
         const download = document.createElement('button');
@@ -346,11 +392,11 @@
       return article;
     }
 
-    function openObject(id, key, panel, notify) {
+    function openObject(id, key, label, panel, notify) {
       notify('');
       revokePreview();
       panel.hidden = false;
-      panel.innerHTML = '<p class="explorer-preview__status">Opening ' + escapeHtml(key) + '…</p>';
+      panel.innerHTML = '<p class="explorer-preview__status">Opening ' + escapeHtml(label) + '…</p>';
       window.ToolboxSync.exploreFetchObject(id, key).then(function (response) {
         return responseBlob(response);
       }).then(function (loaded) {
@@ -359,7 +405,7 @@
         const head = document.createElement('div');
         head.className = 'explorer-preview__head';
         const title = document.createElement('h2');
-        title.textContent = key;
+        title.textContent = label;
         const close = document.createElement('button');
         close.type = 'button';
         close.className = 'btn btn--ghost';

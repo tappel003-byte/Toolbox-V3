@@ -186,19 +186,18 @@ try {
     };
   }, { files: FILES, plans: PLANS, distress: DISTRESS });
 
-  const rootKeys = FILES.map((file) => `cf/${file.id}/index.json`);
   check('five stored Customer Files are listed from GET /files',
-    rootKeys.every((key) => flow.rootText.includes(key)) &&
-    FILES.every((file) => flow.rootText.includes(file.displayName)),
+    FILES.every((file) => flow.rootText.includes(file.displayName) && flow.rootText.includes(file.propertyAddress)) &&
+    !flow.rootText.includes('cf/cf-1/index.json'),
     flow.rootText);
   check('the 404 body is not shown as the Explorer screen',
     flow.noticeHidden && flow.noticeText !== 'Not found' && !/^Not found$/.test(flow.rootText),
     flow.noticeText);
   check('opening a file does not stop on explore 404',
-    flow.detailText.includes('cf/cf-1/plans.json') &&
-    flow.detailText.includes('cf/cf-1/distress.json') &&
-    flow.detailText.includes('media/plan-1') &&
-    flow.detailText.includes('media/ph_missing') &&
+    flow.detailText.includes('Plans and canvases') &&
+    flow.detailText.includes('Distress Survey') &&
+    flow.detailText.includes('Floor plan image') &&
+    flow.detailText.includes('Distress or Quick Capture photo') &&
     /Not stored/.test(flow.detailText) &&
     flow.detailNoticeHidden,
     flow.detailNoticeText + ' ' + flow.detailText);

@@ -3750,7 +3750,7 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   }
 }
 
-/* File Explorer — key list, not a Customer File card. */
+/* File Explorer — readable names with raw storage keys on demand. */
 .explorer-view {
   width: 100%;
   min-width: 0;
@@ -3854,6 +3854,37 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 
 .explorer-row__key-text {
   cursor: text;
+  user-select: text;
+}
+
+.explorer-row__key {
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.explorer-row__title {
+  display: block;
+  color: var(--navy);
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.explorer-row__technical {
+  margin-top: 5px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.explorer-row__technical summary {
+  cursor: pointer;
+}
+
+.explorer-row__technical code {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
   user-select: text;
 }
 

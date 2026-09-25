@@ -201,10 +201,12 @@ try {
     document.getElementById('app-explorer').click();
     await new Promise((resolve) => setTimeout(resolve, 50));
     const rootText = document.getElementById('explorer-list').innerText;
+    const rootRawKey = document.querySelector('.explorer-row__technical code').textContent;
     const rootKey = document.querySelector('.explorer-row__key');
     rootKey.click();
     await new Promise((resolve) => setTimeout(resolve, 50));
     const detailText = document.getElementById('explorer-list').innerText;
+    const detailRawKey = document.querySelector('.explorer-row__technical code').textContent;
     const missingRow = document.querySelector('[data-key="media/ph_missing"]');
     const note = document.querySelector('.explorer-note');
     const unreferenced = document.querySelector('[data-key="media/ph_unreferenced"]');
@@ -237,7 +239,9 @@ try {
       hash: window.location.hash,
       hasExplorerButton: !!document.getElementById('app-explorer'),
       rootText,
+      rootRawKey,
       detailText,
+      detailRawKey,
       missingText: missingRow ? missingRow.innerText : '',
       missingDownloads: missingRow ? missingRow.querySelectorAll('button').length : -1,
       note: note ? note.textContent : '',
@@ -261,22 +265,22 @@ try {
   });
 
   check('app bar has a File Explorer entry', flow.hasExplorerButton);
-  check('root shows the index key and labels from that JSON',
-    flow.rootText.includes(`cf/${ID}/index.json`) &&
+  check('root leads with customer and property; raw key stays in Technical details',
+    !flow.rootText.includes(`cf/${ID}/index.json`) && flow.rootRawKey === `cf/${ID}/index.json` &&
     flow.rootText.includes('Mitchell') &&
     flow.rootText.includes('10 Oak Street'));
-  check('detail shows stored keys and does not invent a folder tree',
-    flow.detailText.includes(`cf/${ID}/plans.json`) &&
-    flow.detailText.includes(`media/${PLAN_ID}`) &&
-    flow.detailText.includes('media/ph_quick') &&
-    !/Distress Photos|Quick Capture|Floor Survey/.test(flow.detailText));
+  check('detail shows readable content labels with raw keys available',
+    flow.detailRawKey.startsWith(`cf/${ID}/`) &&
+    flow.detailText.includes('Plans and canvases') &&
+    flow.detailText.includes('Floor plan image') &&
+    !flow.detailText.includes(`media/${PLAN_ID}`));
   check('missing media is visibly not stored and cannot be downloaded',
     /Not stored/.test(flow.missingText) && flow.missingDownloads === 0 && !/image\/|application\//.test(flow.missingText));
   check('unsafe reference note is visible', /not a single storage key/.test(flow.note));
   check('unreferenced media is absent', flow.unreferenced === false);
   check('image preview uses the stored image', flow.imageOpened);
   check('JSON preview is the stored text', flow.jsonText === INDEX_TEXT);
-  check('PDF preview uses the stored PDF', flow.pdfSrc.startsWith('blob:') && flow.pdfTitle === 'media/ph_quick');
+  check('PDF preview uses the stored PDF', flow.pdfSrc.startsWith('blob:') && flow.pdfTitle === 'Distress or Quick Capture photo');
   check('individual download saves the object bytes',
     flow.downloads.some((item) => item.clicked && item.type === 'image/png' && item.size === PNG.length && item.name.includes(PLAN_ID)));
   check('ZIP download uses the archive response',
