@@ -1,11 +1,10 @@
 // Toolbox — Report Builder workspace.
 //
-// 11×17 landscape sheets, page rail, composition controls, and jump links
-// back to the source workspaces. The opening sequence comes from
-// ToolboxReportSource (issue #66 skeleton + the #65 evidence contract).
-// Pages exist only while this workspace stays open. This module does not
-// write the Customer File and does not invent report narrative.
-// Export for AI reads the open Customer File and downloads one ZIP.
+// 11×17 landscape sheets, page rail, authored wording, and jump links back
+// to the source workspaces. Page order and wording are a Customer File
+// report draft (ToolboxReportDraft). Evidence bytes stay in the workspaces
+// that own them and are referenced by media id. This module does not invent
+// findings, and it does not edit Distress or Floor Survey capture.
 
 (function () {
   'use strict';
@@ -13,41 +12,45 @@
   var SHEET_RATIO_LABEL = '11 × 17 landscape';
   var MAX_PAGES = 80;
   var SHEET_RATIO = 17 / 11;
+  var AUTOSAVE_MS = 400;
 
   var COMPOSE_TOOLS = [
     { id: 'select', label: 'Select' },
     { id: 'text', label: 'Text' },
-    { id: 'image', label: 'Image' },
-    { id: 'line', label: 'Line' },
-    { id: 'arrow', label: 'Arrow' },
-    { id: 'shape', label: 'Shape' },
+  ];
+
+  var UNSUPPORTED_TOOLS = [
+    { id: 'image', label: 'Image', title: 'Image placement is not available in this version.' },
+    { id: 'line', label: 'Line', title: 'Line drawing is not available in this version.' },
+    { id: 'arrow', label: 'Arrow', title: 'Arrow drawing is not available in this version.' },
+    { id: 'shape', label: 'Shape', title: 'Shape drawing is not available in this version.' },
   ];
 
   var INACTIVE_TOOLS = [
-    { id: 'forward', label: 'Bring forward' },
-    { id: 'backward', label: 'Send backward' },
-    { id: 'align', label: 'Align' },
-    { id: 'undo', label: 'Undo' },
-    { id: 'redo', label: 'Redo' },
+    { id: 'forward', label: 'Bring forward', title: 'Bring forward is not available in this version.' },
+    { id: 'backward', label: 'Send backward', title: 'Send backward is not available in this version.' },
+    { id: 'align', label: 'Align', title: 'Align is not available in this version.' },
+    { id: 'undo', label: 'Undo', title: 'Undo is not available in this version.' },
+    { id: 'redo', label: 'Redo', title: 'Redo is not available in this version.' },
   ];
 
-  var TOOL_STATUS = {
-    select: 'Select is highlighted. This skeleton does not move anything on the sheet.',
-    text: 'Text is reserved. This skeleton does not place text.',
-    image: 'Image is reserved. This skeleton does not place images.',
-    line: 'Line is reserved. This skeleton does not draw lines.',
-    arrow: 'Arrow is reserved. This skeleton does not draw arrows.',
-    shape: 'Shape is reserved. This skeleton does not draw shapes.',
+  var SAVE_LABEL = {
+    'not-saved': 'Not saved',
+    unsaved: 'Unsaved',
+    saving: 'Saving…',
+    saved: 'Saved',
+    failed: 'Not saved',
   };
 
   var mountGeneration = 0;
   var fitObserver = null;
   var fitOnResize = null;
   var pageSeq = 1;
+  var activeFlush = null;
 
   function fitSheet(root) {
     var stage = root && root.querySelector('.rb-stage');
-    var sheet = root && root.querySelector('.rb-sheet');
+    var sheet = stage && stage.querySelector('.rb-sheet');
     if (!stage || !sheet) return;
     var styles = window.getComputedStyle(stage);
     var padX = (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0);
@@ -96,40 +99,64 @@
     return window.ToolboxReportSource;
   }
 
+  function draftApi() {
+    return window.ToolboxReportDraft;
+  }
+
   function blankSequence() {
     var api = sourceApi();
     if (api && typeof api.assemble === 'function') return api.assemble(api.read(null));
     return { pages: [{ id: 'page-1', type: 'sheet', title: 'Sheet', railLabel: 'Sheet', includeInToc: true, note: '', sourceKey: null, meta: null }] };
   }
 
+  function noteSeq(list) {
+    (list || []).forEach(function (page) {
+      var match = /^(?:added|copy|page)-(\d+)$/.exec(page && page.id || '');
+      if (match) pageSeq = Math.max(pageSeq, Number(match[1]));
+    });
+  }
+
   function addedPage() {
     pageSeq += 1;
     return {
-      id: 'page-' + pageSeq,
+      id: 'added-' + pageSeq,
       type: 'sheet',
-      title: 'Sheet',
-      railLabel: 'Sheet',
-      note: 'Added in this session. Not saved.',
+      title: 'Added page',
+      tocTitle: 'Added page',
+      railLabel: 'Added page',
+      note: '',
+      body: '',
       sourceKey: null,
       sourceRef: null,
+      sourceId: null,
+      origin: 'added',
       includeInToc: true,
+      titleEdited: false,
       meta: null,
     };
   }
 
   function clonePage(source) {
     pageSeq += 1;
+    var meta = null;
+    if (source.meta) {
+      try { meta = JSON.parse(JSON.stringify(source.meta)); } catch (err) { meta = null; }
+    }
     return {
-      id: 'page-' + pageSeq,
+      id: 'copy-' + pageSeq,
       type: source.type,
       title: source.title,
       tocTitle: source.tocTitle || source.title,
-      railLabel: (source.railLabel || source.title) + ' copy',
-      note: source.note,
-      sourceKey: source.sourceKey,
-      sourceRef: source.sourceRef,
+      railLabel: (source.railLabel || source.title || 'Page') + ' copy',
+      note: source.note || '',
+      body: source.body || '',
+      sourceKey: source.sourceKey || null,
+      sourceRef: source.sourceRef || null,
+      sourceId: source.origin === 'added' ? null : (source.sourceId || source.id || null),
+      origin: 'duplicate',
       includeInToc: source.includeInToc !== false,
-      meta: source.meta,
+      titleEdited: !!source.titleEdited,
+      meta: meta,
       evidence: source.evidence || null,
     };
   }
@@ -144,6 +171,26 @@
     el.textContent = text;
     parent.appendChild(el);
     return el;
+  }
+
+  function canAuthor(page) {
+    if (!page || page.derived) return false;
+    if (page.origin === 'added' || (page.origin === 'duplicate' && page.type === 'sheet')) return true;
+    var section = page.meta && page.meta.sectionId;
+    return section === 'discussion' || section === 'conclusions' || section === 'limitations';
+  }
+
+  function authoredBlock(margin, page) {
+    var field = document.createElement('textarea');
+    field.className = 'rb-authored';
+    field.value = page.body || '';
+    field.placeholder = 'Write this section.';
+    field.setAttribute('aria-label', (page.title || 'Page') + ' text');
+    margin.appendChild(field);
+    var printed = document.createElement('p');
+    printed.className = 'rb-authored-print';
+    printed.textContent = page.body || '';
+    margin.appendChild(printed);
   }
 
   function evidenceImage(parent, url, className, alt) {
@@ -217,35 +264,73 @@
     return true;
   }
 
-  async function attachEvidence(record, pages) {
+  function storedFigure(slide) {
+    return !!(slide && slide.figure && slide.figure.kind === 'stored-rendering');
+  }
+
+  async function attachEvidence(record, pages, seenSourceIds) {
     var api = window.ToolboxReportEvidence;
-    if (!record || !api || typeof api.assemble !== 'function') return pages;
+    if (!record || !api || typeof api.assemble !== 'function') {
+      return pages.filter(function (page) { return !page.derived; });
+    }
     var source = await api.assemble(record);
     var distress = (source.distress && source.distress.slides) || [];
     var floor = (source.floor && source.floor.slides) || [];
     var diagnostics = window.ToolboxDiagnostics && window.ToolboxDiagnostics.listReportFigures
       ? window.ToolboxDiagnostics.listReportFigures(record) : [];
+    var base = pages.filter(function (page) { return page && !page.derived; });
     var result = [];
-    for (var i = 0; i < pages.length; i += 1) {
-      var page = pages[i];
+    for (var i = 0; i < base.length; i += 1) {
+      var page = base[i];
       if (page.type === 'distress' && !(page.meta && page.meta.reserved)) {
         page.evidence = distress.find(function (slide) { return slide.canvasId === page.sourceRef; }) || null;
+        if (page.evidence && page.meta) page.meta.slideId = page.evidence.id;
       } else if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
         var matches = floor.filter(function (slide) {
-          return slide.canvasId === page.meta.canvasId && slide.epochId === page.meta.epochId;
+          return page.meta && slide.canvasId === page.meta.canvasId && slide.epochId === page.meta.epochId;
         });
+        if (page.meta && page.meta.slideId) {
+          var named = floor.find(function (slide) { return slide.id === page.meta.slideId; });
+          page.evidence = storedFigure(named) ? named : null;
+          result.push(page);
+          continue;
+        }
         if (matches.length) {
-          if (matches[0].figure && matches[0].figure.kind === 'stored-rendering') page.evidence = matches[0];
+          page.meta = page.meta || {};
+          page.meta.slideId = matches[0].id;
+          page.evidence = storedFigure(matches[0]) ? matches[0] : null;
           result.push(page);
           for (var j = 1; j < matches.length; j += 1) {
-            var extra = Object.assign({}, page, {
-              id: page.id + '-area-' + j,
-              title: matches[j].title,
-              tocTitle: matches[j].title,
-              railLabel: matches[j].title,
-              evidence: matches[j].figure && matches[j].figure.kind === 'stored-rendering' ? matches[j] : null,
+            var slide = matches[j];
+            var represented = base.some(function (item) {
+              return item === page ? false : (item.id === slide.id || (item.meta && item.meta.slideId === slide.id));
+            }) || result.some(function (item) {
+              return item.id === slide.id || (item.meta && item.meta.slideId === slide.id);
             });
-            result.push(extra);
+            if (represented) continue;
+            if (seenSourceIds.indexOf(slide.id) !== -1) continue;
+            seenSourceIds.push(slide.id);
+            result.push({
+              id: slide.id,
+              type: 'floor',
+              title: slide.title || page.title,
+              tocTitle: slide.title || page.tocTitle,
+              railLabel: slide.title || page.railLabel,
+              note: page.note,
+              body: '',
+              sourceKey: 'floor',
+              sourceRef: slide.id,
+              sourceId: slide.id,
+              origin: 'source',
+              includeInToc: true,
+              titleEdited: false,
+              meta: Object.assign({}, page.meta, {
+                slideId: slide.id,
+                areaId: slide.areaId || null,
+                areaName: slide.areaName || '',
+              }),
+              evidence: storedFigure(slide) ? slide : null,
+            });
           }
           continue;
         }
@@ -253,12 +338,28 @@
         var fig = diagnostics.find(function (item) { return item.id === page.sourceRef; });
         if (fig && window.ToolboxDB && window.ToolboxDB.getMedia) {
           var dataUrl = await window.ToolboxDB.getMedia(fig.mediaId).catch(function () { return null; });
-          page.evidence = { dataUrl: dataUrl };
+          page.evidence = { dataUrl: dataUrl, mediaId: fig.mediaId };
         }
       }
       result.push(page);
     }
     return result;
+  }
+
+  function coverLines(meta) {
+    var lines = [];
+    var address = (meta && meta.address) || '';
+    if (!address) lines.push('No property address on file');
+    else address.split('\n').forEach(function (line) {
+      if (line.trim()) lines.push(line.trim());
+    });
+    if (meta && meta.companyName) lines.push(meta.companyName);
+    if (meta && meta.cellPhone) lines.push(meta.cellPhone);
+    if (meta && meta.homePhone) lines.push(meta.homePhone);
+    if (meta && meta.email) lines.push(meta.email);
+    if (meta && meta.floorSurveyDate) lines.push('Floor Survey date ' + meta.floorSurveyDate);
+    if (meta && meta.fileDate) lines.push('File date ' + meta.fileDate);
+    return lines;
   }
 
   function renderSheet(sheet, page, pages) {
@@ -282,9 +383,9 @@
       title.className = 'rb-sheet__title';
       title.textContent = page.title || 'Customer File';
       margin.appendChild(title);
-      var meta = page.meta || {};
-      addLine(margin, 'rb-sheet__meta', meta.address || 'No property address on file');
-      if (meta.floorSurveyDate) addLine(margin, 'rb-sheet__meta', 'Floor Survey date ' + meta.floorSurveyDate);
+      coverLines(page.meta).forEach(function (line) {
+        addLine(margin, 'rb-sheet__meta', line);
+      });
       addLine(margin, 'rb-sheet__note', page.note || '');
     } else if (page.type === 'toc') {
       addLine(margin, 'rb-sheet__kicker', 'Report');
@@ -347,6 +448,7 @@
         margin.appendChild(figure);
       }
       if (page.note) addLine(margin, 'rb-sheet__note', page.note);
+      if (canAuthor(page)) authoredBlock(margin, page);
     } else {
       addLine(margin, 'rb-sheet__kicker', 'Report');
       var sectionTitle = document.createElement('h1');
@@ -354,11 +456,11 @@
       sectionTitle.textContent = page.title || 'Sheet';
       margin.appendChild(sectionTitle);
       if (page.note) addLine(margin, 'rb-sheet__note', page.note);
+      if (canAuthor(page)) authoredBlock(margin, page);
     }
 
     var footer = document.createElement('p');
     footer.className = 'rb-sheet__page';
-    footer.id = 'rb-sheet-page';
     footer.textContent = 'Page ' + (index + 1);
     margin.appendChild(footer);
     sheet.appendChild(margin);
@@ -393,23 +495,17 @@
     return meta.reserved ? 'Diagnostics reserved' : 'Diagnostics figure reserved';
   }
 
-  function propertyRows(source) {
-    var customer = source && source.customer ? source.customer : {};
-    var rows = [
-      ['Name', customer.name || 'New Customer File'],
-      ['Property', customer.address || 'No property address on file'],
-    ];
-    if (customer.companyName) rows.push(['Company', customer.companyName]);
-    if (customer.cellPhone) rows.push(['Cell', customer.cellPhone]);
-    if (customer.email) rows.push(['Email', customer.email]);
-    if (source && source.floorSurveyDate) rows.push(['Floor Survey date', source.floorSurveyDate]);
-    return rows;
-  }
-
   function withProperty(sequence, source) {
+    var api = sourceApi();
+    var view = api && typeof api.presentation === 'function' ? api.presentation(source) : null;
+    if (!view) return sequence;
     (sequence.pages || []).forEach(function (item) {
+      if (item.type === 'cover') {
+        item.meta = view.coverMeta;
+        if (source && source.customerName && !item.titleEdited) item.title = source.customerName;
+      }
       if (item.type === 'section' && item.meta && item.meta.sectionId === 'property') {
-        item.meta.rows = propertyRows(source);
+        item.meta.rows = view.propertyRows;
       }
     });
     return sequence;
@@ -423,18 +519,31 @@
     var onOpenSource = options && options.onOpenSource;
 
     var sequence = withProperty(blankSequence(), null);
-    var pages = sequence.pages.slice();
+    var opened = draftApi() ? draftApi().blankFromSequence(sequence) : { pages: sequence.pages, selectedPageId: '', seenSourceIds: [] };
+    var pages = opened.pages.slice();
+    var seenSourceIds = opened.seenSourceIds.slice();
     var activeId = pages[0] ? pages[0].id : '';
     var activeTool = 'select';
-    var dirty = false;
-    pageSeq = pages.length;
+    var touched = false;
+    var revision = 0;
+    var savedRevision = 0;
+    var saveMode = 'not-saved';
+    var saveTimer = null;
+    var saveChain = Promise.resolve();
+    pageSeq = 1;
+    noteSeq(pages);
 
     host.innerHTML = shellHtml();
     var root = host.querySelector('.rb-shell');
     var fileLabelEl = root.querySelector('#rb-file-label');
     var statusEl = root.querySelector('#rb-tool-status');
+    var saveStateEl = root.querySelector('#rb-save-state');
+    var fileStatusEl = root.querySelector('#rb-file-status');
+    var saveDetailEl = root.querySelector('#rb-save-detail');
+    var saveBtn = root.querySelector('#rb-save');
     var listEl = root.querySelector('#rb-page-list');
-    var sheetEl = root.querySelector('.rb-sheet');
+    var sheetEl = root.querySelector('.rb-stage .rb-sheet');
+    var printDeck = root.querySelector('#rb-print-deck');
     var addBtn = root.querySelector('#rb-add-page');
     var duplicateBtn = root.querySelector('#rb-duplicate-page');
     var removeBtn = root.querySelector('#rb-remove-page');
@@ -452,8 +561,37 @@
       return pages[activeIndex()] || pages[0];
     }
 
+    function setSaveStatus(mode, detail) {
+      saveMode = mode;
+      var label = SAVE_LABEL[mode] || SAVE_LABEL['not-saved'];
+      if (saveStateEl) saveStateEl.textContent = label;
+      if (fileStatusEl) fileStatusEl.textContent = label;
+      if (saveDetailEl) saveDetailEl.textContent = detail || '';
+      if (saveBtn) saveBtn.disabled = mode === 'saving';
+    }
+
+    function toolStatusText() {
+      var page = activePage();
+      if (activeTool === 'text') {
+        if (canAuthor(page)) return 'Text edits this sheet. Save stores the wording on the Customer File.';
+        return 'This sheet has no text area. Discussion, Conclusions, Limitations, and added pages do.';
+      }
+      return 'Select a page from the list.';
+    }
+
     function setToolStatus() {
-      statusEl.textContent = TOOL_STATUS[activeTool] || TOOL_STATUS.select;
+      statusEl.textContent = toolStatusText();
+    }
+
+    function buildPrintDeck() {
+      if (!printDeck) return;
+      printDeck.textContent = '';
+      pages.forEach(function (page) {
+        var sheet = document.createElement('article');
+        sheet.className = 'rb-sheet rb-print-page';
+        renderSheet(sheet, page, pages);
+        printDeck.appendChild(sheet);
+      });
     }
 
     function renderPages() {
@@ -486,13 +624,16 @@
         button.appendChild(thumb);
         button.appendChild(caption);
         button.addEventListener('click', function () {
+          if (activeId === item.id) return;
           activeId = item.id;
+          markDirty();
           renderPages();
         });
         listEl.appendChild(button);
       });
 
       renderSheet(sheetEl, current, pages);
+      buildPrintDeck();
       root.querySelectorAll('[data-rb-source]').forEach(function (button) {
         var on = button.getAttribute('data-rb-source') === current.sourceKey;
         button.classList.toggle('is-current', on);
@@ -502,14 +643,75 @@
       earlierBtn.disabled = index <= 0;
       laterBtn.disabled = index >= pages.length - 1;
       duplicateBtn.disabled = pages.length >= MAX_PAGES;
+      setToolStatus();
+    }
+
+    function snapshot() {
+      return {
+        pages: pages,
+        selectedPageId: activeId,
+        seenSourceIds: seenSourceIds,
+      };
+    }
+
+    function flushSave() {
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+      if (!touched || revision === savedRevision) return Promise.resolve();
+      var api = draftApi();
+      if (!api || !customerFileId) {
+        setSaveStatus('failed', 'Could not save. Your edits are still on this page.');
+        return Promise.reject(new Error('Report draft storage is not available.'));
+      }
+      var savingRevision = revision;
+      var shot = snapshot();
+      setSaveStatus('saving');
+      var run = saveChain.then(function () {
+        return api.save(customerFileId, shot);
+      }).then(function () {
+        if (token !== mountGeneration) return;
+        if (revision === savingRevision) {
+          savedRevision = savingRevision;
+          setSaveStatus('saved');
+        } else {
+          setSaveStatus('unsaved');
+        }
+      }).catch(function (err) {
+        if (token !== mountGeneration) return;
+        setSaveStatus('failed', 'Could not save. Your edits are still on this page.');
+        if (err && err.message) saveDetailEl.textContent = 'Could not save. Your edits are still on this page.';
+      });
+      saveChain = run.then(function () { return null; }, function () { return null; });
+      return run;
+    }
+
+    function scheduleSave() {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(function () { flushSave(); }, AUTOSAVE_MS);
+    }
+
+    function markDirty() {
+      touched = true;
+      revision += 1;
+      setSaveStatus('unsaved');
+      scheduleSave();
+    }
+
+    activeFlush = flushSave;
+    if (window.ToolboxApp && typeof window.ToolboxApp.registerActiveFlush === 'function') {
+      window.ToolboxApp.registerActiveFlush(flushSave);
     }
 
     root.querySelector('#rb-back').addEventListener('click', function () {
+      flushSave();
       if (typeof onBack === 'function') onBack();
     });
 
     root.querySelectorAll('[data-rb-source]').forEach(function (button) {
       button.addEventListener('click', function () {
+        flushSave();
         var key = button.getAttribute('data-rb-source');
         if (typeof onOpenSource === 'function') onOpenSource(key);
       });
@@ -518,12 +720,28 @@
     sheetEl.addEventListener('click', function (event) {
       var jump = event.target.closest('[data-rb-goto]');
       if (!jump) return;
-      activeId = jump.getAttribute('data-rb-goto');
+      var nextId = jump.getAttribute('data-rb-goto');
+      if (!nextId || nextId === activeId) return;
+      activeId = nextId;
+      markDirty();
       renderPages();
+    });
+
+    sheetEl.addEventListener('input', function (event) {
+      var field = event.target.closest('.rb-authored');
+      if (!field) return;
+      var page = activePage();
+      if (!page) return;
+      page.body = field.value;
+      var printed = field.parentNode && field.parentNode.querySelector('.rb-authored-print');
+      if (printed) printed.textContent = field.value;
+      markDirty();
+      buildPrintDeck();
     });
 
     root.querySelectorAll('[data-rb-tool]').forEach(function (button) {
       button.addEventListener('click', function () {
+        if (button.disabled) return;
         activeTool = button.getAttribute('data-rb-tool');
         root.querySelectorAll('[data-rb-tool]').forEach(function (peer) {
           var on = peer === button;
@@ -531,55 +749,74 @@
           peer.setAttribute('aria-pressed', on ? 'true' : 'false');
         });
         setToolStatus();
+        if (activeTool === 'text') {
+          var field = sheetEl.querySelector('.rb-authored');
+          if (field) field.focus();
+        }
       });
     });
 
     addBtn.addEventListener('click', function () {
       if (pages.length >= MAX_PAGES) return;
-      dirty = true;
       var item = addedPage();
       pages.push(item);
       activeId = item.id;
+      markDirty();
       renderPages();
+      var field = sheetEl.querySelector('.rb-authored');
+      if (field) field.focus();
     });
 
     duplicateBtn.addEventListener('click', function () {
       if (pages.length >= MAX_PAGES) return;
-      dirty = true;
       var index = activeIndex();
       var item = clonePage(pages[index]);
       pages.splice(index + 1, 0, item);
       activeId = item.id;
+      markDirty();
       renderPages();
     });
 
     removeBtn.addEventListener('click', function () {
       if (pages.length <= 1) return;
-      dirty = true;
       var index = activeIndex();
       pages.splice(index, 1);
       activeId = pages[Math.min(index, pages.length - 1)].id;
+      markDirty();
       renderPages();
     });
 
     earlierBtn.addEventListener('click', function () {
       var index = activeIndex();
       if (index <= 0) return;
-      dirty = true;
       var moved = pages[index];
       pages[index] = pages[index - 1];
       pages[index - 1] = moved;
+      markDirty();
       renderPages();
     });
 
     laterBtn.addEventListener('click', function () {
       var index = activeIndex();
       if (index >= pages.length - 1) return;
-      dirty = true;
       var moved = pages[index];
       pages[index] = pages[index + 1];
       pages[index + 1] = moved;
+      markDirty();
       renderPages();
+    });
+
+    saveBtn.addEventListener('click', function () {
+      if (!touched || revision === savedRevision) {
+        touched = true;
+        revision += 1;
+      }
+      flushSave();
+    });
+
+    root.querySelector('#rb-print').addEventListener('click', function () {
+      buildPrintDeck();
+      window.print();
     });
 
     var exportBtn = root.querySelector('#rb-export-ai');
@@ -603,6 +840,7 @@
       });
     });
 
+    setSaveStatus('not-saved');
     setToolStatus();
     renderPages();
     watchSheet(root);
@@ -610,14 +848,21 @@
 
     function applyRecord(record) {
       fileLabelEl.textContent = record ? fileLabel(record) : 'Customer File not on this device';
-      if (dirty) return;
+      if (touched) return;
       var api = sourceApi();
-      if (!api) return;
+      var drafts = draftApi();
+      if (!api || !drafts) return;
       var source = api.read(record || null);
       var next = withProperty(api.assemble(source), source);
-      pages = next.pages.slice();
-      activeId = pages[0] ? pages[0].id : '';
-      pageSeq = pages.length;
+      var stored = record ? drafts.read(record) : null;
+      var merged = stored ? drafts.merge(stored, next) : drafts.blankFromSequence(next);
+      pages = merged.pages.slice();
+      seenSourceIds = merged.seenSourceIds.slice();
+      activeId = merged.selectedPageId || (pages[0] && pages[0].id) || '';
+      noteSeq(pages);
+      revision = 0;
+      savedRevision = 0;
+      setSaveStatus(stored ? 'saved' : 'not-saved');
       renderPages();
       fitSheet(root);
     }
@@ -634,8 +879,8 @@
         return;
       }
       applyRecord(record);
-      attachEvidence(record, pages.slice()).then(function (enriched) {
-        if (token !== mountGeneration || dirty) return;
+      attachEvidence(record, pages.slice(), seenSourceIds).then(function (enriched) {
+        if (token !== mountGeneration || touched) return;
         pages = enriched;
         renderPages();
         fitSheet(root);
@@ -657,12 +902,14 @@
       '      <span class="file-identity__name">Report Builder</span>' +
       '      <span class="file-identity__address" id="rb-file-label"></span>' +
       '    </div>' +
-      '    <span class="file-status">Draft</span>' +
+      '    <span class="file-status" id="rb-file-status">Not saved</span>' +
       '  </div>' +
       '  <div class="rb-toolbar">' +
       '    <div class="rb-toolbar__tools" role="toolbar" aria-label="Report composition">' +
              toolButtons() +
       '    </div>' +
+      '    <button type="button" id="rb-save" class="btn btn--accent rb-save">Save</button>' +
+      '    <button type="button" id="rb-print" class="btn btn--secondary rb-print">Print 11×17</button>' +
       '    <button type="button" id="rb-export-ai" class="btn btn--accent rb-export">Export for AI</button>' +
       '    <p class="rb-toolbar__status" id="rb-tool-status" aria-live="polite"></p>' +
       '    <p class="rb-ai-status" id="rb-ai-status" aria-live="polite"></p>' +
@@ -672,7 +919,8 @@
       '      <div class="rb-rail__head">' +
       '        <p class="eyebrow">Pages</p>' +
       '        <strong>Report sheets</strong>' +
-      '        <span>Not saved</span>' +
+      '        <span id="rb-save-state">Not saved</span>' +
+      '        <p class="rb-save-detail" id="rb-save-detail"></p>' +
       '      </div>' +
       '      <div class="rb-rail__list" id="rb-page-list"></div>' +
       '      <div class="rb-rail__actions">' +
@@ -698,6 +946,7 @@
       '      </div>' +
       '    </aside>' +
       '  </div>' +
+      '  <div class="rb-print-deck" id="rb-print-deck"></div>' +
       '</div>'
     );
   }
@@ -708,15 +957,24 @@
       var active = tool.id === 'select' ? ' is-active' : '';
       return '<button type="button" class="rb-tool' + active + '" data-rb-tool="' + tool.id + '" aria-pressed="' + pressed + '">' + tool.label + '</button>';
     }).join('');
+    html += UNSUPPORTED_TOOLS.map(function (tool) {
+      return '<button type="button" class="rb-tool" data-rb-tool="' + tool.id + '" disabled title="' + tool.title + '">' + tool.label + '</button>';
+    }).join('');
     html += '<span class="rb-tool-sep" aria-hidden="true"></span>';
     html += INACTIVE_TOOLS.map(function (tool) {
-      return '<button type="button" class="rb-tool" disabled title="Shown for layout. Not available in this skeleton.">' + tool.label + '</button>';
+      return '<button type="button" class="rb-tool" disabled title="' + tool.title + '">' + tool.label + '</button>';
     }).join('');
     return html;
   }
 
   function unmount() {
     mountGeneration += 1;
+    var flush = activeFlush;
+    activeFlush = null;
+    if (window.ToolboxApp && typeof window.ToolboxApp.registerActiveFlush === 'function') {
+      window.ToolboxApp.registerActiveFlush(null);
+    }
+    if (flush) flush();
     if (fitObserver) {
       fitObserver.disconnect();
       fitObserver = null;

@@ -35,17 +35,17 @@
     {
       id: 'discussion',
       title: 'Discussion',
-      note: 'Reserved section. No narrative is written here.',
+      note: 'Your wording for this section.',
     },
     {
       id: 'conclusions',
       title: 'Conclusions',
-      note: 'Reserved section. No narrative is written here.',
+      note: 'Your wording for this section.',
     },
     {
       id: 'limitations',
       title: 'Limitations',
-      note: 'Reserved section. No narrative is written here.',
+      note: 'Your wording for this section.',
     },
   ];
 
@@ -62,6 +62,13 @@
     var address = text(record && record.propertyAddress);
     if (!address) return '';
     return address.split('\n')[0].trim();
+  }
+
+  function dateOnly(value) {
+    var raw = text(value);
+    if (!raw) return '';
+    var day = raw.slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '';
   }
 
   function canvasesOf(record) {
@@ -260,9 +267,17 @@
       customer: {
         name: customerName(record),
         address: propertyAddress(record),
+        addressFull: text(record.propertyAddress),
         companyName: text(record.companyName),
         cellPhone: text(record.cellPhone),
+        homePhone: text(record.homePhone),
         email: text(record.email),
+        spouseName: text(record.spouseName),
+        spouseCellPhone: text(record.spouseCellPhone),
+        spouseHomePhone: text(record.spouseHomePhone),
+        spouseEmail: text(record.spouseEmail),
+        mailingAddress: record.mailingSameAsProperty ? '' : text(record.mailingAddress),
+        fileDate: dateOnly(record.createdAt),
       },
       distress: distressOutline(record),
       floor: floorOutline(record),
@@ -419,8 +434,43 @@
     });
   }
 
-  function sectionPage(section) {
-    return page({
+  function presentation(source) {
+    var src = source && source.schema === SCHEMA ? source : outline(null);
+    var customer = src.customer || {};
+    var rows = [
+      ['Name', customer.name || 'New Customer File'],
+      ['Property', customer.addressFull || customer.address || 'No property address on file'],
+    ];
+    function add(label, value) {
+      if (value) rows.push([label, value]);
+    }
+    add('Company', customer.companyName);
+    add('Cell', customer.cellPhone);
+    add('Home', customer.homePhone);
+    add('Email', customer.email);
+    add('Spouse / partner', customer.spouseName);
+    add('Spouse cell', customer.spouseCellPhone);
+    add('Spouse home', customer.spouseHomePhone);
+    add('Spouse email', customer.spouseEmail);
+    add('Mailing', customer.mailingAddress);
+    add('Floor Survey date', src.floorSurveyDate);
+    add('File date', customer.fileDate);
+    return {
+      coverMeta: {
+        address: customer.addressFull || customer.address || '',
+        companyName: customer.companyName || '',
+        cellPhone: customer.cellPhone || '',
+        homePhone: customer.homePhone || '',
+        email: customer.email || '',
+        floorSurveyDate: src.floorSurveyDate || '',
+        fileDate: customer.fileDate || '',
+      },
+      propertyRows: rows,
+    };
+  }
+
+  function sectionPage(section, source) {
+    var item = page({
       id: 'section-' + section.id,
       type: 'section',
       title: section.title,
@@ -429,6 +479,10 @@
       sourceKey: null,
       meta: { sectionId: section.id },
     });
+    if (section.id === 'property' && source) {
+      item.meta.rows = presentation(source).propertyRows;
+    }
+    return item;
   }
 
   function assemble(source) {
@@ -441,10 +495,7 @@
         railLabel: 'Cover',
         includeInToc: false,
         note: 'Assembled from this Customer File.',
-        meta: {
-          address: src.propertyAddress || '',
-          floorSurveyDate: src.floorSurveyDate || '',
-        },
+        meta: presentation(src).coverMeta,
       }),
       page({
         id: 'toc',
@@ -455,7 +506,7 @@
         note: 'Page list for the sheets included in this report.',
       }),
     ];
-    LEADING_SECTIONS.forEach(function (section) { pages.push(sectionPage(section)); });
+    LEADING_SECTIONS.forEach(function (section) { pages.push(sectionPage(section, src)); });
     distressPages(src).forEach(function (item) { pages.push(item); });
     floorPages(src).forEach(function (item) { pages.push(item); });
     diagnosticsPages(src).forEach(function (item) { pages.push(item); });
@@ -486,6 +537,7 @@
     SCHEMA_VERSION: SCHEMA_VERSION,
     read: read,
     assemble: assemble,
+    presentation: presentation,
     contents: contents,
   };
 
