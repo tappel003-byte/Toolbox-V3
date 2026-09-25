@@ -32,6 +32,12 @@ await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
 page.on('pageerror', (error) => console.log('PAGEERROR', error.message));
 
 await page.goto(BASE, { waitUntil: 'networkidle0' });
+await page.setRequestInterception(true);
+page.on('request', (request) => {
+  const url = request.url();
+  if (url.includes('sync.sandiageotoolbox.com')) request.abort().catch(() => {});
+  else request.continue().catch(() => {});
+});
 await page.evaluate(async () => {
   const db = await new Promise((resolve, reject) => {
     const request = indexedDB.open('toolbox', 2);
@@ -155,10 +161,11 @@ for (const viewport of [
   await page.setViewport({ width: viewport.width, height: viewport.height, deviceScaleFactor: 1 });
   const cabinetLayout = await page.evaluate(() => ({
     rows: document.querySelectorAll('.cabinet-row').length,
-    trashButton: document.querySelector('#cabinet-trash')?.textContent?.trim(),
+    trashButton: document.querySelector('#cabinet-trash')?.textContent?.trim() || '',
+    trashCount: document.querySelector('#cabinet-trash-count')?.textContent?.trim() || '',
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
   }));
-  check(`${viewport.name}: cabinet Trash controls remain contained`, cabinetLayout.rows === 6 && /Trash/.test(cabinetLayout.trashButton || '') && !cabinetLayout.overflow, JSON.stringify(cabinetLayout));
+  check(`${viewport.name}: Customer Files has no Trash badge and stays contained`, cabinetLayout.rows === 6 && !cabinetLayout.trashButton && !cabinetLayout.trashCount && !cabinetLayout.overflow, JSON.stringify(cabinetLayout));
   await page.screenshot({ path: `${OUT}/customer-file-cabinet-trash-${viewport.name}.png`, fullPage: true });
 }
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
@@ -207,57 +214,94 @@ check('Confirmed empty stub deletion removes record', !emptyDeleted.record, JSON
 
 await openRowMenu('Name Only');
 const namedAction = await page.evaluate(() => document.querySelector('.cabinet-row-menu.is-open .cabinet-row-menu__danger')?.textContent);
-check('Name-only file menu offers Trash rather than immediate deletion', namedAction === 'Move to Trash', namedAction);
+check('Name-only file asks before a local delete', namedAction === 'Delete', namedAction);
 await page.evaluate(() => document.querySelector('.cabinet-row-menu.is-open')?.classList.remove('is-open'));
 
 await openRowMenuById('trash-address');
 const addressAction = await page.evaluate(() => document.querySelector('.cabinet-row-menu.is-open .cabinet-row-menu__danger')?.textContent);
-check('Address-only file menu offers Trash rather than immediate deletion', addressAction === 'Move to Trash', addressAction);
+check('Address-only file asks before a local delete', addressAction === 'Delete', addressAction);
 await page.evaluate(() => document.querySelector('.cabinet-row-menu.is-open')?.classList.remove('is-open'));
 
 await openRowMenuById('trash-plan');
 const planAction = await page.evaluate(() => document.querySelector('.cabinet-row-menu.is-open .cabinet-row-menu__danger')?.textContent);
-check('Plan-only file menu offers Trash rather than immediate deletion', planAction === 'Move to Trash', planAction);
+check('Plan-only file asks before a local delete', planAction === 'Delete', planAction);
 await page.evaluate(() => document.querySelector('.cabinet-row-menu.is-open')?.classList.remove('is-open'));
 
 await openRowMenu('Worked Survey');
 const workedAction = await page.evaluate(() => document.querySelector('.cabinet-row-menu.is-open .cabinet-row-menu__danger')?.textContent);
-check('Worked file menu offers Trash rather than immediate deletion', workedAction === 'Move to Trash', workedAction);
+check('Meaningful file menu asks before deleting', workedAction === 'Delete', workedAction);
 await page.click('.cabinet-row-menu.is-open .cabinet-row-menu__danger');
 await page.waitForSelector('#toolbox-confirm:not([hidden])');
 const workedConfirm = await page.evaluate(() => ({
   title: document.querySelector('#confirm-title')?.textContent,
   message: document.querySelector('#confirm-message')?.textContent,
 }));
-check('Worked file confirmation explains 120-day recovery', /Trash/.test(workedConfirm.title || '') && /120 days/.test(workedConfirm.message || ''), JSON.stringify(workedConfirm));
+check(
+  'Meaningful delete says the file contains information and does not use a 120-day trash',
+  /Delete this Customer File/i.test(workedConfirm.title || '') &&
+    /contains customer or survey information/i.test(workedConfirm.message || '') &&
+    !/120 days/i.test(workedConfirm.message || ''),
+  JSON.stringify(workedConfirm),
+);
+await page.click('#confirm-no');
+check('No keeps the meaningful file', !!(await page.evaluate(() => window.ToolboxDB.getCustomerFile('trash-worked'))));
+
+await openRowMenu('Worked Survey');
+await page.click('.cabinet-row-menu.is-open .cabinet-row-menu__danger');
 await page.click('#confirm-yes');
 await page.waitForFunction(() => ![...document.querySelectorAll('.cabinet-row__name')].some((node) => node.textContent === 'Worked Survey'));
 
-const trashedRecord = await page.evaluate(async () => {
-  const record = await window.ToolboxDB.getCustomerFile('trash-worked');
-  return {
-    exists: !!record,
-    deletedAt: record?.deletedAt,
-    purgeAfter: record?.purgeAfter,
-    days: record ? Math.round((Date.parse(record.purgeAfter) - Date.parse(record.deletedAt)) / 86400000) : 0,
-    planExists: !!(await window.ToolboxDB.getMedia('plan-worked')),
-  };
-});
-check('Worked file remains complete in Trash for 120 days', trashedRecord.exists && trashedRecord.days === 120 && trashedRecord.planExists, JSON.stringify(trashedRecord));
+const deletedWorked = await page.evaluate(async () => ({
+  record: await window.ToolboxDB.getCustomerFile('trash-worked'),
+  plan: await window.ToolboxDB.getMedia('plan-worked'),
+  photoDb: await new Promise((resolve) => {
+    const request = indexedDB.open('pgg_photos_v1');
+    request.onsuccess = () => {
+      const db = request.result;
+      const tx = db.transaction('photos', 'readonly');
+      const get = tx.objectStore('photos').get('ph_worked');
+      get.onsuccess = () => resolve(get.result || null);
+      get.onerror = () => resolve('error');
+    };
+    request.onerror = () => resolve('error');
+  }),
+}));
+check(
+  'Confirmed meaningful delete removes the local file, plan, and photo',
+  !deletedWorked.record && !deletedWorked.plan && !deletedWorked.photoDb,
+  JSON.stringify(deletedWorked),
+);
 
-await page.click('#cabinet-trash');
-await page.waitForFunction(() => document.querySelectorAll('.trash-row').length >= 2);
+await page.waitForFunction(() => {
+  const link = document.querySelector('#local-trash-recovery');
+  return link && !link.hidden;
+});
+const recoveryLink = await page.evaluate(() => ({
+  text: document.querySelector('#local-trash-recovery')?.textContent?.trim() || '',
+  badge: !!document.querySelector('#cabinet-trash-count'),
+}));
+check(
+  'Older on-device files use a quiet recovery link with no count',
+  recoveryLink.text === 'Recover files saved only on this device' && !/\d/.test(recoveryLink.text) && !recoveryLink.badge,
+  JSON.stringify(recoveryLink),
+);
+await page.click('#local-trash-recovery');
+await page.waitForFunction(() => document.querySelectorAll('.trash-row').length >= 1);
 const trashView = await page.evaluate(() => ({
   title: document.querySelector('.trash-head h1')?.textContent,
   names: [...document.querySelectorAll('.trash-row__main strong')].map((n) => n.textContent),
   restore: document.querySelector('.trash-row .btn')?.textContent,
+  emptyTrash: !!document.querySelector('#trash-empty'),
+  hash: window.location.hash,
 }));
 check(
-  'Trash shows worked + expired recoverable files',
-  trashView.title === 'Trash' &&
-    trashView.names.includes('Worked Survey') &&
+  'Local recovery shows only the older file and has no Empty Trash',
+  trashView.hash === '#/trash' &&
+    trashView.title === 'Recover files' &&
+    !trashView.names.includes('Worked Survey') &&
     trashView.names.includes('Expired Survey') &&
-    trashView.restore === 'Restore',
+    trashView.restore === 'Restore' &&
+    trashView.emptyTrash === false,
   JSON.stringify(trashView),
 );
 await page.screenshot({ path: `${OUT}/customer-file-trash-phone.png`, fullPage: true });
@@ -271,76 +315,32 @@ for (const viewport of [
     rows: document.querySelectorAll('.trash-row').length,
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
   }));
-  check(`${viewport.name}: Trash remains contained`, layout.rows >= 2 && !layout.overflow, JSON.stringify(layout));
+  check(`${viewport.name}: recovery remains contained`, layout.rows === 1 && !layout.overflow, JSON.stringify(layout));
   await page.screenshot({ path: `${OUT}/customer-file-trash-${viewport.name}.png`, fullPage: true });
 }
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
 
 await page.evaluate(() => {
   const row = [...document.querySelectorAll('.trash-row')].find(
-    (node) => node.querySelector('strong')?.textContent === 'Worked Survey',
+    (node) => node.querySelector('strong')?.textContent === 'Expired Survey',
   );
   row?.querySelector('.btn')?.click();
 });
-await page.waitForFunction(() =>
-  ![...document.querySelectorAll('.trash-row__main strong')].some((n) => n.textContent === 'Worked Survey'),
-);
+await page.waitForFunction(() => document.querySelectorAll('.trash-row').length === 0);
 const restored = await page.evaluate(async () => {
-  const record = await window.ToolboxDB.getCustomerFile('trash-worked');
-  return { exists: !!record, deletedAt: record?.deletedAt, purgeAfter: record?.purgeAfter };
-});
-check('Restore returns complete file and clears Trash metadata', restored.exists && !restored.deletedAt && !restored.purgeAfter, JSON.stringify(restored));
-
-await page.goto(`${BASE}#/`, { waitUntil: 'networkidle0' });
-await page.waitForFunction(() => [...document.querySelectorAll('.cabinet-row__name')].some((node) => node.textContent === 'Worked Survey'));
-await openRowMenu('Worked Survey');
-await page.click('.cabinet-row-menu.is-open .cabinet-row-menu__danger');
-await page.click('#confirm-yes');
-await page.waitForFunction(() => ![...document.querySelectorAll('.cabinet-row__name')].some((node) => node.textContent === 'Worked Survey'));
-await page.click('#cabinet-trash');
-await page.waitForFunction(() =>
-  [...document.querySelectorAll('.trash-row__main strong')].some((n) => n.textContent === 'Worked Survey'),
-);
-
-await page.click('#trash-empty');
-await page.waitForSelector('#toolbox-confirm:not([hidden])');
-const emptyTrashConfirm = await page.evaluate(() => ({
-  title: document.querySelector('#confirm-title')?.textContent,
-  message: document.querySelector('#confirm-message')?.textContent,
-  no: document.querySelector('#confirm-no')?.textContent,
-  yes: document.querySelector('#confirm-yes')?.textContent,
-}));
-check('Empty Trash warns permanent deletion with explicit yes/no', /Permanently empty Trash/.test(emptyTrashConfirm.title || '') && /cannot be undone/i.test(emptyTrashConfirm.message || '') && /^No/.test(emptyTrashConfirm.no || '') && /^Yes/.test(emptyTrashConfirm.yes || ''), JSON.stringify(emptyTrashConfirm));
-await page.click('#confirm-no');
-check('No keeps worked file in Trash', !!(await page.evaluate(() => window.ToolboxDB.getCustomerFile('trash-worked'))));
-
-await page.click('#trash-empty');
-await page.click('#confirm-yes');
-await page.waitForFunction(() => document.querySelector('.trash-empty-state'));
-const permanentlyDeleted = await page.evaluate(async () => {
-  const photoDb = await new Promise((resolve, reject) => {
-    const request = indexedDB.open('pgg_photos_v1');
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-  });
-  const photo = await new Promise((resolve, reject) => {
-    const tx = photoDb.transaction('photos', 'readonly');
-    const request = tx.objectStore('photos').get('ph_worked');
-    request.onsuccess = () => resolve(request.result || null);
-    request.onerror = () => reject(request.error);
-  });
-  photoDb.close();
+  const record = await window.ToolboxDB.getCustomerFile('trash-expired');
   return {
-    record: await window.ToolboxDB.getCustomerFile('trash-worked'),
-    plan: await window.ToolboxDB.getMedia('plan-worked'),
-    photo,
-    expired: await window.ToolboxDB.getCustomerFile('trash-expired'),
+    exists: !!record,
+    deletedAt: record?.deletedAt,
+    plan: await window.ToolboxDB.getMedia('plan-expired'),
     active: await window.ToolboxDB.getCustomerFile('trash-active'),
   };
 });
-check('Empty Trash removes record, plan, and Distress photo bytes', !permanentlyDeleted.record && !permanentlyDeleted.plan && !permanentlyDeleted.photo, JSON.stringify(permanentlyDeleted));
-check('Empty Trash also clears other trashed files', !permanentlyDeleted.expired, JSON.stringify(permanentlyDeleted));
-check('Empty Trash does not touch active Customer Files', !!permanentlyDeleted.active, JSON.stringify(permanentlyDeleted));
+check(
+  'Restore returns the older file and does not touch other files',
+  restored.exists && !restored.deletedAt && !!restored.plan && !!restored.active,
+  JSON.stringify(restored),
+);
 
 await browser.close();
 const failed = results.filter((result) => !result.ok);

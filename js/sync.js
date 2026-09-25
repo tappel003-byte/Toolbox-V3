@@ -170,6 +170,11 @@
       const localRecords = await window.ToolboxDB.getAllCustomerFiles();
       const cabinet = await listRemoteCabinet();
       const next = applyLocksFromRemoteIndexes(localRecords, cabinet.files);
+      try {
+        await rememberMirrorsFromIndexes(localRecords, cabinet.files);
+      } catch (_) {
+        // The lock map is already current. A mirror stamp must not hide that.
+      }
       return { ok: true, locks: next };
     } catch (err) {
       return {
@@ -420,16 +425,35 @@
   }
 
   function diagnosticsFigureMediaIds(source) {
-    if (window.ToolboxDiagnostics && typeof window.ToolboxDiagnostics.figureMediaIds === 'function') {
-      return window.ToolboxDiagnostics.figureMediaIds(source);
-    }
-    return [];
+    const raw = window.ToolboxDiagnostics && typeof window.ToolboxDiagnostics.figureMediaIds === 'function'
+      ? window.ToolboxDiagnostics.figureMediaIds(source)
+      : [];
+    return raw.filter(function (id) {
+      return typeof id === 'string' &&
+        id.indexOf('dxfig_') === 0 &&
+        id.indexOf('/') === -1 &&
+        id.indexOf('\\') === -1 &&
+        id.indexOf('..') === -1;
+    });
+  }
+
+  function recoveryPdfIdsFromFloor(floor) {
+    const layers = floor && floor.byCanvasId && typeof floor.byCanvasId === 'object' ? floor.byCanvasId : {};
+    const ids = [];
+    Object.keys(layers).forEach(function (key) {
+      const id = layers[key] && layers[key].recoveryPdfMediaId;
+      if (typeof id !== 'string' || id.indexOf('fsrec_') !== 0) return;
+      if (id.indexOf('/') !== -1 || id.indexOf('\\') !== -1 || id.indexOf('..') !== -1) return;
+      ids.push(id);
+    });
+    return Array.from(new Set(ids));
   }
 
   function mediaIdsForComponent(record, name) {
     if (name === 'plans') return planMediaIds(record);
     if (name === 'distress') return distressPhotoIds(record);
     if (name === 'diagnostics') return diagnosticsFigureMediaIds(record);
+    if (name === 'floor') return recoveryPdfIdsFromFloor(record && record.floorSurvey);
     return [];
   }
 
@@ -621,9 +645,12 @@
           if (typeof id === 'string' && id.indexOf('ph_') === 0) ids.push(id);
         });
       });
+      const quick = Array.isArray(payload.quickCapture) ? payload.quickCapture : [];
+      quick.forEach(function (item) { collectDistressPhotoId(ids, item && item.id); });
       return Array.from(new Set(ids));
     }
     if (name === 'diagnostics') return diagnosticsFigureMediaIds(payload);
+    if (name === 'floor') return recoveryPdfIdsFromFloor(payload);
     return [];
   }
 
@@ -885,8 +912,8 @@
     return response;
   }
 
-  async function fetchAccessIdentity() {
-    const response = await apiFetch('/me');
+  async function fetchAccessIdentity(options) {
+    const response = await apiFetch('/me', options || {});
     const data = await response.json();
     return {
       email: normalizeEmail(data && data.email),
@@ -908,8 +935,8 @@
     }
   }
 
-  async function listRemoteCabinet() {
-    const response = await apiFetch('/files');
+  async function listRemoteCabinet(options) {
+    const response = await apiFetch('/files', options || {});
     const data = await response.json();
     return {
       files: Array.isArray(data.files) ? data.files : [],
@@ -937,8 +964,9 @@
   }
 
   /**
-   * Explicit permanent delete: remove cf/{id}/* and write a durable purge tombstone.
-   * Soft Trash / ordinary Sync must never call this.
+   * Explicit permanent delete. The Worker writes the purge tombstone, deletes
+   * referenced media bytes, then removes cf/{id}/*. It refuses an active checkout.
+   * Soft Trash / ordinary Sync / Check In / Send must never call this.
    */
   async function deleteRemoteCustomerFile(id) {
     if (!id) return;
@@ -1098,6 +1126,18 @@
         throw new SyncError('incomplete', 'Cabinet verification failed: Distress media missing remotely.');
       }
     }
+    const pdfIds = recoveryPdfIdsFromFloor(record.floorSurvey);
+    for (let i = 0; i < pdfIds.length; i++) {
+      if (!(await remoteMediaExists(pdfIds[i]))) {
+        throw new SyncError('incomplete', 'Cabinet verification failed: Floor Survey recovery PDF missing remotely.');
+      }
+    }
+    const figureIds = diagnosticsFigureMediaIds(record);
+    for (let i = 0; i < figureIds.length; i++) {
+      if (!(await remoteMediaExists(figureIds[i]))) {
+        throw new SyncError('incomplete', 'Cabinet verification failed: Diagnostics figure missing remotely.');
+      }
+    }
     return remote;
   }
 
@@ -1137,6 +1177,9 @@
     const record = await window.ToolboxDB.getCustomerFile(id);
     if (!record || record.deletedAt) {
       throw new SyncError('sync', 'Customer File is not available on this device.');
+    }
+    if (record.cabinetTrashRequestedAt) {
+      throw new SyncError('sync', 'This Customer File is waiting to move to File Cabinet Trash.');
     }
     if (isCheckedOutFromCabinet(record)) {
       throw new SyncError('sync', 'This Customer File is checked out from the Cabinet. Use Check In.');
@@ -1217,6 +1260,9 @@
     if (!record || record.deletedAt) {
       throw new SyncError('sync', 'Customer File is not available on this device.');
     }
+    if (record.cabinetTrashRequestedAt) {
+      throw new SyncError('sync', 'This Customer File is waiting to move to File Cabinet Trash.');
+    }
     if (!isCheckedOutFromCabinet(record)) {
       throw new SyncError('sync', 'This Customer File is not a checked-out Cabinet file. Use Send to File Cabinet.');
     }
@@ -1256,15 +1302,16 @@
   /**
    * Lightweight Cabinet browse: remote indexes + local presence, no materialize.
    */
-  async function browseCabinet() {
+  async function browseCabinet(options) {
+    const fetchOptions = options || {};
     const deviceId = getDeviceId();
     let identity = null;
     try {
-      identity = await fetchAccessIdentity();
+      identity = await fetchAccessIdentity(fetchOptions);
     } catch (_) {
       identity = null;
     }
-    const cabinet = await listRemoteCabinet();
+    const cabinet = await listRemoteCabinet(fetchOptions);
     const localRecords = await window.ToolboxDB.getAllCustomerFiles();
     const localById = {};
     (localRecords || []).forEach(function (record) {
@@ -1290,6 +1337,7 @@
         displayName: trimStr(index.displayName) || (local ? displayNameFromRecord(local) : 'Customer File'),
         propertyAddress: trimStr(index.propertyAddress) || (local ? trimStr(local.propertyAddress) : ''),
         deletedAt: index.deletedAt || null,
+        purgeAfter: index.purgeAfter || null,
         createdAt: trimStr(index.createdAt) || (local ? trimStr(local.createdAt) : ''),
         // Survey date only. createdAt is the display fallback, never updatedAt
         // or checkout.checkedOutAt.
@@ -1717,7 +1765,15 @@
           results.push({ id: record.id, changed: true, retired: true, purged: true });
           continue;
         }
+        if (record.cabinetTrashRequestedAt) {
+          const done = await completePendingCabinetTrash(record);
+          results.push({ id: record.id, changed: true, cabinetTrash: true, remote: done.remote });
+          delete pendingQuiet[record.id];
+          continue;
+        }
+        const hadRemote = !!remoteById[record.id];
         const one = await syncOneRecord(record, remoteById[record.id] || null);
+        if (exchangeReachedCabinet(one, hadRemote)) await rememberCabinetMirror(record.id);
         results.push(one);
         delete pendingQuiet[record.id];
         if (one && one.checkoutBlocked && one.uploadBlocked) {
@@ -1837,7 +1893,9 @@
           continue;
         }
         if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
+        const hadRemote = !!remoteById[id];
         const result = await syncOneRecord(record, remoteById[id] || null);
+        if (exchangeReachedCabinet(result, hadRemote)) await rememberCabinetMirror(id);
         if ((result.components || []).some(function (component) { return component.action === 'push'; })) {
           uploaded = true;
         }
@@ -1909,6 +1967,7 @@
     if (address) row.propertyAddress = address;
     if (survey) row.fieldWorkDate = survey;
     if (created) row.createdAt = created;
+    if (trimStr(index.deletedAt)) row.deletedAt = trimStr(index.deletedAt);
     return row;
   }
 
@@ -2202,6 +2261,7 @@
     if (address) body.propertyAddress = address;
     if (survey) body.fieldWorkDate = survey;
     if (created) body.createdAt = created;
+    if (trimStr(index.deletedAt)) body.deletedAt = trimStr(index.deletedAt);
     return body;
   }
 
@@ -2288,6 +2348,385 @@
     return archiveFromCabinet(id);
   }
 
+  function trashRetentionMs() {
+    const days = window.ToolboxDB && Number(window.ToolboxDB.TRASH_RETENTION_DAYS);
+    if (Number.isFinite(days) && days > 0) return days * 24 * 60 * 60 * 1000;
+    return 120 * 24 * 60 * 60 * 1000;
+  }
+
+  function cabinetTrashPayload(trashed) {
+    const stamp = new Date().toISOString();
+    if (!trashed) {
+      return { trashUpdatedAt: stamp, deletedAt: null, purgeAfter: null };
+    }
+    const purgeAfter = new Date(Date.now() + trashRetentionMs()).toISOString();
+    return { trashUpdatedAt: stamp, deletedAt: stamp, purgeAfter: purgeAfter };
+  }
+
+  async function assertCanWriteCabinetTrash(remote, allowOwnLease) {
+    if (!remote || !remote.id) {
+      throw new SyncError('sync', 'That Customer File is not in the File Cabinet.');
+    }
+    if (!hasActiveCheckoutLease(remote)) return;
+    if (!allowOwnLease) {
+      throw new SyncError('checkout', 'This Customer File is checked out. Check it in before changing File Cabinet Trash.');
+    }
+    let identity = null;
+    try {
+      identity = await fetchAccessIdentity();
+    } catch (_) {
+      identity = null;
+    }
+    if (!identity || !checkoutOwnerMatches(remote.checkout, identity.email, getDeviceId())) {
+      throw new SyncError('checkout', 'This Customer File is checked out on another device.');
+    }
+  }
+
+  /**
+   * Cloud trash/restore. Writes the trash component, then the index.
+   * Does not download the Customer File and does not call DELETE.
+   * purgeAfter is the date the file becomes eligible for cleanup. Nothing
+   * deletes it automatically.
+   * allowOwnLease lets the device that holds the checkout finish a delete
+   * it already recorded. Any other lease is refused.
+   */
+  async function writeCabinetTrashState(id, trashed, options) {
+    const allowOwnLease = !!(options && options.allowOwnLease);
+    let remote = await getRemoteIndex(id);
+    await assertCanWriteCabinetTrash(remote, allowOwnLease);
+    const payload = cabinetTrashPayload(trashed);
+    await putRemoteComponent(id, 'trash', payload);
+    remote = await getRemoteIndex(id);
+    await assertCanWriteCabinetTrash(remote, allowOwnLease);
+    const next = Object.assign({}, remote, {
+      deletedAt: payload.deletedAt,
+      purgeAfter: payload.purgeAfter,
+      trashUpdatedAt: payload.trashUpdatedAt,
+    });
+    await putRemoteIndex(next);
+    const verified = await getRemoteIndex(id);
+    const marked = !!(verified && verified.deletedAt);
+    if (trashed && !marked) {
+      throw new SyncError('incomplete', 'File Cabinet Trash was not saved. The file is still in the cabinet.');
+    }
+    if (!trashed && marked) {
+      throw new SyncError('incomplete', 'File Cabinet restore was not saved.');
+    }
+    return verified;
+  }
+
+  /**
+   * Move one unlocked cloud copy into File Cabinet Trash.
+   * A copy still on this device is refused so the working file is not
+   * discarded by a cabinet-only write.
+   */
+  async function trashCabinetCustomerFile(id) {
+    const remote = await getRemoteIndex(id);
+    await assertCanWriteCabinetTrash(remote, false);
+    if (remote.deletedAt) return { ok: true, id: id, alreadyTrashed: true, remote: remote };
+
+    const local = await window.ToolboxDB.getCustomerFile(id);
+    if (local) {
+      throw new SyncError(
+        'checkout',
+        'This Customer File is still on this device. Check it in or send it to the File Cabinet before deleting the cabinet copy.',
+      );
+    }
+
+    const verified = await writeCabinetTrashState(id, true);
+    return { ok: true, id: id, remote: verified, local: false };
+  }
+
+  /**
+   * checkedOutFromCabinet is checkout provenance. A quiet mirror can exist
+   * without it. cabinetMirroredAt is local-only evidence that a cabinet copy
+   * was seen or written; it is not a synced customer field.
+   */
+  function mayHaveCabinetMirror(record) {
+    return !!(record && (
+      record.checkedOutFromCabinet === true ||
+      record.cabinetMirroredAt ||
+      record.cabinetTrashRequestedAt
+    ));
+  }
+
+  function exchangeReachedCabinet(result, hadRemote) {
+    if (hadRemote) return true;
+    if (!result) return false;
+    if (result.checkoutBlocked) return true;
+    return (result.components || []).some(function (component) {
+      return component && (component.action === 'push' || component.action === 'pull');
+    });
+  }
+
+  async function rememberCabinetMirror(id) {
+    if (!id || !window.ToolboxDB || typeof window.ToolboxDB.noteCabinetMirror !== 'function') return;
+    await window.ToolboxDB.noteCabinetMirror(id);
+  }
+
+  async function rememberMirrorsFromIndexes(localRecords, remoteIndexes) {
+    const remoteIds = Object.create(null);
+    (remoteIndexes || []).forEach(function (index) {
+      if (index && index.id) remoteIds[index.id] = true;
+    });
+    const records = localRecords || [];
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i];
+      if (!record || !record.id || !remoteIds[record.id]) continue;
+      await rememberCabinetMirror(record.id);
+    }
+  }
+
+  async function storeCabinetTrashIntent(record) {
+    const fresh = await window.ToolboxDB.getCustomerFile(record && record.id);
+    if (!fresh) throw new SyncError('sync', 'Customer File is not on this device.');
+    if (!fresh.cabinetTrashRequestedAt) {
+      fresh.cabinetTrashRequestedAt = new Date().toISOString();
+      await window.ToolboxDB.saveCustomerFile(fresh);
+    }
+    return fresh;
+  }
+
+  async function remoteLeaseIsOwn(remote) {
+    if (!hasActiveCheckoutLease(remote)) return false;
+    let identity = null;
+    try {
+      identity = await fetchAccessIdentity();
+    } catch (_) {
+      identity = null;
+    }
+    if (!identity) return false;
+    return checkoutOwnerMatches(remote.checkout, identity.email, getDeviceId());
+  }
+
+  /**
+   * Decide local-only delete vs File Cabinet Trash from the live remote index.
+   * Does not write intent and does not delete.
+   */
+  async function resolveWorkingFileDelete(id) {
+    const record = await window.ToolboxDB.getCustomerFile(id);
+    if (!record || record.deletedAt) {
+      throw new SyncError('sync', 'Customer File is not on this device.');
+    }
+    let remote = null;
+    try {
+      remote = await getRemoteIndex(id);
+    } catch (err) {
+      const code = err && err.code;
+      if (code === 'config') return { action: 'local-only', id: id };
+      if (code === 'offline' || code === 'network' || code === 'auth') {
+        if (mayHaveCabinetMirror(record)) return { action: 'pending-offline', id: id };
+        return { action: 'local-only', id: id };
+      }
+      throw err;
+    }
+    if (!remote) return { action: 'local-only', id: id };
+    if (hasActiveCheckoutLease(remote) && !(await remoteLeaseIsOwn(remote))) {
+      return { action: 'foreign-checkout', id: id, remote: remote };
+    }
+    return { action: 'cabinet', id: id, remote: remote };
+  }
+
+  /**
+   * Move a working Customer File that has a cabinet copy into File Cabinet Trash.
+   * The local copy is removed only after deletedAt is confirmed. A foreign
+   * checkout is refused without recording a trash intent. If the cabinet
+   * cannot be reached and this file may already be mirrored, the intent is
+   * stored and the local file stays.
+   */
+  async function moveWorkingFileToCabinetTrash(id) {
+    const record = await window.ToolboxDB.getCustomerFile(id);
+    if (!record || record.deletedAt) {
+      throw new SyncError('sync', 'Customer File is not on this device.');
+    }
+    let remote = null;
+    try {
+      remote = await getRemoteIndex(id);
+    } catch (err) {
+      const code = err && err.code;
+      if ((code === 'offline' || code === 'network' || code === 'auth') &&
+          (mayHaveCabinetMirror(record) || record.cabinetTrashRequestedAt)) {
+        await storeCabinetTrashIntent(record);
+        throw new SyncError('incomplete', 'The File Cabinet could not be reached. This device\'s copy was kept.');
+      }
+      throw err;
+    }
+    if (!remote) return { ok: false, action: 'local-only', id: id };
+    if (hasActiveCheckoutLease(remote) && !(await remoteLeaseIsOwn(remote))) {
+      const err = new SyncError('checkout', 'This Customer File is checked out on another device.');
+      err.checkout = remote.checkout;
+      throw err;
+    }
+    if (remote.deletedAt) {
+      if (hasActiveCheckoutLease(remote)) await releaseCheckoutAndVerify(id);
+      const after = await getRemoteIndex(id);
+      if (!after || !after.deletedAt || hasActiveCheckoutLease(after)) {
+        throw new SyncError('incomplete', 'File Cabinet Trash was not confirmed. This device\'s copy was kept.');
+      }
+      await removeLocalWorkingCopyOnly(record);
+      return { ok: true, id: id, remote: after, alreadyTrashed: true };
+    }
+    await storeCabinetTrashIntent(record);
+    const pending = await window.ToolboxDB.getCustomerFile(id);
+    return completePendingCabinetTrash(pending);
+  }
+
+  /**
+   * Explicit delete of a checked-out Customer File.
+   * Same path as any working file that has a cabinet copy: confirm Trash
+   * on the server, release an own lease, then remove the local copy.
+   */
+  async function moveCheckedOutFileToCabinetTrash(id) {
+    return moveWorkingFileToCabinetTrash(id);
+  }
+
+  async function completePendingCabinetTrash(source) {
+    const id = source && source.id;
+    const record = await window.ToolboxDB.getCustomerFile(id);
+    if (!record || !record.cabinetTrashRequestedAt) {
+      throw new SyncError('sync', 'No File Cabinet Trash request is recorded for this Customer File.');
+    }
+    let remote = await getRemoteIndex(id);
+    if (!remote) {
+      throw new SyncError('incomplete', 'The File Cabinet copy is missing. This device\'s copy was kept.');
+    }
+    await assertCanWriteCabinetTrash(remote, true);
+    const synced = await syncOneRecord(record, remote);
+    if (synced && synced.checkoutBlocked) {
+      throw new SyncError('checkout', 'Could not save this Customer File to the File Cabinet. It stays on this device.');
+    }
+    const saved = await window.ToolboxDB.getCustomerFile(id);
+    if (!saved) {
+      throw new SyncError('sync', 'Customer File is no longer on this device.');
+    }
+    await verifyRemoteCabinetCopy(saved);
+    const verified = await writeCabinetTrashState(id, true, { allowOwnLease: true });
+    if (!verified || !verified.deletedAt) {
+      throw new SyncError('incomplete', 'File Cabinet Trash was not confirmed. This device\'s copy was kept.');
+    }
+    if (hasActiveCheckoutLease(verified)) {
+      await releaseCheckoutAndVerify(id);
+    }
+    const after = await getRemoteIndex(id);
+    if (!after || !after.deletedAt || hasActiveCheckoutLease(after)) {
+      throw new SyncError('incomplete', 'File Cabinet Trash was not confirmed. This device\'s copy was kept.');
+    }
+    await removeLocalWorkingCopyOnly(saved);
+    const still = await window.ToolboxDB.getCustomerFile(id);
+    if (still) {
+      throw new SyncError('sync', 'File Cabinet Trash is confirmed, but the local copy could not be cleared.');
+    }
+    return { ok: true, id: id, remote: after, sync: synced };
+  }
+
+  /**
+   * Permanently delete one Customer File that is already in File Cabinet Trash.
+   * Age does not matter. An active checkout is refused. Referenced media is
+   * deleted by the Worker with the file.
+   */
+  async function permanentlyDeleteCabinetCustomerFile(id) {
+    const fresh = await getRemoteIndex(id);
+    if (!fresh || !fresh.deletedAt) {
+      throw new SyncError('sync', 'That Customer File is not in File Cabinet Trash.');
+    }
+    if (hasActiveCheckoutLease(fresh)) {
+      throw new SyncError('checkout', 'This Customer File is checked out. It stays in Trash.');
+    }
+    await deleteRemoteCustomerFile(id);
+    const local = await window.ToolboxDB.getCustomerFile(id);
+    if (local && typeof window.ToolboxDB.removeLocalWorkingCopy === 'function') {
+      await window.ToolboxDB.removeLocalWorkingCopy([local]);
+    }
+    return { ok: true, id: id };
+  }
+
+  /**
+   * Return one File Cabinet Trash item to the normal cabinet.
+   * Does not Check Out and does not download the file.
+   * A pending delete on this device is cancelled so Sync does not trash it again.
+   */
+  async function restoreCabinetCustomerFile(id) {
+    const remote = await getRemoteIndex(id);
+    await assertCanWriteCabinetTrash(remote, false);
+    if (!remote.deletedAt) return { ok: true, id: id, alreadyActive: true, remote: remote };
+
+    const local = await window.ToolboxDB.getCustomerFile(id);
+    if (local && !local.deletedAt && !local.cabinetTrashRequestedAt) {
+      throw new SyncError('checkout', 'This Customer File is still on this device.');
+    }
+    const verified = await writeCabinetTrashState(id, false);
+    if (local && local.cabinetTrashRequestedAt) {
+      delete local.cabinetTrashRequestedAt;
+      delete local.deletedAt;
+      delete local.purgeAfter;
+      local.trashUpdatedAt = verified && verified.trashUpdatedAt;
+      await window.ToolboxDB.saveCustomerFile(local);
+    } else if (local && local.deletedAt && window.ToolboxDB.restoreCustomerFile) {
+      await window.ToolboxDB.restoreCustomerFile(id);
+    }
+    return { ok: true, id: id, remote: verified, local: !!local };
+  }
+
+  /**
+   * Permanent delete of cabinet indexes that are already in Trash.
+   * Skips anything without deletedAt and anything with a checkout lease.
+   * Removes a matching local row only after the cabinet delete succeeds.
+   */
+  async function emptyCabinetTrash() {
+    const cabinet = await listRemoteCabinet();
+    const deleted = [];
+    const skipped = [];
+    const files = cabinet.files || [];
+    for (let i = 0; i < files.length; i++) {
+      const listed = files[i];
+      if (!listed || !listed.id || !listed.deletedAt) continue;
+      const fresh = await getRemoteIndex(listed.id);
+      if (!fresh || !fresh.deletedAt) {
+        skipped.push({ id: listed.id, reason: 'not-trashed' });
+        continue;
+      }
+      if (hasActiveCheckoutLease(fresh)) {
+        skipped.push({ id: listed.id, reason: 'checkout' });
+        continue;
+      }
+      await deleteRemoteCustomerFile(listed.id);
+      deleted.push(listed.id);
+      const local = await window.ToolboxDB.getCustomerFile(listed.id);
+      if (local && typeof window.ToolboxDB.removeLocalWorkingCopy === 'function') {
+        await window.ToolboxDB.removeLocalWorkingCopy([local]);
+      }
+    }
+    return { ok: true, deleted: deleted, skipped: skipped };
+  }
+
+  /**
+   * Local deletedAt rows that File Cabinet Trash does not already own.
+   * browse === null means the cabinet list could not be read; keep every
+   * local deleted row recoverable rather than hiding it.
+   */
+  function filterUnsyncedLocalTrash(records, browse) {
+    const list = (records || []).filter(function (record) { return record && record.deletedAt; });
+    if (!browse) return list;
+    const owned = Object.create(null);
+    (browse.entries || []).forEach(function (entry) {
+      if (entry && entry.id && entry.deletedAt) owned[entry.id] = true;
+    });
+    (browse.purged || []).forEach(function (entry) {
+      const id = entry && (entry.id || entry);
+      if (typeof id === 'string' && id) owned[id] = true;
+    });
+    return list.filter(function (record) { return !owned[record.id]; });
+  }
+
+  async function probeCabinetForLocalTrash() {
+    if (!syncApiBase()) return null;
+    try {
+      return await browseCabinet({ skipAccessPrompt: true });
+    } catch (_) {
+      return null;
+    }
+  }
+
   window.ToolboxSync = {
     COMPONENTS: COMPONENTS,
     REMOTE_PULL_EPOCH: REMOTE_PULL_EPOCH,
@@ -2334,6 +2773,21 @@
     exploreListCustomerFile: exploreListCustomerFile,
     exploreFetchObject: exploreFetchObject,
     exploreFetchArchive: exploreFetchArchive,
+    trashCabinetCustomerFile: trashCabinetCustomerFile,
+    resolveWorkingFileDelete: function (id) {
+      return enqueueSyncWork(function () { return resolveWorkingFileDelete(id); });
+    },
+    moveWorkingFileToCabinetTrash: function (id) {
+      return enqueueSyncWork(function () { return moveWorkingFileToCabinetTrash(id); });
+    },
+    moveCheckedOutFileToCabinetTrash: function (id) {
+      return enqueueSyncWork(function () { return moveCheckedOutFileToCabinetTrash(id); });
+    },
+    permanentlyDeleteCabinetCustomerFile: permanentlyDeleteCabinetCustomerFile,
+    restoreCabinetCustomerFile: restoreCabinetCustomerFile,
+    emptyCabinetTrash: emptyCabinetTrash,
+    filterUnsyncedLocalTrash: filterUnsyncedLocalTrash,
+    probeCabinetForLocalTrash: probeCabinetForLocalTrash,
     // test helpers
     _test: {
       pickCustomerFields: pickCustomerFields,

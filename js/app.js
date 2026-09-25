@@ -112,7 +112,10 @@
     if (!record) return false;
     const distress = record.distress || {};
     if ((Array.isArray(distress.pins) && distress.pins.length) ||
-        (Array.isArray(distress.drawings) && distress.drawings.length)) {
+        (Array.isArray(distress.drawings) && distress.drawings.length) ||
+        (Array.isArray(distress.quickCapture) && distress.quickCapture.length) ||
+        (distress.photoSources && typeof distress.photoSources === 'object' &&
+          Object.keys(distress.photoSources).length)) {
       return true;
     }
 
@@ -151,25 +154,33 @@
   }
 
   /**
-   * Only a brand-new empty stub may be hard-deleted from Cabinet + cloud.
-   * Name, address, or a usable plan means Soft Trash — permanent cloud DELETE
-   * from one phone would wipe the shared Tim/Lee cabinet for every device.
+   * A file with no File Cabinet index may be deleted on this device.
+   * An empty stub asks once. A file with customer or survey information
+   * asks once, then deletes locally. A live cabinet copy is not this path.
    */
   function isEmptyCustomerFileStub(record) {
     if (!record) return true;
     if (hasInvestigationData(record)) return false;
     if (planReadiness(record).hasPlan) return false;
-    if ((record.firstName || '').trim() || (record.lastName || '').trim()) return false;
-    if ((record.propertyAddress || '').trim()) return false;
-    if ((record.companyName || '').trim()) return false;
-    if ((record.notes || '').trim()) return false;
+    const textKeys = [
+      'firstName', 'lastName', 'propertyAddress', 'mailingAddress',
+      'cellPhone', 'homePhone', 'email', 'notes', 'companyName',
+      'spouseName', 'spouseCellPhone', 'spouseHomePhone', 'spouseEmail',
+    ];
+    for (let i = 0; i < textKeys.length; i++) {
+      if ((record[textKeys[i]] || '').trim()) return false;
+    }
+    if (record.mailingSameAsProperty) return false;
+    if (record.propertyAddressLat != null || record.propertyAddressLon != null) return false;
     return true;
   }
 
-  function daysUntilPurge(record) {
-    const purgeAt = record && Date.parse(record.purgeAfter);
-    if (!Number.isFinite(purgeAt)) return 0;
-    return Math.max(0, Math.ceil((purgeAt - Date.now()) / (24 * 60 * 60 * 1000)));
+  function cabinetTrashPending(record) {
+    return !!(record && record.cabinetTrashRequestedAt);
+  }
+
+  function isLegacyLocalTrash(record) {
+    return !!(record && record.deletedAt && !cabinetTrashPending(record));
   }
 
   function confirmAction(options) {
@@ -183,6 +194,10 @@
         '<section class="confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">' +
         '  <h2 id="confirm-title"></h2>' +
         '  <p id="confirm-message"></p>' +
+        '  <label class="confirm-card__phrase" id="confirm-phrase" hidden>' +
+        '    <span id="confirm-phrase-label"></span>' +
+        '    <input type="text" id="confirm-phrase-input" autocomplete="off" autocapitalize="characters" spellcheck="false" />' +
+        '  </label>' +
         '  <div class="confirm-card__actions">' +
         '    <button type="button" id="confirm-no" class="btn btn--secondary">No, keep it</button>' +
         '    <button type="button" id="confirm-yes" class="btn btn--danger">Yes</button>' +
@@ -193,18 +208,39 @@
 
     const title = overlay.querySelector('#confirm-title');
     const message = overlay.querySelector('#confirm-message');
+    const phrase = overlay.querySelector('#confirm-phrase');
+    const phraseLabel = overlay.querySelector('#confirm-phrase-label');
+    const phraseInput = overlay.querySelector('#confirm-phrase-input');
     const noBtn = overlay.querySelector('#confirm-no');
     const yesBtn = overlay.querySelector('#confirm-yes');
+    const requiredText = typeof options.requireText === 'string' ? options.requireText : '';
     title.textContent = options.title;
     message.textContent = options.message;
     noBtn.textContent = options.cancelLabel || 'No, keep it';
     yesBtn.textContent = options.confirmLabel || 'Yes';
+    yesBtn.disabled = false;
+    if (phrase && phraseInput) {
+      phraseInput.value = '';
+      if (requiredText) {
+        phrase.hidden = false;
+        if (phraseLabel) phraseLabel.textContent = 'Type ' + requiredText + ' to confirm';
+        yesBtn.disabled = true;
+      } else {
+        phrase.hidden = true;
+      }
+    }
     overlay.hidden = false;
-    noBtn.focus();
+    if (requiredText && phraseInput) phraseInput.focus();
+    else noBtn.focus();
 
     return new Promise(function (resolve) {
+      function onPhraseInput() {
+        yesBtn.disabled = !phraseInput || phraseInput.value !== requiredText;
+      }
       function finish(result) {
         overlay.hidden = true;
+        yesBtn.disabled = false;
+        if (phraseInput) phraseInput.removeEventListener('input', onPhraseInput);
         noBtn.removeEventListener('click', cancel);
         yesBtn.removeEventListener('click', confirm);
         overlay.removeEventListener('click', outside);
@@ -212,9 +248,14 @@
         resolve(result);
       }
       function cancel() { finish(false); }
-      function confirm() { finish(true); }
+      function confirm() {
+        if (yesBtn.disabled) return;
+        if (requiredText && (!phraseInput || phraseInput.value !== requiredText)) return;
+        finish(true);
+      }
       function outside(event) { if (event.target === overlay) cancel(); }
       function escape(event) { if (event.key === 'Escape') cancel(); }
+      if (requiredText && phraseInput) phraseInput.addEventListener('input', onPhraseInput);
       noBtn.addEventListener('click', cancel);
       yesBtn.addEventListener('click', confirm);
       overlay.addEventListener('click', outside);
@@ -233,7 +274,8 @@
 
   function parseRoute() {
     const hash = window.location.hash || '#/';
-    if (hash === '#/trash') return { view: 'trash' };
+    if (hash === '#/cabinet/trash') return { view: 'file-cabinet-trash' };
+    if (hash === '#/trash') return { view: 'local-trash' };
     if (hash === '#/cabinet') return { view: 'file-cabinet' };
     if (hash === '#/explore' || hash === '#/explore/') return { view: 'explore', id: null };
     const exploreMatch = hash.match(/^#\/explore\/([^/]+)$/);
@@ -319,8 +361,10 @@
       renderDiagnostics(app, route.id);
     } else if (route.view === 'app-stub') {
       renderAppStub(app, route.id, route.app);
-    } else if (route.view === 'trash') {
-      renderTrash(app);
+    } else if (route.view === 'local-trash') {
+      renderLocalTrashRecovery(app);
+    } else if (route.view === 'file-cabinet-trash') {
+      renderFileCabinetTrash(app);
     } else if (route.view === 'file-cabinet') {
       renderFileCabinet(app);
     } else if (route.view === 'explore') {
@@ -348,7 +392,6 @@
       '    <h1>Customer Files</h1>' +
       '  </div>' +
       '  <div class="cabinet-hero__actions">' +
-      '    <button type="button" id="cabinet-trash" class="btn btn--secondary cabinet-trash">🗑 Trash <span id="cabinet-trash-count"></span></button>' +
       '    <button type="button" id="cabinet-import" class="btn btn--secondary">Import standalone export</button>' +
       '    <button type="button" id="cabinet-new" class="btn btn--accent cabinet-new">+ New Customer File</button>' +
       '  </div>' +
@@ -357,6 +400,7 @@
       '<p class="cabinet-notice" id="cabinet-notice" hidden></p>' +
       '<h2 class="cabinet-section-title">On this device</h2>' +
       '<div class="cabinet-list" id="cabinet-list"></div>' +
+      '<button type="button" id="local-trash-recovery" class="local-trash-recovery" hidden>Recover files saved only on this device</button>' +
       '<button type="button" class="file-cabinet-entry" id="open-file-cabinet" aria-label="Open File Cabinet">' +
       '  <div class="file-cabinet-entry__main">' +
       '    <div class="file-cabinet-entry__title">File Cabinet</div>' +
@@ -369,8 +413,7 @@
     const listEl = app.querySelector('#cabinet-list');
     const newBtn = app.querySelector('#cabinet-new');
     const importBtn = app.querySelector('#cabinet-import');
-    const trashBtn = app.querySelector('#cabinet-trash');
-    const trashCount = app.querySelector('#cabinet-trash-count');
+    const localTrashLink = app.querySelector('#local-trash-recovery');
     const notice = app.querySelector('#cabinet-notice');
     const openCabinetBtn = app.querySelector('#open-file-cabinet');
 
@@ -386,7 +429,7 @@
     importBtn.addEventListener('click', function () {
       window.location.hash = '#/import';
     });
-    trashBtn.addEventListener('click', function () {
+    localTrashLink.addEventListener('click', function () {
       window.location.hash = '#/trash';
     });
     openCabinetBtn.addEventListener('click', function () {
@@ -400,9 +443,11 @@
     }).then(function () {
       return window.ToolboxDB.getAllCustomerFiles();
     }).then(function (allRecords) {
-      const trashed = allRecords.filter(function (record) { return !!record.deletedAt; });
-      const records = allRecords.filter(function (record) { return !record.deletedAt; });
-      trashCount.textContent = trashed.length ? '(' + trashed.length + ')' : '';
+      const trashed = allRecords.filter(isLegacyLocalTrash);
+      const records = allRecords.filter(function (record) {
+        return record && (!record.deletedAt || cabinetTrashPending(record));
+      });
+      refreshLocalTrashRecoveryLink(localTrashLink, trashed);
       records.sort(function (a, b) {
         return (b.updatedAt || '').localeCompare(a.updatedAt || '');
       });
@@ -474,6 +519,7 @@
   function customerFileLocationLabel(kind, record) {
     if (kind === 'remoteCabinet') return 'File Cabinet — Online';
     if (kind === 'localWorking') {
+      if (cabinetTrashPending(record)) return 'Waiting to move to File Cabinet Trash';
       if (record && window.ToolboxSync &&
           typeof window.ToolboxSync.foreignCheckoutLabel === 'function') {
         const locked = window.ToolboxSync.foreignCheckoutLabel(record.id);
@@ -596,7 +642,9 @@
       '      <p class="eyebrow">Cloud file management</p>' +
       '      <h1>File Cabinet</h1>' +
       '      <p>Browse cloud Customer Files. Check Out brings one selected file onto this device.</p>' +
+      '      <p class="file-cabinet-cleanup" id="file-cabinet-cleanup" hidden>Deleted files are old enough to clean up.</p>' +
       '    </div>' +
+      '    <button type="button" id="file-cabinet-trash" class="btn btn--secondary file-cabinet-trash">Trash</button>' +
       '  </header>' +
       '  <label class="file-cabinet-search">' +
       '    <span class="sr-only">Search File Cabinet</span>' +
@@ -615,6 +663,12 @@
     app.querySelector('#file-cabinet-back').addEventListener('click', function () {
       window.location.hash = '#/';
     });
+    const cabinetTrashBtn = app.querySelector('#file-cabinet-trash');
+    if (cabinetTrashBtn) {
+      cabinetTrashBtn.addEventListener('click', function () {
+        window.location.hash = '#/cabinet/trash';
+      });
+    }
 
     function paintList() {
       const filtered = filterCabinetEntries(inventory, searchInput.value);
@@ -652,6 +706,15 @@
     }
 
     window.ToolboxSync.browseCabinet().then(function (browse) {
+      const cleanup = app.querySelector('#file-cabinet-cleanup');
+      if (cleanup) {
+        const eligible = ((browse && browse.entries) || []).some(function (entry) {
+          if (!entry || !entry.deletedAt) return false;
+          const at = Date.parse(entry.purgeAfter);
+          return Number.isFinite(at) && at <= Date.now();
+        });
+        cleanup.hidden = !eligible;
+      }
       inventory = cabinetInventoryEntries(browse);
       paintList();
     }).catch(function (err) {
@@ -721,6 +784,8 @@
     row.classList.add('cabinet-row--index');
     row.appendChild(main);
 
+    const actions = document.createElement('div');
+    actions.className = 'cabinet-row__actions';
     if (entry.availability === 'available' && entry.presence !== 'local') {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -738,15 +803,20 @@
           cabinetNotice = (err && err.message) || 'Check Out failed.';
           // Stay on File Cabinet so the failure notice is visible after re-render.
           renderFileCabinet(app);
-          const notice = app.querySelector('#file-cabinet-notice');
-          if (notice && cabinetNotice) {
-            notice.textContent = cabinetNotice;
-            notice.hidden = false;
-            cabinetNotice = '';
-          }
+          showFileCabinetNotice(app);
         });
       });
-      row.appendChild(btn);
+      actions.appendChild(btn);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'btn btn--secondary cabinet-delete-btn';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.addEventListener('click', function (event) {
+        event.stopPropagation();
+        requestCabinetDelete(entry, app);
+      });
+      actions.appendChild(deleteBtn);
     } else if (entry.presence === 'local') {
       const openBtn = document.createElement('button');
       openBtn.type = 'button';
@@ -755,60 +825,139 @@
       openBtn.addEventListener('click', function () {
         window.location.hash = '#/file/' + encodeURIComponent(entry.id);
       });
-      row.appendChild(openBtn);
+      actions.appendChild(openBtn);
     }
+    if (actions.childNodes.length) row.appendChild(actions);
 
     shell.appendChild(row);
     return shell;
   }
 
-  function removeCloudCopies(records) {
-    if (!window.ToolboxSync || typeof window.ToolboxSync.deleteRemoteCustomerFile !== 'function') {
-      return Promise.resolve();
+  function showFileCabinetNotice(app) {
+    const notice = app.querySelector('#file-cabinet-notice');
+    if (!notice) return;
+    if (!cabinetNotice) {
+      notice.hidden = true;
+      return;
     }
-    if (!window.ToolboxSync.syncApiBase || !window.ToolboxSync.syncApiBase()) {
-      return Promise.resolve();
+    notice.textContent = cabinetNotice;
+    notice.hidden = false;
+    cabinetNotice = '';
+  }
+
+  function requestCabinetDelete(entry, app) {
+    const name = entry.displayName || 'Customer File';
+    if (!window.ToolboxSync || typeof window.ToolboxSync.trashCabinetCustomerFile !== 'function') {
+      cabinetNotice = 'File Cabinet delete is unavailable.';
+      renderFileCabinet(app);
+      showFileCabinetNotice(app);
+      return;
     }
-    const list = (records || []).filter(function (r) { return r && r.id; });
-    if (!list.length) return Promise.resolve();
-    return Promise.all(list.map(function (record) {
-      return window.ToolboxSync.deleteRemoteCustomerFile(record.id).catch(function (err) {
-        console.warn('Could not remove cloud copy of Customer File', record.id, err);
+    if (entry.availability !== 'available' || entry.presence === 'local') {
+      cabinetNotice = 'Check this Customer File in before deleting it from the File Cabinet.';
+      renderFileCabinet(app);
+      showFileCabinetNotice(app);
+      return;
+    }
+    confirmAction({
+      title: 'Delete from File Cabinet?',
+      message: name + ' will move to File Cabinet Trash. It stays recoverable there until you permanently delete it.',
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Delete',
+    }).then(function (confirmed) {
+      if (!confirmed) return;
+      return window.ToolboxSync.trashCabinetCustomerFile(entry.id).then(function () {
+        cabinetNotice = name + ' was moved to File Cabinet Trash.';
+        renderFileCabinet(app);
+        showFileCabinetNotice(app);
+      }).catch(function (err) {
+        console.warn('File Cabinet delete failed:', err);
+        cabinetNotice = (err && err.message) || 'Could not delete that Customer File.';
+        renderFileCabinet(app);
+        showFileCabinetNotice(app);
       });
-    }));
+    });
+  }
+
+  function deleteLocalCustomerFile(record, name) {
+    return window.ToolboxDB.permanentlyDeleteCustomerFiles([record]).then(function () {
+      return name + ' was deleted from this device.';
+    });
+  }
+
+  function confirmCabinetTrashDelete(name) {
+    return confirmAction({
+      title: 'Delete from the File Cabinet?',
+      message: name + ' will move to File Cabinet Trash, including its plans and photographs. This device\'s copy is removed only after the File Cabinet confirms that. If the File Cabinet cannot be reached, the file stays on this device until Sync Now finishes the move.',
+      cancelLabel: 'No, keep file',
+      confirmLabel: 'Yes, delete',
+    });
+  }
+
+  function finishCabinetTrashDelete(id, name) {
+    if (!window.ToolboxSync || typeof window.ToolboxSync.moveWorkingFileToCabinetTrash !== 'function') {
+      return Promise.resolve('File Cabinet delete is unavailable.');
+    }
+    return window.ToolboxSync.moveWorkingFileToCabinetTrash(id).then(function (result) {
+      if (result && result.action === 'local-only') {
+        return window.ToolboxDB.getCustomerFile(id).then(function (fresh) {
+          if (!fresh) return name + ' was deleted from this device.';
+          return deleteLocalCustomerFile(fresh, name);
+        });
+      }
+      return name + ' was moved to File Cabinet Trash.';
+    }).catch(function (err) {
+      console.warn('File Cabinet Trash move failed:', err);
+      if (err && err.code === 'checkout') {
+        return name + ' is checked out on another device. It was not deleted.';
+      }
+      return name + ' is still on this device. It will move to File Cabinet Trash when Sync Now can reach the File Cabinet.';
+    });
+  }
+
+  function confirmLocalCustomerFileDelete(record, name) {
+    const empty = isEmptyCustomerFileStub(record);
+    return confirmAction({
+      title: empty ? 'Delete empty file?' : 'Delete this Customer File?',
+      message: empty
+        ? name + ' has no customer details or survey evidence. This deletes it from this device.'
+        : name + ' contains customer or survey information. Delete it from this device?',
+      cancelLabel: 'No, keep file',
+      confirmLabel: empty ? 'Yes, delete permanently' : 'Yes, delete',
+    }).then(function (confirmed) {
+      if (!confirmed) return null;
+      if (!window.ToolboxSync || typeof window.ToolboxSync.resolveWorkingFileDelete !== 'function') {
+        return deleteLocalCustomerFile(record, name);
+      }
+      return window.ToolboxSync.resolveWorkingFileDelete(record.id).then(function (again) {
+        if (again && again.action === 'foreign-checkout') {
+          return name + ' is checked out on another device. It was not deleted.';
+        }
+        if (again && (again.action === 'cabinet' || again.action === 'pending-offline')) {
+          return finishCabinetTrashDelete(record.id, name);
+        }
+        return deleteLocalCustomerFile(record, name);
+      });
+    });
   }
 
   function requestCustomerFileRemoval(record) {
     const name = displayName(record);
-    // Multi-device: only truly empty stubs may hard-delete local+cloud.
-    // Named jobs, addressed jobs, and plan-bearing files go to Trash so one
-    // device cannot wipe the shared cabinet for Tim/Lee.
-    if (isEmptyCustomerFileStub(record)) {
-      return confirmAction({
-        title: 'Delete empty file?',
-        message: name + ' has no customer details, plans, or survey data. This permanently deletes it.',
-        cancelLabel: 'No, keep file',
-        confirmLabel: 'Yes, delete permanently',
-      }).then(function (confirmed) {
-        if (!confirmed) return null;
-        return window.ToolboxDB.permanentlyDeleteCustomerFiles([record]).then(function () {
-          return removeCloudCopies([record]).then(function () {
-            return name + ' was permanently deleted.';
-          });
-        });
-      });
+    if (!window.ToolboxSync || typeof window.ToolboxSync.resolveWorkingFileDelete !== 'function') {
+      return confirmLocalCustomerFileDelete(record, name);
     }
-
-    return confirmAction({
-      title: 'Move Customer File to Trash?',
-      message: name + ' will remain recoverable for 120 days. Sync Now will update your other devices.',
-      cancelLabel: 'No, keep file',
-      confirmLabel: 'Yes, move to Trash',
-    }).then(function (confirmed) {
-      if (!confirmed) return null;
-      return window.ToolboxDB.moveCustomerFileToTrash(record.id).then(function () {
-        return name + ' was moved to Trash for 120 days.';
-      });
+    return window.ToolboxSync.resolveWorkingFileDelete(record.id).then(function (decision) {
+      const action = decision && decision.action;
+      if (action === 'foreign-checkout') {
+        return name + ' is checked out on another device. It was not deleted.';
+      }
+      if (action === 'cabinet' || action === 'pending-offline') {
+        return confirmCabinetTrashDelete(name).then(function (confirmed) {
+          if (!confirmed) return null;
+          return finishCabinetTrashDelete(record.id, name);
+        });
+      }
+      return confirmLocalCustomerFileDelete(record, name);
     });
   }
 
@@ -892,6 +1041,11 @@
       typeof window.ToolboxSync.isCheckedOutFromCabinet === 'function' &&
       window.ToolboxSync.isCheckedOutFromCabinet(record));
 
+    if (cabinetTrashPending(record)) {
+      shell.appendChild(row);
+      return shell;
+    }
+
     if (cabinetBacked) {
       const checkInBtn = document.createElement('button');
       checkInBtn.type = 'button';
@@ -921,7 +1075,9 @@
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'cabinet-row-menu__danger';
-    removeBtn.textContent = isEmptyCustomerFileStub(record) ? 'Delete empty file' : 'Move to Trash';
+    removeBtn.textContent = cabinetBacked
+      ? 'Delete'
+      : (isEmptyCustomerFileStub(record) ? 'Delete empty file' : 'Delete');
     removeBtn.addEventListener('click', function (event) {
       event.stopPropagation();
       menu.classList.remove('is-open');
@@ -990,26 +1146,70 @@
     });
   }
 
-  // ---- Trash ------------------------------------------------------------
+  // ---- Local recovery and File Cabinet Trash ---------------------------
 
-  function renderTrash(app) {
+  function refreshLocalTrashRecoveryLink(link, trashed) {
+    if (!link) return;
+    link.hidden = true;
+    link.textContent = 'Recover files saved only on this device';
+    if (!trashed || !trashed.length) return;
+    const probe = window.ToolboxSync && typeof window.ToolboxSync.probeCabinetForLocalTrash === 'function'
+      ? window.ToolboxSync.probeCabinetForLocalTrash()
+      : Promise.resolve(null);
+    Promise.resolve(probe).then(function (browse) {
+      const current = document.getElementById('local-trash-recovery');
+      if (!current || current !== link) return;
+      const rows = window.ToolboxSync && typeof window.ToolboxSync.filterUnsyncedLocalTrash === 'function'
+        ? window.ToolboxSync.filterUnsyncedLocalTrash(trashed, browse)
+        : trashed;
+      current.hidden = !rows.length;
+      current.textContent = 'Recover files saved only on this device';
+    }).catch(function () {
+      const current = document.getElementById('local-trash-recovery');
+      if (!current || current !== link) return;
+      current.hidden = false;
+      current.textContent = 'Recover files saved only on this device';
+    });
+  }
+
+  function loadUnsyncedLocalTrash() {
+    return window.ToolboxDB.purgeExpiredCustomerFiles().catch(function (err) {
+      console.warn('Could not review expired Customer Files:', err);
+    }).then(function () {
+      return window.ToolboxDB.getAllCustomerFiles();
+    }).then(function (records) {
+      const trashed = (records || []).filter(function (record) { return record && record.deletedAt; });
+      if (!trashed.length) return [];
+      const probe = window.ToolboxSync && typeof window.ToolboxSync.probeCabinetForLocalTrash === 'function'
+        ? window.ToolboxSync.probeCabinetForLocalTrash()
+        : Promise.resolve(null);
+      return Promise.resolve(probe).then(function (browse) {
+        if (window.ToolboxSync && typeof window.ToolboxSync.filterUnsyncedLocalTrash === 'function') {
+          return window.ToolboxSync.filterUnsyncedLocalTrash(trashed, browse);
+        }
+        return trashed;
+      }).catch(function () {
+        return trashed;
+      });
+    });
+  }
+
+  function renderLocalTrashRecovery(app) {
     registerActiveFlush(null);
     app.innerHTML =
       '<div class="view-bar view-bar--file">' +
       '  <button type="button" id="trash-back" class="btn btn--ghost">‹ Customer Files</button>' +
-      '  <div class="file-identity"><span class="file-identity__name">Trash</span></div>' +
+      '  <div class="file-identity"><span class="file-identity__name">On this device</span></div>' +
       '</div>' +
       '<section class="trash-view">' +
       '  <header class="trash-head">' +
-      '    <div><p class="eyebrow">Recoverable files</p><h1>Trash</h1><p>Customer Files containing investigation data remain recoverable for 120 days.</p></div>' +
-      '    <button type="button" id="trash-empty" class="btn btn--danger">Empty Trash</button>' +
+      '    <div><p class="eyebrow">Saved only on this device</p><h1>Recover files</h1><p>These older Customer Files are still on this device. Restore puts one back in Customer Files. File Cabinet Trash is separate.</p></div>' +
       '  </header>' +
       '  <p class="cabinet-notice" id="trash-notice" hidden></p>' +
-      '  <div class="trash-list" id="trash-list"><p class="cabinet-empty">Loading Trash…</p></div>' +
+      '  <div class="trash-list" id="trash-list"><p class="cabinet-empty">Loading…</p></div>' +
       '</section>';
 
     const list = app.querySelector('#trash-list');
-    const emptyBtn = app.querySelector('#trash-empty');
     const notice = app.querySelector('#trash-notice');
 
     app.querySelector('#trash-back').addEventListener('click', function () {
@@ -1023,21 +1223,15 @@
       } else {
         notice.hidden = true;
       }
-      window.ToolboxDB.purgeExpiredCustomerFiles().catch(function (err) {
-        console.warn('Could not purge expired Customer Files:', err);
-      }).then(function () {
-        return window.ToolboxDB.getAllCustomerFiles();
-      }).then(function (records) {
-        const trashed = records.filter(function (record) { return !!record.deletedAt; });
+      loadUnsyncedLocalTrash().then(function (trashed) {
         trashed.sort(function (a, b) {
           return (b.deletedAt || '').localeCompare(a.deletedAt || '');
         });
-        emptyBtn.disabled = trashed.length === 0;
         list.innerHTML = '';
         if (!trashed.length) {
           const p = document.createElement('p');
           p.className = 'cabinet-empty trash-empty-state';
-          p.textContent = 'Trash is empty.';
+          p.textContent = 'Nothing on this device needs recovery.';
           list.appendChild(p);
           return;
         }
@@ -1051,48 +1245,181 @@
             });
           }));
         });
-
-        emptyBtn.onclick = function () {
-          confirmAction({
-            title: 'Permanently empty Trash?',
-            message: 'This permanently deletes ' + trashed.length + ' Customer File' + (trashed.length === 1 ? '' : 's') + ' and associated plans and photographs. This cannot be undone.',
-            cancelLabel: 'No, keep files',
-            confirmLabel: 'Yes, empty Trash',
-          }).then(function (confirmed) {
-            if (!confirmed) return;
-            emptyBtn.disabled = true;
-            window.ToolboxDB.permanentlyDeleteCustomerFiles(trashed).then(function () {
-              return removeCloudCopies(trashed);
-            }).then(function () {
-              loadTrash('Trash was permanently emptied.');
-            }).catch(function (err) {
-              console.error('Could not empty Trash:', err);
-              loadTrash('Could not empty Trash. Try again.');
-            });
-          });
-        };
       }).catch(function (err) {
-        console.error('Could not load Trash:', err);
-        list.innerHTML = '<p class="cabinet-empty">Unable to load Trash right now.</p>';
+        console.error('Could not load local recovery:', err);
+        list.innerHTML = '<p class="cabinet-empty">Unable to load recoverable files right now.</p>';
       });
     }
 
     loadTrash('');
   }
 
-  function trashRowNode(record, onRestore) {
+  function renderFileCabinetTrash(app) {
+    registerActiveFlush(null);
+    app.innerHTML =
+      '<div class="view-bar view-bar--file">' +
+      '  <button type="button" id="trash-back" class="btn btn--ghost">‹ File Cabinet</button>' +
+      '  <div class="file-identity"><span class="file-identity__name">File Cabinet</span></div>' +
+      '</div>' +
+      '<section class="trash-view">' +
+      '  <header class="trash-head">' +
+      '    <div><p class="eyebrow">File Cabinet</p><h1>Trash</h1><p>Deleted File Cabinet Customer Files stay here until you permanently delete them. After 120 days they are eligible for cleanup. Nothing is deleted automatically.</p></div>' +
+      '    <button type="button" id="trash-empty" class="btn btn--danger" disabled>Empty Trash</button>' +
+      '  </header>' +
+      '  <p class="cabinet-notice" id="trash-notice" hidden></p>' +
+      '  <div class="trash-list" id="trash-list"><p class="cabinet-empty">Loading Trash…</p></div>' +
+      '</section>';
+
+    const list = app.querySelector('#trash-list');
+    const emptyBtn = app.querySelector('#trash-empty');
+    const notice = app.querySelector('#trash-notice');
+
+    app.querySelector('#trash-back').addEventListener('click', function () {
+      window.location.hash = '#/cabinet';
+    });
+
+    function showNotice(message) {
+      if (!notice) return;
+      if (!message) {
+        notice.hidden = true;
+        return;
+      }
+      notice.textContent = message;
+      notice.hidden = false;
+    }
+
+    function paint(entries, message) {
+      showNotice(message);
+      const trashed = (entries || []).filter(function (entry) { return entry && entry.deletedAt; });
+      trashed.sort(function (a, b) {
+        return String(b.deletedAt || '').localeCompare(String(a.deletedAt || ''));
+      });
+      emptyBtn.disabled = trashed.length === 0;
+      list.innerHTML = '';
+      if (!trashed.length) {
+        const p = document.createElement('p');
+        p.className = 'cabinet-empty trash-empty-state';
+        p.textContent = 'File Cabinet Trash is empty.';
+        list.appendChild(p);
+        return;
+      }
+      trashed.forEach(function (entry) {
+        list.appendChild(trashRowNode(entry, {
+          restore: function () {
+            if (!window.ToolboxSync || typeof window.ToolboxSync.restoreCabinetCustomerFile !== 'function') {
+              showNotice('Restore is unavailable.');
+              return;
+            }
+            window.ToolboxSync.restoreCabinetCustomerFile(entry.id).then(function () {
+              return loadCabinetTrash((entry.displayName || 'Customer File') + ' was restored to the File Cabinet.');
+            }).catch(function (err) {
+              console.warn('File Cabinet restore failed:', err);
+              showNotice((err && err.message) || 'Could not restore that Customer File.');
+            });
+          },
+          permanent: function () {
+            const label = entry.displayName || 'Customer File';
+            confirmAction({
+              title: 'Permanently delete this Customer File?',
+              message: label + ' will be destroyed in the File Cabinet, including its plans and photographs. This cannot be undone.',
+              cancelLabel: 'Cancel',
+              confirmLabel: 'Delete permanently',
+            }).then(function (confirmed) {
+              if (!confirmed) return;
+              if (!window.ToolboxSync || typeof window.ToolboxSync.permanentlyDeleteCabinetCustomerFile !== 'function') {
+                showNotice('Permanent delete is unavailable.');
+                return;
+              }
+              window.ToolboxSync.permanentlyDeleteCabinetCustomerFile(entry.id).then(function () {
+                return loadCabinetTrash(label + ' was permanently deleted.');
+              }).catch(function (err) {
+                console.warn('Permanent delete failed:', err);
+                showNotice((err && err.message) || 'Could not permanently delete that Customer File.');
+              });
+            });
+          },
+        }));
+      });
+      emptyBtn.onclick = function () {
+        confirmAction({
+          title: 'Permanently empty File Cabinet Trash?',
+          message: 'This permanently deletes ' + trashed.length + ' Customer File' + (trashed.length === 1 ? '' : 's') + ' from the File Cabinet, including plans and photographs. Checked-out files are left in Trash. This cannot be undone.',
+          cancelLabel: 'Cancel',
+          confirmLabel: 'Empty Trash',
+        }).then(function (confirmed) {
+          if (!confirmed) return;
+          if (!window.ToolboxSync || typeof window.ToolboxSync.emptyCabinetTrash !== 'function') {
+            showNotice('Empty Trash is unavailable.');
+            return;
+          }
+          emptyBtn.disabled = true;
+          window.ToolboxSync.emptyCabinetTrash().then(function (result) {
+            const removed = result && result.deleted ? result.deleted.length : 0;
+            const held = result && result.skipped ? result.skipped.length : 0;
+            let text = removed
+              ? 'Emptied ' + removed + ' Customer File' + (removed === 1 ? '' : 's') + ' from the File Cabinet.'
+              : 'Nothing was permanently deleted.';
+            if (held) {
+              text += ' ' + held + ' stayed in Trash because ' + (held === 1 ? 'it is' : 'they are') + ' checked out or no longer in Trash.';
+            }
+            return loadCabinetTrash(text);
+          }).catch(function (err) {
+            console.error('Could not empty File Cabinet Trash:', err);
+            showNotice((err && err.message) || 'Could not empty Trash. Try again.');
+            emptyBtn.disabled = false;
+          });
+        });
+      };
+    }
+
+    function loadCabinetTrash(message) {
+      if (!window.ToolboxSync || typeof window.ToolboxSync.browseCabinet !== 'function' ||
+          !window.ToolboxSync.syncApiBase || !window.ToolboxSync.syncApiBase()) {
+        list.innerHTML = '<p class="cabinet-empty">Sign in / Sync not configured — File Cabinet Trash is unavailable.</p>';
+        emptyBtn.disabled = true;
+        return Promise.resolve();
+      }
+      return window.ToolboxSync.browseCabinet().then(function (browse) {
+        paint((browse && browse.entries) || [], message);
+      }).catch(function (err) {
+        const code = err && err.code;
+        list.innerHTML = '';
+        const p = document.createElement('p');
+        p.className = 'cabinet-empty';
+        if (code === 'auth') p.textContent = 'Sign in to open File Cabinet Trash.';
+        else if (code === 'offline' || code === 'network') p.textContent = 'Offline — File Cabinet Trash needs a network connection.';
+        else if (code === 'config') p.textContent = 'Sync is not configured yet.';
+        else p.textContent = 'Unable to load File Cabinet Trash right now.';
+        list.appendChild(p);
+        emptyBtn.disabled = true;
+        console.warn('File Cabinet Trash failed:', err);
+      });
+    }
+
+    loadCabinetTrash('');
+  }
+
+  function trashRetentionLine(record) {
+    const purgeAt = record && Date.parse(record.purgeAfter);
+    if (Number.isFinite(purgeAt) && purgeAt <= Date.now()) return 'Eligible for cleanup';
+    return 'In Trash';
+  }
+
+  function trashRowNode(record, actions) {
+    const onRestore = typeof actions === 'function' ? actions : actions && actions.restore;
+    const onPermanent = actions && actions.permanent;
     const row = document.createElement('article');
     row.className = 'trash-row';
+    if (record && record.id) row.dataset.customerFileId = record.id;
 
     const main = document.createElement('div');
     main.className = 'trash-row__main';
     const name = document.createElement('strong');
-    name.textContent = displayName(record);
+    name.textContent = (record && record.displayName) || displayName(record);
     const address = document.createElement('span');
-    address.textContent = displayAddress(record);
+    address.textContent = (record && record.propertyAddress) || displayAddress(record);
     const retention = document.createElement('small');
-    const days = daysUntilPurge(record);
-    retention.textContent = 'Permanently deletes in ' + days + ' day' + (days === 1 ? '' : 's');
+    retention.textContent = trashRetentionLine(record);
     main.appendChild(name);
     main.appendChild(address);
     main.appendChild(retention);
@@ -1102,6 +1429,21 @@
     restore.className = 'btn btn--secondary';
     restore.textContent = 'Restore';
     restore.addEventListener('click', onRestore);
+
+    if (typeof onPermanent === 'function') {
+      const permanent = document.createElement('button');
+      permanent.type = 'button';
+      permanent.className = 'btn btn--danger';
+      permanent.textContent = 'Delete permanently';
+      permanent.addEventListener('click', onPermanent);
+      const group = document.createElement('div');
+      group.className = 'trash-row__actions';
+      group.appendChild(restore);
+      group.appendChild(permanent);
+      row.appendChild(main);
+      row.appendChild(group);
+      return row;
+    }
 
     row.appendChild(main);
     row.appendChild(restore);
@@ -1307,7 +1649,7 @@
 
     statusEl.textContent = 'Loading…';
     window.ToolboxDB.getCustomerFile(id).then(function (existing) {
-      if (existing && existing.deletedAt) {
+      if (isLegacyLocalTrash(existing)) {
         window.location.replace('#/trash');
         return null;
       }
@@ -2142,7 +2484,7 @@
 
     setStatus('Loading…');
     window.ToolboxDB.getCustomerFile(id).then(function (existing) {
-      if (existing && existing.deletedAt) {
+      if (isLegacyLocalTrash(existing)) {
         window.location.replace('#/trash');
         return null;
       }

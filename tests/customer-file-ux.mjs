@@ -194,6 +194,7 @@ for (const viewport of viewports) {
     const title = document.querySelector('.cabinet-section-title');
     const hero = document.querySelector('.cabinet-hero');
     const trash = document.querySelector('#cabinet-trash');
+    const trashCount = document.querySelector('#cabinet-trash-count');
     const listRect = list.getBoundingClientRect();
     const entryRect = entry.getBoundingClientRect();
     const titleRect = title.getBoundingClientRect();
@@ -202,7 +203,7 @@ for (const viewport of viewports) {
       title: document.querySelector('.cabinet-hero h1')?.textContent,
       rows: document.querySelectorAll('.cabinet-row').length,
       newButton: document.querySelector('#cabinet-new')?.textContent,
-      trashInActions: !!trash && !!trash.closest('.cabinet-hero__actions'),
+      noTrashBadge: !trash && !trashCount,
       closedEntry: entry?.tagName === 'BUTTON',
       gap: Math.round(entryRect.top - listRect.bottom),
       sameLeft: Math.abs(listRect.left - entryRect.left) < 1.5 &&
@@ -218,7 +219,7 @@ for (const viewport of viewports) {
     cabinet.title === 'Customer Files' &&
       cabinet.rows >= 3 &&
       /New Customer File/.test(cabinet.newButton || '') &&
-      cabinet.trashInActions &&
+      cabinet.noTrashBadge &&
       cabinet.closedEntry &&
       cabinet.gap >= 8 &&
       cabinet.gap <= 40 &&

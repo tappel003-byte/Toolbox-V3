@@ -87,6 +87,24 @@ const Sync = loadSyncModule();
 
 {
   const record = {
+    floorSurvey: {
+      byCanvasId: {
+        c1: { recoveryPdfMediaId: 'fsrec_c1' },
+        bad: { recoveryPdfMediaId: '../no' },
+        other: { recoveryPdfMediaId: 'plan-not-a-pdf' },
+      },
+    },
+  };
+  const payload = Sync.extractComponent(record, 'floor');
+  check(
+    'Floor Survey recovery PDF ids detected',
+    Sync.mediaIdsForComponent(record, 'floor').join(',') === 'fsrec_c1' &&
+      Sync._test.mediaIdsFromPayload(payload, 'floor').join(',') === 'fsrec_c1',
+  );
+}
+
+{
+  const record = {
     distress: {
       pins: [{ num: 1, photos: ['ph_pin'], description: 'Crack' }],
       quickCapture: [{ id: 'ph_quick', sourceName: 'quick-01.jpg', timestamp: '2026-07-28T10:00:00Z' }],
