@@ -4,11 +4,12 @@
  * Opening this workspace does not write Floor Survey or Diagnostics records.
  * Add to Report is the only write, and it stores a figure for Report Builder.
  */
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getProject, listFloors, listPoints, setHostCustomerFileId } from "@/lib/db";
 import type { Floor, SurveyPoint } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { withCorrectedValues } from "@/lib/transitions";
+import type { DiagnosticCapture, DiagnosticReadingSummary } from "@/components/ThreeDTab";
 
 const ThreeDTab = lazy(() =>
   import("@/components/ThreeDTab").then((m) => ({ default: m.ThreeDTab })),
@@ -20,13 +21,18 @@ export type DiagnosticsWorkspaceProps = {
 };
 
 type CaptureApi = {
+  summarizeReadings?: (input: Record<string, unknown>) => DiagnosticReadingSummary;
+  captureContext?: (summary: DiagnosticReadingSummary, extras: Record<string, unknown>) => unknown;
   addFigure: (input: {
     customerFileId: string;
     canvasId: string;
     canvasName: string;
     dataUrl: string;
+    context?: unknown;
   }) => Promise<{ figure?: { id?: string } }>;
 };
+
+const EMPTY_POINTS: SurveyPoint[] = [];
 
 const PLACEHOLDERS: Array<{ group: string; id: string; label: string }> = [
   { group: "View", id: "plan", label: "Plan" },
@@ -165,29 +171,6 @@ function captureApi(): CaptureApi | null {
   return api;
 }
 
-function readCanvasPng(stage: HTMLElement | null): { dataUrl: string } | { error: string } {
-  if (!stage) return { error: "The 3D view is not ready to capture." };
-  const text = stage.innerText || "";
-  if (/could not start/i.test(text)) return { error: "3D view could not start on this device." };
-  if (/Need at least 3 survey points|Boundary is missing|Building surface/i.test(text)) {
-    return { error: "The 3D view is not ready to capture." };
-  }
-  const canvas = stage.querySelector("canvas");
-  if (!canvas || canvas.width < 2 || canvas.height < 2) {
-    return { error: "The 3D view is not ready to capture." };
-  }
-  try {
-    const dataUrl = canvas.toDataURL("image/png");
-    if (!dataUrl || dataUrl.indexOf("data:image/png") !== 0) {
-      return { error: "This view could not be captured." };
-    }
-    return { dataUrl };
-  } catch (err) {
-    console.error(err);
-    return { error: "This view could not be captured." };
-  }
-}
-
 function RibbonGroup({
   label,
   children,
@@ -204,13 +187,15 @@ function RibbonGroup({
 }
 
 export function DiagnosticsWorkspace({ customerFileId, onBack }: DiagnosticsWorkspaceProps) {
-  const stageRef = useRef<HTMLDivElement | null>(null);
+  const captureRef = useRef<(() => DiagnosticCapture | null) | null>(null);
   const [floors, setFloors] = useState<Floor[]>([]);
   const [activeFloorId, setActiveFloorId] = useState<string | null>(null);
   const [points, setPoints] = useState<SurveyPoint[]>([]);
+  const [pointFloorId, setPointFloorId] = useState<string | null>(null);
+  const [surveyDate, setSurveyDate] = useState("");
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
-  const [canCapture, setCanCapture] = useState(false);
+  const [viewReady, setViewReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(
     "3D elevation is the current view. Other tools are not available yet.",
@@ -229,6 +214,7 @@ export function DiagnosticsWorkspace({ customerFileId, onBack }: DiagnosticsWork
           }
           return;
         }
+        setSurveyDate((project.inspectionDate || "").trim());
         const nextFloors = await listFloors(customerFileId);
         if (cancelled) return;
         setFloors(nextFloors);
@@ -256,27 +242,32 @@ export function DiagnosticsWorkspace({ customerFileId, onBack }: DiagnosticsWork
   useEffect(() => {
     if (!activeFloor) {
       setPoints([]);
+      setPointFloorId(null);
       return;
     }
     let cancelled = false;
-    setPoints([]);
+    const floorId = activeFloor.id;
     (async () => {
-      const pts = await listPoints(activeFloor.id);
-      if (!cancelled) setPoints(pts);
+      const pts = await listPoints(floorId);
+      if (cancelled) return;
+      setPoints(pts);
+      setPointFloorId(floorId);
     })();
     return () => {
       cancelled = true;
     };
   }, [activeFloor]);
 
+  const pointsForFloor = pointFloorId === activeFloor?.id ? points : EMPTY_POINTS
+
   const correctedPoints = useMemo(
     () =>
       withCorrectedValues(
-        points,
+        pointsForFloor,
         activeFloor?.transitions,
         activeFloor?.transitionGroupAverages,
       ),
-    [points, activeFloor?.transitions, activeFloor?.transitionGroupAverages],
+    [pointsForFloor, activeFloor?.transitions, activeFloor?.transitionGroupAverages],
   );
 
   const levels = useMemo(
@@ -284,26 +275,48 @@ export function DiagnosticsWorkspace({ customerFileId, onBack }: DiagnosticsWork
     [floors],
   );
 
+  const readingSummary = useMemo(() => {
+    if (!activeFloor) return null;
+    const api = captureApi();
+    if (!api || typeof api.summarizeReadings !== "function") return null;
+    const rawById = new Map(pointsForFloor.map((point) => [point.id, point]));
+    return api.summarizeReadings({
+      levelName: activeFloor.name,
+      surveyDate,
+      boundary: activeFloor.boundary || [],
+      exclusions: activeFloor.exclusions || [],
+      points: correctedPoints.map((point) => {
+        const raw = rawById.get(point.id);
+        return {
+          id: point.id,
+          x: point.x,
+          y: point.y,
+          value: point.value,
+          rawValue: raw ? raw.value : point.value,
+          isBasePoint: !!(raw && raw.isBasePoint),
+          label: raw && raw.label ? raw.label : "",
+        };
+      }),
+    });
+  }, [activeFloor, correctedPoints, pointsForFloor, surveyDate]);
+
+  const onCaptureReady = useCallback((capture: (() => DiagnosticCapture | null) | null) => {
+    captureRef.current = capture;
+  }, []);
+
+  const onViewReady = useCallback((ready: boolean) => {
+    setViewReady(ready);
+  }, []);
+
   useEffect(() => {
-    if (!activeFloor) {
-      setCanCapture(false);
-      return;
-    }
-    const tick = () => {
-      const shot = readCanvasPng(stageRef.current);
-      setCanCapture("dataUrl" in shot);
-    };
-    tick();
-    const timer = window.setInterval(tick, 400);
-    return () => window.clearInterval(timer);
-  }, [activeFloor]);
+    setViewReady(false);
+  }, [activeFloorId]);
 
   async function addToReport() {
-    if (saving || !activeFloor) return;
-    const shot = readCanvasPng(stageRef.current);
-    if (!("dataUrl" in shot)) {
-      setStatus(shot.error);
-      setCanCapture(false);
+    if (saving || !activeFloor || !readingSummary) return;
+    const shot = captureRef.current ? captureRef.current() : null;
+    if (!shot) {
+      setStatus("This view could not be captured.");
       return;
     }
     const api = captureApi();
@@ -311,6 +324,15 @@ export function DiagnosticsWorkspace({ customerFileId, onBack }: DiagnosticsWork
       setStatus("Add to Report is not available in this session.");
       return;
     }
+    const context = typeof api.captureContext === "function"
+      ? api.captureContext(readingSummary, {
+          canvasId: activeFloor.id,
+          exaggeration: shot.exaggeration,
+          palette: shot.palette,
+          reversePalette: shot.reversePalette,
+          legendColors: shot.legendColors,
+        })
+      : null;
     setSaving(true);
     try {
       const saved = await api.addFigure({
@@ -318,6 +340,7 @@ export function DiagnosticsWorkspace({ customerFileId, onBack }: DiagnosticsWork
         canvasId: activeFloor.id,
         canvasName: activeFloor.name,
         dataUrl: shot.dataUrl,
+        context,
       });
       const id = saved && saved.figure && saved.figure.id ? saved.figure.id : "this view";
       setStatus(
@@ -408,9 +431,9 @@ export function DiagnosticsWorkspace({ customerFileId, onBack }: DiagnosticsWork
             type="button"
             className="dx-ribbon__btn dx-ribbon__btn--capture"
             data-diagnostics-add-report
-            disabled={!canCapture || saving}
+            disabled={!viewReady || saving || !readingSummary}
             title={
-              canCapture
+              viewReady && readingSummary
                 ? "Store this 3D view for Report Builder. Does not write a conclusion."
                 : "The 3D view is not ready to capture."
             }
@@ -426,7 +449,7 @@ export function DiagnosticsWorkspace({ customerFileId, onBack }: DiagnosticsWork
       <p className="dx-status" data-diagnostics-status aria-live="polite">
         {status}
       </p>
-      <div className="dx-stage" ref={stageRef}>
+      <div className="dx-stage">
         <Suspense
           fallback={<div className="dx-stage-fallback">Loading 3D…</div>}
         >
@@ -438,6 +461,9 @@ export function DiagnosticsWorkspace({ customerFileId, onBack }: DiagnosticsWork
             onClose={onBack}
             levels={levels}
             onLevelChange={setActiveFloorId}
+            readingSummary={readingSummary}
+            onCaptureReady={onCaptureReady}
+            onViewReady={onViewReady}
           />
         </Suspense>
       </div>
