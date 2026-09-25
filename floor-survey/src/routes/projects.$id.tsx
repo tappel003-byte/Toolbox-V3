@@ -436,18 +436,23 @@ function ProjectWorkspace() {
             mode={mode === "topo" ? "topo" : "data"}
             onChange={(m) => setMode(m === "topo" ? "topo" : "field")}
           />
-          {/* Field/Data mode keeps the floating stats pill. In Topo mode the
-              pill is drawn inside the canvas by TopoTab itself. */}
-          {mode === "field" && (
-            <StatsChip
-              storageKey={`stats-chip-pos:${activeFloor.id}:solo`}
-              points={statsPoints}
-              onHighlight={(p) => {
-                setSelectedIds(new Set([p.id]));
-                setFocusRequest({ x: p.x, y: p.y, nonce: Date.now() });
-              }}
-            />
-          )}
+          {/* Proven baseline: the floating H / L / Δ chip is on screen in Data and Topo. */}
+          <StatsChip
+            storageKey={`stats-chip-pos:${activeFloor.id}:solo`}
+            points={
+              mode === "topo" && topoExcludedIds.size
+                ? statsPoints.filter((p) => !topoExcludedIds.has(p.id))
+                : statsPoints
+            }
+            onHighlight={(p) => {
+              if (mode === "topo") {
+                setTopoHighlightIds(new Set([p.id]));
+                return;
+              }
+              setSelectedIds(new Set([p.id]));
+              setFocusRequest({ x: p.x, y: p.y, nonce: Date.now() });
+            }}
+          />
         </>
       )}
       {mode === "field" && (
