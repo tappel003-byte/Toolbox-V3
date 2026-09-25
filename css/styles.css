@@ -3995,7 +3995,10 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
 .explorer-preview__head h2 {
   margin: 0;
   color: var(--navy);
-  font: 600 1rem/1.35 inherit;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 

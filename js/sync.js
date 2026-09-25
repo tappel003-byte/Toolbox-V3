@@ -2014,6 +2014,11 @@
         sourceName ? 'Quick Capture photo — ' + sourceName : 'Quick Capture photo',
       );
     });
+    explorePushPhotoCollection(refs, notes, 'distress.json', distress && distress.unassignedPhotos, 'unassigned-photo', 'Unassigned photo');
+    explorePushPhotoCollection(refs, notes, 'distress.json', distress && distress.generalPhotos, 'general-photo', 'General photo');
+    // record.generalPhotos is not written by customer sync. Read it only
+    // when the stored customer component actually contains the array.
+    explorePushPhotoCollection(refs, notes, 'customer.json', payloads.customer && payloads.customer.generalPhotos, 'general-photo', 'General photo');
     const canvasNames = exploreCanvasNames(plans);
     if (floor && typeof floor === 'object') {
       const map = floor.byCanvasId;
@@ -2051,12 +2056,71 @@
         canvas ? 'Diagnostics figure — ' + canvas : 'Diagnostics figure',
       );
     });
-    const seen = Object.create(null);
-    return refs.filter(function (ref) {
-      if (seen[ref.id]) return false;
-      seen[ref.id] = true;
-      return true;
+    return exploreMergeRefs(refs);
+  }
+
+  function explorePhotoEntry(entry) {
+    if (typeof entry === 'string') {
+      if (entry.indexOf('ph_') !== 0) return null;
+      return { id: entry, subject: '' };
+    }
+    if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string') return null;
+    if (entry.id.indexOf('ph_') !== 0) return null;
+    return { id: entry.id, subject: trimStr(entry.subject) || trimStr(entry.folder) };
+  }
+
+  function explorePushPhotoCollection(refs, notes, source, list, purpose, baseLabel) {
+    if (!Array.isArray(list)) return;
+    list.forEach(function (entry) {
+      const photo = explorePhotoEntry(entry);
+      if (!photo) return;
+      exploreConsiderMedia(
+        refs,
+        notes,
+        source,
+        photo.id,
+        purpose,
+        photo.subject ? baseLabel + ' — ' + photo.subject : baseLabel,
+      );
     });
+  }
+
+  function exploreMergeRefs(refs) {
+    const rank = {
+      'distress-photo': 1,
+      'quick-capture': 2,
+      'unassigned-photo': 3,
+      'general-photo': 3,
+      plan: 1,
+      'floor-pdf': 1,
+      'floor-figure': 2,
+      'diagnostics-figure': 1,
+    };
+    const map = Object.create(null);
+    const order = [];
+    refs.forEach(function (ref) {
+      if (!ref || !ref.id) return;
+      const prev = map[ref.id];
+      if (!prev) {
+        map[ref.id] = { id: ref.id, purpose: ref.purpose, label: ref.label, also: [] };
+        order.push(ref.id);
+        return;
+      }
+      if (prev.purpose === ref.purpose) {
+        if (ref.label && ref.label.length > prev.label.length) prev.label = ref.label;
+        return;
+      }
+      const prevRank = rank[prev.purpose] || 9;
+      const nextRank = rank[ref.purpose] || 9;
+      if (nextRank < prevRank) {
+        prev.also.push(prev.purpose);
+        prev.purpose = ref.purpose;
+        prev.label = ref.label;
+      } else if (prev.also.indexOf(ref.purpose) === -1) {
+        prev.also.push(ref.purpose);
+      }
+    });
+    return order.map(function (id) { return map[id]; });
   }
 
   async function listingFromCabinetIndexes() {
@@ -2120,6 +2184,7 @@
       const row = exists ? { key: key } : { key: key, missing: true };
       row.purpose = ref.purpose;
       row.label = ref.label;
+      if (ref.also && ref.also.length) row.also = ref.also.slice();
       objects.push(row);
     }
     objects.sort(compareKeys);

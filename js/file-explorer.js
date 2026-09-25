@@ -52,6 +52,7 @@
     { id: 'plans', title: 'Plans and canvases' },
     { id: 'distress', title: 'Distress Survey' },
     { id: 'quick-capture', title: 'Quick Capture' },
+    { id: 'other-photos', title: 'Other photos' },
     { id: 'floor', title: 'Floor Survey' },
     { id: 'diagnostics', title: 'Diagnostics' },
     { id: 'report', title: 'Report Builder' },
@@ -113,6 +114,7 @@
   function groupIdFor(purpose) {
     if (purpose === 'plan') return 'plans';
     if (purpose === 'distress-photo') return 'distress';
+    if (purpose === 'unassigned-photo' || purpose === 'general-photo') return 'other-photos';
     if (purpose === 'floor-pdf' || purpose === 'floor-figure') return 'floor';
     if (purpose === 'diagnostics-figure') return 'diagnostics';
     const known = GROUPS.some(function (group) { return group.id === purpose; });
@@ -127,10 +129,13 @@
 
   function alsoNote(row) {
     const also = row && Array.isArray(row.also) ? row.also : [];
-    if (row && row.purpose === 'distress-photo' && also.indexOf('quick-capture') !== -1) {
-      return 'Also listed in Quick Capture.';
-    }
-    return '';
+    const names = [];
+    if (also.indexOf('distress-photo') !== -1) names.push('Distress Survey');
+    if (also.indexOf('quick-capture') !== -1) names.push('Quick Capture');
+    if (also.indexOf('unassigned-photo') !== -1) names.push('Unassigned photos');
+    if (also.indexOf('general-photo') !== -1) names.push('General photos');
+    if (!names.length) return '';
+    return 'Also listed in ' + names.join(' and ') + '.';
   }
 
   function metaLine(row) {

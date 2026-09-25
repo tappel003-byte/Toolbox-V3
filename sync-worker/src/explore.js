@@ -137,6 +137,33 @@ function mediaRefsFromPlans(payload, notes) {
   return refs;
 }
 
+function distressPhotoEntry(entry) {
+  if (typeof entry === 'string') {
+    if (entry.indexOf('ph_') !== 0) return null;
+    return { id: entry, subject: '' };
+  }
+  if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string') return null;
+  if (entry.id.indexOf('ph_') !== 0) return null;
+  return { id: entry.id, subject: trimmed(entry.subject) || trimmed(entry.folder) };
+}
+
+function pushPhotoCollection(refs, notes, source, list, purpose, baseLabel) {
+  if (!Array.isArray(list)) return;
+  list.forEach(function (entry) {
+    const photo = distressPhotoEntry(entry);
+    if (!photo) return;
+    considerMedia(
+      refs,
+      notes,
+      source,
+      photo.id,
+      purpose,
+      photo.subject ? baseLabel + ' — ' + photo.subject : baseLabel,
+      '',
+    );
+  });
+}
+
 function mediaRefsFromDistress(payload, notes) {
   const refs = [];
   if (!payload || typeof payload !== 'object') return refs;
@@ -162,6 +189,17 @@ function mediaRefsFromDistress(payload, notes) {
       '',
     );
   });
+  pushPhotoCollection(refs, notes, 'distress.json', payload.unassignedPhotos, 'unassigned-photo', 'Unassigned photo');
+  pushPhotoCollection(refs, notes, 'distress.json', payload.generalPhotos, 'general-photo', 'General photo');
+  return refs;
+}
+
+// Reads generalPhotos only when that array is stored on customer.json.
+// Ordinary customer sync does not write record.generalPhotos.
+function mediaRefsFromCustomer(payload, notes) {
+  const refs = [];
+  if (!payload || typeof payload !== 'object') return refs;
+  pushPhotoCollection(refs, notes, 'customer.json', payload.generalPhotos, 'general-photo', 'General photo');
   return refs;
 }
 
@@ -248,6 +286,8 @@ function mediaRefsFromDiagnostics(payload, notes) {
 const PURPOSE_RANK = {
   'distress-photo': 1,
   'quick-capture': 2,
+  'unassigned-photo': 3,
+  'general-photo': 3,
   plan: 1,
   'floor-pdf': 1,
   'floor-figure': 2,
@@ -382,12 +422,14 @@ async function referencedMedia(cabinet, id, storedByKey, notes) {
   const distress = await readManifest(cabinet, id, 'distress', storedByKey, notes);
   const floor = await readManifest(cabinet, id, 'floor', storedByKey, notes);
   const diagnostics = await readManifest(cabinet, id, 'diagnostics', storedByKey, notes);
+  const customer = await readManifest(cabinet, id, 'customer', storedByKey, notes);
   const names = canvasNameMap(plans);
   return mergeMediaRefs(
     mediaRefsFromPlans(plans, notes)
       .concat(mediaRefsFromDistress(distress, notes))
       .concat(mediaRefsFromFloor(floor, notes, names))
-      .concat(mediaRefsFromDiagnostics(diagnostics, notes)),
+      .concat(mediaRefsFromDiagnostics(diagnostics, notes))
+      .concat(mediaRefsFromCustomer(customer, notes)),
   );
 }
 

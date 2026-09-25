@@ -156,6 +156,9 @@ try {
       { key: `media/${fixture.planId}`, size: fixture.png.length, contentType: 'image/png', purpose: 'plan', label: 'Floor plan — Ground' },
       { key: 'media/ph_present', size: fixture.png.length, contentType: 'image/jpeg', purpose: 'distress-photo', label: 'Distress Survey photograph' },
       { key: 'media/ph_quick', size: fixture.png.length, contentType: 'image/jpeg', purpose: 'quick-capture', label: 'Quick Capture photo — porch.jpg' },
+      { key: 'media/ph_loose', size: fixture.png.length, contentType: 'image/jpeg', purpose: 'unassigned-photo', label: 'Unassigned photo' },
+      { key: 'media/ph_general', size: fixture.png.length, contentType: 'image/jpeg', purpose: 'general-photo', label: 'General photo — Exterior overview' },
+      { key: 'media/ph_general_missing', missing: true, purpose: 'general-photo', label: 'General photo' },
       { key: 'media/fsrec_canvas-ground', size: fixture.pdf.length, contentType: 'application/pdf', purpose: 'floor-pdf', label: 'Floor Survey recovery PDF — Ground' },
       { key: 'media/dxfig_ground', size: fixture.png.length, contentType: 'image/png', purpose: 'diagnostics-figure', label: 'Diagnostics figure — Ground' },
       { key: 'media/ph_missing', missing: true, purpose: 'distress-photo', label: 'Distress Survey photograph' },
@@ -270,6 +273,7 @@ try {
     const distressRow = document.querySelector('[data-key="media/ph_present"]');
     const notesRow = document.querySelector(`[data-key="cf/${fixture.id}/field-notes.txt"]`);
     const groups = [...document.querySelectorAll('.explorer-group')].map((group) => group.dataset.group);
+    const otherPhotos = document.querySelector('[data-group="other-photos"]');
     const objectCount = document.querySelectorAll('.explorer-row[data-key]').length;
     const note = document.querySelector('.explorer-note');
     const unreferenced = document.querySelector('[data-key="media/ph_unreferenced"]');
@@ -329,6 +333,20 @@ try {
       jsonText,
       pdfSrc: pdf ? pdf.getAttribute('src') : '',
       pdfTitle: pdf ? pdf.getAttribute('title') : '',
+      otherPhotos: otherPhotos ? otherPhotos.innerText : '',
+      previewFont: (function () {
+        const heading = document.querySelector('.explorer-preview__head h2');
+        if (!heading) return null;
+        const headingStyle = getComputedStyle(heading);
+        const parentStyle = getComputedStyle(heading.parentElement);
+        return {
+          weight: headingStyle.fontWeight,
+          size: headingStyle.fontSize,
+          family: headingStyle.fontFamily,
+          parentFamily: parentStyle.fontFamily,
+          lineHeight: headingStyle.lineHeight,
+        };
+      })(),
       downloads,
       fetchLog,
       writes,
@@ -365,8 +383,11 @@ try {
     flow.detailLead.includes('10 Oak Street') &&
     flow.detailLead.includes('Mar 1, 2026') &&
     flow.detailRawKey.startsWith(`cf/${ID}/`) &&
-    flow.groups.join(',') === 'customer,plans,distress,quick-capture,floor,diagnostics,report,other,technical' &&
-    flow.objectCount === 15 &&
+    flow.groups.join(',') === 'customer,plans,distress,quick-capture,other-photos,floor,diagnostics,report,other,technical' &&
+    flow.objectCount === 18 &&
+    flow.otherPhotos.includes('Unassigned photo') &&
+    flow.otherPhotos.includes('General photo — Exterior overview') &&
+    flow.otherPhotos.includes('Not stored') &&
     flow.detailText.includes('Plans and canvases') &&
     flow.detailText.includes('Floor plan — Ground') &&
     !flow.detailText.includes(`media/${PLAN_ID}`));
@@ -391,6 +412,13 @@ try {
   check('JSON preview is the stored text', flow.jsonText === INDEX_TEXT);
   check('PDF preview uses the stored recovery PDF',
     flow.pdfSrc.startsWith('blob:') && flow.pdfTitle === 'Floor Survey recovery PDF — Ground');
+  check('preview heading inherits the page font at 1rem / 600',
+    flow.previewFont &&
+    flow.previewFont.weight === '600' &&
+    flow.previewFont.size === '16px' &&
+    flow.previewFont.family === flow.previewFont.parentFamily &&
+    flow.previewFont.lineHeight === '21.6px',
+    JSON.stringify(flow.previewFont));
   check('individual download saves the object bytes',
     flow.downloads.some((item) => item.clicked && item.type === 'image/png' && item.size === PNG.length && item.name.includes(PLAN_ID)) &&
     flow.downloads.some((item) => item.clicked && item.type === 'application/pdf' && item.size === PDF.length && item.name.includes('fsrec_canvas-ground')));
