@@ -155,6 +155,21 @@ function distressPhotoIds(record) {
   return ids;
 }
 
+function diagnosticsFigureIds(record) {
+  const diagnostics = record && record.diagnostics && typeof record.diagnostics === 'object'
+    ? record.diagnostics
+    : {};
+  const figures = Array.isArray(diagnostics.figures) ? diagnostics.figures : [];
+  const ids = [];
+  figures.forEach((fig) => {
+    const id = fig && fig.mediaId;
+    if (typeof id !== 'string' || id.indexOf('dxfig_') !== 0) return;
+    if (id.indexOf('/') !== -1 || id.indexOf('\\') !== -1 || id.indexOf('..') !== -1) return;
+    ids.push(id);
+  });
+  return ids;
+}
+
 function recoveryPdfIds(record) {
   const floor = record && record.floorSurvey ? record.floorSurvey : {};
   const layers = floor.byCanvasId && typeof floor.byCanvasId === 'object' ? floor.byCanvasId : {};
@@ -217,7 +232,9 @@ function permanentlyDeleteCustomerFiles(records) {
 function removeLocalWorkingCopy(records) {
   const list = (records || []).filter((record) => record && record.id);
   if (!list.length) return Promise.resolve({ deletedCount: 0, mediaDeletedCount: 0 });
-  const planIds = Array.from(new Set(list.flatMap(planMediaIds).concat(list.flatMap(recoveryPdfIds))));
+  const planIds = Array.from(new Set(
+    list.flatMap(planMediaIds).concat(list.flatMap(recoveryPdfIds)).concat(list.flatMap(diagnosticsFigureIds))
+  ));
   const photoIds = Array.from(new Set(list.flatMap(distressPhotoIds)));
 
   return openDatabase().then((db) => new Promise((resolve, reject) => {

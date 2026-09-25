@@ -154,6 +154,14 @@ try {
             mediaIds.push(mediaId);
           }
         });
+        const diagnostics = state.components[compKey(id, 'diagnostics')];
+        ((diagnostics && diagnostics.figures) || []).forEach(function (fig) {
+          const mediaId = fig && fig.mediaId;
+          if (typeof mediaId === 'string' && mediaId.indexOf('dxfig_') === 0 &&
+              mediaId.indexOf('/') === -1 && mediaId.indexOf('\\') === -1 && mediaId.indexOf('..') === -1) {
+            mediaIds.push(mediaId);
+          }
+        });
         state.purged[id] = {
           id: id,
           purgedAt: '2026-09-23T00:00:00.000Z',
@@ -331,6 +339,14 @@ try {
       },
     };
     state.media['fsrec_c-cf-trashed'] = 'pdf';
+    state.components[compKey('cf-trashed', 'diagnostics')] = {
+      figures: [
+        { id: 'dxf_bea', mediaId: 'dxfig_c-cf-trashed' },
+        { id: 'dxf_bad', mediaId: 'dxfig_../no' },
+      ],
+    };
+    state.components[compKey('cf-trashed', 'report')] = { updatedAt: '2026-02-01T00:00:00.000Z' };
+    state.media['dxfig_c-cf-trashed'] = 'figure';
     seed('cf-leased', {
       customer: { firstName: 'Cy', lastName: 'Leased', propertyAddress: '3 Lease Road' },
       index: {
@@ -478,12 +494,25 @@ try {
     held.floorSurvey.inspectionDate = '2026-09-01';
     const heldCanvasId = held.planSetup.canvases[0].id;
     const heldPdfId = 'fsrec_' + heldCanvasId;
+    const heldFigureId = 'dxfig_cf-held';
     held.floorSurvey.byCanvasId = held.floorSurvey.byCanvasId || {};
     held.floorSurvey.byCanvasId[heldCanvasId] = { points: [], recoveryPdfMediaId: heldPdfId };
     held.floorSurvey.byCanvasId.bad = { points: [], recoveryPdfMediaId: '../no-pdf' };
+    held.diagnostics = {
+      schemaVersion: 1,
+      updatedAt: '2026-09-24T12:00:00.000Z',
+      figures: [
+        { id: 'dxf_held', mediaId: heldFigureId, canvasName: 'Floor Plan' },
+        { id: 'dxf_bad', mediaId: 'dxfig_../no' },
+      ],
+    };
+    held.diagnosticsUpdatedAt = '2026-09-24T12:00:00.000Z';
+    held.report = { updatedAt: '2026-09-24T12:00:00.000Z', title: 'Held report' };
+    held.reportUpdatedAt = '2026-09-24T12:00:00.000Z';
     state.media['ph_quick_held'] = 'quick';
     await ToolboxDB.putMedia('plan-cf-held', 'data:image/png;base64,cGxhbg==');
     await ToolboxDB.putMedia(heldPdfId, 'data:application/pdf;base64,JVBERi0=');
+    await ToolboxDB.putMedia(heldFigureId, 'data:image/png;base64,ZmlndXJl');
     await new Promise((resolve, reject) => {
       const request = indexedDB.open('pgg_photos_v1', 1);
       request.onupgradeneeded = () => {
@@ -508,6 +537,7 @@ try {
     report.offlineKept = !!(offlineError && heldAfterFail && heldAfterFail.cabinetTrashRequestedAt);
     report.offlinePlanKept = !!(await ToolboxDB.getMedia('plan-cf-held'));
     report.offlinePdfKept = !!(await ToolboxDB.getMedia(heldPdfId));
+    report.offlineFigureKept = !!(await ToolboxDB.getMedia(heldFigureId));
     report.offlineNotTrashed = !state.indexes['cf-held'].deletedAt;
     report.offlineNoDelete = !state.fetchLog.some(function (entry) { return entry.method === 'DELETE'; });
     state.failNetwork = false;
@@ -516,6 +546,8 @@ try {
     const heldRemote = state.indexes['cf-held'];
     const heldDistress = state.components[compKey('cf-held', 'distress')];
     const heldFloor = state.components[compKey('cf-held', 'floor')];
+    const heldDiagnostics = state.components[compKey('cf-held', 'diagnostics')];
+    const heldReport = state.components[compKey('cf-held', 'report')];
     report.heldSyncOk = !!(finished && finished.ok);
     report.heldLocalGone = !(await ToolboxDB.getCustomerFile('cf-held'));
     report.heldTrashed = !!(heldRemote && heldRemote.deletedAt && !heldRemote.checkout);
@@ -526,6 +558,10 @@ try {
       heldFloor.byCanvasId[heldCanvasId].recoveryPdfMediaId === heldPdfId);
     report.heldPdfKept = state.media[heldPdfId] === 'uploaded' && !state.media['../no-pdf'];
     report.heldPdfLocalGone = !(await ToolboxDB.getMedia(heldPdfId));
+    report.heldFigureKept = state.media[heldFigureId] === 'uploaded' && !state.media['dxfig_../no'] &&
+      !!(heldDiagnostics && heldDiagnostics.figures && heldDiagnostics.figures[0].mediaId === heldFigureId) &&
+      !!(heldReport && heldReport.title === 'Held report');
+    report.heldFigureLocalGone = !(await ToolboxDB.getMedia(heldFigureId));
     report.heldNoDelete = !state.fetchLog.some(function (entry) { return entry.method === 'DELETE'; });
     state.fetchLog.length = 0;
     await ToolboxSync.restoreCabinetCustomerFile('cf-held');
@@ -584,7 +620,9 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 300));
     report.permanentDeleted = !state.indexes['cf-trashed'] && !!state.purged['cf-trashed'];
     report.permanentMediaGone = !state.media['plan-cf-trashed'] && !state.media['ph_cf-trashed'] &&
-      !state.media['fsrec_c-cf-trashed'];
+      !state.media['fsrec_c-cf-trashed'] && !state.media['dxfig_c-cf-trashed'] &&
+      !state.components[compKey('cf-trashed', 'diagnostics')] &&
+      !state.components[compKey('cf-trashed', 'report')];
     report.permanentBefore120 = Date.parse(soon) > Date.now();
     report.permanentOnlyBea = state.fetchLog.filter(function (entry) { return entry.method === 'DELETE'; })
       .map(function (entry) { return entry.path; }).join(',') === 'files/cf-trashed';
@@ -665,7 +703,7 @@ try {
   check('Cloud-only delete writes trash component then index and does not download or DELETE', out.cloudTrashNoDelete && out.cloudTrashNoCheckout && out.componentBeforeIndex && out.cloudTrashLocal == null && out.trashResultLocal === true && out.retentionDays === 120 && out.cloudTrashComponent && out.cloudTrashComponent.deletedAt === out.cloudTrashDeletedAt, JSON.stringify(out));
   check('Restore clears cabinet trash without Check Out or a local row', out.restoredDeletedAt == null && out.restoredComponent && out.restoredComponent.deletedAt == null && out.restoreLocal == null && out.restoreNoCheckout && out.restoreNoDelete, JSON.stringify(out));
   check('Checked-out delete keeps local evidence when the server cannot be reached', out.offlineKept && out.offlinePlanKept && out.offlinePdfKept && out.offlineNotTrashed && out.offlineNoDelete, JSON.stringify(out));
-  check('Sync Now finishes the recorded delete and keeps plans, photos, and floor evidence', out.heldSyncOk && out.heldLocalGone && out.heldTrashed && out.heldMediaKept && out.heldQuickKept && out.heldFloorKept && out.heldPdfKept && out.heldPdfLocalGone && out.heldNoDelete, JSON.stringify(out));
+  check('Sync Now finishes the recorded delete and keeps plans, photos, and floor evidence', out.heldSyncOk && out.heldLocalGone && out.heldTrashed && out.heldMediaKept && out.heldQuickKept && out.heldFloorKept && out.heldPdfKept && out.heldPdfLocalGone && out.heldFigureKept && out.heldFigureLocalGone && out.heldNoDelete && out.offlineFigureKept, JSON.stringify(out));
   check('Restore returns the cabinet file and keeps its media', out.heldRestored && out.heldRestoreNoDelete, JSON.stringify(out));
   check('Cabinet list drops a trashed file and Trash does not auto-delete', out.namesAfterTrash.includes('Cy Leased') && !out.namesAfterTrash.includes('Ada Active') && out.trashHash === '#/cabinet/trash' && out.trashNames.includes('Ada Active') && out.trashNames.includes('Bea Trashed') && out.countdown.some(function (line) { return line === 'In Trash'; }) && out.countdown.some(function (line) { return line === 'Eligible for cleanup'; }) && !out.countdown.some(function (line) { return /Permanently deletes/i.test(line); }), JSON.stringify(out));
   check('Trash Restore does not Check Out', out.uiRestoreDeletedAt == null && out.uiRestoreNoCheckout && out.uiRestoreNoLocal, JSON.stringify(out));

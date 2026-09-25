@@ -338,6 +338,16 @@ function mediaIdsFromPlansComponent(plans) {
   return ids;
 }
 
+function mediaIdsFromDiagnosticsComponent(diagnostics) {
+  const figures = diagnostics && Array.isArray(diagnostics.figures) ? diagnostics.figures : [];
+  const ids = [];
+  figures.forEach(function (fig) {
+    const id = fig && fig.mediaId;
+    if (safeMediaId(id) && id.indexOf('dxfig_') === 0) ids.push(id);
+  });
+  return ids;
+}
+
 function mediaIdsFromFloorComponent(floor) {
   const layers = floor && floor.byCanvasId && typeof floor.byCanvasId === 'object' ? floor.byCanvasId : {};
   const ids = [];
@@ -386,7 +396,8 @@ async function readStoredJson(object) {
 }
 
 /**
- * Plan, Distress, and Floor Survey recovery-PDF bytes referenced by this Customer File.
+ * Plan, Distress, Floor Survey recovery-PDF, and Diagnostics figure bytes
+ * referenced by this Customer File.
  * Stops before any delete when a present component cannot be read.
  */
 async function referencedMediaIds(env, id) {
@@ -402,6 +413,10 @@ async function referencedMediaIds(env, id) {
   if (floorRead.corrupt) {
     return { error: 'Floor Survey component is unreadable; refusing permanent delete' };
   }
+  const diagnosticsRead = await readStoredJson(await env.CABINET.get(componentKey(id, 'diagnostics')));
+  if (diagnosticsRead.corrupt) {
+    return { error: 'Diagnostics component is unreadable; refusing permanent delete' };
+  }
   const tombRead = await readStoredJson(await env.CABINET.get(purgeKey(id)));
   const prior = tombRead.body && Array.isArray(tombRead.body.mediaIds) ? tombRead.body.mediaIds : [];
   return {
@@ -409,6 +424,7 @@ async function referencedMediaIds(env, id) {
       mediaIdsFromPlansComponent(plansRead.body)
         .concat(mediaIdsFromDistressComponent(distressRead.body))
         .concat(mediaIdsFromFloorComponent(floorRead.body))
+        .concat(mediaIdsFromDiagnosticsComponent(diagnosticsRead.body))
         .concat(prior),
     ),
     tomb: tombRead.body,

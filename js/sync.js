@@ -420,10 +420,16 @@
   }
 
   function diagnosticsFigureMediaIds(source) {
-    if (window.ToolboxDiagnostics && typeof window.ToolboxDiagnostics.figureMediaIds === 'function') {
-      return window.ToolboxDiagnostics.figureMediaIds(source);
-    }
-    return [];
+    const raw = window.ToolboxDiagnostics && typeof window.ToolboxDiagnostics.figureMediaIds === 'function'
+      ? window.ToolboxDiagnostics.figureMediaIds(source)
+      : [];
+    return raw.filter(function (id) {
+      return typeof id === 'string' &&
+        id.indexOf('dxfig_') === 0 &&
+        id.indexOf('/') === -1 &&
+        id.indexOf('\\') === -1 &&
+        id.indexOf('..') === -1;
+    });
   }
 
   function recoveryPdfIdsFromFloor(floor) {
@@ -1119,6 +1125,12 @@
     for (let i = 0; i < pdfIds.length; i++) {
       if (!(await remoteMediaExists(pdfIds[i]))) {
         throw new SyncError('incomplete', 'Cabinet verification failed: Floor Survey recovery PDF missing remotely.');
+      }
+    }
+    const figureIds = diagnosticsFigureMediaIds(record);
+    for (let i = 0; i < figureIds.length; i++) {
+      if (!(await remoteMediaExists(figureIds[i]))) {
+        throw new SyncError('incomplete', 'Cabinet verification failed: Diagnostics figure missing remotely.');
       }
     }
     return remote;
