@@ -52,18 +52,30 @@ async function freePort() {
 }
 
 const FILES = [
-  { id: 'cf-1', displayName: 'Mitchell', propertyAddress: '10 Oak Street' },
-  { id: 'cf-2', displayName: 'Keulen', propertyAddress: '5 Pine Road' },
-  { id: 'cf-3', displayName: 'Nguyen', propertyAddress: '8 Elm Street' },
-  { id: 'cf-4', displayName: 'Garcia', propertyAddress: '2 Cedar Lane' },
-  { id: 'cf-5', displayName: 'Patel', propertyAddress: '9 Ash Court' },
+  { id: 'cf-1', displayName: 'Mitchell', propertyAddress: '10 Oak Street', fieldWorkDate: '2026-03-01', createdAt: '2026-01-15T12:00:00.000Z' },
+  { id: 'cf-2', displayName: 'Keulen', propertyAddress: '5 Pine Road', createdAt: '2024-11-02T00:00:00.000Z' },
+  { id: 'cf-3', displayName: 'Nguyen', propertyAddress: '8 Elm Street', createdAt: '2025-06-01T00:00:00.000Z' },
+  { id: 'cf-4', displayName: 'Garcia', propertyAddress: '2 Cedar Lane', createdAt: '2025-07-01T00:00:00.000Z' },
+  { id: 'cf-5', displayName: 'Patel', propertyAddress: '9 Ash Court', createdAt: '2025-08-01T00:00:00.000Z' },
 ];
 const PLANS = JSON.stringify({
-  canvases: [{ plan: { id: 'plan-1', width: 10, height: 10 } }],
+  canvases: [{ id: 'canvas-1', name: 'Ground', plan: { id: 'plan-1', width: 10, height: 10 } }],
 });
 const DISTRESS = JSON.stringify({
-  pins: [{ photos: ['ph_missing'] }],
-  quickCapture: [],
+  pins: [{ photos: ['ph_missing', 'ph_shared'] }],
+  quickCapture: [{ id: 'ph_quick', sourceName: 'porch.jpg' }],
+  unassignedPhotos: ['ph_loose', 'ph_shared', { id: 'ph_unassigned_missing', subject: 'Loose crack' }, 'room-note'],
+  generalPhotos: [{ id: 'ph_general', subject: 'Exterior overview' }, { id: 'ph_general_missing' }],
+});
+const CUSTOMER = JSON.stringify({
+  firstName: 'Mitchell',
+  generalPhotos: [{ id: 'ph_file_general', subject: 'File overview' }, { id: 'ph_file_missing' }],
+});
+const FLOOR = JSON.stringify({
+  byCanvasId: { 'canvas-1': { recoveryPdfMediaId: 'fsrec_canvas-1' } },
+});
+const DIAGNOSTICS = JSON.stringify({
+  figures: [{ mediaId: 'dxfig_1', canvasName: 'Ground' }],
 });
 
 const port = await freePort();
@@ -76,7 +88,7 @@ await new Promise((resolve) => setTimeout(resolve, 400));
 const browser = await puppeteer.launch({
   executablePath: findChrome(),
   headless: 'new',
-  args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  args: ['--no-sandbox', '--disable-setuid-sandbox', '--lang=en-US'],
 });
 
 try {
@@ -121,22 +133,30 @@ try {
       const componentMatch = /^files\/([^/]+)\/components\/([^/]+)$/.exec(path);
       if (componentMatch) {
         const name = decodeURIComponent(componentMatch[2]);
+        if (name === 'customer') {
+          return new Response(fixture.customer, { status: 200, headers: { 'content-type': 'application/json' } });
+        }
         if (name === 'plans') {
           return new Response(fixture.plans, { status: 200, headers: { 'content-type': 'application/json' } });
         }
         if (name === 'distress') {
           return new Response(fixture.distress, { status: 200, headers: { 'content-type': 'application/json' } });
         }
+        if (name === 'floor') {
+          return new Response(fixture.floor, { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+        if (name === 'diagnostics') {
+          return new Response(fixture.diagnostics, { status: 200, headers: { 'content-type': 'application/json' } });
+        }
         return new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain' } });
       }
-      if (path === 'media/plan-1/exists') {
-        return new Response(JSON.stringify({ exists: true }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (path === 'media/ph_missing/exists') {
-        return new Response(JSON.stringify({ exists: false }), {
+      const existsMatch = /^media\/([^/]+)\/exists$/.exec(path);
+      if (existsMatch) {
+        const present = [
+          'plan-1', 'ph_quick', 'ph_loose', 'ph_general', 'ph_file_general', 'ph_shared',
+          'fsrec_canvas-1', 'dxfig_1',
+        ].includes(decodeURIComponent(existsMatch[1]));
+        return new Response(JSON.stringify({ exists: present }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
@@ -162,7 +182,8 @@ try {
     await waitFor(() => document.querySelectorAll('.explorer-row__key').length >= fixture.files.length);
     const notice = document.getElementById('explorer-notice');
     const rootText = document.getElementById('explorer-list').innerText;
-    document.querySelector('.explorer-row__key').click();
+    const mitchell = [...document.querySelectorAll('.explorer-row__key')].find((button) => button.textContent === 'Mitchell');
+    mitchell.click();
     await waitFor(() => document.querySelector('[data-key="media/ph_missing"]'));
     const detailNotice = document.getElementById('explorer-notice');
     const detailText = document.getElementById('explorer-list').innerText;
@@ -184,11 +205,14 @@ try {
       preview: document.querySelector('.explorer-preview__text').textContent,
       fetchLog,
     };
-  }, { files: FILES, plans: PLANS, distress: DISTRESS });
+  }, { files: FILES, plans: PLANS, distress: DISTRESS, floor: FLOOR, diagnostics: DIAGNOSTICS, customer: CUSTOMER });
 
   check('five stored Customer Files are listed from GET /files',
     FILES.every((file) => flow.rootText.includes(file.displayName) && flow.rootText.includes(file.propertyAddress)) &&
-    !flow.rootText.includes('cf/cf-1/index.json'),
+    flow.rootText.includes('Mar 1, 2026') &&
+    !flow.rootText.includes('cf/cf-1/index.json') &&
+    !/\bType\b/.test(flow.rootText) &&
+    !/\bUploaded\b/.test(flow.rootText),
     flow.rootText);
   check('the 404 body is not shown as the Explorer screen',
     flow.noticeHidden && flow.noticeText !== 'Not found' && !/^Not found$/.test(flow.rootText),
@@ -196,8 +220,18 @@ try {
   check('opening a file does not stop on explore 404',
     flow.detailText.includes('Plans and canvases') &&
     flow.detailText.includes('Distress Survey') &&
-    flow.detailText.includes('Floor plan image') &&
-    flow.detailText.includes('Distress or Quick Capture photo') &&
+    flow.detailText.includes('Floor plan — Ground') &&
+    flow.detailText.includes('Distress Survey photograph') &&
+    flow.detailText.includes('Quick Capture photo — porch.jpg') &&
+    flow.detailText.includes('Unassigned photo') &&
+    flow.detailText.includes('Unassigned photo — Loose crack') &&
+    flow.detailText.includes('General photo — Exterior overview') &&
+    flow.detailText.includes('General photo — File overview') &&
+    flow.detailText.includes('Also listed in Unassigned photos.') &&
+    !flow.detailText.includes('media/room-note') &&
+    flow.detailText.includes('Floor Survey recovery PDF — Ground') &&
+    flow.detailText.includes('Diagnostics figure — Ground') &&
+    !flow.detailText.includes('Distress or Quick Capture') &&
     /Not stored/.test(flow.detailText) &&
     flow.detailNoticeHidden,
     flow.detailNoticeText + ' ' + flow.detailText);
