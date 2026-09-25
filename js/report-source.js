@@ -376,6 +376,8 @@
           reserved: false,
           levelName: name,
           epochLabel: epochLabel,
+          canvasId: figure.canvasId || null,
+          epochId: figure.epochId || null,
           surveyDate: text(figure.surveyDate),
           readingCount: figure.readingCount || 0,
           areaCount: figure.areaCount || 0,

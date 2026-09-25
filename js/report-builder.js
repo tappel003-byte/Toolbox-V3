@@ -130,6 +130,7 @@
       sourceRef: source.sourceRef,
       includeInToc: source.includeInToc !== false,
       meta: source.meta,
+      evidence: source.evidence || null,
     };
   }
 
@@ -143,6 +144,121 @@
     el.textContent = text;
     parent.appendChild(el);
     return el;
+  }
+
+  function evidenceImage(parent, url, className, alt) {
+    if (!url || url.indexOf('data:image/') !== 0) return false;
+    var img = document.createElement('img');
+    img.className = className;
+    img.src = url;
+    img.alt = alt;
+    parent.appendChild(img);
+    return true;
+  }
+
+  function renderEvidence(margin, page) {
+    var evidence = page.evidence;
+    if (!evidence) return false;
+    var frame = document.createElement('div');
+    frame.className = 'rb-evidence-frame';
+    if (page.type === 'distress') {
+      var plan = document.createElement('div');
+      plan.className = 'rb-evidence-plan';
+      if (!evidenceImage(plan, evidence.plan && evidence.plan.dataUrl, 'rb-evidence-plan__image', 'Distress Survey plan')) {
+        addLine(plan, 'rb-sheet__note', 'Plan image is not on this device.');
+      }
+      (evidence.pins || []).forEach(function (pin) {
+        if (!pin.position) return;
+        var marker = document.createElement('span');
+        marker.className = 'rb-evidence-pin';
+        marker.style.left = (Math.max(0, Math.min(1, pin.position.x)) * 100) + '%';
+        marker.style.top = (Math.max(0, Math.min(1, pin.position.y)) * 100) + '%';
+        marker.textContent = String(pin.number);
+        plan.appendChild(marker);
+      });
+      frame.appendChild(plan);
+      var observations = document.createElement('div');
+      observations.className = 'rb-evidence-observations';
+      (evidence.pins || []).forEach(function (pin) {
+        var item = document.createElement('div');
+        item.className = 'rb-evidence-observation';
+        addLine(item, 'rb-evidence-observation__heading', String(pin.number) + (pin.location ? ' · ' + pin.location : ''));
+        if (pin.text) addLine(item, 'rb-evidence-observation__text', pin.text);
+        (pin.photos || []).forEach(function (photo) {
+          var photoBox = document.createElement('figure');
+          photoBox.className = 'rb-evidence-photo';
+          addLine(photoBox, 'rb-evidence-photo__caption', 'Photo ' + photo.displayNumber);
+          if (!evidenceImage(photoBox, photo.dataUrl, 'rb-evidence-photo__image', 'Photo ' + photo.displayNumber)) {
+            addLine(photoBox, 'rb-sheet__note', 'Photo not on this device');
+          }
+          item.appendChild(photoBox);
+        });
+        observations.appendChild(item);
+      });
+      frame.appendChild(observations);
+    } else if (page.type === 'floor') {
+      var figure = evidence.figure || {};
+      if (figure.kind === 'stored-rendering' && figure.mime === 'pdf' && figure.dataUrl) {
+        var pdf = document.createElement('object');
+        pdf.type = 'application/pdf';
+        pdf.data = figure.dataUrl;
+        pdf.className = 'rb-evidence-pdf';
+        addLine(pdf, 'rb-sheet__note', 'Stored Floor Survey PDF');
+        frame.appendChild(pdf);
+      } else if (!evidenceImage(frame, figure.dataUrl, 'rb-evidence-figure', 'Stored Floor Survey figure')) {
+        addLine(frame, 'rb-sheet__note', 'The finished Floor Survey rendering is not stored. Readings were not redrawn.');
+      }
+    } else if (page.type === 'diagnostics') {
+      if (!evidenceImage(frame, evidence.dataUrl, 'rb-evidence-figure', 'Diagnostics 3D view')) {
+        addLine(frame, 'rb-sheet__note', 'Diagnostics figure is not stored on this device.');
+      }
+    }
+    margin.appendChild(frame);
+    return true;
+  }
+
+  async function attachEvidence(record, pages) {
+    var api = window.ToolboxReportEvidence;
+    if (!record || !api || typeof api.assemble !== 'function') return pages;
+    var source = await api.assemble(record);
+    var distress = (source.distress && source.distress.slides) || [];
+    var floor = (source.floor && source.floor.slides) || [];
+    var diagnostics = window.ToolboxDiagnostics && window.ToolboxDiagnostics.listReportFigures
+      ? window.ToolboxDiagnostics.listReportFigures(record) : [];
+    var result = [];
+    for (var i = 0; i < pages.length; i += 1) {
+      var page = pages[i];
+      if (page.type === 'distress' && !(page.meta && page.meta.reserved)) {
+        page.evidence = distress.find(function (slide) { return slide.canvasId === page.sourceRef; }) || null;
+      } else if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
+        var matches = floor.filter(function (slide) {
+          return slide.canvasId === page.meta.canvasId && slide.epochId === page.meta.epochId;
+        });
+        if (matches.length) {
+          if (matches[0].figure && matches[0].figure.kind === 'stored-rendering') page.evidence = matches[0];
+          result.push(page);
+          for (var j = 1; j < matches.length; j += 1) {
+            var extra = Object.assign({}, page, {
+              id: page.id + '-area-' + j,
+              title: matches[j].title,
+              tocTitle: matches[j].title,
+              railLabel: matches[j].title,
+              evidence: matches[j].figure && matches[j].figure.kind === 'stored-rendering' ? matches[j] : null,
+            });
+            result.push(extra);
+          }
+          continue;
+        }
+      } else if (page.type === 'diagnostics' && !(page.meta && page.meta.reserved)) {
+        var fig = diagnostics.find(function (item) { return item.id === page.sourceRef; });
+        if (fig && window.ToolboxDB && window.ToolboxDB.getMedia) {
+          var dataUrl = await window.ToolboxDB.getMedia(fig.mediaId).catch(function () { return null; });
+          page.evidence = { dataUrl: dataUrl };
+        }
+      }
+      result.push(page);
+    }
+    return result;
   }
 
   function renderSheet(sheet, page, pages) {
@@ -226,8 +342,10 @@
       if (metaLine) addLine(margin, 'rb-sheet__meta', metaLine);
       var figure = document.createElement('div');
       figure.className = 'rb-figure';
-      figure.textContent = figureLabel(page);
-      margin.appendChild(figure);
+      if (!renderEvidence(margin, page)) {
+        figure.textContent = figureLabel(page);
+        margin.appendChild(figure);
+      }
       if (page.note) addLine(margin, 'rb-sheet__note', page.note);
     } else {
       addLine(margin, 'rb-sheet__kicker', 'Report');
@@ -516,6 +634,14 @@
         return;
       }
       applyRecord(record);
+      attachEvidence(record, pages.slice()).then(function (enriched) {
+        if (token !== mountGeneration || dirty) return;
+        pages = enriched;
+        renderPages();
+        fitSheet(root);
+      }).catch(function (err) {
+        console.warn('Report evidence could not be loaded:', err);
+      });
     }).catch(function () {
       if (token !== mountGeneration) return;
       fileLabelEl.textContent = 'Customer File';
