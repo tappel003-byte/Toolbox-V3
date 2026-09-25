@@ -64,6 +64,144 @@
       trimStr(checkout.deviceId) === trimStr(deviceId);
   }
 
+  const FOREIGN_LOCK_KEY = 'toolboxForeignCheckouts';
+  const QUIET_SYNC_DELAY_MS = 1200;
+  let quietSuspend = 0;
+  let quietTimer = null;
+  let syncQueue = Promise.resolve();
+  const pendingQuiet = Object.create(null);
+
+  function enqueueSyncWork(fn) {
+    const run = syncQueue.then(fn, fn);
+    syncQueue = run.then(function () { return null; }, function () { return null; });
+    return run;
+  }
+
+  function readForeignLocks() {
+    try {
+      const raw = window.localStorage && window.localStorage.getItem(FOREIGN_LOCK_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function writeForeignLocks(map) {
+    try {
+      if (window.localStorage) window.localStorage.setItem(FOREIGN_LOCK_KEY, JSON.stringify(map || {}));
+    } catch (_) {}
+  }
+
+  /**
+   * A device label is reliable only when the checkout record already carries
+   * one. Opaque device ids are not labels and must not be shown as identity.
+   */
+  function reliableDeviceLabel(checkout) {
+    const label = trimStr(checkout && checkout.deviceLabel);
+    if (!label) return '';
+    if (label === trimStr(checkout && checkout.deviceId)) return '';
+    if (label.length > 48) return '';
+    if (/^[0-9a-f-]{16,}$/i.test(label)) return '';
+    return label;
+  }
+
+  function hasActiveCheckoutLease(remoteOrCheckout) {
+    const checkout = remoteOrCheckout && remoteOrCheckout.checkout
+      ? remoteOrCheckout.checkout
+      : remoteOrCheckout;
+    return !!(checkout && trimStr(checkout.deviceId) && normalizeEmail(checkout.email));
+  }
+
+  function isForeignCheckout(checkout, deviceId) {
+    if (!hasActiveCheckoutLease(checkout)) return false;
+    return trimStr(checkout.deviceId) !== trimStr(deviceId);
+  }
+
+  function isCheckedOutElsewhere(id) {
+    if (!id) return false;
+    return !!readForeignLocks()[id];
+  }
+
+  function foreignCheckoutLabel(id) {
+    const lock = id ? readForeignLocks()[id] : null;
+    if (!lock) return '';
+    const label = reliableDeviceLabel(lock);
+    return label ? ('Checked out on ' + label) : 'Checked out on another device';
+  }
+
+  function lockFromCheckout(checkout) {
+    return {
+      deviceId: trimStr(checkout.deviceId),
+      email: normalizeEmail(checkout.email),
+      deviceLabel: reliableDeviceLabel(checkout),
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Replace the local lock map from a successful cabinet read.
+   * Local records and media are not touched. A failed read must not call this.
+   */
+  function applyLocksFromRemoteIndexes(localRecords, remoteIndexes) {
+    const deviceId = getDeviceId();
+    const remoteById = {};
+    (remoteIndexes || []).forEach(function (idx) {
+      if (idx && idx.id) remoteById[idx.id] = idx;
+    });
+    const next = {};
+    (localRecords || []).forEach(function (record) {
+      if (!record || !record.id) return;
+      const remote = remoteById[record.id];
+      if (!remote || !isForeignCheckout(remote.checkout, deviceId)) return;
+      next[record.id] = lockFromCheckout(remote.checkout);
+    });
+    writeForeignLocks(next);
+    return next;
+  }
+
+  async function refreshLocalCheckoutLocks() {
+    const locks = readForeignLocks();
+    if (!syncApiBase()) return { ok: false, reason: 'config', locks: locks };
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return { ok: false, reason: 'offline', locks: locks };
+    }
+    try {
+      const localRecords = await window.ToolboxDB.getAllCustomerFiles();
+      const cabinet = await listRemoteCabinet();
+      const next = applyLocksFromRemoteIndexes(localRecords, cabinet.files);
+      return { ok: true, locks: next };
+    } catch (err) {
+      return {
+        ok: false,
+        reason: (err && err.code) || 'network',
+        locks: readForeignLocks(),
+      };
+    }
+  }
+
+  function noteLocalSave(id) {
+    if (quietSuspend > 0) return;
+    if (typeof navigator !== 'undefined' && navigator.webdriver) return;
+    if (!id || isCheckedOutElsewhere(id)) return;
+    pendingQuiet[id] = true;
+    if (quietTimer) clearTimeout(quietTimer);
+    quietTimer = setTimeout(function () {
+      quietTimer = null;
+      flushQuietSync().catch(function () {});
+    }, QUIET_SYNC_DELAY_MS);
+  }
+
+  function queueLocalSaveForQuietSync(id) {
+    if (!id) return;
+    pendingQuiet[id] = true;
+  }
+
+  function describeSyncSuccess(result) {
+    if (result && result.uploaded) return 'Sync complete.';
+    return 'Everything is already synced.';
+  }
+
   function iso(value) {
     if (!value) return '';
     const t = Date.parse(value);
@@ -963,12 +1101,6 @@
     await window.ToolboxDB.removeLocalWorkingCopy([record]);
   }
 
-  function hasActiveCheckoutLease(remote) {
-    return !!(remote && remote.checkout &&
-      trimStr(remote.checkout.deviceId) &&
-      normalizeEmail(remote.checkout.email));
-  }
-
   async function releaseCheckoutAndVerify(id) {
     const released = await releaseRemoteCheckout(id);
     const afterRelease = await getRemoteIndex(id);
@@ -1349,6 +1481,35 @@
       }
     }
 
+    // Foreign checkout: keep the local safety copy intact. Do not push over
+    // the owner and do not pull the owner's copy down onto this device.
+    if (checkoutBlocked) {
+      let uploadBlocked = false;
+      for (let i = 0; i < COMPONENTS.length; i++) {
+        const name = COMPONENTS[i];
+        if ((name === 'diagnostics' || name === 'report') &&
+            !componentRevision(record, name) && !indexRev(remote, name)) {
+          componentResults.push({ name: name, action: 'skip' });
+          continue;
+        }
+        const decision = await decideComponentAction(record, name, remote);
+        if (decision === 'push') {
+          uploadBlocked = true;
+          componentResults.push({ name: name, action: 'blocked-checkout' });
+        } else {
+          componentResults.push({ name: name, action: 'preserved' });
+        }
+      }
+      return {
+        id: record.id,
+        changed: false,
+        preserved: true,
+        components: componentResults,
+        checkoutBlocked: true,
+        uploadBlocked: uploadBlocked,
+      };
+    }
+
     for (let i = 0; i < COMPONENTS.length; i++) {
       const name = COMPONENTS[i];
       // Stage A recognizes future diagnostics/report without inventing empty product data.
@@ -1497,6 +1658,15 @@
    * Does NOT mean local inventory equals cloud inventory.
    */
   async function syncNow(options) {
+    quietSuspend++;
+    try {
+      return await syncNowBody(options);
+    } finally {
+      quietSuspend--;
+    }
+  }
+
+  async function syncNowBody(options) {
     options = options || {};
     if (typeof options.beforeSync === 'function') {
       await options.beforeSync();
@@ -1508,6 +1678,7 @@
 
     const cabinet = await listRemoteCabinet();
     const remoteIndexes = cabinet.files;
+    applyLocksFromRemoteIndexes(localRecords, remoteIndexes);
     const purgedList = cabinet.purged || [];
     const purgedIds = {};
     purgedList.forEach(function (entry) {
@@ -1533,10 +1704,21 @@
       try {
         if (purgedIds[record.id]) {
           await retirePurgedLocal(record);
+          delete pendingQuiet[record.id];
           results.push({ id: record.id, changed: true, retired: true, purged: true });
           continue;
         }
-        results.push(await syncOneRecord(record, remoteById[record.id] || null));
+        const one = await syncOneRecord(record, remoteById[record.id] || null);
+        results.push(one);
+        delete pendingQuiet[record.id];
+        if (one && one.checkoutBlocked && one.uploadBlocked) {
+          errors.push({
+            id: record.id,
+            code: 'checkout',
+            message: (foreignCheckoutLabel(record.id) || 'Checked out on another device') +
+              '. Local changes were not uploaded.',
+          });
+        }
       } catch (err) {
         errors.push({
           id: record.id,
@@ -1563,10 +1745,13 @@
       if (id) purgedAfter[id] = true;
     });
     const inventory = compareInventories(localAfter, cabinetAfter.files, purgedAfter);
+    applyLocksFromRemoteIndexes(localAfter, cabinetAfter.files);
 
     const syncedAt = new Date().toISOString();
     if (errors.length) {
-      const detail = errors[0].message || 'component or media exchange failed';
+      const detail = errors.map(function (entry) {
+        return entry && entry.message;
+      }).filter(Boolean).join(' ') || 'component or media exchange failed';
       const err = new SyncError('incomplete', 'Sync incomplete: ' + detail);
       err.results = results;
       err.errors = errors;
@@ -1588,8 +1773,14 @@
       throw err;
     }
 
-    return {
+    const uploaded = results.some(function (result) {
+      return (result.components || []).some(function (component) {
+        return component.action === 'push';
+      });
+    });
+    const success = {
       ok: true,
+      uploaded: uploaded,
       syncedAt: syncedAt,
       results: results,
       inventory: inventory,
@@ -1597,6 +1788,85 @@
       // Explicit: success is working-set sync, not full-cabinet agreement.
       scope: 'local-working-set',
     };
+    success.message = describeSyncSuccess(success);
+    return success;
+  }
+
+  async function flushQuietSyncBody() {
+    const ids = Object.keys(pendingQuiet);
+    if (!ids.length) return { ok: true, skipped: 'idle', uploaded: false };
+    if (!syncApiBase() || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+      return { ok: false, skipped: 'offline', pending: ids.slice() };
+    }
+    quietSuspend++;
+    try {
+      const localRecords = await window.ToolboxDB.getAllCustomerFiles();
+      const cabinet = await listRemoteCabinet();
+      applyLocksFromRemoteIndexes(localRecords, cabinet.files);
+      const remoteById = {};
+      (cabinet.files || []).forEach(function (idx) {
+        if (idx && idx.id) remoteById[idx.id] = idx;
+      });
+      const byId = {};
+      localRecords.forEach(function (record) {
+        if (record && record.id) byId[record.id] = record;
+      });
+      let uploaded = false;
+      let blocked = false;
+      let blockedLabel = '';
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i];
+        const record = byId[id];
+        if (!record || record.deletedAt) {
+          delete pendingQuiet[id];
+          continue;
+        }
+        if (isCheckedOutElsewhere(id)) {
+          blocked = true;
+          blockedLabel = foreignCheckoutLabel(id) || blockedLabel;
+          delete pendingQuiet[id];
+          continue;
+        }
+        if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
+        const result = await syncOneRecord(record, remoteById[id] || null);
+        if ((result.components || []).some(function (component) { return component.action === 'push'; })) {
+          uploaded = true;
+        }
+        if (result && result.checkoutBlocked && result.uploadBlocked) {
+          blocked = true;
+          blockedLabel = foreignCheckoutLabel(id) || 'Checked out on another device';
+        }
+        delete pendingQuiet[id];
+      }
+      if (blocked) {
+        return {
+          ok: false,
+          uploaded: uploaded,
+          blocked: true,
+          message: (blockedLabel || 'Checked out on another device') + '. Local changes were not uploaded.',
+          pending: Object.keys(pendingQuiet),
+        };
+      }
+      return {
+        ok: true,
+        uploaded: uploaded,
+        message: uploaded ? 'Sync complete.' : 'Everything is already synced.',
+        pending: Object.keys(pendingQuiet),
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        skipped: 'failed',
+        message: (err && err.message) || 'Sync failed.',
+        pending: Object.keys(pendingQuiet),
+      };
+    } finally {
+      quietSuspend--;
+    }
+  }
+
+  function flushQuietSync() {
+    return enqueueSyncWork(flushQuietSyncBody);
   }
 
   /**
@@ -1829,11 +2099,25 @@
     planMediaIds: planMediaIds,
     distressPhotoIds: distressPhotoIds,
     SyncError: SyncError,
-    syncNow: syncNow,
+    syncNow: function (options) {
+      return enqueueSyncWork(function () { return syncNow(options); });
+    },
+    syncNowMessage: describeSyncSuccess,
+    flushQuietSync: flushQuietSync,
+    noteLocalSave: noteLocalSave,
+    refreshLocalCheckoutLocks: refreshLocalCheckoutLocks,
+    isCheckedOutElsewhere: isCheckedOutElsewhere,
+    foreignCheckoutLabel: foreignCheckoutLabel,
     browseCabinet: browseCabinet,
-    checkOutCustomerFile: checkOutCustomerFile,
-    sendToFileCabinet: sendToFileCabinet,
-    checkInCustomerFile: checkInCustomerFile,
+    checkOutCustomerFile: function (id) {
+      return enqueueSyncWork(function () { return checkOutCustomerFile(id); });
+    },
+    sendToFileCabinet: function (id) {
+      return enqueueSyncWork(function () { return sendToFileCabinet(id); });
+    },
+    checkInCustomerFile: function (id) {
+      return enqueueSyncWork(function () { return checkInCustomerFile(id); });
+    },
     isCheckedOutFromCabinet: isCheckedOutFromCabinet,
     acquireRemoteCheckout: acquireRemoteCheckout,
     releaseRemoteCheckout: releaseRemoteCheckout,
@@ -1861,6 +2145,9 @@
       isDefaultDistressShellPayload: isDefaultDistressShellPayload,
       isDefaultFloorShellPayload: isDefaultFloorShellPayload,
       checkoutOwnerMatches: checkoutOwnerMatches,
+      reliableDeviceLabel: reliableDeviceLabel,
+      queueLocalSaveForQuietSync: queueLocalSaveForQuietSync,
+      readForeignLocks: readForeignLocks,
       displayNameFromRecord: displayNameFromRecord,
       fieldWorkSurveyDate: fieldWorkSurveyDate,
       CABINET_SEARCH_FIELDS: CABINET_SEARCH_FIELDS,

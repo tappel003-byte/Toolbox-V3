@@ -270,6 +270,11 @@
     const app = document.getElementById('app-view');
     if (!app) return;
     const route = parseRoute();
+    if (route.id && isMutatingRoute(route.view) &&
+        window.ToolboxSync && typeof window.ToolboxSync.isCheckedOutElsewhere === 'function' &&
+        window.ToolboxSync.isCheckedOutElsewhere(route.id)) {
+      route.view = 'checked-out-readonly';
+    }
     if (route.view !== 'floor' && route.view !== 'diagnostics') {
       document.body.classList.remove('floor-survey-open', 'diagnostics-open');
       app.classList.remove('canvas--floor-survey');
@@ -296,7 +301,9 @@
       window.location.replace('#/file/' + encodeURIComponent(route.id) + '/edit/plans');
       return;
     }
-    if (route.view === 'edit') {
+    if (route.view === 'checked-out-readonly') {
+      renderCheckedOutReadOnly(app, route.id);
+    } else if (route.view === 'edit') {
       renderFileEdit(app, route.id, route.section);
     } else if (route.view === 'home') {
       renderFileHome(app, route.id);
@@ -400,14 +407,15 @@
         return (b.updatedAt || '').localeCompare(a.updatedAt || '');
       });
 
-      listEl.innerHTML = '';
-
-      if (records.length === 0) {
-        const p = document.createElement('p');
-        p.className = 'cabinet-empty';
-        p.textContent = 'No Customer Files on this device yet.';
-        listEl.appendChild(p);
-      } else {
+      function paintRows() {
+        listEl.innerHTML = '';
+        if (records.length === 0) {
+          const p = document.createElement('p');
+          p.className = 'cabinet-empty';
+          p.textContent = 'No Customer Files on this device yet.';
+          listEl.appendChild(p);
+          return;
+        }
         records.forEach(function (record) {
           listEl.appendChild(cabinetRowNode(record, function () {
             requestCustomerFileRemoval(record).then(function (result) {
@@ -421,6 +429,14 @@
             });
           }));
         });
+      }
+
+      paintRows();
+      if (window.ToolboxSync && typeof window.ToolboxSync.refreshLocalCheckoutLocks === 'function') {
+        window.ToolboxSync.refreshLocalCheckoutLocks().then(function (result) {
+          if (!result || !result.ok || !listEl.isConnected) return;
+          paintRows();
+        }).catch(function () {});
       }
     }).catch(function (err) {
       console.error('Failed to load Customer Files:', err);
@@ -449,9 +465,20 @@
    *   local + same-id remote) without remote presence already loaded on this screen,
    *   so no "On this device only" label is emitted until that can be decided safely.
    */
+  function isMutatingRoute(view) {
+    return view === 'edit' || view === 'floor' || view === 'distress' ||
+      view === 'import' || view === 'report' || view === 'diagnostics' ||
+      view === 'app-stub';
+  }
+
   function customerFileLocationLabel(kind, record) {
     if (kind === 'remoteCabinet') return 'File Cabinet — Online';
     if (kind === 'localWorking') {
+      if (record && window.ToolboxSync &&
+          typeof window.ToolboxSync.foreignCheckoutLabel === 'function') {
+        const locked = window.ToolboxSync.foreignCheckoutLabel(record.id);
+        if (locked) return locked;
+      }
       if (record && window.ToolboxSync &&
           typeof window.ToolboxSync.isCheckedOutFromCabinet === 'function' &&
           window.ToolboxSync.isCheckedOutFromCabinet(record)) {
@@ -783,9 +810,14 @@
   }
 
   function cabinetRowNode(record, onRemove) {
+    const lockedLabel = window.ToolboxSync &&
+      typeof window.ToolboxSync.foreignCheckoutLabel === 'function'
+      ? window.ToolboxSync.foreignCheckoutLabel(record.id)
+      : '';
     const shell = document.createElement('div');
-    shell.className = 'cabinet-row-shell';
+    shell.className = 'cabinet-row-shell' + (lockedLabel ? ' is-checked-out-elsewhere' : '');
     shell.dataset.customerFileId = record.id;
+    if (lockedLabel) shell.dataset.checkoutLock = lockedLabel;
 
     const row = document.createElement('button');
     row.type = 'button';
@@ -847,6 +879,11 @@
       });
       menu.classList.toggle('is-open', !open);
     });
+
+    if (lockedLabel) {
+      shell.appendChild(row);
+      return shell;
+    }
 
     const cabinetBacked = !!(window.ToolboxSync &&
       typeof window.ToolboxSync.isCheckedOutFromCabinet === 'function' &&
@@ -1068,6 +1105,35 @@
     return row;
   }
 
+  function renderCheckedOutReadOnly(app, id) {
+    registerActiveFlush(null);
+    const label = (window.ToolboxSync &&
+      typeof window.ToolboxSync.foreignCheckoutLabel === 'function' &&
+      window.ToolboxSync.foreignCheckoutLabel(id)) || 'Checked out on another device';
+    app.innerHTML =
+      '<div class="view-bar view-bar--file">' +
+      '  <button type="button" id="locked-back" class="btn btn--ghost">‹ Customer File</button>' +
+      '  <div class="file-identity"><span class="file-identity__name">View only</span></div>' +
+      '</div>' +
+      '<section class="cf-readonly">' +
+      '  <h1 class="cf-readonly__name" id="locked-name">Customer File</h1>' +
+      '  <p class="cf-readonly__address" id="locked-address"></p>' +
+      '  <p class="cf-readonly__status" id="locked-status"></p>' +
+      '</section>';
+    app.querySelector('#locked-status').textContent =
+      label + '. This copy stays on this device. Changes are paused until the checkout is released.';
+    app.querySelector('#locked-back').addEventListener('click', function () {
+      window.location.hash = '#/file/' + encodeURIComponent(id);
+    });
+    window.ToolboxDB.getCustomerFile(id).then(function (record) {
+      if (!record) return;
+      const name = app.querySelector('#locked-name');
+      const address = app.querySelector('#locked-address');
+      if (name) name.textContent = displayName(record);
+      if (address) address.textContent = displayAddress(record);
+    }).catch(function () {});
+  }
+
   // ---- Customer File home (hub) -----------------------------------------
 
   const APP_LABELS = {
@@ -1188,20 +1254,44 @@
     const contactBadge = app.querySelector('#home-contact-badge');
     const planBadge = app.querySelector('#home-plan-badge');
     let currentRecord = null;
+    let homeLocked = false;
+
+    function applyHomeLock(record) {
+      homeLocked = !!(record && window.ToolboxSync &&
+        typeof window.ToolboxSync.isCheckedOutElsewhere === 'function' &&
+        window.ToolboxSync.isCheckedOutElsewhere(record.id));
+      const home = app.querySelector('#cf-home');
+      if (home) home.classList.toggle('is-checked-out-elsewhere', homeLocked);
+      if (!homeLocked) return;
+      const label = window.ToolboxSync.foreignCheckoutLabel(record.id) || 'Checked out on another device';
+      statusEl.textContent = label;
+      editTopBtn.hidden = true;
+      importBtn.disabled = true;
+      planCta.disabled = true;
+      planCallout.hidden = true;
+      app.querySelectorAll('.cf-app-btn').forEach(function (btn) {
+        btn.classList.add('is-locked');
+        const state = btn.querySelector('.cf-app-btn__state');
+        if (state) state.textContent = 'View only';
+      });
+    }
 
     backBtn.addEventListener('click', function () {
       window.location.hash = '#/';
     });
     function editFile(section) {
+      if (homeLocked) return;
       window.location.hash = '#/file/' + encodeURIComponent(id) + '/edit' + (section ? '/' + section : '');
     }
     importBtn.addEventListener('click', function () {
+      if (homeLocked) return;
       window.location.hash = '#/file/' + encodeURIComponent(id) + '/import';
     });
     editTopBtn.addEventListener('click', function () { editFile('customer'); });
     planCta.addEventListener('click', function () { editFile('plans'); });
     app.querySelectorAll('.cf-app-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
+        if (homeLocked) return;
         if (!currentRecord) return;
         if (!planReadiness(currentRecord).hasPlan) {
           editFile('plans');
@@ -1227,6 +1317,10 @@
           ((existing.distress && Array.isArray(existing.distress.surfaces) && existing.distress.surfaces.length) ||
            (existing.planSetup && Array.isArray(existing.planSetup.canvases)))) {
         if (window.ToolboxPlanSetup.ensurePlanSetup(existing)) {
+          if (window.ToolboxSync && typeof window.ToolboxSync.isCheckedOutElsewhere === 'function' &&
+              window.ToolboxSync.isCheckedOutElsewhere(existing.id)) {
+            return existing;
+          }
           return window.ToolboxDB.saveCustomerFile(existing).then(function () {
             return existing;
           });
@@ -1264,11 +1358,19 @@
           tally.pins + ' Distress photo' + (tally.pins === 1 ? '' : 's') +
           ' · ' + tally.quick + ' Quick Capture</small>';
         photoBtn.addEventListener('click', function () {
+          if (homeLocked) return;
           window.ToolboxRecoveredPhotos.open(id);
         });
         actions.appendChild(photoBtn);
       }
-      statusEl.textContent = '';
+      applyHomeLock(record);
+      if (!homeLocked) statusEl.textContent = '';
+      if (window.ToolboxSync && typeof window.ToolboxSync.refreshLocalCheckoutLocks === 'function') {
+        window.ToolboxSync.refreshLocalCheckoutLocks().then(function () {
+          if (!app.querySelector('#cf-home')) return;
+          applyHomeLock(record);
+        }).catch(function () {});
+      }
     }).catch(function (err) {
       console.error('Failed to load Customer File home:', err);
       statusEl.textContent = 'Unable to load';
@@ -1954,6 +2056,11 @@
         backBtn.textContent = '‹ Customer File';
       }).catch(function (err) {
         console.error('Failed to save Customer File:', err);
+        if (err && err.code === 'checkout') {
+          dirty = false;
+          setStatus(err.message || 'Checked out on another device');
+          return;
+        }
         setStatus('Save failed — will retry');
         throw err;
       });
@@ -2084,6 +2191,112 @@
     });
   }
 
+  function installSafetyGuards() {
+    const db = window.ToolboxDB;
+    if (!db || db.__checkoutGuard) return;
+    db.__checkoutGuard = true;
+    function lockedError(id) {
+      if (!id || !window.ToolboxSync || typeof window.ToolboxSync.isCheckedOutElsewhere !== 'function') return null;
+      if (!window.ToolboxSync.isCheckedOutElsewhere(id)) return null;
+      const err = new Error(window.ToolboxSync.foreignCheckoutLabel(id) || 'Checked out on another device.');
+      err.code = 'checkout';
+      return err;
+    }
+    function note(id) {
+      if (id && window.ToolboxSync && typeof window.ToolboxSync.noteLocalSave === 'function') {
+        window.ToolboxSync.noteLocalSave(id);
+      }
+    }
+    function recordsLocked(records) {
+      const list = records || [];
+      for (let i = 0; i < list.length; i++) {
+        const err = lockedError(list[i] && list[i].id);
+        if (err) return err;
+      }
+      return null;
+    }
+    const save = db.saveCustomerFile.bind(db);
+    db.saveCustomerFile = function (record) {
+      const err = lockedError(record && record.id);
+      if (err) return Promise.reject(err);
+      return save(record).then(function (saved) {
+        note(saved && saved.id);
+        return saved;
+      });
+    };
+    const trash = db.moveCustomerFileToTrash.bind(db);
+    db.moveCustomerFileToTrash = function (id) {
+      const err = lockedError(id);
+      if (err) return Promise.reject(err);
+      return trash(id).then(function (saved) {
+        note(id);
+        return saved;
+      });
+    };
+    const restore = db.restoreCustomerFile.bind(db);
+    db.restoreCustomerFile = function (id) {
+      const err = lockedError(id);
+      if (err) return Promise.reject(err);
+      return restore(id).then(function (saved) {
+        note(id);
+        return saved;
+      });
+    };
+    const remove = db.removeLocalWorkingCopy.bind(db);
+    db.removeLocalWorkingCopy = function (records) {
+      const err = recordsLocked(records);
+      if (err) return Promise.reject(err);
+      return remove(records);
+    };
+    const hardDelete = db.permanentlyDeleteCustomerFiles.bind(db);
+    db.permanentlyDeleteCustomerFiles = function (records) {
+      const err = recordsLocked(records);
+      if (err) return Promise.reject(err);
+      return hardDelete(records);
+    };
+    const importRecovery = db.importCustomerFileRecovery.bind(db);
+    db.importCustomerFileRecovery = function (record) {
+      const err = lockedError(record && record.id);
+      if (err) return Promise.reject(err);
+      const args = arguments;
+      return importRecovery.apply(db, args).then(function (saved) {
+        note(record && record.id);
+        return saved;
+      });
+    };
+    const commitRecovery = db.commitCustomerFileRecoveryUpdate.bind(db);
+    db.commitCustomerFileRecoveryUpdate = function (record) {
+      const err = lockedError(record && record.id);
+      if (err) return Promise.reject(err);
+      const args = arguments;
+      return commitRecovery.apply(db, args).then(function (saved) {
+        note(record && record.id);
+        return saved;
+      });
+    };
+  }
+  installSafetyGuards();
+
+  function showSyncResult(text, ok) {
+    const el = document.getElementById('app-sync-result');
+    if (!el) return;
+    const successText = text === 'Sync complete.' || text === 'Everything is already synced.';
+    const showOk = !!ok && successText;
+    const message = showOk ? text : (successText ? 'Sync failed.' : (text || 'Sync failed.'));
+    el.hidden = false;
+    el.textContent = message;
+    el.classList.toggle('is-ok', showOk);
+    el.classList.toggle('is-failure', !showOk);
+  }
+
+  function clearSyncResult() {
+    const el = document.getElementById('app-sync-result');
+    if (!el) return;
+    el.hidden = true;
+    el.textContent = '';
+    el.classList.remove('is-ok', 'is-failure');
+  }
+
   // Sync Now: exchange changed Customer File components with the cloud cabinet.
   // Save remains local; this control never blocks offline use of local files.
   const syncBtn = document.getElementById('app-sync');
@@ -2106,29 +2319,34 @@
       syncing = true;
       syncBtn.disabled = true;
       setSyncLabel('Syncing…');
+      clearSyncResult();
       Promise.resolve(flushActiveFile())
         .then(function () {
           return window.ToolboxSync.syncNow();
         })
         .then(function (result) {
+          const message = (result && result.message) ||
+            (window.ToolboxSync.syncNowMessage && window.ToolboxSync.syncNowMessage(result)) ||
+            'Sync complete.';
           if (result && result.ok === false) {
-            setSyncLabel('Sync incomplete');
+            showSyncResult(result.message || 'Sync failed.', false);
+            setSyncLabel('Sync failed');
             console.warn('Sync Now incomplete:', result);
             return;
           }
-          // Transition wording: success means this device's local working files
-          // synced — not that the whole File Cabinet is on this device.
-          setSyncLabel('Local files synced');
+          showSyncResult(message, true);
+          setSyncLabel('Sync Now');
           try { window.dispatchEvent(new HashChangeEvent('hashchange')); } catch (_) {
             window.location.hash = window.location.hash;
           }
         })
         .catch(function (err) {
           const code = err && err.code;
+          const detail = (err && err.message) || 'Sync failed.';
+          showSyncResult(detail, false);
           if (code === 'offline' || code === 'network') setSyncLabel('Offline');
           else if (code === 'auth') setSyncLabel('Sign in to sync');
           else if (code === 'config') setSyncLabel('Sync not configured');
-          else if (code === 'incomplete') setSyncLabel('Sync incomplete');
           else setSyncLabel('Sync failed');
           console.warn('Sync Now failed:', err);
         })
@@ -2140,6 +2358,20 @@
     }
     setSyncLabel('Sync Now');
     syncBtn.addEventListener('click', runSyncNow);
+
+    window.addEventListener('online', function () {
+      if (window.ToolboxSync && typeof window.ToolboxSync.flushQuietSync === 'function') {
+        window.ToolboxSync.flushQuietSync().catch(function () {});
+      }
+      if (window.ToolboxSync && typeof window.ToolboxSync.refreshLocalCheckoutLocks === 'function') {
+        window.ToolboxSync.refreshLocalCheckoutLocks().then(function () {
+          const hash = window.location.hash || '#/';
+          if (hash === '#/' || hash === '#') {
+            try { window.dispatchEvent(new HashChangeEvent('hashchange')); } catch (_) {}
+          }
+        }).catch(function () {});
+      }
+    });
 
     // Resume Sync Now after full-page Cloudflare Access sign-in (iPhone PWA).
     try {

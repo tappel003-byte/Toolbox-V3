@@ -67,12 +67,14 @@ Reading “Cloudflare is the authoritative File Cabinet” as “the cloud is th
 
 ### Stage F — Decided safety behavior (not “later polish”)
 
-These items are the settled rule. They are outside the checkout-foundation in-scope list, and this documentation pass does not implement them. Do not treat them as optional, and do not invent a different lifecycle for them.
+These items are the settled rule. They are outside the checkout-foundation in-scope list. Do not treat them as optional, and do not invent a different lifecycle for them.
 
 - Quiet mirroring of the active working Customer File while online (device-loss protection only; not a second editor)
 - Sync Now truthful wording: “Sync complete.” / “Everything is already synced.” / failures are not success
 - A local copy that learns it is checked out elsewhere is gray/read-only and cannot mutate or sync over that file
 - One protected field checkpoint on deliberate Floor Survey or Distress Survey Save. Record the Distress principle here; do not change protected Distress capture inside a sync slice
+
+This branch implements the quiet online mirror, the Sync Now wording, and the gray/read-only foreign-checkout lock. It does not implement the field checkpoint.
 
 ### Later small slice — not this milestone
 - After another device’s work is released and the File Cabinet copy is verified complete, the older device may offer Remove From This Device / Keep Local Copy / Archive as Revision
