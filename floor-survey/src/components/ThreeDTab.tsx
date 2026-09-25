@@ -90,12 +90,14 @@ function paintDiagnosticPng(
   legendColors: string[],
   highLabel: string,
   lowLabel: string,
-) {
+): string | null {
   const fontSize = Math.max(15, Math.round(source.width / 46));
   const lineHeight = Math.round(fontSize * 1.38);
   const pad = Math.round(fontSize * 0.85);
   const measure = document.createElement("canvas").getContext("2d");
-  if (!measure) return source.toDataURL("image/png");
+  // A missing 2D context must not become a bare mesh PNG. Add to Report
+  // refuses a null result instead of storing a figure that lost its legend.
+  if (!measure) return null;
   measure.font = `600 ${fontSize}px sans-serif`;
   const legendGutter = legendColors.length ? Math.round(fontSize * 6.2) : 0;
   const maxText = Math.max(40, source.width - pad * 2 - legendGutter);
@@ -105,7 +107,7 @@ function paintDiagnosticPng(
   out.width = source.width;
   out.height = source.height + bandHeight;
   const ctx = out.getContext("2d");
-  if (!ctx) return source.toDataURL("image/png");
+  if (!ctx) return null;
   ctx.fillStyle = "#0b0b0b";
   ctx.fillRect(0, 0, out.width, source.height);
   ctx.drawImage(source, 0, 0);
@@ -138,7 +140,16 @@ function paintDiagnosticPng(
     ctx.textBaseline = "bottom";
     ctx.fillText(lowLabel, barX + barW + 8, barY + barH);
   }
-  return out.toDataURL("image/png");
+  try {
+    const painted = out.toDataURL("image/png");
+    if (!painted || painted.indexOf("data:image/png") !== 0 || painted === source.toDataURL("image/png")) {
+      return null;
+    }
+    return painted;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
 }
 
 const READOUT_CSS = `
@@ -502,6 +513,9 @@ export function ThreeDTab({
     if (pointsGroupRef.current) pointsGroupRef.current.visible = showPoints;
   }, [showPoints]);
 
+  // Legend ends are the measured usable high and low. buildGrid clamps every
+  // interpolated cell to that same measured range, so the mesh palette does
+  // not extend past the readings named on the legend.
   const legendColors = useMemo(() => {
     if (!readingSummary || readingSummary.surface !== "ready" || readingSummary.unit !== "in") return [];
     const stops = 8;
@@ -534,6 +548,8 @@ export function ThreeDTab({
     renderer.render(scene, camera);
     const source = renderer.domElement;
     if (source.width < 2 || source.height < 2) return null;
+    // Standalone Floor Survey export has no readout and keeps the bare view.
+    // Diagnostics capture (readingSummary provided) must include the band.
     const bare = readingSummary === undefined;
     if (!bare && (!readingSummary || !readoutLines || !readoutLines.length)) return null;
     const dataUrl = bare

@@ -316,8 +316,7 @@ export function DiagnosticsWorkspace({ customerFileId, onBack }: DiagnosticsWork
     if (saving || !activeFloor || !readingSummary) return;
     const shot = captureRef.current ? captureRef.current() : null;
     if (!shot) {
-      setStatus("The 3D view is not ready to capture.");
-      setViewReady(false);
+      setStatus("This view could not be captured.");
       return;
     }
     const api = captureApi();

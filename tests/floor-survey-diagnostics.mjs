@@ -456,6 +456,61 @@ check(
   JSON.stringify(exported),
 );
 
+async function refuseBareCapture(failOnCall, label) {
+  const before = await page.evaluate(async () => {
+    const saved = await window.ToolboxDB.getCustomerFile('dx-3d-1');
+    return {
+      figures: saved.diagnostics && saved.diagnostics.figures ? saved.diagnostics.figures.length : 0,
+      points: saved.floorSurvey.byCanvasId['canvas-dx-1'].points.map((p) => p.value).join(','),
+      status: (document.querySelector('[data-diagnostics-status]') || {}).textContent || '',
+    };
+  });
+  await page.evaluate((failOn) => {
+    const orig = HTMLCanvasElement.prototype.getContext;
+    let calls = 0;
+    HTMLCanvasElement.prototype.getContext = function (type, ...args) {
+      if (type === '2d') {
+        calls += 1;
+        if (calls === failOn) return null;
+      }
+      return orig.apply(this, [type, ...args]);
+    };
+    window.__dxRestoreGetContext = () => {
+      HTMLCanvasElement.prototype.getContext = orig;
+    };
+    window.__dx2dCalls = () => calls;
+  }, failOnCall);
+  await page.click('[data-diagnostics-add-report]');
+  await page.waitForFunction(
+    (failOn) => typeof window.__dx2dCalls === 'function' && window.__dx2dCalls() >= failOn,
+    { timeout: 4000 },
+    failOnCall,
+  );
+  const after = await page.evaluate(async () => {
+    const calls = window.__dx2dCalls();
+    window.__dxRestoreGetContext();
+    const saved = await window.ToolboxDB.getCustomerFile('dx-3d-1');
+    return {
+      figures: saved.diagnostics && saved.diagnostics.figures ? saved.diagnostics.figures.length : 0,
+      points: saved.floorSurvey.byCanvasId['canvas-dx-1'].points.map((p) => p.value).join(','),
+      status: (document.querySelector('[data-diagnostics-status]') || {}).textContent || '',
+      calls,
+    };
+  });
+  check(
+    label,
+    after.figures === before.figures &&
+      after.points === before.points &&
+      after.calls >= failOnCall &&
+      /could not be captured/i.test(after.status) &&
+      !/Added to Report/i.test(after.status),
+    JSON.stringify(after),
+  );
+}
+
+await refuseBareCapture(1, 'Missing 2D measure context does not store a bare Diagnostics figure');
+await refuseBareCapture(2, 'Missing 2D output context does not store a bare Diagnostics figure');
+
 const sliderMoved = await page.evaluate(() => {
   const slider = document.querySelector('[role="slider"]');
   if (slider) slider.focus();
