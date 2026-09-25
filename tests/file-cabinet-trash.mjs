@@ -117,6 +117,9 @@ try {
           status: 200, headers: { 'content-type': 'application/json' },
         });
       }
+      if (path === 'explore/files' || path.indexOf('explore/files/') === 0) {
+        return new Response('Not found', { status: 404 });
+      }
       if (path === 'files' && method === 'GET') {
         return new Response(JSON.stringify({
           files: Object.values(state.indexes),
@@ -689,6 +692,116 @@ try {
     });
     report.workingCopyKept = !!(await ToolboxDB.getCustomerFile('cf-active'));
 
+    const mirror = ToolboxApp.blankCustomerFile('cf-mirror');
+    mirror.firstName = 'Sip';
+    mirror.lastName = 'Mirror';
+    mirror.propertyAddress = '9 Mirror Lane';
+    delete mirror.checkedOutFromCabinet;
+    const offlineMirror = ToolboxApp.blankCustomerFile('cf-offline-mirror');
+    offlineMirror.firstName = 'Off';
+    offlineMirror.lastName = 'Mirror';
+    offlineMirror.propertyAddress = '10 Offline Way';
+    delete offlineMirror.checkedOutFromCabinet;
+    await ToolboxDB.saveCustomerFile(mirror);
+    await ToolboxDB.saveCustomerFile(offlineMirror);
+    state.indexes['cf-foreign'] = {
+      id: 'cf-foreign',
+      displayName: 'Foreign Mirror',
+      propertyAddress: '11 Lease Road',
+      deletedAt: null,
+      checkout: {
+        email: 'lee@example.com',
+        deviceId: 'device-lee',
+        checkedOutAt: '2026-09-01T00:00:00.000Z',
+      },
+    };
+    const foreign = ToolboxApp.blankCustomerFile('cf-foreign');
+    foreign.firstName = 'Foreign';
+    foreign.lastName = 'Mirror';
+    foreign.propertyAddress = '11 Lease Road';
+    foreign.cabinetMirroredAt = '2026-09-25T00:00:00.000Z';
+    delete foreign.checkedOutFromCabinet;
+    await ToolboxDB.saveCustomerFile(foreign);
+
+    let mirrorSyncError = null;
+    try { await ToolboxSync.syncNow(); } catch (err) { mirrorSyncError = err && err.message; }
+    const mirrorAfterSync = await ToolboxDB.getCustomerFile('cf-mirror');
+    const offlineAfterSync = await ToolboxDB.getCustomerFile('cf-offline-mirror');
+    report.mirrorSynced = !!(state.indexes['cf-mirror'] && !state.indexes['cf-mirror'].deletedAt);
+    report.mirrorNoCheckout = !!(mirrorAfterSync && mirrorAfterSync.checkedOutFromCabinet !== true &&
+      offlineAfterSync && offlineAfterSync.checkedOutFromCabinet !== true);
+    report.mirrorMarked = !!(mirrorAfterSync && mirrorAfterSync.cabinetMirroredAt &&
+      offlineAfterSync && offlineAfterSync.cabinetMirroredAt);
+    report.mirrorSyncError = mirrorSyncError;
+
+    state.failNetwork = true;
+    const offlineDecision = await ToolboxSync.resolveWorkingFileDelete('cf-offline-mirror');
+    report.offlineMirrorDecision = offlineDecision && offlineDecision.action;
+    let offlineMirrorError = null;
+    try { await ToolboxSync.moveWorkingFileToCabinetTrash('cf-offline-mirror'); } catch (err) { offlineMirrorError = err; }
+    const offlineMirrorLocal = await ToolboxDB.getCustomerFile('cf-offline-mirror');
+    report.offlineMirrorKept = !!(offlineMirrorError && offlineMirrorLocal && offlineMirrorLocal.cabinetTrashRequestedAt);
+    report.offlineMirrorRemoteLive = !!(state.indexes['cf-offline-mirror'] && !state.indexes['cf-offline-mirror'].deletedAt);
+    state.failNetwork = false;
+    try { await ToolboxSync.syncNow(); } catch (_) {}
+    report.offlineMirrorFinished = !state.indexes['cf-offline-mirror'] || !!state.indexes['cf-offline-mirror'].deletedAt;
+    report.offlineMirrorLocalGone = !(await ToolboxDB.getCustomerFile('cf-offline-mirror'));
+
+    const never = ToolboxApp.blankCustomerFile('cf-never');
+    never.firstName = 'Never';
+    never.lastName = 'Uploaded';
+    delete never.checkedOutFromCabinet;
+    await ToolboxDB.saveCustomerFile(never);
+    state.failNetwork = true;
+    const neverDecision = await ToolboxSync.resolveWorkingFileDelete('cf-never');
+    report.neverDecision = neverDecision && neverDecision.action;
+    state.failNetwork = false;
+    report.neverNoRemote = !state.indexes['cf-never'];
+    if (report.neverDecision === 'local-only') await ToolboxDB.permanentlyDeleteCustomerFiles([never]);
+    report.neverLocalGone = !(await ToolboxDB.getCustomerFile('cf-never'));
+
+    const foreignDecision = await ToolboxSync.resolveWorkingFileDelete('cf-foreign');
+    let foreignMirrorError = null;
+    try { await ToolboxSync.moveWorkingFileToCabinetTrash('cf-foreign'); } catch (err) { foreignMirrorError = err; }
+    const foreignLocal = await ToolboxDB.getCustomerFile('cf-foreign');
+    report.foreignRefused = foreignDecision && foreignDecision.action === 'foreign-checkout' &&
+      foreignMirrorError && foreignMirrorError.code === 'checkout' &&
+      !!(foreignLocal && !foreignLocal.cabinetTrashRequestedAt) &&
+      !state.indexes['cf-foreign'].deletedAt;
+
+    report.mirrorLocalBefore = !!(await ToolboxDB.getCustomerFile('cf-mirror'));
+    const originalRemove = ToolboxDB.removeLocalWorkingCopy.bind(ToolboxDB);
+    ToolboxDB.removeLocalWorkingCopy = function (records) {
+      const hit = (records || []).some(function (row) { return row && row.id === 'cf-mirror'; });
+      if (hit) {
+        report.mirrorRemovedAfterTrash = !!(state.indexes['cf-mirror'] && state.indexes['cf-mirror'].deletedAt);
+      }
+      return originalRemove(records);
+    };
+    state.fetchLog.length = 0;
+    const mirrorDecision = await ToolboxSync.resolveWorkingFileDelete('cf-mirror');
+    report.mirrorDecision = mirrorDecision && mirrorDecision.action;
+    await ToolboxSync.moveWorkingFileToCabinetTrash('cf-mirror');
+    ToolboxDB.removeLocalWorkingCopy = originalRemove;
+    report.mirrorLocalGone = !(await ToolboxDB.getCustomerFile('cf-mirror'));
+    report.mirrorTrashed = !!(state.indexes['cf-mirror'] && state.indexes['cf-mirror'].deletedAt);
+    report.mirrorNoDelete = !state.fetchLog.some(function (entry) { return entry.method === 'DELETE'; });
+    const explore = await ToolboxSync.exploreListFiles();
+    const exploreRow = (explore.files || []).find(function (row) { return row.id === 'cf-mirror'; });
+    report.exploreTrashed = !!(exploreRow && exploreRow.deletedAt && exploreRow.displayName === 'Sip Mirror');
+    const exploreDetail = await ToolboxSync.exploreListCustomerFile('cf-mirror');
+    report.exploreDetailTrashed = !!(exploreDetail && exploreDetail.deletedAt &&
+      (exploreDetail.objects || []).some(function (row) {
+        return row && row.key === 'cf/cf-mirror/trash.json' && row.purpose === 'technical';
+      }));
+    const browse = await ToolboxSync.browseCabinet();
+    report.cabinetHidesMirror = !(browse.entries || []).some(function (entry) {
+      return entry && entry.id === 'cf-mirror' && !entry.deletedAt;
+    });
+    report.trashListsMirror = (browse.entries || []).some(function (entry) {
+      return entry && entry.id === 'cf-mirror' && !!entry.deletedAt;
+    });
+
     return report;
   });
 
@@ -711,6 +824,10 @@ try {
   check('Empty Trash uses a clear confirmation and deletes only unlocked trash', out.emptyLabel === 'Empty Trash' && out.emptyEnabled && out.emptyNoPhrase && out.cancelKeptOld && out.cancelNoDelete && out.checkInWouldNotDelete && out.oldPurged && out.oldMediaGone && out.leasedTrashSurvives && out.leasedMediaKept && out.activeSurvives && out.otherMediaKept, JSON.stringify(out));
   check('Empty Trash leaves local-only drafts and Check In / Send do not DELETE', out.localDraftKept && out.sendCheckInNoDelete && out.draftStillLocal, JSON.stringify(out));
   check('A working copy on this device blocks cabinet delete', out.workingCopyRefused && out.workingCopyNoWrite && out.workingCopyKept, JSON.stringify(out));
+  check('Quiet mirror without checkout is moved to File Cabinet Trash', out.mirrorSynced && out.mirrorNoCheckout && out.mirrorMarked && out.mirrorDecision === 'cabinet' && out.mirrorLocalBefore && out.mirrorRemovedAfterTrash && out.mirrorLocalGone && out.mirrorTrashed && out.mirrorNoDelete && out.exploreTrashed && out.exploreDetailTrashed && out.cabinetHidesMirror && out.trashListsMirror, JSON.stringify(out));
+  check('Offline mirror delete keeps the local file until Sync Now confirms Trash', out.offlineMirrorDecision === 'pending-offline' && out.offlineMirrorKept && out.offlineMirrorRemoteLive && out.offlineMirrorFinished && out.offlineMirrorLocalGone, JSON.stringify(out));
+  check('A file that was never mirrored still deletes locally while offline', out.neverDecision === 'local-only' && out.neverNoRemote && out.neverLocalGone, JSON.stringify(out));
+  check('A foreign checkout is not trashed from this device', out.foreignRefused, JSON.stringify(out));
 
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
   await page.waitForFunction(() => document.querySelector('.trash-head h1'));

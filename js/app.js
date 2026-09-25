@@ -154,9 +154,9 @@
   }
 
   /**
-   * A local-only file with no customer or survey evidence may be deleted
-   * on this device. Anything with real information asks once, then deletes
-   * locally. Neither path sends a never-cabinet file to File Cabinet Trash.
+   * A file with no File Cabinet index may be deleted on this device.
+   * An empty stub asks once. A file with customer or survey information
+   * asks once, then deletes locally. A live cabinet copy is not this path.
    */
   function isEmptyCustomerFileStub(record) {
     if (!record) return true;
@@ -885,50 +885,79 @@
     });
   }
 
-  function requestCustomerFileRemoval(record) {
-    const name = displayName(record);
-    const cabinetBacked = !!(window.ToolboxSync &&
-      typeof window.ToolboxSync.isCheckedOutFromCabinet === 'function' &&
-      window.ToolboxSync.isCheckedOutFromCabinet(record));
-    if (cabinetBacked) {
-      return confirmAction({
-        title: 'Delete from the File Cabinet?',
-        message: name + ' will move to File Cabinet Trash, including its plans and photographs. This device\'s copy is removed only after the File Cabinet confirms that. If the File Cabinet cannot be reached, the file stays on this device until Sync Now finishes the move.',
-        cancelLabel: 'No, keep file',
-        confirmLabel: 'Yes, delete',
-      }).then(function (confirmed) {
-        if (!confirmed) return null;
-        if (!window.ToolboxSync || typeof window.ToolboxSync.moveCheckedOutFileToCabinetTrash !== 'function') {
-          return 'File Cabinet delete is unavailable.';
-        }
-        return window.ToolboxSync.moveCheckedOutFileToCabinetTrash(record.id).then(function () {
-          return name + ' was moved to File Cabinet Trash.';
-        }).catch(function (err) {
-          console.warn('File Cabinet Trash move failed:', err);
-          return name + ' is still on this device. It will move to File Cabinet Trash when Sync Now can reach the File Cabinet.';
-        });
-      });
-    }
-    if (isEmptyCustomerFileStub(record)) {
-      return confirmAction({
-        title: 'Delete empty file?',
-        message: name + ' has no customer details or survey evidence. This deletes it from this device.',
-        cancelLabel: 'No, keep file',
-        confirmLabel: 'Yes, delete permanently',
-      }).then(function (confirmed) {
-        if (!confirmed) return null;
-        return deleteLocalCustomerFile(record, name);
-      });
-    }
-
+  function confirmCabinetTrashDelete(name) {
     return confirmAction({
-      title: 'Delete this Customer File?',
-      message: name + ' contains customer or survey information. Delete it from this device?',
+      title: 'Delete from the File Cabinet?',
+      message: name + ' will move to File Cabinet Trash, including its plans and photographs. This device\'s copy is removed only after the File Cabinet confirms that. If the File Cabinet cannot be reached, the file stays on this device until Sync Now finishes the move.',
       cancelLabel: 'No, keep file',
       confirmLabel: 'Yes, delete',
+    });
+  }
+
+  function finishCabinetTrashDelete(id, name) {
+    if (!window.ToolboxSync || typeof window.ToolboxSync.moveWorkingFileToCabinetTrash !== 'function') {
+      return Promise.resolve('File Cabinet delete is unavailable.');
+    }
+    return window.ToolboxSync.moveWorkingFileToCabinetTrash(id).then(function (result) {
+      if (result && result.action === 'local-only') {
+        return window.ToolboxDB.getCustomerFile(id).then(function (fresh) {
+          if (!fresh) return name + ' was deleted from this device.';
+          return deleteLocalCustomerFile(fresh, name);
+        });
+      }
+      return name + ' was moved to File Cabinet Trash.';
+    }).catch(function (err) {
+      console.warn('File Cabinet Trash move failed:', err);
+      if (err && err.code === 'checkout') {
+        return name + ' is checked out on another device. It was not deleted.';
+      }
+      return name + ' is still on this device. It will move to File Cabinet Trash when Sync Now can reach the File Cabinet.';
+    });
+  }
+
+  function confirmLocalCustomerFileDelete(record, name) {
+    const empty = isEmptyCustomerFileStub(record);
+    return confirmAction({
+      title: empty ? 'Delete empty file?' : 'Delete this Customer File?',
+      message: empty
+        ? name + ' has no customer details or survey evidence. This deletes it from this device.'
+        : name + ' contains customer or survey information. Delete it from this device?',
+      cancelLabel: 'No, keep file',
+      confirmLabel: empty ? 'Yes, delete permanently' : 'Yes, delete',
     }).then(function (confirmed) {
       if (!confirmed) return null;
-      return deleteLocalCustomerFile(record, name);
+      if (!window.ToolboxSync || typeof window.ToolboxSync.resolveWorkingFileDelete !== 'function') {
+        return deleteLocalCustomerFile(record, name);
+      }
+      return window.ToolboxSync.resolveWorkingFileDelete(record.id).then(function (again) {
+        if (again && again.action === 'foreign-checkout') {
+          return name + ' is checked out on another device. It was not deleted.';
+        }
+        if (again && (again.action === 'cabinet' || again.action === 'pending-offline')) {
+          return finishCabinetTrashDelete(record.id, name);
+        }
+        return deleteLocalCustomerFile(record, name);
+      });
+    });
+  }
+
+  function requestCustomerFileRemoval(record) {
+    const name = displayName(record);
+    if (!window.ToolboxSync || typeof window.ToolboxSync.resolveWorkingFileDelete !== 'function') {
+      return confirmLocalCustomerFileDelete(record, name);
+    }
+    return window.ToolboxSync.resolveWorkingFileDelete(record.id).then(function (decision) {
+      const action = decision && decision.action;
+      if (action === 'foreign-checkout') {
+        return name + ' is checked out on another device. It was not deleted.';
+      }
+      if (action === 'cabinet' || action === 'pending-offline') {
+        return confirmCabinetTrashDelete(name).then(function (confirmed) {
+          if (!confirmed) return null;
+          return finishCabinetTrashDelete(record.id, name);
+        });
+      }
+      return confirmLocalCustomerFileDelete(record, name);
     });
   }
 

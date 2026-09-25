@@ -132,6 +132,7 @@ These notes preserve active product possibilities so they are not lost. They are
 - **Starting access:** Cloudflare Access for Tim and Lee (small authorized set). No SaaS tenancy, roles, invitations, billing, or per-file ACL product.
 - **Minimum cloud infrastructure:** Cloudflare Worker + private R2 unless implementation proves a concrete need for something else. Do not add D1, KV, Durable Objects, Queues, Firebase, Supabase, or similar without that proof.
 - Preserve recoverable Customer File Trash and durable permanent-delete tombstones so stale copies cannot resurrect deleted files.
+- **Delete follows the cabinet copy, not the checkout flag.** `checkedOutFromCabinet` records that this device checked the file out. It does not mean a file without that flag is local-only. If Delete finds a live File Cabinet index, it moves that server copy to File Cabinet Trash and removes the local working copy only after Trash is confirmed. A file with no remote index is deleted on this device. If the cabinet cannot be reached and the file may already have been mirrored, the local file stays and the delete remains pending. A checkout held on another device is refused.
 - Do not redesign Distress capture, Floor Survey capture, or Customer File; do not build a Control Panel as part of this work.
 - iPhone, iPad, installed PWA, and desktop browser are equal Toolbox devices.
 - Continuous live deployment remains required during development so the product owner can inspect real progress on those devices.

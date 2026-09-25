@@ -303,6 +303,11 @@ check('index metadata is the stored type, size, and upload time',
   mitchell && mitchell.contentType === 'application/json' &&
   mitchell.size === new TextEncoder().encode(indexBody).byteLength &&
   mitchell.uploaded === UPLOADED.toISOString());
+const trashedRow = (listing.files || []).find((row) => row.id === TRASH_ID);
+check('a trashed cabinet index stays visible and is marked deleted',
+  trashedRow && trashedRow.displayName === 'Held Copy' &&
+  trashedRow.deletedAt === '2026-09-01T00:00:00.000Z' &&
+  !('checkout' in trashedRow));
 const plain = (listing.files || []).find((row) => row.id === 'plainindex');
 check('an index without a display name does not invent one', plain && !plain.displayName && !plain.propertyAddress);
 check('orphan plans.json without an index is not a Customer File row',
