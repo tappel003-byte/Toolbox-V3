@@ -244,8 +244,14 @@ check('rail lists distress then floor sheets',
   opened.captions.indexOf('Distress · Basement') < opened.captions.indexOf('Distress · Main Level') &&
   opened.captions.indexOf('Floor · Basement') > opened.captions.indexOf('Distress · Main Level'),
   opened.captions.join(' | '));
-check('composition tools stay reserved', /does not move/i.test(opened.tool), opened.tool);
-check('sheets are still session-only', opened.notSaved === 'Not saved', opened.notSaved);
+check('select does not pretend to draw', opened.tool === 'Select a page from the list.', opened.tool);
+check('a new report is not marked saved', opened.notSaved === 'Not saved', opened.notSaved);
+
+const untouched = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('rb-skeleton');
+  return record.updatedAt === '2026-09-24T12:00:00.000Z' && !record.reportBuilder;
+});
+check('opening Report Builder does not write the Customer File', untouched);
 
 await page.screenshot({ path: `${OUT}/report-builder-skeleton-desktop-cover.png` });
 
@@ -294,8 +300,8 @@ check('Open Distress Survey still leaves Report Builder', page.url().indexOf('/d
 
 await page.goto(`${BASE}#/file/rb-skeleton/report`, { waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
-  const title = document.querySelector('.rb-sheet__title');
-  return title && title.textContent === 'Riley Chen';
+  const label = document.querySelector('#rb-file-label');
+  return label && label.textContent.indexOf('Riley Chen') !== -1 && document.querySelector('.rb-thumb');
 });
 await page.click('.rb-thumb[data-page-id="section-discussion"]');
 await page.click('#rb-page-earlier');
@@ -314,11 +320,24 @@ check('reordering updates the table of contents',
   moved.discussionBeforeDiagnostics && moved.adjacent && moved.limitationsLast,
   JSON.stringify(moved));
 
-const unchanged = await page.evaluate(async () => {
-  const record = await window.ToolboxDB.getCustomerFile('rb-skeleton');
-  return record.updatedAt === '2026-09-24T12:00:00.000Z' && !record.reportBuilder;
-});
-check('opening Report Builder does not write the Customer File', unchanged);
+let persistedOrder = null;
+for (let attempt = 0; attempt < 40; attempt += 1) {
+  persistedOrder = await page.evaluate(async () => {
+    const record = await window.ToolboxDB.getCustomerFile('rb-skeleton');
+    const pages = record && record.reportBuilder && record.reportBuilder.pages;
+    if (!pages) return null;
+    const titles = pages.map((item) => item.title);
+    return {
+      discussionBeforeDiagnostics: titles.indexOf('Discussion') < titles.indexOf('Diagnostics'),
+      noPhotoBytes: JSON.stringify(record.reportBuilder).indexOf('data:image') === -1,
+    };
+  });
+  if (persistedOrder && persistedOrder.discussionBeforeDiagnostics) break;
+  await new Promise((resolve) => setTimeout(resolve, 100));
+}
+check('reordering is stored on the report component without photo bytes',
+  persistedOrder.discussionBeforeDiagnostics && persistedOrder.noPhotoBytes,
+  JSON.stringify(persistedOrder));
 
 const desktopLayout = await page.evaluate(() => {
   const rail = document.querySelector('.rb-rail').getBoundingClientRect();
@@ -341,8 +360,8 @@ check('desktop sheet is visible and does not overlap the rail or panel',
 await page.setViewport({ width: 820, height: 1180, deviceScaleFactor: 1 });
 await page.reload({ waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
-  const title = document.querySelector('.rb-sheet__title');
-  return title && title.textContent === 'Riley Chen';
+  const label = document.querySelector('#rb-file-label');
+  return label && label.textContent.indexOf('Riley Chen') !== -1 && document.querySelector('.rb-sheet');
 });
 await page.screenshot({ path: `${OUT}/report-builder-skeleton-ipad.png` });
 const ipad = await page.evaluate(() => {
@@ -358,8 +377,8 @@ check('iPad sheet stays visible with source links', !ipad.overflow && ipad.sheet
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
 await page.reload({ waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
-  const title = document.querySelector('.rb-sheet__title');
-  return title && title.textContent === 'Riley Chen';
+  const label = document.querySelector('#rb-file-label');
+  return label && label.textContent.indexOf('Riley Chen') !== -1 && document.querySelector('.rb-thumb');
 });
 await page.click('.rb-thumb[data-page-id="distress-canvas-b"]');
 await page.waitForFunction(() => document.querySelector('.rb-sheet').getAttribute('data-page-id') === 'distress-canvas-b');
