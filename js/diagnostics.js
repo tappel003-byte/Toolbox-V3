@@ -45,7 +45,7 @@
     return typeof value === 'string' && value.indexOf('data:image/png') === 0 && value.length > 32;
   }
 
-  var SCALE_NOTICE = 'Vertical exaggeration. Visualization is not to scale.';
+  var SCALE_NOTICE = 'Not to scale — for illustration purposes only';
   var EVIDENCE_MESSAGE = 'Measured readings are evidence. This view does not infer heave, settlement, cause, or repair.';
 
   function finiteNumber(value) {
@@ -83,6 +83,81 @@
 
   function plural(count, one, many) {
     return count + ' ' + (count === 1 ? one : many);
+  }
+
+  // Population deviation of this reading set. These points are the set,
+  // not a sample drawn from a larger one. Mode is reported only when one
+  // hundredth of an inch is strictly more common than every other value
+  // and appears at least twice.
+  function descriptiveStats(values) {
+    if (!values.length) {
+      return {
+        mean: null,
+        median: null,
+        mode: null,
+        modeDistinct: false,
+        standardDeviation: null,
+        distribution: null,
+      };
+    }
+    var sorted = values.slice().sort(function (a, b) { return a - b; });
+    var sum = 0;
+    for (var i = 0; i < sorted.length; i += 1) sum += sorted[i];
+    var meanExact = sum / sorted.length;
+    var mean = roundHundredth(meanExact);
+    var mid = Math.floor(sorted.length / 2);
+    var median = sorted.length % 2
+      ? roundHundredth(sorted[mid])
+      : roundHundredth((sorted[mid - 1] + sorted[mid]) / 2);
+    var counts = {};
+    sorted.forEach(function (value) {
+      var key = roundHundredth(value).toFixed(2);
+      counts[key] = (counts[key] || 0) + 1;
+    });
+    var bestCount = 0;
+    var bestKeys = [];
+    Object.keys(counts).forEach(function (key) {
+      if (counts[key] > bestCount) {
+        bestCount = counts[key];
+        bestKeys = [key];
+      } else if (counts[key] === bestCount) {
+        bestKeys.push(key);
+      }
+    });
+    var modeDistinct = bestCount >= 2 && bestKeys.length === 1;
+    var standardDeviation = null;
+    if (sorted.length >= 2) {
+      var sq = 0;
+      sorted.forEach(function (value) {
+        var delta = value - meanExact;
+        sq += delta * delta;
+      });
+      standardDeviation = roundHundredth(Math.sqrt(sq / sorted.length));
+    }
+    var low = sorted[0];
+    var high = sorted[sorted.length - 1];
+    var span = high - low;
+    var distribution;
+    if (span === 0) {
+      distribution = { low: sorted.length, middle: 0, high: 0, equal: true };
+    } else {
+      var cut1 = low + span / 3;
+      var cut2 = low + (2 * span) / 3;
+      distribution = { low: 0, middle: 0, high: 0, equal: false };
+      sorted.forEach(function (value) {
+        if (value < cut1) distribution.low += 1;
+        else if (value < cut2) distribution.middle += 1;
+        else distribution.high += 1;
+      });
+    }
+    return {
+      mean: mean,
+      median: median,
+      mode: modeDistinct ? Number(bestKeys[0]) : null,
+      modeDistinct: modeDistinct,
+      standardDeviation: standardDeviation,
+      distribution: distribution,
+    };
   }
 
   // High/low use the same readings the 3D surface uses: corrected values,
@@ -160,6 +235,8 @@
       surfaceMessage = 'Too few survey points for a surface.';
     }
 
+    var stats = descriptiveStats(usable);
+
     var referenceMessage = 'No base-point reference recorded.';
     if (references.length === 1) {
       referenceMessage = 'Base point ' + references[0].label + ' ' + formatInches(references[0].value);
@@ -182,6 +259,12 @@
       low: low,
       range: range,
       unit: unit,
+      mean: stats.mean,
+      median: stats.median,
+      mode: stats.mode,
+      modeDistinct: stats.modeDistinct,
+      standardDeviation: stats.standardDeviation,
+      distribution: stats.distribution,
       reference: references.length ? references : null,
       referenceMessage: referenceMessage,
       readingsMessage: unit
@@ -214,6 +297,23 @@
         ' · Range ' + formatInches(summary.range)
       );
       if (summary.readingsMessage) lines.push(summary.readingsMessage);
+      if (summary.mean != null) lines.push('Mean ' + formatInches(summary.mean));
+      if (summary.median != null) lines.push('Median ' + formatInches(summary.median));
+      lines.push(summary.modeDistinct && summary.mode != null
+        ? ('Mode ' + formatInches(summary.mode))
+        : 'Mode not distinct');
+      if (summary.standardDeviation != null) {
+        lines.push('Standard deviation ' + formatInches(summary.standardDeviation));
+      }
+      if (summary.distribution && summary.distribution.equal) {
+        lines.push('All readings are equal.');
+      } else if (summary.distribution) {
+        lines.push(
+          'Distribution · low third ' + summary.distribution.low +
+          ' · middle ' + summary.distribution.middle +
+          ' · high third ' + summary.distribution.high
+        );
+      }
     }
     if (summary.referenceMessage) lines.push(summary.referenceMessage);
     var factor = Number(exaggeration);
@@ -242,6 +342,12 @@
       low: summary.low == null ? null : summary.low,
       range: summary.range == null ? null : summary.range,
       unit: summary.unit || null,
+      mean: summary.mean == null ? null : summary.mean,
+      median: summary.median == null ? null : summary.median,
+      mode: summary.mode == null ? null : summary.mode,
+      modeDistinct: !!summary.modeDistinct,
+      standardDeviation: summary.standardDeviation == null ? null : summary.standardDeviation,
+      distribution: summary.distribution || null,
       reference: summary.reference || null,
       referenceMessage: summary.referenceMessage || '',
       readingsMessage: summary.readingsMessage || null,

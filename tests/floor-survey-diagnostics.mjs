@@ -206,8 +206,8 @@ const ribbon = await page.evaluate(() => {
   };
 });
 check(
-  'Workbench ribbon has View, Capture, Imaging, Plots, and Epochs',
-  ribbon.bar && ribbon.groups.join(',') === 'View,Capture,Imaging,Plots,Epochs',
+  'Workbench ribbon keeps View and Capture and leaves the canvas clear',
+  ribbon.bar && ribbon.groups.join(',') === 'View,Capture',
   ribbon.groups.join(','),
 );
 check(
@@ -216,10 +216,9 @@ check(
   ribbon.back,
 );
 check('3D is the current view', ribbon.viewPressed === 'true');
-const placeholderOk = ribbon.placeholders.length === 6 && ribbon.placeholders.every((item) => item.disabled && item.title === 'Not available yet');
 check(
-  'Unimplemented ribbon controls are disabled',
-  placeholderOk,
+  'No placeholder tools or view-cube stand in for free rotation',
+  ribbon.placeholders.length === 0,
   JSON.stringify(ribbon.placeholders),
 );
 check('Add to Report is on the ribbon', ribbon.add);
@@ -294,7 +293,8 @@ const readout = await page.evaluate(() => {
   const root = document.querySelector('[data-diagnostics-readout]');
   const legend = document.querySelector('[data-diagnostics-legend]');
   const text = root ? root.innerText : '';
-  const height = (document.body.innerText || '').match(/Height exaggeration · ([0-9.]+)×/);
+  const z = document.querySelector('[data-diagnostics-z]');
+  const height = z ? [null, z.value] : null;
   return {
     text,
     surface: root ? root.getAttribute('data-surface') : '',
@@ -326,9 +326,14 @@ check(
     readout.legendHigh === '1.2' &&
     readout.palette === 'brown' &&
     readout.colors.startsWith('rgb(130,90,55)') &&
-    readout.exaggeration === '3.0' &&
-    readout.heightLabel === '3.0' &&
-    readout.text.includes('Vertical exaggeration 3.0×') &&
+    readout.exaggeration === '1.0' &&
+    readout.heightLabel === '1.0' &&
+    readout.text.includes('Vertical exaggeration 1.0×') &&
+    readout.text.includes('Mean 0.63 in') &&
+    readout.text.includes('Median 0.60 in') &&
+    readout.text.includes('Mode not distinct') &&
+    readout.text.includes('Standard deviation 0.41 in') &&
+    readout.text.includes('Not to scale — for illustration purposes only') &&
     readout.notice &&
     readout.evidence.includes('does not infer heave, settlement, cause, or repair'),
   JSON.stringify(readout),
@@ -400,13 +405,18 @@ check(
     captured.context.low === 0.1 &&
     captured.context.range === 1.1 &&
     captured.context.reference === null &&
-    captured.context.exaggeration === 3 &&
+    captured.context.exaggeration === 1 &&
+    captured.context.mean === 0.63 &&
+    captured.context.median === 0.6 &&
+    captured.context.modeDistinct === false &&
+    captured.context.standardDeviation === 0.41 &&
     captured.context.legendLow === 0.1 &&
     captured.context.legendHigh === 1.2 &&
     captured.context.palette === 'brown' &&
     Array.isArray(captured.context.lines) &&
-    captured.context.lines.join('\n').includes('Vertical exaggeration. Visualization is not to scale.') &&
-    captured.context.lines.join('\n').includes('Vertical exaggeration 3.0×'),
+    captured.context.lines.join('\n').includes('Not to scale — for illustration purposes only') &&
+    captured.context.lines.join('\n').includes('Vertical exaggeration 1.0×') &&
+    captured.context.lines.join('\n').includes('Mean 0.63 in'),
   JSON.stringify({ status: captured.status, context: captured.context, count: captured.count }),
 );
 
@@ -520,7 +530,8 @@ if (sliderMoved) await page.keyboard.press('ArrowRight');
 await new Promise((r) => setTimeout(r, 250));
 const exaggerated = await page.evaluate(() => {
   const root = document.querySelector('[data-diagnostics-readout]');
-  const height = (document.body.innerText || '').match(/Height exaggeration · ([0-9.]+)×/);
+  const z = document.querySelector('[data-diagnostics-z]');
+  const height = z ? [null, z.value] : null;
   const text = root ? root.innerText : '';
   return {
     exaggeration: root ? root.getAttribute('data-exaggeration') : '',
@@ -530,8 +541,29 @@ const exaggerated = await page.evaluate(() => {
 });
 check(
   'Current exaggeration stays tied to the height control',
-  sliderMoved && exaggerated.exaggeration === '3.1' && exaggerated.heightLabel === '3.1' && exaggerated.line,
+  sliderMoved && exaggerated.exaggeration === '1.1' && exaggerated.heightLabel === '1.1' && exaggerated.line,
   JSON.stringify(exaggerated),
+);
+await page.evaluate(() => {
+  const input = document.querySelector('[data-diagnostics-z]');
+  const proto = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+  proto.set.call(input, '2.5');
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await new Promise((r) => setTimeout(r, 200));
+const customZ = await page.evaluate(() => {
+  const root = document.querySelector('[data-diagnostics-readout]');
+  const input = document.querySelector('[data-diagnostics-z]');
+  return {
+    z: input ? input.value : '',
+    exaggeration: root ? root.getAttribute('data-exaggeration') : '',
+    line: ((root && root.innerText) || '').includes('Vertical exaggeration 2.5×'),
+  };
+});
+check(
+  'Typed vertical exaggeration is a fine adjustment of the same view',
+  customZ.z === '2.5' && customZ.exaggeration === '2.5' && customZ.line,
+  JSON.stringify(customZ),
 );
 
 await page.select('[data-diagnostics-floor]', 'canvas-dx-2');
@@ -592,7 +624,7 @@ const ipad = await page.evaluate(() => {
   const floor = document.querySelector('[data-diagnostics-floor]');
   const cards = [...document.querySelectorAll('div')].filter((el) => {
     const text = el.textContent || '';
-    return text.includes('Height exaggeration') && text.includes('Show survey points');
+    return text.includes('Vertical exaggeration') && text.includes('Show survey points');
   });
   cards.sort((a, b) => a.getBoundingClientRect().width - b.getBoundingClientRect().width);
   const panel = cards[0] || null;

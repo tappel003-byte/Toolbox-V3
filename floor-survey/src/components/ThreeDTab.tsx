@@ -152,6 +152,17 @@ function paintDiagnosticPng(
   }
 }
 
+const EXAGGERATION_MIN = 0.1;
+const EXAGGERATION_MAX = 8;
+const SLIDER_MIN = 0.5;
+const SLIDER_MAX = 4;
+
+function clampExaggeration(value: number) {
+  if (!Number.isFinite(value)) return 1;
+  const clamped = Math.min(EXAGGERATION_MAX, Math.max(EXAGGERATION_MIN, value));
+  return Math.round(clamped * 10) / 10;
+}
+
 const READOUT_CSS = `
 .dx-readout {
   position: absolute;
@@ -243,7 +254,7 @@ export function ThreeDTab({
   const baseZRef = useRef<Float32Array | null>(null);
   const zScaleRef = useRef<number>(1);
 
-  const [exaggeration, setExaggeration] = useState<number>(3);
+  const [exaggeration, setExaggeration] = useState<number>(frame === "fill" ? 1 : 3);
   const [showPoints, setShowPoints] = useState<boolean>(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -700,7 +711,7 @@ export function ThreeDTab({
               )}
             </div>
             <p className="dx-readout__notice" data-diagnostics-notice>
-              {readingSummary?.scaleNotice || "Vertical exaggeration. Visualization is not to scale."}
+              {readingSummary?.scaleNotice || "Not to scale — for illustration purposes only"}
             </p>
             {readingSummary?.evidenceMessage && (
               <p className="dx-readout__evidence" data-diagnostics-evidence>
@@ -711,28 +722,46 @@ export function ThreeDTab({
         )}
 
         <div
-          className="absolute top-3 right-3 w-60 rounded-md bg-black/70 backdrop-blur border border-white/10 p-3 text-xs space-y-3"
+          className="absolute top-3 right-3 w-52 rounded-md bg-black/70 backdrop-blur border border-white/10 p-3 text-xs space-y-2"
           data-diagnostics-height
         >
           <div>
-            <Label className="text-white/80 text-xs">
-              Height exaggeration · {exaggeration.toFixed(1)}×
-            </Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-white/80 text-xs" htmlFor="dx-vertical-exaggeration">
+                Vertical exaggeration
+              </Label>
+              <input
+                id="dx-vertical-exaggeration"
+                type="number"
+                data-diagnostics-z
+                aria-label="Vertical exaggeration"
+                min={EXAGGERATION_MIN}
+                max={EXAGGERATION_MAX}
+                step={0.1}
+                value={exaggeration.toFixed(1)}
+                onChange={(event) => setExaggeration(clampExaggeration(Number(event.target.value)))}
+                className="h-7 w-16 rounded border border-white/25 bg-black/40 px-1 text-right text-xs text-white"
+              />
+            </div>
             <Slider
-              min={0.5}
-              max={20}
+              min={SLIDER_MIN}
+              max={SLIDER_MAX}
               step={0.1}
-              value={[exaggeration]}
-              onValueChange={([v]) => setExaggeration(v)}
+              value={[Math.min(SLIDER_MAX, Math.max(SLIDER_MIN, exaggeration))]}
+              onValueChange={([v]) => setExaggeration(clampExaggeration(v))}
               className="mt-2"
+              aria-label="Vertical exaggeration slider"
             />
+            <p className="mt-1 text-[10px] text-white/55 leading-snug">
+              Not to scale — for illustration purposes only
+            </p>
           </div>
           <div className="flex items-center justify-between">
             <Label className="text-white/80 text-xs">Show survey points</Label>
             <Switch checked={showPoints} onCheckedChange={setShowPoints} />
           </div>
           <div className="text-[10px] text-white/50 leading-snug">
-            Drag to orbit · pinch / scroll to zoom · two-finger drag to pan
+            Drag to orbit · scroll to zoom · drag to pan
           </div>
         </div>
       </div>

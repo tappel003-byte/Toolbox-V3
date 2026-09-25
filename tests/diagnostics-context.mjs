@@ -172,7 +172,12 @@ check(
     joined.includes('Survey date 2026-04-18') &&
     joined.includes('High 9.40 in · Low 8.35 in · Range 1.05 in') &&
     joined.includes('Vertical exaggeration 3.0×') &&
-    joined.includes('Vertical exaggeration. Visualization is not to scale.') &&
+    joined.includes('Not to scale — for illustration purposes only') &&
+    joined.includes('Mean 8.83 in') &&
+    joined.includes('Median 8.75 in') &&
+    joined.includes('Mode not distinct') &&
+    joined.includes('Standard deviation 0.43 in') &&
+    joined.includes('Distribution · low third 1 · middle 1 · high third 1') &&
     joined.includes('Measured readings are evidence. This view does not infer heave, settlement, cause, or repair.'),
   joined,
 );
@@ -223,6 +228,30 @@ check(
   'a stored 9.00 in base point is reported because it is stored',
   storedDatum.referenceMessage === 'Base point BP1 9.00 in',
   storedDatum.referenceMessage,
+);
+
+const repeated = api.summarizeReadings({
+  levelName: 'Slab',
+  boundary,
+  points: [
+    { id: 'a', x: 10, y: 10, value: 9.1, rawValue: 9.1 },
+    { id: 'b', x: 20, y: 20, value: 9.1, rawValue: 9.1 },
+    { id: 'c', x: 30, y: 30, value: 8.4, rawValue: 8.4 },
+  ],
+});
+check(
+  'mode is named only when one reading is strictly more common',
+  repeated.modeDistinct === true &&
+    repeated.mode === 9.1 &&
+    api.contextLines(repeated, 1).join('\n').includes('Mode 9.10 in'),
+  JSON.stringify({ mode: repeated.mode, distinct: repeated.modeDistinct }),
+);
+check(
+  'statistics stay null when there is no finite reading',
+  noReadings.mean === null &&
+    noReadings.median === null &&
+    noReadings.standardDeviation === null &&
+    noReadings.distribution === null,
 );
 
 const failed = results.filter((item) => !item.ok);

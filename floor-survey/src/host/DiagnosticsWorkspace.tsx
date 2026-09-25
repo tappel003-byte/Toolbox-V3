@@ -34,15 +34,6 @@ type CaptureApi = {
 
 const EMPTY_POINTS: SurveyPoint[] = [];
 
-const PLACEHOLDERS: Array<{ group: string; id: string; label: string }> = [
-  { group: "View", id: "plan", label: "Plan" },
-  { group: "View", id: "section", label: "Section" },
-  { group: "Imaging", id: "levels", label: "Levels" },
-  { group: "Imaging", id: "palette", label: "Palette" },
-  { group: "Plots", id: "profile", label: "Profile" },
-  { group: "Epochs", id: "compare", label: "Compare" },
-];
-
 const WORKBENCH_CSS = `
 .dx-workbench {
   flex: 1 1 auto;
@@ -198,7 +189,7 @@ export function DiagnosticsWorkspace({ customerFileId, onBack }: DiagnosticsWork
   const [viewReady, setViewReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(
-    "3D elevation is the current view. Other tools are not available yet.",
+    "3D elevation is the current view. Drag to orbit. The surface is evidence only.",
   );
 
   useEffect(() => {
@@ -388,20 +379,6 @@ export function DiagnosticsWorkspace({ customerFileId, onBack }: DiagnosticsWork
     );
   }
 
-  const placeholders = (group: string) =>
-    PLACEHOLDERS.filter((item) => item.group === group).map((item) => (
-      <button
-        key={item.id}
-        type="button"
-        className="dx-ribbon__btn"
-        disabled
-        data-diagnostics-placeholder={item.id}
-        title="Not available yet"
-      >
-        {item.label}
-      </button>
-    ));
-
   return (
     <div className="dx-workbench" data-diagnostics-workbench>
       <style>{WORKBENCH_CSS}</style>
@@ -424,7 +401,6 @@ export function DiagnosticsWorkspace({ customerFileId, onBack }: DiagnosticsWork
           >
             3D
           </button>
-          {placeholders("View")}
         </RibbonGroup>
         <RibbonGroup label="Capture">
           <button
@@ -442,9 +418,6 @@ export function DiagnosticsWorkspace({ customerFileId, onBack }: DiagnosticsWork
             {saving ? "Adding…" : "Add to Report"}
           </button>
         </RibbonGroup>
-        <RibbonGroup label="Imaging">{placeholders("Imaging")}</RibbonGroup>
-        <RibbonGroup label="Plots">{placeholders("Plots")}</RibbonGroup>
-        <RibbonGroup label="Epochs">{placeholders("Epochs")}</RibbonGroup>
       </div>
       <p className="dx-status" data-diagnostics-status aria-live="polite">
         {status}
