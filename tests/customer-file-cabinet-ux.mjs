@@ -397,8 +397,8 @@ try {
       report.rows.alpha.dateTime === '2026-02-01T18:00:00.000Z' &&
       report.rows.alpha.date.indexOf('2026') !== -1 &&
       report.rows.alpha.date.indexOf('Sep') === -1;
-    report.statusAvailable = !!(report.rows.alpha && /Available/i.test(report.rows.alpha.status) &&
-      report.rows.alpha.status.indexOf('Check Out') === -1);
+    report.noRedundantAvailability = !!(report.rows.alpha && !report.rows.alpha.status &&
+      !/Available/i.test(document.querySelector('#file-cabinet-list').textContent));
     report.statusElsewhere = !!(report.rows.beta && /Checked out elsewhere/i.test(report.rows.beta.status));
     report.checkoutButtons = document.querySelectorAll('.cabinet-checkout-btn').length;
     report.noOnlineLocationLine = !document.querySelector('.cabinet-row--cloud .cabinet-row__location');
@@ -522,7 +522,7 @@ try {
   check('address is the bold primary identifier', out.addressPrimary && out.ownerSecondary && out.addressBolder, JSON.stringify(out.rows));
   check('field-work date prefers stored survey date over created/updated clocks', out.deltaSurveyDate && out.deltaNotUpdated && out.alphaCreatedFallback, JSON.stringify(out.rows));
   check('search matches city, ZIP, mailing address, company, spouse, email, and phone', out.zipSearch && out.citySearch && out.mailingSearch && out.companySearch && out.spouseSearch && out.emailSearch && out.phoneSearch, JSON.stringify(out));
-  check('checkout statuses visible', out.statusAvailable && out.statusElsewhere && out.checkoutButtons >= 1 && out.noOnlineLocationLine, JSON.stringify(out));
+  check('normal availability is implied by Check Out; exceptional status remains', out.noRedundantAvailability && out.statusElsewhere && out.checkoutButtons >= 1 && out.noOnlineLocationLine, JSON.stringify(out));
   check('Check Out returns to #/ with confirmation', out.afterCheckoutHash === '#/' && /Gamma.*checked out to this device/i.test(out.afterCheckoutNotice), JSON.stringify(out));
   check('Check Out materializes and shows under On this device', out.afterCheckoutLocal && out.afterCheckoutOnDeviceVisible && out.materializeHadComponents, JSON.stringify(out));
   check('selective-local Sync leaves remote-only remote', out.syncOk && out.syncSkippedRemote && out.alphaStillRemote, JSON.stringify(out));

@@ -1975,6 +1975,34 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   padding: 8px 12px;
 }
 
+@media (max-width: 560px) {
+  .cabinet-row-shell--cloud .cabinet-row.cabinet-row--index {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 8px;
+    padding: 8px 10px;
+  }
+
+  .cabinet-row--index .cabinet-row__main {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  .cabinet-row--index .cabinet-index {
+    display: block;
+  }
+
+  .cabinet-row--index .cabinet-index__address,
+  .cabinet-row--index .cabinet-index__meta {
+    display: block;
+  }
+
+  .cabinet-row--index .cabinet-checkout-btn {
+    grid-column: 2;
+    justify-self: end;
+  }
+}
+
 .cabinet-list {
   max-width: 62rem;
   padding: 0 20px 36px;
