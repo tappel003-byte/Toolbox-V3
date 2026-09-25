@@ -535,14 +535,14 @@
   }
 
   function cabinetIndexStatus(entry) {
-    if (!entry) return 'Available';
+    if (!entry) return '';
     if (entry.availability === 'checked-out-here') return 'On this device';
     if (entry.availability === 'checked-out-elsewhere') {
       const who = entry.checkout && entry.checkout.email ? entry.checkout.email : '';
       return who ? 'Checked out elsewhere (' + who + ')' : 'Checked out elsewhere';
     }
     if (entry.presence === 'local') return 'On this device';
-    return 'Available';
+    return '';
   }
 
   /**
@@ -688,7 +688,6 @@
 
     const meta = document.createElement('span');
     meta.className = 'cabinet-index__meta';
-    meta.appendChild(document.createTextNode('— '));
 
     const owner = document.createElement('span');
     owner.className = 'cabinet-index__owner';
@@ -706,11 +705,14 @@
       meta.appendChild(date);
     }
 
-    meta.appendChild(document.createTextNode(' · '));
-    const status = document.createElement('span');
-    status.className = 'cabinet-index__status';
-    status.textContent = cabinetIndexStatus(entry);
-    meta.appendChild(status);
+    const statusLabel = cabinetIndexStatus(entry);
+    if (statusLabel) {
+      meta.appendChild(document.createTextNode(' · '));
+      const status = document.createElement('span');
+      status.className = 'cabinet-index__status';
+      status.textContent = statusLabel;
+      meta.appendChild(status);
+    }
 
     index.appendChild(address);
     index.appendChild(meta);

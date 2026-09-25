@@ -241,8 +241,8 @@ try {
     JSON.stringify(out.cloud),
   );
   check(
-    'File Cabinet availability status preserved',
-    out.cloud.status === 'Available',
+    'File Cabinet available row needs no redundant status',
+    out.cloud.status == null,
     JSON.stringify(out.cloud),
   );
 
