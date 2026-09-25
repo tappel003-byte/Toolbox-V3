@@ -11,6 +11,21 @@ import { computeExclusionMap } from "@/lib/exclusions";
 import { paletteColor } from "@/components/tabs/TopoTab";
 import type { Floor, RenderSettings, SurveyPoint } from "@/lib/types";
 
+export type DiagnosticReadingSummary = {
+  levelName?: string;
+  surveyDate?: string | null;
+  usablePointCount?: number;
+  surface?: string;
+  surfaceMessage?: string | null;
+  high?: number | null;
+  low?: number | null;
+  range?: number | null;
+  unit?: string | null;
+  referenceMessage?: string;
+  scaleNotice?: string;
+  evidenceMessage?: string;
+};
+
 interface Props {
   floor: Floor;
   points: SurveyPoint[];
@@ -24,7 +39,181 @@ interface Props {
    * fill = occupy the Diagnostics workbench stage. Rendering is unchanged.
    */
   frame?: "overlay" | "fill";
+  /**
+   * Truthful reading context for the Diagnostics workbench.
+   * undefined hides the readout. null means the summary could not be built.
+   */
+  readingSummary?: DiagnosticReadingSummary | null;
+  onCaptureReady?: (capture: (() => DiagnosticCapture | null) | null) => void;
+  onViewReady?: (ready: boolean) => void;
 }
+
+export type DiagnosticCapture = {
+  dataUrl: string;
+  exaggeration: number;
+  legendColors: string[];
+  palette: RenderSettings["palette"];
+  reversePalette: boolean;
+};
+
+type DiagnosticsApi = {
+  contextLines?: (summary: DiagnosticReadingSummary, exaggeration: number) => string[];
+  captureContext?: (summary: DiagnosticReadingSummary, extras: Record<string, unknown>) => unknown;
+  formatInches?: (value: number) => string;
+};
+
+function diagnosticsApi(): DiagnosticsApi | null {
+  const api = (window as unknown as { ToolboxDiagnostics?: DiagnosticsApi }).ToolboxDiagnostics;
+  return api || null;
+}
+
+function wrapLine(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const words = text.split(" ");
+  const rows: string[] = [];
+  let current = "";
+  words.forEach((word) => {
+    const next = current ? current + " " + word : word;
+    if (current && ctx.measureText(next).width > maxWidth) {
+      rows.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  });
+  if (current) rows.push(current);
+  return rows.length ? rows : [text];
+}
+
+function paintDiagnosticPng(
+  source: HTMLCanvasElement,
+  lines: string[],
+  legendColors: string[],
+  highLabel: string,
+  lowLabel: string,
+): string | null {
+  const fontSize = Math.max(15, Math.round(source.width / 46));
+  const lineHeight = Math.round(fontSize * 1.38);
+  const pad = Math.round(fontSize * 0.85);
+  const measure = document.createElement("canvas").getContext("2d");
+  // A missing 2D context must not become a bare mesh PNG. Add to Report
+  // refuses a null result instead of storing a figure that lost its legend.
+  if (!measure) return null;
+  measure.font = `600 ${fontSize}px sans-serif`;
+  const legendGutter = legendColors.length ? Math.round(fontSize * 6.2) : 0;
+  const maxText = Math.max(40, source.width - pad * 2 - legendGutter);
+  const rows = lines.flatMap((line) => wrapLine(measure, line, maxText));
+  const bandHeight = pad * 2 + lineHeight * Math.max(1, rows.length);
+  const out = document.createElement("canvas");
+  out.width = source.width;
+  out.height = source.height + bandHeight;
+  const ctx = out.getContext("2d");
+  if (!ctx) return null;
+  ctx.fillStyle = "#0b0b0b";
+  ctx.fillRect(0, 0, out.width, source.height);
+  ctx.drawImage(source, 0, 0);
+  ctx.fillStyle = "#f7f4ee";
+  ctx.fillRect(0, source.height, out.width, bandHeight);
+  ctx.fillStyle = "#1c1915";
+  ctx.font = `600 ${fontSize}px sans-serif`;
+  ctx.textBaseline = "top";
+  ctx.textAlign = "left";
+  rows.forEach((row, index) => {
+    ctx.fillText(row, pad, source.height + pad + index * lineHeight);
+  });
+  if (legendColors.length) {
+    const barW = Math.max(18, Math.round(fontSize));
+    const labelSize = Math.max(12, Math.round(fontSize * 0.78));
+    const barX = out.width - pad - barW - Math.round(labelSize * 5.2);
+    const barY = source.height + pad;
+    const barH = Math.max(lineHeight, bandHeight - pad * 2);
+    const slice = barH / legendColors.length;
+    legendColors.forEach((color, index) => {
+      ctx.fillStyle = legendColors[legendColors.length - 1 - index];
+      ctx.fillRect(barX, barY + index * slice, barW, slice + 0.75);
+    });
+    ctx.strokeStyle = "#1c1915";
+    ctx.lineWidth = Math.max(1, fontSize / 14);
+    ctx.strokeRect(barX + 0.5, barY + 0.5, barW, barH);
+    ctx.fillStyle = "#1c1915";
+    ctx.font = `600 ${labelSize}px sans-serif`;
+    ctx.fillText(highLabel, barX + barW + 8, barY);
+    ctx.textBaseline = "bottom";
+    ctx.fillText(lowLabel, barX + barW + 8, barY + barH);
+  }
+  try {
+    const painted = out.toDataURL("image/png");
+    if (!painted || painted.indexOf("data:image/png") !== 0 || painted === source.toDataURL("image/png")) {
+      return null;
+    }
+    return painted;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+}
+
+const READOUT_CSS = `
+.dx-readout {
+  position: absolute;
+  z-index: 2;
+  left: 8px;
+  top: 8px;
+  width: min(248px, calc(100% - 276px));
+  max-height: calc(100% - 16px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(10,10,10,0.84);
+  color: #f7f4ee;
+  pointer-events: auto;
+}
+.dx-readout__body {
+  overflow: auto;
+  padding: 8px 10px 4px;
+  min-height: 0;
+}
+.dx-readout__line {
+  margin: 0 0 3px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.dx-readout__scale {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin: 6px 0 2px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.dx-readout__bar {
+  display: block;
+  width: 18px;
+  height: 76px;
+  border: 1px solid rgba(255,255,255,0.75);
+  border-radius: 2px;
+}
+.dx-readout__notice,
+.dx-readout__evidence {
+  margin: 0;
+  padding: 6px 10px 7px;
+  border-top: 1px solid rgba(255,255,255,0.12);
+  font-size: 10px;
+  line-height: 1.3;
+  color: rgba(247,244,238,0.78);
+}
+@media (max-width: 760px) {
+  .dx-readout {
+    top: auto;
+    bottom: 8px;
+    width: calc(100% - 16px);
+    max-height: 36%;
+  }
+  .dx-readout__bar { height: 48px; }
+}
+`;
 
 /**
  * Standalone 3D visualization: rotatable colored elevation mesh built from
@@ -40,6 +229,9 @@ export function ThreeDTab({
   levels,
   onLevelChange,
   frame = "overlay",
+  readingSummary,
+  onCaptureReady,
+  onViewReady,
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -55,6 +247,11 @@ export function ThreeDTab({
   const [showPoints, setShowPoints] = useState<boolean>(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [builtFor, setBuiltFor] = useState<string | null>(null);
+  const composeRef = useRef<(() => DiagnosticCapture | null) | null>(null);
+
+  const viewKey = `${floor.id}|${points.map((point) => `${point.id}:${point.value}`).join(",")}`;
+  const meshReady = ready && builtFor === viewKey && !error;
 
   const palette = settings.palette;
   const reverse = settings.reversePalette;
@@ -151,6 +348,8 @@ export function ThreeDTab({
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!scene || !camera || !controls) return;
+    setBuiltFor(null);
+    setReady(false);
 
     if (meshRef.current) {
       scene.remove(meshRef.current);
@@ -170,7 +369,8 @@ export function ThreeDTab({
 
     if (!grid) {
       setReady(false);
-      setError(activePoints.length < 3 ? "Need at least 3 survey points." : "Boundary is missing.");
+      setBuiltFor(null);
+      setError((floor.boundary?.length ?? 0) < 3 ? "Boundary is missing." : "Need at least 3 survey points.");
       return;
     }
     setError(null);
@@ -253,6 +453,7 @@ export function ThreeDTab({
     camera.position.set(0.6, -0.9, 0.7);
     controls.update();
 
+    setBuiltFor(viewKey);
     setReady(true);
 
     const group = new THREE.Group();
@@ -273,7 +474,7 @@ export function ThreeDTab({
     group.visible = showPoints;
     scene.add(group);
     pointsGroupRef.current = group;
-  }, [grid, palette, reverse, activePoints]);
+  }, [grid, palette, reverse, activePoints, viewKey, floor.boundary]);
 
   useEffect(() => {
     const mesh = meshRef.current;
@@ -312,13 +513,78 @@ export function ThreeDTab({
     if (pointsGroupRef.current) pointsGroupRef.current.visible = showPoints;
   }, [showPoints]);
 
-  const handleExport = () => {
+  // Legend ends are the measured usable high and low. buildGrid clamps every
+  // interpolated cell to that same measured range, so the mesh palette does
+  // not extend past the readings named on the legend.
+  const legendColors = useMemo(() => {
+    if (!readingSummary || readingSummary.surface !== "ready" || readingSummary.unit !== "in") return [];
+    const stops = 8;
+    const colors: string[] = [];
+    for (let i = 0; i < stops; i += 1) {
+      colors.push(paletteColor(i / (stops - 1), palette, reverse));
+    }
+    return colors;
+  }, [readingSummary, palette, reverse]);
+
+  const readoutLines = useMemo(() => {
+    if (!readingSummary) return null;
+    const api = diagnosticsApi();
+    if (!api || typeof api.contextLines !== "function") return null;
+    return api.contextLines(readingSummary, exaggeration);
+  }, [readingSummary, exaggeration]);
+
+  const formatReading = (value: number | null | undefined) => {
+    if (value == null || !Number.isFinite(value)) return "";
+    const api = diagnosticsApi();
+    if (api && typeof api.formatInches === "function") return api.formatInches(value);
+    return value.toFixed(2) + " in";
+  };
+
+  composeRef.current = () => {
     const renderer = rendererRef.current;
     const scene = sceneRef.current;
     const camera = cameraRef.current;
-    if (!renderer || !scene || !camera) return;
+    if (!renderer || !scene || !camera || !meshReady) return null;
     renderer.render(scene, camera);
-    const dataUrl = renderer.domElement.toDataURL("image/png");
+    const source = renderer.domElement;
+    if (source.width < 2 || source.height < 2) return null;
+    // Standalone Floor Survey export has no readout and keeps the bare view.
+    // Diagnostics capture (readingSummary provided) must include the band.
+    const bare = readingSummary === undefined;
+    if (!bare && (!readingSummary || !readoutLines || !readoutLines.length)) return null;
+    const dataUrl = bare
+      ? source.toDataURL("image/png")
+      : paintDiagnosticPng(
+          source,
+          readoutLines || [],
+          legendColors,
+          formatReading(readingSummary?.high),
+          formatReading(readingSummary?.low),
+        );
+    if (!dataUrl || dataUrl.indexOf("data:image/png") !== 0) return null;
+    return {
+      dataUrl,
+      exaggeration,
+      legendColors,
+      palette,
+      reversePalette: reverse,
+    };
+  };
+
+  useEffect(() => {
+    if (!onCaptureReady) return;
+    onCaptureReady(() => composeRef.current?.() ?? null);
+    return () => onCaptureReady(null);
+  }, [onCaptureReady]);
+
+  useEffect(() => {
+    onViewReady?.(meshReady);
+  }, [meshReady, onViewReady]);
+
+  const handleExport = () => {
+    const shot = composeRef.current?.();
+    const dataUrl = shot?.dataUrl;
+    if (!dataUrl) return;
     const a = document.createElement("a");
     a.href = dataUrl;
     a.download = `${floor.name || "floor"}-3d.png`;
@@ -370,7 +636,7 @@ export function ThreeDTab({
             size="sm"
             variant="secondary"
             onClick={handleExport}
-            disabled={!ready}
+            disabled={!meshReady}
             className="h-8"
           >
             <Camera className="h-4 w-4 mr-1.5" />
@@ -382,7 +648,7 @@ export function ThreeDTab({
       <div className="relative flex-1 min-h-0">
         <div ref={mountRef} className="absolute inset-0" />
 
-        {!ready && !error && (
+        {!meshReady && !error && (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-white/60">
             <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Building surface…
           </div>
@@ -393,7 +659,61 @@ export function ThreeDTab({
           </div>
         )}
 
-        <div className="absolute top-3 right-3 w-60 rounded-md bg-black/70 backdrop-blur border border-white/10 p-3 text-xs space-y-3">
+        {readingSummary !== undefined && (
+          <div
+            className="dx-readout"
+            data-diagnostics-readout
+            data-surface={readingSummary?.surface || ""}
+            data-exaggeration={exaggeration.toFixed(1)}
+          >
+            <style>{READOUT_CSS}</style>
+            <div className="dx-readout__body">
+              {readingSummary && readoutLines ? (
+                readoutLines
+                  .filter((line) => line !== readingSummary.scaleNotice && line !== readingSummary.evidenceMessage)
+                  .map((line, index) => (
+                    <p key={index} className="dx-readout__line" data-diagnostics-line>
+                      {line}
+                    </p>
+                  ))
+              ) : (
+                <p className="dx-readout__line" data-diagnostics-line>
+                  Diagnostic context is not available in this session.
+                </p>
+              )}
+              {legendColors.length > 0 && readingSummary && (
+                <div
+                  className="dx-readout__scale"
+                  data-diagnostics-legend
+                  data-legend-low={readingSummary.low ?? ""}
+                  data-legend-high={readingSummary.high ?? ""}
+                  data-palette={palette}
+                  data-legend-colors={legendColors.join("|")}
+                >
+                  <span>{formatReading(readingSummary.high)}</span>
+                  <span
+                    className="dx-readout__bar"
+                    style={{ background: `linear-gradient(to top, ${legendColors.join(",")})` }}
+                  />
+                  <span>{formatReading(readingSummary.low)}</span>
+                </div>
+              )}
+            </div>
+            <p className="dx-readout__notice" data-diagnostics-notice>
+              {readingSummary?.scaleNotice || "Vertical exaggeration. Visualization is not to scale."}
+            </p>
+            {readingSummary?.evidenceMessage && (
+              <p className="dx-readout__evidence" data-diagnostics-evidence>
+                {readingSummary.evidenceMessage}
+              </p>
+            )}
+          </div>
+        )}
+
+        <div
+          className="absolute top-3 right-3 w-60 rounded-md bg-black/70 backdrop-blur border border-white/10 p-3 text-xs space-y-3"
+          data-diagnostics-height
+        >
           <div>
             <Label className="text-white/80 text-xs">
               Height exaggeration · {exaggeration.toFixed(1)}×
