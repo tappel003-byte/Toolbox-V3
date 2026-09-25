@@ -1434,7 +1434,9 @@ function renderTopoTop(
   },
 ) {
   const resolved = resolveSettings(settings);
-  // The shared color legend only makes sense for a single surface.
+  // One closed boundary on this level is one topo surface. Legend ON draws
+  // that surface. Several boundaries on the same level ("All boundaries")
+  // are a separate case and do not decide the single-boundary path.
   const soloGrid = areaTopos.length === 1 ? areaTopos[0] : null;
   const live = overlay?.liveDrag ?? null;
   const highlightId = overlay?.highlightId ?? null;
