@@ -94,6 +94,7 @@ Concrete Customer File record ownership for later app plug-in. Architecture is c
 - Follows "protect the canvas" — compact pills and collapsible tools, not a permanent desktop-style ribbon.
 - Comes before Diagnostics in the **application** build order: an operational Toolbox (Customer File → Distress/Floor → Report Builder) should be possible before Diagnostics is required.
 - Report Builder and Diagnostics are not wholly future work. As of Sept 24, 2026, this repository has a Report Builder shell and a Diagnostics entry, and further integration is in active pull requests (#68 Diagnostics workbench, #69 Report Builder evidence, #70 Report Builder skeleton). They obey the same Customer File lifecycle. Sync work must not redesign them or field capture.
+- **Sept 26, 2026:** The product owner made Report Builder the current milestone. The File Cabinet milestone stays in `MILESTONE.md` as history. The first slice is a native Pen Log assembled from Distress. Photo pages, editable captions, and registered Floor Survey topo / data / legend / high-low-delta pages are later slices.
 
 ## Diagnostics
 

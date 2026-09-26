@@ -141,9 +141,9 @@ const logic = await page.evaluate(() => {
   assert('diagnostics follows the floor block', dxAt === floorAt + 3);
   const toc = src.contents(sequence.pages).map((item) => item.title);
   assert('TOC names each distress and floor sheet',
-    toc.indexOf('Distress Survey — Basement') !== -1 &&
-    toc.indexOf('Distress Survey — Main Level') !== -1 &&
-    toc.indexOf('Distress Survey — Second Floor') !== -1 &&
+    toc.indexOf('Pen Log — Basement') !== -1 &&
+    toc.indexOf('Pen Log — Main Level') !== -1 &&
+    toc.indexOf('Pen Log — Second Floor') !== -1 &&
     toc.indexOf('Floor Survey — Basement — Current Floor Survey') !== -1 &&
     toc.indexOf('Floor Survey — Main Level — Current Floor Survey') !== -1 &&
     toc.indexOf('Floor Survey — Basement — January survey') !== -1 &&
@@ -215,7 +215,8 @@ await page.evaluate(async () => {
 await page.goto(`${BASE}#/file/rb-skeleton/report`, { waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
   const title = document.querySelector('.rb-sheet__title');
-  return title && title.textContent === 'Riley Chen';
+  return document.querySelector('.rb-shell[data-report-ready="true"]') &&
+    title && title.textContent === 'Riley Chen';
 });
 
 const opened = await page.evaluate(() => {
@@ -240,9 +241,9 @@ check('cover shows the stored address', opened.address === '15 Example Court', o
 check('sheet is 11×17 landscape', opened.ratio > 1.5 && opened.ratio < 1.58, String(opened.ratio));
 check('source jump links remain', opened.links.join(',') === 'floor,distress,diagnostics', opened.links.join(','));
 check('rail lists distress then floor sheets',
-  opened.captions.indexOf('Distress · Basement') !== -1 &&
-  opened.captions.indexOf('Distress · Basement') < opened.captions.indexOf('Distress · Main Level') &&
-  opened.captions.indexOf('Floor · Basement') > opened.captions.indexOf('Distress · Main Level'),
+  opened.captions.indexOf('Pen Log · Basement') !== -1 &&
+  opened.captions.indexOf('Pen Log · Basement') < opened.captions.indexOf('Pen Log · Main Level') &&
+  opened.captions.indexOf('Floor · Basement') > opened.captions.indexOf('Pen Log · Main Level'),
   opened.captions.join(' | '));
 check('composition tools stay reserved', /does not move/i.test(opened.tool), opened.tool);
 check('sheets are still session-only', opened.notSaved === 'Not saved', opened.notSaved);
@@ -259,7 +260,7 @@ const tocUi = await page.evaluate(() => {
   }));
 });
 check('TOC is generated from included sheets',
-  tocUi.some((item) => item.title === 'Distress Survey — Basement' && item.id === 'distress-canvas-b') &&
+  tocUi.some((item) => item.title === 'Pen Log — Basement' && item.id === 'distress-canvas-b') &&
   tocUi.some((item) => item.title === 'Floor Survey — Main Level' && item.id.indexOf('::canvas-m') !== -1),
   tocUi.map((item) => item.number + ' ' + item.title).join(' | '));
 const tocNumbers = await page.evaluate(() => {
@@ -295,7 +296,8 @@ check('Open Distress Survey still leaves Report Builder', page.url().indexOf('/d
 await page.goto(`${BASE}#/file/rb-skeleton/report`, { waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
   const title = document.querySelector('.rb-sheet__title');
-  return title && title.textContent === 'Riley Chen';
+  return document.querySelector('.rb-shell[data-report-ready="true"]') &&
+    title && title.textContent === 'Riley Chen';
 });
 await page.click('.rb-thumb[data-page-id="section-discussion"]');
 await page.click('#rb-page-earlier');
@@ -342,7 +344,8 @@ await page.setViewport({ width: 820, height: 1180, deviceScaleFactor: 1 });
 await page.reload({ waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
   const title = document.querySelector('.rb-sheet__title');
-  return title && title.textContent === 'Riley Chen';
+  return document.querySelector('.rb-shell[data-report-ready="true"]') &&
+    title && title.textContent === 'Riley Chen';
 });
 await page.screenshot({ path: `${OUT}/report-builder-skeleton-ipad.png` });
 const ipad = await page.evaluate(() => {
@@ -359,10 +362,14 @@ await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
 await page.reload({ waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
   const title = document.querySelector('.rb-sheet__title');
-  return title && title.textContent === 'Riley Chen';
+  return document.querySelector('.rb-shell[data-report-ready="true"]') &&
+    title && title.textContent === 'Riley Chen';
 });
 await page.click('.rb-thumb[data-page-id="distress-canvas-b"]');
-await page.waitForFunction(() => document.querySelector('.rb-sheet').getAttribute('data-page-id') === 'distress-canvas-b');
+await page.waitForFunction(() => {
+  const title = document.querySelector('.rb-penlog__title');
+  return title && title.textContent === 'Pen Log — Basement';
+});
 await page.screenshot({ path: `${OUT}/report-builder-skeleton-phone.png`, fullPage: true });
 const phone = await page.evaluate(() => {
   const sheet = document.querySelector('.rb-sheet').getBoundingClientRect();
@@ -373,14 +380,18 @@ const phone = await page.evaluate(() => {
   return {
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
     sheetVisible: sheet.width > 140 && sheet.height > 80,
-    title: document.querySelector('.rb-sheet__title').textContent,
-    meta: document.querySelector('.rb-sheet__meta').textContent,
+    title: document.querySelector('.rb-penlog__title').textContent,
+    photo: document.querySelector('.rb-penlog__photo').textContent,
+    pin: document.querySelector('.rb-penlog__pinnum').textContent,
+    cards: document.querySelectorAll('.rb-sheet .rb-evidence-observation').length,
+    missing: document.querySelector('#rb-photo-list').textContent,
     linkReady: link.width > 40 && link.height > 20,
     overlap: hit(sheet, link),
   };
 });
-check('phone distress sheet shows the level and photograph count',
-  phone.title === 'Basement' && /1 observation/.test(phone.meta) && /2 photographs/.test(phone.meta),
+check('phone pen log keeps the level and the continuing photo numbers',
+  phone.title === 'Pen Log — Basement' && phone.photo === '2\u20133' && phone.pin === '2' &&
+  phone.cards === 0 && phone.missing.indexOf('not on this device') !== -1,
   JSON.stringify(phone));
 check('phone layout keeps the sheet clear of the Distress link',
   !phone.overflow && phone.sheetVisible && phone.linkReady && !phone.overlap,
