@@ -1,4 +1,37 @@
-# File Cabinet — selective local sync foundation
+# Report Builder — Pen Log
+
+## Purpose
+
+Assemble a native Pen Log in Report Builder from the Distress Survey already stored on the Customer File. One page per level that has pins. The floor plan image, numbered pin markers, schedule, and report wording are separate page elements. The investigator can correct wording on the report without changing the source survey.
+
+## Status
+
+**Current milestone**, set by the product owner on Sept 26, 2026. File Cabinet sync is largely functional. That milestone is preserved below as history and is not reopened here.
+
+VISION §20 describes the milestone that was current when that paragraph was written: it records the sync model and does not build Report Builder. The owner changed which milestone is current. VISION §12 still governs this workspace. This slice does not change the sync model, Distress capture, or Floor Survey capture.
+
+## This slice
+
+- A 17×11 landscape Pen Log for each Distress level that contains pins.
+- Measured first checkpoint from the 1515 Los Nietos figure, now called Pen Log: thin sheet border, figure title at the upper left, plan and pins on the left to about 9.5 inches, ruled schedule from about x=10 inches to about y=10.4 inches. Columns are Photo, pin #, Location, and Notes.
+- Pin and photo numbers follow the Distress sequence across levels. Pins stay registered to the plan when the plan’s aspect ratio letterboxes inside the frame.
+- A report note is stored on the Report Builder component (`record.reportBuilder.penLog`). Opening a report does not write the Customer File. The Distress description stays the source.
+- Photographs stay reachable from the page. They are not stacked observation cards on the sheet.
+
+## Out of scope — next reviewable slices
+
+- Photo pages and editable captions
+- Registered Floor Survey topo, data, legend, and high / low / delta pages
+- Drawing tools, page-order drafts, and print packaging
+- Diagnostics, File Cabinet changes, and deployment
+
+The 1515 file is not in this repository. Figure numbers, company logos, and other details that need that reference stay open until an owner-approved redacted copy is available.
+
+---
+
+# Previous milestone — File Cabinet selective local sync foundation
+
+Preserved as history. Not the current milestone.
 
 ## Purpose
 
@@ -6,7 +39,7 @@ Make Customer Files safely shareable through the Cloudflare File Cabinet while p
 
 ## Status
 
-**Current milestone.** The File Cabinet sync foundation, including Check Out / Check In in this repository, is the sync work this document tracks. The Sept 24, 2026 working-authority and Save-checkpoint decisions below control it. This document update does not change application code.
+**Previous milestone, preserved.** The File Cabinet sync foundation, including Check Out / Check In in this repository, is the sync work this section tracks. The Sept 24, 2026 working-authority and Save-checkpoint decisions below control it. Report Builder is now the current milestone, above. Sync work must still not redesign Report Builder, Diagnostics, or field capture.
 
 Quiet online mirroring of the active working Customer File is **decided**. It is not later polish. Sync Now remains the manual confidence action and must answer truthfully. The mirror is not a second editor.
 

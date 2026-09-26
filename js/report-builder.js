@@ -3,8 +3,10 @@
 // 11×17 landscape sheets, page rail, composition controls, and jump links
 // back to the source workspaces. The opening sequence comes from
 // ToolboxReportSource (issue #66 skeleton + the #65 evidence contract).
-// Pages exist only while this workspace stays open. This module does not
-// write the Customer File and does not invent report narrative.
+// Page order in this slice stays in the open session. A Pen Log note is the
+// exception: after the investigator edits it, the note is stored on the
+// Report Builder component. Opening a report does not write the Customer File.
+// Report notes do not change Distress. This module does not invent report narrative.
 // Export for AI reads the open Customer File and downloads one ZIP.
 
 (function () {
@@ -44,6 +46,18 @@
   var fitObserver = null;
   var fitOnResize = null;
   var pageSeq = 1;
+  var activeRoot = null;
+  var noteOverrides = {};
+  var notesTouched = false;
+  var selectedPinId = '';
+  var penLogLayout = null;
+  var saveTimer = null;
+  var saveChain = Promise.resolve();
+  var saveToken = 0;
+  var onPenNote = function () {};
+  var onPenSelect = function () {};
+  var hideFlush = null;
+  var pageHideFlush = null;
 
   function fitSheet(root) {
     var stage = root && root.querySelector('.rb-stage');
@@ -63,6 +77,7 @@
     }
     sheet.style.width = Math.floor(width) + 'px';
     sheet.style.height = Math.floor(height) + 'px';
+    if (penLogLayout && typeof penLogLayout.layout === 'function') penLogLayout.layout();
   }
 
   function watchSheet(root) {
@@ -261,19 +276,127 @@
     return result;
   }
 
+  function isPenLog(page) {
+    return !!(page && page.type === 'distress' && !(page.meta && page.meta.reserved) &&
+      page.evidence && Array.isArray(page.evidence.pins) && page.evidence.pins.length &&
+      window.ToolboxPenLog && typeof window.ToolboxPenLog.renderPage === 'function');
+  }
+
+  function penLogPins(page) {
+    var api = window.ToolboxPenLog;
+    var evidence = page && page.evidence;
+    return ((evidence && evidence.pins) || []).map(function (pin) {
+      return {
+        id: pin.id,
+        number: pin.number,
+        photoLabel: api.photoRange(pin.number, (pin.photos || []).length),
+        location: pin.location || '',
+        note: api.displayNote(pin, noteOverrides),
+        sourceNote: api.sourceNote(pin),
+        x: pin.position ? pin.position.x : null,
+        y: pin.position ? pin.position.y : null,
+        exterior: !!pin.isExterior,
+        photos: pin.photos || [],
+      };
+    });
+  }
+
+  function setSaveState(text) {
+    var el = activeRoot && activeRoot.querySelector('#rb-save-state');
+    if (el) el.textContent = text || '';
+  }
+
+  function syncPhotoPanel(page) {
+    var section = activeRoot && activeRoot.querySelector('#rb-photos');
+    if (!section) return;
+    if (!isPenLog(page)) {
+      section.hidden = true;
+      return;
+    }
+    section.hidden = false;
+    var pins = penLogPins(page);
+    if (!pins.some(function (pin) { return pin.id === selectedPinId; })) {
+      selectedPinId = pins[0] ? pins[0].id : '';
+    }
+    var chosen = null;
+    pins.forEach(function (pin) {
+      if (pin.id === selectedPinId) chosen = pin;
+    });
+    var note = activeRoot.querySelector('#rb-report-note');
+    if (note && document.activeElement !== note) {
+      note.setAttribute('data-pin-id', selectedPinId || '');
+      note.setAttribute('data-source-note', chosen ? chosen.sourceNote : '');
+      note.value = chosen ? (chosen.note || '') : '';
+    }
+    var list = activeRoot.querySelector('#rb-photo-list');
+    if (!list) return;
+    list.textContent = '';
+    pins.forEach(function (pin) {
+      (pin.photos || []).forEach(function (photo) {
+        var figure = document.createElement('figure');
+        figure.className = 'rb-photo' + (pin.id === selectedPinId ? ' is-current' : '');
+        figure.setAttribute('data-pin-id', pin.id || '');
+        var caption = document.createElement('figcaption');
+        caption.textContent = 'Photo ' + photo.displayNumber + (pin.location ? ' · ' + pin.location : '');
+        figure.appendChild(caption);
+        if (photo.dataUrl && String(photo.dataUrl).indexOf('data:image/') === 0) {
+          var img = document.createElement('img');
+          img.src = photo.dataUrl;
+          img.alt = 'Photo ' + photo.displayNumber;
+          figure.appendChild(img);
+        } else {
+          var missing = document.createElement('p');
+          missing.textContent = 'Photo ' + photo.displayNumber + ' is not on this device.';
+          figure.appendChild(missing);
+        }
+        figure.addEventListener('click', function () { onPenSelect(pin.id); });
+        list.appendChild(figure);
+      });
+    });
+    if (!list.childNodes.length) {
+      var empty = document.createElement('p');
+      empty.className = 'rb-panel__lead';
+      empty.textContent = 'No photographs are stored on these pins.';
+      list.appendChild(empty);
+    }
+  }
+
+  function renderPenLogSheet(sheet, page, index) {
+    var pins = penLogPins(page);
+    if (!pins.some(function (pin) { return pin.id === selectedPinId; })) {
+      selectedPinId = pins[0] ? pins[0].id : '';
+    }
+    penLogLayout = window.ToolboxPenLog.renderPage(sheet, {
+      title: page.title,
+      levelName: page.meta && page.meta.levelName,
+      pageNumber: index + 1,
+      plan: page.evidence.plan || {},
+      pins: pins,
+      selectedPinId: selectedPinId,
+      onNote: function (id, value, source) { onPenNote(id, value, source); },
+      onSelect: function (id) { onPenSelect(id); },
+    });
+  }
+
   function renderSheet(sheet, page, pages) {
     sheet.textContent = '';
     sheet.setAttribute('data-page-id', page.id);
     sheet.setAttribute('data-page-type', page.type || 'sheet');
     sheet.setAttribute('aria-label', (page.title || 'Report sheet') + ', ' + SHEET_RATIO_LABEL);
+    sheet.removeAttribute('data-page-kind');
+
+    var index = 0;
+    for (var n = 0; n < pages.length; n += 1) {
+      if (pages[n].id === page.id) index = n;
+    }
+    if (isPenLog(page)) {
+      renderPenLogSheet(sheet, page, index);
+      return;
+    }
+    penLogLayout = null;
 
     var margin = document.createElement('div');
     margin.className = 'rb-sheet__margin';
-
-    var index = 0;
-    for (var i = 0; i < pages.length; i += 1) {
-      if (pages[i].id === page.id) index = i;
-    }
 
     if (page.type === 'cover') {
       addLine(margin, 'rb-sheet__kicker', 'Report');
@@ -431,6 +554,12 @@
 
     host.innerHTML = shellHtml();
     var root = host.querySelector('.rb-shell');
+    activeRoot = root;
+    noteOverrides = {};
+    notesTouched = false;
+    selectedPinId = '';
+    penLogLayout = null;
+    saveToken = 0;
     var fileLabelEl = root.querySelector('#rb-file-label');
     var statusEl = root.querySelector('#rb-tool-status');
     var listEl = root.querySelector('#rb-page-list');
@@ -493,6 +622,7 @@
       });
 
       renderSheet(sheetEl, current, pages);
+      syncPhotoPanel(current);
       root.querySelectorAll('[data-rb-source]').forEach(function (button) {
         var on = button.getAttribute('data-rb-source') === current.sourceKey;
         button.classList.toggle('is-current', on);
@@ -603,6 +733,98 @@
       });
     });
 
+    function sameNotes(left, right) {
+      var leftKeys = Object.keys(left);
+      var rightKeys = Object.keys(right);
+      if (leftKeys.length !== rightKeys.length) return false;
+      for (var i = 0; i < leftKeys.length; i += 1) {
+        if (left[leftKeys[i]] !== right[leftKeys[i]]) return false;
+      }
+      return true;
+    }
+
+    function flushNotes() {
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+      if (!notesTouched || !customerFileId || !window.ToolboxPenLog) return saveChain;
+      var snapshot = {};
+      Object.keys(noteOverrides).forEach(function (key) { snapshot[key] = noteOverrides[key]; });
+      var token = ++saveToken;
+      setSaveState('Saving\u2026');
+      saveChain = saveChain.then(function () {
+        return window.ToolboxPenLog.saveNotes(customerFileId, snapshot);
+      }).then(function () {
+        if (token !== saveToken || !sameNotes(snapshot, noteOverrides)) return;
+        setSaveState('Note saved');
+      }).catch(function (err) {
+        if (token !== saveToken) return;
+        setSaveState('Not saved. ' + ((err && err.message) || 'The report note is still on this page.'));
+      });
+      return saveChain;
+    }
+
+    function scheduleNoteSave() {
+      setSaveState('Saving\u2026');
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(flushNotes, 200);
+    }
+
+    onPenNote = function (pinId, value, sourceNote) {
+      if (!pinId) return;
+      if (value === sourceNote) delete noteOverrides[pinId];
+      else noteOverrides[pinId] = value;
+      notesTouched = true;
+      var fields = root.querySelectorAll('.rb-penlog__note');
+      for (var i = 0; i < fields.length; i += 1) {
+        if (fields[i].getAttribute('data-pin-id') === pinId && fields[i].value !== value) fields[i].value = value;
+      }
+      var panel = root.querySelector('#rb-report-note');
+      if (panel && panel.getAttribute('data-pin-id') === pinId && panel.value !== value) panel.value = value;
+      scheduleNoteSave();
+    };
+
+    onPenSelect = function (pinId) {
+      if (!pinId) return;
+      selectedPinId = pinId;
+      root.querySelectorAll('.rb-penlog__pin, .rb-penlog__cell').forEach(function (el) {
+        el.classList.toggle('is-selected', el.getAttribute('data-pin-id') === pinId);
+      });
+      root.querySelectorAll('.rb-photo').forEach(function (el) {
+        el.classList.toggle('is-current', el.getAttribute('data-pin-id') === pinId);
+      });
+      var pageField = null;
+      var fields = root.querySelectorAll('.rb-penlog__note');
+      for (var i = 0; i < fields.length; i += 1) {
+        if (fields[i].getAttribute('data-pin-id') === pinId) pageField = fields[i];
+      }
+      var panel = root.querySelector('#rb-report-note');
+      if (panel && pageField && document.activeElement !== panel) {
+        panel.setAttribute('data-pin-id', pinId);
+        panel.setAttribute('data-source-note', pageField.getAttribute('data-source-note') || '');
+        panel.value = pageField.value;
+      }
+      var currentPhoto = root.querySelector('.rb-photo.is-current');
+      if (currentPhoto && typeof currentPhoto.scrollIntoView === 'function') {
+        currentPhoto.scrollIntoView({ block: 'nearest' });
+      }
+    };
+
+    root.querySelector('#rb-report-note').addEventListener('input', function (event) {
+      var field = event.target;
+      onPenNote(field.getAttribute('data-pin-id'), field.value, field.getAttribute('data-source-note') || '');
+    });
+
+    if (hideFlush) document.removeEventListener('visibilitychange', hideFlush);
+    if (pageHideFlush) window.removeEventListener('pagehide', pageHideFlush);
+    hideFlush = function () {
+      if (document.visibilityState === 'hidden') flushNotes();
+    };
+    pageHideFlush = function () { flushNotes(); };
+    document.addEventListener('visibilitychange', hideFlush);
+    window.addEventListener('pagehide', pageHideFlush);
+
     setToolStatus();
     renderPages();
     watchSheet(root);
@@ -610,6 +832,9 @@
 
     function applyRecord(record) {
       fileLabelEl.textContent = record ? fileLabel(record) : 'Customer File not on this device';
+      if (!notesTouched && window.ToolboxPenLog && typeof window.ToolboxPenLog.readNotes === 'function') {
+        noteOverrides = window.ToolboxPenLog.readNotes(record);
+      }
       if (dirty) return;
       var api = sourceApi();
       if (!api) return;
@@ -641,6 +866,9 @@
         fitSheet(root);
       }).catch(function (err) {
         console.warn('Report evidence could not be loaded:', err);
+      }).then(function () {
+        if (token !== mountGeneration || !root) return;
+        root.setAttribute('data-report-ready', 'true');
       });
     }).catch(function () {
       if (token !== mountGeneration) return;
@@ -665,6 +893,7 @@
       '    </div>' +
       '    <button type="button" id="rb-export-ai" class="btn btn--accent rb-export">Export for AI</button>' +
       '    <p class="rb-toolbar__status" id="rb-tool-status" aria-live="polite"></p>' +
+      '    <p class="rb-save-state" id="rb-save-state" aria-live="polite"></p>' +
       '    <p class="rb-ai-status" id="rb-ai-status" aria-live="polite"></p>' +
       '  </div>' +
       '  <div class="rb-workspace">' +
@@ -696,6 +925,13 @@
       '        <button type="button" class="btn btn--secondary" data-rb-source="distress">Open Distress Survey</button>' +
       '        <button type="button" class="btn btn--secondary" data-rb-source="diagnostics">Open Diagnostics</button>' +
       '      </div>' +
+      '      <section id="rb-photos" class="rb-photos" hidden>' +
+      '        <h3>Photographs</h3>' +
+      '        <p class="rb-panel__lead">Report wording stays on the Pen Log. Distress Survey keeps the source note.</p>' +
+      '        <label class="rb-report-note-label" for="rb-report-note">Report note</label>' +
+      '        <textarea id="rb-report-note" class="rb-report-note" rows="3"></textarea>' +
+      '        <div id="rb-photo-list"></div>' +
+      '      </section>' +
       '    </aside>' +
       '  </div>' +
       '</div>'
@@ -717,6 +953,21 @@
 
   function unmount() {
     mountGeneration += 1;
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+      if (pageHideFlush) pageHideFlush();
+    }
+    if (hideFlush) {
+      document.removeEventListener('visibilitychange', hideFlush);
+      hideFlush = null;
+    }
+    if (pageHideFlush) {
+      window.removeEventListener('pagehide', pageHideFlush);
+      pageHideFlush = null;
+    }
+    penLogLayout = null;
+    activeRoot = null;
     if (fitObserver) {
       fitObserver.disconnect();
       fitObserver = null;
