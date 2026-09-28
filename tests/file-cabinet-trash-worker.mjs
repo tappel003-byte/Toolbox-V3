@@ -125,9 +125,37 @@ const cabinet = createCabinet({
   'media/plan-leased': 'leased-bytes',
   'cf/stub/index.json': { id: 'stub' },
   'cf/stub/customer.json': { firstName: '' },
-  'cf/corrupt/index.json': { id: 'corrupt' },
+  'cf/corrupt/index.json': { id: 'corrupt', deletedAt: '2026-01-05T00:00:00.000Z' },
   'cf/corrupt/plans.json': '{',
   'media/plan-corrupt': 'corrupt-bytes',
+  'cf/live/index.json': { id: 'live', deletedAt: null },
+  'cf/live/customer.json': { firstName: 'Live' },
+  'media/plan-live': 'live-bytes',
+  'cf/livelease/index.json': {
+    id: 'livelease',
+    checkout: { email: 'lee@example.com', deviceId: 'device-lee', checkedOutAt: '2026-09-02T00:00:00.000Z' },
+  },
+  'media/plan-livelease': 'live-lease-bytes',
+  'cf/badindex/index.json': '{',
+  'cf/badindex/customer.json': { firstName: 'Bad' },
+  'media/plan-badindex': 'bad-index-bytes',
+  'purge/partial.json': {
+    id: 'partial',
+    purgedAt: '2026-03-01T00:00:00.000Z',
+    reason: 'permanent-delete',
+    mediaIds: ['plan-partial'],
+  },
+  'cf/partial/customer.json': { firstName: 'Partial' },
+  'media/plan-partial': 'partial-bytes',
+  'purge/badtomb.json': '{',
+  'cf/restored/index.json': { id: 'restored', deletedAt: null },
+  'purge/restored.json': {
+    id: 'restored',
+    purgedAt: '2026-02-01T00:00:00.000Z',
+    reason: 'permanent-delete',
+    mediaIds: ['plan-restored'],
+  },
+  'media/plan-restored': 'restored-bytes',
 });
 
 const leased = await callDelete(cabinet, 'leased');
@@ -221,12 +249,98 @@ check(
 
 const stub = await callDelete(cabinet, 'stub');
 check(
-  'Empty-stub DELETE still tombstones without touching unrelated media',
-  stub.status === 200 &&
-    !!cabinet.store['purge/stub.json'] &&
-    !cabinet.store['cf/stub/index.json'] &&
+  'DELETE refuses an active index before any tombstone or media write',
+  stub.status === 409 &&
+    /not in File Cabinet Trash/i.test(stub.text) &&
+    stub.ops.length === 0 &&
+    !!cabinet.store['cf/stub/index.json'] &&
+    !!cabinet.store['cf/stub/customer.json'] &&
+    !cabinet.store['purge/stub.json'] &&
     cabinet.store['media/other-plan'] === 'keep-me',
-  JSON.stringify({ status: stub.status, ops: stub.ops }),
+  JSON.stringify({ status: stub.status, ops: stub.ops, text: stub.text }),
+);
+
+const restored = await callDelete(cabinet, 'restored');
+const restoredTomb = cabinet.store['purge/restored.json'];
+check(
+  'DELETE refuses a live index even when an older purge tombstone exists',
+  restored.status === 409 &&
+    restored.ops.length === 0 &&
+    !!cabinet.store['cf/restored/index.json'] &&
+    cabinet.store['media/plan-restored'] === 'restored-bytes' &&
+    restoredTomb &&
+    restoredTomb.indexOf('2026-02-01T00:00:00.000Z') !== -1,
+  JSON.stringify({ status: restored.status, ops: restored.ops, text: restored.text }),
+);
+
+const live = await callDelete(cabinet, 'live');
+check(
+  'DELETE refuses a live Customer File that is not in Trash',
+  live.status === 409 &&
+    live.ops.length === 0 &&
+    cabinet.store['media/plan-live'] === 'live-bytes' &&
+    !!cabinet.store['cf/live/index.json'] &&
+    !cabinet.store['purge/live.json'],
+  JSON.stringify({ status: live.status, ops: live.ops, text: live.text }),
+);
+
+const liveLease = await callDelete(cabinet, 'livelease');
+check(
+  'DELETE refuses a leased active Customer File before any write',
+  liveLease.status === 403 &&
+    liveLease.ops.length === 0 &&
+    cabinet.store['media/plan-livelease'] === 'live-lease-bytes' &&
+    !!cabinet.store['cf/livelease/index.json'] &&
+    !cabinet.store['purge/livelease.json'],
+  JSON.stringify({ status: liveLease.status, ops: liveLease.ops, text: liveLease.text }),
+);
+
+const badIndex = await callDelete(cabinet, 'badindex');
+check(
+  'DELETE refuses a corrupt index before any write',
+  badIndex.status === 500 &&
+    /Corrupt Customer File index/i.test(badIndex.text) &&
+    badIndex.ops.length === 0 &&
+    cabinet.store['media/plan-badindex'] === 'bad-index-bytes' &&
+    !!cabinet.store['cf/badindex/index.json'] &&
+    !cabinet.store['purge/badindex.json'],
+  JSON.stringify({ status: badIndex.status, ops: badIndex.ops, text: badIndex.text }),
+);
+
+const absent = await callDelete(cabinet, 'absent');
+check(
+  'DELETE refuses a missing index that was never trashed',
+  absent.status === 409 &&
+    absent.ops.length === 0 &&
+    !cabinet.store['purge/absent.json'],
+  JSON.stringify({ status: absent.status, ops: absent.ops, text: absent.text }),
+);
+
+const badTomb = await callDelete(cabinet, 'badtomb');
+check(
+  'DELETE refuses a corrupt purge record before any write',
+  badTomb.status === 500 &&
+    /Corrupt purge record/i.test(badTomb.text) &&
+    badTomb.ops.length === 0 &&
+    cabinet.store['purge/badtomb.json'] === '{' &&
+    cabinet.store['media/other-plan'] === 'keep-me',
+  JSON.stringify({ status: badTomb.status, ops: badTomb.ops, text: badTomb.text }),
+);
+
+const partial = await callDelete(cabinet, 'partial');
+const partialTomb = cabinet.store['purge/partial.json'] ? JSON.parse(cabinet.store['purge/partial.json']) : null;
+check(
+  'DELETE retries a partially completed authorized purge',
+  partial.status === 200 &&
+    partialTomb &&
+    partialTomb.purgedAt === '2026-03-01T00:00:00.000Z' &&
+    partialTomb.reason === 'permanent-delete' &&
+    partialTomb.mediaIds.indexOf('plan-partial') !== -1 &&
+    !cabinet.store['media/plan-partial'] &&
+    !cabinet.store['cf/partial/customer.json'] &&
+    cabinet.store['media/other-plan'] === 'keep-me' &&
+    cabinet.store['media/plan-live'] === 'live-bytes',
+  JSON.stringify({ status: partial.status, ops: partial.ops, tomb: partialTomb }),
 );
 
 const again = await callDelete(cabinet, 'job');

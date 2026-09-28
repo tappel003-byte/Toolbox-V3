@@ -154,9 +154,9 @@
   }
 
   /**
-   * A file with no File Cabinet index may be deleted on this device.
+   * A positive no-remote result may delete on this device.
    * An empty stub asks once. A file with customer or survey information
-   * asks once, then deletes locally. A live cabinet copy is not this path.
+   * asks once, then deletes locally. Unknown cabinet status is not this path.
    */
   function isEmptyCustomerFileStub(record) {
     if (!record) return true;
@@ -927,7 +927,7 @@
     }).then(function (confirmed) {
       if (!confirmed) return null;
       if (!window.ToolboxSync || typeof window.ToolboxSync.resolveWorkingFileDelete !== 'function') {
-        return deleteLocalCustomerFile(record, name);
+        return name + ' was not deleted.';
       }
       return window.ToolboxSync.resolveWorkingFileDelete(record.id).then(function (again) {
         if (again && again.action === 'foreign-checkout') {
@@ -944,7 +944,7 @@
   function requestCustomerFileRemoval(record) {
     const name = displayName(record);
     if (!window.ToolboxSync || typeof window.ToolboxSync.resolveWorkingFileDelete !== 'function') {
-      return confirmLocalCustomerFileDelete(record, name);
+      return Promise.resolve(name + ' was not deleted.');
     }
     return window.ToolboxSync.resolveWorkingFileDelete(record.id).then(function (decision) {
       const action = decision && decision.action;

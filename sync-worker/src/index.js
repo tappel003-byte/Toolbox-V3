@@ -444,9 +444,21 @@ async function writePurgeTombstone(env, id, mediaIds, previous) {
   return body;
 }
 
+function indexIsInTrash(index) {
+  return !!(index && trimStr(index.deletedAt));
+}
+
+function tombstoneAuthorizesRetry(tomb, id) {
+  return !!(tomb && tomb.reason === 'permanent-delete' && trimStr(tomb.id) === id);
+}
+
 /**
  * Explicit permanent delete.
- * Refuses an active checkout lease before any write.
+ * Trash is the boundary: an existing index must already have deletedAt.
+ * Refuses an active checkout lease, a live index, a corrupt index, and a
+ * missing index that was never authorized, before any tombstone, media, or
+ * prefix write. A missing index with a permanent-delete tombstone is a
+ * retry of a purge that already started.
  * Tombstone is written before media or prefix removal so a crash cannot
  * resurrect the Customer File. Referenced media/{id} keys are deleted;
  * unrelated media keys are left alone.
@@ -463,6 +475,18 @@ async function purgeCustomerFile(env, id) {
       status: 403,
       message: 'Customer File is checked out. Check it in before permanently deleting it.',
     };
+  }
+  if (index && !indexIsInTrash(index)) {
+    return { status: 409, message: 'Customer File is not in File Cabinet Trash.' };
+  }
+  if (!index) {
+    const tombRead = await readStoredJson(await env.CABINET.get(purgeKey(id)));
+    if (tombRead.corrupt) {
+      return { status: 500, message: 'Corrupt purge record; refusing permanent delete' };
+    }
+    if (!tombstoneAuthorizesRetry(tombRead.body, id)) {
+      return { status: 409, message: 'Customer File is not in File Cabinet Trash.' };
+    }
   }
 
   const media = await referencedMediaIds(env, id);
@@ -724,6 +748,7 @@ export default {
       const id = decodeURIComponent(match[1]);
       const result = await purgeCustomerFile(env, id);
       if (result.status === 403) return forbidden(request, result.message);
+      if (result.status === 409) return conflict(request, result.message);
       if (result.status === 500) return text(request, result.message || 'Server error', 500);
       return json(request, { ok: true, deleted: result.deleted, purged: result.purged });
     }

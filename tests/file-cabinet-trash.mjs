@@ -134,6 +134,12 @@ try {
         if (hasLease(index)) {
           return new Response('Customer File is checked out. Check it in before permanently deleting it.', { status: 403 });
         }
+        if (index && !index.deletedAt) {
+          return new Response('Customer File is not in File Cabinet Trash.', { status: 409 });
+        }
+        if (!index && !state.purged[id]) {
+          return new Response('Customer File is not in File Cabinet Trash.', { status: 409 });
+        }
         const plans = state.components[compKey(id, 'plans')];
         const distress = state.components[compKey(id, 'distress')];
         const mediaIds = [];
@@ -747,17 +753,61 @@ try {
     report.offlineMirrorFinished = !state.indexes['cf-offline-mirror'] || !!state.indexes['cf-offline-mirror'].deletedAt;
     report.offlineMirrorLocalGone = !(await ToolboxDB.getCustomerFile('cf-offline-mirror'));
 
+    state.indexes['cf-legacy'] = {
+      id: 'cf-legacy',
+      displayName: 'Legacy Sipert',
+      propertyAddress: '12 Sipert Lane',
+      deletedAt: null,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      customerUpdatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    state.components['cf-legacy::customer'] = {
+      firstName: 'Legacy',
+      lastName: 'Sipert',
+      propertyAddress: '12 Sipert Lane',
+      customerUpdatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const legacy = ToolboxApp.blankCustomerFile('cf-legacy');
+    legacy.firstName = 'Legacy';
+    legacy.lastName = 'Sipert';
+    legacy.propertyAddress = '12 Sipert Lane';
+    delete legacy.checkedOutFromCabinet;
+    delete legacy.cabinetMirroredAt;
+    delete legacy.cabinetTrashRequestedAt;
+    await ToolboxDB.saveCustomerFile(legacy);
+    const legacyBefore = await ToolboxDB.getCustomerFile('cf-legacy');
+    report.legacyUnmarked = !!(legacyBefore && legacyBefore.checkedOutFromCabinet !== true &&
+      !legacyBefore.cabinetMirroredAt && !legacyBefore.cabinetTrashRequestedAt);
+    state.failNetwork = true;
+    const legacyDecision = await ToolboxSync.resolveWorkingFileDelete('cf-legacy');
+    report.legacyDecision = legacyDecision && legacyDecision.action;
+    let legacyError = null;
+    try { await ToolboxSync.moveWorkingFileToCabinetTrash('cf-legacy'); } catch (err) { legacyError = err; }
+    const legacyLocal = await ToolboxDB.getCustomerFile('cf-legacy');
+    report.legacyKept = !!(legacyError && legacyLocal && legacyLocal.cabinetTrashRequestedAt);
+    report.legacyRemoteLive = !!(state.indexes['cf-legacy'] && !state.indexes['cf-legacy'].deletedAt);
+    state.failNetwork = false;
+    try { await ToolboxSync.syncNow(); } catch (err) { report.legacySyncError = err && err.message; }
+    report.legacyTrashed = !!(state.indexes['cf-legacy'] && state.indexes['cf-legacy'].deletedAt);
+    report.legacyLocalGone = !(await ToolboxDB.getCustomerFile('cf-legacy'));
+
     const never = ToolboxApp.blankCustomerFile('cf-never');
     never.firstName = 'Never';
     never.lastName = 'Uploaded';
     delete never.checkedOutFromCabinet;
+    delete never.cabinetMirroredAt;
     await ToolboxDB.saveCustomerFile(never);
     state.failNetwork = true;
     const neverDecision = await ToolboxSync.resolveWorkingFileDelete('cf-never');
     report.neverDecision = neverDecision && neverDecision.action;
-    state.failNetwork = false;
+    let neverError = null;
+    try { await ToolboxSync.moveWorkingFileToCabinetTrash('cf-never'); } catch (err) { neverError = err; }
+    const neverLocal = await ToolboxDB.getCustomerFile('cf-never');
+    report.neverKept = !!(neverError && neverLocal && neverLocal.cabinetTrashRequestedAt);
     report.neverNoRemote = !state.indexes['cf-never'];
-    if (report.neverDecision === 'local-only') await ToolboxDB.permanentlyDeleteCustomerFiles([never]);
+    state.failNetwork = false;
+    try { await ToolboxSync.syncNow(); } catch (err) { report.neverSyncError = err && err.message; }
+    report.neverStillNoRemote = !state.indexes['cf-never'];
     report.neverLocalGone = !(await ToolboxDB.getCustomerFile('cf-never'));
 
     const foreignDecision = await ToolboxSync.resolveWorkingFileDelete('cf-foreign');
@@ -826,7 +876,8 @@ try {
   check('A working copy on this device blocks cabinet delete', out.workingCopyRefused && out.workingCopyNoWrite && out.workingCopyKept, JSON.stringify(out));
   check('Quiet mirror without checkout is moved to File Cabinet Trash', out.mirrorSynced && out.mirrorNoCheckout && out.mirrorMarked && out.mirrorDecision === 'cabinet' && out.mirrorLocalBefore && out.mirrorRemovedAfterTrash && out.mirrorLocalGone && out.mirrorTrashed && out.mirrorNoDelete && out.exploreTrashed && out.exploreDetailTrashed && out.cabinetHidesMirror && out.trashListsMirror, JSON.stringify(out));
   check('Offline mirror delete keeps the local file until Sync Now confirms Trash', out.offlineMirrorDecision === 'pending-offline' && out.offlineMirrorKept && out.offlineMirrorRemoteLive && out.offlineMirrorFinished && out.offlineMirrorLocalGone, JSON.stringify(out));
-  check('A file that was never mirrored still deletes locally while offline', out.neverDecision === 'local-only' && out.neverNoRemote && out.neverLocalGone, JSON.stringify(out));
+  check('A legacy mirrored file with no marker stays local until Sync Now confirms Trash', out.legacyUnmarked && out.legacyDecision === 'pending-offline' && out.legacyKept && out.legacyRemoteLive && out.legacyTrashed && out.legacyLocalGone, JSON.stringify(out));
+  check('Unknown cabinet status does not delete a never-mirrored file until the cabinet says it is absent', out.neverDecision === 'pending-offline' && out.neverKept && out.neverNoRemote && out.neverStillNoRemote && out.neverLocalGone, JSON.stringify(out));
   check('A foreign checkout is not trashed from this device', out.foreignRefused, JSON.stringify(out));
 
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });

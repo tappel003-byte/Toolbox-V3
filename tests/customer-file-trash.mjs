@@ -35,8 +35,28 @@ await page.goto(BASE, { waitUntil: 'networkidle0' });
 await page.setRequestInterception(true);
 page.on('request', (request) => {
   const url = request.url();
-  if (url.includes('sync.sandiageotoolbox.com')) request.abort().catch(() => {});
-  else request.continue().catch(() => {});
+  if (!url.includes('sync.sandiageotoolbox.com')) {
+    request.continue().catch(() => {});
+    return;
+  }
+  const origin = request.headers().origin || 'http://127.0.0.1:8765';
+  const headers = {
+    'access-control-allow-origin': origin,
+    'access-control-allow-credentials': 'true',
+    'access-control-allow-headers': request.headers()['access-control-request-headers'] || 'x-toolbox-device-id,content-type',
+    'access-control-allow-methods': 'GET,PUT,POST,DELETE,OPTIONS',
+    'content-type': 'text/plain',
+  };
+  if (request.method() === 'OPTIONS') {
+    request.respond({ status: 204, headers: headers }).catch(() => {});
+    return;
+  }
+  // Positive no-remote: these fixtures were never uploaded.
+  if (request.method() === 'GET' && /\/files\/[^/]+\/index(?:\?|$)/.test(url)) {
+    request.respond({ status: 404, headers: headers, body: 'Not found' }).catch(() => {});
+    return;
+  }
+  request.abort().catch(() => {});
 });
 await page.evaluate(async () => {
   const db = await new Promise((resolve, reject) => {

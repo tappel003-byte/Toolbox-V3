@@ -2437,19 +2437,6 @@
     return { ok: true, id: id, remote: verified, local: false };
   }
 
-  /**
-   * checkedOutFromCabinet is checkout provenance. A quiet mirror can exist
-   * without it. cabinetMirroredAt is local-only evidence that a cabinet copy
-   * was seen or written; it is not a synced customer field.
-   */
-  function mayHaveCabinetMirror(record) {
-    return !!(record && (
-      record.checkedOutFromCabinet === true ||
-      record.cabinetMirroredAt ||
-      record.cabinetTrashRequestedAt
-    ));
-  }
-
   function exchangeReachedCabinet(result, hadRemote) {
     if (hadRemote) return true;
     if (!result) return false;
@@ -2502,6 +2489,9 @@
   /**
    * Decide local-only delete vs File Cabinet Trash from the live remote index.
    * Does not write intent and does not delete.
+   * Offline, network, auth, and config failures are unknown. They are not a
+   * no-remote result, including for records saved before cabinetMirroredAt
+   * existed. Only a positive missing index may delete on this device.
    */
   async function resolveWorkingFileDelete(id) {
     const record = await window.ToolboxDB.getCustomerFile(id);
@@ -2513,10 +2503,8 @@
       remote = await getRemoteIndex(id);
     } catch (err) {
       const code = err && err.code;
-      if (code === 'config') return { action: 'local-only', id: id };
-      if (code === 'offline' || code === 'network' || code === 'auth') {
-        if (mayHaveCabinetMirror(record)) return { action: 'pending-offline', id: id };
-        return { action: 'local-only', id: id };
+      if (code === 'config' || code === 'offline' || code === 'network' || code === 'auth') {
+        return { action: 'pending-offline', id: id };
       }
       throw err;
     }
@@ -2531,8 +2519,9 @@
    * Move a working Customer File that has a cabinet copy into File Cabinet Trash.
    * The local copy is removed only after deletedAt is confirmed. A foreign
    * checkout is refused without recording a trash intent. If the cabinet
-   * cannot be reached and this file may already be mirrored, the intent is
-   * stored and the local file stays.
+   * cannot be reached, the intent is stored and the local file stays. That
+   * includes a legacy local file with no mirror marker: unknown is not
+   * evidence that no server copy exists.
    */
   async function moveWorkingFileToCabinetTrash(id) {
     const record = await window.ToolboxDB.getCustomerFile(id);
@@ -2544,8 +2533,7 @@
       remote = await getRemoteIndex(id);
     } catch (err) {
       const code = err && err.code;
-      if ((code === 'offline' || code === 'network' || code === 'auth') &&
-          (mayHaveCabinetMirror(record) || record.cabinetTrashRequestedAt)) {
+      if (code === 'offline' || code === 'network' || code === 'auth' || code === 'config') {
         await storeCabinetTrashIntent(record);
         throw new SyncError('incomplete', 'The File Cabinet could not be reached. This device\'s copy was kept.');
       }
@@ -2588,7 +2576,12 @@
     }
     let remote = await getRemoteIndex(id);
     if (!remote) {
-      throw new SyncError('incomplete', 'The File Cabinet copy is missing. This device\'s copy was kept.');
+      await removeLocalWorkingCopyOnly(record);
+      const cleared = await window.ToolboxDB.getCustomerFile(id);
+      if (cleared) {
+        throw new SyncError('sync', 'The File Cabinet has no copy, but the local copy could not be cleared.');
+      }
+      return { ok: true, id: id, remote: null, action: 'local-only' };
     }
     await assertCanWriteCabinetTrash(remote, true);
     const synced = await syncOneRecord(record, remote);
