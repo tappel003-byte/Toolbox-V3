@@ -378,6 +378,7 @@
       });
       main.appendChild(keyBtn);
       const secondary = [];
+      if (row && row.deletedAt) secondary.push('In File Cabinet Trash');
       if (named && row.propertyAddress) secondary.push(row.propertyAddress);
       const date = usefulDate(row);
       if (date) secondary.push(date);
@@ -415,6 +416,7 @@
       if (data && data.propertyAddress) bits.push(data.propertyAddress);
       const date = usefulDate(data);
       if (date) bits.push(date);
+      if (data && data.deletedAt) bits.push('In File Cabinet Trash');
       if (bits.length) lead.textContent = bits.join(' · ');
     }
 

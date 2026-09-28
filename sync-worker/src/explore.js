@@ -373,6 +373,7 @@ function copyIdentity(target, value) {
   if (address) target.propertyAddress = address;
   if (survey) target.fieldWorkDate = survey;
   if (created) target.createdAt = created;
+  if (trimmed(value.deletedAt)) target.deletedAt = trimmed(value.deletedAt);
 }
 
 export async function readCabinetIndexListing(cabinet) {
