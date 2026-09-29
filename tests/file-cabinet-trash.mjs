@@ -445,6 +445,9 @@ try {
       const row = button.closest('.cabinet-row-shell');
       return row ? row.dataset.customerFileId : '';
     });
+    report.cardActionLabels = Array.from(document.querySelectorAll('.cabinet-row--cloud .cabinet-row__actions button')).map(function (button) {
+      return (button.textContent || '').trim();
+    });
     report.overflow = document.documentElement.scrollWidth > document.documentElement.clientWidth + 1;
 
     state.fetchLog.length = 0;
@@ -598,6 +601,13 @@ try {
       return node.textContent;
     });
     report.emptyLabel = (document.querySelector('#trash-empty') || {}).textContent || '';
+    report.retentionCopy = ((document.querySelector('.trash-head p') || {}).textContent || '').trim();
+    report.trashRestoreCount = Array.from(document.querySelectorAll('.trash-row button')).filter(function (button) {
+      return /^\s*Restore\s*$/i.test(button.textContent || '');
+    }).length;
+    report.trashPermanentCount = Array.from(document.querySelectorAll('.trash-row .btn--danger')).filter(function (button) {
+      return /Delete permanently/i.test(button.textContent || '');
+    }).length;
 
     const restoreRow = Array.from(document.querySelectorAll('.trash-row')).find(function (row) {
       return /Ada Active/.test(row.textContent || '');
@@ -860,7 +870,7 @@ try {
   check('File Cabinet Trash control has no count', out.cabinetTrashLabel === 'Trash', JSON.stringify(out));
   check('Active cabinet list hides trashed files', out.activeNames.includes('Ada Active') && out.activeNames.includes('Cy Leased') && !out.activeNames.includes('Bea Trashed') && !out.activeNames.includes('Dee Held') && !out.activeNames.includes('Old File'), JSON.stringify(out));
   check('Files older than 120 days stay in Trash and can be cleaned up', out.cleanupVisible && out.oldSurvivedTimer, JSON.stringify(out));
-  check('Delete is offered only for unlocked cloud files', out.deleteButtons.includes('cf-active') && !out.deleteButtons.includes('cf-leased') && !out.deleteButtons.includes('cf-mine') && !out.deleteButtons.includes('cf-trashed'), JSON.stringify(out));
+  check('Normal File Cabinet cards do not render a Delete button', out.deleteButtons.length === 0 && out.cardActionLabels.indexOf('Delete') === -1 && out.cardActionLabels.indexOf('Check Out') !== -1, JSON.stringify(out));
   check('Phone File Cabinet does not overflow', out.overflow === false, JSON.stringify(out));
   check('Own and foreign checkout block cabinet delete before any write', out.ownCheckoutRefused && out.foreignCheckoutRefused && out.checkoutWrote === false, JSON.stringify(out));
   check('Cloud-only delete writes trash component then index and does not download or DELETE', out.cloudTrashNoDelete && out.cloudTrashNoCheckout && out.componentBeforeIndex && out.cloudTrashLocal == null && out.trashResultLocal === true && out.retentionDays === 120 && out.cloudTrashComponent && out.cloudTrashComponent.deletedAt === out.cloudTrashDeletedAt, JSON.stringify(out));
@@ -869,6 +879,7 @@ try {
   check('Sync Now finishes the recorded delete and keeps plans, photos, and floor evidence', out.heldSyncOk && out.heldLocalGone && out.heldTrashed && out.heldMediaKept && out.heldQuickKept && out.heldFloorKept && out.heldPdfKept && out.heldPdfLocalGone && out.heldFigureKept && out.heldFigureLocalGone && out.heldNoDelete && out.offlineFigureKept, JSON.stringify(out));
   check('Restore returns the cabinet file and keeps its media', out.heldRestored && out.heldRestoreNoDelete, JSON.stringify(out));
   check('Cabinet list drops a trashed file and Trash does not auto-delete', out.namesAfterTrash.includes('Cy Leased') && !out.namesAfterTrash.includes('Ada Active') && out.trashHash === '#/cabinet/trash' && out.trashNames.includes('Ada Active') && out.trashNames.includes('Bea Trashed') && out.countdown.some(function (line) { return line === 'In Trash'; }) && out.countdown.some(function (line) { return line === 'Eligible for cleanup'; }) && !out.countdown.some(function (line) { return /Permanently deletes/i.test(line); }), JSON.stringify(out));
+  check('File Cabinet Trash keeps Restore, permanent delete, Empty Trash, and 120-day retention', out.trashRestoreCount >= 2 && out.trashPermanentCount >= 2 && out.emptyLabel === 'Empty Trash' && /120 days/.test(out.retentionCopy) && /permanently delete/i.test(out.retentionCopy), JSON.stringify(out));
   check('Trash Restore does not Check Out', out.uiRestoreDeletedAt == null && out.uiRestoreNoCheckout && out.uiRestoreNoLocal, JSON.stringify(out));
   check('Permanent delete before 120 days uses a clear confirmation', out.permanentEnabled && out.permanentNoPhrase && out.permanentCancelKept && out.permanentDeleted && out.permanentMediaGone && out.permanentBefore120 && out.permanentOnlyBea && out.oldStillThere, JSON.stringify(out));
   check('Empty Trash uses a clear confirmation and deletes only unlocked trash', out.emptyLabel === 'Empty Trash' && out.emptyEnabled && out.emptyNoPhrase && out.cancelKeptOld && out.cancelNoDelete && out.checkInWouldNotDelete && out.oldPurged && out.oldMediaGone && out.leasedTrashSurvives && out.leasedMediaKept && out.activeSurvives && out.otherMediaKept, JSON.stringify(out));

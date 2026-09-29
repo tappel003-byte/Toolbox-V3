@@ -807,16 +807,6 @@
         });
       });
       actions.appendChild(btn);
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.type = 'button';
-      deleteBtn.className = 'btn btn--secondary cabinet-delete-btn';
-      deleteBtn.textContent = 'Delete';
-      deleteBtn.addEventListener('click', function (event) {
-        event.stopPropagation();
-        requestCabinetDelete(entry, app);
-      });
-      actions.appendChild(deleteBtn);
     } else if (entry.presence === 'local') {
       const openBtn = document.createElement('button');
       openBtn.type = 'button';
@@ -843,40 +833,6 @@
     notice.textContent = cabinetNotice;
     notice.hidden = false;
     cabinetNotice = '';
-  }
-
-  function requestCabinetDelete(entry, app) {
-    const name = entry.displayName || 'Customer File';
-    if (!window.ToolboxSync || typeof window.ToolboxSync.trashCabinetCustomerFile !== 'function') {
-      cabinetNotice = 'File Cabinet delete is unavailable.';
-      renderFileCabinet(app);
-      showFileCabinetNotice(app);
-      return;
-    }
-    if (entry.availability !== 'available' || entry.presence === 'local') {
-      cabinetNotice = 'Check this Customer File in before deleting it from the File Cabinet.';
-      renderFileCabinet(app);
-      showFileCabinetNotice(app);
-      return;
-    }
-    confirmAction({
-      title: 'Delete from File Cabinet?',
-      message: name + ' will move to File Cabinet Trash. It stays recoverable there until you permanently delete it.',
-      cancelLabel: 'Cancel',
-      confirmLabel: 'Delete',
-    }).then(function (confirmed) {
-      if (!confirmed) return;
-      return window.ToolboxSync.trashCabinetCustomerFile(entry.id).then(function () {
-        cabinetNotice = name + ' was moved to File Cabinet Trash.';
-        renderFileCabinet(app);
-        showFileCabinetNotice(app);
-      }).catch(function (err) {
-        console.warn('File Cabinet delete failed:', err);
-        cabinetNotice = (err && err.message) || 'Could not delete that Customer File.';
-        renderFileCabinet(app);
-        showFileCabinetNotice(app);
-      });
-    });
   }
 
   function deleteLocalCustomerFile(record, name) {

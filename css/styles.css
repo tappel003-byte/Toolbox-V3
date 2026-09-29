@@ -1937,8 +1937,7 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   margin-right: 0.35rem;
 }
 
-.cabinet-checkout-btn,
-.cabinet-delete-btn {
+.cabinet-checkout-btn {
   flex: 0 0 auto;
   align-self: center;
   margin-right: 0;
@@ -2000,8 +1999,7 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   font-weight: 650;
 }
 
-.cabinet-row--index .cabinet-checkout-btn,
-.cabinet-row--index .cabinet-delete-btn {
+.cabinet-row--index .cabinet-checkout-btn {
   min-height: 44px;
   margin-right: 0;
   padding: 8px 12px;
