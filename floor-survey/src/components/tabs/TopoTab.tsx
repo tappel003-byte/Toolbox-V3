@@ -65,8 +65,8 @@ function hiLoOf(pts: SurveyPoint[]) {
  * Grid the color/elevation legend should label for a single-surface view.
  * One closed boundary on a Customer File level is one surface and uses that
  * surface. Several boundaries on that same level each keep their own contour
- * range and their own legend on All boundaries — a Customer File level is not
- * a topo boundary.
+ * range and their own legend on All boundaries.
+ * A Customer File level is not a topo boundary.
  */
 export function legendGridFor(areaTopos: AreaTopo[]): Grid | null {
   if (areaTopos.length === 0) return null;
