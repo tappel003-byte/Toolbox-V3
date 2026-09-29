@@ -42,17 +42,27 @@ const hostSrc = read('floor-survey/src/host/HostWorkspace.tsx');
 const routeSrc = read('floor-survey/src/routes/projects.$id.tsx');
 
 check(
-  'Legend draw path is not limited to a single area',
-  topoSrc.includes('export function legendGridFor') &&
-    topoSrc.includes('if (resolved.showLegend && legendGrid)') &&
+  'All boundaries draws one color legend per contour surface',
+  topoSrc.includes('export function areaLegendAnchor') &&
+    topoSrc.includes('function areaLegendBox') &&
+    topoSrc.includes('gives each contour its own legend') &&
+    topoSrc.includes('if (resolved.showLegend)') &&
+    topoSrc.includes('areaTopos.length > 1') &&
     !topoSrc.includes('showLegend && soloGrid') &&
-    !topoSrc.includes('Shared color legend is suppressed'),
+    !topoSrc.includes('Shared color legend is suppressed') &&
+    !topoSrc.includes('sharedLegend'),
 );
 check(
-  'Customer File levels stay distinct from topo boundaries',
-  hostSrc.includes('A topo boundary is drawn inside one level and is not a level') &&
-    hostSrc.includes('data-floor-selector') &&
-    topoSrc.includes('A Customer File level is not a topo boundary'),
+  'Single-boundary legend path and level-vs-boundary comments remain',
+  topoSrc.includes('export function legendGridFor') &&
+    topoSrc.includes('A Customer File level is not a topo boundary') &&
+    hostSrc.includes('A topo boundary is drawn inside one level and is not a level') &&
+    hostSrc.includes('data-floor-selector'),
+);
+check(
+  'Boundary H/L/Δ pills drag immediately without a long-press',
+  topoSrc.includes('const immediate = hit.kind === "pill"') &&
+    topoSrc.includes('active: immediate'),
 );
 function chipBlock(src) {
   const marker = 'mode === "topo" ? "topo" : "data"';
@@ -133,6 +143,10 @@ async function openTopo(page, areas) {
   await page.goto(BASE, { waitUntil: 'networkidle0' });
   const seeded = await page.evaluate(
     async ({ planW, planH, areas, points }) => {
+      localStorage.removeItem('topo.legend.v1');
+      for (const key of Object.keys(localStorage)) {
+        if (key.startsWith('stats-chip-pos:')) localStorage.removeItem(key);
+      }
       const c = document.createElement('canvas');
       c.width = planW;
       c.height = planH;
@@ -197,90 +211,92 @@ async function openTopo(page, areas) {
   return seeded;
 }
 
-function sampleLegend(page) {
-  return page.evaluate(() => {
-    const canvases = [...document.querySelectorAll('canvas')];
-    const canvas = canvases.sort((a, b) => b.width * b.height - a.width * a.height)[0];
-    if (!canvas) return { ok: false, reason: 'no canvas' };
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    const { width, height } = canvas;
-    let img;
-    try {
-      img = ctx.getImageData(0, 0, width, height);
-    } catch (err) {
-      return { ok: false, reason: 'getImageData ' + err.message };
-    }
-    const data = img.data;
-    let red = null;
-    let blue = null;
-    let redN = 0;
-    let blueN = 0;
-    let redX = 0;
-    let redY = 0;
-    let blueX = 0;
-    let blueY = 0;
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const i = (y * width + x) * 4;
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        if (r > 220 && g < 40 && b < 40) {
-          redN++;
-          redX += x;
-          redY += y;
-        } else if (b > 220 && r < 40 && g < 40) {
-          blueN++;
-          blueX += x;
-          blueY += y;
+function sampleLegend(page, legendOrigin = { x: 24, y: 24 }, scaleHint = 1.5) {
+  return page.evaluate(
+    ({ origin, scaleHint: s }) => {
+      const canvases = [...document.querySelectorAll('canvas')];
+      const canvas = canvases.sort((a, b) => b.width * b.height - a.width * a.height)[0];
+      if (!canvas) return { ok: false, reason: 'no canvas' };
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const { width, height } = canvas;
+      let img;
+      try {
+        img = ctx.getImageData(0, 0, width, height);
+      } catch (err) {
+        return { ok: false, reason: 'getImageData ' + err.message };
+      }
+      const data = img.data;
+      let redN = 0;
+      let blueN = 0;
+      let redX = 0;
+      let redY = 0;
+      let blueX = 0;
+      let blueY = 0;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          if (r > 220 && g < 40 && b < 40) {
+            redN++;
+            redX += x;
+            redY += y;
+          } else if (b > 220 && r < 40 && g < 40) {
+            blueN++;
+            blueX += x;
+            blueY += y;
+          }
         }
       }
-    }
-    if (redN < 8 || blueN < 8) {
-      return { ok: false, reason: 'markers', redN, blueN, width, height };
-    }
-    red = { x: redX / redN, y: redY / redN };
-    blue = { x: blueX / blueN, y: blueY / blueN };
-    const redImgX = 8;
-    const blueImgX = 900 - 8;
-    const scale = (blue.x - red.x) / (blueImgX - redImgX);
-    const originX = red.x - redImgX * scale;
-    const originY = red.y - 8 * scale;
-    // Color bar sits inside the legend for both the default 1× box and the
-    // hydrated 1.5× box. Image coords, not screen coords.
-    const x0 = 48;
-    const x1 = 68;
-    const y0 = 90;
-    const y1 = 200;
-    let total = 0;
-    let chromatic = 0;
-    let sample = null;
-    for (let iy = y0; iy <= y1; iy += 4) {
-      for (let ix = x0; ix <= x1; ix += 3) {
-        const dx = Math.round(originX + ix * scale);
-        const dy = Math.round(originY + iy * scale);
-        if (dx < 0 || dy < 0 || dx >= width || dy >= height) continue;
-        const i = (dy * width + dx) * 4;
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        const sat = Math.max(r, g, b) - Math.min(r, g, b);
-        total++;
-        if (sat > 28 && !(r > 220 && g < 50 && b < 50)) chromatic++;
-        if (!sample) sample = { r, g, b, sat, dx, dy };
+      if (redN < 8 || blueN < 8) {
+        return { ok: false, reason: 'markers', redN, blueN, width, height };
       }
-    }
-    const ratio = total ? chromatic / total : 0;
-    return {
-      ok: true,
-      ratio,
-      chromatic,
-      total,
-      scale,
-      sample,
-      legendVisible: ratio > 0.45,
-    };
-  });
+      const red = { x: redX / redN, y: redY / redN };
+      const blue = { x: blueX / blueN, y: blueY / blueN };
+      const redImgX = 8;
+      const blueImgX = 900 - 8;
+      const scale = (blue.x - red.x) / (blueImgX - redImgX);
+      const originX = red.x - redImgX * scale;
+      const originY = red.y - 8 * scale;
+      // Color bar sits inside the legend for both the default 1× box and the
+      // hydrated 1.5× box. Image coords, not screen coords.
+      const x0 = origin.x + 14 * s;
+      const x1 = origin.x + 14 * s + 18 * s;
+      const y0 = origin.y + 18 * s;
+      const y1 = origin.y + 18 * s + Math.max(40, (226 * s - 42 * s) * 0.65);
+      let total = 0;
+      let chromatic = 0;
+      let sample = null;
+      for (let iy = y0; iy <= y1; iy += 4) {
+        for (let ix = x0; ix <= x1; ix += 3) {
+          const dx = Math.round(originX + ix * scale);
+          const dy = Math.round(originY + iy * scale);
+          if (dx < 0 || dy < 0 || dx >= width || dy >= height) continue;
+          const i = (dy * width + dx) * 4;
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          const sat = Math.max(r, g, b) - Math.min(r, g, b);
+          total++;
+          if (sat > 28 && !(r > 220 && g < 50 && b < 50)) chromatic++;
+          if (!sample) sample = { r, g, b, sat, dx, dy };
+        }
+      }
+      const ratio = total ? chromatic / total : 0;
+      return {
+        ok: true,
+        ratio,
+        chromatic,
+        total,
+        scale,
+        sample,
+        legendOrigin: origin,
+        legendVisible: ratio > 0.45,
+      };
+    },
+    { origin: legendOrigin, scaleHint },
+  );
 }
 
 function readChip(page) {
@@ -321,9 +337,13 @@ const twoAreas = [
   { id: 'area-a', name: 'Boundary 1', polygon: AREA_A },
   { id: 'area-b', name: 'Boundary 2', polygon: AREA_B },
 ];
+// Per-boundary legends sit at each area's top-left anchor (+8,+8).
+const LEGEND_A = { x: AREA_A[0].x + 8, y: AREA_A[0].y + 8 };
+const LEGEND_B = { x: AREA_B[0].x + 8, y: AREA_B[0].y + 8 };
 await openTopo(page, twoAreas);
 const legendOn = await legendSwitchState(page);
-const combined = await sampleLegend(page);
+const combinedA = await sampleLegend(page, LEGEND_A);
+const combinedB = await sampleLegend(page, LEGEND_B);
 const chip = await readChip(page);
 await page.screenshot({ path: path.join(OUT, `topo-legend-${PHASE}-combined-desktop.png`) });
 
@@ -333,9 +353,14 @@ check(
   JSON.stringify(legendOn),
 );
 check(
-  'Combined multi-area Topo draws a visible color legend when Legend is ON',
-  combined.legendVisible === true,
-  JSON.stringify(combined),
+  'Combined All boundaries draws a color legend on Boundary 1',
+  combinedA.legendVisible === true,
+  JSON.stringify(combinedA),
+);
+check(
+  'Combined All boundaries draws a color legend on Boundary 2',
+  combinedB.legendVisible === true,
+  JSON.stringify(combinedB),
 );
 check(
   'Topo shows a visible floating H / L / Δ chip',
@@ -351,23 +376,41 @@ check(
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
 await openTopo(page, twoAreas);
 const phoneChip = await readChip(page);
-const phoneLegend = await sampleLegend(page);
+const phoneLegendA = await sampleLegend(page, LEGEND_A);
+const phoneLegendB = await sampleLegend(page, LEGEND_B);
 await page.screenshot({ path: path.join(OUT, `topo-legend-${PHASE}-combined-phone.png`) });
 check(
-  'Phone Topo keeps the legend and the H/L/Δ chip on screen',
-  phoneLegend.legendVisible === true && phoneChip.present && phoneChip.visible,
-  JSON.stringify({ legend: phoneLegend.ratio, chip: phoneChip.text, visible: phoneChip.visible }),
+  'Phone Topo keeps both boundary legends and the H/L/Δ chip on screen',
+  phoneLegendA.legendVisible === true &&
+    phoneLegendB.legendVisible === true &&
+    phoneChip.present &&
+    phoneChip.visible,
+  JSON.stringify({
+    legendA: phoneLegendA.ratio,
+    legendB: phoneLegendB.ratio,
+    chip: phoneChip.text,
+    visible: phoneChip.visible,
+  }),
 );
 
 await page.setViewport({ width: 768, height: 1024, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
 await openTopo(page, twoAreas);
 const ipadChip = await readChip(page);
-const ipadLegend = await sampleLegend(page);
+const ipadLegendA = await sampleLegend(page, LEGEND_A);
+const ipadLegendB = await sampleLegend(page, LEGEND_B);
 await page.screenshot({ path: path.join(OUT, `topo-legend-${PHASE}-combined-ipad.png`) });
 check(
-  'iPad Topo keeps the legend and the H/L/Δ chip on screen',
-  ipadLegend.legendVisible === true && ipadChip.present && ipadChip.visible,
-  JSON.stringify({ legend: ipadLegend.ratio, chip: ipadChip.text, visible: ipadChip.visible }),
+  'iPad Topo keeps both boundary legends and the H/L/Δ chip on screen',
+  ipadLegendA.legendVisible === true &&
+    ipadLegendB.legendVisible === true &&
+    ipadChip.present &&
+    ipadChip.visible,
+  JSON.stringify({
+    legendA: ipadLegendA.ratio,
+    legendB: ipadLegendB.ratio,
+    chip: ipadChip.text,
+    visible: ipadChip.visible,
+  }),
 );
 
 // Single closed boundary — the proven one-surface case.
