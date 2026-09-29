@@ -618,6 +618,10 @@
     return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   }
 
+  function cloudOnlyTrashEligible(entry) {
+    return !!(entry && !entry.deletedAt && entry.availability === 'available' && entry.presence !== 'local');
+  }
+
   function cabinetInventoryEntries(browse) {
     const entries = ((browse && browse.entries) || []).filter(function (entry) {
       return entry && !entry.deletedAt;
@@ -646,6 +650,17 @@
       '    </div>' +
       '    <button type="button" id="file-cabinet-trash" class="btn btn--secondary file-cabinet-trash">Trash</button>' +
       '  </header>' +
+      '  <div class="cabinet-cloud-trash">' +
+      '    <button type="button" id="cabinet-cloud-trash-toggle" class="cabinet-cloud-trash__toggle" aria-expanded="false" aria-controls="cabinet-cloud-trash-panel">Move a cloud file to Trash</button>' +
+      '    <div id="cabinet-cloud-trash-panel" class="cabinet-cloud-trash__panel" hidden>' +
+      '      <p>Choose a cloud-only Customer File that is not checked out.</p>' +
+      '      <label class="cabinet-cloud-trash__pick">' +
+      '        <span class="sr-only">Cloud-only Customer File</span>' +
+      '        <select id="cabinet-cloud-trash-file"></select>' +
+      '      </label>' +
+      '      <button type="button" id="cabinet-cloud-trash-move" class="btn btn--secondary" disabled>Move to Trash</button>' +
+      '    </div>' +
+      '  </div>' +
       '  <label class="file-cabinet-search">' +
       '    <span class="sr-only">Search File Cabinet</span>' +
       '    <input type="search" id="file-cabinet-search" placeholder="Search name, address, or contact" autocomplete="off" />' +
@@ -669,6 +684,111 @@
         window.location.hash = '#/cabinet/trash';
       });
     }
+    const cloudTrashToggle = app.querySelector('#cabinet-cloud-trash-toggle');
+    const cloudTrashPanel = app.querySelector('#cabinet-cloud-trash-panel');
+    const cloudTrashMove = app.querySelector('#cabinet-cloud-trash-move');
+    if (cloudTrashToggle && cloudTrashPanel) {
+      cloudTrashToggle.addEventListener('click', function () {
+        const willOpen = cloudTrashPanel.hidden;
+        cloudTrashPanel.hidden = !willOpen;
+        cloudTrashToggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+        if (!willOpen) return;
+        if (!window.ToolboxSync || typeof window.ToolboxSync.browseCabinet !== 'function') return;
+        window.ToolboxSync.browseCabinet().then(applyCabinetBrowse).catch(function (err) {
+          console.warn('File Cabinet browse failed:', err);
+          cabinetNotice = 'Unable to load File Cabinet right now.';
+          showFileCabinetNotice(app);
+        });
+      });
+    }
+    if (cloudTrashMove) {
+      cloudTrashMove.addEventListener('click', function () {
+        const select = app.querySelector('#cabinet-cloud-trash-file');
+        const id = select ? select.value : '';
+        if (!id || !window.ToolboxSync || typeof window.ToolboxSync.browseCabinet !== 'function' ||
+            typeof window.ToolboxSync.trashCabinetCustomerFile !== 'function') {
+          cabinetNotice = 'File Cabinet delete is unavailable.';
+          showFileCabinetNotice(app);
+          return;
+        }
+        cloudTrashMove.disabled = true;
+        window.ToolboxSync.browseCabinet().then(function (browse) {
+          applyCabinetBrowse(browse);
+          const entry = ((browse && browse.entries) || []).find(function (item) {
+            return item && item.id === id;
+          });
+          if (!cloudOnlyTrashEligible(entry)) {
+            cabinetNotice = 'Check this Customer File in before deleting it from the File Cabinet.';
+            showFileCabinetNotice(app);
+            paintCloudTrashChoices();
+            return null;
+          }
+          return requestCabinetDelete(entry, app);
+        }).then(function (replaced) {
+          if (replaced) return;
+          paintCloudTrashChoices();
+        }).catch(function (err) {
+          console.warn('File Cabinet delete failed:', err);
+          cabinetNotice = (err && err.message) || 'Could not delete that Customer File.';
+          showFileCabinetNotice(app);
+          paintCloudTrashChoices();
+        });
+      });
+    }
+
+    function compareCabinetEntries(a, b) {
+      const addressA = String(a.propertyAddress || '').trim().toLocaleLowerCase();
+      const addressB = String(b.propertyAddress || '').trim().toLocaleLowerCase();
+      if (!addressA && addressB) return 1;
+      if (addressA && !addressB) return -1;
+      const byAddress = addressA.localeCompare(addressB);
+      if (byAddress) return byAddress;
+      return String(a.displayName || '').trim().toLocaleLowerCase()
+        .localeCompare(String(b.displayName || '').trim().toLocaleLowerCase());
+    }
+
+    function paintCloudTrashChoices() {
+      const select = app.querySelector('#cabinet-cloud-trash-file');
+      const move = app.querySelector('#cabinet-cloud-trash-move');
+      if (!select || !move) return;
+      const previous = select.value;
+      const eligible = inventory.filter(cloudOnlyTrashEligible).sort(compareCabinetEntries);
+      select.innerHTML = '';
+      if (!eligible.length) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'No cloud-only files can be moved to Trash';
+        select.appendChild(option);
+        select.disabled = true;
+        move.disabled = true;
+        return;
+      }
+      select.disabled = false;
+      eligible.forEach(function (entry) {
+        const option = document.createElement('option');
+        option.value = entry.id;
+        option.textContent = cabinetIndexAddress(entry) + ' — ' + cabinetIndexOwner(entry);
+        select.appendChild(option);
+      });
+      if (eligible.some(function (entry) { return entry.id === previous; })) select.value = previous;
+      move.disabled = false;
+    }
+
+    function applyCabinetBrowse(browse) {
+      const cleanup = app.querySelector('#file-cabinet-cleanup');
+      if (cleanup) {
+        const eligibleCleanup = ((browse && browse.entries) || []).some(function (entry) {
+          if (!entry || !entry.deletedAt) return false;
+          const at = Date.parse(entry.purgeAfter);
+          return Number.isFinite(at) && at <= Date.now();
+        });
+        cleanup.hidden = !eligibleCleanup;
+      }
+      inventory = cabinetInventoryEntries(browse);
+      paintList();
+      paintCloudTrashChoices();
+      return browse;
+    }
 
     function paintList() {
       const filtered = filterCabinetEntries(inventory, searchInput.value);
@@ -682,16 +802,7 @@
         listEl.appendChild(p);
         return;
       }
-      filtered.sort(function (a, b) {
-        const addressA = String(a.propertyAddress || '').trim().toLocaleLowerCase();
-        const addressB = String(b.propertyAddress || '').trim().toLocaleLowerCase();
-        if (!addressA && addressB) return 1;
-        if (addressA && !addressB) return -1;
-        const byAddress = addressA.localeCompare(addressB);
-        if (byAddress) return byAddress;
-        return String(a.displayName || '').trim().toLocaleLowerCase()
-          .localeCompare(String(b.displayName || '').trim().toLocaleLowerCase());
-      });
+      filtered.sort(compareCabinetEntries);
       filtered.forEach(function (entry) {
         listEl.appendChild(cabinetCloudRowNode(entry, app));
       });
@@ -705,19 +816,7 @@
       return;
     }
 
-    window.ToolboxSync.browseCabinet().then(function (browse) {
-      const cleanup = app.querySelector('#file-cabinet-cleanup');
-      if (cleanup) {
-        const eligible = ((browse && browse.entries) || []).some(function (entry) {
-          if (!entry || !entry.deletedAt) return false;
-          const at = Date.parse(entry.purgeAfter);
-          return Number.isFinite(at) && at <= Date.now();
-        });
-        cleanup.hidden = !eligible;
-      }
-      inventory = cabinetInventoryEntries(browse);
-      paintList();
-    }).catch(function (err) {
+    window.ToolboxSync.browseCabinet().then(applyCabinetBrowse).catch(function (err) {
       const code = err && err.code;
       listEl.innerHTML = '';
       const p = document.createElement('p');
@@ -833,6 +932,40 @@
     notice.textContent = cabinetNotice;
     notice.hidden = false;
     cabinetNotice = '';
+  }
+
+  function requestCabinetDelete(entry, app) {
+    const name = entry.displayName || 'Customer File';
+    if (!window.ToolboxSync || typeof window.ToolboxSync.trashCabinetCustomerFile !== 'function') {
+      cabinetNotice = 'File Cabinet delete is unavailable.';
+      showFileCabinetNotice(app);
+      return Promise.resolve(false);
+    }
+    if (!cloudOnlyTrashEligible(entry)) {
+      cabinetNotice = 'Check this Customer File in before deleting it from the File Cabinet.';
+      showFileCabinetNotice(app);
+      return Promise.resolve(false);
+    }
+    return confirmAction({
+      title: 'Delete from File Cabinet?',
+      message: name + ' will move to File Cabinet Trash. It stays recoverable there until you permanently delete it.',
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Delete',
+    }).then(function (confirmed) {
+      if (!confirmed) return false;
+      return window.ToolboxSync.trashCabinetCustomerFile(entry.id).then(function () {
+        cabinetNotice = name + ' was moved to File Cabinet Trash.';
+        renderFileCabinet(app);
+        showFileCabinetNotice(app);
+        return true;
+      }).catch(function (err) {
+        console.warn('File Cabinet delete failed:', err);
+        cabinetNotice = (err && err.message) || 'Could not delete that Customer File.';
+        renderFileCabinet(app);
+        showFileCabinetNotice(app);
+        return true;
+      });
+    });
   }
 
   function deleteLocalCustomerFile(record, name) {

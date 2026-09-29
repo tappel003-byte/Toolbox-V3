@@ -405,6 +405,11 @@ try {
     report.cardDeleteLabel = Array.from(document.querySelectorAll('.cabinet-row--cloud button')).some(function (button) {
       return /^\s*Delete\s*$/i.test(button.textContent || '');
     });
+    const cloudPanel = document.querySelector('#cabinet-cloud-trash-panel');
+    const cloudToggle = document.querySelector('#cabinet-cloud-trash-toggle');
+    report.cloudTrashClosed = !!(cloudPanel && cloudPanel.hidden && cloudToggle &&
+      cloudToggle.getAttribute('aria-expanded') === 'false');
+    report.cloudTrashOutsideCard = !document.querySelector('.cabinet-row #cabinet-cloud-trash-toggle');
     report.noOnlineLocationLine = !document.querySelector('.cabinet-row--cloud .cabinet-row__location');
     const weights = report.rows.delta || {};
     report.addressBolder = Number(weights.addressWeight) > Number(weights.ownerWeight);
@@ -545,6 +550,16 @@ try {
         deleteChip: Array.from(document.querySelectorAll('.cabinet-row--cloud button')).some(function (button) {
           return /^\s*Delete\s*$/i.test(button.textContent || '');
         }),
+        cloudTrashClosed: !!(document.querySelector('#cabinet-cloud-trash-panel') &&
+          document.querySelector('#cabinet-cloud-trash-panel').hidden),
+        cloudTrashClearOfCards: (function () {
+          const toggle = document.querySelector('#cabinet-cloud-trash-toggle');
+          const card = document.querySelector('.cabinet-row--index');
+          if (!toggle || !card) return false;
+          const toggleBox = toggle.getBoundingClientRect();
+          const cardBox = card.getBoundingClientRect();
+          return toggleBox.bottom <= cardBox.top + 1;
+        })(),
       };
     });
   }
@@ -563,6 +578,7 @@ try {
   check('search matches city, ZIP, mailing address, company, spouse, email, and phone', out.zipSearch && out.citySearch && out.mailingSearch && out.companySearch && out.spouseSearch && out.emailSearch && out.phoneSearch, JSON.stringify(out));
   check('normal availability is implied by Check Out; exceptional status remains', out.noRedundantAvailability && out.statusElsewhere && out.checkoutButtons >= 1 && out.noOnlineLocationLine, JSON.stringify(out));
   check('normal File Cabinet cards have no Delete chip', out.cardDeleteButtons === 0 && out.cardDeleteLabel === false, JSON.stringify(out));
+  check('cloud-file Trash control starts closed and outside the cards', out.cloudTrashClosed && out.cloudTrashOutsideCard, JSON.stringify(out));
   check('Check Out returns to #/ with confirmation', out.afterCheckoutHash === '#/' && /Gamma.*checked out to this device/i.test(out.afterCheckoutNotice), JSON.stringify(out));
   check('Check Out materializes and shows under On this device', out.afterCheckoutLocal && out.afterCheckoutOnDeviceVisible && out.materializeHadComponents, JSON.stringify(out));
   check('selective-local Sync leaves remote-only remote', out.syncOk && out.syncSkippedRemote && out.alphaStillRemote, JSON.stringify(out));
@@ -576,7 +592,8 @@ try {
         shot.buttonHeight >= 44 && shot.buttonWidth >= 44 &&
         shot.rowHeights.length >= 4 &&
         shot.rowHeights.every((height) => height > 0 && height < 120) &&
-        !shot.listHasAvailable && shot.cardDeletes === 0 && shot.deleteChip === false;
+        !shot.listHasAvailable && shot.cardDeletes === 0 && shot.deleteChip === false &&
+        shot.cloudTrashClosed && shot.cloudTrashClearOfCards;
     }),
     JSON.stringify(layout),
   );
