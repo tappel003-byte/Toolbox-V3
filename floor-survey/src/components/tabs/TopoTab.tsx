@@ -251,14 +251,43 @@ export function TopoTab({
     setStatsChipSizeState(getStatsChipSize() ?? autoStatsChipSize());
   }, []);
   const [legendDrag, setLegendDrag] = useState<{
-    areaId: string | null;
+    areaId: string;
     /** Pointer offset inside the legend box. */
     dx: number;
     dy: number;
     /** Live legendDx/legendDy while dragging a per-boundary legend. */
-    legendDx?: number;
-    legendDy?: number;
+    legendDx: number;
+    legendDy: number;
   } | null>(null);
+  // Topo boundary selector (All boundaries / named border) — drag to clear the plan.
+  const BOUNDARY_SELECT_KEY = `topo.boundary-select:${floor.id}`;
+  const [boundarySelectPos, setBoundarySelectPos] = useState<{ x: number; y: number } | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(`topo.boundary-select:${floor.id}`);
+      if (raw) return JSON.parse(raw);
+    } catch {
+      /* ignore */
+    }
+    return null;
+  });
+  const boundarySelectDrag = useRef<{
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+    pointerId: number;
+    moved: boolean;
+  } | null>(null);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(BOUNDARY_SELECT_KEY);
+      setBoundarySelectPos(raw ? JSON.parse(raw) : null);
+    } catch {
+      setBoundarySelectPos(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floor.id]);
   // Current canvas zoom — labels are drawn at a screen-constant size.
   const [viewScale, setViewScale] = useState(1);
   const resolved = resolveSettings(settings);
@@ -567,21 +596,82 @@ export function TopoTab({
 
   return (
     <div className="flex flex-col h-full relative">
-      {/* Area selector — only when the floor has more than one drawn area. */}
+      {/* Area selector — only when the floor has more than one drawn area.
+          Draggable so report screenshots can clear it off the plan. */}
       {areas.length > 1 && (
-        <select
-          value={selectedAreaId ?? ""}
-          onChange={(e) => onSelectedAreaIdChange?.(e.target.value || null)}
-          aria-label="Topo boundary"
-          className="absolute z-30 top-2 left-1/2 -translate-x-1/2 h-8 max-w-[9rem] rounded-full bg-white/95 backdrop-blur border border-gray-300 shadow-md px-3 text-xs text-gray-700 outline-none focus:outline-none focus:ring-0 focus-visible:outline-none"
+        <div
+          className="absolute z-30 touch-none"
+          style={
+            boundarySelectPos
+              ? { left: boundarySelectPos.x, top: boundarySelectPos.y }
+              : { left: "50%", top: 8, transform: "translateX(-50%)" }
+          }
+          onPointerDown={(e) => {
+            // Drag from the chrome around the select; opening the menu still works on the control.
+            if ((e.target as HTMLElement).closest("select")) return;
+            const el = e.currentTarget;
+            const rect = el.getBoundingClientRect();
+            const parent = el.offsetParent as HTMLElement | null;
+            const parentRect = parent?.getBoundingClientRect();
+            const originX = boundarySelectPos?.x ?? rect.left - (parentRect?.left ?? 0);
+            const originY = boundarySelectPos?.y ?? rect.top - (parentRect?.top ?? 0);
+            el.setPointerCapture(e.pointerId);
+            boundarySelectDrag.current = {
+              startX: e.clientX,
+              startY: e.clientY,
+              originX,
+              originY,
+              pointerId: e.pointerId,
+              moved: false,
+            };
+          }}
+          onPointerMove={(e) => {
+            const d = boundarySelectDrag.current;
+            if (!d || d.pointerId !== e.pointerId) return;
+            const dx = e.clientX - d.startX;
+            const dy = e.clientY - d.startY;
+            if (!d.moved && Math.hypot(dx, dy) < 5) return;
+            d.moved = true;
+            const next = {
+              x: Math.max(4, d.originX + dx),
+              y: Math.max(4, d.originY + dy),
+            };
+            setBoundarySelectPos(next);
+            try {
+              window.localStorage.setItem(BOUNDARY_SELECT_KEY, JSON.stringify(next));
+            } catch {
+              /* ignore */
+            }
+          }}
+          onPointerUp={() => {
+            boundarySelectDrag.current = null;
+          }}
+          onPointerCancel={() => {
+            boundarySelectDrag.current = null;
+          }}
         >
-          <option value="">All boundaries</option>
-          {areas.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
+          <div
+            className="flex items-center gap-0.5 rounded-full bg-white/95 backdrop-blur border border-gray-300 shadow-md pl-2 pr-1 h-8 cursor-grab active:cursor-grabbing"
+            aria-label="Topo boundary selector — drag to move"
+          >
+            <span className="text-[10px] text-gray-400 select-none px-0.5" aria-hidden>
+              ⠿
+            </span>
+            <select
+              value={selectedAreaId ?? ""}
+              onChange={(e) => onSelectedAreaIdChange?.(e.target.value || null)}
+              aria-label="Topo boundary"
+              className="h-7 max-w-[9rem] rounded-full bg-transparent px-2 text-xs text-gray-700 outline-none focus:outline-none focus:ring-0 focus-visible:outline-none cursor-pointer"
+            >
+              <option value="">All boundaries</option>
+              {areas.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       )}
       {/* Corner icons — closed by default, tap to open. Hidden while their own panel is open. */}
       {openCorner !== "contours" && (
@@ -675,32 +765,23 @@ export function TopoTab({
           onTransform={(t) => setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s))}
           onImagePointerDown={(x, y) => {
             // Legend tap: start drag only. Size is edited in Labels & layers.
-            // One surface uses the shared legend position; All boundaries
-            // gives each contour its own legend next to that boundary.
+            // Every visible contour surface gets its own legend next to that
+            // boundary — All boundaries, Main Floor alone, or Lower Bedroom alone.
             if (resolved.showLegend && areaTopos.length > 0 && resolved.mode !== "points-only") {
-              if (areaTopos.length === 1) {
-                const box = legendBox(resolved);
-                const inBox = x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h;
+              for (let i = areaTopos.length - 1; i >= 0; i--) {
+                const at = areaTopos[i];
+                const box = areaLegendBox(at.area, resolved);
+                const inBox =
+                  x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h;
                 if (inBox) {
-                  setLegendDrag({ areaId: null, dx: x - box.x, dy: y - box.y });
+                  setLegendDrag({
+                    areaId: at.area.id,
+                    dx: x - box.x,
+                    dy: y - box.y,
+                    legendDx: at.area.legendDx ?? 0,
+                    legendDy: at.area.legendDy ?? 0,
+                  });
                   return true;
-                }
-              } else {
-                for (let i = areaTopos.length - 1; i >= 0; i--) {
-                  const at = areaTopos[i];
-                  const box = areaLegendBox(at.area, resolved);
-                  const inBox =
-                    x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h;
-                  if (inBox) {
-                    setLegendDrag({
-                      areaId: at.area.id,
-                      dx: x - box.x,
-                      dy: y - box.y,
-                      legendDx: at.area.legendDx ?? 0,
-                      legendDy: at.area.legendDy ?? 0,
-                    });
-                    return true;
-                  }
                 }
               }
             }
@@ -741,21 +822,14 @@ export function TopoTab({
             return false;
           }}
           onImagePointerMove={(x, y) => {
-            if (legendDrag) {
-              if (legendDrag.areaId) {
-                const area = getAreas(floor).find((a) => a.id === legendDrag.areaId);
-                if (area) {
-                  const anchor = areaLegendAnchor(area);
-                  setLegendDrag({
-                    ...legendDrag,
-                    legendDx: x - legendDrag.dx - anchor.x,
-                    legendDy: y - legendDrag.dy - anchor.y,
-                  });
-                }
-              } else {
-                update({
-                  legendX: x - legendDrag.dx,
-                  legendY: y - legendDrag.dy,
+            if (legendDrag?.areaId) {
+              const area = getAreas(floor).find((a) => a.id === legendDrag.areaId);
+              if (area) {
+                const anchor = areaLegendAnchor(area);
+                setLegendDrag({
+                  ...legendDrag,
+                  legendDx: x - legendDrag.dx - anchor.x,
+                  legendDy: y - legendDrag.dy - anchor.y,
                 });
               }
               return;
@@ -1527,7 +1601,6 @@ function renderTopoTop(
   },
 ) {
   const resolved = resolveSettings(settings);
-  const legendGrid = legendGridFor(areaTopos);
   const live = overlay?.liveDrag ?? null;
   const highlightId = overlay?.highlightId ?? null;
   const livePinHigh = overlay?.livePinHigh ?? null;
@@ -1665,26 +1738,22 @@ function renderTopoTop(
   // Legend + High/Low pins
   if (areaTopos.length && resolved.mode !== "points-only") {
     // Legend ON: one color/elevation legend per contour surface on screen.
-    // A single boundary uses the shared legend position; All boundaries
-    // places one legend on each boundary so report screenshots keep both.
+    // Same path for All boundaries, a single named boundary, or one-boundary
+    // floors — the legend sits on that boundary so it stays in view.
     if (resolved.showLegend) {
-      if (areaTopos.length === 1 && legendGrid) {
-        drawLegend(ctx, resolved, legendGrid, areaTopos[0].contours, false);
-      } else if (areaTopos.length > 1) {
-        for (const at of areaTopos) {
-          const live =
-            liveLegend && liveLegend.id === at.area.id
-              ? { dx: liveLegend.dx, dy: liveLegend.dy }
-              : null;
-          drawLegend(
-            ctx,
-            resolved,
-            at.grid,
-            null,
-            !!live,
-            areaLegendBox(at.area, resolved, live),
-          );
-        }
+      for (const at of areaTopos) {
+        const live =
+          liveLegend && liveLegend.id === at.area.id
+            ? { dx: liveLegend.dx, dy: liveLegend.dy }
+            : null;
+        drawLegend(
+          ctx,
+          resolved,
+          at.grid,
+          areaTopos.length === 1 ? at.contours : null,
+          !!live,
+          areaLegendBox(at.area, resolved, live),
+        );
       }
     }
     // Each area gets its own High/Low pins, scoped to that area's polygon and
