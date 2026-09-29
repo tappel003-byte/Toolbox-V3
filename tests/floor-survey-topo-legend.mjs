@@ -42,12 +42,11 @@ const hostSrc = read('floor-survey/src/host/HostWorkspace.tsx');
 const routeSrc = read('floor-survey/src/routes/projects.$id.tsx');
 
 check(
-  'All boundaries draws one color legend per contour surface',
+  'Every visible boundary draws its own color legend',
   topoSrc.includes('export function areaLegendAnchor') &&
     topoSrc.includes('function areaLegendBox') &&
-    topoSrc.includes('gives each contour its own legend') &&
-    topoSrc.includes('if (resolved.showLegend)') &&
-    topoSrc.includes('areaTopos.length > 1') &&
+    topoSrc.includes('Every visible contour surface gets its own legend') &&
+    topoSrc.includes('areaLegendBox(at.area, resolved, live)') &&
     !topoSrc.includes('showLegend && soloGrid') &&
     !topoSrc.includes('Shared color legend is suppressed') &&
     !topoSrc.includes('sharedLegend'),
@@ -63,6 +62,11 @@ check(
   'Boundary H/L/Δ pills drag immediately without a long-press',
   topoSrc.includes('const immediate = hit.kind === "pill"') &&
     topoSrc.includes('active: immediate'),
+);
+check(
+  'Topo boundary selector pill is draggable',
+  topoSrc.includes('Topo boundary selector — drag to move') &&
+    topoSrc.includes('BOUNDARY_SELECT_KEY'),
 );
 function chipBlock(src) {
   const marker = 'mode === "topo" ? "topo" : "data"';
@@ -259,14 +263,14 @@ function sampleLegend(page, legendOrigin = { x: 24, y: 24 }, scaleHint = 1.5) {
       const scale = (blue.x - red.x) / (blueImgX - redImgX);
       const originX = red.x - redImgX * scale;
       const originY = red.y - 8 * scale;
-      // Color bar sits inside the legend for both the default 1× box and the
-      // hydrated 1.5× box. Image coords, not screen coords.
-      const x0 = origin.x + 14 * s;
-      const x1 = origin.x + 14 * s + 18 * s;
-      const y0 = origin.y + 18 * s;
-      const y1 = origin.y + 18 * s + Math.max(40, (226 * s - 42 * s) * 0.65);
+      // Full legend card (white panel + color bar), not just the bar strip.
+      const x0 = origin.x + 2 * s;
+      const x1 = origin.x + 82 * s - 2 * s;
+      const y0 = origin.y + 2 * s;
+      const y1 = origin.y + 226 * s - 2 * s;
       let total = 0;
       let chromatic = 0;
+      let whiteish = 0;
       let sample = null;
       for (let iy = y0; iy <= y1; iy += 4) {
         for (let ix = x0; ix <= x1; ix += 3) {
@@ -279,24 +283,32 @@ function sampleLegend(page, legendOrigin = { x: 24, y: 24 }, scaleHint = 1.5) {
           const b = data[i + 2];
           const sat = Math.max(r, g, b) - Math.min(r, g, b);
           total++;
+          if (r > 225 && g > 225 && b > 225 && sat < 20) whiteish++;
           if (sat > 28 && !(r > 220 && g < 50 && b < 50)) chromatic++;
           if (!sample) sample = { r, g, b, sat, dx, dy };
         }
       }
       const ratio = total ? chromatic / total : 0;
+      const whiteRatio = total ? whiteish / total : 0;
       return {
         ok: true,
         ratio,
+        whiteRatio,
         chromatic,
+        whiteish,
         total,
         scale,
         sample,
         legendOrigin: origin,
-        legendVisible: ratio > 0.45,
       };
     },
     { origin: legendOrigin, scaleHint },
-  );
+  ).then((r) => {
+    if (!r || !r.ok) return { ...r, legendVisible: false };
+    // White card + chromatic bar. Contour fill alone is chromatic without the panel.
+    const legendVisible = r.whiteRatio > 0.35 && r.chromatic >= 200;
+    return { ...r, legendVisible };
+  });
 }
 
 function readChip(page) {
@@ -413,10 +425,10 @@ check(
   }),
 );
 
-// Single closed boundary — the proven one-surface case.
+// Single closed boundary — legend sits on that boundary's top-left, not (24,24).
 await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1, isMobile: false, hasTouch: false });
 await openTopo(page, [{ id: 'area-a', name: 'Boundary 1', polygon: AREA_A }]);
-const solo = await sampleLegend(page);
+const solo = await sampleLegend(page, LEGEND_A);
 const soloChip = await readChip(page);
 await page.screenshot({ path: path.join(OUT, `topo-legend-${PHASE}-solo-desktop.png`) });
 check(
@@ -429,6 +441,34 @@ check(
   JSON.stringify({ legend: solo.ratio, chip: soloChip.text }),
 );
 
+// Focused named boundary (Main Floor / Lower Bedroom case): select one area
+// from All boundaries and still get that area's own legend.
+await openTopo(page, twoAreas);
+await page.select('select[aria-label="Topo boundary"]', 'area-a');
+await new Promise((r) => setTimeout(r, 1200));
+const focusedA = await sampleLegend(page, LEGEND_A);
+const focusedAAway = await sampleLegend(page, LEGEND_B);
+await page.screenshot({ path: path.join(OUT, `topo-legend-${PHASE}-focused-a-desktop.png`) });
+check(
+  'Focused Boundary 1 draws its own legend',
+  focusedA.legendVisible === true,
+  JSON.stringify(focusedA),
+);
+check(
+  'Focused Boundary 1 does not leave a legend on Boundary 2',
+  focusedAAway.legendVisible === false,
+  JSON.stringify(focusedAAway),
+);
+await page.select('select[aria-label="Topo boundary"]', 'area-b');
+await new Promise((r) => setTimeout(r, 1200));
+const focusedB = await sampleLegend(page, LEGEND_B);
+await page.screenshot({ path: path.join(OUT, `topo-legend-${PHASE}-focused-b-desktop.png`) });
+check(
+  'Focused Boundary 2 draws its own legend',
+  focusedB.legendVisible === true,
+  JSON.stringify(focusedB),
+);
+
 // One Customer File level, one closed topo boundary. Levels and boundaries
 // are different controls. This is the case covered by the single-boundary PR.
 const ONE_BOUNDARY = [
@@ -437,6 +477,7 @@ const ONE_BOUNDARY = [
   { x: 860, y: 640 },
   { x: 200, y: 640 },
 ];
+const LEGEND_ONE = { x: ONE_BOUNDARY[0].x + 8, y: ONE_BOUNDARY[0].y + 8 };
 const ONE_READINGS = [
   { id: 'r1', index: 1, x: 280, y: 160, value: 1.2 },
   { id: 'r2', index: 2, x: 480, y: 200, value: 2.4 },
@@ -586,7 +627,7 @@ function chipClearOfModeToggle(page) {
 await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1, isMobile: false, hasTouch: false });
 await openLevels(['Main Level']);
 const oneLevel = await readLevelChrome(page);
-const oneLegend = await sampleLegend(page);
+const oneLegend = await sampleLegend(page, LEGEND_ONE);
 await page.screenshot({ path: path.join(OUT, 'topo-one-level-desktop.png') });
 check(
   'One level hides the host floor selector',
@@ -622,10 +663,10 @@ await page.evaluate(() => {
   label?.parentElement?.querySelector('[role="switch"]')?.click();
 });
 await new Promise((r) => setTimeout(r, 500));
-const legendOff = await sampleLegend(page);
+const legendOff = await sampleLegend(page, LEGEND_ONE);
 check(
   'Legend OFF removes the color legend on one boundary',
-  legendOff.ok && legendOff.legendVisible !== true && legendOff.ratio < 0.2,
+  legendOff.ok && legendOff.legendVisible !== true && legendOff.whiteRatio < 0.05,
   JSON.stringify(legendOff),
 );
 await page.evaluate(() => {
@@ -633,7 +674,7 @@ await page.evaluate(() => {
   label?.parentElement?.querySelector('[role="switch"]')?.click();
 });
 await new Promise((r) => setTimeout(r, 500));
-const legendRestored = await sampleLegend(page);
+const legendRestored = await sampleLegend(page, LEGEND_ONE);
 check(
   'Legend ON restores the color legend on one boundary',
   legendRestored.legendVisible === true,
@@ -646,7 +687,7 @@ await page.evaluate(() => {
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
 await openLevels(['Main Level']);
 const phoneOne = await readLevelChrome(page);
-const phoneOneLegend = await sampleLegend(page);
+const phoneOneLegend = await sampleLegend(page, LEGEND_ONE);
 const phoneClear = await chipClearOfModeToggle(page);
 await page.screenshot({ path: path.join(OUT, 'topo-one-level-phone.png') });
 check(
@@ -663,7 +704,7 @@ check(
 await page.setViewport({ width: 768, height: 1024, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
 await openLevels(['Main Level']);
 const ipadOne = await readLevelChrome(page);
-const ipadOneLegend = await sampleLegend(page);
+const ipadOneLegend = await sampleLegend(page, LEGEND_ONE);
 const ipadClear = await chipClearOfModeToggle(page);
 await page.screenshot({ path: path.join(OUT, 'topo-one-level-ipad.png') });
 check(
@@ -679,7 +720,7 @@ check(
 await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1, isMobile: false, hasTouch: false });
 await openLevels(['Main Level', 'Basement']);
 const twoLevels = await readLevelChrome(page);
-const mainLegend = await sampleLegend(page);
+const mainLegend = await sampleLegend(page, LEGEND_ONE);
 check(
   'Two Customer File levels show the host floor selector',
   twoLevels.hasFloorSelector && twoLevels.floorOptions.join('|') === 'Main Level|Basement',
@@ -697,7 +738,7 @@ await page.waitForFunction(
 );
 await new Promise((r) => setTimeout(r, 1200));
 const basement = await readLevelChrome(page);
-const basementLegend = await sampleLegend(page);
+const basementLegend = await sampleLegend(page, LEGEND_ONE);
 await page.screenshot({ path: path.join(OUT, 'topo-two-levels-desktop.png') });
 check(
   'Switching levels keeps that level’s own legend and H/L/Δ',
