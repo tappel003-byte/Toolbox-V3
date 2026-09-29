@@ -65,6 +65,21 @@ function saveCustomerFile(record) {
   });
 }
 
+// Local evidence that a File Cabinet copy was seen or written. Not a customer
+// edit: it does not change updatedAt and is not wrapped by the checkout guard.
+function noteCabinetMirror(id) {
+  if (!id) return Promise.resolve(null);
+  return getCustomerFile(id).then((record) => {
+    if (!record || record.cabinetMirroredAt) return record;
+    if (record.deletedAt && !record.cabinetTrashRequestedAt) return record;
+    record.cabinetMirroredAt = new Date().toISOString();
+    return runTransaction(STORE_CUSTOMER_FILES, 'readwrite', (store) => {
+      store.put(record);
+      return record;
+    });
+  });
+}
+
 function getCustomerFile(id) {
   return openDatabase().then((db) => new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_CUSTOMER_FILES, 'readonly');
@@ -155,6 +170,34 @@ function distressPhotoIds(record) {
   return ids;
 }
 
+function diagnosticsFigureIds(record) {
+  const diagnostics = record && record.diagnostics && typeof record.diagnostics === 'object'
+    ? record.diagnostics
+    : {};
+  const figures = Array.isArray(diagnostics.figures) ? diagnostics.figures : [];
+  const ids = [];
+  figures.forEach((fig) => {
+    const id = fig && fig.mediaId;
+    if (typeof id !== 'string' || id.indexOf('dxfig_') !== 0) return;
+    if (id.indexOf('/') !== -1 || id.indexOf('\\') !== -1 || id.indexOf('..') !== -1) return;
+    ids.push(id);
+  });
+  return ids;
+}
+
+function recoveryPdfIds(record) {
+  const floor = record && record.floorSurvey ? record.floorSurvey : {};
+  const layers = floor.byCanvasId && typeof floor.byCanvasId === 'object' ? floor.byCanvasId : {};
+  const ids = [];
+  Object.keys(layers).forEach((key) => {
+    const id = layers[key] && layers[key].recoveryPdfMediaId;
+    if (typeof id !== 'string' || id.indexOf('fsrec_') !== 0) return;
+    if (id.indexOf('/') !== -1 || id.indexOf('\\') !== -1 || id.indexOf('..') !== -1) return;
+    ids.push(id);
+  });
+  return ids;
+}
+
 function deleteDistressMedia(ids) {
   const unique = Array.from(new Set(ids || []));
   if (!unique.length) return Promise.resolve(0);
@@ -204,7 +247,9 @@ function permanentlyDeleteCustomerFiles(records) {
 function removeLocalWorkingCopy(records) {
   const list = (records || []).filter((record) => record && record.id);
   if (!list.length) return Promise.resolve({ deletedCount: 0, mediaDeletedCount: 0 });
-  const planIds = Array.from(new Set(list.flatMap(planMediaIds)));
+  const planIds = Array.from(new Set(
+    list.flatMap(planMediaIds).concat(list.flatMap(recoveryPdfIds)).concat(list.flatMap(diagnosticsFigureIds))
+  ));
   const photoIds = Array.from(new Set(list.flatMap(distressPhotoIds)));
 
   return openDatabase().then((db) => new Promise((resolve, reject) => {
@@ -227,7 +272,8 @@ function purgeExpiredCustomerFiles(now) {
   // Silent local purge left cloud Trash state able to return on Sync, and
   // creating a permanent cloud purge tombstone from a background heuristic
   // is not an explicit owner permanent-delete action.
-  // Expired rows remain recoverable in Trash until Empty Trash (or stub delete).
+  // The 120-day mark is not an automatic delete. Expired rows stay until a person
+  // permanently deletes them from File Cabinet Trash, or a local-only file is deleted.
   void now;
   return Promise.resolve({ deletedCount: 0, mediaDeletedCount: 0, deferred: true });
 }
@@ -294,6 +340,7 @@ function commitCustomerFileRecoveryUpdate(record, expectedUpdatedAt, mediaIdsToD
 
 window.ToolboxDB = {
   saveCustomerFile,
+  noteCabinetMirror,
   getCustomerFile,
   getAllCustomerFiles,
   putMedia,

@@ -63,8 +63,10 @@ function hiLoOf(pts: SurveyPoint[]) {
 
 /**
  * Grid the color/elevation legend should label.
- * One surface uses that surface. Several surfaces share the measured high/low
- * so one legend still describes the combined view.
+ * One closed boundary on a Customer File level is one surface and uses that
+ * surface. Several boundaries on that same level share the measured high/low
+ * so Legend ON still draws one legend for the combined view.
+ * A Customer File level is not a topo boundary.
  */
 export function legendGridFor(areaTopos: AreaTopo[]): Grid | null {
   if (areaTopos.length === 0) return null;

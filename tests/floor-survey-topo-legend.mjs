@@ -48,6 +48,12 @@ check(
     !topoSrc.includes('showLegend && soloGrid') &&
     !topoSrc.includes('Shared color legend is suppressed'),
 );
+check(
+  'Customer File levels stay distinct from topo boundaries',
+  hostSrc.includes('A topo boundary is drawn inside one level and is not a level') &&
+    hostSrc.includes('data-floor-selector') &&
+    topoSrc.includes('A Customer File level is not a topo boundary'),
+);
 function chipBlock(src) {
   const marker = 'mode === "topo" ? "topo" : "data"';
   const start = src.indexOf(marker);
@@ -378,6 +384,288 @@ check(
     soloChip.text.includes('2.10') &&
     soloChip.text.includes('1.00'),
   JSON.stringify({ legend: solo.ratio, chip: soloChip.text }),
+);
+
+// One Customer File level, one closed topo boundary. Levels and boundaries
+// are different controls. This is the case covered by the single-boundary PR.
+const ONE_BOUNDARY = [
+  { x: 200, y: 70 },
+  { x: 860, y: 70 },
+  { x: 860, y: 640 },
+  { x: 200, y: 640 },
+];
+const ONE_READINGS = [
+  { id: 'r1', index: 1, x: 280, y: 160, value: 1.2 },
+  { id: 'r2', index: 2, x: 480, y: 200, value: 2.4 },
+  { id: 'r3', index: 3, x: 720, y: 240, value: 0.6 },
+  { id: 'r4', index: 4, x: 340, y: 420, value: 3.1 },
+  { id: 'r5', index: 5, x: 640, y: 500, value: 1.8 },
+];
+
+async function openLevels(levelNames) {
+  await page.setCacheEnabled(false);
+  await page.goto(BASE, { waitUntil: 'networkidle0' });
+  const seeded = await page.evaluate(
+    async ({ planW, planH, levelNames, polygon, readings }) => {
+      localStorage.removeItem('topo.legend.v1');
+      for (const key of Object.keys(localStorage)) {
+        if (key.startsWith('stats-chip-pos:')) localStorage.removeItem(key);
+      }
+      const c = document.createElement('canvas');
+      c.width = planW;
+      c.height = planH;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#cfc6b8';
+      ctx.fillRect(0, 0, planW, planH);
+      ctx.fillStyle = '#ff0000';
+      ctx.fillRect(2, 2, 12, 12);
+      ctx.fillStyle = '#0000ff';
+      ctx.fillRect(planW - 14, 2, 12, 12);
+      const planPng = c.toDataURL('image/png');
+      const id = 'cf-topo-one-level';
+      const rec = window.ToolboxApp.blankCustomerFile(id);
+      window.ToolboxPlanSetup.ensurePlanSetup(rec);
+      rec.firstName = 'Synthetic';
+      rec.lastName = 'Level';
+      rec.propertyAddress = '1 Single Boundary Ln';
+      const nowIso = new Date().toISOString();
+      const now = Date.now();
+      const canvases = levelNames.map((name) => {
+        const canvasId = 'canvas-' + name.toLowerCase().replace(/\s+/g, '-');
+        return {
+          id: canvasId,
+          name,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          plan: { id: 'plan-' + canvasId, width: planW, height: planH },
+          rooms: [],
+          frontDoorFacing: 'S',
+          frontDoor: null,
+        };
+      });
+      for (const canvas of canvases) {
+        await window.ToolboxDB.putMedia(canvas.plan.id, planPng);
+      }
+      rec.planSetup.canvases = canvases;
+      rec.planSetup.activeCanvasId = canvases[0].id;
+      window.ToolboxPlanSetup.ensureFloorSurvey(rec);
+      for (const canvas of canvases) {
+        window.ToolboxPlanSetup.ensureFloorSurveyCanvasRef(rec, canvas.id);
+        rec.floorSurvey.byCanvasId[canvas.id] = {
+          canvasId: canvas.id,
+          boundary: polygon,
+          areas: [{ id: 'boundary-1', name: 'Boundary 1', polygon, createdAt: now }],
+          points: readings.map((p) => ({
+            ...p,
+            id: canvas.id + '-' + p.id,
+            floorId: canvas.id,
+            createdAt: now,
+            isBasePoint: p.index === 1,
+            label: p.index === 1 ? 'BP1' : undefined,
+          })),
+          createdAt: now,
+          updatedAt: now,
+        };
+      }
+      await window.ToolboxDB.saveCustomerFile(rec);
+      return { id };
+    },
+    { planW: PLAN_W, planH: PLAN_H, levelNames, polygon: ONE_BOUNDARY, readings: ONE_READINGS },
+  );
+  await page.goto(BASE + `#/file/${seeded.id}/floor`, { waitUntil: 'networkidle0' });
+  await page.waitForFunction(
+    () => [...document.querySelectorAll('button')].some((b) => (b.textContent || '').trim() === 'Topo'),
+    { timeout: 15000 },
+  );
+  await page.evaluate(() => {
+    [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Topo')?.click();
+  });
+  await page.waitForFunction(() => document.querySelector('canvas'), { timeout: 10000 });
+  await new Promise((r) => setTimeout(r, 1600));
+  return seeded;
+}
+
+function readLevelChrome(page) {
+  return page.evaluate(() => {
+    const text = document.body.innerText || '';
+    const floorSel = document.querySelector('[data-floor-selector]');
+    const boundarySel = document.querySelector('select[aria-label="Topo boundary"]');
+    const stats = document.querySelector('[aria-label="Elevation stats — drag to move"]');
+    const box = stats ? stats.getBoundingClientRect() : null;
+    const style = stats ? getComputedStyle(stats) : null;
+    const visible = !!(
+      stats &&
+      box &&
+      style &&
+      box.width > 40 &&
+      Number(style.opacity) > 0.5 &&
+      box.top >= 0 &&
+      box.left >= -2 &&
+      box.right <= window.innerWidth + 2 &&
+      box.bottom <= window.innerHeight + 2
+    );
+    return {
+      text: text.slice(0, 300),
+      hasFloorSelector: !!floorSel,
+      floorOptions: floorSel
+        ? [...floorSel.querySelectorAll('option')].map((o) => (o.textContent || '').trim())
+        : [],
+      hasAllBoundaries: !!boundarySel,
+      statsText: stats ? (stats.textContent || '').replace(/\s+/g, '') : '',
+      statsVisible: visible,
+    };
+  });
+}
+
+function chipClearOfModeToggle(page) {
+  return page.evaluate(() => {
+    function box(el) {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    }
+    function overlaps(a, b) {
+      if (!a || !b) return false;
+      return !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y);
+    }
+    const stats = box(document.querySelector('[aria-label="Elevation stats — drag to move"]'));
+    const data = box([...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Data'));
+    const topo = box([...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Topo'));
+    return {
+      overlaps: overlaps(stats, data) || overlaps(stats, topo),
+      stats,
+      data,
+      topo,
+    };
+  });
+}
+
+await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1, isMobile: false, hasTouch: false });
+await openLevels(['Main Level']);
+const oneLevel = await readLevelChrome(page);
+const oneLegend = await sampleLegend(page);
+await page.screenshot({ path: path.join(OUT, 'topo-one-level-desktop.png') });
+check(
+  'One level hides the host floor selector',
+  !oneLevel.hasFloorSelector && oneLevel.text.includes('Main Level'),
+  oneLevel.text.replace(/\n/g, ' | '),
+);
+check(
+  'One closed boundary does not show All boundaries',
+  !oneLevel.hasAllBoundaries,
+  String(oneLevel.hasAllBoundaries),
+);
+check(
+  'One boundary, Legend ON paints the color legend',
+  oneLegend.legendVisible === true,
+  JSON.stringify(oneLegend),
+);
+check(
+  'One boundary shows floating H / L / Δ for that level',
+  oneLevel.statsVisible &&
+    oneLevel.statsText.includes('H') &&
+    oneLevel.statsText.includes('L') &&
+    oneLevel.statsText.includes('Δ') &&
+    oneLevel.statsText.includes('3.10') &&
+    oneLevel.statsText.includes('0.60') &&
+    oneLevel.statsText.includes('2.50'),
+  oneLevel.statsText,
+);
+
+await page.click('[aria-label="Labels & layers"]');
+await new Promise((r) => setTimeout(r, 300));
+await page.evaluate(() => {
+  const label = [...document.querySelectorAll('label')].find((n) => (n.textContent || '').trim() === 'Legend');
+  label?.parentElement?.querySelector('[role="switch"]')?.click();
+});
+await new Promise((r) => setTimeout(r, 500));
+const legendOff = await sampleLegend(page);
+check(
+  'Legend OFF removes the color legend on one boundary',
+  legendOff.ok && legendOff.legendVisible !== true && legendOff.ratio < 0.2,
+  JSON.stringify(legendOff),
+);
+await page.evaluate(() => {
+  const label = [...document.querySelectorAll('label')].find((n) => (n.textContent || '').trim() === 'Legend');
+  label?.parentElement?.querySelector('[role="switch"]')?.click();
+});
+await new Promise((r) => setTimeout(r, 500));
+const legendRestored = await sampleLegend(page);
+check(
+  'Legend ON restores the color legend on one boundary',
+  legendRestored.legendVisible === true,
+  JSON.stringify(legendRestored),
+);
+await page.evaluate(() => {
+  [...document.querySelectorAll('button[aria-label="Close"]')].forEach((b) => b.click());
+});
+
+await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+await openLevels(['Main Level']);
+const phoneOne = await readLevelChrome(page);
+const phoneOneLegend = await sampleLegend(page);
+const phoneClear = await chipClearOfModeToggle(page);
+await page.screenshot({ path: path.join(OUT, 'topo-one-level-phone.png') });
+check(
+  'Phone: one level, one boundary keeps legend and H/L/Δ clear of Data/Topo',
+  phoneOne.statsVisible &&
+    phoneOne.statsText.includes('3.10') &&
+    phoneOneLegend.legendVisible === true &&
+    !phoneOne.hasFloorSelector &&
+    !phoneOne.hasAllBoundaries &&
+    phoneClear.overlaps === false,
+  JSON.stringify({ stats: phoneOne.statsText, legend: phoneOneLegend.ratio, clear: phoneClear }),
+);
+
+await page.setViewport({ width: 768, height: 1024, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+await openLevels(['Main Level']);
+const ipadOne = await readLevelChrome(page);
+const ipadOneLegend = await sampleLegend(page);
+const ipadClear = await chipClearOfModeToggle(page);
+await page.screenshot({ path: path.join(OUT, 'topo-one-level-ipad.png') });
+check(
+  'iPad: one level, one boundary keeps legend and H/L/Δ clear of Data/Topo',
+  ipadOne.statsVisible &&
+    ipadOne.statsText.includes('Δ2.50') &&
+    ipadOneLegend.legendVisible === true &&
+    !ipadOne.hasAllBoundaries &&
+    ipadClear.overlaps === false,
+  JSON.stringify({ stats: ipadOne.statsText, legend: ipadOneLegend.ratio, clear: ipadClear }),
+);
+
+await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1, isMobile: false, hasTouch: false });
+await openLevels(['Main Level', 'Basement']);
+const twoLevels = await readLevelChrome(page);
+const mainLegend = await sampleLegend(page);
+check(
+  'Two Customer File levels show the host floor selector',
+  twoLevels.hasFloorSelector && twoLevels.floorOptions.join('|') === 'Main Level|Basement',
+  twoLevels.floorOptions.join('|'),
+);
+check(
+  'Floor selector is not the topo All boundaries control',
+  !twoLevels.hasAllBoundaries && twoLevels.text.includes('Main Level') && mainLegend.legendVisible === true,
+  twoLevels.text.slice(0, 120),
+);
+await page.select('[data-floor-selector] select', 'canvas-basement');
+await page.waitForFunction(
+  () => (document.body.innerText || '').includes('Basement'),
+  { timeout: 8000 },
+);
+await new Promise((r) => setTimeout(r, 1200));
+const basement = await readLevelChrome(page);
+const basementLegend = await sampleLegend(page);
+await page.screenshot({ path: path.join(OUT, 'topo-two-levels-desktop.png') });
+check(
+  'Switching levels keeps that level’s own legend and H/L/Δ',
+  basement.text.includes('Basement') &&
+    !basement.hasAllBoundaries &&
+    basement.hasFloorSelector &&
+    basement.statsVisible &&
+    basement.statsText.includes('3.10') &&
+    basement.statsText.includes('0.60') &&
+    basementLegend.legendVisible === true,
+  basement.text.slice(0, 160) + ' ' + basement.statsText,
 );
 
 await browser.close();

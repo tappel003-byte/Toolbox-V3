@@ -469,14 +469,21 @@ try {
     report.syncSkippedRemote = (sync.remoteOnlySkipped || 0) >= 1;
     report.alphaStillRemote = !(await ToolboxDB.getCustomerFile('cf-alpha'));
 
-    // Trash still reachable from home
+    // Trash is a File Cabinet destination, with no count on Customer Files.
     window.location.hash = '#/';
     await new Promise((r) => setTimeout(r, 120));
-    document.querySelector('#cabinet-trash').click();
-    await new Promise((r) => setTimeout(r, 120));
+    report.homeTrashButton = !!document.querySelector('#cabinet-trash');
+    report.homeTrashCount = !!document.querySelector('#cabinet-trash-count');
+    window.location.hash = '#/cabinet';
+    await new Promise((r) => setTimeout(r, 200));
+    const cabinetTrash = document.querySelector('#file-cabinet-trash');
+    report.cabinetTrashLabel = cabinetTrash ? cabinetTrash.textContent.trim() : '';
+    if (cabinetTrash) cabinetTrash.click();
+    await new Promise((r) => setTimeout(r, 200));
     report.trashHash = window.location.hash;
     report.trashHeading = !!(document.querySelector('.trash-head h1') &&
       /Trash/i.test(document.querySelector('.trash-head h1').textContent || ''));
+    report.trashCountInHeading = /\d/.test((document.querySelector('.trash-head h1') || {}).textContent || '');
 
     return report;
   });
@@ -550,7 +557,8 @@ try {
   check('Check Out returns to #/ with confirmation', out.afterCheckoutHash === '#/' && /Gamma.*checked out to this device/i.test(out.afterCheckoutNotice), JSON.stringify(out));
   check('Check Out materializes and shows under On this device', out.afterCheckoutLocal && out.afterCheckoutOnDeviceVisible && out.materializeHadComponents, JSON.stringify(out));
   check('selective-local Sync leaves remote-only remote', out.syncOk && out.syncSkippedRemote && out.alphaStillRemote, JSON.stringify(out));
-  check('Trash still reachable from Customer Files', out.trashHash === '#/trash' && out.trashHeading, JSON.stringify(out));
+  check('Customer Files has no Trash destination or count', out.homeTrashButton === false && out.homeTrashCount === false, JSON.stringify(out));
+  check('File Cabinet Trash has no count badge', out.trashHash === '#/cabinet/trash' && out.trashHeading && out.cabinetTrashLabel === 'Trash' && out.trashCountInHeading === false, JSON.stringify(out));
   check(
     'compact File Cabinet rows fit desktop, iPad, and phone',
     ['desktop', 'ipad', 'phone'].every((name) => {
