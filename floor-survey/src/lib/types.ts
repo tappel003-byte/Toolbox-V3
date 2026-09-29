@@ -104,6 +104,11 @@ export interface TopoArea {
   // centroid. Undefined = pill sits at the centroid.
   pillDx?: number;
   pillDy?: number;
+  // Offset (image coords) of this area's color/elevation legend from the
+  // area's top-left anchor. Used when All boundaries shows more than one
+  // contour surface. Undefined = legend sits at the default anchor.
+  legendDx?: number;
+  legendDy?: number;
 }
 
 export interface Exclusion {

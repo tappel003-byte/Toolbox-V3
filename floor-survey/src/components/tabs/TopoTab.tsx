@@ -62,23 +62,27 @@ function hiLoOf(pts: SurveyPoint[]) {
 }
 
 /**
- * Grid the color/elevation legend should label.
+ * Grid the color/elevation legend should label for a single-surface view.
  * One closed boundary on a Customer File level is one surface and uses that
- * surface. Several boundaries on that same level share the measured high/low
- * so Legend ON still draws one legend for the combined view.
- * A Customer File level is not a topo boundary.
+ * surface. Several boundaries on that same level each keep their own contour
+ * range and their own legend on All boundaries — a Customer File level is not
+ * a topo boundary.
  */
 export function legendGridFor(areaTopos: AreaTopo[]): Grid | null {
   if (areaTopos.length === 0) return null;
-  if (areaTopos.length === 1) return areaTopos[0].grid;
-  let minValue = Infinity;
-  let maxValue = -Infinity;
-  for (const at of areaTopos) {
-    minValue = Math.min(minValue, at.grid.minValue);
-    maxValue = Math.max(maxValue, at.grid.maxValue);
+  return areaTopos[0].grid;
+}
+
+/** Top-left image-coord anchor for a boundary's own color legend. */
+export function areaLegendAnchor(area: TopoArea): { x: number; y: number } {
+  let minX = Infinity;
+  let minY = Infinity;
+  for (const p of area.polygon) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
   }
-  if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) return areaTopos[0].grid;
-  return { ...areaTopos[0].grid, minValue, maxValue };
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return { x: 24, y: 24 };
+  return { x: minX + 8, y: minY + 8 };
 }
 
 /** Build one contour surface + High/Low per area with at least 3 usable points. */
@@ -246,7 +250,15 @@ export function TopoTab({
   useEffect(() => {
     setStatsChipSizeState(getStatsChipSize() ?? autoStatsChipSize());
   }, []);
-  const [legendDrag, setLegendDrag] = useState<{ dx: number; dy: number } | null>(null);
+  const [legendDrag, setLegendDrag] = useState<{
+    areaId: string | null;
+    /** Pointer offset inside the legend box. */
+    dx: number;
+    dy: number;
+    /** Live legendDx/legendDy while dragging a per-boundary legend. */
+    legendDx?: number;
+    legendDy?: number;
+  } | null>(null);
   // Current canvas zoom — labels are drawn at a screen-constant size.
   const [viewScale, setViewScale] = useState(1);
   const resolved = resolveSettings(settings);
@@ -484,6 +496,16 @@ export function TopoTab({
     saveFloor(updated).catch(() => {});
   }
 
+  /** Write a color-legend offset onto one area of this floor. */
+  function applyLegendOffset(areaId: string, dx: number | undefined, dy: number | undefined) {
+    const next = getAreas(floor).map((a) =>
+      a.id === areaId ? { ...a, legendDx: dx, legendDy: dy } : a,
+    );
+    const updated = withAreas(floor, next);
+    onFloorChange(updated);
+    saveFloor(updated).catch(() => {});
+  }
+
   function commitPillMove(areaId: string, dx: number, dy: number) {
     const prev = getAreas(floor).find((a) => a.id === areaId);
     setLastMove({ kind: "pill", id: areaId, prevDx: prev?.pillDx, prevDy: prev?.pillDy });
@@ -653,16 +675,37 @@ export function TopoTab({
           onTransform={(t) => setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s))}
           onImagePointerDown={(x, y) => {
             // Legend tap: start drag only. Size is edited in Labels & layers.
-            // Any rendered surface can show the legend, including combined areas.
+            // One surface uses the shared legend position; All boundaries
+            // gives each contour its own legend next to that boundary.
             if (resolved.showLegend && areaTopos.length > 0 && resolved.mode !== "points-only") {
-              const box = legendBox(resolved);
-              const inBox = x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h;
-              if (inBox) {
-                setLegendDrag({ dx: x - box.x, dy: y - box.y });
-                return true;
+              if (areaTopos.length === 1) {
+                const box = legendBox(resolved);
+                const inBox = x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h;
+                if (inBox) {
+                  setLegendDrag({ areaId: null, dx: x - box.x, dy: y - box.y });
+                  return true;
+                }
+              } else {
+                for (let i = areaTopos.length - 1; i >= 0; i--) {
+                  const at = areaTopos[i];
+                  const box = areaLegendBox(at.area, resolved);
+                  const inBox =
+                    x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h;
+                  if (inBox) {
+                    setLegendDrag({
+                      areaId: at.area.id,
+                      dx: x - box.x,
+                      dy: y - box.y,
+                      legendDx: at.area.legendDx ?? 0,
+                      legendDy: at.area.legendDy ?? 0,
+                    });
+                    return true;
+                  }
+                }
               }
             }
-            // Long-press on a label, a H/L pin or a stats pill to pick it up
+            // Boundary H/L/Δ pills drag immediately (same as the legend).
+            // Point labels and High/Low pins still need a long-press.
             const hit = hitDraggable(x, y);
             if (hit) {
               const startDx =
@@ -670,6 +713,7 @@ export function TopoTab({
               const startDy =
                 hit.kind === "label" ? (hit.point.labelDy ?? DEFAULT_LABEL_DY) : hit.dy;
               pillTapRef.current = hit.kind === "pill" ? hit.tapPoint : null;
+              const immediate = hit.kind === "pill";
               setDrag({
                 kind: hit.kind,
                 id:
@@ -684,22 +728,36 @@ export function TopoTab({
                 startPointerY: y,
                 startDx,
                 startDy,
-                active: false,
+                active: immediate,
               });
               clearLongPress();
-              longPressTimer.current = window.setTimeout(() => {
-                setDrag((d) => (d ? { ...d, active: true } : d));
-              }, LONG_PRESS_MS);
+              if (!immediate) {
+                longPressTimer.current = window.setTimeout(() => {
+                  setDrag((d) => (d ? { ...d, active: true } : d));
+                }, LONG_PRESS_MS);
+              }
               return true;
             }
             return false;
           }}
           onImagePointerMove={(x, y) => {
             if (legendDrag) {
-              update({
-                legendX: x - legendDrag.dx,
-                legendY: y - legendDrag.dy,
-              });
+              if (legendDrag.areaId) {
+                const area = getAreas(floor).find((a) => a.id === legendDrag.areaId);
+                if (area) {
+                  const anchor = areaLegendAnchor(area);
+                  setLegendDrag({
+                    ...legendDrag,
+                    legendDx: x - legendDrag.dx - anchor.x,
+                    legendDy: y - legendDrag.dy - anchor.y,
+                  });
+                }
+              } else {
+                update({
+                  legendX: x - legendDrag.dx,
+                  legendY: y - legendDrag.dy,
+                });
+              }
               return;
             }
             if (drag) {
@@ -719,6 +777,9 @@ export function TopoTab({
             }
           }}
           onImagePointerUp={() => {
+            if (legendDrag?.areaId != null && legendDrag.legendDx != null && legendDrag.legendDy != null) {
+              applyLegendOffset(legendDrag.areaId, legendDrag.legendDx, legendDrag.legendDy);
+            }
             setLegendDrag(null);
             clearLongPress();
             if (drag) {
@@ -751,6 +812,12 @@ export function TopoTab({
               drag && drag.active && drag.kind === "pill"
                 ? { id: drag.id, dx: drag.dx, dy: drag.dy }
                 : null;
+            const activeLegend =
+              legendDrag?.areaId != null &&
+              legendDrag.legendDx != null &&
+              legendDrag.legendDy != null
+                ? { id: legendDrag.areaId, dx: legendDrag.legendDx, dy: legendDrag.legendDy }
+                : null;
             renderTopoTop(ctx, floor, visiblePoints, resolved, areaTopos, {
               liveDrag: activeLabel,
               highlightId: activeLabel?.id ?? selectedId,
@@ -761,6 +828,7 @@ export function TopoTab({
                   ? drag.kind
                   : null,
               livePill: activePill,
+              liveLegend: activeLegend,
               pillSize: statsChipSize,
               pointSize,
               pointColor,
@@ -1321,18 +1389,14 @@ function renderTopoBaseLayer(
     }
   };
 
-  // Combined view uses one elevation range so the shared legend matches every area's colors.
-  const sharedLegend = areaTopos.length > 1 ? legendGridFor(areaTopos) : null;
+  // Each boundary keeps its own elevation range so All boundaries shows
+  // distinct contour surfaces (and matching per-boundary legends).
   for (const at of areaTopos) {
     const g = at.grid;
     const cs = at.contours;
     const polygon = at.area.polygon;
-    const areaPaletteMin = sharedLegend
-      ? (resolved.minClamp ?? sharedLegend.minValue)
-      : (resolved.minClamp ?? g.minValue);
-    const areaPaletteMax = sharedLegend
-      ? (resolved.maxClamp ?? sharedLegend.maxValue)
-      : (resolved.maxClamp ?? g.maxValue);
+    const areaPaletteMin = resolved.minClamp ?? g.minValue;
+    const areaPaletteMax = resolved.maxClamp ?? g.maxValue;
     ctx.save();
     ctx.beginPath();
     polygon.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
@@ -1453,6 +1517,8 @@ function renderTopoTop(
     highlightPin?: "pin-high" | "pin-low" | null;
     /** Area whose stats pill is being dragged right now. */
     livePill?: { id: string; dx: number; dy: number } | null;
+    /** Area whose color legend is being dragged right now. */
+    liveLegend?: { id: string; dx: number; dy: number } | null;
     /** Base (1x zoom) stats-pill height in screen px. */
     pillSize?: number;
     pointSize?: number;
@@ -1467,6 +1533,7 @@ function renderTopoTop(
   const livePinHigh = overlay?.livePinHigh ?? null;
   const livePinLow = overlay?.livePinLow ?? null;
   const highlightPin = overlay?.highlightPin ?? null;
+  const liveLegend = overlay?.liveLegend ?? null;
   const viewScale = overlay?.viewScale || 1;
   // Label font: anchored to the user's chosen size at 1x zoom (so exports,
   // which render at 1x, always match what the user set). Scales with zoom
@@ -1597,10 +1664,29 @@ function renderTopoTop(
 
   // Legend + High/Low pins
   if (areaTopos.length && resolved.mode !== "points-only") {
-    // Proven baseline: Legend ON draws the color/elevation legend for the
-    // surface on screen, including the combined multi-area view.
-    if (resolved.showLegend && legendGrid)
-      drawLegend(ctx, resolved, legendGrid, areaTopos.length === 1 ? areaTopos[0].contours : null, false);
+    // Legend ON: one color/elevation legend per contour surface on screen.
+    // A single boundary uses the shared legend position; All boundaries
+    // places one legend on each boundary so report screenshots keep both.
+    if (resolved.showLegend) {
+      if (areaTopos.length === 1 && legendGrid) {
+        drawLegend(ctx, resolved, legendGrid, areaTopos[0].contours, false);
+      } else if (areaTopos.length > 1) {
+        for (const at of areaTopos) {
+          const live =
+            liveLegend && liveLegend.id === at.area.id
+              ? { dx: liveLegend.dx, dy: liveLegend.dy }
+              : null;
+          drawLegend(
+            ctx,
+            resolved,
+            at.grid,
+            null,
+            !!live,
+            areaLegendBox(at.area, resolved, live),
+          );
+        }
+      }
+    }
     // Each area gets its own High/Low pins, scoped to that area's polygon and
     // outside the exclusion zones inside it.
     if (resolved.showHighLow) {
@@ -1960,14 +2046,34 @@ function legendBox(settings: RenderSettings) {
   };
 }
 
+/** Color-legend box for one boundary on the All boundaries view. */
+function areaLegendBox(
+  area: TopoArea,
+  settings: RenderSettings,
+  live?: { dx: number; dy: number } | null,
+) {
+  const s = settings.legendScale ?? 1;
+  const anchor = areaLegendAnchor(area);
+  const dx = live ? live.dx : (area.legendDx ?? 0);
+  const dy = live ? live.dy : (area.legendDy ?? 0);
+  return {
+    x: anchor.x + dx,
+    y: anchor.y + dy,
+    w: LEGEND_BASE_W * s,
+    h: LEGEND_BASE_H * s,
+    scale: s,
+  };
+}
+
 function drawLegend(
   ctx: CanvasRenderingContext2D,
   settings: RenderSettings,
   grid: Grid,
   _contours: ReturnType<typeof computeContours> | null,
   selected: boolean,
+  boxOverride?: { x: number; y: number; w: number; h: number; scale: number },
 ) {
-  const box = legendBox(settings);
+  const box = boxOverride ?? legendBox(settings);
   const s = box.scale;
   const min = settings.minClamp ?? grid.minValue;
   const max = settings.maxClamp ?? grid.maxValue;
