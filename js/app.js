@@ -462,17 +462,7 @@
           return;
         }
         records.forEach(function (record) {
-          listEl.appendChild(cabinetRowNode(record, function () {
-            requestCustomerFileRemoval(record).then(function (result) {
-              if (!result) return;
-              cabinetNotice = result;
-              renderCabinet(app);
-            }).catch(function (err) {
-              console.error('Could not remove Customer File:', err);
-              cabinetNotice = 'Could not remove that Customer File. Try again.';
-              renderCabinet(app);
-            });
-          }));
+          listEl.appendChild(cabinetRowNode(record));
         });
       }
 
@@ -921,7 +911,7 @@
     });
   }
 
-  function cabinetRowNode(record, onRemove) {
+  function cabinetRowNode(record) {
     const lockedLabel = window.ToolboxSync &&
       typeof window.ToolboxSync.foreignCheckoutLabel === 'function'
       ? window.ToolboxSync.foreignCheckoutLabel(record.id)
@@ -1032,19 +1022,6 @@
       menu.appendChild(sendBtn);
     }
 
-    const removeBtn = document.createElement('button');
-    removeBtn.type = 'button';
-    removeBtn.className = 'cabinet-row-menu__danger';
-    removeBtn.textContent = cabinetBacked
-      ? 'Delete'
-      : (isEmptyCustomerFileStub(record) ? 'Delete empty file' : 'Delete');
-    removeBtn.addEventListener('click', function (event) {
-      event.stopPropagation();
-      menu.classList.remove('is-open');
-      onRemove();
-    });
-
-    menu.appendChild(removeBtn);
     shell.appendChild(row);
     shell.appendChild(menu);
     return shell;
