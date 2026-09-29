@@ -337,7 +337,6 @@ try {
     const soon = new Date(Date.now() + 10 * 86400000).toISOString();
     const deletedAt = new Date().toISOString();
     seed('cf-active', { customer: { firstName: 'Ada', lastName: 'Active', propertyAddress: '1 Active Way' } });
-    seed('cf-spare', { customer: { firstName: 'Fay', lastName: 'Spare', propertyAddress: '9 Spare Road' } });
     seed('cf-trashed', {
       customer: { firstName: 'Bea', lastName: 'Trashed', propertyAddress: '2 Trash Lane' },
       trash: { trashUpdatedAt: deletedAt, deletedAt: deletedAt, purgeAfter: soon },
@@ -450,121 +449,6 @@ try {
       return (button.textContent || '').trim();
     });
     report.overflow = document.documentElement.scrollWidth > document.documentElement.clientWidth + 1;
-
-    const cloudToggle = document.querySelector('#cabinet-cloud-trash-toggle');
-    const cloudPanel = document.querySelector('#cabinet-cloud-trash-panel');
-    report.manageClosed = !!(cloudToggle && cloudPanel && cloudPanel.hidden &&
-      cloudToggle.getAttribute('aria-expanded') === 'false');
-    report.manageOutsideCard = !document.querySelector('.cabinet-row #cabinet-cloud-trash-toggle') &&
-      !document.querySelector('.cabinet-row #cabinet-cloud-trash-move');
-    function wait(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
-    function noticeText() {
-      const notice = document.querySelector('#file-cabinet-notice');
-      return notice && !notice.hidden ? notice.textContent : '';
-    }
-    function optionValues() {
-      return Array.from(document.querySelectorAll('#cabinet-cloud-trash-file option')).map(function (option) {
-        return option.value;
-      });
-    }
-    async function openCloudTrash() {
-      const panel = document.querySelector('#cabinet-cloud-trash-panel');
-      const toggle = document.querySelector('#cabinet-cloud-trash-toggle');
-      if (panel && panel.hidden && toggle) toggle.click();
-      await wait(280);
-    }
-    cloudToggle.click();
-    await wait(280);
-    const openedOptions = optionValues();
-    report.manageOpen = !!(document.querySelector('#cabinet-cloud-trash-panel') &&
-      !document.querySelector('#cabinet-cloud-trash-panel').hidden &&
-      document.querySelector('#cabinet-cloud-trash-toggle').getAttribute('aria-expanded') === 'true');
-    report.manageOffersActive = openedOptions.indexOf('cf-active') !== -1;
-    report.manageOffersSpare = openedOptions.indexOf('cf-spare') !== -1;
-    report.manageOmitsCheckedOut = openedOptions.indexOf('cf-leased') === -1 &&
-      openedOptions.indexOf('cf-mine') === -1 &&
-      openedOptions.indexOf('cf-held') === -1 &&
-      openedOptions.indexOf('cf-trashed') === -1 &&
-      openedOptions.indexOf('cf-old') === -1;
-    report.cardsStayWithoutDelete = document.querySelectorAll('.cabinet-row .cabinet-delete-btn').length === 0 &&
-      !Array.from(document.querySelectorAll('.cabinet-row button')).some(function (button) {
-        return /^\s*Delete\s*$/i.test(button.textContent || '');
-      });
-
-    document.querySelector('#cabinet-cloud-trash-file').value = 'cf-active';
-    state.indexes['cf-active'].checkout = {
-      email: 'lee@example.com',
-      deviceId: 'device-lee',
-      checkedOutAt: '2026-09-22T00:00:00.000Z',
-    };
-    state.fetchLog.length = 0;
-    document.querySelector('#cabinet-cloud-trash-move').click();
-    await wait(280);
-    report.foreignRefused = noticeText() === 'Check this Customer File in before deleting it from the File Cabinet.';
-    report.foreignNoConfirm = !document.querySelector('#toolbox-confirm') || document.querySelector('#toolbox-confirm').hidden;
-    report.foreignNoWrite = !state.fetchLog.some(function (entry) {
-      return entry.method === 'PUT' || entry.method === 'DELETE';
-    });
-    report.foreignKept = !state.indexes['cf-active'].deletedAt;
-    delete state.indexes['cf-active'].checkout;
-
-    document.querySelector('#cabinet-cloud-trash-toggle').click();
-    await wait(40);
-    await openCloudTrash();
-    document.querySelector('#cabinet-cloud-trash-file').value = 'cf-active';
-    state.indexes['cf-active'].checkout = {
-      email: 'tim@example.com',
-      deviceId: 'device-ipad',
-      checkedOutAt: '2026-09-22T00:00:00.000Z',
-    };
-    state.fetchLog.length = 0;
-    document.querySelector('#cabinet-cloud-trash-move').click();
-    await wait(280);
-    report.ownRefused = noticeText() === 'Check this Customer File in before deleting it from the File Cabinet.';
-    report.ownNoConfirm = !document.querySelector('#toolbox-confirm') || document.querySelector('#toolbox-confirm').hidden;
-    report.ownNoWrite = !state.fetchLog.some(function (entry) {
-      return entry.method === 'PUT' || entry.method === 'DELETE';
-    });
-    report.ownKept = !state.indexes['cf-active'].deletedAt;
-    delete state.indexes['cf-active'].checkout;
-
-    document.querySelector('#cabinet-cloud-trash-toggle').click();
-    await wait(40);
-    await openCloudTrash();
-    document.querySelector('#cabinet-cloud-trash-file').value = 'cf-spare';
-    state.fetchLog.length = 0;
-    document.querySelector('#cabinet-cloud-trash-move').click();
-    await wait(80);
-    const spareYes = document.querySelector('#confirm-yes');
-    const spareTitle = document.querySelector('#confirm-title');
-    const spareMessage = document.querySelector('#confirm-message');
-    report.spareConfirm = !!(spareYes && !spareYes.disabled && spareYes.textContent === 'Delete' &&
-      spareTitle && spareTitle.textContent === 'Delete from File Cabinet?' &&
-      spareMessage && /Fay Spare/.test(spareMessage.textContent) &&
-      /File Cabinet Trash/.test(spareMessage.textContent) &&
-      document.querySelector('#confirm-no').textContent === 'Cancel');
-    document.querySelector('#confirm-no').click();
-    await wait(40);
-    report.spareCancelKept = !state.indexes['cf-spare'].deletedAt;
-    report.spareCancelNoWrite = !state.fetchLog.some(function (entry) {
-      return entry.method === 'PUT' || entry.method === 'DELETE';
-    });
-    state.fetchLog.length = 0;
-    document.querySelector('#cabinet-cloud-trash-move').click();
-    await wait(80);
-    document.querySelector('#confirm-yes').click();
-    for (let i = 0; i < 30; i++) {
-      if (state.indexes['cf-spare'] && state.indexes['cf-spare'].deletedAt) break;
-      await wait(50);
-    }
-    report.spareTrashed = !!(state.indexes['cf-spare'] && state.indexes['cf-spare'].deletedAt);
-    report.spareNoDelete = !state.fetchLog.some(function (entry) { return entry.method === 'DELETE'; });
-    report.spareNotice = /Fay Spare was moved to File Cabinet Trash/.test(noticeText());
-    report.activeStillThere = !state.indexes['cf-active'].deletedAt && !state.indexes['cf-active'].checkout;
-    report.manageClosedAfterMove = !!(document.querySelector('#cabinet-cloud-trash-panel') &&
-      document.querySelector('#cabinet-cloud-trash-panel').hidden);
-    await ToolboxSync.restoreCabinetCustomerFile('cf-spare');
-    report.spareRestored = !state.indexes['cf-spare'].deletedAt;
 
     state.fetchLog.length = 0;
     let ownError = null;
@@ -978,6 +862,121 @@ try {
       return entry && entry.id === 'cf-mirror' && !!entry.deletedAt;
     });
 
+    report.noCabinetManage = !document.querySelector('#cabinet-cloud-trash-toggle') &&
+      !document.querySelector('#cabinet-cloud-trash-move');
+
+    function waitHome(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+    async function openHome(id, expectedName) {
+      window.location.hash = '#/';
+      await waitHome(40);
+      window.location.hash = '#/file/' + encodeURIComponent(id);
+      for (let i = 0; i < 40; i++) {
+        const name = document.querySelector('#home-card-name');
+        if (name && name.textContent === expectedName) break;
+        await waitHome(40);
+      }
+      await waitHome(120);
+    }
+    function saveLocal(id, first, last, address) {
+      const record = ToolboxApp.blankCustomerFile(id);
+      record.firstName = first;
+      record.lastName = last;
+      record.propertyAddress = address;
+      record.checkedOutFromCabinet = true;
+      return ToolboxDB.saveCustomerFile(record);
+    }
+
+    seed('cf-ui-open', { customer: { firstName: 'Una', lastName: 'Open', propertyAddress: '12 Open Lane' } });
+    await saveLocal('cf-ui-open', 'Una', 'Open', '12 Open Lane');
+    await openHome('cf-ui-open', 'Una Open');
+    const homeDelete = document.querySelector('#home-delete');
+    const homeDeleteBox = homeDelete ? homeDelete.getBoundingClientRect() : null;
+    report.homeDeleteShown = !!(homeDelete && !homeDelete.hidden && homeDelete.textContent === 'Delete this Customer File');
+    report.homeDeleteTarget = !!(homeDeleteBox && homeDeleteBox.height >= 44 && homeDeleteBox.width >= 44);
+    report.homeDeleteClear = (function () {
+      const apps = document.querySelector('.cf-home__apps');
+      if (!homeDeleteBox || !apps) return false;
+      const appsBox = apps.getBoundingClientRect();
+      return homeDeleteBox.top >= appsBox.bottom - 1;
+    })();
+    state.fetchLog.length = 0;
+    homeDelete.click();
+    await waitHome(80);
+    report.homeConfirmTitle = (document.querySelector('#confirm-title') || {}).textContent || '';
+    report.homeConfirmMessage = (document.querySelector('#confirm-message') || {}).textContent || '';
+    document.querySelector('#confirm-no').click();
+    await waitHome(40);
+    report.homeCancelKept = !!(await ToolboxDB.getCustomerFile('cf-ui-open')) && !state.indexes['cf-ui-open'].deletedAt;
+    report.homeCancelNoWrite = !state.fetchLog.some(function (entry) {
+      return entry.method === 'PUT' || entry.method === 'DELETE';
+    });
+    state.fetchLog.length = 0;
+    document.querySelector('#home-delete').click();
+    await waitHome(80);
+    document.querySelector('#confirm-yes').click();
+    for (let i = 0; i < 40; i++) {
+      if (state.indexes['cf-ui-open'] && state.indexes['cf-ui-open'].deletedAt && !(await ToolboxDB.getCustomerFile('cf-ui-open'))) break;
+      await waitHome(50);
+    }
+    report.homeTrashed = !!(state.indexes['cf-ui-open'] && state.indexes['cf-ui-open'].deletedAt);
+    report.homeLocalGone = !(await ToolboxDB.getCustomerFile('cf-ui-open'));
+    report.homeNoHttpDelete = !state.fetchLog.some(function (entry) { return entry.method === 'DELETE'; });
+    report.homeBackToFiles = window.location.hash === '#/';
+
+    seed('cf-ui-offline', { customer: { firstName: 'Ned', lastName: 'Uncertain', propertyAddress: '14 Offline Road' } });
+    await saveLocal('cf-ui-offline', 'Ned', 'Uncertain', '14 Offline Road');
+    state.failNetwork = true;
+    state.fetchLog.length = 0;
+    await openHome('cf-ui-offline', 'Ned Uncertain');
+    document.querySelector('#home-delete').click();
+    await waitHome(120);
+    report.offlineConfirm = (document.querySelector('#confirm-title') || {}).textContent === 'Delete from the File Cabinet?';
+    document.querySelector('#confirm-yes').click();
+    await waitHome(250);
+    const offlineLocal = await ToolboxDB.getCustomerFile('cf-ui-offline');
+    report.offlineKeptLocal = !!(offlineLocal && offlineLocal.cabinetTrashRequestedAt && !offlineLocal.deletedAt);
+    report.offlineRemoteLive = !!(state.indexes['cf-ui-offline'] && !state.indexes['cf-ui-offline'].deletedAt);
+    report.offlineNoWrite = !state.fetchLog.some(function (entry) {
+      return entry.method === 'PUT' || entry.method === 'DELETE';
+    });
+    report.offlineNotice = /still on this device/i.test((document.querySelector('#home-notice') || {}).textContent || '');
+    state.failNetwork = false;
+
+    seed('cf-ui-foreign', {
+      customer: { firstName: 'Fay', lastName: 'Foreign', propertyAddress: '16 Locked Court' },
+      index: {
+        checkout: {
+          email: 'lee@example.com',
+          deviceId: 'device-lee',
+          checkedOutAt: '2026-09-22T00:00:00.000Z',
+        },
+      },
+    });
+    await saveLocal('cf-ui-foreign', 'Fay', 'Foreign', '16 Locked Court');
+    localStorage.setItem('toolboxForeignCheckouts', JSON.stringify({
+      'cf-ui-foreign': {
+        deviceId: 'device-lee',
+        email: 'lee@example.com',
+        deviceLabel: 'Lee iPad',
+        checkedAt: '2026-09-22T00:00:00.000Z',
+      },
+    }));
+    state.fetchLog.length = 0;
+    await openHome('cf-ui-foreign', 'Fay Foreign');
+    const foreignDelete = document.querySelector('#home-delete');
+    const foreignHome = document.querySelector('#cf-home');
+    report.foreignHomeLocked = !!(foreignHome && foreignHome.classList.contains('is-checked-out-elsewhere'));
+    report.foreignNoDelete = !foreignDelete || foreignDelete.hidden;
+    report.foreignEditHidden = !!(document.querySelector('#home-edit-top') && document.querySelector('#home-edit-top').hidden);
+    report.foreignNoConfirm = !document.querySelector('#toolbox-confirm') || document.querySelector('#toolbox-confirm').hidden;
+    report.foreignNoWrite = !state.fetchLog.some(function (entry) {
+      return entry.method === 'PUT' || entry.method === 'DELETE';
+    });
+    report.foreignLocalKept = !!(await ToolboxDB.getCustomerFile('cf-ui-foreign'));
+    report.foreignRemoteLive = !!(state.indexes['cf-ui-foreign'] && !state.indexes['cf-ui-foreign'].deletedAt);
+    window.location.hash = '#/cabinet/trash';
+    await waitHome(250);
+
     return report;
   });
 
@@ -986,8 +985,10 @@ try {
   check('File Cabinet Trash control has no count', out.cabinetTrashLabel === 'Trash', JSON.stringify(out));
   check('Active cabinet list hides trashed files', out.activeNames.includes('Ada Active') && out.activeNames.includes('Cy Leased') && !out.activeNames.includes('Bea Trashed') && !out.activeNames.includes('Dee Held') && !out.activeNames.includes('Old File'), JSON.stringify(out));
   check('Files older than 120 days stay in Trash and can be cleaned up', out.cleanupVisible && out.oldSurvivedTimer, JSON.stringify(out));
-  check('Normal File Cabinet cards do not render a Delete button', out.deleteButtons.length === 0 && out.cardActionLabels.indexOf('Delete') === -1 && out.cardActionLabels.indexOf('Check Out') !== -1, JSON.stringify(out));
-  check('Cloud-file Trash control moves an eligible file and refuses own or foreign checkout', out.manageClosed && out.manageOpen && out.manageOutsideCard && out.manageOffersActive && out.manageOffersSpare && out.manageOmitsCheckedOut && out.cardsStayWithoutDelete && out.foreignRefused && out.foreignNoConfirm && out.foreignNoWrite && out.foreignKept && out.ownRefused && out.ownNoConfirm && out.ownNoWrite && out.ownKept && out.spareConfirm && out.spareCancelKept && out.spareCancelNoWrite && out.spareTrashed && out.spareNoDelete && out.spareNotice && out.activeStillThere && out.manageClosedAfterMove && out.spareRestored, JSON.stringify(out));
+  check('Normal File Cabinet cards do not render a Delete button', out.deleteButtons.length === 0 && out.cardActionLabels.indexOf('Delete') === -1 && out.cardActionLabels.indexOf('Check Out') !== -1 && out.noCabinetManage, JSON.stringify(out));
+  check('Delete inside an open Customer File confirms, then moves an available file to Trash', out.homeDeleteShown && out.homeDeleteTarget && out.homeDeleteClear && out.homeConfirmTitle === 'Delete from the File Cabinet?' && /File Cabinet Trash/.test(out.homeConfirmMessage) && out.homeCancelKept && out.homeCancelNoWrite && out.homeTrashed && out.homeLocalGone && out.homeNoHttpDelete && out.homeBackToFiles, JSON.stringify(out));
+  check('Delete inside a Customer File keeps the file when the cabinet cannot be reached', out.offlineConfirm && out.offlineKeptLocal && out.offlineRemoteLive && out.offlineNoWrite && out.offlineNotice, JSON.stringify(out));
+  check('A foreign checkout Customer File has no Delete action', out.foreignHomeLocked && out.foreignNoDelete && out.foreignEditHidden && out.foreignNoConfirm && out.foreignNoWrite && out.foreignLocalKept && out.foreignRemoteLive, JSON.stringify(out));
   check('Phone File Cabinet does not overflow', out.overflow === false, JSON.stringify(out));
   check('Own and foreign checkout block cabinet delete before any write', out.ownCheckoutRefused && out.foreignCheckoutRefused && out.checkoutWrote === false, JSON.stringify(out));
   check('Cloud-only delete writes trash component then index and does not download or DELETE', out.cloudTrashNoDelete && out.cloudTrashNoCheckout && out.componentBeforeIndex && out.cloudTrashLocal == null && out.trashResultLocal === true && out.retentionDays === 120 && out.cloudTrashComponent && out.cloudTrashComponent.deletedAt === out.cloudTrashDeletedAt, JSON.stringify(out));

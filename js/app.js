@@ -618,10 +618,6 @@
     return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   }
 
-  function cloudOnlyTrashEligible(entry) {
-    return !!(entry && !entry.deletedAt && entry.availability === 'available' && entry.presence !== 'local');
-  }
-
   function cabinetInventoryEntries(browse) {
     const entries = ((browse && browse.entries) || []).filter(function (entry) {
       return entry && !entry.deletedAt;
@@ -645,22 +641,11 @@
       '    <div>' +
       '      <p class="eyebrow">Cloud file management</p>' +
       '      <h1>File Cabinet</h1>' +
-      '      <p>Browse cloud Customer Files. Check Out brings one selected file onto this device.</p>' +
+      '      <p>Browse cloud Customer Files. Check Out brings one onto this device, where Delete is inside that Customer File.</p>' +
       '      <p class="file-cabinet-cleanup" id="file-cabinet-cleanup" hidden>Deleted files are old enough to clean up.</p>' +
       '    </div>' +
       '    <button type="button" id="file-cabinet-trash" class="btn btn--secondary file-cabinet-trash">Trash</button>' +
       '  </header>' +
-      '  <div class="cabinet-cloud-trash">' +
-      '    <button type="button" id="cabinet-cloud-trash-toggle" class="cabinet-cloud-trash__toggle" aria-expanded="false" aria-controls="cabinet-cloud-trash-panel">Move a cloud file to Trash</button>' +
-      '    <div id="cabinet-cloud-trash-panel" class="cabinet-cloud-trash__panel" hidden>' +
-      '      <p>Choose a cloud-only Customer File that is not checked out.</p>' +
-      '      <label class="cabinet-cloud-trash__pick">' +
-      '        <span class="sr-only">Cloud-only Customer File</span>' +
-      '        <select id="cabinet-cloud-trash-file"></select>' +
-      '      </label>' +
-      '      <button type="button" id="cabinet-cloud-trash-move" class="btn btn--secondary" disabled>Move to Trash</button>' +
-      '    </div>' +
-      '  </div>' +
       '  <label class="file-cabinet-search">' +
       '    <span class="sr-only">Search File Cabinet</span>' +
       '    <input type="search" id="file-cabinet-search" placeholder="Search name, address, or contact" autocomplete="off" />' +
@@ -684,58 +669,6 @@
         window.location.hash = '#/cabinet/trash';
       });
     }
-    const cloudTrashToggle = app.querySelector('#cabinet-cloud-trash-toggle');
-    const cloudTrashPanel = app.querySelector('#cabinet-cloud-trash-panel');
-    const cloudTrashMove = app.querySelector('#cabinet-cloud-trash-move');
-    if (cloudTrashToggle && cloudTrashPanel) {
-      cloudTrashToggle.addEventListener('click', function () {
-        const willOpen = cloudTrashPanel.hidden;
-        cloudTrashPanel.hidden = !willOpen;
-        cloudTrashToggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
-        if (!willOpen) return;
-        if (!window.ToolboxSync || typeof window.ToolboxSync.browseCabinet !== 'function') return;
-        window.ToolboxSync.browseCabinet().then(applyCabinetBrowse).catch(function (err) {
-          console.warn('File Cabinet browse failed:', err);
-          cabinetNotice = 'Unable to load File Cabinet right now.';
-          showFileCabinetNotice(app);
-        });
-      });
-    }
-    if (cloudTrashMove) {
-      cloudTrashMove.addEventListener('click', function () {
-        const select = app.querySelector('#cabinet-cloud-trash-file');
-        const id = select ? select.value : '';
-        if (!id || !window.ToolboxSync || typeof window.ToolboxSync.browseCabinet !== 'function' ||
-            typeof window.ToolboxSync.trashCabinetCustomerFile !== 'function') {
-          cabinetNotice = 'File Cabinet delete is unavailable.';
-          showFileCabinetNotice(app);
-          return;
-        }
-        cloudTrashMove.disabled = true;
-        window.ToolboxSync.browseCabinet().then(function (browse) {
-          applyCabinetBrowse(browse);
-          const entry = ((browse && browse.entries) || []).find(function (item) {
-            return item && item.id === id;
-          });
-          if (!cloudOnlyTrashEligible(entry)) {
-            cabinetNotice = 'Check this Customer File in before deleting it from the File Cabinet.';
-            showFileCabinetNotice(app);
-            paintCloudTrashChoices();
-            return null;
-          }
-          return requestCabinetDelete(entry, app);
-        }).then(function (replaced) {
-          if (replaced) return;
-          paintCloudTrashChoices();
-        }).catch(function (err) {
-          console.warn('File Cabinet delete failed:', err);
-          cabinetNotice = (err && err.message) || 'Could not delete that Customer File.';
-          showFileCabinetNotice(app);
-          paintCloudTrashChoices();
-        });
-      });
-    }
-
     function compareCabinetEntries(a, b) {
       const addressA = String(a.propertyAddress || '').trim().toLocaleLowerCase();
       const addressB = String(b.propertyAddress || '').trim().toLocaleLowerCase();
@@ -745,33 +678,6 @@
       if (byAddress) return byAddress;
       return String(a.displayName || '').trim().toLocaleLowerCase()
         .localeCompare(String(b.displayName || '').trim().toLocaleLowerCase());
-    }
-
-    function paintCloudTrashChoices() {
-      const select = app.querySelector('#cabinet-cloud-trash-file');
-      const move = app.querySelector('#cabinet-cloud-trash-move');
-      if (!select || !move) return;
-      const previous = select.value;
-      const eligible = inventory.filter(cloudOnlyTrashEligible).sort(compareCabinetEntries);
-      select.innerHTML = '';
-      if (!eligible.length) {
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = 'No cloud-only files can be moved to Trash';
-        select.appendChild(option);
-        select.disabled = true;
-        move.disabled = true;
-        return;
-      }
-      select.disabled = false;
-      eligible.forEach(function (entry) {
-        const option = document.createElement('option');
-        option.value = entry.id;
-        option.textContent = cabinetIndexAddress(entry) + ' — ' + cabinetIndexOwner(entry);
-        select.appendChild(option);
-      });
-      if (eligible.some(function (entry) { return entry.id === previous; })) select.value = previous;
-      move.disabled = false;
     }
 
     function applyCabinetBrowse(browse) {
@@ -786,7 +692,6 @@
       }
       inventory = cabinetInventoryEntries(browse);
       paintList();
-      paintCloudTrashChoices();
       return browse;
     }
 
@@ -932,40 +837,6 @@
     notice.textContent = cabinetNotice;
     notice.hidden = false;
     cabinetNotice = '';
-  }
-
-  function requestCabinetDelete(entry, app) {
-    const name = entry.displayName || 'Customer File';
-    if (!window.ToolboxSync || typeof window.ToolboxSync.trashCabinetCustomerFile !== 'function') {
-      cabinetNotice = 'File Cabinet delete is unavailable.';
-      showFileCabinetNotice(app);
-      return Promise.resolve(false);
-    }
-    if (!cloudOnlyTrashEligible(entry)) {
-      cabinetNotice = 'Check this Customer File in before deleting it from the File Cabinet.';
-      showFileCabinetNotice(app);
-      return Promise.resolve(false);
-    }
-    return confirmAction({
-      title: 'Delete from File Cabinet?',
-      message: name + ' will move to File Cabinet Trash. It stays recoverable there until you permanently delete it.',
-      cancelLabel: 'Cancel',
-      confirmLabel: 'Delete',
-    }).then(function (confirmed) {
-      if (!confirmed) return false;
-      return window.ToolboxSync.trashCabinetCustomerFile(entry.id).then(function () {
-        cabinetNotice = name + ' was moved to File Cabinet Trash.';
-        renderFileCabinet(app);
-        showFileCabinetNotice(app);
-        return true;
-      }).catch(function (err) {
-        console.warn('File Cabinet delete failed:', err);
-        cabinetNotice = (err && err.message) || 'Could not delete that Customer File.';
-        renderFileCabinet(app);
-        showFileCabinetNotice(app);
-        return true;
-      });
-    });
   }
 
   function deleteLocalCustomerFile(record, name) {
@@ -1673,11 +1544,14 @@
       '  <p class="cf-home__hint">Each workspace opens with this Customer File. They are independent—not required steps.</p>' +
       '  <div class="cf-home__file-actions">' +
       '    <button type="button" id="home-import" class="btn btn--secondary">Import standalone export</button>' +
+      '    <button type="button" id="home-delete" class="btn btn--secondary cf-home__delete" hidden>Delete this Customer File</button>' +
       '  </div>' +
+      '  <p class="cabinet-notice" id="home-notice" hidden></p>' +
       '</div>';
 
     const backBtn = app.querySelector('#home-back');
     const importBtn = app.querySelector('#home-import');
+    const deleteBtn = app.querySelector('#home-delete');
     const editTopBtn = app.querySelector('#home-edit-top');
     const planCta = app.querySelector('#home-plan-cta');
     const planCallout = app.querySelector('#home-plan-callout');
@@ -1696,6 +1570,7 @@
         window.ToolboxSync.isCheckedOutElsewhere(record.id));
       const home = app.querySelector('#cf-home');
       if (home) home.classList.toggle('is-checked-out-elsewhere', homeLocked);
+      if (deleteBtn) deleteBtn.hidden = homeLocked || cabinetTrashPending(record);
       if (!homeLocked) return;
       const label = window.ToolboxSync.foreignCheckoutLabel(record.id) || 'Checked out on another device';
       statusEl.textContent = label;
@@ -1722,6 +1597,36 @@
       window.location.hash = '#/file/' + encodeURIComponent(id) + '/import';
     });
     editTopBtn.addEventListener('click', function () { editFile('customer'); });
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', function () {
+        if (homeLocked || !currentRecord || cabinetTrashPending(currentRecord)) return;
+        const fileId = currentRecord.id;
+        requestCustomerFileRemoval(currentRecord).then(function (result) {
+          if (!result) return;
+          return window.ToolboxDB.getCustomerFile(fileId).then(function (still) {
+            if (!still || still.deletedAt) {
+              cabinetNotice = result;
+              window.location.hash = '#/';
+              return;
+            }
+            currentRecord = still;
+            const notice = app.querySelector('#home-notice');
+            if (notice) {
+              notice.textContent = result;
+              notice.hidden = false;
+            }
+            applyHomeLock(still);
+          });
+        }).catch(function (err) {
+          console.error('Could not remove Customer File:', err);
+          const notice = app.querySelector('#home-notice');
+          if (notice) {
+            notice.textContent = 'Could not remove that Customer File. Try again.';
+            notice.hidden = false;
+          }
+        });
+      });
+    }
     planCta.addEventListener('click', function () { editFile('plans'); });
     app.querySelectorAll('.cf-app-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
