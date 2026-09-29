@@ -92,6 +92,18 @@
     return name + ' · ' + address;
   }
 
+  function displayAddress(record) {
+    var api = identityApi();
+    if (api && typeof api.displayAddress === 'function') {
+      var shown = api.displayAddress(record);
+      if (!shown || shown === 'No property address yet') return '';
+      return shown;
+    }
+    var addr = record && typeof record.propertyAddress === 'string' ? record.propertyAddress.trim() : '';
+    if (!addr) return '';
+    return addr.split('\n')[0].trim();
+  }
+
   function sourceApi() {
     return window.ToolboxReportSource;
   }
@@ -156,9 +168,157 @@
     return true;
   }
 
+  function formatSurveyDate(value) {
+    var text = typeof value === 'string' ? value.trim() : '';
+    if (!text) return '';
+    var m = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[2] + '/' + m[3] + '/' + m[1].slice(2);
+    return text;
+  }
+
+  function formatReading(value, dec) {
+    var n = typeof value === 'number' && isFinite(value) ? value : null;
+    if (n == null) return '—';
+    var places = typeof dec === 'number' ? dec : 2;
+    return n.toFixed(places);
+  }
+
+  function renderTopoLegend(stats) {
+    var box = document.createElement('div');
+    box.className = 'rb-topo-legend';
+    if (stats.name) {
+      var name = document.createElement('div');
+      name.className = 'rb-topo-legend__name';
+      name.textContent = stats.name;
+      box.appendChild(name);
+    }
+    var bar = document.createElement('div');
+    bar.className = 'rb-topo-legend__bar';
+    var legend = stats.legend || { min: 0, max: 0, stops: [] };
+    var stops = Array.isArray(legend.stops) ? legend.stops.slice() : [];
+    // High at top of the bar.
+    for (var i = stops.length - 1; i >= 0; i -= 1) {
+      var seg = document.createElement('span');
+      seg.style.background = stops[i].color || '#ccc';
+      bar.appendChild(seg);
+    }
+    box.appendChild(bar);
+    var labels = document.createElement('div');
+    labels.className = 'rb-topo-legend__labels';
+    var hiLabel = document.createElement('span');
+    hiLabel.textContent = formatReading(legend.max, stats.decimalPlaces);
+    var loLabel = document.createElement('span');
+    loLabel.textContent = formatReading(legend.min, stats.decimalPlaces);
+    labels.appendChild(hiLabel);
+    labels.appendChild(loLabel);
+    box.appendChild(labels);
+    return box;
+  }
+
+  function renderTopoStats(stats) {
+    var pill = document.createElement('div');
+    pill.className = 'rb-topo-stats';
+    if (stats.name) {
+      var label = document.createElement('span');
+      label.className = 'rb-topo-stats__label';
+      label.textContent = stats.name;
+      pill.appendChild(label);
+    }
+    var hi = document.createElement('span');
+    hi.className = 'rb-topo-stats__hi';
+    hi.textContent = 'H ' + formatReading(stats.hi, stats.decimalPlaces);
+    var lo = document.createElement('span');
+    lo.className = 'rb-topo-stats__lo';
+    lo.textContent = 'L ' + formatReading(stats.lo, stats.decimalPlaces);
+    var delta = document.createElement('span');
+    delta.className = 'rb-topo-stats__delta';
+    delta.textContent = '\u0394' + formatReading(stats.delta, stats.decimalPlaces);
+    pill.appendChild(hi);
+    pill.appendChild(lo);
+    pill.appendChild(delta);
+    return pill;
+  }
+
+  function renderTopoFigurePage(page, evidence) {
+    var meta = page.meta || {};
+    var root = document.createElement('div');
+    root.className = 'rb-topo-page';
+
+    var header = document.createElement('div');
+    header.className = 'rb-topo-page__header';
+    var left = document.createElement('div');
+    left.className = 'rb-topo-page__header-left';
+    var dateLine = document.createElement('p');
+    dateLine.className = 'rb-topo-page__survey-date';
+    var dateText = formatSurveyDate(meta.surveyDate || evidence.surveyDate || '');
+    dateLine.textContent = dateText ? ('Survey Date: ' + dateText) : 'Survey Date:';
+    left.appendChild(dateLine);
+    var address = document.createElement('p');
+    address.className = 'rb-topo-page__address';
+    address.textContent = evidence.address || meta.address || '';
+    left.appendChild(address);
+    header.appendChild(left);
+
+    var door = document.createElement('div');
+    door.className = 'rb-topo-page__front-door';
+    var doorLabel = document.createElement('span');
+    doorLabel.textContent = 'Front Door';
+    var doorValue = document.createElement('strong');
+    doorValue.textContent = meta.frontDoorFacing || evidence.frontDoorFacing || '—';
+    door.appendChild(doorLabel);
+    door.appendChild(doorValue);
+    header.appendChild(door);
+    root.appendChild(header);
+
+    var figureTitle = document.createElement('h1');
+    figureTitle.className = 'rb-topo-page__figure-title';
+    var num = meta.figureNumber || '';
+    var scopeTitle = meta.scopeTitle || meta.levelName || 'Floor Level Survey';
+    figureTitle.textContent = (num ? ('Figure ' + num + '  ') : '') +
+      'Floor Level Survey — ' + scopeTitle;
+    root.appendChild(figureTitle);
+
+    var body = document.createElement('div');
+    body.className = 'rb-topo-page__body';
+    var drawing = document.createElement('div');
+    drawing.className = 'rb-topo-page__drawing';
+    var figure = evidence.figure || {};
+    if (!evidenceImage(drawing, figure.dataUrl, 'rb-topo-page__image', scopeTitle)) {
+      addLine(drawing, 'rb-sheet__note', 'Topo figure could not be composed from Floor Survey readings.');
+    }
+    body.appendChild(drawing);
+
+    var chrome = document.createElement('aside');
+    chrome.className = 'rb-topo-page__chrome';
+    var statsList = Array.isArray(evidence.stats) ? evidence.stats : [];
+    if (!statsList.length) {
+      addLine(chrome, 'rb-sheet__note', 'H / L / Δ unavailable for this figure.');
+    } else {
+      statsList.forEach(function (stats) {
+        var block = document.createElement('div');
+        block.className = 'rb-topo-page__stat-block';
+        block.appendChild(renderTopoLegend(stats));
+        block.appendChild(renderTopoStats(stats));
+        chrome.appendChild(block);
+      });
+    }
+    body.appendChild(chrome);
+    root.appendChild(body);
+
+    var footer = document.createElement('p');
+    footer.className = 'rb-topo-page__corrected';
+    footer.textContent = 'Corrected for Floor Differences';
+    root.appendChild(footer);
+    return root;
+  }
+
   function renderEvidence(margin, page) {
     var evidence = page.evidence;
     if (!evidence) return false;
+    if (page.type === 'floor' && evidence.composed) {
+      margin.appendChild(renderTopoFigurePage(page, evidence));
+      return true;
+    }
     var frame = document.createElement('div');
     frame.className = 'rb-evidence-frame';
     if (page.type === 'distress') {
@@ -231,22 +391,50 @@
       if (page.type === 'distress' && !(page.meta && page.meta.reserved)) {
         page.evidence = distress.find(function (slide) { return slide.canvasId === page.sourceRef; }) || null;
       } else if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
+        var meta = page.meta || {};
+        if (meta.compose && window.ToolboxFloorSurvey &&
+            typeof window.ToolboxFloorSurvey.composeReportTopoFigureForPage === 'function') {
+          try {
+            var composed = await window.ToolboxFloorSurvey.composeReportTopoFigureForPage(record, {
+              canvasId: meta.canvasId,
+              epochId: meta.epochId,
+              areaId: meta.areaId || null,
+              scope: meta.scope || 'all',
+            }, window.ToolboxDB && window.ToolboxDB.getMedia
+              ? window.ToolboxDB.getMedia.bind(window.ToolboxDB)
+              : null);
+            if (composed && composed.dataUrl) {
+              page.evidence = {
+                composed: true,
+                address: displayAddress(record),
+                surveyDate: meta.surveyDate || '',
+                frontDoorFacing: meta.frontDoorFacing || '',
+                stats: composed.stats || [],
+                figure: {
+                  kind: 'composed-topo',
+                  dataUrl: composed.dataUrl,
+                  mime: composed.mime || 'image/png',
+                  width: composed.width,
+                  height: composed.height,
+                  readingsRebuilt: true,
+                },
+              };
+              result.push(page);
+              continue;
+            }
+          } catch (err) {
+            console.warn('Report Builder topo compose failed', err);
+          }
+        }
         var matches = floor.filter(function (slide) {
-          return slide.canvasId === page.meta.canvasId && slide.epochId === page.meta.epochId;
+          if (slide.canvasId !== meta.canvasId || slide.epochId !== meta.epochId) return false;
+          if (meta.areaId) return slide.areaId === meta.areaId;
+          if (meta.scope === 'all') return !slide.areaId;
+          return true;
         });
         if (matches.length) {
           if (matches[0].figure && matches[0].figure.kind === 'stored-rendering') page.evidence = matches[0];
           result.push(page);
-          for (var j = 1; j < matches.length; j += 1) {
-            var extra = Object.assign({}, page, {
-              id: page.id + '-area-' + j,
-              title: matches[j].title,
-              tocTitle: matches[j].title,
-              railLabel: matches[j].title,
-              evidence: matches[j].figure && matches[j].figure.kind === 'stored-rendering' ? matches[j] : null,
-            });
-            result.push(extra);
-          }
           continue;
         }
       } else if (page.type === 'diagnostics' && !(page.meta && page.meta.reserved)) {
@@ -331,6 +519,11 @@
         rows.appendChild(dd);
       });
       margin.appendChild(rows);
+    } else if (page.type === 'floor' && page.evidence && page.evidence.composed) {
+      margin.classList.add('rb-sheet__margin--topo');
+      if (!renderEvidence(margin, page)) {
+        addLine(margin, 'rb-sheet__note', 'Topo figure reserved.');
+      }
     } else if (page.type === 'distress' || page.type === 'floor' || page.type === 'diagnostics') {
       var kicker = page.type === 'distress' ? 'Distress Survey' : page.type === 'floor' ? 'Floor Survey' : 'Diagnostics';
       addLine(margin, 'rb-sheet__kicker', kicker);

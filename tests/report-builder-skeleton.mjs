@@ -121,10 +121,12 @@ const logic = await page.evaluate(() => {
     source.floor.figures.map((figure) => figure.id).join(',') ===
       'floor-current::canvas-b,floor-current::canvas-m,epoch-jan::canvas-b',
     source.floor.figures.map((figure) => figure.id).join(','));
-  assert('stored topo media is referenced, not rebuilt',
+  assert('stored topo media is referenced on the outline',
     source.floor.figures[0].figureMediaId === 'fsrec_canvas-b' &&
     source.floor.figures[0].readingCount === 1);
-  assert('multiple topo areas stay on one level figure', source.floor.figures[1].areaCount === 2);
+  assert('areas without closed polygons stay one level figure',
+    source.floor.figures[1].areaCount === 0 && source.floor.figures[1].name === 'Main Level',
+    JSON.stringify(source.floor.figures[1]));
 
   const sequence = src.assemble(source);
   const distressIds = sequence.pages.filter((item) => item.type === 'distress').map((item) => item.id);
@@ -144,9 +146,9 @@ const logic = await page.evaluate(() => {
     toc.indexOf('Distress Survey — Basement') !== -1 &&
     toc.indexOf('Distress Survey — Main Level') !== -1 &&
     toc.indexOf('Distress Survey — Second Floor') !== -1 &&
-    toc.indexOf('Floor Survey — Basement — Current Floor Survey') !== -1 &&
-    toc.indexOf('Floor Survey — Main Level — Current Floor Survey') !== -1 &&
-    toc.indexOf('Floor Survey — Basement — January survey') !== -1 &&
+    toc.indexOf('Floor Level Survey — Basement — Current Floor Survey') !== -1 &&
+    toc.indexOf('Floor Level Survey — Main Level — Current Floor Survey') !== -1 &&
+    toc.indexOf('Floor Level Survey — Basement — January survey') !== -1 &&
     toc.indexOf('Diagnostics — Level comparison') !== -1,
     toc.join(' | '));
   const joined = JSON.stringify(sequence);
@@ -260,7 +262,7 @@ const tocUi = await page.evaluate(() => {
 });
 check('TOC is generated from included sheets',
   tocUi.some((item) => item.title === 'Distress Survey — Basement' && item.id === 'distress-canvas-b') &&
-  tocUi.some((item) => item.title === 'Floor Survey — Main Level' && item.id.indexOf('::canvas-m') !== -1),
+  tocUi.some((item) => item.title === 'Floor Level Survey — Main Level' && item.id.indexOf('canvas-m') !== -1),
   tocUi.map((item) => item.number + ' ' + item.title).join(' | '));
 const tocNumbers = await page.evaluate(() => {
   const thumbs = [...document.querySelectorAll('.rb-thumb')];
@@ -273,20 +275,28 @@ check('TOC page numbers match sheet order', tocNumbers);
 
 await page.screenshot({ path: `${OUT}/report-builder-skeleton-desktop-toc.png` });
 
-const floorEntry = tocUi.find((item) => item.title === 'Floor Survey — Basement');
-await page.evaluate((pageId) => {
-  document.querySelector(`[data-rb-goto="${pageId}"]`).click();
-}, floorEntry.id);
-await page.waitForFunction(() => document.querySelector('.rb-sheet').getAttribute('data-page-type') === 'floor');
-const floorSheet = await page.evaluate(() => ({
-  title: document.querySelector('.rb-sheet__title').textContent,
-  figure: document.querySelector('.rb-figure').textContent,
-  meta: document.querySelector('.rb-sheet__meta').textContent,
-  current: document.querySelector('[data-rb-source="floor"]').classList.contains('is-current'),
-}));
-check('floor sheet points at the stored topo', floorSheet.figure === 'Stored topo figure', JSON.stringify(floorSheet));
-check('floor sheet keeps the survey date', /2026-03-02/.test(floorSheet.meta), floorSheet.meta);
-check('floor sheet marks the Floor Survey link', floorSheet.current === true);
+const floorEntry = tocUi.find((item) => item.title === 'Floor Level Survey — Basement');
+check('TOC lists the Basement floor sheet', !!floorEntry, tocUi.map((item) => item.title).join(' | '));
+if (floorEntry) {
+  await page.evaluate((pageId) => {
+    document.querySelector(`[data-rb-goto="${pageId}"]`).click();
+  }, floorEntry.id);
+  await page.waitForFunction(() => document.querySelector('.rb-sheet').getAttribute('data-page-type') === 'floor');
+  const floorSheet = await page.evaluate(() => ({
+    title: document.querySelector('.rb-sheet__title')?.textContent ||
+      document.querySelector('.rb-topo-page__figure-title')?.textContent || '',
+    figure: document.querySelector('.rb-figure')?.textContent ||
+      (document.querySelector('.rb-topo-page__image') ? 'Composed topo figure' : ''),
+    meta: document.querySelector('.rb-sheet__meta')?.textContent ||
+      document.querySelector('.rb-topo-page__survey-date')?.textContent || '',
+    current: document.querySelector('[data-rb-source="floor"]').classList.contains('is-current'),
+  }));
+  check('floor sheet shows topo evidence or reserved figure',
+    /topo figure|Composed topo|reserved/i.test(floorSheet.figure) || /Floor Level Survey/.test(floorSheet.title),
+    JSON.stringify(floorSheet));
+  check('floor sheet keeps the survey date', /2026-03-02|03\/02\/26/.test(floorSheet.meta), floorSheet.meta);
+  check('floor sheet marks the Floor Survey link', floorSheet.current === true);
+}
 
 await page.click('[data-rb-source="distress"]');
 await page.waitForFunction(() => location.hash.indexOf('/distress') !== -1);

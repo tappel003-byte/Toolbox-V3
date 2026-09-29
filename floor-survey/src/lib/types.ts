@@ -221,6 +221,8 @@ export interface RenderSettings {
   legendY: number;
   legendScale: number;
   showHighLow: boolean;
+  /** H/L/Δ stats pill on the drawing. Report Builder chrome can turn this off. */
+  showStatsPill?: boolean;
   declutterLabels: boolean;
   exaggeration: number;
 }
@@ -254,6 +256,7 @@ export const defaultRenderSettings: RenderSettings = {
   legendY: 24,
   legendScale: 1,
   showHighLow: true,
+  showStatsPill: true,
   declutterLabels: true,
   exaggeration: 1,
 };

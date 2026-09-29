@@ -1772,7 +1772,8 @@ function renderTopoTop(
   }
 
   // H / L / Δ stats pill — one per area, drawn last so it sits on top.
-  {
+  // Report Builder figure pages turn this off and use fixed chrome slots.
+  if (resolved.showStatsPill !== false) {
     const livePill = overlay?.livePill ?? null;
     const base = overlay?.pillSize ?? DEFAULT_STATS_PILL_SIZE;
     const h = pillHeightImg(base, viewScale);
