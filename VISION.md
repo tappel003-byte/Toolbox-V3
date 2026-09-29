@@ -323,9 +323,13 @@ Direct page composition and meaningful content manipulation are required. **Basi
 
 Automation assembles evidence. It does not replace investigator judgment.
 
+Floor Level topo figure pages use **fixed template slots**. Contour legend, High / Low / Δ, Front Door, title/date/address chrome, and the registered topo drawing frame are Report Builder page elements in consistent positions. They are not pasted from wherever field Topo working chrome happened to sit. Related levels and survey epochs are consecutive pages of that same template. Epoch dividers, side-by-side comparisons, and narrative discussion remain investigator-owned adaptations after assembly — typical pages assemble automatically; special cases stay flexible.
+
 ### 12a. Build baseline — DECIDED
 
 The **1515 Los Nietos** report is the primary initial Report Builder baseline. Toolbox should initially preserve and reproduce what already works about its professional structure, information hierarchy, figures, photo presentation, and overall appearance, before any substantial redesign.
+
+Finished professional reports such as Cerros Colorados / Sierra Del Sol are additional format evidence (including multi-epoch Floor Level Survey layout). They inform typical vs special page handling; they do not replace 1515 as the first reproduction target.
 
 This is a **build baseline, not an immutable permanent template.** It may evolve over time.
 
