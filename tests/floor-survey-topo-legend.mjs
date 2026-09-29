@@ -271,6 +271,7 @@ function sampleLegend(page, legendOrigin = { x: 24, y: 24 }, scaleHint = 1.5) {
       const y1 = origin.y + 18 * s + Math.max(40, (226 * s - 42 * s) * 0.65);
       let total = 0;
       let chromatic = 0;
+      let whiteish = 0;
       let sample = null;
       for (let iy = y0; iy <= y1; iy += 4) {
         for (let ix = x0; ix <= x1; ix += 3) {
@@ -283,20 +284,28 @@ function sampleLegend(page, legendOrigin = { x: 24, y: 24 }, scaleHint = 1.5) {
           const b = data[i + 2];
           const sat = Math.max(r, g, b) - Math.min(r, g, b);
           total++;
+          if (r > 225 && g > 225 && b > 225 && sat < 20) whiteish++;
           if (sat > 28 && !(r > 220 && g < 50 && b < 50)) chromatic++;
           if (!sample) sample = { r, g, b, sat, dx, dy };
         }
       }
       const ratio = total ? chromatic / total : 0;
+      const whiteRatio = total ? whiteish / total : 0;
+      // A real legend is a white card with a chromatic bar. Contour fill alone
+      // is chromatic without the white panel (important now that legends sit
+      // on the boundary instead of in empty plan margin).
+      const legendVisible = ratio > 0.35 && whiteRatio > 0.05;
       return {
         ok: true,
         ratio,
+        whiteRatio,
         chromatic,
+        whiteish,
         total,
         scale,
         sample,
         legendOrigin: origin,
-        legendVisible: ratio > 0.45,
+        legendVisible,
       };
     },
     { origin: legendOrigin, scaleHint },
@@ -658,7 +667,7 @@ await new Promise((r) => setTimeout(r, 500));
 const legendOff = await sampleLegend(page, LEGEND_ONE);
 check(
   'Legend OFF removes the color legend on one boundary',
-  legendOff.ok && legendOff.legendVisible !== true && legendOff.ratio < 0.2,
+  legendOff.ok && legendOff.legendVisible !== true && legendOff.whiteRatio < 0.05,
   JSON.stringify(legendOff),
 );
 await page.evaluate(() => {
