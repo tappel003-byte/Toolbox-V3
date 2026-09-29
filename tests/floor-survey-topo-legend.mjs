@@ -263,12 +263,11 @@ function sampleLegend(page, legendOrigin = { x: 24, y: 24 }, scaleHint = 1.5) {
       const scale = (blue.x - red.x) / (blueImgX - redImgX);
       const originX = red.x - redImgX * scale;
       const originY = red.y - 8 * scale;
-      // Color bar sits inside the legend for both the default 1× box and the
-      // hydrated 1.5× box. Image coords, not screen coords.
-      const x0 = origin.x + 14 * s;
-      const x1 = origin.x + 14 * s + 18 * s;
-      const y0 = origin.y + 18 * s;
-      const y1 = origin.y + 18 * s + Math.max(40, (226 * s - 42 * s) * 0.65);
+      // Full legend card (white panel + color bar), not just the bar strip.
+      const x0 = origin.x + 2 * s;
+      const x1 = origin.x + 82 * s - 2 * s;
+      const y0 = origin.y + 2 * s;
+      const y1 = origin.y + 226 * s - 2 * s;
       let total = 0;
       let chromatic = 0;
       let whiteish = 0;
@@ -291,10 +290,6 @@ function sampleLegend(page, legendOrigin = { x: 24, y: 24 }, scaleHint = 1.5) {
       }
       const ratio = total ? chromatic / total : 0;
       const whiteRatio = total ? whiteish / total : 0;
-      // A real legend is a white card with a chromatic bar. Contour fill alone
-      // is chromatic without the white panel (important now that legends sit
-      // on the boundary instead of in empty plan margin).
-      const legendVisible = ratio > 0.35 && whiteRatio > 0.05;
       return {
         ok: true,
         ratio,
@@ -305,11 +300,15 @@ function sampleLegend(page, legendOrigin = { x: 24, y: 24 }, scaleHint = 1.5) {
         scale,
         sample,
         legendOrigin: origin,
-        legendVisible,
       };
     },
     { origin: legendOrigin, scaleHint },
-  );
+  ).then((r) => {
+    if (!r || !r.ok) return { ...r, legendVisible: false };
+    // White card + chromatic bar. Contour fill alone is chromatic without the panel.
+    const legendVisible = r.whiteRatio > 0.35 && r.chromatic >= 200;
+    return { ...r, legendVisible };
+  });
 }
 
 function readChip(page) {
