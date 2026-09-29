@@ -4,9 +4,10 @@
 // Issue #65 owns evidence plumbing (pins, photographs, stored topo figures).
 //
 // read() outlines the open Customer File: identity, one Distress level per
-// canvas that already has observations, and one Floor Survey figure per
-// stored epoch/level that already has survey work. It does not copy plan or
-// photo bytes and does not redraw readings into a topo.
+// canvas that already has observations, and Floor Survey topo figure pages
+// per epoch/level/boundary (Combined when multiple closed boundaries, then
+// each named boundary). Outline metadata only — figure pixels are composed
+// later by ToolboxFloorSurvey for fixed Report Builder slots.
 //
 // #65 should enrich this same document — ToolboxReportEvidence.enrich(source,
 // record) — instead of building a second outline. assemble() accepts either
@@ -73,6 +74,7 @@
         id: canvas && canvas.id ? String(canvas.id) : '',
         name: text(canvas && canvas.name) || 'Floor Plan',
         order: index,
+        frontDoorFacing: text(canvas && canvas.frontDoorFacing),
       };
     }).filter(function (canvas) { return canvas.id; });
   }
@@ -156,29 +158,100 @@
     return false;
   }
 
+  function closedAreasOf(layer) {
+    var areas = layer && Array.isArray(layer.areas) ? layer.areas : [];
+    var closed = areas.filter(function (area) {
+      return area && Array.isArray(area.polygon) && area.polygon.length >= 3;
+    });
+    if (closed.length) return closed;
+    var boundary = layer && Array.isArray(layer.boundary) ? layer.boundary : [];
+    if (boundary.length >= 3) {
+      return [{ id: 'legacy', name: 'Boundary 1', polygon: boundary }];
+    }
+    return [];
+  }
+
+  function frontDoorFacingOf(canvas) {
+    var raw = canvas && typeof canvas.frontDoorFacing === 'string' ? canvas.frontDoorFacing.trim() : '';
+    var map = {
+      N: 'North', S: 'South', E: 'East', W: 'West',
+      NE: 'Northeast', NW: 'Northwest', SE: 'Southeast', SW: 'Southwest',
+    };
+    var key = raw.toUpperCase();
+    return map[key] || raw;
+  }
+
   function figuresFromMap(byCanvasId, epoch, info) {
     var map = byCanvasId && typeof byCanvasId === 'object' && !Array.isArray(byCanvasId) ? byCanvasId : {};
-    return Object.keys(map).filter(function (canvasId) {
+    var canvasIds = Object.keys(map).filter(function (canvasId) {
       return layerHasWork(map[canvasId]);
-    }).map(function (canvasId) {
+    }).sort(function (a, b) {
+      var canvasA = info[a];
+      var canvasB = info[b];
+      var orderA = canvasA ? canvasA.order : 10000;
+      var orderB = canvasB ? canvasB.order : 10000;
+      if (orderA !== orderB) return orderA - orderB;
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
+    var figures = [];
+    canvasIds.forEach(function (canvasId) {
       var layer = map[canvasId] || {};
       var canvas = info[canvasId];
-      return {
-        id: epoch.id + '::' + canvasId,
+      var levelName = canvas ? canvas.name : (text(layer.name) || canvasId);
+      var order = canvas ? canvas.order : 10000;
+      var closed = closedAreasOf(layer);
+      var readingCount = Array.isArray(layer.points) ? layer.points.length : 0;
+      var figureMediaId = text(layer.recoveryPdfMediaId) || null;
+      var facing = frontDoorFacingOf(canvas);
+      var base = {
         epochId: epoch.id,
         epochLabel: epoch.label,
         surveyDate: epoch.surveyDate,
         canvasId: canvasId,
-        name: canvas ? canvas.name : (text(layer.name) || canvasId),
-        order: canvas ? canvas.order : 10000,
-        figureMediaId: text(layer.recoveryPdfMediaId) || null,
-        readingCount: Array.isArray(layer.points) ? layer.points.length : 0,
-        areaCount: Array.isArray(layer.areas) ? layer.areas.length : 0,
+        levelName: levelName,
+        order: order,
+        figureMediaId: figureMediaId,
+        readingCount: readingCount,
+        areaCount: closed.length,
+        frontDoorFacing: facing,
+        compose: true,
       };
-    }).sort(function (a, b) {
-      if (a.order !== b.order) return a.order - b.order;
-      return a.canvasId < b.canvasId ? -1 : a.canvasId > b.canvasId ? 1 : 0;
+      if (closed.length >= 2) {
+        figures.push(Object.assign({}, base, {
+          id: epoch.id + '::' + canvasId + '::all',
+          name: 'Combined',
+          scope: 'all',
+          areaId: null,
+        }));
+        closed.forEach(function (area) {
+          var areaName = text(area.name) || 'Boundary';
+          figures.push(Object.assign({}, base, {
+            id: epoch.id + '::' + canvasId + '::' + (area.id || areaName),
+            name: areaName,
+            scope: 'area',
+            areaId: area.id || null,
+          }));
+        });
+      } else if (closed.length === 1) {
+        var only = closed[0];
+        var onlyName = text(only.name) || levelName;
+        figures.push(Object.assign({}, base, {
+          id: epoch.id + '::' + canvasId + '::' + (only.id || 'area'),
+          name: onlyName,
+          scope: 'area',
+          areaId: only.id || null,
+        }));
+      } else {
+        figures.push(Object.assign({}, base, {
+          id: epoch.id + '::' + canvasId,
+          name: levelName,
+          scope: 'all',
+          areaId: null,
+          compose: !!readingCount,
+        }));
+      }
     });
+    return figures;
   }
 
   function floorOutline(record) {
@@ -357,24 +430,39 @@
     var epochIds = {};
     figures.forEach(function (figure) { if (figure && figure.epochId) epochIds[figure.epochId] = true; });
     var severalEpochs = Object.keys(epochIds).length > 1;
+    var figureNumber = 0;
     return figures.map(function (figure) {
-      var name = text(figure.name) || 'Level';
+      figureNumber += 1;
+      var scopeTitle = text(figure.name) || 'Level';
+      var levelName = text(figure.levelName) || scopeTitle;
       var epochLabel = text(figure.epochLabel);
-      var title = severalEpochs && epochLabel ? name + ' — ' + epochLabel : name;
+      var sheetTitle = 'Floor Level Survey — ' + scopeTitle;
+      if (severalEpochs && epochLabel) sheetTitle += ' — ' + epochLabel;
+      var rail = scopeTitle;
+      if (levelName && levelName !== scopeTitle && figure.scope === 'all' && scopeTitle === 'Combined') {
+        rail = levelName + ' · Combined';
+      } else if (levelName && figure.scope === 'area' && scopeTitle !== levelName) {
+        rail = scopeTitle;
+      }
       return page({
-        id: 'floor-' + (figure.id || name),
+        id: 'floor-' + (figure.id || scopeTitle),
         type: 'floor',
-        title: title,
-        tocTitle: 'Floor Survey — ' + title,
-        railLabel: 'Floor · ' + title,
+        title: sheetTitle,
+        tocTitle: sheetTitle,
+        railLabel: 'Floor · ' + rail,
         sourceKey: 'floor',
         sourceRef: figure.id || figure.canvasId || null,
-        note: figure.figureMediaId
-          ? 'The stored topo figure for this survey is the evidence on this sheet.'
-          : 'Topo figure reserved. Readings are not redrawn on this sheet.',
+        note: figure.compose
+          ? 'Composed topo figure with fixed report chrome.'
+          : (figure.figureMediaId
+            ? 'The stored topo figure for this survey is the evidence on this sheet.'
+            : 'Topo figure reserved. Readings are not redrawn on this sheet.'),
         meta: {
           reserved: false,
-          levelName: name,
+          levelName: levelName,
+          scopeTitle: scopeTitle,
+          scope: figure.scope || 'all',
+          areaId: figure.areaId || null,
           epochLabel: epochLabel,
           canvasId: figure.canvasId || null,
           epochId: figure.epochId || null,
@@ -382,6 +470,9 @@
           readingCount: figure.readingCount || 0,
           areaCount: figure.areaCount || 0,
           figureMediaId: figure.figureMediaId || null,
+          frontDoorFacing: text(figure.frontDoorFacing),
+          compose: !!figure.compose,
+          figureNumber: figureNumber,
         },
       });
     });

@@ -8,6 +8,11 @@ import {
   renderFloorSurveyRecoveryCanvas,
   setRecoveryRendererForTests,
 } from "@/lib/recovery-pdf";
+import {
+  composeReportTopoFigure,
+  composeReportTopoFigureForPage,
+  listReportTopoPageSpecs,
+} from "@/lib/report-topo-figure";
 import "../styles.css";
 
 export type MountOptions = {
@@ -62,6 +67,13 @@ declare global {
       recoveryReadingLabel: typeof recoveryReadingLabel;
       recoveryPdfMediaIdFor: typeof recoveryPdfMediaIdFor;
       setRecoveryRendererForTests: typeof setRecoveryRendererForTests;
+      composeReportTopoFigure: typeof composeReportTopoFigure;
+      composeReportTopoFigureForPage: typeof composeReportTopoFigureForPage;
+      listReportTopoPageSpecs: typeof listReportTopoPageSpecs;
+    };
+    ToolboxDB?: {
+      getMedia?: (id: string) => Promise<string | null>;
+      [key: string]: unknown;
     };
   }
 }
@@ -74,6 +86,9 @@ window.ToolboxFloorSurvey = {
   recoveryReadingLabel,
   recoveryPdfMediaIdFor,
   setRecoveryRendererForTests,
+  composeReportTopoFigure,
+  composeReportTopoFigureForPage,
+  listReportTopoPageSpecs,
 };
 
 // Vite's IIFE assigns this module's exports onto the ToolboxFloorSurvey global
@@ -85,4 +100,7 @@ export {
   recoveryReadingLabel,
   recoveryPdfMediaIdFor,
   setRecoveryRendererForTests,
+  composeReportTopoFigure,
+  composeReportTopoFigureForPage,
+  listReportTopoPageSpecs,
 };
