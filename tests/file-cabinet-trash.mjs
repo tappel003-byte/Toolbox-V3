@@ -601,7 +601,7 @@ try {
       return node.textContent;
     });
     report.emptyLabel = (document.querySelector('#trash-empty') || {}).textContent || '';
-    report.retentionCopy = ((document.querySelector('.trash-head p') || {}).textContent || '').trim();
+    report.retentionCopy = ((document.querySelector('.trash-head h1 + p') || {}).textContent || '').trim();
     report.trashRestoreCount = Array.from(document.querySelectorAll('.trash-row button')).filter(function (button) {
       return /^\s*Restore\s*$/i.test(button.textContent || '');
     }).length;
