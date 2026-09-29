@@ -190,15 +190,6 @@ for (const viewport of [
 }
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
 
-async function openRowMenu(name) {
-  await page.evaluate((target) => {
-    const shell = [...document.querySelectorAll('.cabinet-row-shell')].find(
-      (node) => node.querySelector('.cabinet-row__name')?.textContent === target,
-    );
-    shell?.querySelector('.cabinet-row-menu__toggle')?.click();
-  }, name);
-}
-
 async function openRowMenuById(id) {
   await page.evaluate((targetId) => {
     const shell = document.querySelector('.cabinet-row-shell[data-customer-file-id="' + targetId + '"]');
@@ -207,58 +198,110 @@ async function openRowMenuById(id) {
 }
 
 await openRowMenuById('trash-empty');
-let emptyMenu = await page.evaluate(() => ({
-  action: document.querySelector('.cabinet-row-menu.is-open .cabinet-row-menu__danger')?.textContent,
+const emptyMenu = await page.evaluate(() => ({
+  danger: document.querySelectorAll('.cabinet-row-menu__danger').length,
+  actions: [...document.querySelectorAll('.cabinet-row-menu.is-open button')].map((node) => node.textContent),
 }));
-check('Empty stub menu offers explicit permanent delete', /Delete empty file/.test(emptyMenu.action || ''), JSON.stringify(emptyMenu));
-await page.click('.cabinet-row-menu.is-open .cabinet-row-menu__danger');
+check(
+  'On this device menu has Send and no Delete chip',
+  emptyMenu.danger === 0 && emptyMenu.actions.includes('Send to File Cabinet') && !emptyMenu.actions.some((label) => /Delete/i.test(label)),
+  JSON.stringify(emptyMenu),
+);
+await page.screenshot({ path: `${OUT}/customer-file-list-menu-phone.png` });
+await page.evaluate(() => document.querySelector('.cabinet-row-menu.is-open')?.classList.remove('is-open'));
+
+async function openCustomerFile(id) {
+  await page.evaluate((targetId) => {
+    window.location.hash = '#/file/' + targetId;
+  }, id);
+  await page.waitForFunction((targetId) => {
+    const button = document.querySelector('#home-delete');
+    return window.location.hash === '#/file/' + targetId &&
+      button &&
+      !button.hidden &&
+      document.querySelector('#home-card-name')?.textContent;
+  }, {}, id);
+}
+
+async function backToList(expectedRows) {
+  await page.evaluate(() => {
+    window.location.hash = '#/';
+  });
+  await page.waitForFunction((count) => document.querySelectorAll('.cabinet-row').length === count, {}, expectedRows);
+}
+
+await openCustomerFile('trash-empty');
+await page.click('#home-delete');
 await page.waitForSelector('#toolbox-confirm:not([hidden])');
 let emptyConfirm = await page.evaluate(() => ({
   title: document.querySelector('#confirm-title')?.textContent,
   message: document.querySelector('#confirm-message')?.textContent,
   no: document.querySelector('#confirm-no')?.textContent,
   yes: document.querySelector('#confirm-yes')?.textContent,
+  listDelete: document.querySelectorAll('.cabinet-row-menu__danger').length,
 }));
-check('Empty stub permanent delete has explicit yes/no confirmation', /Delete empty file/i.test(emptyConfirm.title || '') && /^No/.test(emptyConfirm.no || '') && /^Yes/.test(emptyConfirm.yes || ''), JSON.stringify(emptyConfirm));
+check(
+  'Empty stub delete inside the file has explicit yes/no confirmation',
+  /Delete empty file/i.test(emptyConfirm.title || '') && /^No/.test(emptyConfirm.no || '') && /^Yes/.test(emptyConfirm.yes || '') && emptyConfirm.listDelete === 0,
+  JSON.stringify(emptyConfirm),
+);
 await page.click('#confirm-no');
 check('No keeps empty stub', !!(await page.evaluate(() => window.ToolboxDB.getCustomerFile('trash-empty'))));
 
-await openRowMenuById('trash-empty');
-await page.click('.cabinet-row-menu.is-open .cabinet-row-menu__danger');
+await page.click('#home-delete');
+await page.waitForSelector('#toolbox-confirm:not([hidden])');
 await page.click('#confirm-yes');
 await page.waitForFunction(() => document.querySelectorAll('.cabinet-row').length === 5);
 const emptyDeleted = await page.evaluate(async () => ({
   record: await window.ToolboxDB.getCustomerFile('trash-empty'),
+  hash: window.location.hash,
 }));
-check('Confirmed empty stub deletion removes record', !emptyDeleted.record, JSON.stringify(emptyDeleted));
+check('Confirmed empty stub deletion removes record', !emptyDeleted.record && emptyDeleted.hash === '#/', JSON.stringify(emptyDeleted));
 
-await openRowMenu('Name Only');
-const namedAction = await page.evaluate(() => document.querySelector('.cabinet-row-menu.is-open .cabinet-row-menu__danger')?.textContent);
-check('Name-only file asks before a local delete', namedAction === 'Delete', namedAction);
-await page.evaluate(() => document.querySelector('.cabinet-row-menu.is-open')?.classList.remove('is-open'));
+async function localDeleteConfirm(id) {
+  await openCustomerFile(id);
+  await page.click('#home-delete');
+  await page.waitForSelector('#toolbox-confirm:not([hidden])');
+  const confirm = await page.evaluate(() => ({
+    title: document.querySelector('#confirm-title')?.textContent,
+    message: document.querySelector('#confirm-message')?.textContent,
+  }));
+  await page.click('#confirm-no');
+  await backToList(5);
+  return confirm;
+}
 
-await openRowMenuById('trash-address');
-const addressAction = await page.evaluate(() => document.querySelector('.cabinet-row-menu.is-open .cabinet-row-menu__danger')?.textContent);
-check('Address-only file asks before a local delete', addressAction === 'Delete', addressAction);
-await page.evaluate(() => document.querySelector('.cabinet-row-menu.is-open')?.classList.remove('is-open'));
+const namedConfirm = await localDeleteConfirm('trash-named');
+check(
+  'Name-only file asks before a local delete',
+  /Delete this Customer File/i.test(namedConfirm.title || '') && /contains customer or survey information/i.test(namedConfirm.message || ''),
+  JSON.stringify(namedConfirm),
+);
+const addressConfirm = await localDeleteConfirm('trash-address');
+check(
+  'Address-only file asks before a local delete',
+  /Delete this Customer File/i.test(addressConfirm.title || '') && /contains customer or survey information/i.test(addressConfirm.message || ''),
+  JSON.stringify(addressConfirm),
+);
+const planConfirm = await localDeleteConfirm('trash-plan');
+check(
+  'Plan-only file asks before a local delete',
+  /Delete this Customer File/i.test(planConfirm.title || '') && /contains customer or survey information/i.test(planConfirm.message || ''),
+  JSON.stringify(planConfirm),
+);
 
-await openRowMenuById('trash-plan');
-const planAction = await page.evaluate(() => document.querySelector('.cabinet-row-menu.is-open .cabinet-row-menu__danger')?.textContent);
-check('Plan-only file asks before a local delete', planAction === 'Delete', planAction);
-await page.evaluate(() => document.querySelector('.cabinet-row-menu.is-open')?.classList.remove('is-open'));
-
-await openRowMenu('Worked Survey');
-const workedAction = await page.evaluate(() => document.querySelector('.cabinet-row-menu.is-open .cabinet-row-menu__danger')?.textContent);
-check('Meaningful file menu asks before deleting', workedAction === 'Delete', workedAction);
-await page.click('.cabinet-row-menu.is-open .cabinet-row-menu__danger');
+await openCustomerFile('trash-worked');
+await page.click('#home-delete');
 await page.waitForSelector('#toolbox-confirm:not([hidden])');
 const workedConfirm = await page.evaluate(() => ({
   title: document.querySelector('#confirm-title')?.textContent,
   message: document.querySelector('#confirm-message')?.textContent,
+  button: document.querySelector('#home-delete')?.textContent,
 }));
 check(
   'Meaningful delete says the file contains information and does not use a 120-day trash',
-  /Delete this Customer File/i.test(workedConfirm.title || '') &&
+  workedConfirm.button === 'Delete this Customer File' &&
+    /Delete this Customer File/i.test(workedConfirm.title || '') &&
     /contains customer or survey information/i.test(workedConfirm.message || '') &&
     !/120 days/i.test(workedConfirm.message || ''),
   JSON.stringify(workedConfirm),
@@ -266,10 +309,14 @@ check(
 await page.click('#confirm-no');
 check('No keeps the meaningful file', !!(await page.evaluate(() => window.ToolboxDB.getCustomerFile('trash-worked'))));
 
-await openRowMenu('Worked Survey');
-await page.click('.cabinet-row-menu.is-open .cabinet-row-menu__danger');
+await page.click('#home-delete');
+await page.waitForSelector('#toolbox-confirm:not([hidden])');
 await page.click('#confirm-yes');
-await page.waitForFunction(() => ![...document.querySelectorAll('.cabinet-row__name')].some((node) => node.textContent === 'Worked Survey'));
+await page.waitForFunction(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('trash-worked');
+  return !record && window.location.hash === '#/' &&
+    ![...document.querySelectorAll('.cabinet-row__name')].some((node) => node.textContent === 'Worked Survey');
+});
 
 const deletedWorked = await page.evaluate(async () => ({
   record: await window.ToolboxDB.getCustomerFile('trash-worked'),

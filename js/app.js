@@ -462,17 +462,7 @@
           return;
         }
         records.forEach(function (record) {
-          listEl.appendChild(cabinetRowNode(record, function () {
-            requestCustomerFileRemoval(record).then(function (result) {
-              if (!result) return;
-              cabinetNotice = result;
-              renderCabinet(app);
-            }).catch(function (err) {
-              console.error('Could not remove Customer File:', err);
-              cabinetNotice = 'Could not remove that Customer File. Try again.';
-              renderCabinet(app);
-            });
-          }));
+          listEl.appendChild(cabinetRowNode(record));
         });
       }
 
@@ -641,7 +631,7 @@
       '    <div>' +
       '      <p class="eyebrow">Cloud file management</p>' +
       '      <h1>File Cabinet</h1>' +
-      '      <p>Browse cloud Customer Files. Check Out brings one selected file onto this device.</p>' +
+      '      <p>Browse cloud Customer Files. Check Out brings one onto this device, where Delete is inside that Customer File.</p>' +
       '      <p class="file-cabinet-cleanup" id="file-cabinet-cleanup" hidden>Deleted files are old enough to clean up.</p>' +
       '    </div>' +
       '    <button type="button" id="file-cabinet-trash" class="btn btn--secondary file-cabinet-trash">Trash</button>' +
@@ -669,6 +659,31 @@
         window.location.hash = '#/cabinet/trash';
       });
     }
+    function compareCabinetEntries(a, b) {
+      const addressA = String(a.propertyAddress || '').trim().toLocaleLowerCase();
+      const addressB = String(b.propertyAddress || '').trim().toLocaleLowerCase();
+      if (!addressA && addressB) return 1;
+      if (addressA && !addressB) return -1;
+      const byAddress = addressA.localeCompare(addressB);
+      if (byAddress) return byAddress;
+      return String(a.displayName || '').trim().toLocaleLowerCase()
+        .localeCompare(String(b.displayName || '').trim().toLocaleLowerCase());
+    }
+
+    function applyCabinetBrowse(browse) {
+      const cleanup = app.querySelector('#file-cabinet-cleanup');
+      if (cleanup) {
+        const eligibleCleanup = ((browse && browse.entries) || []).some(function (entry) {
+          if (!entry || !entry.deletedAt) return false;
+          const at = Date.parse(entry.purgeAfter);
+          return Number.isFinite(at) && at <= Date.now();
+        });
+        cleanup.hidden = !eligibleCleanup;
+      }
+      inventory = cabinetInventoryEntries(browse);
+      paintList();
+      return browse;
+    }
 
     function paintList() {
       const filtered = filterCabinetEntries(inventory, searchInput.value);
@@ -682,16 +697,7 @@
         listEl.appendChild(p);
         return;
       }
-      filtered.sort(function (a, b) {
-        const addressA = String(a.propertyAddress || '').trim().toLocaleLowerCase();
-        const addressB = String(b.propertyAddress || '').trim().toLocaleLowerCase();
-        if (!addressA && addressB) return 1;
-        if (addressA && !addressB) return -1;
-        const byAddress = addressA.localeCompare(addressB);
-        if (byAddress) return byAddress;
-        return String(a.displayName || '').trim().toLocaleLowerCase()
-          .localeCompare(String(b.displayName || '').trim().toLocaleLowerCase());
-      });
+      filtered.sort(compareCabinetEntries);
       filtered.forEach(function (entry) {
         listEl.appendChild(cabinetCloudRowNode(entry, app));
       });
@@ -705,19 +711,7 @@
       return;
     }
 
-    window.ToolboxSync.browseCabinet().then(function (browse) {
-      const cleanup = app.querySelector('#file-cabinet-cleanup');
-      if (cleanup) {
-        const eligible = ((browse && browse.entries) || []).some(function (entry) {
-          if (!entry || !entry.deletedAt) return false;
-          const at = Date.parse(entry.purgeAfter);
-          return Number.isFinite(at) && at <= Date.now();
-        });
-        cleanup.hidden = !eligible;
-      }
-      inventory = cabinetInventoryEntries(browse);
-      paintList();
-    }).catch(function (err) {
+    window.ToolboxSync.browseCabinet().then(applyCabinetBrowse).catch(function (err) {
       const code = err && err.code;
       listEl.innerHTML = '';
       const p = document.createElement('p');
@@ -807,16 +801,6 @@
         });
       });
       actions.appendChild(btn);
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.type = 'button';
-      deleteBtn.className = 'btn btn--secondary cabinet-delete-btn';
-      deleteBtn.textContent = 'Delete';
-      deleteBtn.addEventListener('click', function (event) {
-        event.stopPropagation();
-        requestCabinetDelete(entry, app);
-      });
-      actions.appendChild(deleteBtn);
     } else if (entry.presence === 'local') {
       const openBtn = document.createElement('button');
       openBtn.type = 'button';
@@ -843,40 +827,6 @@
     notice.textContent = cabinetNotice;
     notice.hidden = false;
     cabinetNotice = '';
-  }
-
-  function requestCabinetDelete(entry, app) {
-    const name = entry.displayName || 'Customer File';
-    if (!window.ToolboxSync || typeof window.ToolboxSync.trashCabinetCustomerFile !== 'function') {
-      cabinetNotice = 'File Cabinet delete is unavailable.';
-      renderFileCabinet(app);
-      showFileCabinetNotice(app);
-      return;
-    }
-    if (entry.availability !== 'available' || entry.presence === 'local') {
-      cabinetNotice = 'Check this Customer File in before deleting it from the File Cabinet.';
-      renderFileCabinet(app);
-      showFileCabinetNotice(app);
-      return;
-    }
-    confirmAction({
-      title: 'Delete from File Cabinet?',
-      message: name + ' will move to File Cabinet Trash. It stays recoverable there until you permanently delete it.',
-      cancelLabel: 'Cancel',
-      confirmLabel: 'Delete',
-    }).then(function (confirmed) {
-      if (!confirmed) return;
-      return window.ToolboxSync.trashCabinetCustomerFile(entry.id).then(function () {
-        cabinetNotice = name + ' was moved to File Cabinet Trash.';
-        renderFileCabinet(app);
-        showFileCabinetNotice(app);
-      }).catch(function (err) {
-        console.warn('File Cabinet delete failed:', err);
-        cabinetNotice = (err && err.message) || 'Could not delete that Customer File.';
-        renderFileCabinet(app);
-        showFileCabinetNotice(app);
-      });
-    });
   }
 
   function deleteLocalCustomerFile(record, name) {
@@ -961,7 +911,7 @@
     });
   }
 
-  function cabinetRowNode(record, onRemove) {
+  function cabinetRowNode(record) {
     const lockedLabel = window.ToolboxSync &&
       typeof window.ToolboxSync.foreignCheckoutLabel === 'function'
       ? window.ToolboxSync.foreignCheckoutLabel(record.id)
@@ -1072,19 +1022,6 @@
       menu.appendChild(sendBtn);
     }
 
-    const removeBtn = document.createElement('button');
-    removeBtn.type = 'button';
-    removeBtn.className = 'cabinet-row-menu__danger';
-    removeBtn.textContent = cabinetBacked
-      ? 'Delete'
-      : (isEmptyCustomerFileStub(record) ? 'Delete empty file' : 'Delete');
-    removeBtn.addEventListener('click', function (event) {
-      event.stopPropagation();
-      menu.classList.remove('is-open');
-      onRemove();
-    });
-
-    menu.appendChild(removeBtn);
     shell.appendChild(row);
     shell.appendChild(menu);
     return shell;
@@ -1584,11 +1521,14 @@
       '  <p class="cf-home__hint">Each workspace opens with this Customer File. They are independent—not required steps.</p>' +
       '  <div class="cf-home__file-actions">' +
       '    <button type="button" id="home-import" class="btn btn--secondary">Import standalone export</button>' +
+      '    <button type="button" id="home-delete" class="btn btn--secondary cf-home__delete" hidden>Delete this Customer File</button>' +
       '  </div>' +
+      '  <p class="cabinet-notice" id="home-notice" hidden></p>' +
       '</div>';
 
     const backBtn = app.querySelector('#home-back');
     const importBtn = app.querySelector('#home-import');
+    const deleteBtn = app.querySelector('#home-delete');
     const editTopBtn = app.querySelector('#home-edit-top');
     const planCta = app.querySelector('#home-plan-cta');
     const planCallout = app.querySelector('#home-plan-callout');
@@ -1607,6 +1547,7 @@
         window.ToolboxSync.isCheckedOutElsewhere(record.id));
       const home = app.querySelector('#cf-home');
       if (home) home.classList.toggle('is-checked-out-elsewhere', homeLocked);
+      if (deleteBtn) deleteBtn.hidden = homeLocked || cabinetTrashPending(record);
       if (!homeLocked) return;
       const label = window.ToolboxSync.foreignCheckoutLabel(record.id) || 'Checked out on another device';
       statusEl.textContent = label;
@@ -1633,6 +1574,36 @@
       window.location.hash = '#/file/' + encodeURIComponent(id) + '/import';
     });
     editTopBtn.addEventListener('click', function () { editFile('customer'); });
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', function () {
+        if (homeLocked || !currentRecord || cabinetTrashPending(currentRecord)) return;
+        const fileId = currentRecord.id;
+        requestCustomerFileRemoval(currentRecord).then(function (result) {
+          if (!result) return;
+          return window.ToolboxDB.getCustomerFile(fileId).then(function (still) {
+            if (!still || still.deletedAt) {
+              cabinetNotice = result;
+              window.location.hash = '#/';
+              return;
+            }
+            currentRecord = still;
+            const notice = app.querySelector('#home-notice');
+            if (notice) {
+              notice.textContent = result;
+              notice.hidden = false;
+            }
+            applyHomeLock(still);
+          });
+        }).catch(function (err) {
+          console.error('Could not remove Customer File:', err);
+          const notice = app.querySelector('#home-notice');
+          if (notice) {
+            notice.textContent = 'Could not remove that Customer File. Try again.';
+            notice.hidden = false;
+          }
+        });
+      });
+    }
     planCta.addEventListener('click', function () { editFile('plans'); });
     app.querySelectorAll('.cf-app-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {

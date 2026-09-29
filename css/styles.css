@@ -1937,8 +1937,7 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   margin-right: 0.35rem;
 }
 
-.cabinet-checkout-btn,
-.cabinet-delete-btn {
+.cabinet-checkout-btn {
   flex: 0 0 auto;
   align-self: center;
   margin-right: 0;
@@ -2000,8 +1999,7 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   font-weight: 650;
 }
 
-.cabinet-row--index .cabinet-checkout-btn,
-.cabinet-row--index .cabinet-delete-btn {
+.cabinet-row--index .cabinet-checkout-btn {
   min-height: 44px;
   margin-right: 0;
   padding: 8px 12px;
@@ -2311,45 +2309,6 @@ button.local-trash-recovery[hidden] {
 
 .cabinet-row-menu__action:hover {
   background: #edf2f4;
-}
-
-.cabinet-row-menu__danger {
-  position: absolute;
-  top: calc(100% + 5px);
-  right: 0;
-  display: none;
-  box-sizing: border-box;
-  width: max-content;
-  min-width: min(178px, calc(100vw - 24px));
-  max-width: calc(100vw - 24px);
-  padding: 11px 13px;
-  color: #8e3329;
-  background: #fff;
-  border: 1px solid #e3c8c3;
-  border-radius: 10px;
-  box-shadow: var(--shadow-md);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 750;
-  text-align: left;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  cursor: pointer;
-  z-index: 2;
-}
-
-.cabinet-row-menu.is-open .cabinet-row-menu__action ~ .cabinet-row-menu__danger {
-  top: calc(100% + 48px);
-  border-radius: 0 0 10px 10px;
-  box-shadow: var(--shadow-md);
-}
-
-.cabinet-row-menu.is-open .cabinet-row-menu__danger {
-  display: block;
-}
-
-.cabinet-row-menu__danger:hover {
-  background: #fff4f1;
 }
 
 /* Customer File Trash */
@@ -2763,6 +2722,21 @@ button.local-trash-recovery[hidden] {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
+}
+
+.cf-home__delete {
+  min-height: 44px;
+  color: #8e3329;
+  background: #fff;
+  border-color: #e3c8c3;
+}
+
+button.cf-home__delete[hidden] {
+  display: none;
+}
+
+.cf-home .cabinet-notice {
+  margin: 12px 0 0;
 }
 
 .cf-home__photo-folders {

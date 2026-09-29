@@ -1,0 +1,12 @@
+{
+  // Static Toolbox site (toolbox-v3). Not the toolbox-sync API Worker.
+  // Workers Builds does not run a command from this file.
+  // One-time dashboard Build command: node scripts/publish-pwa.mjs
+  // Deploy and preview stay: npx wrangler versions upload
+  // Do not set the config path to sync-worker/wrangler.toml.
+  "name": "toolbox-v3",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./publish"
+  }
+}

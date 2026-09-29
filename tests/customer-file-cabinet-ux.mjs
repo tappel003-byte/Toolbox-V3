@@ -401,6 +401,12 @@ try {
       !/Available/i.test(document.querySelector('#file-cabinet-list').textContent));
     report.statusElsewhere = !!(report.rows.beta && /Checked out elsewhere/i.test(report.rows.beta.status));
     report.checkoutButtons = document.querySelectorAll('.cabinet-checkout-btn').length;
+    report.cardDeleteButtons = document.querySelectorAll('.cabinet-row--cloud .cabinet-delete-btn').length;
+    report.cardDeleteLabel = Array.from(document.querySelectorAll('.cabinet-row--cloud button')).some(function (button) {
+      return /^\s*Delete\s*$/i.test(button.textContent || '');
+    });
+    report.noCabinetManage = !document.querySelector('#cabinet-cloud-trash-toggle') &&
+      !document.querySelector('#cabinet-cloud-trash-move');
     report.noOnlineLocationLine = !document.querySelector('.cabinet-row--cloud .cabinet-row__location');
     const weights = report.rows.delta || {};
     report.addressBolder = Number(weights.addressWeight) > Number(weights.ownerWeight);
@@ -537,6 +543,11 @@ try {
         alphaAddressClipped: alphaAddress ? alphaAddress.scrollWidth > alphaAddress.clientWidth + 2 : true,
         deltaAddressClipped: deltaAddress ? deltaAddress.scrollWidth > deltaAddress.clientWidth + 2 : true,
         listHasAvailable: /Available/i.test((document.querySelector('#file-cabinet-list') || {}).textContent || ''),
+        cardDeletes: document.querySelectorAll('.cabinet-delete-btn').length,
+        deleteChip: Array.from(document.querySelectorAll('.cabinet-row--cloud button')).some(function (button) {
+          return /^\s*Delete\s*$/i.test(button.textContent || '');
+        }),
+        noCabinetManage: !document.querySelector('#cabinet-cloud-trash-toggle'),
       };
     });
   }
@@ -554,6 +565,8 @@ try {
   check('field-work date prefers stored survey date over created/updated clocks', out.deltaSurveyDate && out.deltaNotUpdated && out.alphaCreatedFallback, JSON.stringify(out.rows));
   check('search matches city, ZIP, mailing address, company, spouse, email, and phone', out.zipSearch && out.citySearch && out.mailingSearch && out.companySearch && out.spouseSearch && out.emailSearch && out.phoneSearch, JSON.stringify(out));
   check('normal availability is implied by Check Out; exceptional status remains', out.noRedundantAvailability && out.statusElsewhere && out.checkoutButtons >= 1 && out.noOnlineLocationLine, JSON.stringify(out));
+  check('normal File Cabinet cards have no Delete chip', out.cardDeleteButtons === 0 && out.cardDeleteLabel === false, JSON.stringify(out));
+  check('File Cabinet has no separate move-to-Trash control', out.noCabinetManage, JSON.stringify(out));
   check('Check Out returns to #/ with confirmation', out.afterCheckoutHash === '#/' && /Gamma.*checked out to this device/i.test(out.afterCheckoutNotice), JSON.stringify(out));
   check('Check Out materializes and shows under On this device', out.afterCheckoutLocal && out.afterCheckoutOnDeviceVisible && out.materializeHadComponents, JSON.stringify(out));
   check('selective-local Sync leaves remote-only remote', out.syncOk && out.syncSkippedRemote && out.alphaStillRemote, JSON.stringify(out));
@@ -567,7 +580,8 @@ try {
         shot.buttonHeight >= 44 && shot.buttonWidth >= 44 &&
         shot.rowHeights.length >= 4 &&
         shot.rowHeights.every((height) => height > 0 && height < 120) &&
-        !shot.listHasAvailable;
+        !shot.listHasAvailable && shot.cardDeletes === 0 && shot.deleteChip === false &&
+        shot.noCabinetManage;
     }),
     JSON.stringify(layout),
   );
