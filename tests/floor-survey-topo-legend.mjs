@@ -148,6 +148,7 @@ async function openTopo(page, areas) {
   const seeded = await page.evaluate(
     async ({ planW, planH, areas, points }) => {
       localStorage.removeItem('topo.legend.v1');
+      localStorage.removeItem('stats-chip-size');
       for (const key of Object.keys(localStorage)) {
         if (key.startsWith('stats-chip-pos:')) localStorage.removeItem(key);
       }
@@ -492,6 +493,7 @@ async function openLevels(levelNames) {
   const seeded = await page.evaluate(
     async ({ planW, planH, levelNames, polygon, readings }) => {
       localStorage.removeItem('topo.legend.v1');
+      localStorage.removeItem('stats-chip-size');
       for (const key of Object.keys(localStorage)) {
         if (key.startsWith('stats-chip-pos:')) localStorage.removeItem(key);
       }
@@ -656,11 +658,147 @@ check(
   oneLevel.statsText,
 );
 
+const oneChipDesktop = await page.evaluate(() => {
+  function screenAnchoredSize(base, viewScale) {
+    const z = viewScale > 0 ? viewScale : 1;
+    const factor = z >= 1 ? Math.pow(z, 0.35) : 1;
+    return Math.min(base * 2.5, Math.max(base, base * factor));
+  }
+  function oldOnScreen(base, viewScale) {
+    const z = viewScale || 1;
+    return Math.min(base * 4, Math.max(base * 0.5, base * Math.pow(z, 0.5)));
+  }
+  const chips = [...document.querySelectorAll('[aria-label="Elevation stats — drag to move"]')].filter((el) => {
+    const box = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return box.width > 40 && Number(style.opacity) > 0.5;
+  });
+  const scale = Number(document.querySelector('[data-canvas-scale]')?.getAttribute('data-canvas-scale') || 1);
+  return {
+    chipCount: chips.length,
+    chipHeight: chips[0] ? Math.round(chips[0].getBoundingClientRect().height) : 0,
+    scale,
+    labelOnScreen: screenAnchoredSize(11, scale),
+    oldLabelOnScreen: oldOnScreen(11, scale),
+  };
+});
+check(
+  'One boundary shows exactly one floating H / L / Δ chip',
+  oneChipDesktop.chipCount === 1,
+  JSON.stringify(oneChipDesktop),
+);
+check(
+  'Chosen 11px labels stay near 11px on screen at this fit scale',
+  oneChipDesktop.scale > 0 && oneChipDesktop.labelOnScreen >= 10.5,
+  JSON.stringify(oneChipDesktop),
+);
+
+// Zoom far out so the old sqrt formula would shrink 11px labels to ~6px.
+const zoomedOutLabels = await page.evaluate(async () => {
+  function screenAnchoredSize(base, viewScale) {
+    const z = viewScale > 0 ? viewScale : 1;
+    const factor = z >= 1 ? Math.pow(z, 0.35) : 1;
+    return Math.min(base * 2.5, Math.max(base, base * factor));
+  }
+  function oldOnScreen(base, viewScale) {
+    const z = viewScale || 1;
+    return Math.min(base * 4, Math.max(base * 0.5, base * Math.pow(z, 0.5)));
+  }
+  const host = document.querySelector('[data-canvas-scale]')?.parentElement;
+  const canvas = document.querySelector('canvas');
+  if (!host || !canvas) return { ok: false, reason: 'no-canvas' };
+  const box = canvas.getBoundingClientRect();
+  for (let i = 0; i < 18; i++) {
+    canvas.dispatchEvent(
+      new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        clientX: box.left + box.width / 2,
+        clientY: box.top + box.height / 2,
+        deltaY: 180,
+      }),
+    );
+  }
+  await new Promise((r) => setTimeout(r, 200));
+  const scale = Number(document.querySelector('[data-canvas-scale]')?.getAttribute('data-canvas-scale') || 1);
+  return {
+    ok: true,
+    scale,
+    labelOnScreen: screenAnchoredSize(11, scale),
+    oldLabelOnScreen: oldOnScreen(11, scale),
+  };
+});
+check(
+  'Zoomed-out desktop keeps ~11px labels instead of shrinking to ~6px',
+  zoomedOutLabels.ok &&
+    zoomedOutLabels.scale > 0 &&
+    zoomedOutLabels.scale < 0.55 &&
+    zoomedOutLabels.labelOnScreen >= 10.5 &&
+    zoomedOutLabels.oldLabelOnScreen < 8,
+  JSON.stringify(zoomedOutLabels),
+);
+await page.screenshot({ path: path.join(OUT, 'topo-zoomed-out-labels-desktop.png') });
+// Restore a normal fit so later legend sampling can find the plan markers.
+await openLevels(['Main Level']);
+
 await page.click('[aria-label="Labels & layers"]');
 await new Promise((r) => setTimeout(r, 300));
 await page.evaluate(() => {
+  localStorage.setItem('stats-chip-size', '44');
+  window.dispatchEvent(new CustomEvent('stats-chip-size-change', { detail: 44 }));
+});
+await new Promise((r) => setTimeout(r, 200));
+// Re-open so the Labels panel reflects the locked size.
+await page.evaluate(() => {
+  [...document.querySelectorAll('button[aria-label="Close"]')].forEach((b) => b.click());
+});
+await page.click('[aria-label="Labels & layers"]');
+await new Promise((r) => setTimeout(r, 300));
+const lockedUi = await page.evaluate(() => {
+  const autoBtn = [...document.querySelectorAll('button')].find((b) =>
+    /Use Auto size for this screen/i.test(b.textContent || ''),
+  );
+  const output = document.querySelector('[aria-label^="Stats pill size:"]');
+  return {
+    hasAuto: !!autoBtn,
+    label: output ? (output.getAttribute('aria-label') || output.textContent || '') : '',
+  };
+});
+check(
+  'Locked stats pill size offers Use Auto for this screen',
+  lockedUi.hasAuto && /44px/.test(lockedUi.label),
+  JSON.stringify(lockedUi),
+);
+await page.evaluate(() => {
+  [...document.querySelectorAll('button')]
+    .find((b) => /Use Auto size for this screen/i.test(b.textContent || ''))
+    ?.click();
+});
+await new Promise((r) => setTimeout(r, 200));
+const afterAuto = await page.evaluate(() => {
+  const autoBtn = [...document.querySelectorAll('button')].find((b) =>
+    /Use Auto size for this screen/i.test(b.textContent || ''),
+  );
+  const output = document.querySelector('[aria-label^="Stats pill size:"]');
+  const chip = document.querySelector('[aria-label="Elevation stats — drag to move"]');
+  return {
+    hasAuto: !!autoBtn,
+    label: output ? (output.getAttribute('aria-label') || output.textContent || '') : '',
+    chipHeight: chip ? Math.round(chip.getBoundingClientRect().height) : 0,
+    stored: localStorage.getItem('stats-chip-size'),
+  };
+});
+check(
+  'Use Auto clears the locked stats pill size on desktop',
+  !afterAuto.hasAuto && /Auto/i.test(afterAuto.label) && afterAuto.stored == null && afterAuto.chipHeight <= 40,
+  JSON.stringify(afterAuto),
+);
+await page.evaluate(() => {
   const label = [...document.querySelectorAll('label')].find((n) => (n.textContent || '').trim() === 'Legend');
   label?.parentElement?.querySelector('[role="switch"]')?.click();
+});
+await page.evaluate(() => {
+  [...document.querySelectorAll('button[aria-label="Close"]')].forEach((b) => b.click());
 });
 await new Promise((r) => setTimeout(r, 500));
 const legendOff = await sampleLegend(page, LEGEND_ONE);
@@ -669,9 +807,14 @@ check(
   legendOff.ok && legendOff.legendVisible !== true && legendOff.whiteRatio < 0.05,
   JSON.stringify(legendOff),
 );
+await page.click('[aria-label="Labels & layers"]');
+await new Promise((r) => setTimeout(r, 300));
 await page.evaluate(() => {
   const label = [...document.querySelectorAll('label')].find((n) => (n.textContent || '').trim() === 'Legend');
   label?.parentElement?.querySelector('[role="switch"]')?.click();
+});
+await page.evaluate(() => {
+  [...document.querySelectorAll('button[aria-label="Close"]')].forEach((b) => b.click());
 });
 await new Promise((r) => setTimeout(r, 500));
 const legendRestored = await sampleLegend(page, LEGEND_ONE);
@@ -680,9 +823,6 @@ check(
   legendRestored.legendVisible === true,
   JSON.stringify(legendRestored),
 );
-await page.evaluate(() => {
-  [...document.querySelectorAll('button[aria-label="Close"]')].forEach((b) => b.click());
-});
 
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
 await openLevels(['Main Level']);
