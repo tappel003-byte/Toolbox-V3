@@ -44,6 +44,16 @@ export function setStatsChipSize(px: number) {
   window.dispatchEvent(new CustomEvent(STATS_CHIP_SIZE_EVENT, { detail: n }));
 }
 
+/** Clear a locked size so the chip follows phone / iPad / desktop Auto again. */
+export function clearStatsChipSize() {
+  try {
+    window.localStorage.removeItem(STATS_CHIP_SIZE_KEY);
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(new CustomEvent(STATS_CHIP_SIZE_EVENT, { detail: null }));
+}
+
 import type { SurveyPoint } from "@/lib/types";
 
 interface Props {
@@ -109,7 +119,10 @@ export function StatsChip({
     setUserSize(getStatsChipSize());
     setAutoSize(autoStatsChipSize());
     const onResize = () => setAutoSize(autoStatsChipSize());
-    const onSize = (e: Event) => setUserSize((e as CustomEvent<number>).detail);
+    const onSize = (e: Event) => {
+      const detail = (e as CustomEvent<number | null>).detail;
+      setUserSize(typeof detail === "number" ? detail : null);
+    };
     window.addEventListener("resize", onResize);
     window.addEventListener("orientationchange", onResize);
     window.addEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);

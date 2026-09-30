@@ -5,11 +5,14 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import {
   autoStatsChipSize,
+  clearStatsChipSize,
   getStatsChipSize,
   setStatsChipSize,
   STATS_CHIP_MAX,
   STATS_CHIP_MIN,
+  STATS_CHIP_SIZE_EVENT,
 } from "@/components/chrome/StatsChip";
+import { screenAnchoredImageSize } from "@/lib/screen-size";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Undo2, X, Waves, Palette, Tag, SlidersHorizontal, Minus, Plus } from "lucide-react";
@@ -180,19 +183,17 @@ function labelAnchor(p: SurveyPoint, k = 1) {
 }
 
 /* ---------------------------------------------------------------------------
- * H / L / Δ stats pill — drawn on the canvas, one per area, anchored to the
- * area centroid (+ the area's stored pillDx/pillDy nudge). Sized the same
- * screen-constant way point labels are: the user's base size at 1x zoom,
- * scaling with zoom between 0.5x and 4x of that base.
+ * H / L / Δ stats pill — drawn on the canvas for multi-area Topo only.
+ * One surface / one boundary uses the floating StatsChip instead, so the
+ * same readout is not drawn twice. Sized like point labels: chosen screen
+ * px holds when fit-scaled out, grows gently when zoomed in.
  * ------------------------------------------------------------------------- */
 
 export const DEFAULT_STATS_PILL_SIZE = 28;
 
 /** Pill height in IMAGE coords for a given base (screen px) and zoom. */
 function pillHeightImg(base: number, viewScale: number) {
-  const z = viewScale || 1;
-  const onScreen = Math.min(base * 4, Math.max(base * 0.5, base * Math.pow(z, 0.5)));
-  return onScreen / z;
+  return screenAnchoredImageSize(base, viewScale);
 }
 
 type PillSeg = { kind: "label" | "hi" | "lo" | "delta"; text: string; w: number };
@@ -245,11 +246,27 @@ export function TopoTab({
     selectedIds && selectedIds.size > 0 ? (selectedIds.values().next().value ?? null) : null;
   const [openCorner, setOpenCorner] = useState<null | "contours" | "palette" | "labels">(null);
   const [warningDismissed, setWarningDismissed] = useState(false);
-  // Stats pill (High/Low/Δ chip) size — persisted in localStorage, read by StatsChip.
-  const [statsChipSize, setStatsChipSizeState] = useState(28);
+  // Stats pill (High/Low/Δ chip) size — Auto by viewport, or a locked local size.
+  const [statsChipLocked, setStatsChipLocked] = useState<number | null>(null);
+  const [statsChipAuto, setStatsChipAuto] = useState(28);
   useEffect(() => {
-    setStatsChipSizeState(getStatsChipSize() ?? autoStatsChipSize());
+    setStatsChipLocked(getStatsChipSize());
+    setStatsChipAuto(autoStatsChipSize());
+    const onResize = () => setStatsChipAuto(autoStatsChipSize());
+    const onSize = (e: Event) => {
+      const detail = (e as CustomEvent<number | null>).detail;
+      setStatsChipLocked(typeof detail === "number" ? detail : null);
+    };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    window.addEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+      window.removeEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
+    };
   }, []);
+  const statsChipSize = statsChipLocked ?? statsChipAuto;
   const [legendDrag, setLegendDrag] = useState<{
     areaId: string;
     /** Pointer offset inside the legend box. */
@@ -415,10 +432,10 @@ export function TopoTab({
     | { kind: "pill"; areaId: string; dx: number; dy: number; tapPoint: SurveyPoint | null };
 
   function hitDraggable(x: number, y: number): Hit | null {
-    // Stats pills are drawn last, so they hit-test first.
-    {
+    // Multi-area canvas pills only — a single surface uses the floating StatsChip.
+    if (areaTopos.length > 1) {
       const h = pillHeightImg(statsChipSize, viewScale);
-      const showLabel = areaTopos.length > 1;
+      const showLabel = true;
       const dec = resolved.decimalPlaces;
       for (let i = areaTopos.length - 1; i >= 0; i--) {
         const at = areaTopos[i];
@@ -467,9 +484,7 @@ export function TopoTab({
     // Point-number labels
     if (resolved.showPoints) {
       const fontBase = resolved.pointLabelFontSize;
-      const fontOnScreenRaw = fontBase * Math.pow(viewScale || 1, 0.5);
-      const fontOnScreen = Math.min(fontBase * 4, Math.max(fontBase * 0.5, fontOnScreenRaw));
-      const fontPx = fontOnScreen / (viewScale || 1);
+      const fontPx = screenAnchoredImageSize(fontBase, viewScale || 1);
       const k = fontPx / fontBase;
       const dec = resolved.decimalPlaces;
       const weight = resolved.pointLabelWeight;
@@ -1084,18 +1099,35 @@ export function TopoTab({
                   update({ legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)) })
                 }
               />
-              <StepperControl
-                label="Stats pill size"
-                value={statsChipSize}
-                min={STATS_CHIP_MIN}
-                max={STATS_CHIP_MAX}
-                step={2}
-                onChange={(v) => {
-                  const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(v)));
-                  setStatsChipSizeState(n);
-                  setStatsChipSize(n);
-                }}
-              />
+              <div className="col-span-2 space-y-1">
+                <StepperControl
+                  label="Stats pill size"
+                  value={statsChipSize}
+                  min={STATS_CHIP_MIN}
+                  max={STATS_CHIP_MAX}
+                  step={2}
+                  format={(v) =>
+                    statsChipLocked == null ? `Auto ${Math.round(v)}px` : `${Math.round(v)}px`
+                  }
+                  onChange={(v) => {
+                    const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(v)));
+                    setStatsChipLocked(n);
+                    setStatsChipSize(n);
+                  }}
+                />
+                {statsChipLocked != null && (
+                  <button
+                    type="button"
+                    className="text-[11px] text-muted-foreground underline underline-offset-2"
+                    onClick={() => {
+                      setStatsChipLocked(null);
+                      clearStatsChipSize();
+                    }}
+                  >
+                    Use Auto size for this screen
+                  </button>
+                )}
+              </div>
               <div className="col-span-2 flex items-center justify-between gap-2">
                 <Label className="text-xs">Label bg</Label>
                 <div className="inline-flex rounded-md border overflow-hidden">
@@ -1608,13 +1640,11 @@ function renderTopoTop(
   const highlightPin = overlay?.highlightPin ?? null;
   const liveLegend = overlay?.liveLegend ?? null;
   const viewScale = overlay?.viewScale || 1;
-  // Label font: anchored to the user's chosen size at 1x zoom (so exports,
-  // which render at 1x, always match what the user set). Scales with zoom
-  // between 0.5x and 4x of that base — readable at extremes, never runaway.
+  // Label font: chosen screen px holds when the plan is fit-scaled out
+  // (desktop), and grows gently when zoomed in. Exports at 1x still match
+  // the chosen size.
   const fontBase = resolved.pointLabelFontSize;
-  const fontOnScreenRaw = fontBase * Math.pow(viewScale, 0.5);
-  const fontOnScreen = Math.min(fontBase * 4, Math.max(fontBase * 0.5, fontOnScreenRaw));
-  const fontPx = fontOnScreen / viewScale;
+  const fontPx = screenAnchoredImageSize(fontBase, viewScale);
   const k = fontPx / fontBase;
   const weight = resolved.pointLabelWeight;
   const color = resolved.pointLabelColor;
@@ -1625,9 +1655,7 @@ function renderTopoTop(
     // stepper (pointSize) instead of font size, so the stepper actually
     // controls what's drawn.
     const dotBase = overlay?.pointSize ?? 6;
-    const dotOnScreenRaw = dotBase * Math.pow(viewScale, 0.5);
-    const dotOnScreen = Math.min(dotBase * 4, Math.max(dotBase * 0.5, dotOnScreenRaw));
-    const dotR = dotOnScreen / viewScale;
+    const dotR = screenAnchoredImageSize(dotBase, viewScale);
     const dotColor = overlay?.pointColor ?? "#dc2626";
     const padX = 4 * k;
     const padY = 2.5 * k;
@@ -1771,19 +1799,19 @@ function renderTopoTop(
     }
   }
 
-  // H / L / Δ stats pill — one per area, drawn last so it sits on top.
-  {
+  // Multi-area only: one named canvas pill per boundary. A single surface
+  // uses the floating StatsChip so H / L / Δ is not drawn twice.
+  if (areaTopos.length > 1) {
     const livePill = overlay?.livePill ?? null;
     const base = overlay?.pillSize ?? DEFAULT_STATS_PILL_SIZE;
     const h = pillHeightImg(base, viewScale);
-    const showLabel = areaTopos.length > 1;
     for (const at of areaTopos) {
       const live = livePill && livePill.id === at.area.id ? livePill : null;
       drawStatsPill(
         ctx,
         at,
         h,
-        showLabel ? at.area.name : null,
+        at.area.name,
         resolved.decimalPlaces,
         pillCenter(at.area, live),
         !!live,

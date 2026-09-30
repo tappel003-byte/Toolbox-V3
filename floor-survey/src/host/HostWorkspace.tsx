@@ -476,8 +476,9 @@ export function HostWorkspace({ customerFileId, onBack }: HostWorkspaceProps) {
             onChange={(m) => setMode(m === "topo" ? "topo" : "field")}
           />
           {/* Proven baseline: the floating H / L / Δ chip is on both Data and Topo.
-              One chip for this level. Several boundaries on the same level are a
-              separate Topo control and do not replace this readout. */}
+              One chip for this level. Topo draws named canvas pills only when
+              several boundaries are on the same level — not a second copy of
+              this readout for a single surface. */}
           <StatsChip
             storageKey={`stats-chip-pos:${activeFloor.id}:solo`}
             points={
