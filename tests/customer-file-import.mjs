@@ -990,6 +990,185 @@ const floorWorkGuard = await page.evaluate(async () => {
 check('Existing Floor Survey work requires explicit add-levels confirmation', floorWorkGuard.requiresConfirm && /additional level/.test(floorWorkGuard.blockedError), JSON.stringify(floorWorkGuard));
 check('Existing Floor geometry is preserved when recovered levels are added', floorWorkGuard.keptCanvas && floorWorkGuard.canvasCount >= 2 && JSON.stringify(floorWorkGuard.keptPoints) === JSON.stringify([[11, 12]]), JSON.stringify(floorWorkGuard));
 
+const oneLevelLegacy = await page.evaluate(async () => {
+  const record = ToolboxApp.blankCustomerFile('import-one-level');
+  ToolboxPlanSetup.ensurePlanSetup(record);
+  record.firstName = 'Mitchell';
+  record.lastName = 'House';
+  record.propertyAddress = '50 Steeplechase Court';
+  await ToolboxDB.saveCustomerFile(record);
+
+  const distress = await ToolboxCustomerFileImport.inspectFile(await window.__importFixtures.distressFile());
+  const distressContext = await ToolboxCustomerFileImport.getImportContext(distress, record.id);
+  await ToolboxCustomerFileImport.applyImport(distress, record.id, {
+    targetUpdatedAt: distressContext.targetUpdatedAt,
+    canvasChoice: 'add',
+    fieldChoices: {},
+    useSuggestedAddress: false,
+  });
+  const afterDistress = await ToolboxDB.getCustomerFile(record.id);
+  const canvasId = afterDistress.planSetup.canvases[0].id;
+  const planId = afterDistress.planSetup.canvases[0].plan.id;
+  const canvasName = afterDistress.planSetup.canvases[0].name;
+
+  const floorFile = await window.__importFixtures.floorFile(1, {
+    address: '50 Steeplechase Court',
+    client: 'Mitchell House',
+    planWidth: 100,
+    planHeight: 80,
+    imageWidth: 100,
+    imageHeight: 80,
+    fileName: 'mitchell.floorsurvey.json',
+  });
+  const floor = await ToolboxCustomerFileImport.inspectFile(floorFile);
+  const floorContext = await ToolboxCustomerFileImport.getImportContext(floor, record.id);
+  await ToolboxCustomerFileImport.applyImport(floor, record.id, {
+    targetUpdatedAt: floorContext.targetUpdatedAt,
+    canvasChoice: 'add',
+    fieldChoices: { firstName: 'keep', lastName: 'keep', propertyAddress: 'keep' },
+    confirmAddFloorLevels: !!floorContext.requiresFloorAddConfirm,
+  });
+  const afterFloor = await ToolboxDB.getCustomerFile(record.id);
+  const floorEntry = afterFloor.recoveryImports.find((entry) => entry.kind === 'floor');
+  const layer = afterFloor.floorSurvey.byCanvasId[canvasId];
+
+  const again = await ToolboxCustomerFileImport.inspectFile(await window.__importFixtures.floorFile(1, {
+    address: '50 Steeplechase Court',
+    client: 'Mitchell House',
+    fileName: 'mitchell-again.floorsurvey.json',
+  }));
+  const againContext = await ToolboxCustomerFileImport.getImportContext(again, record.id);
+  let secondError = '';
+  try {
+    await ToolboxCustomerFileImport.applyImport(again, record.id, {
+      targetUpdatedAt: againContext.targetUpdatedAt,
+      canvasChoice: 'add',
+      fieldChoices: { firstName: 'keep', lastName: 'keep', propertyAddress: 'keep' },
+    });
+  } catch (error) {
+    secondError = error.message;
+  }
+
+  const removed = await ToolboxCustomerFileImport.removeImportedComponent(record.id, floor.fingerprint);
+  const afterRemoval = await ToolboxDB.getCustomerFile(record.id);
+
+  const setup = ToolboxApp.blankCustomerFile('import-extra-floor');
+  ToolboxPlanSetup.ensurePlanSetup(setup);
+  setup.firstName = 'Pat';
+  setup.lastName = 'Owner';
+  setup.propertyAddress = '12 Plan Lane';
+  const setupCanvasId = setup.planSetup.canvases[0].id;
+  setup.planSetup.canvases[0].name = 'Main Level';
+  setup.planSetup.canvases[0].plan = { id: 'plan-setup', width: 50, height: 40 };
+  await ToolboxDB.saveCustomerFile(setup);
+  await ToolboxDB.putMedia('plan-setup', 'data:image/png;base64,aaa');
+  const oneFloor = await window.__importFixtures.floorFile(1, {
+    address: '12 Plan Lane',
+    client: 'Pat Owner',
+    planWidth: 50,
+    planHeight: 40,
+    imageWidth: 50,
+    imageHeight: 40,
+    fileName: 'one-on-setup.json',
+  });
+  const twoFloorSource = JSON.parse(await oneFloor.text());
+  const basement = Object.assign({}, twoFloorSource.floors[0], {
+    id: 'floor-basement',
+    name: 'Basement',
+    order: 1,
+  });
+  twoFloorSource.floors.push(basement);
+  twoFloorSource.points = twoFloorSource.points.concat([{
+    id: 'point-basement',
+    floorId: 'floor-basement',
+    x: 8,
+    y: 9,
+    value: 3,
+    createdAt: 3,
+  }]);
+  const twoFloor = new File([JSON.stringify(twoFloorSource)], 'two-floors.json', { type: 'application/json' });
+  const twoParsed = await ToolboxCustomerFileImport.inspectFile(twoFloor);
+  const twoContext = await ToolboxCustomerFileImport.getImportContext(twoParsed, setup.id);
+  await ToolboxCustomerFileImport.applyImport(twoParsed, setup.id, {
+    targetUpdatedAt: twoContext.targetUpdatedAt,
+    canvasChoice: 'add',
+    fieldChoices: { firstName: 'keep', lastName: 'keep', propertyAddress: 'keep' },
+  });
+  const afterTwo = await ToolboxDB.getCustomerFile(setup.id);
+  const firstLayer = afterTwo.floorSurvey.byCanvasId[setupCanvasId];
+  const addedCanvas = afterTwo.planSetup.canvases.find((canvas) => canvas.id !== setupCanvasId);
+  const addedLayer = addedCanvas && afterTwo.floorSurvey.byCanvasId[addedCanvas.id];
+
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const previewRecord = ToolboxApp.blankCustomerFile('import-one-level-preview');
+  ToolboxPlanSetup.ensurePlanSetup(previewRecord);
+  previewRecord.firstName = 'Mitchell';
+  previewRecord.lastName = 'House';
+  previewRecord.propertyAddress = '50 Steeplechase Court';
+  previewRecord.planSetup.canvases[0].name = 'Main Level';
+  previewRecord.planSetup.canvases[0].plan = { id: 'plan-preview', width: 100, height: 80 };
+  await ToolboxDB.saveCustomerFile(previewRecord);
+  await ToolboxDB.putMedia('plan-preview', 'data:image/png;base64,aaa');
+  ToolboxCustomerFileImport.mount(host, { customerFileId: previewRecord.id, onDone() {} });
+  const previewFile = await window.__importFixtures.floorFile(1, {
+    address: '50 Steeplechase Court',
+    client: 'Mitchell House',
+  });
+  const input = host.querySelector('#cf-import-file');
+  const transfer = new DataTransfer();
+  transfer.items.add(previewFile);
+  input.files = transfer.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise((resolve) => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const text = host.querySelector('.cf-import__preview')?.innerText || '';
+      if (/will not add another level/.test(text) || Date.now() - started > 3000) {
+        clearInterval(timer);
+        resolve();
+      }
+    }, 40);
+  });
+  const previewText = host.querySelector('.cf-import__preview')?.innerText || '';
+  host.remove();
+
+  return {
+    requiresConfirm: floorContext.requiresFloorAddConfirm,
+    canvasCount: afterFloor.planSetup.canvases.length,
+    sameCanvas: afterFloor.planSetup.canvases[0].id === canvasId,
+    samePlan: afterFloor.planSetup.canvases[0].plan.id === planId,
+    canvasName,
+    keptName: afterFloor.planSetup.canvases[0].name,
+    pins: afterFloor.distress.pins.length,
+    pinCanvas: afterFloor.distress.pins.every((pin) => pin.canvasId === canvasId),
+    points: layer && layer.points.map((point) => [point.x, point.y]),
+    createdCanvases: floorEntry && floorEntry.canvasIds,
+    attachedCanvases: floorEntry && floorEntry.attachedCanvasIds,
+    secondRequiresConfirm: againContext.requiresFloorAddConfirm,
+    secondError,
+    removedCanvases: removed.canvasesRemoved,
+    keptPlanLine: removed.canvasNamesKept,
+    afterRemovalCanvases: afterRemoval.planSetup.canvases.length,
+    afterRemovalPlan: afterRemoval.planSetup.canvases[0].plan.id,
+    afterRemovalPins: afterRemoval.distress.pins.length,
+    afterRemovalFloor: Object.keys(afterRemoval.floorSurvey.byCanvasId || {}).length,
+    distressImportRemains: afterRemoval.recoveryImports.some((entry) => entry.kind === 'distress'),
+    twoCount: afterTwo.planSetup.canvases.length,
+    twoFirstPlan: afterTwo.planSetup.canvases[0].plan.id,
+    twoFirstPoints: firstLayer && firstLayer.points.map((point) => [point.x, point.y]),
+    twoAddedName: addedCanvas && addedCanvas.name,
+    twoAddedPoints: addedLayer && addedLayer.points.map((point) => [point.x, point.y]),
+    twoConfirm: twoContext.requiresFloorAddConfirm,
+    previewText,
+  };
+});
+check('One-floor JSON uses the Distress plan instead of adding a level', oneLevelLegacy.canvasCount === 1 && oneLevelLegacy.sameCanvas && oneLevelLegacy.samePlan && oneLevelLegacy.pins === 2 && oneLevelLegacy.pinCanvas && JSON.stringify(oneLevelLegacy.points) === JSON.stringify([[20, 20], [60, 45]]) && oneLevelLegacy.createdCanvases.length === 0 && oneLevelLegacy.attachedCanvases.length === 1 && !oneLevelLegacy.requiresConfirm, JSON.stringify(oneLevelLegacy));
+check('A later Floor Survey still asks before adding a level', oneLevelLegacy.secondRequiresConfirm && /additional level/.test(oneLevelLegacy.secondError), oneLevelLegacy.secondError);
+check('Removing the attached Floor Survey keeps the Distress plan and observations', oneLevelLegacy.removedCanvases === 0 && oneLevelLegacy.afterRemovalCanvases === 1 && oneLevelLegacy.afterRemovalPlan && oneLevelLegacy.afterRemovalPins === 2 && oneLevelLegacy.afterRemovalFloor === 0 && oneLevelLegacy.distressImportRemains && /plan already in this Customer File stays/.test((oneLevelLegacy.keptPlanLine || []).join(' ')), JSON.stringify(oneLevelLegacy));
+check('Extra floors listed in the JSON are added beyond the existing plan', oneLevelLegacy.twoCount === 2 && oneLevelLegacy.twoFirstPlan === 'plan-setup' && JSON.stringify(oneLevelLegacy.twoFirstPoints) === JSON.stringify([[20, 20], [60, 45]]) && oneLevelLegacy.twoAddedName === 'Basement' && JSON.stringify(oneLevelLegacy.twoAddedPoints) === JSON.stringify([[8, 9]]) && !oneLevelLegacy.twoConfirm, JSON.stringify(oneLevelLegacy));
+check('One-floor preview says the existing plan is used', /will not add another level/.test(oneLevelLegacy.previewText) && /different size/.test(oneLevelLegacy.previewText) && !/additional level/i.test(oneLevelLegacy.previewText), oneLevelLegacy.previewText.replace(/\n/g, ' | '));
+
 const destinations = await page.evaluate(async () => {
   const list = await ToolboxCustomerFileImport.listImportDestinations();
   return {
