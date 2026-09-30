@@ -527,6 +527,34 @@
     return true;
   }
 
+  function meaningfulPlanCanvases(record) {
+    return ((record && record.planSetup && record.planSetup.canvases) || []).filter(function (canvas) {
+      return canvas && !isMeaninglessBlankCanvas(canvas, record);
+    });
+  }
+
+  // The Customer File plan is the level. A legacy Floor Survey uses that plan
+  // until the JSON itself lists more floors than plans already in the file.
+  // A file that already has Floor Survey work still adds levels, after confirmation.
+  function floorCanvasPlan(record, parsed, isNew) {
+    const floors = parsed && Array.isArray(parsed.floors) ? parsed.floors : [];
+    if (isNew || recordHasFloorWork(record)) {
+      return { reuse: [], createCount: floors.length };
+    }
+    const existing = meaningfulPlanCanvases(record);
+    if (!existing.length) return { reuse: [], createCount: floors.length };
+    if (floors.length === 1) {
+      const activeId = record.planSetup && record.planSetup.activeCanvasId;
+      const active = existing.find(function (canvas) { return canvas.id === activeId; });
+      return { reuse: [active || existing[0]], createCount: 0 };
+    }
+    const reuseCount = Math.min(existing.length, floors.length);
+    return {
+      reuse: existing.slice(0, reuseCount),
+      createCount: floors.length - reuseCount,
+    };
+  }
+
   function displayCustomerLabel(record) {
     if (!record) return 'Customer File';
     if (window.ToolboxApp && window.ToolboxApp.customerIdentity) {
@@ -992,12 +1020,43 @@
 
   function prepareFloor(record, parsed, isNew, options) {
     const mediaEntries = [];
-    const canvases = parsed.floors.map((floorItem, index) => {
+    const placement = floorCanvasPlan(record, parsed, isNew);
+    const reused = placement.reuse;
+    const created = [];
+    const canvases = parsed.floors.map(function (floorItem, index) {
+      if (index < reused.length) {
+        const canvas = reused[index];
+        if (!canvas.plan || !canvas.plan.id) {
+          const planId = newId('plan-import');
+          mediaEntries.push({ id: planId, value: floorItem.source.planDataUrl });
+          canvas.plan = { id: planId, width: floorItem.width, height: floorItem.height };
+        }
+        return canvas;
+      }
       const planId = newId('plan-import');
       mediaEntries.push({ id: planId, value: floorItem.source.planDataUrl });
-      return importedCanvas(floorItem.source.name || 'Recovered Floor ' + (index + 1), planId, floorItem.width, floorItem.height);
+      const canvas = importedCanvas(
+        floorItem.source.name || ('Recovered Floor ' + (index + 1)),
+        planId,
+        floorItem.width,
+        floorItem.height,
+      );
+      created.push(canvas);
+      return canvas;
     });
-    addImportedCanvases(record, canvases, isNew);
+    if (created.length && reused.length) {
+      const kept = (record.planSetup.canvases || []).filter(function (canvas) {
+        return !isMeaninglessBlankCanvas(canvas, record);
+      });
+      record.planSetup.canvases = kept.concat(created);
+      record.planSetup.activeCanvasId = canvases[0].id;
+      record.planSetup.updatedAt = new Date().toISOString();
+    } else if (created.length) {
+      addImportedCanvases(record, created, isNew);
+    } else if (reused.length) {
+      record.planSetup.activeCanvasId = canvases[0].id;
+      record.planSetup.updatedAt = new Date().toISOString();
+    }
     if (isNew) record.distress.activeCanvasId = canvases[0].id;
     parsed.floors.forEach((floorItem, index) => {
       const canvasId = canvases[index].id;
@@ -1008,12 +1067,15 @@
     return {
       mediaEntries,
       photoEntries: [],
-      canvasIds: canvases.map((canvas) => canvas.id),
+      canvasIds: created.map(function (canvas) { return canvas.id; }),
+      attachedCanvasIds: reused.map(function (canvas) { return canvas.id; }),
       result: {
         kind: 'floor',
         readings: parsed.pointCount,
         transitions: parsed.transitionCount,
         floorCount: canvases.length,
+        addedFloorCount: created.length,
+        placedOnExistingPlan: reused.length > 0,
         canvasName: canvases[0].name,
       },
     };
@@ -1091,6 +1153,7 @@
       sourceName: parsed.fileName,
       importedAt: now,
       canvasIds: prepared.canvasIds,
+      attachedCanvasIds: prepared.attachedCanvasIds || [],
       planMediaIds: prepared.mediaEntries.map(function (entry) { return entry.id; }),
       pinIds: prepared.pinIds || [],
       photoIds: prepared.photoEntries.map(function (entry) { return entry.id; }),
@@ -1203,17 +1266,19 @@
       plan.blockReason = 'This recovered import cannot be identified.';
       return plan;
     }
-    const canvasIds = Array.isArray(entry.canvasIds) ? entry.canvasIds.filter(Boolean) : [];
-    if (!canvasIds.length) {
+    const createdIds = Array.isArray(entry.canvasIds) ? entry.canvasIds.filter(Boolean) : [];
+    const attachedIds = Array.isArray(entry.attachedCanvasIds) ? entry.attachedCanvasIds.filter(Boolean) : [];
+    const layerIds = uniqueIds(createdIds.concat(attachedIds));
+    if (!layerIds.length) {
       plan.blocked = true;
-      plan.blockReason = 'This import did not record which canvas it created, so Toolbox will not guess what to remove.';
+      plan.blockReason = 'This import did not record which canvas it used, so Toolbox will not guess what to remove.';
       return plan;
     }
 
     const next = clone(record);
     window.ToolboxPlanSetup.ensurePlanSetup(next);
     const canvasIdSet = {};
-    canvasIds.forEach(function (id) { canvasIdSet[id] = true; });
+    createdIds.forEach(function (id) { canvasIdSet[id] = true; });
     const photoCandidates = [];
 
     if (entry.kind === 'distress') {
@@ -1302,7 +1367,7 @@
       plan.observationsRemoved = ownedPins.length;
       plan.keptObservations = otherPins.length;
     } else {
-      canvasIds.forEach(function (id) {
+      layerIds.forEach(function (id) {
         const layer = next.floorSurvey && next.floorSurvey.byCanvasId
           ? next.floorSurvey.byCanvasId[id]
           : null;
@@ -1311,17 +1376,20 @@
         plan.layersRemoved += 1;
         delete next.floorSurvey.byCanvasId[id];
       });
+      if (attachedIds.length) {
+        plan.canvasNamesKept.push('The plan already in this Customer File stays.');
+      }
     }
 
     const planIdByCanvas = {};
-    canvasIds.forEach(function (id) {
+    createdIds.forEach(function (id) {
       const canvas = (record.planSetup && record.planSetup.canvases || []).find(function (item) {
         return item && item.id === id;
       });
       if (canvas && canvas.plan && canvas.plan.id) planIdByCanvas[id] = canvas.plan.id;
     });
     const removeCanvasIds = [];
-    canvasIds.forEach(function (id) {
+    createdIds.forEach(function (id) {
       const canvas = (next.planSetup.canvases || []).find(function (item) { return item && item.id === id; });
       if (!canvas) return;
       const reason = canvasRetentionReason(next, canvas);
@@ -1559,9 +1627,7 @@
     function destinationPanelHtml() {
       if (!allowDestinationChoice || lockedCustomerFileId) {
         return '<p class="cf-import__note">Destination: ' + escapeHtml(context.destinationLabel) +
-          (context.isNew
-            ? ' — recovered work becomes this new Customer File.'
-            : ' — recovered plan(s) will be added as new canvas/level(s).') +
+          destinationPlacementNote() +
           '</p>';
       }
       const optionsHtml = destinations.map(function (item) {
@@ -1580,6 +1646,29 @@
             '<select id="cf-import-dest-file"><option value="">Choose…</option>' + optionsHtml + '</select></label>'
           : '') +
         '</fieldset>';
+    }
+
+    function destinationPlacementNote() {
+      if (context.isNew) return ' — recovered work becomes this new Customer File.';
+      if (parsed && parsed.kind === 'floor') {
+        const placement = floorCanvasPlan(context.record, parsed, false);
+        if (placement.reuse.length) {
+          return ' — Floor Survey will use the plan already in this Customer File.';
+        }
+      }
+      return ' — recovered plan(s) will be added as new canvas/level(s).';
+    }
+
+    function floorSizeNote(placement) {
+      const mismatched = placement.reuse.some(function (canvas, index) {
+        const floor = parsed.floors[index];
+        const width = canvas.plan && canvas.plan.width;
+        const height = canvas.plan && canvas.plan.height;
+        if (!floor || typeof width !== 'number' || typeof height !== 'number') return false;
+        return Math.abs(width - floor.width) > 1 || Math.abs(height - floor.height) > 1;
+      });
+      if (!mismatched) return '';
+      return '<p class="cf-import__note">That plan is a different size than the Floor Survey plan. Readings keep the coordinates from the Floor Survey file.</p>';
     }
 
     function floorProtectionHtml() {
@@ -1609,6 +1698,21 @@
           ' will become this Customer File’s canvas' +
           (parsed.kind === 'floor' && parsed.floors.length > 1 ? 'es' : '') +
           '. Empty default canvases will not be kept.</p>';
+      }
+      if (parsed && parsed.kind === 'floor') {
+        const placement = floorCanvasPlan(context.record, parsed, false);
+        if (placement.reuse.length && !placement.createCount) {
+          return '<p class="cf-import__note">This Floor Survey will be placed on the plan already in this Customer File. It will not add another level.</p>' +
+            floorSizeNote(placement);
+        }
+        if (placement.reuse.length && placement.createCount) {
+          const extra = placement.createCount;
+          return '<p class="cf-import__note">The floor already represented in this Customer File will keep that plan. ' +
+            extra + ' additional floor' + (extra === 1 ? '' : 's') +
+            ' listed in this Floor Survey file will be added as ' +
+            (extra === 1 ? 'a level' : 'levels') + '.</p>' +
+            floorSizeNote(placement);
+        }
       }
       return '<p class="cf-import__note">Recovered plan' +
         (parsed.kind === 'floor' && parsed.floors.length > 1 ? 's are' : ' is') +
@@ -1917,7 +2021,13 @@
             : [
                 result.readings + ' readings recovered',
                 result.transitions + ' flooring corrections recovered',
-                result.floorCount + ' original floor plan' + (result.floorCount === 1 ? '' : 's') + ' added',
+                result.placedOnExistingPlan
+                  ? (result.addedFloorCount
+                    ? 'Floor Survey placed on the plan already in this Customer File. ' +
+                      result.addedFloorCount + ' additional level' + (result.addedFloorCount === 1 ? '' : 's') +
+                      ' added from this file.'
+                    : 'Floor Survey placed on the plan already in this Customer File.')
+                  : result.floorCount + ' original floor plan' + (result.floorCount === 1 ? '' : 's') + ' added',
               ];
           result.customerUpdates.forEach((update) => {
             if (update.field === 'propertyAddress') {
