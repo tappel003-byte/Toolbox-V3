@@ -491,6 +491,43 @@
     return window.ToolboxDB.getMedia(id).catch(function () { return null; });
   }
 
+  /**
+   * Ordered Distress photographs for Pictures pages (no media bytes).
+   * Uses the same continuous numbering as distressSlides.
+   */
+  function listDistressPhotos(record) {
+    var distress = record && record.distress && typeof record.distress === 'object' ? record.distress : {};
+    var pins = Array.isArray(distress.pins) ? distress.pins : [];
+    if (!pins.length) return [];
+    var numbers = assignPinNumbers(pins, distress.mode, distress.startNum);
+    var photos = [];
+    pins.forEach(function (pin, index) {
+      var numbering = numbers[index];
+      var seed = observationText(pin);
+      var location = trim(pin && pin.location);
+      var entries = Array.isArray(pin && pin.photos) ? pin.photos : [];
+      entries.forEach(function (entry, photoIndex) {
+        var ref = photoRef(entry);
+        var displayNumber = numbering && numbering.photoNumbers
+          ? numbering.photoNumbers[photoIndex]
+          : null;
+        if (displayNumber == null) return;
+        var key = ref.id || ('photo-' + displayNumber);
+        photos.push({
+          key: String(key),
+          id: ref.id,
+          displayNumber: displayNumber,
+          pinId: pin && pin.id ? String(pin.id) : null,
+          pinNumber: numbering.num,
+          seedText: seed,
+          location: location,
+          canvasId: pin && pin.canvasId ? String(pin.canvasId) : null,
+        });
+      });
+    });
+    return photos;
+  }
+
   async function assemble(record, deps) {
     var options = Object.assign({
       getMedia: defaultGetMedia,
@@ -509,6 +546,7 @@
       distress: distress,
       floor: floor,
       pages: pages,
+      photos: listDistressPhotos(record),
     };
   }
 
@@ -516,6 +554,7 @@
     SOURCE_VERSION: SOURCE_VERSION,
     NUMBERING_NOTE: NUMBERING_NOTE,
     FLOOR_MISSING_NOTE: FLOOR_MISSING_NOTE,
+    listDistressPhotos: listDistressPhotos,
     assemble: assemble,
   };
 })();

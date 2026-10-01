@@ -3,9 +3,10 @@
 // 11×17 landscape sheets, page rail, composition controls, and jump links
 // back to the source workspaces. The opening sequence comes from
 // ToolboxReportSource (issue #66 skeleton + the #65 evidence contract).
-// Pages exist only while this workspace stays open. This module does not
-// write the Customer File and does not invent report narrative.
-// Export for AI reads the open Customer File and downloads one ZIP.
+// Assembled pages and report wording autosave onto record.reportBuilder.
+// Photo/plan evidence is rehydrated from Distress / Floor Survey on open —
+// binaries are not stored inside the report document. Export for AI reads
+// the open Customer File and downloads one ZIP.
 
 (function () {
   'use strict';
@@ -13,6 +14,10 @@
   var SHEET_RATIO_LABEL = '11 × 17 landscape';
   var MAX_PAGES = 80;
   var SHEET_RATIO = 17 / 11;
+  var AUTOSAVE_DELAY_MS = 900;
+  var PHOTOS_PER_PAGE = 10;
+  var REPORT_SCHEMA = 'toolbox.report-builder';
+  var REPORT_SCHEMA_VERSION = 1;
 
   var COMPOSE_TOOLS = [
     { id: 'select', label: 'Select' },
@@ -174,9 +179,260 @@
       sourceKey: source.sourceKey,
       sourceRef: source.sourceRef,
       includeInToc: source.includeInToc !== false,
-      meta: source.meta,
+      meta: cloneJson(source.meta || null),
+      reportText: cloneJson(source.reportText || null),
       evidence: source.evidence || null,
     };
+  }
+
+  function photoLabel(displayNumber) {
+    var n = Number(displayNumber);
+    if (!isFinite(n)) return 'Photo';
+    var raw = String(Math.round(n));
+    return 'Photo ' + (raw.length < 2 ? ('0' + raw) : raw);
+  }
+
+  function brandMark() {
+    var brand = document.createElement('div');
+    brand.className = 'rb-topo-page__brand';
+    brand.innerHTML =
+      '<span class="rb-topo-page__brand-mark" aria-hidden="true"></span>' +
+      '<span class="rb-topo-page__brand-name">SANDIA GEO</span>';
+    return brand;
+  }
+
+  function nextPicturesPageId(pages) {
+    var max = 0;
+    (pages || []).forEach(function (page) {
+      var m = page && page.id && String(page.id).match(/^pictures-(\d+)$/);
+      if (m) max = Math.max(max, Number(m[1]) || 0);
+    });
+    return 'pictures-' + (max + 1);
+  }
+
+  function maxFigureNumber(pages) {
+    var max = 0;
+    (pages || []).forEach(function (page) {
+      var n = page && page.meta && page.meta.figureNumber;
+      if (typeof n === 'number' && isFinite(n)) max = Math.max(max, n);
+    });
+    return max;
+  }
+
+  function captionsFromPhotos(photos, prior) {
+    var captions = prior && typeof prior === 'object' ? Object.assign({}, prior) : {};
+    (photos || []).forEach(function (photo) {
+      if (!photo || !photo.key) return;
+      if (typeof captions[photo.key] !== 'string') {
+        captions[photo.key] = photo.seedText || '';
+      }
+    });
+    return captions;
+  }
+
+  function buildPicturesPage(photos, figureNumber, pageId) {
+    var list = photos || [];
+    return {
+      id: pageId,
+      type: 'pictures',
+      title: 'Pictures',
+      tocTitle: 'Figure ' + figureNumber + ' — Pictures',
+      railLabel: 'Pictures',
+      note: '',
+      sourceKey: 'distress',
+      sourceRef: null,
+      includeInToc: true,
+      meta: {
+        figureNumber: figureNumber,
+        photoKeys: list.map(function (photo) { return photo.key; }),
+      },
+      reportText: {
+        captions: captionsFromPhotos(list, null),
+      },
+      evidence: null,
+    };
+  }
+
+  function buildPicturesPages(photos, startFigureNumber, existingPages) {
+    var list = photos || [];
+    if (!list.length) return [];
+    var pages = [];
+    var figure = typeof startFigureNumber === 'number' ? startFigureNumber : 1;
+    for (var i = 0; i < list.length; i += PHOTOS_PER_PAGE) {
+      var chunk = list.slice(i, i + PHOTOS_PER_PAGE);
+      var id = nextPicturesPageId((existingPages || []).concat(pages));
+      pages.push(buildPicturesPage(chunk, figure, id));
+      figure += 1;
+    }
+    if (pages.length > 1) {
+      pages.forEach(function (page, index) {
+        page.railLabel = 'Pictures · ' + (index + 1);
+      });
+    }
+    return pages;
+  }
+
+  function photoMapFromList(photos) {
+    var map = {};
+    (photos || []).forEach(function (photo) {
+      if (photo && photo.key) map[photo.key] = photo;
+    });
+    return map;
+  }
+
+  function insertIndexBeforeClosing(pages) {
+    var closing = { discussion: 1, conclusions: 1, limitations: 1 };
+    for (var i = 0; i < pages.length; i += 1) {
+      var sectionId = pages[i] && pages[i].meta && pages[i].meta.sectionId;
+      if (sectionId && closing[sectionId]) return i;
+      if (pages[i] && pages[i].type === 'diagnostics') return i;
+    }
+    return pages.length;
+  }
+
+  function lastIndexOfType(pages, type) {
+    var index = -1;
+    for (var i = 0; i < pages.length; i += 1) {
+      if (pages[i] && pages[i].type === type) index = i;
+    }
+    return index;
+  }
+
+  function insertPagesAt(pages, index, additions) {
+    if (!additions || !additions.length) return pages;
+    var at = Math.max(0, Math.min(index, pages.length));
+    return pages.slice(0, at).concat(additions, pages.slice(at));
+  }
+
+  /**
+   * Keep saved pages and wording; add new Distress/Floor/Pictures source items.
+   */
+  function reconcileReportPages(savedPages, freshPages, photos) {
+    var pages = (savedPages || []).map(function (page) {
+      return {
+        id: page.id,
+        type: page.type,
+        title: page.title,
+        tocTitle: page.tocTitle || page.title,
+        railLabel: page.railLabel || page.title,
+        note: page.note || '',
+        sourceKey: page.sourceKey || null,
+        sourceRef: page.sourceRef || null,
+        includeInToc: page.includeInToc !== false,
+        meta: cloneJson(page.meta || null),
+        reportText: cloneJson(page.reportText || null),
+        evidence: null,
+      };
+    });
+    var byId = {};
+    pages.forEach(function (page) { byId[page.id] = true; });
+
+    function addMissingOfType(type) {
+      var additions = [];
+      (freshPages || []).forEach(function (fresh) {
+        if (!fresh || fresh.type !== type) return;
+        if (fresh.meta && fresh.meta.reserved) return;
+        if (byId[fresh.id]) return;
+        additions.push({
+          id: fresh.id,
+          type: fresh.type,
+          title: fresh.title,
+          tocTitle: fresh.tocTitle || fresh.title,
+          railLabel: fresh.railLabel || fresh.title,
+          note: fresh.note || '',
+          sourceKey: fresh.sourceKey || null,
+          sourceRef: fresh.sourceRef || null,
+          includeInToc: fresh.includeInToc !== false,
+          meta: cloneJson(fresh.meta || null),
+          reportText: cloneJson(fresh.reportText || null),
+          evidence: null,
+        });
+        byId[fresh.id] = true;
+      });
+      if (!additions.length) return;
+      var anchor = lastIndexOfType(pages, type);
+      var at = anchor >= 0 ? anchor + 1 : insertIndexBeforeClosing(pages);
+      pages = insertPagesAt(pages, at, additions);
+    }
+
+    addMissingOfType('distress');
+    addMissingOfType('floor');
+    addMissingOfType('diagnostics');
+
+    var photoList = photos || [];
+    var photoByKey = photoMapFromList(photoList);
+    var knownKeys = {};
+    pages.forEach(function (page) {
+      if (!page || page.type !== 'pictures') return;
+      var keys = page.meta && Array.isArray(page.meta.photoKeys) ? page.meta.photoKeys.slice() : [];
+      var kept = keys.filter(function (key) { return !!photoByKey[key]; });
+      kept.forEach(function (key) { knownKeys[key] = true; });
+      page.meta = page.meta || {};
+      page.meta.photoKeys = kept;
+      page.reportText = page.reportText || {};
+      page.reportText.captions = captionsFromPhotos(
+        kept.map(function (key) { return photoByKey[key]; }),
+        page.reportText.captions
+      );
+    });
+
+    var newPhotos = photoList.filter(function (photo) {
+      return photo && photo.key && !knownKeys[photo.key];
+    });
+    if (newPhotos.length) {
+      var picturePages = pages.filter(function (page) { return page.type === 'pictures'; });
+      var lastPictures = picturePages.length ? picturePages[picturePages.length - 1] : null;
+      var queue = newPhotos.slice();
+      if (lastPictures) {
+        lastPictures.meta = lastPictures.meta || {};
+        var existingKeys = Array.isArray(lastPictures.meta.photoKeys)
+          ? lastPictures.meta.photoKeys.slice()
+          : [];
+        var room = Math.max(0, PHOTOS_PER_PAGE - existingKeys.length);
+        if (room > 0) {
+          var fill = queue.splice(0, room);
+          existingKeys = existingKeys.concat(fill.map(function (photo) { return photo.key; }));
+          lastPictures.meta.photoKeys = existingKeys;
+          lastPictures.reportText = lastPictures.reportText || {};
+          lastPictures.reportText.captions = captionsFromPhotos(
+            existingKeys.map(function (key) { return photoByKey[key]; }),
+            lastPictures.reportText.captions
+          );
+        }
+      }
+      if (queue.length) {
+        var startFig = maxFigureNumber(pages) + 1;
+        var created = buildPicturesPages(queue, startFig, pages);
+        var at = lastIndexOfType(pages, 'pictures');
+        if (at < 0) at = lastIndexOfType(pages, 'floor');
+        if (at < 0) at = lastIndexOfType(pages, 'distress');
+        at = at >= 0 ? at + 1 : insertIndexBeforeClosing(pages);
+        pages = insertPagesAt(pages, at, created);
+      }
+    }
+
+    var pictures = pages.filter(function (page) { return page.type === 'pictures'; });
+    if (pictures.length > 1) {
+      pictures.forEach(function (page, index) {
+        page.railLabel = 'Pictures · ' + (index + 1);
+      });
+    } else if (pictures.length === 1) {
+      pictures[0].railLabel = 'Pictures';
+    }
+
+    return pages;
+  }
+
+  function ensurePicturesInFreshPages(pages, photos) {
+    var list = pages ? pages.slice() : [];
+    if (list.some(function (page) { return page.type === 'pictures'; })) return list;
+    if (!(photos || []).length) return list;
+    var startFig = maxFigureNumber(list) + 1;
+    var created = buildPicturesPages(photos, startFig, list);
+    var at = lastIndexOfType(list, 'floor');
+    if (at < 0) at = lastIndexOfType(list, 'distress');
+    at = at >= 0 ? at + 1 : insertIndexBeforeClosing(list);
+    return insertPagesAt(list, at, created);
   }
 
   function countLine(count, singular, plural) {
@@ -420,13 +676,67 @@
 
     var footer = document.createElement('div');
     footer.className = 'rb-topo-page__footer';
-    var brand = document.createElement('div');
-    brand.className = 'rb-topo-page__brand';
-    brand.innerHTML =
-      '<span class="rb-topo-page__brand-mark" aria-hidden="true"></span>' +
-      '<span class="rb-topo-page__brand-name">SANDIA GEO</span>';
-    footer.appendChild(brand);
+    footer.appendChild(brandMark());
     footer.appendChild(renderRelativeReadings(statsList));
+    root.appendChild(footer);
+    return root;
+  }
+
+  function renderPicturesPage(page) {
+    var meta = page.meta || {};
+    var evidence = page.evidence || {};
+    var captions = (page.reportText && page.reportText.captions) || {};
+    var photos = Array.isArray(evidence.photos) ? evidence.photos : [];
+    var root = document.createElement('div');
+    root.className = 'rb-pictures-page';
+
+    var header = document.createElement('div');
+    header.className = 'rb-pictures-page__header';
+    var fig = document.createElement('p');
+    fig.className = 'rb-pictures-page__figure-num';
+    fig.textContent = meta.figureNumber ? ('Figure ' + meta.figureNumber) : 'Figure';
+    header.appendChild(fig);
+    var title = document.createElement('h1');
+    title.className = 'rb-pictures-page__title';
+    title.textContent = 'Pictures';
+    header.appendChild(title);
+    root.appendChild(header);
+
+    var grid = document.createElement('div');
+    grid.className = 'rb-pictures-page__grid';
+    if (!photos.length) {
+      addLine(grid, 'rb-sheet__note', 'No photographs are available for this page yet.');
+    }
+    photos.forEach(function (photo) {
+      var cell = document.createElement('figure');
+      cell.className = 'rb-pictures-page__cell';
+      cell.setAttribute('data-photo-key', photo.key || '');
+      var frame = document.createElement('div');
+      frame.className = 'rb-pictures-page__frame';
+      if (!evidenceImage(frame, photo.dataUrl, 'rb-pictures-page__image', photoLabel(photo.displayNumber))) {
+        addLine(frame, 'rb-sheet__note', 'Photo not on this device');
+      }
+      cell.appendChild(frame);
+      var label = document.createElement('figcaption');
+      label.className = 'rb-pictures-page__label';
+      label.textContent = photoLabel(photo.displayNumber);
+      cell.appendChild(label);
+      var caption = document.createElement('textarea');
+      caption.className = 'rb-pictures-page__caption';
+      caption.setAttribute('data-rb-caption', photo.key || '');
+      caption.setAttribute('aria-label', photoLabel(photo.displayNumber) + ' description');
+      caption.rows = 3;
+      caption.value = typeof captions[photo.key] === 'string'
+        ? captions[photo.key]
+        : (photo.seedText || '');
+      cell.appendChild(caption);
+      grid.appendChild(cell);
+    });
+    root.appendChild(grid);
+
+    var footer = document.createElement('div');
+    footer.className = 'rb-pictures-page__footer';
+    footer.appendChild(brandMark());
     root.appendChild(footer);
     return root;
   }
@@ -495,12 +805,14 @@
         if (pages[i].id === entry.pageId) pageItem = pages[i];
       }
       var figNum = pageItem && pageItem.meta && pageItem.meta.figureNumber;
-      if (entry.type === 'floor' && figNum) {
+      if ((entry.type === 'floor' || entry.type === 'pictures') && figNum) {
         var figLabel = document.createElement('span');
         var figStrong = document.createElement('strong');
         figStrong.textContent = 'Figure ' + figNum;
         figLabel.appendChild(figStrong);
-        figLabel.appendChild(document.createTextNode(' — ' + title));
+        figLabel.appendChild(document.createTextNode(
+          entry.type === 'pictures' ? ' Pictures' : (' — ' + title)
+        ));
         row.appendChild(figLabel);
         list.appendChild(row);
         return;
@@ -596,11 +908,47 @@
     var source = await api.assemble(record);
     var distress = (source.distress && source.distress.slides) || [];
     var floor = (source.floor && source.floor.slides) || [];
+    var photoByKey = {};
+    distress.forEach(function (slide) {
+      (slide.pins || []).forEach(function (pin) {
+        (pin.photos || []).forEach(function (photo) {
+          var key = photo.id || ('photo-' + photo.displayNumber);
+          photoByKey[key] = {
+            key: String(key),
+            id: photo.id || null,
+            displayNumber: photo.displayNumber,
+            dataUrl: photo.dataUrl || null,
+            seedText: pin.text || '',
+            location: pin.location || '',
+            pinId: pin.id || null,
+            pinNumber: pin.number,
+            canvasId: slide.canvasId || null,
+          };
+        });
+      });
+    });
     var diagnostics = window.ToolboxDiagnostics && window.ToolboxDiagnostics.listReportFigures
       ? window.ToolboxDiagnostics.listReportFigures(record) : [];
     var result = [];
     for (var i = 0; i < pages.length; i += 1) {
       var page = pages[i];
+      if (page.type === 'pictures') {
+        var keys = page.meta && Array.isArray(page.meta.photoKeys) ? page.meta.photoKeys : [];
+        page.evidence = {
+          photos: keys.map(function (key) {
+            return photoByKey[key] || {
+              key: key,
+              id: null,
+              displayNumber: null,
+              dataUrl: null,
+              seedText: '',
+              missing: true,
+            };
+          }),
+        };
+        result.push(page);
+        continue;
+      }
       if (page.type === 'distress' && !(page.meta && page.meta.reserved)) {
         page.evidence = distress.find(function (slide) { return slide.canvasId === page.sourceRef; }) || null;
       } else if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
@@ -728,6 +1076,9 @@
         rows.appendChild(dd);
       });
       margin.appendChild(rows);
+    } else if (page.type === 'pictures') {
+      margin.classList.add('rb-sheet__margin--pictures');
+      margin.appendChild(renderPicturesPage(page));
     } else if (page.type === 'floor' && page.evidence && page.evidence.composed) {
       margin.classList.add('rb-sheet__margin--topo');
       if (!renderEvidence(margin, page)) {
@@ -759,6 +1110,7 @@
     }
 
     var hidePageNum = page.type === 'cover' ||
+      page.type === 'pictures' ||
       (page.type === 'floor' && page.evidence && page.evidence.composed);
     if (!hidePageNum) {
       var footer = document.createElement('p');
@@ -821,6 +1173,69 @@
     return sequence;
   }
 
+  function cloneJson(value) {
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+  }
+
+  function persistablePage(page) {
+    return {
+      id: page.id,
+      type: page.type,
+      title: page.title,
+      tocTitle: page.tocTitle || page.title,
+      railLabel: page.railLabel || page.title,
+      note: page.note || '',
+      sourceKey: page.sourceKey || null,
+      sourceRef: page.sourceRef || null,
+      includeInToc: page.includeInToc !== false,
+      meta: cloneJson(page.meta || null),
+      reportText: cloneJson(page.reportText || null),
+    };
+  }
+
+  function persistableDocument(pages, activePageId) {
+    return {
+      schema: REPORT_SCHEMA,
+      schemaVersion: REPORT_SCHEMA_VERSION,
+      updatedAt: new Date().toISOString(),
+      activePageId: activePageId || '',
+      pages: (pages || []).map(persistablePage),
+    };
+  }
+
+  function savedReportPages(record) {
+    var doc = record && (record.reportBuilder || record.report);
+    if (!doc || typeof doc !== 'object') return null;
+    if (!Array.isArray(doc.pages) || !doc.pages.length) return null;
+    return {
+      activePageId: typeof doc.activePageId === 'string' ? doc.activePageId : '',
+      updatedAt: typeof doc.updatedAt === 'string' ? doc.updatedAt : '',
+      pages: doc.pages.map(function (page) {
+        return {
+          id: page.id,
+          type: page.type,
+          title: page.title,
+          tocTitle: page.tocTitle || page.title,
+          railLabel: page.railLabel || page.title,
+          note: page.note || '',
+          sourceKey: page.sourceKey || null,
+          sourceRef: page.sourceRef || null,
+          includeInToc: page.includeInToc !== false,
+          meta: cloneJson(page.meta || null),
+          reportText: cloneJson(page.reportText || null),
+          evidence: null,
+        };
+      }),
+    };
+  }
+
+  function formatSavedAt(iso) {
+    if (!iso) return 'Saved';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return 'Saved';
+    return 'Saved ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+
   function mount(host, options) {
     if (!host) return;
     var token = ++mountGeneration;
@@ -833,12 +1248,17 @@
     var activeId = pages[0] ? pages[0].id : '';
     var activeTool = 'select';
     var dirty = false;
+    var workingRecord = null;
+    var saveTimer = null;
+    var lastSavedAt = '';
     pageSeq = pages.length;
 
     host.innerHTML = shellHtml();
     var root = host.querySelector('.rb-shell');
     var fileLabelEl = root.querySelector('#rb-file-label');
     var statusEl = root.querySelector('#rb-tool-status');
+    var saveStatusEl = root.querySelector('#rb-save-status');
+    var draftEl = root.querySelector('#rb-file-status');
     var listEl = root.querySelector('#rb-page-list');
     var sheetEl = root.querySelector('.rb-sheet');
     var addBtn = root.querySelector('#rb-add-page');
@@ -860,6 +1280,60 @@
 
     function setToolStatus() {
       statusEl.textContent = TOOL_STATUS[activeTool] || TOOL_STATUS.select;
+    }
+
+    function setSaveStatus(text) {
+      if (saveStatusEl) saveStatusEl.textContent = text || '';
+    }
+
+    function markDirty() {
+      dirty = true;
+      setSaveStatus('Saving…');
+      if (draftEl) draftEl.textContent = 'Saving';
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(function () {
+        flushSave().catch(function () {});
+      }, AUTOSAVE_DELAY_MS);
+    }
+
+    function flushSave() {
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+      if (!dirty || !workingRecord || !customerFileId) return Promise.resolve();
+      if (!window.ToolboxDB || typeof window.ToolboxDB.saveCustomerFile !== 'function') {
+        return Promise.reject(new Error('Customer File save is not available.'));
+      }
+      var doc = persistableDocument(pages, activeId);
+      workingRecord.reportBuilder = doc;
+      workingRecord.updatedAt = doc.updatedAt;
+      delete workingRecord.report;
+      return window.ToolboxDB.saveCustomerFile(workingRecord).then(function () {
+        dirty = false;
+        lastSavedAt = doc.updatedAt;
+        setSaveStatus(formatSavedAt(lastSavedAt));
+        if (draftEl) draftEl.textContent = 'Saved';
+      }).catch(function (err) {
+        console.error('Report Builder save failed:', err);
+        if (err && err.code === 'checkout') {
+          dirty = false;
+          setSaveStatus(err.message || 'Checked out elsewhere');
+          if (draftEl) draftEl.textContent = 'Read-only';
+          return;
+        }
+        setSaveStatus('Save failed — will retry');
+        if (draftEl) draftEl.textContent = 'Unsaved';
+        throw err;
+      });
+    }
+
+    function leaveAfterFlush(next) {
+      dirty = true;
+      setSaveStatus('Saving…');
+      flushSave().then(function () {
+        if (typeof next === 'function') next();
+      }).catch(function () {});
     }
 
     function renderPages() {
@@ -892,7 +1366,9 @@
         button.appendChild(thumb);
         button.appendChild(caption);
         button.addEventListener('click', function () {
+          if (activeId === item.id) return;
           activeId = item.id;
+          markDirty();
           renderPages();
         });
         listEl.appendChild(button);
@@ -911,21 +1387,51 @@
     }
 
     root.querySelector('#rb-back').addEventListener('click', function () {
-      if (typeof onBack === 'function') onBack();
+      leaveAfterFlush(function () {
+        if (window.ToolboxReportSession && typeof window.ToolboxReportSession.clear === 'function') {
+          window.ToolboxReportSession.clear();
+        }
+        if (typeof onBack === 'function') onBack();
+      });
     });
 
     root.querySelectorAll('[data-rb-source]').forEach(function (button) {
       button.addEventListener('click', function () {
         var key = button.getAttribute('data-rb-source');
-        if (typeof onOpenSource === 'function') onOpenSource(key);
+        leaveAfterFlush(function () {
+          if (window.ToolboxReportSession && typeof window.ToolboxReportSession.write === 'function') {
+            window.ToolboxReportSession.write({
+              customerFileId: customerFileId,
+              pageId: activeId,
+              sourceKey: key,
+            });
+          }
+          if (typeof onOpenSource === 'function') onOpenSource(key);
+        });
       });
     });
 
     sheetEl.addEventListener('click', function (event) {
       var jump = event.target.closest('[data-rb-goto]');
       if (!jump) return;
-      activeId = jump.getAttribute('data-rb-goto');
+      var targetId = jump.getAttribute('data-rb-goto');
+      if (!targetId || targetId === activeId) return;
+      activeId = targetId;
+      markDirty();
       renderPages();
+    });
+
+    sheetEl.addEventListener('input', function (event) {
+      var field = event.target.closest('[data-rb-caption]');
+      if (!field) return;
+      var key = field.getAttribute('data-rb-caption');
+      if (!key) return;
+      var current = activePage();
+      if (!current || current.type !== 'pictures') return;
+      current.reportText = current.reportText || {};
+      current.reportText.captions = current.reportText.captions || {};
+      current.reportText.captions[key] = field.value;
+      markDirty();
     });
 
     root.querySelectorAll('[data-rb-tool]').forEach(function (button) {
@@ -942,49 +1448,49 @@
 
     addBtn.addEventListener('click', function () {
       if (pages.length >= MAX_PAGES) return;
-      dirty = true;
       var item = addedPage();
       pages.push(item);
       activeId = item.id;
+      markDirty();
       renderPages();
     });
 
     duplicateBtn.addEventListener('click', function () {
       if (pages.length >= MAX_PAGES) return;
-      dirty = true;
       var index = activeIndex();
       var item = clonePage(pages[index]);
       pages.splice(index + 1, 0, item);
       activeId = item.id;
+      markDirty();
       renderPages();
     });
 
     removeBtn.addEventListener('click', function () {
       if (pages.length <= 1) return;
-      dirty = true;
       var index = activeIndex();
       pages.splice(index, 1);
       activeId = pages[Math.min(index, pages.length - 1)].id;
+      markDirty();
       renderPages();
     });
 
     earlierBtn.addEventListener('click', function () {
       var index = activeIndex();
       if (index <= 0) return;
-      dirty = true;
       var moved = pages[index];
       pages[index] = pages[index - 1];
       pages[index - 1] = moved;
+      markDirty();
       renderPages();
     });
 
     laterBtn.addEventListener('click', function () {
       var index = activeIndex();
       if (index >= pages.length - 1) return;
-      dirty = true;
       var moved = pages[index];
       pages[index] = pages[index + 1];
       pages[index + 1] = moved;
+      markDirty();
       renderPages();
     });
 
@@ -997,7 +1503,9 @@
       }
       exportBtn.disabled = true;
       exportStatus.textContent = 'Preparing the AI package…';
-      window.ToolboxAiExport.exportCheckedOutFile(customerFileId).then(function (result) {
+      flushSave().catch(function () {}).then(function () {
+        return window.ToolboxAiExport.exportCheckedOutFile(customerFileId);
+      }).then(function (result) {
         var name = result && result.filename ? result.filename : 'the AI package';
         exportStatus.textContent = 'Downloaded ' + name + '.';
       }).catch(function (error) {
@@ -1010,26 +1518,69 @@
     });
 
     setToolStatus();
+    setSaveStatus('Loading…');
     renderPages();
     watchSheet(root);
     fileLabelEl.textContent = 'Loading Customer File…';
 
-    function applyRecord(record) {
+    function restoreReturnPage() {
+      if (!window.ToolboxReportSession || typeof window.ToolboxReportSession.forFile !== 'function') {
+        return false;
+      }
+      var ret = window.ToolboxReportSession.forFile(customerFileId);
+      if (!ret || !ret.pageId) return false;
+      var found = pages.some(function (page) { return page.id === ret.pageId; });
+      if (found) activeId = ret.pageId;
+      if (typeof window.ToolboxReportSession.clear === 'function') {
+        window.ToolboxReportSession.clear();
+      }
+      return found;
+    }
+
+    function loadPagesFromRecord(record) {
       fileLabelEl.textContent = record ? fileLabel(record) : 'Customer File not on this device';
-      if (dirty) return;
       var api = sourceApi();
-      if (!api) return;
+      if (!api) return { assembledFresh: false, reconciled: false };
+      var photoList = window.ToolboxReportEvidence &&
+        typeof window.ToolboxReportEvidence.listDistressPhotos === 'function'
+        ? window.ToolboxReportEvidence.listDistressPhotos(record)
+        : [];
       var source = api.read(record || null);
-      var next = withProperty(api.assemble(source), source);
-      pages = next.pages.slice();
+      var fresh = withProperty(api.assemble(source), source);
+      var freshPages = ensurePicturesInFreshPages(fresh.pages.slice(), photoList);
+      var saved = savedReportPages(record);
+      if (saved) {
+        var before = saved.pages.map(function (page) {
+          return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',');
+        }).join('|');
+        pages = reconcileReportPages(saved.pages, freshPages, photoList);
+        var after = pages.map(function (page) {
+          return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',');
+        }).join('|');
+        var restored = restoreReturnPage();
+        if (!restored) {
+          activeId = saved.activePageId && pages.some(function (p) { return p.id === saved.activePageId; })
+            ? saved.activePageId
+            : (pages[0] ? pages[0].id : '');
+        }
+        pageSeq = pages.length;
+        lastSavedAt = saved.updatedAt || '';
+        return { assembledFresh: false, reconciled: before !== after };
+      }
+      pages = freshPages;
       activeId = pages[0] ? pages[0].id : '';
       pageSeq = pages.length;
-      renderPages();
-      fitSheet(root);
+      restoreReturnPage();
+      return { assembledFresh: true, reconciled: false };
+    }
+
+    if (window.ToolboxApp && typeof window.ToolboxApp.registerActiveFlush === 'function') {
+      window.ToolboxApp.registerActiveFlush(flushSave);
     }
 
     if (!window.ToolboxDB || typeof window.ToolboxDB.getCustomerFile !== 'function' || !customerFileId) {
       fileLabelEl.textContent = 'Customer File';
+      setSaveStatus('Not on this device');
       return;
     }
 
@@ -1039,18 +1590,33 @@
         window.location.replace('#/trash');
         return;
       }
-      applyRecord(record);
-      attachEvidence(record, pages.slice()).then(function (enriched) {
-        if (token !== mountGeneration || dirty) return;
+      workingRecord = record || null;
+      if (!workingRecord) {
+        fileLabelEl.textContent = 'Customer File not on this device';
+        setSaveStatus('');
+        return;
+      }
+      var loaded = loadPagesFromRecord(workingRecord);
+      renderPages();
+      fitSheet(root);
+      if (loaded.assembledFresh || loaded.reconciled) {
+        markDirty();
+        flushSave().catch(function () {});
+      } else {
+        setSaveStatus(formatSavedAt(lastSavedAt));
+        if (draftEl) draftEl.textContent = 'Saved';
+      }
+      return attachEvidence(workingRecord, pages.slice()).then(function (enriched) {
+        if (token !== mountGeneration) return;
         pages = enriched;
         renderPages();
         fitSheet(root);
-      }).catch(function (err) {
-        console.warn('Report evidence could not be loaded:', err);
       });
-    }).catch(function () {
+    }).catch(function (err) {
       if (token !== mountGeneration) return;
+      console.warn('Report Builder could not load Customer File:', err);
       fileLabelEl.textContent = 'Customer File';
+      setSaveStatus('Load failed');
     });
   }
 
@@ -1063,7 +1629,7 @@
       '      <span class="file-identity__name">Report Builder</span>' +
       '      <span class="file-identity__address" id="rb-file-label"></span>' +
       '    </div>' +
-      '    <span class="file-status">Draft</span>' +
+      '    <span class="file-status" id="rb-file-status">Draft</span>' +
       '  </div>' +
       '  <div class="rb-toolbar">' +
       '    <div class="rb-toolbar__tools" role="toolbar" aria-label="Report composition">' +
@@ -1078,7 +1644,7 @@
       '      <div class="rb-rail__head">' +
       '        <p class="eyebrow">Pages</p>' +
       '        <strong>Report sheets</strong>' +
-      '        <span>Not saved</span>' +
+      '        <span id="rb-save-status">Loading…</span>' +
       '      </div>' +
       '      <div class="rb-rail__list" id="rb-page-list"></div>' +
       '      <div class="rb-rail__actions">' +
@@ -1130,6 +1696,9 @@
     if (fitOnResize) {
       window.removeEventListener('resize', fitOnResize);
       fitOnResize = null;
+    }
+    if (window.ToolboxApp && typeof window.ToolboxApp.registerActiveFlush === 'function') {
+      window.ToolboxApp.registerActiveFlush(null);
     }
   }
 

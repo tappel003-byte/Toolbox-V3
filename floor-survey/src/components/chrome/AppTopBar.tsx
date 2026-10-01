@@ -5,6 +5,7 @@ type Props = {
   projectName: string;
   floorName: string;
   onBack?: () => void;
+  onReturnToReport?: () => void;
   onOpenSetup: () => void;
   onOpenReview: () => void;
   onOpenExport?: () => void;
@@ -30,6 +31,7 @@ export function AppTopBar({
   projectName,
   floorName,
   onBack,
+  onReturnToReport,
   onOpenSetup,
   onOpenReview,
   onOpenExport,
@@ -81,6 +83,16 @@ export function AppTopBar({
         >
           <ArrowLeft className="h-4 w-4" />
         </button>
+        {onReturnToReport ? (
+          <button
+            type="button"
+            onClick={onReturnToReport}
+            className="inline-flex items-center h-8 px-1.5 shrink-0 text-[11px] font-semibold text-primary hover:bg-accent rounded"
+            data-return-to-report
+          >
+            Back to Report Builder
+          </button>
+        ) : null}
         <div
           className="flex-1 min-w-0 truncate"
           role="status"

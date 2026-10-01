@@ -37,9 +37,10 @@ type Mode = "setup" | "field" | "review" | "topo";
 export type HostWorkspaceProps = {
   customerFileId: string;
   onBack: () => void;
+  onReturnToReport?: () => void;
 };
 
-export function HostWorkspace({ customerFileId, onBack }: HostWorkspaceProps) {
+export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: HostWorkspaceProps) {
   const id = customerFileId;
   const [project, setProject] = useState<ProjectMeta | null>(null);
   const [floors, setFloors] = useState<Floor[]>([]);
@@ -365,6 +366,7 @@ export function HostWorkspace({ customerFileId, onBack }: HostWorkspaceProps) {
         projectName={project.name}
         floorName={activeFloor.name}
         onBack={onBack}
+        onReturnToReport={onReturnToReport}
         onOpenSetup={() => setMode("setup")}
         onOpenReview={() => setMode("review")}
         onOpenTransitions={() => setTransitionsSheetOpen(true)}
