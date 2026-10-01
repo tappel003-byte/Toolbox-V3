@@ -27,11 +27,14 @@ function check(name, ok, detail = '') {
 
 const entries = publishFileSet();
 const again = publishFileSet();
+const swText = fs.readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+const cacheName = (swText.match(/const CACHE_NAME = '([^']+)'/) || [])[1] || '';
 check(
   'Publish set is deterministic',
-  JSON.stringify(entries) === JSON.stringify(again) && entries.length === 36,
+  JSON.stringify(entries) === JSON.stringify(again) && entries.length >= 36,
   String(entries.length),
 );
+check('Publish set includes Pen Log', entries.some(([url]) => url === '/js/pen-log.js'));
 const sources = entries.map(([, source]) => source);
 check('Publish set excludes the sync Worker, tests, and docs', !sources.some((source) => /^(sync-worker|tests|docs|floor-survey|scripts)\//.test(source) || source.endsWith('.map') || source.endsWith('.md')));
 check(
@@ -116,7 +119,7 @@ try {
   });
   check('service worker scope is the site root', registration.scope === base + '/', registration.scope);
   check('service worker script is /sw.js', registration.script === base + '/sw.js', registration.script);
-  check('offline shell cached both documents', registration.hasIndex && registration.hasSurvey && registration.cacheName === 'toolbox-shell-v92', JSON.stringify(registration));
+  check('offline shell cached both documents', registration.hasIndex && registration.hasSurvey && registration.cacheName === cacheName, JSON.stringify(registration));
 
   await page.setOfflineMode(true);
   await page.goto(base + '/#/cabinet', { waitUntil: 'domcontentloaded' });

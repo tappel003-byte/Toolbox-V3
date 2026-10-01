@@ -113,7 +113,8 @@ Concrete Customer File record ownership for later app plug-in. Architecture is c
   2. **Came-from-Report-Builder jump return** — **Back to Report Builder** sits in the same top bar as `‹ Customer File`, only when the investigator arrived from Report Builder (session origin). Return restores the report page they left. Not permanent capture chrome; not desktop detection.
   3. **Pictures pages with descriptions** — Mitchell-style fixed grid with real Distress photos; **Photo NN** + caption/description under each image; captions editable on the report sheet (report-owned text). Seed captions from Distress observation text. Picture Locations (plan + table) is **not** in this slice.
   4. **Reconcile on open** — when Distress/Floor gains new pins/photos/figures (e.g. Quick Capture pulled into Distress), reopen compares saved report pages to current source: keep existing report pages and wording; add pages/slots for new source items. Do not silently wipe investigator report text.
-  **Out of this slice:** Picture Locations page, Pen Log / drawing toolbar, epoch divider banners, side-by-side epoch pages, mark-complete + date, Report Builder startup questionnaire.
+  **Out of that slice:** Picture Locations page, Pen Log / drawing toolbar, epoch divider banners, side-by-side epoch pages, mark-complete + date, Report Builder startup questionnaire.
+- **Report Builder Picture Locations / Pen Log (authorized Tim, Oct 1, 2026):** Finish the native Pen Log page that was drafted in PR #91 and integrate it with current Report Builder on main. One page per Distress level with pins: plan, numbered pins, Photo / # / Location / Notes schedule, title “Figure N” + “Picture/Damage Locations”. Report notes persist on the report component (`reportBuilder.penLog.notes` and page `reportText.notes`) and do not write back to Distress. Drawing toolbar remains out of scope.
 
 ## Diagnostics
 

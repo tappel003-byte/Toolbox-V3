@@ -143,9 +143,9 @@ const logic = await page.evaluate(() => {
   assert('diagnostics follows the floor block', dxAt === floorAt + 3);
   const toc = src.contents(sequence.pages).map((item) => item.title);
   assert('TOC names each distress and floor sheet',
-    toc.indexOf('Distress Survey — Basement') !== -1 &&
-    toc.indexOf('Distress Survey — Main Level') !== -1 &&
-    toc.indexOf('Distress Survey — Second Floor') !== -1 &&
+    toc.indexOf('Pen Log — Basement') !== -1 &&
+    toc.indexOf('Pen Log — Main Level') !== -1 &&
+    toc.indexOf('Pen Log — Second Floor') !== -1 &&
     toc.indexOf('Floor Level Survey — Basement — Current Floor Survey') !== -1 &&
     toc.indexOf('Floor Level Survey — Main Level — Current Floor Survey') !== -1 &&
     toc.indexOf('Floor Level Survey — Basement — January survey') !== -1 &&
@@ -246,10 +246,10 @@ check('cover shows FLOOR LEVEL SURVEY and CONTENTS',
   `${opened.product} | ${opened.contents}`);
 check('sheet is 11×17 landscape', opened.ratio > 1.5 && opened.ratio < 1.58, String(opened.ratio));
 check('source jump links remain', opened.links.join(',') === 'floor,distress,diagnostics', opened.links.join(','));
-check('rail lists distress then floor sheets',
-  opened.captions.indexOf('Distress · Basement') !== -1 &&
-  opened.captions.indexOf('Distress · Basement') < opened.captions.indexOf('Distress · Main Level') &&
-  opened.captions.indexOf('Floor · Basement') > opened.captions.indexOf('Distress · Main Level'),
+check('rail lists Pen Log then floor sheets',
+  opened.captions.indexOf('Pen Log · Basement') !== -1 &&
+  opened.captions.indexOf('Pen Log · Basement') < opened.captions.indexOf('Pen Log · Main Level') &&
+  opened.captions.indexOf('Floor · Basement') > opened.captions.indexOf('Pen Log · Main Level'),
   opened.captions.join(' | '));
 check('composition tools stay reserved', /does not move/i.test(opened.tool), opened.tool);
 await page.waitForFunction(() => {
@@ -284,7 +284,7 @@ const tocUi = await page.evaluate(() => {
   }));
 });
 check('TOC is generated from included sheets',
-  tocUi.some((item) => item.title === 'Distress Survey — Basement' && item.id === 'distress-canvas-b') &&
+  tocUi.some((item) => item.title === 'Pen Log — Basement' && item.id === 'distress-canvas-b') &&
   tocUi.some((item) => item.title === 'Floor Level Survey — Main Level' && item.id.indexOf('canvas-m') !== -1),
   tocUi.map((item) => item.number + ' ' + item.title).join(' | '));
 const tocNumbers = await page.evaluate(() => {
@@ -411,17 +411,19 @@ const phone = await page.evaluate(() => {
   function hit(a, b) {
     return !(a.right <= b.left + 1 || a.left >= b.right - 1 || a.bottom <= b.top + 1 || a.top >= b.bottom - 1);
   }
+  const pen = document.querySelector('.rb-penlog');
   return {
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
     sheetVisible: sheet.width > 140 && sheet.height > 80,
-    title: document.querySelector('.rb-sheet__title').textContent,
-    meta: document.querySelector('.rb-sheet__meta').textContent,
+    level: pen ? pen.getAttribute('data-level') : '',
+    heading: document.querySelector('.rb-penlog__heading')?.textContent || '',
+    schedulePins: document.querySelectorAll('.rb-penlog__pinnum').length,
     linkReady: link.width > 40 && link.height > 20,
     overlap: hit(sheet, link),
   };
 });
-check('phone distress sheet shows the level and photograph count',
-  phone.title === 'Basement' && /1 observation/.test(phone.meta) && /2 photographs/.test(phone.meta),
+check('phone pen log shows the level and Picture/Damage Locations',
+  phone.level === 'Basement' && phone.heading === 'Picture/Damage Locations' && phone.schedulePins >= 1,
   JSON.stringify(phone));
 check('phone layout keeps the sheet clear of the Distress link',
   !phone.overflow && phone.sheetVisible && phone.linkReady && !phone.overlap,

@@ -241,16 +241,19 @@ body.report-builder-open .canvas {
 }
 
 .rb-sheet {
+  position: relative;
   flex: 0 0 auto;
   align-self: center;
   width: 680px;
   height: 440px;
   max-width: 100%;
+  overflow: hidden;
   background: #fff;
   color: #111;
   border: 1px solid #1a1a1a;
   box-shadow: 0 14px 36px rgba(8, 32, 54, 0.16);
   box-sizing: border-box;
+  container-type: size;
 }
 
 .rb-sheet__margin {
@@ -1193,4 +1196,318 @@ body.report-builder-open .canvas {
   display: flex;
   align-items: flex-end;
   margin-top: 0.5%;
+}
+
+.rb-penlog {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #fff;
+}
+
+.rb-penlog__title,
+.rb-penlog__brand,
+.rb-penlog__page,
+.rb-penlog__missing {
+  margin: 0;
+  color: #222;
+}
+
+.rb-penlog__title {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 0.08cqh;
+  overflow: hidden;
+  color: #222;
+  font-weight: 500;
+  line-height: 1.05;
+  white-space: normal;
+}
+
+.rb-penlog__kicker {
+  font-size: 10px;
+  font-size: 1.05cqh;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: #444;
+}
+
+.rb-penlog__heading {
+  font-size: 13px;
+  font-size: 1.45cqh;
+  font-weight: 500;
+  white-space: normal;
+}
+
+.rb-penlog__north {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.08cqh;
+  margin: 0;
+  color: #222;
+  font-size: 10px;
+  font-size: 1.05cqh;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.rb-penlog__north-arrow {
+  width: 0;
+  height: 0;
+  border-left: 0.42cqh solid transparent;
+  border-right: 0.42cqh solid transparent;
+  border-bottom: 0.85cqh solid #222;
+}
+
+.rb-penlog__plan {
+  position: absolute;
+  overflow: visible;
+  background: #fff;
+  border: 0;
+  box-sizing: border-box;
+}
+
+.rb-penlog__fit {
+  position: absolute;
+}
+
+.rb-penlog__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+.rb-penlog__missing {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 42%;
+  color: #5c574e;
+  font-size: 12px;
+  font-size: 1.5cqh;
+  text-align: center;
+}
+
+.rb-penlog__pin {
+  position: absolute;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  min-width: 16px;
+  min-width: 2.15cqh;
+  height: 16px;
+  height: 2.15cqh;
+  padding: 0 0.25cqh;
+  border-radius: 999px;
+  background: #9b2b21;
+  color: #fff;
+  font-size: 10px;
+  font-size: 1.15cqh;
+  font-weight: 700;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+}
+
+.rb-penlog__pin.is-exterior {
+  background: #6b7280;
+}
+
+.rb-penlog__pin.is-selected {
+  box-shadow: 0 0 0 1px #fff, 0 0 0 2px #1a1a1a;
+}
+
+.rb-penlog__schedule {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: #fff;
+}
+
+.rb-penlog__schedule.is-scroll {
+  overflow: auto;
+}
+
+.rb-penlog__grid {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  border-top: 1px solid #222;
+  border-left: 1px solid #222;
+  box-sizing: border-box;
+}
+
+.rb-penlog__cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 0.35cqh;
+  border-right: 1px solid #222;
+  border-bottom: 1px solid #c8c8c8;
+  overflow: hidden;
+  color: #222;
+  font-size: 11px;
+  font-size: 1.28cqh;
+  line-height: 1.15;
+}
+
+.rb-penlog__cell--head {
+  background: #ebe6de;
+  border-bottom-color: #222;
+  font-weight: 700;
+}
+
+.rb-penlog__cell.is-left {
+  justify-content: flex-start;
+}
+
+.rb-penlog__cell.is-selected {
+  background: #f7f1e4;
+}
+
+.rb-penlog__photo {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+  cursor: pointer;
+}
+
+.rb-penlog__pinnum {
+  display: inline-grid;
+  place-items: center;
+  width: 1.45em;
+  height: 1.45em;
+  border: 1px solid #333;
+  border-radius: 50%;
+  font-weight: 700;
+}
+
+.rb-penlog__note {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  resize: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.15;
+}
+
+.rb-penlog__brand,
+.rb-penlog__page {
+  position: absolute;
+  color: #555;
+  font-size: 10px;
+  font-size: 1.15cqh;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.rb-penlog__page {
+  max-width: 42%;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-penlog-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line, #d7d2c8);
+}
+
+.rb-penlog-panel[hidden] {
+  display: none;
+}
+
+.rb-panel__status {
+  margin: 0;
+  color: var(--navy, #143044);
+  font-size: 12px;
+  font-weight: 700;
+  min-height: 1em;
+}
+
+.rb-panel__status:empty {
+  display: none;
+}
+
+.rb-panel__label {
+  color: var(--ink, #222);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rb-panel__note,
+.rb-panel__note.rb-panel__note {
+  width: 100%;
+  min-height: 72px;
+  padding: 8px;
+  border: 1px solid var(--line-strong, #b8b2a6);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink, #222);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.35;
+  resize: vertical;
+}
+
+.rb-panel__subhead {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+.rb-photo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rb-photo {
+  margin: 0;
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--line, #d7d2c8);
+}
+
+.rb-photo.is-current {
+  background: #f7f1e4;
+}
+
+.rb-photo figcaption,
+.rb-photo p {
+  margin: 0 0 4px;
+  color: var(--ink, #222);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rb-photo img {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  background: #f6f3ec;
 }
