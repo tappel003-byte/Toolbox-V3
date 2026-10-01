@@ -592,11 +592,14 @@ body.report-builder-open .canvas {
   }
 }
 
-/* Fixed-slot Floor Level topo figure page (Slice 1).
-   Legend + H/L/Δ are report chrome, not field Topo paste positions. */
+/* Mitchell / 1515 fixed-slot Floor Level pages.
+   Legend + H/L/Δ + relative-readings are report chrome, not field Topo paste. */
 
-.rb-sheet__margin--topo {
-  padding: 2.2% 2.6% 1.8%;
+.rb-sheet__margin--topo,
+.rb-sheet__margin--cover {
+  margin: 2.2%;
+  padding: 1.6% 2% 1.4%;
+  border-color: rgba(30, 64, 110, 0.55);
 }
 
 .rb-topo-page {
@@ -604,90 +607,133 @@ body.report-builder-open .canvas {
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-  gap: 0.6%;
+  gap: 0.5%;
   color: #17130e;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
 
 .rb-topo-page__header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
   flex: 0 0 auto;
 }
 
-.rb-topo-page__header-left {
+.rb-topo-page__header-left,
+.rb-topo-page__header-right {
   min-width: 0;
 }
 
+.rb-topo-page__header-right {
+  text-align: right;
+}
+
+.rb-topo-page__figure-num,
+.rb-topo-page__figure-title,
 .rb-topo-page__survey-date,
+.rb-topo-page__corrected,
+.rb-topo-page__residence,
 .rb-topo-page__address,
-.rb-topo-page__corrected {
+.rb-topo-page__address-city {
   margin: 0;
 }
 
-.rb-topo-page__survey-date {
-  font-size: clamp(11px, 1.7cqb, 15px);
+.rb-topo-page__figure-num {
+  font-size: clamp(16px, 2.6cqb, 26px);
   font-weight: 700;
-}
-
-.rb-topo-page__address {
-  margin-top: 2px;
-  font-size: clamp(10px, 1.5cqb, 13px);
-  color: #333;
-}
-
-.rb-topo-page__front-door {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-width: 4.8em;
-  padding: 0.35em 0.55em;
-  border: 1px solid #17130e;
-  background: #fff;
-  text-align: center;
-  line-height: 1.15;
-}
-
-.rb-topo-page__front-door span {
-  font-size: clamp(9px, 1.2cqb, 11px);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-.rb-topo-page__front-door strong {
-  margin-top: 2px;
-  font-size: clamp(12px, 1.8cqb, 16px);
-  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
 }
 
 .rb-topo-page__figure-title {
-  flex: 0 0 auto;
-  margin: 0.2% 0 0.4%;
-  font-size: clamp(13px, 2.1cqb, 20px);
+  margin-top: 1px;
+  font-size: clamp(12px, 1.9cqb, 18px);
   font-weight: 700;
   letter-spacing: -0.01em;
-  color: #17130e;
+  line-height: 1.2;
+}
+
+.rb-topo-page__survey-date,
+.rb-topo-page__corrected {
+  margin-top: 2px;
+  font-size: clamp(10px, 1.45cqb, 13px);
+  font-weight: 500;
+  color: #222;
+}
+
+.rb-topo-page__residence {
+  font-size: clamp(12px, 1.9cqb, 17px);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.rb-topo-page__address,
+.rb-topo-page__address-city {
+  font-size: clamp(10px, 1.5cqb, 13px);
+  font-weight: 500;
+  color: #222;
+  line-height: 1.25;
+}
+
+.rb-topo-page__front-door {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.rb-topo-page__north {
+  width: 28px;
+  height: 36px;
+  flex: 0 0 auto;
+}
+
+.rb-topo-page__north svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.rb-topo-page__front-door-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+}
+
+.rb-topo-page__front-door-meta span {
+  font-size: clamp(8px, 1.1cqb, 10px);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #555;
+}
+
+.rb-topo-page__front-door-meta strong {
+  font-size: clamp(11px, 1.6cqb, 14px);
+  font-weight: 700;
 }
 
 .rb-topo-page__body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(92px, 14%, 140px);
-  gap: 1.2%;
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
 }
 
 .rb-topo-page__drawing {
+  position: relative;
+  z-index: 0;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(23, 19, 14, 0.35);
   background: #fff;
   overflow: hidden;
 }
@@ -702,43 +748,71 @@ body.report-builder-open .canvas {
 }
 
 .rb-topo-page__chrome {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
 }
 
 .rb-topo-page__stat-block {
+  position: absolute;
+  top: 8%;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 5px;
+  max-width: 28%;
 }
 
-.rb-topo-legend {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  grid-template-rows: auto 1fr;
-  gap: 4px 6px;
-  padding: 6px;
-  border: 1px solid rgba(23, 19, 14, 0.85);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.95);
+.rb-topo-page__stat-block--left {
+  left: 1.5%;
 }
 
-.rb-topo-legend__name {
-  grid-column: 1 / -1;
-  font-size: 10px;
+.rb-topo-page__stat-block--right {
+  right: 1.5%;
+  left: auto;
+  align-items: flex-end;
+}
+
+.rb-topo-page__stat-block--right .rb-topo-stats {
+  align-self: flex-end;
+}
+
+.rb-topo-page__stat-name {
+  padding: 2px 6px;
+  border: 1px solid rgba(23, 19, 14, 0.35);
+  background: rgba(255, 255, 255, 0.92);
+  font-size: clamp(9px, 1.2cqb, 11px);
   font-weight: 700;
   line-height: 1.2;
 }
 
+.rb-topo-legend {
+  display: grid;
+  grid-template-columns: auto 16px auto;
+  grid-template-rows: auto 1fr;
+  gap: 2px 4px;
+  padding: 4px 5px;
+  border: 1px solid rgba(23, 19, 14, 0.55);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.rb-topo-legend__elev {
+  grid-column: 1 / -1;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: #444;
+}
+
 .rb-topo-legend__bar {
+  grid-column: 2;
+  grid-row: 2;
   display: flex;
   flex-direction: column;
-  width: 18px;
-  min-height: 110px;
+  width: 16px;
+  min-height: 88px;
   border: 1px solid #17130e;
   overflow: hidden;
 }
@@ -749,10 +823,12 @@ body.report-builder-open .canvas {
 }
 
 .rb-topo-legend__labels {
+  grid-column: 3;
+  grid-row: 2;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
@@ -762,19 +838,21 @@ body.report-builder-open .canvas {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 6px;
-  padding: 4px 6px;
-  border: 1px solid rgba(23, 19, 14, 0.55);
+  gap: 3px 7px;
+  padding: 3px 7px;
+  border: 1px solid rgba(23, 19, 14, 0.45);
   border-radius: 999px;
-  background: #fff;
-  font-size: 10px;
-  font-weight: 700;
+  background: rgba(255, 255, 255, 0.96);
+  font-size: 9px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .rb-topo-stats__label {
   color: #333;
+  font-weight: 700;
 }
 
 .rb-topo-stats__hi {
@@ -786,13 +864,227 @@ body.report-builder-open .canvas {
 }
 
 .rb-topo-stats__delta {
-  color: #17130e;
+  color: #444;
 }
 
-.rb-topo-page__corrected {
+.rb-topo-stats b {
+  font-weight: 800;
+}
+
+.rb-topo-page__footer {
   flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
   margin-top: 0.4%;
-  font-size: clamp(10px, 1.4cqb, 12px);
+}
+
+.rb-topo-page__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rb-topo-page__brand-mark {
+  width: 34px;
+  height: 18px;
+  background:
+    linear-gradient(135deg, transparent 42%, #111 42% 58%, transparent 58%),
+    linear-gradient(45deg, transparent 38%, #111 38% 52%, transparent 52%),
+    linear-gradient(160deg, transparent 45%, #333 45% 55%, transparent 55%);
+  background-size: 14px 14px, 12px 12px, 10px 10px;
+  background-position: 0 4px, 10px 4px, 20px 6px;
+  background-repeat: no-repeat;
+}
+
+.rb-topo-page__brand-name {
+  font-size: clamp(11px, 1.7cqb, 15px);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.rb-topo-page__readings {
+  flex: 0 0 auto;
+  min-width: min(42%, 260px);
+  max-width: 48%;
+  padding: 0.55em 0.75em 0.45em;
+  border: 1.5px solid #2f5f9a;
+  background: #fff;
+}
+
+.rb-topo-page__readings-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  margin-bottom: 0.28em;
+  font-size: clamp(10px, 1.45cqb, 13px);
   font-weight: 600;
-  color: #444;
+  line-height: 1.2;
+}
+
+.rb-topo-page__readings-badge {
+  display: grid;
+  place-items: center;
+  width: 1.35em;
+  height: 1.35em;
+  border-radius: 50%;
+  background: #f2d34a;
+  border: 1px solid #111;
+  font-size: 0.85em;
+  font-weight: 800;
+  flex: 0 0 auto;
+}
+
+.rb-topo-page__readings-total {
+  margin-top: 0.35em;
+  padding-top: 0.35em;
+  border-top: 1px solid rgba(23, 19, 14, 0.35);
+  text-align: center;
+  font-size: clamp(10px, 1.45cqb, 13px);
+  font-weight: 700;
+}
+
+/* Mitchell cover: identity left, CONTENTS box right. */
+.rb-cover {
+  --rb-copper: #a67a52;
+  --rb-sage: #7f9278;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  justify-content: flex-start;
+  gap: 7%;
+  padding: 3% 2% 2.5%;
+  color: #222;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.rb-cover__prepared {
+  flex: 0 0 auto;
+  max-width: 48%;
+}
+
+.rb-cover__label {
+  color: var(--rb-sage);
+  font-weight: 600;
+}
+
+.rb-cover__prepared .rb-cover__label,
+.rb-cover__name,
+.rb-cover__email,
+.rb-cover__phone {
+  margin: 0;
+}
+
+.rb-cover__name {
+  margin-top: 2px;
+  color: #3f4a36;
+  font-size: clamp(15px, 2.4cqb, 22px);
+  font-weight: 700;
+}
+
+.rb-cover__email {
+  margin-top: 2px;
+  color: var(--rb-sage);
+  font-size: clamp(11px, 1.6cqb, 14px);
+}
+
+.rb-cover__phone {
+  margin-top: 2px;
+  color: #111;
+  font-size: clamp(12px, 1.8cqb, 16px);
+  font-weight: 700;
+}
+
+.rb-cover__main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.95fr);
+  gap: 4%;
+  align-items: start;
+  flex: 0 0 auto;
+  margin-top: 2%;
+}
+
+.rb-cover__product {
+  margin: 0;
+  color: var(--rb-copper);
+  font-size: clamp(14px, 2.2cqb, 20px);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.rb-cover__street {
+  margin: 0.35em 0 0;
+  color: #111;
+  font-size: clamp(22px, 4cqb, 38px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+.rb-cover__city {
+  margin: 0.15em 0 0;
+  color: #555;
+  font-size: clamp(13px, 2cqb, 18px);
+  font-weight: 500;
+}
+
+.rb-cover__rule {
+  width: min(12em, 70%);
+  height: 2px;
+  margin: 1.1em 0 0.8em;
+  background: var(--rb-copper);
+}
+
+.rb-cover__date {
+  margin: 0;
+  font-size: clamp(12px, 1.7cqb, 15px);
+  color: #333;
+}
+
+.rb-cover__corrected {
+  margin: 0.25em 0 0;
+  color: #777;
+  font-size: clamp(11px, 1.5cqb, 13px);
+}
+
+.rb-cover__contents {
+  border: 1px solid #d2c4b4;
+  padding: 0.7em 0.9em 0.8em;
+  min-height: 10em;
+  background: #fff;
+}
+
+.rb-cover__contents-title {
+  margin: 0 0 0.55em;
+  color: var(--rb-copper);
+  font-size: clamp(12px, 1.8cqb, 16px);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.rb-cover__contents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+}
+
+.rb-cover__contents-item {
+  display: block;
+  width: 100%;
+  padding: 0.1em 0;
+  border: 0;
+  background: transparent;
+  color: #222;
+  font: inherit;
+  font-size: clamp(10px, 1.45cqb, 13px);
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rb-cover__contents-item strong {
+  font-weight: 700;
 }

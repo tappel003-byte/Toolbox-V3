@@ -65,6 +65,10 @@
     return address.split('\n')[0].trim();
   }
 
+  function propertyAddressFull(record) {
+    return text(record && record.propertyAddress);
+  }
+
   function canvasesOf(record) {
     var list = record && record.planSetup && Array.isArray(record.planSetup.canvases)
       ? record.planSetup.canvases
@@ -333,6 +337,7 @@
       customer: {
         name: customerName(record),
         address: propertyAddress(record),
+        addressFull: propertyAddressFull(record),
         companyName: text(record.companyName),
         cellPhone: text(record.cellPhone),
         email: text(record.email),
@@ -533,7 +538,11 @@
         includeInToc: false,
         note: 'Assembled from this Customer File.',
         meta: {
+          customerName: src.customerName || '',
           address: src.propertyAddress || '',
+          addressFull: (src.customer && src.customer.addressFull) || src.propertyAddress || '',
+          email: (src.customer && src.customer.email) || '',
+          cellPhone: (src.customer && src.customer.cellPhone) || '',
           floorSurveyDate: src.floorSurveyDate || '',
         },
       }),

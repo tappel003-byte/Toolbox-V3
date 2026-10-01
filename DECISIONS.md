@@ -104,7 +104,7 @@ Concrete Customer File record ownership for later app plug-in. Architecture is c
   1. Cover with Customer File identity + TOC.
   2. Discussion / Damage Summary as an editable empty slot (no invented narrative).
   3. One Floor Level topo figure page per boundary / epoch: Combined / All when useful, then each named boundary (e.g. Main, Kitchen / Living). Mitchell and 1515 Los Nietos are the proof targets.
-  4. Fixed chrome on every topo figure page: figure title/number, survey date, address strip, Front Door, contour legend, High / Low / Δ. Drawing fills a registered frame. Same slot positions on every related page.
+  4. Fixed chrome on every topo figure page, Mitchell / 1515 visual slots: figure title/number and survey date top-left; residence / address / Front Door (with north cue) top-right; contour legend + H/L/Δ overlaid on the registered drawing frame; relative-readings box and brand strip at the bottom. Cover uses Prepared For + FLOOR LEVEL SURVEY identity with a CONTENTS box. Same slot positions on every related topo page.
   5. Recovery PDF may fall back when compose is unavailable; cut-and-paste field Topo screenshots are not the path.
   **Out of this slice:** Pen Log / drawing toolbar, picture pages polish, epoch divider banners, side-by-side epoch pages, mark-complete + date, Report Builder startup questionnaire, full PowerPoint-like flexibility beyond adapting these assembled pages.
 

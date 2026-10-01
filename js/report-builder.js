@@ -104,6 +104,39 @@
     return addr.split('\n')[0].trim();
   }
 
+  function fullAddress(record) {
+    var addr = record && typeof record.propertyAddress === 'string' ? record.propertyAddress.trim() : '';
+    return addr || displayAddress(record);
+  }
+
+  function addressParts(text) {
+    var lines = String(text || '').split(/\n/).map(function (line) {
+      return line.trim();
+    }).filter(Boolean);
+    return {
+      street: lines[0] || '',
+      cityLine: lines.slice(1).join(', '),
+    };
+  }
+
+  function displayCustomerName(record) {
+    var api = identityApi();
+    if (api && typeof api.displayName === 'function') {
+      var name = api.displayName(record);
+      if (name && name !== 'New Customer File') return name;
+    }
+    var first = record && typeof record.firstName === 'string' ? record.firstName.trim() : '';
+    var last = record && typeof record.lastName === 'string' ? record.lastName.trim() : '';
+    return (first + ' ' + last).trim();
+  }
+
+  function residenceTitle(name) {
+    var parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return parts[parts.length - 1] + ' Residence';
+    if (parts.length === 1) return parts[0] + ' Residence';
+    return '';
+  }
+
   function sourceApi() {
     return window.ToolboxReportSource;
   }
@@ -168,17 +201,17 @@
     return true;
   }
 
-  function formatSurveyDate(value) {
+  function formatSurveyDate(value, fullYear) {
     var text = typeof value === 'string' ? value.trim() : '';
     if (!text) return '';
     var m = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) return m[2] + '/' + m[3] + '/' + m[1].slice(2);
+    if (m) return m[2] + '/' + m[3] + '/' + (fullYear ? m[1] : m[1].slice(2));
     return text;
   }
 
   function formatReading(value, dec) {
     var n = typeof value === 'number' && isFinite(value) ? value : null;
-    if (n == null) return '—';
+    if (n == null) return '';
     var places = typeof dec === 'number' ? dec : 2;
     return n.toFixed(places);
   }
@@ -186,12 +219,10 @@
   function renderTopoLegend(stats) {
     var box = document.createElement('div');
     box.className = 'rb-topo-legend';
-    if (stats.name) {
-      var name = document.createElement('div');
-      name.className = 'rb-topo-legend__name';
-      name.textContent = stats.name;
-      box.appendChild(name);
-    }
+    var elev = document.createElement('div');
+    elev.className = 'rb-topo-legend__elev';
+    elev.textContent = 'ELEV.';
+    box.appendChild(elev);
     var bar = document.createElement('div');
     bar.className = 'rb-topo-legend__bar';
     var legend = stats.legend || { min: 0, max: 0, stops: [] };
@@ -206,9 +237,9 @@
     var labels = document.createElement('div');
     labels.className = 'rb-topo-legend__labels';
     var hiLabel = document.createElement('span');
-    hiLabel.textContent = formatReading(legend.max, stats.decimalPlaces);
+    hiLabel.textContent = formatReading(legend.max, stats.decimalPlaces) || '—';
     var loLabel = document.createElement('span');
-    loLabel.textContent = formatReading(legend.min, stats.decimalPlaces);
+    loLabel.textContent = formatReading(legend.min, stats.decimalPlaces) || '—';
     labels.appendChild(hiLabel);
     labels.appendChild(loLabel);
     box.appendChild(labels);
@@ -224,19 +255,65 @@
       label.textContent = stats.name;
       pill.appendChild(label);
     }
-    var hi = document.createElement('span');
-    hi.className = 'rb-topo-stats__hi';
-    hi.textContent = 'H ' + formatReading(stats.hi, stats.decimalPlaces);
-    var lo = document.createElement('span');
-    lo.className = 'rb-topo-stats__lo';
-    lo.textContent = 'L ' + formatReading(stats.lo, stats.decimalPlaces);
-    var delta = document.createElement('span');
-    delta.className = 'rb-topo-stats__delta';
-    delta.textContent = '\u0394' + formatReading(stats.delta, stats.decimalPlaces);
-    pill.appendChild(hi);
-    pill.appendChild(lo);
-    pill.appendChild(delta);
+    function coloredStat(className, letter, value) {
+      var el = document.createElement('span');
+      el.className = className;
+      var bold = document.createElement('b');
+      bold.textContent = letter;
+      el.appendChild(bold);
+      el.appendChild(document.createTextNode(' ' + (value || '—')));
+      return el;
+    }
+    pill.appendChild(coloredStat('rb-topo-stats__hi', 'H', formatReading(stats.hi, stats.decimalPlaces)));
+    pill.appendChild(coloredStat('rb-topo-stats__lo', 'L', formatReading(stats.lo, stats.decimalPlaces)));
+    pill.appendChild(coloredStat('rb-topo-stats__delta', '\u0394', formatReading(stats.delta, stats.decimalPlaces)));
     return pill;
+  }
+
+  function renderNorthArrow() {
+    var wrap = document.createElement('div');
+    wrap.className = 'rb-topo-page__north';
+    wrap.setAttribute('aria-hidden', 'true');
+    wrap.innerHTML =
+      '<svg viewBox="0 0 40 52" focusable="false">' +
+      '<polygon points="20,2 28,22 20,18 12,22" fill="#111"/>' +
+      '<polygon points="20,50 28,30 20,34 12,30" fill="#bbb"/>' +
+      '<text x="20" y="16" text-anchor="middle" font-size="9" font-weight="700" fill="#111">N</text>' +
+      '</svg>';
+    return wrap;
+  }
+
+  function renderRelativeReadings(statsList) {
+    var box = document.createElement('div');
+    box.className = 'rb-topo-page__readings';
+    var sole = statsList.length === 1 ? statsList[0] : null;
+    var dec = sole ? sole.decimalPlaces : 2;
+    var hiText = sole ? formatReading(sole.hi, dec) : '';
+    var loText = sole ? formatReading(sole.lo, dec) : '';
+    var deltaText = sole ? formatReading(sole.delta, dec) : '';
+
+    function row(letter, label, value) {
+      var line = document.createElement('div');
+      line.className = 'rb-topo-page__readings-row';
+      var badge = document.createElement('span');
+      badge.className = 'rb-topo-page__readings-badge';
+      badge.textContent = letter;
+      var text = document.createElement('span');
+      text.className = 'rb-topo-page__readings-label';
+      text.textContent = label + (value ? (' ' + value) : ' ');
+      line.appendChild(badge);
+      line.appendChild(text);
+      return line;
+    }
+
+    box.appendChild(row('H', 'High Relative Reading -', hiText));
+    box.appendChild(row('L', 'Low Relative Reading -', loText));
+    var total = document.createElement('div');
+    total.className = 'rb-topo-page__readings-total';
+    total.textContent = 'Total Relative Elevation Difference -' +
+      (deltaText ? (' ' + deltaText + '"') : '');
+    box.appendChild(total);
+    return box;
   }
 
   function renderTopoFigurePage(page, evidence) {
@@ -246,37 +323,64 @@
 
     var header = document.createElement('div');
     header.className = 'rb-topo-page__header';
+
     var left = document.createElement('div');
     left.className = 'rb-topo-page__header-left';
+    var num = meta.figureNumber || '';
+    var scopeTitle = meta.scopeTitle || meta.levelName || 'Floor Level Survey';
+    var figureNum = document.createElement('p');
+    figureNum.className = 'rb-topo-page__figure-num';
+    figureNum.textContent = num ? ('Figure ' + num) : 'Figure';
+    left.appendChild(figureNum);
+    var figureTitle = document.createElement('h1');
+    figureTitle.className = 'rb-topo-page__figure-title';
+    figureTitle.textContent = 'Floor Level Survey — ' + scopeTitle;
+    left.appendChild(figureTitle);
     var dateLine = document.createElement('p');
     dateLine.className = 'rb-topo-page__survey-date';
-    var dateText = formatSurveyDate(meta.surveyDate || evidence.surveyDate || '');
+    var dateText = formatSurveyDate(meta.surveyDate || evidence.surveyDate || '', true);
     dateLine.textContent = dateText ? ('Survey Date: ' + dateText) : 'Survey Date:';
     left.appendChild(dateLine);
-    var address = document.createElement('p');
-    address.className = 'rb-topo-page__address';
-    address.textContent = evidence.address || meta.address || '';
-    left.appendChild(address);
+    var corrected = document.createElement('p');
+    corrected.className = 'rb-topo-page__corrected';
+    corrected.textContent = 'Corrected for Floor Differences';
+    left.appendChild(corrected);
     header.appendChild(left);
 
+    var right = document.createElement('div');
+    right.className = 'rb-topo-page__header-right';
+    var residence = document.createElement('p');
+    residence.className = 'rb-topo-page__residence';
+    residence.textContent = evidence.residenceTitle ||
+      residenceTitle(evidence.customerName || '') ||
+      (evidence.customerName || '');
+    right.appendChild(residence);
+    var parts = addressParts(evidence.addressFull || evidence.address || meta.address || '');
+    var street = document.createElement('p');
+    street.className = 'rb-topo-page__address';
+    street.textContent = parts.street || evidence.address || '';
+    right.appendChild(street);
+    if (parts.cityLine) {
+      var city = document.createElement('p');
+      city.className = 'rb-topo-page__address-city';
+      city.textContent = parts.cityLine;
+      right.appendChild(city);
+    }
     var door = document.createElement('div');
     door.className = 'rb-topo-page__front-door';
+    door.appendChild(renderNorthArrow());
+    var doorMeta = document.createElement('div');
+    doorMeta.className = 'rb-topo-page__front-door-meta';
     var doorLabel = document.createElement('span');
     doorLabel.textContent = 'Front Door';
     var doorValue = document.createElement('strong');
     doorValue.textContent = meta.frontDoorFacing || evidence.frontDoorFacing || '—';
-    door.appendChild(doorLabel);
-    door.appendChild(doorValue);
-    header.appendChild(door);
+    doorMeta.appendChild(doorLabel);
+    doorMeta.appendChild(doorValue);
+    door.appendChild(doorMeta);
+    right.appendChild(door);
+    header.appendChild(right);
     root.appendChild(header);
-
-    var figureTitle = document.createElement('h1');
-    figureTitle.className = 'rb-topo-page__figure-title';
-    var num = meta.figureNumber || '';
-    var scopeTitle = meta.scopeTitle || meta.levelName || 'Floor Level Survey';
-    figureTitle.textContent = (num ? ('Figure ' + num + '  ') : '') +
-      'Floor Level Survey — ' + scopeTitle;
-    root.appendChild(figureTitle);
 
     var body = document.createElement('div');
     body.className = 'rb-topo-page__body';
@@ -294,9 +398,18 @@
     if (!statsList.length) {
       addLine(chrome, 'rb-sheet__note', 'H / L / Δ unavailable for this figure.');
     } else {
-      statsList.forEach(function (stats) {
+      statsList.forEach(function (stats, index) {
         var block = document.createElement('div');
-        block.className = 'rb-topo-page__stat-block';
+        var side = statsList.length === 1
+          ? 'left'
+          : (index % 2 === 0 ? 'left' : 'right');
+        block.className = 'rb-topo-page__stat-block rb-topo-page__stat-block--' + side;
+        if (stats.name) {
+          var name = document.createElement('div');
+          name.className = 'rb-topo-page__stat-name';
+          name.textContent = stats.name;
+          block.appendChild(name);
+        }
         block.appendChild(renderTopoLegend(stats));
         block.appendChild(renderTopoStats(stats));
         chrome.appendChild(block);
@@ -305,10 +418,110 @@
     body.appendChild(chrome);
     root.appendChild(body);
 
-    var footer = document.createElement('p');
-    footer.className = 'rb-topo-page__corrected';
-    footer.textContent = 'Corrected for Floor Differences';
+    var footer = document.createElement('div');
+    footer.className = 'rb-topo-page__footer';
+    var brand = document.createElement('div');
+    brand.className = 'rb-topo-page__brand';
+    brand.innerHTML =
+      '<span class="rb-topo-page__brand-mark" aria-hidden="true"></span>' +
+      '<span class="rb-topo-page__brand-name">SANDIA GEO</span>';
+    footer.appendChild(brand);
+    footer.appendChild(renderRelativeReadings(statsList));
     root.appendChild(footer);
+    return root;
+  }
+
+  function renderMitchellCover(page, pages) {
+    var meta = page.meta || {};
+    var root = document.createElement('div');
+    root.className = 'rb-cover';
+
+    var prepared = document.createElement('div');
+    prepared.className = 'rb-cover__prepared';
+    addLine(prepared, 'rb-cover__label', 'Prepared For:');
+    addLine(prepared, 'rb-cover__name', meta.customerName || page.title || 'Customer File');
+    if (meta.email) addLine(prepared, 'rb-cover__email', meta.email);
+    if (meta.cellPhone) addLine(prepared, 'rb-cover__phone', meta.cellPhone);
+    root.appendChild(prepared);
+
+    var main = document.createElement('div');
+    main.className = 'rb-cover__main';
+
+    var left = document.createElement('div');
+    left.className = 'rb-cover__left';
+    addLine(left, 'rb-cover__product', 'FLOOR LEVEL SURVEY');
+    var parts = addressParts(meta.addressFull || meta.address || '');
+    addLine(left, 'rb-cover__street', parts.street || meta.address || 'No property address on file');
+    if (parts.cityLine) addLine(left, 'rb-cover__city', parts.cityLine);
+    var rule = document.createElement('div');
+    rule.className = 'rb-cover__rule';
+    rule.setAttribute('aria-hidden', 'true');
+    left.appendChild(rule);
+    var dateText = formatSurveyDate(meta.floorSurveyDate || '', false);
+    var dateRow = document.createElement('p');
+    dateRow.className = 'rb-cover__date';
+    var dateLabel = document.createElement('span');
+    dateLabel.className = 'rb-cover__label';
+    dateLabel.textContent = 'Survey Date:';
+    dateRow.appendChild(dateLabel);
+    if (dateText) {
+      dateRow.appendChild(document.createTextNode(' '));
+      var dateValue = document.createElement('span');
+      dateValue.textContent = dateText;
+      dateRow.appendChild(dateValue);
+    }
+    left.appendChild(dateRow);
+    addLine(left, 'rb-cover__corrected', 'Corrected for Floor Differences');
+    main.appendChild(left);
+
+    var contents = document.createElement('div');
+    contents.className = 'rb-cover__contents';
+    addLine(contents, 'rb-cover__contents-title', 'CONTENTS');
+    var list = document.createElement('div');
+    list.className = 'rb-cover__contents-list';
+    var api = sourceApi();
+    var entries = api && typeof api.contents === 'function' ? api.contents(pages) : [];
+    if (!entries.length) {
+      addLine(list, 'rb-sheet__note', 'No sections are included.');
+    }
+    entries.forEach(function (entry) {
+      var row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'rb-cover__contents-item';
+      row.setAttribute('data-rb-goto', entry.pageId);
+      var title = entry.title || '';
+      var pageItem = null;
+      for (var i = 0; i < pages.length; i += 1) {
+        if (pages[i].id === entry.pageId) pageItem = pages[i];
+      }
+      var figNum = pageItem && pageItem.meta && pageItem.meta.figureNumber;
+      if (entry.type === 'floor' && figNum) {
+        var figLabel = document.createElement('span');
+        var figStrong = document.createElement('strong');
+        figStrong.textContent = 'Figure ' + figNum;
+        figLabel.appendChild(figStrong);
+        figLabel.appendChild(document.createTextNode(' — ' + title));
+        row.appendChild(figLabel);
+        list.appendChild(row);
+        return;
+      }
+      if (entry.type === 'section' && /discussion/i.test(title)) {
+        var disc = document.createElement('span');
+        var discStrong = document.createElement('strong');
+        discStrong.textContent = 'Floor Level Survey Results - Discussion';
+        disc.appendChild(discStrong);
+        row.appendChild(disc);
+        list.appendChild(row);
+        return;
+      }
+      var span = document.createElement('span');
+      span.textContent = title;
+      row.appendChild(span);
+      list.appendChild(row);
+    });
+    contents.appendChild(list);
+    main.appendChild(contents);
+    root.appendChild(main);
     return root;
   }
 
@@ -404,9 +617,13 @@
               ? window.ToolboxDB.getMedia.bind(window.ToolboxDB)
               : null);
             if (composed && composed.dataUrl) {
+              var customerName = displayCustomerName(record);
               page.evidence = {
                 composed: true,
+                customerName: customerName,
+                residenceTitle: residenceTitle(customerName),
                 address: displayAddress(record),
+                addressFull: fullAddress(record),
                 surveyDate: meta.surveyDate || '',
                 frontDoorFacing: meta.frontDoorFacing || '',
                 stats: composed.stats || [],
@@ -464,16 +681,8 @@
     }
 
     if (page.type === 'cover') {
-      addLine(margin, 'rb-sheet__kicker', 'Report');
-      addLine(margin, 'rb-sheet__kicker rb-sheet__kicker--quiet', SHEET_RATIO_LABEL);
-      var title = document.createElement('h1');
-      title.className = 'rb-sheet__title';
-      title.textContent = page.title || 'Customer File';
-      margin.appendChild(title);
-      var meta = page.meta || {};
-      addLine(margin, 'rb-sheet__meta', meta.address || 'No property address on file');
-      if (meta.floorSurveyDate) addLine(margin, 'rb-sheet__meta', 'Floor Survey date ' + meta.floorSurveyDate);
-      addLine(margin, 'rb-sheet__note', page.note || '');
+      margin.classList.add('rb-sheet__margin--cover');
+      margin.appendChild(renderMitchellCover(page, pages));
     } else if (page.type === 'toc') {
       addLine(margin, 'rb-sheet__kicker', 'Report');
       var tocTitle = document.createElement('h1');
@@ -549,11 +758,15 @@
       if (page.note) addLine(margin, 'rb-sheet__note', page.note);
     }
 
-    var footer = document.createElement('p');
-    footer.className = 'rb-sheet__page';
-    footer.id = 'rb-sheet-page';
-    footer.textContent = 'Page ' + (index + 1);
-    margin.appendChild(footer);
+    var hidePageNum = page.type === 'cover' ||
+      (page.type === 'floor' && page.evidence && page.evidence.composed);
+    if (!hidePageNum) {
+      var footer = document.createElement('p');
+      footer.className = 'rb-sheet__page';
+      footer.id = 'rb-sheet-page';
+      footer.textContent = 'Page ' + (index + 1);
+      margin.appendChild(footer);
+    }
     sheet.appendChild(margin);
   }
 
