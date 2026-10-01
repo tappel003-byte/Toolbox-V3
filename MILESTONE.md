@@ -10,7 +10,9 @@ Make Customer Files safely shareable through the Cloudflare File Cabinet while p
 
 Quiet online mirroring of the active working Customer File is **decided**. It is not later polish. Sync Now remains the manual confidence action and must answer truthfully. The mirror is not a second editor.
 
-Report Builder and Diagnostics are **not wholly future work**. This repository already has a Report Builder shell and a Diagnostics entry for Floor Survey 3D. Further integration is in active pull requests: #68 Diagnostics workbench, #69 Report Builder evidence, and #70 Report Builder skeleton. Those pull requests are separate work. This milestone does not build them, and sync work must not redesign them.
+Report Builder and Diagnostics are **not wholly future work**. This repository already has a Report Builder shell and a Diagnostics entry for Floor Survey 3D. Further integration is in active pull requests: #68 Diagnostics workbench, #69 Report Builder evidence, and #70 Report Builder skeleton. Sync work must not redesign them.
+
+**Authorized in parallel (Tim, Oct 1, 2026):** Report Builder first slice — auto-compose typical topo figure pages with fixed chrome (cover + TOC, empty Discussion slot, Combined then named-boundary Floor Level pages). See `DECISIONS.md` Report Builder. That slice is product-owner authorized and may ship independently of remaining File Cabinet sync polish.
 
 Post-release local-copy cleanup is **decided** and is a **later small slice**. Do not implement it here, and do not let it complicate normal capture, Save, Sync Now, or Check Out.
 

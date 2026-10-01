@@ -591,3 +591,208 @@ body.report-builder-open .canvas {
     padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Fixed-slot Floor Level topo figure page (Slice 1).
+   Legend + H/L/Δ are report chrome, not field Topo paste positions. */
+
+.rb-sheet__margin--topo {
+  padding: 2.2% 2.6% 1.8%;
+}
+
+.rb-topo-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 0.6%;
+  color: #17130e;
+}
+
+.rb-topo-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.rb-topo-page__header-left {
+  min-width: 0;
+}
+
+.rb-topo-page__survey-date,
+.rb-topo-page__address,
+.rb-topo-page__corrected {
+  margin: 0;
+}
+
+.rb-topo-page__survey-date {
+  font-size: clamp(11px, 1.7cqb, 15px);
+  font-weight: 700;
+}
+
+.rb-topo-page__address {
+  margin-top: 2px;
+  font-size: clamp(10px, 1.5cqb, 13px);
+  color: #333;
+}
+
+.rb-topo-page__front-door {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 4.8em;
+  padding: 0.35em 0.55em;
+  border: 1px solid #17130e;
+  background: #fff;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.rb-topo-page__front-door span {
+  font-size: clamp(9px, 1.2cqb, 11px);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.rb-topo-page__front-door strong {
+  margin-top: 2px;
+  font-size: clamp(12px, 1.8cqb, 16px);
+  font-weight: 700;
+}
+
+.rb-topo-page__figure-title {
+  flex: 0 0 auto;
+  margin: 0.2% 0 0.4%;
+  font-size: clamp(13px, 2.1cqb, 20px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #17130e;
+}
+
+.rb-topo-page__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(92px, 14%, 140px);
+  gap: 1.2%;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.rb-topo-page__drawing {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(23, 19, 14, 0.35);
+  background: #fff;
+  overflow: hidden;
+}
+
+.rb-topo-page__image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.rb-topo-page__chrome {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.rb-topo-page__stat-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rb-topo-legend {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  gap: 4px 6px;
+  padding: 6px;
+  border: 1px solid rgba(23, 19, 14, 0.85);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.rb-topo-legend__name {
+  grid-column: 1 / -1;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.rb-topo-legend__bar {
+  display: flex;
+  flex-direction: column;
+  width: 18px;
+  min-height: 110px;
+  border: 1px solid #17130e;
+  overflow: hidden;
+}
+
+.rb-topo-legend__bar span {
+  flex: 1 1 0;
+  min-height: 2px;
+}
+
+.rb-topo-legend__labels {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.rb-topo-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  padding: 4px 6px;
+  border: 1px solid rgba(23, 19, 14, 0.55);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.rb-topo-stats__label {
+  color: #333;
+}
+
+.rb-topo-stats__hi {
+  color: #b51d16;
+}
+
+.rb-topo-stats__lo {
+  color: #1d4ed8;
+}
+
+.rb-topo-stats__delta {
+  color: #17130e;
+}
+
+.rb-topo-page__corrected {
+  flex: 0 0 auto;
+  margin-top: 0.4%;
+  font-size: clamp(10px, 1.4cqb, 12px);
+  font-weight: 600;
+  color: #444;
+}
