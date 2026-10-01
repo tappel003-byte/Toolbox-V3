@@ -1729,6 +1729,28 @@
     });
   }
 
+  function clearReportReturn() {
+    if (window.ToolboxReportSession && typeof window.ToolboxReportSession.clear === 'function') {
+      window.ToolboxReportSession.clear();
+    }
+  }
+
+  function reportReturnContext(customerFileId) {
+    if (!window.ToolboxReportSession || typeof window.ToolboxReportSession.forFile !== 'function') {
+      return null;
+    }
+    return window.ToolboxReportSession.forFile(customerFileId);
+  }
+
+  function goCustomerFileHome(id) {
+    clearReportReturn();
+    window.location.hash = '#/file/' + encodeURIComponent(id);
+  }
+
+  function goReportBuilder(id) {
+    window.location.hash = '#/file/' + encodeURIComponent(id) + '/report';
+  }
+
   function renderDistressSurvey(app, id) {
     registerActiveFlush(null);
     if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
@@ -1746,8 +1768,19 @@
       }
       document.body.classList.remove('distress-survey-open');
       app.classList.remove('canvas--distress-survey');
-      window.location.hash = '#/file/' + encodeURIComponent(id);
+      goCustomerFileHome(id);
     }
+
+    var returnToReport = reportReturnContext(id)
+      ? function () {
+          if (window.ToolboxDistress && typeof window.ToolboxDistress.unmount === 'function') {
+            window.ToolboxDistress.unmount();
+          }
+          document.body.classList.remove('distress-survey-open');
+          app.classList.remove('canvas--distress-survey');
+          goReportBuilder(id);
+        }
+      : null;
 
     if (!window.ToolboxDistress || typeof window.ToolboxDistress.mount !== 'function') {
       app.innerHTML =
@@ -1763,6 +1796,7 @@
     window.ToolboxDistress.mount(app, {
       customerFileId: id,
       onBack: leave,
+      onReturnToReport: returnToReport,
     });
   }
 
@@ -1786,8 +1820,19 @@
       }
       document.body.classList.remove('floor-survey-open', 'diagnostics-open');
       app.classList.remove('canvas--floor-survey');
-      window.location.hash = '#/file/' + encodeURIComponent(id);
+      goCustomerFileHome(id);
     }
+
+    var returnToReport = reportReturnContext(id)
+      ? function () {
+          if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
+            window.ToolboxFloorSurvey.unmount();
+          }
+          document.body.classList.remove('floor-survey-open', 'diagnostics-open');
+          app.classList.remove('canvas--floor-survey');
+          goReportBuilder(id);
+        }
+      : null;
 
     if (!window.ToolboxFloorSurvey || typeof window.ToolboxFloorSurvey.mount !== 'function') {
       app.innerHTML =
@@ -1804,6 +1849,7 @@
       customerFileId: id,
       workspace: 'survey',
       onBack: leave,
+      onReturnToReport: returnToReport,
     });
   }
 
@@ -1827,8 +1873,19 @@
       }
       document.body.classList.remove('floor-survey-open', 'diagnostics-open');
       app.classList.remove('canvas--floor-survey');
-      window.location.hash = '#/file/' + encodeURIComponent(id);
+      goCustomerFileHome(id);
     }
+
+    var returnToReport = reportReturnContext(id)
+      ? function () {
+          if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
+            window.ToolboxFloorSurvey.unmount();
+          }
+          document.body.classList.remove('floor-survey-open', 'diagnostics-open');
+          app.classList.remove('canvas--floor-survey');
+          goReportBuilder(id);
+        }
+      : null;
 
     if (!window.ToolboxFloorSurvey || typeof window.ToolboxFloorSurvey.mount !== 'function') {
       document.body.classList.remove('floor-survey-open', 'diagnostics-open');
@@ -1847,6 +1904,7 @@
       customerFileId: id,
       workspace: 'diagnostics',
       onBack: leave,
+      onReturnToReport: returnToReport,
     });
   }
 
@@ -1864,6 +1922,7 @@
     app.innerHTML = '';
 
     function leave() {
+      clearReportReturn();
       window.location.hash = '#/file/' + encodeURIComponent(id);
     }
 

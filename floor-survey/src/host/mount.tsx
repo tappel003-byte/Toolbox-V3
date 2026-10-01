@@ -18,6 +18,8 @@ import "../styles.css";
 export type MountOptions = {
   customerFileId: string;
   onBack: () => void;
+  /** Shown only when the investigator arrived from Report Builder. */
+  onReturnToReport?: () => void;
   /** survey = Floor Survey field capture. diagnostics = workbench around the existing 3D view. */
   workspace?: "survey" | "diagnostics";
 };
@@ -36,9 +38,17 @@ export function mount(el: HTMLElement, options: MountOptions) {
   root = createRoot(el);
   root.render(
     options.workspace === "diagnostics" ? (
-      <DiagnosticsWorkspace customerFileId={options.customerFileId} onBack={options.onBack} />
+      <DiagnosticsWorkspace
+        customerFileId={options.customerFileId}
+        onBack={options.onBack}
+        onReturnToReport={options.onReturnToReport}
+      />
     ) : (
-      <HostWorkspace customerFileId={options.customerFileId} onBack={options.onBack} />
+      <HostWorkspace
+        customerFileId={options.customerFileId}
+        onBack={options.onBack}
+        onReturnToReport={options.onReturnToReport}
+      />
     ),
   );
   return {

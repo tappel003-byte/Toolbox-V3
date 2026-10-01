@@ -8,6 +8,7 @@
   var hostEl = null;
   var iframe = null;
   var onBackCb = null;
+  var onReturnToReportCb = null;
 
   function leave() {
     var cb = onBackCb;
@@ -15,9 +16,21 @@
     if (typeof cb === 'function') cb();
   }
 
+  function returnToReport() {
+    var cb = onReturnToReportCb;
+    unmount();
+    if (typeof cb === 'function') cb();
+  }
+
   function onMessage(ev) {
-    if (!ev || !ev.data || ev.data.type !== 'toolbox-distress-back') return;
-    leave();
+    if (!ev || !ev.data) return;
+    if (ev.data.type === 'toolbox-distress-back') {
+      leave();
+      return;
+    }
+    if (ev.data.type === 'toolbox-distress-return-report') {
+      returnToReport();
+    }
   }
 
   function mount(el, options) {
@@ -27,7 +40,11 @@
     }
     hostEl = el;
     onBackCb = options.onBack || null;
+    onReturnToReportCb = typeof options.onReturnToReport === 'function'
+      ? options.onReturnToReport
+      : null;
     window.__toolboxDistressBack = leave;
+    window.__toolboxDistressReturnToReport = onReturnToReportCb;
     window.addEventListener('message', onMessage);
 
     el.classList.add('distress-survey-host');
@@ -49,6 +66,7 @@
     var src =
       'distress-survey/survey.html?cf=' +
       encodeURIComponent(options.customerFileId);
+    if (onReturnToReportCb) src += '&returnReport=1';
     iframe.src = src;
     el.appendChild(iframe);
 
@@ -64,6 +82,13 @@
         window.__toolboxDistressBack = null;
       }
     }
+    if (window.__toolboxDistressReturnToReport === onReturnToReportCb) {
+      try {
+        delete window.__toolboxDistressReturnToReport;
+      } catch (_) {
+        window.__toolboxDistressReturnToReport = null;
+      }
+    }
     if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
     iframe = null;
     if (hostEl) {
@@ -72,6 +97,7 @@
       hostEl = null;
     }
     onBackCb = null;
+    onReturnToReportCb = null;
   }
 
   window.ToolboxDistress = { mount: mount, unmount: unmount };

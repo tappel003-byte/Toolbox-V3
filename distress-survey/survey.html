@@ -361,6 +361,11 @@
   body.host-mode #screenSetup,
   body.host-mode #screenTrash{display:none !important}
   body.host-mode .host-hide{display:none !important}
+  .host-return-report{
+    flex:0 0 auto;align-self:center;margin:0;padding:6px 8px;border:0;border-radius:8px;
+    background:transparent;color:var(--accent,#c14a2b);font-size:12px;font-weight:700;
+    line-height:1.2;white-space:nowrap;max-width:9.5rem;overflow:hidden;text-overflow:ellipsis}
+  .host-return-report:active{background:var(--line)}
 
   .icon-btn{background:transparent;border:none;width:38px;height:38px;border-radius:8px;
     font-size:18px;display:flex;align-items:center;justify-content:center;color:var(--ink)}
@@ -792,6 +797,7 @@
 <div id="screenWork" class="screen">
   <div class="work-head">
     <button class="back-btn" onclick="goHome()" aria-label="Home">←</button>
+    <button type="button" class="host-return-report" id="hostReturnReport" hidden>Back to Report Builder</button>
     <div class="title">
       <b id="wTitle"></b>
       <small id="wSub"></small>
@@ -7103,6 +7109,34 @@ function hostNotifyBack() {
   }
 }
 
+function hostCanReturnToReport() {
+  try {
+    const params = new URLSearchParams(location.search || '');
+    if (params.get('returnReport') === '1') return true;
+  } catch (_) {}
+  const p = hostParent();
+  return !!(p && typeof p.__toolboxDistressReturnToReport === 'function');
+}
+
+function hostNotifyReturnToReport() {
+  const p = hostParent();
+  if (p && typeof p.__toolboxDistressReturnToReport === 'function') {
+    p.__toolboxDistressReturnToReport();
+    return;
+  }
+  if (p) {
+    p.postMessage({ type: 'toolbox-distress-return-report' }, '*');
+  }
+}
+
+function hostWireReturnReport() {
+  const btn = document.getElementById('hostReturnReport');
+  if (!btn) return;
+  const show = HOST_MODE && hostCanReturnToReport();
+  btn.hidden = !show;
+  btn.onclick = show ? hostNotifyReturnToReport : null;
+}
+
 async function hostLoadRecord() {
   const db = hostDB();
   const ps = hostPlanSetup();
@@ -7347,6 +7381,7 @@ async function hostBoot() {
     refreshLevelPill();
     enterWork();
     refreshSubtitle();
+    hostWireReturnReport();
   } catch (e) {
     console.error(e);
     document.body.innerHTML =

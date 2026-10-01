@@ -15,6 +15,7 @@
   var MAX_PAGES = 80;
   var SHEET_RATIO = 17 / 11;
   var AUTOSAVE_DELAY_MS = 900;
+  var PHOTOS_PER_PAGE = 10;
   var REPORT_SCHEMA = 'toolbox.report-builder';
   var REPORT_SCHEMA_VERSION = 1;
 
@@ -178,9 +179,260 @@
       sourceKey: source.sourceKey,
       sourceRef: source.sourceRef,
       includeInToc: source.includeInToc !== false,
-      meta: source.meta,
+      meta: cloneJson(source.meta || null),
+      reportText: cloneJson(source.reportText || null),
       evidence: source.evidence || null,
     };
+  }
+
+  function photoLabel(displayNumber) {
+    var n = Number(displayNumber);
+    if (!isFinite(n)) return 'Photo';
+    var raw = String(Math.round(n));
+    return 'Photo ' + (raw.length < 2 ? ('0' + raw) : raw);
+  }
+
+  function brandMark() {
+    var brand = document.createElement('div');
+    brand.className = 'rb-topo-page__brand';
+    brand.innerHTML =
+      '<span class="rb-topo-page__brand-mark" aria-hidden="true"></span>' +
+      '<span class="rb-topo-page__brand-name">SANDIA GEO</span>';
+    return brand;
+  }
+
+  function nextPicturesPageId(pages) {
+    var max = 0;
+    (pages || []).forEach(function (page) {
+      var m = page && page.id && String(page.id).match(/^pictures-(\d+)$/);
+      if (m) max = Math.max(max, Number(m[1]) || 0);
+    });
+    return 'pictures-' + (max + 1);
+  }
+
+  function maxFigureNumber(pages) {
+    var max = 0;
+    (pages || []).forEach(function (page) {
+      var n = page && page.meta && page.meta.figureNumber;
+      if (typeof n === 'number' && isFinite(n)) max = Math.max(max, n);
+    });
+    return max;
+  }
+
+  function captionsFromPhotos(photos, prior) {
+    var captions = prior && typeof prior === 'object' ? Object.assign({}, prior) : {};
+    (photos || []).forEach(function (photo) {
+      if (!photo || !photo.key) return;
+      if (typeof captions[photo.key] !== 'string') {
+        captions[photo.key] = photo.seedText || '';
+      }
+    });
+    return captions;
+  }
+
+  function buildPicturesPage(photos, figureNumber, pageId) {
+    var list = photos || [];
+    return {
+      id: pageId,
+      type: 'pictures',
+      title: 'Pictures',
+      tocTitle: 'Figure ' + figureNumber + ' — Pictures',
+      railLabel: 'Pictures',
+      note: '',
+      sourceKey: 'distress',
+      sourceRef: null,
+      includeInToc: true,
+      meta: {
+        figureNumber: figureNumber,
+        photoKeys: list.map(function (photo) { return photo.key; }),
+      },
+      reportText: {
+        captions: captionsFromPhotos(list, null),
+      },
+      evidence: null,
+    };
+  }
+
+  function buildPicturesPages(photos, startFigureNumber, existingPages) {
+    var list = photos || [];
+    if (!list.length) return [];
+    var pages = [];
+    var figure = typeof startFigureNumber === 'number' ? startFigureNumber : 1;
+    for (var i = 0; i < list.length; i += PHOTOS_PER_PAGE) {
+      var chunk = list.slice(i, i + PHOTOS_PER_PAGE);
+      var id = nextPicturesPageId((existingPages || []).concat(pages));
+      pages.push(buildPicturesPage(chunk, figure, id));
+      figure += 1;
+    }
+    if (pages.length > 1) {
+      pages.forEach(function (page, index) {
+        page.railLabel = 'Pictures · ' + (index + 1);
+      });
+    }
+    return pages;
+  }
+
+  function photoMapFromList(photos) {
+    var map = {};
+    (photos || []).forEach(function (photo) {
+      if (photo && photo.key) map[photo.key] = photo;
+    });
+    return map;
+  }
+
+  function insertIndexBeforeClosing(pages) {
+    var closing = { discussion: 1, conclusions: 1, limitations: 1 };
+    for (var i = 0; i < pages.length; i += 1) {
+      var sectionId = pages[i] && pages[i].meta && pages[i].meta.sectionId;
+      if (sectionId && closing[sectionId]) return i;
+      if (pages[i] && pages[i].type === 'diagnostics') return i;
+    }
+    return pages.length;
+  }
+
+  function lastIndexOfType(pages, type) {
+    var index = -1;
+    for (var i = 0; i < pages.length; i += 1) {
+      if (pages[i] && pages[i].type === type) index = i;
+    }
+    return index;
+  }
+
+  function insertPagesAt(pages, index, additions) {
+    if (!additions || !additions.length) return pages;
+    var at = Math.max(0, Math.min(index, pages.length));
+    return pages.slice(0, at).concat(additions, pages.slice(at));
+  }
+
+  /**
+   * Keep saved pages and wording; add new Distress/Floor/Pictures source items.
+   */
+  function reconcileReportPages(savedPages, freshPages, photos) {
+    var pages = (savedPages || []).map(function (page) {
+      return {
+        id: page.id,
+        type: page.type,
+        title: page.title,
+        tocTitle: page.tocTitle || page.title,
+        railLabel: page.railLabel || page.title,
+        note: page.note || '',
+        sourceKey: page.sourceKey || null,
+        sourceRef: page.sourceRef || null,
+        includeInToc: page.includeInToc !== false,
+        meta: cloneJson(page.meta || null),
+        reportText: cloneJson(page.reportText || null),
+        evidence: null,
+      };
+    });
+    var byId = {};
+    pages.forEach(function (page) { byId[page.id] = true; });
+
+    function addMissingOfType(type) {
+      var additions = [];
+      (freshPages || []).forEach(function (fresh) {
+        if (!fresh || fresh.type !== type) return;
+        if (fresh.meta && fresh.meta.reserved) return;
+        if (byId[fresh.id]) return;
+        additions.push({
+          id: fresh.id,
+          type: fresh.type,
+          title: fresh.title,
+          tocTitle: fresh.tocTitle || fresh.title,
+          railLabel: fresh.railLabel || fresh.title,
+          note: fresh.note || '',
+          sourceKey: fresh.sourceKey || null,
+          sourceRef: fresh.sourceRef || null,
+          includeInToc: fresh.includeInToc !== false,
+          meta: cloneJson(fresh.meta || null),
+          reportText: cloneJson(fresh.reportText || null),
+          evidence: null,
+        });
+        byId[fresh.id] = true;
+      });
+      if (!additions.length) return;
+      var anchor = lastIndexOfType(pages, type);
+      var at = anchor >= 0 ? anchor + 1 : insertIndexBeforeClosing(pages);
+      pages = insertPagesAt(pages, at, additions);
+    }
+
+    addMissingOfType('distress');
+    addMissingOfType('floor');
+    addMissingOfType('diagnostics');
+
+    var photoList = photos || [];
+    var photoByKey = photoMapFromList(photoList);
+    var knownKeys = {};
+    pages.forEach(function (page) {
+      if (!page || page.type !== 'pictures') return;
+      var keys = page.meta && Array.isArray(page.meta.photoKeys) ? page.meta.photoKeys.slice() : [];
+      var kept = keys.filter(function (key) { return !!photoByKey[key]; });
+      kept.forEach(function (key) { knownKeys[key] = true; });
+      page.meta = page.meta || {};
+      page.meta.photoKeys = kept;
+      page.reportText = page.reportText || {};
+      page.reportText.captions = captionsFromPhotos(
+        kept.map(function (key) { return photoByKey[key]; }),
+        page.reportText.captions
+      );
+    });
+
+    var newPhotos = photoList.filter(function (photo) {
+      return photo && photo.key && !knownKeys[photo.key];
+    });
+    if (newPhotos.length) {
+      var picturePages = pages.filter(function (page) { return page.type === 'pictures'; });
+      var lastPictures = picturePages.length ? picturePages[picturePages.length - 1] : null;
+      var queue = newPhotos.slice();
+      if (lastPictures) {
+        lastPictures.meta = lastPictures.meta || {};
+        var existingKeys = Array.isArray(lastPictures.meta.photoKeys)
+          ? lastPictures.meta.photoKeys.slice()
+          : [];
+        var room = Math.max(0, PHOTOS_PER_PAGE - existingKeys.length);
+        if (room > 0) {
+          var fill = queue.splice(0, room);
+          existingKeys = existingKeys.concat(fill.map(function (photo) { return photo.key; }));
+          lastPictures.meta.photoKeys = existingKeys;
+          lastPictures.reportText = lastPictures.reportText || {};
+          lastPictures.reportText.captions = captionsFromPhotos(
+            existingKeys.map(function (key) { return photoByKey[key]; }),
+            lastPictures.reportText.captions
+          );
+        }
+      }
+      if (queue.length) {
+        var startFig = maxFigureNumber(pages) + 1;
+        var created = buildPicturesPages(queue, startFig, pages);
+        var at = lastIndexOfType(pages, 'pictures');
+        if (at < 0) at = lastIndexOfType(pages, 'floor');
+        if (at < 0) at = lastIndexOfType(pages, 'distress');
+        at = at >= 0 ? at + 1 : insertIndexBeforeClosing(pages);
+        pages = insertPagesAt(pages, at, created);
+      }
+    }
+
+    var pictures = pages.filter(function (page) { return page.type === 'pictures'; });
+    if (pictures.length > 1) {
+      pictures.forEach(function (page, index) {
+        page.railLabel = 'Pictures · ' + (index + 1);
+      });
+    } else if (pictures.length === 1) {
+      pictures[0].railLabel = 'Pictures';
+    }
+
+    return pages;
+  }
+
+  function ensurePicturesInFreshPages(pages, photos) {
+    var list = pages ? pages.slice() : [];
+    if (list.some(function (page) { return page.type === 'pictures'; })) return list;
+    if (!(photos || []).length) return list;
+    var startFig = maxFigureNumber(list) + 1;
+    var created = buildPicturesPages(photos, startFig, list);
+    var at = lastIndexOfType(list, 'floor');
+    if (at < 0) at = lastIndexOfType(list, 'distress');
+    at = at >= 0 ? at + 1 : insertIndexBeforeClosing(list);
+    return insertPagesAt(list, at, created);
   }
 
   function countLine(count, singular, plural) {
@@ -424,13 +676,67 @@
 
     var footer = document.createElement('div');
     footer.className = 'rb-topo-page__footer';
-    var brand = document.createElement('div');
-    brand.className = 'rb-topo-page__brand';
-    brand.innerHTML =
-      '<span class="rb-topo-page__brand-mark" aria-hidden="true"></span>' +
-      '<span class="rb-topo-page__brand-name">SANDIA GEO</span>';
-    footer.appendChild(brand);
+    footer.appendChild(brandMark());
     footer.appendChild(renderRelativeReadings(statsList));
+    root.appendChild(footer);
+    return root;
+  }
+
+  function renderPicturesPage(page) {
+    var meta = page.meta || {};
+    var evidence = page.evidence || {};
+    var captions = (page.reportText && page.reportText.captions) || {};
+    var photos = Array.isArray(evidence.photos) ? evidence.photos : [];
+    var root = document.createElement('div');
+    root.className = 'rb-pictures-page';
+
+    var header = document.createElement('div');
+    header.className = 'rb-pictures-page__header';
+    var fig = document.createElement('p');
+    fig.className = 'rb-pictures-page__figure-num';
+    fig.textContent = meta.figureNumber ? ('Figure ' + meta.figureNumber) : 'Figure';
+    header.appendChild(fig);
+    var title = document.createElement('h1');
+    title.className = 'rb-pictures-page__title';
+    title.textContent = 'Pictures';
+    header.appendChild(title);
+    root.appendChild(header);
+
+    var grid = document.createElement('div');
+    grid.className = 'rb-pictures-page__grid';
+    if (!photos.length) {
+      addLine(grid, 'rb-sheet__note', 'No photographs are available for this page yet.');
+    }
+    photos.forEach(function (photo) {
+      var cell = document.createElement('figure');
+      cell.className = 'rb-pictures-page__cell';
+      cell.setAttribute('data-photo-key', photo.key || '');
+      var frame = document.createElement('div');
+      frame.className = 'rb-pictures-page__frame';
+      if (!evidenceImage(frame, photo.dataUrl, 'rb-pictures-page__image', photoLabel(photo.displayNumber))) {
+        addLine(frame, 'rb-sheet__note', 'Photo not on this device');
+      }
+      cell.appendChild(frame);
+      var label = document.createElement('figcaption');
+      label.className = 'rb-pictures-page__label';
+      label.textContent = photoLabel(photo.displayNumber);
+      cell.appendChild(label);
+      var caption = document.createElement('textarea');
+      caption.className = 'rb-pictures-page__caption';
+      caption.setAttribute('data-rb-caption', photo.key || '');
+      caption.setAttribute('aria-label', photoLabel(photo.displayNumber) + ' description');
+      caption.rows = 3;
+      caption.value = typeof captions[photo.key] === 'string'
+        ? captions[photo.key]
+        : (photo.seedText || '');
+      cell.appendChild(caption);
+      grid.appendChild(cell);
+    });
+    root.appendChild(grid);
+
+    var footer = document.createElement('div');
+    footer.className = 'rb-pictures-page__footer';
+    footer.appendChild(brandMark());
     root.appendChild(footer);
     return root;
   }
@@ -499,12 +805,14 @@
         if (pages[i].id === entry.pageId) pageItem = pages[i];
       }
       var figNum = pageItem && pageItem.meta && pageItem.meta.figureNumber;
-      if (entry.type === 'floor' && figNum) {
+      if ((entry.type === 'floor' || entry.type === 'pictures') && figNum) {
         var figLabel = document.createElement('span');
         var figStrong = document.createElement('strong');
         figStrong.textContent = 'Figure ' + figNum;
         figLabel.appendChild(figStrong);
-        figLabel.appendChild(document.createTextNode(' — ' + title));
+        figLabel.appendChild(document.createTextNode(
+          entry.type === 'pictures' ? ' Pictures' : (' — ' + title)
+        ));
         row.appendChild(figLabel);
         list.appendChild(row);
         return;
@@ -600,11 +908,47 @@
     var source = await api.assemble(record);
     var distress = (source.distress && source.distress.slides) || [];
     var floor = (source.floor && source.floor.slides) || [];
+    var photoByKey = {};
+    distress.forEach(function (slide) {
+      (slide.pins || []).forEach(function (pin) {
+        (pin.photos || []).forEach(function (photo) {
+          var key = photo.id || ('photo-' + photo.displayNumber);
+          photoByKey[key] = {
+            key: String(key),
+            id: photo.id || null,
+            displayNumber: photo.displayNumber,
+            dataUrl: photo.dataUrl || null,
+            seedText: pin.text || '',
+            location: pin.location || '',
+            pinId: pin.id || null,
+            pinNumber: pin.number,
+            canvasId: slide.canvasId || null,
+          };
+        });
+      });
+    });
     var diagnostics = window.ToolboxDiagnostics && window.ToolboxDiagnostics.listReportFigures
       ? window.ToolboxDiagnostics.listReportFigures(record) : [];
     var result = [];
     for (var i = 0; i < pages.length; i += 1) {
       var page = pages[i];
+      if (page.type === 'pictures') {
+        var keys = page.meta && Array.isArray(page.meta.photoKeys) ? page.meta.photoKeys : [];
+        page.evidence = {
+          photos: keys.map(function (key) {
+            return photoByKey[key] || {
+              key: key,
+              id: null,
+              displayNumber: null,
+              dataUrl: null,
+              seedText: '',
+              missing: true,
+            };
+          }),
+        };
+        result.push(page);
+        continue;
+      }
       if (page.type === 'distress' && !(page.meta && page.meta.reserved)) {
         page.evidence = distress.find(function (slide) { return slide.canvasId === page.sourceRef; }) || null;
       } else if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
@@ -732,6 +1076,9 @@
         rows.appendChild(dd);
       });
       margin.appendChild(rows);
+    } else if (page.type === 'pictures') {
+      margin.classList.add('rb-sheet__margin--pictures');
+      margin.appendChild(renderPicturesPage(page));
     } else if (page.type === 'floor' && page.evidence && page.evidence.composed) {
       margin.classList.add('rb-sheet__margin--topo');
       if (!renderEvidence(margin, page)) {
@@ -763,6 +1110,7 @@
     }
 
     var hidePageNum = page.type === 'cover' ||
+      page.type === 'pictures' ||
       (page.type === 'floor' && page.evidence && page.evidence.composed);
     if (!hidePageNum) {
       var footer = document.createElement('p');
@@ -1040,6 +1388,9 @@
 
     root.querySelector('#rb-back').addEventListener('click', function () {
       leaveAfterFlush(function () {
+        if (window.ToolboxReportSession && typeof window.ToolboxReportSession.clear === 'function') {
+          window.ToolboxReportSession.clear();
+        }
         if (typeof onBack === 'function') onBack();
       });
     });
@@ -1048,6 +1399,13 @@
       button.addEventListener('click', function () {
         var key = button.getAttribute('data-rb-source');
         leaveAfterFlush(function () {
+          if (window.ToolboxReportSession && typeof window.ToolboxReportSession.write === 'function') {
+            window.ToolboxReportSession.write({
+              customerFileId: customerFileId,
+              pageId: activeId,
+              sourceKey: key,
+            });
+          }
           if (typeof onOpenSource === 'function') onOpenSource(key);
         });
       });
@@ -1061,6 +1419,19 @@
       activeId = targetId;
       markDirty();
       renderPages();
+    });
+
+    sheetEl.addEventListener('input', function (event) {
+      var field = event.target.closest('[data-rb-caption]');
+      if (!field) return;
+      var key = field.getAttribute('data-rb-caption');
+      if (!key) return;
+      var current = activePage();
+      if (!current || current.type !== 'pictures') return;
+      current.reportText = current.reportText || {};
+      current.reportText.captions = current.reportText.captions || {};
+      current.reportText.captions[key] = field.value;
+      markDirty();
     });
 
     root.querySelectorAll('[data-rb-tool]').forEach(function (button) {
@@ -1152,26 +1523,55 @@
     watchSheet(root);
     fileLabelEl.textContent = 'Loading Customer File…';
 
+    function restoreReturnPage() {
+      if (!window.ToolboxReportSession || typeof window.ToolboxReportSession.forFile !== 'function') {
+        return false;
+      }
+      var ret = window.ToolboxReportSession.forFile(customerFileId);
+      if (!ret || !ret.pageId) return false;
+      var found = pages.some(function (page) { return page.id === ret.pageId; });
+      if (found) activeId = ret.pageId;
+      if (typeof window.ToolboxReportSession.clear === 'function') {
+        window.ToolboxReportSession.clear();
+      }
+      return found;
+    }
+
     function loadPagesFromRecord(record) {
       fileLabelEl.textContent = record ? fileLabel(record) : 'Customer File not on this device';
       var api = sourceApi();
-      if (!api) return { assembledFresh: false };
+      if (!api) return { assembledFresh: false, reconciled: false };
+      var photoList = window.ToolboxReportEvidence &&
+        typeof window.ToolboxReportEvidence.listDistressPhotos === 'function'
+        ? window.ToolboxReportEvidence.listDistressPhotos(record)
+        : [];
+      var source = api.read(record || null);
+      var fresh = withProperty(api.assemble(source), source);
+      var freshPages = ensurePicturesInFreshPages(fresh.pages.slice(), photoList);
       var saved = savedReportPages(record);
       if (saved) {
-        pages = saved.pages;
-        activeId = saved.activePageId && pages.some(function (p) { return p.id === saved.activePageId; })
-          ? saved.activePageId
-          : (pages[0] ? pages[0].id : '');
+        var before = saved.pages.map(function (page) {
+          return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',');
+        }).join('|');
+        pages = reconcileReportPages(saved.pages, freshPages, photoList);
+        var after = pages.map(function (page) {
+          return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',');
+        }).join('|');
+        var restored = restoreReturnPage();
+        if (!restored) {
+          activeId = saved.activePageId && pages.some(function (p) { return p.id === saved.activePageId; })
+            ? saved.activePageId
+            : (pages[0] ? pages[0].id : '');
+        }
         pageSeq = pages.length;
         lastSavedAt = saved.updatedAt || '';
-        return { assembledFresh: false };
+        return { assembledFresh: false, reconciled: before !== after };
       }
-      var source = api.read(record || null);
-      var next = withProperty(api.assemble(source), source);
-      pages = next.pages.slice();
+      pages = freshPages;
       activeId = pages[0] ? pages[0].id : '';
       pageSeq = pages.length;
-      return { assembledFresh: true };
+      restoreReturnPage();
+      return { assembledFresh: true, reconciled: false };
     }
 
     if (window.ToolboxApp && typeof window.ToolboxApp.registerActiveFlush === 'function') {
@@ -1199,7 +1599,7 @@
       var loaded = loadPagesFromRecord(workingRecord);
       renderPages();
       fitSheet(root);
-      if (loaded.assembledFresh) {
+      if (loaded.assembledFresh || loaded.reconciled) {
         markDirty();
         flushSave().catch(function () {});
       } else {

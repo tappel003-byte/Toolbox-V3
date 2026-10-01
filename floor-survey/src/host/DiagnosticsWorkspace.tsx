@@ -18,6 +18,7 @@ const ThreeDTab = lazy(() =>
 export type DiagnosticsWorkspaceProps = {
   customerFileId: string;
   onBack: () => void;
+  onReturnToReport?: () => void;
 };
 
 type CaptureApi = {
@@ -84,6 +85,22 @@ const WORKBENCH_CSS = `
   font-weight: 700;
   padding: 8px 12px;
   cursor: pointer;
+}
+.dx-ribbon__return-report {
+  z-index: 2;
+  flex: 0 0 auto;
+  align-self: stretch;
+  margin: 0;
+  border: 0;
+  border-right: 1px solid rgba(255,255,255,0.14);
+  background: #161616;
+  color: #f3b38a;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 10px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 .dx-ribbon__group {
   flex: 0 0 auto;
@@ -186,7 +203,11 @@ function RibbonGroup({
   );
 }
 
-export function DiagnosticsWorkspace({ customerFileId, onBack }: DiagnosticsWorkspaceProps) {
+export function DiagnosticsWorkspace({
+  customerFileId,
+  onBack,
+  onReturnToReport,
+}: DiagnosticsWorkspaceProps) {
   const captureRef = useRef<(() => DiagnosticCapture | null) | null>(null);
   const [floors, setFloors] = useState<Floor[]>([]);
   const [activeFloorId, setActiveFloorId] = useState<string | null>(null);
@@ -414,6 +435,16 @@ export function DiagnosticsWorkspace({ customerFileId, onBack }: DiagnosticsWork
         >
           ‹ Customer File
         </button>
+        {onReturnToReport ? (
+          <button
+            type="button"
+            className="dx-ribbon__return-report"
+            data-return-to-report
+            onClick={onReturnToReport}
+          >
+            Back to Report Builder
+          </button>
+        ) : null}
         <RibbonGroup label="View">
           <button
             type="button"
