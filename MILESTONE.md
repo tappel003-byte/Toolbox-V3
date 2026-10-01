@@ -14,7 +14,9 @@ Report Builder and Diagnostics are **not wholly future work**. This repository a
 
 **Authorized in parallel (Tim, Oct 1, 2026):** Report Builder first slice — auto-compose typical topo figure pages with fixed chrome (cover + TOC, empty Discussion slot, Combined then named-boundary Floor Level pages). See `DECISIONS.md` Report Builder. That slice is product-owner authorized and may ship independently of remaining File Cabinet sync polish.
 
-**Authorized in parallel (Tim, Oct 1, 2026):** Report Builder second slice — autosave report state to the Customer File; came-from-Report-Builder jump return (top-bar Back to Report Builder + restore left page); Mitchell Pictures pages with editable report captions; reconcile new source pins/photos/figures on open. Picture Locations is out of this slice. See `DECISIONS.md` Report Builder.
+**Authorized in parallel (Tim, Oct 1, 2026):** Report Builder second slice — autosave report state to the Customer File; came-from-Report-Builder jump return (top-bar Back to Report Builder + restore left page); Mitchell Pictures pages with editable report captions; reconcile new source pins/photos/figures on open. Picture Locations was out of that slice. See `DECISIONS.md` Report Builder.
+
+**Authorized in parallel (Tim, Oct 1, 2026):** Report Builder Picture Locations / Pen Log — one native plan+schedule page per Distress level that has pins (“Picture/Damage Locations”), report-owned notes that do not edit Distress source, alongside the existing Pictures pages. See `DECISIONS.md` Report Builder.
 
 Post-release local-copy cleanup is **decided** and is a **later small slice**. Do not implement it here, and do not let it complicate normal capture, Save, Sync Now, or Check Out.
 

@@ -46,6 +46,14 @@
   };
 
   var mountGeneration = 0;
+  var penLogUi = {
+    selectedPinId: '',
+    property: '',
+    noteMap: {},
+    onNote: null,
+    onSelect: null,
+    layout: null,
+  };
   var fitObserver = null;
   var fitOnResize = null;
   var pageSeq = 1;
@@ -1014,11 +1022,100 @@
     return result;
   }
 
+
+  function isPenLogPage(page) {
+    return !!(page && page.type === 'distress' && !(page.meta && page.meta.reserved) &&
+      page.meta && page.meta.penLog &&
+      window.ToolboxPenLog && typeof window.ToolboxPenLog.renderPage === 'function');
+  }
+
+  function penLogNoteMap(page, legacyNotes) {
+    var notes = {};
+    var legacy = legacyNotes && typeof legacyNotes === 'object' ? legacyNotes : {};
+    Object.keys(legacy).forEach(function (key) {
+      if (typeof legacy[key] === 'string') notes[key] = legacy[key];
+    });
+    var pageNotes = page && page.reportText && page.reportText.notes;
+    if (pageNotes && typeof pageNotes === 'object' && !Array.isArray(pageNotes)) {
+      Object.keys(pageNotes).forEach(function (key) {
+        if (typeof pageNotes[key] === 'string') notes[key] = pageNotes[key];
+      });
+    }
+    return notes;
+  }
+
+  function penLogPinsForPage(page, noteMap) {
+    var api = window.ToolboxPenLog;
+    var evidence = page && page.evidence;
+    return ((evidence && evidence.pins) || []).map(function (pin) {
+      return {
+        id: pin.id,
+        number: pin.number,
+        photoLabel: api.photoRange(pin.number, (pin.photos || []).length),
+        location: pin.location || '',
+        note: api.displayNote(pin, noteMap),
+        sourceNote: api.sourceNote(pin),
+        x: pin.position ? pin.position.x : null,
+        y: pin.position ? pin.position.y : null,
+        exterior: !!pin.isExterior,
+        photos: pin.photos || [],
+      };
+    });
+  }
+
+  function collectPenLogNotes(pages) {
+    var notes = {};
+    (pages || []).forEach(function (page) {
+      if (!page || page.type !== 'distress') return;
+      var map = page.reportText && page.reportText.notes;
+      if (!map || typeof map !== 'object') return;
+      Object.keys(map).forEach(function (key) {
+        if (typeof map[key] === 'string') notes[key] = map[key];
+      });
+    });
+    return notes;
+  }
+
+
+  function renderPenLogSheet(sheet, page, pages) {
+    var index = 0;
+    for (var n = 0; n < pages.length; n += 1) {
+      if (pages[n].id === page.id) index = n;
+    }
+    var notes = penLogNoteMap(page, penLogUi.noteMap);
+    var pins = penLogPinsForPage(page, notes);
+    if (!pins.some(function (pin) { return pin.id === penLogUi.selectedPinId; })) {
+      penLogUi.selectedPinId = pins[0] ? pins[0].id : '';
+    }
+    penLogUi.layout = window.ToolboxPenLog.renderPage(sheet, {
+      title: page.title,
+      levelName: page.meta && page.meta.levelName,
+      pageNumber: index + 1,
+      property: penLogUi.property,
+      plan: (page.evidence && page.evidence.plan) || {},
+      pins: pins,
+      selectedPinId: penLogUi.selectedPinId,
+      onNote: function (id, value, source) {
+        if (typeof penLogUi.onNote === 'function') penLogUi.onNote(id, value, source);
+      },
+      onSelect: function (id) {
+        if (typeof penLogUi.onSelect === 'function') penLogUi.onSelect(id);
+      },
+    });
+  }
+
   function renderSheet(sheet, page, pages) {
     sheet.textContent = '';
     sheet.setAttribute('data-page-id', page.id);
     sheet.setAttribute('data-page-type', page.type || 'sheet');
     sheet.setAttribute('aria-label', (page.title || 'Report sheet') + ', ' + SHEET_RATIO_LABEL);
+    sheet.removeAttribute('data-page-kind');
+
+    if (isPenLogPage(page)) {
+      renderPenLogSheet(sheet, page, pages);
+      return;
+    }
+    penLogUi.layout = null;
 
     var margin = document.createElement('div');
     margin.className = 'rb-sheet__margin';
@@ -1193,14 +1290,27 @@
     };
   }
 
-  function persistableDocument(pages, activePageId) {
-    return {
+  function persistableDocument(pages, activePageId, prior) {
+    var notes = collectPenLogNotes(pages);
+    if ((!notes || !Object.keys(notes).length) && prior && prior.penLog && prior.penLog.notes) {
+      notes = prior.penLog.notes;
+    }
+    var doc = {
       schema: REPORT_SCHEMA,
       schemaVersion: REPORT_SCHEMA_VERSION,
       updatedAt: new Date().toISOString(),
       activePageId: activePageId || '',
       pages: (pages || []).map(persistablePage),
     };
+    if (prior && typeof prior.title === 'string' && prior.title) doc.title = prior.title;
+    if (notes && Object.keys(notes).length) {
+      doc.penLog = {
+        schema: 'toolbox.pen-log-notes',
+        schemaVersion: 1,
+        notes: notes,
+      };
+    }
+    return doc;
   }
 
   function savedReportPages(record) {
@@ -1266,6 +1376,10 @@
     var removeBtn = root.querySelector('#rb-remove-page');
     var earlierBtn = root.querySelector('#rb-page-earlier');
     var laterBtn = root.querySelector('#rb-page-later');
+    var penPanel = root.querySelector('#rb-penlog-panel');
+    var penNoteField = root.querySelector('#rb-report-note');
+    var penSaveState = root.querySelector('#rb-save-state');
+    var penPhotoList = root.querySelector('#rb-photo-list');
 
     function activeIndex() {
       for (var i = 0; i < pages.length; i += 1) {
@@ -1305,7 +1419,7 @@
       if (!window.ToolboxDB || typeof window.ToolboxDB.saveCustomerFile !== 'function') {
         return Promise.reject(new Error('Customer File save is not available.'));
       }
-      var doc = persistableDocument(pages, activeId);
+      var doc = persistableDocument(pages, activeId, workingRecord && (workingRecord.reportBuilder || workingRecord.report));
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;
       delete workingRecord.report;
@@ -1335,6 +1449,119 @@
         if (typeof next === 'function') next();
       }).catch(function () {});
     }
+
+
+    function setPenSaveState(msg) {
+      if (penSaveState) penSaveState.textContent = msg || '';
+    }
+
+    function seedPenLogNotes(record) {
+      var legacy = {};
+      if (window.ToolboxPenLog && typeof window.ToolboxPenLog.readNotes === 'function') {
+        legacy = window.ToolboxPenLog.readNotes(record) || {};
+      }
+      penLogUi.noteMap = legacy;
+      (pages || []).forEach(function (page) {
+        if (!page || page.type !== 'distress' || (page.meta && page.meta.reserved)) return;
+        page.reportText = page.reportText || {};
+        page.reportText.notes = page.reportText.notes || {};
+        Object.keys(legacy).forEach(function (key) {
+          if (page.reportText.notes[key] == null && typeof legacy[key] === 'string') {
+            page.reportText.notes[key] = legacy[key];
+          }
+        });
+      });
+    }
+
+    function syncPenLogPanel(page) {
+      if (!penPanel) return;
+      if (!isPenLogPage(page)) {
+        penPanel.hidden = true;
+        setPenSaveState('');
+        return;
+      }
+      penPanel.hidden = false;
+      var notes = penLogNoteMap(page, penLogUi.noteMap);
+      var pins = penLogPinsForPage(page, notes);
+      if (!pins.some(function (pin) { return pin.id === penLogUi.selectedPinId; })) {
+        penLogUi.selectedPinId = pins[0] ? pins[0].id : '';
+      }
+      var chosen = null;
+      pins.forEach(function (pin) {
+        if (pin.id === penLogUi.selectedPinId) chosen = pin;
+      });
+      if (penNoteField && document.activeElement !== penNoteField) {
+        penNoteField.setAttribute('data-pin-id', penLogUi.selectedPinId || '');
+        penNoteField.setAttribute('data-source-note', chosen ? chosen.sourceNote : '');
+        penNoteField.value = chosen ? (chosen.note || '') : '';
+      }
+      if (!penPhotoList) return;
+      penPhotoList.textContent = '';
+      pins.forEach(function (pin) {
+        (pin.photos || []).forEach(function (photo) {
+          var figure = document.createElement('figure');
+          figure.className = 'rb-photo' + (pin.id === penLogUi.selectedPinId ? ' is-current' : '');
+          figure.setAttribute('data-pin-id', pin.id || '');
+          var caption = document.createElement('figcaption');
+          caption.textContent = 'Photo ' + photo.displayNumber + (pin.location ? ' · ' + pin.location : '');
+          figure.appendChild(caption);
+          if (photo.dataUrl && String(photo.dataUrl).indexOf('data:image/') === 0) {
+            var img = document.createElement('img');
+            img.src = photo.dataUrl;
+            img.alt = 'Photo ' + photo.displayNumber;
+            figure.appendChild(img);
+          } else {
+            var missing = document.createElement('p');
+            missing.textContent = 'Photo ' + photo.displayNumber + ' is not on this device.';
+            figure.appendChild(missing);
+          }
+          figure.addEventListener('click', function () {
+            penLogUi.selectedPinId = pin.id || '';
+            renderPages();
+          });
+          penPhotoList.appendChild(figure);
+        });
+      });
+      if (!penPhotoList.childNodes.length) {
+        var empty = document.createElement('p');
+        empty.className = 'rb-panel__lead';
+        empty.textContent = 'No photographs are stored on these pins.';
+        penPhotoList.appendChild(empty);
+      }
+    }
+
+    function applyPenLogNote(pinId, value, sourceNote) {
+      if (!pinId) return;
+      var current = activePage();
+      if (!current || !isPenLogPage(current)) return;
+      current.reportText = current.reportText || {};
+      current.reportText.notes = current.reportText.notes || {};
+      var next = typeof value === 'string' ? value : '';
+      if (sourceNote != null && next === sourceNote) {
+        delete current.reportText.notes[pinId];
+        delete penLogUi.noteMap[pinId];
+      } else {
+        current.reportText.notes[pinId] = next;
+        penLogUi.noteMap[pinId] = next;
+      }
+      setPenSaveState('Note saved');
+      setSaveStatus('Note saved');
+      markDirty();
+    }
+
+    penLogUi.onNote = function (id, value, source) {
+      applyPenLogNote(id, value, source);
+      var noteEl = root.querySelector('.rb-penlog__note[data-pin-id="' + id + '"]');
+      if (penNoteField && penNoteField.getAttribute('data-pin-id') === id && document.activeElement !== penNoteField) {
+        penNoteField.value = value || '';
+      }
+      if (noteEl && document.activeElement !== noteEl) noteEl.value = value || '';
+    };
+    penLogUi.onSelect = function (id) {
+      if (penLogUi.selectedPinId === id) return;
+      penLogUi.selectedPinId = id || '';
+      renderPages();
+    };
 
     function renderPages() {
       if (!pages.length) return;
@@ -1375,6 +1602,15 @@
       });
 
       renderSheet(sheetEl, current, pages);
+      syncPenLogPanel(current);
+      fitSheet(root);
+      if (penLogUi.layout && typeof penLogUi.layout.layout === 'function') {
+        window.requestAnimationFrame(function () {
+          if (penLogUi.layout && typeof penLogUi.layout.layout === 'function') {
+            penLogUi.layout.layout();
+          }
+        });
+      }
       root.querySelectorAll('[data-rb-source]').forEach(function (button) {
         var on = button.getAttribute('data-rb-source') === current.sourceKey;
         button.classList.toggle('is-current', on);
@@ -1433,6 +1669,20 @@
       current.reportText.captions[key] = field.value;
       markDirty();
     });
+
+    if (penNoteField) {
+      penNoteField.addEventListener('input', function () {
+        var pinId = penNoteField.getAttribute('data-pin-id') || '';
+        var source = penNoteField.getAttribute('data-source-note') || '';
+        applyPenLogNote(pinId, penNoteField.value, source);
+        var sheetNote = root.querySelector('.rb-penlog__note[data-pin-id="' + pinId + '"]');
+        if (sheetNote && document.activeElement !== sheetNote) sheetNote.value = penNoteField.value;
+      });
+      penNoteField.addEventListener('focus', function () {
+        var pinId = penNoteField.getAttribute('data-pin-id') || '';
+        if (pinId) penLogUi.onSelect(pinId);
+      });
+    }
 
     root.querySelectorAll('[data-rb-tool]').forEach(function (button) {
       button.addEventListener('click', function () {
@@ -1596,7 +1846,10 @@
         setSaveStatus('');
         return;
       }
+      penLogUi.property = displayAddress(workingRecord) || '';
       var loaded = loadPagesFromRecord(workingRecord);
+      seedPenLogNotes(workingRecord);
+      root.setAttribute('data-report-ready', 'true');
       renderPages();
       fitSheet(root);
       if (loaded.assembledFresh || loaded.reconciled) {
@@ -1662,11 +1915,22 @@
       '    <aside class="rb-panel" aria-label="Toolbox">' +
       '      <p class="eyebrow">Toolbox</p>' +
       '      <h2>Source workspaces</h2>' +
-      '      <p class="rb-panel__lead">Open the workspace that owns the source. Report Builder does not edit it here.</p>' +
+      '      <p class="rb-panel__lead">Open the workspace that owns the source. Geometry stays in Distress and Floor Survey.</p>' +
       '      <div class="rb-panel__links">' +
       '        <button type="button" class="btn btn--secondary" data-rb-source="floor">Open Floor Survey</button>' +
       '        <button type="button" class="btn btn--secondary" data-rb-source="distress">Open Distress Survey</button>' +
       '        <button type="button" class="btn btn--secondary" data-rb-source="diagnostics">Open Diagnostics</button>' +
+      '      </div>' +
+      '      <div id="rb-penlog-panel" class="rb-penlog-panel" hidden>' +
+      '        <h2>Pen Log</h2>' +
+      '        <p class="rb-panel__lead">Report wording stays on the Pen Log. Distress Survey keeps the source note.</p>' +
+      '        <p class="rb-panel__status" id="rb-save-state" aria-live="polite"></p>' +
+      '        <label class="rb-panel__label" for="rb-report-note">Report note</label>' +
+      '        <textarea id="rb-report-note" class="rb-panel__note" rows="3"></textarea>' +
+      '        <div id="rb-photos">' +
+      '          <h3 class="rb-panel__subhead">Photographs</h3>' +
+      '          <div id="rb-photo-list" class="rb-photo-list"></div>' +
+      '        </div>' +
       '      </div>' +
       '    </aside>' +
       '  </div>' +

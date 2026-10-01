@@ -395,19 +395,22 @@
         meta: { reserved: true, pinCount: 0, photoCount: 0 },
       })];
     }
-    return levels.map(function (level) {
+    return levels.filter(function (level) {
+      return (level.pinCount || 0) > 0;
+    }).map(function (level) {
       var name = text(level.name) || 'Level';
       return page({
         id: 'distress-' + (level.canvasId || name),
         type: 'distress',
-        title: name,
-        tocTitle: 'Distress Survey — ' + name,
-        railLabel: 'Distress · ' + name,
+        title: 'Pen Log — ' + name,
+        tocTitle: 'Pen Log — ' + name,
+        railLabel: 'Pen Log · ' + name,
         sourceKey: 'distress',
         sourceRef: level.canvasId || null,
-        note: 'Plan, pins, and photographs stay in Distress Survey.',
+        note: '',
         meta: {
           reserved: false,
+          penLog: true,
           pinCount: level.pinCount || 0,
           photoCount: level.photoCount || 0,
           levelName: name,
