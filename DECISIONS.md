@@ -100,6 +100,13 @@ Concrete Customer File record ownership for later app plug-in. Architecture is c
 - Comes before Diagnostics in the **application** build order: an operational Toolbox (Customer File → Distress/Floor → Report Builder) should be possible before Diagnostics is required.
 - Report Builder and Diagnostics are not wholly future work. As of Sept 24, 2026, this repository has a Report Builder shell and a Diagnostics entry, and further integration is in active pull requests (#68 Diagnostics workbench, #69 Report Builder evidence, #70 Report Builder skeleton). They obey the same Customer File lifecycle. Sync work must not redesign them or field capture.
 - **Mark report complete + completion date** is on the product list as a future closeout affordance. It is not authorized as part of the first topo figure-page implementation slice.
+- **First implementation slice — AUTHORIZED (Tim, Oct 1, 2026).** Build and ship only this:
+  1. Cover with Customer File identity + TOC.
+  2. Discussion / Damage Summary as an editable empty slot (no invented narrative).
+  3. One Floor Level topo figure page per boundary / epoch: Combined / All when useful, then each named boundary (e.g. Main, Kitchen / Living). Mitchell and 1515 Los Nietos are the proof targets.
+  4. Fixed chrome on every topo figure page: figure title/number, survey date, address strip, Front Door, contour legend, High / Low / Δ. Drawing fills a registered frame. Same slot positions on every related page.
+  5. Recovery PDF may fall back when compose is unavailable; cut-and-paste field Topo screenshots are not the path.
+  **Out of this slice:** Pen Log / drawing toolbar, picture pages polish, epoch divider banners, side-by-side epoch pages, mark-complete + date, Report Builder startup questionnaire, full PowerPoint-like flexibility beyond adapting these assembled pages.
 
 ## Diagnostics
 
@@ -115,7 +122,7 @@ These notes preserve active product possibilities so they are not lost. They are
 
 - **Quick Capture / Customer File photos:** Quick Capture may remain conveniently accessible from Distress Survey while the resulting photographs are stored with the Customer File. A possible workflow is to choose a subject such as Interior, Exterior, Grading & Drainage, or Other, with the resulting photo folder named from the subject plus the date the photographs were taken. Exact workflow, storage shape, and UI are not yet decided.
 - **Report Builder startup questionnaire:** Automatic assembly from Customer File evidence and the fixed figure-page composition rule above are decided. Whether any remaining gateway questions appear only for sections Toolbox cannot infer, and the exact first-open UX, are not yet decided.
-- **Report Builder first implementation slice (not yet authorized):** Topo figure page template + auto-fill from Floor Survey (fixed chrome slots, registered drawing frame, one page per boundary/epoch). Explicit product-owner authorization is required before coding that slice; the current File Cabinet sync milestone does not include it.
+- **Report Builder first implementation slice:** Authorized Oct 1, 2026 — see the Report Builder section above. File Cabinet sync work must not redesign this slice.
 - **AI-assisted reporting:** Future model-agnostic AI connectors may use structured Customer File and application information to help organize evidence, summarize material, ask targeted questions where professional context is missing, and assist with technical report drafting. Exact interaction and architecture are not yet decided.
 - **Distress visual/menu cleanup:** Possible changes include removing the unused Clear all drawings command, reconsidering how Quick Capture is presented, and evaluating visual/chrome consistency with the other Toolbox applications. None of these changes is decided.
 

@@ -433,7 +433,7 @@ export function TopoTab({
 
   function hitDraggable(x: number, y: number): Hit | null {
     // Multi-area canvas pills only — a single surface uses the floating StatsChip.
-    if (areaTopos.length > 1) {
+    if (resolved.showStatsPill !== false && areaTopos.length > 1) {
       const h = pillHeightImg(statsChipSize, viewScale);
       const showLabel = true;
       const dec = resolved.decimalPlaces;
@@ -1801,7 +1801,8 @@ function renderTopoTop(
 
   // Multi-area only: one named canvas pill per boundary. A single surface
   // uses the floating StatsChip so H / L / Δ is not drawn twice.
-  if (areaTopos.length > 1) {
+  // Report Builder figure pages turn this off and use fixed chrome slots.
+  if (resolved.showStatsPill !== false && areaTopos.length > 1) {
     const livePill = overlay?.livePill ?? null;
     const base = overlay?.pillSize ?? DEFAULT_STATS_PILL_SIZE;
     const h = pillHeightImg(base, viewScale);
