@@ -216,8 +216,8 @@ await page.evaluate(async () => {
 
 await page.goto(`${BASE}#/file/rb-skeleton/report`, { waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
-  const title = document.querySelector('.rb-sheet__title');
-  return title && title.textContent === 'Riley Chen';
+  const name = document.querySelector('.rb-cover__name');
+  return name && name.textContent === 'Riley Chen';
 });
 
 const opened = await page.evaluate(() => {
@@ -227,8 +227,10 @@ const opened = await page.evaluate(() => {
   const toc = [...document.querySelectorAll('.rb-thumb__caption')].map((node) => node.textContent);
   return {
     type: sheet.getAttribute('data-page-type'),
-    title: document.querySelector('.rb-sheet__title').textContent,
-    address: document.querySelector('.rb-sheet__meta') && document.querySelector('.rb-sheet__meta').textContent,
+    title: document.querySelector('.rb-cover__name')?.textContent || '',
+    address: document.querySelector('.rb-cover__street')?.textContent || '',
+    product: document.querySelector('.rb-cover__product')?.textContent || '',
+    contents: document.querySelector('.rb-cover__contents-title')?.textContent || '',
     ratio: Math.round(ratio * 100) / 100,
     links: [...document.querySelectorAll('[data-rb-source]')].map((node) => node.getAttribute('data-rb-source')),
     captions: toc,
@@ -239,6 +241,9 @@ const opened = await page.evaluate(() => {
 
 check('cover uses the Customer File name', opened.type === 'cover' && opened.title === 'Riley Chen', JSON.stringify(opened));
 check('cover shows the stored address', opened.address === '15 Example Court', opened.address);
+check('cover shows FLOOR LEVEL SURVEY and CONTENTS',
+  opened.product === 'FLOOR LEVEL SURVEY' && opened.contents === 'CONTENTS',
+  `${opened.product} | ${opened.contents}`);
 check('sheet is 11×17 landscape', opened.ratio > 1.5 && opened.ratio < 1.58, String(opened.ratio));
 check('source jump links remain', opened.links.join(',') === 'floor,distress,diagnostics', opened.links.join(','));
 check('rail lists distress then floor sheets',
@@ -304,8 +309,8 @@ check('Open Distress Survey still leaves Report Builder', page.url().indexOf('/d
 
 await page.goto(`${BASE}#/file/rb-skeleton/report`, { waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
-  const title = document.querySelector('.rb-sheet__title');
-  return title && title.textContent === 'Riley Chen';
+  const name = document.querySelector('.rb-cover__name');
+  return name && name.textContent === 'Riley Chen';
 });
 await page.click('.rb-thumb[data-page-id="section-discussion"]');
 await page.click('#rb-page-earlier');
@@ -351,8 +356,8 @@ check('desktop sheet is visible and does not overlap the rail or panel',
 await page.setViewport({ width: 820, height: 1180, deviceScaleFactor: 1 });
 await page.reload({ waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
-  const title = document.querySelector('.rb-sheet__title');
-  return title && title.textContent === 'Riley Chen';
+  const name = document.querySelector('.rb-cover__name');
+  return name && name.textContent === 'Riley Chen';
 });
 await page.screenshot({ path: `${OUT}/report-builder-skeleton-ipad.png` });
 const ipad = await page.evaluate(() => {
@@ -368,8 +373,8 @@ check('iPad sheet stays visible with source links', !ipad.overflow && ipad.sheet
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
 await page.reload({ waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
-  const title = document.querySelector('.rb-sheet__title');
-  return title && title.textContent === 'Riley Chen';
+  const name = document.querySelector('.rb-cover__name');
+  return name && name.textContent === 'Riley Chen';
 });
 await page.click('.rb-thumb[data-page-id="distress-canvas-b"]');
 await page.waitForFunction(() => document.querySelector('.rb-sheet').getAttribute('data-page-id') === 'distress-canvas-b');
