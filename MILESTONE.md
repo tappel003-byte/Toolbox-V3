@@ -14,6 +14,8 @@ Report Builder and Diagnostics are **not wholly future work**. This repository a
 
 **Authorized in parallel (Tim, Oct 1, 2026):** Report Builder first slice — auto-compose typical topo figure pages with fixed chrome (cover + TOC, empty Discussion slot, Combined then named-boundary Floor Level pages). See `DECISIONS.md` Report Builder. That slice is product-owner authorized and may ship independently of remaining File Cabinet sync polish.
 
+**Authorized in parallel (Tim, Oct 1, 2026):** Report Builder second slice — autosave report state to the Customer File; came-from-Report-Builder jump return; Mitchell Pictures pages with editable report captions. See `DECISIONS.md` Report Builder. Open chrome/Picture-Locations details require Tim answers before those bits ship.
+
 Post-release local-copy cleanup is **decided** and is a **later small slice**. Do not implement it here, and do not let it complicate normal capture, Save, Sync Now, or Check Out.
 
 ## Controlling model (KISS and Occam’s razor)

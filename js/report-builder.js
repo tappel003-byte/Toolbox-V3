@@ -3,9 +3,10 @@
 // 11×17 landscape sheets, page rail, composition controls, and jump links
 // back to the source workspaces. The opening sequence comes from
 // ToolboxReportSource (issue #66 skeleton + the #65 evidence contract).
-// Pages exist only while this workspace stays open. This module does not
-// write the Customer File and does not invent report narrative.
-// Export for AI reads the open Customer File and downloads one ZIP.
+// Assembled pages and report wording autosave onto record.reportBuilder.
+// Photo/plan evidence is rehydrated from Distress / Floor Survey on open —
+// binaries are not stored inside the report document. Export for AI reads
+// the open Customer File and downloads one ZIP.
 
 (function () {
   'use strict';
@@ -13,6 +14,9 @@
   var SHEET_RATIO_LABEL = '11 × 17 landscape';
   var MAX_PAGES = 80;
   var SHEET_RATIO = 17 / 11;
+  var AUTOSAVE_DELAY_MS = 900;
+  var REPORT_SCHEMA = 'toolbox.report-builder';
+  var REPORT_SCHEMA_VERSION = 1;
 
   var COMPOSE_TOOLS = [
     { id: 'select', label: 'Select' },
@@ -821,6 +825,69 @@
     return sequence;
   }
 
+  function cloneJson(value) {
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+  }
+
+  function persistablePage(page) {
+    return {
+      id: page.id,
+      type: page.type,
+      title: page.title,
+      tocTitle: page.tocTitle || page.title,
+      railLabel: page.railLabel || page.title,
+      note: page.note || '',
+      sourceKey: page.sourceKey || null,
+      sourceRef: page.sourceRef || null,
+      includeInToc: page.includeInToc !== false,
+      meta: cloneJson(page.meta || null),
+      reportText: cloneJson(page.reportText || null),
+    };
+  }
+
+  function persistableDocument(pages, activePageId) {
+    return {
+      schema: REPORT_SCHEMA,
+      schemaVersion: REPORT_SCHEMA_VERSION,
+      updatedAt: new Date().toISOString(),
+      activePageId: activePageId || '',
+      pages: (pages || []).map(persistablePage),
+    };
+  }
+
+  function savedReportPages(record) {
+    var doc = record && (record.reportBuilder || record.report);
+    if (!doc || typeof doc !== 'object') return null;
+    if (!Array.isArray(doc.pages) || !doc.pages.length) return null;
+    return {
+      activePageId: typeof doc.activePageId === 'string' ? doc.activePageId : '',
+      updatedAt: typeof doc.updatedAt === 'string' ? doc.updatedAt : '',
+      pages: doc.pages.map(function (page) {
+        return {
+          id: page.id,
+          type: page.type,
+          title: page.title,
+          tocTitle: page.tocTitle || page.title,
+          railLabel: page.railLabel || page.title,
+          note: page.note || '',
+          sourceKey: page.sourceKey || null,
+          sourceRef: page.sourceRef || null,
+          includeInToc: page.includeInToc !== false,
+          meta: cloneJson(page.meta || null),
+          reportText: cloneJson(page.reportText || null),
+          evidence: null,
+        };
+      }),
+    };
+  }
+
+  function formatSavedAt(iso) {
+    if (!iso) return 'Saved';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return 'Saved';
+    return 'Saved ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+
   function mount(host, options) {
     if (!host) return;
     var token = ++mountGeneration;
@@ -833,12 +900,17 @@
     var activeId = pages[0] ? pages[0].id : '';
     var activeTool = 'select';
     var dirty = false;
+    var workingRecord = null;
+    var saveTimer = null;
+    var lastSavedAt = '';
     pageSeq = pages.length;
 
     host.innerHTML = shellHtml();
     var root = host.querySelector('.rb-shell');
     var fileLabelEl = root.querySelector('#rb-file-label');
     var statusEl = root.querySelector('#rb-tool-status');
+    var saveStatusEl = root.querySelector('#rb-save-status');
+    var draftEl = root.querySelector('#rb-file-status');
     var listEl = root.querySelector('#rb-page-list');
     var sheetEl = root.querySelector('.rb-sheet');
     var addBtn = root.querySelector('#rb-add-page');
@@ -860,6 +932,60 @@
 
     function setToolStatus() {
       statusEl.textContent = TOOL_STATUS[activeTool] || TOOL_STATUS.select;
+    }
+
+    function setSaveStatus(text) {
+      if (saveStatusEl) saveStatusEl.textContent = text || '';
+    }
+
+    function markDirty() {
+      dirty = true;
+      setSaveStatus('Saving…');
+      if (draftEl) draftEl.textContent = 'Saving';
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(function () {
+        flushSave().catch(function () {});
+      }, AUTOSAVE_DELAY_MS);
+    }
+
+    function flushSave() {
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+      if (!dirty || !workingRecord || !customerFileId) return Promise.resolve();
+      if (!window.ToolboxDB || typeof window.ToolboxDB.saveCustomerFile !== 'function') {
+        return Promise.reject(new Error('Customer File save is not available.'));
+      }
+      var doc = persistableDocument(pages, activeId);
+      workingRecord.reportBuilder = doc;
+      workingRecord.updatedAt = doc.updatedAt;
+      delete workingRecord.report;
+      return window.ToolboxDB.saveCustomerFile(workingRecord).then(function () {
+        dirty = false;
+        lastSavedAt = doc.updatedAt;
+        setSaveStatus(formatSavedAt(lastSavedAt));
+        if (draftEl) draftEl.textContent = 'Saved';
+      }).catch(function (err) {
+        console.error('Report Builder save failed:', err);
+        if (err && err.code === 'checkout') {
+          dirty = false;
+          setSaveStatus(err.message || 'Checked out elsewhere');
+          if (draftEl) draftEl.textContent = 'Read-only';
+          return;
+        }
+        setSaveStatus('Save failed — will retry');
+        if (draftEl) draftEl.textContent = 'Unsaved';
+        throw err;
+      });
+    }
+
+    function leaveAfterFlush(next) {
+      dirty = true;
+      setSaveStatus('Saving…');
+      flushSave().then(function () {
+        if (typeof next === 'function') next();
+      }).catch(function () {});
     }
 
     function renderPages() {
@@ -892,7 +1018,9 @@
         button.appendChild(thumb);
         button.appendChild(caption);
         button.addEventListener('click', function () {
+          if (activeId === item.id) return;
           activeId = item.id;
+          markDirty();
           renderPages();
         });
         listEl.appendChild(button);
@@ -911,20 +1039,27 @@
     }
 
     root.querySelector('#rb-back').addEventListener('click', function () {
-      if (typeof onBack === 'function') onBack();
+      leaveAfterFlush(function () {
+        if (typeof onBack === 'function') onBack();
+      });
     });
 
     root.querySelectorAll('[data-rb-source]').forEach(function (button) {
       button.addEventListener('click', function () {
         var key = button.getAttribute('data-rb-source');
-        if (typeof onOpenSource === 'function') onOpenSource(key);
+        leaveAfterFlush(function () {
+          if (typeof onOpenSource === 'function') onOpenSource(key);
+        });
       });
     });
 
     sheetEl.addEventListener('click', function (event) {
       var jump = event.target.closest('[data-rb-goto]');
       if (!jump) return;
-      activeId = jump.getAttribute('data-rb-goto');
+      var targetId = jump.getAttribute('data-rb-goto');
+      if (!targetId || targetId === activeId) return;
+      activeId = targetId;
+      markDirty();
       renderPages();
     });
 
@@ -942,49 +1077,49 @@
 
     addBtn.addEventListener('click', function () {
       if (pages.length >= MAX_PAGES) return;
-      dirty = true;
       var item = addedPage();
       pages.push(item);
       activeId = item.id;
+      markDirty();
       renderPages();
     });
 
     duplicateBtn.addEventListener('click', function () {
       if (pages.length >= MAX_PAGES) return;
-      dirty = true;
       var index = activeIndex();
       var item = clonePage(pages[index]);
       pages.splice(index + 1, 0, item);
       activeId = item.id;
+      markDirty();
       renderPages();
     });
 
     removeBtn.addEventListener('click', function () {
       if (pages.length <= 1) return;
-      dirty = true;
       var index = activeIndex();
       pages.splice(index, 1);
       activeId = pages[Math.min(index, pages.length - 1)].id;
+      markDirty();
       renderPages();
     });
 
     earlierBtn.addEventListener('click', function () {
       var index = activeIndex();
       if (index <= 0) return;
-      dirty = true;
       var moved = pages[index];
       pages[index] = pages[index - 1];
       pages[index - 1] = moved;
+      markDirty();
       renderPages();
     });
 
     laterBtn.addEventListener('click', function () {
       var index = activeIndex();
       if (index >= pages.length - 1) return;
-      dirty = true;
       var moved = pages[index];
       pages[index] = pages[index + 1];
       pages[index + 1] = moved;
+      markDirty();
       renderPages();
     });
 
@@ -997,7 +1132,9 @@
       }
       exportBtn.disabled = true;
       exportStatus.textContent = 'Preparing the AI package…';
-      window.ToolboxAiExport.exportCheckedOutFile(customerFileId).then(function (result) {
+      flushSave().catch(function () {}).then(function () {
+        return window.ToolboxAiExport.exportCheckedOutFile(customerFileId);
+      }).then(function (result) {
         var name = result && result.filename ? result.filename : 'the AI package';
         exportStatus.textContent = 'Downloaded ' + name + '.';
       }).catch(function (error) {
@@ -1010,26 +1147,40 @@
     });
 
     setToolStatus();
+    setSaveStatus('Loading…');
     renderPages();
     watchSheet(root);
     fileLabelEl.textContent = 'Loading Customer File…';
 
-    function applyRecord(record) {
+    function loadPagesFromRecord(record) {
       fileLabelEl.textContent = record ? fileLabel(record) : 'Customer File not on this device';
-      if (dirty) return;
       var api = sourceApi();
-      if (!api) return;
+      if (!api) return { assembledFresh: false };
+      var saved = savedReportPages(record);
+      if (saved) {
+        pages = saved.pages;
+        activeId = saved.activePageId && pages.some(function (p) { return p.id === saved.activePageId; })
+          ? saved.activePageId
+          : (pages[0] ? pages[0].id : '');
+        pageSeq = pages.length;
+        lastSavedAt = saved.updatedAt || '';
+        return { assembledFresh: false };
+      }
       var source = api.read(record || null);
       var next = withProperty(api.assemble(source), source);
       pages = next.pages.slice();
       activeId = pages[0] ? pages[0].id : '';
       pageSeq = pages.length;
-      renderPages();
-      fitSheet(root);
+      return { assembledFresh: true };
+    }
+
+    if (window.ToolboxApp && typeof window.ToolboxApp.registerActiveFlush === 'function') {
+      window.ToolboxApp.registerActiveFlush(flushSave);
     }
 
     if (!window.ToolboxDB || typeof window.ToolboxDB.getCustomerFile !== 'function' || !customerFileId) {
       fileLabelEl.textContent = 'Customer File';
+      setSaveStatus('Not on this device');
       return;
     }
 
@@ -1039,18 +1190,33 @@
         window.location.replace('#/trash');
         return;
       }
-      applyRecord(record);
-      attachEvidence(record, pages.slice()).then(function (enriched) {
-        if (token !== mountGeneration || dirty) return;
+      workingRecord = record || null;
+      if (!workingRecord) {
+        fileLabelEl.textContent = 'Customer File not on this device';
+        setSaveStatus('');
+        return;
+      }
+      var loaded = loadPagesFromRecord(workingRecord);
+      renderPages();
+      fitSheet(root);
+      if (loaded.assembledFresh) {
+        markDirty();
+        flushSave().catch(function () {});
+      } else {
+        setSaveStatus(formatSavedAt(lastSavedAt));
+        if (draftEl) draftEl.textContent = 'Saved';
+      }
+      return attachEvidence(workingRecord, pages.slice()).then(function (enriched) {
+        if (token !== mountGeneration) return;
         pages = enriched;
         renderPages();
         fitSheet(root);
-      }).catch(function (err) {
-        console.warn('Report evidence could not be loaded:', err);
       });
-    }).catch(function () {
+    }).catch(function (err) {
       if (token !== mountGeneration) return;
+      console.warn('Report Builder could not load Customer File:', err);
       fileLabelEl.textContent = 'Customer File';
+      setSaveStatus('Load failed');
     });
   }
 
@@ -1063,7 +1229,7 @@
       '      <span class="file-identity__name">Report Builder</span>' +
       '      <span class="file-identity__address" id="rb-file-label"></span>' +
       '    </div>' +
-      '    <span class="file-status">Draft</span>' +
+      '    <span class="file-status" id="rb-file-status">Draft</span>' +
       '  </div>' +
       '  <div class="rb-toolbar">' +
       '    <div class="rb-toolbar__tools" role="toolbar" aria-label="Report composition">' +
@@ -1078,7 +1244,7 @@
       '      <div class="rb-rail__head">' +
       '        <p class="eyebrow">Pages</p>' +
       '        <strong>Report sheets</strong>' +
-      '        <span>Not saved</span>' +
+      '        <span id="rb-save-status">Loading…</span>' +
       '      </div>' +
       '      <div class="rb-rail__list" id="rb-page-list"></div>' +
       '      <div class="rb-rail__actions">' +
@@ -1130,6 +1296,9 @@
     if (fitOnResize) {
       window.removeEventListener('resize', fitOnResize);
       fitOnResize = null;
+    }
+    if (window.ToolboxApp && typeof window.ToolboxApp.registerActiveFlush === 'function') {
+      window.ToolboxApp.registerActiveFlush(null);
     }
   }
 

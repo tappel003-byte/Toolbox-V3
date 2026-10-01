@@ -235,7 +235,7 @@ const opened = await page.evaluate(() => {
     links: [...document.querySelectorAll('[data-rb-source]')].map((node) => node.getAttribute('data-rb-source')),
     captions: toc,
     tool: document.querySelector('#rb-tool-status').textContent,
-    notSaved: document.querySelector('.rb-rail__head span').textContent,
+    saveStatus: document.querySelector('#rb-save-status')?.textContent || '',
   };
 });
 
@@ -252,7 +252,25 @@ check('rail lists distress then floor sheets',
   opened.captions.indexOf('Floor · Basement') > opened.captions.indexOf('Distress · Main Level'),
   opened.captions.join(' | '));
 check('composition tools stay reserved', /does not move/i.test(opened.tool), opened.tool);
-check('sheets are still session-only', opened.notSaved === 'Not saved', opened.notSaved);
+await page.waitForFunction(() => {
+  const text = document.querySelector('#rb-save-status')?.textContent || '';
+  return /^Saved/.test(text);
+}, { timeout: 10000 });
+const saveStatus = await page.evaluate(() => document.querySelector('#rb-save-status')?.textContent || '');
+check('report autosaves onto the Customer File', /^Saved/.test(saveStatus), saveStatus);
+const persisted = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('rb-skeleton');
+  const doc = record && record.reportBuilder;
+  return {
+    hasDoc: !!(doc && Array.isArray(doc.pages) && doc.pages.length),
+    pageCount: doc && doc.pages ? doc.pages.length : 0,
+    hasEvidenceBlob: !!(doc && doc.pages && doc.pages.some((p) => p && p.evidence)),
+    activePageId: doc && doc.activePageId || '',
+  };
+});
+check('saved reportBuilder has pages and no evidence blobs',
+  persisted.hasDoc && persisted.pageCount >= 5 && !persisted.hasEvidenceBlob,
+  JSON.stringify(persisted));
 
 await page.screenshot({ path: `${OUT}/report-builder-skeleton-desktop-cover.png` });
 
@@ -304,15 +322,16 @@ if (floorEntry) {
 }
 
 await page.click('[data-rb-source="distress"]');
-await page.waitForFunction(() => location.hash.indexOf('/distress') !== -1);
+await page.waitForFunction(() => location.hash.indexOf('/distress') !== -1, { timeout: 15000 });
 check('Open Distress Survey still leaves Report Builder', page.url().indexOf('/distress') !== -1, page.url());
 
 await page.goto(`${BASE}#/file/rb-skeleton/report`, { waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
-  const name = document.querySelector('.rb-cover__name');
-  return name && name.textContent === 'Riley Chen';
-});
+  const label = document.querySelector('#rb-file-label')?.textContent || '';
+  return document.querySelector('.rb-shell') && /Riley Chen/.test(label);
+}, { timeout: 15000 });
 await page.click('.rb-thumb[data-page-id="section-discussion"]');
+await page.waitForFunction(() => document.querySelector('.rb-sheet')?.getAttribute('data-page-id') === 'section-discussion');
 await page.click('#rb-page-earlier');
 await page.click('.rb-thumb[data-page-id="toc"]');
 await page.waitForFunction(() => document.querySelector('.rb-sheet').getAttribute('data-page-type') === 'toc');
@@ -329,11 +348,18 @@ check('reordering updates the table of contents',
   moved.discussionBeforeDiagnostics && moved.adjacent && moved.limitationsLast,
   JSON.stringify(moved));
 
-const unchanged = await page.evaluate(async () => {
+const reportSaved = await page.evaluate(async () => {
   const record = await window.ToolboxDB.getCustomerFile('rb-skeleton');
-  return record.updatedAt === '2026-09-24T12:00:00.000Z' && !record.reportBuilder;
+  const doc = record && record.reportBuilder;
+  return {
+    hasReport: !!(doc && Array.isArray(doc.pages) && doc.pages.length),
+    updatedMoved: record.updatedAt !== '2026-09-24T12:00:00.000Z',
+    noEvidence: !!(doc && doc.pages && doc.pages.every((p) => !p.evidence)),
+  };
 });
-check('opening Report Builder does not write the Customer File', unchanged);
+check('opening Report Builder autosaves reportBuilder without evidence blobs',
+  reportSaved.hasReport && reportSaved.updatedMoved && reportSaved.noEvidence,
+  JSON.stringify(reportSaved));
 
 const desktopLayout = await page.evaluate(() => {
   const rail = document.querySelector('.rb-rail').getBoundingClientRect();
@@ -356,9 +382,9 @@ check('desktop sheet is visible and does not overlap the rail or panel',
 await page.setViewport({ width: 820, height: 1180, deviceScaleFactor: 1 });
 await page.reload({ waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
-  const name = document.querySelector('.rb-cover__name');
-  return name && name.textContent === 'Riley Chen';
-});
+  const label = document.querySelector('#rb-file-label')?.textContent || '';
+  return document.querySelector('.rb-shell') && /Riley Chen/.test(label);
+}, { timeout: 15000 });
 await page.screenshot({ path: `${OUT}/report-builder-skeleton-ipad.png` });
 const ipad = await page.evaluate(() => {
   const sheet = document.querySelector('.rb-sheet').getBoundingClientRect();
@@ -373,9 +399,9 @@ check('iPad sheet stays visible with source links', !ipad.overflow && ipad.sheet
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
 await page.reload({ waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
-  const name = document.querySelector('.rb-cover__name');
-  return name && name.textContent === 'Riley Chen';
-});
+  const label = document.querySelector('#rb-file-label')?.textContent || '';
+  return document.querySelector('.rb-shell') && /Riley Chen/.test(label);
+}, { timeout: 15000 });
 await page.click('.rb-thumb[data-page-id="distress-canvas-b"]');
 await page.waitForFunction(() => document.querySelector('.rb-sheet').getAttribute('data-page-id') === 'distress-canvas-b');
 await page.screenshot({ path: `${OUT}/report-builder-skeleton-phone.png`, fullPage: true });
