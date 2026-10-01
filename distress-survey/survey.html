@@ -7363,8 +7363,14 @@ async function hostBoot() {
       document.body.innerHTML =
         '<div style="padding:24px;font-family:system-ui">' +
         '<p>No floor plans on this Customer File yet. Edit the Customer File to add a plan, then return.</p>' +
-        '<button type="button" id="hostNoPlanBack" style="margin-top:12px;padding:10px 14px">Back to Customer File</button></div>';
+        '<button type="button" id="hostNoPlanBack" style="margin-top:12px;padding:10px 14px">Back to Customer File</button>' +
+        (hostCanReturnToReport()
+          ? '<button type="button" id="hostNoPlanReturnReport" style="margin-top:12px;margin-left:8px;padding:10px 14px">Back to Report Builder</button>'
+          : '') +
+        '</div>';
       document.getElementById('hostNoPlanBack').onclick = hostNotifyBack;
+      const ret = document.getElementById('hostNoPlanReturnReport');
+      if (ret) ret.onclick = hostNotifyReturnToReport;
       return;
     }
     project = await hostBuildProjectFromCF();
@@ -7387,9 +7393,15 @@ async function hostBoot() {
     document.body.innerHTML =
       '<div style="padding:24px;font-family:system-ui"><p>' +
       (e && e.message ? e.message : 'Could not open Distress Survey') +
-      '</p><button type="button" id="hostErrBack" style="margin-top:12px;padding:10px 14px">Back</button></div>';
+      '</p><button type="button" id="hostErrBack" style="margin-top:12px;padding:10px 14px">Back</button>' +
+      (hostCanReturnToReport()
+        ? '<button type="button" id="hostErrReturnReport" style="margin-top:12px;margin-left:8px;padding:10px 14px">Back to Report Builder</button>'
+        : '') +
+      '</div>';
     const b = document.getElementById('hostErrBack');
     if (b) b.onclick = hostNotifyBack;
+    const ret = document.getElementById('hostErrReturnReport');
+    if (ret) ret.onclick = hostNotifyReturnToReport;
   }
 }
 

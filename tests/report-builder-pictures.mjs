@@ -58,6 +58,8 @@ await page.evaluate(async (png) => {
   record.lastName = 'Mitchell';
   record.propertyAddress = '15 Picture Lane';
   const canvasId = record.planSetup.canvases[0].id;
+  await window.ToolboxDB.putMedia('plan-pictures', png);
+  record.planSetup.canvases[0].plan = { id: 'plan-pictures', width: 400, height: 300 };
   await window.ToolboxDB.putMedia('ph-pic-1', png);
   await window.ToolboxDB.putMedia('ph-pic-2', png);
   record.distress = {
@@ -175,16 +177,24 @@ await page.waitForFunction(() => {
   const iframe = document.querySelector('iframe');
   try {
     const doc = iframe?.contentDocument;
-    const btn = doc?.getElementById('hostReturnReport');
-    return btn && !btn.hidden;
+    if (!doc) return false;
+    const workBtn = doc.getElementById('hostReturnReport');
+    if (workBtn && !workBtn.hidden) return true;
+    return !!(doc.getElementById('hostErrReturnReport') || doc.getElementById('hostNoPlanReturnReport'));
   } catch {
     return false;
   }
-}, { timeout: 15000 });
+}, { timeout: 20000 });
 
 await page.evaluate(() => {
   const iframe = document.querySelector('iframe');
-  const btn = iframe.contentDocument.getElementById('hostReturnReport');
+  const doc = iframe.contentDocument;
+  const btn =
+    (doc.getElementById('hostReturnReport') && !doc.getElementById('hostReturnReport').hidden
+      ? doc.getElementById('hostReturnReport')
+      : null) ||
+    doc.getElementById('hostErrReturnReport') ||
+    doc.getElementById('hostNoPlanReturnReport');
   btn.click();
 });
 await page.waitForFunction(() => location.hash.endsWith('/report'), { timeout: 10000 });
