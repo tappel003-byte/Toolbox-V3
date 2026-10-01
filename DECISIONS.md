@@ -107,6 +107,7 @@ Concrete Customer File record ownership for later app plug-in. Architecture is c
   4. Fixed chrome on every topo figure page, Mitchell / 1515 visual slots: figure title/number and survey date top-left; residence / address / Front Door (with north cue) top-right; contour legend + H/L/Δ overlaid on the registered drawing frame; relative-readings box and brand strip at the bottom. Cover uses Prepared For + FLOOR LEVEL SURVEY identity with a CONTENTS box. Same slot positions on every related topo page.
   5. Recovery PDF may fall back when compose is unavailable; cut-and-paste field Topo screenshots are not the path.
   **Out of this slice:** Pen Log / drawing toolbar, picture pages polish, epoch divider banners, side-by-side epoch pages, mark-complete + date, Report Builder startup questionnaire, full PowerPoint-like flexibility beyond adapting these assembled pages.
+- **Source jump return (decided Tim, Oct 1, 2026 — not yet authorized to build):** Report Builder may jump into Floor Survey / Distress / Diagnostics to fix source. A **Back to Report Builder** control appears in those apps **only when the investigator arrived from Report Builder** (session origin), not as a permanent capture-app control and not based on desktop-vs-phone guessing. Capture opened from the Customer File hub stays clean. Exact chrome placement and whether return restores the left report page are still open; do not implement until authorized.
 
 ## Diagnostics
 
