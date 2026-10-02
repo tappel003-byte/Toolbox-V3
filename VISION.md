@@ -317,13 +317,34 @@ The technology should support the investigator's interaction with the building a
 
 Report Builder is fundamentally a **PowerPoint-like report workspace**, not a rigid report-generation form. "PowerPoint-like" describes the interaction philosophy — direct page composition and hands-on control — not a literal clone of Microsoft PowerPoint.
 
-Toolbox should automatically assemble a strong standard report from information already in the Customer File and its workspaces. After that automatic assembly, **the investigator owns the pages.** The investigator can add, delete, duplicate, and reorder pages; add additional discussion; add unusual or custom information; include something like a blank floor plan when useful; and otherwise adapt the report to the particular job. The standard template is a starting point, not a cage.
+Report Builder holds the **report book** (pages, order, deliverable wording, locked Floor Survey layout). It is not the only place report setup begins.
 
-Direct page composition and meaningful content manipulation are required. **Basic drawing/annotation capability is required in Report Builder** so the investigator can annotate report content without leaving Toolbox. The exact drawing toolbar and tools are **NOT YET DECIDED.** Drawing controls follow the same canvas-first principle as the rest of Toolbox: compact and collapsed when not needed, available when needed — not a giant, permanent, desktop-style ribbon that consumes the working canvas.
+**Source-app staging → drop into template (DECIDED Tim, Oct 2, 2026).**  
+Distress Survey and Floor Survey (using the multi-level / multi-canvas behavior already in those apps) offer **Put on report** / setup actions that drop the right slides into the Report Builder template for this Customer File. Jump links stitch the loop: fix source in the field app, return to the report page you left. This is how the investigator customizes the book to the job — including when Distress has several levels — instead of assuming one fully pre-populated standard report before they sit down.
 
-Automation assembles evidence. It does not replace investigator judgment.
+Examples (product shape, not yet every control authorized to build):
+- In Distress: “You have N photographs — put them on Pictures slides (10 per page), check descriptions, drop into the template,” plus Picture Locations / pen-log style pages **per level that has pins**, using continuous photo numbering across levels.
+- In Floor Survey: add / import a topo view onto a Floor Survey report slide (see Floor Survey page model below).
 
-Floor Level topo figure pages use **fixed template slots**. Contour legend, High / Low / Δ, Front Door, title/date/address chrome, and the registered topo drawing frame are Report Builder page elements in consistent positions. They are not pasted from wherever field Topo working chrome happened to sit. Related levels and survey epochs are consecutive pages of that same template. Epoch dividers, side-by-side comparisons, and narrative discussion remain investigator-owned adaptations after assembly — typical pages assemble automatically; special cases stay flexible.
+After slides drop in, **the investigator owns the book** in Report Builder: add, delete, duplicate, reorder; edit report wording; lock Floor Survey layout; adapt for the job. Cover identity, TOC (from finished slide order), discussion placement, and similar stable pieces stay template-friendly. Automation and staging assemble evidence. They do not replace investigator judgment.
+
+Direct page composition and meaningful content manipulation remain required. **Basic drawing/annotation capability is required in Report Builder**; the exact toolbar is **NOT YET DECIDED.** Drawing controls stay canvas-first — compact when unused, not a permanent desktop ribbon.
+
+**Ownership split (unchanged in substance):**  
+- Source apps own geometry and measurements (pins, photos, readings). Staging may seed report pages from source text.  
+- Report Builder owns deliverable wording after drop-in (captions, notes, discussion). Report text does **not** write back into Distress or Floor Survey.  
+- Jump-return remains came-from-Report-Builder session origin, not permanent capture chrome.
+
+**Floor Survey figure pages are the special bottleneck.** Fuzzy screenshot/PDF paste of topo is what slows the report. Cut-and-paste field Topo screenshots are not the intended workflow.
+
+**Floor Survey page model (DECIDED Tim, Oct 2, 2026):**
+1. A Floor Survey report page starts with **Customer File / report chrome only** in typical places: figure number and title, survey date, “Corrected for Floor Differences,” customer name / address, north / Front Door cue, brand strip, and similar. Contours, the topo drawing, the contour legend, and the High / Low / Δ pill are **not** on the page yet.
+2. **Import** (from the report page and/or a Floor Survey “add to report” action) pulls those survey graphics from Floor Survey into the page as separate boxes: the topo view (plan + contours + readings as **one** registered unit), the contour legend, and the H/L/Δ pill.
+3. Import places those boxes at **typical default positions** first. The investigator may move and resize the topo view, legend, and pill (sane min/max; keep readable aspect — not free-form distortion), and adjust presentation such as reading label size / quieter data display where authorized in a build slice.
+4. **Lock layout** stores that layout (and the topo view framing) for this report’s Floor Survey book. Following Floor Survey pages for other levels / boundaries / epochs **inherit** the locked layout so the flip chart stays aligned. Unlock only when the investigator chooses to change the book layout.
+5. Field Topo may keep movable working chrome for capture. Those field positions do not drive report layout. Deliverable presentation happens in Report Builder after Import — not another screenshot session.
+
+Epoch dividers, side-by-side comparisons, and narrative discussion remain investigator-owned. Picture count and topo page count need not be known ahead of time.
 
 ### 12a. Build baseline — DECIDED
 
