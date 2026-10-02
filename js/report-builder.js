@@ -1,12 +1,11 @@
 // Toolbox — Report Builder workspace.
 //
-// 11×17 landscape sheets, page rail, composition controls, and jump links
-// back to the source workspaces. The opening sequence comes from
-// ToolboxReportSource (issue #66 skeleton + the #65 evidence contract).
-// Assembled pages and report wording autosave onto record.reportBuilder.
-// Photo/plan evidence is rehydrated from Distress / Floor Survey on open —
-// binaries are not stored inside the report document. Export for AI reads
-// the open Customer File and downloads one ZIP.
+// Plumbing: 11×17 sheets, page rail, autosave on record.reportBuilder,
+// jump links to source apps, Distress Put-on-report, Floor Import/Lock,
+// caption/note edits, Export for AI. Evidence rehydrates from Distress /
+// Floor Survey — binaries are not stored in the report document.
+// Sheet formatting is rebuilt from real report screenshots; there is no
+// fake Select/Text/Image drawing toolbar.
 
 (function () {
   'use strict';
@@ -18,32 +17,8 @@
   var PHOTOS_PER_PAGE = 10;
   var REPORT_SCHEMA = 'toolbox.report-builder';
   var REPORT_SCHEMA_VERSION = 1;
-
-  var COMPOSE_TOOLS = [
-    { id: 'select', label: 'Select' },
-    { id: 'text', label: 'Text' },
-    { id: 'image', label: 'Image' },
-    { id: 'line', label: 'Line' },
-    { id: 'arrow', label: 'Arrow' },
-    { id: 'shape', label: 'Shape' },
-  ];
-
-  var INACTIVE_TOOLS = [
-    { id: 'forward', label: 'Bring forward' },
-    { id: 'backward', label: 'Send backward' },
-    { id: 'align', label: 'Align' },
-    { id: 'undo', label: 'Undo' },
-    { id: 'redo', label: 'Redo' },
-  ];
-
-  var TOOL_STATUS = {
-    select: 'Select is highlighted. This skeleton does not move anything on the sheet.',
-    text: 'Text is reserved. This skeleton does not place text.',
-    image: 'Image is reserved. This skeleton does not place images.',
-    line: 'Line is reserved. This skeleton does not draw lines.',
-    arrow: 'Arrow is reserved. This skeleton does not draw arrows.',
-    shape: 'Shape is reserved. This skeleton does not draw shapes.',
-  };
+  var WORKSPACE_LEAD =
+    'Page order, captions, Floor Import/Lock, and source jumps are live. Sheet layouts rebuild from real report screenshots.';
 
   var mountGeneration = 0;
   var penLogUi = {
@@ -1383,7 +1358,6 @@
     var sequence = withProperty(blankSequence(), null);
     var pages = sequence.pages.slice();
     var activeId = pages[0] ? pages[0].id : '';
-    var activeTool = 'select';
     var dirty = false;
     var workingRecord = null;
     var saveTimer = null;
@@ -1397,7 +1371,6 @@
     host.innerHTML = shellHtml();
     var root = host.querySelector('.rb-shell');
     var fileLabelEl = root.querySelector('#rb-file-label');
-    var statusEl = root.querySelector('#rb-tool-status');
     var saveStatusEl = root.querySelector('#rb-save-status');
     var draftEl = root.querySelector('#rb-file-status');
     var listEl = root.querySelector('#rb-page-list');
@@ -1421,10 +1394,6 @@
 
     function activePage() {
       return pages[activeIndex()] || pages[0];
-    }
-
-    function setToolStatus() {
-      statusEl.textContent = TOOL_STATUS[activeTool] || TOOL_STATUS.select;
     }
 
     function setSaveStatus(text) {
@@ -1916,18 +1885,6 @@
       });
     }
 
-    root.querySelectorAll('[data-rb-tool]').forEach(function (button) {
-      button.addEventListener('click', function () {
-        activeTool = button.getAttribute('data-rb-tool');
-        root.querySelectorAll('[data-rb-tool]').forEach(function (peer) {
-          var on = peer === button;
-          peer.classList.toggle('is-active', on);
-          peer.setAttribute('aria-pressed', on ? 'true' : 'false');
-        });
-        setToolStatus();
-      });
-    });
-
     addBtn.addEventListener('click', function () {
       if (pages.length >= MAX_PAGES) return;
       var item = addedPage();
@@ -1999,7 +1956,6 @@
       });
     });
 
-    setToolStatus();
     setSaveStatus('Loading…');
     renderPages();
     watchSheet(root);
@@ -2123,11 +2079,8 @@
       '    <span class="file-status" id="rb-file-status">Draft</span>' +
       '  </div>' +
       '  <div class="rb-toolbar">' +
-      '    <div class="rb-toolbar__tools" role="toolbar" aria-label="Report composition">' +
-             toolButtons() +
-      '    </div>' +
+      '    <p class="rb-toolbar__lead">' + WORKSPACE_LEAD + '</p>' +
       '    <button type="button" id="rb-export-ai" class="btn btn--accent rb-export">Export for AI</button>' +
-      '    <p class="rb-toolbar__status" id="rb-tool-status" aria-live="polite"></p>' +
       '    <p class="rb-ai-status" id="rb-ai-status" aria-live="polite"></p>' +
       '  </div>' +
       '  <div class="rb-workspace">' +
@@ -2174,19 +2127,6 @@
       '  </div>' +
       '</div>'
     );
-  }
-
-  function toolButtons() {
-    var html = COMPOSE_TOOLS.map(function (tool) {
-      var pressed = tool.id === 'select' ? 'true' : 'false';
-      var active = tool.id === 'select' ? ' is-active' : '';
-      return '<button type="button" class="rb-tool' + active + '" data-rb-tool="' + tool.id + '" aria-pressed="' + pressed + '">' + tool.label + '</button>';
-    }).join('');
-    html += '<span class="rb-tool-sep" aria-hidden="true"></span>';
-    html += INACTIVE_TOOLS.map(function (tool) {
-      return '<button type="button" class="rb-tool" disabled title="Shown for layout. Not available in this skeleton.">' + tool.label + '</button>';
-    }).join('');
-    return html;
   }
 
   function unmount() {

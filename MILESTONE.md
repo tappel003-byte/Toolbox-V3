@@ -20,6 +20,8 @@ Report Builder and Diagnostics are **not wholly future work**. This repository a
 
 **Authorized (Tim, Oct 2, 2026):** Report Builder third slice — Floor Survey **Import → place/resize → Lock layout** inherit; Distress **Put on report** for Pictures slides. See `VISION.md` §12 and `DECISIONS.md` Report Builder.
 
+**Authorized (Tim, Oct 2, 2026):** Report Builder formatting rebuild — keep plumbing; remove fake composition toolbar; rebuild sheet layouts from real report screenshots (talk-through → place pieces). See `VISION.md` §12 and `DECISIONS.md` Report Builder.
+
 Post-release local-copy cleanup is **decided** and is a **later small slice**. Do not implement it here, and do not let it complicate normal capture, Save, Sync Now, or Check Out.
 
 ## Controlling model (KISS and Occam’s razor)

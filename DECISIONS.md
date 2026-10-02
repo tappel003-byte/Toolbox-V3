@@ -101,8 +101,9 @@ Concrete Customer File record ownership for later app plug-in. Architecture is c
 - **Book shape:** cover + identity; Discussion empty slot; Distress Picture Locations / Pictures (from staging, multi-level aware); Floor Survey slides (chrome → Import → Lock); investigator-owned specials. Counts need not be known ahead of time.
 - **Special cases stay investigator-owned:** epoch divider banners, side-by-side epoch pages, narrative discussion, and which views enter the book. Automation must not force one book shape for every job.
 - Field Topo may keep movable working chrome for capture. Those positions do not drive report layout. Deliverable Floor Survey presentation is Import → place/resize → Lock in Report Builder.
-- Will support basic drawing/annotation on report content; the exact toolbar is not yet decided.
+- Will support basic drawing/annotation on report content; the exact toolbar is not yet decided. The early Select/Text/Image/Line/Arrow/Shape “skeleton” ribbon was **removed** (Tim, Oct 2, 2026) — it was not real composition and must not return as placeholder chrome.
 - Follows "protect the canvas" — compact pills and collapsible tools, not a permanent desktop-style ribbon.
+- **Plumbing vs formatting (DECIDED Tim, Oct 2, 2026):** Keep Report Builder plumbing (autosave on `reportBuilder`, page rail/order, jump-return, Distress Put-on-report, Floor Import/Lock layout data, evidence rehydrate from source apps, Export for AI). Scrap/rebuild sheet formatting against real report screenshots rather than guessing a PowerPoint ribbon. Next page layouts are authorized by screenshot walkthrough (Chalmers / Mitchell / 1515 / similar), one page type at a time.
 - Comes before Diagnostics in the **application** build order: an operational Toolbox (Customer File → Distress/Floor → Report Builder) should be possible before Diagnostics is required.
 - Report Builder and Diagnostics are not wholly future work. As of Sept 24, 2026, this repository has a Report Builder shell and a Diagnostics entry, and further integration is in active pull requests (#68 Diagnostics workbench, #69 Report Builder evidence, #70 Report Builder skeleton). They obey the same Customer File lifecycle. Sync work must not redesign them or field capture.
 - **Mark report complete + completion date** is on the product list as a future closeout affordance. It is not authorized as part of the first topo figure-page implementation slice.
@@ -125,6 +126,7 @@ Concrete Customer File record ownership for later app plug-in. Architecture is c
   1. **Floor Survey pages:** Customer File chrome first; **Import** loads topo view + contour legend + H/L/Δ as separate boxes at typical defaults; move/resize (readable bounds); **Lock layout** persists on `reportBuilder.floorLayout` and inherits on other Floor Survey pages. Unlock to edit again. No field pinch-zoom. Plan+contours+readings stay one topo unit.
   2. **Distress Put on report (Pictures):** From Distress (host), stage photographs onto Pictures slides (10 per page, multi-level aware via existing numbering) into `reportBuilder`, then open Report Builder (jump-return session). Deliverable caption edits stay on the report pages.
   **Out of this slice:** Full field Topo tool parity in Report Builder; Picture Locations staging button (Pen Log pages may already exist from prior auth); free-form distortion; CRDT/live collaboration.
+- **Formatting rebuild — AUTHORIZED (Tim, Oct 2, 2026).** Keep plumbing; remove fake composition toolbar; rebuild sheet layouts from real report screenshots via talk-through placement. Do not reintroduce placeholder drawing tools. Page-type visual rebuilds are authorized when Tim supplies the screenshot for that page.
 
 ## Diagnostics
 

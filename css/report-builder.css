@@ -36,54 +36,8 @@ body.report-builder-open .canvas {
   box-sizing: border-box;
 }
 
-.rb-toolbar__tools {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: thin;
-}
-
-.rb-tool {
-  flex: 0 0 auto;
-  min-height: 32px;
-  padding: 4px 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  background: #fff;
-  color: var(--ink);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.2;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.rb-tool.is-active {
-  background: var(--navy);
-  border-color: var(--navy);
-  color: #fff;
-}
-
-.rb-tool:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.rb-tool-sep {
-  flex: 0 0 auto;
-  width: 1px;
-  height: 18px;
-  margin: 0 2px;
-  background: var(--line-strong);
-}
-
-.rb-toolbar__status {
-  flex: 1 1 220px;
+.rb-toolbar__lead {
+  flex: 1 1 280px;
   min-width: 0;
   margin: 0;
   color: var(--ink-soft);
@@ -538,7 +492,7 @@ body.report-builder-open .canvas {
     padding: 6px 10px;
   }
 
-  .rb-toolbar__status {
+  .rb-toolbar__lead {
     flex-basis: 100%;
   }
 

@@ -328,7 +328,9 @@ Examples (product shape, not yet every control authorized to build):
 
 After slides drop in, **the investigator owns the book** in Report Builder: add, delete, duplicate, reorder; edit report wording; lock Floor Survey layout; adapt for the job. Cover identity, TOC (from finished slide order), discussion placement, and similar stable pieces stay template-friendly. Automation and staging assemble evidence. They do not replace investigator judgment.
 
-Direct page composition and meaningful content manipulation remain required. **Basic drawing/annotation capability is required in Report Builder**; the exact toolbar is **NOT YET DECIDED.** Drawing controls stay canvas-first — compact when unused, not a permanent desktop ribbon.
+Direct page composition and meaningful content manipulation remain required. **Basic drawing/annotation capability is required in Report Builder**; the exact toolbar is **NOT YET DECIDED.** Drawing controls stay canvas-first — compact when unused, not a permanent desktop ribbon. A fake Select/Text/Image/Line/Arrow/Shape ribbon is **not** the product — that skeleton chrome was removed (Tim, Oct 2, 2026).
+
+**Sheet formatting rebuild path (DECIDED Tim, Oct 2, 2026):** Keep Report Builder **plumbing** (Customer File `reportBuilder` autosave, page rail/order, jump-return, Distress Put-on-report, Floor Import/Lock, evidence rehydrate, Export for AI). Rebuild **sheet formatting** from real finished-report screenshots (Chalmers Ford, Mitchell, 1515 Los Nietos, and similar), talking through placement of each piece before coding the next page type. Do not invent a design-app layer ahead of those screenshots.
 
 **Ownership split (unchanged in substance):**  
 - Source apps own geometry and measurements (pins, photos, readings). Staging may seed report pages from source text.  

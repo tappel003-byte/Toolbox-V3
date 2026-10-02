@@ -234,7 +234,9 @@ const opened = await page.evaluate(() => {
     ratio: Math.round(ratio * 100) / 100,
     links: [...document.querySelectorAll('[data-rb-source]')].map((node) => node.getAttribute('data-rb-source')),
     captions: toc,
-    tool: document.querySelector('#rb-tool-status').textContent,
+    fakeTools: [...document.querySelectorAll('[data-rb-tool]')].map((node) => node.textContent),
+    lead: document.querySelector('.rb-toolbar__lead')?.textContent || '',
+    exportAi: !!document.querySelector('#rb-export-ai'),
     saveStatus: document.querySelector('#rb-save-status')?.textContent || '',
   };
 });
@@ -251,7 +253,10 @@ check('rail lists Pen Log then floor sheets',
   opened.captions.indexOf('Pen Log · Basement') < opened.captions.indexOf('Pen Log · Main Level') &&
   opened.captions.indexOf('Floor · Basement') > opened.captions.indexOf('Pen Log · Main Level'),
   opened.captions.join(' | '));
-check('composition tools stay reserved', /does not move/i.test(opened.tool), opened.tool);
+check('fake composition toolbar is gone', opened.fakeTools.length === 0, opened.fakeTools.join(','));
+check('workspace keeps Export for AI and rebuild lead',
+  opened.exportAi && /screenshots/i.test(opened.lead),
+  opened.lead);
 await page.waitForFunction(() => {
   const text = document.querySelector('#rb-save-status')?.textContent || '';
   return /^Saved/.test(text);
@@ -317,7 +322,7 @@ if (floorEntry) {
   check('floor sheet shows topo evidence or reserved figure',
     /topo figure|Composed topo|reserved/i.test(floorSheet.figure) || /Floor Level Survey/.test(floorSheet.title),
     JSON.stringify(floorSheet));
-  check('floor sheet keeps the survey date', /2026-03-02|03\/02\/26/.test(floorSheet.meta), floorSheet.meta);
+  check('floor sheet keeps the survey date', /2026-03-02|03\/02\/26|03\/02\/2026/.test(floorSheet.meta), floorSheet.meta);
   check('floor sheet marks the Floor Survey link', floorSheet.current === true);
 }
 
