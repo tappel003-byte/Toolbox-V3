@@ -1511,3 +1511,88 @@ body.report-builder-open .canvas {
   object-fit: contain;
   background: #f6f3ec;
 }
+
+/* Floor Survey Import → place → Lock */
+.rb-floor-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 0.4%;
+  min-height: 1.8em;
+}
+
+.rb-floor-toolbar__hint {
+  font-size: clamp(10px, 1.3cqb, 12px);
+  color: #555;
+}
+
+.rb-floor-stage {
+  position: relative;
+  overflow: hidden;
+}
+
+.rb-floor-empty {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: #666;
+  font-size: clamp(12px, 1.7cqb, 15px);
+  text-align: center;
+  padding: 1em;
+  border: 1px dashed #cbbba8;
+  background: #fbfaf7;
+}
+
+.rb-floor-box {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  touch-action: none;
+}
+
+.rb-floor-box--topo {
+  z-index: 1;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  border: 1px solid transparent;
+}
+
+.rb-floor-box--topo .rb-topo-page__drawing {
+  width: 100%;
+  height: 100%;
+}
+
+.rb-floor-box--topo .rb-topo-page__image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.rb-floor-box:not(.is-locked) {
+  cursor: move;
+  outline: 1px dashed rgba(30, 64, 110, 0.35);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.rb-floor-box:not(.is-locked):focus {
+  outline: 2px solid rgba(193, 74, 43, 0.55);
+}
+
+.rb-floor-box__resize {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 12px;
+  height: 12px;
+  border: 1px solid #1e406e;
+  background: #fff;
+  cursor: nwse-resize;
+  z-index: 3;
+}
+
+.rb-topo-page--chrome-only .rb-topo-page__body {
+  min-height: 55%;
+}

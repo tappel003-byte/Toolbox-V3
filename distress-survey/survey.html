@@ -822,6 +822,7 @@
     <div class="sep"></div>
     <button onclick="confirmQuickCapture()">📸 Quick Capture</button>
     <button type="button" id="openPhotoFolders" hidden onclick="openRecoveredPhotoFolders()">Photo folders</button>
+    <button type="button" id="putPicturesOnReport" class="host-only" hidden onclick="hostPutPicturesOnReport()">📄 Put pictures on report</button>
     <button onclick="toggleVoiceMemo()">🎙️ Voice memo</button>
     <div class="sep"></div>
     <button onclick="clearDrawings()">✎ Clear all drawings</button>
@@ -7354,6 +7355,48 @@ function openRecoveredPhotoFolders() {
   }
 }
 
+async function hostPutPicturesOnReport() {
+  closeMenu();
+  if (!HOST_MODE || !TOOLBOX_CF_ID) return;
+  const p = hostParent();
+  const rb = p && p.ToolboxReportBuilder;
+  const db = hostDB();
+  if (!rb || typeof rb.stagePicturesFromDistress !== 'function' || !db) {
+    toast('Report Builder is not available.');
+    return;
+  }
+  try {
+    if (project) {
+      try { saveProject(); } catch (_) {}
+      await hostPersistSurvey();
+    }
+    const rec = await db.getCustomerFile(TOOLBOX_CF_ID);
+    if (!rec) throw new Error('Customer File not found');
+    const result = await rb.stagePicturesFromDistress(rec);
+    if (p.ToolboxReportSession && typeof p.ToolboxReportSession.write === 'function') {
+      p.ToolboxReportSession.write({
+        customerFileId: TOOLBOX_CF_ID,
+        pageId: result.activePageId || '',
+        sourceKey: 'distress',
+      });
+    }
+    toast(
+      'Put ' + result.photoCount + ' photo' + (result.photoCount === 1 ? '' : 's') +
+      ' on ' + result.pageCount + ' Pictures slide' + (result.pageCount === 1 ? '' : 's') + '.'
+    );
+    if (typeof p.__toolboxDistressReturnToReport === 'function') {
+      p.__toolboxDistressReturnToReport();
+      return;
+    }
+    try {
+      p.location.hash = '#/file/' + encodeURIComponent(TOOLBOX_CF_ID) + '/report';
+    } catch (_) {}
+  } catch (err) {
+    console.warn(err);
+    toast((err && err.message) || 'Could not put pictures on the report.');
+  }
+}
+
 async function hostBoot() {
   document.body.classList.add('host-mode');
   document.querySelectorAll('.host-hide').forEach(el => { el.style.display = 'none'; });
@@ -7382,6 +7425,12 @@ async function hostBoot() {
       const hasPinPhotos = !!(d && (d.pins || []).some(p => p && (p.photos || []).length));
       const hasQuick = !!(d && Array.isArray(d.quickCapture) && d.quickCapture.length);
       foldersBtn.hidden = !(hasPinPhotos || hasQuick);
+    }
+    const putReportBtn = document.getElementById('putPicturesOnReport');
+    if (putReportBtn) {
+      const d = _hostRecord && _hostRecord.distress;
+      const hasPinPhotos = !!(d && (d.pins || []).some(p => p && (p.photos || []).length));
+      putReportBtn.hidden = !hasPinPhotos;
     }
     document.getElementById('wTitle').textContent = project.address;
     refreshLevelPill();

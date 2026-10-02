@@ -961,7 +961,23 @@
         page.evidence = distress.find(function (slide) { return slide.canvasId === page.sourceRef; }) || null;
       } else if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
         var meta = page.meta || {};
-        if (meta.compose && window.ToolboxFloorSurvey &&
+        var customerName = displayCustomerName(record);
+        var addrFull = fullAddress(record);
+        var addrParts = addressParts(addrFull || displayAddress(record) || '');
+        var chromeEv = {
+          composed: false,
+          chromeOnly: true,
+          customerName: customerName,
+          residenceTitle: residenceTitle(customerName),
+          address: addrParts.street || displayAddress(record),
+          addressCity: addrParts.cityLine || '',
+          addressFull: addrFull,
+          surveyDate: meta.surveyDate || '',
+          frontDoorFacing: meta.frontDoorFacing || '',
+          stats: [],
+          figure: null,
+        };
+        if (meta.imported && meta.compose && window.ToolboxFloorSurvey &&
             typeof window.ToolboxFloorSurvey.composeReportTopoFigureForPage === 'function') {
           try {
             var composed = await window.ToolboxFloorSurvey.composeReportTopoFigureForPage(record, {
@@ -973,13 +989,14 @@
               ? window.ToolboxDB.getMedia.bind(window.ToolboxDB)
               : null);
             if (composed && composed.dataUrl) {
-              var customerName = displayCustomerName(record);
               page.evidence = {
                 composed: true,
+                chromeOnly: false,
                 customerName: customerName,
                 residenceTitle: residenceTitle(customerName),
-                address: displayAddress(record),
-                addressFull: fullAddress(record),
+                address: addrParts.street || displayAddress(record),
+                addressCity: addrParts.cityLine || '',
+                addressFull: addrFull,
                 surveyDate: meta.surveyDate || '',
                 frontDoorFacing: meta.frontDoorFacing || '',
                 stats: composed.stats || [],
@@ -999,17 +1016,7 @@
             console.warn('Report Builder topo compose failed', err);
           }
         }
-        var matches = floor.filter(function (slide) {
-          if (slide.canvasId !== meta.canvasId || slide.epochId !== meta.epochId) return false;
-          if (meta.areaId) return slide.areaId === meta.areaId;
-          if (meta.scope === 'all') return !slide.areaId;
-          return true;
-        });
-        if (matches.length) {
-          if (matches[0].figure && matches[0].figure.kind === 'stored-rendering') page.evidence = matches[0];
-          result.push(page);
-          continue;
-        }
+        page.evidence = chromeEv;
       } else if (page.type === 'diagnostics' && !(page.meta && page.meta.reserved)) {
         var fig = diagnostics.find(function (item) { return item.id === page.sourceRef; });
         if (fig && window.ToolboxDB && window.ToolboxDB.getMedia) {
@@ -1176,12 +1183,26 @@
     } else if (page.type === 'pictures') {
       margin.classList.add('rb-sheet__margin--pictures');
       margin.appendChild(renderPicturesPage(page));
-    } else if (page.type === 'floor' && page.evidence && page.evidence.composed) {
+    } else if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
       margin.classList.add('rb-sheet__margin--topo');
-      if (!renderEvidence(margin, page)) {
-        addLine(margin, 'rb-sheet__note', 'Topo figure reserved.');
+      var fl = window.ToolboxReportFloorLayout;
+      if (fl && typeof fl.renderPage === 'function') {
+        var imported = !!(page.meta && page.meta.imported && page.evidence && page.evidence.figure);
+        var layout = (page.meta && page.meta.layout) || page._bookFloorLayout || fl.defaultLayout();
+        var rendered = fl.renderPage(page, page.evidence || {}, {
+          imported: imported,
+          layout: layout,
+          formatSurveyDate: formatSurveyDate,
+          renderNorthArrow: renderNorthArrow,
+          brandMark: brandMark,
+          renderRelativeReadings: renderRelativeReadings,
+        });
+        if (page.meta) page.meta.layout = rendered.layout;
+        margin.appendChild(rendered.root);
+      } else if (!renderEvidence(margin, page)) {
+        addLine(margin, 'rb-sheet__note', 'Floor Survey page unavailable.');
       }
-    } else if (page.type === 'distress' || page.type === 'floor' || page.type === 'diagnostics') {
+    } else if (page.type === 'distress' || page.type === 'diagnostics') {
       var kicker = page.type === 'distress' ? 'Distress Survey' : page.type === 'floor' ? 'Floor Survey' : 'Diagnostics';
       addLine(margin, 'rb-sheet__kicker', kicker);
       var evidenceTitle = document.createElement('h1');
@@ -1208,7 +1229,7 @@
 
     var hidePageNum = page.type === 'cover' ||
       page.type === 'pictures' ||
-      (page.type === 'floor' && page.evidence && page.evidence.composed);
+      (page.type === 'floor' && !(page.meta && page.meta.reserved));
     if (!hidePageNum) {
       var footer = document.createElement('p');
       footer.className = 'rb-sheet__page';
@@ -1290,7 +1311,7 @@
     };
   }
 
-  function persistableDocument(pages, activePageId, prior) {
+  function persistableDocument(pages, activePageId, prior, floorLayout) {
     var notes = collectPenLogNotes(pages);
     if ((!notes || !Object.keys(notes).length) && prior && prior.penLog && prior.penLog.notes) {
       notes = prior.penLog.notes;
@@ -1309,6 +1330,12 @@
         schemaVersion: 1,
         notes: notes,
       };
+    }
+    var flApi = window.ToolboxReportFloorLayout;
+    if (floorLayout && flApi) {
+      doc.floorLayout = flApi.normalizeLayout(floorLayout);
+    } else if (prior && prior.floorLayout) {
+      doc.floorLayout = flApi ? flApi.normalizeLayout(prior.floorLayout) : prior.floorLayout;
     }
     return doc;
   }
@@ -1361,6 +1388,10 @@
     var workingRecord = null;
     var saveTimer = null;
     var lastSavedAt = '';
+    var floorLayout = window.ToolboxReportFloorLayout
+      ? window.ToolboxReportFloorLayout.defaultLayout()
+      : { locked: false, topo: { x: 10, y: 6, w: 80, h: 88 }, overlays: [] };
+    var floorDrag = null;
     pageSeq = pages.length;
 
     host.innerHTML = shellHtml();
@@ -1419,7 +1450,12 @@
       if (!window.ToolboxDB || typeof window.ToolboxDB.saveCustomerFile !== 'function') {
         return Promise.reject(new Error('Customer File save is not available.'));
       }
-      var doc = persistableDocument(pages, activeId, workingRecord && (workingRecord.reportBuilder || workingRecord.report));
+      var doc = persistableDocument(
+        pages,
+        activeId,
+        workingRecord && (workingRecord.reportBuilder || workingRecord.report),
+        floorLayout
+      );
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;
       delete workingRecord.report;
@@ -1601,6 +1637,19 @@
         listEl.appendChild(button);
       });
 
+      if (current && current.type === 'floor') {
+        current._bookFloorLayout = floorLayout;
+        if (floorLayout && floorLayout.locked) {
+          current.meta = current.meta || {};
+          current.meta.layout = window.ToolboxReportFloorLayout
+            ? window.ToolboxReportFloorLayout.cloneLayout(floorLayout)
+            : floorLayout;
+        } else if (current.meta && !current.meta.layout && floorLayout) {
+          current.meta.layout = window.ToolboxReportFloorLayout
+            ? window.ToolboxReportFloorLayout.cloneLayout(floorLayout)
+            : floorLayout;
+        }
+      }
       renderSheet(sheetEl, current, pages);
       syncPenLogPanel(current);
       fitSheet(root);
@@ -1669,6 +1718,189 @@
       current.reportText.captions[key] = field.value;
       markDirty();
     });
+
+    function applyLayoutToFloorPages(layout) {
+      var flApi = window.ToolboxReportFloorLayout;
+      var next = flApi ? flApi.normalizeLayout(layout) : layout;
+      floorLayout = next;
+      pages.forEach(function (page) {
+        if (!page || page.type !== 'floor' || (page.meta && page.meta.reserved)) return;
+        page.meta = page.meta || {};
+        page.meta.layout = flApi ? flApi.cloneLayout(next) : next;
+      });
+    }
+
+    function importActiveFloorPage() {
+      var current = activePage();
+      if (!current || current.type !== 'floor' || (current.meta && current.meta.reserved)) return;
+      if (!workingRecord) return;
+      current.meta = current.meta || {};
+      if (!current.meta.layout) {
+        current.meta.layout = window.ToolboxReportFloorLayout
+          ? window.ToolboxReportFloorLayout.cloneLayout(floorLayout)
+          : floorLayout;
+      }
+      if (floorLayout && floorLayout.locked) {
+        current.meta.layout = window.ToolboxReportFloorLayout
+          ? window.ToolboxReportFloorLayout.cloneLayout(floorLayout)
+          : floorLayout;
+      }
+      current.meta.imported = true;
+      setSaveStatus('Importing…');
+      attachEvidence(workingRecord, [current]).then(function (enriched) {
+        if (token !== mountGeneration) return;
+        var next = enriched && enriched[0];
+        if (!next || !next.evidence || !next.evidence.figure || !next.evidence.figure.dataUrl) {
+          current.meta.imported = false;
+          setSaveStatus('Import failed — no topo figure');
+          renderPages();
+          return;
+        }
+        var index = activeIndex();
+        pages[index] = next;
+        markDirty();
+        renderPages();
+        fitSheet(root);
+      }).catch(function (err) {
+        current.meta.imported = false;
+        console.warn('Floor Survey import failed', err);
+        setSaveStatus('Import failed');
+        renderPages();
+      });
+    }
+
+    sheetEl.addEventListener('click', function (event) {
+      if (event.target.closest('[data-rb-floor-import]')) {
+        event.preventDefault();
+        importActiveFloorPage();
+        return;
+      }
+      var lockBtn = event.target.closest('[data-rb-floor-lock]');
+      if (!lockBtn) return;
+      event.preventDefault();
+      var current = activePage();
+      if (!current || current.type !== 'floor') return;
+      var mode = lockBtn.getAttribute('data-rb-floor-lock');
+      var flApi = window.ToolboxReportFloorLayout;
+      var layout = (current.meta && current.meta.layout) || floorLayout;
+      layout = flApi ? flApi.normalizeLayout(layout) : layout;
+      if (mode === 'lock') {
+        layout.locked = true;
+        applyLayoutToFloorPages(layout);
+      } else {
+        layout.locked = false;
+        floorLayout = flApi ? flApi.normalizeLayout(layout) : layout;
+        current.meta = current.meta || {};
+        current.meta.layout = flApi ? flApi.cloneLayout(floorLayout) : floorLayout;
+      }
+      dirty = true;
+      setSaveStatus('Saving…');
+      renderPages();
+      flushSave().catch(function () {});
+    });
+
+    function stageRect() {
+      var stage = sheetEl.querySelector('[data-rb-floor-stage]');
+      return stage ? stage.getBoundingClientRect() : null;
+    }
+
+    sheetEl.addEventListener('pointerdown', function (event) {
+      var current = activePage();
+      if (!current || current.type !== 'floor') return;
+      if (current.meta && current.meta.layout && current.meta.layout.locked) return;
+      if (floorLayout && floorLayout.locked) return;
+      var resize = event.target.closest('[data-rb-floor-resize]');
+      var box = event.target.closest('[data-rb-floor-box]');
+      if (!box) return;
+      var stage = stageRect();
+      if (!stage || stage.width < 8 || stage.height < 8) return;
+      event.preventDefault();
+      var id = box.getAttribute('data-rb-floor-box');
+      var kind = box.getAttribute('data-rb-floor-kind') || 'topo';
+      var layout = window.ToolboxReportFloorLayout
+        ? window.ToolboxReportFloorLayout.normalizeLayout((current.meta && current.meta.layout) || floorLayout)
+        : (current.meta && current.meta.layout) || floorLayout;
+      floorDrag = {
+        id: id,
+        kind: kind,
+        resize: !!resize,
+        startX: event.clientX,
+        startY: event.clientY,
+        stageW: stage.width,
+        stageH: stage.height,
+        layout: layout,
+      };
+      try { box.setPointerCapture(event.pointerId); } catch (_) {}
+    });
+
+    sheetEl.addEventListener('pointermove', function (event) {
+      if (!floorDrag) return;
+      var current = activePage();
+      if (!current || current.type !== 'floor') return;
+      var dx = ((event.clientX - floorDrag.startX) / floorDrag.stageW) * 100;
+      var dy = ((event.clientY - floorDrag.startY) / floorDrag.stageH) * 100;
+      var layout = window.ToolboxReportFloorLayout
+        ? window.ToolboxReportFloorLayout.cloneLayout(floorDrag.layout)
+        : JSON.parse(JSON.stringify(floorDrag.layout));
+      var flApi = window.ToolboxReportFloorLayout;
+      if (floorDrag.id === 'topo') {
+        if (floorDrag.resize) {
+          layout.topo.w = Math.max(flApi ? flApi.MIN_TOPO_W : 35, floorDrag.layout.topo.w + dx);
+          layout.topo.h = Math.max(flApi ? flApi.MIN_TOPO_H : 35, floorDrag.layout.topo.h + dy);
+        } else {
+          layout.topo.x = floorDrag.layout.topo.x + dx;
+          layout.topo.y = floorDrag.layout.topo.y + dy;
+        }
+      } else {
+        var overlay = null;
+        for (var i = 0; i < layout.overlays.length; i += 1) {
+          if (layout.overlays[i].id === floorDrag.id) overlay = layout.overlays[i];
+        }
+        if (!overlay) return;
+        if (floorDrag.resize) {
+          var base = 0;
+          for (var j = 0; j < floorDrag.layout.overlays.length; j += 1) {
+            if (floorDrag.layout.overlays[j].id === floorDrag.id) base = floorDrag.layout.overlays[j].scale;
+          }
+          overlay.scale = Math.max(flApi ? flApi.MIN_SCALE : 0.65, Math.min(flApi ? flApi.MAX_SCALE : 1.85, base + dx / 40));
+        } else {
+          var origin = null;
+          for (var k = 0; k < floorDrag.layout.overlays.length; k += 1) {
+            if (floorDrag.layout.overlays[k].id === floorDrag.id) origin = floorDrag.layout.overlays[k];
+          }
+          overlay.x = (origin ? origin.x : 0) + dx;
+          overlay.y = (origin ? origin.y : 0) + dy;
+        }
+      }
+      layout = flApi ? flApi.normalizeLayout(layout) : layout;
+      current.meta = current.meta || {};
+      current.meta.layout = layout;
+      if (!floorLayout.locked) floorLayout = flApi ? flApi.cloneLayout(layout) : layout;
+      var box = sheetEl.querySelector('[data-rb-floor-box="' + floorDrag.id + '"]');
+      if (!box) return;
+      if (floorDrag.id === 'topo') {
+        box.style.left = layout.topo.x + '%';
+        box.style.top = layout.topo.y + '%';
+        box.style.width = layout.topo.w + '%';
+        box.style.height = layout.topo.h + '%';
+      } else {
+        for (var n = 0; n < layout.overlays.length; n += 1) {
+          if (layout.overlays[n].id === floorDrag.id) {
+            box.style.left = layout.overlays[n].x + '%';
+            box.style.top = layout.overlays[n].y + '%';
+            box.style.transform = 'scale(' + layout.overlays[n].scale + ')';
+          }
+        }
+      }
+    });
+
+    function endFloorDrag() {
+      if (!floorDrag) return;
+      floorDrag = null;
+      markDirty();
+    }
+    sheetEl.addEventListener('pointerup', endFloorDrag);
+    sheetEl.addEventListener('pointercancel', endFloorDrag);
 
     if (penNoteField) {
       penNoteField.addEventListener('input', function () {
@@ -1798,14 +2030,20 @@
       var source = api.read(record || null);
       var fresh = withProperty(api.assemble(source), source);
       var freshPages = ensurePicturesInFreshPages(fresh.pages.slice(), photoList);
+      var savedDoc = record && (record.reportBuilder || record.report);
+      if (savedDoc && savedDoc.floorLayout && window.ToolboxReportFloorLayout) {
+        floorLayout = window.ToolboxReportFloorLayout.normalizeLayout(savedDoc.floorLayout);
+      }
       var saved = savedReportPages(record);
       if (saved) {
         var before = saved.pages.map(function (page) {
-          return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',');
+          return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',') +
+            ':' + !!(page.meta && page.meta.imported);
         }).join('|');
         pages = reconcileReportPages(saved.pages, freshPages, photoList);
         var after = pages.map(function (page) {
-          return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',');
+          return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',') +
+            ':' + !!(page.meta && page.meta.imported);
         }).join('|');
         var restored = restoreReturnPage();
         if (!restored) {
@@ -1966,8 +2204,56 @@
     }
   }
 
+  /**
+   * Distress Put on report: pack photographs into Pictures slides on reportBuilder.
+   * Does not write captions back to Distress. Returns { pageCount, photoCount, activePageId }.
+   */
+  function stagePicturesFromDistress(record) {
+    if (!record || typeof record !== 'object') {
+      return Promise.reject(new Error('Customer File is required.'));
+    }
+    var photoList = window.ToolboxReportEvidence &&
+      typeof window.ToolboxReportEvidence.listDistressPhotos === 'function'
+      ? window.ToolboxReportEvidence.listDistressPhotos(record)
+      : [];
+    if (!photoList.length) {
+      return Promise.reject(new Error('No Distress photographs to put on the report.'));
+    }
+    var api = sourceApi();
+    var source = api ? api.read(record) : null;
+    var fresh = api ? withProperty(api.assemble(source), source) : { pages: [] };
+    var saved = savedReportPages(record);
+    var pages = saved
+      ? reconcileReportPages(saved.pages, ensurePicturesInFreshPages(fresh.pages.slice(), photoList), photoList)
+      : ensurePicturesInFreshPages(fresh.pages.slice(), photoList);
+    var firstPictures = null;
+    for (var i = 0; i < pages.length; i += 1) {
+      if (pages[i].type === 'pictures') {
+        firstPictures = pages[i];
+        break;
+      }
+    }
+    var activePageId = firstPictures ? firstPictures.id : (pages[0] && pages[0].id) || '';
+    var prior = record.reportBuilder || record.report || null;
+    var doc = persistableDocument(pages, activePageId, prior, prior && prior.floorLayout);
+    record.reportBuilder = doc;
+    record.updatedAt = doc.updatedAt;
+    delete record.report;
+    if (!window.ToolboxDB || typeof window.ToolboxDB.saveCustomerFile !== 'function') {
+      return Promise.reject(new Error('Customer File save is not available.'));
+    }
+    return window.ToolboxDB.saveCustomerFile(record).then(function () {
+      return {
+        pageCount: pages.filter(function (p) { return p.type === 'pictures'; }).length,
+        photoCount: photoList.length,
+        activePageId: activePageId,
+      };
+    });
+  }
+
   window.ToolboxReportBuilder = {
     mount: mount,
     unmount: unmount,
+    stagePicturesFromDistress: stagePicturesFromDistress,
   };
 })();
