@@ -121,6 +121,10 @@ Concrete Customer File record ownership for later app plug-in. Architecture is c
   4. **Reconcile on open** — when Distress/Floor gains new pins/photos/figures (e.g. Quick Capture pulled into Distress), reopen compares saved report pages to current source: keep existing report pages and wording; add pages/slots for new source items. Do not silently wipe investigator report text.
   **Out of that slice:** Picture Locations page, Pen Log / drawing toolbar, epoch divider banners, side-by-side epoch pages, mark-complete + date, Report Builder startup questionnaire.
 - **Report Builder Picture Locations / Pen Log (authorized Tim, Oct 1, 2026):** Finish the native Pen Log page that was drafted in PR #91 and integrate it with current Report Builder on main. One page per Distress level with pins: plan, numbered pins, Photo / # / Location / Notes schedule, title “Figure N” + “Picture/Damage Locations”. Report notes persist on the report component (`reportBuilder.penLog.notes` and page `reportText.notes`) and do not write back to Distress. Drawing toolbar remains out of scope.
+- **Third implementation slice — AUTHORIZED (Tim, Oct 2, 2026).** Build and ship the decided staging / Floor Survey model:
+  1. **Floor Survey pages:** Customer File chrome first; **Import** loads topo view + contour legend + H/L/Δ as separate boxes at typical defaults; move/resize (readable bounds); **Lock layout** persists on `reportBuilder.floorLayout` and inherits on other Floor Survey pages. Unlock to edit again. No field pinch-zoom. Plan+contours+readings stay one topo unit.
+  2. **Distress Put on report (Pictures):** From Distress (host), stage photographs onto Pictures slides (10 per page, multi-level aware via existing numbering) into `reportBuilder`, then open Report Builder (jump-return session). Deliverable caption edits stay on the report pages.
+  **Out of this slice:** Full field Topo tool parity in Report Builder; Picture Locations staging button (Pen Log pages may already exist from prior auth); free-form distortion; CRDT/live collaboration.
 
 ## Diagnostics
 
