@@ -323,7 +323,16 @@ Direct page composition and meaningful content manipulation are required. **Basi
 
 Automation assembles evidence. It does not replace investigator judgment.
 
-Floor Level topo figure pages use **fixed template slots**. Contour legend, High / Low / Δ, Front Door, title/date/address chrome, and the registered topo drawing frame are Report Builder page elements in consistent positions. They are not pasted from wherever field Topo working chrome happened to sit. Related levels and survey epochs are consecutive pages of that same template. Epoch dividers, side-by-side comparisons, and narrative discussion remain investigator-owned adaptations after assembly — typical pages assemble automatically; special cases stay flexible.
+**Floor Survey figure pages are the special case — and the real bottleneck.** Cover identity, pictures, picture locations, discussion placement, and similar stable pieces can drop into standard places. Floor Survey views change job to job; fuzzy screenshot/PDF paste of topo is what slows the report. Cut-and-paste field Topo screenshots are not the intended workflow.
+
+**Floor Survey page model (DECIDED Tim, Oct 2, 2026):**
+1. A Floor Survey report page starts with **Customer File / report chrome only** in typical places: figure number and title, survey date, “Corrected for Floor Differences,” customer name / address, north / Front Door cue, brand strip, and similar. Contours, the topo drawing, the contour legend, and the High / Low / Δ pill are **not** on the page yet.
+2. An **Import** control on that page pulls those survey graphics from Floor Survey into the page as separate boxes: the topo view (plan + contours + readings as **one** registered unit), the contour legend, and the H/L/Δ pill.
+3. Import places those boxes at **typical default positions** first. The investigator may move and resize the topo view, legend, and pill (sane min/max; keep readable aspect — not free-form distortion).
+4. **Lock layout** stores that layout (and the topo view framing) for this report’s Floor Survey book. Following Floor Survey pages for other levels / boundaries / epochs **inherit** the locked layout so the flip chart stays aligned. Unlock only when the investigator chooses to change the book layout.
+5. Field Topo may keep movable working chrome for capture. Those field positions do not drive report layout. Presentation for the deliverable happens in Report Builder after Import — not another screenshot session.
+
+Epoch dividers, side-by-side comparisons, and narrative discussion remain investigator-owned. TOC can be built from the finished slide order and figure titles. Picture count and topo page count need not be known ahead of time.
 
 ### 12a. Build baseline — DECIDED
 
