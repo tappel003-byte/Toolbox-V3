@@ -18,7 +18,7 @@ Report Builder and Diagnostics are **not wholly future work**. This repository a
 
 **Authorized in parallel (Tim, Oct 1, 2026):** Report Builder Picture Locations / Pen Log — one native plan+schedule page per Distress level that has pins (“Picture/Damage Locations”), report-owned notes that do not edit Distress source, alongside the existing Pictures pages. See `DECISIONS.md` Report Builder.
 
-**Decided (Tim, Oct 2, 2026) — not yet an implementation slice:** Floor Survey report pages use Customer File chrome first, then **Import** topo/legend/H·L·Δ as movable boxes, then **Lock layout** for flip-chart inherit. This supersedes burning legend/pill into forever-fixed auto-compose coordinates for ongoing work. See `VISION.md` §12 and `DECISIONS.md` Report Builder. Do not implement Import/Lock until Tim authorizes that slice.
+**Decided (Tim, Oct 2, 2026) — not yet an implementation slice:** Report setup is **source-app staging → drop into template** (Distress/Floor “Put on report,” multi-level aware, jump links), plus Floor Survey pages: Customer File chrome → **Import** topo/legend/H·L·Δ → place/resize → **Lock layout** for flip-chart inherit. Supersedes “fully pre-populated standard report” and forever-fixed legend/pill auto-compose as the ongoing model. See `VISION.md` §12 and `DECISIONS.md` Report Builder. Do not implement staging/Import/Lock until Tim authorizes that slice.
 
 Post-release local-copy cleanup is **decided** and is a **later small slice**. Do not implement it here, and do not let it complicate normal capture, Save, Sync Now, or Check Out.
 
