@@ -32,13 +32,17 @@
   //   1.96 .. (51.87 + 44.7) = 94.61% wide
   //   gutter = 51.87 - (1.96 + 44.7) = 5.21%
   var BODY = { x: 1.96, y: 3.03, w: 94.61, gutter: 5.21 };
-  // The logo artwork is 6.87:1 once its white space is trimmed off; the file
-  // in the decks carries 27% horizontal and 62% vertical padding, which is
-  // why it looked small inside its box and stretched in the decks.
-  // Default to the deck's width and baseline at the artwork's true
-  // proportion: height = 15.49 x (17/11) / 6.87 = 3.48%, bottom at 97.84%.
-  // From here it is moved, resized and locked like any other element.
-  var BRAND = { x: 3.59, y: 94.36, w: 15.49, h: 3.48 };
+  // Where the logo actually sits in the Mitchell deck, measured rather than
+  // eyeballed. The deck places image2.png at 3.59 / 93.49 / 15.49 / 4.35, but
+  // that file is 799 x 225 with only 584 x 85 of ink in it -- 13.52% padding
+  // each side and 31.11% top and bottom. So the mark you SEE on slides 2
+  // through 8 is 11.32% wide at 5.68%, not 15.49% at 3.59%.
+  //
+  // The deck's box makes it 10.65:1; the artwork is 6.87:1, so his own
+  // template stretches it. Toolbox carries the trimmed artwork, places it at
+  // the deck's width and position, and keeps its true proportion, centred on
+  // the same line: h = 11.322 x (17/11) / 6.87 = 2.55%.
+  var BRAND = { x: 5.68, y: 94.39, w: 11.32, h: 2.55 };
   var BODY_BOTTOM = 93.49; // text stops above the brand mark
 
   function bodyStyle() {

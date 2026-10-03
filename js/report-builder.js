@@ -231,9 +231,17 @@
     sheet.appendChild(frame);
   }
 
-  function renderBrandLayer(sheet, box) {
+  // Measured off the Mitchell deck: the logo (image2.png) sits at
+  // 3.59 / 93.49 / 15.49 on slides 2 through 8, identically -- and is NOT on
+  // slide 1. The title page carries the frame, the contact, the address, the
+  // date and the contents, and no brand mark. So the cover does not get one.
+  function pageTakesBrand(page) {
+    return !!page && page.type !== 'cover';
+  }
+
+  function renderBrandLayer(sheet, page, box) {
     var api = window.ToolboxReportDiscussion;
-    if (!api) return;
+    if (!api || !pageTakesBrand(page)) return;
     var placed = api.normalizeBrandBox(box);
     var brand = document.createElement('div');
     brand.className = 'rb-brand' + (placed.locked ? ' is-locked' : '');
@@ -1458,7 +1466,7 @@
     if (isPenLogPage(page)) {
       renderPenLogSheet(sheet, page, pages);
       renderSheetFrame(sheet);
-      renderBrandLayer(sheet, page._brandBox || (page.meta && page.meta.brandBox));
+      renderBrandLayer(sheet, page, page._brandBox || (page.meta && page.meta.brandBox));
       return;
     }
     penLogUi.layout = null;
@@ -1572,7 +1580,7 @@
     }
     sheet.appendChild(margin);
     renderSheetFrame(sheet);
-    renderBrandLayer(sheet, page._brandBox || (page.meta && page.meta.brandBox));
+    renderBrandLayer(sheet, page, page._brandBox || (page.meta && page.meta.brandBox));
   }
 
   function evidenceMeta(page) {
@@ -3249,6 +3257,10 @@
         var sheet = document.createElement('article');
         sheet.className = 'rb-sheet rb-sheet--print';
         deck.appendChild(sheet);
+        // Only the on-screen render loop stamped this, so the printed deck
+        // fell back to the default placement -- the PDF showed the logo in the
+        // bottom-left corner no matter where it had been put and locked.
+        page._brandBox = currentBrandBox(page);
         try {
           renderSheet(sheet, page, pages);
         } catch (err) {
