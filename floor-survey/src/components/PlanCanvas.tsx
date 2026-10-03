@@ -66,6 +66,15 @@ interface Props {
   /** Keep the current pan/zoom when the wrapper changes size, e.g. mobile keyboard. */
   refitOnResize?: boolean;
   /**
+   * Corner grips that resize the drawing.
+   *
+   * One addition to what this canvas already does, not a replacement for it:
+   * pan and wheel zoom stay exactly as they are. Dragging a corner scales the
+   * plan about the opposite corner, which gives finer control over the size
+   * than the wheel does -- the reason it was asked for.
+   */
+  resizeCorners?: boolean;
+  /**
    * A picture on a page, not a viewport.
    *
    * On a report slide the plan is sized and placed by dragging the frame and
@@ -104,6 +113,7 @@ export function PlanCanvas({
   cameraRequest,
   refitOnResize = true,
   staticView = false,
+  resizeCorners = false,
   planTransform,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -486,6 +496,77 @@ export function PlanCanvas({
     singleStart.current = null;
   }
 
+  // Corner resize. Scales about the OPPOSITE corner, so the corner being held
+  // is the one that moves and the drawing grows or shrinks from the other.
+  const cornerDrag = useRef<
+    | {
+        pointerId: number;
+        corner: "nw" | "ne" | "sw" | "se";
+        anchorX: number;
+        anchorY: number;
+        imgX: number;
+        imgY: number;
+        startDist: number;
+        startScale: number;
+      }
+    | null
+  >(null);
+
+  function cornerPointerDown(
+    corner: "nw" | "ne" | "sw" | "se",
+    e: ReactPointerEvent<HTMLSpanElement>,
+  ) {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = wrap.getBoundingClientRect();
+    // The opposite corner, in wrapper coordinates, is what stays still.
+    const anchorX = corner === "nw" || corner === "sw" ? rect.width : 0;
+    const anchorY = corner === "nw" || corner === "ne" ? rect.height : 0;
+    const t = transformRef.current;
+    const dist = Math.hypot(e.clientX - (rect.left + anchorX), e.clientY - (rect.top + anchorY));
+    cornerDrag.current = {
+      pointerId: e.pointerId,
+      corner,
+      anchorX,
+      anchorY,
+      imgX: (anchorX - t.tx) / t.scale,
+      imgY: (anchorY - t.ty) / t.scale,
+      startDist: Math.max(1, dist),
+      startScale: t.scale,
+    };
+    try {
+      (e.currentTarget as HTMLSpanElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* capture is a convenience */
+    }
+  }
+
+  function cornerPointerMove(e: ReactPointerEvent<HTMLSpanElement>) {
+    const d = cornerDrag.current;
+    const wrap = wrapRef.current;
+    if (!d || !wrap || d.pointerId !== e.pointerId) return;
+    e.preventDefault();
+    const rect = wrap.getBoundingClientRect();
+    const dist = Math.hypot(
+      e.clientX - (rect.left + d.anchorX),
+      e.clientY - (rect.top + d.anchorY),
+    );
+    const next = Math.max(0.05, Math.min(20, d.startScale * (dist / d.startDist)));
+    applyTransform({
+      scale: next,
+      tx: d.anchorX - d.imgX * next,
+      ty: d.anchorY - d.imgY * next,
+    });
+  }
+
+  function cornerPointerUp(e: ReactPointerEvent<HTMLSpanElement>) {
+    if (cornerDrag.current && cornerDrag.current.pointerId === e.pointerId) {
+      cornerDrag.current = null;
+    }
+  }
+
   // wheel zoom for desktop
   function onWheel(e: React.WheelEvent<HTMLDivElement>) {
     e.preventDefault();
@@ -520,6 +601,27 @@ export function PlanCanvas({
       >
         <canvas ref={canvasRef} />
       </div>
+      {resizeCorners &&
+        (["nw", "ne", "sw", "se"] as const).map((corner) => (
+          <span
+            key={corner}
+            data-plan-resize={corner}
+            onPointerDown={(e) => cornerPointerDown(corner, e)}
+            onPointerMove={cornerPointerMove}
+            onPointerUp={cornerPointerUp}
+            onPointerCancel={cornerPointerUp}
+            className={
+              "absolute z-30 h-4 w-4 rounded-sm border border-slate-600 bg-white shadow touch-none " +
+              (corner === "nw"
+                ? "left-1 top-1 cursor-nwse-resize"
+                : corner === "ne"
+                  ? "right-1 top-1 cursor-nesw-resize"
+                  : corner === "sw"
+                    ? "left-1 bottom-1 cursor-nesw-resize"
+                    : "right-1 bottom-1 cursor-nwse-resize")
+            }
+          />
+        ))}
     </div>
   );
 }

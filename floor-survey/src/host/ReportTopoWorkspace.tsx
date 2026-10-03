@@ -197,6 +197,7 @@ export function ReportTopoWorkspace({
         hideCanvasChrome
         chromeless
         controlsOnly={controlsOnly}
+        resizeCorners={!controlsOnly}
       />
     </div>
   );

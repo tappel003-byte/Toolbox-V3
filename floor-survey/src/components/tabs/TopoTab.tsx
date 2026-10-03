@@ -144,6 +144,8 @@ interface Props {
   controlsOnly?: boolean;
   /** A picture on a page: no pan, no zoom, the plan fits its frame. */
   staticView?: boolean;
+  /** Corner grips that resize the drawing, alongside pan and wheel zoom. */
+  resizeCorners?: boolean;
   /**
    * Nothing but the canvas.
    *
@@ -275,6 +277,7 @@ export function TopoTab({
   chromeless = false,
   controlsOnly = false,
   staticView = false,
+  resizeCorners = false,
 }: Props) {
   const selectedId =
     selectedIds && selectedIds.size > 0 ? (selectedIds.values().next().value ?? null) : null;
@@ -833,6 +836,7 @@ export function TopoTab({
           onCamera={onCamera}
           cameraRequest={cameraRequest || undefined}
           staticView={staticView}
+          resizeCorners={resizeCorners}
           refitOnResize={false}
           onTransform={(t) => setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s))}
           onImagePointerDown={(x, y) => {
