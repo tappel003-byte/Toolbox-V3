@@ -24,9 +24,16 @@
   // Line spacing, as PowerPoint offers it: a multiplier, plus space after the
   // paragraph on its own. An address block wants the lines tight AND no gap
   // beneath each line; narrative wants the deck's 9 pt between paragraphs.
+  // "Single" means the FONT'S OWN line height, not 1.0 -- that is what it
+  // means in PowerPoint and what the page body already uses (Calibri sits at
+  // 1.22). Setting 1.0 produced spacing tighter than the surrounding report,
+  // which is why Single looked cramped. Every option below is a multiple of
+  // single, as PowerPoint's line spacing is.
+  var SINGLE_LINE = 1.22;
   var LINE_SPACING = [
     { value: 'lh:1', label: 'Single' },
     { value: 'lh:1.15', label: '1.15' },
+    { value: 'lh:1.25', label: '1.25' },
     { value: 'lh:1.5', label: '1.5' },
     { value: 'lh:2', label: 'Double' },
     { value: 'sa:0', label: 'No space after' },
@@ -171,7 +178,7 @@
     var value = parseFloat(parts[1]);
     if (!isFinite(value)) return;
     blocksInSelection(field).forEach(function (block) {
-      if (kind === 'lh') block.style.lineHeight = String(value);
+      if (kind === 'lh') block.style.lineHeight = (value * SINGLE_LINE).toFixed(3);
       else block.style.marginBottom = (value * window.ToolboxReportText.PT_TO_CQH).toFixed(3) + 'cqh';
     });
   }
