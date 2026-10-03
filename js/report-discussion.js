@@ -172,13 +172,9 @@
     warn.className = 'rb-discussion__overflow';
     warn.setAttribute('data-rb-discussion-overflow', '1');
     warn.hidden = true;
-    warn.textContent = 'This narrative is longer than one page holds.';
-    var go = document.createElement('button');
-    go.type = 'button';
-    go.className = 'rb-discussion__continue';
-    go.setAttribute('data-rb-discussion-continue', '1');
-    go.textContent = 'Continue on next page';
-    warn.appendChild(go);
+    // Continuing is automatic -- the chain re-flows whenever the room changes
+    // -- so this only speaks up if something still will not fit after that.
+    warn.textContent = 'Some of this text does not fit on the page.';
     root.appendChild(warn);
 
     return root;

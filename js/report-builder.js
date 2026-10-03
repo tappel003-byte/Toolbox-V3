@@ -1972,11 +1972,6 @@
     });
 
     sheetEl.addEventListener('click', function (event) {
-      if (event.target.closest('[data-rb-discussion-continue]')) {
-        event.preventDefault();
-        splitDiscussionOverflow();
-        return;
-      }
       var brandLock = event.target.closest('[data-rb-brand-lock]');
       if (brandLock) {
         event.preventDefault();
@@ -2024,141 +2019,135 @@
       };
     }
 
-    // A narrative longer than two columns continues on another sheet rather
-    // than being cut off. The split point is where the text actually landed
-    // past the second column, so what moves is exactly what did not fit.
-    // One placement for the whole book: every discussion sheet, including a
-    // continuation, carries the same logo position so the pages match.
-    function applyBrandBox(box) {
-      var api = window.ToolboxReportDiscussion;
-      var next = api ? api.normalizeBrandBox(box) : box;
-      pages.forEach(function (item) {
-        if (!item || item.type !== 'section') return;
-        if (!item.meta || item.meta.sectionId !== 'discussion') return;
-        item.meta.brandBox = JSON.parse(JSON.stringify(next));
-      });
-      return next;
+    // A discussion and its continuations are ONE flow, not pages that were
+    // split once. Tighten the spacing or shrink the type and the room comes
+    // back, so the text has to come back with it -- a split that only ever
+    // ran one way would leave a half-empty second sheet behind forever.
+    function discussionChain() {
+      var chain = [];
+      var started = false;
+      for (var i = 0; i < pages.length; i += 1) {
+        var page = pages[i];
+        var isDiscussion = page && page.type === 'section' && page.meta &&
+          page.meta.sectionId === 'discussion';
+        if (!isDiscussion) {
+          if (started) break;
+          continue;
+        }
+        if (!started && page.meta.continuation) continue;
+        started = true;
+        chain.push(page);
+      }
+      return chain;
     }
 
-    var brandDrag = null;
-
-    sheetEl.addEventListener('pointerdown', function (event) {
-      var grip = event.target.closest('[data-rb-brand-resize]');
-      var mover = grip ? null : event.target.closest('[data-rb-brand-box]');
-      if (!grip && !mover) return;
-      if (mover && mover.classList.contains('is-locked')) return;
-      var page = activePage();
-      if (!page || !page.meta || page.meta.sectionId !== 'discussion') return;
-      var stage = sheetEl.querySelector('.rb-discussion');
-      var rect = stage && stage.getBoundingClientRect();
-      if (!rect || rect.width < 8) return;
-      event.preventDefault();
-      var api = window.ToolboxReportDiscussion;
-      brandDrag = {
-        resize: !!grip,
-        startX: event.clientX,
-        startY: event.clientY,
-        rect: rect,
-        box: api ? api.normalizeBrandBox(page.meta.brandBox) : page.meta.brandBox,
-      };
-      if (event.target.setPointerCapture) {
-        try { event.target.setPointerCapture(event.pointerId); } catch (err) { /* not captured */ }
-      }
-    });
-
-    sheetEl.addEventListener('pointermove', function (event) {
-      if (!brandDrag) return;
-      var dx = ((event.clientX - brandDrag.startX) / brandDrag.rect.width) * 100;
-      var dy = ((event.clientY - brandDrag.startY) / brandDrag.rect.height) * 100;
-      var b = brandDrag.box;
-      var next = brandDrag.resize
-        ? { x: b.x, y: b.y, w: b.w + dx, h: b.h + dy, locked: false }
-        : { x: b.x + dx, y: b.y + dy, w: b.w, h: b.h, locked: false };
-      var api = window.ToolboxReportDiscussion;
-      next = api ? api.normalizeBrandBox(next) : next;
-      var live = sheetEl.querySelector('[data-rb-brand-box]');
-      if (live) {
-        live.style.left = next.x + '%';
-        live.style.top = next.y + '%';
-        live.style.width = next.w + '%';
-        live.style.height = next.h + '%';
-      }
-      brandDrag.next = next;
-    });
-
-    function endBrandDrag() {
-      if (!brandDrag) return;
-      if (brandDrag.next) {
-        applyBrandBox(brandDrag.next);
-        markDirty();
-        flushSave().catch(function () {});
-      }
-      brandDrag = null;
-    }
-
-    sheetEl.addEventListener('pointerup', endBrandDrag);
-    sheetEl.addEventListener('pointercancel', endBrandDrag);
-
-    function splitDiscussionOverflow() {
-      var page = activePage();
-      if (!page || !page.meta || page.meta.sectionId !== 'discussion') return;
-      var body = sheetEl.querySelector('.rb-discussion__body');
-      var api = window.ToolboxReportText;
-      if (!body || !api) return;
-
-      // Bullets live inside a <ul>, so walk list items too or the paragraph
-      // index stops matching the model.
+    // Bullets live inside a <ul>, so walk list items too or the paragraph
+    // index stops matching the model.
+    function firstOverflowIndex(body) {
       var limit = body.clientWidth - 1;
       var index = 0;
-      var cut = -1;
       var kids = body.children;
-      for (var i = 0; i < kids.length && cut < 0; i += 1) {
+      for (var i = 0; i < kids.length; i += 1) {
         var el = kids[i];
         if (el.tagName === 'UL' || el.tagName === 'OL') {
           for (var j = 0; j < el.children.length; j += 1) {
-            if (el.children[j].offsetLeft >= limit) { cut = index; break; }
+            if (el.children[j].offsetLeft >= limit) return index;
             index += 1;
           }
         } else {
-          if (el.offsetLeft >= limit) { cut = index; break; }
+          if (el.offsetLeft >= limit) return index;
           index += 1;
         }
       }
-      if (cut <= 0) return;
+      return -1;
+    }
 
-      var model = api.compact(api.fromElement(body));
-      var paras = model.paragraphs || [];
-      if (cut >= paras.length) return;
+    function reflowDiscussion() {
+      var chain = discussionChain();
+      if (chain.length < 1) return false;
+      var body = sheetEl.querySelector('.rb-discussion__body');
+      var api = window.ToolboxReportText;
+      if (!body || !api) return false;
 
-      page.reportText = page.reportText || {};
-      page.reportText.body = { paragraphs: paras.slice(0, cut) };
+      var all = [];
+      chain.forEach(function (page) {
+        var model = api.normalize((page.reportText || {}).body || '');
+        all = all.concat(model.paragraphs);
+      });
+      while (all.length > 1 && !all[all.length - 1].runs.length) all.pop();
+      if (!all.length) return false;
 
-      var continuation = {
-        id: 'discussion-cont-' + Date.now(),
-        type: 'section',
-        title: page.title,
-        tocTitle: page.tocTitle || page.title,
-        railLabel: 'Discussion (cont.)',
-        includeInToc: false,
-        note: '',
-        sourceKey: null,
-        // Same sectionId, so it is never numbered as a figure; the
-        // continuation flag keeps it out of CONTENTS.
-        meta: {
-          sectionId: 'discussion',
-          continuation: true,
-          brandBox: page.meta && page.meta.brandBox
-            ? JSON.parse(JSON.stringify(page.meta.brandBox))
-            : null,
-        },
-        reportText: { body: { paragraphs: paras.slice(cut) } },
-      };
+      // Every discussion sheet has identical body geometry, so one element
+      // measures them all.
+      var restore = body.innerHTML;
+      var sheets = [];
+      var rest = all;
+      var guard = 0;
+      while (rest.length && guard < 40) {
+        guard += 1;
+        body.innerHTML = api.toHtml({ paragraphs: rest });
+        var cut = firstOverflowIndex(body);
+        if (cut < 0) { sheets.push(rest); rest = []; break; }
+        if (cut <= 0) cut = 1; // always make progress
+        sheets.push(rest.slice(0, cut));
+        rest = rest.slice(cut);
+      }
+      if (rest.length) sheets.push(rest);
+      body.innerHTML = restore;
 
-      var at = activeIndex();
-      pages = insertPagesAt(pages, at + 1, [continuation]);
+      var same = sheets.length === chain.length;
+      if (same) {
+        for (var s = 0; s < sheets.length && same; s += 1) {
+          var before = JSON.stringify(api.compact((chain[s].reportText || {}).body || ''));
+          var after = JSON.stringify(api.compact({ paragraphs: sheets[s] }));
+          if (before !== after) same = false;
+        }
+      }
+      if (same) return false;
+
+      for (var k = 0; k < sheets.length; k += 1) {
+        if (k < chain.length) {
+          chain[k].reportText = chain[k].reportText || {};
+          chain[k].reportText.body = api.compact({ paragraphs: sheets[k] });
+        } else {
+          var head = chain[0];
+          var added = {
+            id: 'discussion-cont-' + Date.now() + '-' + k,
+            type: 'section',
+            title: head.title,
+            tocTitle: head.tocTitle || head.title,
+            railLabel: 'Discussion (cont.)',
+            includeInToc: false,
+            note: '',
+            sourceKey: null,
+            meta: {
+              sectionId: 'discussion',
+              continuation: true,
+              brandBox: head.meta && head.meta.brandBox
+                ? JSON.parse(JSON.stringify(head.meta.brandBox))
+                : null,
+            },
+            reportText: { body: api.compact({ paragraphs: sheets[k] }) },
+          };
+          var lastId = (chain[chain.length - 1] || head).id;
+          var at = 0;
+          for (var m = 0; m < pages.length; m += 1) if (pages[m].id === lastId) at = m;
+          pages = insertPagesAt(pages, at + 1, [added]);
+          chain.push(added);
+        }
+      }
+
+      // Sheets no longer needed disappear; the text pulled back into the ones
+      // above them.
+      if (chain.length > sheets.length) {
+        var drop = {};
+        for (var d = sheets.length; d < chain.length; d += 1) drop[chain[d].id] = true;
+        if (drop[activeId]) activeId = chain[Math.max(0, sheets.length - 1)].id;
+        pages = pages.filter(function (page) { return !drop[page.id]; });
+      }
+
       markDirty();
-      renderPages();
-      flushSave().catch(function () {});
+      return true;
     }
 
     function commitRichField(field) {
@@ -2231,6 +2220,10 @@
       var normalized = api.compact(api.fromElement(field));
       field.innerHTML = api.toHtml(normalized);
       commitRichField(field);
+      if (reflowDiscussion()) {
+        renderPages();
+        flushSave().catch(function () {});
+      }
     });
 
     sheetEl.addEventListener('focusin', function (event) {
@@ -2791,7 +2784,15 @@
 
     if (window.ToolboxReportToolbar) {
       formatToolbar = window.ToolboxReportToolbar.mount(root, {
-        onChange: function (field) { commitRichField(field); },
+        onChange: function (field) {
+          commitRichField(field);
+          // Changing spacing, size or typeface changes how much fits, so the
+          // flow is re-run right where the room changed.
+          if (reflowDiscussion()) {
+            renderPages();
+            flushSave().catch(function () {});
+          }
+        },
       });
     }
     fileLabelEl.textContent = 'Loading Customer File…';
@@ -2898,6 +2899,16 @@
         pages = enriched;
         renderPages();
         fitSheet(root);
+        // A book split under different spacing heals on open: if the text now
+        // fits in fewer sheets it pulls back into them.
+        window.requestAnimationFrame(function () {
+          if (token !== mountGeneration) return;
+          if (reflowDiscussion()) {
+            renderPages();
+            fitSheet(root);
+            flushSave().catch(function () {});
+          }
+        });
       });
     }).catch(function (err) {
       if (token !== mountGeneration) return;
