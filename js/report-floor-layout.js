@@ -35,7 +35,10 @@
     var slot = scaleSlot(0);
     return {
       locked: false,
-      topo: { x: 10, y: 6, w: 80, h: 88 },
+      // The decks put the drawing at 8.82 / 8.33, 83.05 x 87.91 -- it fills
+      // the page. The old 10/6/80/88 was invented and squeezed it into the
+      // margin box, which is why the plan looked small and cropped.
+      topo: { x: 8.82, y: 8.33, w: 83.05, h: 87.91 },
       overlays: [
         { id: 'legend-0', kind: 'legend', statsIndex: 0, x: slot.x, y: slot.legendY, scale: 1 },
         { id: 'pill-0', kind: 'pill', statsIndex: 0, x: slot.x, y: slot.pillY, scale: 1 },
@@ -371,7 +374,13 @@
       topo.insertBefore(drawing, topo.firstChild);
       body.appendChild(topo);
 
-      layout.overlays.forEach(function (overlay) {
+      // Rebuilding this page from the decks. Until the drawing itself is
+      // right, the slide carries the plan and nothing else -- the colour
+      // scale, the pill and the High/Low markers come back one at a time,
+      // placed at the deck's own coordinates, once there is something correct
+      // to place them against.
+      var SHOW_CHROME = false;
+      if (SHOW_CHROME) layout.overlays.forEach(function (overlay) {
         var stats = statsList[overlay.statsIndex] || statsList[0];
         if (!stats) return;
         var box = boxShell(overlay.kind, overlay.id, locked);

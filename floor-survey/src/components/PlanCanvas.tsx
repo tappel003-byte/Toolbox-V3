@@ -200,12 +200,24 @@ export function PlanCanvas({
     if (planDataUrl && !imgLoaded) return;
     cameraNonceRef.current = cameraRequest.nonce;
     const scale = (cameraRequest.zoom || 1) * (fitScale() || 1);
-    applyTransform({
-      scale,
-      tx: wrap.clientWidth / 2 - cameraRequest.cx * scale,
-      ty: wrap.clientHeight / 2 - cameraRequest.cy * scale,
-    });
-  }, [cameraRequest, fitScale, applyTransform, imgLoaded, canvasSizeTick, planDataUrl]);
+    const tx = wrap.clientWidth / 2 - cameraRequest.cx * scale;
+    const ty = wrap.clientHeight / 2 - cameraRequest.cy * scale;
+    // A stored view that does not actually show the plan is not a view. The
+    // report's camera is saved as it is panned and is shared by every Floor
+    // Survey slide, so one pan past the edge would otherwise open every slide
+    // on blank paper with no way back. If the plan would be entirely off the
+    // canvas, fit instead.
+    const onScreen =
+      tx < wrap.clientWidth &&
+      ty < wrap.clientHeight &&
+      tx + imgW * scale > 0 &&
+      ty + imgH * scale > 0;
+    if (!onScreen) {
+      fit();
+      return;
+    }
+    applyTransform({ scale, tx, ty });
+  }, [cameraRequest, fitScale, applyTransform, fit, imgW, imgH, imgLoaded, canvasSizeTick, planDataUrl]);
 
   // Programmatic focus: pan (and gently zoom in if too zoomed out) to center (x,y).
   const focusNonceRef = useRef<number | undefined>(undefined);
