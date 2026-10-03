@@ -6,6 +6,7 @@
 
   var MIN_TOPO_W = 35;
   var MIN_TOPO_H = 35;
+  var OVERLAY_KINDS = { legend: 1, pill: 1, 'pin-hi': 1, 'pin-lo': 1 };
   var MIN_SCALE = 0.65;
   var MAX_SCALE = 1.85;
 
@@ -14,13 +15,30 @@
     return Math.max(lo, Math.min(hi, x));
   }
 
+  // A colour scale is about 21.6% of the page tall, measured, and its pill
+  // sits under it, so each boundary needs this much room down the side.
+  var SCALE_PITCH = 31;
+  var PILL_DROP = 23;
+
+  // Where boundary i's colour scale and pill start. Down the left for the
+  // first three, then down the right. One definition, used both for the very
+  // first layout and when more boundaries turn up, because two copies of it
+  // meant index 0 kept a stale position forever: layoutForStats only fills in
+  // what is missing, and index 0 was never missing.
+  function scaleSlot(i) {
+    var column = i < 3 ? 2 : 86;
+    var row = (i % 3) * SCALE_PITCH;
+    return { x: column, legendY: 6 + row, pillY: 6 + row + PILL_DROP };
+  }
+
   function defaultLayout() {
+    var slot = scaleSlot(0);
     return {
       locked: false,
       topo: { x: 10, y: 6, w: 80, h: 88 },
       overlays: [
-        { id: 'legend-0', kind: 'legend', statsIndex: 0, x: 2, y: 8, scale: 1 },
-        { id: 'pill-0', kind: 'pill', statsIndex: 0, x: 2, y: 48, scale: 1 },
+        { id: 'legend-0', kind: 'legend', statsIndex: 0, x: slot.x, y: slot.legendY, scale: 1 },
+        { id: 'pill-0', kind: 'pill', statsIndex: 0, x: slot.x, y: slot.pillY, scale: 1 },
       ],
     };
   }
@@ -48,7 +66,7 @@
       if (!item || typeof item !== 'object') return;
       layout.overlays.push({
         id: item.id || ('overlay-' + index),
-        kind: item.kind === 'pill' ? 'pill' : 'legend',
+        kind: OVERLAY_KINDS[item.kind] ? item.kind : 'legend',
         statsIndex: typeof item.statsIndex === 'number' ? item.statsIndex : 0,
         x: clamp(item.x, 0, 92),
         y: clamp(item.y, 0, 92),
@@ -59,19 +77,25 @@
     return layout;
   }
 
-  function layoutForStats(layout, statsCount) {
+  // One colour scale and one H/L/delta pill per boundary, however many there
+  // are. The placement used to branch on i === 0, so with three or more areas
+  // every scale after the first landed on the same spot and all but one were
+  // hidden underneath. They step down the side instead.
+  function layoutForStats(layout, statsCount, statsList) {
     var next = normalizeLayout(layout);
     var count = Math.max(1, statsCount || 1);
+    var stats = Array.isArray(statsList) ? statsList : [];
     var have = {};
     next.overlays.forEach(function (o) { have[o.kind + ':' + o.statsIndex] = true; });
     for (var i = 0; i < count; i += 1) {
+      var slot = scaleSlot(i);
       if (!have['legend:' + i]) {
         next.overlays.push({
           id: 'legend-' + i,
           kind: 'legend',
           statsIndex: i,
-          x: i === 0 ? 2 : 78,
-          y: 8,
+          x: slot.x,
+          y: slot.legendY,
           scale: 1,
         });
       }
@@ -80,11 +104,30 @@
           id: 'pill-' + i,
           kind: 'pill',
           statsIndex: i,
-          x: i === 0 ? 2 : 70,
-          y: 48,
+          x: slot.x,
+          y: slot.pillY,
           scale: 1,
         });
       }
+      // The High and Low markers start where the readings are and are then
+      // moved like anything else. The composer hands back their position as a
+      // fraction of the figure, so they land on the right reading whatever
+      // frame or scale the figure was drawn at.
+      var st = stats[i];
+      ['hi', 'lo'].forEach(function (which) {
+        var key = 'pin-' + which + ':' + i;
+        if (have[key]) return;
+        var src = st && (which === 'hi' ? st.hiPin : st.loPin);
+        if (!src) return;
+        next.overlays.push({
+          id: 'pin-' + which + '-' + i,
+          kind: 'pin-' + which,
+          statsIndex: i,
+          x: clamp(next.topo.x + src.fx * next.topo.w, 0, 92),
+          y: clamp(next.topo.y + src.fy * next.topo.h, 0, 92),
+          scale: 1,
+        });
+      });
     }
     return next;
   }
@@ -148,6 +191,25 @@
     return pill;
   }
 
+  // The High and Low markers. They used to be drawn into the composed PNG,
+  // which froze them: a pin landing on a wall or a doorway could not be moved
+  // off it. They come back from the composer as fractions of the figure now,
+  // so they are placed here, over the drawing, and nudged like anything else.
+  function renderPin(kind, stats) {
+    var pin = document.createElement('span');
+    pin.className = 'rb-topo-pin rb-topo-pin--' + kind;
+    var dot = document.createElement('b');
+    dot.className = 'rb-topo-pin__dot';
+    dot.textContent = kind === 'hi' ? 'H' : 'L';
+    pin.appendChild(dot);
+    var value = document.createElement('span');
+    value.className = 'rb-topo-pin__value';
+    var raw = kind === 'hi' ? stats.hiPin : stats.loPin;
+    value.textContent = formatReading(raw && raw.value, stats.decimalPlaces);
+    pin.appendChild(value);
+    return pin;
+  }
+
   function boxShell(kind, id, locked) {
     var el = document.createElement('div');
     el.className = 'rb-floor-box rb-floor-box--' + kind + (locked ? ' is-locked' : '');
@@ -176,7 +238,7 @@
     var ev = evidence || {};
     var imported = !!(options && options.imported);
     var statsList = Array.isArray(ev.stats) ? ev.stats : [];
-    var layout = layoutForStats(options && options.layout, statsList.length || 1);
+    var layout = layoutForStats(options && options.layout, statsList.length || 1, statsList);
     var locked = !!layout.locked;
 
     var root = document.createElement('div');
@@ -310,6 +372,8 @@
         box.style.transform = 'scale(' + overlay.scale + ')';
         box.style.transformOrigin = 'top left';
         if (overlay.kind === 'legend') box.appendChild(renderLegend(stats));
+        else if (overlay.kind === 'pin-hi') box.appendChild(renderPin('hi', stats));
+        else if (overlay.kind === 'pin-lo') box.appendChild(renderPin('lo', stats));
         else box.appendChild(renderPill(stats));
         body.appendChild(box);
       });

@@ -664,11 +664,22 @@
   function renderRelativeReadings(statsList) {
     var box = document.createElement('div');
     box.className = 'rb-topo-page__readings';
-    var sole = statsList.length === 1 ? statsList[0] : null;
-    var dec = sole ? sole.decimalPlaces : 2;
-    var hiText = sole ? formatReading(sole.hi, dec) : '';
-    var loText = sole ? formatReading(sole.lo, dec) : '';
-    var deltaText = sole ? formatReading(sole.delta, dec) : '';
+    // This box used to fill in only when there was exactly ONE boundary, so on
+    // a combined page -- the very page that needs it -- it printed "High
+    // Relative Reading -" with nothing after it. It reads across every
+    // boundary on the page: the highest high, the lowest low, and the spread
+    // between them, which is what "Total Relative Elevation Difference" means.
+    var list = Array.isArray(statsList) ? statsList.filter(Boolean) : [];
+    var dec = list.length ? list[0].decimalPlaces : 2;
+    var hi = null;
+    var lo = null;
+    list.forEach(function (item) {
+      if (typeof item.hi === 'number' && (hi === null || item.hi > hi)) hi = item.hi;
+      if (typeof item.lo === 'number' && (lo === null || item.lo < lo)) lo = item.lo;
+    });
+    var hiText = hi === null ? '' : formatReading(hi, dec);
+    var loText = lo === null ? '' : formatReading(lo, dec);
+    var deltaText = (hi === null || lo === null) ? '' : formatReading(hi - lo, dec);
 
     function row(letter, label, value) {
       var line = document.createElement('div');

@@ -758,6 +758,37 @@ body.report-builder-open .canvas {
   line-height: 1.2;
 }
 
+/* High / Low markers. Placed boxes like the colour scale and the pill, not
+   pixels inside the figure, so they can be nudged off a wall or a doorway. */
+.rb-topo-pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.12em 0.5em 0.12em 0.14em;
+  border: 1px solid rgba(17, 17, 17, 0.35);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 1.35cqh;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.rb-topo-pin__dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6em;
+  height: 1.6em;
+  border-radius: 50%;
+  background: #E9C46A;
+  color: #1a1a1a;
+  font-weight: 800;
+}
+
+.rb-topo-pin--hi .rb-topo-pin__dot { background: #E9C46A; }
+.rb-topo-pin--lo .rb-topo-pin__dot { background: #E9C46A; }
+.rb-topo-pin__value { font-weight: 700; }
+
 .rb-topo-legend {
   display: grid;
   grid-template-columns: auto 16px auto;

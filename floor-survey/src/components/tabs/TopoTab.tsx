@@ -1455,9 +1455,13 @@ export function renderTopo(
   points: SurveyPoint[],
   settings: RenderSettings,
   areaTopos: AreaTopo[],
+  /** Forwarded so a caller that is not the live canvas -- Report Builder's
+   *  figure composer -- can still say how big the drawing will be seen, which
+   *  is what sizes the reading labels and dots. */
+  overlay?: Parameters<typeof renderTopoTop>[5],
 ) {
   renderTopoBase(ctx, floor, settings, areaTopos);
-  renderTopoTop(ctx, floor, points, settings, areaTopos);
+  renderTopoTop(ctx, floor, points, settings, areaTopos, overlay);
 }
 
 // Base pass: contour fills / lines / boundary. Meant to sit UNDER the wall plan.

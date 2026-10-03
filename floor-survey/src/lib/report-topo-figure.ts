@@ -173,6 +173,13 @@ function reportSettings(partial?: Partial<RenderSettings>): RenderSettings {
 const REPORT_LONG_SIDE = 3000;
 const REPORT_MAX_SCALE = 4;
 
+/** The width, in plan pixels, at which the chosen label and dot sizes are
+ *  drawn literally. A figure wider than this is drawn with proportionally
+ *  larger labels, exactly as the live canvas does when it fits a big plan
+ *  into a window. 1100 is where the defaults were calibrated: an 11 px label
+ *  is 1% of the figure, which is what the shipped decks show at 17 x 11 in. */
+const REPORT_REFERENCE_WIDTH = 1100;
+
 function scaleFor(w: number, h: number): number {
   const longest = Math.max(1, w, h);
   return Math.min(REPORT_MAX_SCALE, Math.max(1, REPORT_LONG_SIDE / longest));
@@ -329,7 +336,19 @@ export async function composeReportTopoFigure(options: {
     }
   }
 
-  renderTopo(ctx, floor, points, settings, areaTopos);
+  // Reading labels and dots are sized for the SCREEN, not for plan pixels:
+  // Floor Survey asks for 11 px and, when a big plan is fit into a window,
+  // draws it larger in plan coordinates so it still reads 11 px. The composer
+  // never said how big the figure would be seen, so it got viewScale 1 and
+  // drew 11 literal plan pixels. On an 1100 px plan that is right; on a
+  // 2500 px floor plan it is 0.4% of the width -- the unreadable specks that
+  // made a report topo look nothing like the same drawing in Floor Survey.
+  //
+  // The figure is seen about REPORT_REFERENCE_WIDTH across, so that is the
+  // scale it is drawn for, and every screen-anchored size follows.
+  renderTopo(ctx, floor, points, settings, areaTopos, {
+    viewScale: REPORT_REFERENCE_WIDTH / Math.max(1, extent.w),
+  });
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 
   const closed = closedAreas(floor);
