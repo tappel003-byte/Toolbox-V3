@@ -186,6 +186,14 @@ These notes preserve active product possibilities so they are not lost. They are
 - “Manual Sync Now is v1; quiet automatic sync is later polish only after manual sync is trusted” is **superseded**. Quiet mirroring of the active working Customer File is decided. Sync Now remains the manual confidence action and must use the truthful wording above.
 - Reading “Cloudflare is the authoritative File Cabinet” as “the cloud is the live editing authority” is **superseded**. Editing authority is the active local device. The File Cabinet is the shared, transfer, and filed location and the device-loss mirror.
 
+## Delivery to the client
+
+- **The emailed deliverable is the PDF, not a link (DECIDED Tim, Oct 3, 2026).** `VISION.md` §16 already makes the PDF the durable closeout record; this settles how it reaches the client. A PDF is fixed at the moment it was sent, which matters when the question later becomes what the report said when the client relied on it — a link can show different content afterwards and introduces version ambiguity into exactly the document that must not have any. Clients also forward reports to contractors, engineers, insurers and attorneys; a PDF survives that, and a link behind Cloudflare Access (scoped to Tim and Lee) does not. Opening that up would mean share links, public access and expiry — the start of the SaaS product `VISION.md` §17 says Toolbox is not.
+- A link may later earn its place for something a PDF carries badly, such as a very large photo set, or for Tim's own access from the field. That is an internal convenience. The PDF must never depend on a link working.
+- **Toolbox does not send the email.** It produces the PDF and the investigator attaches it in their own mail client. Sending would mean a mail service, deliverability and bounce handling — a new external dependency for something already solved, and it keeps the sent record in the correspondence history where it belongs.
+
+---
+
 ## Closeout
 
 - The final PDF is the durable closeout record. Exact long-term archival packaging (ZIP structure, folder conventions, etc.) is not yet decided.
