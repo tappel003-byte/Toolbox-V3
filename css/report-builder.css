@@ -2205,6 +2205,10 @@ body.report-builder-open .canvas {
 
 .rb-discussion__brand-lock {
   position: absolute;
+  /* Above the logo. The logo sits at z-index 3 and overlaps this control, so
+     clicks on Unlock landed on the image instead -- the same mistake as
+     layering the logo over the text body, made again. */
+  z-index: 6;
   left: 1.96%;
   bottom: 1.2%;
   padding: 2px 8px;

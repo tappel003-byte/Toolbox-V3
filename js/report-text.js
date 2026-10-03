@@ -328,7 +328,12 @@
         if (child.nodeType !== 1) continue;
         var tag = child.tagName;
         if (tag === 'BR') {
-          startParagraph(null);
+          // A lone <br> inside an otherwise empty block is contenteditable's
+          // placeholder for an empty line, not a second break. Treating it as
+          // one turned every blank line into two paragraphs -- and since each
+          // edit round-trips through here, blank lines doubled on every
+          // keystroke.
+          if (current && current.runs.length) startParagraph(null);
           continue;
         }
         if (tag === 'UL' || tag === 'OL') {

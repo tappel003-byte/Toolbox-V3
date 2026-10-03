@@ -1709,8 +1709,12 @@
     function markDirty() {
       recordHistory();
       dirty = true;
-      setSaveStatus('Saving…');
-      if (draftEl) draftEl.textContent = 'Saving';
+      // The save itself is debounced; only the STATUS fired on every
+      // keystroke, which made it look as though every character was being
+      // written. Say "Edited" while typing and "Saving" when a save actually
+      // starts.
+      setSaveStatus('Edited');
+      if (draftEl) draftEl.textContent = 'Edited';
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(function () {
         flushSave().catch(function () {});
@@ -1736,6 +1740,8 @@
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;
       delete workingRecord.report;
+      setSaveStatus('Saving…');
+      if (draftEl) draftEl.textContent = 'Saving';
       return window.ToolboxDB.saveCustomerFile(workingRecord).then(function () {
         dirty = false;
         lastSavedAt = doc.updatedAt;
@@ -2029,6 +2035,76 @@
       };
     }
 
+    // ---- Logo placement ------------------------------------------------
+    // One placement for the whole book: every discussion sheet, including a
+    // continuation, carries the same logo position so the pages match.
+    function applyBrandBox(box) {
+      var api = window.ToolboxReportDiscussion;
+      var next = api ? api.normalizeBrandBox(box) : box;
+      pages.forEach(function (item) {
+        if (!item || item.type !== 'section') return;
+        if (!item.meta || item.meta.sectionId !== 'discussion') return;
+        item.meta.brandBox = JSON.parse(JSON.stringify(next));
+      });
+      return next;
+    }
+
+    var brandDrag = null;
+
+    sheetEl.addEventListener('pointerdown', function (event) {
+      var grip = event.target.closest('[data-rb-brand-resize]');
+      var mover = grip ? null : event.target.closest('[data-rb-brand-box]');
+      if (!grip && !mover) return;
+      if (mover && mover.classList.contains('is-locked')) return;
+      var page = activePage();
+      if (!page || !page.meta || page.meta.sectionId !== 'discussion') return;
+      var stage = sheetEl.querySelector('.rb-discussion');
+      var rect = stage && stage.getBoundingClientRect();
+      if (!rect || rect.width < 8) return;
+      event.preventDefault();
+      var api = window.ToolboxReportDiscussion;
+      brandDrag = {
+        resize: !!grip,
+        startX: event.clientX,
+        startY: event.clientY,
+        rect: rect,
+        box: api ? api.normalizeBrandBox(page.meta.brandBox) : page.meta.brandBox,
+      };
+    });
+
+    sheetEl.addEventListener('pointermove', function (event) {
+      if (!brandDrag) return;
+      var dx = ((event.clientX - brandDrag.startX) / brandDrag.rect.width) * 100;
+      var dy = ((event.clientY - brandDrag.startY) / brandDrag.rect.height) * 100;
+      var b = brandDrag.box;
+      var next = brandDrag.resize
+        ? { x: b.x, y: b.y, w: b.w + dx, h: b.h + dy, locked: false }
+        : { x: b.x + dx, y: b.y + dy, w: b.w, h: b.h, locked: false };
+      var api = window.ToolboxReportDiscussion;
+      next = api ? api.normalizeBrandBox(next) : next;
+      var live = sheetEl.querySelector('[data-rb-brand-box]');
+      if (live) {
+        live.style.left = next.x + '%';
+        live.style.top = next.y + '%';
+        live.style.width = next.w + '%';
+        live.style.height = next.h + '%';
+      }
+      brandDrag.next = next;
+    });
+
+    function endBrandDrag() {
+      if (!brandDrag) return;
+      if (brandDrag.next) {
+        applyBrandBox(brandDrag.next);
+        markDirty();
+        flushSave().catch(function () {});
+      }
+      brandDrag = null;
+    }
+
+    sheetEl.addEventListener('pointerup', endBrandDrag);
+    sheetEl.addEventListener('pointercancel', endBrandDrag);
+
     // ---- Undo ---------------------------------------------------------
     // Everything here autosaves within a second, so a deletion is committed
     // before there is any chance to think better of it. The browser's own
@@ -2278,6 +2354,35 @@
     // split once. Tighten the spacing or shrink the type and the room comes
     // back, so the text has to come back with it -- a split that only ever
     // ran one way would leave a half-empty second sheet behind forever.
+    // Documents written while a lone <br> was being counted as a paragraph
+    // break carry runs of empty paragraphs that doubled on every keystroke.
+    // Fixing the parser does not clean what is already saved, so a run of two
+    // or more blanks is collapsed to one when the report is opened. A single
+    // blank line is a deliberate gap and is left alone.
+    function repairBlankRuns() {
+      var api = window.ToolboxReportText;
+      if (!api) return false;
+      var changed = false;
+      pages.forEach(function (page) {
+        var body = page && page.reportText && page.reportText.body;
+        if (!body) return;
+        var model = api.normalize(body);
+        var out = [];
+        var blanks = 0;
+        model.paragraphs.forEach(function (para) {
+          if (!para.runs.length) {
+            blanks += 1;
+            if (blanks > 1) { changed = true; return; }
+          } else {
+            blanks = 0;
+          }
+          out.push(para);
+        });
+        if (changed) page.reportText.body = api.compact({ paragraphs: out });
+      });
+      return changed;
+    }
+
     function discussionChain() {
       var chain = [];
       var started = false;
@@ -3195,6 +3300,11 @@
         // A book split under different spacing heals on open: if the text now
         // fits in fewer sheets it pulls back into them.
         hydrateOverlayImages();
+        if (repairBlankRuns()) {
+          renderPages();
+          markDirty();
+          flushSave().catch(function () {});
+        }
         snapshotNow();
         window.requestAnimationFrame(function () {
           if (token !== mountGeneration) return;
