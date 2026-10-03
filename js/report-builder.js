@@ -1587,6 +1587,10 @@
       margin.appendChild(renderPicturesPage(page));
     } else if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
       margin.classList.add('rb-sheet__margin--topo');
+      // Once imported, the drawing gets the whole sheet: the inset box the
+      // other pages use is a band of white the plan cannot be moved into, and
+      // it clips the plan before the paper edge when it is panned.
+      if (page.meta && page.meta.imported) margin.classList.add('rb-sheet__margin--topo-bleed');
       var fl = window.ToolboxReportFloorLayout;
       if (fl && typeof fl.renderPage === 'function') {
         var imported = !!(page.meta && page.meta.imported && page.evidence && page.evidence.figure);

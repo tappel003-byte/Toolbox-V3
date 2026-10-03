@@ -573,6 +573,18 @@ body.report-builder-open .canvas {
   border-color: rgba(30, 64, 110, 0.55);
 }
 
+/* An imported Floor Survey slide draws on the sheet, not inside the inset box
+   every other page uses. That inset -- 2.2% of margin plus 1.6%/2%/1.4% of
+   padding, clipped by overflow:hidden on .rb-sheet__margin -- was a band of
+   white the plan could never be moved into, and the same boundary cut the plan
+   off when it was panned, which read as geometry having been deleted. It is
+   also why the band was not symmetrical: the top and bottom padding differ. */
+.rb-sheet__margin--topo-bleed {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .rb-topo-page {
   display: flex;
   flex-direction: column;
