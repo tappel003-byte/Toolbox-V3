@@ -1972,3 +1972,22 @@ body.report-builder-open .canvas {
     print-color-adjust: exact;
   }
 }
+
+/* A cover box is mostly text, and text is now editable in place, so the box
+   needs its own grab target. Mirrors the resize corner. */
+.rb-cover-box__move {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  border-left: 2px solid var(--rb-copper);
+  border-top: 2px solid var(--rb-copper);
+  cursor: move;
+}
+
+.rb-cover.is-locked .rb-cover-box__move { display: none; }
+
+@media print {
+  .rb-cover-box__move { display: none !important; }
+}

@@ -48,8 +48,14 @@
     var text = cleanText(raw.text);
     if (!text) return null;
     var run = { text: text };
-    if (raw.bold) run.bold = true;
-    if (raw.italic) run.italic = true;
+    // Bold and italic are TRI-STATE: true, explicitly false, or absent
+    // (inherit the field's styled default). A field such as the street is
+    // bold from the stylesheet, so switching bold off has to be recorded as
+    // false -- an absent mark would re-render it bold on the next open.
+    if (raw.bold === true) run.bold = true;
+    else if (raw.bold === false) run.bold = false;
+    if (raw.italic === true) run.italic = true;
+    else if (raw.italic === false) run.italic = false;
     if (raw.underline) run.underline = true;
     var size = parseFloat(raw.size);
     if (isFinite(size) && size > 0) run.size = Math.round(size * 10) / 10;
@@ -108,8 +114,10 @@
         if (p.dir === 'rtl') out.dir = 'rtl';
         out.runs = p.runs.map(function (r) {
           var run = { text: r.text };
-          if (r.bold) run.bold = true;
-          if (r.italic) run.italic = true;
+          if (r.bold === true) run.bold = true;
+          else if (r.bold === false) run.bold = false;
+          if (r.italic === true) run.italic = true;
+          else if (r.italic === false) run.italic = false;
           if (r.underline) run.underline = true;
           if (r.size) run.size = r.size;
           if (r.font) run.font = r.font;
@@ -142,10 +150,12 @@
     if (run.size) style += 'font-size:' + (run.size * PT_TO_CQH).toFixed(3) + 'cqh;';
     if (run.font) style += "font-family:'" + run.font.replace(/'/g, '') + "';";
     var text = escapeHtml(run.text).replace(/ {2}/g, ' &nbsp;');
+    if (run.bold === false) style += 'font-weight:normal;';
+    if (run.italic === false) style += 'font-style:normal;';
     var html = text;
     if (run.underline) html = '<u>' + html + '</u>';
-    if (run.italic) html = '<em>' + html + '</em>';
-    if (run.bold) html = '<strong>' + html + '</strong>';
+    if (run.italic === true) html = '<em>' + html + '</em>';
+    if (run.bold === true) html = '<strong>' + html + '</strong>';
     if (style) html = '<span style="' + style + '">' + html + '</span>';
     return html;
   }
@@ -209,6 +219,23 @@
     return raw.split(',')[0].replace(/["']/g, '').trim() || null;
   }
 
+  // An inline style can turn a mark ON or explicitly OFF; anything else leaves
+  // whatever the enclosing context had.
+  function markState(inherited, tagSaysOn, styleValue, kind) {
+    if (tagSaysOn) return true;
+    var v = String(styleValue || '').trim();
+    if (!v) return inherited;
+    if (kind === 'bold') {
+      var n = parseInt(v, 10);
+      if (v === 'bold' || v === 'bolder' || (isFinite(n) && n >= 600)) return true;
+      if (v === 'normal' || v === 'lighter' || (isFinite(n) && n < 600)) return false;
+      return inherited;
+    }
+    if (v === 'italic' || v === 'oblique') return true;
+    if (v === 'normal') return false;
+    return inherited;
+  }
+
   function fromElement(root) {
     var model = { paragraphs: [] };
     var current = null;
@@ -234,13 +261,15 @@
       if (!text) return;
       if (!current) startParagraph(null);
       var run = { text: text };
-      if (ctx.bold) run.bold = true;
-      if (ctx.italic) run.italic = true;
+      if (ctx.bold === true) run.bold = true;
+      else if (ctx.bold === false) run.bold = false;
+      if (ctx.italic === true) run.italic = true;
+      else if (ctx.italic === false) run.italic = false;
       if (ctx.underline) run.underline = true;
       if (ctx.size) run.size = ctx.size;
       if (ctx.font) run.font = ctx.font;
       var last = current.runs[current.runs.length - 1];
-      if (last && !!last.bold === !!run.bold && !!last.italic === !!run.italic &&
+      if (last && last.bold === run.bold && last.italic === run.italic &&
           !!last.underline === !!run.underline && last.size === run.size && last.font === run.font) {
         last.text += run.text;
         return;
@@ -271,10 +300,10 @@
           continue;
         }
         var next = {
-          bold: ctx.bold || tag === 'B' || tag === 'STRONG' ||
-            (child.style && (child.style.fontWeight === 'bold' || parseInt(child.style.fontWeight, 10) >= 600)),
-          italic: ctx.italic || tag === 'I' || tag === 'EM' ||
-            (child.style && child.style.fontStyle === 'italic'),
+          bold: markState(ctx.bold, tag === 'B' || tag === 'STRONG',
+            child.style && child.style.fontWeight, 'bold'),
+          italic: markState(ctx.italic, tag === 'I' || tag === 'EM',
+            child.style && child.style.fontStyle, 'italic'),
           underline: ctx.underline || tag === 'U' ||
             (child.style && /underline/.test(child.style.textDecoration || '')),
           size: styleSize(child) || ctx.size,
@@ -284,7 +313,7 @@
       }
     }
 
-    walk(root, { bold: false, italic: false, underline: false, size: null, font: null });
+    walk(root, { bold: null, italic: null, underline: false, size: null, font: null });
     if (!model.paragraphs.length) model.paragraphs.push(blankParagraph());
     // contenteditable leaves a trailing empty block behind constantly.
     while (model.paragraphs.length > 1) {

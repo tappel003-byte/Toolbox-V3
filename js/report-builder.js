@@ -804,6 +804,14 @@
     el.setAttribute('data-rb-cover-box', id);
     el.style.cssText = api ? api.boxStyle(box) : '';
     if (!locked) {
+      // A box whose area is mostly text needs somewhere reliable to grab, now
+      // that clicking the text edits it instead of moving the box.
+      var move = document.createElement('span');
+      move.className = 'rb-cover-box__move';
+      move.setAttribute('data-rb-cover-move', id);
+      move.setAttribute('title', 'Move this box');
+      move.setAttribute('aria-hidden', 'true');
+      el.appendChild(move);
       var handle = document.createElement('span');
       handle.className = 'rb-cover-box__resize';
       handle.setAttribute('data-rb-cover-resize', id);
@@ -2202,7 +2210,14 @@
     }
 
     sheetEl.addEventListener('pointerdown', function (event) {
-      if (event.target.closest('a, button, input, textarea, label')) return;
+      if (event.target.closest('a, button, input, textarea, label, select')) return;
+      // Clicking into report text places a caret; it does not start a move.
+      // These fields used to be <input>, which the guard above covered. As
+      // contenteditable regions they are not, and the preventDefault below
+      // was swallowing every selection on the sheet. Boxes move from the
+      // handle or from any part of the box that is not text.
+      var editableTarget = event.target.closest('[data-rb-rich]');
+      if (editableTarget && editableTarget.getAttribute('contenteditable') === 'true') return;
       var current = activePage();
       if (current && current.type === 'cover') {
         if (coverLayout && coverLayout.locked) return;
