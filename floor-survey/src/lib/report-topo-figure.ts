@@ -22,6 +22,16 @@ export type ReportTopoLegendStop = {
   color: string;
 };
 
+/** A High or Low marker, as a fraction of the composed figure (0..1), so
+ *  Report Builder can place it over the image at any size or crop. */
+export type ReportTopoPin = {
+  value: number;
+  /** 0..1 across the composed figure. */
+  fx: number;
+  /** 0..1 down the composed figure. */
+  fy: number;
+};
+
 export type ReportTopoStats = {
   areaId: string;
   name: string;
@@ -29,6 +39,8 @@ export type ReportTopoStats = {
   lo: number;
   delta: number;
   decimalPlaces: number;
+  hiPin: ReportTopoPin;
+  loPin: ReportTopoPin;
   legend: {
     min: number;
     max: number;
@@ -36,11 +48,23 @@ export type ReportTopoStats = {
   };
 };
 
+/** The region of plan space a figure covers, in plan pixels. */
+export type ReportTopoExtent = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
 export type ReportTopoComposeResult = {
   dataUrl: string;
   mime: "image/png";
   width: number;
   height: number;
+  /** The plan-space region drawn, so a later compose can reproduce it. */
+  extent: ReportTopoExtent;
+  /** Device pixels per plan pixel actually used. */
+  scale: number;
   scope: "all" | "area";
   areaId: string | null;
   title: string;
@@ -99,8 +123,14 @@ function legendStopsFor(at: AreaTopo, settings: RenderSettings): ReportTopoStats
   return { min, max, stops };
 }
 
-function statsFromTopos(areaTopos: AreaTopo[], settings: RenderSettings): ReportTopoStats[] {
+function statsFromTopos(
+  areaTopos: AreaTopo[],
+  settings: RenderSettings,
+  extent: ReportTopoExtent,
+): ReportTopoStats[] {
   const dec = settings.decimalPlaces ?? 2;
+  const fx = (x: number) => (extent.w > 0 ? (x - extent.x) / extent.w : 0);
+  const fy = (y: number) => (extent.h > 0 ? (y - extent.y) / extent.h : 0);
   return areaTopos.map((at) => {
     const hi = at.hi.value;
     const lo = at.lo.value;
@@ -111,6 +141,11 @@ function statsFromTopos(areaTopos: AreaTopo[], settings: RenderSettings): Report
       lo,
       delta: hi - lo,
       decimalPlaces: dec,
+      // The pins are NOT drawn into the figure any more. They come back as
+      // positions so Report Builder places them as its own movable markers --
+      // a pin baked into the image cannot be nudged off a wall.
+      hiPin: { value: hi, fx: fx(at.hi.x), fy: fy(at.hi.y) },
+      loPin: { value: lo, fx: fx(at.lo.x), fy: fy(at.lo.y) },
       legend: legendStopsFor(at, settings),
     };
   });
@@ -120,11 +155,102 @@ function reportSettings(partial?: Partial<RenderSettings>): RenderSettings {
   return resolveSettings({
     ...defaultRenderSettings,
     ...(partial || {}),
-    // Chrome is Report Builder slots — keep field legend/stats pills off the drawing.
+    // Every piece of chrome is a Report Builder slot, so none of it is baked
+    // into the picture: the colour scale, the H/L/delta pill and the High and
+    // Low pins all come back as data and are placed, moved and sized on the
+    // page. Anything drawn into the PNG is frozen there for good.
     showLegend: false,
     showStatsPill: false,
-    showHighLow: true, // High/Low pins on the drawing remain useful
+    showHighLow: false,
   });
+}
+
+/** Report figures are drawn well above screen size so they hold up at 17 x 11
+ *  in. The plan is typically ~1000 px wide and lands about 14 in across the
+ *  page, which is only ~70 dpi -- the reason a report topo looked soft next to
+ *  the same drawing in Floor Survey. The long side is taken to 3000 px, about
+ *  210 dpi on paper, capped so a very large plan cannot exhaust memory. */
+const REPORT_LONG_SIDE = 3000;
+const REPORT_MAX_SCALE = 4;
+
+function scaleFor(w: number, h: number): number {
+  const longest = Math.max(1, w, h);
+  return Math.min(REPORT_MAX_SCALE, Math.max(1, REPORT_LONG_SIDE / longest));
+}
+
+/** Everything that has to be inside the frame: the readings, the boundary
+ *  outlines and the exclusions. Contours are built from the readings and stay
+ *  inside their area, so the areas bound them.
+ *
+ *  This is deliberately the extent of the DATA, not of the floor plan. A pin
+ *  or a reading dropped outside the walls is exactly the case a plan-sized
+ *  frame clips, and that is the reading the page most needs to show. */
+export function reportTopoDataExtent(options: {
+  floor: Floor;
+  points: SurveyPoint[];
+  areaId?: string | null;
+  /** White space around the data, as a fraction of its longer side. */
+  margin?: number;
+  /** Used only to size the reading labels; the drawing itself is unaffected. */
+  settings?: Partial<RenderSettings>;
+}): ReportTopoExtent | null {
+  const floor = options.floor;
+  const onlyAreaId = options.areaId && options.areaId !== "all" ? options.areaId : null;
+  const closed = closedAreas(floor);
+  const areas = onlyAreaId ? closed.filter((a) => a.id === onlyAreaId) : closed;
+  const pts = onlyAreaId
+    ? (() => {
+        const area = areas[0];
+        return area ? pointsInArea(options.points || [], area) : [];
+      })()
+    : options.points || [];
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const see = (x: number, y: number) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  };
+
+  // A reading is a dot with a label box beside it, so the point coordinate is
+  // not its visual extent. These match what the renderer draws: the label sits
+  // at +8 / +6 from the dot (unless nudged), is padded 4 / 2.5, and is as wide
+  // as the value at the chosen label font. Without this the outlying reading
+  // that the frame exists to include had its label cut off by the edge.
+  const ls = { ...defaultRenderSettings, ...(options.settings || {}) };
+  const fontPx = Math.max(1, ls.pointLabelFontSize || 11);
+  const chars = (ls.decimalPlaces ?? 2) + 3; // "9.75" and friends
+  const labelW = fontPx * 0.6 * chars + 8;
+  const labelH = fontPx + 5;
+  const dotR = 8;
+
+  for (const p of pts) {
+    see(p.x - dotR, p.y - dotR);
+    see(p.x + dotR, p.y + dotR);
+    const dx = p.labelDx ?? 8;
+    const dy = p.labelDy ?? 6;
+    see(p.x + dx - 4, p.y + dy - 2.5);
+    see(p.x + dx - 4 + labelW, p.y + dy - 2.5 + labelH);
+  }
+  for (const area of areas) for (const v of area.polygon || []) see(v.x, v.y);
+  for (const ex of floor.exclusions || []) for (const v of ex.polygon || []) see(v.x, v.y);
+
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
+  if (maxX <= minX) maxX = minX + 1;
+  if (maxY <= minY) maxY = minY + 1;
+
+  const pad = Math.max(maxX - minX, maxY - minY) * (typeof options.margin === "number" ? options.margin : 0.04);
+  return {
+    x: minX - pad,
+    y: minY - pad,
+    w: maxX - minX + pad * 2,
+    h: maxY - minY + pad * 2,
+  };
 }
 
 /**
@@ -136,6 +262,12 @@ export async function composeReportTopoFigure(options: {
   /** null / "all" = Combined; otherwise one area id. */
   areaId?: string | null;
   settings?: Partial<RenderSettings>;
+  /** The plan-space region to draw. Omitted, it is computed from the data.
+   *  Report Builder passes one frame for the whole job so every level lands
+   *  at the same scale in the same place. */
+  extent?: ReportTopoExtent | null;
+  /** White space around the data when the extent is computed here. */
+  margin?: number;
 }): Promise<ReportTopoComposeResult | null> {
   const floor = options.floor;
   const allPoints = Array.isArray(options.points) ? options.points : [];
@@ -152,8 +284,27 @@ export async function composeReportTopoFigure(options: {
       })()
     : allPoints;
 
-  const imgW = Math.max(1, Math.round(floor.planWidth || 1000));
-  const imgH = Math.max(1, Math.round(floor.planHeight || 750));
+  const planW = Math.max(1, Math.round(floor.planWidth || 1000));
+  const planH = Math.max(1, Math.round(floor.planHeight || 750));
+
+  // The frame is the region of plan space this figure shows. Cropping is
+  // choosing that region, not trimming the picture afterwards: the chosen
+  // region is drawn at full resolution, so a tighter frame comes out sharper
+  // rather than softer.
+  const extent =
+    options.extent ||
+    reportTopoDataExtent({
+      floor,
+      points: allPoints,
+      areaId: onlyAreaId,
+      margin: options.margin,
+      settings,
+    }) ||
+    { x: 0, y: 0, w: planW, h: planH };
+
+  const scale = scaleFor(extent.w, extent.h);
+  const imgW = Math.max(1, Math.round(extent.w * scale));
+  const imgH = Math.max(1, Math.round(extent.h * scale));
   const canvas = document.createElement("canvas");
   canvas.width = imgW;
   canvas.height = imgH;
@@ -163,11 +314,15 @@ export async function composeReportTopoFigure(options: {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, imgW, imgH);
 
+  // Draw in plan coordinates; the transform handles the crop and the scale, so
+  // every routine below is unchanged and unaware of either.
+  ctx.setTransform(scale, 0, 0, scale, -extent.x * scale, -extent.y * scale);
+
   if (settings.showPlan && floor.planDataUrl) {
     try {
       const img = await loadImage(floor.planDataUrl);
       ctx.globalAlpha = settings.planOpacity;
-      ctx.drawImage(img, 0, 0, imgW, imgH);
+      ctx.drawImage(img, 0, 0, planW, planH);
       ctx.globalAlpha = 1;
     } catch {
       // Plan missing — still draw contours/readings.
@@ -175,6 +330,7 @@ export async function composeReportTopoFigure(options: {
   }
 
   renderTopo(ctx, floor, points, settings, areaTopos);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
 
   const closed = closedAreas(floor);
   let title = floor.name || "Floor Level Survey";
@@ -198,10 +354,12 @@ export async function composeReportTopoFigure(options: {
     mime: "image/png",
     width: imgW,
     height: imgH,
+    extent,
+    scale,
     scope,
     areaId,
     title,
-    stats: statsFromTopos(areaTopos, settings),
+    stats: statsFromTopos(areaTopos, settings, extent),
     readingsRebuilt: true,
   };
 }
@@ -440,6 +598,14 @@ export async function composeReportTopoFigureForPage(
     epochId: string;
     areaId?: string | null;
     scope?: "all" | "area";
+    /** The display settings this slide is set to. Without these the figure
+     *  was always composed at the defaults, so nothing chosen in Floor Survey
+     *  or in the Report Builder rail ever reached the page. */
+    settings?: Partial<RenderSettings>;
+    /** One frame for the whole job, so every level lands at the same scale in
+     *  the same place. Omitted, it is computed from this level's data. */
+    extent?: ReportTopoExtent | null;
+    margin?: number;
   },
   getMedia?: (id: string) => Promise<string | null>,
 ): Promise<ReportTopoComposeResult | null> {
@@ -468,5 +634,42 @@ export async function composeReportTopoFigureForPage(
   const floor = layerToFloorForReport(record, canvas, layer, planDataUrl, Math.max(0, canvasIndex));
   const points = Array.isArray(layer.points) ? layer.points : [];
   const areaId = spec.scope === "all" ? null : spec.areaId || null;
-  return composeReportTopoFigure({ floor, points, areaId });
+  return composeReportTopoFigure({
+    floor,
+    points,
+    areaId,
+    settings: spec.settings,
+    extent: spec.extent,
+    margin: spec.margin,
+  });
+}
+
+/**
+ * The data extent for one page spec, without composing the picture.
+ *
+ * Report Builder asks for this across every level of a job, unions the
+ * answers, and passes that back as one frame -- which is what makes the
+ * building sit in the same place at the same scale on every slide.
+ */
+export async function reportTopoExtentForPage(
+  record: any,
+  spec: {
+    canvasId: string;
+    epochId: string;
+    areaId?: string | null;
+    scope?: "all" | "area";
+    margin?: number;
+    settings?: Partial<RenderSettings>;
+  },
+): Promise<ReportTopoExtent | null> {
+  const canvases = Array.isArray(record?.planSetup?.canvases) ? record.planSetup.canvases : [];
+  const canvasIndex = canvases.findIndex((c: any) => c && c.id === spec.canvasId);
+  const canvas = canvasIndex >= 0 ? canvases[canvasIndex] : null;
+  if (!canvas) return null;
+  const layer = findLayer(record, spec.epochId, spec.canvasId);
+  if (!layer) return null;
+  const floor = layerToFloorForReport(record, canvas, layer, undefined, Math.max(0, canvasIndex));
+  const points = Array.isArray(layer.points) ? layer.points : [];
+  const areaId = spec.scope === "all" ? null : spec.areaId || null;
+  return reportTopoDataExtent({ floor, points, areaId, margin: spec.margin, settings: spec.settings });
 }

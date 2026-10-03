@@ -12,6 +12,8 @@ import {
   composeReportTopoFigure,
   composeReportTopoFigureForPage,
   listReportTopoPageSpecs,
+  reportTopoDataExtent,
+  reportTopoExtentForPage,
 } from "@/lib/report-topo-figure";
 import "../styles.css";
 
@@ -80,6 +82,8 @@ declare global {
       composeReportTopoFigure: typeof composeReportTopoFigure;
       composeReportTopoFigureForPage: typeof composeReportTopoFigureForPage;
       listReportTopoPageSpecs: typeof listReportTopoPageSpecs;
+      reportTopoDataExtent: typeof reportTopoDataExtent;
+      reportTopoExtentForPage: typeof reportTopoExtentForPage;
     };
     ToolboxDB?: {
       getMedia?: (id: string) => Promise<string | null>;
@@ -99,6 +103,8 @@ window.ToolboxFloorSurvey = {
   composeReportTopoFigure,
   composeReportTopoFigureForPage,
   listReportTopoPageSpecs,
+  reportTopoDataExtent,
+  reportTopoExtentForPage,
 };
 
 // Vite's IIFE assigns this module's exports onto the ToolboxFloorSurvey global
@@ -113,4 +119,6 @@ export {
   composeReportTopoFigure,
   composeReportTopoFigureForPage,
   listReportTopoPageSpecs,
+  reportTopoDataExtent,
+  reportTopoExtentForPage,
 };
