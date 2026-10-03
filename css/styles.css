@@ -4164,3 +4164,11 @@ button.cf-home__delete[hidden] {
     min-height: 44px;
   }
 }
+
+/* A deploy landed while the app was open. */
+.app-bar__refresh.is-update-ready {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}

@@ -2560,10 +2560,31 @@
   // so a refresh never discards an in-progress edit.
   const refreshBtn = document.getElementById('app-refresh');
   if (refreshBtn) {
+    // A plain reload fetches a fresh document that then loads the OLD scripts
+    // and styles from the installed shell, so the app comes back on the
+    // previous version. Refresh asks the service worker to take the new one
+    // first, then reloads.
     refreshBtn.addEventListener('click', function () {
       flushActiveFile();
-      window.location.reload();
+      refreshBtn.disabled = true;
+      refreshBtn.textContent = 'Updating…';
+      if (window.ToolboxUpdate && typeof window.ToolboxUpdate.refresh === 'function') {
+        window.ToolboxUpdate.refresh();
+      } else {
+        window.location.reload();
+      }
     });
+
+    // Say so when a deploy lands while the app is open, rather than leaving
+    // the investigator to guess whether they are looking at the new version.
+    if (window.ToolboxUpdate && typeof window.ToolboxUpdate.onAvailable === 'function') {
+      window.ToolboxUpdate.onAvailable(function () {
+        if (refreshBtn.disabled) return;
+        refreshBtn.classList.add('is-update-ready');
+        refreshBtn.textContent = '↻ Update ready';
+        refreshBtn.title = 'A new version of Toolbox is ready. Click to load it.';
+      });
+    }
   }
 
   function installSafetyGuards() {
