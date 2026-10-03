@@ -162,6 +162,7 @@ export function ReportTopoWorkspace({
         onCamera={handleCamera}
         cameraRequest={cameraRequest}
         hideCanvasChrome
+        chromeless
       />
     </div>
   );

@@ -135,6 +135,18 @@ interface Props {
   /** Report Builder draws its own colour scale, pill and High/Low markers as
    *  placed boxes, so the drawing carries none of them. */
   hideCanvasChrome?: boolean;
+  /**
+   * Nothing but the canvas.
+   *
+   * The boundary selector, the Contours / Palette / Labels icons and the
+   * diagnostic points panel are positioned against the viewport, which is
+   * right when this view owns the screen and wrong when it is living inside a
+   * report sheet -- they escape the page and float over the application. They
+   * are not contained here; on a slide they belong in Report Builder's rail,
+   * where the controls for whatever is on the page live. So the canvas is
+   * handed over bare and the rail drives it through props.
+   */
+  chromeless?: boolean;
 }
 
 const DEFAULT_LABEL_DX = 8;
@@ -251,6 +263,7 @@ export function TopoTab({
   onCamera,
   cameraRequest,
   hideCanvasChrome = false,
+  chromeless = false,
 }: Props) {
   const selectedId =
     selectedIds && selectedIds.size > 0 ? (selectedIds.values().next().value ?? null) : null;
@@ -634,7 +647,7 @@ export function TopoTab({
     <div className="flex flex-col h-full relative">
       {/* Area selector — only when the floor has more than one drawn area.
           Draggable so report screenshots can clear it off the plan. */}
-      {areas.length > 1 && (
+      {areas.length > 1 && !chromeless && (
         <div
           className="absolute z-30 touch-none"
           style={
@@ -710,7 +723,7 @@ export function TopoTab({
         </div>
       )}
       {/* Corner icons — closed by default, tap to open. Hidden while their own panel is open. */}
-      {openCorner !== "contours" && (
+      {openCorner !== "contours" && !chromeless && (
         <CornerIcon
           pos="top-2 left-2 landscape-short:top-auto landscape-short:left-1/2 landscape-short:-translate-x-[calc(100%+0.25rem)] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
           active={false}
@@ -720,7 +733,7 @@ export function TopoTab({
           <Waves className="h-4 w-4" />
         </CornerIcon>
       )}
-      {openCorner !== "palette" && (
+      {openCorner !== "palette" && !chromeless && (
         <CornerIcon
           pos="top-2 right-2 landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:translate-x-[0.25rem] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
           active={false}
@@ -730,7 +743,7 @@ export function TopoTab({
           <Palette className="h-4 w-4" />
         </CornerIcon>
       )}
-      {openCorner !== "labels" && (
+      {openCorner !== "labels" && !chromeless && (
         <button
           type="button"
           onClick={() => setOpenCorner("labels")}
@@ -741,6 +754,7 @@ export function TopoTab({
         </button>
       )}
       {/* Diagnostic panel toggle — Topo-only. Excludes points from contour math without touching stored data. */}
+      {!chromeless && (
       <button
         type="button"
         onClick={() => setDiagOpen((v) => !v)}
@@ -757,8 +771,9 @@ export function TopoTab({
           <span className="text-[10px] font-mono tabular-nums">{excludedIds.size}</span>
         )}
       </button>
+      )}
 
-      {diagOpen && (
+      {diagOpen && !chromeless && (
         <TopoDiagnosticPanel
           points={points}
           excludedIds={excludedIds}
