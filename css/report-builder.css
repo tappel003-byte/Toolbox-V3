@@ -1832,9 +1832,11 @@ body.report-builder-open .canvas {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 28px;
-  height: 28px;
-  padding: 0 6px;
+  /* Ribbon-sized. 28px was tight for a touch target and cramped the icons;
+     there is room across the top for the real thing. */
+  min-width: 32px;
+  height: 32px;
+  padding: 0 7px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
@@ -1843,6 +1845,19 @@ body.report-builder-open .canvas {
   line-height: 1;
   cursor: pointer;
 }
+
+.rb-format__btn--icon { padding: 0 6px; gap: 2px; }
+
+.rb-format__btn svg {
+  display: block;
+  /* The icons are drawn in currentColor at one weight, so they pick up the
+     button's own state -- hover, pressed, and the lit state of a mark that is
+     already on -- without a second set of artwork. */
+  flex: 0 0 auto;
+}
+
+.rb-format__btn--icon .rb-format__caret { font-size: 9px; opacity: 0.7; }
+
 
 .rb-format__btn:hover { background: rgba(8, 32, 54, 0.07); }
 

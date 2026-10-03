@@ -348,23 +348,86 @@
 
   // The three alignment commands need three distinguishable icons. A single
   // unicode glyph renders identically for all three, so the bars are drawn.
+  // The icons the Home ribbon uses, drawn rather than approximated with
+  // whatever Unicode had a glyph for. "A up arrow" was literally the letter A
+  // and a triangle; the text box was an outline character next to a T. These
+  // are the shapes PowerPoint shows, at one weight, in one 24-unit grid.
+  function svg(body, extra) {
+    return '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"' +
+      ' fill="none" stroke="currentColor" stroke-width="1.7"' +
+      ' stroke-linecap="round" stroke-linejoin="round"' + (extra || '') + '>' +
+      body + '</svg>';
+  }
+
+  // The letter A as PowerPoint draws it on the size and text-box buttons.
+  function letterA(x, y, w, h) {
+    var half = w / 2;
+    return '<path d="M' + x + ' ' + (y + h) + 'L' + (x + half) + ' ' + y +
+      'L' + (x + w) + ' ' + (y + h) + 'M' + (x + w * 0.22) + ' ' + (y + h * 0.62) +
+      'h' + (w * 0.56) + '"/>';
+  }
+
+  var ICONS = {
+    // Curved arrows, the direction each one travels.
+    undo: svg('<path d="M8 9H15.5a4.5 4.5 0 0 1 0 9H10"/><path d="M11 5.5 7 9l4 3.5"/>'),
+    redo: svg('<path d="M16 9H8.5a4.5 4.5 0 0 0 0 9H14"/><path d="M13 5.5 17 9l-4 3.5"/>'),
+
+    // Big A, small A, and the arrow saying which way the size goes.
+    grow: svg(letterA(2, 5, 13, 15) + '<path d="M19.5 19V6M16.8 8.5l2.7-2.7 2.7 2.7"/>'),
+    shrink: svg(letterA(2, 5, 13, 15) + '<path d="M19.5 6v13M16.8 16.5l2.7 2.7 2.7-2.7"/>'),
+
+    // Three marks and three lines.
+    bullet: svg('<path d="M9 6.5h12M9 12h12M9 17.5h12"/>' +
+      '<circle cx="4" cy="6.5" r="1.5" fill="currentColor" stroke="none"/>' +
+      '<circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/>' +
+      '<circle cx="4" cy="17.5" r="1.5" fill="currentColor" stroke="none"/>'),
+
+    // Lines with the indented ones pushed in, and the arrow pointing the way.
+    indent: svg('<path d="M3 4.5h18M10 9.5h11M10 14.5h11M3 19.5h18"/>' +
+      '<path d="M3 8.5 6.5 12 3 15.5z" fill="currentColor" stroke="none"/>'),
+    outdent: svg('<path d="M3 4.5h18M10 9.5h11M10 14.5h11M3 19.5h18"/>' +
+      '<path d="M6.5 8.5 3 12l3.5 3.5z" fill="currentColor" stroke="none"/>'),
+
+    // Lines with a double-headed arrow beside them.
+    spacing: svg('<path d="M10 5h11M10 10h11M10 15h11M10 20h11"/>' +
+      '<path d="M4.5 4v16M2.5 6 4.5 4l2 2M2.5 18l2 2 2-2"/>'),
+
+    // Text direction: the letter turned on its side, with the arrow.
+    dir: svg('<path d="M4 20V8M4 8 7 11M4 8 1.2 11" />' +
+      '<path d="M10.5 19.5 15 5l4.5 14.5M12 15.5h6"/>'),
+
+    // A text box is a box with an A in it.
+    text: svg('<rect x="2.5" y="4.5" width="19" height="15" rx="1.5"/>' +
+      letterA(7.5, 8.5, 9, 7)),
+    ellipse: svg('<circle cx="12" cy="12" r="8.5"/>'),
+    arrow: svg('<path d="M5 19 18.5 5.5"/><path d="M11.5 5.5h7v7"/>'),
+    // Pictures: a frame with a hill and a sun in it.
+    image: svg('<rect x="2.5" y="4.5" width="19" height="15" rx="1.5"/>' +
+      '<circle cx="8" cy="9.5" r="1.6"/>' +
+      '<path d="M3 17l5-4.5 3.5 3L15.5 11l5.5 5"/>'),
+  };
+
+  function iconBtn(attr, which, label, hint) {
+    return '    <button type="button" class="rb-format__btn rb-format__btn--icon" ' +
+      attr + '="' + which + '" aria-label="' + label + '" title="' + (hint || label) + '">' +
+      (ICONS[which] || '') + '</button>';
+  }
+
   function alignButton(which, label) {
-    var rows = {
-      left: [10, 6, 10, 7],
-      center: [10, 6, 10, 7],
-      right: [10, 6, 10, 7],
-    }[which];
+    // Full and short lines alternating, the way the ribbon draws them, on the
+    // same 24-unit grid and at the same size as every other icon here.
+    var widths = [18, 11, 18, 12];
     var x = function (w) {
       if (which === 'center') return (12 - w / 2).toFixed(1);
-      if (which === 'right') return (22 - w).toFixed(1);
-      return '2';
+      if (which === 'right') return (21 - w).toFixed(1);
+      return '3';
     };
-    var bars = rows.map(function (w, i) {
-      return '<rect x="' + x(w) + '" y="' + (3 + i * 4.5) + '" width="' + w + '" height="2" rx="1"/>';
+    var bars = widths.map(function (w, i) {
+      return '<rect x="' + x(w) + '" y="' + (4.5 + i * 4.3) + '" width="' + w + '" height="2" rx="1"/>';
     }).join('');
-    return '    <button type="button" class="rb-format__btn" data-rb-fmt="' + which + '"' +
+    return '    <button type="button" class="rb-format__btn rb-format__btn--icon" data-rb-fmt="' + which + '"' +
       ' aria-label="' + label + '" title="' + label + '">' +
-      '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true">' +
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true">' +
       bars + '</svg></button>';
   }
 
@@ -391,7 +454,8 @@
       '    <span class="rb-format__menu" data-rb-menu="spacing">' +
       '      <button type="button" class="rb-format__btn" data-rb-open="spacing"' +
       '        aria-haspopup="true" aria-expanded="false" aria-label="Line spacing"' +
-      '        title="Line spacing">&#8597;&#9662;</button>' +
+      '        title="Line spacing">' + ICONS.spacing +
+      '        <span class="rb-format__caret" aria-hidden="true">&#9662;</span></button>' +
       '      <span class="rb-format__list" data-rb-list="spacing" hidden>' + items + '</span>' +
       '    </span>'
     );
@@ -401,14 +465,14 @@
     return (
       '<div class="rb-format" role="toolbar" aria-label="Formatting">' +
       '  <span class="rb-format__group rb-format__group--history">' +
-      '    <button type="button" class="rb-format__btn" data-rb-history="undo" aria-label="Undo" title="Undo (Ctrl+Z)" disabled>&#8630;</button>' +
-      '    <button type="button" class="rb-format__btn" data-rb-history="redo" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled>&#8631;</button>' +
+      '    <button type="button" class="rb-format__btn rb-format__btn--icon" data-rb-history="undo" aria-label="Undo" title="Undo (Ctrl+Z)" disabled>' + ICONS.undo + '</button>' +
+      '    <button type="button" class="rb-format__btn rb-format__btn--icon" data-rb-history="redo" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled>' + ICONS.redo + '</button>' +
       '  </span>' +
       '  <span class="rb-format__group">' +
       menu('font', FONTS, 'Calibri', 'Font', 104) +
       menu('size', SIZES, 14, 'Font size', 52) +
-      '    <button type="button" class="rb-format__btn" data-rb-fmt="grow" aria-label="Increase font size" title="Increase font size">A&#9652;</button>' +
-      '    <button type="button" class="rb-format__btn" data-rb-fmt="shrink" aria-label="Decrease font size" title="Decrease font size">A&#9662;</button>' +
+      iconBtn('data-rb-fmt', 'grow', 'Increase font size') +
+      iconBtn('data-rb-fmt', 'shrink', 'Decrease font size') +
       '  </span>' +
       '  <span class="rb-format__group">' +
       '    <button type="button" class="rb-format__btn rb-format__btn--b" data-rb-fmt="bold" aria-label="Bold" title="Bold">B</button>' +
@@ -416,22 +480,22 @@
       '    <button type="button" class="rb-format__btn rb-format__btn--u" data-rb-fmt="underline" aria-label="Underline" title="Underline">U</button>' +
       '  </span>' +
       '  <span class="rb-format__group">' +
-      '    <button type="button" class="rb-format__btn" data-rb-fmt="bullet" aria-label="Bullets" title="Bullets">&#8226;&#8212;</button>' +
-      '    <button type="button" class="rb-format__btn" data-rb-fmt="outdent" aria-label="Decrease indent" title="Decrease indent">&#8676;</button>' +
-      '    <button type="button" class="rb-format__btn" data-rb-fmt="indent" aria-label="Increase indent" title="Increase indent">&#8677;</button>' +
+      iconBtn('data-rb-fmt', 'bullet', 'Bullets') +
+      iconBtn('data-rb-fmt', 'outdent', 'Decrease indent') +
+      iconBtn('data-rb-fmt', 'indent', 'Increase indent') +
       '  </span>' +
       '  <span class="rb-format__group">' +
       alignButton('left', 'Align left') +
       alignButton('center', 'Align center') +
       alignButton('right', 'Align right') +
-      '    <button type="button" class="rb-format__btn" data-rb-fmt="dir" aria-label="Text direction" title="Text direction">&#8644;</button>' +
+      iconBtn('data-rb-fmt', 'dir', 'Text direction') +
       spacingMenu() +
       '  </span>' +
       '  <span class="rb-format__group rb-format__group--insert">' +
-      '    <button type="button" class="rb-format__btn" data-rb-insert="text" aria-label="Insert text box" title="Text box">&#9647;T</button>' +
-      '    <button type="button" class="rb-format__btn" data-rb-insert="ellipse" aria-label="Insert circle" title="Circle">&#9711;</button>' +
-      '    <button type="button" class="rb-format__btn" data-rb-insert="arrow" aria-label="Insert arrow" title="Arrow">&#8599;</button>' +
-      '    <button type="button" class="rb-format__btn" data-rb-insert="image" aria-label="Insert picture" title="Picture">&#9634;&#9679;</button>' +
+      iconBtn('data-rb-insert', 'text', 'Insert text box', 'Text box') +
+      iconBtn('data-rb-insert', 'ellipse', 'Insert circle', 'Circle') +
+      iconBtn('data-rb-insert', 'arrow', 'Insert arrow', 'Arrow') +
+      iconBtn('data-rb-insert', 'image', 'Insert picture', 'Picture') +
       colorSwatches() +
       '  </span>' +
       '  <span class="rb-format__hint" data-rb-fmt-hint>Select text on the sheet to format it.</span>' +
