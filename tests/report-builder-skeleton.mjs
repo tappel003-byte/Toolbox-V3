@@ -154,6 +154,19 @@ const logic = await page.evaluate(() => {
   assert('Figure 1 is the first floor sheet',
     sequence.pages[floorAt].meta.figureNumber === 1,
     String(sequence.pages[floorAt].meta.figureNumber));
+  const shuffled = src.normalizeBookOrder([
+    sequence.pages.find((p) => p.type === 'distress'),
+    sequence.pages.find((p) => p.type === 'cover'),
+    sequence.pages.find((p) => p.type === 'floor'),
+    sequence.pages.find((p) => p.type === 'section'),
+  ].filter(Boolean));
+  const shuffledTitles = src.contents(shuffled).map((item) => item.title);
+  assert('normalizeBookOrder puts Discussion before figures',
+    shuffled[0].type === 'cover' &&
+    shuffled[1].meta && shuffled[1].meta.sectionId === 'discussion' &&
+    shuffledTitles[0] === 'Floor Level Survey Results - Discussion' &&
+    shuffled.find((p) => p.type === 'floor').meta.figureNumber === 1,
+    shuffledTitles.join(' | '));
   const joined = JSON.stringify(sequence);
   assert('sequence does not invent findings language',
     !/recommend|settlement|causation|conclusion is|the building/i.test(joined));
@@ -219,9 +232,11 @@ await page.evaluate(async () => {
 
 await page.goto(`${BASE}#/file/rb-skeleton/report`, { waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
-  const name = document.querySelector('.rb-cover__name');
-  return name && name.textContent === 'Riley Chen';
-});
+  const ready = document.querySelector('.rb-shell')?.getAttribute('data-report-ready') === 'true';
+  const label = document.querySelector('#rb-file-label')?.textContent || '';
+  const name = document.querySelector('[data-rb-cover-field="name"]');
+  return ready && /Riley Chen/.test(label) && name && name.value === 'Riley Chen';
+}, { timeout: 20000 });
 
 const opened = await page.evaluate(() => {
   const sheet = document.querySelector('.rb-sheet');
@@ -230,8 +245,10 @@ const opened = await page.evaluate(() => {
   const toc = [...document.querySelectorAll('.rb-thumb__caption')].map((node) => node.textContent);
   return {
     type: sheet.getAttribute('data-page-type'),
-    title: document.querySelector('.rb-cover__name')?.textContent || '',
-    address: document.querySelector('.rb-cover__street')?.textContent || '',
+    title: document.querySelector('[data-rb-cover-field="name"]')?.value ||
+      document.querySelector('.rb-cover__name')?.textContent || '',
+    address: document.querySelector('[data-rb-cover-field="street"]')?.value ||
+      document.querySelector('.rb-cover__street')?.textContent || '',
     product: document.querySelector('.rb-cover__product')?.textContent || '',
     contents: document.querySelector('.rb-cover__contents-title')?.textContent || '',
     ratio: Math.round(ratio * 100) / 100,
@@ -265,7 +282,10 @@ const coverBoxes = await page.evaluate(() => ({
   boxes: [...document.querySelectorAll('[data-rb-cover-box]')].map((n) => n.getAttribute('data-rb-cover-box')),
   maps: !!document.querySelector('.rb-cover__maps-link'),
   lock: document.querySelector('[data-rb-cover-lock]')?.getAttribute('data-rb-cover-lock') || '',
-  contents: [...document.querySelectorAll('.rb-cover__contents-item')].map((n) => n.textContent.trim()),
+  contents: [...document.querySelectorAll('[data-rb-cover-field^="contents:"]')].map((n) => n.value.trim()),
+  streetEditable: !!document.querySelector('[data-rb-cover-field="street"]:not([readonly])'),
+  street: document.querySelector('[data-rb-cover-field="street"]')?.value || '',
+  city: document.querySelector('[data-rb-cover-field="cityLine"]')?.value || '',
 }));
 check('title page has movable Mitchell boxes',
   coverBoxes.boxes.join(',') === 'prepared,identity,date,contents,overview' &&
@@ -276,10 +296,40 @@ check('CONTENTS on title lists Discussion then figures',
   /Discussion/i.test(coverBoxes.contents[0] || '') &&
   coverBoxes.contents.some((t) => /Figure 1/.test(t)),
   coverBoxes.contents.join(' | '));
+check('title text fields are editable',
+  coverBoxes.streetEditable && !!coverBoxes.street,
+  JSON.stringify(coverBoxes));
+await page.evaluate(() => {
+  const street = document.querySelector('[data-rb-cover-field="street"]');
+  const line = document.querySelector('[data-rb-cover-field="contents:0"]');
+  if (street) {
+    street.value = '15 Example Court Edited';
+    street.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  if (line) {
+    line.value = 'Floor Level Survey Results - Discussion EDIT';
+    line.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+});
 await page.waitForFunction(() => {
   const text = document.querySelector('#rb-save-status')?.textContent || '';
   return /^Saved/.test(text);
 }, { timeout: 10000 });
+const editedCover = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('rb-skeleton');
+  const cover = record && record.reportBuilder && record.reportBuilder.pages
+    ? record.reportBuilder.pages.find((p) => p.type === 'cover')
+    : null;
+  const text = cover && cover.reportText;
+  return {
+    street: text && text.street,
+    contents0: text && text.contents && text.contents[0] && text.contents[0].text,
+  };
+});
+check('edited title text persists on Customer File',
+  editedCover.street === '15 Example Court Edited' &&
+  /Discussion EDIT/.test(editedCover.contents0 || ''),
+  JSON.stringify(editedCover));
 const saveStatus = await page.evaluate(() => document.querySelector('#rb-save-status')?.textContent || '');
 check('report autosaves onto the Customer File', /^Saved/.test(saveStatus), saveStatus);
 const persisted = await page.evaluate(async () => {
