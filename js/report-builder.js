@@ -1384,6 +1384,57 @@
     window.requestAnimationFrame(check);
   }
 
+  // A formatting command can change how much text fits, which re-flows the
+  // chain and rebuilds the DOM -- taking the selection with it. Recording the
+  // selection as character offsets within the field lets it be put back after
+  // the rebuild, so A-up can be clicked repeatedly the way it is in PowerPoint
+  // instead of having to re-select between every step.
+  function captureSelectionOffsets(field) {
+    var sel = window.getSelection();
+    if (!field || !sel || !sel.rangeCount) return null;
+    var range = sel.getRangeAt(0);
+    if (!field.contains(range.commonAncestorContainer)) return null;
+    var pre = range.cloneRange();
+    pre.selectNodeContents(field);
+    pre.setEnd(range.startContainer, range.startOffset);
+    var start = pre.toString().length;
+    return {
+      key: field.getAttribute('data-rb-rich') || '',
+      start: start,
+      end: start + range.toString().length,
+    };
+  }
+
+  function restoreSelectionOffsets(root, saved) {
+    if (!saved || !saved.key || !root) return false;
+    var field = root.querySelector('[data-rb-rich="' + saved.key + '"]');
+    if (!field) return false;
+    var walker = document.createTreeWalker(field, NodeFilter.SHOW_TEXT, null);
+    var pos = 0;
+    var startNode = null, startOff = 0, endNode = null, endOff = 0;
+    var node;
+    while ((node = walker.nextNode())) {
+      var len = node.nodeValue.length;
+      if (!startNode && pos + len >= saved.start) { startNode = node; startOff = saved.start - pos; }
+      if (!endNode && pos + len >= saved.end) { endNode = node; endOff = saved.end - pos; }
+      pos += len;
+    }
+    if (!startNode) return false;
+    if (!endNode) { endNode = startNode; endOff = startNode.nodeValue.length; }
+    try {
+      var range = document.createRange();
+      range.setStart(startNode, Math.max(0, Math.min(startOff, startNode.nodeValue.length)));
+      range.setEnd(endNode, Math.max(0, Math.min(endOff, endNode.nodeValue.length)));
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      if (field.focus) field.focus();
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
   function renderSheet(sheet, page, pages) {
     sheet.textContent = '';
     sheet.setAttribute('data-page-id', page.id);
@@ -3183,12 +3234,17 @@
         onColor: function (value) { overlayColor = value; },
         onHistory: function (which) { if (which === 'redo') redo(); else undo(); },
         onChange: function (field) {
+          var keep = captureSelectionOffsets(field);
           commitRichField(field);
           // Changing spacing, size or typeface changes how much fits, so the
           // flow is re-run right where the room changed.
           if (reflowDiscussion()) {
             renderPages();
             flushSave().catch(function () {});
+          }
+          // Put the selection back so the next command acts on the same words.
+          if (restoreSelectionOffsets(sheetEl, keep) && formatToolbar) {
+            formatToolbar.refresh();
           }
         },
       });
