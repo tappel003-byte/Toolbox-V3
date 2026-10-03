@@ -1927,7 +1927,7 @@ body.report-builder-open .canvas {
 .rb-format.is-ready .rb-format__hint { display: none; }
 
 /* Until a field has focus the commands have nothing to act on. */
-.rb-format:not(.is-ready) .rb-format__btn,
+.rb-format:not(.is-ready) .rb-format__group:not(.rb-format__group--insert) .rb-format__btn,
 .rb-format:not(.is-ready) .rb-format__menu-btn {
   opacity: 0.45;
   pointer-events: none;
@@ -2221,4 +2221,137 @@ body.report-builder-open .canvas {
   .rb-discussion__brand-resize,
   .rb-discussion__brand-lock { display: none !important; }
   .rb-discussion__brand { outline: none !important; }
+}
+
+/* ------------------------------------------------------------------ *
+ * Annotations — text box, circle, arrow, picture
+ *
+ * Free elements on top of any sheet. Geometry is percentages of the sheet,
+ * like every other placed element here, so they hold position when the page
+ * is scaled from preview size to 17 x 11 in on paper.
+ * ------------------------------------------------------------------ */
+
+.rb-ov-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.rb-ov {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.rb-ov:not(.is-locked) { cursor: move; }
+
+.rb-ov:not(.is-locked):hover {
+  outline: 1px dashed rgba(139, 94, 60, 0.45);
+  outline-offset: 2px;
+}
+
+.rb-ov__art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.rb-ov__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.rb-ov__text {
+  width: 100%;
+  height: 100%;
+  cursor: text;
+  font-size: 1.515cqh;
+  line-height: 1.22;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+}
+
+.rb-ov__text:focus { outline: 1px solid rgba(139, 94, 60, 0.55); }
+
+.rb-ov__hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border: 1px dashed #b9aa98;
+  color: #999;
+  font-size: 1.3cqh;
+}
+
+.rb-ov__resize {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 13px;
+  height: 13px;
+  border-right: 2px solid var(--rb-copper, #8B5E3C);
+  border-bottom: 2px solid var(--rb-copper, #8B5E3C);
+  cursor: nwse-resize;
+}
+
+.rb-ov__remove {
+  position: absolute;
+  right: -9px;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--line, #d7d2c8);
+  border-radius: 50%;
+  background: #fff;
+  color: #777;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.rb-ov:hover .rb-ov__remove { opacity: 1; }
+
+.rb-format__swatch {
+  width: 18px;
+  height: 18px;
+  margin: 0 1px;
+  padding: 0;
+  border: 1px solid var(--line, #d7d2c8);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.rb-format__swatch.is-on {
+  box-shadow: 0 0 0 2px var(--accent, #c14a2b);
+}
+
+/* Annotations are content and print; their handles are not. */
+@media print {
+  .rb-ov__resize,
+  .rb-ov__remove,
+  .rb-ov__hint { display: none !important; }
+  .rb-ov,
+  .rb-ov__text { outline: none !important; }
+}
+
+/* Undo stays available even with nothing selected -- it is not a text
+   command, and it is the only thing between an autosaved delete and a
+   lost paragraph. */
+.rb-format:not(.is-ready) .rb-format__group--history .rb-format__btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.rb-format__btn[disabled] {
+  opacity: 0.35;
+  cursor: default;
 }

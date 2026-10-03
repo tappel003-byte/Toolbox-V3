@@ -28,6 +28,8 @@
   };
   var fitObserver = null;
   var formatToolbar = null;
+  // Object URLs for pictures placed on sheets, keyed by media id.
+  var overlayUrlCache = {};
   var coverPasteHandler = null;
   var fitOnResize = null;
   var pageSeq = 1;
@@ -1486,6 +1488,13 @@
       if (page.note) addLine(margin, 'rb-sheet__note', page.note);
     }
 
+    if (window.ToolboxReportOverlay) {
+      sheet.appendChild(window.ToolboxReportOverlay.renderLayer(
+        page.meta && page.meta.overlays,
+        { locked: false, mediaUrls: overlayUrlCache }
+      ));
+    }
+
     var hidePageNum = page.type === 'cover' ||
       page.type === 'pictures' ||
       // The decks carry no page number on the discussion sheet.
@@ -1698,6 +1707,7 @@
     }
 
     function markDirty() {
+      recordHistory();
       dirty = true;
       setSaveStatus('Saving…');
       if (draftEl) draftEl.textContent = 'Saving';
@@ -2019,6 +2029,251 @@
       };
     }
 
+    // ---- Undo ---------------------------------------------------------
+    // Everything here autosaves within a second, so a deletion is committed
+    // before there is any chance to think better of it. The browser's own
+    // undo cannot help: a paste, a reflow or a formatting command rebuilds the
+    // markup and wipes its stack. History is therefore kept on the report
+    // document itself -- snapshots of the pages -- so Ctrl+Z reaches anything
+    // that changed the report, not just typing.
+    var history = [];
+    var historyAt = -1;
+    var historyTimer = null;
+    var restoring = false;
+    var HISTORY_LIMIT = 60;
+
+    function snapshotNow() {
+      if (restoring) return;
+      var shot = JSON.stringify({ pages: pages, activeId: activeId });
+      if (historyAt >= 0 && history[historyAt] === shot) return;
+      history = history.slice(0, historyAt + 1);
+      history.push(shot);
+      if (history.length > HISTORY_LIMIT) history.shift();
+      historyAt = history.length - 1;
+      updateHistoryButtons();
+    }
+
+    // Typing settles before it becomes an undo step, so one keystroke is not
+    // one step.
+    function recordHistory() {
+      if (restoring) return;
+      if (historyTimer) clearTimeout(historyTimer);
+      historyTimer = setTimeout(function () {
+        historyTimer = null;
+        snapshotNow();
+      }, 700);
+    }
+
+    function applyHistory(index) {
+      if (index < 0 || index >= history.length) return false;
+      var shot = JSON.parse(history[index]);
+      restoring = true;
+      pages = shot.pages;
+      activeId = shot.activeId;
+      historyAt = index;
+      renderPages();
+      fitSheet(root);
+      restoring = false;
+      markDirty();
+      flushSave().catch(function () {});
+      updateHistoryButtons();
+      return true;
+    }
+
+    function undo() {
+      if (historyTimer) { clearTimeout(historyTimer); historyTimer = null; snapshotNow(); }
+      return applyHistory(historyAt - 1);
+    }
+
+    function redo() { return applyHistory(historyAt + 1); }
+
+    function updateHistoryButtons() {
+      if (!formatToolbar || typeof formatToolbar.setHistory !== 'function') return;
+      formatToolbar.setHistory(historyAt > 0, historyAt < history.length - 1);
+    }
+
+    document.addEventListener('keydown', function (event) {
+      var meta = event.ctrlKey || event.metaKey;
+      if (!meta) return;
+      var key = (event.key || '').toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      if (!root.contains(document.activeElement) && document.activeElement !== document.body) return;
+      event.preventDefault();
+      if (key === 'y' || event.shiftKey) redo();
+      else undo();
+    });
+
+    // ---- Annotations -------------------------------------------------
+    // Free elements: they do not register to anything and do not inherit a
+    // locked layout, because their job is to point at something on this page.
+    var overlayColor = (window.ToolboxReportOverlay &&
+      window.ToolboxReportOverlay.COLORS[0]) || '#c0392b';
+    var overlayDrag = null;
+
+    function overlayList(page) {
+      if (!page) return null;
+      page.meta = page.meta || {};
+      if (!Array.isArray(page.meta.overlays)) page.meta.overlays = [];
+      return page.meta.overlays;
+    }
+
+    function findOverlay(page, id) {
+      var list = overlayList(page) || [];
+      for (var i = 0; i < list.length; i += 1) if (list[i].id === id) return list[i];
+      return null;
+    }
+
+    function storeOverlayImage(item, dataUrl) {
+      if (!dataUrl || dataUrl.indexOf('data:image/') !== 0) return;
+      if (!window.ToolboxDB || typeof window.ToolboxDB.putMedia !== 'function') return;
+      var mediaId = 'report-overlay-' + customerFileId + '-' + item.id;
+      window.ToolboxDB.putMedia(mediaId, dataUrl).then(function () {
+        item.mediaId = mediaId;
+        overlayUrlCache[mediaId] = dataUrl;
+        markDirty();
+        renderPages();
+        flushSave().catch(function () {});
+      }).catch(function (err) {
+        console.warn('Annotation picture could not be saved', err);
+        setSaveStatus('Picture save failed');
+      });
+    }
+
+    function pickOverlayImage(item) {
+      var input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.addEventListener('change', function () {
+        var file = input.files && input.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+          storeOverlayImage(item, typeof reader.result === 'string' ? reader.result : '');
+        };
+        reader.readAsDataURL(file);
+      });
+      input.click();
+    }
+
+    function insertOverlay(kind) {
+      var page = activePage();
+      var api = window.ToolboxReportOverlay;
+      if (!page || !api) return;
+      var list = overlayList(page);
+      var item = api.create(kind);
+      item.color = overlayColor;
+      // Step each new annotation clear of the last, or inserting a circle and
+      // an arrow drops them exactly on top of each other and only the upper
+      // one can be grabbed.
+      var step = (list.length % 5) * 4;
+      item.x = Math.min(92, item.x + step);
+      item.y = Math.min(88, item.y + step);
+      list.push(item);
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
+      if (kind === 'image') pickOverlayImage(item);
+    }
+
+    // Pictures are hydrated from the media store on open so a placed photo
+    // comes back rather than leaving an empty frame.
+    function hydrateOverlayImages() {
+      if (!window.ToolboxDB || typeof window.ToolboxDB.getMedia !== 'function') return;
+      var wanted = [];
+      pages.forEach(function (page) {
+        var list = page && page.meta && page.meta.overlays;
+        if (!Array.isArray(list)) return;
+        list.forEach(function (item) {
+          if (item && item.mediaId && !overlayUrlCache[item.mediaId]) wanted.push(item.mediaId);
+        });
+      });
+      if (!wanted.length) return;
+      Promise.all(wanted.map(function (id) {
+        return window.ToolboxDB.getMedia(id).then(function (value) {
+          if (typeof value === 'string' && value) overlayUrlCache[id] = value;
+        }).catch(function () { /* a missing picture is not a failed report */ });
+      })).then(function () {
+        if (token !== mountGeneration) return;
+        renderPages();
+      });
+    }
+
+    sheetEl.addEventListener('click', function (event) {
+      var kill = event.target.closest('[data-rb-ov-remove]');
+      if (!kill) return;
+      event.preventDefault();
+      var page = activePage();
+      var list = overlayList(page);
+      if (!list) return;
+      var id = kill.getAttribute('data-rb-ov-remove');
+      page.meta.overlays = list.filter(function (item) { return item.id !== id; });
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
+    });
+
+    sheetEl.addEventListener('pointerdown', function (event) {
+      var grip = event.target.closest('[data-rb-ov-resize]');
+      // Typing in an annotation must not drag it.
+      if (!grip && event.target.closest('[data-rb-ov-field]')) return;
+      if (!grip && event.target.closest('[data-rb-ov-remove]')) return;
+      var host = grip ? null : event.target.closest('[data-rb-ov]');
+      if (!grip && !host) return;
+      var page = activePage();
+      var id = grip ? grip.getAttribute('data-rb-ov-resize') : host.getAttribute('data-rb-ov');
+      var item = findOverlay(page, id);
+      if (!item) return;
+      var rect = sheetEl.getBoundingClientRect();
+      if (rect.width < 8) return;
+      event.preventDefault();
+      overlayDrag = {
+        id: id,
+        resize: !!grip,
+        startX: event.clientX,
+        startY: event.clientY,
+        rect: rect,
+        from: { x: item.x, y: item.y, w: item.w, h: item.h },
+      };
+    });
+
+    sheetEl.addEventListener('pointermove', function (event) {
+      if (!overlayDrag) return;
+      var dx = ((event.clientX - overlayDrag.startX) / overlayDrag.rect.width) * 100;
+      var dy = ((event.clientY - overlayDrag.startY) / overlayDrag.rect.height) * 100;
+      var f = overlayDrag.from;
+      var api = window.ToolboxReportOverlay;
+      var next = overlayDrag.resize
+        ? { x: f.x, y: f.y, w: Math.max(api.MIN_W, f.w + dx), h: Math.max(api.MIN_H, f.h + dy) }
+        : { x: Math.max(0, Math.min(97, f.x + dx)), y: Math.max(0, Math.min(97, f.y + dy)), w: f.w, h: f.h };
+      var live = sheetEl.querySelector('[data-rb-ov="' + overlayDrag.id + '"]');
+      if (live) {
+        live.style.left = next.x + '%';
+        live.style.top = next.y + '%';
+        live.style.width = next.w + '%';
+        live.style.height = next.h + '%';
+      }
+      overlayDrag.next = next;
+    });
+
+    function endOverlayDrag() {
+      if (!overlayDrag) return;
+      if (overlayDrag.next) {
+        var item = findOverlay(activePage(), overlayDrag.id);
+        if (item) {
+          item.x = overlayDrag.next.x;
+          item.y = overlayDrag.next.y;
+          item.w = overlayDrag.next.w;
+          item.h = overlayDrag.next.h;
+          markDirty();
+          flushSave().catch(function () {});
+        }
+      }
+      overlayDrag = null;
+    }
+
+    sheetEl.addEventListener('pointerup', endOverlayDrag);
+    sheetEl.addEventListener('pointercancel', endOverlayDrag);
+
     // A discussion and its continuations are ONE flow, not pages that were
     // split once. Tighten the spacing or shrink the type and the room comes
     // back, so the text has to come back with it -- a split that only ever
@@ -2152,6 +2407,21 @@
 
     function commitRichField(field) {
       if (!field) return false;
+      var ovField = field.closest ? field.closest('[data-rb-ov-field]') : null;
+      if (ovField) {
+        var ovPage = activePage();
+        var list = ovPage && ovPage.meta && ovPage.meta.overlays;
+        if (!list) return false;
+        var ovId = ovField.getAttribute('data-rb-ov-field');
+        var api = window.ToolboxReportText;
+        for (var i = 0; i < list.length; i += 1) {
+          if (list[i].id !== ovId) continue;
+          list[i].text = api ? api.compact(api.fromElement(ovField)) : ovField.textContent;
+          markDirty();
+          return true;
+        }
+        return false;
+      }
       var sectionField = field.closest ? field.closest('[data-rb-section-field]') : null;
       if (sectionField) {
         var sectionPage = activePage();
@@ -2232,7 +2502,8 @@
     });
 
     sheetEl.addEventListener('input', function (event) {
-      var richTarget = event.target.closest('[data-rb-cover-field], [data-rb-section-field]');
+      var richTarget = event.target.closest(
+        '[data-rb-cover-field], [data-rb-section-field], [data-rb-ov-field]');
       if (richTarget) {
         if (!commitRichField(richTarget)) return;
         return;
@@ -2402,12 +2673,31 @@
 
     function onCoverImagePaste(event) {
       var current = activePage();
-      if (!current || current.type !== 'cover') return;
+      if (!current) return;
       var file = clipboardImage(event);
       if (!file) return;
       event.preventDefault();
-      setSaveStatus('Adding overview…');
-      readImageFile(file);
+      if (current.type === 'cover') {
+        setSaveStatus('Adding overview…');
+        readImageFile(file);
+        return;
+      }
+      // Anywhere else a pasted picture becomes a placed annotation, so the
+      // site overview -- or anything else on the clipboard -- can go on a
+      // Floor Survey sheet or any other page.
+      var api = window.ToolboxReportOverlay;
+      if (!api) return;
+      var list = overlayList(current);
+      if (!list) return;
+      var item = api.create('image');
+      item.color = overlayColor;
+      list.push(item);
+      setSaveStatus('Adding picture…');
+      var reader = new FileReader();
+      reader.onload = function () {
+        storeOverlayImage(item, typeof reader.result === 'string' ? reader.result : '');
+      };
+      reader.readAsDataURL(file);
     }
 
     document.addEventListener('paste', onCoverImagePaste);
@@ -2784,6 +3074,9 @@
 
     if (window.ToolboxReportToolbar) {
       formatToolbar = window.ToolboxReportToolbar.mount(root, {
+        onInsert: insertOverlay,
+        onColor: function (value) { overlayColor = value; },
+        onHistory: function (which) { if (which === 'redo') redo(); else undo(); },
         onChange: function (field) {
           commitRichField(field);
           // Changing spacing, size or typeface changes how much fits, so the
@@ -2901,6 +3194,8 @@
         fitSheet(root);
         // A book split under different spacing heals on open: if the text now
         // fits in fewer sheets it pulls back into them.
+        hydrateOverlayImages();
+        snapshotNow();
         window.requestAnimationFrame(function () {
           if (token !== mountGeneration) return;
           if (reflowDiscussion()) {

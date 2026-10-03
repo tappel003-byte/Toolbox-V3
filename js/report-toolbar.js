@@ -332,6 +332,18 @@
       bars + '</svg></button>';
   }
 
+  // Annotation colour. Three is enough to be legible on a plan, a photo or
+  // white paper without becoming a palette.
+  function colorSwatches() {
+    var api = window.ToolboxReportOverlay;
+    var colors = (api && api.COLORS) || ['#c0392b', '#1a1a1a', '#e0a800'];
+    return colors.map(function (c, i) {
+      return '    <button type="button" class="rb-format__swatch' + (i === 0 ? ' is-on' : '') +
+        '" data-rb-ov-color="' + c + '" style="background:' + c + '"' +
+        ' aria-label="Annotation colour" title="Annotation colour"></button>';
+    }).join('');
+  }
+
   function spacingMenu() {
     var items = LINE_SPACING.map(function (opt) {
       return '<button type="button" class="rb-format__item" data-rb-pick="spacing"' +
@@ -350,6 +362,10 @@
   function html() {
     return (
       '<div class="rb-format" role="toolbar" aria-label="Formatting">' +
+      '  <span class="rb-format__group rb-format__group--history">' +
+      '    <button type="button" class="rb-format__btn" data-rb-history="undo" aria-label="Undo" title="Undo (Ctrl+Z)" disabled>&#8630;</button>' +
+      '    <button type="button" class="rb-format__btn" data-rb-history="redo" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled>&#8631;</button>' +
+      '  </span>' +
       '  <span class="rb-format__group">' +
       menu('font', FONTS, 'Calibri', 'Font', 104) +
       menu('size', SIZES, 14, 'Font size', 52) +
@@ -372,6 +388,13 @@
       alignButton('right', 'Align right') +
       '    <button type="button" class="rb-format__btn" data-rb-fmt="dir" aria-label="Text direction" title="Text direction">&#8644;</button>' +
       spacingMenu() +
+      '  </span>' +
+      '  <span class="rb-format__group rb-format__group--insert">' +
+      '    <button type="button" class="rb-format__btn" data-rb-insert="text" aria-label="Insert text box" title="Text box">&#9647;T</button>' +
+      '    <button type="button" class="rb-format__btn" data-rb-insert="ellipse" aria-label="Insert circle" title="Circle">&#9711;</button>' +
+      '    <button type="button" class="rb-format__btn" data-rb-insert="arrow" aria-label="Insert arrow" title="Arrow">&#8599;</button>' +
+      '    <button type="button" class="rb-format__btn" data-rb-insert="image" aria-label="Insert picture" title="Picture">&#9634;&#9679;</button>' +
+      colorSwatches() +
       '  </span>' +
       '  <span class="rb-format__hint" data-rb-fmt-hint>Select text on the sheet to format it.</span>' +
       '</div>'
@@ -448,6 +471,34 @@
     bar.addEventListener('touchstart', hold, { passive: false });
 
     bar.addEventListener('click', function (event) {
+      var swatch = event.target.closest('[data-rb-ov-color]');
+      if (swatch) {
+        event.preventDefault();
+        var swatches = bar.querySelectorAll('[data-rb-ov-color]');
+        for (var s = 0; s < swatches.length; s += 1) swatches[s].classList.remove('is-on');
+        swatch.classList.add('is-on');
+        if (typeof options.onColor === 'function') {
+          options.onColor(swatch.getAttribute('data-rb-ov-color'));
+        }
+        return;
+      }
+      var hist = event.target.closest('[data-rb-history]');
+      if (hist) {
+        event.preventDefault();
+        if (hist.disabled) return;
+        if (typeof options.onHistory === 'function') {
+          options.onHistory(hist.getAttribute('data-rb-history'));
+        }
+        return;
+      }
+      var insert = event.target.closest('[data-rb-insert]');
+      if (insert) {
+        event.preventDefault();
+        if (typeof options.onInsert === 'function') {
+          options.onInsert(insert.getAttribute('data-rb-insert'));
+        }
+        return;
+      }
       var btn = event.target.closest('button[data-rb-fmt]');
       if (!btn) return;
       event.preventDefault();
@@ -519,6 +570,12 @@
 
     return {
       refresh: refresh,
+      setHistory: function (canUndo, canRedo) {
+        var u = bar.querySelector('[data-rb-history="undo"]');
+        var r = bar.querySelector('[data-rb-history="redo"]');
+        if (u) u.disabled = !canUndo;
+        if (r) r.disabled = !canRedo;
+      },
       noteField: function (field) { activeField = field || null; refresh(); },
       destroy: function () { document.removeEventListener('selectionchange', onSelectionChange); },
     };
