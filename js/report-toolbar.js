@@ -21,6 +21,17 @@
   var FONTS = ['Calibri', 'Arial', 'Georgia', 'Times New Roman'];
   var SIZES = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 54, 60, 72];
   var SIZE_MARKER = '7'; // legacy execCommand bucket, rewritten immediately
+  // Line spacing, as PowerPoint offers it: a multiplier, plus space after the
+  // paragraph on its own. An address block wants the lines tight AND no gap
+  // beneath each line; narrative wants the deck's 9 pt between paragraphs.
+  var LINE_SPACING = [
+    { value: 'lh:1', label: 'Single' },
+    { value: 'lh:1.15', label: '1.15' },
+    { value: 'lh:1.5', label: '1.5' },
+    { value: 'lh:2', label: 'Double' },
+    { value: 'sa:0', label: 'No space after' },
+    { value: 'sa:9', label: 'Space after (9 pt)' },
+  ];
 
   var activeField = null;
   // Opening a native <select> blurs the field and destroys the selection, so
@@ -150,6 +161,17 @@
     return out;
   }
 
+  function applySpacing(field, token) {
+    var parts = String(token || '').split(':');
+    var kind = parts[0];
+    var value = parseFloat(parts[1]);
+    if (!isFinite(value)) return;
+    blocksInSelection(field).forEach(function (block) {
+      if (kind === 'lh') block.style.lineHeight = String(value);
+      else block.style.marginBottom = (value * window.ToolboxReportText.PT_TO_CQH).toFixed(3) + 'cqh';
+    });
+  }
+
   function stepIndent(field, delta) {
     blocksInSelection(field).forEach(function (block) {
       var current = parseFloat(block.style.marginLeft) || 0;
@@ -244,6 +266,21 @@
       bars + '</svg></button>';
   }
 
+  function spacingMenu() {
+    var items = LINE_SPACING.map(function (opt) {
+      return '<button type="button" class="rb-format__item" data-rb-pick="spacing"' +
+        ' data-rb-value="' + opt.value + '">' + opt.label + '</button>';
+    }).join('');
+    return (
+      '    <span class="rb-format__menu" data-rb-menu="spacing">' +
+      '      <button type="button" class="rb-format__btn" data-rb-open="spacing"' +
+      '        aria-haspopup="true" aria-expanded="false" aria-label="Line spacing"' +
+      '        title="Line spacing">&#8597;&#9662;</button>' +
+      '      <span class="rb-format__list" data-rb-list="spacing" hidden>' + items + '</span>' +
+      '    </span>'
+    );
+  }
+
   function html() {
     return (
       '<div class="rb-format" role="toolbar" aria-label="Formatting">' +
@@ -268,6 +305,7 @@
       alignButton('center', 'Align center') +
       alignButton('right', 'Align right') +
       '    <button type="button" class="rb-format__btn" data-rb-fmt="dir" aria-label="Text direction" title="Text direction">&#8644;</button>' +
+      spacingMenu() +
       '  </span>' +
       '  <span class="rb-format__hint" data-rb-fmt-hint>Select text on the sheet to format it.</span>' +
       '</div>'
@@ -395,8 +433,9 @@
       var field = currentField() || activeField;
       if (!field) return;
       if (which === 'size') setSize(field, parseFloat(value));
+      else if (which === 'spacing') applySpacing(field, value);
       else setFont(field, value);
-      setCurrent(which, value);
+      if (which !== 'spacing') setCurrent(which, value);
       onChange(field);
       refresh();
     });

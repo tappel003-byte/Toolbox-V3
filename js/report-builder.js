@@ -1418,6 +1418,7 @@
         locked: !!(page.meta && page.meta.locked),
         facts: page._facts || null,
         brandImageUrl: BRAND_LOGO,
+        brandBox: page.meta && page.meta.brandBox,
       });
       margin.appendChild(discussionEl);
       watchDiscussionOverflow(discussionEl);
@@ -1976,6 +1977,20 @@
         splitDiscussionOverflow();
         return;
       }
+      var brandLock = event.target.closest('[data-rb-brand-lock]');
+      if (brandLock) {
+        event.preventDefault();
+        var page = activePage();
+        if (!page || !page.meta) return;
+        var api = window.ToolboxReportDiscussion;
+        var box = api ? api.normalizeBrandBox(page.meta.brandBox) : (page.meta.brandBox || {});
+        box.locked = brandLock.getAttribute('data-rb-brand-lock') === 'lock';
+        applyBrandBox(box);
+        markDirty();
+        renderPages();
+        flushSave().catch(function () {});
+        return;
+      }
       var jump = event.target.closest('[data-rb-goto]');
       if (!jump) return;
       var targetId = jump.getAttribute('data-rb-goto');
@@ -2012,6 +2027,77 @@
     // A narrative longer than two columns continues on another sheet rather
     // than being cut off. The split point is where the text actually landed
     // past the second column, so what moves is exactly what did not fit.
+    // One placement for the whole book: every discussion sheet, including a
+    // continuation, carries the same logo position so the pages match.
+    function applyBrandBox(box) {
+      var api = window.ToolboxReportDiscussion;
+      var next = api ? api.normalizeBrandBox(box) : box;
+      pages.forEach(function (item) {
+        if (!item || item.type !== 'section') return;
+        if (!item.meta || item.meta.sectionId !== 'discussion') return;
+        item.meta.brandBox = JSON.parse(JSON.stringify(next));
+      });
+      return next;
+    }
+
+    var brandDrag = null;
+
+    sheetEl.addEventListener('pointerdown', function (event) {
+      var grip = event.target.closest('[data-rb-brand-resize]');
+      var mover = event.target.closest('[data-rb-brand-move]');
+      if (!grip && !mover) return;
+      var page = activePage();
+      if (!page || !page.meta || page.meta.sectionId !== 'discussion') return;
+      var stage = sheetEl.querySelector('.rb-discussion');
+      var rect = stage && stage.getBoundingClientRect();
+      if (!rect || rect.width < 8) return;
+      event.preventDefault();
+      var api = window.ToolboxReportDiscussion;
+      brandDrag = {
+        resize: !!grip,
+        startX: event.clientX,
+        startY: event.clientY,
+        rect: rect,
+        box: api ? api.normalizeBrandBox(page.meta.brandBox) : page.meta.brandBox,
+      };
+      if (event.target.setPointerCapture) {
+        try { event.target.setPointerCapture(event.pointerId); } catch (err) { /* not captured */ }
+      }
+    });
+
+    sheetEl.addEventListener('pointermove', function (event) {
+      if (!brandDrag) return;
+      var dx = ((event.clientX - brandDrag.startX) / brandDrag.rect.width) * 100;
+      var dy = ((event.clientY - brandDrag.startY) / brandDrag.rect.height) * 100;
+      var b = brandDrag.box;
+      var next = brandDrag.resize
+        ? { x: b.x, y: b.y, w: b.w + dx, h: b.h + dy, locked: false }
+        : { x: b.x + dx, y: b.y + dy, w: b.w, h: b.h, locked: false };
+      var api = window.ToolboxReportDiscussion;
+      next = api ? api.normalizeBrandBox(next) : next;
+      var live = sheetEl.querySelector('[data-rb-brand-box]');
+      if (live) {
+        live.style.left = next.x + '%';
+        live.style.top = next.y + '%';
+        live.style.width = next.w + '%';
+        live.style.height = next.h + '%';
+      }
+      brandDrag.next = next;
+    });
+
+    function endBrandDrag() {
+      if (!brandDrag) return;
+      if (brandDrag.next) {
+        applyBrandBox(brandDrag.next);
+        markDirty();
+        flushSave().catch(function () {});
+      }
+      brandDrag = null;
+    }
+
+    sheetEl.addEventListener('pointerup', endBrandDrag);
+    sheetEl.addEventListener('pointercancel', endBrandDrag);
+
     function splitDiscussionOverflow() {
       var page = activePage();
       if (!page || !page.meta || page.meta.sectionId !== 'discussion') return;
@@ -2057,7 +2143,13 @@
         sourceKey: null,
         // Same sectionId, so it is never numbered as a figure; the
         // continuation flag keeps it out of CONTENTS.
-        meta: { sectionId: 'discussion', continuation: true },
+        meta: {
+          sectionId: 'discussion',
+          continuation: true,
+          brandBox: page.meta && page.meta.brandBox
+            ? JSON.parse(JSON.stringify(page.meta.brandBox))
+            : null,
+        },
         reportText: { body: { paragraphs: paras.slice(cut) } },
       };
 

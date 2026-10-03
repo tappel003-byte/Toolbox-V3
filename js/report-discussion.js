@@ -70,6 +70,24 @@
     return { paragraphs: paragraphs };
   }
 
+  // The logo starts where the decks put it and at the artwork's own
+  // proportion; from there the investigator places it and locks it, and the
+  // placement carries to every discussion sheet in the book.
+  function normalizeBrandBox(raw) {
+    var src = raw && typeof raw === 'object' ? raw : {};
+    function clamp(n, lo, hi, fb) {
+      var v = typeof n === 'number' && isFinite(n) ? n : fb;
+      return Math.max(lo, Math.min(hi, v));
+    }
+    return {
+      x: clamp(src.x, 0, 95, BRAND.x),
+      y: clamp(src.y, 0, 97, BRAND.y),
+      w: clamp(src.w, 4, 60, BRAND.w),
+      h: clamp(src.h, 2, 30, BRAND.h),
+      locked: !!src.locked,
+    };
+  }
+
   function renderPage(page, options) {
     var opts = options || {};
     var locked = !!opts.locked;
@@ -114,15 +132,35 @@
     // plus the words -- is not the mark. Nothing is better than a wrong logo
     // on a deliverable, so the slot stays empty until the artwork is in.
     if (opts.brandImageUrl) {
+      var box = normalizeBrandBox(opts.brandBox);
       var brand = document.createElement('div');
-      brand.className = 'rb-discussion__brand';
-      brand.style.cssText = 'left:' + BRAND.x + '%;top:' + BRAND.y + '%;' +
-        'width:' + BRAND.w + '%;height:' + BRAND.h + '%;';
+      brand.className = 'rb-discussion__brand' + (box.locked ? ' is-locked' : '');
+      brand.setAttribute('data-rb-brand-box', '1');
+      brand.style.cssText = 'left:' + box.x + '%;top:' + box.y + '%;' +
+        'width:' + box.w + '%;height:' + box.h + '%;';
       var img = document.createElement('img');
       img.src = opts.brandImageUrl;
       img.alt = '';
       brand.appendChild(img);
+      if (!box.locked) {
+        var move = document.createElement('span');
+        move.className = 'rb-discussion__brand-move';
+        move.setAttribute('data-rb-brand-move', '1');
+        move.setAttribute('title', 'Move the logo');
+        brand.appendChild(move);
+        var grip = document.createElement('span');
+        grip.className = 'rb-discussion__brand-resize';
+        grip.setAttribute('data-rb-brand-resize', '1');
+        brand.appendChild(grip);
+      }
       root.appendChild(brand);
+
+      var lock = document.createElement('button');
+      lock.type = 'button';
+      lock.className = 'rb-discussion__brand-lock';
+      lock.setAttribute('data-rb-brand-lock', box.locked ? 'unlock' : 'lock');
+      lock.textContent = box.locked ? 'Unlock logo' : 'Lock logo';
+      root.appendChild(lock);
     }
 
     // A fixed-height multicol box does not stop at two columns: it keeps
@@ -148,6 +186,8 @@
 
   window.ToolboxReportDiscussion = {
     renderPage: renderPage,
+    normalizeBrandBox: normalizeBrandBox,
+    BRAND: BRAND,
     seedBody: seedBody,
     BODY_PT: BODY_PT,
     PT: PT,

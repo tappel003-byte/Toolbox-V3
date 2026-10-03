@@ -2175,3 +2175,56 @@ body.report-builder-open .canvas {
   font: inherit;
   cursor: pointer;
 }
+
+/* The logo places like any other report element: move it, size it, lock it. */
+.rb-discussion__brand-move,
+.rb-discussion__brand-resize {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  cursor: move;
+}
+
+.rb-discussion__brand-move {
+  left: -3px;
+  top: -3px;
+  border-left: 2px solid var(--rb-copper, #8B5E3C);
+  border-top: 2px solid var(--rb-copper, #8B5E3C);
+}
+
+.rb-discussion__brand-resize {
+  right: -3px;
+  bottom: -3px;
+  border-right: 2px solid var(--rb-copper, #8B5E3C);
+  border-bottom: 2px solid var(--rb-copper, #8B5E3C);
+  cursor: nwse-resize;
+}
+
+.rb-discussion__brand {
+  touch-action: none;
+}
+
+.rb-discussion__brand:not(.is-locked) {
+  outline: 1px dashed rgba(139, 94, 60, 0.4);
+}
+
+.rb-discussion__brand-lock {
+  position: absolute;
+  left: 1.96%;
+  bottom: 1.2%;
+  padding: 2px 8px;
+  border: 1px solid var(--line, #d7d2c8);
+  border-radius: 6px;
+  background: var(--panel, #fff);
+  color: var(--ink, #222);
+  font: inherit;
+  font-size: 1.2cqh;
+  cursor: pointer;
+}
+
+@media print {
+  .rb-discussion__brand-move,
+  .rb-discussion__brand-resize,
+  .rb-discussion__brand-lock { display: none !important; }
+  .rb-discussion__brand { outline: none !important; }
+}

@@ -39,6 +39,10 @@
     return String(value == null ? '' : value).replace(/ /g, ' ');
   }
 
+  // spaceAfter is POINTS, as PowerPoint's spcAft is -- the decks use 9 pt
+  // between paragraphs. lineHeight is a multiplier, as its line spacing is.
+  // Both are paragraph properties, so an address block can sit tight while the
+  // narrative around it keeps its spacing.
   function blankParagraph() {
     return { align: 'left', bullet: false, indent: 0, dir: 'ltr', runs: [] };
   }
@@ -71,6 +75,10 @@
     var indent = parseInt(src.indent, 10);
     para.indent = isFinite(indent) ? Math.max(0, Math.min(MAX_INDENT, indent)) : 0;
     para.dir = src.dir === 'rtl' ? 'rtl' : 'ltr';
+    var after = parseFloat(src.spaceAfter);
+    if (isFinite(after) && after >= 0) para.spaceAfter = Math.round(after * 10) / 10;
+    var lh = parseFloat(src.lineHeight);
+    if (isFinite(lh) && lh > 0) para.lineHeight = Math.round(lh * 100) / 100;
     var runs = Array.isArray(src.runs) ? src.runs : [];
     runs.forEach(function (r) {
       var run = normalizeRun(r);
@@ -112,6 +120,8 @@
         if (p.bullet) out.bullet = true;
         if (p.indent) out.indent = p.indent;
         if (p.dir === 'rtl') out.dir = 'rtl';
+        if (typeof p.spaceAfter === 'number') out.spaceAfter = p.spaceAfter;
+        if (typeof p.lineHeight === 'number') out.lineHeight = p.lineHeight;
         out.runs = p.runs.map(function (r) {
           var run = { text: r.text };
           if (r.bold === true) run.bold = true;
@@ -165,6 +175,10 @@
     if (para.align !== 'left') style += 'text-align:' + para.align + ';';
     if (para.indent) style += 'margin-left:' + (para.indent * 4) + '%;';
     if (para.dir === 'rtl') style += 'direction:rtl;';
+    if (typeof para.spaceAfter === 'number') {
+      style += 'margin-bottom:' + (para.spaceAfter * PT_TO_CQH).toFixed(3) + 'cqh;';
+    }
+    if (typeof para.lineHeight === 'number') style += 'line-height:' + para.lineHeight + ';';
     var inner = para.runs.map(runHtml).join('');
     if (!inner) inner = '<br>';
     var tag = para.bullet ? 'li' : 'div';
@@ -247,6 +261,20 @@
         if (ALIGNMENTS[align]) current.align = align;
         if (source.tagName === 'LI') current.bullet = true;
         if (source.style && source.style.direction === 'rtl') current.dir = 'rtl';
+        var mb = source.style && source.style.marginBottom;
+        if (mb) {
+          var mbNum = parseFloat(mb);
+          if (isFinite(mbNum)) {
+            current.spaceAfter = /cqh$/.test(mb)
+              ? Math.round((mbNum / PT_TO_CQH) * 10) / 10
+              : Math.round((mbNum * 0.75) * 10) / 10;
+          }
+        }
+        var lhRaw = source.style && source.style.lineHeight;
+        if (lhRaw && !/px|%|em/.test(lhRaw)) {
+          var lhNum = parseFloat(lhRaw);
+          if (isFinite(lhNum) && lhNum > 0) current.lineHeight = Math.round(lhNum * 100) / 100;
+        }
         var ml = source.style && source.style.marginLeft;
         if (ml && /%$/.test(ml)) {
           var pct = parseFloat(ml);
