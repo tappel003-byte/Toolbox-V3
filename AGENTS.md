@@ -75,7 +75,9 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
 ## Device intent
 
 - **Field/mobile-first:** Customer File setup, Distress Survey, and Floor Survey must be designed first for practical field use on iPhone/iPad, touch-first and offline-capable.
-- **Desktop-first, mobile-capable:** Distress Edit, Diagnostics, and Report Builder should exploit desktop screen space and pointer precision for editing, analysis, plots, calculations, and report composition. They should still open and provide useful functionality on iPhone/iPad, but identical layout or full desktop equivalence is not required.
+- **Desktop-first, mobile-capable:** Distress Edit should exploit desktop screen space and pointer precision for editing and analysis. It should still open and provide useful functionality on iPhone/iPad, but identical layout or full desktop equivalence is not required.
+- **Desktop only:** Report Builder and Diagnostics are composition workspaces for a large screen and a pointer (DECIDED Tim, Oct 3, 2026). They are not expected to work on a phone, and a phone layout for them is not a requirement. Do not spend effort making them fit a small screen, and do not let that constraint shape their design.
+- **Report Builder and Diagnostics do not require offline capability** (DECIDED Tim, Oct 3, 2026). Offline field capture remains a core requirement for Customer File setup, Distress Survey, and Floor Survey. Report composition happens at a desk; it may assume the network. This does not license gratuitous network dependence, and opening an already-local Customer File must still work.
 - For Customer File library and Sync Now, iPhone, iPad, installed PWA, and desktop browser are equal Toolbox devices.
 - Responsive design means each workspace should fit its actual use context; do not force one identical UI across phone, tablet, and desktop.
 

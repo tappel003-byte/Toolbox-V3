@@ -192,6 +192,21 @@ These notes preserve active product possibilities so they are not lost. They are
 - A link may later earn its place for something a PDF carries badly, such as a very large photo set, or for Tim's own access from the field. That is an internal convenience. The PDF must never depend on a link working.
 - **Toolbox does not send the email.** It produces the PDF and the investigator attaches it in their own mail client. Sending would mean a mail service, deliverability and bounce handling — a new external dependency for something already solved, and it keeps the sent record in the correspondence history where it belongs.
 
+## Report Builder device intent and offline
+
+- **Report Builder and Diagnostics are desktop/large-screen workspaces (DECIDED Tim, Oct 3, 2026).** "It is the intention for Report Builder to never really work outside of a desktop, or a large screen." Composing a 17 x 11 in deliverable means placing boxes precisely with a pointer across a wide canvas plus a tool rail; a phone cannot show the page and the rail at once without becoming a different product. Field capture stays mobile-first — this changes nothing about Floor Survey, Distress Survey or Customer File setup.
+- **Report Builder and Diagnostics do not need offline capability (DECIDED Tim, Oct 3, 2026).** Report composition happens at a desk after the site visit, not in a crawlspace. Offline remains a core requirement everywhere capture happens.
+- Consequence for implementers: do not add phone layouts, touch-target compromises, or offline fallbacks to Report Builder, and do not let any of those constrain its design.
+
+## Floor Survey slides in Report Builder
+
+- **The slide hosts the real Floor Survey topo view (DECIDED Tim, Oct 3, 2026).** Report Builder does not compose its own picture of a topo. It mounts the same component and the same canvas the investigator draws on, so there is one renderer and nothing to drift. "The code is right there."
+- **The camera is the crop.** Scroll to zoom, drag to pan; the view set is the frame. No extent calculation, no margin setting, no crop tool. The camera is stored against fit rather than in pixels so the same framing holds from the screen to a 17 x 11 in page.
+- **One camera for the whole book.** Every Floor Survey slide opens with it, so clicking through Combined, Main Level, Kitchen and Garage is a flip chart: the plan does not move. Because the plan raster has fixed image coordinates, data bleeding outside the walls cannot shift it.
+- **Chrome is per slide and free to move.** The colour scale, the H/L/delta pill and the High and Low markers start from a shared default and are then nudged per page, because the high point sits somewhere different on each boundary. Per-box locking is deliberately not built yet; judge it after using the flip chart.
+- **The page is laid out from the four shipped decks, measured** — not from invented numbers. Every block is a freely movable, resizable, removable box, the way PowerPoint treats them. The topo is the focus of the page and is sized accordingly.
+- The decks carry **no north arrow or "front door" block** on a Floor Survey page; Toolbox had invented one.
+
 ---
 
 ## Closeout

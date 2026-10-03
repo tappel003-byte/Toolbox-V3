@@ -3169,6 +3169,12 @@
       var resize = event.target.closest('[data-rb-floor-resize]');
       var box = event.target.closest('[data-rb-floor-box]');
       if (!box) return;
+      // Inside the live Floor Survey view, a drag is a PAN -- that is what the
+      // gesture means in Floor Survey and the slide has to behave the same way.
+      // Report Builder was claiming it first and dragging the frame across the
+      // page instead, so the plan could never be moved. The frame is moved and
+      // resized from its own handles, which sit outside the drawing.
+      if (!resize && event.target.closest('[data-rb-topo-live]')) return;
       var stage = stageRect('[data-rb-floor-stage]');
       if (!stage || stage.width < 8 || stage.height < 8) return;
       event.preventDefault();
