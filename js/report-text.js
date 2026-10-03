@@ -362,6 +362,7 @@
     var lines = String(text == null ? '' : text).replace(/\r\n?/g, '\n').split('\n');
     var model = { paragraphs: [] };
     lines.forEach(function (line) {
+      if (!line.trim()) return; // separator, not an empty paragraph
       var para = blankParagraph();
       var body = line;
       var heading = body.match(/^\s{0,3}(#{1,6})\s+(.*)$/);
@@ -370,7 +371,13 @@
       if (heading) {
         body = heading[2];
         runBase.bold = true;
-        if (base) runBase.size = Math.round(base * (heading[1].length === 1 ? 1.5 : heading[1].length === 2 ? 1.25 : 1.1) * 10) / 10;
+        // Only scale when a base size is supplied. The shipped reports set
+        // every heading bold at the 12 pt body size, so the discussion page
+        // passes no base and headings stay in the body's size.
+        if (base) {
+          var factor = heading[1].length === 1 ? 1.5 : heading[1].length === 2 ? 1.25 : 1.1;
+          runBase.size = Math.round(base * factor * 10) / 10;
+        }
       } else if (bullet) {
         body = bullet[2];
         para.bullet = true;

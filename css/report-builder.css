@@ -2038,3 +2038,92 @@ body.report-builder-open .canvas {
 @media print {
   .rb-cover-box__move { display: none !important; }
 }
+
+/* ------------------------------------------------------------------ *
+ * Discussion page — two text boxes, measured from the shipped decks.
+ *
+ * All four agree: columns at 1.96% and 51.87%, both 3.03% down and 44.7%
+ * wide, 12 pt body, brand mark at 3.59% / 93.49%. Only the column height
+ * differs between jobs, which is just the box growing to fit the writing.
+ *
+ * The columns carry NO border. The only rule on this page is the outer page
+ * frame; what looks like a box outline in PowerPoint is its selection chrome.
+ * ------------------------------------------------------------------ */
+
+.rb-sheet__margin--discussion {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: visible;
+}
+
+.rb-discussion {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  background: #fff;
+  color: #1a1a1a;
+  font-family: Calibri, Carlito, "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+.rb-discussion__frame {
+  position: absolute;
+  border: 0.19cqh solid #1a1a1a;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+/* 12 pt on an 11 in page = 1.515cqh. No clamp: a clamped size stops scaling
+   and would print smaller than it previews. */
+.rb-discussion__body {
+  position: absolute;
+  box-sizing: border-box;
+  column-count: 2;
+  /* Fill the first column, then flow into the second -- what a PowerPoint
+     two-column text box does, and what the shipped reports show. Balancing
+     was tried and rejected: Chromium split at the seeded header, leaving the
+     left column nearly empty and everything pasted in the right. */
+  column-fill: auto;
+  font-size: 1.515cqh;
+  line-height: 1.32;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+}
+
+/* A heading should not be stranded at the foot of a column. */
+.rb-discussion__body .rb-rt__p { break-inside: avoid; }
+
+.rb-discussion__body:focus {
+  outline: 1px solid rgba(139, 94, 60, 0.45);
+  outline-offset: 2px;
+}
+
+.rb-discussion:not(.is-locked) .rb-discussion__body:hover {
+  outline: 1px dashed rgba(139, 94, 60, 0.3);
+  outline-offset: 2px;
+}
+
+.rb-discussion__body .rb-rt__p { margin: 0 0 0.75em; }
+.rb-discussion__body .rb-rt__p:last-child { margin-bottom: 0; }
+
+.rb-discussion__body .rb-rt__list {
+  margin: 0 0 0.75em;
+  padding-left: 1.6em;
+}
+
+.rb-discussion__body .rb-rt__p--bullet { margin: 0 0 0.3em; }
+
+.rb-discussion__brand {
+  position: absolute;
+  display: flex;
+  align-items: flex-end;
+}
+
+.rb-discussion__brand > * { max-width: 100%; }
+
+@media print {
+  .rb-discussion__body:hover,
+  .rb-discussion__body:focus { outline: none !important; }
+}

@@ -1388,6 +1388,14 @@
         page._coverLayout || (page.meta && page.meta.coverLayout),
         page._overviewUrl || ''
       ));
+    } else if (page.type === 'section' && page.meta && page.meta.sectionId === 'discussion' &&
+               window.ToolboxReportDiscussion) {
+      margin.classList.add('rb-sheet__margin--discussion');
+      margin.appendChild(window.ToolboxReportDiscussion.renderPage(page, {
+        locked: !!(page.meta && page.meta.locked),
+        brandMark: brandMark,
+        facts: page._facts || null,
+      }));
     } else if (page.type === 'section' && page.meta && page.meta.sectionId === 'property') {
       addLine(margin, 'rb-sheet__kicker', 'Report');
       var propertyTitle = document.createElement('h1');
@@ -1454,6 +1462,8 @@
 
     var hidePageNum = page.type === 'cover' ||
       page.type === 'pictures' ||
+      // The decks carry no page number on the discussion sheet.
+      (page.type === 'section' && page.meta && page.meta.sectionId === 'discussion') ||
       (page.type === 'floor' && !(page.meta && page.meta.reserved));
     if (!hidePageNum) {
       var footer = document.createElement('p');
@@ -1885,6 +1895,10 @@
         current._coverLayout = coverLayout;
         current._overviewUrl = coverOverviewUrl;
       }
+      if (current && current.type === 'section' && current.meta &&
+          current.meta.sectionId === 'discussion') {
+        current._facts = discussionFacts(current);
+      }
       renderSheet(sheetEl, current, pages);
       syncPenLogPanel(current);
       fitSheet(root);
@@ -1944,8 +1958,40 @@
     // Typing and a toolbar command both have to persist the same way: a
     // toolbar click rewrites the field's markup without the investigator
     // touching the keyboard.
+    // Only what the Customer File already holds. Nothing interpretive.
+    function discussionFacts(page) {
+      var meta = (page && page.meta) || {};
+      var record = workingRecord || {};
+      var parts = addressParts(meta.addressFull || meta.address || record.propertyAddress || '');
+      var floor = record.floorSurvey || {};
+      var canvases = (record.planSetup && record.planSetup.canvases) || [];
+      var facing = meta.frontDoorFacing || '';
+      if (!facing) {
+        for (var i = 0; i < canvases.length && !facing; i += 1) {
+          facing = canvases[i] && (canvases[i].frontDoorFacing || canvases[i].frontDoor) || '';
+        }
+      }
+      return {
+        surveyDate: formatSurveyDate(meta.floorSurveyDate || floor.inspectionDate || '', true),
+        street: parts.street,
+        cityLine: parts.cityLine,
+        frontDoor: facing,
+      };
+    }
+
     function commitRichField(field) {
       if (!field) return false;
+      var sectionField = field.closest ? field.closest('[data-rb-section-field]') : null;
+      if (sectionField) {
+        var sectionPage = activePage();
+        if (!sectionPage) return false;
+        var sApi = window.ToolboxReportText;
+        sectionPage.reportText = sectionPage.reportText || {};
+        sectionPage.reportText[sectionField.getAttribute('data-rb-section-field')] =
+          sApi ? sApi.compact(sApi.fromElement(sectionField)) : sectionField.textContent;
+        markDirty();
+        return true;
+      }
       var coverField = field.closest ? field.closest('[data-rb-cover-field]') : null;
       if (!coverField) return false;
       var coverPage = activePage();
@@ -1992,7 +2038,9 @@
       var text = event.clipboardData.getData('text/plain');
       if (!text || !api.looksLikeMarkdown(text)) return;
       event.preventDefault();
-      var html = api.toHtml(api.fromMarkdown(text, 14));
+      // No base size: headings come in bold at the field's own size, as the
+      // shipped reports set them, rather than stepping up a scale.
+      var html = api.toHtml(api.fromMarkdown(text, 0));
       if (!document.execCommand('insertHTML', false, html)) return;
       commitRichField(field);
     });
@@ -2003,9 +2051,9 @@
     });
 
     sheetEl.addEventListener('input', function (event) {
-      var coverField = event.target.closest('[data-rb-cover-field]');
-      if (coverField) {
-        if (!commitRichField(coverField)) return;
+      var richTarget = event.target.closest('[data-rb-cover-field], [data-rb-section-field]');
+      if (richTarget) {
+        if (!commitRichField(richTarget)) return;
         return;
       }
       var field = event.target.closest('[data-rb-caption]');
