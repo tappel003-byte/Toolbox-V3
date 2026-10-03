@@ -1013,28 +1013,29 @@ body.report-builder-open .canvas {
 }
 
 /* Fields are transparent inputs so the locked page reads as plain text. */
-.rb-cover input,
-.rb-cover textarea {
+/* Report-owned text edits in place. These are rich-text regions, not inputs:
+   an input carries one uniform style, so a word inside it cannot be bolded. */
+.rb-cover [data-rb-rich] {
   display: block;
   width: 100%;
   margin: 0;
   border: 0;
-  border-radius: 0;
   padding: 0;
   background: transparent;
   color: inherit;
   font: inherit;
   letter-spacing: inherit;
   box-sizing: border-box;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.rb-cover input:focus,
-.rb-cover textarea:focus {
+.rb-cover [data-rb-rich]:focus {
   outline: 1px solid rgba(139, 94, 60, 0.55);
   outline-offset: 1px;
 }
 
-.rb-cover input::placeholder { color: #b9b2a6; }
+.rb-cover [data-rb-rich]:focus-visible { outline-offset: 1px; }
 
 /* ---- Prepared For: label left, contact stacked right (TextBox 24) ---- */
 
@@ -1059,15 +1060,15 @@ body.report-builder-open .canvas {
   min-width: 0;
 }
 
-.rb-cover input.rb-cover__name,
-.rb-cover input.rb-cover__email {
+.rb-cover .rb-cover__name,
+.rb-cover .rb-cover__email {
   color: var(--rb-sage);
   font-size: 2.02cqh;
   font-weight: 700;
   line-height: 1.32;
 }
 
-.rb-cover input.rb-cover__phone {
+.rb-cover .rb-cover__phone {
   color: var(--rb-ink);
   font-size: 2.02cqh;
   font-weight: 700;
@@ -1087,7 +1088,7 @@ body.report-builder-open .canvas {
   letter-spacing: 0.25em;
 }
 
-.rb-cover input.rb-cover__street {
+.rb-cover .rb-cover__street {
   margin-top: 2.23cqh;
   color: var(--rb-ink);
   font-size: 7.576cqh;
@@ -1100,7 +1101,7 @@ body.report-builder-open .canvas {
   letter-spacing: -0.017em;
 }
 
-.rb-cover input.rb-cover__city {
+.rb-cover .rb-cover__city {
   /* Street box 35.91% + its 9.24cqh line box ends at 45.15%; the deck puts
      the city box at 46.10%, so the remaining gap is 0.95. */
   margin-top: 0.95cqh;
@@ -1127,7 +1128,7 @@ body.report-builder-open .canvas {
 
 .rb-cover__date-row .rb-cover__label { flex: 0 0 30%; }
 
-.rb-cover input.rb-cover__date-value {
+.rb-cover .rb-cover__date-value {
   flex: 1 1 auto;
   min-width: 0;
   color: var(--rb-gray);
@@ -1136,7 +1137,7 @@ body.report-builder-open .canvas {
   line-height: 1.4;
 }
 
-.rb-cover input.rb-cover__corrected {
+.rb-cover .rb-cover__corrected {
   margin-left: 30%;
   width: 70%;
   color: var(--rb-gray);
@@ -1201,7 +1202,7 @@ body.report-builder-open .canvas {
   white-space: nowrap;
 }
 
-.rb-cover input.rb-cover__contents-field {
+.rb-cover .rb-cover__contents-field {
   flex: 1 1 auto;
   min-width: 0;
   font-size: inherit;
@@ -1778,4 +1779,118 @@ body.report-builder-open .canvas {
 
 .rb-topo-page--chrome-only .rb-topo-page__body {
   min-height: 55%;
+}
+
+/* ------------------------------------------------------------------ *
+ * Rich text blocks (shared by every report-owned field)
+ * ------------------------------------------------------------------ */
+
+.rb-rt__p { margin: 0; }
+
+.rb-rt__list {
+  margin: 0;
+  padding-left: 1.4em;
+  list-style: disc;
+}
+
+.rb-rt__p--bullet { display: list-item; }
+
+/* ------------------------------------------------------------------ *
+ * Formatting toolbar — always across the top, every page, the way the
+ * PowerPoint Home ribbon is. Pages left, canvas centre, Toolbox right.
+ * ------------------------------------------------------------------ */
+
+.rb-toolbar__format {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rb-format {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+.rb-format__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 8px;
+  border-right: 1px solid var(--line);
+}
+
+.rb-format__group:last-of-type { border-right: 0; }
+
+.rb-format__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.rb-format__btn:hover { background: rgba(8, 32, 54, 0.07); }
+
+.rb-format__btn.is-on {
+  border-color: var(--line);
+  background: var(--accent-soft, #f3d8ce);
+  color: var(--accent, #c14a2b);
+}
+
+.rb-format__btn--b { font-weight: 800; }
+.rb-format__btn--i { font-style: italic; }
+.rb-format__btn--u { text-decoration: underline; }
+
+/* The alignment glyphs share one character; skew them so the group reads
+   as left / centre / right at a glance rather than three identical marks. */
+.rb-format__btn[data-rb-fmt="center"] { justify-content: center; }
+.rb-format__btn[data-rb-fmt="right"] { justify-content: flex-end; }
+.rb-format__btn[data-rb-fmt="left"] { justify-content: flex-start; }
+
+.rb-format__font,
+.rb-format__size {
+  height: 28px;
+  max-width: 128px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel, #fff);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.rb-format__size { max-width: 64px; }
+
+.rb-format__hint {
+  color: var(--muted, #6b6b6b);
+  font-size: 12px;
+}
+
+.rb-format.is-ready .rb-format__hint { display: none; }
+
+/* Until a field has focus the commands have nothing to act on. */
+.rb-format:not(.is-ready) .rb-format__btn,
+.rb-format:not(.is-ready) .rb-format__font,
+.rb-format:not(.is-ready) .rb-format__size {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+@media (max-width: 720px) {
+  .rb-format__group {
+    padding-right: 6px;
+    gap: 1px;
+  }
+  .rb-format__btn { min-width: 26px; }
+  .rb-format__font { max-width: 92px; }
 }

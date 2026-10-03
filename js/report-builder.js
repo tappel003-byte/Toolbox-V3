@@ -17,9 +17,6 @@
   var PHOTOS_PER_PAGE = 10;
   var REPORT_SCHEMA = 'toolbox.report-builder';
   var REPORT_SCHEMA_VERSION = 1;
-  var WORKSPACE_LEAD =
-    'Page order, captions, Floor Import/Lock, and source jumps are live. Sheet layouts rebuild from real report screenshots.';
-
   var mountGeneration = 0;
   var penLogUi = {
     selectedPinId: '',
@@ -30,6 +27,7 @@
     layout: null,
   };
   var fitObserver = null;
+  var formatToolbar = null;
   var fitOnResize = null;
   var pageSeq = 1;
 
@@ -814,19 +812,23 @@
     return el;
   }
 
+  // Report-owned text is editable in place and carries its own formatting, so
+  // these are rich-text regions rather than inputs: an <input> can only hold
+  // one uniform style, which makes bolding a word inside it impossible. The
+  // deck-measured sizes in the stylesheet remain the DEFAULT; anything set
+  // here overrides it for that field and persists on the page.
   function coverField(tag, className, fieldKey, value, locked) {
-    var el = document.createElement(tag || 'input');
-    el.className = className;
+    var el = document.createElement('div');
+    el.className = className + ' rb-rt';
     el.setAttribute('data-rb-cover-field', fieldKey);
-    if (tag === 'textarea') {
-      el.rows = 2;
-      el.value = value || '';
-      el.readOnly = !!locked;
-    } else {
-      el.type = 'text';
-      el.value = value || '';
-      el.readOnly = !!locked;
+    el.setAttribute('data-rb-rich', fieldKey);
+    el.setAttribute('role', 'textbox');
+    if (!locked) {
+      el.setAttribute('contenteditable', 'true');
+      el.setAttribute('spellcheck', 'true');
     }
+    var api = window.ToolboxReportText;
+    el.innerHTML = api ? api.toHtml(value) : String(value == null ? '' : value);
     return el;
   }
 
@@ -845,7 +847,25 @@
   // "Figure 1 Floor Level Survey — Combined". Strip every leading figure
   // prefix once on read so existing books (Keulen, Chalmers) come back clean
   // instead of showing the old text forever.
+  // Saved cover text may be a plain string (pre-rich-text) or a model. Keep a
+  // model as a model -- String() on one yields "[object Object]" on the page.
+  function keepRich(value, fallback) {
+    if (value == null) return fallback;
+    if (window.ToolboxReportText && window.ToolboxReportText.isModel(value)) return value;
+    return String(value);
+  }
+
   function stripFigurePrefix(text) {
+    var api = window.ToolboxReportText;
+    if (api && api.isModel(text)) {
+      var model = api.normalize(text);
+      var first = model.paragraphs[0];
+      if (first && first.runs.length) {
+        first.runs[0].text = stripFigurePrefix(first.runs[0].text);
+        if (!first.runs[0].text) first.runs.shift();
+      }
+      return model;
+    }
     var out = String(text == null ? '' : text);
     var prev = null;
     while (prev !== out) {
@@ -869,19 +889,19 @@
       var fallback = defaultContentsLine(entry);
       return {
         pageId: entry.pageId,
-        text: priorLines[entry.pageId] != null ? String(priorLines[entry.pageId]) : fallback,
+        text: keepRich(priorLines[entry.pageId], fallback),
         figureNumber: entry.figureNumber || null,
         isDiscussion: !!(entry.isDiscussion || entry.type === 'section'),
       };
     });
     return {
-      name: prior.name != null ? String(prior.name) : (meta.customerName || page.title || ''),
-      email: prior.email != null ? String(prior.email) : (meta.email || ''),
-      phone: prior.phone != null ? String(prior.phone) : (meta.cellPhone || ''),
-      street: prior.street != null ? String(prior.street) : (parts.street || meta.address || ''),
-      cityLine: prior.cityLine != null ? String(prior.cityLine) : (parts.cityLine || ''),
-      surveyDate: prior.surveyDate != null ? String(prior.surveyDate) : formatSurveyDate(meta.floorSurveyDate || '', false),
-      corrected: prior.corrected != null ? String(prior.corrected) : 'Corrected for Floor Differences',
+      name: keepRich(prior.name, meta.customerName || page.title || ''),
+      email: keepRich(prior.email, meta.email || ''),
+      phone: keepRich(prior.phone, meta.cellPhone || ''),
+      street: keepRich(prior.street, parts.street || meta.address || ''),
+      cityLine: keepRich(prior.cityLine, parts.cityLine || ''),
+      surveyDate: keepRich(prior.surveyDate, formatSurveyDate(meta.floorSurveyDate || '', false)),
+      corrected: keepRich(prior.corrected, 'Corrected for Floor Differences'),
       contents: contents,
     };
   }
@@ -1000,7 +1020,12 @@
 
     var overview = coverBoxShell('overview', layout, locked);
     overview.classList.add('rb-cover-box--overview');
-    var fullAddress = [text.street, text.cityLine].filter(Boolean).join(', ') || meta.addressFull || meta.address || '';
+    var flat = function (v) {
+      var api = window.ToolboxReportText;
+      return api ? api.toPlain(v).replace(/\n/g, ' ').trim() : String(v == null ? '' : v);
+    };
+    var fullAddress = [flat(text.street), flat(text.cityLine)].filter(Boolean).join(', ') ||
+      meta.addressFull || meta.address || '';
     var mapsUrl = api && typeof api.mapsSearchUrl === 'function' ? api.mapsSearchUrl(fullAddress) : '';
     if (overviewUrl) {
       evidenceImage(overview, overviewUrl, 'rb-cover__overview-image', 'Site overview');
@@ -1892,34 +1917,70 @@
       renderPages();
     });
 
+    // Typing and a toolbar command both have to persist the same way: a
+    // toolbar click rewrites the field's markup without the investigator
+    // touching the keyboard.
+    function commitRichField(field) {
+      if (!field) return false;
+      var coverField = field.closest ? field.closest('[data-rb-cover-field]') : null;
+      if (!coverField) return false;
+      var coverPage = activePage();
+      if (!coverPage || coverPage.type !== 'cover') return false;
+      coverPage.reportText = coverPage.reportText || seedCoverText(coverPage, pages);
+      var coverKey = coverField.getAttribute('data-rb-cover-field') || '';
+      var richApi = window.ToolboxReportText;
+      var coverValue = richApi
+        ? richApi.compact(richApi.fromElement(coverField))
+        : coverField.textContent;
+      if (coverKey.indexOf('contents:') === 0) {
+        var lineIndex = parseInt(coverKey.slice(9), 10);
+        if (!isFinite(lineIndex)) return false;
+        coverPage.reportText.contents = Array.isArray(coverPage.reportText.contents)
+          ? coverPage.reportText.contents
+          : [];
+        if (!coverPage.reportText.contents[lineIndex]) {
+          coverPage.reportText.contents[lineIndex] = {
+            pageId: coverField.getAttribute('data-rb-cover-page') || '',
+            text: '',
+          };
+        }
+        coverPage.reportText.contents[lineIndex].text = coverValue;
+        coverPage.reportText.contents[lineIndex].pageId =
+          coverField.getAttribute('data-rb-cover-page') ||
+          coverPage.reportText.contents[lineIndex].pageId ||
+          '';
+      } else {
+        coverPage.reportText[coverKey] = coverValue;
+      }
+      markDirty();
+      return true;
+    }
+
+    // Narrative comes back from an AI collaborator as markdown. Parsing it
+    // here means headings, bullets and bold arrive already formatted instead
+    // of being reapplied by hand.
+    sheetEl.addEventListener('paste', function (event) {
+      var field = event.target.closest && event.target.closest('[data-rb-rich]');
+      if (!field || field.getAttribute('contenteditable') !== 'true') return;
+      var api = window.ToolboxReportText;
+      if (!api || !event.clipboardData) return;
+      var text = event.clipboardData.getData('text/plain');
+      if (!text || !api.looksLikeMarkdown(text)) return;
+      event.preventDefault();
+      var html = api.toHtml(api.fromMarkdown(text, 14));
+      if (!document.execCommand('insertHTML', false, html)) return;
+      commitRichField(field);
+    });
+
+    sheetEl.addEventListener('focusin', function (event) {
+      var field = event.target.closest && event.target.closest('[data-rb-rich]');
+      if (field && formatToolbar) formatToolbar.noteField(field);
+    });
+
     sheetEl.addEventListener('input', function (event) {
       var coverField = event.target.closest('[data-rb-cover-field]');
       if (coverField) {
-        var coverPage = activePage();
-        if (!coverPage || coverPage.type !== 'cover') return;
-        coverPage.reportText = coverPage.reportText || seedCoverText(coverPage, pages);
-        var coverKey = coverField.getAttribute('data-rb-cover-field') || '';
-        if (coverKey.indexOf('contents:') === 0) {
-          var lineIndex = parseInt(coverKey.slice(9), 10);
-          if (!isFinite(lineIndex)) return;
-          coverPage.reportText.contents = Array.isArray(coverPage.reportText.contents)
-            ? coverPage.reportText.contents
-            : [];
-          if (!coverPage.reportText.contents[lineIndex]) {
-            coverPage.reportText.contents[lineIndex] = {
-              pageId: coverField.getAttribute('data-rb-cover-page') || '',
-              text: '',
-            };
-          }
-          coverPage.reportText.contents[lineIndex].text = coverField.value;
-          coverPage.reportText.contents[lineIndex].pageId =
-            coverField.getAttribute('data-rb-cover-page') ||
-            coverPage.reportText.contents[lineIndex].pageId ||
-            '';
-        } else {
-          coverPage.reportText[coverKey] = coverField.value;
-        }
-        markDirty();
+        if (!commitRichField(coverField)) return;
         return;
       }
       var field = event.target.closest('[data-rb-caption]');
@@ -2339,6 +2400,12 @@
     setSaveStatus('Loading…');
     renderPages();
     watchSheet(root);
+
+    if (window.ToolboxReportToolbar) {
+      formatToolbar = window.ToolboxReportToolbar.mount(root, {
+        onChange: function (field) { commitRichField(field); },
+      });
+    }
     fileLabelEl.textContent = 'Loading Customer File…';
 
     function restoreReturnPage() {
@@ -2464,7 +2531,7 @@
       '    <span class="file-status" id="rb-file-status">Draft</span>' +
       '  </div>' +
       '  <div class="rb-toolbar">' +
-      '    <p class="rb-toolbar__lead">' + WORKSPACE_LEAD + '</p>' +
+      '    <div class="rb-toolbar__format" data-rb-format-host></div>' +
       '    <button type="button" id="rb-export-ai" class="btn btn--accent rb-export">Export for AI</button>' +
       '    <p class="rb-ai-status" id="rb-ai-status" aria-live="polite"></p>' +
       '  </div>' +
@@ -2516,6 +2583,10 @@
 
   function unmount() {
     mountGeneration += 1;
+    if (formatToolbar) {
+      formatToolbar.destroy();
+      formatToolbar = null;
+    }
     if (fitObserver) {
       fitObserver.disconnect();
       fitObserver = null;
