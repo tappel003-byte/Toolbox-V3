@@ -332,6 +332,8 @@ Direct page composition and meaningful content manipulation remain required. **B
 
 **Sheet formatting rebuild path (DECIDED Tim, Oct 2, 2026):** Keep Report Builder **plumbing** (Customer File `reportBuilder` autosave, page rail/order, jump-return, Distress Put-on-report, Floor Import/Lock, evidence rehydrate, Export for AI). Rebuild **sheet formatting** from real finished-report screenshots (Chalmers Ford, Mitchell, 1515 Los Nietos, and similar), talking through placement of each piece before coding the next page type. Do not invent a design-app layer ahead of those screenshots.
 
+**Title page model (DECIDED Tim, Oct 3, 2026):** One Mitchell-style title sheet — thin border; Prepared For / address / Survey Date / Corrected line / CONTENTS from the actual slides / optional site overview image with a ready Google Maps link from the property address. No separate Contents sheet. Typical slide order after the title: Discussion, then figures (Floor Survey starting with Combined as Figure 1, then Picture Locations, then Pictures). Everything after Discussion is Figure N by slide order; reordering renumbers. Title pieces are movable/resizable boxes with Lock, same spirit as Floor layout.
+
 **Ownership split (unchanged in substance):**  
 - Source apps own geometry and measurements (pins, photos, readings). Staging may seed report pages from source text.  
 - Report Builder owns deliverable wording after drop-in (captions, notes, discussion). Report text does **not** write back into Distress or Floor Survey.  

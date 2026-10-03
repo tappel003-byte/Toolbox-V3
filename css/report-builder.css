@@ -904,7 +904,7 @@ body.report-builder-open .canvas {
   font-weight: 700;
 }
 
-/* Mitchell cover: identity left, CONTENTS box right. */
+/* Mitchell title page: movable filled boxes + optional site overview. */
 .rb-cover {
   --rb-copper: #a67a52;
   --rb-sage: #7f9278;
@@ -912,16 +912,60 @@ body.report-builder-open .canvas {
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-  justify-content: flex-start;
-  gap: 7%;
-  padding: 3% 2% 2.5%;
+  height: 100%;
   color: #222;
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
 
-.rb-cover__prepared {
+.rb-cover__bar {
   flex: 0 0 auto;
-  max-width: 48%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 6px;
+}
+
+.rb-cover__hint {
+  margin: 0;
+  color: #666;
+  font-size: clamp(10px, 1.35cqb, 12px);
+}
+
+.rb-cover__stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+.rb-cover-box {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.rb-cover:not(.is-locked) .rb-cover-box {
+  outline: 1px dashed rgba(166, 122, 82, 0.55);
+  cursor: move;
+}
+
+.rb-cover.is-locked .rb-cover-box {
+  outline: none;
+  cursor: default;
+}
+
+.rb-cover-box__resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  border-right: 2px solid var(--rb-copper);
+  border-bottom: 2px solid var(--rb-copper);
+  cursor: nwse-resize;
+  z-index: 2;
 }
 
 .rb-cover__label {
@@ -929,7 +973,7 @@ body.report-builder-open .canvas {
   font-weight: 600;
 }
 
-.rb-cover__prepared .rb-cover__label,
+.rb-cover-box--prepared .rb-cover__label,
 .rb-cover__name,
 .rb-cover__email,
 .rb-cover__phone {
@@ -954,15 +998,6 @@ body.report-builder-open .canvas {
   color: #111;
   font-size: clamp(12px, 1.8cqb, 16px);
   font-weight: 700;
-}
-
-.rb-cover__main {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.95fr);
-  gap: 4%;
-  align-items: start;
-  flex: 0 0 auto;
-  margin-top: 2%;
 }
 
 .rb-cover__product {
@@ -992,7 +1027,7 @@ body.report-builder-open .canvas {
 .rb-cover__rule {
   width: min(12em, 70%);
   height: 2px;
-  margin: 1.1em 0 0.8em;
+  margin: 0 0 0.7em;
   background: var(--rb-copper);
 }
 
@@ -1009,10 +1044,12 @@ body.report-builder-open .canvas {
 }
 
 .rb-cover__contents {
+  height: 100%;
   border: 1px solid #d2c4b4;
   padding: 0.7em 0.9em 0.8em;
-  min-height: 10em;
   background: #fff;
+  box-sizing: border-box;
+  overflow: auto;
 }
 
 .rb-cover__contents-title {
@@ -1044,6 +1081,45 @@ body.report-builder-open .canvas {
 }
 
 .rb-cover__contents-item strong {
+  font-weight: 700;
+}
+
+.rb-cover-box--overview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #f7f5f2;
+}
+
+.rb-cover__overview-image {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  object-fit: cover;
+  border: 1px solid #333;
+}
+
+.rb-cover__overview-empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #b9aa98;
+  color: #888;
+  font-size: clamp(11px, 1.5cqb, 13px);
+}
+
+.rb-cover__overview-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.rb-cover__maps-link {
+  color: var(--rb-copper);
+  font-size: clamp(10px, 1.35cqb, 12px);
   font-weight: 700;
 }
 

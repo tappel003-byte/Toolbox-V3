@@ -45,22 +45,20 @@ const logic = await page.evaluate(() => {
 
   const empty = src.assemble(src.read({ id: 'empty', firstName: 'Ada', lastName: 'Lovelace' }));
   const emptyTypes = empty.pages.map((item) => item.type);
-  assert('empty file keeps the skeleton order',
-    emptyTypes.join(',') === 'cover,toc,section,distress,floor,diagnostics,section,section,section',
+  assert('empty file is cover, discussion, then floor figure',
+    emptyTypes.join(',') === 'cover,section,floor',
     emptyTypes.join(','));
   const emptyTitles = src.contents(empty.pages).map((item) => item.title);
-  assert('empty TOC lists reserved sections',
-    emptyTitles.indexOf('Distress Survey') !== -1 &&
+  assert('CONTENTS starts with Discussion then Floor Survey',
+    emptyTitles[0] === 'Floor Level Survey Results - Discussion' &&
     emptyTitles.indexOf('Floor Survey') !== -1 &&
-    emptyTitles.indexOf('Diagnostics') !== -1 &&
-    emptyTitles.indexOf('Discussion') !== -1 &&
-    emptyTitles.indexOf('Conclusions') !== -1 &&
-    emptyTitles.indexOf('Limitations') !== -1,
+    emptyTitles.indexOf('Table of Contents') === -1 &&
+    emptyTitles.indexOf('Property') === -1,
     emptyTitles.join(' | '));
-  assert('TOC skips cover and contents',
-    emptyTitles.indexOf('Ada Lovelace') === -1 && emptyTitles.indexOf('Table of Contents') === -1);
-  assert('TOC numbers are the sheet numbers',
-    src.contents(empty.pages).every((item) => empty.pages[item.number - 1].id === item.pageId));
+  assert('TOC skips cover',
+    emptyTitles.indexOf('Ada Lovelace') === -1);
+  assert('figures after Discussion are numbered',
+    empty.pages.filter((p) => p.type === 'floor')[0].meta.figureNumber === 1);
 
   const record = {
     id: 'synthetic-report',
@@ -132,25 +130,30 @@ const logic = await page.evaluate(() => {
   const distressIds = sequence.pages.filter((item) => item.type === 'distress').map((item) => item.id);
   const floorIds = sequence.pages.filter((item) => item.type === 'floor').map((item) => item.id);
   const types = sequence.pages.map((item) => item.type);
-  const distressAt = types.indexOf('distress');
+  const discussionAt = types.indexOf('section');
   const floorAt = types.indexOf('floor');
-  const dxAt = types.indexOf('diagnostics');
-  assert('distress sheets are consecutive',
-    distressIds.length === 3 && types.slice(distressAt, distressAt + 3).every((type) => type === 'distress'));
-  assert('floor sheets are consecutive after distress',
-    floorIds.length === 3 && floorAt === distressAt + 3 &&
+  const distressAt = types.indexOf('distress');
+  assert('discussion is immediately after cover',
+    types[0] === 'cover' && discussionAt === 1);
+  assert('floor sheets are consecutive after discussion',
+    floorIds.length === 3 && floorAt === 2 &&
     types.slice(floorAt, floorAt + 3).every((type) => type === 'floor'));
-  assert('diagnostics follows the floor block', dxAt === floorAt + 3);
+  assert('picture locations follow the floor block',
+    distressIds.length === 3 && distressAt === floorAt + 3 &&
+    types.slice(distressAt, distressAt + 3).every((type) => type === 'distress'));
+  assert('diagnostics is not auto-assembled', types.indexOf('diagnostics') === -1);
   const toc = src.contents(sequence.pages).map((item) => item.title);
-  assert('TOC names each distress and floor sheet',
-    toc.indexOf('Pen Log — Basement') !== -1 &&
-    toc.indexOf('Pen Log — Main Level') !== -1 &&
-    toc.indexOf('Pen Log — Second Floor') !== -1 &&
+  assert('CONTENTS names discussion, floor, and picture locations',
+    toc[0] === 'Floor Level Survey Results - Discussion' &&
+    toc.indexOf('Picture Locations — Basement') !== -1 &&
+    toc.indexOf('Picture Locations — Main Level') !== -1 &&
     toc.indexOf('Floor Level Survey — Basement — Current Floor Survey') !== -1 &&
     toc.indexOf('Floor Level Survey — Main Level — Current Floor Survey') !== -1 &&
-    toc.indexOf('Floor Level Survey — Basement — January survey') !== -1 &&
-    toc.indexOf('Diagnostics — Level comparison') !== -1,
+    toc.indexOf('Floor Level Survey — Basement — January survey') !== -1,
     toc.join(' | '));
+  assert('Figure 1 is the first floor sheet',
+    sequence.pages[floorAt].meta.figureNumber === 1,
+    String(sequence.pages[floorAt].meta.figureNumber));
   const joined = JSON.stringify(sequence);
   assert('sequence does not invent findings language',
     !/recommend|settlement|causation|conclusion is|the building/i.test(joined));
@@ -248,15 +251,31 @@ check('cover shows FLOOR LEVEL SURVEY and CONTENTS',
   `${opened.product} | ${opened.contents}`);
 check('sheet is 11×17 landscape', opened.ratio > 1.5 && opened.ratio < 1.58, String(opened.ratio));
 check('source jump links remain', opened.links.join(',') === 'floor,distress,diagnostics', opened.links.join(','));
-check('rail lists Pen Log then floor sheets',
-  opened.captions.indexOf('Pen Log · Basement') !== -1 &&
-  opened.captions.indexOf('Pen Log · Basement') < opened.captions.indexOf('Pen Log · Main Level') &&
-  opened.captions.indexOf('Floor · Basement') > opened.captions.indexOf('Pen Log · Main Level'),
+check('rail lists Discussion, floor, then picture locations',
+  opened.captions.indexOf('Discussion') !== -1 &&
+  opened.captions.indexOf('Floor · Basement') !== -1 &&
+  opened.captions.indexOf('Picture Locations · Basement') !== -1 &&
+  opened.captions.indexOf('Floor · Basement') < opened.captions.indexOf('Picture Locations · Basement'),
   opened.captions.join(' | '));
 check('fake composition toolbar is gone', opened.fakeTools.length === 0, opened.fakeTools.join(','));
 check('workspace keeps Export for AI and rebuild lead',
   opened.exportAi && /screenshots/i.test(opened.lead),
   opened.lead);
+const coverBoxes = await page.evaluate(() => ({
+  boxes: [...document.querySelectorAll('[data-rb-cover-box]')].map((n) => n.getAttribute('data-rb-cover-box')),
+  maps: !!document.querySelector('.rb-cover__maps-link'),
+  lock: document.querySelector('[data-rb-cover-lock]')?.getAttribute('data-rb-cover-lock') || '',
+  contents: [...document.querySelectorAll('.rb-cover__contents-item')].map((n) => n.textContent.trim()),
+}));
+check('title page has movable Mitchell boxes',
+  coverBoxes.boxes.join(',') === 'prepared,identity,date,contents,overview' &&
+  coverBoxes.lock === 'lock' &&
+  coverBoxes.maps,
+  JSON.stringify(coverBoxes));
+check('CONTENTS on title lists Discussion then figures',
+  /Discussion/i.test(coverBoxes.contents[0] || '') &&
+  coverBoxes.contents.some((t) => /Figure 1/.test(t)),
+  coverBoxes.contents.join(' | '));
 await page.waitForFunction(() => {
   const text = document.querySelector('#rb-save-status')?.textContent || '';
   return /^Saved/.test(text);
@@ -279,36 +298,14 @@ check('saved reportBuilder has pages and no evidence blobs',
 
 await page.screenshot({ path: `${OUT}/report-builder-skeleton-desktop-cover.png` });
 
-await page.click('.rb-thumb[data-page-id="toc"]');
-await page.waitForFunction(() => document.querySelector('.rb-sheet').getAttribute('data-page-type') === 'toc');
-const tocUi = await page.evaluate(() => {
-  return [...document.querySelectorAll('.rb-toc__item')].map((node) => ({
-    title: node.querySelector('span').textContent,
-    number: node.querySelector('.rb-toc__num').textContent,
-    id: node.getAttribute('data-rb-goto'),
-  }));
+const floorThumb = await page.evaluate(() => {
+  const btn = [...document.querySelectorAll('.rb-thumb')].find((node) =>
+    /Floor · Basement/.test(node.querySelector('.rb-thumb__caption')?.textContent || ''));
+  return btn ? btn.getAttribute('data-page-id') : '';
 });
-check('TOC is generated from included sheets',
-  tocUi.some((item) => item.title === 'Pen Log — Basement' && item.id === 'distress-canvas-b') &&
-  tocUi.some((item) => item.title === 'Floor Level Survey — Main Level' && item.id.indexOf('canvas-m') !== -1),
-  tocUi.map((item) => item.number + ' ' + item.title).join(' | '));
-const tocNumbers = await page.evaluate(() => {
-  const thumbs = [...document.querySelectorAll('.rb-thumb')];
-  return [...document.querySelectorAll('.rb-toc__item')].every((node) => {
-    const index = thumbs.findIndex((thumb) => thumb.getAttribute('data-page-id') === node.getAttribute('data-rb-goto'));
-    return String(index + 1) === node.querySelector('.rb-toc__num').textContent;
-  });
-});
-check('TOC page numbers match sheet order', tocNumbers);
-
-await page.screenshot({ path: `${OUT}/report-builder-skeleton-desktop-toc.png` });
-
-const floorEntry = tocUi.find((item) => item.title === 'Floor Level Survey — Basement');
-check('TOC lists the Basement floor sheet', !!floorEntry, tocUi.map((item) => item.title).join(' | '));
-if (floorEntry) {
-  await page.evaluate((pageId) => {
-    document.querySelector(`[data-rb-goto="${pageId}"]`).click();
-  }, floorEntry.id);
+check('rail lists the Basement floor sheet', !!floorThumb, floorThumb);
+if (floorThumb) {
+  await page.click(`.rb-thumb[data-page-id="${floorThumb}"]`);
   await page.waitForFunction(() => document.querySelector('.rb-sheet').getAttribute('data-page-type') === 'floor');
   const floorSheet = await page.evaluate(() => ({
     title: document.querySelector('.rb-sheet__title')?.textContent ||
@@ -335,23 +332,18 @@ await page.waitForFunction(() => {
   const label = document.querySelector('#rb-file-label')?.textContent || '';
   return document.querySelector('.rb-shell') && /Riley Chen/.test(label);
 }, { timeout: 15000 });
-await page.click('.rb-thumb[data-page-id="section-discussion"]');
-await page.waitForFunction(() => document.querySelector('.rb-sheet')?.getAttribute('data-page-id') === 'section-discussion');
-await page.click('#rb-page-earlier');
-await page.click('.rb-thumb[data-page-id="toc"]');
-await page.waitForFunction(() => document.querySelector('.rb-sheet').getAttribute('data-page-type') === 'toc');
-const moved = await page.evaluate(() => {
-  const titles = [...document.querySelectorAll('.rb-toc__item')].map((node) => node.querySelector('span').textContent);
-  const captions = [...document.querySelectorAll('.rb-thumb__caption')].map((node) => node.textContent);
+await page.click('.rb-thumb[data-page-id="cover"]');
+await page.waitForFunction(() => document.querySelector('.rb-sheet')?.getAttribute('data-page-type') === 'cover');
+await page.click('[data-rb-cover-lock="lock"]');
+await page.waitForFunction(() => document.querySelector('[data-rb-cover-lock="unlock"]'), { timeout: 10000 });
+const locked = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('rb-skeleton');
   return {
-    discussionBeforeDiagnostics: titles.indexOf('Discussion') < titles.indexOf('Diagnostics'),
-    adjacent: captions.indexOf('Diagnostics') === captions.indexOf('Discussion') + 1,
-    limitationsLast: titles[titles.length - 1] === 'Limitations',
+    btn: document.querySelector('[data-rb-cover-lock]')?.getAttribute('data-rb-cover-lock') || '',
+    locked: !!(record && record.reportBuilder && record.reportBuilder.coverLayout && record.reportBuilder.coverLayout.locked),
   };
 });
-check('reordering updates the table of contents',
-  moved.discussionBeforeDiagnostics && moved.adjacent && moved.limitationsLast,
-  JSON.stringify(moved));
+check('title Lock persists coverLayout', locked.btn === 'unlock' && locked.locked, JSON.stringify(locked));
 
 const reportSaved = await page.evaluate(async () => {
   const record = await window.ToolboxDB.getCustomerFile('rb-skeleton');

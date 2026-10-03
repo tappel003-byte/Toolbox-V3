@@ -24,31 +24,14 @@
   var SCHEMA_VERSION = 1;
   var SEQUENCE_SCHEMA = 'toolbox.report-sequence';
 
-  var LEADING_SECTIONS = [
-    {
-      id: 'property',
-      title: 'Property',
-      note: 'Name and address already stored on this Customer File.',
-    },
-  ];
-
-  var CLOSING_SECTIONS = [
-    {
-      id: 'discussion',
-      title: 'Discussion',
-      note: 'Reserved section. No narrative is written here.',
-    },
-    {
-      id: 'conclusions',
-      title: 'Conclusions',
-      note: 'Reserved section. No narrative is written here.',
-    },
-    {
-      id: 'limitations',
-      title: 'Limitations',
-      note: 'Reserved section. No narrative is written here.',
-    },
-  ];
+  // Typical book after the title page: Discussion, then figures in slide order
+  // (Floor Survey → Picture Locations → Pictures). Extra slides the investigator
+  // adds also become figures. No separate Contents sheet.
+  var DISCUSSION_SECTION = {
+    id: 'discussion',
+    title: 'Floor Level Survey Results - Discussion',
+    note: 'Reserved section. No narrative is written here.',
+  };
 
   function text(value) {
     return typeof value === 'string' ? value.trim() : '';
@@ -395,16 +378,19 @@
         meta: { reserved: true, pinCount: 0, photoCount: 0 },
       })];
     }
-    return levels.filter(function (level) {
+    var withPins = levels.filter(function (level) {
       return (level.pinCount || 0) > 0;
-    }).map(function (level) {
+    });
+    var multi = withPins.length > 1;
+    return withPins.map(function (level) {
       var name = text(level.name) || 'Level';
+      var toc = multi ? ('Picture Locations — ' + name) : 'Picture Locations';
       return page({
         id: 'distress-' + (level.canvasId || name),
         type: 'distress',
-        title: 'Pen Log — ' + name,
-        tocTitle: 'Pen Log — ' + name,
-        railLabel: 'Pen Log · ' + name,
+        title: 'Picture/Damage Locations — ' + name,
+        tocTitle: toc,
+        railLabel: 'Picture Locations · ' + name,
         sourceKey: 'distress',
         sourceRef: level.canvasId || null,
         note: '',
@@ -438,9 +424,7 @@
     var epochIds = {};
     figures.forEach(function (figure) { if (figure && figure.epochId) epochIds[figure.epochId] = true; });
     var severalEpochs = Object.keys(epochIds).length > 1;
-    var figureNumber = 0;
     return figures.map(function (figure) {
-      figureNumber += 1;
       var scopeTitle = text(figure.name) || 'Level';
       var levelName = text(figure.levelName) || scopeTitle;
       var epochLabel = text(figure.epochLabel);
@@ -480,7 +464,6 @@
           figureMediaId: figure.figureMediaId || null,
           frontDoorFacing: text(figure.frontDoorFacing),
           compose: !!figure.compose,
-          figureNumber: figureNumber,
         },
       });
     });
@@ -530,6 +513,37 @@
     });
   }
 
+  function isDiscussionPage(item) {
+    return !!(item && item.type === 'section' && item.meta && item.meta.sectionId === 'discussion');
+  }
+
+  /** Cover excluded. Discussion is listed but not a figure. Everything after Discussion is Figure N by slide order. */
+  function assignFigureNumbers(pages) {
+    var figureNumber = 0;
+    (pages || []).forEach(function (item) {
+      if (!item || item.type === 'cover' || item.type === 'toc') {
+        if (item) item.includeInToc = false;
+        return;
+      }
+      if (!item.meta || typeof item.meta !== 'object') item.meta = {};
+      if (isDiscussionPage(item)) {
+        item.includeInToc = true;
+        item.title = DISCUSSION_SECTION.title;
+        item.tocTitle = DISCUSSION_SECTION.title;
+        item.railLabel = 'Discussion';
+        item.meta.figureNumber = null;
+        return;
+      }
+      figureNumber += 1;
+      item.includeInToc = true;
+      item.meta.figureNumber = figureNumber;
+      if (item.type === 'pictures' && !item.tocTitle) {
+        item.tocTitle = 'Pictures';
+      }
+    });
+    return pages;
+  }
+
   function assemble(source) {
     var src = source && source.schema === SCHEMA ? source : outline(null);
     var pages = [
@@ -549,20 +563,15 @@
           floorSurveyDate: src.floorSurveyDate || '',
         },
       }),
-      page({
-        id: 'toc',
-        type: 'toc',
-        title: 'Table of Contents',
-        railLabel: 'Contents',
-        includeInToc: false,
-        note: 'Page list for the sheets included in this report.',
-      }),
+      sectionPage(DISCUSSION_SECTION),
     ];
-    LEADING_SECTIONS.forEach(function (section) { pages.push(sectionPage(section)); });
-    distressPages(src).forEach(function (item) { pages.push(item); });
+    // Typical figure order: Floor Survey, then Picture Locations. Pictures drop in via Put on report.
     floorPages(src).forEach(function (item) { pages.push(item); });
-    diagnosticsPages(src).forEach(function (item) { pages.push(item); });
-    CLOSING_SECTIONS.forEach(function (section) { pages.push(sectionPage(section)); });
+    distressPages(src).forEach(function (item) {
+      if (item && item.meta && item.meta.reserved) return;
+      pages.push(item);
+    });
+    assignFigureNumbers(pages);
     return {
       schema: SEQUENCE_SCHEMA,
       schemaVersion: SCHEMA_VERSION,
@@ -572,13 +581,16 @@
 
   function contents(pages) {
     var entries = [];
-    (pages || []).forEach(function (item, index) {
-      if (!item || item.includeInToc === false) return;
+    (pages || []).forEach(function (item) {
+      if (!item || item.includeInToc === false || item.type === 'cover' || item.type === 'toc') return;
+      var fig = item.meta && item.meta.figureNumber;
       entries.push({
         pageId: item.id,
-        number: index + 1,
-        title: item.tocTitle || item.title || ('Page ' + (index + 1)),
+        number: typeof fig === 'number' ? fig : null,
+        title: item.tocTitle || item.title || 'Page',
         type: item.type || 'sheet',
+        isDiscussion: isDiscussionPage(item),
+        figureNumber: typeof fig === 'number' ? fig : null,
       });
     });
     return entries;
@@ -590,6 +602,7 @@
     read: read,
     assemble: assemble,
     contents: contents,
+    assignFigureNumbers: assignFigureNumbers,
   };
 
   if (typeof window !== 'undefined') window.ToolboxReportSource = api;

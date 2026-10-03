@@ -290,6 +290,14 @@
   /**
    * Keep saved pages and wording; add new Distress/Floor/Pictures source items.
    */
+  function renumberFigures(pages) {
+    var api = sourceApi();
+    if (api && typeof api.assignFigureNumbers === 'function') {
+      return api.assignFigureNumbers(pages);
+    }
+    return pages;
+  }
+
   function reconcileReportPages(savedPages, freshPages, photos) {
     var pages = (savedPages || []).map(function (page) {
       return {
@@ -306,9 +314,42 @@
         reportText: cloneJson(page.reportText || null),
         evidence: null,
       };
+    }).filter(function (page) {
+      if (!page) return false;
+      if (page.type === 'toc') return false;
+      if (page.type === 'section' && page.meta && page.meta.sectionId === 'property') return false;
+      if (page.type === 'section' && page.meta && page.meta.sectionId === 'conclusions') return false;
+      if (page.type === 'section' && page.meta && page.meta.sectionId === 'limitations') return false;
+      return true;
     });
     var byId = {};
     pages.forEach(function (page) { byId[page.id] = true; });
+    if (!pages.some(function (page) { return page.type === 'section' && page.meta && page.meta.sectionId === 'discussion'; })) {
+      var discussionFresh = (freshPages || []).find(function (page) {
+        return page && page.type === 'section' && page.meta && page.meta.sectionId === 'discussion';
+      });
+      if (discussionFresh) {
+        var coverAt = -1;
+        for (var di = 0; di < pages.length; di += 1) {
+          if (pages[di].type === 'cover') coverAt = di;
+        }
+        pages = insertPagesAt(pages, coverAt + 1, [{
+          id: discussionFresh.id,
+          type: discussionFresh.type,
+          title: discussionFresh.title,
+          tocTitle: discussionFresh.tocTitle || discussionFresh.title,
+          railLabel: discussionFresh.railLabel || discussionFresh.title,
+          note: discussionFresh.note || '',
+          sourceKey: null,
+          sourceRef: null,
+          includeInToc: true,
+          meta: cloneJson(discussionFresh.meta || null),
+          reportText: null,
+          evidence: null,
+        }]);
+        byId[discussionFresh.id] = true;
+      }
+    }
 
     function addMissingOfType(type) {
       var additions = [];
@@ -338,9 +379,8 @@
       pages = insertPagesAt(pages, at, additions);
     }
 
-    addMissingOfType('distress');
     addMissingOfType('floor');
-    addMissingOfType('diagnostics');
+    addMissingOfType('distress');
 
     var photoList = photos || [];
     var photoByKey = photoMapFromList(photoList);
@@ -403,19 +443,19 @@
       pictures[0].railLabel = 'Pictures';
     }
 
-    return pages;
+    return renumberFigures(pages);
   }
 
   function ensurePicturesInFreshPages(pages, photos) {
     var list = pages ? pages.slice() : [];
-    if (list.some(function (page) { return page.type === 'pictures'; })) return list;
-    if (!(photos || []).length) return list;
+    if (list.some(function (page) { return page.type === 'pictures'; })) return renumberFigures(list);
+    if (!(photos || []).length) return renumberFigures(list);
     var startFig = maxFigureNumber(list) + 1;
     var created = buildPicturesPages(photos, startFig, list);
-    var at = lastIndexOfType(list, 'floor');
-    if (at < 0) at = lastIndexOfType(list, 'distress');
-    at = at >= 0 ? at + 1 : insertIndexBeforeClosing(list);
-    return insertPagesAt(list, at, created);
+    var at = lastIndexOfType(list, 'distress');
+    if (at < 0) at = lastIndexOfType(list, 'floor');
+    at = at >= 0 ? at + 1 : list.length;
+    return renumberFigures(insertPagesAt(list, at, created));
   }
 
   function countLine(count, singular, plural) {
@@ -724,32 +764,73 @@
     return root;
   }
 
-  function renderMitchellCover(page, pages) {
-    var meta = page.meta || {};
-    var root = document.createElement('div');
-    root.className = 'rb-cover';
+  function coverBoxShell(id, layout, locked) {
+    var api = window.ToolboxReportCoverLayout;
+    var box = (layout && layout.boxes && layout.boxes[id]) || { x: 0, y: 0, w: 20, h: 12 };
+    var el = document.createElement('div');
+    el.className = 'rb-cover-box' + (locked ? ' is-locked' : '');
+    el.setAttribute('data-rb-cover-box', id);
+    el.style.cssText = api ? api.boxStyle(box) : '';
+    if (!locked) {
+      var handle = document.createElement('span');
+      handle.className = 'rb-cover-box__resize';
+      handle.setAttribute('data-rb-cover-resize', id);
+      handle.setAttribute('aria-hidden', 'true');
+      el.appendChild(handle);
+    }
+    return el;
+  }
 
-    var prepared = document.createElement('div');
-    prepared.className = 'rb-cover__prepared';
+  function renderMitchellCover(page, pages, coverLayout, overviewUrl) {
+    var meta = page.meta || {};
+    var api = window.ToolboxReportCoverLayout;
+    var layout = api ? api.normalizeLayout(coverLayout) : { locked: false, boxes: {}, overviewMediaId: '' };
+    var locked = !!layout.locked;
+    var root = document.createElement('div');
+    root.className = 'rb-cover' + (locked ? ' is-locked' : '');
+    root.setAttribute('data-rb-cover-stage', '1');
+
+    var bar = document.createElement('div');
+    bar.className = 'rb-cover__bar';
+    var lockBtn = document.createElement('button');
+    lockBtn.type = 'button';
+    lockBtn.className = 'btn btn--secondary';
+    lockBtn.setAttribute('data-rb-cover-lock', locked ? 'unlock' : 'lock');
+    lockBtn.textContent = locked ? 'Unlock layout' : 'Lock layout';
+    bar.appendChild(lockBtn);
+    var hint = document.createElement('p');
+    hint.className = 'rb-cover__hint';
+    hint.textContent = locked
+      ? 'Title layout locked for this report.'
+      : 'Drag boxes to place. Resize from the corner. Paste a site overview when ready.';
+    bar.appendChild(hint);
+    root.appendChild(bar);
+
+    var stage = document.createElement('div');
+    stage.className = 'rb-cover__stage';
+
+    var prepared = coverBoxShell('prepared', layout, locked);
+    prepared.classList.add('rb-cover-box--prepared');
     addLine(prepared, 'rb-cover__label', 'Prepared For:');
     addLine(prepared, 'rb-cover__name', meta.customerName || page.title || 'Customer File');
     if (meta.email) addLine(prepared, 'rb-cover__email', meta.email);
     if (meta.cellPhone) addLine(prepared, 'rb-cover__phone', meta.cellPhone);
-    root.appendChild(prepared);
+    stage.appendChild(prepared);
 
-    var main = document.createElement('div');
-    main.className = 'rb-cover__main';
-
-    var left = document.createElement('div');
-    left.className = 'rb-cover__left';
-    addLine(left, 'rb-cover__product', 'FLOOR LEVEL SURVEY');
+    var identity = coverBoxShell('identity', layout, locked);
+    identity.classList.add('rb-cover-box--identity');
+    addLine(identity, 'rb-cover__product', 'FLOOR LEVEL SURVEY');
     var parts = addressParts(meta.addressFull || meta.address || '');
-    addLine(left, 'rb-cover__street', parts.street || meta.address || 'No property address on file');
-    if (parts.cityLine) addLine(left, 'rb-cover__city', parts.cityLine);
+    addLine(identity, 'rb-cover__street', parts.street || meta.address || 'No property address on file');
+    if (parts.cityLine) addLine(identity, 'rb-cover__city', parts.cityLine);
+    stage.appendChild(identity);
+
+    var dateBox = coverBoxShell('date', layout, locked);
+    dateBox.classList.add('rb-cover-box--date');
     var rule = document.createElement('div');
     rule.className = 'rb-cover__rule';
     rule.setAttribute('aria-hidden', 'true');
-    left.appendChild(rule);
+    dateBox.appendChild(rule);
     var dateText = formatSurveyDate(meta.floorSurveyDate || '', false);
     var dateRow = document.createElement('p');
     dateRow.className = 'rb-cover__date';
@@ -763,60 +844,94 @@
       dateValue.textContent = dateText;
       dateRow.appendChild(dateValue);
     }
-    left.appendChild(dateRow);
-    addLine(left, 'rb-cover__corrected', 'Corrected for Floor Differences');
-    main.appendChild(left);
+    dateBox.appendChild(dateRow);
+    addLine(dateBox, 'rb-cover__corrected', 'Corrected for Floor Differences');
+    stage.appendChild(dateBox);
 
-    var contents = document.createElement('div');
-    contents.className = 'rb-cover__contents';
-    addLine(contents, 'rb-cover__contents-title', 'CONTENTS');
+    var contents = coverBoxShell('contents', layout, locked);
+    contents.classList.add('rb-cover-box--contents');
+    var contentsInner = document.createElement('div');
+    contentsInner.className = 'rb-cover__contents';
+    addLine(contentsInner, 'rb-cover__contents-title', 'CONTENTS');
     var list = document.createElement('div');
     list.className = 'rb-cover__contents-list';
-    var api = sourceApi();
-    var entries = api && typeof api.contents === 'function' ? api.contents(pages) : [];
+    var source = sourceApi();
+    var entries = source && typeof source.contents === 'function' ? source.contents(pages) : [];
     if (!entries.length) {
-      addLine(list, 'rb-sheet__note', 'No sections are included.');
+      addLine(list, 'rb-sheet__note', 'Contents appear as slides are added.');
     }
     entries.forEach(function (entry) {
       var row = document.createElement('button');
       row.type = 'button';
       row.className = 'rb-cover__contents-item';
       row.setAttribute('data-rb-goto', entry.pageId);
-      var title = entry.title || '';
-      var pageItem = null;
-      for (var i = 0; i < pages.length; i += 1) {
-        if (pages[i].id === entry.pageId) pageItem = pages[i];
+      if (entry.isDiscussion || entry.type === 'section') {
+        var discStrong = document.createElement('strong');
+        discStrong.textContent = entry.title || 'Floor Level Survey Results - Discussion';
+        row.appendChild(discStrong);
+        list.appendChild(row);
+        return;
       }
-      var figNum = pageItem && pageItem.meta && pageItem.meta.figureNumber;
-      if ((entry.type === 'floor' || entry.type === 'pictures') && figNum) {
-        var figLabel = document.createElement('span');
+      var figNum = entry.figureNumber;
+      var label = document.createElement('span');
+      if (figNum) {
         var figStrong = document.createElement('strong');
         figStrong.textContent = 'Figure ' + figNum;
-        figLabel.appendChild(figStrong);
-        figLabel.appendChild(document.createTextNode(
-          entry.type === 'pictures' ? ' Pictures' : (' — ' + title)
-        ));
-        row.appendChild(figLabel);
-        list.appendChild(row);
-        return;
+        label.appendChild(figStrong);
+        label.appendChild(document.createTextNode(' ' + (entry.title || '')));
+      } else {
+        label.textContent = entry.title || '';
       }
-      if (entry.type === 'section' && /discussion/i.test(title)) {
-        var disc = document.createElement('span');
-        var discStrong = document.createElement('strong');
-        discStrong.textContent = 'Floor Level Survey Results - Discussion';
-        disc.appendChild(discStrong);
-        row.appendChild(disc);
-        list.appendChild(row);
-        return;
-      }
-      var span = document.createElement('span');
-      span.textContent = title;
-      row.appendChild(span);
+      row.appendChild(label);
       list.appendChild(row);
     });
-    contents.appendChild(list);
-    main.appendChild(contents);
-    root.appendChild(main);
+    contentsInner.appendChild(list);
+    contents.appendChild(contentsInner);
+    stage.appendChild(contents);
+
+    var overview = coverBoxShell('overview', layout, locked);
+    overview.classList.add('rb-cover-box--overview');
+    var fullAddress = meta.addressFull || meta.address || '';
+    var mapsUrl = api && typeof api.mapsSearchUrl === 'function' ? api.mapsSearchUrl(fullAddress) : '';
+    if (overviewUrl) {
+      evidenceImage(overview, overviewUrl, 'rb-cover__overview-image', 'Site overview');
+    } else {
+      var empty = document.createElement('div');
+      empty.className = 'rb-cover__overview-empty';
+      empty.textContent = 'Site overview photo';
+      overview.appendChild(empty);
+    }
+    var overviewActions = document.createElement('div');
+    overviewActions.className = 'rb-cover__overview-actions';
+    if (mapsUrl) {
+      var mapLink = document.createElement('a');
+      mapLink.className = 'rb-cover__maps-link';
+      mapLink.href = mapsUrl;
+      mapLink.target = '_blank';
+      mapLink.rel = 'noopener noreferrer';
+      mapLink.textContent = 'Open in Google Maps';
+      overviewActions.appendChild(mapLink);
+    }
+    if (!locked) {
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'btn btn--quiet';
+      addBtn.setAttribute('data-rb-cover-overview', 'pick');
+      addBtn.textContent = overviewUrl ? 'Replace overview' : 'Add overview';
+      overviewActions.appendChild(addBtn);
+      if (overviewUrl) {
+        var clearBtn = document.createElement('button');
+        clearBtn.type = 'button';
+        clearBtn.className = 'btn btn--quiet';
+        clearBtn.setAttribute('data-rb-cover-overview', 'clear');
+        clearBtn.textContent = 'Remove';
+        overviewActions.appendChild(clearBtn);
+      }
+    }
+    overview.appendChild(overviewActions);
+    stage.appendChild(overview);
+
+    root.appendChild(stage);
     return root;
   }
 
@@ -1109,35 +1224,12 @@
 
     if (page.type === 'cover') {
       margin.classList.add('rb-sheet__margin--cover');
-      margin.appendChild(renderMitchellCover(page, pages));
-    } else if (page.type === 'toc') {
-      addLine(margin, 'rb-sheet__kicker', 'Report');
-      var tocTitle = document.createElement('h1');
-      tocTitle.className = 'rb-sheet__title';
-      tocTitle.textContent = 'Table of Contents';
-      margin.appendChild(tocTitle);
-      var list = document.createElement('div');
-      list.className = 'rb-toc';
-      var api = sourceApi();
-      var entries = api && typeof api.contents === 'function' ? api.contents(pages) : [];
-      if (!entries.length) {
-        addLine(list, 'rb-sheet__note', 'No sections are included.');
-      }
-      entries.forEach(function (entry) {
-        var row = document.createElement('button');
-        row.type = 'button';
-        row.className = 'rb-toc__item';
-        row.setAttribute('data-rb-goto', entry.pageId);
-        var label = document.createElement('span');
-        label.textContent = entry.title;
-        var number = document.createElement('span');
-        number.className = 'rb-toc__num';
-        number.textContent = String(entry.number);
-        row.appendChild(label);
-        row.appendChild(number);
-        list.appendChild(row);
-      });
-      margin.appendChild(list);
+      margin.appendChild(renderMitchellCover(
+        page,
+        pages,
+        page._coverLayout || (page.meta && page.meta.coverLayout),
+        page._overviewUrl || ''
+      ));
     } else if (page.type === 'section' && page.meta && page.meta.sectionId === 'property') {
       addLine(margin, 'rb-sheet__kicker', 'Report');
       var propertyTitle = document.createElement('h1');
@@ -1286,7 +1378,7 @@
     };
   }
 
-  function persistableDocument(pages, activePageId, prior, floorLayout) {
+  function persistableDocument(pages, activePageId, prior, floorLayout, coverLayout) {
     var notes = collectPenLogNotes(pages);
     if ((!notes || !Object.keys(notes).length) && prior && prior.penLog && prior.penLog.notes) {
       notes = prior.penLog.notes;
@@ -1311,6 +1403,12 @@
       doc.floorLayout = flApi.normalizeLayout(floorLayout);
     } else if (prior && prior.floorLayout) {
       doc.floorLayout = flApi ? flApi.normalizeLayout(prior.floorLayout) : prior.floorLayout;
+    }
+    var coverApi = window.ToolboxReportCoverLayout;
+    if (coverLayout && coverApi) {
+      doc.coverLayout = coverApi.normalizeLayout(coverLayout);
+    } else if (prior && prior.coverLayout) {
+      doc.coverLayout = coverApi ? coverApi.normalizeLayout(prior.coverLayout) : prior.coverLayout;
     }
     return doc;
   }
@@ -1365,7 +1463,12 @@
     var floorLayout = window.ToolboxReportFloorLayout
       ? window.ToolboxReportFloorLayout.defaultLayout()
       : { locked: false, topo: { x: 10, y: 6, w: 80, h: 88 }, overlays: [] };
+    var coverLayout = window.ToolboxReportCoverLayout
+      ? window.ToolboxReportCoverLayout.defaultLayout()
+      : { locked: false, boxes: {}, overviewMediaId: '' };
+    var coverOverviewUrl = '';
     var floorDrag = null;
+    var coverDrag = null;
     pageSeq = pages.length;
 
     host.innerHTML = shellHtml();
@@ -1423,7 +1526,8 @@
         pages,
         activeId,
         workingRecord && (workingRecord.reportBuilder || workingRecord.report),
-        floorLayout
+        floorLayout,
+        coverLayout
       );
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;
@@ -1619,6 +1723,10 @@
             : floorLayout;
         }
       }
+      if (current && current.type === 'cover') {
+        current._coverLayout = coverLayout;
+        current._overviewUrl = coverOverviewUrl;
+      }
       renderSheet(sheetEl, current, pages);
       syncPenLogPanel(current);
       fitSheet(root);
@@ -1738,10 +1846,88 @@
       });
     }
 
+    function refreshCoverOverviewUrl() {
+      var mediaId = coverLayout && coverLayout.overviewMediaId;
+      if (!mediaId || !window.ToolboxDB || typeof window.ToolboxDB.getMedia !== 'function') {
+        coverOverviewUrl = '';
+        return Promise.resolve('');
+      }
+      return window.ToolboxDB.getMedia(mediaId).then(function (url) {
+        coverOverviewUrl = url || '';
+        return coverOverviewUrl;
+      }).catch(function () {
+        coverOverviewUrl = '';
+        return '';
+      });
+    }
+
+    function pickCoverOverview() {
+      var input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.addEventListener('change', function () {
+        var file = input.files && input.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+          var dataUrl = typeof reader.result === 'string' ? reader.result : '';
+          if (!dataUrl || dataUrl.indexOf('data:image/') !== 0) return;
+          if (!window.ToolboxDB || typeof window.ToolboxDB.putMedia !== 'function') return;
+          var mediaId = 'report-cover-overview-' + customerFileId;
+          window.ToolboxDB.putMedia(mediaId, dataUrl).then(function () {
+            var coverApi = window.ToolboxReportCoverLayout;
+            coverLayout = coverApi ? coverApi.normalizeLayout(coverLayout) : coverLayout;
+            coverLayout.overviewMediaId = mediaId;
+            coverOverviewUrl = dataUrl;
+            markDirty();
+            renderPages();
+            flushSave().catch(function () {});
+          }).catch(function (err) {
+            console.warn('Cover overview save failed', err);
+            setSaveStatus('Overview save failed');
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+      input.click();
+    }
+
     sheetEl.addEventListener('click', function (event) {
       if (event.target.closest('[data-rb-floor-import]')) {
         event.preventDefault();
         importActiveFloorPage();
+        return;
+      }
+      var coverLock = event.target.closest('[data-rb-cover-lock]');
+      if (coverLock) {
+        event.preventDefault();
+        var coverApi = window.ToolboxReportCoverLayout;
+        coverLayout = coverApi ? coverApi.normalizeLayout(coverLayout) : coverLayout;
+        var coverMode = coverLock.getAttribute('data-rb-cover-lock');
+        coverLayout.locked = coverMode === 'lock';
+        dirty = true;
+        setSaveStatus('Saving…');
+        renderPages();
+        flushSave().catch(function () {});
+        return;
+      }
+      var overviewAct = event.target.closest('[data-rb-cover-overview]');
+      if (overviewAct) {
+        event.preventDefault();
+        var act = overviewAct.getAttribute('data-rb-cover-overview');
+        if (act === 'pick') {
+          pickCoverOverview();
+          return;
+        }
+        if (act === 'clear') {
+          var cApi = window.ToolboxReportCoverLayout;
+          coverLayout = cApi ? cApi.normalizeLayout(coverLayout) : coverLayout;
+          coverLayout.overviewMediaId = '';
+          coverOverviewUrl = '';
+          markDirty();
+          renderPages();
+          flushSave().catch(function () {});
+        }
         return;
       }
       var lockBtn = event.target.closest('[data-rb-floor-lock]');
@@ -1768,20 +1954,44 @@
       flushSave().catch(function () {});
     });
 
-    function stageRect() {
-      var stage = sheetEl.querySelector('[data-rb-floor-stage]');
+    function stageRect(selector) {
+      var stage = sheetEl.querySelector(selector || '[data-rb-floor-stage]');
       return stage ? stage.getBoundingClientRect() : null;
     }
 
     sheetEl.addEventListener('pointerdown', function (event) {
+      if (event.target.closest('a, button, input, textarea, label')) return;
       var current = activePage();
+      if (current && current.type === 'cover') {
+        if (coverLayout && coverLayout.locked) return;
+        var coverResize = event.target.closest('[data-rb-cover-resize]');
+        var coverBox = event.target.closest('[data-rb-cover-box]');
+        if (!coverBox) return;
+        var coverStage = stageRect('[data-rb-cover-stage] .rb-cover__stage') || stageRect('[data-rb-cover-stage]');
+        if (!coverStage || coverStage.width < 8 || coverStage.height < 8) return;
+        event.preventDefault();
+        var coverId = coverBox.getAttribute('data-rb-cover-box');
+        var coverApi = window.ToolboxReportCoverLayout;
+        var cLayout = coverApi ? coverApi.normalizeLayout(coverLayout) : coverLayout;
+        coverDrag = {
+          id: coverId,
+          resize: !!coverResize,
+          startX: event.clientX,
+          startY: event.clientY,
+          stageW: coverStage.width,
+          stageH: coverStage.height,
+          layout: cLayout,
+        };
+        try { coverBox.setPointerCapture(event.pointerId); } catch (_) {}
+        return;
+      }
       if (!current || current.type !== 'floor') return;
       if (current.meta && current.meta.layout && current.meta.layout.locked) return;
       if (floorLayout && floorLayout.locked) return;
       var resize = event.target.closest('[data-rb-floor-resize]');
       var box = event.target.closest('[data-rb-floor-box]');
       if (!box) return;
-      var stage = stageRect();
+      var stage = stageRect('[data-rb-floor-stage]');
       if (!stage || stage.width < 8 || stage.height < 8) return;
       event.preventDefault();
       var id = box.getAttribute('data-rb-floor-box');
@@ -1803,6 +2013,31 @@
     });
 
     sheetEl.addEventListener('pointermove', function (event) {
+      if (coverDrag) {
+        var coverPage = activePage();
+        if (!coverPage || coverPage.type !== 'cover') return;
+        var cdx = ((event.clientX - coverDrag.startX) / coverDrag.stageW) * 100;
+        var cdy = ((event.clientY - coverDrag.startY) / coverDrag.stageH) * 100;
+        var coverApi = window.ToolboxReportCoverLayout;
+        var nextCover = coverApi
+          ? coverApi.cloneLayout(coverDrag.layout)
+          : JSON.parse(JSON.stringify(coverDrag.layout));
+        var boxGeom = nextCover.boxes[coverDrag.id];
+        var origin = coverDrag.layout.boxes[coverDrag.id];
+        if (!boxGeom || !origin) return;
+        if (coverDrag.resize) {
+          boxGeom.w = origin.w + cdx;
+          boxGeom.h = origin.h + cdy;
+        } else {
+          boxGeom.x = origin.x + cdx;
+          boxGeom.y = origin.y + cdy;
+        }
+        nextCover = coverApi ? coverApi.normalizeLayout(nextCover) : nextCover;
+        coverLayout = nextCover;
+        var live = sheetEl.querySelector('[data-rb-cover-box="' + coverDrag.id + '"]');
+        if (live && coverApi) live.style.cssText = coverApi.boxStyle(nextCover.boxes[coverDrag.id]);
+        return;
+      }
       if (!floorDrag) return;
       var current = activePage();
       if (!current || current.type !== 'floor') return;
@@ -1863,13 +2098,18 @@
       }
     });
 
-    function endFloorDrag() {
+    function endLayoutDrag() {
+      if (coverDrag) {
+        coverDrag = null;
+        markDirty();
+        return;
+      }
       if (!floorDrag) return;
       floorDrag = null;
       markDirty();
     }
-    sheetEl.addEventListener('pointerup', endFloorDrag);
-    sheetEl.addEventListener('pointercancel', endFloorDrag);
+    sheetEl.addEventListener('pointerup', endLayoutDrag);
+    sheetEl.addEventListener('pointercancel', endLayoutDrag);
 
     if (penNoteField) {
       penNoteField.addEventListener('input', function () {
@@ -1919,6 +2159,7 @@
       var moved = pages[index];
       pages[index] = pages[index - 1];
       pages[index - 1] = moved;
+      renumberFigures(pages);
       markDirty();
       renderPages();
     });
@@ -1929,6 +2170,7 @@
       var moved = pages[index];
       pages[index] = pages[index + 1];
       pages[index + 1] = moved;
+      renumberFigures(pages);
       markDirty();
       renderPages();
     });
@@ -1990,6 +2232,9 @@
       if (savedDoc && savedDoc.floorLayout && window.ToolboxReportFloorLayout) {
         floorLayout = window.ToolboxReportFloorLayout.normalizeLayout(savedDoc.floorLayout);
       }
+      if (savedDoc && savedDoc.coverLayout && window.ToolboxReportCoverLayout) {
+        coverLayout = window.ToolboxReportCoverLayout.normalizeLayout(savedDoc.coverLayout);
+      }
       var saved = savedReportPages(record);
       if (saved) {
         var before = saved.pages.map(function (page) {
@@ -2044,16 +2289,18 @@
       var loaded = loadPagesFromRecord(workingRecord);
       seedPenLogNotes(workingRecord);
       root.setAttribute('data-report-ready', 'true');
-      renderPages();
-      fitSheet(root);
-      if (loaded.assembledFresh || loaded.reconciled) {
-        markDirty();
-        flushSave().catch(function () {});
-      } else {
-        setSaveStatus(formatSavedAt(lastSavedAt));
-        if (draftEl) draftEl.textContent = 'Saved';
-      }
-      return attachEvidence(workingRecord, pages.slice()).then(function (enriched) {
+      return refreshCoverOverviewUrl().then(function () {
+        renderPages();
+        fitSheet(root);
+        if (loaded.assembledFresh || loaded.reconciled) {
+          markDirty();
+          flushSave().catch(function () {});
+        } else {
+          setSaveStatus(formatSavedAt(lastSavedAt));
+          if (draftEl) draftEl.textContent = 'Saved';
+        }
+        return attachEvidence(workingRecord, pages.slice());
+      }).then(function (enriched) {
         if (token !== mountGeneration) return;
         pages = enriched;
         renderPages();
@@ -2175,7 +2422,13 @@
     }
     var activePageId = firstPictures ? firstPictures.id : (pages[0] && pages[0].id) || '';
     var prior = record.reportBuilder || record.report || null;
-    var doc = persistableDocument(pages, activePageId, prior, prior && prior.floorLayout);
+    var doc = persistableDocument(
+      pages,
+      activePageId,
+      prior,
+      prior && prior.floorLayout,
+      prior && prior.coverLayout
+    );
     record.reportBuilder = doc;
     record.updatedAt = doc.updatedAt;
     delete record.report;
