@@ -176,8 +176,31 @@
     return html;
   }
 
+  // A line is as tall as the tallest thing on it -- that is how PowerPoint
+  // sets it, and it is also how CSS works: the block's own font-size sets a
+  // strut that the line box can never go below. Sizing only the runs left the
+  // paragraph at the field's default height, so shrinking the type bought no
+  // room at all: 110 paragraphs took the same space at 8 pt as at 12 pt, and
+  // text never pulled back out of a continuation sheet. The block therefore
+  // carries the largest size its runs ask for -- but only when every run says
+  // one, since an unsized run means the field's default is still in play.
+  function blockSize(para) {
+    var speaks = 0;
+    var max = 0;
+    for (var i = 0; i < para.runs.length; i += 1) {
+      var run = para.runs[i];
+      if (!run.text) continue;
+      speaks += 1;
+      if (!run.size) return 0;
+      if (run.size > max) max = run.size;
+    }
+    return speaks ? max : 0;
+  }
+
   function paragraphHtml(para) {
     var style = '';
+    var strut = blockSize(para);
+    if (strut) style += 'font-size:' + (strut * PT_TO_CQH).toFixed(3) + 'cqh;';
     if (para.align !== 'left') style += 'text-align:' + para.align + ';';
     if (para.indent) style += 'margin-left:' + (para.indent * 4) + '%;';
     if (para.dir === 'rtl') style += 'direction:rtl;';
@@ -268,6 +291,12 @@
         var align = source.style && source.style.textAlign;
         if (ALIGNMENTS[align]) current.align = align;
         if (source.tagName === 'LI') current.bullet = true;
+        // The Bullets button writes its intent onto the block rather
+        // than building list markup itself, so the <ul> wrapping and the
+        // markers come out as the report's own markup either way.
+        var bulletIntent = source.getAttribute && source.getAttribute('data-rb-bullet');
+        if (bulletIntent === '1') current.bullet = true;
+        else if (bulletIntent === '0') current.bullet = false;
         if (source.style && source.style.direction === 'rtl') current.dir = 'rtl';
         var mb = source.style && source.style.marginBottom;
         if (mb) {
@@ -441,6 +470,54 @@
     return model;
   }
 
+  // ---- selection as character offsets ---------------------------------
+  //
+  // Any command that rebuilds a field's markup -- turning bullets on, or a
+  // size change that re-flows the chain -- destroys the selection, because it
+  // points at nodes that no longer exist. Recording it as a character count
+  // inside the field survives the rebuild, so a toolbar button can be clicked
+  // repeatedly the way it is in PowerPoint.
+
+  function captureOffsets(field) {
+    var sel = window.getSelection();
+    if (!field || !sel || !sel.rangeCount) return null;
+    var range = sel.getRangeAt(0);
+    if (!field.contains(range.commonAncestorContainer)) return null;
+    var pre = range.cloneRange();
+    pre.selectNodeContents(field);
+    pre.setEnd(range.startContainer, range.startOffset);
+    var start = pre.toString().length;
+    return { start: start, end: start + range.toString().length };
+  }
+
+  function restoreOffsets(field, saved) {
+    if (!field || !saved) return false;
+    var walker = document.createTreeWalker(field, NodeFilter.SHOW_TEXT, null);
+    var pos = 0;
+    var startNode = null, startOff = 0, endNode = null, endOff = 0;
+    var node;
+    while ((node = walker.nextNode())) {
+      var len = node.nodeValue.length;
+      if (!startNode && pos + len >= saved.start) { startNode = node; startOff = saved.start - pos; }
+      if (!endNode && pos + len >= saved.end) { endNode = node; endOff = saved.end - pos; }
+      pos += len;
+    }
+    if (!startNode) return false;
+    if (!endNode) { endNode = startNode; endOff = startNode.nodeValue.length; }
+    try {
+      var range = document.createRange();
+      range.setStart(startNode, Math.max(0, Math.min(startOff, startNode.nodeValue.length)));
+      range.setEnd(endNode, Math.max(0, Math.min(endOff, endNode.nodeValue.length)));
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      if (field.focus) field.focus();
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
   window.ToolboxReportText = {
     PT_TO_CQH: PT_TO_CQH,
     isModel: isModel,
@@ -452,5 +529,7 @@
     fromElement: fromElement,
     fromMarkdown: fromMarkdown,
     looksLikeMarkdown: looksLikeMarkdown,
+    captureOffsets: captureOffsets,
+    restoreOffsets: restoreOffsets,
   };
 })();

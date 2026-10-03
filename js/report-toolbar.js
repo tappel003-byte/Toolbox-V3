@@ -252,6 +252,33 @@
     });
   }
 
+  // Bullets are a paragraph property, not inline markup, so execCommand is
+  // the wrong tool twice over. It builds a bare <ul><li>, which in this app
+  // computes list-style-type:none and padding-left:0 -- the list is there but
+  // invisible, so the button read as doing nothing. And it nests that <ul>
+  // INSIDE the paragraph div it came from, which left a stray blank paragraph
+  // behind once the document was read back and re-rendered.
+  //
+  // So the intent is written onto the blocks and the field is rebuilt from the
+  // model, which is what produces <ul class="rb-rt__list"> with real markers.
+  function isBulletBlock(block) {
+    return block.tagName === 'LI' || (block.classList && block.classList.contains('rb-rt__p--bullet'));
+  }
+
+  function toggleBullet(field) {
+    restoreSelection();
+    var api = window.ToolboxReportText;
+    if (!field || !api) return;
+    var blocks = blocksInSelection(field).filter(function (b) { return b !== field; });
+    if (!blocks.length) return;
+    var turnOff = blocks.every(isBulletBlock);
+    blocks.forEach(function (b) { b.setAttribute('data-rb-bullet', turnOff ? '0' : '1'); });
+    var keep = api.captureOffsets(field);
+    field.innerHTML = api.toHtml(api.fromElement(field));
+    api.restoreOffsets(field, keep);
+    rememberSelection();
+  }
+
   function toggleDirection(field) {
     blocksInSelection(field).forEach(function (block) {
       block.style.direction = block.style.direction === 'rtl' ? '' : 'rtl';
@@ -265,7 +292,10 @@
       state.bold = document.queryCommandState('bold');
       state.italic = document.queryCommandState('italic');
       state.underline = document.queryCommandState('underline');
-      state.bullet = document.queryCommandState('insertUnorderedList');
+      // queryCommandState only recognises lists it built itself; the
+      // Bullets button owns this markup, so the blocks are the truth.
+      var bulletBlocks = blocksInSelection(field).filter(function (b) { return b !== field; });
+      state.bullet = !!bulletBlocks.length && bulletBlocks.every(isBulletBlock);
       if (document.queryCommandState('justifyCenter')) state.align = 'center';
       else if (document.queryCommandState('justifyRight')) state.align = 'right';
     } catch (err) { /* selection outside a field */ }
@@ -418,7 +448,7 @@
       case 'bold': exec('bold'); break;
       case 'italic': exec('italic'); break;
       case 'underline': exec('underline'); break;
-      case 'bullet': exec('insertUnorderedList'); break;
+      case 'bullet': toggleBullet(field); break;
       case 'left': exec('justifyLeft'); break;
       case 'center': exec('justifyCenter'); break;
       case 'right': exec('justifyRight'); break;

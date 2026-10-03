@@ -155,11 +155,24 @@
       }
       root.appendChild(brand);
 
+      // The control follows the logo instead of sitting in a fixed corner,
+      // which is where it was and which put it straight on top of the
+      // artwork once the logo was placed down there. It rides just clear of
+      // the box -- above it normally, below it when the logo is near the top.
       var lock = document.createElement('button');
       lock.type = 'button';
       lock.className = 'rb-discussion__brand-lock';
       lock.setAttribute('data-rb-brand-lock', box.locked ? 'unlock' : 'lock');
       lock.textContent = box.locked ? 'Unlock logo' : 'Lock logo';
+      // Beside the logo, not above it: the text box ends at 93.49% and the
+      // logo sits at 94.36%, so there is under 1% of page between them --
+      // anything stacked above the logo lands on the last line of the
+      // narrative. To the right while there is room, otherwise to the left.
+      var GAP = 1.2;
+      var WIDTH = 13; // roughly what "Unlock logo" occupies at this size
+      var right = box.x + box.w + GAP;
+      lock.style.left = (right + WIDTH <= 99 ? right : Math.max(0, box.x - GAP - WIDTH)) + '%';
+      lock.style.top = (box.y + Math.max(0, (box.h - 2.6) / 2)) + '%';
       root.appendChild(lock);
     }
 

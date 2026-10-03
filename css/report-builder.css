@@ -2209,6 +2209,9 @@ body.report-builder-open .canvas {
      clicks on Unlock landed on the image instead -- the same mistake as
      layering the logo over the text body, made again. */
   z-index: 6;
+  /* Placement comes from the logo box itself (see report-discussion.js) so
+     the control rides clear of the artwork wherever the logo is put. These
+     are only the fallback if that has not run. */
   left: 1.96%;
   bottom: 1.2%;
   padding: 2px 8px;

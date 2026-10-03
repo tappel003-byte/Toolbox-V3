@@ -1385,54 +1385,26 @@
   }
 
   // A formatting command can change how much text fits, which re-flows the
-  // chain and rebuilds the DOM -- taking the selection with it. Recording the
-  // selection as character offsets within the field lets it be put back after
-  // the rebuild, so A-up can be clicked repeatedly the way it is in PowerPoint
-  // instead of having to re-select between every step.
+  // chain and rebuilds the DOM -- taking the selection with it. The selection
+  // is recorded as character offsets inside the field (the text model owns
+  // that, so the toolbar and the page use one implementation) and put back
+  // after the rebuild, so A-up can be clicked repeatedly the way it is in
+  // PowerPoint instead of having to re-select between every step.
   function captureSelectionOffsets(field) {
-    var sel = window.getSelection();
-    if (!field || !sel || !sel.rangeCount) return null;
-    var range = sel.getRangeAt(0);
-    if (!field.contains(range.commonAncestorContainer)) return null;
-    var pre = range.cloneRange();
-    pre.selectNodeContents(field);
-    pre.setEnd(range.startContainer, range.startOffset);
-    var start = pre.toString().length;
-    return {
-      key: field.getAttribute('data-rb-rich') || '',
-      start: start,
-      end: start + range.toString().length,
-    };
+    var api = window.ToolboxReportText;
+    if (!field || !api) return null;
+    var at = api.captureOffsets(field);
+    if (!at) return null;
+    at.key = field.getAttribute('data-rb-rich') || '';
+    return at;
   }
 
   function restoreSelectionOffsets(root, saved) {
-    if (!saved || !saved.key || !root) return false;
+    var api = window.ToolboxReportText;
+    if (!saved || !saved.key || !root || !api) return false;
     var field = root.querySelector('[data-rb-rich="' + saved.key + '"]');
     if (!field) return false;
-    var walker = document.createTreeWalker(field, NodeFilter.SHOW_TEXT, null);
-    var pos = 0;
-    var startNode = null, startOff = 0, endNode = null, endOff = 0;
-    var node;
-    while ((node = walker.nextNode())) {
-      var len = node.nodeValue.length;
-      if (!startNode && pos + len >= saved.start) { startNode = node; startOff = saved.start - pos; }
-      if (!endNode && pos + len >= saved.end) { endNode = node; endOff = saved.end - pos; }
-      pos += len;
-    }
-    if (!startNode) return false;
-    if (!endNode) { endNode = startNode; endOff = startNode.nodeValue.length; }
-    try {
-      var range = document.createRange();
-      range.setStart(startNode, Math.max(0, Math.min(startOff, startNode.nodeValue.length)));
-      range.setEnd(endNode, Math.max(0, Math.min(endOff, endNode.nodeValue.length)));
-      var sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
-      if (field.focus) field.focus();
-      return true;
-    } catch (err) {
-      return false;
-    }
+    return api.restoreOffsets(field, saved);
   }
 
   function renderSheet(sheet, page, pages) {
@@ -1471,7 +1443,7 @@
         locked: !!(page.meta && page.meta.locked),
         facts: page._facts || null,
         brandImageUrl: BRAND_LOGO,
-        brandBox: page.meta && page.meta.brandBox,
+        brandBox: page._brandBox || (page.meta && page.meta.brandBox),
       });
       margin.appendChild(discussionEl);
       watchDiscussionOverflow(discussionEl);
@@ -1632,7 +1604,7 @@
     };
   }
 
-  function persistableDocument(pages, activePageId, prior, floorLayout, coverLayout) {
+  function persistableDocument(pages, activePageId, prior, floorLayout, coverLayout, brandBox) {
     var notes = collectPenLogNotes(pages);
     if ((!notes || !Object.keys(notes).length) && prior && prior.penLog && prior.penLog.notes) {
       notes = prior.penLog.notes;
@@ -1664,6 +1636,11 @@
     } else if (prior && prior.coverLayout) {
       doc.coverLayout = coverApi ? coverApi.normalizeLayout(prior.coverLayout) : prior.coverLayout;
     }
+    // The logo is placed once for the whole book, like the cover and floor
+    // layouts -- not per sheet. Where it is put is where it stays.
+    var discApi = window.ToolboxReportDiscussion;
+    var brand = brandBox || (prior && prior.brandBox);
+    if (brand) doc.brandBox = discApi ? discApi.normalizeBrandBox(brand) : brand;
     return doc;
   }
 
@@ -1720,6 +1697,10 @@
     var coverLayout = window.ToolboxReportCoverLayout
       ? window.ToolboxReportCoverLayout.defaultLayout()
       : { locked: false, boxes: {}, overviewMediaId: '' };
+    // One logo placement for the whole book. Null until the document says
+    // otherwise, so a report saved before this still shows where its logo was
+    // put (the per-sheet copy is adopted on open).
+    var brandBox = null;
     var coverOverviewUrl = '';
     var floorDrag = null;
     var coverDrag = null;
@@ -1786,7 +1767,8 @@
         activeId,
         workingRecord && (workingRecord.reportBuilder || workingRecord.report),
         floorLayout,
-        coverLayout
+        coverLayout,
+        brandBox
       );
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;
@@ -1991,6 +1973,7 @@
       if (current && current.type === 'section' && current.meta &&
           current.meta.sectionId === 'discussion') {
         current._facts = discussionFacts(current);
+        current._brandBox = currentBrandBox(current);
       }
       renderSheet(sheetEl, current, pages);
       syncPenLogPanel(current);
@@ -2045,7 +2028,7 @@
         var page = activePage();
         if (!page || !page.meta) return;
         var api = window.ToolboxReportDiscussion;
-        var box = api ? api.normalizeBrandBox(page.meta.brandBox) : (page.meta.brandBox || {});
+        var box = api ? api.normalizeBrandBox(currentBrandBox(page)) : (currentBrandBox(page) || {});
         box.locked = brandLock.getAttribute('data-rb-brand-lock') === 'lock';
         applyBrandBox(box);
         markDirty();
@@ -2089,13 +2072,34 @@
     // ---- Logo placement ------------------------------------------------
     // One placement for the whole book: every discussion sheet, including a
     // continuation, carries the same logo position so the pages match.
+    // The placement to draw: the book's own, or -- for a report written
+    // before the logo became one book-wide placement -- whatever that sheet
+    // was carrying.
+    function currentBrandBox(page) {
+      if (brandBox) return brandBox;
+      return (page && page.meta && page.meta.brandBox) || null;
+    }
+
+    function adoptLegacyBrandBox() {
+      if (brandBox) return;
+      var api = window.ToolboxReportDiscussion;
+      for (var i = 0; i < pages.length; i += 1) {
+        var meta = pages[i] && pages[i].meta;
+        if (meta && meta.brandBox) {
+          brandBox = api ? api.normalizeBrandBox(meta.brandBox) : meta.brandBox;
+          return;
+        }
+      }
+    }
+
     function applyBrandBox(box) {
       var api = window.ToolboxReportDiscussion;
       var next = api ? api.normalizeBrandBox(box) : box;
+      brandBox = next;
+      // Older documents carried a copy on every sheet. There is one placement
+      // now, so the copies go rather than sitting there contradicting it.
       pages.forEach(function (item) {
-        if (!item || item.type !== 'section') return;
-        if (!item.meta || item.meta.sectionId !== 'discussion') return;
-        item.meta.brandBox = JSON.parse(JSON.stringify(next));
+        if (item && item.meta && item.meta.brandBox) delete item.meta.brandBox;
       });
       return next;
     }
@@ -2119,7 +2123,7 @@
         startX: event.clientX,
         startY: event.clientY,
         rect: rect,
-        box: api ? api.normalizeBrandBox(page.meta.brandBox) : page.meta.brandBox,
+        box: api ? api.normalizeBrandBox(currentBrandBox(page)) : currentBrandBox(page),
       };
     });
 
@@ -2489,22 +2493,35 @@
       if (!all.length) return false;
 
       // Every discussion sheet has identical body geometry, so one element
-      // measures them all.
-      var restore = body.innerHTML;
+      // measures them all -- but it must not be the one being edited. Writing
+      // into the live field destroyed the caret every time this ran, and a
+      // re-flow that decided nothing had changed left it destroyed. The
+      // measurement happens in a hidden copy sitting in the same place, so the
+      // same container, width and type size apply and the investigator's
+      // selection is never touched.
+      var probe = body.cloneNode(false);
+      probe.removeAttribute('contenteditable');
+      probe.removeAttribute('data-rb-rich');
+      probe.removeAttribute('data-rb-section-field');
+      probe.setAttribute('aria-hidden', 'true');
+      probe.style.visibility = 'hidden';
+      probe.style.pointerEvents = 'none';
+      body.parentNode.appendChild(probe);
+
       var sheets = [];
       var rest = all;
       var guard = 0;
       while (rest.length && guard < 40) {
         guard += 1;
-        body.innerHTML = api.toHtml({ paragraphs: rest });
-        var cut = firstOverflowIndex(body);
+        probe.innerHTML = api.toHtml({ paragraphs: rest });
+        var cut = firstOverflowIndex(probe);
         if (cut < 0) { sheets.push(rest); rest = []; break; }
         if (cut <= 0) cut = 1; // always make progress
         sheets.push(rest.slice(0, cut));
         rest = rest.slice(cut);
       }
       if (rest.length) sheets.push(rest);
-      body.innerHTML = restore;
+      if (probe.parentNode) probe.parentNode.removeChild(probe);
 
       var same = sheets.length === chain.length;
       if (same) {
@@ -2532,11 +2549,10 @@
             note: '',
             sourceKey: null,
             meta: {
+              // No logo copy: there is one placement for the whole book, so a
+              // continuation sheet draws the same one every other sheet does.
               sectionId: 'discussion',
               continuation: true,
-              brandBox: head.meta && head.meta.brandBox
-                ? JSON.parse(JSON.stringify(head.meta.brandBox))
-                : null,
             },
             reportText: { body: api.compact({ paragraphs: sheets[k] }) },
           };
@@ -2657,11 +2673,34 @@
       if (field && formatToolbar) formatToolbar.noteField(field);
     });
 
+    // Typing and pasting change how much text there is, so the chain has to
+    // be re-flowed -- but not on every keystroke, which would fight the
+    // caret. It runs once typing pauses, and only re-renders if the split
+    // actually changed. Without this, text typed or pasted past the bottom of
+    // the page simply ran off into columns nobody could see, and text deleted
+    // from a full page never pulled the continuation back.
+    var reflowTimer = null;
+
+    function scheduleDiscussionReflow(field) {
+      if (!field || !field.closest('.rb-discussion')) return;
+      if (reflowTimer) window.clearTimeout(reflowTimer);
+      reflowTimer = window.setTimeout(function () {
+        reflowTimer = null;
+        var live = sheetEl.querySelector('[data-rb-rich="' + (field.getAttribute('data-rb-rich') || '') + '"]');
+        var keep = captureSelectionOffsets(live || field);
+        var changed = reflowDiscussion();
+        if (changed) renderPages();
+        restoreSelectionOffsets(sheetEl, keep);
+        if (changed) flushSave().catch(function () {});
+      }, 700);
+    }
+
     sheetEl.addEventListener('input', function (event) {
       var richTarget = event.target.closest(
         '[data-rb-cover-field], [data-rb-section-field], [data-rb-ov-field]');
       if (richTarget) {
         if (!commitRichField(richTarget)) return;
+        scheduleDiscussionReflow(richTarget);
         return;
       }
       var field = event.target.closest('[data-rb-caption]');
@@ -3283,6 +3322,9 @@
       if (savedDoc && savedDoc.coverLayout && window.ToolboxReportCoverLayout) {
         coverLayout = window.ToolboxReportCoverLayout.normalizeLayout(savedDoc.coverLayout);
       }
+      if (savedDoc && savedDoc.brandBox && window.ToolboxReportDiscussion) {
+        brandBox = window.ToolboxReportDiscussion.normalizeBrandBox(savedDoc.brandBox);
+      }
       var saved = savedReportPages(record);
       if (saved) {
         var before = saved.pages.map(function (page) {
@@ -3351,6 +3393,7 @@
       }).then(function (enriched) {
         if (token !== mountGeneration) return;
         pages = enriched;
+        adoptLegacyBrandBox();
         renderPages();
         fitSheet(root);
         // A book split under different spacing heals on open: if the text now
