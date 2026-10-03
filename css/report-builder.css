@@ -210,13 +210,26 @@ body.report-builder-open .canvas {
   container-type: size;
 }
 
+/* One frame, the same shape in the same place on every page. It is drawn
+   against the sheet, so the content box below only holds the content in. */
+.rb-sheet__frame {
+  position: absolute;
+  border: 0.19cqh solid #1a1a1a;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .rb-sheet__margin {
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
   height: 100%;
   margin: 4.5%;
-  border: 1px solid rgba(17, 17, 17, 0.18);
+  /* No border of its own: it used to draw a second, different box at a 4.5%
+     inset in another colour, which is what made the page border land in a
+     different place depending on which page you were looking at. */
+  border: 0;
   padding: 3.5% 4% 2.5%;
   box-sizing: border-box;
   overflow: hidden;
@@ -833,7 +846,10 @@ body.report-builder-open .canvas {
   flex: 0 0 auto;
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
+  /* The readings block used to sit opposite a logo drawn in this footer. The
+     logo is placed against the sheet now, so the readings keep their side
+     rather than sliding across to fill the gap. */
+  justify-content: flex-end;
   gap: 12px;
   margin-top: 0.4%;
 }
@@ -974,17 +990,6 @@ body.report-builder-open .canvas {
 }
 
 /* Mitchell "Picture 20": the page frame, 0.9% in from the slide edge. */
-.rb-cover__frame {
-  position: absolute;
-  left: 0.9%;
-  top: 1%;
-  width: 98.2%;
-  height: 98.01%;
-  border: 0.19cqh solid #1A1A1A;
-  box-sizing: border-box;
-  pointer-events: none;
-}
-
 .rb-cover-box {
   position: absolute;
   box-sizing: border-box;
@@ -2067,13 +2072,6 @@ body.report-builder-open .canvas {
   font-family: Calibri, Carlito, "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
-.rb-discussion__frame {
-  position: absolute;
-  border: 0.19cqh solid #1a1a1a;
-  box-sizing: border-box;
-  pointer-events: none;
-}
-
 /* 12 pt on an 11 in page = 1.515cqh. No clamp: a clamped size stops scaling
    and would print smaller than it previews. */
 .rb-discussion__body {
@@ -2126,27 +2124,78 @@ body.report-builder-open .canvas {
 
 .rb-discussion__body .rb-rt__p--bullet { margin: 0 0 0.3em; }
 
-.rb-discussion__brand {
+/* ------------------------------------------------------------------ *
+ * The logo — one placement, every page
+ *
+ * Drawn against the sheet, not inside any one page's layout, so wherever it
+ * is put is where every page shows it. Geometry is percentages of the sheet,
+ * like everything else placed here, so it holds from preview size to 17 x 11
+ * in on paper.
+ * ------------------------------------------------------------------ */
+
+.rb-brand {
   position: absolute;
   display: flex;
   align-items: flex-end;
+  /* Above every page's own chrome, not under it. At 3 it sat beneath the
+     cover's Lock layout bar (4) and the annotation layer (5), so on the cover
+     the logo could be seen but never grabbed -- and beneath the discussion
+     text box, which swallowed the same grab. It is placed chrome: it has to
+     be reachable on whichever page the investigator is looking at. */
+  z-index: 7;
+  touch-action: none;
 }
 
-.rb-discussion__brand > * { max-width: 100%; }
+/* Once locked it is just artwork, so it stops intercepting anything -- text,
+   annotations and page controls underneath stay usable. */
+.rb-brand.is-locked { pointer-events: none; }
 
-@media print {
-  .rb-discussion__body:hover,
-  .rb-discussion__body:focus { outline: none !important; }
+.rb-brand:not(.is-locked) {
+  outline: 1px dashed var(--rb-copper, #8B5E3C);
+  outline-offset: 2px;
+  cursor: move;
 }
 
-/* The real brand artwork. Contained, never stretched. */
-.rb-brand__img,
-.rb-discussion__brand img {
+.rb-brand__img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
   object-position: left center;
+}
+
+.rb-brand__resize {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  right: -3px;
+  bottom: -3px;
+  border-right: 2px solid var(--rb-copper, #8B5E3C);
+  border-bottom: 2px solid var(--rb-copper, #8B5E3C);
+  cursor: nwse-resize;
+}
+
+.rb-brand__lock {
+  position: absolute;
+  /* Above the logo in the stack: the logo overlapped this control, so clicks
+     on Unlock landed on the image instead. */
+  z-index: 8;
+  padding: 2px 8px;
+  border: 1px solid var(--line, #d7d2c8);
+  border-radius: 6px;
+  background: var(--panel, #fff);
+  color: var(--ink, #222);
+  font: inherit;
+  font-size: 1.2cqh;
+  line-height: 1.6;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+@media print {
+  .rb-brand__resize,
+  .rb-brand__lock { display: none !important; }
+  .rb-brand { outline: none !important; }
 }
 
 /* Said on screen, never printed: the page cannot show what does not fit. */
@@ -2175,59 +2224,6 @@ body.report-builder-open .canvas {
   color: inherit;
   font: inherit;
   cursor: pointer;
-}
-
-/* The logo places like any other report element: move it, size it, lock it. */
-.rb-discussion__brand:not(.is-locked) { cursor: move; }
-
-.rb-discussion__brand-resize {
-  position: absolute;
-  width: 13px;
-  height: 13px;
-  right: -3px;
-  bottom: -3px;
-  border-right: 2px solid var(--rb-copper, #8B5E3C);
-  border-bottom: 2px solid var(--rb-copper, #8B5E3C);
-  cursor: nwse-resize;
-}
-
-.rb-discussion__brand {
-  /* The text body runs to 93.49% and the logo sits from 91.10%, so the body
-     was layered over the logo's move handle and swallowed every grab. The
-     logo is chrome on top of the text, not under it. */
-  z-index: 3;
-  touch-action: none;
-}
-
-.rb-discussion__brand:not(.is-locked) {
-  outline: 1px dashed rgba(139, 94, 60, 0.4);
-}
-
-.rb-discussion__brand-lock {
-  position: absolute;
-  /* Above the logo. The logo sits at z-index 3 and overlaps this control, so
-     clicks on Unlock landed on the image instead -- the same mistake as
-     layering the logo over the text body, made again. */
-  z-index: 6;
-  /* Placement comes from the logo box itself (see report-discussion.js) so
-     the control rides clear of the artwork wherever the logo is put. These
-     are only the fallback if that has not run. */
-  left: 1.96%;
-  bottom: 1.2%;
-  padding: 2px 8px;
-  border: 1px solid var(--line, #d7d2c8);
-  border-radius: 6px;
-  background: var(--panel, #fff);
-  color: var(--ink, #222);
-  font: inherit;
-  font-size: 1.2cqh;
-  cursor: pointer;
-}
-
-@media print {
-  .rb-discussion__brand-resize,
-  .rb-discussion__brand-lock { display: none !important; }
-  .rb-discussion__brand { outline: none !important; }
 }
 
 /* ------------------------------------------------------------------ *

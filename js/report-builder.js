@@ -209,15 +209,65 @@
   // -- which is not the mark and had no business on a deliverable.
   var BRAND_LOGO = 'brand/sandia-geo.png';
 
-  function brandMark() {
+  // One logo, one placement, every page. Each page type used to draw its own
+  // -- the floor sheet and the pictures sheet each put one in their footer at
+  // their own size, the discussion sheet drew a third -- so placing it on one
+  // page did nothing to the rest. It is drawn once here, against the sheet, at
+  // the placement the document holds, and that is what every page shows.
+  // The page frame, drawn once against the sheet. Each page type used to draw
+  // its own -- the cover a rectangle 0.9% in, the discussion sheet one at
+  // 0.98% / 1.52%, and the floor and picture sheets none at all, showing the
+  // content box's own border at a 4.5% inset in a different colour instead.
+  // Three shapes in three places on one deliverable. The measurement kept is
+  // the one the four shipped decks agree on to the hundredth of a percent.
+  var SHEET_FRAME = { x: 0.98, y: 1.52, w: 98.04, h: 97.73 };
+
+  function renderSheetFrame(sheet) {
+    var frame = document.createElement('div');
+    frame.className = 'rb-sheet__frame';
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.cssText = 'left:' + SHEET_FRAME.x + '%;top:' + SHEET_FRAME.y + '%;' +
+      'width:' + SHEET_FRAME.w + '%;height:' + SHEET_FRAME.h + '%;';
+    sheet.appendChild(frame);
+  }
+
+  function renderBrandLayer(sheet, box) {
+    var api = window.ToolboxReportDiscussion;
+    if (!api) return;
+    var placed = api.normalizeBrandBox(box);
     var brand = document.createElement('div');
-    brand.className = 'rb-topo-page__brand';
+    brand.className = 'rb-brand' + (placed.locked ? ' is-locked' : '');
+    brand.setAttribute('data-rb-brand-box', '1');
+    brand.style.cssText = 'left:' + placed.x + '%;top:' + placed.y + '%;' +
+      'width:' + placed.w + '%;height:' + placed.h + '%;';
     var img = document.createElement('img');
     img.className = 'rb-brand__img';
     img.src = BRAND_LOGO;
     img.alt = 'Sandia Geo';
     brand.appendChild(img);
-    return brand;
+    if (!placed.locked) {
+      // Dragged by the logo itself, the way a picture is moved in PowerPoint.
+      brand.setAttribute('title', 'Drag to move. Resize from the corner.');
+      var grip = document.createElement('span');
+      grip.className = 'rb-brand__resize';
+      grip.setAttribute('data-rb-brand-resize', '1');
+      brand.appendChild(grip);
+    }
+    sheet.appendChild(brand);
+
+    // The control rides beside the logo rather than in a fixed corner, which
+    // put it straight on top of the artwork once the logo was placed there.
+    var lock = document.createElement('button');
+    lock.type = 'button';
+    lock.className = 'rb-brand__lock';
+    lock.setAttribute('data-rb-brand-lock', placed.locked ? 'unlock' : 'lock');
+    lock.textContent = placed.locked ? 'Unlock logo' : 'Lock logo';
+    var GAP = 1.2;
+    var WIDTH = 13; // roughly what "Unlock logo" occupies at this size
+    var right = placed.x + placed.w + GAP;
+    lock.style.left = (right + WIDTH <= 99 ? right : Math.max(0, placed.x - GAP - WIDTH)) + '%';
+    lock.style.top = (placed.y + Math.max(0, (placed.h - 2.6) / 2)) + '%';
+    sheet.appendChild(lock);
   }
 
   function nextPicturesPageId(pages) {
@@ -740,7 +790,6 @@
 
     var footer = document.createElement('div');
     footer.className = 'rb-topo-page__footer';
-    footer.appendChild(brandMark());
     footer.appendChild(renderRelativeReadings(statsList));
     root.appendChild(footer);
     return root;
@@ -800,7 +849,6 @@
 
     var footer = document.createElement('div');
     footer.className = 'rb-pictures-page__footer';
-    footer.appendChild(brandMark());
     root.appendChild(footer);
     return root;
   }
@@ -958,13 +1006,6 @@
 
     var stage = document.createElement('div');
     stage.className = 'rb-cover__stage';
-
-    // The page frame is a rectangle 0.9% in from the slide edge, as in the
-    // decks — not the inset margin box the other page types draw.
-    var frame = document.createElement('div');
-    frame.className = 'rb-cover__frame';
-    frame.setAttribute('aria-hidden', 'true');
-    stage.appendChild(frame);
 
     // "Prepared For:" sits in its own column with the contact stacked beside
     // it, which is how the decks tab it.
@@ -1416,6 +1457,8 @@
 
     if (isPenLogPage(page)) {
       renderPenLogSheet(sheet, page, pages);
+      renderSheetFrame(sheet);
+      renderBrandLayer(sheet, page._brandBox || (page.meta && page.meta.brandBox));
       return;
     }
     penLogUi.layout = null;
@@ -1442,8 +1485,6 @@
       var discussionEl = window.ToolboxReportDiscussion.renderPage(page, {
         locked: !!(page.meta && page.meta.locked),
         facts: page._facts || null,
-        brandImageUrl: BRAND_LOGO,
-        brandBox: page._brandBox || (page.meta && page.meta.brandBox),
       });
       margin.appendChild(discussionEl);
       watchDiscussionOverflow(discussionEl);
@@ -1478,7 +1519,6 @@
           layout: layout,
           formatSurveyDate: formatSurveyDate,
           renderNorthArrow: renderNorthArrow,
-          brandMark: brandMark,
           renderRelativeReadings: renderRelativeReadings,
         });
         if (page.meta) page.meta.layout = rendered.layout;
@@ -1531,6 +1571,8 @@
       margin.appendChild(footer);
     }
     sheet.appendChild(margin);
+    renderSheetFrame(sheet);
+    renderBrandLayer(sheet, page._brandBox || (page.meta && page.meta.brandBox));
   }
 
   function evidenceMeta(page) {
@@ -1973,8 +2015,8 @@
       if (current && current.type === 'section' && current.meta &&
           current.meta.sectionId === 'discussion') {
         current._facts = discussionFacts(current);
-        current._brandBox = currentBrandBox(current);
       }
+      if (current) current._brandBox = currentBrandBox(current);
       renderSheet(sheetEl, current, pages);
       syncPenLogPanel(current);
       fitSheet(root);
@@ -2026,7 +2068,7 @@
       if (brandLock) {
         event.preventDefault();
         var page = activePage();
-        if (!page || !page.meta) return;
+        if (!page) return;
         var api = window.ToolboxReportDiscussion;
         var box = api ? api.normalizeBrandBox(currentBrandBox(page)) : (currentBrandBox(page) || {});
         box.locked = brandLock.getAttribute('data-rb-brand-lock') === 'lock';
@@ -2112,9 +2154,10 @@
       if (!grip && !mover) return;
       if (mover && mover.classList.contains('is-locked')) return;
       var page = activePage();
-      if (!page || !page.meta || page.meta.sectionId !== 'discussion') return;
-      var stage = sheetEl.querySelector('.rb-discussion');
-      var rect = stage && stage.getBoundingClientRect();
+      if (!page) return;
+      // The logo is placed against the sheet, which is the one thing every
+      // page type has in common.
+      var rect = sheetEl.getBoundingClientRect();
       if (!rect || rect.width < 8) return;
       event.preventDefault();
       var api = window.ToolboxReportDiscussion;

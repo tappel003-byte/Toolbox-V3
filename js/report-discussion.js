@@ -97,12 +97,8 @@
     var root = document.createElement('div');
     root.className = 'rb-discussion' + (locked ? ' is-locked' : '');
 
-    var frame = document.createElement('div');
-    frame.className = 'rb-discussion__frame';
-    frame.style.cssText = 'left:' + FRAME.x + '%;top:' + FRAME.y + '%;' +
-      'width:' + FRAME.w + '%;height:' + FRAME.h + '%;';
-    frame.setAttribute('aria-hidden', 'true');
-    root.appendChild(frame);
+    // The page frame is drawn once against the sheet, the same shape in the
+    // same place on every page, so this one no longer draws its own.
 
     var body = document.createElement('div');
     body.className = 'rb-discussion__body rb-rt';
@@ -128,53 +124,10 @@
     body.innerHTML = api ? api.toHtml(value) : '';
     root.appendChild(body);
 
-    // The decks carry the real SANDIA GEO logo here as an image. Toolbox does
-    // not have that file, and the stand-in it was drawing -- a styled span
-    // plus the words -- is not the mark. Nothing is better than a wrong logo
-    // on a deliverable, so the slot stays empty until the artwork is in.
-    if (opts.brandImageUrl) {
-      var box = normalizeBrandBox(opts.brandBox);
-      var brand = document.createElement('div');
-      brand.className = 'rb-discussion__brand' + (box.locked ? ' is-locked' : '');
-      brand.setAttribute('data-rb-brand-box', '1');
-      brand.style.cssText = 'left:' + box.x + '%;top:' + box.y + '%;' +
-        'width:' + box.w + '%;height:' + box.h + '%;';
-      var img = document.createElement('img');
-      img.src = opts.brandImageUrl;
-      img.alt = '';
-      brand.appendChild(img);
-      if (!box.locked) {
-        // The logo is dragged by the logo, the way a picture is moved in
-        // PowerPoint. Requiring a small corner handle meant grabbing the
-        // image itself did nothing, which reads as broken.
-        brand.setAttribute('title', 'Drag to move. Resize from the corner.');
-        var grip = document.createElement('span');
-        grip.className = 'rb-discussion__brand-resize';
-        grip.setAttribute('data-rb-brand-resize', '1');
-        brand.appendChild(grip);
-      }
-      root.appendChild(brand);
-
-      // The control follows the logo instead of sitting in a fixed corner,
-      // which is where it was and which put it straight on top of the
-      // artwork once the logo was placed down there. It rides just clear of
-      // the box -- above it normally, below it when the logo is near the top.
-      var lock = document.createElement('button');
-      lock.type = 'button';
-      lock.className = 'rb-discussion__brand-lock';
-      lock.setAttribute('data-rb-brand-lock', box.locked ? 'unlock' : 'lock');
-      lock.textContent = box.locked ? 'Unlock logo' : 'Lock logo';
-      // Beside the logo, not above it: the text box ends at 93.49% and the
-      // logo sits at 94.36%, so there is under 1% of page between them --
-      // anything stacked above the logo lands on the last line of the
-      // narrative. To the right while there is room, otherwise to the left.
-      var GAP = 1.2;
-      var WIDTH = 13; // roughly what "Unlock logo" occupies at this size
-      var right = box.x + box.w + GAP;
-      lock.style.left = (right + WIDTH <= 99 ? right : Math.max(0, box.x - GAP - WIDTH)) + '%';
-      lock.style.top = (box.y + Math.max(0, (box.h - 2.6) / 2)) + '%';
-      root.appendChild(lock);
-    }
+    // The logo is not drawn here. It is one placement for the whole book, on
+    // every page type, so Report Builder draws it against the sheet rather
+    // than each page drawing its own at its own size (VISION: the logo is
+    // placed once and locked, and that is where it is from then on).
 
     // A fixed-height multicol box does not stop at two columns: it keeps
     // making more off to the side, and contenteditable scrolls sideways to
