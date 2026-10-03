@@ -1092,16 +1092,22 @@ body.report-builder-open .canvas {
   color: var(--rb-ink);
   font-size: 7.576cqh;
   font-weight: 700;
-  line-height: 1;
+  /* PowerPoint single-spaces on the font's own line height (~1.22 for
+     Calibri), which puts leading above AND below the glyphs. line-height:1
+     dropped all the slack below the street and inflated the gap to the city
+     line even though both boxes were landing on the deck's coordinates. */
+  line-height: 1.22;
   letter-spacing: -0.017em;
 }
 
 .rb-cover input.rb-cover__city {
-  margin-top: 2.61cqh;
+  /* Street box 35.91% + its 9.24cqh line box ends at 45.15%; the deck puts
+     the city box at 46.10%, so the remaining gap is 0.95. */
+  margin-top: 0.95cqh;
   color: var(--rb-gray);
   font-size: 4.04cqh;
   font-weight: 400;
-  line-height: 1;
+  line-height: 1.22;
 }
 
 /* ---- Rule + survey date (Rectangle 35 at 57.45%, TextBox 37 at 60.18%) ---- */

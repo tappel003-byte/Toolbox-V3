@@ -97,23 +97,42 @@
     return addr || displayAddress(record);
   }
 
+  // The decks never print a trailing comma on either line: the street stands
+  // alone and the city/state/ZIP line sits under it. Splitting a single-line
+  // address left the comma attached ("44 El Cielo Azul Circle,").
+  function trimAddressLine(value) {
+    return String(value == null ? '' : value).trim().replace(/[\s,]+$/, '');
+  }
+
   function addressParts(text) {
     var lines = String(text || '').split(/\n/).map(function (line) {
       return line.trim();
     }).filter(Boolean);
     if (lines.length >= 2) {
       return {
-        street: lines[0] || '',
-        cityLine: lines.slice(1).join(', '),
+        street: trimAddressLine(lines[0]),
+        cityLine: trimAddressLine(lines.slice(1).join(', ')),
       };
     }
     var one = lines[0] || '';
+    // A written address that carries two or more commas separates street from
+    // city at the FIRST one ("28 Sandhill Lane, Los Lunas, NM 87031"). Taking
+    // that boundary directly is exact. The whitespace regex below is greedy and
+    // split two-word city names in half -- "Los Lunas" became street "... Los"
+    // and city "Lunas, NM" -- which hit Ross and 1515, two of four real jobs.
+    var firstComma = one.indexOf(',');
+    if (firstComma > 0 && (one.match(/,/g) || []).length >= 2) {
+      return {
+        street: trimAddressLine(one.slice(0, firstComma)),
+        cityLine: trimAddressLine(one.slice(firstComma + 1)),
+      };
+    }
     // Single line: "3777 American Rd. NW Albuquerque, NM" → street + city/state
     var split = one.match(/^(.*)\s+([A-Za-z][A-Za-z .]*?,\s*(?:[A-Z]{2}|[A-Za-z]+(?:\s+[A-Za-z]+)*)(?:,?\s*\d{5}(?:-\d{4})?)?)$/);
     if (split) {
-      return { street: split[1].trim(), cityLine: split[2].trim() };
+      return { street: trimAddressLine(split[1]), cityLine: trimAddressLine(split[2]) };
     }
-    return { street: one, cityLine: '' };
+    return { street: trimAddressLine(one), cityLine: '' };
   }
 
   function displayCustomerName(record) {
