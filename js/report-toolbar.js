@@ -23,6 +23,37 @@
   var SIZE_MARKER = '7'; // legacy execCommand bucket, rewritten immediately
 
   var activeField = null;
+  // Opening a native <select> blurs the field and destroys the selection, so
+  // the command would land on nothing. preventDefault on mousedown cannot help
+  // -- it would stop the dropdown opening at all. The live range is therefore
+  // remembered while the caret is in a field and restored before any command.
+  var savedRange = null;
+
+  function rememberSelection() {
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    var range = sel.getRangeAt(0);
+    var holder = range.commonAncestorContainer;
+    var el = holder && holder.nodeType === 3 ? holder.parentNode : holder;
+    if (el && el.closest && el.closest('[data-rb-rich]')) {
+      savedRange = range.cloneRange();
+      activeField = el.closest('[data-rb-rich]');
+    }
+  }
+
+  function restoreSelection() {
+    if (!savedRange) return false;
+    var sel = window.getSelection();
+    if (!sel) return false;
+    try {
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
+      if (activeField && activeField.focus) activeField.focus();
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
 
   function fieldOf(node) {
     var el = node && node.nodeType === 3 ? node.parentNode : node;
@@ -46,9 +77,11 @@
   // selection with one and rewrite those nodes to the real point size.
   function applyInline(field, apply) {
     if (!field) return;
-    exec('styleWithCSS', 'false');
+    restoreSelection();
+    exec('styleWithCSS', false);
     apply();
     var legacy = field.querySelectorAll('font');
+    var replaced = [];
     for (var i = 0; i < legacy.length; i += 1) {
       var font = legacy[i];
       var span = document.createElement('span');
@@ -61,7 +94,24 @@
       if (face) span.style.fontFamily = "'" + face.replace(/['"]/g, '') + "'";
       while (font.firstChild) span.appendChild(font.firstChild);
       font.parentNode.replaceChild(span, font);
+      replaced.push(span);
     }
+    // Swapping those nodes out collapses the selection, which left the NEXT
+    // command with nothing to act on -- setting a size and then a typeface
+    // lost the typeface. Re-select what was just changed so a run of commands
+    // behaves the way it does in a ribbon: pick a size, then a font, then
+    // bold, all on the same words.
+    if (replaced.length) {
+      try {
+        var range = document.createRange();
+        range.setStartBefore(replaced[0]);
+        range.setEndAfter(replaced[replaced.length - 1]);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } catch (err) { /* leave the caret where the browser put it */ }
+    }
+    rememberSelection();
   }
 
   function setSize(field, pt) {
@@ -142,10 +192,26 @@
     return state;
   }
 
-  function optionList(values, selected) {
-    return values.map(function (v) {
-      return '<option value="' + v + '"' + (String(v) === String(selected) ? ' selected' : '') + '>' + v + '</option>';
+  // A native <select> takes focus when it opens, which destroys the caret and
+  // leaves the command with nothing to act on. The buttons on this bar survive
+  // because the bar swallows mousedown; a native dropdown cannot be made to.
+  // These menus are ordinary elements on the same bar, so the selection is
+  // never lost -- which is also how a ribbon behaves.
+  function menu(kind, values, selected, label, width) {
+    var items = values.map(function (v) {
+      return '<button type="button" class="rb-format__item" data-rb-pick="' + kind + '"' +
+        ' data-rb-value="' + v + '"' + (String(v) === String(selected) ? ' aria-current="true"' : '') +
+        '>' + v + '</button>';
     }).join('');
+    return (
+      '<span class="rb-format__menu" data-rb-menu="' + kind + '">' +
+      '  <button type="button" class="rb-format__menu-btn" data-rb-open="' + kind + '"' +
+      '    style="min-width:' + width + 'px" aria-haspopup="true" aria-expanded="false"' +
+      '    aria-label="' + label + '"><span data-rb-current="' + kind + '">' + selected + '</span>' +
+      '    <span class="rb-format__caret" aria-hidden="true">&#9662;</span></button>' +
+      '  <span class="rb-format__list" data-rb-list="' + kind + '" hidden>' + items + '</span>' +
+      '</span>'
+    );
   }
 
   // The three alignment commands need three distinguishable icons. A single
@@ -174,12 +240,8 @@
     return (
       '<div class="rb-format" role="toolbar" aria-label="Formatting">' +
       '  <span class="rb-format__group">' +
-      '    <select class="rb-format__font" data-rb-fmt="font" aria-label="Font">' +
-      optionList(FONTS, 'Calibri') +
-      '    </select>' +
-      '    <select class="rb-format__size" data-rb-fmt="size" aria-label="Font size">' +
-      optionList(SIZES, 14) +
-      '    </select>' +
+      menu('font', FONTS, 'Calibri', 'Font', 104) +
+      menu('size', SIZES, 14, 'Font size', 52) +
       '    <button type="button" class="rb-format__btn" data-rb-fmt="grow" aria-label="Increase font size" title="Increase font size">A&#9652;</button>' +
       '    <button type="button" class="rb-format__btn" data-rb-fmt="shrink" aria-label="Decrease font size" title="Decrease font size">A&#9662;</button>' +
       '  </span>' +
@@ -231,9 +293,27 @@
     host.innerHTML = html();
     var bar = host.querySelector('.rb-format');
     var onChange = (options && options.onChange) || function () {};
-    var sizeSel = bar.querySelector('[data-rb-fmt="size"]');
-    var fontSel = bar.querySelector('[data-rb-fmt="font"]');
     var hint = bar.querySelector('[data-rb-fmt-hint]');
+
+    function closeMenus() {
+      var lists = bar.querySelectorAll('[data-rb-list]');
+      for (var i = 0; i < lists.length; i += 1) lists[i].hidden = true;
+      var opens = bar.querySelectorAll('[data-rb-open]');
+      for (var j = 0; j < opens.length; j += 1) opens[j].setAttribute('aria-expanded', 'false');
+    }
+
+    function setCurrent(kind, value) {
+      var label = bar.querySelector('[data-rb-current="' + kind + '"]');
+      if (label) label.textContent = value;
+      var items = bar.querySelectorAll('[data-rb-pick="' + kind + '"]');
+      for (var i = 0; i < items.length; i += 1) {
+        if (String(items[i].getAttribute('data-rb-value')) === String(value)) {
+          items[i].setAttribute('aria-current', 'true');
+        } else {
+          items[i].removeAttribute('aria-current');
+        }
+      }
+    }
 
     function refresh() {
       var field = currentField();
@@ -248,8 +328,8 @@
         var btn = bar.querySelector('[data-rb-fmt="' + k + '"]');
         if (btn) btn.classList.toggle('is-on', state.align === k);
       });
-      if (state.size && sizeSel && SIZES.indexOf(parseInt(state.size, 10)) !== -1) sizeSel.value = state.size;
-      if (state.font && fontSel && FONTS.indexOf(state.font) !== -1) fontSel.value = state.font;
+      if (state.size && SIZES.indexOf(parseInt(state.size, 10)) !== -1) setCurrent('size', state.size);
+      if (state.font && FONTS.indexOf(state.font) !== -1) setCurrent('font', state.font);
     }
 
     bar.addEventListener('mousedown', hold);
@@ -259,8 +339,9 @@
       var btn = event.target.closest('button[data-rb-fmt]');
       if (!btn) return;
       event.preventDefault();
-      var field = currentField();
+      var field = currentField() || activeField;
       if (!field) return;
+      restoreSelection();
       var command = btn.getAttribute('data-rb-fmt');
       if (command === 'grow' || command === 'shrink') {
         var state = selectionState(field);
@@ -273,32 +354,60 @@
         }
         var next = SIZES[Math.max(0, Math.min(SIZES.length - 1, index + (command === 'grow' ? 1 : -1)))];
         setSize(field, next);
+        setCurrent('size', next);
       } else if (!run(command, field)) {
         return;
+      } else {
+        rememberSelection();
       }
       onChange(field);
       refresh();
     });
 
-    [sizeSel, fontSel].forEach(function (select) {
-      if (!select) return;
-      select.addEventListener('change', function () {
-        var field = currentField();
-        if (!field) return;
-        if (select === sizeSel) setSize(field, parseFloat(select.value));
-        else setFont(field, select.value);
-        onChange(field);
-        refresh();
-      });
+    bar.addEventListener('click', function (event) {
+      var opener = event.target.closest('[data-rb-open]');
+      if (opener) {
+        event.preventDefault();
+        var kind = opener.getAttribute('data-rb-open');
+        var list = bar.querySelector('[data-rb-list="' + kind + '"]');
+        var wasOpen = list && !list.hidden;
+        closeMenus();
+        if (list && !wasOpen) {
+          list.hidden = false;
+          opener.setAttribute('aria-expanded', 'true');
+        }
+        return;
+      }
+      var pick = event.target.closest('[data-rb-pick]');
+      if (!pick) return;
+      event.preventDefault();
+      closeMenus();
+      var which = pick.getAttribute('data-rb-pick');
+      var value = pick.getAttribute('data-rb-value');
+      var field = currentField() || activeField;
+      if (!field) return;
+      if (which === 'size') setSize(field, parseFloat(value));
+      else setFont(field, value);
+      setCurrent(which, value);
+      onChange(field);
+      refresh();
     });
 
-    document.addEventListener('selectionchange', refresh);
+    document.addEventListener('mousedown', function (event) {
+      if (!event.target.closest || !event.target.closest('.rb-format__menu')) closeMenus();
+    });
+
+    function onSelectionChange() {
+      rememberSelection();
+      refresh();
+    }
+    document.addEventListener('selectionchange', onSelectionChange);
     refresh();
 
     return {
       refresh: refresh,
       noteField: function (field) { activeField = field || null; refresh(); },
-      destroy: function () { document.removeEventListener('selectionchange', refresh); },
+      destroy: function () { document.removeEventListener('selectionchange', onSelectionChange); },
     };
   }
 

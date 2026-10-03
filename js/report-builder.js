@@ -858,10 +858,15 @@
   // instead of showing the old text forever.
   // Saved cover text may be a plain string (pre-rich-text) or a model. Keep a
   // model as a model -- String() on one yields "[object Object]" on the page.
+  // An EMPTY saved value is not an edit -- it means nothing was ever typed
+  // there. Treating it as one froze the cover against the Customer File: a
+  // phone or email added to the file after the report was first opened could
+  // never appear, because the blank saved alongside it kept winning.
   function keepRich(value, fallback) {
     if (value == null) return fallback;
-    if (window.ToolboxReportText && window.ToolboxReportText.isModel(value)) return value;
-    return String(value);
+    var api = window.ToolboxReportText;
+    if (api && api.isModel(value)) return api.isEmpty(value) ? fallback : value;
+    return String(value).trim() ? String(value) : fallback;
   }
 
   function stripFigurePrefix(text) {
@@ -1056,6 +1061,16 @@
       overviewActions.appendChild(mapLink);
     }
     if (!locked) {
+      // Right-click offers Paste only over an editable target, and this box
+      // is not one -- so the context menu the investigator reaches for has no
+      // Paste in it. Ctrl+V works, but an explicit control is what makes the
+      // Maps -> screenshot -> place workflow findable.
+      var pasteBtn = document.createElement('button');
+      pasteBtn.type = 'button';
+      pasteBtn.className = 'btn btn--quiet';
+      pasteBtn.setAttribute('data-rb-cover-overview', 'paste');
+      pasteBtn.textContent = 'Paste overview';
+      overviewActions.appendChild(pasteBtn);
       var addBtn = document.createElement('button');
       addBtn.type = 'button';
       addBtn.className = 'btn btn--quiet';
@@ -2097,6 +2112,33 @@
       reader.readAsDataURL(file);
     }
 
+    // Reads the image the investigator just captured straight off the system
+    // clipboard. Needs a user gesture, which the button provides.
+    function pasteCoverOverview() {
+      if (!navigator.clipboard || typeof navigator.clipboard.read !== 'function') {
+        setSaveStatus('Paste is unavailable here — use Add overview');
+        return;
+      }
+      setSaveStatus('Reading clipboard…');
+      navigator.clipboard.read().then(function (items) {
+        for (var i = 0; i < items.length; i += 1) {
+          var types = items[i].types || [];
+          for (var j = 0; j < types.length; j += 1) {
+            if (types[j].indexOf('image/') === 0) {
+              return items[i].getType(types[j]).then(function (blob) {
+                readImageFile(blob);
+              });
+            }
+          }
+        }
+        setSaveStatus('No image on the clipboard');
+        return null;
+      }).catch(function (err) {
+        console.warn('Clipboard read refused', err);
+        setSaveStatus('Clipboard blocked — use Add overview');
+      });
+    }
+
     function pickCoverOverview() {
       var input = document.createElement('input');
       input.type = 'file';
@@ -2167,6 +2209,10 @@
         var act = overviewAct.getAttribute('data-rb-cover-overview');
         if (act === 'pick') {
           pickCoverOverview();
+          return;
+        }
+        if (act === 'paste') {
+          pasteCoverOverview();
           return;
         }
         if (act === 'clear') {

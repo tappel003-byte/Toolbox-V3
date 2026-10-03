@@ -1857,19 +1857,67 @@ body.report-builder-open .canvas {
 .rb-format__btn[data-rb-fmt="right"] { justify-content: flex-end; }
 .rb-format__btn[data-rb-fmt="left"] { justify-content: flex-start; }
 
-.rb-format__font,
-.rb-format__size {
+.rb-format__menu { position: relative; display: inline-flex; }
+
+.rb-format__menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
   height: 28px;
-  max-width: 128px;
-  padding: 0 4px;
+  padding: 0 6px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel, #fff);
   color: var(--ink);
   font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
-.rb-format__size { max-width: 64px; }
+.rb-format__menu-btn:hover { background: rgba(8, 32, 54, 0.05); }
+
+.rb-format__caret { color: var(--muted, #6b6b6b); font-size: 9px; }
+
+.rb-format__list {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 2px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 100%;
+  max-height: 48vh;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel, #fff);
+  box-shadow: 0 10px 28px rgba(8, 32, 54, 0.18);
+  overflow: auto;
+}
+
+.rb-format__list[hidden] { display: none; }
+
+.rb-format__item {
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.rb-format__item:hover { background: rgba(8, 32, 54, 0.08); }
+
+.rb-format__item[aria-current="true"] {
+  background: var(--accent-soft, #f3d8ce);
+  color: var(--accent, #c14a2b);
+  font-weight: 700;
+}
 
 .rb-format__hint {
   color: var(--muted, #6b6b6b);
@@ -1880,8 +1928,7 @@ body.report-builder-open .canvas {
 
 /* Until a field has focus the commands have nothing to act on. */
 .rb-format:not(.is-ready) .rb-format__btn,
-.rb-format:not(.is-ready) .rb-format__font,
-.rb-format:not(.is-ready) .rb-format__size {
+.rb-format:not(.is-ready) .rb-format__menu-btn {
   opacity: 0.45;
   pointer-events: none;
 }
@@ -1892,7 +1939,7 @@ body.report-builder-open .canvas {
     gap: 1px;
   }
   .rb-format__btn { min-width: 26px; }
-  .rb-format__font { max-width: 92px; }
+  .rb-format__menu-btn { font-size: 11px; }
 }
 
 /* ------------------------------------------------------------------ *
