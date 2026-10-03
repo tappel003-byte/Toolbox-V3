@@ -1724,7 +1724,7 @@
     };
   }
 
-  function persistableDocument(pages, activePageId, prior, floorLayout, coverLayout, brandBox, floorCamera, floorView) {
+  function persistableDocument(pages, activePageId, prior, floorLayout, coverLayout, brandBox, floorCamera, floorView, floorFramed) {
     var notes = collectPenLogNotes(pages);
     if ((!notes || !Object.keys(notes).length) && prior && prior.penLog && prior.penLog.notes) {
       notes = prior.penLog.notes;
@@ -1765,6 +1765,7 @@
     if (camera) doc.floorCamera = JSON.parse(JSON.stringify(camera));
     var view = floorView || (prior && prior.floorView);
     if (view) doc.floorView = JSON.parse(JSON.stringify(view));
+    if (floorFramed || (prior && prior.floorFramed)) doc.floorFramed = true;
     return doc;
   }
 
@@ -1833,6 +1834,9 @@
     // right on one slide would land on a wall on the next.
     var floorCamera = null;
     var floorView = null;
+    // Whether the frame has been given the plan's proportion yet. Once it has,
+    // the frame is whatever it has been dragged to and is never re-fitted.
+    var floorFramed = false;
     var coverOverviewUrl = '';
     var floorDrag = null;
     var coverDrag = null;
@@ -1902,7 +1906,8 @@
         coverLayout,
         brandBox,
         floorCamera,
-        floorView
+        floorView,
+        floorFramed
       );
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;
@@ -2126,9 +2131,31 @@
               floorCamera = { cx: camera.cx, cy: camera.cy, zoom: camera.zoom, locked: locked };
               markDirty();
             },
-            onSettingsChange: function (next) {
+              onSettingsChange: function (next) {
               floorView = next;
               markDirty();
+            },
+            onReady: function (info) {
+              // The frame takes the plan's own proportion the first time a
+              // level is shown, so the drawing fills it instead of sitting
+              // letterboxed in white. After that it is whatever it has been
+              // dragged to.
+              if (!info || floorFramed) return;
+              var flApi = window.ToolboxReportFloorLayout;
+              if (!flApi || typeof flApi.frameForPlan !== 'function') return;
+              var frame = flApi.frameForPlan(info.planWidth, info.planHeight);
+              floorFramed = true;
+              pages.forEach(function (item) {
+                if (!item || item.type !== 'floor') return;
+                item.meta = item.meta || {};
+                var next = flApi.normalizeLayout(item.meta.layout || floorLayout);
+                next.topo = frame;
+                item.meta.layout = next;
+              });
+              floorLayout = flApi.normalizeLayout({ topo: frame });
+              markDirty();
+              renderPages();
+              flushSave().catch(function () {});
             },
           });
         };
@@ -3322,10 +3349,12 @@
       var resize = event.target.closest('[data-rb-floor-resize]');
       var box = event.target.closest('[data-rb-floor-box]');
       if (!box) return;
-      // On a slide the plan is a picture, not a viewport: dragging it moves the
-      // frame and the corner resizes it, the way PowerPoint handles a picture.
-      // The canvas takes no pan or zoom gestures there, so the frame keeps the
-      // drag. (It briefly did the opposite, when the slide was a viewport.)
+      // Inside the drawing the gestures are Floor Survey's: drag pans the plan,
+      // the wheel zooms it, and it can be moved anywhere including off the
+      // edge. Report Builder must not claim those -- the slide is meant to
+      // behave exactly as the workspace it came from. The frame is moved and
+      // sized from its handles, which sit on its edge, outside the drawing.
+      if (!resize && event.target.closest('[data-rb-topo-live]')) return;
       var stage = stageRect('[data-rb-floor-stage]');
       if (!stage || stage.width < 8 || stage.height < 8) return;
       event.preventDefault();
@@ -3347,38 +3376,6 @@
       };
       try { box.setPointerCapture(event.pointerId); } catch (_) {}
     });
-
-    // The wheel sizes the frame. It used to zoom the canvas, and taking that
-    // away left no way to resize at all if the corner was awkward to reach --
-    // so it does the job that matters here instead of being removed.
-    sheetEl.addEventListener('wheel', function (event) {
-      var current = activePage();
-      if (!current || current.type !== 'floor') return;
-      if (!event.target.closest('[data-rb-floor-box="topo"]')) return;
-      var flApi = window.ToolboxReportFloorLayout;
-      var layout = flApi
-        ? flApi.normalizeLayout((current.meta && current.meta.layout) || floorLayout)
-        : (current.meta && current.meta.layout) || floorLayout;
-      if (layout.locked) return;
-      event.preventDefault();
-      // Grows and shrinks about the frame's centre, so the plan stays put
-      // rather than creeping toward a corner.
-      var step = event.deltaY < 0 ? 1.06 : 1 / 1.06;
-      var minW = flApi ? flApi.MIN_TOPO_W : 35;
-      var minH = flApi ? flApi.MIN_TOPO_H : 35;
-      var w = Math.max(minW, Math.min(100, layout.topo.w * step));
-      var h = Math.max(minH, Math.min(100, layout.topo.h * step));
-      layout.topo.x = layout.topo.x + (layout.topo.w - w) / 2;
-      layout.topo.y = layout.topo.y + (layout.topo.h - h) / 2;
-      layout.topo.w = w;
-      layout.topo.h = h;
-      current.meta = current.meta || {};
-      current.meta.layout = flApi ? flApi.normalizeLayout(layout) : layout;
-      floorLayout = current.meta.layout;
-      markDirty();
-      renderPages();
-      flushSave().catch(function () {});
-    }, { passive: false });
 
     sheetEl.addEventListener('pointermove', function (event) {
       if (coverDrag) {
@@ -3694,6 +3691,7 @@
       }
       if (savedDoc && savedDoc.floorCamera) floorCamera = savedDoc.floorCamera;
       if (savedDoc && savedDoc.floorView) floorView = savedDoc.floorView;
+      if (savedDoc && savedDoc.floorFramed) floorFramed = true;
       var saved = savedReportPages(record);
       if (saved) {
         var before = saved.pages.map(function (page) {

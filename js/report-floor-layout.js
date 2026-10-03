@@ -46,6 +46,28 @@
     };
   }
 
+  // A frame shaped like the page shows a plan shaped like something else with
+  // white down the sides -- the drawing fit inside it, letterboxed. Given the
+  // plan's own proportion the frame takes that shape and fills the page as far
+  // as it can, so the drawing fills the frame and the only white left is
+  // whatever the plan image itself carries.
+  var SHEET_ASPECT = 17 / 11;
+  function frameForPlan(planWidth, planHeight) {
+    var pw = Number(planWidth) > 0 ? Number(planWidth) : 1000;
+    var ph = Number(planHeight) > 0 ? Number(planHeight) : 750;
+    var planAspect = pw / ph;
+    var w = 100;
+    var h = 100;
+    if (planAspect > SHEET_ASPECT) h = 100 * (SHEET_ASPECT / planAspect);
+    else w = 100 * (planAspect / SHEET_ASPECT);
+    return {
+      x: (100 - w) / 2,
+      y: (100 - h) / 2,
+      w: w,
+      h: h,
+    };
+  }
+
   function cloneLayout(layout) {
     return JSON.parse(JSON.stringify(layout || defaultLayout()));
   }
@@ -57,10 +79,16 @@
     var layout = {
       locked: !!src.locked,
       topo: {
-        x: clamp(topo.x, 0, 90),
-        y: clamp(topo.y, 0, 90),
-        w: clamp(topo.w, MIN_TOPO_W, 100),
-        h: clamp(topo.h, MIN_TOPO_H, 100),
+        // The frame goes where it is put and is as big as it is made,
+        // including off the page and larger than it. Clamping x and y to 0 and
+        // w and h to 100 meant it could not be moved past the top or left edge
+        // and could not be made bigger than the sheet -- so the plan image's
+        // own white margins could never be pushed off, which is the whole
+        // point of being able to size and place it.
+        x: clamp(topo.x, -300, 300),
+        y: clamp(topo.y, -300, 300),
+        w: clamp(topo.w, MIN_TOPO_W, 600),
+        h: clamp(topo.h, MIN_TOPO_H, 600),
       },
       overlays: [],
     };
@@ -270,14 +298,14 @@
       var bareStage = document.createElement('div');
       bareStage.className = 'rb-topo-page__body rb-floor-stage rb-floor-stage--bare';
       bareStage.setAttribute('data-rb-floor-stage', '1');
-      // The frame starts where the decks put the drawing and is then sized and
-      // placed by hand. Starting it full bleed meant dragging it pushed its own
-      // corner handle off the sheet, leaving no way to resize it again.
-      var bare = boxShell('topo', 'topo', locked);
-      bare.style.left = layout.topo.x + '%';
-      bare.style.top = layout.topo.y + '%';
-      bare.style.width = layout.topo.w + '%';
-      bare.style.height = layout.topo.h + '%';
+      // The drawing is the slide. The plan is placed inside it by dragging and
+      // zooming, exactly as in Floor Survey -- including off the edge -- so
+      // there is no frame to size and nothing to letterbox the plan into.
+      var bare = boxShell('topo', 'topo', true);
+      bare.style.left = '0%';
+      bare.style.top = '0%';
+      bare.style.width = '100%';
+      bare.style.height = '100%';
       var bareDraw = document.createElement('div');
       bareDraw.className = 'rb-topo-page__drawing rb-topo-page__drawing--live';
       var bareView = typeof options.mountTopo === 'function' ? options.mountTopo(page) : null;
@@ -465,6 +493,7 @@
     cloneLayout: cloneLayout,
     normalizeLayout: normalizeLayout,
     layoutForStats: layoutForStats,
+    frameForPlan: frameForPlan,
     renderPage: renderPage,
     MIN_SCALE: MIN_SCALE,
     MAX_SCALE: MAX_SCALE,
