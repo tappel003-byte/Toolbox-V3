@@ -83,7 +83,7 @@ A useful conceptual progression is: **Capture → Review/Edit → Understand →
 
 The central object inside Toolbox is the **Customer File**. The working metaphor is a file cabinet: Toolbox is the cabinet, each customer/job is one file, and specialized workspaces operate inside the already-open Customer File.
 
-Each Customer File is a **job container**. Inside it are sub-files/components: Customer Information, Plans/Canvases, Distress Survey, Floor Survey, Diagnostics, and Report Builder. Plans, photos, and other media belong to or are referenced by the appropriate component. The Customer File is not one undifferentiated blob of job data. All of those components obey the same lifecycle (§10). Diagnostics and Report Builder integration is underway in the repository and in active pull requests; they are not wholly future work, and they are not a separate sync model.
+Each Customer File is a **job container**. Inside it are sub-files/components: Customer Information, Plans/Canvases, Distress Survey, Floor Survey, Diagnostics, and Report Builder. Plans, photos, and other media belong to or are referenced by the appropriate component. The Customer File is not one undifferentiated blob of job data. All of those components obey the same lifecycle (§10). Diagnostics and Report Builder integration is underway in the repository; they are not wholly future work, and they are not a separate sync model.
 
 The four principal workspaces are:
 
@@ -358,6 +358,30 @@ Finished professional reports such as Cerros Colorados / Sierra Del Sol are addi
 
 This is a **build baseline, not an immutable permanent template.** It may evolve over time.
 
+### 12b. Formatting rebuild — visual source of truth — DECIDED (Tim, Oct 3, 2026)
+
+Report Builder sheets are being rebuilt from real finished reports, one page type at a time, until the live report reads as the professional deliverable rather than something inspired by it.
+
+- **A screenshot of a real finished report page that Tim hands over is the visual source of truth for that page type.** The Mitchell title page (Jason Mitchell / 59 Lodge Trail) is the source of truth for the title/cover page.
+- 1515 Los Nietos remains the build baseline for professional structure and information hierarchy (§12a). It does **not** override a screenshot Tim has just handed over for the page being worked.
+- **Acceptance is visual match to that screenshot, judged side by side — not "it has the same boxes."** A page type is not done because its elements exist, are named correctly, or pass a test.
+- Editor chrome (Lock, drag handles, Maps link, Add overview) may be visible while a page is unlocked. The **locked and printed** appearance must read as the finished report page, not as a dashed mockup.
+- **Keep the plumbing; replace the formatting.** Customer File `reportBuilder` autosave, the page rail and ordering, jump-return, Distress Put on report, Floor Import → place/resize → Lock, evidence rehydration, and Export for AI all stay. This is not a license to build a general-purpose design application, and the removed Select / Text / Image / Line / Arrow / Shape toolbar does not come back.
+- Page content is **seeded from the open Customer File.** Client and job data is never invented to fill a layout.
+
+### 12c. The review loop for formatting work — DECIDED (Tim, Oct 3, 2026)
+
+The loop is deliberately small and visual:
+
+1. Tim provides a screenshot of a real report page.
+2. The implementer matches that page.
+3. Tim accepts or rejects it **on a live Customer File, after merge and deploy and a hard refresh** — not from code, a test result, or a local screenshot alone.
+4. On acceptance, Tim provides the next page screenshot.
+
+> **Do not ship "closer."** A page that is approximately right costs the product owner a day of review and returns the work to the same place. If the screenshot is not available, or a visual detail is genuinely ambiguous and would change the professional page, stop and ask rather than guessing. Routine CSS and placement judgment is not that kind of ambiguity.
+
+No page type is recorded as done until Tim accepts it on a real Customer File.
+
 ---
 
 ## 13. Diagnostics
@@ -481,7 +505,7 @@ Earlier foundation and Customer File / field-capture integration slices establis
 
 **Settled sharing model.** The active local device is the editing authority. The File Cabinet is the shared, transfer, and filed location and the device-loss mirror. Devices keep selective local working Customer Files and may keep local safety copies of files they already hold. Sync Now backs up the local working set (components + required media) without requiring every device to hold every Customer File. Check Out transfers exclusive editing authority. Older language that required full-cabinet convergence across devices (“Sync Now makes Device B receive Device A’s entire library”) is **superseded**. Older language that called quiet mirroring “later polish,” or that can be read as making Cloudflare the live editor, is **superseded** by §10.
 
-**Report Builder and Diagnostics are not wholly future work.** An operational Toolbox should still be possible with Customer File → Distress → Floor → Report Builder before Diagnostics is required for every report. Both now have work in the repository and in active pull requests, and both obey the same Customer File lifecycle. The current milestone records what that means for sync. It does not build those workspaces.
+**Report Builder and Diagnostics are not wholly future work.** An operational Toolbox should still be possible with Customer File → Distress → Floor → Report Builder before Diagnostics is required for every report. Both now have work in the repository, and both obey the same Customer File lifecycle. The current milestone records what that means for sync. It does not build those workspaces.
 
 **Post-release local-copy cleanup** (Remove From This Device / Keep Local Copy / Archive as Revision) is decided and is a later small slice. It must not complicate normal work.
 

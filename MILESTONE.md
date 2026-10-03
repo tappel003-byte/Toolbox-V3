@@ -10,7 +10,9 @@ Make Customer Files safely shareable through the Cloudflare File Cabinet while p
 
 Quiet online mirroring of the active working Customer File is **decided**. It is not later polish. Sync Now remains the manual confidence action and must answer truthfully. The mirror is not a second editor.
 
-Report Builder and Diagnostics are **not wholly future work**. This repository already has a Report Builder shell and a Diagnostics entry for Floor Survey 3D. Further integration is in active pull requests: #68 Diagnostics workbench, #69 Report Builder evidence, and #70 Report Builder skeleton. Sync work must not redesign them.
+Report Builder and Diagnostics are **not wholly future work**. Report Builder evidence, the 11×17 slide sequence, Pictures pages, Pen Log, Floor Import/Lock, and the Mitchell title page have landed on `main`. A Diagnostics entry for Floor Survey 3D is in. Sync work must not redesign them.
+
+The earlier Diagnostics / Report Builder pull requests #68, #69, and #70 were **closed without merging** — that capability reached `main` by later work, so those numbers are not a place to look for current state. Title-page work is #106 and #107.
 
 **Authorized in parallel (Tim, Oct 1, 2026):** Report Builder first slice — auto-compose typical topo figure pages with fixed chrome (cover + TOC, empty Discussion slot, Combined then named-boundary Floor Level pages). See `DECISIONS.md` Report Builder. That slice is product-owner authorized and may ship independently of remaining File Cabinet sync polish.
 
@@ -19,6 +21,12 @@ Report Builder and Diagnostics are **not wholly future work**. This repository a
 **Authorized in parallel (Tim, Oct 1, 2026):** Report Builder Picture Locations / Pen Log — one native plan+schedule page per Distress level that has pins (“Picture/Damage Locations”), report-owned notes that do not edit Distress source, alongside the existing Pictures pages. See `DECISIONS.md` Report Builder.
 
 **Authorized (Tim, Oct 2, 2026):** Report Builder third slice — Floor Survey **Import → place/resize → Lock layout** inherit; Distress **Put on report** for Pictures slides. See `VISION.md` §12 and `DECISIONS.md` Report Builder.
+
+**Authorized (Tim, Oct 3, 2026): Report Builder formatting rebuild.** Rebuild Report Builder sheets from real finished reports, one page type at a time, until the live report reads as the professional deliverable. Keep the existing plumbing — `reportBuilder` autosave, page rail / order / duplicate / delete, jump-return to Distress and Floor, Distress Put on report, Floor Import → place/resize → Lock, evidence rehydration, Export for AI — and replace the formatting on top of it. Do not restore the removed fake compose toolbar and do not build a general-purpose design app. Do not redesign Distress, Floor Survey, Customer File, or sync as part of this slice. See `VISION.md` §12b / §12c and `DECISIONS.md` Report Builder.
+
+The loop is **screenshot → match → Tim accepts on a live Customer File after merge, deploy, and hard refresh → next screenshot.** Acceptance is visual match against the screenshot Tim provided, judged side by side. **Do not ship "closer."** A page type is not recorded as done until Tim accepts it on a real Customer File; passing tests and local screenshots are not acceptance.
+
+**Current page: title / cover.** Visual source of truth is the Mitchell title page (Jason Mitchell / 59 Lodge Trail). Structure is authorized and the boxes exist on `main` (#106, #107); what remains is visual fidelity.
 
 **Authorized (Tim, Oct 2, 2026):** Report Builder formatting rebuild — keep plumbing; remove fake composition toolbar; rebuild sheet layouts from real report screenshots (talk-through → place pieces). See `VISION.md` §12 and `DECISIONS.md` Report Builder.
 
@@ -107,7 +115,7 @@ This branch implements the quiet online mirror, the Sync Now wording, and the gr
 - Take Over
 - Explicit local-draft / Place-In-Cabinet product beyond Send to File Cabinet
 - Redesigning Distress / Floor / Customer File capture, including building the Distress field checkpoint inside this sync foundation
-- Building Report Builder or Diagnostics as part of this sync foundation. Their integration is active in separate pull requests (#68, #69, #70) and is not wholly future work
+- Building Report Builder or Diagnostics as part of this sync foundation. Both already have work on `main` and are not wholly future work; the Report Builder formatting rebuild is tracked as its own authorized slice
 - SaaS tenancy, roles, invitations, billing, per-file ACLs
 - Live collaboration, CRDTs, merge UIs
 - D1/KV/DO/Queues/Firebase/Supabase unless Worker+R2 is proven insufficient
