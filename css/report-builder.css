@@ -2078,6 +2078,7 @@ body.report-builder-open .canvas {
    and would print smaller than it previews. */
 .rb-discussion__body {
   position: absolute;
+  z-index: 1;
   box-sizing: border-box;
   column-count: 2;
   /* Fill the first column, then flow into the second -- what a PowerPoint
@@ -2177,22 +2178,12 @@ body.report-builder-open .canvas {
 }
 
 /* The logo places like any other report element: move it, size it, lock it. */
-.rb-discussion__brand-move,
+.rb-discussion__brand:not(.is-locked) { cursor: move; }
+
 .rb-discussion__brand-resize {
   position: absolute;
   width: 13px;
   height: 13px;
-  cursor: move;
-}
-
-.rb-discussion__brand-move {
-  left: -3px;
-  top: -3px;
-  border-left: 2px solid var(--rb-copper, #8B5E3C);
-  border-top: 2px solid var(--rb-copper, #8B5E3C);
-}
-
-.rb-discussion__brand-resize {
   right: -3px;
   bottom: -3px;
   border-right: 2px solid var(--rb-copper, #8B5E3C);
@@ -2201,6 +2192,10 @@ body.report-builder-open .canvas {
 }
 
 .rb-discussion__brand {
+  /* The text body runs to 93.49% and the logo sits from 91.10%, so the body
+     was layered over the logo's move handle and swallowed every grab. The
+     logo is chrome on top of the text, not under it. */
+  z-index: 3;
   touch-action: none;
 }
 
@@ -2223,7 +2218,6 @@ body.report-builder-open .canvas {
 }
 
 @media print {
-  .rb-discussion__brand-move,
   .rb-discussion__brand-resize,
   .rb-discussion__brand-lock { display: none !important; }
   .rb-discussion__brand { outline: none !important; }

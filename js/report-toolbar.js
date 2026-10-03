@@ -162,6 +162,10 @@
   }
 
   function applySpacing(field, token) {
+    // Size and font reach this through applyInline, which restores the range
+    // first. Spacing did not, so if anything had disturbed the selection the
+    // command silently applied to nothing.
+    restoreSelection();
     var parts = String(token || '').split(':');
     var kind = parts[0];
     var value = parseFloat(parts[1]);

@@ -32,12 +32,13 @@
   //   1.96 .. (51.87 + 44.7) = 94.61% wide
   //   gutter = 51.87 - (1.96 + 44.7) = 5.21%
   var BODY = { x: 1.96, y: 3.03, w: 94.61, gutter: 5.21 };
-  // The deck places the logo in a 15.49% x 4.35% box, but the artwork fills
-  // its canvas at 3.55:1 and that box is 5.48:1 -- so PowerPoint stretches it.
-  // Keep the deck's width and baseline and give the box the logo's own
-  // proportion instead, so it prints at full size undistorted:
-  //   height = 15.49 x (17/11) / 3.55 = 6.74%, bottom at 93.49 + 4.35 = 97.84%
-  var BRAND = { x: 3.59, y: 91.10, w: 15.49, h: 6.74 };
+  // The logo artwork is 6.87:1 once its white space is trimmed off; the file
+  // in the decks carries 27% horizontal and 62% vertical padding, which is
+  // why it looked small inside its box and stretched in the decks.
+  // Default to the deck's width and baseline at the artwork's true
+  // proportion: height = 15.49 x (17/11) / 6.87 = 3.48%, bottom at 97.84%.
+  // From here it is moved, resized and locked like any other element.
+  var BRAND = { x: 3.59, y: 94.36, w: 15.49, h: 3.48 };
   var BODY_BOTTOM = 93.49; // text stops above the brand mark
 
   function bodyStyle() {
@@ -143,11 +144,10 @@
       img.alt = '';
       brand.appendChild(img);
       if (!box.locked) {
-        var move = document.createElement('span');
-        move.className = 'rb-discussion__brand-move';
-        move.setAttribute('data-rb-brand-move', '1');
-        move.setAttribute('title', 'Move the logo');
-        brand.appendChild(move);
+        // The logo is dragged by the logo, the way a picture is moved in
+        // PowerPoint. Requiring a small corner handle meant grabbing the
+        // image itself did nothing, which reads as broken.
+        brand.setAttribute('title', 'Drag to move. Resize from the corner.');
         var grip = document.createElement('span');
         grip.className = 'rb-discussion__brand-resize';
         grip.setAttribute('data-rb-brand-resize', '1');

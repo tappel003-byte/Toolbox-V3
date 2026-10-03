@@ -2044,8 +2044,9 @@
 
     sheetEl.addEventListener('pointerdown', function (event) {
       var grip = event.target.closest('[data-rb-brand-resize]');
-      var mover = event.target.closest('[data-rb-brand-move]');
+      var mover = grip ? null : event.target.closest('[data-rb-brand-box]');
       if (!grip && !mover) return;
+      if (mover && mover.classList.contains('is-locked')) return;
       var page = activePage();
       if (!page || !page.meta || page.meta.sectionId !== 'discussion') return;
       var stage = sheetEl.querySelector('.rb-discussion');
