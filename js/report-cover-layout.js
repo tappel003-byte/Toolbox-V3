@@ -12,13 +12,28 @@
     return Math.max(lo, Math.min(hi, x));
   }
 
+  // Measured from the shipped decks (Mitchell / 1515 / Ross / Sipert title
+  // slides), as percentages of the full 17x11 in slide. PowerPoint positions
+  // against the whole slide, so the cover stage is the whole sheet -- not the
+  // inset .rb-sheet__margin the other page types use.
+  //
+  //   prepared  TextBox 24   7.94%, 6.61%   41.18 x 12.24
+  //   identity  TextBox 28   7.94%, 31.36%  (FLOOR LEVEL SURVEY)
+  //             TextBox 30   7.94%, 35.91%  (street, 60pt)
+  //             TextBox 33   7.94%, 46.10%  (city, 32pt)
+  //   rule      Rectangle 35 7.94%, 57.45%  18.82 x 0.41  solid #8B5E3C
+  //   date      TextBox 37   7.94%, 60.18%  41.18 x 5.71
+  //   contents  Rectangle 40 59.12%, 31.82% 32.94 x 31.82  3pt #C8C0B4 frame
+  //
+  // The identity box spans FLOOR LEVEL SURVEY through the city line, and the
+  // date box starts at the rule so the two travel together when moved.
   function defaultBoxes() {
     return {
-      prepared: { x: 5, y: 6, w: 42, h: 16 },
-      identity: { x: 5, y: 28, w: 46, h: 30 },
-      date: { x: 5, y: 62, w: 42, h: 14 },
-      contents: { x: 54, y: 14, w: 40, h: 44 },
-      overview: { x: 54, y: 62, w: 40, h: 30 },
+      prepared: { x: 7.94, y: 6.61, w: 41.18, h: 12.24 },
+      identity: { x: 7.94, y: 31.36, w: 58.82, h: 20.55 },
+      date: { x: 7.94, y: 57.45, w: 41.18, h: 8.44 },
+      contents: { x: 59.12, y: 31.82, w: 32.94, h: 31.82 },
+      overview: { x: 59.12, y: 66.5, w: 32.94, h: 25.5 },
     };
   }
 

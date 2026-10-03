@@ -228,7 +228,9 @@
       id: pageId,
       type: 'pictures',
       title: 'Pictures',
-      tocTitle: 'Figure ' + figureNumber + ' — Pictures',
+      // Bare title only. The cover derives "Figure N" from slide order;
+      // storing it here too produced "Figure 3 Figure 3 — Pictures".
+      tocTitle: 'Pictures',
       railLabel: 'Pictures',
       note: '',
       sourceKey: 'distress',
@@ -809,13 +811,29 @@
     return el;
   }
 
+  // A contents line holds the TITLE only. "Figure N" is derived from slide
+  // order at render time and shown in its own column, so reordering renumbers
+  // without rewriting the investigator's text and nothing can double-prefix.
   function defaultContentsLine(entry) {
     if (!entry) return '';
     if (entry.isDiscussion || entry.type === 'section') {
       return entry.title || 'Floor Level Survey Results - Discussion';
     }
-    if (entry.figureNumber) return 'Figure ' + entry.figureNumber + ' ' + (entry.title || '');
     return entry.title || '';
+  }
+
+  // Covers saved before the split stored "Figure 3 Figure 3 — Pictures" or
+  // "Figure 1 Floor Level Survey — Combined". Strip every leading figure
+  // prefix once on read so existing books (Keulen, Chalmers) come back clean
+  // instead of showing the old text forever.
+  function stripFigurePrefix(text) {
+    var out = String(text == null ? '' : text);
+    var prev = null;
+    while (prev !== out) {
+      prev = out;
+      out = out.replace(/^\s*Figure\s*\d+\s*(?:[—–-]\s*)?/i, '');
+    }
+    return out.trim() || String(text == null ? '' : text).trim();
   }
 
   function seedCoverText(page, pages) {
@@ -826,13 +844,15 @@
     var entries = source && typeof source.contents === 'function' ? source.contents(pages) : [];
     var priorLines = {};
     (Array.isArray(prior.contents) ? prior.contents : []).forEach(function (line) {
-      if (line && line.pageId) priorLines[line.pageId] = line.text;
+      if (line && line.pageId) priorLines[line.pageId] = stripFigurePrefix(line.text);
     });
     var contents = entries.map(function (entry) {
       var fallback = defaultContentsLine(entry);
       return {
         pageId: entry.pageId,
         text: priorLines[entry.pageId] != null ? String(priorLines[entry.pageId]) : fallback,
+        figureNumber: entry.figureNumber || null,
+        isDiscussion: !!(entry.isDiscussion || entry.type === 'section'),
       };
     });
     return {
@@ -877,12 +897,24 @@
     var stage = document.createElement('div');
     stage.className = 'rb-cover__stage';
 
+    // The page frame is a rectangle 0.9% in from the slide edge, as in the
+    // decks — not the inset margin box the other page types draw.
+    var frame = document.createElement('div');
+    frame.className = 'rb-cover__frame';
+    frame.setAttribute('aria-hidden', 'true');
+    stage.appendChild(frame);
+
+    // "Prepared For:" sits in its own column with the contact stacked beside
+    // it, which is how the decks tab it.
     var prepared = coverBoxShell('prepared', layout, locked);
     prepared.classList.add('rb-cover-box--prepared');
     addLine(prepared, 'rb-cover__label', 'Prepared For:');
-    prepared.appendChild(coverField('input', 'rb-cover__name', 'name', text.name, locked));
-    prepared.appendChild(coverField('input', 'rb-cover__email', 'email', text.email, locked));
-    prepared.appendChild(coverField('input', 'rb-cover__phone', 'phone', text.phone, locked));
+    var contact = document.createElement('div');
+    contact.className = 'rb-cover__contact';
+    contact.appendChild(coverField('input', 'rb-cover__name', 'name', text.name, locked));
+    contact.appendChild(coverField('input', 'rb-cover__email', 'email', text.email, locked));
+    contact.appendChild(coverField('input', 'rb-cover__phone', 'phone', text.phone, locked));
+    prepared.appendChild(contact);
     stage.appendChild(prepared);
 
     var identity = coverBoxShell('identity', layout, locked);
@@ -921,12 +953,18 @@
     }
     text.contents.forEach(function (line, index) {
       var row = document.createElement('div');
-      row.className = 'rb-cover__contents-item';
+      row.className = 'rb-cover__contents-item' +
+        (line.isDiscussion ? ' rb-cover__contents-item--discussion' : '');
+      // Derived, not stored: reordering renumbers without touching the text.
+      var num = document.createElement('span');
+      num.className = 'rb-cover__contents-num';
+      num.textContent = line.figureNumber ? ('Figure ' + line.figureNumber) : '';
+      row.appendChild(num);
       var field = coverField('input', 'rb-cover__contents-field', 'contents:' + index, line.text, locked);
       field.setAttribute('data-rb-cover-page', line.pageId || '');
       field.setAttribute('aria-label', 'Contents line ' + (index + 1));
       row.appendChild(field);
-      if (line.pageId) {
+      if (line.pageId && !locked) {
         var jump = document.createElement('button');
         jump.type = 'button';
         jump.className = 'rb-cover__contents-jump';

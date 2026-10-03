@@ -905,31 +905,65 @@ body.report-builder-open .canvas {
 }
 
 /* Mitchell title page: movable filled boxes + optional site overview. */
+/* ------------------------------------------------------------------ *
+ * Title / cover page — measured from the shipped decks.
+ *
+ * PowerPoint positions against the whole 17x11 in slide, so the cover
+ * stage is the whole sheet and .rb-sheet__margin--cover is full bleed.
+ * The visible border is Mitchell's own frame rectangle (0.9% inset),
+ * not the inset margin box the other page types draw.
+ *
+ * Type is sized in cqh with NO clamp: the page is 11 in = 792 pt, so
+ * 1 pt = 0.12626 cqh and the sheet stays proportional at any size,
+ * preview or print. A clamp would cap growth and break that.
+ *   60 pt = 7.576   32 pt = 4.040   16 pt = 2.020
+ *   14 pt = 1.768   13 pt = 1.641   12 pt = 1.515
+ * ------------------------------------------------------------------ */
+
+.rb-sheet__margin--cover {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: visible;
+}
+
 .rb-cover {
-  --rb-copper: #a67a52;
-  --rb-sage: #7f9278;
+  --rb-copper: #8B5E3C;
+  --rb-sage: #8FA17E;
+  --rb-ink: #1A1A1A;
+  --rb-gray: #595959;
+  --rb-frame: #C8C0B4;
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
   height: 100%;
-  color: #222;
-  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  background: #fff;
+  color: var(--rb-ink);
+  font-family: Calibri, Carlito, "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
+/* Editor chrome only. Floats over the sheet so it never shifts the page
+   geometry, and disappears entirely once the layout is locked. */
 .rb-cover__bar {
-  flex: 0 0 auto;
+  position: absolute;
+  z-index: 4;
+  left: 1.2%;
+  bottom: 1.2%;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
-  margin: 0 0 6px;
+  margin: 0;
 }
+
+.rb-cover.is-locked .rb-cover__bar { display: none; }
 
 .rb-cover__hint {
   margin: 0;
   color: #666;
-  font-size: clamp(10px, 1.35cqb, 12px);
+  font-size: 1.3cqh;
 }
 
 .rb-cover__stage {
@@ -939,15 +973,26 @@ body.report-builder-open .canvas {
   width: 100%;
 }
 
+/* Mitchell "Picture 20": the page frame, 0.9% in from the slide edge. */
+.rb-cover__frame {
+  position: absolute;
+  left: 0.9%;
+  top: 1%;
+  width: 98.2%;
+  height: 98.01%;
+  border: 0.19cqh solid #1A1A1A;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
 .rb-cover-box {
   position: absolute;
   box-sizing: border-box;
-  overflow: hidden;
   touch-action: none;
 }
 
 .rb-cover:not(.is-locked) .rb-cover-box {
-  outline: 1px dashed rgba(166, 122, 82, 0.55);
+  outline: 1px dashed rgba(139, 94, 60, 0.5);
   cursor: move;
 }
 
@@ -965,173 +1010,209 @@ body.report-builder-open .canvas {
   border-right: 2px solid var(--rb-copper);
   border-bottom: 2px solid var(--rb-copper);
   cursor: nwse-resize;
-  z-index: 2;
 }
 
-.rb-cover__label {
-  color: var(--rb-sage);
-  font-weight: 600;
-}
-
-.rb-cover-box--prepared .rb-cover__label,
-.rb-cover__name,
-.rb-cover__email,
-.rb-cover__phone,
-.rb-cover__street,
-.rb-cover__city,
-.rb-cover__date-value,
-.rb-cover__corrected,
-.rb-cover__contents-field {
-  margin: 0;
-}
-
-.rb-cover input.rb-cover__name,
-.rb-cover input.rb-cover__email,
-.rb-cover input.rb-cover__phone,
-.rb-cover input.rb-cover__street,
-.rb-cover input.rb-cover__city,
-.rb-cover input.rb-cover__date-value,
-.rb-cover input.rb-cover__corrected,
-.rb-cover input.rb-cover__contents-field {
+/* Fields are transparent inputs so the locked page reads as plain text. */
+.rb-cover input,
+.rb-cover textarea {
   display: block;
   width: 100%;
+  margin: 0;
   border: 0;
   border-radius: 0;
-  background: transparent;
   padding: 0;
+  background: transparent;
+  color: inherit;
   font: inherit;
+  letter-spacing: inherit;
   box-sizing: border-box;
 }
 
-.rb-cover input.rb-cover__name:focus,
-.rb-cover input.rb-cover__email:focus,
-.rb-cover input.rb-cover__phone:focus,
-.rb-cover input.rb-cover__street:focus,
-.rb-cover input.rb-cover__city:focus,
-.rb-cover input.rb-cover__date-value:focus,
-.rb-cover input.rb-cover__corrected:focus,
-.rb-cover input.rb-cover__contents-field:focus {
-  outline: 1px solid rgba(166, 122, 82, 0.55);
+.rb-cover input:focus,
+.rb-cover textarea:focus {
+  outline: 1px solid rgba(139, 94, 60, 0.55);
   outline-offset: 1px;
 }
 
-.rb-cover input.rb-cover__name {
-  margin-top: 2px;
-  color: #3f4a36;
-  font-size: clamp(15px, 2.4cqb, 22px);
-  font-weight: 700;
+.rb-cover input::placeholder { color: #b9b2a6; }
+
+/* ---- Prepared For: label left, contact stacked right (TextBox 24) ---- */
+
+.rb-cover-box--prepared {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
 }
 
-.rb-cover input.rb-cover__email {
-  margin-top: 2px;
+.rb-cover__label {
+  flex: 0 0 30%;
+  margin: 0;
   color: var(--rb-sage);
-  font-size: clamp(11px, 1.6cqb, 14px);
-  font-weight: 500;
+  font-size: 1.768cqh;
+  font-weight: 700;
+  letter-spacing: 0.143em;
+  white-space: nowrap;
+}
+
+.rb-cover__contact {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rb-cover input.rb-cover__name,
+.rb-cover input.rb-cover__email {
+  color: var(--rb-sage);
+  font-size: 2.02cqh;
+  font-weight: 700;
+  line-height: 1.32;
 }
 
 .rb-cover input.rb-cover__phone {
-  margin-top: 2px;
-  color: #111;
-  font-size: clamp(12px, 1.8cqb, 16px);
+  color: var(--rb-ink);
+  font-size: 2.02cqh;
   font-weight: 700;
+  line-height: 1.32;
 }
+
+/* ---- Identity: FLOOR LEVEL SURVEY / street / city (TextBox 28/30/33) ----
+   Box top is 31.36% of the page. Street sits at 35.91% and the city line at
+   46.10%, so the gaps below are the measured deltas, not taste. */
 
 .rb-cover__product {
   margin: 0;
   color: var(--rb-copper);
-  font-size: clamp(14px, 2.2cqb, 20px);
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-size: 2.02cqh;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.25em;
 }
 
 .rb-cover input.rb-cover__street {
-  margin: 0.35em 0 0;
-  color: #111;
-  font-size: clamp(22px, 4cqb, 38px);
+  margin-top: 2.23cqh;
+  color: var(--rb-ink);
+  font-size: 7.576cqh;
   font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.05;
+  line-height: 1;
+  letter-spacing: -0.017em;
 }
 
 .rb-cover input.rb-cover__city {
-  margin: 0.15em 0 0;
-  color: #666;
-  font-size: clamp(14px, 2.1cqb, 20px);
-  font-weight: 500;
+  margin-top: 2.61cqh;
+  color: var(--rb-gray);
+  font-size: 4.04cqh;
+  font-weight: 400;
+  line-height: 1;
+}
+
+/* ---- Rule + survey date (Rectangle 35 at 57.45%, TextBox 37 at 60.18%) ---- */
+
+.rb-cover__rule {
+  width: 45.7%;
+  height: 0.41cqh;
+  margin: 0 0 2.32cqh;
+  background: var(--rb-copper);
 }
 
 .rb-cover__date-row {
   display: flex;
   align-items: baseline;
-  gap: 0.35em;
+  gap: 0;
 }
+
+.rb-cover__date-row .rb-cover__label { flex: 0 0 30%; }
 
 .rb-cover input.rb-cover__date-value {
   flex: 1 1 auto;
   min-width: 0;
-  color: #333;
-  font-size: clamp(12px, 1.7cqb, 15px);
+  color: var(--rb-gray);
+  font-size: 1.768cqh;
+  font-weight: 400;
+  line-height: 1.4;
 }
 
 .rb-cover input.rb-cover__corrected {
-  margin-top: 0.25em;
-  color: #777;
-  font-size: clamp(11px, 1.5cqb, 13px);
+  margin-left: 30%;
+  width: 70%;
+  color: var(--rb-gray);
+  font-size: 1.768cqh;
+  font-weight: 400;
+  line-height: 1.4;
 }
 
-.rb-cover__rule {
-  width: min(12em, 70%);
-  height: 2px;
-  margin: 0 0 0.7em;
-  background: var(--rb-copper);
-}
+/* ---- CONTENTS (Rectangle 40: no fill, 3 pt #C8C0B4 frame) ---- */
+
+.rb-cover-box--contents { overflow: visible; }
 
 .rb-cover__contents {
   height: 100%;
-  border: 1px solid #d2c4b4;
-  padding: 0.7em 0.9em 0.8em;
-  background: #fff;
+  border: 0.379cqh solid var(--rb-frame);
+  padding: 2.45cqh 1.6cqw 1.6cqh 2.35cqw;
+  background: transparent;
   box-sizing: border-box;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .rb-cover__contents-title {
-  margin: 0 0 0.55em;
+  margin: 0 0 2.73cqh;
   color: var(--rb-copper);
-  font-size: clamp(12px, 1.8cqb, 16px);
+  font-size: 1.515cqh;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  line-height: 1;
+  letter-spacing: 0.25em;
 }
 
 .rb-cover__contents-list {
   display: flex;
   flex-direction: column;
-  gap: 0.2em;
+  /* The deck's list box is 21.73% of page height over 7 lines = 3.10% each.
+     13 pt at 1.25 leading is 2.05, so the gap carries the remaining 1.05. */
+  gap: 1.05cqh;
 }
 
+/* Two columns: "Figure N" is derived from slide order and is not editable,
+   so it can never be typed into the title and double-prefix the line. */
 .rb-cover__contents-item {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  align-items: baseline;
+  gap: 0;
   width: 100%;
-  padding: 0.1em 0;
-  color: #222;
-  font-size: clamp(10px, 1.45cqb, 13px);
-  line-height: 1.3;
+  color: var(--rb-ink);
+  font-size: 1.641cqh;
+  line-height: 1.25;
+}
+
+.rb-cover__contents-num {
+  /* The deck tabs titles to 66.0% of page width and the list starts at
+     61.47%, so the figure column is 4.53% of the page = 16% of the list.
+     That is a MINIMUM, not a fixed width: if Calibri is unavailable the
+     substitute font is wider, and a hard 16% would either butt the title
+     against the number or clip the longest real title. Growing past the
+     tab stop keeps both readable on whatever font the device has. */
+  flex: 0 0 auto;
+  min-width: 16%;
+  padding-right: 1.2cqw;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .rb-cover input.rb-cover__contents-field {
   flex: 1 1 auto;
   min-width: 0;
-  color: #222;
   font-size: inherit;
-  font-weight: 600;
+  font-weight: 400;
+}
+
+/* The discussion line carries no figure number and spans both columns. */
+.rb-cover__contents-item--discussion .rb-cover__contents-num { display: none; }
+
+.rb-cover__contents-item--discussion input.rb-cover__contents-field {
+  font-weight: 700;
 }
 
 .rb-cover__contents-jump {
   flex: 0 0 auto;
-  min-width: 22px;
-  min-height: 22px;
+  width: 2.2cqh;
+  height: 2.2cqh;
   border: 0;
   background: transparent;
   color: var(--rb-copper);
@@ -1140,11 +1221,16 @@ body.report-builder-open .canvas {
   cursor: pointer;
 }
 
+/* Never on the finished page. */
+.rb-cover.is-locked .rb-cover__contents-jump { display: none; }
+
+/* ---- Site overview ---- */
+
 .rb-cover-box--overview {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  background: #f7f5f2;
+  gap: 0.6cqh;
+  background: transparent;
 }
 
 .rb-cover__overview-image {
@@ -1152,7 +1238,7 @@ body.report-builder-open .canvas {
   min-height: 0;
   width: 100%;
   object-fit: cover;
-  border: 1px solid #333;
+  border: 0.13cqh solid #333;
 }
 
 .rb-cover__overview-empty {
@@ -1161,9 +1247,11 @@ body.report-builder-open .canvas {
   align-items: center;
   justify-content: center;
   border: 1px dashed #b9aa98;
-  color: #888;
-  font-size: clamp(11px, 1.5cqb, 13px);
+  color: #999;
+  font-size: 1.5cqh;
 }
+
+.rb-cover.is-locked .rb-cover__overview-empty { display: none; }
 
 .rb-cover__overview-actions {
   flex: 0 0 auto;
@@ -1173,11 +1261,14 @@ body.report-builder-open .canvas {
   align-items: center;
 }
 
+.rb-cover.is-locked .rb-cover__overview-actions { display: none; }
+
 .rb-cover__maps-link {
   color: var(--rb-copper);
-  font-size: clamp(10px, 1.35cqb, 12px);
+  font-size: 1.35cqh;
   font-weight: 700;
 }
+
 
 /* Mitchell Pictures pages — 2×5 grid, Photo NN + editable caption */
 .rb-pictures-page {
