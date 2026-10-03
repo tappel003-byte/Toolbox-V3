@@ -3338,6 +3338,7 @@
         id: id,
         kind: kind,
         resize: !!resize,
+        corner: resize ? (resize.getAttribute('data-rb-floor-corner') || 'se') : null,
         startX: event.clientX,
         startY: event.clientY,
         stageW: stage.width,
@@ -3346,6 +3347,38 @@
       };
       try { box.setPointerCapture(event.pointerId); } catch (_) {}
     });
+
+    // The wheel sizes the frame. It used to zoom the canvas, and taking that
+    // away left no way to resize at all if the corner was awkward to reach --
+    // so it does the job that matters here instead of being removed.
+    sheetEl.addEventListener('wheel', function (event) {
+      var current = activePage();
+      if (!current || current.type !== 'floor') return;
+      if (!event.target.closest('[data-rb-floor-box="topo"]')) return;
+      var flApi = window.ToolboxReportFloorLayout;
+      var layout = flApi
+        ? flApi.normalizeLayout((current.meta && current.meta.layout) || floorLayout)
+        : (current.meta && current.meta.layout) || floorLayout;
+      if (layout.locked) return;
+      event.preventDefault();
+      // Grows and shrinks about the frame's centre, so the plan stays put
+      // rather than creeping toward a corner.
+      var step = event.deltaY < 0 ? 1.06 : 1 / 1.06;
+      var minW = flApi ? flApi.MIN_TOPO_W : 35;
+      var minH = flApi ? flApi.MIN_TOPO_H : 35;
+      var w = Math.max(minW, Math.min(100, layout.topo.w * step));
+      var h = Math.max(minH, Math.min(100, layout.topo.h * step));
+      layout.topo.x = layout.topo.x + (layout.topo.w - w) / 2;
+      layout.topo.y = layout.topo.y + (layout.topo.h - h) / 2;
+      layout.topo.w = w;
+      layout.topo.h = h;
+      current.meta = current.meta || {};
+      current.meta.layout = flApi ? flApi.normalizeLayout(layout) : layout;
+      floorLayout = current.meta.layout;
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
+    }, { passive: false });
 
     sheetEl.addEventListener('pointermove', function (event) {
       if (coverDrag) {
@@ -3384,8 +3417,20 @@
       var flApi = window.ToolboxReportFloorLayout;
       if (floorDrag.id === 'topo') {
         if (floorDrag.resize) {
-          layout.topo.w = Math.max(flApi ? flApi.MIN_TOPO_W : 35, floorDrag.layout.topo.w + dx);
-          layout.topo.h = Math.max(flApi ? flApi.MIN_TOPO_H : 35, floorDrag.layout.topo.h + dy);
+          // The held corner moves and the opposite one stays put, which is what
+          // a corner handle means. Resizing only ever from the bottom right
+          // meant the other three corners drifted every time.
+          var minW = flApi ? flApi.MIN_TOPO_W : 35;
+          var minH = flApi ? flApi.MIN_TOPO_H : 35;
+          var o = floorDrag.layout.topo;
+          var west = floorDrag.corner === 'nw' || floorDrag.corner === 'sw';
+          var north = floorDrag.corner === 'nw' || floorDrag.corner === 'ne';
+          var nextW = Math.max(minW, west ? o.w - dx : o.w + dx);
+          var nextH = Math.max(minH, north ? o.h - dy : o.h + dy);
+          layout.topo.w = nextW;
+          layout.topo.h = nextH;
+          layout.topo.x = west ? o.x + (o.w - nextW) : o.x;
+          layout.topo.y = north ? o.y + (o.h - nextH) : o.y;
         } else {
           layout.topo.x = floorDrag.layout.topo.x + dx;
           layout.topo.y = floorDrag.layout.topo.y + dy;

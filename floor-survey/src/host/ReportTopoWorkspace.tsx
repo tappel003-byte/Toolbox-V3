@@ -49,7 +49,14 @@ export type ReportTopoWorkspaceProps = {
   controlsOnly?: boolean;
   onCameraChange?: (camera: PlanCamera) => void;
   onSettingsChange?: (settings: RenderSettings) => void;
-  onReady?: (info: { levelName: string; areaCount: number }) => void;
+  onReady?: (info: {
+    levelName: string;
+    areaCount: number;
+    /** The plan image's own proportion, so the slide can give the frame the
+     *  same shape and the drawing fills it instead of sitting in white. */
+    planWidth: number;
+    planHeight: number;
+  }) => void;
 };
 
 const EMPTY_POINTS: SurveyPoint[] = [];
@@ -122,6 +129,8 @@ export function ReportTopoWorkspace({
         onReady?.({
           levelName: match.name || "",
           areaCount: Array.isArray(match.areas) ? match.areas.length : 0,
+          planWidth: match.planWidth || 1000,
+          planHeight: match.planHeight || 750,
         });
       } else {
         setPoints(EMPTY_POINTS);

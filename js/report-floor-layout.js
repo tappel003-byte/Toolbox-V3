@@ -222,11 +222,17 @@
       el.setAttribute('tabindex', '0');
       el.setAttribute('role', 'button');
       el.setAttribute('aria-label', 'Move ' + kind);
-      var handle = document.createElement('span');
-      handle.className = 'rb-floor-box__resize';
-      handle.setAttribute('data-rb-floor-resize', id);
-      handle.setAttribute('aria-hidden', 'true');
-      el.appendChild(handle);
+      // A handle on every corner, not just the bottom right. One corner meant
+      // that if the frame was dragged so that corner left the page -- or simply
+      // sat where it was hard to find -- there was no way to resize at all.
+      ['nw', 'ne', 'sw', 'se'].forEach(function (corner) {
+        var handle = document.createElement('span');
+        handle.className = 'rb-floor-box__resize rb-floor-box__resize--' + corner;
+        handle.setAttribute('data-rb-floor-resize', id);
+        handle.setAttribute('data-rb-floor-corner', corner);
+        handle.setAttribute('aria-hidden', 'true');
+        el.appendChild(handle);
+      });
     }
     return el;
   }

@@ -1542,11 +1542,23 @@ function renderTopoBase(
 ) {
   const w = Math.max(1, Math.ceil(floor.planWidth ?? 1000));
   const h = Math.max(1, Math.ceil(floor.planHeight ?? 750));
+  // The contour fills are drawn into an offscreen layer and then stamped on.
+  // Sizing that layer to the PLAN's pixels capped the contours at plan
+  // resolution however large they were finally drawn, so every band edge came
+  // out stair-stepped once the drawing was shown bigger than the plan image --
+  // the pixelation on a report slide. The layer is sized for the resolution it
+  // will actually be seen at instead: the transform in force here already
+  // carries the zoom and the device pixel ratio.
+  const m = typeof ctx.getTransform === "function" ? ctx.getTransform() : null;
+  const outScale = m ? Math.max(Math.abs(m.a), Math.abs(m.d)) || 1 : 1;
+  // Capped so a deep zoom on a large plan cannot ask for an enormous bitmap.
+  const layerScale = Math.min(4, Math.max(1, outScale));
   const layer = document.createElement("canvas");
-  layer.width = w;
-  layer.height = h;
+  layer.width = Math.ceil(w * layerScale);
+  layer.height = Math.ceil(h * layerScale);
   const layerCtx = layer.getContext("2d");
   if (!layerCtx) return;
+  layerCtx.setTransform(layerScale, 0, 0, layerScale, 0, 0);
   renderTopoBaseLayer(layerCtx, floor, settings, areaTopos);
   ctx.drawImage(layer, 0, 0, w, h);
 }

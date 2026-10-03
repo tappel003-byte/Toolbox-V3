@@ -38,7 +38,12 @@ export type MountOptions = {
   locked?: boolean;
   onCameraChange?: (camera: PlanCamera) => void;
   onSettingsChange?: (settings: RenderSettings) => void;
-  onReady?: (info: { levelName: string; areaCount: number }) => void;
+  onReady?: (info: {
+    levelName: string;
+    areaCount: number;
+    planWidth: number;
+    planHeight: number;
+  }) => void;
 };
 
 let root: Root | null = null;
