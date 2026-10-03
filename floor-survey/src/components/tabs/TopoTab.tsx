@@ -142,6 +142,8 @@ interface Props {
    * would drift from them.
    */
   controlsOnly?: boolean;
+  /** A picture on a page: no pan, no zoom, the plan fits its frame. */
+  staticView?: boolean;
   /**
    * Nothing but the canvas.
    *
@@ -272,6 +274,7 @@ export function TopoTab({
   hideCanvasChrome = false,
   chromeless = false,
   controlsOnly = false,
+  staticView = false,
 }: Props) {
   const selectedId =
     selectedIds && selectedIds.size > 0 ? (selectedIds.values().next().value ?? null) : null;
@@ -829,6 +832,7 @@ export function TopoTab({
           planOnTop
           onCamera={onCamera}
           cameraRequest={cameraRequest || undefined}
+          staticView={staticView}
           refitOnResize={false}
           onTransform={(t) => setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s))}
           onImagePointerDown={(x, y) => {

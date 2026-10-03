@@ -2181,7 +2181,7 @@
     function railButton(label, kind, attr, value) {
       var btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'btn btn--' + kind + ' rb-rail__btn';
+      btn.className = 'btn btn--' + kind + ' rb-ws__btn';
       btn.textContent = label;
       if (attr) btn.setAttribute(attr, value || '');
       return btn;
@@ -2217,8 +2217,8 @@
         var viewHint = document.createElement('p');
         viewHint.className = 'rb-panel__lead';
         viewHint.textContent = floorCamera && floorCamera.locked
-          ? 'Every Floor Survey slide uses this view.'
-          : 'Scroll to zoom, drag to move. Lock when the plan sits where you want it on every slide.';
+          ? 'Every Floor Survey slide uses this size and position.'
+          : 'Drag the plan to move it. Drag the corner to size it. Lock when it sits where you want it on every slide.';
         railTopEl.appendChild(viewHint);
       }
 
@@ -2236,7 +2236,7 @@
       } else {
         releaseRailControls();
         var host = document.createElement('div');
-        host.className = 'rb-rail__controls';
+        host.className = 'rb-ws__controls';
         railBodyEl.appendChild(host);
         railControls = { el: host, key: key, api: null };
         railControls.api = api.mount(host, {
@@ -3322,12 +3322,10 @@
       var resize = event.target.closest('[data-rb-floor-resize]');
       var box = event.target.closest('[data-rb-floor-box]');
       if (!box) return;
-      // Inside the live Floor Survey view, a drag is a PAN -- that is what the
-      // gesture means in Floor Survey and the slide has to behave the same way.
-      // Report Builder was claiming it first and dragging the frame across the
-      // page instead, so the plan could never be moved. The frame is moved and
-      // resized from its own handles, which sit outside the drawing.
-      if (!resize && event.target.closest('[data-rb-topo-live]')) return;
+      // On a slide the plan is a picture, not a viewport: dragging it moves the
+      // frame and the corner resizes it, the way PowerPoint handles a picture.
+      // The canvas takes no pan or zoom gestures there, so the frame keeps the
+      // drag. (It briefly did the opposite, when the slide was a viewport.)
       var stage = stageRect('[data-rb-floor-stage]');
       if (!stage || stage.width < 8 || stage.height < 8) return;
       event.preventDefault();
@@ -3766,7 +3764,7 @@
       '    <p class="rb-ai-status" id="rb-ai-status" aria-live="polite"></p>' +
       '  </div>' +
       '  <div class="rb-workspace">' +
-      '    <aside class="rb-rail" aria-label="Report pages">' +
+      '    <aside class="rb-ws" aria-label="Report pages">' +
       '      <div class="rb-rail__head">' +
       '        <p class="eyebrow">Pages</p>' +
       '        <strong>Report sheets</strong>' +
@@ -3791,11 +3789,11 @@
       // the full application at the bottom. It is not a permanent list of
       // links, and it shows nothing on a slide that owns no source.
       '      <p class="eyebrow">Toolbox</p>' +
-      '      <div id="rb-rail" class="rb-rail" data-rb-rail hidden>' +
-      '        <h2 class="rb-rail__title" data-rb-rail-title>Floor Survey</h2>' +
-      '        <div class="rb-rail__top" data-rb-rail-top></div>' +
-      '        <div class="rb-rail__body" data-rb-rail-body></div>' +
-      '        <div class="rb-rail__foot" data-rb-rail-foot></div>' +
+      '      <div id="rb-rail" class="rb-ws" data-rb-rail hidden>' +
+      '        <h2 class="rb-ws__title" data-rb-rail-title>Floor Survey</h2>' +
+      '        <div class="rb-ws__top" data-rb-rail-top></div>' +
+      '        <div class="rb-ws__body" data-rb-rail-body></div>' +
+      '        <div class="rb-ws__foot" data-rb-rail-foot></div>' +
       '      </div>' +
       '      <div id="rb-rail-idle" class="rb-panel__idle" data-rb-rail-idle>' +
       '        <h2>Report sheets</h2>' +

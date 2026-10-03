@@ -699,18 +699,27 @@ body.report-builder-open .canvas {
 /* The hosted Floor Survey view fills its box on the page. The canvas inside
    sizes itself to this, and the camera is expressed against fit, so the same
    stored view frames the same thing here and at 17 x 11 in. */
-/* The rail — the workspace for whatever slide is open. Import at the top, that
-   workspace's own controls in the middle, the way back at the bottom. */
-.rb-rail { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
-.rb-rail__title { margin: 0; font-size: 18px; }
-.rb-rail__top,
-.rb-rail__foot { display: flex; flex-direction: column; gap: 6px; }
-.rb-rail__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-.rb-rail__btn { width: 100%; }
-.rb-rail__controls { display: block; }
-.rb-rail__controls .floor-survey-host,
-.rb-rail__controls .rtw-root--controls { display: block; height: auto; }
+/* The workspace rail — the controls for whatever slide is open. Import at the
+   top, that workspace's own controls in the middle, the way back at the
+   bottom.
+
+   Named rb-ws, NOT rb-rail: .rb-rail is already the pages rail on the left and
+   carries overflow:hidden, which clipped every control below Palette the
+   moment this reused the name. */
+.rb-ws { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.rb-ws__title { margin: 0; font-size: 18px; }
+.rb-ws__top,
+.rb-ws__foot { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
+/* The controls scroll; the Import button and the way back stay put. */
+.rb-ws__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.rb-ws__btn { width: 100%; }
+.rb-ws__controls { display: block; }
+.rb-ws__controls .floor-survey-host,
+.rb-ws__controls .rtw-root--controls { display: block; height: auto; }
 .rb-panel__idle h2 { margin: 0 0 6px; font-size: 18px; }
+
+/* The stage a stripped Floor Survey slide positions its frame against. */
+.rb-floor-stage--bare { position: absolute; inset: 0; }
 
 .rb-topo-page__drawing--live {
   position: relative;
@@ -720,6 +729,10 @@ body.report-builder-open .canvas {
 .rb-topo-live {
   position: absolute;
   inset: 0;
+  /* Under the frame's own handles. The drawing covers the whole frame, so at a
+     higher layer it swallowed the corner and the frame could not be resized --
+     the same mistake as putting the logo over its own Lock button. */
+  z-index: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1853,7 +1866,8 @@ body.report-builder-open .canvas {
   border: 1px solid #1e406e;
   background: #fff;
   cursor: nwse-resize;
-  z-index: 3;
+  /* Above the drawing it sits on. */
+  z-index: 6;
 }
 
 .rb-topo-page--chrome-only .rb-topo-page__body {

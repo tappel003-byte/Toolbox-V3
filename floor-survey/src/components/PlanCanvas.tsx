@@ -65,6 +65,16 @@ interface Props {
   cameraRequest?: PlanCamera & { nonce: number };
   /** Keep the current pan/zoom when the wrapper changes size, e.g. mobile keyboard. */
   refitOnResize?: boolean;
+  /**
+   * A picture on a page, not a viewport.
+   *
+   * On a report slide the plan is sized and placed by dragging the frame and
+   * its corner, the way a picture is handled in PowerPoint -- so the canvas
+   * itself does not pan or zoom, and the plan always fits whatever the frame
+   * has been made. Scroll-to-zoom is the wrong gesture there: it navigates a
+   * viewport when what is wanted is to resize a picture.
+   */
+  staticView?: boolean;
   /** Optional per-floor plan-image transform (Align mode). Applied to the raster only; points/overlays unchanged. */
   planTransform?: { tx: number; ty: number; scale: number; rotation: number };
 }
@@ -93,6 +103,7 @@ export function PlanCanvas({
   onCamera,
   cameraRequest,
   refitOnResize = true,
+  staticView = false,
   planTransform,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -175,15 +186,17 @@ export function PlanCanvas({
     const ro = new ResizeObserver(() => {
       const w = wrap.clientWidth;
       const h = wrap.clientHeight;
-      if (Math.abs(w - lastW) > 20 || Math.abs(h - lastH) > 20) {
+      // A picture follows its frame exactly, so any change refits; a viewport
+      // only refits on a big change, to survive a mobile keyboard.
+      if (staticView ? w !== lastW || h !== lastH : Math.abs(w - lastW) > 20 || Math.abs(h - lastH) > 20) {
         lastW = w;
         lastH = h;
-        if (refitOnResize) fit();
+        if (staticView || refitOnResize) fit();
       }
     });
     ro.observe(wrap);
     return () => ro.disconnect();
-  }, [fit, refitOnResize]);
+  }, [fit, refitOnResize, staticView]);
 
   // Apply a stored camera. This runs after the fit effect above, so a locked
   // view is not overwritten by the fit that happens when the plan finishes
@@ -498,12 +511,12 @@ export function PlanCanvas({
         data-canvas-tx={transform.tx}
         data-canvas-ty={transform.ty}
         className="absolute inset-0 touch-none overflow-hidden select-none"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-        onWheel={onWheel}
-        style={{ cursor: "crosshair" }}
+        onPointerDown={staticView ? undefined : onPointerDown}
+        onPointerMove={staticView ? undefined : onPointerMove}
+        onPointerUp={staticView ? undefined : onPointerUp}
+        onPointerCancel={staticView ? undefined : onPointerCancel}
+        onWheel={staticView ? undefined : onWheel}
+        style={{ cursor: staticView ? "default" : "crosshair" }}
       >
         <canvas ref={canvasRef} />
       </div>

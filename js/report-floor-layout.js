@@ -258,11 +258,20 @@
     // drawing underneath a pile of chrome that is itself in the wrong place is
     // how this page stayed wrong all day.
     if (imported) {
+      // The frame is positioned against a stage, and the drag handler measures
+      // that stage: without it the frame could neither be moved nor resized,
+      // which is what happened when this branch was first stripped back.
+      var bareStage = document.createElement('div');
+      bareStage.className = 'rb-topo-page__body rb-floor-stage rb-floor-stage--bare';
+      bareStage.setAttribute('data-rb-floor-stage', '1');
+      // The frame starts where the decks put the drawing and is then sized and
+      // placed by hand. Starting it full bleed meant dragging it pushed its own
+      // corner handle off the sheet, leaving no way to resize it again.
       var bare = boxShell('topo', 'topo', locked);
-      bare.style.left = '0%';
-      bare.style.top = '0%';
-      bare.style.width = '100%';
-      bare.style.height = '100%';
+      bare.style.left = layout.topo.x + '%';
+      bare.style.top = layout.topo.y + '%';
+      bare.style.width = layout.topo.w + '%';
+      bare.style.height = layout.topo.h + '%';
       var bareDraw = document.createElement('div');
       bareDraw.className = 'rb-topo-page__drawing rb-topo-page__drawing--live';
       var bareView = typeof options.mountTopo === 'function' ? options.mountTopo(page) : null;
@@ -275,7 +284,8 @@
         bareDraw.appendChild(bareNote);
       }
       bare.insertBefore(bareDraw, bare.firstChild);
-      root.appendChild(bare);
+      bareStage.appendChild(bare);
+      root.appendChild(bareStage);
       return { root: root, layout: layout };
     }
 

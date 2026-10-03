@@ -188,6 +188,7 @@ export function ReportTopoWorkspace({
         hideCanvasChrome
         chromeless
         controlsOnly={controlsOnly}
+        staticView
       />
     </div>
   );
