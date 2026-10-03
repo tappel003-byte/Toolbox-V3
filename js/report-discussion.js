@@ -104,14 +104,33 @@
     body.innerHTML = api ? api.toHtml(value) : '';
     root.appendChild(body);
 
-    if (typeof opts.brandMark === 'function') {
+    // The decks carry the real SANDIA GEO logo here as an image. Toolbox does
+    // not have that file, and the stand-in it was drawing -- a styled span
+    // plus the words -- is not the mark. Nothing is better than a wrong logo
+    // on a deliverable, so the slot stays empty until the artwork is in.
+    if (opts.brandImageUrl) {
       var brand = document.createElement('div');
       brand.className = 'rb-discussion__brand';
       brand.style.cssText = 'left:' + BRAND.x + '%;top:' + BRAND.y + '%;' +
         'width:' + BRAND.w + '%;height:' + BRAND.h + '%;';
-      brand.appendChild(opts.brandMark());
+      var img = document.createElement('img');
+      img.src = opts.brandImageUrl;
+      img.alt = '';
+      brand.appendChild(img);
       root.appendChild(brand);
     }
+
+    // A fixed-height multicol box does not stop at two columns: it keeps
+    // making more off to the side, and contenteditable scrolls sideways to
+    // follow the caret, which is how a long narrative turned into clipped
+    // text running off both edges. The overflow is reported instead of being
+    // silently browsable.
+    var warn = document.createElement('p');
+    warn.className = 'rb-discussion__overflow';
+    warn.setAttribute('data-rb-discussion-overflow', '1');
+    warn.hidden = true;
+    warn.textContent = 'This narrative is longer than one page holds. The text past the second column is not printed.';
+    root.appendChild(warn);
 
     return root;
   }

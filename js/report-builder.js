@@ -202,12 +202,19 @@
     return 'Photo ' + (raw.length < 2 ? ('0' + raw) : raw);
   }
 
+  // The real artwork, as it appears on every slide of the shipped reports.
+  // This used to draw a stand-in -- a styled span plus the words "SANDIA GEO"
+  // -- which is not the mark and had no business on a deliverable.
+  var BRAND_LOGO = 'brand/sandia-geo.png';
+
   function brandMark() {
     var brand = document.createElement('div');
     brand.className = 'rb-topo-page__brand';
-    brand.innerHTML =
-      '<span class="rb-topo-page__brand-mark" aria-hidden="true"></span>' +
-      '<span class="rb-topo-page__brand-name">SANDIA GEO</span>';
+    var img = document.createElement('img');
+    img.className = 'rb-brand__img';
+    img.src = BRAND_LOGO;
+    img.alt = 'Sandia Geo';
+    brand.appendChild(img);
     return brand;
   }
 
@@ -1359,6 +1366,22 @@
     });
   }
 
+  // Multicol spills into extra columns off to the side rather than stopping
+  // at two. Pin the scroll so the caret cannot wander into them, and say so
+  // on screen when the text no longer fits.
+  function watchDiscussionOverflow(root) {
+    var body = root.querySelector('.rb-discussion__body');
+    var warn = root.querySelector('[data-rb-discussion-overflow]');
+    if (!body || !warn) return;
+    function check() {
+      if (body.scrollLeft !== 0) body.scrollLeft = 0;
+      warn.hidden = body.scrollWidth <= body.clientWidth + 2;
+    }
+    body.addEventListener('scroll', check);
+    body.addEventListener('input', check);
+    window.requestAnimationFrame(check);
+  }
+
   function renderSheet(sheet, page, pages) {
     sheet.textContent = '';
     sheet.setAttribute('data-page-id', page.id);
@@ -1391,11 +1414,13 @@
     } else if (page.type === 'section' && page.meta && page.meta.sectionId === 'discussion' &&
                window.ToolboxReportDiscussion) {
       margin.classList.add('rb-sheet__margin--discussion');
-      margin.appendChild(window.ToolboxReportDiscussion.renderPage(page, {
+      var discussionEl = window.ToolboxReportDiscussion.renderPage(page, {
         locked: !!(page.meta && page.meta.locked),
-        brandMark: brandMark,
         facts: page._facts || null,
-      }));
+        brandImageUrl: BRAND_LOGO,
+      });
+      margin.appendChild(discussionEl);
+      watchDiscussionOverflow(discussionEl);
     } else if (page.type === 'section' && page.meta && page.meta.sectionId === 'property') {
       addLine(margin, 'rb-sheet__kicker', 'Report');
       var propertyTitle = document.createElement('h1');
@@ -2042,6 +2067,12 @@
       // shipped reports set them, rather than stepping up a scale.
       var html = api.toHtml(api.fromMarkdown(text, 0));
       if (!document.execCommand('insertHTML', false, html)) return;
+      // insertHTML nests the whole paste inside whatever block the caret was
+      // in, which produced one paragraph the height of the column. Rebuilding
+      // the field from the model flattens it back into real sibling
+      // paragraphs so the text can flow between columns.
+      var normalized = api.compact(api.fromElement(field));
+      field.innerHTML = api.toHtml(normalized);
       commitRichField(field);
     });
 

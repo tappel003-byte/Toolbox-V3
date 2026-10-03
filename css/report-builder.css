@@ -2086,14 +2086,24 @@ body.report-builder-open .canvas {
      left column nearly empty and everything pasted in the right. */
   column-fill: auto;
   font-size: 1.515cqh;
-  line-height: 1.32;
+  /* Calibri's own line height, as PowerPoint single-spaces. 1.32 was adding
+     8% to every line, which is capacity a long narrative needs. */
+  line-height: 1.22;
   white-space: pre-wrap;
   word-break: break-word;
   overflow: hidden;
 }
 
-/* A heading should not be stranded at the foot of a column. */
-.rb-discussion__body .rb-rt__p { break-inside: avoid; }
+/* Paragraphs must be free to split across the column boundary. Forbidding it
+   wholesale meant any paragraph taller than the space left simply jumped to
+   the next column, and a tall one spilled off the page entirely. */
+.rb-discussion__body .rb-rt__p { break-inside: auto; }
+
+/* A heading, though, should not be left stranded at the foot of a column. */
+.rb-discussion__body .rb-rt__p:has(> strong:only-child) {
+  break-after: avoid;
+  break-inside: avoid;
+}
 
 .rb-discussion__body:focus {
   outline: 1px solid rgba(139, 94, 60, 0.45);
@@ -2126,4 +2136,31 @@ body.report-builder-open .canvas {
 @media print {
   .rb-discussion__body:hover,
   .rb-discussion__body:focus { outline: none !important; }
+}
+
+/* The real brand artwork. Contained, never stretched. */
+.rb-brand__img,
+.rb-discussion__brand img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: left center;
+}
+
+/* Said on screen, never printed: the page cannot show what does not fit. */
+.rb-discussion__overflow {
+  position: absolute;
+  left: 1.96%;
+  bottom: 1.2%;
+  margin: 0;
+  color: #9a3412;
+  font-size: 1.3cqh;
+  font-weight: 600;
+}
+
+.rb-discussion__overflow[hidden] { display: none; }
+
+@media print {
+  .rb-discussion__overflow { display: none !important; }
 }
