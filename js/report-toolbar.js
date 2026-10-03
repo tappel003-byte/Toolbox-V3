@@ -75,14 +75,20 @@
       blocks[i].style.lineHeight = (mult * singleForBlock(blocks[i])).toFixed(3);
     }
   }
+  // PowerPoint's own wording. The distinction matters and the old labels hid
+  // it: line spacing is the space BETWEEN LINES WITHIN a paragraph, and does
+  // nothing to single-line paragraphs. The gap between separate paragraphs is
+  // space after. Someone trying to close up an address block needs the second
+  // one, and "No space after" did not say so.
   var LINE_SPACING = [
     { value: 'lh:1', label: 'Single' },
     { value: 'lh:1.15', label: '1.15' },
     { value: 'lh:1.25', label: '1.25' },
     { value: 'lh:1.5', label: '1.5' },
     { value: 'lh:2', label: 'Double' },
-    { value: 'sa:0', label: 'No space after' },
-    { value: 'sa:9', label: 'Space after (9 pt)' },
+    { value: 'sep', label: '' },
+    { value: 'sa:0', label: 'Remove Space After Paragraph' },
+    { value: 'sa:9', label: 'Add Space After Paragraph' },
   ];
 
   var activeField = null;
@@ -346,7 +352,9 @@
 
   function spacingMenu() {
     var items = LINE_SPACING.map(function (opt) {
+      if (opt.value === 'sep') return '<span class="rb-format__sep"></span>';
       return '<button type="button" class="rb-format__item" data-rb-pick="spacing"' +
+        ' data-rb-spacing="' + opt.value + '"' +
         ' data-rb-value="' + opt.value + '">' + opt.label + '</button>';
     }).join('');
     return (
@@ -437,6 +445,39 @@
       for (var j = 0; j < opens.length; j += 1) opens[j].setAttribute('aria-expanded', 'false');
     }
 
+    // Which line spacing and space-after the selection already has. Without
+    // this, choosing Single when the text is already Single looks like the
+    // control doing nothing.
+    function markCurrentSpacing(field) {
+      var items = bar.querySelectorAll('[data-rb-spacing]');
+      for (var i = 0; i < items.length; i += 1) items[i].removeAttribute('aria-current');
+      if (!field) return;
+      var blocks = blocksInSelection(field);
+      if (!blocks.length) return;
+      var block = blocks[0];
+      var single = singleForBlock(block);
+      var cs = window.getComputedStyle(block);
+      var size = parseFloat(cs.fontSize) || 16;
+      var lh = parseFloat(cs.lineHeight);
+      if (isFinite(lh) && size) {
+        var multiple = (lh / size) / single;
+        var nearest = null;
+        var best = 0.08;
+        [1, 1.15, 1.25, 1.5, 2].forEach(function (v) {
+          var d = Math.abs(multiple - v);
+          if (d < best) { best = d; nearest = v; }
+        });
+        if (nearest !== null) {
+          var el = bar.querySelector('[data-rb-spacing="lh:' + nearest + '"]');
+          if (el) el.setAttribute('aria-current', 'true');
+        }
+      }
+      var mb = parseFloat(cs.marginBottom);
+      var hasSpace = isFinite(mb) && mb > 1;
+      var saEl = bar.querySelector('[data-rb-spacing="' + (hasSpace ? 'sa:9' : 'sa:0') + '"]');
+      if (saEl) saEl.setAttribute('aria-current', 'true');
+    }
+
     function setCurrent(kind, value) {
       var label = bar.querySelector('[data-rb-current="' + kind + '"]');
       if (label) label.textContent = value;
@@ -463,6 +504,7 @@
         var btn = bar.querySelector('[data-rb-fmt="' + k + '"]');
         if (btn) btn.classList.toggle('is-on', state.align === k);
       });
+      markCurrentSpacing(field);
       if (state.size && SIZES.indexOf(parseInt(state.size, 10)) !== -1) setCurrent('size', state.size);
       if (state.font && FONTS.indexOf(state.font) !== -1) setCurrent('font', state.font);
     }

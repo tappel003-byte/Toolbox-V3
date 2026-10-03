@@ -2359,3 +2359,17 @@ body.report-builder-open .canvas {
   opacity: 0.35;
   cursor: default;
 }
+
+.rb-format__sep {
+  display: block;
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--line, #d7d2c8);
+}
+
+/* A tick on what is already applied, so choosing a value that is already in
+   force reads as "already set" rather than "button did nothing". */
+.rb-format__item[aria-current="true"]::before {
+  content: '\2713\00a0';
+  font-weight: 700;
+}
