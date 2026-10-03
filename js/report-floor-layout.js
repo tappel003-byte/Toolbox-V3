@@ -248,6 +248,37 @@
     root.className = 'rb-topo-page' + (imported ? ' rb-topo-page--imported' : ' rb-topo-page--chrome-only');
     root.setAttribute('data-rb-floor-locked', locked ? '1' : '0');
 
+    // Rebuilding this page from the decks, drawing first.
+    //
+    // An imported slide is the plan and nothing else: no figure block, no
+    // residence block, no readings box, no logo, no editor toolbar, and the
+    // drawing is full bleed so zooming can fill the slide instead of filling a
+    // box inside a margin. Every one of those pieces comes back deliberately,
+    // at its own measured position, once the drawing is right. Judging the
+    // drawing underneath a pile of chrome that is itself in the wrong place is
+    // how this page stayed wrong all day.
+    if (imported) {
+      var bare = boxShell('topo', 'topo', locked);
+      bare.style.left = '0%';
+      bare.style.top = '0%';
+      bare.style.width = '100%';
+      bare.style.height = '100%';
+      var bareDraw = document.createElement('div');
+      bareDraw.className = 'rb-topo-page__drawing rb-topo-page__drawing--live';
+      var bareView = typeof options.mountTopo === 'function' ? options.mountTopo(page) : null;
+      if (bareView) {
+        bareDraw.appendChild(bareView);
+      } else {
+        var bareNote = document.createElement('p');
+        bareNote.className = 'rb-sheet__note';
+        bareNote.textContent = 'Floor Survey level is not available for this slide.';
+        bareDraw.appendChild(bareNote);
+      }
+      bare.insertBefore(bareDraw, bare.firstChild);
+      root.appendChild(bare);
+      return { root: root, layout: layout };
+    }
+
     var toolbar = document.createElement('div');
     toolbar.className = 'rb-floor-toolbar';
     if (!imported) {
