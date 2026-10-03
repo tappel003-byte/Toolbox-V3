@@ -6,6 +6,15 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
+/** A view that survives a change of canvas size. */
+export interface PlanCamera {
+  /** Image coordinate sitting at the centre of the view. */
+  cx: number;
+  cy: number;
+  /** Multiple of fit-to-view. 1 = exactly fitted. */
+  zoom: number;
+}
+
 export interface CanvasTransform {
   scale: number;
   tx: number;
@@ -42,6 +51,18 @@ interface Props {
   planOnTop?: boolean;
   /** When nonce changes, pan (and gently zoom in if too far out) so (x,y) is centered. */
   focusRequest?: { x: number; y: number; nonce: number };
+  /**
+   * The view, in terms that do not depend on how big this canvas happens to be.
+   *
+   * scale/tx/ty are wrapper pixels, so the same numbers frame differently in a
+   * Floor Survey window, on a report sheet and in a 17 x 11 in PDF. A camera is
+   * instead "this image point is in the middle, at this multiple of fit", which
+   * reproduces the same framing at any size -- which is what lets one locked
+   * view carry from the screen to the page.
+   */
+  onCamera?: (camera: PlanCamera) => void;
+  /** Apply a camera when the nonce changes. Runs after fit, so it wins. */
+  cameraRequest?: PlanCamera & { nonce: number };
   /** Keep the current pan/zoom when the wrapper changes size, e.g. mobile keyboard. */
   refitOnResize?: boolean;
   /** Optional per-floor plan-image transform (Align mode). Applied to the raster only; points/overlays unchanged. */
@@ -69,6 +90,8 @@ export function PlanCanvas({
   hidePlan = false,
   planOnTop = false,
   focusRequest,
+  onCamera,
+  cameraRequest,
   refitOnResize = true,
   planTransform,
 }: Props) {
@@ -82,6 +105,8 @@ export function PlanCanvas({
   transformRef.current = transform;
   const onTransformRef = useRef(onTransform);
   onTransformRef.current = onTransform;
+  const onCameraRef = useRef(onCamera);
+  onCameraRef.current = onCamera;
 
   const imgW = planWidth ?? IMPLIED_W;
   const imgH = planHeight ?? IMPLIED_H;
@@ -100,11 +125,29 @@ export function PlanCanvas({
     img.src = planDataUrl;
   }, [planDataUrl]);
 
-  const applyTransform = useCallback((t: CanvasTransform) => {
-    transformRef.current = t;
-    setTransform(t);
-    onTransformRef.current?.(t);
-  }, []);
+  /** Scale at which the plan exactly fits the current wrapper. */
+  const fitScale = useCallback(() => {
+    const wrap = wrapRef.current;
+    if (!wrap || !wrap.clientWidth || !wrap.clientHeight) return 1;
+    return Math.min(wrap.clientWidth / imgW, wrap.clientHeight / imgH) || 1;
+  }, [imgW, imgH]);
+
+  const applyTransform = useCallback(
+    (t: CanvasTransform) => {
+      transformRef.current = t;
+      setTransform(t);
+      onTransformRef.current?.(t);
+      const wrap = wrapRef.current;
+      if (onCameraRef.current && wrap && t.scale > 0) {
+        onCameraRef.current({
+          cx: (wrap.clientWidth / 2 - t.tx) / t.scale,
+          cy: (wrap.clientHeight / 2 - t.ty) / t.scale,
+          zoom: t.scale / (fitScale() || 1),
+        });
+      }
+    },
+    [fitScale],
+  );
 
   // Fit-to-view only on first load/new plan, or when the user taps Fit.
   const fit = useCallback(() => {
@@ -141,6 +184,28 @@ export function PlanCanvas({
     ro.observe(wrap);
     return () => ro.disconnect();
   }, [fit, refitOnResize]);
+
+  // Apply a stored camera. This runs after the fit effect above, so a locked
+  // view is not overwritten by the fit that happens when the plan finishes
+  // loading. Because the camera is expressed against fit, the same stored
+  // numbers frame the same thing whatever size this canvas is.
+  const cameraNonceRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!cameraRequest) return;
+    if (cameraNonceRef.current === cameraRequest.nonce) return;
+    const wrap = wrapRef.current;
+    if (!wrap || !wrap.clientWidth || !wrap.clientHeight) return;
+    // Wait for the plan, or the fit that runs when it finishes loading would
+    // throw the stored view away a moment after it was applied.
+    if (planDataUrl && !imgLoaded) return;
+    cameraNonceRef.current = cameraRequest.nonce;
+    const scale = (cameraRequest.zoom || 1) * (fitScale() || 1);
+    applyTransform({
+      scale,
+      tx: wrap.clientWidth / 2 - cameraRequest.cx * scale,
+      ty: wrap.clientHeight / 2 - cameraRequest.cy * scale,
+    });
+  }, [cameraRequest, fitScale, applyTransform, imgLoaded, canvasSizeTick, planDataUrl]);
 
   // Programmatic focus: pan (and gently zoom in if too zoomed out) to center (x,y).
   const focusNonceRef = useRef<number | undefined>(undefined);

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PlanCanvas } from "../PlanCanvas";
+import { PlanCanvas, type PlanCamera } from "../PlanCanvas";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -128,6 +128,13 @@ interface Props {
   onSelectedAreaIdChange?: (id: string | null) => void;
   /** Tap H or L on an area's stats pill to highlight that point. */
   onHighlight?: (p: SurveyPoint) => void;
+  /** Report Builder hosts this same view on a slide. It needs to read the view
+   *  the investigator sets, and to put a locked one back. */
+  onCamera?: (camera: PlanCamera) => void;
+  cameraRequest?: (PlanCamera & { nonce: number }) | null;
+  /** Report Builder draws its own colour scale, pill and High/Low markers as
+   *  placed boxes, so the drawing carries none of them. */
+  hideCanvasChrome?: boolean;
 }
 
 const DEFAULT_LABEL_DX = 8;
@@ -241,6 +248,9 @@ export function TopoTab({
   selectedAreaId = null,
   onSelectedAreaIdChange,
   onHighlight,
+  onCamera,
+  cameraRequest,
+  hideCanvasChrome = false,
 }: Props) {
   const selectedId =
     selectedIds && selectedIds.size > 0 ? (selectedIds.values().next().value ?? null) : null;
@@ -307,7 +317,18 @@ export function TopoTab({
   }, [floor.id]);
   // Current canvas zoom — labels are drawn at a screen-constant size.
   const [viewScale, setViewScale] = useState(1);
-  const resolved = resolveSettings(settings);
+  // On a report slide the colour scale, the H/L/delta pill and the High and Low
+  // markers are placed boxes that are moved, sized and locked on the page, so
+  // the drawing itself carries none of them. Anything drawn into the canvas is
+  // stuck where it was drawn.
+  const resolved = hideCanvasChrome
+    ? resolveSettings({
+        ...resolveSettings(settings),
+        showLegend: false,
+        showStatsPill: false,
+        showHighLow: false,
+      })
+    : resolveSettings(settings);
 
   // Persist legend scale/position across sessions (localStorage). Defaults: 1.5×.
   const LEGEND_STORAGE_KEY = "topo.legend.v1";
@@ -776,6 +797,8 @@ export function TopoTab({
           planHeight={floor.planHeight}
           hidePlan={!resolved.showPlan}
           planOnTop
+          onCamera={onCamera}
+          cameraRequest={cameraRequest || undefined}
           refitOnResize={false}
           onTransform={(t) => setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s))}
           onImagePointerDown={(x, y) => {
