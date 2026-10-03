@@ -24,12 +24,57 @@
   // Line spacing, as PowerPoint offers it: a multiplier, plus space after the
   // paragraph on its own. An address block wants the lines tight AND no gap
   // beneath each line; narrative wants the deck's 9 pt between paragraphs.
-  // "Single" means the FONT'S OWN line height, not 1.0 -- that is what it
-  // means in PowerPoint and what the page body already uses (Calibri sits at
-  // 1.22). Setting 1.0 produced spacing tighter than the surrounding report,
-  // which is why Single looked cramped. Every option below is a multiple of
-  // single, as PowerPoint's line spacing is.
-  var SINGLE_LINE = 1.22;
+  // "Single" is whatever the FONT declares -- ascent + descent + line gap --
+  // not a fixed number. Calibri is about 1.22, Arial about 1.15, Georgia about
+  // 1.14. Every option below is a multiple of that, as PowerPoint's line
+  // spacing is, so it is measured from the actual typeface rather than assumed.
+  var singleCache = {};
+
+  function singleFor(fontFamily, fontSize) {
+    var key = fontFamily + '|' + fontSize;
+    if (singleCache[key]) return singleCache[key];
+    var probe = document.createElement('div');
+    probe.textContent = 'Hxg';
+    probe.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;' +
+      'white-space:nowrap;line-height:normal;padding:0;border:0;margin:0;' +
+      'font-family:' + fontFamily + ';font-size:' + fontSize + 'px;';
+    document.body.appendChild(probe);
+    var ratio = probe.offsetHeight / fontSize;
+    document.body.removeChild(probe);
+    if (!isFinite(ratio) || ratio <= 0) ratio = 1.2;
+    ratio = Math.round(ratio * 1000) / 1000;
+    singleCache[key] = ratio;
+    return ratio;
+  }
+
+  // A line is as tall as its tallest content, so a paragraph mixing typefaces
+  // takes the loosest single among them.
+  function singleForBlock(block) {
+    var base = window.getComputedStyle(block);
+    var size = parseFloat(base.fontSize) || 16;
+    var best = singleFor(base.fontFamily, size);
+    var runs = block.querySelectorAll('*');
+    for (var i = 0; i < runs.length; i += 1) {
+      var cs = window.getComputedStyle(runs[i]);
+      var rs = parseFloat(cs.fontSize) || size;
+      var r = singleFor(cs.fontFamily, rs) * (rs / size);
+      if (r > best) best = r;
+    }
+    return best;
+  }
+
+  // Re-resolve any block whose spacing was chosen as a multiple, so changing
+  // the typeface moves the lines with it instead of leaving the old font's
+  // number behind.
+  function resolveSpacing(field) {
+    if (!field) return;
+    var blocks = field.querySelectorAll('[data-rb-line-spacing]');
+    for (var i = 0; i < blocks.length; i += 1) {
+      var mult = parseFloat(blocks[i].getAttribute('data-rb-line-spacing'));
+      if (!isFinite(mult) || mult <= 0) continue;
+      blocks[i].style.lineHeight = (mult * singleForBlock(blocks[i])).toFixed(3);
+    }
+  }
   var LINE_SPACING = [
     { value: 'lh:1', label: 'Single' },
     { value: 'lh:1.15', label: '1.15' },
@@ -132,6 +177,8 @@
     rememberSelection();
   }
 
+  function setSizeThenResolve(field) { resolveSpacing(field); }
+
   function setSize(field, pt) {
     if (!field || !isFinite(pt) || pt <= 0) return;
     applyInline(field, function () {
@@ -139,11 +186,14 @@
       var marked = field.querySelectorAll('font[size="' + SIZE_MARKER + '"]');
       for (var i = 0; i < marked.length; i += 1) marked[i].setAttribute('data-rb-pt', pt);
     });
+    setSizeThenResolve(field);
   }
 
   function setFont(field, family) {
     if (!field || !family) return;
     applyInline(field, function () { exec('fontName', family); });
+    // Single means something different in Arial than in Calibri.
+    resolveSpacing(field);
   }
 
   // Indent and direction are paragraph properties, so they are applied to the
@@ -178,8 +228,13 @@
     var value = parseFloat(parts[1]);
     if (!isFinite(value)) return;
     blocksInSelection(field).forEach(function (block) {
-      if (kind === 'lh') block.style.lineHeight = (value * SINGLE_LINE).toFixed(3);
-      else block.style.marginBottom = (value * window.ToolboxReportText.PT_TO_CQH).toFixed(3) + 'cqh';
+      if (kind === 'lh') {
+        // Store the CHOICE, not just the number it resolves to.
+        block.setAttribute('data-rb-line-spacing', String(value));
+        block.style.lineHeight = (value * singleForBlock(block)).toFixed(3);
+      } else {
+        block.style.marginBottom = (value * window.ToolboxReportText.PT_TO_CQH).toFixed(3) + 'cqh';
+      }
     });
   }
 

@@ -78,7 +78,12 @@
     var after = parseFloat(src.spaceAfter);
     if (isFinite(after) && after >= 0) para.spaceAfter = Math.round(after * 10) / 10;
     var lh = parseFloat(src.lineHeight);
-    if (isFinite(lh) && lh > 0) para.lineHeight = Math.round(lh * 100) / 100;
+    if (isFinite(lh) && lh > 0) para.lineHeight = Math.round(lh * 1000) / 1000;
+    // The CHOICE ("single", 1.5) as distinct from the number it resolved to.
+    // Single is 1.22 in Calibri and 1.15 in Arial, so a paragraph that changes
+    // typeface has to re-resolve rather than keep the old font's figure.
+    var ls = parseFloat(src.lineSpacing);
+    if (isFinite(ls) && ls > 0) para.lineSpacing = Math.round(ls * 100) / 100;
     var runs = Array.isArray(src.runs) ? src.runs : [];
     runs.forEach(function (r) {
       var run = normalizeRun(r);
@@ -122,6 +127,7 @@
         if (p.dir === 'rtl') out.dir = 'rtl';
         if (typeof p.spaceAfter === 'number') out.spaceAfter = p.spaceAfter;
         if (typeof p.lineHeight === 'number') out.lineHeight = p.lineHeight;
+        if (typeof p.lineSpacing === 'number') out.lineSpacing = p.lineSpacing;
         out.runs = p.runs.map(function (r) {
           var run = { text: r.text };
           if (r.bold === true) run.bold = true;
@@ -182,7 +188,9 @@
     var inner = para.runs.map(runHtml).join('');
     if (!inner) inner = '<br>';
     var tag = para.bullet ? 'li' : 'div';
-    return '<' + tag + (style ? ' style="' + style + '"' : '') +
+    var attr = typeof para.lineSpacing === 'number'
+      ? ' data-rb-line-spacing="' + para.lineSpacing + '"' : '';
+    return '<' + tag + (style ? ' style="' + style + '"' : '') + attr +
       ' class="rb-rt__p' + (para.bullet ? ' rb-rt__p--bullet' : '') + '">' + inner + '</' + tag + '>';
   }
 
@@ -269,6 +277,11 @@
               ? Math.round((mbNum / PT_TO_CQH) * 10) / 10
               : Math.round((mbNum * 0.75) * 10) / 10;
           }
+        }
+        var lsAttr = source.getAttribute && source.getAttribute('data-rb-line-spacing');
+        if (lsAttr) {
+          var lsNum = parseFloat(lsAttr);
+          if (isFinite(lsNum) && lsNum > 0) current.lineSpacing = lsNum;
         }
         var lhRaw = source.style && source.style.lineHeight;
         if (lhRaw && !/px|%|em/.test(lhRaw)) {
