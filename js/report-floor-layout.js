@@ -348,7 +348,15 @@
       var drawing = document.createElement('div');
       drawing.className = 'rb-topo-page__drawing';
       var figure = ev.figure || {};
-      if (figure.dataUrl && figure.dataUrl.indexOf('data:image/') === 0) {
+      // The live Floor Survey view, when Report Builder hands one over. It is
+      // the same component and the same canvas the investigator draws on, so
+      // there is no second renderer to drift. The composed image below is the
+      // fallback for a report saved before this.
+      var liveView = typeof options.mountTopo === 'function' ? options.mountTopo(page) : null;
+      if (liveView) {
+        drawing.classList.add('rb-topo-page__drawing--live');
+        drawing.appendChild(liveView);
+      } else if (figure.dataUrl && figure.dataUrl.indexOf('data:image/') === 0) {
         var img = document.createElement('img');
         img.className = 'rb-topo-page__image';
         img.src = figure.dataUrl;

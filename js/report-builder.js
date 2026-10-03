@@ -1467,6 +1467,64 @@
     return api.restoreOffsets(field, saved);
   }
 
+  // The hosted Floor Survey topo view.
+  //
+  // renderPages() empties the sheet on every re-render, so a React root created
+  // inside it would be torn down and rebuilt constantly -- losing the view, the
+  // settings and anything in flight. The host element is therefore kept here
+  // and re-appended: detaching and re-attaching a node leaves its React tree
+  // intact, so the view survives every unrelated re-render. It is only
+  // unmounted when the slide actually changes to a different level.
+  var topoHost = { el: null, key: '', api: null, hooks: null };
+
+  function topoHostKey(page) {
+    var meta = (page && page.meta) || {};
+    return [page && page.id, meta.canvasId, meta.epochId, meta.areaId || '', meta.scope || ''].join('|');
+  }
+
+  function releaseTopoHost() {
+    if (topoHost.api && typeof topoHost.api.unmount === 'function') {
+      try { topoHost.api.unmount(); } catch (err) { /* already gone */ }
+    }
+    if (topoHost.el && topoHost.el.parentNode) topoHost.el.parentNode.removeChild(topoHost.el);
+    topoHost = { el: null, key: '', api: null, hooks: null };
+  }
+
+  function mountTopoHost(page, hooks) {
+    var api = window.ToolboxFloorSurvey;
+    if (!api || typeof api.mount !== 'function') return null;
+    var key = topoHostKey(page);
+    if (topoHost.el && topoHost.key === key) {
+      topoHost.hooks = hooks;
+      return topoHost.el;
+    }
+    releaseTopoHost();
+    var el = document.createElement('div');
+    el.className = 'rb-topo-live';
+    el.setAttribute('data-rb-topo-live', '1');
+    topoHost = { el: el, key: key, api: null, hooks: hooks };
+    var meta = page.meta || {};
+    // The hooks are read through topoHost so a later re-render can swap them
+    // without remounting the view.
+    topoHost.api = api.mount(el, {
+      customerFileId: (hooks && hooks.customerFileId) || '',
+      workspace: 'report-topo',
+      canvasId: meta.canvasId || '',
+      areaId: meta.scope === 'all' ? null : (meta.areaId || null),
+      camera: (hooks && hooks.camera) || null,
+      settings: (hooks && hooks.settings) || null,
+      locked: !!(hooks && hooks.locked),
+      onBack: function () {},
+      onCameraChange: function (camera) {
+        if (topoHost.hooks && topoHost.hooks.onCameraChange) topoHost.hooks.onCameraChange(camera);
+      },
+      onSettingsChange: function (next) {
+        if (topoHost.hooks && topoHost.hooks.onSettingsChange) topoHost.hooks.onSettingsChange(next);
+      },
+    });
+    return el;
+  }
+
   function renderSheet(sheet, page, pages) {
     sheet.textContent = '';
     sheet.setAttribute('data-page-id', page.id);
@@ -1539,6 +1597,7 @@
           formatSurveyDate: formatSurveyDate,
           renderNorthArrow: renderNorthArrow,
           renderRelativeReadings: renderRelativeReadings,
+          mountTopo: page._mountTopo || null,
         });
         if (page.meta) page.meta.layout = rendered.layout;
         margin.appendChild(rendered.root);
@@ -1665,7 +1724,7 @@
     };
   }
 
-  function persistableDocument(pages, activePageId, prior, floorLayout, coverLayout, brandBox) {
+  function persistableDocument(pages, activePageId, prior, floorLayout, coverLayout, brandBox, floorCamera, floorView) {
     var notes = collectPenLogNotes(pages);
     if ((!notes || !Object.keys(notes).length) && prior && prior.penLog && prior.penLog.notes) {
       notes = prior.penLog.notes;
@@ -1702,6 +1761,10 @@
     var discApi = window.ToolboxReportDiscussion;
     var brand = brandBox || (prior && prior.brandBox);
     if (brand) doc.brandBox = discApi ? discApi.normalizeBrandBox(brand) : brand;
+    var camera = floorCamera || (prior && prior.floorCamera);
+    if (camera) doc.floorCamera = JSON.parse(JSON.stringify(camera));
+    var view = floorView || (prior && prior.floorView);
+    if (view) doc.floorView = JSON.parse(JSON.stringify(view));
     return doc;
   }
 
@@ -1762,6 +1825,14 @@
     // otherwise, so a report saved before this still shows where its logo was
     // put (the per-sheet copy is adopted on open).
     var brandBox = null;
+    // One camera for every Floor Survey slide: the same part of the plan at the
+    // same zoom, so clicking through Combined, Main Level, Kitchen and Garage
+    // is a flip book -- the building does not move. The chrome (colour scale,
+    // H/L/delta pill, the markers) is deliberately NOT part of this: the high
+    // point sits somewhere different on each boundary, so a marker that is
+    // right on one slide would land on a wall on the next.
+    var floorCamera = null;
+    var floorView = null;
     var coverOverviewUrl = '';
     var floorDrag = null;
     var coverDrag = null;
@@ -1829,7 +1900,9 @@
         workingRecord && (workingRecord.reportBuilder || workingRecord.report),
         floorLayout,
         coverLayout,
-        brandBox
+        brandBox,
+        floorCamera,
+        floorView
       );
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;
@@ -2036,6 +2109,32 @@
         current._facts = discussionFacts(current);
       }
       if (current) current._brandBox = currentBrandBox(current);
+      // Only the slide being looked at hosts the live view; the others are not
+      // in the DOM. The camera is the book's, so every level opens framed the
+      // same way, and a change to it is stored for the book rather than the
+      // slide.
+      if (current && current.type === 'floor' && current.meta && current.meta.imported &&
+          current.meta.canvasId && window.ToolboxFloorSurvey) {
+        current._mountTopo = function (page) {
+          return mountTopoHost(page, {
+            customerFileId: customerFileId,
+            camera: floorCamera,
+            settings: floorView,
+            locked: !!(floorCamera && floorCamera.locked),
+            onCameraChange: function (camera) {
+              var locked = !!(floorCamera && floorCamera.locked);
+              floorCamera = { cx: camera.cx, cy: camera.cy, zoom: camera.zoom, locked: locked };
+              markDirty();
+            },
+            onSettingsChange: function (next) {
+              floorView = next;
+              markDirty();
+            },
+          });
+        };
+      } else {
+        releaseTopoHost();
+      }
       renderSheet(sheetEl, current, pages);
       syncPenLogPanel(current);
       fitSheet(root);
@@ -3391,6 +3490,8 @@
       if (savedDoc && savedDoc.brandBox && window.ToolboxReportDiscussion) {
         brandBox = window.ToolboxReportDiscussion.normalizeBrandBox(savedDoc.brandBox);
       }
+      if (savedDoc && savedDoc.floorCamera) floorCamera = savedDoc.floorCamera;
+      if (savedDoc && savedDoc.floorView) floorView = savedDoc.floorView;
       var saved = savedReportPages(record);
       if (saved) {
         var before = saved.pages.map(function (page) {
