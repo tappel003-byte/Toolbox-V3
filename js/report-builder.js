@@ -28,6 +28,7 @@
   };
   var fitObserver = null;
   var formatToolbar = null;
+  var coverPasteHandler = null;
   var fitOnResize = null;
   var pageSeq = 1;
 
@@ -1032,7 +1033,7 @@
     } else {
       var empty = document.createElement('div');
       empty.className = 'rb-cover__overview-empty';
-      empty.textContent = 'Site overview photo';
+      empty.textContent = 'Site overview photo — open Maps, screenshot, and paste';
       overview.appendChild(empty);
     }
     var overviewActions = document.createElement('div');
@@ -1964,6 +1965,7 @@
       if (!field || field.getAttribute('contenteditable') !== 'true') return;
       var api = window.ToolboxReportText;
       if (!api || !event.clipboardData) return;
+      if (clipboardImage(event)) return; // handled as the site overview
       var text = event.clipboardData.getData('text/plain');
       if (!text || !api.looksLikeMarkdown(text)) return;
       event.preventDefault();
@@ -2060,36 +2062,77 @@
       });
     }
 
+    function setCoverOverview(dataUrl) {
+      if (!dataUrl || dataUrl.indexOf('data:image/') !== 0) return;
+      if (!window.ToolboxDB || typeof window.ToolboxDB.putMedia !== 'function') return;
+      var mediaId = 'report-cover-overview-' + customerFileId;
+      window.ToolboxDB.putMedia(mediaId, dataUrl).then(function () {
+        var coverApi = window.ToolboxReportCoverLayout;
+        coverLayout = coverApi ? coverApi.normalizeLayout(coverLayout) : coverLayout;
+        coverLayout.overviewMediaId = mediaId;
+        coverOverviewUrl = dataUrl;
+        markDirty();
+        renderPages();
+        flushSave().catch(function () {});
+      }).catch(function (err) {
+        console.warn('Cover overview save failed', err);
+        setSaveStatus('Overview save failed');
+      });
+    }
+
+    function readImageFile(file) {
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        setCoverOverview(typeof reader.result === 'string' ? reader.result : '');
+      };
+      reader.readAsDataURL(file);
+    }
+
     function pickCoverOverview() {
       var input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
       input.addEventListener('change', function () {
-        var file = input.files && input.files[0];
-        if (!file) return;
-        var reader = new FileReader();
-        reader.onload = function () {
-          var dataUrl = typeof reader.result === 'string' ? reader.result : '';
-          if (!dataUrl || dataUrl.indexOf('data:image/') !== 0) return;
-          if (!window.ToolboxDB || typeof window.ToolboxDB.putMedia !== 'function') return;
-          var mediaId = 'report-cover-overview-' + customerFileId;
-          window.ToolboxDB.putMedia(mediaId, dataUrl).then(function () {
-            var coverApi = window.ToolboxReportCoverLayout;
-            coverLayout = coverApi ? coverApi.normalizeLayout(coverLayout) : coverLayout;
-            coverLayout.overviewMediaId = mediaId;
-            coverOverviewUrl = dataUrl;
-            markDirty();
-            renderPages();
-            flushSave().catch(function () {});
-          }).catch(function (err) {
-            console.warn('Cover overview save failed', err);
-            setSaveStatus('Overview save failed');
-          });
-        };
-        reader.readAsDataURL(file);
+        readImageFile(input.files && input.files[0]);
       });
       input.click();
     }
+
+    // The site overview comes from opening the property in Google Maps and
+    // screenshotting it, so the image arrives on the clipboard, not as a file
+    // on disk. Pasting anywhere on the cover drops it in; requiring a save-
+    // then-browse round trip for every job is exactly the kind of busywork
+    // this product exists to remove.
+    function clipboardImage(event) {
+      var data = event.clipboardData;
+      if (!data) return null;
+      var items = data.items || [];
+      for (var i = 0; i < items.length; i += 1) {
+        if (items[i].kind === 'file' && /^image\//.test(items[i].type || '')) {
+          var file = items[i].getAsFile();
+          if (file) return file;
+        }
+      }
+      var files = data.files || [];
+      for (var j = 0; j < files.length; j += 1) {
+        if (/^image\//.test(files[j].type || '')) return files[j];
+      }
+      return null;
+    }
+
+    function onCoverImagePaste(event) {
+      var current = activePage();
+      if (!current || current.type !== 'cover') return;
+      var file = clipboardImage(event);
+      if (!file) return;
+      event.preventDefault();
+      setSaveStatus('Adding overview…');
+      readImageFile(file);
+    }
+
+    document.addEventListener('paste', onCoverImagePaste);
+    coverPasteHandler = onCoverImagePaste;
 
     sheetEl.addEventListener('click', function (event) {
       if (event.target.closest('[data-rb-floor-import]')) {
@@ -2374,6 +2417,54 @@
       renderPages();
     });
 
+    // Print the whole book, not just the open sheet. Every page already
+    // carries its evidence (attachEvidence runs over all pages on load), so
+    // each one is rendered into its own 17x11 in sheet and handed to the
+    // browser's print dialog -- which is also how a PDF comes out of it.
+    // The deliverable is the PDF; there is no separate export path to keep
+    // in step with what the investigator sees on screen.
+    function buildPrintDeck() {
+      var deck = document.createElement('div');
+      deck.className = 'rb-print';
+      deck.setAttribute('aria-hidden', 'true');
+      pages.forEach(function (page) {
+        var sheet = document.createElement('article');
+        sheet.className = 'rb-sheet rb-sheet--print';
+        deck.appendChild(sheet);
+        try {
+          renderSheet(sheet, page, pages);
+        } catch (err) {
+          console.warn('Page could not be prepared for print', page && page.id, err);
+        }
+      });
+      return deck;
+    }
+
+    var printDeck = null;
+
+    function clearPrintDeck() {
+      if (printDeck && printDeck.parentNode) printDeck.parentNode.removeChild(printDeck);
+      printDeck = null;
+      document.body.classList.remove('is-printing');
+      renderPages();
+    }
+
+    var printBtn = root.querySelector('#rb-print');
+    if (printBtn) {
+      printBtn.addEventListener('click', function () {
+        flushSave().catch(function () {}).then(function () {
+          clearPrintDeck();
+          printDeck = buildPrintDeck();
+          document.body.appendChild(printDeck);
+          document.body.classList.add('is-printing');
+          window.addEventListener('afterprint', clearPrintDeck, { once: true });
+          window.requestAnimationFrame(function () {
+            window.requestAnimationFrame(function () { window.print(); });
+          });
+        });
+      });
+    }
+
     var exportBtn = root.querySelector('#rb-export-ai');
     var exportStatus = root.querySelector('#rb-ai-status');
     exportBtn.addEventListener('click', function () {
@@ -2532,6 +2623,7 @@
       '  </div>' +
       '  <div class="rb-toolbar">' +
       '    <div class="rb-toolbar__format" data-rb-format-host></div>' +
+      '    <button type="button" id="rb-print" class="btn btn--secondary rb-print-btn">Print / PDF</button>' +
       '    <button type="button" id="rb-export-ai" class="btn btn--accent rb-export">Export for AI</button>' +
       '    <p class="rb-ai-status" id="rb-ai-status" aria-live="polite"></p>' +
       '  </div>' +
@@ -2586,6 +2678,10 @@
     if (formatToolbar) {
       formatToolbar.destroy();
       formatToolbar = null;
+    }
+    if (coverPasteHandler) {
+      document.removeEventListener('paste', coverPasteHandler);
+      coverPasteHandler = null;
     }
     if (fitObserver) {
       fitObserver.disconnect();

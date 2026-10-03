@@ -1894,3 +1894,81 @@ body.report-builder-open .canvas {
   .rb-format__btn { min-width: 26px; }
   .rb-format__font { max-width: 92px; }
 }
+
+/* ------------------------------------------------------------------ *
+ * Print / PDF
+ *
+ * The deliverable is the PDF, and it comes out of the browser's own print
+ * path -- so what prints is the same DOM the investigator just approved on
+ * screen, not a second renderer that can drift away from it.
+ *
+ * The sheet is a size container and its type is sized in cqh, so setting the
+ * printed sheet to exactly 17 x 11 in makes every measurement resolve against
+ * the real page. That is why the clamp() had to come off the cover type: a
+ * clamped size stops growing and would print smaller than it previews.
+ * ------------------------------------------------------------------ */
+
+.rb-print { display: none; }
+
+@media print {
+  @page {
+    size: 17in 11in;
+    margin: 0;
+  }
+
+  html, body {
+    width: 17in;
+    margin: 0;
+    padding: 0;
+    background: #fff;
+  }
+
+  body.is-printing > *:not(.rb-print) { display: none !important; }
+
+  body.is-printing .rb-print { display: block; }
+
+  .rb-print .rb-sheet {
+    display: block;
+    width: 17in;
+    height: 11in;
+    max-width: none;
+    margin: 0;
+    border: 0;
+    box-shadow: none;
+    overflow: hidden;
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .rb-print .rb-sheet:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  /* Editor chrome never prints, whether or not the layout happens to be
+     locked. A dashed placement outline on a deliverable is a defect. */
+  .rb-cover__bar,
+  .rb-floor-toolbar,
+  .rb-cover__contents-jump,
+  .rb-cover__overview-actions,
+  .rb-cover__overview-empty,
+  .rb-cover-box__resize,
+  .rb-floor-box__resize,
+  .rb-floor-empty {
+    display: none !important;
+  }
+
+  .rb-cover-box,
+  .rb-floor-box,
+  .rb-cover [data-rb-rich] {
+    outline: none !important;
+  }
+
+  /* Colour is the report: contour fills, the copper rule, the sage labels. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
