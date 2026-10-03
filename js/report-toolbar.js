@@ -177,7 +177,15 @@
     } catch (err) { /* selection outside a field */ }
     var sel = window.getSelection();
     if (sel && sel.rangeCount) {
-      var node = sel.getRangeAt(0).commonAncestorContainer;
+      // The COMMON ANCESTOR of a selection spanning a styled run is that
+      // run's parent, so reading the font from it reported the paragraph's
+      // font and the menu snapped back to Calibri after setting Arial. Read
+      // from the deepest node the selection actually starts in.
+      var range = sel.getRangeAt(0);
+      var node = range.startContainer;
+      if (node.nodeType === 1 && node.childNodes[range.startOffset]) {
+        node = node.childNodes[range.startOffset];
+      }
       var el = node.nodeType === 3 ? node.parentNode : node;
       if (el && field.contains(el)) {
         var px = parseFloat(window.getComputedStyle(el).fontSize);

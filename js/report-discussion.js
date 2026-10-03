@@ -32,7 +32,12 @@
   //   1.96 .. (51.87 + 44.7) = 94.61% wide
   //   gutter = 51.87 - (1.96 + 44.7) = 5.21%
   var BODY = { x: 1.96, y: 3.03, w: 94.61, gutter: 5.21 };
-  var BRAND = { x: 3.59, y: 93.49, w: 15.49, h: 4.35 };
+  // The deck places the logo in a 15.49% x 4.35% box, but the artwork fills
+  // its canvas at 3.55:1 and that box is 5.48:1 -- so PowerPoint stretches it.
+  // Keep the deck's width and baseline and give the box the logo's own
+  // proportion instead, so it prints at full size undistorted:
+  //   height = 15.49 x (17/11) / 3.55 = 6.74%, bottom at 93.49 + 4.35 = 97.84%
+  var BRAND = { x: 3.59, y: 91.10, w: 15.49, h: 6.74 };
   var BODY_BOTTOM = 93.49; // text stops above the brand mark
 
   function bodyStyle() {
@@ -129,7 +134,13 @@
     warn.className = 'rb-discussion__overflow';
     warn.setAttribute('data-rb-discussion-overflow', '1');
     warn.hidden = true;
-    warn.textContent = 'This narrative is longer than one page holds. The text past the second column is not printed.';
+    warn.textContent = 'This narrative is longer than one page holds.';
+    var go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'rb-discussion__continue';
+    go.setAttribute('data-rb-discussion-continue', '1');
+    go.textContent = 'Continue on next page';
+    warn.appendChild(go);
     root.appendChild(warn);
 
     return root;

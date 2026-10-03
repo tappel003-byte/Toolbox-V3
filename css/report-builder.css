@@ -2164,3 +2164,14 @@ body.report-builder-open .canvas {
 @media print {
   .rb-discussion__overflow { display: none !important; }
 }
+
+.rb-discussion__continue {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}

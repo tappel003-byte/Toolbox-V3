@@ -1971,6 +1971,11 @@
     });
 
     sheetEl.addEventListener('click', function (event) {
+      if (event.target.closest('[data-rb-discussion-continue]')) {
+        event.preventDefault();
+        splitDiscussionOverflow();
+        return;
+      }
       var jump = event.target.closest('[data-rb-goto]');
       if (!jump) return;
       var targetId = jump.getAttribute('data-rb-goto');
@@ -2002,6 +2007,65 @@
         cityLine: parts.cityLine,
         frontDoor: facing,
       };
+    }
+
+    // A narrative longer than two columns continues on another sheet rather
+    // than being cut off. The split point is where the text actually landed
+    // past the second column, so what moves is exactly what did not fit.
+    function splitDiscussionOverflow() {
+      var page = activePage();
+      if (!page || !page.meta || page.meta.sectionId !== 'discussion') return;
+      var body = sheetEl.querySelector('.rb-discussion__body');
+      var api = window.ToolboxReportText;
+      if (!body || !api) return;
+
+      // Bullets live inside a <ul>, so walk list items too or the paragraph
+      // index stops matching the model.
+      var limit = body.clientWidth - 1;
+      var index = 0;
+      var cut = -1;
+      var kids = body.children;
+      for (var i = 0; i < kids.length && cut < 0; i += 1) {
+        var el = kids[i];
+        if (el.tagName === 'UL' || el.tagName === 'OL') {
+          for (var j = 0; j < el.children.length; j += 1) {
+            if (el.children[j].offsetLeft >= limit) { cut = index; break; }
+            index += 1;
+          }
+        } else {
+          if (el.offsetLeft >= limit) { cut = index; break; }
+          index += 1;
+        }
+      }
+      if (cut <= 0) return;
+
+      var model = api.compact(api.fromElement(body));
+      var paras = model.paragraphs || [];
+      if (cut >= paras.length) return;
+
+      page.reportText = page.reportText || {};
+      page.reportText.body = { paragraphs: paras.slice(0, cut) };
+
+      var continuation = {
+        id: 'discussion-cont-' + Date.now(),
+        type: 'section',
+        title: page.title,
+        tocTitle: page.tocTitle || page.title,
+        railLabel: 'Discussion (cont.)',
+        includeInToc: false,
+        note: '',
+        sourceKey: null,
+        // Same sectionId, so it is never numbered as a figure; the
+        // continuation flag keeps it out of CONTENTS.
+        meta: { sectionId: 'discussion', continuation: true },
+        reportText: { body: { paragraphs: paras.slice(cut) } },
+      };
+
+      var at = activeIndex();
+      pages = insertPagesAt(pages, at + 1, [continuation]);
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
     }
 
     function commitRichField(field) {

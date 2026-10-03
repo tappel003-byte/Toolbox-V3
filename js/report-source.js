@@ -633,6 +633,9 @@
     var entries = [];
     (pages || []).forEach(function (item) {
       if (!item || item.includeInToc === false || item.type === 'cover' || item.type === 'toc') return;
+      // A discussion that runs onto a second sheet is the same entry in the
+      // contents, not a new one.
+      if (item.meta && item.meta.continuation) return;
       var fig = item.meta && item.meta.figureNumber;
       entries.push({
         pageId: item.id,
