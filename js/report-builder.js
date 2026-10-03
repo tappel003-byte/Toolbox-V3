@@ -101,10 +101,19 @@
     var lines = String(text || '').split(/\n/).map(function (line) {
       return line.trim();
     }).filter(Boolean);
-    return {
-      street: lines[0] || '',
-      cityLine: lines.slice(1).join(', '),
-    };
+    if (lines.length >= 2) {
+      return {
+        street: lines[0] || '',
+        cityLine: lines.slice(1).join(', '),
+      };
+    }
+    var one = lines[0] || '';
+    // Single line: "3777 American Rd. NW Albuquerque, NM" → street + city/state
+    var split = one.match(/^(.*)\s+([A-Za-z][A-Za-z .]*?,\s*(?:[A-Z]{2}|[A-Za-z]+(?:\s+[A-Za-z]+)*)(?:,?\s*\d{5}(?:-\d{4})?)?)$/);
+    if (split) {
+      return { street: split[1].trim(), cityLine: split[2].trim() };
+    }
+    return { street: one, cityLine: '' };
   }
 
   function displayCustomerName(record) {
@@ -292,6 +301,9 @@
    */
   function renumberFigures(pages) {
     var api = sourceApi();
+    if (api && typeof api.normalizeBookOrder === 'function') {
+      return api.normalizeBookOrder(pages);
+    }
     if (api && typeof api.assignFigureNumbers === 'function') {
       return api.assignFigureNumbers(pages);
     }
@@ -781,8 +793,64 @@
     return el;
   }
 
+  function coverField(tag, className, fieldKey, value, locked) {
+    var el = document.createElement(tag || 'input');
+    el.className = className;
+    el.setAttribute('data-rb-cover-field', fieldKey);
+    if (tag === 'textarea') {
+      el.rows = 2;
+      el.value = value || '';
+      el.readOnly = !!locked;
+    } else {
+      el.type = 'text';
+      el.value = value || '';
+      el.readOnly = !!locked;
+    }
+    return el;
+  }
+
+  function defaultContentsLine(entry) {
+    if (!entry) return '';
+    if (entry.isDiscussion || entry.type === 'section') {
+      return entry.title || 'Floor Level Survey Results - Discussion';
+    }
+    if (entry.figureNumber) return 'Figure ' + entry.figureNumber + ' ' + (entry.title || '');
+    return entry.title || '';
+  }
+
+  function seedCoverText(page, pages) {
+    var meta = (page && page.meta) || {};
+    var prior = (page && page.reportText) || {};
+    var parts = addressParts(meta.addressFull || meta.address || '');
+    var source = sourceApi();
+    var entries = source && typeof source.contents === 'function' ? source.contents(pages) : [];
+    var priorLines = {};
+    (Array.isArray(prior.contents) ? prior.contents : []).forEach(function (line) {
+      if (line && line.pageId) priorLines[line.pageId] = line.text;
+    });
+    var contents = entries.map(function (entry) {
+      var fallback = defaultContentsLine(entry);
+      return {
+        pageId: entry.pageId,
+        text: priorLines[entry.pageId] != null ? String(priorLines[entry.pageId]) : fallback,
+      };
+    });
+    return {
+      name: prior.name != null ? String(prior.name) : (meta.customerName || page.title || ''),
+      email: prior.email != null ? String(prior.email) : (meta.email || ''),
+      phone: prior.phone != null ? String(prior.phone) : (meta.cellPhone || ''),
+      street: prior.street != null ? String(prior.street) : (parts.street || meta.address || ''),
+      cityLine: prior.cityLine != null ? String(prior.cityLine) : (parts.cityLine || ''),
+      surveyDate: prior.surveyDate != null ? String(prior.surveyDate) : formatSurveyDate(meta.floorSurveyDate || '', false),
+      corrected: prior.corrected != null ? String(prior.corrected) : 'Corrected for Floor Differences',
+      contents: contents,
+    };
+  }
+
   function renderMitchellCover(page, pages, coverLayout, overviewUrl) {
     var meta = page.meta || {};
+    var text = seedCoverText(page, pages);
+    page.reportText = text;
     var api = window.ToolboxReportCoverLayout;
     var layout = api ? api.normalizeLayout(coverLayout) : { locked: false, boxes: {}, overviewMediaId: '' };
     var locked = !!layout.locked;
@@ -801,8 +869,8 @@
     var hint = document.createElement('p');
     hint.className = 'rb-cover__hint';
     hint.textContent = locked
-      ? 'Title layout locked for this report.'
-      : 'Drag boxes to place. Resize from the corner. Paste a site overview when ready.';
+      ? 'Title layout locked. Unlock to edit text or move boxes.'
+      : 'Edit any text. Drag boxes to place. Resize from the corner.';
     bar.appendChild(hint);
     root.appendChild(bar);
 
@@ -812,17 +880,16 @@
     var prepared = coverBoxShell('prepared', layout, locked);
     prepared.classList.add('rb-cover-box--prepared');
     addLine(prepared, 'rb-cover__label', 'Prepared For:');
-    addLine(prepared, 'rb-cover__name', meta.customerName || page.title || 'Customer File');
-    if (meta.email) addLine(prepared, 'rb-cover__email', meta.email);
-    if (meta.cellPhone) addLine(prepared, 'rb-cover__phone', meta.cellPhone);
+    prepared.appendChild(coverField('input', 'rb-cover__name', 'name', text.name, locked));
+    prepared.appendChild(coverField('input', 'rb-cover__email', 'email', text.email, locked));
+    prepared.appendChild(coverField('input', 'rb-cover__phone', 'phone', text.phone, locked));
     stage.appendChild(prepared);
 
     var identity = coverBoxShell('identity', layout, locked);
     identity.classList.add('rb-cover-box--identity');
     addLine(identity, 'rb-cover__product', 'FLOOR LEVEL SURVEY');
-    var parts = addressParts(meta.addressFull || meta.address || '');
-    addLine(identity, 'rb-cover__street', parts.street || meta.address || 'No property address on file');
-    if (parts.cityLine) addLine(identity, 'rb-cover__city', parts.cityLine);
+    identity.appendChild(coverField('input', 'rb-cover__street', 'street', text.street, locked));
+    identity.appendChild(coverField('input', 'rb-cover__city', 'cityLine', text.cityLine, locked));
     stage.appendChild(identity);
 
     var dateBox = coverBoxShell('date', layout, locked);
@@ -831,21 +898,15 @@
     rule.className = 'rb-cover__rule';
     rule.setAttribute('aria-hidden', 'true');
     dateBox.appendChild(rule);
-    var dateText = formatSurveyDate(meta.floorSurveyDate || '', false);
-    var dateRow = document.createElement('p');
-    dateRow.className = 'rb-cover__date';
+    var dateRow = document.createElement('div');
+    dateRow.className = 'rb-cover__date-row';
     var dateLabel = document.createElement('span');
     dateLabel.className = 'rb-cover__label';
     dateLabel.textContent = 'Survey Date:';
     dateRow.appendChild(dateLabel);
-    if (dateText) {
-      dateRow.appendChild(document.createTextNode(' '));
-      var dateValue = document.createElement('span');
-      dateValue.textContent = dateText;
-      dateRow.appendChild(dateValue);
-    }
+    dateRow.appendChild(coverField('input', 'rb-cover__date-value', 'surveyDate', text.surveyDate, locked));
     dateBox.appendChild(dateRow);
-    addLine(dateBox, 'rb-cover__corrected', 'Corrected for Floor Differences');
+    dateBox.appendChild(coverField('input', 'rb-cover__corrected', 'corrected', text.corrected, locked));
     stage.appendChild(dateBox);
 
     var contents = coverBoxShell('contents', layout, locked);
@@ -855,34 +916,25 @@
     addLine(contentsInner, 'rb-cover__contents-title', 'CONTENTS');
     var list = document.createElement('div');
     list.className = 'rb-cover__contents-list';
-    var source = sourceApi();
-    var entries = source && typeof source.contents === 'function' ? source.contents(pages) : [];
-    if (!entries.length) {
+    if (!text.contents.length) {
       addLine(list, 'rb-sheet__note', 'Contents appear as slides are added.');
     }
-    entries.forEach(function (entry) {
-      var row = document.createElement('button');
-      row.type = 'button';
+    text.contents.forEach(function (line, index) {
+      var row = document.createElement('div');
       row.className = 'rb-cover__contents-item';
-      row.setAttribute('data-rb-goto', entry.pageId);
-      if (entry.isDiscussion || entry.type === 'section') {
-        var discStrong = document.createElement('strong');
-        discStrong.textContent = entry.title || 'Floor Level Survey Results - Discussion';
-        row.appendChild(discStrong);
-        list.appendChild(row);
-        return;
+      var field = coverField('input', 'rb-cover__contents-field', 'contents:' + index, line.text, locked);
+      field.setAttribute('data-rb-cover-page', line.pageId || '');
+      field.setAttribute('aria-label', 'Contents line ' + (index + 1));
+      row.appendChild(field);
+      if (line.pageId) {
+        var jump = document.createElement('button');
+        jump.type = 'button';
+        jump.className = 'rb-cover__contents-jump';
+        jump.setAttribute('data-rb-goto', line.pageId);
+        jump.title = 'Go to slide';
+        jump.textContent = '›';
+        row.appendChild(jump);
       }
-      var figNum = entry.figureNumber;
-      var label = document.createElement('span');
-      if (figNum) {
-        var figStrong = document.createElement('strong');
-        figStrong.textContent = 'Figure ' + figNum;
-        label.appendChild(figStrong);
-        label.appendChild(document.createTextNode(' ' + (entry.title || '')));
-      } else {
-        label.textContent = entry.title || '';
-      }
-      row.appendChild(label);
       list.appendChild(row);
     });
     contentsInner.appendChild(list);
@@ -891,7 +943,7 @@
 
     var overview = coverBoxShell('overview', layout, locked);
     overview.classList.add('rb-cover-box--overview');
-    var fullAddress = meta.addressFull || meta.address || '';
+    var fullAddress = [text.street, text.cityLine].filter(Boolean).join(', ') || meta.addressFull || meta.address || '';
     var mapsUrl = api && typeof api.mapsSearchUrl === 'function' ? api.mapsSearchUrl(fullAddress) : '';
     if (overviewUrl) {
       evidenceImage(overview, overviewUrl, 'rb-cover__overview-image', 'Site overview');
@@ -1784,6 +1836,35 @@
     });
 
     sheetEl.addEventListener('input', function (event) {
+      var coverField = event.target.closest('[data-rb-cover-field]');
+      if (coverField) {
+        var coverPage = activePage();
+        if (!coverPage || coverPage.type !== 'cover') return;
+        coverPage.reportText = coverPage.reportText || seedCoverText(coverPage, pages);
+        var coverKey = coverField.getAttribute('data-rb-cover-field') || '';
+        if (coverKey.indexOf('contents:') === 0) {
+          var lineIndex = parseInt(coverKey.slice(9), 10);
+          if (!isFinite(lineIndex)) return;
+          coverPage.reportText.contents = Array.isArray(coverPage.reportText.contents)
+            ? coverPage.reportText.contents
+            : [];
+          if (!coverPage.reportText.contents[lineIndex]) {
+            coverPage.reportText.contents[lineIndex] = {
+              pageId: coverField.getAttribute('data-rb-cover-page') || '',
+              text: '',
+            };
+          }
+          coverPage.reportText.contents[lineIndex].text = coverField.value;
+          coverPage.reportText.contents[lineIndex].pageId =
+            coverField.getAttribute('data-rb-cover-page') ||
+            coverPage.reportText.contents[lineIndex].pageId ||
+            '';
+        } else {
+          coverPage.reportText[coverKey] = coverField.value;
+        }
+        markDirty();
+        return;
+      }
       var field = event.target.closest('[data-rb-caption]');
       if (!field) return;
       var key = field.getAttribute('data-rb-caption');

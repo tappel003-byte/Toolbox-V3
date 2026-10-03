@@ -544,6 +544,57 @@
     return pages;
   }
 
+  /**
+   * Force typical book order for CONTENTS / figures, including older saved reports:
+   * Cover → Discussion → Floor → Picture Locations → Pictures → anything else.
+   */
+  function normalizeBookOrder(pages, discussionTemplate) {
+    var cover = [];
+    var discussion = [];
+    var floor = [];
+    var distress = [];
+    var pictures = [];
+    var other = [];
+    (pages || []).forEach(function (item) {
+      if (!item || item.type === 'toc') return;
+      if (item.type === 'cover') {
+        cover.push(item);
+        return;
+      }
+      if (isDiscussionPage(item)) {
+        discussion.push(item);
+        return;
+      }
+      if (item.type === 'floor') {
+        floor.push(item);
+        return;
+      }
+      if (item.type === 'distress') {
+        distress.push(item);
+        return;
+      }
+      if (item.type === 'pictures') {
+        pictures.push(item);
+        return;
+      }
+      other.push(item);
+    });
+    if (!cover.length) {
+      cover.push(page({
+        id: 'cover',
+        type: 'cover',
+        title: 'Customer File',
+        railLabel: 'Cover',
+        includeInToc: false,
+        meta: {},
+      }));
+    }
+    if (!discussion.length) {
+      discussion.push(discussionTemplate || sectionPage(DISCUSSION_SECTION));
+    }
+    return assignFigureNumbers(cover.concat(discussion, floor, distress, pictures, other));
+  }
+
   function assemble(source) {
     var src = source && source.schema === SCHEMA ? source : outline(null);
     var pages = [
@@ -571,11 +622,10 @@
       if (item && item.meta && item.meta.reserved) return;
       pages.push(item);
     });
-    assignFigureNumbers(pages);
     return {
       schema: SEQUENCE_SCHEMA,
       schemaVersion: SCHEMA_VERSION,
-      pages: pages,
+      pages: normalizeBookOrder(pages),
     };
   }
 
@@ -603,6 +653,7 @@
     assemble: assemble,
     contents: contents,
     assignFigureNumbers: assignFigureNumbers,
+    normalizeBookOrder: normalizeBookOrder,
   };
 
   if (typeof window !== 'undefined') window.ToolboxReportSource = api;

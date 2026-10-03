@@ -976,24 +976,60 @@ body.report-builder-open .canvas {
 .rb-cover-box--prepared .rb-cover__label,
 .rb-cover__name,
 .rb-cover__email,
-.rb-cover__phone {
+.rb-cover__phone,
+.rb-cover__street,
+.rb-cover__city,
+.rb-cover__date-value,
+.rb-cover__corrected,
+.rb-cover__contents-field {
   margin: 0;
 }
 
-.rb-cover__name {
+.rb-cover input.rb-cover__name,
+.rb-cover input.rb-cover__email,
+.rb-cover input.rb-cover__phone,
+.rb-cover input.rb-cover__street,
+.rb-cover input.rb-cover__city,
+.rb-cover input.rb-cover__date-value,
+.rb-cover input.rb-cover__corrected,
+.rb-cover input.rb-cover__contents-field {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.rb-cover input.rb-cover__name:focus,
+.rb-cover input.rb-cover__email:focus,
+.rb-cover input.rb-cover__phone:focus,
+.rb-cover input.rb-cover__street:focus,
+.rb-cover input.rb-cover__city:focus,
+.rb-cover input.rb-cover__date-value:focus,
+.rb-cover input.rb-cover__corrected:focus,
+.rb-cover input.rb-cover__contents-field:focus {
+  outline: 1px solid rgba(166, 122, 82, 0.55);
+  outline-offset: 1px;
+}
+
+.rb-cover input.rb-cover__name {
   margin-top: 2px;
   color: #3f4a36;
   font-size: clamp(15px, 2.4cqb, 22px);
   font-weight: 700;
 }
 
-.rb-cover__email {
+.rb-cover input.rb-cover__email {
   margin-top: 2px;
   color: var(--rb-sage);
   font-size: clamp(11px, 1.6cqb, 14px);
+  font-weight: 500;
 }
 
-.rb-cover__phone {
+.rb-cover input.rb-cover__phone {
   margin-top: 2px;
   color: #111;
   font-size: clamp(12px, 1.8cqb, 16px);
@@ -1008,7 +1044,7 @@ body.report-builder-open .canvas {
   letter-spacing: 0.08em;
 }
 
-.rb-cover__street {
+.rb-cover input.rb-cover__street {
   margin: 0.35em 0 0;
   color: #111;
   font-size: clamp(22px, 4cqb, 38px);
@@ -1017,11 +1053,30 @@ body.report-builder-open .canvas {
   line-height: 1.05;
 }
 
-.rb-cover__city {
+.rb-cover input.rb-cover__city {
   margin: 0.15em 0 0;
-  color: #555;
-  font-size: clamp(13px, 2cqb, 18px);
+  color: #666;
+  font-size: clamp(14px, 2.1cqb, 20px);
   font-weight: 500;
+}
+
+.rb-cover__date-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35em;
+}
+
+.rb-cover input.rb-cover__date-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #333;
+  font-size: clamp(12px, 1.7cqb, 15px);
+}
+
+.rb-cover input.rb-cover__corrected {
+  margin-top: 0.25em;
+  color: #777;
+  font-size: clamp(11px, 1.5cqb, 13px);
 }
 
 .rb-cover__rule {
@@ -1029,18 +1084,6 @@ body.report-builder-open .canvas {
   height: 2px;
   margin: 0 0 0.7em;
   background: var(--rb-copper);
-}
-
-.rb-cover__date {
-  margin: 0;
-  font-size: clamp(12px, 1.7cqb, 15px);
-  color: #333;
-}
-
-.rb-cover__corrected {
-  margin: 0.25em 0 0;
-  color: #777;
-  font-size: clamp(11px, 1.5cqb, 13px);
 }
 
 .rb-cover__contents {
@@ -1067,21 +1110,34 @@ body.report-builder-open .canvas {
 }
 
 .rb-cover__contents-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   width: 100%;
   padding: 0.1em 0;
-  border: 0;
-  background: transparent;
   color: #222;
-  font: inherit;
   font-size: clamp(10px, 1.45cqb, 13px);
   line-height: 1.3;
-  text-align: left;
-  cursor: pointer;
 }
 
-.rb-cover__contents-item strong {
+.rb-cover input.rb-cover__contents-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #222;
+  font-size: inherit;
+  font-weight: 600;
+}
+
+.rb-cover__contents-jump {
+  flex: 0 0 auto;
+  min-width: 22px;
+  min-height: 22px;
+  border: 0;
+  background: transparent;
+  color: var(--rb-copper);
+  font: inherit;
   font-weight: 700;
+  cursor: pointer;
 }
 
 .rb-cover-box--overview {
