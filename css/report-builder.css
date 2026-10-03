@@ -699,6 +699,19 @@ body.report-builder-open .canvas {
 /* The hosted Floor Survey view fills its box on the page. The canvas inside
    sizes itself to this, and the camera is expressed against fit, so the same
    stored view frames the same thing here and at 17 x 11 in. */
+/* The rail — the workspace for whatever slide is open. Import at the top, that
+   workspace's own controls in the middle, the way back at the bottom. */
+.rb-rail { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.rb-rail__title { margin: 0; font-size: 18px; }
+.rb-rail__top,
+.rb-rail__foot { display: flex; flex-direction: column; gap: 6px; }
+.rb-rail__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.rb-rail__btn { width: 100%; }
+.rb-rail__controls { display: block; }
+.rb-rail__controls .floor-survey-host,
+.rb-rail__controls .rtw-root--controls { display: block; height: auto; }
+.rb-panel__idle h2 { margin: 0 0 6px; font-size: 18px; }
+
 .rb-topo-page__drawing--live {
   position: relative;
   overflow: hidden;

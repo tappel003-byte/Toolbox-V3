@@ -136,6 +136,13 @@ interface Props {
    *  placed boxes, so the drawing carries none of them. */
   hideCanvasChrome?: boolean;
   /**
+   * Nothing but the controls: the Contours, Palette and Labels panels stacked,
+   * with no canvas. This is what Report Builder's rail renders, so the rail
+   * shows the same controls the field app does rather than a rebuilt set that
+   * would drift from them.
+   */
+  controlsOnly?: boolean;
+  /**
    * Nothing but the canvas.
    *
    * The boundary selector, the Contours / Palette / Labels icons and the
@@ -264,6 +271,7 @@ export function TopoTab({
   cameraRequest,
   hideCanvasChrome = false,
   chromeless = false,
+  controlsOnly = false,
 }: Props) {
   const selectedId =
     selectedIds && selectedIds.size > 0 ? (selectedIds.values().next().value ?? null) : null;
@@ -723,7 +731,7 @@ export function TopoTab({
         </div>
       )}
       {/* Corner icons — closed by default, tap to open. Hidden while their own panel is open. */}
-      {openCorner !== "contours" && !chromeless && (
+      {openCorner !== "contours" && !chromeless && !controlsOnly && (
         <CornerIcon
           pos="top-2 left-2 landscape-short:top-auto landscape-short:left-1/2 landscape-short:-translate-x-[calc(100%+0.25rem)] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
           active={false}
@@ -733,7 +741,7 @@ export function TopoTab({
           <Waves className="h-4 w-4" />
         </CornerIcon>
       )}
-      {openCorner !== "palette" && !chromeless && (
+      {openCorner !== "palette" && !chromeless && !controlsOnly && (
         <CornerIcon
           pos="top-2 right-2 landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:translate-x-[0.25rem] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
           active={false}
@@ -743,7 +751,7 @@ export function TopoTab({
           <Palette className="h-4 w-4" />
         </CornerIcon>
       )}
-      {openCorner !== "labels" && !chromeless && (
+      {openCorner !== "labels" && !chromeless && !controlsOnly && (
         <button
           type="button"
           onClick={() => setOpenCorner("labels")}
@@ -805,7 +813,14 @@ export function TopoTab({
       )}
 
 
-      <div className="flex-1 relative min-h-0 flex flex-col">
+      <div
+        className={
+          controlsOnly
+            ? "flex flex-col gap-3 w-full"
+            : "flex-1 relative min-h-0 flex flex-col"
+        }
+      >
+        {!controlsOnly && (
         <PlanCanvas
           planDataUrl={floor.planDataUrl}
           planWidth={floor.planWidth}
@@ -963,10 +978,11 @@ export function TopoTab({
             });
           }}
         />
+        )}
 
         {/* Contours popover — upper left */}
-        {openCorner === "contours" && (
-          <CornerPanel pos="top-12 left-2 landscape-short:top-2 landscape-short:left-auto landscape-short:right-2" onClose={() => setOpenCorner(null)} title="Contours">
+        {(openCorner === "contours" || controlsOnly) && (
+          <CornerPanel inline={controlsOnly} pos="top-12 left-2 landscape-short:top-2 landscape-short:left-auto landscape-short:right-2" onClose={() => setOpenCorner(null)} title="Contours">
             {gridAndContours?.grid && (
               <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
                 Range {gridAndContours.grid.minValue.toFixed(2)}"–
@@ -1058,8 +1074,9 @@ export function TopoTab({
         )}
 
         {/* Palette popover — upper right */}
-        {openCorner === "palette" && (
+        {(openCorner === "palette" || controlsOnly) && (
           <CornerPanel
+            inline={controlsOnly}
             pos="top-12 right-2 w-60 landscape-short:top-2"
             onClose={() => setOpenCorner(null)}
             title="Palette"
@@ -1079,8 +1096,9 @@ export function TopoTab({
         )}
 
         {/* Labels & layers popover — lower right */}
-        {openCorner === "labels" && (
+        {(openCorner === "labels" || controlsOnly) && (
           <CornerPanel
+            inline={controlsOnly}
             pos="bottom-14 right-3"
             onClose={() => setOpenCorner(null)}
             title="Labels & layers"
@@ -1296,21 +1314,29 @@ function CornerPanel({
   title,
   onClose,
   children,
+  inline = false,
 }: {
   pos: string;
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  /** In Report Builder's rail these are not corner popovers floating over a
+   *  canvas -- they are a stacked column of controls. Same contents, so there
+   *  is one definition of what a Contours panel contains. */
+  inline?: boolean;
 }) {
   return (
     <div
       className={
-        "absolute z-30 rounded-xl border bg-card/95 backdrop-blur shadow-2xl p-3 w-64 max-h-[calc(100%-4rem)] overflow-auto space-y-3 text-sm " +
-        pos
+        inline
+          ? "rounded-xl border bg-card p-3 w-full overflow-visible space-y-3 text-sm"
+          : "absolute z-30 rounded-xl border bg-card/95 backdrop-blur shadow-2xl p-3 w-64 max-h-[calc(100%-4rem)] overflow-auto space-y-3 text-sm " +
+            pos
       }
     >
       <div className="flex items-center justify-between -mt-1">
         <span className="text-xs font-semibold">{title}</span>
+        {!inline && (
         <button
           type="button"
           onClick={onClose}
@@ -1319,6 +1345,7 @@ function CornerPanel({
         >
           <X className="h-3.5 w-3.5" />
         </button>
+        )}
       </div>
       {children}
     </div>

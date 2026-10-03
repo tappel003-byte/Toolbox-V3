@@ -2145,15 +2145,168 @@
           }
         });
       }
-      root.querySelectorAll('[data-rb-source]').forEach(function (button) {
-        var on = button.getAttribute('data-rb-source') === current.sourceKey;
-        button.classList.toggle('is-current', on);
-      });
+      syncRail(current);
       addBtn.disabled = pages.length >= MAX_PAGES;
       removeBtn.disabled = pages.length <= 1;
       earlierBtn.disabled = index <= 0;
       laterBtn.disabled = index >= pages.length - 1;
       duplicateBtn.disabled = pages.length >= MAX_PAGES;
+    }
+
+    // ---- The rail ------------------------------------------------------
+    //
+    // Whatever slide is open, the rail is that workspace: Import at the top,
+    // the workspace's own controls in the middle, the way back to the full
+    // application at the bottom. The controls are not rebuilt here -- the
+    // middle hosts the same panels Floor Survey draws on its own canvas, so
+    // there is one definition of what Contours or Palette contains.
+    var railEl = root.querySelector('[data-rb-rail]');
+    var railIdleEl = root.querySelector('[data-rb-rail-idle]');
+    var railTitleEl = root.querySelector('[data-rb-rail-title]');
+    var railTopEl = root.querySelector('[data-rb-rail-top]');
+    var railBodyEl = root.querySelector('[data-rb-rail-body]');
+    var railFootEl = root.querySelector('[data-rb-rail-foot]');
+    var railControls = { el: null, key: '', api: null };
+
+    function releaseRailControls() {
+      if (railControls.api && typeof railControls.api.unmount === 'function') {
+        try { railControls.api.unmount(); } catch (err) { /* already gone */ }
+      }
+      if (railControls.el && railControls.el.parentNode) {
+        railControls.el.parentNode.removeChild(railControls.el);
+      }
+      railControls = { el: null, key: '', api: null };
+    }
+
+    function railButton(label, kind, attr, value) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn--' + kind + ' rb-rail__btn';
+      btn.textContent = label;
+      if (attr) btn.setAttribute(attr, value || '');
+      return btn;
+    }
+
+    function syncRail(page) {
+      if (!railEl) return;
+      var isFloor = !!(page && page.type === 'floor' && !(page.meta && page.meta.reserved));
+      if (!isFloor) {
+        releaseRailControls();
+        railEl.hidden = true;
+        if (railIdleEl) railIdleEl.hidden = false;
+        return;
+      }
+      railEl.hidden = false;
+      if (railIdleEl) railIdleEl.hidden = true;
+      if (railTitleEl) railTitleEl.textContent = 'Floor Survey';
+
+      var imported = !!(page.meta && page.meta.imported);
+      railTopEl.textContent = '';
+      if (!imported) {
+        railTopEl.appendChild(
+          railButton('Import Floor Survey', 'accent', 'data-rb-floor-import', page.id || ''));
+        var hint = document.createElement('p');
+        hint.className = 'rb-panel__lead';
+        hint.textContent = 'Brings this level onto the slide.';
+        railTopEl.appendChild(hint);
+      } else {
+        railTopEl.appendChild(
+          railButton(floorCamera && floorCamera.locked ? 'Unlock view' : 'Lock view',
+            floorCamera && floorCamera.locked ? 'secondary' : 'accent',
+            'data-rb-floor-lock', floorCamera && floorCamera.locked ? 'unlock' : 'lock'));
+        var viewHint = document.createElement('p');
+        viewHint.className = 'rb-panel__lead';
+        viewHint.textContent = floorCamera && floorCamera.locked
+          ? 'Every Floor Survey slide uses this view.'
+          : 'Scroll to zoom, drag to move. Lock when the plan sits where you want it on every slide.';
+        railTopEl.appendChild(viewHint);
+      }
+
+      // Middle: the real Floor Survey controls, for an imported slide.
+      var api = window.ToolboxFloorSurvey;
+      var meta = page.meta || {};
+      var key = [page.id, meta.canvasId, meta.areaId || '', meta.scope || ''].join('|');
+      if (!imported || !api || typeof api.mount !== 'function') {
+        releaseRailControls();
+      } else if (railControls.el && railControls.key === key) {
+        if (railControls.api && typeof railControls.api.update === 'function') {
+          railControls.api.update({ settings: floorView });
+        }
+        if (railControls.el.parentNode !== railBodyEl) railBodyEl.appendChild(railControls.el);
+      } else {
+        releaseRailControls();
+        var host = document.createElement('div');
+        host.className = 'rb-rail__controls';
+        railBodyEl.appendChild(host);
+        railControls = { el: host, key: key, api: null };
+        railControls.api = api.mount(host, {
+          customerFileId: customerFileId,
+          workspace: 'report-topo-controls',
+          canvasId: meta.canvasId || '',
+          areaId: meta.scope === 'all' ? null : (meta.areaId || null),
+          settings: floorView,
+          onBack: function () {},
+          onSettingsChange: function (next) {
+            floorView = next;
+            markDirty();
+            // The drawing is a second root looking at the same settings.
+            if (topoHost.api && typeof topoHost.api.update === 'function') {
+              topoHost.api.update({ settings: next });
+            }
+            flushSave().catch(function () {});
+          },
+        });
+      }
+
+      railFootEl.textContent = '';
+      railFootEl.appendChild(
+        railButton('Open Floor Survey', 'secondary', 'data-rb-source', 'floor'));
+      var footHint = document.createElement('p');
+      footHint.className = 'rb-panel__lead';
+      footHint.textContent = 'For changes other than formatting.';
+      railFootEl.appendChild(footHint);
+    }
+
+    // The rail's buttons are built per slide, so they are handled by
+    // delegation rather than by listeners attached once at mount.
+    if (railEl) {
+      railEl.addEventListener('click', function (event) {
+        var importBtn = event.target.closest('[data-rb-floor-import]');
+        if (importBtn) {
+          event.preventDefault();
+          importActiveFloorPage();
+          return;
+        }
+        var lockBtn = event.target.closest('[data-rb-floor-lock]');
+        if (lockBtn) {
+          event.preventDefault();
+          var want = lockBtn.getAttribute('data-rb-floor-lock') === 'lock';
+          // Lock View is about the camera -- the plan sitting in the same
+          // place on every Floor Survey slide. It is deliberately not about
+          // the chrome, which stays movable per slide.
+          if (!floorCamera) floorCamera = { cx: 0, cy: 0, zoom: 1, locked: false };
+          floorCamera.locked = want;
+          markDirty();
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
+        var sourceBtn = event.target.closest('[data-rb-source]');
+        if (sourceBtn) {
+          event.preventDefault();
+          var key = sourceBtn.getAttribute('data-rb-source');
+          leaveAfterFlush(function () {
+            if (window.ToolboxReportSession && typeof window.ToolboxReportSession.write === 'function') {
+              window.ToolboxReportSession.write({
+                customerFileId: customerFileId,
+                pageId: activeId,
+                sourceKey: key,
+              });
+            }
+            if (typeof onOpenSource === 'function') onOpenSource(key);
+          });
+        }
+      });
     }
 
     root.querySelector('#rb-back').addEventListener('click', function () {
@@ -3633,13 +3786,20 @@
       '      </article>' +
       '    </div>' +
       '    <aside class="rb-panel" aria-label="Toolbox">' +
+      // The rail is the workspace for whatever slide is open: Import at the
+      // top, that workspace's own controls in the middle, and the way back to
+      // the full application at the bottom. It is not a permanent list of
+      // links, and it shows nothing on a slide that owns no source.
       '      <p class="eyebrow">Toolbox</p>' +
-      '      <h2>Source workspaces</h2>' +
-      '      <p class="rb-panel__lead">Open the workspace that owns the source. Geometry stays in Distress and Floor Survey.</p>' +
-      '      <div class="rb-panel__links">' +
-      '        <button type="button" class="btn btn--secondary" data-rb-source="floor">Open Floor Survey</button>' +
-      '        <button type="button" class="btn btn--secondary" data-rb-source="distress">Open Distress Survey</button>' +
-      '        <button type="button" class="btn btn--secondary" data-rb-source="diagnostics">Open Diagnostics</button>' +
+      '      <div id="rb-rail" class="rb-rail" data-rb-rail hidden>' +
+      '        <h2 class="rb-rail__title" data-rb-rail-title>Floor Survey</h2>' +
+      '        <div class="rb-rail__top" data-rb-rail-top></div>' +
+      '        <div class="rb-rail__body" data-rb-rail-body></div>' +
+      '        <div class="rb-rail__foot" data-rb-rail-foot></div>' +
+      '      </div>' +
+      '      <div id="rb-rail-idle" class="rb-panel__idle" data-rb-rail-idle>' +
+      '        <h2>Report sheets</h2>' +
+      '        <p class="rb-panel__lead">Open a Floor Survey, Distress or Pictures slide and its workspace appears here.</p>' +
       '      </div>' +
       '      <div id="rb-penlog-panel" class="rb-penlog-panel" hidden>' +
       '        <h2>Pen Log</h2>' +

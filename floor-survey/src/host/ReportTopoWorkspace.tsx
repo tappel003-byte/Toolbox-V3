@@ -45,6 +45,8 @@ export type ReportTopoWorkspaceProps = {
   settings?: Partial<RenderSettings> | null;
   /** Locked slides are shown, not steered. */
   locked?: boolean;
+  /** The rail: the controls, stacked, with no canvas. */
+  controlsOnly?: boolean;
   onCameraChange?: (camera: PlanCamera) => void;
   onSettingsChange?: (settings: RenderSettings) => void;
   onReady?: (info: { levelName: string; areaCount: number }) => void;
@@ -59,6 +61,7 @@ export function ReportTopoWorkspace({
   camera = null,
   settings: settingsProp = null,
   locked = false,
+  controlsOnly = false,
   onCameraChange,
   onSettingsChange,
   onReady,
@@ -166,7 +169,7 @@ export function ReportTopoWorkspace({
   }
 
   return (
-    <div className={"rtw-root" + (locked ? " rtw-root--locked" : "")}>
+    <div className={"rtw-root" + (locked ? " rtw-root--locked" : "") + (controlsOnly ? " rtw-root--controls" : "")}>
       <TopoTab
         floor={floor}
         points={corrected}
@@ -184,6 +187,7 @@ export function ReportTopoWorkspace({
         cameraRequest={cameraRequest}
         hideCanvasChrome
         chromeless
+        controlsOnly={controlsOnly}
       />
     </div>
   );
