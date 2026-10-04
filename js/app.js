@@ -1908,6 +1908,56 @@
     });
   }
 
+  // Report Builder is a desk tool: a 17 x 11 in sheet beside a page rail and a
+  // formatting bar, placed with a pointer. Below this width the page and the
+  // rail cannot both be on screen without it becoming a different product.
+  // An iPad mini in landscape clears it; in portrait it does not, which is why
+  // this is a notice and not a lock -- nothing is blocked, it just says so
+  // once per session and gets out of the way.
+  var REPORT_DESKTOP_MIN_WIDTH = 900;
+  var reportNoticeSeen = false;
+
+  function reportDesktopNotice(app, id) {
+    if (reportNoticeSeen) return false;
+    if (window.innerWidth >= REPORT_DESKTOP_MIN_WIDTH) return false;
+    reportNoticeSeen = true;
+    var wrap = document.createElement('div');
+    wrap.className = 'rb-smallscreen';
+    wrap.setAttribute('data-rb-smallscreen', '1');
+    var card = document.createElement('div');
+    card.className = 'rb-smallscreen__card';
+    var head = document.createElement('h2');
+    head.className = 'rb-smallscreen__title';
+    head.textContent = 'Report Builder is intended for desktop';
+    var body = document.createElement('p');
+    body.className = 'rb-smallscreen__body';
+    body.textContent =
+      'It lays out a 17 by 11 inch sheet, so it wants a wide screen and a pointer. ' +
+      'You can carry on here if you need to.';
+    var row = document.createElement('div');
+    row.className = 'rb-smallscreen__row';
+    var go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'rb-smallscreen__go';
+    go.textContent = 'Continue anyway';
+    go.addEventListener('click', function () {
+      if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+    });
+    var back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'rb-smallscreen__back';
+    back.textContent = 'Back to the Customer File';
+    back.addEventListener('click', function () { goCustomerFileHome(id); });
+    row.appendChild(go);
+    row.appendChild(back);
+    card.appendChild(head);
+    card.appendChild(body);
+    card.appendChild(row);
+    wrap.appendChild(card);
+    app.appendChild(wrap);
+    return true;
+  }
+
   function renderReportBuilder(app, id) {
     registerActiveFlush(null);
     document.body.classList.remove('floor-survey-open', 'distress-survey-open', 'diagnostics-open');
@@ -1938,6 +1988,9 @@
       return;
     }
 
+    // Mount first, then lay the notice over the top: Report Builder is fully
+    // working underneath, so dismissing it leaves a live page rather than
+    // needing a second load.
     window.ToolboxReportBuilder.mount(app, {
       customerFileId: id,
       onBack: leave,
@@ -1945,6 +1998,7 @@
         window.location.hash = '#/file/' + encodeURIComponent(id) + '/' + appKey;
       },
     });
+    reportDesktopNotice(app, id);
   }
 
   function renderAppStub(app, id, appKey) {

@@ -2632,3 +2632,74 @@ body.report-builder-open .canvas {
   content: '\2713\00a0';
   font-weight: 700;
 }
+
+/* Report Builder on a small screen.
+   A notice, never a lock: the workspace is already mounted and running
+   underneath, so dismissing this leaves a live page. Shown once per session,
+   below the width where the sheet and the page rail stop fitting together. */
+.rb-smallscreen {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(17, 17, 17, 0.55);
+}
+
+.rb-smallscreen__card {
+  max-width: 24rem;
+  padding: 20px 22px 18px;
+  border-radius: 14px;
+  background: var(--panel, #fff);
+  box-shadow: 0 18px 50px rgba(8, 32, 54, 0.3);
+}
+
+.rb-smallscreen__title {
+  margin: 0 0 8px;
+  font-size: 17px;
+  line-height: 1.25;
+  color: var(--ink, #17130e);
+}
+
+.rb-smallscreen__body {
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 1.45;
+  /* Not --muted: this is the one card that only ever appears on a phone, and
+     muted grey on white was too faint to read there. */
+  color: #4a4a4a;
+}
+
+.rb-smallscreen__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rb-smallscreen__go,
+.rb-smallscreen__back {
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.rb-smallscreen__go {
+  border: 0;
+  background: var(--accent, #c14a2b);
+  color: #fff;
+  font-weight: 600;
+}
+
+.rb-smallscreen__back {
+  border: 1px solid var(--line, #d9d2c2);
+  background: transparent;
+  color: var(--ink, #17130e);
+}
+
+@media print {
+  .rb-smallscreen { display: none !important; }
+}
