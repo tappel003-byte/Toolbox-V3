@@ -2365,6 +2365,41 @@ body.report-builder-open .canvas {
   pointer-events: none;
 }
 
+/* Drawn ink. One SVG spanning the sheet, under the placed annotation boxes. */
+.rb-ov-layer__ink {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* Stroke weight is a fraction of the PAGE, not a count of device pixels.
+   1cqh is 1% of sheet height = 7.92pt, the same conversion report-text.js uses
+   for type (PT_TO_CQH = 100/792). The old annotations used stroke-width: 3 with
+   non-scaling-stroke, which is 3 CSS px -- 0.68% of sheet height in preview but
+   0.28% in print, so they drew about 2.4x heavier on screen than on paper.
+
+   non-scaling-stroke stays: it keeps the width out of the stretched SVG user
+   space, so caps stay round and nothing is distorted. cqh is what makes that
+   width physical instead of a device constant.
+
+   Matched to Distress's three weights at the size a plan actually prints on a
+   17in sheet (about 7in across), not to its raw fraction -- its 0.32/0.56/0.88%
+   is relative to the plan image, and applying that to the full sheet would be
+   2.5x too heavy. */
+.rb-ink--t1 { stroke-width: 0.189cqh; }  /* thin   ~1.5pt */
+.rb-ink--t2 { stroke-width: 0.316cqh; }  /* medium ~2.5pt */
+.rb-ink--t3 { stroke-width: 0.505cqh; }  /* thick  ~4.0pt */
+
+/* The invisible grab copy. Wide enough to catch a thin line without hunting,
+   which is what Distress's tolerance hit-test did by hand. */
+.rb-ink__hit {
+  stroke-width: 1.4cqh;
+  vector-effect: non-scaling-stroke;
+}
+
 .rb-ov {
   position: absolute;
   box-sizing: border-box;

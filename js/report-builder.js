@@ -2658,7 +2658,7 @@
     // Free elements: they do not register to anything and do not inherit a
     // locked layout, because their job is to point at something on this page.
     var overlayColor = (window.ToolboxReportOverlay &&
-      window.ToolboxReportOverlay.COLORS[0]) || '#c0392b';
+      window.ToolboxReportOverlay.COLORS[0]) || '#c14a2b';
     var overlayDrag = null;
 
     function overlayList(page) {

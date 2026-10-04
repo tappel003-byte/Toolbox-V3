@@ -435,7 +435,9 @@
   // white paper without becoming a palette.
   function colorSwatches() {
     var api = window.ToolboxReportOverlay;
-    var colors = (api && api.COLORS) || ['#c0392b', '#1a1a1a', '#e0a800'];
+    // Fallback only if report-overlay.js has not loaded. It is the same five,
+    // because a stale copy here silently reinstates a palette nobody chose.
+    var colors = (api && api.COLORS) || ['#c14a2b', '#111111', '#1d4ed8', '#16a34a', '#ea7317'];
     return colors.map(function (c, i) {
       return '    <button type="button" class="rb-format__swatch' + (i === 0 ? ' is-on' : '') +
         '" data-rb-ov-color="' + c + '" style="background:' + c + '"' +
