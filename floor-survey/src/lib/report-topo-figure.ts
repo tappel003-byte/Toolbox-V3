@@ -5,6 +5,7 @@
  * Topo pipeline as field Export. Legend and High/Low/Δ are returned as data
  * for fixed Report Builder slots — not baked at field chrome positions.
  */
+import { readPointStyle } from "./point-style";
 import { closedAreas, pointsInArea } from "@/lib/areas";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
@@ -346,8 +347,15 @@ export async function composeReportTopoFigure(options: {
   //
   // The figure is seen about REPORT_REFERENCE_WIDTH across, so that is the
   // scale it is drawn for, and every screen-anchored size follows.
+  // The dot size and colour are the investigator's, saved per Customer File.
+  // Omitting them left renderTopoTop on its own fallback of 6 against the field
+  // app's 2, so a composed figure drew every reading three times the size of
+  // the same reading on the slide it was composed from.
+  const pointStyle = readPointStyle(floor.projectId);
   renderTopo(ctx, floor, points, settings, areaTopos, {
     viewScale: REPORT_REFERENCE_WIDTH / Math.max(1, extent.w),
+    pointSize: pointStyle.pointSize,
+    pointColor: pointStyle.pointColor,
   });
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 

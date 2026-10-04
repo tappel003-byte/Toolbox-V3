@@ -136,6 +136,20 @@ interface Props {
    *  placed boxes, so the drawing carries none of them. */
   hideCanvasChrome?: boolean;
   /**
+   * The host owns these render settings and persists them itself.
+   *
+   * The field app remembers the legend size on the device, and did it by
+   * writing localStorage into the settings on mount -- which meant a host that
+   * passed settings in had them overwritten by a device-local value every time
+   * the view opened, and then had its own value written back out over the
+   * device's. A report that stored a legend size could not keep it, and sizing
+   * a legend on one job changed it on every other job on that iPad.
+   *
+   * When the host owns the settings, this view neither reads nor writes that
+   * key. It renders what it is given and reports changes back.
+   */
+  settingsOwnedByHost?: boolean;
+  /**
    * Draw the H / L / delta pill on the canvas even when the level has a single
    * boundary.
    *
@@ -304,6 +318,7 @@ export function TopoTab({
   onCamera,
   cameraRequest,
   hideCanvasChrome = false,
+  settingsOwnedByHost = false,
   statsPillForSingleBoundary = false,
   chromeless = false,
   controlsOnly = false,
@@ -392,6 +407,7 @@ export function TopoTab({
   const LEGEND_STORAGE_KEY = "topo.legend.v1";
   const legendHydratedRef = useRef(false);
   useEffect(() => {
+    if (settingsOwnedByHost) return;
     if (legendHydratedRef.current) return;
     legendHydratedRef.current = true;
     if (typeof window === "undefined") return;
@@ -411,6 +427,7 @@ export function TopoTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
+    if (settingsOwnedByHost) return;
     if (!legendHydratedRef.current) return;
     if (typeof window === "undefined") return;
     try {

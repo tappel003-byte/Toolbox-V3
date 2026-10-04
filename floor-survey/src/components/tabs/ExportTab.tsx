@@ -3,6 +3,7 @@
  * The Toolbox Floor Survey field menu no longer opens this screen.
  * Keep the renderer for the preserved in-repo route and for recovery PDF / Report Builder.
  */
+import { readPointStyle } from "@/lib/point-style";
 import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -59,6 +60,17 @@ export function ExportTab({ project, floor, points, settings }: Props) {
   const imgW = floor.planWidth ?? 1000;
   const imgH = floor.planHeight ?? 750;
 
+  // An export is a picture of the plan at its own pixel size, so the readings
+  // are drawn for that size: viewScale 1. What was missing is the dot style --
+  // without it renderTopoTop falls back to 6 against the field app's 2, so an
+  // exported topo drew readings three times the size of the ones on screen.
+  const exportPointStyle = readPointStyle(floor.projectId);
+  const exportOverlay = {
+    viewScale: 1,
+    pointSize: exportPointStyle.pointSize,
+    pointColor: exportPointStyle.pointColor,
+  };
+
   function renderTo(canvas: HTMLCanvasElement, targetDpi: number) {
     // 1 image px = 1/96 in at 96dpi. Multiply pixel size by (targetDpi/96)
     const scale = targetDpi / 96;
@@ -79,7 +91,7 @@ export function ExportTab({ project, floor, points, settings }: Props) {
           ctx.globalAlpha = exportSettings.planOpacity;
           ctx.drawImage(img, 0, 0, imgW, imgH);
           ctx.globalAlpha = 1;
-          renderTopo(ctx, floor, points, exportSettings, areaTopos);
+          renderTopo(ctx, floor, points, exportSettings, areaTopos, exportOverlay);
           drawTitleBlock(ctx, imgW, imgH, project, floor, points);
           resolve();
         };
@@ -87,7 +99,7 @@ export function ExportTab({ project, floor, points, settings }: Props) {
         img.src = floor.planDataUrl!;
       });
     } else {
-      renderTopo(ctx, floor, points, exportSettings, areaTopos);
+      renderTopo(ctx, floor, points, exportSettings, areaTopos, exportOverlay);
       drawTitleBlock(ctx, imgW, imgH, project, floor, points);
       return Promise.resolve();
     }

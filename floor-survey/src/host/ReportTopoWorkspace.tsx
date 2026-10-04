@@ -33,6 +33,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listFloors, listPoints, saveFloor, setHostCustomerFileId } from "@/lib/db";
+import { readPointStyle } from "@/lib/point-style";
 import type { Floor, RenderSettings, SurveyPoint } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { withCorrectedValues } from "@/lib/transitions";
@@ -87,24 +88,14 @@ export function ReportTopoWorkspace({
   });
   const [loading, setLoading] = useState(true);
 
-  // Floor Survey passes the investigator's own dot size and colour, saved per
-  // Customer File. Passing nothing left TopoTab on its own fallback of 6
-  // against Floor Survey's 2, so every reading on a report slide was drawn
-  // three times the size it is in the app it came from. Same keys, same
-  // defaults, so the slide matches the workspace.
-  const [pointSize, pointColor] = useMemo(() => {
-    let size = 2;
-    let color = "#dc2626";
-    try {
-      const raw = localStorage.getItem(`dpp-size:${customerFileId}`);
-      const n = raw ? Number(raw) : 2;
-      if (Number.isFinite(n) && n >= 1 && n <= 8) size = n;
-      color = localStorage.getItem(`dpp-color:${customerFileId}`) || color;
-    } catch {
-      /* storage unavailable — the defaults are Floor Survey's own */
-    }
-    return [size, color] as const;
-  }, [customerFileId]);
+  // The investigator's own dot size and colour, saved per Customer File. Read
+  // through the shared helper so the slide, the figure composer and the field
+  // export cannot drift apart -- they did, and a composed figure drew readings
+  // three times the size of the slide it came from.
+  const { pointSize, pointColor } = useMemo(
+    () => readPointStyle(customerFileId),
+    [customerFileId],
+  );
 
   // A camera arriving from the report is applied once per change. The nonce is
   // what tells the canvas to take it, and it must not fire on every render or
@@ -215,6 +206,7 @@ export function ReportTopoWorkspace({
         onCamera={handleCamera}
         cameraRequest={cameraRequest}
         statsPillForSingleBoundary
+        settingsOwnedByHost
         chromeless
         controlsOnly={controlsOnly}
         resizeCorners={!controlsOnly}
