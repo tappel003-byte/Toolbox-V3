@@ -92,6 +92,11 @@
   ];
 
   var activeField = null;
+  // The armed drawing tool, and the chosen weight. Module-level like
+  // activeField, because the bar is remounted when pages re-render and the
+  // investigator's choice should survive that the way Distress's does.
+  var armedTool = null;
+  var thickLevel = 2;
   // Opening a native <select> blurs the field and destroys the selection, so
   // the command would land on nothing. preventDefault on mousedown cannot help
   // -- it would stop the dropdown opening at all. The live range is therefore
@@ -402,10 +407,40 @@
     ellipse: svg('<circle cx="12" cy="12" r="8.5"/>'),
     arrow: svg('<path d="M5 19 18.5 5.5"/><path d="M11.5 5.5h7v7"/>'),
     // Pictures: a frame with a hill and a sun in it.
+    // Distress Survey's drawing tools, drawn in this bar's language rather
+    // than pasted in as its emoji glyphs: same family of apps, different
+    // screen. Order and meaning match survey.html's toolbar exactly.
+    pencil: svg(
+      '<path d="M4 20l1-4.2L15.2 5.6a2 2 0 0 1 2.8 0l1.4 1.4a2 2 0 0 1 0 2.8L9.2 19.8 5 21z"/>' +
+      '<path d="M13.6 7.2l3.2 3.2"/>',
+    ),
+    rect: svg('<rect x="3.5" y="5.5" width="17" height="13" rx="1"/>'),
+    // The drawn shape's kind is 'circle'; the legacy boxed one is 'ellipse'.
+    // Both buttons want the same glyph, so the icon is registered under both
+    // names -- asking for a name the map does not have renders a blank button,
+    // which is exactly what happened here.
+    circle: svg('<circle cx="12" cy="12" r="8.5"/>'),
+    eraser: svg(
+      '<path d="M8.6 19.5H5.4a1.6 1.6 0 0 1-1.1-2.7L13.9 7a2 2 0 0 1 2.8 0l3 3a2 2 0 0 1 0 2.8l-6.6 6.6z"/>' +
+      '<path d="M8.6 19.5h11.9"/><path d="M11.4 9.5l5.7 5.7"/>',
+    ),
     image: svg('<rect x="2.5" y="4.5" width="19" height="15" rx="1.5"/>' +
       '<circle cx="8" cy="9.5" r="1.6"/>' +
       '<path d="M3 17l5-4.5 3.5 3L15.5 11l5.5 5"/>'),
   };
+
+  // The three weights, as bars of the weight they set -- Distress shows the
+  // same thing with a styled span. Solid bars, so they opt out of the outline
+  // convention the way the alignment icons do.
+  function thickButton(level, label) {
+    var h = { 1: 1.6, 2: 3, 3: 5 }[level] || 3;
+    var y = 12 - h / 2;
+    return '<button type="button" class="rb-format__btn rb-format__btn--icon" ' +
+      'data-rb-thick="' + level + '" aria-label="' + label + '" title="' + label + '">' +
+      '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" fill="currentColor">' +
+      '<rect x="3" y="' + y + '" width="18" height="' + h + '" rx="' + (h / 2) + '"/>' +
+      '</svg></button>';
+  }
 
   function iconBtn(attr, which, label, hint) {
     return '    <button type="button" class="rb-format__btn rb-format__btn--icon" ' +
@@ -493,11 +528,25 @@
       iconBtn('data-rb-fmt', 'dir', 'Text direction') +
       spacingMenu() +
       '  </span>' +
-      '  <span class="rb-format__group rb-format__group--insert">' +
+      // Distress Survey's drawing toolbar, in its order: pencil, rectangle,
+      // circle, arrow, text, eraser, then weights, then colours. Text and
+      // Picture stay click-to-insert because Report Builder's text annotation
+      // is rich text on the report's own model -- formattable with this whole
+      // bar -- where Distress's is a plain string in a drawn box. Porting that
+      // would be a downgrade.
+      '  <span class="rb-format__group rb-format__group--draw">' +
+      iconBtn('data-rb-tool', 'pencil', 'Pencil', 'Pencil') +
+      iconBtn('data-rb-tool', 'rect', 'Rectangle', 'Rectangle') +
+      iconBtn('data-rb-tool', 'circle', 'Circle', 'Circle') +
+      iconBtn('data-rb-tool', 'arrow', 'Arrow — drag to point', 'Arrow') +
       iconBtn('data-rb-insert', 'text', 'Insert text box', 'Text box') +
-      iconBtn('data-rb-insert', 'ellipse', 'Insert circle', 'Circle') +
-      iconBtn('data-rb-insert', 'arrow', 'Insert arrow', 'Arrow') +
+      iconBtn('data-rb-tool', 'eraser', 'Eraser — click a mark', 'Eraser') +
       iconBtn('data-rb-insert', 'image', 'Insert picture', 'Picture') +
+      '  </span>' +
+      '  <span class="rb-format__group rb-format__group--ink">' +
+      thickButton(1, 'Thin') +
+      thickButton(2, 'Medium') +
+      thickButton(3, 'Thick') +
       colorSwatches() +
       '  </span>' +
       '  <span class="rb-format__hint" data-rb-fmt-hint>Select text on the sheet to format it.</span>' +
@@ -524,6 +573,28 @@
       default: return false;
     }
     return true;
+  }
+
+  function setArmedTool(name) {
+    armedTool = name || null;
+    var bars = document.querySelectorAll('[data-rb-format-host] .rb-format');
+    for (var b = 0; b < bars.length; b += 1) {
+      var btns = bars[b].querySelectorAll('[data-rb-tool]');
+      for (var i = 0; i < btns.length; i += 1) {
+        btns[i].classList.toggle('is-on', btns[i].getAttribute('data-rb-tool') === armedTool);
+      }
+    }
+  }
+
+  function setThick(level) {
+    thickLevel = level;
+    var bars = document.querySelectorAll('[data-rb-format-host] .rb-format');
+    for (var b = 0; b < bars.length; b += 1) {
+      var btns = bars[b].querySelectorAll('[data-rb-thick]');
+      for (var i = 0; i < btns.length; i += 1) {
+        btns[i].classList.toggle('is-on', Number(btns[i].getAttribute('data-rb-thick')) === thickLevel);
+      }
+    }
   }
 
   function mount(root, options) {
@@ -629,9 +700,32 @@
         }
         return;
       }
+      var tool = event.target.closest('[data-rb-tool]');
+      if (tool) {
+        event.preventDefault();
+        var want = tool.getAttribute('data-rb-tool');
+        // Clicking the armed tool again puts it away, as Distress does.
+        var next = armedTool === want ? null : want;
+        setArmedTool(next);
+        if (typeof options.onTool === 'function') options.onTool(next);
+        return;
+      }
+      var thick = event.target.closest('[data-rb-thick]');
+      if (thick) {
+        event.preventDefault();
+        var level = Number(thick.getAttribute('data-rb-thick')) || 2;
+        setThick(level);
+        if (typeof options.onThick === 'function') options.onThick(level);
+        return;
+      }
       var insert = event.target.closest('[data-rb-insert]');
       if (insert) {
         event.preventDefault();
+        // Placing a box is not drawing, so it puts the pen down.
+        if (armedTool) {
+          setArmedTool(null);
+          if (typeof options.onTool === 'function') options.onTool(null);
+        }
         if (typeof options.onInsert === 'function') {
           options.onInsert(insert.getAttribute('data-rb-insert'));
         }
@@ -705,9 +799,18 @@
     }
     document.addEventListener('selectionchange', onSelectionChange);
     refresh();
+    // The bar is rebuilt whenever pages re-render, so paint the armed tool and
+    // the chosen weight back onto the fresh buttons.
+    setArmedTool(armedTool);
+    setThick(thickLevel);
 
     return {
       refresh: refresh,
+      /** The armed tool, or null. Report Builder disarms on page change and
+       *  on unmount -- a sheet left armed is a sheet nobody can click. */
+      armedTool: function () { return armedTool; },
+      setTool: function (name) { setArmedTool(name); },
+      thick: function () { return thickLevel; },
       setHistory: function (canUndo, canRedo) {
         var u = bar.querySelector('[data-rb-history="undo"]');
         var r = bar.querySelector('[data-rb-history="redo"]');

@@ -2055,11 +2055,48 @@ body.report-builder-open .canvas {
 
 .rb-format.is-ready .rb-format__hint { display: none; }
 
-/* Until a field has focus the commands have nothing to act on. */
-.rb-format:not(.is-ready) .rb-format__group:not(.rb-format__group--insert) .rb-format__btn,
+/* Until a field has focus the text commands have nothing to act on. The
+   drawing tools, the weights, the colours and the insert buttons always do --
+   they act on the sheet, not on a selection -- so they are exempt. */
+.rb-format:not(.is-ready)
+  .rb-format__group:not(.rb-format__group--draw):not(.rb-format__group--ink)
+  .rb-format__btn,
 .rb-format:not(.is-ready) .rb-format__menu-btn {
   opacity: 0.45;
   pointer-events: none;
+}
+
+/* An armed drawing tool turns the annotation layer into a full-sheet shield.
+   There are three pointerdown listeners on the sheet plus React's own inside
+   the Floor Survey canvas; rather than add a fourth and fight them for the
+   event, the layer simply sits above everything and receives it first. z-index
+   9 clears the brand (7), its lock button (8), the floor resize grips (6) and
+   the page frame (4). Disarmed, the layer is pointer-events:none and is not in
+   the event path at all, so nothing else changes. */
+.rb-sheet--inking .rb-ov-layer {
+  pointer-events: auto;
+  z-index: 9;
+  cursor: crosshair;
+  touch-action: none;
+}
+/* and existing annotations do not swallow a stroke drawn across them, nor take
+   focus into a contenteditable mid-gesture */
+.rb-sheet--inking .rb-ov { pointer-events: none; }
+
+/* The eraser needs to hit things, so ink and boxes become targets -- but not
+   the text field, the resize grip or the delete pip inside a box. */
+.rb-sheet--erasing .rb-ov-layer__ink { pointer-events: auto; }
+.rb-sheet--erasing .rb-ov { pointer-events: auto; cursor: pointer; }
+.rb-sheet--erasing .rb-ov__text,
+.rb-sheet--erasing .rb-ov__resize,
+.rb-sheet--erasing .rb-ov__remove { pointer-events: none; }
+
+/* The armed tool and the chosen weight, shown the way Distress shows them. */
+.rb-format__btn[data-rb-tool].is-on,
+.rb-format__btn[data-rb-thick].is-on {
+  border-color: var(--line);
+  background: var(--accent, #c14a2b);
+  color: #fff;
 }
 
 @media (max-width: 720px) {

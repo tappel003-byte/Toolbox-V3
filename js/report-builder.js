@@ -2133,11 +2133,19 @@
       renderPages();
     };
 
+    var lastRenderedId = null;
+
     function renderPages() {
       if (!pages.length) return;
       var index = activeIndex();
       if (index < 0) index = 0;
       activeId = pages[index].id;
+      // Put the pen down whenever the sheet underneath actually changes --
+      // thumbnail, jump link, add, duplicate, undo, anything. One guard here
+      // instead of six, and it cannot be forgotten by a seventh. A sheet left
+      // armed is a sheet nobody can click, which reads as a dead application.
+      if (lastRenderedId !== null && lastRenderedId !== activeId) disarmInk();
+      lastRenderedId = activeId;
       var current = pages[index];
       listEl.textContent = '';
       pages.forEach(function (item, pageIndex) {
@@ -2593,6 +2601,12 @@
     var restoring = false;
     var HISTORY_LIMIT = 60;
 
+    /** Close any pending history step, so what follows is its own undo point.
+     *  Same three lines undo() already uses before applying a step. */
+    function flushHistoryNow() {
+      if (historyTimer) { clearTimeout(historyTimer); historyTimer = null; snapshotNow(); }
+    }
+
     function snapshotNow() {
       if (restoring) return;
       var shot = JSON.stringify({ pages: pages, activeId: activeId });
@@ -2706,6 +2720,165 @@
       input.click();
     }
 
+    // ---- Drawing: arm a tool, then draw on the sheet ----------------------
+    //
+    // Report Builder's annotations have always been click-to-insert: a preset
+    // box lands at a fixed spot and you drag it where you meant. Distress has
+    // always been pick-a-tool-then-draw. This is Distress's, because that is
+    // what the investigator already knows and because the ink has to match the
+    // marks made in the field.
+    var inkTool = null;
+    var inkThick = 2;
+    var inkDrag = null;
+
+    function setInkTool(name) {
+      inkTool = name || null;
+      if (!sheetEl) return;
+      sheetEl.classList.toggle('rb-sheet--inking', !!inkTool);
+      sheetEl.classList.toggle('rb-sheet--erasing', inkTool === 'eraser');
+      if (inkTool && document.activeElement && document.activeElement.blur) {
+        // A live caret would keep the toolbar holding a range that is about to
+        // be meaningless, and a contenteditable under the shield cannot be
+        // typed into anyway.
+        try { document.activeElement.blur(); } catch (err) { /* not focusable */ }
+      }
+    }
+
+    /** Put the pen down. Page changes and unmount MUST call this: a sheet left
+     *  armed is a sheet nobody can click, which reads as a dead application. */
+    function disarmInk() {
+      if (!inkTool) return;
+      setInkTool(null);
+      if (formatToolbar && typeof formatToolbar.setTool === 'function') formatToolbar.setTool(null);
+    }
+
+    function sheetPercent(event) {
+      var rect = sheetEl.getBoundingClientRect();
+      if (rect.width < 8 || rect.height < 8) return null;
+      return {
+        x: ((event.clientX - rect.left) / rect.width) * 100,
+        y: ((event.clientY - rect.top) / rect.height) * 100,
+      };
+    }
+
+    // One user unit of the ink viewBox is 0.1 in. These are Distress's
+    // thresholds expressed physically rather than in its plan pixels.
+    var INK_STEP_PCT = 0.15 / 1.7;   // ~0.015 in between freehand points
+    var INK_MIN_PCT = 1.2 / 1.7;     // ~0.12 in before a drag counts as a shape
+
+    function beginInk(event) {
+      var page = activePage();
+      var api = window.ToolboxReportOverlay;
+      if (!page || !api || !inkTool || inkTool === 'eraser') return;
+      var at = sheetPercent(event);
+      if (!at) return;
+      event.preventDefault();
+      // Close any pending history step so the stroke is its own undo point.
+      flushHistoryNow();
+      var item = {
+        id: 'ov-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1e6).toString(36),
+        kind: inkTool === 'pencil' ? 'path' : inkTool,
+        color: overlayColor,
+        thick: inkThick,
+      };
+      if (item.kind === 'path') item.points = [[at.x, at.y]];
+      else { item.x0 = at.x; item.y0 = at.y; item.x1 = at.x; item.y1 = at.y; }
+      // Pushed immediately and edited in place, so the preview IS the shape --
+      // the same trick Distress uses, and it means no separate preview path to
+      // drift from the real one.
+      overlayList(page).push(item);
+      renderPages();
+      inkDrag = { id: item.id, pointerId: event.pointerId, start: at };
+      try {
+        var layer = sheetEl.querySelector('[data-rb-ov-layer]');
+        if (layer && layer.setPointerCapture) layer.setPointerCapture(event.pointerId);
+      } catch (err) { /* capture is a convenience */ }
+    }
+
+    function moveInk(event) {
+      if (!inkDrag || inkDrag.pointerId !== event.pointerId) return;
+      var page = activePage();
+      var item = page && findOverlay(page, inkDrag.id);
+      if (!item) return;
+      var at = sheetPercent(event);
+      if (!at) return;
+      event.preventDefault();
+      if (item.kind === 'path') {
+        var last = item.points[item.points.length - 1];
+        if (Math.hypot(at.x - last[0], at.y - last[1]) < INK_STEP_PCT) return;
+        item.points.push([at.x, at.y]);
+      } else {
+        item.x1 = at.x;
+        item.y1 = at.y;
+      }
+      // Repaint this one shape only. renderPages() here would rebuild the sheet
+      // 60x a second, and markDirty() would schedule an autosave and a history
+      // snapshot on every move.
+      repaintInk(item);
+    }
+
+    function repaintInk(item) {
+      var api = window.ToolboxReportOverlay;
+      var svg = sheetEl.querySelector('[data-rb-ov-ink]');
+      if (!svg || !api) return;
+      var old = svg.querySelector('g[data-rb-ov="' + item.id + '"]');
+      var next = api.renderInk(api.normalize([item])[0] || item);
+      if (old) svg.replaceChild(next, old);
+      else svg.appendChild(next);
+    }
+
+    function endInk(event) {
+      if (!inkDrag || inkDrag.pointerId !== event.pointerId) return;
+      var page = activePage();
+      var item = page && findOverlay(page, inkDrag.id);
+      inkDrag = null;
+      if (!page || !item) return;
+      var tooSmall;
+      if (item.kind === 'path') tooSmall = item.points.length < 2;
+      else tooSmall = Math.hypot(item.x1 - item.x0, item.y1 - item.y0) < INK_MIN_PCT;
+      if (tooSmall) {
+        page.meta.overlays = overlayList(page).filter(function (o) { return o.id !== item.id; });
+      } else if (item.kind === 'path') {
+        item.points = decimateInk(item.points);
+      }
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
+    }
+
+    /**
+     * Freehand is the first unbounded-size data the report document has ever
+     * carried, and every stroke rides in all 60 undo snapshots and in the
+     * autosave. Drop points that sit on the line between their neighbours.
+     */
+    function decimateInk(points) {
+      if (points.length < 3) return points;
+      var out = [points[0]];
+      for (var i = 1; i < points.length - 1; i += 1) {
+        var a = out[out.length - 1], b = points[i], c = points[i + 1];
+        var ab = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        var bc = Math.hypot(c[0] - b[0], c[1] - b[1]);
+        var ac = Math.hypot(c[0] - a[0], c[1] - a[1]);
+        if (ab + bc - ac > 0.04) out.push(b);
+      }
+      out.push(points[points.length - 1]);
+      return out;
+    }
+
+    function eraseAt(event) {
+      var hit = event.target.closest('[data-rb-ov]');
+      if (!hit) return;
+      var page = activePage();
+      if (!page) return;
+      event.preventDefault();
+      var id = hit.getAttribute('data-rb-ov');
+      flushHistoryNow();
+      page.meta.overlays = overlayList(page).filter(function (o) { return o.id !== id; });
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
+    }
+
     function insertOverlay(kind) {
       var page = activePage();
       var api = window.ToolboxReportOverlay;
@@ -2761,6 +2934,21 @@
       markDirty();
       renderPages();
       flushSave().catch(function () {});
+    });
+
+    // Drawing listens on the sheet too, but only acts while a tool is armed,
+    // and the armed layer above has already stopped the event reaching anything
+    // else. Registered FIRST so a stroke is never mistaken for a box drag.
+    sheetEl.addEventListener('pointerdown', function (event) {
+      if (!inkTool) return;
+      if (inkTool === 'eraser') { eraseAt(event); return; }
+      beginInk(event);
+    });
+    sheetEl.addEventListener('pointermove', function (event) { if (inkTool) moveInk(event); });
+    sheetEl.addEventListener('pointerup', function (event) { if (inkTool) endInk(event); });
+    sheetEl.addEventListener('pointercancel', function (event) { if (inkTool) endInk(event); });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') disarmInk();
     });
 
     sheetEl.addEventListener('pointerdown', function (event) {
@@ -3714,6 +3902,8 @@
       formatToolbar = window.ToolboxReportToolbar.mount(root, {
         onInsert: insertOverlay,
         onColor: function (value) { overlayColor = value; },
+        onTool: setInkTool,
+        onThick: function (level) { inkThick = level; },
         onHistory: function (which) { if (which === 'redo') redo(); else undo(); },
         onChange: function (field) {
           var keep = captureSelectionOffsets(field);
