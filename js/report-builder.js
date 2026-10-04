@@ -1773,6 +1773,44 @@
     return doc;
   }
 
+  /**
+   * Repair Floor Survey render settings saved by a build that could not draw
+   * the canvas chrome.
+   *
+   * While the slide passed `hideCanvasChrome`, TopoTab's `resolved` object had
+   * showLegend / showStatsPill / showHighLow forced to false, and the rail's
+   * own `update()` writes `onSettingsChange(resolveSettings({ ...resolved,
+   * ...patch }))`. So every control the investigator touched wrote those three
+   * `false` flags straight into the report.
+   *
+   * The slide draws its own chrome again now, and it honours stored settings --
+   * which means a report saved under the old behaviour comes back with the
+   * colour scale, the pill and the High/Low markers still switched off. It
+   * works perfectly on a new file and stays broken on the one that was open at
+   * the time, which is exactly what it looked like from the outside.
+   *
+   * Clearing the three flags once is the repair. A setting saved by a version
+   * that could not render the thing it describes should not outlive it, and the
+   * investigator should not have to find three switches to undo a bug.
+   */
+  function reviveFloorView(view) {
+    if (!view || typeof view !== 'object') return view;
+    var next = JSON.parse(JSON.stringify(view));
+    var suppressed = ['showLegend', 'showStatsPill', 'showHighLow'];
+    // Only repair the bug's exact signature: the old code forced all three off
+    // together on every settings write, so all three being false is the tell.
+    // One or two off is somebody deliberately turning something off, and that
+    // is a preference to leave alone -- a repair that overrides a real choice
+    // is just a second bug.
+    var allOff = suppressed.every(function (key) { return next[key] === false; });
+    if (!allOff) return next;
+    suppressed.forEach(function (key) { delete next[key]; });
+    if (window.console && console.info) {
+      console.info('Report Builder: restored Floor Survey chrome suppressed by an earlier build.');
+    }
+    return next;
+  }
+
   function savedReportPages(record) {
     var doc = record && (record.reportBuilder || record.report);
     if (!doc || typeof doc !== 'object') return null;
@@ -3731,7 +3769,7 @@
         brandBox = window.ToolboxReportDiscussion.normalizeBrandBox(savedDoc.brandBox);
       }
       if (savedDoc && savedDoc.floorCamera) floorCamera = savedDoc.floorCamera;
-      if (savedDoc && savedDoc.floorView) floorView = savedDoc.floorView;
+      if (savedDoc && savedDoc.floorView) floorView = reviveFloorView(savedDoc.floorView);
       if (savedDoc && savedDoc.floorFramed) floorFramed = true;
       var saved = savedReportPages(record);
       if (saved) {
