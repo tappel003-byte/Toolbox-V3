@@ -206,6 +206,7 @@ export function ReportTopoWorkspace({
         onCamera={handleCamera}
         cameraRequest={cameraRequest}
         statsPillForSingleBoundary
+        presentation
         settingsOwnedByHost
         chromeless
         controlsOnly={controlsOnly}

@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-type SizeTier = "sm" | "md" | "lg";
-/** Auto tier heights in px (used when the user has not chosen a size). */
-const TIER_HEIGHT: Record<SizeTier, number> = { sm: 24, md: 32, lg: 40 };
-function pickTier(w: number): SizeTier {
-  if (w >= 1280) return "lg";
-  if (w >= 768) return "md";
-  return "sm";
-}
+/**
+ * The chip's height when the investigator has not chosen one.
+ *
+ * This used to be three heights picked from `window.innerWidth` -- 24 on a
+ * phone, 32 on a tablet, 40 on a desktop. That made the same Customer File
+ * render at three different sizes depending on what you opened it on, and on a
+ * report slide it meant the pill's size depended on the browser window rather
+ * than on the page it was printed to. One number instead: the middle of the
+ * three, which is what a tablet showed.
+ */
+const DEFAULT_CHIP_HEIGHT = 32;
 
 /** localStorage key holding the user's chosen chip height in px. */
 export const STATS_CHIP_SIZE_KEY = "stats-chip-size";
@@ -27,10 +30,9 @@ export function getStatsChipSize(): number | null {
   }
 }
 
-/** Auto height for the current viewport width. */
+/** The height used when the investigator has not chosen one. */
 export function autoStatsChipSize(): number {
-  if (typeof window === "undefined") return TIER_HEIGHT.sm;
-  return TIER_HEIGHT[pickTier(window.innerWidth)];
+  return DEFAULT_CHIP_HEIGHT;
 }
 
 /** Persist a chip height and notify any mounted chip immediately. */
@@ -114,7 +116,7 @@ export function StatsChip({
 
   // User-chosen height (px) wins over the automatic width tier.
   const [userSize, setUserSize] = useState<number | null>(null);
-  const [autoSize, setAutoSize] = useState<number>(TIER_HEIGHT.sm);
+  const [autoSize, setAutoSize] = useState<number>(DEFAULT_CHIP_HEIGHT);
   useEffect(() => {
     setUserSize(getStatsChipSize());
     setAutoSize(autoStatsChipSize());

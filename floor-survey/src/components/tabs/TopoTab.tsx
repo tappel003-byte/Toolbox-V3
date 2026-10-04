@@ -12,7 +12,7 @@ import {
   STATS_CHIP_MIN,
   STATS_CHIP_SIZE_EVENT,
 } from "@/components/chrome/StatsChip";
-import { screenAnchoredImageSize } from "@/lib/screen-size";
+import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/lib/screen-size";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Undo2, X, Waves, Palette, Tag, SlidersHorizontal, Minus, Plus } from "lucide-react";
@@ -136,6 +136,14 @@ interface Props {
    *  placed boxes, so the drawing carries none of them. */
   hideCanvasChrome?: boolean;
   /**
+   * This view is a picture on a page, not a workspace on a screen.
+   *
+   * Report slides, exports and PDFs size their chrome as a fraction of the
+   * plan, so it scales with the drawing and renders identically on any device
+   * and on paper. The field app stays screen-anchored.
+   */
+  presentation?: boolean;
+  /**
    * The host owns these render settings and persists them itself.
    *
    * The field app remembers the legend size on the device, and did it by
@@ -188,6 +196,26 @@ interface Props {
 const DEFAULT_LABEL_DX = 8;
 const DEFAULT_LABEL_DY = 6;
 const LONG_PRESS_MS = 350;
+
+/**
+ * The High/Low marker's drawn size, in image coordinates.
+ *
+ * `highLowPinSize` is the size that reads correctly on a plan of the reference
+ * width. It used to be used as a literal image-space number, which meant the
+ * marker was a different fraction of every differently-sized plan -- 1% of an
+ * 1100 px plan, 0.44% of a 2500 px one -- and on a report slide, where the plan
+ * is scaled down to fit the page, it shrank to an unreadable speck beside point
+ * labels that held their size.
+ *
+ * One function, called by the drawing and by the hit test, so the marker cannot
+ * be drawn in one size and grabbed in another.
+ */
+function pinFontPx(settings: RenderSettings, floor: Floor) {
+  return planProportionalSize(
+    settings.highLowPinSize,
+    planLongSide(floor.planWidth, floor.planHeight),
+  );
+}
 
 // Pin geometry — matches drawPin(). Pin box is centered horizontally on the
 // point, sitting above it. These functions keep hit-testing and rendering aligned
@@ -247,7 +275,29 @@ function labelAnchor(p: SurveyPoint, k = 1) {
 export const DEFAULT_STATS_PILL_SIZE = 28;
 
 /** Pill height in IMAGE coords for a given base (screen px) and zoom. */
-function pillHeightImg(base: number, viewScale: number) {
+/**
+ * The H / L / delta pill's drawn height, in image coordinates.
+ *
+ * Two modes, because the two surfaces genuinely want different things.
+ *
+ * In the field the pill is screen-anchored: you zoom into a plan to work and
+ * the numbers have to stay readable on the device in your hand. That is proven
+ * and it stays.
+ *
+ * On a page there is no screen to anchor to. A report slide, an export and a
+ * PDF are pictures, so the pill is a fixed fraction of the plan -- it scales
+ * with the drawing when the investigator resizes the topo, and it renders the
+ * same on a phone, a desktop and on paper.
+ */
+function pillHeightImg(
+  base: number,
+  viewScale: number,
+  presentation: boolean,
+  floor: Floor,
+) {
+  if (presentation) {
+    return planProportionalSize(base, planLongSide(floor.planWidth, floor.planHeight));
+  }
   return screenAnchoredImageSize(base, viewScale);
 }
 
@@ -318,6 +368,7 @@ export function TopoTab({
   onCamera,
   cameraRequest,
   hideCanvasChrome = false,
+  presentation = false,
   settingsOwnedByHost = false,
   statsPillForSingleBoundary = false,
   chromeless = false,
@@ -534,7 +585,7 @@ export function TopoTab({
 
   function hitDraggable(x: number, y: number): Hit | null {
     if (canvasStatsPill) {
-      const h = pillHeightImg(statsChipSize, viewScale);
+      const h = pillHeightImg(statsChipSize, viewScale, presentation, floor);
       const showLabel = true;
       const dec = resolved.decimalPlaces;
       for (let i = areaTopos.length - 1; i >= 0; i--) {
@@ -566,7 +617,7 @@ export function TopoTab({
     // Pins next — they sit above the point dot and are visually on top.
     if (resolved.showHighLow && hiLo && gridAndContours?.grid && resolved.mode !== "points-only") {
       const check = (kind: "pin-high" | "pin-low", pt: SurveyPoint, dx: number, dy: number) => {
-        const fontPx = resolved.highLowPinSize;
+        const fontPx = pinFontPx(resolved, floor);
         const w = pinWidth(kind === "pin-high" ? "High" : "Low", fontPx);
         const cx = pt.x + dx;
         const top = pt.y + pinTopOffset(fontPx) + dy;
@@ -898,7 +949,7 @@ export function TopoTab({
             if (resolved.showLegend && areaTopos.length > 0 && resolved.mode !== "points-only") {
               for (let i = areaTopos.length - 1; i >= 0; i--) {
                 const at = areaTopos[i];
-                const box = areaLegendBox(at.area, resolved);
+                const box = areaLegendBox(at.area, resolved, floor);
                 const inBox =
                   x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h;
                 if (inBox) {
@@ -1033,6 +1084,7 @@ export function TopoTab({
               liveLegend: activeLegend,
               pillSize: statsChipSize,
               pillForSingleBoundary: statsPillForSingleBoundary,
+              presentation,
               pointSize,
               pointColor,
               viewScale,
@@ -1769,6 +1821,8 @@ function renderTopoTop(
     liveLegend?: { id: string; dx: number; dy: number } | null;
     /** Base (1x zoom) stats-pill height in screen px. */
     pillSize?: number;
+    /** A picture on a page: size chrome against the plan, not the screen. */
+    presentation?: boolean;
     /** Draw the pill on a one-boundary level too (a report slide does). */
     pillForSingleBoundary?: boolean;
     pointSize?: number;
@@ -1924,7 +1978,7 @@ function renderTopoTop(
           at.grid,
           areaTopos.length === 1 ? at.contours : null,
           !!live,
-          areaLegendBox(at.area, resolved, live),
+          areaLegendBox(at.area, resolved, floor, live),
         );
       }
     }
@@ -1937,8 +1991,8 @@ function renderTopoTop(
       const lDx = livePinLow ? livePinLow.dx : (floor.lowPinDx ?? 0);
       const lDy = livePinLow ? livePinLow.dy : (floor.lowPinDy ?? 0);
       for (const at of areaTopos) {
-        drawPin(ctx, at.hi.x + hDx, at.hi.y + hDy, "High", "#b51d16", resolved.highLowPinSize, highlightPin === "pin-high");
-        drawPin(ctx, at.lo.x + lDx, at.lo.y + lDy, "Low", "#1f5f9f", resolved.highLowPinSize, highlightPin === "pin-low");
+        drawPin(ctx, at.hi.x + hDx, at.hi.y + hDy, "High", "#b51d16", pinFontPx(resolved, floor), highlightPin === "pin-high");
+        drawPin(ctx, at.lo.x + lDx, at.lo.y + lDy, "Low", "#1f5f9f", pinFontPx(resolved, floor), highlightPin === "pin-low");
       }
     }
   }
@@ -1949,7 +2003,7 @@ function renderTopoTop(
   if (statsPillOnCanvas(resolved, areaTopos.length, !!overlay?.pillForSingleBoundary)) {
     const livePill = overlay?.livePill ?? null;
     const base = overlay?.pillSize ?? DEFAULT_STATS_PILL_SIZE;
-    const h = pillHeightImg(base, viewScale);
+    const h = pillHeightImg(base, viewScale, !!overlay?.presentation, floor);
     for (const at of areaTopos) {
       const live = livePill && livePill.id === at.area.id ? livePill : null;
       drawStatsPill(
@@ -2289,12 +2343,27 @@ function legendBox(settings: RenderSettings) {
 }
 
 /** Color-legend box for one boundary on the All boundaries view. */
+/**
+ * The colour legend's box, in image coordinates.
+ *
+ * Every dimension inside drawLegend() is a multiple of the returned `scale`,
+ * so making that one number plan-proportional sizes the whole legend. It was
+ * a literal image-space 82 x 226 before, which made it 7.5% of an 1100 px plan
+ * and 3.3% of a 2500 px one -- the same drift the High/Low markers had.
+ *
+ * Shared by the drawing and the hit test so the legend cannot be drawn in one
+ * place and grabbed in another.
+ */
 function areaLegendBox(
   area: TopoArea,
   settings: RenderSettings,
+  floor: Floor,
   live?: { dx: number; dy: number } | null,
 ) {
-  const s = settings.legendScale ?? 1;
+  const s = planProportionalSize(
+    settings.legendScale ?? 1,
+    planLongSide(floor.planWidth, floor.planHeight),
+  );
   const anchor = areaLegendAnchor(area);
   const dx = live ? live.dx : (area.legendDx ?? 0);
   const dy = live ? live.dy : (area.legendDy ?? 0);

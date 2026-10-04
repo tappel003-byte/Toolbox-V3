@@ -356,6 +356,7 @@ export async function composeReportTopoFigure(options: {
     viewScale: REPORT_REFERENCE_WIDTH / Math.max(1, extent.w),
     pointSize: pointStyle.pointSize,
     pointColor: pointStyle.pointColor,
+    presentation: true,
   });
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 

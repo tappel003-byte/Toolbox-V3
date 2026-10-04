@@ -67,6 +67,7 @@ export function ExportTab({ project, floor, points, settings }: Props) {
   const exportPointStyle = readPointStyle(floor.projectId);
   const exportOverlay = {
     viewScale: 1,
+    presentation: true,
     pointSize: exportPointStyle.pointSize,
     pointColor: exportPointStyle.pointColor,
   };
