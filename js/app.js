@@ -1921,7 +1921,10 @@
   function reportDesktopNotice(app, id) {
     if (reportNoticeSeen) return false;
     if (window.innerWidth >= REPORT_DESKTOP_MIN_WIDTH) return false;
-    reportNoticeSeen = true;
+    // Marked seen only when Continue is pressed, below. Setting it here meant
+    // saying no still silenced it: go back, open Distress, return, and Report
+    // Builder let you straight in without asking.
+
     var wrap = document.createElement('div');
     wrap.className = 'rb-smallscreen';
     wrap.setAttribute('data-rb-smallscreen', '1');
@@ -1942,6 +1945,9 @@
     go.className = 'rb-smallscreen__go';
     go.textContent = 'Continue anyway';
     go.addEventListener('click', function () {
+      // Only now: the choice to carry on is what is remembered, so it does not
+      // nag every time this session. Declining is not a choice to remember.
+      reportNoticeSeen = true;
       if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
     });
     var back = document.createElement('button');
