@@ -1379,7 +1379,7 @@
    * Distress's, and this is only how this figure draws it. Stored like
    * page.reportText.notes -- same container, same keying by pin id -- and in
    * PERCENT OF THE PLAN RECT, the same unit the pin's own x/y already use, so
-   * it survives preview scale, the print deck and 17 x 11 in paper alike.
+   * it survives preview scale, the print deck and 11 x 17 paper alike.
    */
   /** 2dp is 0.0017 in on a 17 in sheet -- below print resolution, and it keeps
    *  the offsets out of the undo snapshots and the autosave as long floats. */
@@ -3971,7 +3971,7 @@
 
     // Print the whole book, not just the open sheet. Every page already
     // carries its evidence (attachEvidence runs over all pages on load), so
-    // each one is rendered into its own 17x11 in sheet and handed to the
+    // each one is rendered into its own 11 x 17 sheet and handed to the
     // browser's print dialog -- which is also how a PDF comes out of it.
     // The deliverable is the PDF; there is no separate export path to keep
     // in step with what the investigator sees on screen.

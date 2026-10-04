@@ -13,7 +13,7 @@
   }
 
   // Measured from the shipped decks (Mitchell / 1515 / Ross / Sipert title
-  // slides), as percentages of the full 17x11 in slide. PowerPoint positions
+  // slides), as percentages of the full 11 x 17 slide. PowerPoint positions
   // against the whole slide, so the cover stage is the whole sheet -- not the
   // inset .rb-sheet__margin the other page types use.
   //

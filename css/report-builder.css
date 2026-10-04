@@ -714,7 +714,7 @@ body.report-builder-open .canvas {
 
 /* The hosted Floor Survey view fills its box on the page. The canvas inside
    sizes itself to this, and the camera is expressed against fit, so the same
-   stored view frames the same thing here and at 17 x 11 in. */
+   stored view frames the same thing here and on 11 x 17 paper. */
 /* The workspace rail — the controls for whatever slide is open. Import at the
    top, that workspace's own controls in the middle, the way back at the
    bottom.
@@ -1041,7 +1041,7 @@ body.report-builder-open .canvas {
 /* ------------------------------------------------------------------ *
  * Title / cover page — measured from the shipped decks.
  *
- * PowerPoint positions against the whole 17x11 in slide, so the cover
+ * PowerPoint positions against the whole 11 x 17 slide, so the cover
  * stage is the whole sheet and .rb-sheet__margin--cover is full bleed.
  * The visible border is Mitchell's own frame rectangle (0.9% inset),
  * not the inset margin box the other page types draw.
@@ -2161,7 +2161,7 @@ body.report-builder-open .canvas {
  * screen, not a second renderer that can drift away from it.
  *
  * The sheet is a size container and its type is sized in cqh, so setting the
- * printed sheet to exactly 17 x 11 in makes every measurement resolve against
+ * printed sheet to exactly 11 x 17 makes every measurement resolve against
  * the real page. That is why the clamp() had to come off the cover type: a
  * clamped size stops growing and would print smaller than it previews.
  * ------------------------------------------------------------------ */
@@ -2354,7 +2354,7 @@ body.report-builder-open .canvas {
  *
  * Drawn against the sheet, not inside any one page's layout, so wherever it
  * is put is where every page shows it. Geometry is percentages of the sheet,
- * like everything else placed here, so it holds from preview size to 17 x 11
+ * like everything else placed here, so it holds from preview size to 11 x 17
  * in on paper.
  * ------------------------------------------------------------------ */
 
@@ -2456,7 +2456,7 @@ body.report-builder-open .canvas {
  *
  * Free elements on top of any sheet. Geometry is percentages of the sheet,
  * like every other placed element here, so they hold position when the page
- * is scaled from preview size to 17 x 11 in on paper.
+ * is scaled from preview size to 11 x 17 on paper.
  * ------------------------------------------------------------------ */
 
 .rb-ov-layer {

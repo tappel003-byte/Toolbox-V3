@@ -166,7 +166,7 @@
    * size at all.
    *
    * Published in cqh rather than px because the sheet is drawn at several
-   * scales -- preview, the print deck, 17 x 11 in paper -- and a px value
+   * scales -- preview, the print deck, 11 x 17 paper -- and a px value
    * computed at one is wrong at the next. The plan's fraction OF THE SHEET does
    * not change when the sheet does, so the ratio survives every scale.
    */
@@ -205,7 +205,7 @@
     var figureNumber = model.pageNumber ? String(model.pageNumber) : '';
     var figureLabel = figureNumber ? 'Figure ' + figureNumber : 'Figure';
     var headingText = 'Picture/Damage Locations';
-    sheet.setAttribute('aria-label', figureLabel + ', ' + headingText + ', ' + levelName + ', 17 by 11 inch landscape');
+    sheet.setAttribute('aria-label', figureLabel + ', ' + headingText + ', ' + levelName + ', 11 by 17 inch landscape');
 
     var root = document.createElement('div');
     root.className = 'rb-penlog';

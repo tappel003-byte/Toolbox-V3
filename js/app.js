@@ -1908,7 +1908,8 @@
     });
   }
 
-  // Report Builder is a desk tool: a 17 x 11 in sheet beside a page rail and a
+  // Report Builder is a desk tool: an 11 x 17 tabloid sheet, used landscape,
+  // beside a page rail and a
   // formatting bar, placed with a pointer. Below this width the page and the
   // rail cannot both be on screen without it becoming a different product.
   // An iPad mini in landscape clears it; in portrait it does not, which is why
@@ -1932,7 +1933,7 @@
     var body = document.createElement('p');
     body.className = 'rb-smallscreen__body';
     body.textContent =
-      'It lays out a 17 by 11 inch sheet, so it wants a wide screen and a pointer. ' +
+      'It lays out an 11 by 17 inch sheet, so it wants a wide screen and a pointer. ' +
       'You can carry on here if you need to.';
     var row = document.createElement('div');
     row.className = 'rb-smallscreen__row';

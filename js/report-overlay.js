@@ -7,7 +7,7 @@
 //
 // Geometry is percentages of the sheet, like every other placed element in
 // Report Builder, so an annotation holds its position when the sheet is
-// scaled -- on screen at preview size and on paper at 17 x 11 in.
+// scaled -- on screen at preview size and on 11 x 17 paper.
 //
 //   { id, kind: 'text' | 'ellipse' | 'arrow' | 'image',
 //     x, y, w, h, color, mediaId, text }
