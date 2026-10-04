@@ -1843,18 +1843,33 @@
    * that could not render the thing it describes should not outlive it, and the
    * investigator should not have to find three switches to undo a bug.
    */
+  var FLOOR_VIEW_CHROME_FIX = 1;
+
   function reviveFloorView(view) {
     if (!view || typeof view !== 'object') return view;
     var next = JSON.parse(JSON.stringify(view));
-    var suppressed = ['showLegend', 'showStatsPill', 'showHighLow'];
-    // Only repair the bug's exact signature: the old code forced all three off
-    // together on every settings write, so all three being false is the tell.
-    // One or two off is somebody deliberately turning something off, and that
-    // is a preference to leave alone -- a repair that overrides a real choice
-    // is just a second bug.
-    var allOff = suppressed.every(function (key) { return next[key] === false; });
-    if (!allOff) return next;
-    suppressed.forEach(function (key) { delete next[key]; });
+    if (next.chromeFix >= FLOOR_VIEW_CHROME_FIX) return next;
+
+    // Settings saved before the slide could draw its own chrome. Clear the
+    // three flags once, then stamp, so everything chosen after this is kept
+    // forever.
+    //
+    // The first attempt only repaired a file with all three false, on the
+    // reasoning that the old build forced them as a set and so all three off
+    // was its signature. That was too clever. Turning the legend and the
+    // markers back on by hand leaves showStatsPill false on its own -- a value
+    // nobody chose, left behind by the bug -- and the repair never fired. Tim
+    // hit exactly that: legend and High/Low on the page, no pill.
+    //
+    // Guessing intent from values cannot tell "left over" from "deliberate",
+    // so it does not try. A stamp can tell "before the fix" from "after it",
+    // which is the question that actually matters. The cost is that a setting
+    // deliberately turned off before today comes back once; the alternative is
+    // leaving chrome switched off that nobody switched off.
+    ['showLegend', 'showStatsPill', 'showHighLow'].forEach(function (key) {
+      delete next[key];
+    });
+    next.chromeFix = FLOOR_VIEW_CHROME_FIX;
     if (window.console && console.info) {
       console.info('Report Builder: restored Floor Survey chrome suppressed by an earlier build.');
     }
