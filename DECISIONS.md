@@ -207,6 +207,29 @@ These notes preserve active product possibilities so they are not lost. They are
 - **The page is laid out from the four shipped decks, measured** — not from invented numbers. Every block is a freely movable, resizable, removable box, the way PowerPoint treats them. The topo is the focus of the page and is sized accordingly.
 - The decks carry **no north arrow or "front door" block** on a Floor Survey page; Toolbox had invented one.
 
+## Capture app changes
+
+- **The capture apps are no longer closed to change; each change is named and approved (DECIDED Tim, Oct 4, 2026).** `floor-survey/AGENTS.md` previously said "Do not modify this repository as part of Toolbox-V3 development." In Tim's words: "We said don't touch it because I didn't want the capture apps to change the functionality, but now we have to change the functionality because the ecosystem is evolving — so some changes are acceptable because that is the way they need to progress in order to get what we want."
+- **What was being protected is proven field behavior, not the files.** The blanket ban was too blunt once Report Builder began hosting Floor Survey's own components, and the root rule ("integrated Toolbox copies may evolve") was too loose to be a gate. The replacement sits between them.
+- **The rule.** Before changing anything an investigator would notice in a capture app — a gesture, a default, a visible size, a control's placement, how data is written — name the specific change and get approval. Record approved changes here. Plumbing that leaves field behavior identical does not need approval: an optional prop defaulting to current behavior, a shared function extracted, an existing component hosted somewhere new. "Identical" is a claim; show the diff.
+- **Scope.** `floor-survey/` and `distress-survey/` inside Toolbox-V3 are the integrated copies and are in scope. The standalone repositories `field-reporter-pro` and `floorplan-topo-maker` are **not** — that protection was not lifted. Both integrated directories now carry an `AGENTS.md` stating this rule.
+
+## Report Builder drawing tools
+
+- **Report Builder adopts Distress Survey's drawing tools (DECIDED Tim, Oct 4, 2026).** Same tool set, same order, same grouping — pencil, rectangle, circle, arrow, text, eraser, then three weights, then five colours — laid out horizontally in Report Builder's formatting bar, with Distress's behavior: pick a tool, then draw where you point. Report Builder's current annotations insert a preset box at a fixed spot and are then dragged, which is a reimplementation of code that already existed and works.
+- **This supersedes two earlier lines.** "Do not reintroduce placeholder drawing tools" (Oct 2, 2026) removed a fake Select/Text/Image/Line/Arrow/Shape skeleton ribbon that did nothing. That ban stands for placeholder chrome; these are the proven tools themselves, which is the opposite case. "Compact pills and collapsible tools, not a permanent desktop-style ribbon" is superseded for Report Builder by the Oct 3, 2026 decision that Report Builder is a desktop/large-screen workspace — the reasoning behind compact pills was mobile-first, and Tim's instruction was "horizontal on the rail that has enough space for all of that."
+- **Match the output, not the buttons.** The five colours (`#c14a2b` `#111111` `#1d4ed8` `#16a34a` `#ea7317`) and the three weights must be identical to Distress, because a shape drawn on a report slide can sit on the page next to a photo circled in the field. If the reds differ, the report looks like two people made it. The icons are redrawn as SVGs in Report Builder's existing convention (24x24, 17px, `stroke-width: 1.7`) rather than pasting Distress's emoji glyphs: same family of apps, different screen.
+- **Controls that change the document speak PowerPoint; controls that put ink on a drawing speak Distress.** That is the dividing line for this toolbar and for the ones after it.
+- **Callout** (text with a leader line) and **highlight** (translucent shading over an area) are wanted and are a later pass. **Front/back ordering** was pinned, then accepted as a likely consequence of highlight — a highlight over a circle washes it out, under it does not.
+
+## Sizing of anything drawn on a plan
+
+- **Two modes, one module (DECIDED Tim, Oct 4, 2026).** Toolbox had four different rules for sizing things drawn on a plan: screen-anchored (topo and field point labels and dots), raw image-space with no conversion at all (the High/Low markers), a browser-window tier (the stats pill base, 24/32/40 by `window.innerWidth`), and plan-proportional (all of Distress Survey). Tim: "they are tiny... for some reason we still have some formatting that doesn't look right between the different screen sizes. I would like to fix that issue once and for all."
+- **The unit was not the mistake; the missing anchor was.** A size has to be anchored to something, and these were anchored to three different things — one to nothing at all. Distress already solved it: a fraction of the plan's long side, which is identical at any zoom, on any screen, and on paper.
+- **Capture stays screen-anchored.** Zooming into a plan to place a reading and having the label stay readable is proven and correct for a device in your hand.
+- **Presentation is plan-proportional**, and chrome **scales with the plan**: resize the topo on a slide and the legend, pills and markers grow and shrink with it, the way resizing an image does. This applies to everything that produces a picture that leaves the device — report slides, Floor Survey export, and the recovery PDF.
+- **The window-width tier is deleted.** It was the purest form of "the same file looks different depending on the screen."
+
 ---
 
 ## Closeout

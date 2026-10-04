@@ -1,7 +1,8 @@
 # Repository Protection
 
-This is the integrated Toolbox copy of Floor Survey. It is also the reference implementation
-of proven field behavior.
+This is the integrated Toolbox copy of Distress Survey. It is also the reference
+implementation of proven field behavior — its drawing tools, pin numbering, and plan
+annotation are the pattern other Toolbox workspaces are matched against.
 
 **Changes are allowed, case by case, and must be named and approved first.**
 
@@ -16,17 +17,15 @@ Plumbing that leaves field behavior identical does not need approval: an optiona
 defaulting to current behavior, a shared function extracted, an existing component hosted
 somewhere new. "Identical" is a claim — show the diff, don't assert it.
 
+Two things carry an especially high burden, because other work is measured against them:
+
+- **Distress photograph / pin numbering** must preserve the exact proven recomputation
+  behavior across all canvases and levels. Never simplify it into permanent per-pin or
+  per-canvas numbering.
+- **The drawing toolbar** — tool set, order, the five colours and three weights — is the
+  reference other workspaces copy. Changing a colour or a weight here changes what a
+  finished report looks like.
+
 The standalone repositories `field-reporter-pro` and `floorplan-topo-maker` remain untouched.
 
 **Preserve proven behavior. This repository is the reference.**
-
-<!-- LOVABLE:BEGIN -->
-> [!IMPORTANT]
-> This project is connected to [Lovable](https://lovable.dev). Avoid rewriting
-> published git history — force pushing, or rebasing/amending/squashing commits
-> that are already pushed — as it rewrites history on Lovable's side and the
-> user will likely lose their project history.
->
-> Commits you push to the connected branch sync back to Lovable and show up in
-> the editor, so keep the branch in a working state.
-<!-- LOVABLE:END -->
