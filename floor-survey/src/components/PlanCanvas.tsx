@@ -521,18 +521,23 @@ export function PlanCanvas({
     e.preventDefault();
     e.stopPropagation();
     const rect = wrap.getBoundingClientRect();
-    // The opposite corner, in wrapper coordinates, is what stays still.
-    const anchorX = corner === "nw" || corner === "sw" ? rect.width : 0;
-    const anchorY = corner === "nw" || corner === "ne" ? rect.height : 0;
     const t = transformRef.current;
+    // The grips belong to the PLAN, so the corner that stays still is the
+    // plan's opposite corner -- not the opposite corner of the canvas. Anchored
+    // to the canvas, resizing dragged the plan around relative to the page,
+    // which is not what grabbing a picture's corner does.
+    const imgX = corner === "nw" || corner === "sw" ? imgW : 0;
+    const imgY = corner === "nw" || corner === "ne" ? imgH : 0;
+    const anchorX = t.tx + imgX * t.scale;
+    const anchorY = t.ty + imgY * t.scale;
     const dist = Math.hypot(e.clientX - (rect.left + anchorX), e.clientY - (rect.top + anchorY));
     cornerDrag.current = {
       pointerId: e.pointerId,
       corner,
       anchorX,
       anchorY,
-      imgX: (anchorX - t.tx) / t.scale,
-      imgY: (anchorY - t.ty) / t.scale,
+      imgX,
+      imgY,
       startDist: Math.max(1, dist),
       startScale: t.scale,
     };
@@ -602,26 +607,43 @@ export function PlanCanvas({
         <canvas ref={canvasRef} />
       </div>
       {resizeCorners &&
-        (["nw", "ne", "sw", "se"] as const).map((corner) => (
-          <span
-            key={corner}
-            data-plan-resize={corner}
-            onPointerDown={(e) => cornerPointerDown(corner, e)}
-            onPointerMove={cornerPointerMove}
-            onPointerUp={cornerPointerUp}
-            onPointerCancel={cornerPointerUp}
-            className={
-              "absolute z-30 h-4 w-4 rounded-sm border border-slate-600 bg-white shadow touch-none " +
-              (corner === "nw"
-                ? "left-1 top-1 cursor-nwse-resize"
-                : corner === "ne"
-                  ? "right-1 top-1 cursor-nesw-resize"
-                  : corner === "sw"
-                    ? "left-1 bottom-1 cursor-nesw-resize"
-                    : "right-1 bottom-1 cursor-nwse-resize")
-            }
-          />
-        ))}
+        (["nw", "ne", "sw", "se"] as const).map((corner) => {
+          // The grips sit on the PLAN's own corners and travel with it when it
+          // is panned or zoomed, rather than sitting at the corners of the
+          // canvas. The wrapper is inset-0 inside this box, so the transform's
+          // local coordinates are this box's coordinates.
+          const left =
+            transform.tx + (corner === "ne" || corner === "se" ? imgW * transform.scale : 0);
+          const top =
+            transform.ty + (corner === "sw" || corner === "se" ? imgH * transform.scale : 0);
+          return (
+            <span
+              key={corner}
+              data-plan-resize={corner}
+              onPointerDown={(e) => cornerPointerDown(corner, e)}
+              onPointerMove={cornerPointerMove}
+              onPointerUp={cornerPointerUp}
+              onPointerCancel={cornerPointerUp}
+              className={
+                "absolute z-30 h-4 w-4 rounded-sm border border-slate-600 bg-white shadow touch-none " +
+                (corner === "nw" || corner === "se"
+                  ? "cursor-nwse-resize"
+                  : "cursor-nesw-resize")
+              }
+              // Tucked just inside the plan's corner rather than centred on
+              // it: a grip straddling the corner has half its area outside the
+              // drawing, where the slide's chrome overlays sit on top, and the
+              // bottom pair then could not be grabbed at all.
+              style={{
+                left,
+                top,
+                transform: `translate(${corner === "ne" || corner === "se" ? "-100%" : "0"}, ${
+                  corner === "sw" || corner === "se" ? "-100%" : "0"
+                })`,
+              }}
+            />
+          );
+        })}
     </div>
   );
 }

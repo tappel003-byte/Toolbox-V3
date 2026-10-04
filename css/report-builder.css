@@ -217,7 +217,11 @@ body.report-builder-open .canvas {
   border: 0.19cqh solid #1a1a1a;
   box-sizing: border-box;
   pointer-events: none;
-  z-index: 0;
+  /* Over the page content, not under it. At 0 it sat beneath the Floor Survey
+     drawing, and once that drawing went full bleed it painted straight over
+     the border -- white canvas on top of a black line, so the page border
+     vanished on exactly that slide. */
+  z-index: 4;
 }
 
 .rb-sheet__margin {
