@@ -1368,7 +1368,55 @@
     return notes;
   }
 
-  function penLogPinsForPage(page, noteMap) {
+  /**
+   * Where this report draws each pin, relative to where Distress recorded it.
+   *
+   * Several photographs taken at one spot share a pin location, so they arrive
+   * as separate pins at identical coordinates and land exactly on top of each
+   * other -- only the last number is readable. These offsets pull them apart.
+   *
+   * Report-owned and never written back: the pin's recorded location is
+   * Distress's, and this is only how this figure draws it. Stored like
+   * page.reportText.notes -- same container, same keying by pin id -- and in
+   * PERCENT OF THE PLAN RECT, the same unit the pin's own x/y already use, so
+   * it survives preview scale, the print deck and 17 x 11 in paper alike.
+   */
+  /** 2dp is 0.0017 in on a 17 in sheet -- below print resolution, and it keeps
+   *  the offsets out of the undo snapshots and the autosave as long floats. */
+  function round2(n) {
+    return Math.round(n * 100) / 100;
+  }
+
+  function penLogOffsetMap(page) {
+    var out = {};
+    var stored = page && page.reportText && page.reportText.pinOffsets;
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return out;
+    Object.keys(stored).forEach(function (key) {
+      var o = stored[key];
+      if (!o || typeof o !== 'object') return;
+      var dx = typeof o.dx === 'number' && isFinite(o.dx) ? o.dx : 0;
+      var dy = typeof o.dy === 'number' && isFinite(o.dy) ? o.dy : 0;
+      if (dx || dy) out[key] = { dx: dx, dy: dy };
+    });
+    return out;
+  }
+
+  function applyPenLogOffset(page, pinId, dx, dy) {
+    if (!page || !pinId) return;
+    page.reportText = page.reportText || {};
+    var map = page.reportText.pinOffsets;
+    if (!map || typeof map !== 'object' || Array.isArray(map)) {
+      map = {};
+      page.reportText.pinOffsets = map;
+    }
+    // A pin dragged back to where Distress put it carries no offset, so the
+    // record holds only real moves -- the same way applyPenLogNote drops a note
+    // that matches its source text.
+    if (!dx && !dy) delete map[pinId];
+    else map[pinId] = { dx: dx, dy: dy };
+  }
+
+  function penLogPinsForPage(page, noteMap, offsetMap) {
     var api = window.ToolboxPenLog;
     var evidence = page && page.evidence;
     return ((evidence && evidence.pins) || []).map(function (pin) {
@@ -1381,6 +1429,8 @@
         sourceNote: api.sourceNote(pin),
         x: pin.position ? pin.position.x : null,
         y: pin.position ? pin.position.y : null,
+        dx: (offsetMap && offsetMap[pin.id] && offsetMap[pin.id].dx) || 0,
+        dy: (offsetMap && offsetMap[pin.id] && offsetMap[pin.id].dy) || 0,
         exterior: !!pin.isExterior,
         photos: pin.photos || [],
       };
@@ -1407,7 +1457,7 @@
       if (pages[n].id === page.id) index = n;
     }
     var notes = penLogNoteMap(page, penLogUi.noteMap);
-    var pins = penLogPinsForPage(page, notes);
+    var pins = penLogPinsForPage(page, notes, penLogOffsetMap(page));
     if (!pins.some(function (pin) { return pin.id === penLogUi.selectedPinId; })) {
       penLogUi.selectedPinId = pins[0] ? pins[0].id : '';
     }
@@ -2940,6 +2990,77 @@
       flushSave().catch(function () {});
     });
 
+    // Dragging a pin on a Picture Locations page.
+    //
+    // Modelled on the cover-box drag: capture the CHILD box's rect once at
+    // pointerdown and convert deltas against it, because a pin is positioned in
+    // percent of the plan rect rather than of the sheet.
+    //
+    // The markers all share z-index 1, so a stack of three resolves by document
+    // order and the last pin wins the pointerdown. That is the right one: drag
+    // it clear and the next is exposed underneath, so a stack peels apart one
+    // at a time without needing any stacking logic.
+    var pinDrag = null;
+
+    sheetEl.addEventListener('pointerdown', function (event) {
+      if (inkTool) return;
+      var marker = event.target.closest && event.target.closest('.rb-penlog__pin');
+      if (!marker) return;
+      var fit = marker.parentElement;
+      if (!fit || !fit.classList.contains('rb-penlog__fit')) return;
+      var rect = fit.getBoundingClientRect();
+      if (rect.width < 8 || rect.height < 8) return;
+      var page = activePage();
+      var id = marker.getAttribute('data-pin-id');
+      if (!page || !id) return;
+      event.preventDefault();
+      var offsets = penLogOffsetMap(page);
+      pinDrag = {
+        id: id,
+        marker: marker,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        rectW: rect.width,
+        rectH: rect.height,
+        baseX: Number(marker.getAttribute('data-norm-x')) * 100,
+        baseY: Number(marker.getAttribute('data-norm-y')) * 100,
+        fromDx: (offsets[id] && offsets[id].dx) || 0,
+        fromDy: (offsets[id] && offsets[id].dy) || 0,
+      };
+      // Above its neighbours for the duration, so the one being dragged cannot
+      // be overtaken by a sibling it is passing over.
+      marker.style.zIndex = '4';
+      try { marker.setPointerCapture(event.pointerId); } catch (err) { /* convenience */ }
+    });
+
+    sheetEl.addEventListener('pointermove', function (event) {
+      if (!pinDrag || pinDrag.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      pinDrag.dx = pinDrag.fromDx + ((event.clientX - pinDrag.startX) / pinDrag.rectW) * 100;
+      pinDrag.dy = pinDrag.fromDy + ((event.clientY - pinDrag.startY) / pinDrag.rectH) * 100;
+      // Live on the node only: re-rendering the page on every move would rebuild
+      // the whole sheet sixty times a second.
+      pinDrag.marker.style.left = (pinDrag.baseX + pinDrag.dx) + '%';
+      pinDrag.marker.style.top = (pinDrag.baseY + pinDrag.dy) + '%';
+    });
+
+    function endPinDrag(event) {
+      if (!pinDrag || pinDrag.pointerId !== event.pointerId) return;
+      var drag = pinDrag;
+      pinDrag = null;
+      drag.marker.style.zIndex = '';
+      if (typeof drag.dx !== 'number') return;      // a click, not a drag
+      var page = activePage();
+      if (!page) return;
+      applyPenLogOffset(page, drag.id, round2(drag.dx), round2(drag.dy));
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
+    }
+    sheetEl.addEventListener('pointerup', endPinDrag);
+    sheetEl.addEventListener('pointercancel', endPinDrag);
+
     // Selecting the floor plan. Click it and its corner grips appear; click
     // anywhere else on the sheet and they go away again -- the same way the
     // logo and the cover boxes behave, and the way PowerPoint treats a picture.
@@ -3875,6 +3996,29 @@
       return deck;
     }
 
+    /**
+     * Lay the plan out again on every printed Picture Locations page.
+     *
+     * buildPrintDeck renders its sheets while the deck is still DETACHED, so
+     * layoutPlans() sees clientWidth 0, sizes the plan rect to 0 x 0 and drops
+     * --rb-pin-size, leaving the pins at the CSS fallback -- a size relative to
+     * the page rather than to the plan. Anything positioned in percent of that
+     * rect, which is every pin and every offset, is computed against nothing.
+     *
+     * The on-screen path already does this (renderPages re-runs the pen log's
+     * layout in a rAF after rendering); the print path never did. It happened
+     * to come right only because each printed sheet builds a fresh <img> whose
+     * load handler re-runs the layout once the deck is attached -- a race, and
+     * one that never resolves at all when the plan has no image.
+     */
+    function relayoutPrintedPlans(deck) {
+      if (!deck || !window.ToolboxPenLog || typeof window.ToolboxPenLog.layoutPlans !== 'function') return;
+      var roots = deck.querySelectorAll('.rb-penlog');
+      for (var i = 0; i < roots.length; i += 1) {
+        try { window.ToolboxPenLog.layoutPlans(roots[i]); } catch (err) { /* page is still printable */ }
+      }
+    }
+
     var printDeck = null;
 
     function clearPrintDeck() {
@@ -3892,6 +4036,7 @@
           printDeck = buildPrintDeck();
           document.body.appendChild(printDeck);
           document.body.classList.add('is-printing');
+          relayoutPrintedPlans(printDeck);
           window.addEventListener('afterprint', clearPrintDeck, { once: true });
           window.requestAnimationFrame(function () {
             window.requestAnimationFrame(function () { window.print(); });

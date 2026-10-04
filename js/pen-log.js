@@ -279,8 +279,15 @@
       var marker = document.createElement('span');
       marker.className = 'rb-penlog__pin' + (pin.exterior ? ' is-exterior' : '');
       if (pin.id && pin.id === model.selectedPinId) marker.classList.add('is-selected');
-      marker.style.left = (Math.max(0, Math.min(1, pin.x)) * 100) + '%';
-      marker.style.top = (Math.max(0, Math.min(1, pin.y)) * 100) + '%';
+      // Distress's coordinate, plus this report's own offset. Several
+      // photographs at one spot arrive as separate pins on identical
+      // coordinates and would otherwise sit exactly on top of each other with
+      // only the last number readable; the offset is how they get pulled
+      // apart. It is percent of the plan rect, like pin.x/pin.y, and is not
+      // clamped to 0..1 -- a pin may be dragged off the plan and onto the
+      // white of the page.
+      marker.style.left = (Math.max(0, Math.min(1, pin.x)) * 100 + (pin.dx || 0)) + '%';
+      marker.style.top = (Math.max(0, Math.min(1, pin.y)) * 100 + (pin.dy || 0)) + '%';
       marker.textContent = String(pin.number);
       if (pin.id) marker.setAttribute('data-pin-id', pin.id);
       marker.setAttribute('data-norm-x', String(pin.x));

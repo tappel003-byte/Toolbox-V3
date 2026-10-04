@@ -1636,6 +1636,18 @@ body.report-builder-open .canvas {
   transform: translate(-50%, -50%);
 }
 
+/* Draggable: several photographs at one spot arrive as separate pins on
+   identical coordinates, and this is how they get pulled apart on the page. */
+.rb-penlog__pin {
+  cursor: grab;
+  touch-action: none;
+}
+.rb-penlog__pin:active { cursor: grabbing; }
+
+@media print {
+  .rb-penlog__pin { cursor: default; }
+}
+
 .rb-penlog__pin.is-exterior {
   background: #6b7280;
 }
@@ -2154,9 +2166,28 @@ body.report-builder-open .canvas {
  * clamped size stops growing and would print smaller than it previews.
  * ------------------------------------------------------------------ */
 
-.rb-print { display: none; }
+/* Laid out but off-screen, rather than display:none.
+   The deck is built and measured by JS before printing -- a Picture Locations
+   page sizes its plan box from the frame's clientWidth -- and display:none
+   makes every measurement zero, so the plan collapsed to 0 x 0 and its pins
+   with it. Nothing in the deck can be measured while it does not participate
+   in layout, and no amount of re-running the layout changes that.
+   Pushed far off-screen instead: invisible, inert, and measurable. */
+.rb-print {
+  position: fixed;
+  left: -20000px;
+  top: 0;
+  width: 17in;
+  pointer-events: none;
+}
 
 @media print {
+  .rb-print {
+    position: static;
+    left: auto;
+    width: auto;
+  }
+
   @page {
     size: 17in 11in;
     margin: 0;
