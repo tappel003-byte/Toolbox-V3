@@ -1600,21 +1600,37 @@ body.report-builder-open .canvas {
   text-align: center;
 }
 
+/* Pin size comes from the PLAN, published by pen-log.js as --rb-pin-size, so a
+   pin on a report page is the size Distress Survey's own pin-log PDF draws it:
+   diameter 1.75% of the plan's long side. The literal cqh values are the
+   fallback for the instant before the first layout pass, and the px lines
+   before them are the fallback for a browser without container queries.
+   The red is Distress's --accent; this was #9b2b21, a different red, which
+   showed the moment a Picture Locations page sat near anything carrying the
+   field app's ink. */
 .rb-penlog__pin {
   position: absolute;
   z-index: 1;
   display: grid;
   place-items: center;
+  /* Distress strokes its pin with a white ring, lineWidth R x 0.18 centred on
+     the circle, so the coloured disc is 0.91 of the nominal diameter and the
+     ring reaches R x 0.09 beyond it -- 0.045 of the DIAMETER, not 0.09 of it. Splitting it the same way here makes the two
+     identical rather than merely the same nominal size -- a bare disc and a
+     ringed one read differently against a busy plan even at matching numbers.
+     --rb-pin-size is the NOMINAL diameter, as in Distress. */
   min-width: 16px;
-  min-width: 2.15cqh;
+  min-width: calc(var(--rb-pin-size, 2.15cqh) * 0.91);
   height: 16px;
-  height: 2.15cqh;
+  height: calc(var(--rb-pin-size, 2.15cqh) * 0.91);
   padding: 0 0.25cqh;
   border-radius: 999px;
-  background: #9b2b21;
+  background: #c14a2b;
+  box-shadow: 0 0 0 calc(var(--rb-pin-size, 2.15cqh) * 0.045) #fff;
   color: #fff;
   font-size: 10px;
-  font-size: 1.15cqh;
+  /* Distress sets the label at R x 1.05, i.e. 0.525 of the nominal diameter. */
+  font-size: calc(var(--rb-pin-size, 2.15cqh) * 0.525);
   font-weight: 700;
   line-height: 1;
   transform: translate(-50%, -50%);
@@ -1625,7 +1641,10 @@ body.report-builder-open .canvas {
 }
 
 .rb-penlog__pin.is-selected {
-  box-shadow: 0 0 0 1px #fff, 0 0 0 2px #1a1a1a;
+  /* Keep the white ring; the dark outline sits outside it. */
+  box-shadow:
+    0 0 0 calc(var(--rb-pin-size, 2.15cqh) * 0.045) #fff,
+    0 0 0 calc(var(--rb-pin-size, 2.15cqh) * 0.045 + 1.5px) #1a1a1a;
 }
 
 .rb-penlog__schedule {

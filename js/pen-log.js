@@ -150,6 +150,42 @@
     fit.style.top = rect.y + 'px';
     fit.style.width = Math.max(0, rect.width) + 'px';
     fit.style.height = Math.max(0, rect.height) + 'px';
+    publishPinSize(root, rect);
+  }
+
+  /**
+   * Size the pin markers from the PLAN, not from the page.
+   *
+   * Distress Survey draws a pin at radius 0.00875 of the plan's long side, so
+   * its diameter is 1.75% of that side, and the pin-log PDF it exports is the
+   * size the investigator has approved. Report Builder does not use that
+   * exported picture -- it redraws the pins itself from the clean plan and the
+   * normalized coordinates -- and it was sizing them as a fraction of the
+   * SHEET. Anchored to the page, a pin keeps its physical size while the plan
+   * shrinks under it, so it crowds the drawing and matches the PDF at no plan
+   * size at all.
+   *
+   * Published in cqh rather than px because the sheet is drawn at several
+   * scales -- preview, the print deck, 17 x 11 in paper -- and a px value
+   * computed at one is wrong at the next. The plan's fraction OF THE SHEET does
+   * not change when the sheet does, so the ratio survives every scale.
+   */
+  var DISTRESS_PIN_DIAMETER = 0.0175;
+
+  function publishPinSize(root, rect) {
+    var fit = root.querySelector('.rb-penlog__fit');
+    if (!fit) return;
+    var sheet = root.closest ? root.closest('.rb-sheet') : null;
+    var sheetH = sheet ? sheet.clientHeight : 0;
+    var longSide = Math.max(rect.width, rect.height);
+    if (!(sheetH > 0) || !(longSide > 0)) {
+      // Before the first real layout there is nothing to compute from; the CSS
+      // fallback holds until there is.
+      fit.style.removeProperty('--rb-pin-size');
+      return;
+    }
+    var cqh = (longSide * DISTRESS_PIN_DIAMETER / sheetH) * 100;
+    fit.style.setProperty('--rb-pin-size', cqh.toFixed(3) + 'cqh');
   }
 
   function cell(className, pinId) {
