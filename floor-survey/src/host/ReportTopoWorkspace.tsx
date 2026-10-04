@@ -19,14 +19,20 @@
  *    On a slide they belong to the report, so they are passed in and reported
  *    out, and Report Builder keeps them.
  *
- *  - no canvas chrome. The colour scale, the H/L/delta pill and the High and
- *    Low markers are placed boxes on the page, moved and sized there, so the
- *    drawing carries none of them.
+ *  - the pill on a one-boundary level. Everything else about the chrome is
+ *    Floor Survey's: the colour scale, the H/L/delta pill and the red and blue
+ *    High and Low markers are drawn by TopoTab, dragged on the canvas the way
+ *    they are in the field, and sized from the same rail controls. They were
+ *    briefly rebuilt as placed boxes on the page; that was a reimplementation
+ *    of code that already existed, and it is gone. The one thing the field
+ *    app does differently is a lone surface, which it hands to the floating
+ *    StatsChip -- that pill is positioned against the browser window and has
+ *    nowhere to live on a page, so a slide asks for the canvas pill instead.
  *
  * Geometry still belongs to Floor Survey. Nothing here changes readings.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { listFloors, listPoints, setHostCustomerFileId } from "@/lib/db";
+import { listFloors, listPoints, saveFloor, setHostCustomerFileId } from "@/lib/db";
 import type { Floor, RenderSettings, SurveyPoint } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { withCorrectedValues } from "@/lib/transitions";
@@ -170,6 +176,19 @@ export function ReportTopoWorkspace({
     [onCameraChange],
   );
 
+  // Where the colour scale, the pill and the High/Low markers sit is kept on
+  // the level itself -- area.legendDx/legendDy, area.pillDx/pillDy and the
+  // floor's highPinDx/lowPinDx. That is Floor Survey's own storage, and the
+  // drag handlers in TopoTab report a moved piece by handing back a changed
+  // level. This was stubbed out, so a drag on a slide rendered while the
+  // pointer was down and snapped back on release: drawn, but not movable.
+  // Saving it puts the piece where it was dropped, on this slide and in the
+  // field app, because there is one placement per boundary, not two.
+  const handleFloor = useCallback((next: Floor) => {
+    setFloor(next);
+    void saveFloor(next);
+  }, []);
+
   if (loading) {
     return <div className="rtw-note">Loading the Floor Survey level…</div>;
   }
@@ -183,9 +202,10 @@ export function ReportTopoWorkspace({
         floor={floor}
         points={corrected}
         // Readings are Floor Survey's. A slide shows them; it does not edit
-        // them, so these are deliberately inert.
+        // them, so this is deliberately inert. Where the chrome sits is not a
+        // reading, so that one is live.
         onPointsChange={() => {}}
-        onFloorChange={() => {}}
+        onFloorChange={handleFloor}
         settings={settings}
         onSettingsChange={handleSettings}
         pointSize={pointSize}
@@ -194,7 +214,7 @@ export function ReportTopoWorkspace({
         onSelectedAreaIdChange={() => {}}
         onCamera={handleCamera}
         cameraRequest={cameraRequest}
-        hideCanvasChrome
+        statsPillForSingleBoundary
         chromeless
         controlsOnly={controlsOnly}
         resizeCorners={!controlsOnly}

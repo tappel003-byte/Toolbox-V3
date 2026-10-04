@@ -1893,6 +1893,31 @@
       }, AUTOSAVE_DELAY_MS);
     }
 
+    /**
+     * Take back the components Report Builder reads but does not own, so this
+     * save carries whatever another workspace wrote while the report was open.
+     *
+     * Floor Survey is the one that moves today: the colour scale, the H/L/delta
+     * pill and the High and Low markers are placed on the level, and a slide
+     * now lets the investigator drag them. Customer Information is here for the
+     * same reason -- the cover reads it, nothing in the report writes it.
+     *
+     * A failed read is not a failed save. The report's own work still goes
+     * down; the borrowed components just stay as they were.
+     */
+    function refreshBorrowedComponents() {
+      if (!window.ToolboxDB || typeof window.ToolboxDB.getCustomerFile !== 'function') {
+        return Promise.resolve();
+      }
+      return window.ToolboxDB.getCustomerFile(customerFileId).then(function (stored) {
+        if (!stored || !workingRecord) return;
+        if (stored.floorSurvey) workingRecord.floorSurvey = stored.floorSurvey;
+        if (stored.planSetup) workingRecord.planSetup = stored.planSetup;
+      }).catch(function () {
+        /* offline or unreadable — keep what is in hand rather than losing the report */
+      });
+    }
+
     function flushSave() {
       if (saveTimer) {
         clearTimeout(saveTimer);
@@ -1918,12 +1943,24 @@
       delete workingRecord.report;
       setSaveStatus('Saving…');
       if (draftEl) draftEl.textContent = 'Saving';
-      return window.ToolboxDB.saveCustomerFile(workingRecord).then(function () {
-        dirty = false;
-        lastSavedAt = doc.updatedAt;
-        setSaveStatus(formatSavedAt(lastSavedAt));
-        if (draftEl) draftEl.textContent = 'Saved';
-      }).catch(function (err) {
+      // Report Builder edits the report component and reads the rest. It held
+      // the whole Customer File in memory and wrote the whole thing back, so a
+      // component another workspace changed while this one was open -- the
+      // Floor Survey level, when the investigator moves a colour scale, a pill
+      // or a High/Low marker on a slide -- was overwritten by this stale copy
+      // on the next autosave. The move landed in IndexedDB and then quietly
+      // disappeared on the way back to the slide. Floor Survey owns that
+      // component, so take its stored version rather than this one.
+      return refreshBorrowedComponents()
+        .then(function () {
+          return window.ToolboxDB.saveCustomerFile(workingRecord);
+        })
+        .then(function () {
+          dirty = false;
+          lastSavedAt = doc.updatedAt;
+          setSaveStatus(formatSavedAt(lastSavedAt));
+          if (draftEl) draftEl.textContent = 'Saved';
+        }).catch(function (err) {
         console.error('Report Builder save failed:', err);
         if (err && err.code === 'checkout') {
           dirty = false;

@@ -136,6 +136,17 @@ interface Props {
    *  placed boxes, so the drawing carries none of them. */
   hideCanvasChrome?: boolean;
   /**
+   * Draw the H / L / delta pill on the canvas even when the level has a single
+   * boundary.
+   *
+   * In the field a lone surface uses the floating StatsChip instead, which is
+   * positioned against the browser window. A report slide is a page, not a
+   * window, so that pill has nowhere to live -- and a one-boundary level would
+   * be the only page in the book with no pill on it. With this on, one boundary
+   * is drawn exactly the way five are.
+   */
+  statsPillForSingleBoundary?: boolean;
+  /**
    * Nothing but the controls: the Contours, Palette and Labels panels stacked,
    * with no canvas. This is what Report Builder's rail renders, so the rail
    * shows the same controls the field app does rather than a rebuilt set that
@@ -247,6 +258,25 @@ function pillMetrics(h: number, label: string | null, hi: number, lo: number, de
 }
 
 /** Pill center in image coords for an area. */
+/**
+ * Does the canvas carry the H / L / delta pill?
+ *
+ * The field app draws it per boundary when a level has more than one, and
+ * leaves a lone surface to the floating StatsChip. A report slide has no
+ * window to float against, so it asks for the pill on one boundary too.
+ *
+ * This is one function because the drawing and the hit test must agree: when
+ * they disagree, a pill is drawn where it cannot be grabbed.
+ */
+function statsPillOnCanvas(
+  settings: RenderSettings,
+  areaCount: number,
+  forSingleBoundary: boolean,
+): boolean {
+  if (settings.showStatsPill === false) return false;
+  return areaCount > 1 || (forSingleBoundary && areaCount === 1);
+}
+
 function pillCenter(area: TopoArea, live?: { dx: number; dy: number } | null) {
   const c = areaCentroid(area);
   const dx = live ? live.dx : (area.pillDx ?? 0);
@@ -274,6 +304,7 @@ export function TopoTab({
   onCamera,
   cameraRequest,
   hideCanvasChrome = false,
+  statsPillForSingleBoundary = false,
   chromeless = false,
   controlsOnly = false,
   staticView = false,
@@ -471,6 +502,11 @@ export function TopoTab({
   // High / Low of the focused area (used for pin hit-testing / dragging).
   const hiLo = soloTopo ? { hi: soloTopo.hi, lo: soloTopo.lo } : null;
 
+  // Whether the canvas carries the H / L / delta pill. One definition, used by
+  // both the drawing and the hit test: when those two disagreed about where a
+  // piece of chrome was, it drew in one place and could be grabbed in another.
+  const canvasStatsPill = statsPillOnCanvas(resolved, areaTopos.length, statsPillForSingleBoundary);
+
 
 
 
@@ -480,8 +516,7 @@ export function TopoTab({
     | { kind: "pill"; areaId: string; dx: number; dy: number; tapPoint: SurveyPoint | null };
 
   function hitDraggable(x: number, y: number): Hit | null {
-    // Multi-area canvas pills only — a single surface uses the floating StatsChip.
-    if (resolved.showStatsPill !== false && areaTopos.length > 1) {
+    if (canvasStatsPill) {
       const h = pillHeightImg(statsChipSize, viewScale);
       const showLabel = true;
       const dec = resolved.decimalPlaces;
@@ -980,6 +1015,7 @@ export function TopoTab({
               livePill: activePill,
               liveLegend: activeLegend,
               pillSize: statsChipSize,
+              pillForSingleBoundary: statsPillForSingleBoundary,
               pointSize,
               pointColor,
               viewScale,
@@ -1716,6 +1752,8 @@ function renderTopoTop(
     liveLegend?: { id: string; dx: number; dy: number } | null;
     /** Base (1x zoom) stats-pill height in screen px. */
     pillSize?: number;
+    /** Draw the pill on a one-boundary level too (a report slide does). */
+    pillForSingleBoundary?: boolean;
     pointSize?: number;
     pointColor?: string;
     viewScale?: number;
@@ -1888,10 +1926,10 @@ function renderTopoTop(
     }
   }
 
-  // Multi-area only: one named canvas pill per boundary. A single surface
-  // uses the floating StatsChip so H / L / Δ is not drawn twice.
-  // Report Builder figure pages turn this off and use fixed chrome slots.
-  if (resolved.showStatsPill !== false && areaTopos.length > 1) {
+  // One named pill per boundary. In the field a lone surface uses the floating
+  // StatsChip instead, so H / L / Δ is not drawn twice; a report slide asks for
+  // it here so one boundary looks the same as five.
+  if (statsPillOnCanvas(resolved, areaTopos.length, !!overlay?.pillForSingleBoundary)) {
     const livePill = overlay?.livePill ?? null;
     const base = overlay?.pillSize ?? DEFAULT_STATS_PILL_SIZE;
     const h = pillHeightImg(base, viewScale);
