@@ -742,6 +742,20 @@ body.report-builder-open .canvas {
   overflow: hidden;
 }
 
+/* The floor plan's corner resize grips.
+ *
+ * Hidden until the plan is selected, the way every other handle on a report
+ * sheet behaves -- the logo's resize corner, the cover boxes' move handle, an
+ * annotation's grip and delete pip. Left always-on they read as part of the
+ * drawing rather than as a control, and they were printing, because they are
+ * the one handle in Report Builder that never got a print rule. */
+[data-plan-resize] { display: none; }
+.rb-sheet--plan-selected [data-plan-resize] { display: block; }
+
+@media print {
+  [data-plan-resize] { display: none !important; }
+}
+
 .rb-topo-live {
   position: absolute;
   inset: 0;

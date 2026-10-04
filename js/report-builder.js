@@ -2144,7 +2144,11 @@
       // thumbnail, jump link, add, duplicate, undo, anything. One guard here
       // instead of six, and it cannot be forgotten by a seventh. A sheet left
       // armed is a sheet nobody can click, which reads as a dead application.
-      if (lastRenderedId !== null && lastRenderedId !== activeId) disarmInk();
+      if (lastRenderedId !== null && lastRenderedId !== activeId) {
+        disarmInk();
+        // A different sheet means a different plan, so nothing is selected.
+        sheetEl.classList.remove('rb-sheet--plan-selected');
+      }
       lastRenderedId = activeId;
       var current = pages[index];
       listEl.textContent = '';
@@ -2935,6 +2939,31 @@
       renderPages();
       flushSave().catch(function () {});
     });
+
+    // Selecting the floor plan. Click it and its corner grips appear; click
+    // anywhere else on the sheet and they go away again -- the same way the
+    // logo and the cover boxes behave, and the way PowerPoint treats a picture.
+    // Left permanently on they read as part of the drawing rather than as a
+    // control, which is how they ended up in a PDF.
+    //
+    // This only observes: it never calls preventDefault and never stops
+    // propagation, so the canvas's own pan, wheel zoom and grip drags are
+    // untouched. While a drawing tool is armed the shield above swallows the
+    // event first, so the plan is correctly not selectable then.
+    document.addEventListener('pointerdown', function (event) {
+      if (inkTool) return;
+      if (!sheetEl || !sheetEl.isConnected) return;
+      var target = event.target;
+      if (!target || !target.closest) return;
+      var onPlan = !!target.closest('[data-rb-topo-live]') ||
+        !!target.closest('[data-plan-resize]');
+      // Listening on the document rather than the sheet, because an imported
+      // floor slide draws full bleed: the plan IS the whole sheet, so there is
+      // nowhere on it to click off. Clicking the rail, the toolbar or the
+      // margin around the page has to deselect, the way clicking away from a
+      // picture does in PowerPoint.
+      sheetEl.classList.toggle('rb-sheet--plan-selected', onPlan);
+    }, true);
 
     // Drawing listens on the sheet too, but only acts while a tool is armed,
     // and the armed layer above has already stopped the event reaching anything
