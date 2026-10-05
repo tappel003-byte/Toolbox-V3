@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PlanCanvas, type PlanCamera } from "../PlanCanvas";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -441,6 +441,17 @@ export function TopoTab({
   }, [floor.id]);
   // Current canvas zoom — labels are drawn at a screen-constant size.
   const [viewScale, setViewScale] = useState(1);
+  // The plan's zoom against fit. Reported by the canvas with every camera
+  // change; the legend uses it to hold one size on a page.
+  const [planZoom, setPlanZoom] = useState(1);
+  const handleCamera = useCallback(
+    (camera: PlanCamera) => {
+      const z = camera.zoom > 0 ? camera.zoom : 1;
+      setPlanZoom((prev) => (Math.abs(prev - z) > 1e-4 ? z : prev));
+      onCamera?.(camera);
+    },
+    [onCamera],
+  );
   // On a report slide the colour scale, the H/L/delta pill and the High and Low
   // markers are placed boxes that are moved, sized and locked on the page, so
   // the drawing itself carries none of them. Anything drawn into the canvas is
@@ -936,7 +947,7 @@ export function TopoTab({
           planHeight={floor.planHeight}
           hidePlan={!resolved.showPlan}
           planOnTop
-          onCamera={onCamera}
+          onCamera={handleCamera}
           cameraRequest={cameraRequest || undefined}
           staticView={staticView}
           resizeCorners={resizeCorners}
@@ -949,7 +960,10 @@ export function TopoTab({
             if (resolved.showLegend && areaTopos.length > 0 && resolved.mode !== "points-only") {
               for (let i = areaTopos.length - 1; i >= 0; i--) {
                 const at = areaTopos[i];
-                const box = areaLegendBox(at.area, resolved, floor);
+                const box = areaLegendBox(at.area, resolved, floor, null, {
+                  presentation,
+                  zoom: planZoom,
+                });
                 const inBox =
                   x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h;
                 if (inBox) {
@@ -1085,6 +1099,7 @@ export function TopoTab({
               pillSize: statsChipSize,
               pillForSingleBoundary: statsPillForSingleBoundary,
               presentation,
+              planZoom,
               pointSize,
               pointColor,
               viewScale,
@@ -1823,6 +1838,9 @@ function renderTopoTop(
     pillSize?: number;
     /** A picture on a page: size chrome against the plan, not the screen. */
     presentation?: boolean;
+    /** The plan's zoom against its fit-to-frame size. Keeps the legend's
+     *  printed size steady while the plan itself is resized. */
+    planZoom?: number;
     /** Draw the pill on a one-boundary level too (a report slide does). */
     pillForSingleBoundary?: boolean;
     pointSize?: number;
@@ -1978,7 +1996,10 @@ function renderTopoTop(
           at.grid,
           areaTopos.length === 1 ? at.contours : null,
           !!live,
-          areaLegendBox(at.area, resolved, floor, live),
+          areaLegendBox(at.area, resolved, floor, live, {
+            presentation: !!overlay?.presentation,
+            zoom: overlay?.planZoom,
+          }),
         );
       }
     }
@@ -2359,11 +2380,31 @@ function areaLegendBox(
   settings: RenderSettings,
   floor: Floor,
   live?: { dx: number; dy: number } | null,
+  fit?: { presentation?: boolean; zoom?: number } | null,
 ) {
-  const s = planProportionalSize(
+  let s = planProportionalSize(
     settings.legendScale ?? 1,
     planLongSide(floor.planWidth, floor.planHeight),
   );
+  // On a page, hold the legend's printed size while the plan is resized.
+  //
+  // The legend is a key, not part of the drawing: it should read the same on
+  // every slide whatever size the investigator has dragged the plan to. Drawn
+  // in image coordinates it did the opposite -- the corner grips scaled it
+  // along with the walls and the contours.
+  //
+  // Dividing by the plan's zoom cancels that. Written out, the legend's height
+  // on the sheet is LEGEND_BASE_H x legendScale x (planLong / 1100) x scale,
+  // and scale = zoom x fitScale, with fitScale = frameLong / planLong; the
+  // plan's size cancels and what is left is the FRAME's long side, which is
+  // the sheet. So the legend is a fixed fraction of the page at any zoom, on
+  // any plan, on screen and on paper. At the default fit (zoom 1) this is
+  // exactly the size it has always been, so nothing moves until the plan is
+  // resized -- which is the case being fixed.
+  if (fit?.presentation) {
+    const zoom = fit.zoom && fit.zoom > 0 ? fit.zoom : 1;
+    s /= zoom;
+  }
   const anchor = areaLegendAnchor(area);
   const dx = live ? live.dx : (area.legendDx ?? 0);
   const dy = live ? live.dy : (area.legendDy ?? 0);
