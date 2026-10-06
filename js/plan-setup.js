@@ -505,6 +505,12 @@
     const buildingTypeSelect = panel.querySelector('#building-type-select');
     const panelFeedback = panel.querySelector('#plan-panel-feedback');
 
+    // How long leaving this step will wait for plan processing and room
+    // recognition before giving up on them. Long enough that ordinary work
+    // finishes first, short enough that a stall is an inconvenience rather
+    // than a trap.
+    const IDLE_WAIT_CAP_MS = 8000;
+
     let hydratedPlanDataUrl = null;
     let savingPlan = false;
     let ocrBusy = false;
@@ -903,9 +909,41 @@
         if (canvas) canvas.frontDoorFacing = frontDoorSelect.value;
         record().planSetup.buildingType = buildingTypeSelect.value || record().planSetup.buildingType;
       },
+      // Leaving this step waits for plan processing and room recognition to
+      // finish, so a plan is never half-written when the investigator walks
+      // away. That wait is now bounded.
+      //
+      // Both of those report when they are done; neither reports when it
+      // never starts. A recognition worker that cannot load, or an image the
+      // decoder will not finish, leaves the busy flag set forever -- and Done
+      // and the Back button both wait on it, so the step could only be left
+      // by force-quitting the app. The buttons were there and did nothing,
+      // which is worse than not having them.
+      //
+      // So: wait, but not indefinitely. Past the cap the flags are cleared,
+      // the disabled controls come back, and the investigator gets out. Work
+      // still in flight finishes if it can; what it cannot do is hold the
+      // door shut. The save that follows is unaffected -- anything already
+      // written is already in the record.
       whenIdle: function () {
         if (!ocrBusy && !savingPlan) return Promise.resolve();
-        return new Promise(function (resolve) { ocrWaiters.push(resolve); });
+        return new Promise(function (resolve) {
+          let settled = false;
+          const release = function () {
+            if (settled) return;
+            settled = true;
+            resolve();
+          };
+          ocrWaiters.push(release);
+          setTimeout(function () {
+            if (settled) return;
+            ocrBusy = false;
+            savingPlan = false;
+            dropBtn.disabled = false;
+            changeBtn.disabled = false;
+            release();
+          }, IDLE_WAIT_CAP_MS);
+        });
       },
       isBusy: function () { return !!ocrBusy || !!savingPlan; },
     };

@@ -224,6 +224,12 @@ These notes preserve active product possibilities so they are not lost. They are
 - **Controls that change the document speak PowerPoint; controls that put ink on a drawing speak Distress.** That is the dividing line for this toolbar and for the ones after it.
 - **Callout** (text with a leader line) and **highlight** (translucent shading over an area) are wanted and are a later pass. **Front/back ordering** was pinned, then accepted as a likely consequence of highlight — a highlight over a circle washes it out, under it does not.
 
+## Customer File setup
+
+- **Leaving the plans step can never be blocked (DECIDED Tim, Oct 6, 2026).** Tim, from the field: "There was no way for me to get out of that screen... I have to close it all the way out." Done and Back both waited for plan processing and room recognition to report finished. Neither reports when it never starts, so a recognition worker that could not load left both buttons visible and doing nothing, and the only way out was force-quitting the app. The wait is now capped: past the cap the busy state is cleared and the investigator leaves. In-flight work finishes if it can, and anything already written is already saved. A visible button that does nothing is worse than no button.
+
+---
+
 ## Distress Survey working surface
 
 - **The stage behind the plan is white (DECIDED Tim, Oct 6, 2026).** Tim: "The background in Distress Survey is black, I would like to change that to white like Floor Survey." It was a dark grey, inherited from the standalone app; Floor Survey's working surface is white, and the two should not read as different products. A named change to the integrated capture app under the Oct 4 rule. Nothing else about Distress capture changes.
