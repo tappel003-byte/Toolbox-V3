@@ -224,6 +224,12 @@ These notes preserve active product possibilities so they are not lost. They are
 - **Controls that change the document speak PowerPoint; controls that put ink on a drawing speak Distress.** That is the dividing line for this toolbar and for the ones after it.
 - **Callout** (text with a leader line) and **highlight** (translucent shading over an area) are wanted and are a later pass. **Front/back ordering** was pinned, then accepted as a likely consequence of highlight — a highlight over a circle washes it out, under it does not.
 
+## Distress Survey working surface
+
+- **The stage behind the plan is white (DECIDED Tim, Oct 6, 2026).** Tim: "The background in Distress Survey is black, I would like to change that to white like Floor Survey." It was a dark grey, inherited from the standalone app; Floor Survey's working surface is white, and the two should not read as different products. A named change to the integrated capture app under the Oct 4 rule. Nothing else about Distress capture changes.
+
+---
+
 ## Sizing of anything drawn on a plan
 
 - **Two modes, one module (DECIDED Tim, Oct 4, 2026).** Toolbox had four different rules for sizing things drawn on a plan: screen-anchored (topo and field point labels and dots), raw image-space with no conversion at all (the High/Low markers), a browser-window tier (the stats pill base, 24/32/40 by `window.innerWidth`), and plan-proportional (all of Distress Survey). Tim: "they are tiny... for some reason we still have some formatting that doesn't look right between the different screen sizes. I would like to fix that issue once and for all."
