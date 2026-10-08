@@ -102,32 +102,39 @@
 
     root.appendChild(northArrow(o.northRotation));
 
+    // Everything above the foot goes in a block that is allowed to clip.
+    // Without it the rail overflowed from the bottom, and what fell off
+    // the end was the mark -- the one thing that must always be on the
+    // sheet. A page with more levels than the rail can hold is a page to
+    // split, but it should not lose its mark while Tim decides that.
+    var body = el('div', 'rb-rail__body');
+
     var id = el('div', 'rb-rail__id');
     if (o.residence) id.appendChild(el('p', 'rb-rail__name', o.residence));
     if (o.address) id.appendChild(el('p', 'rb-rail__addr', o.address));
     if (o.addressCity) id.appendChild(el('p', 'rb-rail__addr', o.addressCity));
-    if (id.childNodes.length) root.appendChild(id);
+    if (id.childNodes.length) body.appendChild(id);
 
     if (o.title) {
-      section(root, 'Drawing title');
-      root.appendChild(el('p', 'rb-rail__title', o.title));
+      section(body, 'Drawing title');
+      body.appendChild(el('p', 'rb-rail__title', o.title));
     }
 
     if (o.surveyDate || o.correctedNote) {
-      section(root, 'Survey date');
-      if (o.surveyDate) root.appendChild(el('p', 'rb-rail__date', o.surveyDate));
-      if (o.correctedNote) root.appendChild(el('p', 'rb-rail__note', o.correctedNote));
+      section(body, 'Survey date');
+      if (o.surveyDate) body.appendChild(el('p', 'rb-rail__date', o.surveyDate));
+      if (o.correctedNote) body.appendChild(el('p', 'rb-rail__note', o.correctedNote));
     }
 
     var stats = Array.isArray(o.stats) ? o.stats.filter(Boolean) : [];
     if (stats.length) {
-      section(root, 'Relative readings');
+      section(body, 'Relative readings');
       stats.forEach(function (item) {
-        if (item.name) root.appendChild(el('p', 'rb-rail__level', item.name));
+        if (item.name) body.appendChild(el('p', 'rb-rail__level', item.name));
         var dec = item.decimalPlaces;
-        readingRow(root, 'High', item.hi, dec);
-        readingRow(root, 'Low', item.lo, dec);
-        readingRow(root, 'Difference', item.delta, dec);
+        readingRow(body, 'High', item.hi, dec);
+        readingRow(body, 'Low', item.lo, dec);
+        readingRow(body, 'Difference', item.delta, dec);
       });
     }
 
@@ -137,8 +144,8 @@
     // most subsequent damage, pictures 5, 6 and 10." It is his sentence, not
     // a generated one, so nothing is written here that he did not write.
     if (o.note) {
-      section(root, o.noteLabel || 'Notes');
-      root.appendChild(el('p', 'rb-rail__text', o.note));
+      section(body, o.noteLabel || 'Notes');
+      body.appendChild(el('p', 'rb-rail__text', o.note));
     }
 
     // The foot is pushed down by the sections above it, so it sits on the
@@ -146,6 +153,8 @@
     // mark here as well as in the upper left of the drawing -- Tim keeps that
     // one repetition deliberately, because the foot of the rail is where the
     // eye lands.
+    root.appendChild(body);
+
     var foot = el('div', 'rb-rail__foot');
     if (o.figureLabel) foot.appendChild(el('p', 'rb-rail__figure', o.figureLabel));
     if (o.markSrc) {

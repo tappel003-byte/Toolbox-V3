@@ -1585,29 +1585,29 @@ body.report-builder-open .canvas {
 
 .rb-rail__name {
   margin: 0;
-  font-size: 1.3cqh;
+  font-size: 1.85cqh;
   font-weight: 700;
   letter-spacing: 0.01em;
   text-transform: uppercase;
-  line-height: 1.22;
+  line-height: 1.18;
 }
 
 .rb-rail__addr {
-  margin: 0.3cqh 0 0;
-  font-size: 1.02cqh;
+  margin: 0.35cqh 0 0;
+  font-size: 1.15cqh;
   color: #3c372f;
-  line-height: 1.35;
+  line-height: 1.38;
 }
 
 .rb-rail__rule {
   height: 0.07cqh;
-  background: #c9c2b4;
-  margin: 1.25cqh 0 0.9cqh;
+  background: #b9b1a1;
+  margin: 1.5cqh 0 1.05cqh;
 }
 
 .rb-rail__label {
-  margin: 0 0 0.5cqh;
-  font-size: 0.78cqh;
+  margin: 0 0 0.55cqh;
+  font-size: 0.88cqh;
   letter-spacing: 0.13em;
   text-transform: uppercase;
   color: #6b6459;
@@ -1615,9 +1615,9 @@ body.report-builder-open .canvas {
 
 .rb-rail__title {
   margin: 0;
-  font-size: 1.55cqh;
+  font-size: 1.95cqh;
   font-weight: 400;
-  line-height: 1.28;
+  line-height: 1.24;
   /* "Floor Level Survey" and the level on their own lines, as written. The
      size is what holds that first line together in a rail a tenth of the
      sheet wide -- at 1.5cqh it broke into "Floor Level / Survey". */
@@ -1627,20 +1627,20 @@ body.report-builder-open .canvas {
 
 .rb-rail__date {
   margin: 0;
-  font-size: 1.12cqh;
+  font-size: 1.38cqh;
 }
 
 .rb-rail__note,
 .rb-rail__text {
-  margin: 0.2cqh 0 0;
-  font-size: 0.92cqh;
+  margin: 0.25cqh 0 0;
+  font-size: 1.08cqh;
   color: #6b6459;
-  line-height: 1.4;
+  line-height: 1.38;
 }
 
 .rb-rail__level {
-  margin: 0.8cqh 0 0.15cqh;
-  font-size: 1.08cqh;
+  margin: 0.95cqh 0 0.2cqh;
+  font-size: 1.25cqh;
   font-weight: 700;
 }
 
@@ -1648,9 +1648,9 @@ body.report-builder-open .canvas {
   display: flex;
   justify-content: space-between;
   gap: 0.6cqh;
-  font-size: 1cqh;
+  font-size: 1.15cqh;
   color: #6b6459;
-  margin-top: 0.14cqh;
+  margin-top: 0.18cqh;
 }
 
 .rb-rail__row b {
@@ -1659,15 +1659,22 @@ body.report-builder-open .canvas {
   font-variant-numeric: tabular-nums;
 }
 
-/* Pushed to the bottom edge however much sits above it. */
+/* The body takes what is left and clips if it has to; the foot never does. */
+.rb-rail__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .rb-rail__foot {
+  flex: 0 0 auto;
   margin-top: auto;
-  padding-top: 1.4cqh;
+  padding-top: 1.6cqh;
 }
 
 .rb-rail__figure {
-  margin: 0 0 0.9cqh;
-  font-size: 1.25cqh;
+  margin: 0 0 1.3cqh;
+  font-size: 1.5cqh;
   font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -1681,21 +1688,6 @@ body.report-builder-open .canvas {
   width: 88%;
   height: auto;
   opacity: 0.92;
-}
-
-/* Figure N, upper left of the drawing, as the template has it. Against the
-   sheet because an imported slide builds no header -- the drawing is the
-   slide. */
-.rb-figure-tag {
-  position: absolute;
-  left: 2.4cqh;
-  top: 2.1cqh;
-  margin: 0;
-  z-index: 4;
-  font-family: Georgia, "Times New Roman", Times, serif;
-  font-size: 1.7cqh;
-  color: #17130e;
-  pointer-events: none;
 }
 
 /* The drawing keeps clear of the rail. */

@@ -1791,18 +1791,6 @@
     if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
       var rail = railForPage(page);
       if (rail) sheet.appendChild(rail);
-      // Figure N in the upper left of the drawing, as the template has it,
-      // and only there -- the rail's foot carries the mark alone. It is
-      // against the sheet rather than in the page's margin because an
-      // imported slide gives the whole area to the drawing and builds no
-      // header at all.
-      var figureNo = page.meta && page.meta.figureNumber;
-      if (figureNo) {
-        var tag = document.createElement('p');
-        tag.className = 'rb-figure-tag';
-        tag.textContent = 'Figure ' + figureNo;
-        sheet.appendChild(tag);
-      }
     }
 
     if (window.ToolboxReportOverlay) {
