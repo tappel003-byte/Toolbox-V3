@@ -1570,6 +1570,10 @@ body.report-builder-open .canvas {
   font-weight: 400;
   line-height: 1.55cqh;
   text-align: left;
+  /* Georgia defaults to oldstyle figures, which set the 1 at x-height: on a
+     drawing sheet "FIGURE 1" then reads as a typo and the readings column
+     looks uneven. Lining figures throughout. */
+  font-variant-numeric: lining-nums;
 }
 
 .rb-rail__rail *,
@@ -1596,6 +1600,16 @@ body.report-builder-open .canvas {
 .rb-rail__north {
   font-size: 1.6cqh;
   line-height: 1.8cqh;
+}
+
+/* North is not always up, so the rose can be turned by dragging it. */
+.rb-rail__compass {
+  cursor: grab;
+  touch-action: none;
+}
+
+.rb-rail__compass:active {
+  cursor: grabbing;
 }
 
 /* Only this SVG rotates. The N above it stays upright. */
@@ -1705,7 +1719,7 @@ body.report-builder-open .canvas {
 
 .rb-rail__reading-value {
   text-align: right;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 
 /* Separate from the clipped body: always retains its own space. */

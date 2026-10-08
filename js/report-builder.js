@@ -1652,11 +1652,21 @@
     var meta = page.meta || {};
     var ev = page.evidence || {};
     var text = page.reportText || {};
-    var scopeTitle = meta.scopeTitle || meta.levelName || '';
+    // Live values, not what the page stored when it was first assembled.
+    // A level renamed in Floor Survey, or a date set there afterwards, never
+    // reached the stored meta -- which is why a sheet said "Boundary 1" and
+    // had no survey date while the app showed "Main Floor" and 10/07/2026.
+    var stats = page.type === 'floor' && meta.imported && Array.isArray(ev.stats)
+      ? ev.stats.filter(Boolean)
+      : [];
+    var scopeTitle = meta.scope === 'all'
+      ? (meta.scopeTitle || 'Combined')
+      : ((stats.length === 1 && stats[0].name) || meta.scopeTitle || meta.levelName || '');
     var title = page.type === 'floor'
       ? ('Floor Level Survey' + (scopeTitle ? '\n' + scopeTitle : ''))
       : (page.title || '');
-    var dateText = formatSurveyDate(meta.surveyDate || ev.surveyDate || '', true);
+    var rawDate = page._surveyDate || meta.surveyDate || ev.surveyDate || '';
+    var dateText = formatSurveyDate(rawDate, true);
     return api.render({
       northRotation: typeof meta.northRotation === 'number' ? meta.northRotation : 0,
       residence: ev.residenceTitle || ev.customerName || '',
@@ -1666,9 +1676,9 @@
       // A field with no value shows a dash rather than leaving its heading
       // standing over nothing, which is what a sheet with no survey date
       // recorded looked like.
-      surveyDate: longSurveyDate(meta.surveyDate || ev.surveyDate || '') || dateText || '\u2014',
+      surveyDate: longSurveyDate(rawDate) || dateText || '\u2014',
       correctedNote: page.type === 'floor' ? 'Corrected for flooring differences' : '',
-      stats: page.type === 'floor' && meta.imported ? ev.stats : null,
+      stats: stats,
       note: text.railNote || '',
       figureLabel: meta.figureNumber ? ('Figure ' + meta.figureNumber) : '',
       markSrc: BRAND_LOGO,
@@ -2519,6 +2529,15 @@
       var index = activeIndex();
       if (index < 0) index = 0;
       activeId = pages[index].id;
+      // The survey date lives in Floor Survey and can be set after the report
+      // was assembled, so it is read from the record on every render rather
+      // than from what the page happened to capture.
+      var liveDate = '';
+      try {
+        var fsRoot = workingRecord && workingRecord.floorSurvey;
+        if (fsRoot && typeof fsRoot.inspectionDate === 'string') liveDate = fsRoot.inspectionDate;
+      } catch (err) { liveDate = ''; }
+      pages.forEach(function (p) { p._surveyDate = liveDate; });
       // Put the pen down whenever the sheet underneath actually changes --
       // thumbnail, jump link, add, duplicate, undo, anything. One guard here
       // instead of six, and it cannot be forgotten by a seventh. A sheet left
@@ -4106,6 +4125,63 @@
       var stage = sheetEl.querySelector(selector || '[data-rb-floor-stage]');
       return stage ? stage.getBoundingClientRect() : null;
     }
+
+    // Turning north.
+    //
+    // North is not always up: a plan comes in at whatever rotation it was
+    // drawn at, and the mark has to agree with it. Dragging the rose turns
+    // it about its own centre; the N above stays upright, because that is a
+    // label on the sheet rather than part of the instrument. The angle is
+    // the page's, so each sheet can say something different.
+    var northDrag = null;
+
+    function northAngle(event) {
+      if (!northDrag) return 0;
+      var now = Math.atan2(event.clientY - northDrag.cy, event.clientX - northDrag.cx);
+      var deg = northDrag.from + ((now - northDrag.start) * 180) / Math.PI;
+      deg = Math.round(deg) % 360;
+      return deg < 0 ? deg + 360 : deg;
+    }
+
+    sheetEl.addEventListener('pointerdown', function (event) {
+      var compass = event.target.closest ? event.target.closest('.rb-rail__compass') : null;
+      if (!compass) return;
+      var page = activePage();
+      var rose = compass.querySelector('.rb-rail__rose');
+      if (!page || !rose) return;
+      var box = rose.getBoundingClientRect();
+      northDrag = {
+        page: page,
+        rail: compass.closest('.rb-rail__rail'),
+        cx: box.left + box.width / 2,
+        cy: box.top + box.height / 2,
+        start: Math.atan2(event.clientY - box.top - box.height / 2,
+          event.clientX - box.left - box.width / 2),
+        from: Number(page.meta && page.meta.northRotation) || 0,
+      };
+      try { compass.setPointerCapture(event.pointerId); } catch (err) { /* not captured */ }
+      event.preventDefault();
+      event.stopPropagation();
+    }, true);
+
+    document.addEventListener('pointermove', function (event) {
+      if (!northDrag) return;
+      var deg = northAngle(event);
+      if (northDrag.rail) northDrag.rail.style.setProperty('--rb-north-rotation', deg + 'deg');
+      event.preventDefault();
+    });
+
+    document.addEventListener('pointerup', function (event) {
+      if (!northDrag) return;
+      var deg = northAngle(event);
+      var page = northDrag.page;
+      northDrag = null;
+      page.meta = page.meta || {};
+      if (page.meta.northRotation === deg) return;
+      page.meta.northRotation = deg;
+      markDirty();
+      flushSave().catch(function () {});
+    });
 
     sheetEl.addEventListener('pointerdown', function (event) {
       if (event.target.closest('a, button, input, textarea, label, select')) return;
