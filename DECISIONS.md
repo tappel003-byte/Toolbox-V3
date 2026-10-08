@@ -310,6 +310,15 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ---
 
+## Readings are printed in tenths
+
+- **Tenths of an inch, by design (DECIDED Tim, Oct 8, 2026).** Tim: "These are inches in tenths, so .57 is stupid — it'll never be .57. It'll be .5, .6, .7. My partner every once in a while reads a .55, but I don't. Tenths are the default by design; it's what we measure in." Two decimal places printed a digit the instrument never produced.
+- **The default is one decimal place**, everywhere a reading is drawn or printed: point labels, the High/Low/difference pill, the colour legend, the figure rail, and the composed report figures. The control that sets it stays, so a survey that needs half tenths can be set to two.
+- **Storage is unchanged.** A reading is kept exactly as it was typed, half tenths included; only the display rounds.
+- Slides saved before this carried the old default written into the page. That stored value is cleared once so those slides take the new default; anything chosen after today is kept.
+
+---
+
 ## Closeout
 
 - The final PDF is the durable closeout record. Exact long-term archival packaging (ZIP structure, folder conventions, etc.) is not yet decided.

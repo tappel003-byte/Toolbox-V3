@@ -680,7 +680,7 @@
     // boundary on the page: the highest high, the lowest low, and the spread
     // between them, which is what "Total Relative Elevation Difference" means.
     var list = Array.isArray(statsList) ? statsList.filter(Boolean) : [];
-    var dec = list.length ? list[0].decimalPlaces : 2;
+    var dec = list.length ? list[0].decimalPlaces : 1;
     var hi = null;
     var lo = null;
     list.forEach(function (item) {
@@ -1971,9 +1971,26 @@
    */
   var FLOOR_VIEW_CHROME_FIX = 1;
 
+  /**
+   * Readings are measured in tenths of an inch, so tenths is what the app
+   * prints. Slides saved before that was the default carry decimalPlaces: 2
+   * -- not a choice anyone made, just the old default written into the page
+   * the first time a control was touched -- and would keep printing a digit
+   * that was never measured. Clearing it once lets the slide take the
+   * default; a value chosen after today is kept.
+   */
+  var FLOOR_VIEW_DECIMALS_FIX = 1;
+
   function reviveFloorView(view) {
     if (!view || typeof view !== 'object') return view;
     var next = JSON.parse(JSON.stringify(view));
+    // Each repair carries its own stamp. One shared stamp would re-run a
+    // repair that had already been applied -- undoing a choice made since --
+    // the next time another was added.
+    if (!(next.decimalsFix >= FLOOR_VIEW_DECIMALS_FIX)) {
+      delete next.decimalPlaces;
+      next.decimalsFix = FLOOR_VIEW_DECIMALS_FIX;
+    }
     if (next.chromeFix >= FLOOR_VIEW_CHROME_FIX) return next;
 
     // Settings saved before the slide could draw its own chrome. Clear the

@@ -187,6 +187,15 @@ export interface RenderSettings {
   contourCount: number | null; // null = auto (cover full data range at contourStep)
   minClamp: number | null;
   maxClamp: number | null;
+  /**
+   * Digits after the point on every reading the app prints.
+   *
+   * Tenths, because tenths of an inch are what the instrument reads and what
+   * the investigator writes down. Printing two places invented a digit that
+   * was never measured -- a difference of 1.57 in when the floor was read in
+   * tenths. A reading occasionally comes in at a half tenth; it is stored as
+   * typed, and only the display rounds.
+   */
   decimalPlaces: number;
   palette:
     | "brown"
@@ -235,7 +244,7 @@ export const defaultRenderSettings: RenderSettings = {
   contourCount: null,
   minClamp: null,
   maxClamp: null,
-  decimalPlaces: 2,
+  decimalPlaces: 1,
   palette: "brown",
   reversePalette: false,
   lineThickness: 1.2,

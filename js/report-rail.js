@@ -61,7 +61,7 @@
   function formatReading(value, dec) {
     var n = typeof value === 'number' && isFinite(value) ? value : null;
     if (n == null) return '';
-    return n.toFixed(typeof dec === 'number' ? dec : 2);
+    return n.toFixed(typeof dec === 'number' ? dec : 1);
   }
 
   function readingRow(list, label, value, dec) {

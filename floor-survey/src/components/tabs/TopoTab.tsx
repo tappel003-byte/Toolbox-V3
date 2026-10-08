@@ -1297,7 +1297,12 @@ export function TopoTab({
                 max={3}
                 step={1}
                 onChange={(v) =>
-                  update({ decimalPlaces: Math.max(0, Math.min(3, Math.round(v ?? 2))) })
+                  update({
+                    decimalPlaces: Math.max(
+                      0,
+                      Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
+                    ),
+                  })
                 }
               />
               <SwitchRow

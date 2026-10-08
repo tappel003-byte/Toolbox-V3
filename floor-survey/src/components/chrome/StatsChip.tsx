@@ -56,7 +56,7 @@ export function clearStatsChipSize() {
   window.dispatchEvent(new CustomEvent(STATS_CHIP_SIZE_EVENT, { detail: null }));
 }
 
-import type { SurveyPoint } from "@/lib/types";
+import { defaultRenderSettings, type SurveyPoint } from "@/lib/types";
 
 interface Props {
   points: SurveyPoint[];
@@ -66,6 +66,9 @@ interface Props {
   label?: string;
   /** Vertical stacking slot so multiple pills don't overlap. */
   stackIndex?: number;
+  /** Digits after the point. Follows the level's render settings so this chip
+   *  and the pill drawn on the plan cannot read differently. */
+  decimals?: number;
 }
 
 /** Height in px of the top chrome (header + optional floor selector) plus a gap. */
@@ -91,6 +94,7 @@ export function StatsChip({
   storageKey = "stats-chip-pos",
   label,
   stackIndex = 0,
+  decimals = defaultRenderSettings.decimalPlaces,
 }: Props) {
   const stats = useMemo(() => {
     if (points.length === 0) return null;
@@ -266,7 +270,7 @@ export function StatsChip({
         <span className="font-semibold" style={{ color: "#b51d16" }}>
           H
         </span>
-        <span className="font-mono">{stats.hi.value.toFixed(2)}</span>
+        <span className="font-mono">{stats.hi.value.toFixed(decimals)}</span>
       </div>
       <div
         className="flex items-center gap-0.5 border-l border-gray-200 text-gray-700"
@@ -274,13 +278,13 @@ export function StatsChip({
         onPointerUp={(e) => endDrag(e, "lo")}
       >
         <span className="font-semibold text-sky-600">L</span>
-        <span className="font-mono">{stats.lo.value.toFixed(2)}</span>
+        <span className="font-mono">{stats.lo.value.toFixed(decimals)}</span>
       </div>
       <div
         className="flex items-center gap-0.5 border-l border-gray-200 text-gray-500"
         style={{ paddingLeft: padPx, paddingRight: padPx }}
       >
-        <span className="font-mono">Δ{stats.delta.toFixed(2)}</span>
+        <span className="font-mono">Δ{stats.delta.toFixed(decimals)}</span>
       </div>
     </div>
   );
