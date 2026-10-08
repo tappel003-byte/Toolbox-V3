@@ -1513,14 +1513,24 @@ body.report-builder-open .canvas {
   font-weight: 700;
 }
 
+/* Five across, two down, at three quarters of the page.
+   The grid used to stretch to fill everything under the header, which put ten
+   photographs edge to edge over almost the whole sheet -- Tim: "they're too
+   big so it covers most of the page". The block is scaled to 75% and sits at
+   the top, so the pictures read as plates on a page instead of wallpaper and
+   the bottom quarter stays clear. Width and row height are scaled by the same
+   factor, so every cell keeps its proportion and a landscape photograph
+   shrinks by as much as a portrait one. */
 .rb-pictures-page__grid {
   flex: 1 1 auto;
   min-height: 0;
+  width: 75%;
+  margin: 0 auto;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 37%));
   gap: 1.4% 1.8%;
-  align-content: stretch;
+  align-content: start;
 }
 
 .rb-pictures-page__cell {
