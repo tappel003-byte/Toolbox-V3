@@ -814,6 +814,22 @@
     return root;
   }
 
+  // How many pictures across a Pictures page lays them out.
+  //
+  // Five is the full page. Fewer across makes each one bigger, which is the
+  // point when a page only carries three or four photographs and they are
+  // worth seeing properly. Rows follow from how many pictures the page holds
+  // rather than being chosen separately: 4 x 1 and 4 x 2 are the same
+  // decision made twice, and a chosen row count could leave a photograph with
+  // nowhere to go.
+  var PICTURES_ACROSS = [3, 4, 5];
+  var PICTURES_ACROSS_DEFAULT = 5;
+
+  function picturesAcross(page) {
+    var n = page && page.meta ? Number(page.meta.picturesAcross) : 0;
+    return PICTURES_ACROSS.indexOf(n) >= 0 ? n : PICTURES_ACROSS_DEFAULT;
+  }
+
   function renderPicturesPage(page) {
     var meta = page.meta || {};
     var evidence = page.evidence || {};
@@ -836,6 +852,10 @@
 
     var grid = document.createElement('div');
     grid.className = 'rb-pictures-page__grid';
+    var across = picturesAcross(page);
+    var rows = Math.max(1, Math.ceil((photos.length || 1) / across));
+    grid.style.setProperty('--rb-pics-cols', String(across));
+    grid.style.setProperty('--rb-pics-rows', String(rows));
     if (!photos.length) {
       addLine(grid, 'rb-sheet__note', 'No photographs are available for this page yet.');
     }
@@ -2615,6 +2635,29 @@
 
     function syncRail(page) {
       if (!railEl) return;
+      var isPictures = !!(page && page.type === 'pictures');
+      if (isPictures) {
+        releaseRailControls();
+        railEl.hidden = false;
+        if (railIdleEl) railIdleEl.hidden = true;
+        if (railTitleEl) railTitleEl.textContent = 'Pictures';
+        railTopEl.textContent = '';
+        var acrossNow = picturesAcross(page);
+        var row = document.createElement('div');
+        row.className = 'rb-ws__row';
+        PICTURES_ACROSS.forEach(function (n) {
+          var btn = railButton(String(n) + ' across',
+            n === acrossNow ? 'accent' : 'secondary', 'data-rb-pics-across', String(n));
+          row.appendChild(btn);
+        });
+        railTopEl.appendChild(row);
+        var picHint = document.createElement('p');
+        picHint.className = 'rb-panel__lead';
+        picHint.textContent = 'Fewer across makes each picture bigger. Rows follow from how many this page holds.';
+        railTopEl.appendChild(picHint);
+        if (railBodyEl) railBodyEl.textContent = '';
+        return;
+      }
       var isFloor = !!(page && page.type === 'floor' && !(page.meta && page.meta.reserved));
       if (!isFloor) {
         releaseRailControls();
@@ -2701,6 +2744,21 @@
         if (importBtn) {
           event.preventDefault();
           importActiveFloorPage();
+          return;
+        }
+        var acrossBtn = event.target.closest('[data-rb-pics-across]');
+        if (acrossBtn) {
+          event.preventDefault();
+          var pic = activePage();
+          if (!pic || pic.type !== 'pictures') return;
+          var want = Number(acrossBtn.getAttribute('data-rb-pics-across'));
+          if (PICTURES_ACROSS.indexOf(want) < 0) return;
+          pic.meta = pic.meta || {};
+          if (pic.meta.picturesAcross === want) return;
+          pic.meta.picturesAcross = want;
+          markDirty();
+          renderPages();
+          flushSave().catch(function () {});
           return;
         }
         var lockBtn = event.target.closest('[data-rb-floor-lock]');

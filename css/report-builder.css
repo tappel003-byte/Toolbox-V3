@@ -1521,14 +1521,32 @@ body.report-builder-open .canvas {
    the bottom quarter stays clear. Width and row height are scaled by the same
    factor, so every cell keeps its proportion and a landscape photograph
    shrinks by as much as a portrait one. */
+/* The how-many-across buttons sit in one row on the rail. */
+.rb-ws__row {
+  display: flex;
+  gap: 6px;
+}
+
+.rb-ws__row .rb-ws__btn {
+  flex: 1;
+  min-width: 0;
+}
+
 .rb-pictures-page__grid {
   flex: 1 1 auto;
   min-height: 0;
   width: 75%;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  grid-template-rows: repeat(2, minmax(0, 37%));
+  /* How many across is the investigator's choice; the rows follow from how
+     many pictures the page holds, so nothing can be left without a cell.
+     Fewer across widens every cell, which is what makes the pictures bigger
+     on a page that only carries a few. The 74% is the three-quarter rule
+     above: however many rows there are, they share that, and the bottom of
+     the page stays clear. */
+  grid-template-columns: repeat(var(--rb-pics-cols, 5), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--rb-pics-rows, 2),
+    minmax(0, calc(74% / var(--rb-pics-rows, 2))));
   gap: 1.4% 1.8%;
   align-content: start;
 }
@@ -1536,13 +1554,29 @@ body.report-builder-open .canvas {
 .rb-pictures-page__cell {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
   min-width: 0;
   min-height: 0;
   margin: 0;
 }
 
+/* The frame is a plate of a fixed shape, as wide as its column.
+   It used to stretch to fill the row, which was invisible at five across and
+   two rows because the picture nearly filled the cell anyway. Choose four
+   across for four photographs and the row became the full height of the
+   block, so each picture sat marooned in a tall grey slab. Giving the frame a
+   portrait proportion ties its height to its width instead: fewer across
+   means a wider column, a taller plate and a bigger picture, and every plate
+   in a row is the same height so the labels line up. The row still caps it,
+   so a page that runs to four rows shrinks the plates to fit rather than
+   running off the paper. */
 .rb-pictures-page__frame {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  height: auto;
+  max-height: 100%;
   min-height: 0;
   display: flex;
   align-items: center;

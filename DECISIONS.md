@@ -235,6 +235,13 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ---
 
+## Report Builder: Pictures pages
+
+- **The pictures sit at three quarters (DECIDED Tim, Oct 8, 2026).** Tim: "They're too big so it covers most of the page... maybe 3/4 of what they are now, to where they're sitting off the bottom." The grid is scaled to 75% and sits at the top; the bottom quarter of the page stays clear.
+- **How many across is the choice; rows follow (DECIDED Tim, Oct 8, 2026).** 3, 4 or 5 across, picked on the rail, stored per page, 5 by default. Tim asked for pairs (3×1, 4×1, 4×2) and agreed to the simplification: "4×2 really doesn't make a difference", so rows are computed from how many pictures the page holds rather than chosen. One decision instead of two, and no chosen row count can leave a photograph without a cell. Fewer across widens each column and makes each picture bigger — as long as it does not push the page onto another row, which shares the same three-quarter block between more rows.
+
+---
+
 ## Report Builder: rail previews
 
 - **The rail shows the page, not a blank box (DECIDED Tim, Oct 8, 2026).** Tim: "Is there any way to put a preview on the slide? Right now they are just blank, I'd really like them to be a preview." Each thumbnail now renders its own page at sheet size and scales it down, so it is the page rather than a picture of one — it stays right when the page changes. Editor chrome (the lock bar, the Import toolbar, placement outlines, resize corners) is left out, the same set the print deck drops: a preview shows the deliverable.
