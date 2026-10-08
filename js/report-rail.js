@@ -69,20 +69,20 @@
     wrap.setAttribute('aria-hidden', 'true');
     var deg = typeof rotationDeg === 'number' && isFinite(rotationDeg) ? rotationDeg : 0;
     wrap.style.setProperty('--rb-north-rotation', deg + 'deg');
-    // A compass rose, not a plain arrow: the N stands above it and only the
-    // rose turns, so north reads the right way round at any rotation.
+    // Option F: a slim two-tone north point inside one open ring, with the N
+    // standing above it. Chosen over the variant whose pointer breaks the
+    // ring because that one's overhang sweeps outside the circle as it turns
+    // and needs clearance the rail has not got; this stays within its own
+    // circle at any angle.
     wrap.innerHTML =
-      '<svg viewBox="0 0 64 76" focusable="false">' +
-      '<text x="32" y="12" text-anchor="middle" font-size="13"' +
-      ' font-family="Georgia, serif" fill="#111">N</text>' +
+      '<svg viewBox="0 0 64 82" focusable="false">' +
+      '<text x="32" y="14" text-anchor="middle" font-size="15" font-weight="700"' +
+      ' font-family="Arial, Helvetica, sans-serif" fill="#111">N</text>' +
       '<g class="rb-rail__rose">' +
-      '<circle cx="32" cy="46" r="21" fill="none" stroke="#111" stroke-width="1"/>' +
-      '<circle cx="32" cy="46" r="15" fill="none" stroke="#111" stroke-width="0.6"/>' +
-      '<polygon points="32,21 36,42 32,46 28,42" fill="#111"/>' +
-      '<polygon points="32,71 36,50 32,46 28,50" fill="#fff" stroke="#111" stroke-width="0.8"/>' +
-      '<polygon points="7,46 28,42 32,46 28,50" fill="#fff" stroke="#111" stroke-width="0.8"/>' +
-      '<polygon points="57,46 36,42 32,46 36,50" fill="#111"/>' +
-      '<circle cx="32" cy="46" r="2" fill="#111"/>' +
+      '<circle cx="32" cy="50" r="24" fill="none" stroke="#111" stroke-width="1.4"/>' +
+      '<path d="M32 28 L39 70 L32 63 Z" fill="#111"/>' +
+      '<path d="M32 28 L25 70 L32 63 Z" fill="#fff" stroke="#111" stroke-width="1.1"' +
+      ' stroke-linejoin="round"/>' +
       '</g>' +
       '</svg>';
     return wrap;

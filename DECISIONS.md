@@ -251,6 +251,7 @@ These notes preserve active product possibilities so they are not lost. They are
   - 9% was tried and is too narrow: the drawing title breaks into a column of single words. If it must go narrower, the lever is a shorter drawing title, not smaller type.
   - **Figure N stays in the upper left of the drawing area**; the drawing title there goes, because the rail carries it.
   - **The north arrow lives at the top of the rail, and stays rotatable (DECIDED Tim, Oct 8, 2026).** It is reference matter like everything else in the rail, and moving it there clears the last floating object off the drawing. Rotation stays because north is not always up.
+  - **The north mark is variation F** (DECIDED Tim, Oct 8, 2026): a slim two-tone north point inside one open ring, with the N standing above it. Chosen over G, whose pointer breaks the ring, because that overhang sweeps outside the circle as the mark turns and needs clearance the rail has not got.
   - **Order in the rail, top to bottom:** compass rose with N above it, residence and address, drawing title, survey date and "corrected for flooring differences", relative readings per level, and the Sandia Geo mark alone at the foot.
   - **Figure N is in the upper left of the drawing, and only there.** It is not repeated at the foot of the rail.
   - **The presentation's own typeface throughout.** Tim: "We use the font of this presentation." The finished deck's Floor Level Survey sheets are set in Arial; no serif is introduced for the rail.

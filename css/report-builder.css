@@ -1574,7 +1574,7 @@ body.report-builder-open .canvas {
    instrument, so it stays upright however north is set. */
 .rb-rail__rose {
   transform: rotate(var(--rb-north-rotation, 0deg));
-  transform-origin: 50% 60.5%;
+  transform-origin: 50% 61%;
 }
 
 .rb-rail__name {
