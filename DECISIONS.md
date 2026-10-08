@@ -231,7 +231,7 @@ These notes preserve active product possibilities so they are not lost. They are
   - A **level** is a surface within one layer — a sunken living room or a step-down addition on the same floor plan. In code today this is a Floor Survey *boundary* (`TopoArea`), and the step between two of them is a *transition*, which carries the measured elevation difference.
   - Use these two words. The code's older names (canvas, area, boundary) mean the same things and are not worth a rename on their own, but nothing new should add a third word for either idea.
 - **Report Builder tells the story in the order Tim sets it.** Slides already move with Earlier and Later on the rail, and that is what orders the layers in the report. Layers are assembled in the order they were added in Customer Setup, which is a starting point, not the finished sequence.
-- **Open: whether a layer should know what it is.** Nothing in Toolbox records that a layer is a basement rather than a second story — it is the name the investigator typed. Whether that should become a picked list, or stay free text now that slides can be reordered by hand, is not decided.
+- **A layer does not need to know what it is (DECIDED Tim, Oct 8, 2026).** Tim: "Hand ordering is fine." Nothing records that a layer is a basement rather than a second story, and nothing should: it is the name the investigator typed, and the report's sequence is set by moving slides with Earlier and Later. No picked list of level types, no inferred ordering.
 
 ---
 
