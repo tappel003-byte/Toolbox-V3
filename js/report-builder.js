@@ -1546,6 +1546,13 @@
     var key = topoHostKey(page);
     if (topoHost.el && topoHost.key === key) {
       topoHost.hooks = hooks;
+      // Lock View changes nothing about WHICH level is shown, so the host is
+      // reused rather than rebuilt -- and the view was therefore never told.
+      // Lock flipped its own label, saved, and left the slide as steerable as
+      // before. Push it the way settings are pushed.
+      if (topoHost.api && typeof topoHost.api.update === 'function') {
+        topoHost.api.update({ locked: !!(hooks && hooks.locked) });
+      }
       return topoHost.el;
     }
     releaseTopoHost();

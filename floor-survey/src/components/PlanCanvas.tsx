@@ -84,6 +84,16 @@ interface Props {
    * viewport when what is wanted is to resize a picture.
    */
   staticView?: boolean;
+  /**
+   * Show the view but do not let it be steered.
+   *
+   * This is what Lock on a report slide needs, and it is deliberately NOT
+   * `staticView`: that one also refits the plan whenever the box changes
+   * size, which would throw away the very framing Lock was pressed to keep.
+   * This only takes the hands off -- no pan, no pinch, no wheel, and no
+   * chrome dragging, since those gestures all arrive through these handlers.
+   */
+  frozen?: boolean;
   /** Optional per-floor plan-image transform (Align mode). Applied to the raster only; points/overlays unchanged. */
   planTransform?: { tx: number; ty: number; scale: number; rotation: number };
 }
@@ -113,6 +123,7 @@ export function PlanCanvas({
   cameraRequest,
   refitOnResize = true,
   staticView = false,
+  frozen = false,
   resizeCorners = false,
   planTransform,
 }: Props) {
@@ -597,12 +608,12 @@ export function PlanCanvas({
         data-canvas-tx={transform.tx}
         data-canvas-ty={transform.ty}
         className="absolute inset-0 touch-none overflow-hidden select-none"
-        onPointerDown={staticView ? undefined : onPointerDown}
-        onPointerMove={staticView ? undefined : onPointerMove}
-        onPointerUp={staticView ? undefined : onPointerUp}
-        onPointerCancel={staticView ? undefined : onPointerCancel}
-        onWheel={staticView ? undefined : onWheel}
-        style={{ cursor: staticView ? "default" : "crosshair" }}
+        onPointerDown={staticView || frozen ? undefined : onPointerDown}
+        onPointerMove={staticView || frozen ? undefined : onPointerMove}
+        onPointerUp={staticView || frozen ? undefined : onPointerUp}
+        onPointerCancel={staticView || frozen ? undefined : onPointerCancel}
+        onWheel={staticView || frozen ? undefined : onWheel}
+        style={{ cursor: staticView || frozen ? "default" : "crosshair" }}
       >
         <canvas ref={canvasRef} />
       </div>

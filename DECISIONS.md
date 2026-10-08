@@ -224,6 +224,13 @@ These notes preserve active product possibilities so they are not lost. They are
 - **Controls that change the document speak PowerPoint; controls that put ink on a drawing speak Distress.** That is the dividing line for this toolbar and for the ones after it.
 - **Callout** (text with a leader line) and **highlight** (translucent shading over an area) are wanted and are a later pass. **Front/back ordering** was pinned, then accepted as a likely consequence of highlight — a highlight over a circle washes it out, under it does not.
 
+## Report Builder: Lock View
+
+- **Lock View holds the framing (fixed Oct 8, 2026, found by Tim).** Tim: "I want to get the layout on the screen that I want and then lock it. The lock did not work, I was able to lock it and still move everything around." Lock saved its state and flipped its own label, but the live view was never told, so a locked slide still panned, zoomed, resized and let the chrome be dragged. It now freezes all of that and hides the corner grips. Settings are deliberately not frozen: turning contours off on a locked slide is the reason to lock it first.
+- **Open: one view for all Floor Survey slides (raised Tim, Oct 8, 2026).** Tim wants to copy a slide, keep the locked position, and then turn the contours off on the copy for a data-only page, and to use the same move for other levels. Duplicate already copies the active slide and inserts it next. What does not yet work is the rest of it: the camera and the render settings are held once for the whole report, not per slide, so turning contours off on one Floor Survey slide turns them off on all of them. Not scoped or authorized — whether settings become per-slide, and what a slide then inherits from the locked view, is Tim's call.
+
+---
+
 ## Customer File setup
 
 - **Leaving the plans step can never be blocked (DECIDED Tim, Oct 6, 2026).** Tim, from the field: "There was no way for me to get out of that screen... I have to close it all the way out." Done and Back both waited for plan processing and room recognition to report finished. Neither reports when it never starts, so a recognition worker that could not load left both buttons visible and doing nothing, and the only way out was force-quitting the app. The wait is now capped: past the cap the busy state is cleared and the investigator leaves. In-flight work finishes if it can, and anything already written is already saved. A visible button that does nothing is worse than no button.

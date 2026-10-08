@@ -177,6 +177,19 @@ interface Props {
   controlsOnly?: boolean;
   /** A picture on a page: no pan, no zoom, the plan fits its frame. */
   staticView?: boolean;
+  /**
+   * Lock: the view is shown, not steered.
+   *
+   * A locked report slide must not pan, zoom, resize, or let the legend,
+   * the pill or the High/Low markers be dragged -- the whole point is that
+   * the framing the investigator set holds across every slide. The flag
+   * reached the host and stopped there, adding a CSS class that no stylesheet
+   * defined, so Lock looked like it worked and changed nothing.
+   *
+   * Settings are deliberately NOT frozen. Lock is about where things sit;
+   * turning contours off on a locked slide is the point of locking it first.
+   */
+  locked?: boolean;
   /** Corner grips that resize the drawing, alongside pan and wheel zoom. */
   resizeCorners?: boolean;
   /**
@@ -374,6 +387,7 @@ export function TopoTab({
   chromeless = false,
   controlsOnly = false,
   staticView = false,
+  locked = false,
   resizeCorners = false,
 }: Props) {
   const selectedId =
@@ -950,7 +964,8 @@ export function TopoTab({
           onCamera={handleCamera}
           cameraRequest={cameraRequest || undefined}
           staticView={staticView}
-          resizeCorners={resizeCorners}
+          frozen={locked}
+          resizeCorners={resizeCorners && !locked}
           refitOnResize={false}
           onTransform={(t) => setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s))}
           onImagePointerDown={(x, y) => {
