@@ -69,11 +69,21 @@
     wrap.setAttribute('aria-hidden', 'true');
     var deg = typeof rotationDeg === 'number' && isFinite(rotationDeg) ? rotationDeg : 0;
     wrap.style.setProperty('--rb-north-rotation', deg + 'deg');
+    // A compass rose, not a plain arrow: the N stands above it and only the
+    // rose turns, so north reads the right way round at any rotation.
     wrap.innerHTML =
-      '<svg viewBox="0 0 40 52" focusable="false">' +
-      '<polygon points="20,2 28,22 20,18 12,22" fill="#111"/>' +
-      '<polygon points="20,50 28,30 20,34 12,30" fill="#bbb"/>' +
-      '<text x="20" y="16" text-anchor="middle" font-size="9" font-weight="700" fill="#111">N</text>' +
+      '<svg viewBox="0 0 64 76" focusable="false">' +
+      '<text x="32" y="12" text-anchor="middle" font-size="13"' +
+      ' font-family="Georgia, serif" fill="#111">N</text>' +
+      '<g class="rb-rail__rose">' +
+      '<circle cx="32" cy="46" r="21" fill="none" stroke="#111" stroke-width="1"/>' +
+      '<circle cx="32" cy="46" r="15" fill="none" stroke="#111" stroke-width="0.6"/>' +
+      '<polygon points="32,21 36,42 32,46 28,42" fill="#111"/>' +
+      '<polygon points="32,71 36,50 32,46 28,50" fill="#fff" stroke="#111" stroke-width="0.8"/>' +
+      '<polygon points="7,46 28,42 32,46 28,50" fill="#fff" stroke="#111" stroke-width="0.8"/>' +
+      '<polygon points="57,46 36,42 32,46 36,50" fill="#111"/>' +
+      '<circle cx="32" cy="46" r="2" fill="#111"/>' +
+      '</g>' +
       '</svg>';
     return wrap;
   }
@@ -131,10 +141,11 @@
       root.appendChild(el('p', 'rb-rail__text', o.note));
     }
 
-    // The foot is pushed down by the sections above it, so the figure number
-    // and the mark sit on the bottom edge however much is in the rail.
+    // The foot is pushed down by the sections above it, so the mark sits on
+    // the bottom edge however much is in the rail. The figure number is NOT
+    // here: it is in the upper left of the drawing, once, where the eye looks
+    // for it on a sheet.
     var foot = el('div', 'rb-rail__foot');
-    if (o.figureLabel) foot.appendChild(el('p', 'rb-rail__figure', o.figureLabel));
     if (o.markSrc) {
       var mark = el('div', 'rb-rail__mark');
       var img = document.createElement('img');
