@@ -141,6 +141,7 @@ body.report-builder-open .canvas {
 }
 
 .rb-thumb__sheet {
+  position: relative;
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
@@ -150,6 +151,89 @@ body.report-builder-open .canvas {
   border: 1px solid #1a1a1a;
   background: #fff;
   box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* The page itself, drawn small. The sheet is a size container and everything
+   on it is sized in cqh, so this is a true miniature rather than a scaled
+   screenshot -- it reads at 150 px for the same reason it reads at 17 in.
+   It is a picture of the page, never a second place to edit one, so nothing
+   in here takes a pointer. */
+/* The preview is a full-size sheet, shrunk.
+   Rendering the page straight into a 150 px box looked like the obvious
+   move -- the sheet is a size container and its type is in cqh -- but the
+   report's type is written as clamp(16px, 2.6cqb, 26px), and on a stamp
+   every one of those clamps hits its pixel floor. The result was a page of
+   16 px headings over a thumbnail-sized plan. So the preview is laid out at
+   the sheet's own size, where every clamp lands where it does on the real
+   page, and then scaled down as one picture. --rb-thumb-scale is set from
+   the width it has to fit. */
+.rb-sheet--thumb {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 680px;
+  height: 440px;
+  margin: 0;
+  border: 0;
+  overflow: hidden;
+  background: #fff;
+  color: #111;
+  box-shadow: none;
+  box-sizing: border-box;
+  container-type: size;
+  transform-origin: top left;
+  transform: scale(var(--rb-thumb-scale, 0.22));
+  pointer-events: none;
+  user-select: none;
+}
+
+/* A preview shows the page, not the editor around it. The same chrome the
+   print deck drops -- the lock bar, the Import toolbar, the placement
+   outlines and the resize corners -- has no business in a stamp either, and
+   it is sized in px rather than cqh, so it came out full size on a 150 px
+   preview and buried the page underneath it. */
+.rb-sheet--thumb .rb-cover__bar,
+.rb-sheet--thumb .rb-cover__hint,
+.rb-sheet--thumb .rb-floor-toolbar,
+.rb-sheet--thumb .rb-cover__contents-jump,
+.rb-sheet--thumb .rb-cover__overview-actions,
+.rb-sheet--thumb .rb-cover__overview-empty,
+.rb-sheet--thumb .rb-cover-box__resize,
+.rb-sheet--thumb .rb-cover-box__move,
+.rb-sheet--thumb .rb-floor-box__resize,
+.rb-sheet--thumb .rb-floor-empty,
+.rb-sheet--thumb .rb-discussion__overflow,
+/* The live drawing cannot mount in a preview, and saying so on a stamp is
+   noise -- the picture of the drawing goes here instead, once one has been
+   taken. */
+.rb-sheet--thumb .rb-topo-page__drawing--live .rb-sheet__note {
+  display: none !important;
+}
+
+.rb-sheet--thumb .rb-cover-box,
+.rb-sheet--thumb .rb-floor-box,
+.rb-sheet--thumb [data-rb-rich] {
+  outline: none !important;
+}
+
+/* A Floor Survey slide's drawing, photographed while it was on screen. */
+.rb-thumb__shot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+/* The page number sits over the preview, so it stays readable on a dark
+   plan. */
+.rb-thumb__num {
+  position: relative;
+  z-index: 2;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.86);
 }
 
 .rb-thumb__num,

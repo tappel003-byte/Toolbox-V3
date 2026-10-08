@@ -235,6 +235,13 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ---
 
+## Report Builder: rail previews
+
+- **The rail shows the page, not a blank box (DECIDED Tim, Oct 8, 2026).** Tim: "Is there any way to put a preview on the slide? Right now they are just blank, I'd really like them to be a preview." Each thumbnail now renders its own page at sheet size and scales it down, so it is the page rather than a picture of one — it stays right when the page changes. Editor chrome (the lock bar, the Import toolbar, placement outlines, resize corners) is left out, the same set the print deck drops: a preview shows the deliverable.
+- **A Floor Survey slide's drawing is a photograph.** That drawing is a live canvas belonging to the slide being looked at and there is only one of it, so a preview cannot mount its own. A small picture is taken while the investigator is on the slide; previews fill in as the deck is worked through and then stay. Rendering every level up front was the alternative and was rejected as too slow to open a report with many layers.
+
+---
+
 ## Report Builder: Lock View
 
 - **Lock View holds the framing (fixed Oct 8, 2026, found by Tim).** Tim: "I want to get the layout on the screen that I want and then lock it. The lock did not work, I was able to lock it and still move everything around." Lock saved its state and flipped its own label, but the live view was never told, so a locked slide still panned, zoomed, resized and let the chrome be dragged. It now freezes all of that and hides the corner grips. Settings are deliberately not frozen: turning contours off on a locked slide is the reason to lock it first.

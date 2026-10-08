@@ -1451,7 +1451,7 @@
   }
 
 
-  function renderPenLogSheet(sheet, page, pages) {
+  function renderPenLogSheet(sheet, page, pages, thumb) {
     var index = 0;
     for (var n = 0; n < pages.length; n += 1) {
       if (pages[n].id === page.id) index = n;
@@ -1461,7 +1461,9 @@
     if (!pins.some(function (pin) { return pin.id === penLogUi.selectedPinId; })) {
       penLogUi.selectedPinId = pins[0] ? pins[0].id : '';
     }
-    penLogUi.layout = window.ToolboxPenLog.renderPage(sheet, {
+    // A preview measures itself at stamp size; keeping that would move the
+    // pins on the real page.
+    var penLogLayout = window.ToolboxPenLog.renderPage(sheet, {
       title: page.title,
       levelName: page.meta && page.meta.levelName,
       pageNumber: index + 1,
@@ -1476,6 +1478,7 @@
         if (typeof penLogUi.onSelect === 'function') penLogUi.onSelect(id);
       },
     });
+    if (!thumb) penLogUi.layout = penLogLayout;
   }
 
   // Multicol spills into extra columns off to the side rather than stopping
@@ -1582,7 +1585,20 @@
     return el;
   }
 
-  function renderSheet(sheet, page, pages) {
+  /**
+   * Draw one page into one sheet element.
+   *
+   * `opts.thumb` renders the same page as a rail preview. The markup is
+   * identical -- the sheet is a size container and everything on it is sized
+   * in cqh, so the same page in a 150 px frame IS the miniature, with no
+   * scaling hack and no second layout to keep in step. What a preview must
+   * not do is write anything back: rendering a page stores the floor layout
+   * it computed and the pen log's measured layout, and doing that at
+   * thumbnail size would overwrite the real page's with numbers measured off
+   * a stamp. Those three places check the flag; everything else is shared.
+   */
+  function renderSheet(sheet, page, pages, opts) {
+    var thumb = !!(opts && opts.thumb);
     sheet.textContent = '';
     sheet.setAttribute('data-page-id', page.id);
     sheet.setAttribute('data-page-type', page.type || 'sheet');
@@ -1590,12 +1606,12 @@
     sheet.removeAttribute('data-page-kind');
 
     if (isPenLogPage(page)) {
-      renderPenLogSheet(sheet, page, pages);
+      renderPenLogSheet(sheet, page, pages, thumb);
       renderSheetFrame(sheet);
       renderBrandLayer(sheet, page, page._brandBox || (page.meta && page.meta.brandBox));
       return;
     }
-    penLogUi.layout = null;
+    if (!thumb) penLogUi.layout = null;
 
     var margin = document.createElement('div');
     margin.className = 'rb-sheet__margin';
@@ -1621,7 +1637,7 @@
         facts: page._facts || null,
       });
       margin.appendChild(discussionEl);
-      watchDiscussionOverflow(discussionEl);
+      if (!thumb) watchDiscussionOverflow(discussionEl);
     } else if (page.type === 'section' && page.meta && page.meta.sectionId === 'property') {
       addLine(margin, 'rb-sheet__kicker', 'Report');
       var propertyTitle = document.createElement('h1');
@@ -1658,9 +1674,12 @@
           formatSurveyDate: formatSurveyDate,
           renderNorthArrow: renderNorthArrow,
           renderRelativeReadings: renderRelativeReadings,
-          mountTopo: page._mountTopo || null,
+          // Never in a preview. There is one live topo host and it is a
+          // single DOM node: handing it to a thumbnail moves it off the
+          // sheet and into the stamp, taking the drawing with it.
+          mountTopo: thumb ? null : (page._mountTopo || null),
         });
-        if (page.meta) page.meta.layout = rendered.layout;
+        if (page.meta && !thumb) page.meta.layout = rendered.layout;
         margin.appendChild(rendered.root);
       } else if (!renderEvidence(margin, page)) {
         addLine(margin, 'rb-sheet__note', 'Floor Survey page unavailable.');
@@ -2238,6 +2257,179 @@
 
     var lastRenderedId = null;
 
+    // --- Rail previews -------------------------------------------------
+    //
+    // The thumbnails were an empty white box with a page number on it, which
+    // tells the investigator nothing about which slide is which. A page is
+    // now drawn into each one at thumbnail size.
+    //
+    // Two caches. thumbCache keeps the rendered miniature against a signature
+    // of the page, so a repaint of the rail does not re-render every page on
+    // every keystroke; it only redraws what actually changed. floorShots
+    // keeps a small picture of a Floor Survey slide's drawing, because that
+    // drawing is a live canvas belonging to the slide being looked at and
+    // there is only one of it -- a preview cannot mount its own. The picture
+    // is taken while the investigator is on that slide, so the previews fill
+    // in as the deck is worked through and then stay.
+    var thumbCache = Object.create(null);
+    var floorShots = Object.create(null);
+    var floorShotTimer = null;
+
+    function thumbSignature(page) {
+      var shot = floorShots[page.id] || '';
+      try {
+        return JSON.stringify(persistablePage(page)) + '|' + shot.length;
+      } catch (err) {
+        return String(page.id) + '|' + shot.length;
+      }
+    }
+
+
+    // A preview is a picture, so it must not answer to anything that looks
+    // for the page being edited.
+    //
+    // The pages carry their own controls -- a floor slide has an Import
+    // button, boxes have resize handles, text fields are editable -- and a
+    // rail full of previews puts four more of each into the document, ahead
+    // of the real ones. querySelector takes the first match, so Import on the
+    // rail stopped working the moment previews rendered: the click went to a
+    // stamp. Pointer-events alone does not fix that; the duplicates have to
+    // stop matching.
+    //
+    // So every id and every data-rb / data-plan / data-page hook is stripped,
+    // and form controls are disabled. data-rb-rich stays because the
+    // stylesheet lays out the report's text through it, and nothing looks it
+    // up outside the real sheet.
+    function sanitizeThumb(root) {
+      var nodes = root.querySelectorAll('*');
+      for (var i = 0; i < nodes.length; i += 1) {
+        var el = nodes[i];
+        if (el.id) el.removeAttribute('id');
+        if (el.hasAttribute('contenteditable')) el.setAttribute('contenteditable', 'false');
+        var tag = el.tagName;
+        if (tag === 'BUTTON' || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
+          el.disabled = true;
+          el.setAttribute('tabindex', '-1');
+        }
+        if (tag === 'A') el.removeAttribute('href');
+        var attrs = el.attributes;
+        for (var k = attrs.length - 1; k >= 0; k -= 1) {
+          var name = attrs[k].name;
+          // Every data hook goes, not just the rb- ones: the pen log finds a
+          // note by data-pin-id, and a preview carrying one would answer in
+          // the real page's place. Only data-rb-rich stays, because the
+          // stylesheet lays the report's text out through it and nothing
+          // looks it up outside the sheet being edited.
+          if (name === 'data-rb-rich') continue;
+          if (name.indexOf('data-') === 0) el.removeAttribute(name);
+        }
+      }
+      if (root.id) root.removeAttribute('id');
+      root.removeAttribute('data-page-id');
+      root.removeAttribute('data-page-type');
+    }
+
+    function buildThumbSheet(page) {
+      var sheet = document.createElement('article');
+      // Deliberately NOT given the rb-sheet class. Several places find the
+      // page being edited with querySelector('.rb-sheet') or closest(), and a
+      // rail full of sheets would hand them a stamp instead. The preview
+      // carries the container itself so cqh still resolves against it.
+      sheet.className = 'rb-sheet--thumb';
+      sheet.setAttribute('aria-hidden', 'true');
+      try {
+        renderSheet(sheet, page, pages, { thumb: true });
+      } catch (err) {
+        // A page that cannot be drawn small is not worth failing the rail for.
+        sheet.textContent = '';
+      }
+      sanitizeThumb(sheet);
+      var shot = floorShots[page.id];
+      if (shot) {
+        var img = document.createElement('img');
+        img.className = 'rb-thumb__shot';
+        img.alt = '';
+        img.src = shot;
+        // Into the box the live drawing would have filled, so it sits under
+        // the title block and the logo exactly as the drawing does. Dropped
+        // on the sheet instead it went behind the page's own white
+        // background and never showed.
+        var slot = sheet.querySelector('.rb-topo-page__drawing--live') ||
+                   sheet.querySelector('.rb-topo-page__drawing');
+        (slot || sheet).appendChild(img);
+      }
+      return sheet;
+    }
+
+    // The preview is laid out at the sheet's own size and scaled to the box
+    // it has to live in, so measure the box once it is on screen.
+    var THUMB_SHEET_W = 680;
+    function fitThumb(host, sheet) {
+      var w = host.clientWidth;
+      if (!w) return;
+      sheet.style.setProperty('--rb-thumb-scale', String(w / THUMB_SHEET_W));
+    }
+
+    function paintThumb(host, page) {
+      var sig = thumbSignature(page);
+      var cached = thumbCache[page.id];
+      var sheet = cached && cached.sig === sig && cached.el ? cached.el : buildThumbSheet(page);
+      thumbCache[page.id] = { sig: sig, el: sheet };
+      host.insertBefore(sheet, host.firstChild);
+      fitThumb(host, sheet);
+      window.requestAnimationFrame(function () { fitThumb(host, sheet); });
+    }
+
+    // One thumbnail, redrawn where it stands. Used after a picture of a
+    // Floor Survey slide is taken, so the rail updates without re-rendering
+    // the sheet the investigator is working on.
+    function repaintThumb(pageId) {
+      if (!listEl) return;
+      var btn = listEl.querySelector('[data-page-id="' + pageId + '"]');
+      if (!btn) return;
+      var host = btn.querySelector('.rb-thumb__sheet');
+      var page = null;
+      for (var i = 0; i < pages.length; i += 1) if (pages[i].id === pageId) page = pages[i];
+      if (!host || !page) return;
+      var old = host.querySelector('.rb-sheet--thumb');
+      if (old) host.removeChild(old);
+      delete thumbCache[pageId];
+      paintThumb(host, page);
+    }
+
+    // Take the picture a moment after the slide settles, so the drawing has
+    // had its chance to load and render. Scaled down on the way in: a preview
+    // does not need the full canvas, and holding full-size data URLs for
+    // every level would be a lot of memory for a stamp.
+    function scheduleFloorShot(page) {
+      if (floorShotTimer) { clearTimeout(floorShotTimer); floorShotTimer = null; }
+      if (!page || page.type !== 'floor' || !sheetEl) return;
+      var pageId = page.id;
+      floorShotTimer = setTimeout(function () {
+        floorShotTimer = null;
+        var cv = sheetEl.querySelector('[data-rb-topo-live] canvas');
+        if (!cv || !cv.width || !cv.height) return;
+        var url;
+        try {
+          var small = document.createElement('canvas');
+          var w = 360;
+          small.width = w;
+          small.height = Math.max(1, Math.round(w * cv.height / cv.width));
+          var sctx = small.getContext('2d');
+          if (!sctx) return;
+          sctx.fillStyle = '#fff';
+          sctx.fillRect(0, 0, small.width, small.height);
+          sctx.drawImage(cv, 0, 0, small.width, small.height);
+          url = small.toDataURL('image/jpeg', 0.7);
+        } catch (err) {
+          return;
+        }
+        if (!url || floorShots[pageId] === url) return;
+        floorShots[pageId] = url;
+        repaintThumb(pageId);
+      }, 1500);
+    }
+
     function renderPages() {
       if (!pages.length) return;
       var index = activeIndex();
@@ -2247,6 +2439,7 @@
       // thumbnail, jump link, add, duplicate, undo, anything. One guard here
       // instead of six, and it cannot be forgotten by a seventh. A sheet left
       // armed is a sheet nobody can click, which reads as a dead application.
+
       if (lastRenderedId !== null && lastRenderedId !== activeId) {
         disarmInk();
         // A different sheet means a different plan, so nothing is selected.
@@ -2270,6 +2463,7 @@
         num.className = 'rb-thumb__num';
         num.textContent = String(pageIndex + 1);
         thumb.appendChild(num);
+        paintThumb(thumb, item);
 
         var caption = document.createElement('span');
         caption.className = 'rb-thumb__caption';
@@ -2367,6 +2561,9 @@
       renderSheet(sheetEl, current, pages);
       syncPenLogPanel(current);
       fitSheet(root);
+      // A Floor Survey slide's drawing is live and belongs to the slide being
+      // looked at, so its preview is a picture taken while it is on screen.
+      scheduleFloorShot(current);
       if (penLogUi.layout && typeof penLogUi.layout.layout === 'function') {
         window.requestAnimationFrame(function () {
           if (penLogUi.layout && typeof penLogUi.layout.layout === 'function') {
