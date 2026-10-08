@@ -241,6 +241,18 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ---
 
+## The figure rail
+
+- **Every figure page carries a title rail down its right-hand edge (DECIDED Tim, Oct 8, 2026).** Tim: "This actually looks pretty sharp. We can do this for the picture pages, we can do this for the Distress Survey, everything but the discussion. These look more like figures now."
+  - The rail is a full-height column at the right, separated from the drawing by a rule, holding in order: the residence and property address; **DRAWING TITLE** and the title itself; **SURVEY DATE** with the date and "Corrected for flooring differences"; **RELATIVE READINGS SUMMARY** with High, Low and Difference per level; the figure number; and the Sandia Geo mark at the foot.
+  - It replaces the scattered corners: the upper-right address block, the floating logo and the separate lower-right readings box all collapse into it.
+  - It is for figure pages — Floor Survey, Picture Locations, Pictures, Distress. **Not the discussion**, which is a page of prose.
+  - Tim on the reference image: "I'm not sure I like the exact layout we're dealing with here, but this kind of looks at what I'm trying to do." The shape is decided; the detail is not finished.
+  - This supersedes the Oct 8 decision to drop the mark from Pictures pages: the mark lives in the rail, so it comes back on every figure page without taking space from the photographs.
+  - Earlier the same day Tim had called a drawing-office title block "very mechanical". The rail is the same intent — a sheet that reads as an engineering firm's rather than a PowerPoint template's — without the gridded cells.
+
+---
+
 ## Report Builder: Pictures pages
 
 - **No logo on a Pictures page, and the photographs get the page (DECIDED Tim, Oct 8, 2026).** Tim: "Do we need the logo on that page? Keep the logo off and we can increase the size of the picture." The three-quarter rule earlier the same day came from the photographs crowding the Sandia Geo logo in the corner; with the logo off this page there is nothing to crowd, and the grid uses the whole area under the header. Every other sheet still carries the mark.
