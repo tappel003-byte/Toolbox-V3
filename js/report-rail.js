@@ -141,11 +141,13 @@
       root.appendChild(el('p', 'rb-rail__text', o.note));
     }
 
-    // The foot is pushed down by the sections above it, so the mark sits on
-    // the bottom edge however much is in the rail. The figure number is NOT
-    // here: it is in the upper left of the drawing, once, where the eye looks
-    // for it on a sheet.
+    // The foot is pushed down by the sections above it, so it sits on the
+    // bottom edge however much is in the rail. Figure N stands above the
+    // mark here as well as in the upper left of the drawing -- Tim keeps that
+    // one repetition deliberately, because the foot of the rail is where the
+    // eye lands.
     var foot = el('div', 'rb-rail__foot');
+    if (o.figureLabel) foot.appendChild(el('p', 'rb-rail__figure', o.figureLabel));
     if (o.markSrc) {
       var mark = el('div', 'rb-rail__mark');
       var img = document.createElement('img');

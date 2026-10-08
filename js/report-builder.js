@@ -1670,6 +1670,7 @@
       correctedNote: page.type === 'floor' ? 'Corrected for flooring differences' : '',
       stats: page.type === 'floor' && meta.imported ? ev.stats : null,
       note: text.railNote || '',
+      figureLabel: meta.figureNumber ? ('Figure ' + meta.figureNumber) : '',
       markSrc: BRAND_LOGO,
     });
   }

@@ -1540,19 +1540,25 @@ body.report-builder-open .canvas {
   position: absolute;
   overflow: hidden;
   overflow-wrap: break-word;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  /* Inside the page border, not over it. Pinned to the sheet's own edges the
+     rail painted across the frame's right-hand line and took the sheet's
+     rounded corner with it, so the border appeared to stop dead where the
+     rail began. These are SHEET_FRAME's insets, less the frame's own rule. */
+  top: 1.52%;
+  right: 0.98%;
+  bottom: 0.75%;
   width: 12.5cqw;
   box-sizing: border-box;
-  padding: 2.4cqh 1.4cqh;
-  border-left: 0.11cqh solid #1a1a1a;
+  padding: 2.2cqh 1.4cqh;
+  border-left: 0.1cqh solid #1a1a1a;
   background: #fff;
   color: #17130e;
   display: flex;
   flex-direction: column;
-  /* Left-aligned, as the template has it. */
+  /* Left-aligned, and set in the serif the template uses: it is what makes
+     the sheet read as a drawing rather than a web page. */
   text-align: left;
+  font-family: Georgia, "Times New Roman", Times, serif;
   z-index: 5;
 }
 
@@ -1579,17 +1585,17 @@ body.report-builder-open .canvas {
 
 .rb-rail__name {
   margin: 0;
-  font-size: 1.35cqh;
+  font-size: 1.3cqh;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   text-transform: uppercase;
-  line-height: 1.25;
+  line-height: 1.22;
 }
 
 .rb-rail__addr {
-  margin: 0.2cqh 0 0;
-  font-size: 0.98cqh;
-  color: #4a443c;
+  margin: 0.3cqh 0 0;
+  font-size: 1.02cqh;
+  color: #3c372f;
   line-height: 1.35;
 }
 
@@ -1600,18 +1606,18 @@ body.report-builder-open .canvas {
 }
 
 .rb-rail__label {
-  margin: 0 0 0.35cqh;
-  font-size: 0.72cqh;
-  letter-spacing: 0.14em;
+  margin: 0 0 0.5cqh;
+  font-size: 0.78cqh;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
-  color: #8a8275;
+  color: #6b6459;
 }
 
 .rb-rail__title {
   margin: 0;
-  font-size: 1.3cqh;
-  font-weight: 700;
-  line-height: 1.3;
+  font-size: 1.55cqh;
+  font-weight: 400;
+  line-height: 1.28;
   /* "Floor Level Survey" and the level on their own lines, as written. The
      size is what holds that first line together in a rail a tenth of the
      sheet wide -- at 1.5cqh it broke into "Floor Level / Survey". */
@@ -1621,7 +1627,7 @@ body.report-builder-open .canvas {
 
 .rb-rail__date {
   margin: 0;
-  font-size: 1.05cqh;
+  font-size: 1.12cqh;
 }
 
 .rb-rail__note,
@@ -1633,8 +1639,8 @@ body.report-builder-open .canvas {
 }
 
 .rb-rail__level {
-  margin: 0.65cqh 0 0;
-  font-size: 1cqh;
+  margin: 0.8cqh 0 0.15cqh;
+  font-size: 1.08cqh;
   font-weight: 700;
 }
 
@@ -1642,9 +1648,9 @@ body.report-builder-open .canvas {
   display: flex;
   justify-content: space-between;
   gap: 0.6cqh;
-  font-size: 0.95cqh;
-  color: #4a443c;
-  margin-top: 0.1cqh;
+  font-size: 1cqh;
+  color: #6b6459;
+  margin-top: 0.14cqh;
 }
 
 .rb-rail__row b {
@@ -1660,15 +1666,15 @@ body.report-builder-open .canvas {
 }
 
 .rb-rail__figure {
-  margin: 0;
-  font-size: 1.3cqh;
+  margin: 0 0 0.9cqh;
+  font-size: 1.25cqh;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
 }
 
 .rb-rail__mark {
-  margin-top: 0.9cqh;
+  margin-top: 0;
 }
 
 .rb-rail__mark img {
@@ -1686,7 +1692,8 @@ body.report-builder-open .canvas {
   top: 2.1cqh;
   margin: 0;
   z-index: 4;
-  font-size: 1.65cqh;
+  font-family: Georgia, "Times New Roman", Times, serif;
+  font-size: 1.7cqh;
   color: #17130e;
   pointer-events: none;
 }
