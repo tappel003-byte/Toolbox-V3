@@ -3480,11 +3480,17 @@ button.cf-home__delete[hidden] {
   border-color: var(--navy);
 }
 
+/* Save now / Done stay on screen.
+   They were un-stuck on Sept 20 to keep the plan controls clear on a phone,
+   which traded one problem for a worse one: on the Plans & levels step the
+   two buttons then sat below the fold, past Front door faces and Building
+   type, and Tim could not find them. Sticky is correct -- the bar only ever
+   floats over content you can scroll past, and it comes to rest after the
+   last field when you reach the end -- so it is back, with the gradient that
+   keeps text from showing through it. */
 .file-actions--edit {
-  position: static;
   margin: 16px 0 0;
   padding: 12px 0 calc(12px + env(safe-area-inset-bottom, 0px));
-  background: transparent;
 }
 
 .file-actions--edit .btn {
