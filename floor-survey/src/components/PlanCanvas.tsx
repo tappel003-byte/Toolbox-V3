@@ -6,13 +6,31 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
-/** A view that survives a change of canvas size. */
+/**
+ * A view that survives a change of canvas size -- and a change of plan.
+ *
+ * Both numbers are deliberately relative to something rather than absolute.
+ * `zoom` is a multiple of fit, so a plan stored at 3000 px and the same plan
+ * stored at 1500 px are drawn the same size on the page. The centre is a
+ * fraction of the image for the same reason: as raw image pixels, a camera
+ * set on one level put a different part of the building in the middle of the
+ * page on a level whose plan happened to be exported at a different size.
+ * Levels of one building must land in exactly the same place on every slide;
+ * that is the whole point of locking the view.
+ */
 export interface PlanCamera {
-  /** Image coordinate sitting at the centre of the view. */
+  /** Centre of the view, as a fraction of the image (0-1). */
   cx: number;
   cy: number;
   /** Multiple of fit-to-view. 1 = exactly fitted. */
   zoom: number;
+  /**
+   * Set on every camera this component reports. Its absence means a camera
+   * saved before cx/cy were fractions, whose numbers are image pixels; those
+   * are applied as they were written and are rewritten the first time the
+   * plan is moved.
+   */
+  rel?: boolean;
 }
 
 export interface CanvasTransform {
@@ -172,13 +190,14 @@ export function PlanCanvas({
       const wrap = wrapRef.current;
       if (onCameraRef.current && wrap && t.scale > 0) {
         onCameraRef.current({
-          cx: (wrap.clientWidth / 2 - t.tx) / t.scale,
-          cy: (wrap.clientHeight / 2 - t.ty) / t.scale,
+          cx: (wrap.clientWidth / 2 - t.tx) / t.scale / (imgW || 1),
+          cy: (wrap.clientHeight / 2 - t.ty) / t.scale / (imgH || 1),
           zoom: t.scale / (fitScale() || 1),
+          rel: true,
         });
       }
     },
-    [fitScale],
+    [fitScale, imgW, imgH],
   );
 
   // Fit-to-view only on first load/new plan, or when the user taps Fit.
@@ -234,8 +253,12 @@ export function PlanCanvas({
     if (planDataUrl && !imgLoaded) return;
     cameraNonceRef.current = cameraRequest.nonce;
     const scale = (cameraRequest.zoom || 1) * (fitScale() || 1);
-    const tx = wrap.clientWidth / 2 - cameraRequest.cx * scale;
-    const ty = wrap.clientHeight / 2 - cameraRequest.cy * scale;
+    // A camera written before the centre became a fraction holds image
+    // pixels; it is applied as written rather than silently reinterpreted.
+    const cx = cameraRequest.rel ? cameraRequest.cx * imgW : cameraRequest.cx;
+    const cy = cameraRequest.rel ? cameraRequest.cy * imgH : cameraRequest.cy;
+    const tx = wrap.clientWidth / 2 - cx * scale;
+    const ty = wrap.clientHeight / 2 - cy * scale;
     // A stored view that does not actually show the plan is not a view. The
     // report's camera is saved as it is panned and is shared by every Floor
     // Survey slide, so one pan past the edge would otherwise open every slide

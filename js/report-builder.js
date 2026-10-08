@@ -2322,7 +2322,15 @@
             locked: !!(floorCamera && floorCamera.locked),
             onCameraChange: function (camera) {
               var locked = !!(floorCamera && floorCamera.locked);
-              floorCamera = { cx: camera.cx, cy: camera.cy, zoom: camera.zoom, locked: locked };
+              // rel marks a camera whose centre is a fraction of the plan
+              // rather than image pixels. Dropping it here would make every
+              // stored view read as the old pixel form, which is exactly the
+              // thing that made two levels of one building land in different
+              // places.
+              floorCamera = {
+                cx: camera.cx, cy: camera.cy, zoom: camera.zoom,
+                rel: !!camera.rel, locked: locked,
+              };
               markDirty();
             },
               onSettingsChange: function (next) {
@@ -2505,7 +2513,7 @@
           // Lock View is about the camera -- the plan sitting in the same
           // place on every Floor Survey slide. It is deliberately not about
           // the chrome, which stays movable per slide.
-          if (!floorCamera) floorCamera = { cx: 0, cy: 0, zoom: 1, locked: false };
+          if (!floorCamera) floorCamera = { cx: 0.5, cy: 0.5, zoom: 1, rel: true, locked: false };
           floorCamera.locked = want;
           markDirty();
           renderPages();
