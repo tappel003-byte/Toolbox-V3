@@ -38,6 +38,15 @@ export type MountOptions = {
   locked?: boolean;
   onCameraChange?: (camera: PlanCamera) => void;
   onSettingsChange?: (settings: RenderSettings) => void;
+  /** The High, Low and difference the slide is drawing, per boundary. */
+  onStats?: (stats: Array<{
+    areaId: string;
+    name: string;
+    hi: number;
+    lo: number;
+    delta: number;
+    decimalPlaces: number;
+  }>) => void;
   onReady?: (info: {
     levelName: string;
     areaCount: number;
@@ -92,6 +101,7 @@ export function mount(el: HTMLElement, options: MountOptions) {
           controlsOnly={current.workspace === "report-topo-controls"}
           onCameraChange={current.onCameraChange}
           onSettingsChange={current.onSettingsChange}
+          onStats={current.onStats}
           onReady={current.onReady}
         />,
       );

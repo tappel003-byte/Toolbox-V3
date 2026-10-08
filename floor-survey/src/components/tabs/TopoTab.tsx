@@ -123,6 +123,25 @@ interface Props {
   pointColor?: string;
   excludedIds?: Set<string>;
   onExcludedIdsChange?: (ids: Set<string>) => void;
+  /**
+   * The High, Low and difference this view is drawing, per boundary.
+   *
+   * A report sheet shows these numbers twice: on the pill over the plan and
+   * again in its title rail. The rail was reading them from evidence stored
+   * when the slide was imported, so a sheet could say 9.40 / 8.10 while the
+   * pill beside it said 9.80 / 8.20 -- the drawing and its own caption
+   * disagreeing. There is one source, and it is this component.
+   *
+   * Reporting only. Nothing here changes what is drawn.
+   */
+  onStats?: (stats: Array<{
+    areaId: string;
+    name: string;
+    hi: number;
+    lo: number;
+    delta: number;
+    decimalPlaces: number;
+  }>) => void;
   /** null = "All areas". Owned by the route so the stats pills stay in sync. */
   selectedAreaId?: string | null;
   onSelectedAreaIdChange?: (id: string | null) => void;
@@ -388,6 +407,7 @@ export function TopoTab({
   controlsOnly = false,
   staticView = false,
   locked = false,
+  onStats,
   resizeCorners = false,
 }: Props) {
   const selectedId =
@@ -583,6 +603,24 @@ export function TopoTab({
       resolved.maxClamp,
     ],
   );
+
+  // Report the numbers this view is drawing, so a sheet's rail cannot drift
+  // from the pill on its own plan.
+  const onStatsRef = useRef(onStats);
+  onStatsRef.current = onStats;
+  useEffect(() => {
+    if (!onStatsRef.current) return;
+    onStatsRef.current(
+      areaTopos.map((at) => ({
+        areaId: at.area.id,
+        name: at.area.name || "Boundary",
+        hi: at.hi.value,
+        lo: at.lo.value,
+        delta: at.hi.value - at.lo.value,
+        decimalPlaces: resolved.decimalPlaces ?? 2,
+      })),
+    );
+  }, [areaTopos, resolved.decimalPlaces]);
 
   const canRender = areaTopos.length > 0;
   // Single-surface view (focused area, or only one area exists).

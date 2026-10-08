@@ -56,6 +56,15 @@ export type ReportTopoWorkspaceProps = {
   controlsOnly?: boolean;
   onCameraChange?: (camera: PlanCamera) => void;
   onSettingsChange?: (settings: RenderSettings) => void;
+  /** The High, Low and difference this slide is drawing, per boundary. */
+  onStats?: (stats: Array<{
+    areaId: string;
+    name: string;
+    hi: number;
+    lo: number;
+    delta: number;
+    decimalPlaces: number;
+  }>) => void;
   onReady?: (info: {
     levelName: string;
     areaCount: number;
@@ -78,6 +87,7 @@ export function ReportTopoWorkspace({
   controlsOnly = false,
   onCameraChange,
   onSettingsChange,
+  onStats,
   onReady,
 }: ReportTopoWorkspaceProps) {
   const [floor, setFloor] = useState<Floor | null>(null);
@@ -205,6 +215,7 @@ export function ReportTopoWorkspace({
         onSelectedAreaIdChange={() => {}}
         onCamera={handleCamera}
         cameraRequest={cameraRequest}
+        onStats={onStats}
         statsPillForSingleBoundary
         presentation
         locked={locked}

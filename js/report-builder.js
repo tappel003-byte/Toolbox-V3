@@ -1611,6 +1611,9 @@
       onSettingsChange: function (next) {
         if (topoHost.hooks && topoHost.hooks.onSettingsChange) topoHost.hooks.onSettingsChange(next);
       },
+      onStats: function (stats) {
+        if (topoHost.hooks && topoHost.hooks.onStats) topoHost.hooks.onStats(stats);
+      },
     });
     return el;
   }
@@ -1656,8 +1659,11 @@
     // A level renamed in Floor Survey, or a date set there afterwards, never
     // reached the stored meta -- which is why a sheet said "Boundary 1" and
     // had no survey date while the app showed "Main Floor" and 10/07/2026.
-    var stats = page.type === 'floor' && meta.imported && Array.isArray(ev.stats)
-      ? ev.stats.filter(Boolean)
+    // Live first: what the drawing is drawing. Evidence stored at import is
+    // only a fallback for a slide whose view has not reported yet.
+    var live = Array.isArray(page._liveStats) ? page._liveStats.filter(Boolean) : null;
+    var stats = page.type === 'floor' && meta.imported
+      ? (live && live.length ? live : (Array.isArray(ev.stats) ? ev.stats.filter(Boolean) : []))
       : [];
     var scopeTitle = meta.scope === 'all'
       ? (meta.scopeTitle || 'Combined')
@@ -2633,6 +2639,19 @@
               onSettingsChange: function (next) {
               setFloorViewFor(page, next);
               markDirty();
+            },
+            // The rail's readings and the pill over the plan are the same
+            // numbers, so they come from the same place: whatever the drawing
+            // is drawing right now. Read from evidence stored at import, the
+            // rail said 9.40 / 8.10 beside a pill reading 9.80 / 8.20.
+            onStats: function (stats) {
+              var live = Array.isArray(stats) ? stats : [];
+              var before = JSON.stringify(page._liveStats || null);
+              if (before === JSON.stringify(live)) return;
+              page._liveStats = live;
+              var railEl = sheetEl && sheetEl.querySelector('.rb-rail__rail');
+              var next = railForPage(page);
+              if (railEl && next) sheetEl.replaceChild(next, railEl);
             },
             onReady: function (info) {
               // The frame takes the plan's own proportion the first time a
