@@ -1538,6 +1538,8 @@ body.report-builder-open .canvas {
    words. */
 .rb-rail {
   position: absolute;
+  overflow: hidden;
+  overflow-wrap: break-word;
   top: 0;
   right: 0;
   bottom: 0;
@@ -1571,16 +1573,17 @@ body.report-builder-open .canvas {
 .rb-rail__name {
   margin: 0;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 1.45cqh;
+  font-size: 1.35cqh;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
   line-height: 1.25;
+  text-wrap: balance;
 }
 
 .rb-rail__addr {
   margin: 0.2cqh 0 0;
-  font-size: 1.05cqh;
+  font-size: 0.98cqh;
   color: #4a443c;
   line-height: 1.35;
 }
@@ -1602,11 +1605,14 @@ body.report-builder-open .canvas {
 .rb-rail__title {
   margin: 0;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 1.5cqh;
+  font-size: 1.22cqh;
   font-weight: 700;
-  line-height: 1.25;
-  /* "Floor Level Survey" and the level on their own lines, as written. */
+  line-height: 1.3;
+  /* "Floor Level Survey" and the level on their own lines, as written. The
+     size is what holds that first line together in a rail a tenth of the
+     sheet wide -- at 1.5cqh it broke into "Floor Level / Survey". */
   white-space: pre-line;
+  text-wrap: balance;
 }
 
 .rb-rail__date {
@@ -1666,20 +1672,6 @@ body.report-builder-open .canvas {
   width: 82%;
   height: auto;
   opacity: 0.92;
-}
-
-/* Figure N, upper left of the drawing area. An imported slide builds no
-   header -- the drawing is the slide -- so this sits against the sheet. */
-.rb-figure-tag {
-  position: absolute;
-  left: 2.2cqh;
-  top: 1.9cqh;
-  margin: 0;
-  z-index: 4;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 1.6cqh;
-  color: #17130e;
-  pointer-events: none;
 }
 
 /* The drawing keeps clear of the rail. */

@@ -1663,7 +1663,10 @@
       address: ev.address || '',
       addressCity: ev.addressCity || '',
       title: title,
-      surveyDate: longSurveyDate(meta.surveyDate || ev.surveyDate || '') || dateText,
+      // A field with no value shows a dash rather than leaving its heading
+      // standing over nothing, which is what a sheet with no survey date
+      // recorded looked like.
+      surveyDate: longSurveyDate(meta.surveyDate || ev.surveyDate || '') || dateText || '\u2014',
       correctedNote: page.type === 'floor' ? 'Corrected for flooring differences' : '',
       stats: page.type === 'floor' && meta.imported ? ev.stats : null,
       note: text.railNote || '',
@@ -1788,17 +1791,9 @@
     if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
       var rail = railForPage(page);
       if (rail) sheet.appendChild(rail);
-      // Figure N in the upper left, against the sheet rather than inside the
-      // page's margin: an imported slide gives the whole area to the drawing
-      // and builds no header at all, so this is the only place it can live
-      // and still be in the corner Tim wants it in.
-      var figureNo = page.meta && page.meta.figureNumber;
-      if (figureNo) {
-        var tag = document.createElement('p');
-        tag.className = 'rb-figure-tag';
-        tag.textContent = 'Figure ' + figureNo;
-        sheet.appendChild(tag);
-      }
+      // No Figure N in the upper left. It is at the foot of the rail, above
+      // the mark, and printing it twice was the redundancy the rail exists to
+      // remove.
     }
 
     if (window.ToolboxReportOverlay) {
