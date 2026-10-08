@@ -224,6 +224,17 @@ These notes preserve active product possibilities so they are not lost. They are
 - **Controls that change the document speak PowerPoint; controls that put ink on a drawing speak Distress.** That is the dividing line for this toolbar and for the ones after it.
 - **Callout** (text with a leader line) and **highlight** (translucent shading over an area) are wanted and are a later pass. **Front/back ordering** was pinned, then accepted as a likely consequence of highlight — a highlight over a circle washes it out, under it does not.
 
+## Layers and levels
+
+- **The words, fixed (DECIDED Tim, Oct 8, 2026).** Tim: "I think we are talking about layers and levels. Layers are different floor plans for different levels of the house; a floor plan can have different levels on the same floor plan."
+  - A **layer** is one floor plan — the basement, the main floor, the second story. Each is its own plan image. In code today this is a Plan Setup *canvas*, and it is what Distress's level pill switches between and what Floor Survey keys its readings to.
+  - A **level** is a surface within one layer — a sunken living room or a step-down addition on the same floor plan. In code today this is a Floor Survey *boundary* (`TopoArea`), and the step between two of them is a *transition*, which carries the measured elevation difference.
+  - Use these two words. The code's older names (canvas, area, boundary) mean the same things and are not worth a rename on their own, but nothing new should add a third word for either idea.
+- **Report Builder tells the story in the order Tim sets it.** Slides already move with Earlier and Later on the rail, and that is what orders the layers in the report. Layers are assembled in the order they were added in Customer Setup, which is a starting point, not the finished sequence.
+- **Open: whether a layer should know what it is.** Nothing in Toolbox records that a layer is a basement rather than a second story — it is the name the investigator typed. Whether that should become a picked list, or stay free text now that slides can be reordered by hand, is not decided.
+
+---
+
 ## Report Builder: Lock View
 
 - **Lock View holds the framing (fixed Oct 8, 2026, found by Tim).** Tim: "I want to get the layout on the screen that I want and then lock it. The lock did not work, I was able to lock it and still move everything around." Lock saved its state and flipped its own label, but the live view was never told, so a locked slide still panned, zoomed, resized and let the chrome be dragged. It now freezes all of that and hides the corner grips. Settings are deliberately not frozen: turning contours off on a locked slide is the reason to lock it first.
