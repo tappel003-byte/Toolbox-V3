@@ -292,6 +292,8 @@ body.report-builder-open .canvas {
   box-shadow: 0 14px 36px rgba(8, 32, 54, 0.16);
   box-sizing: border-box;
   container-type: size;
+  /* The rail's layout assumes the sheet is its own stacking context. */
+  isolation: isolate;
 }
 
 /* One frame, the same shape in the same place on every page. It is drawn
@@ -1531,163 +1533,219 @@ body.report-builder-open .canvas {
 }
 
 /* The figure rail — a narrow column down the right of a figure page.
-   Everything in it is reference matter: it says whose property this is, what
-   the drawing is, when it was surveyed and what the readings were, and it
-   must not pull the eye off the drawing. Right-aligned, and about a tenth of
-   the sheet; 9% was tried and broke the drawing title into a column of single
-   words. */
-.rb-rail {
+   Everything in it is reference matter: whose property this is, what the
+   drawing is, when it was surveyed, the readings, and the mark. It must not
+   pull the eye off the drawing.
+
+   This block is the layout ChatGPT wrote to the specification, pasted in as
+   written. It fixes two things I had wrong: the rail now sits inside the
+   page border's stroke rather than painting over it, and the foot is a grid
+   track of its own so the figure number and the mark are centred on one axis
+   and can never be clipped by the sections above. */
+
+/* Existing border ends at:
+   right: 0.98cqw
+   bottom: 0.75cqh
+
+   Add its 0.19cqh stroke thickness to each inset.
+   Keep this rail outside the border element, as its sibling. */
+.rb-rail__rail {
   position: absolute;
-  overflow: hidden;
-  overflow-wrap: break-word;
-  /* Inside the page border, not over it. Pinned to the sheet's own edges the
-     rail painted across the frame's right-hand line and took the sheet's
-     rounded corner with it, so the border appeared to stop dead where the
-     rail began. These are SHEET_FRAME's insets, less the frame's own rule. */
-  top: 1.52%;
-  right: 0.98%;
-  bottom: 0.75%;
+  top: calc(1.52cqh + 0.19cqh);
+  right: calc(0.98cqw + 0.19cqh);
+  bottom: calc(0.75cqh + 0.19cqh);
   width: 12.5cqw;
+  z-index: 3;
+
+  display: grid;
+  grid-template-rows: minmax(0cqh, 1fr) 13cqh;
+
   box-sizing: border-box;
-  padding: 2.2cqh 1.4cqh;
-  border-left: 0.1cqh solid #1a1a1a;
+  border-left: 0.09cqh solid #1a1a1a;
   background: #fff;
-  color: #17130e;
+  color: #1a1a1a;
+
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.12cqh;
+  font-weight: 400;
+  line-height: 1.55cqh;
+  text-align: left;
+}
+
+.rb-rail__rail *,
+.rb-rail__rail *::before,
+.rb-rail__rail *::after {
+  box-sizing: border-box;
+}
+
+.rb-rail__body {
+  min-width: 0cqw;
+  min-height: 0cqh;
+  overflow: hidden;
+  padding: 1.5cqh 1.05cqw 0cqh;
+}
+
+.rb-rail__compass {
   display: flex;
   flex-direction: column;
-  /* Left-aligned, and set in the serif the template uses: it is what makes
-     the sheet read as a drawing rather than a web page. */
-  text-align: left;
-  font-family: Georgia, "Times New Roman", Times, serif;
-  z-index: 5;
+  align-items: center;
+  gap: 0.35cqh;
+  margin: 0cqh 0cqw 2.5cqh;
 }
 
-/* North sits at the top, above everything. Rotatable, because north is not
-   always up. */
 .rb-rail__north {
-  align-self: center;
-  width: 5.4cqh;
-  margin-bottom: 1.6cqh;
+  font-size: 1.6cqh;
+  line-height: 1.8cqh;
 }
 
-.rb-rail__north svg {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
-/* Only the rose turns. The N is a label on the sheet, not part of the
-   instrument, so it stays upright however north is set. */
+/* Only this SVG rotates. The N above it stays upright. */
 .rb-rail__rose {
+  display: block;
+  width: 5.8cqh;
+  height: 5.8cqh;
+  flex-shrink: 0;
+  overflow: visible;
   transform: rotate(var(--rb-north-rotation, 0deg));
-  transform-origin: 50% 61%;
+  transform-origin: center;
 }
 
-.rb-rail__name {
-  margin: 0;
-  font-size: 1.85cqh;
+.rb-rail__client,
+.rb-rail__address,
+.rb-rail__label,
+.rb-rail__title,
+.rb-rail__date,
+.rb-rail__note,
+.rb-rail__level-name {
+  margin: 0cqh 0cqw;
+  min-width: 0cqw;
+  max-width: 10.3cqw;
+  overflow-wrap: anywhere;
+}
+
+.rb-rail__client {
+  font-size: 1.48cqh;
+  line-height: 1.85cqh;
   font-weight: 700;
-  letter-spacing: 0.01em;
   text-transform: uppercase;
-  line-height: 1.18;
 }
 
-.rb-rail__addr {
-  margin: 0.35cqh 0 0;
-  font-size: 1.15cqh;
-  color: #3c372f;
-  line-height: 1.38;
+.rb-rail__address {
+  margin-top: 0.65cqh;
+  font-size: 1.12cqh;
+  line-height: 1.6cqh;
+  font-style: normal;
 }
 
-.rb-rail__rule {
-  height: 0.07cqh;
-  background: #b9b1a1;
-  margin: 1.5cqh 0 1.05cqh;
+.rb-rail__section {
+  margin-top: 2cqh;
+  padding-top: 1.65cqh;
+  border-top: 0.07cqh solid #a7a7a7;
 }
 
 .rb-rail__label {
-  margin: 0 0 0.55cqh;
-  font-size: 0.88cqh;
-  letter-spacing: 0.13em;
+  margin-bottom: 0.8cqh;
+  color: #666;
+  font-size: 0.91cqh;
+  line-height: 1.25cqh;
+  letter-spacing: 0.085cqh;
+  font-weight: 400;
   text-transform: uppercase;
-  color: #6b6459;
 }
 
 .rb-rail__title {
-  margin: 0;
-  font-size: 1.95cqh;
+  font-size: 1.7cqh;
+  line-height: 2.2cqh;
   font-weight: 400;
-  line-height: 1.24;
-  /* "Floor Level Survey" and the level on their own lines, as written. The
-     size is what holds that first line together in a rail a tenth of the
-     sheet wide -- at 1.5cqh it broke into "Floor Level / Survey". */
-  white-space: pre-line;
-  text-wrap: balance;
 }
 
 .rb-rail__date {
-  margin: 0;
-  font-size: 1.38cqh;
+  font-size: 1.2cqh;
+  line-height: 1.65cqh;
 }
 
-.rb-rail__note,
-.rb-rail__text {
-  margin: 0.25cqh 0 0;
-  font-size: 1.08cqh;
-  color: #6b6459;
-  line-height: 1.38;
+.rb-rail__note {
+  margin-top: 0.55cqh;
+  color: #666;
+  font-size: 1.02cqh;
+  line-height: 1.5cqh;
 }
 
-.rb-rail__level {
-  margin: 0.95cqh 0 0.2cqh;
-  font-size: 1.25cqh;
+.rb-rail__level + .rb-rail__level {
+  margin-top: 1.7cqh;
+}
+
+.rb-rail__level-name {
+  margin-bottom: 0.5cqh;
+  font-size: 1.15cqh;
+  line-height: 1.6cqh;
   font-weight: 700;
 }
 
-.rb-rail__row {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.6cqh;
-  font-size: 1.15cqh;
-  color: #6b6459;
-  margin-top: 0.18cqh;
+.rb-rail__readings {
+  display: grid;
+  gap: 0.25cqh;
+  margin: 0cqh 0cqw;
 }
 
-.rb-rail__row b {
-  font-weight: 600;
-  color: #17130e;
+.rb-rail__reading {
+  display: grid;
+  grid-template-columns: minmax(0cqw, 1fr) 4.3cqw;
+  column-gap: 0.35cqw;
+  align-items: baseline;
+}
+
+.rb-rail__reading-label,
+.rb-rail__reading-value {
+  min-width: 0cqw;
+  margin: 0cqh 0cqw;
+  font-size: 1.08cqh;
+  line-height: 1.5cqh;
+  overflow-wrap: anywhere;
+}
+
+.rb-rail__reading-value {
+  text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-/* The body takes what is left and clips if it has to; the foot never does. */
-.rb-rail__body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-}
-
+/* Separate from the clipped body: always retains its own space. */
 .rb-rail__foot {
-  flex: 0 0 auto;
-  margin-top: auto;
-  padding-top: 1.6cqh;
+  min-width: 0cqw;
+  min-height: 0cqh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1.3cqh;
+  padding: 1cqh 0.8cqw 1.5cqh;
+  background: #fff;
+  text-align: center;
 }
 
 .rb-rail__figure {
-  margin: 0 0 1.3cqh;
-  font-size: 1.5cqh;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  margin: 0cqh 0cqw;
+  font-size: 1.15cqh;
+  line-height: 1.6cqh;
+  letter-spacing: 0.17cqh;
+  font-weight: 400;
 }
 
-.rb-rail__mark {
-  margin-top: 0;
+/* Fixed image box; contain preserves the entire logo,
+   regardless of its intrinsic aspect ratio. */
+.rb-rail__logo {
+  display: block;
+  flex-shrink: 0;
+  width: 10cqw;
+  height: 4.5cqh;
+  object-fit: contain;
+  object-position: center;
 }
 
-.rb-rail__mark img {
-  width: 88%;
-  height: auto;
-  opacity: 0.92;
+@media print {
+  .rb-rail__rail {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
 }
 
 /* The drawing keeps clear of the rail. */

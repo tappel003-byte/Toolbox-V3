@@ -1,27 +1,28 @@
 // Toolbox — the figure rail.
 //
 // A narrow column down the right-hand edge of a figure page carrying
-// everything about the sheet that is not the drawing: which property, what
-// the drawing is, when the survey was done, the relative readings, the figure
-// number and the mark.
+// everything about the sheet that is not the drawing: north, whose property
+// this is, what the drawing is, when it was surveyed, the relative readings,
+// the figure number and the mark.
 //
 // It replaces chrome that used to be scattered into the four corners — the
 // address block upper right, the readings box lower right, the logo floating
 // lower left — and the machinery that went with it: a movable, lockable logo
-// box, and a title block that needed a button to swap corners when the plan
-// grew into one. There are no corners to compete for any more, so none of
-// that has to exist.
+// box, and a title block that would have needed a button to swap corners
+// when the plan grew into one. There are no corners to compete for any more,
+// so none of that has to exist.
 //
 // Tim, on seeing it: "This makes it look a lot more technical and
 // professional... it fits for every single page. It opens up the canvas."
 // And on how loud it may be: "It's not about us. It's about the customer."
-// So the rail is reference matter. The residence is the largest thing in it
-// and is still modest; everything else is quieter; nothing in it should pull
-// the eye off the drawing.
 //
-// Width and alignment are settled: about a tenth of the sheet, every line
-// right-aligned. Nine per cent was tried and breaks the drawing title into a
-// column of single words.
+// The markup below is the structure Tim had ChatGPT write to the agreed
+// specification, reproduced element for element so it matches the stylesheet
+// that came with it. Three things I had got wrong and it does not: the rail
+// clears the page border's stroke instead of painting over it, the foot is a
+// grid track of its own so the figure number and the mark share one centre
+// line and cannot be clipped by the sections above, and the readings are a
+// description list rather than rows of spans.
 (function () {
   'use strict';
 
@@ -32,13 +33,29 @@
     return node;
   }
 
-  function rule(parent) {
-    parent.appendChild(el('div', 'rb-rail__rule'));
+  /** Lines joined by <br>, the way the template sets them. */
+  function lines(tag, cls, parts) {
+    var node = el(tag, cls);
+    var used = (parts || []).filter(function (part) { return part; });
+    used.forEach(function (part, i) {
+      if (i) node.appendChild(document.createElement('br'));
+      node.appendChild(document.createTextNode(part));
+    });
+    return used.length ? node : null;
   }
 
-  function section(parent, label) {
-    rule(parent);
-    if (label) parent.appendChild(el('p', 'rb-rail__label', label));
+  /**
+   * "Mitchell Residence" sets as Mitchell / Residence.
+   *
+   * The template breaks the client name before its last word rather than
+   * letting it wrap wherever it happens to fit.
+   */
+  function clientLines(name) {
+    var text = String(name || '').trim();
+    if (!text) return [];
+    var at = text.lastIndexOf(' ');
+    if (at <= 0) return [text];
+    return [text.slice(0, at), text.slice(at + 1)];
   }
 
   function formatReading(value, dec) {
@@ -47,13 +64,19 @@
     return n.toFixed(typeof dec === 'number' ? dec : 2);
   }
 
-  function readingRow(parent, label, value, dec) {
+  function readingRow(list, label, value, dec) {
     var text = formatReading(value, dec);
     if (!text) return;
-    var row = el('div', 'rb-rail__row');
-    row.appendChild(el('span', 'rb-rail__row-label', label));
-    row.appendChild(el('b', null, text + ' in'));
-    parent.appendChild(row);
+    var row = el('div', 'rb-rail__reading');
+    row.appendChild(el('dt', 'rb-rail__reading-label', label));
+    row.appendChild(el('dd', 'rb-rail__reading-value', text + ' in'));
+    list.appendChild(row);
+  }
+
+  function section(label) {
+    var node = el('section', 'rb-rail__section');
+    if (label) node.appendChild(el('h3', 'rb-rail__label', label));
+    return node;
   }
 
   /**
@@ -61,30 +84,26 @@
    *
    * It used to sit on the drawing beside the front-door note. Tim moved it
    * here: it is reference matter like the rest of the rail, and taking it off
-   * the plan clears the last floating object from the drawing. The rotation
-   * is kept because north is not always up.
+   * the plan clears the last floating object from the drawing. Only the rose
+   * turns — the N is a label on the sheet, not part of the instrument —
+   * because north is not always up.
    */
-  function northArrow(rotationDeg) {
-    var wrap = el('div', 'rb-rail__north');
-    wrap.setAttribute('aria-hidden', 'true');
-    var deg = typeof rotationDeg === 'number' && isFinite(rotationDeg) ? rotationDeg : 0;
-    wrap.style.setProperty('--rb-north-rotation', deg + 'deg');
-    // Option F: a slim two-tone north point inside one open ring, with the N
-    // standing above it. Chosen over the variant whose pointer breaks the
-    // ring because that one's overhang sweeps outside the circle as it turns
-    // and needs clearance the rail has not got; this stays within its own
-    // circle at any angle.
-    wrap.innerHTML =
-      '<svg viewBox="0 0 64 82" focusable="false">' +
-      '<text x="32" y="14" text-anchor="middle" font-size="15" font-weight="700"' +
-      ' font-family="Arial, Helvetica, sans-serif" fill="#111">N</text>' +
-      '<g class="rb-rail__rose">' +
-      '<circle cx="32" cy="50" r="24" fill="none" stroke="#111" stroke-width="1.4"/>' +
-      '<path d="M32 28 L39 70 L32 63 Z" fill="#111"/>' +
-      '<path d="M32 28 L25 70 L32 63 Z" fill="#fff" stroke="#111" stroke-width="1.1"' +
-      ' stroke-linejoin="round"/>' +
-      '</g>' +
-      '</svg>';
+  function compass() {
+    var wrap = el('div', 'rb-rail__compass');
+    wrap.setAttribute('aria-label', 'North orientation');
+    var n = el('span', 'rb-rail__north', 'N');
+    n.setAttribute('aria-hidden', 'true');
+    wrap.appendChild(n);
+    wrap.insertAdjacentHTML('beforeend',
+      '<svg class="rb-rail__rose" viewBox="0 0 100 100" aria-hidden="true"' +
+      ' focusable="false">' +
+      '<circle cx="50" cy="50" r="46" fill="white" stroke="#1a1a1a"' +
+      ' stroke-width="1.3"/>' +
+      '<path d="M50 14 L35 77 L50 66 Z" fill="#1a1a1a" stroke="#1a1a1a"' +
+      ' stroke-width="1.3" stroke-linejoin="round"/>' +
+      '<path d="M50 14 L65 77 L50 66 Z" fill="white" stroke="#1a1a1a"' +
+      ' stroke-width="1.3" stroke-linejoin="round"/>' +
+      '</svg>');
     return wrap;
   }
 
@@ -97,45 +116,52 @@
    */
   function render(opts) {
     var o = opts || {};
-    var root = el('aside', 'rb-rail');
+    var root = el('aside', 'rb-rail__rail');
+    root.setAttribute('aria-label', 'Drawing information');
     root.setAttribute('data-rb-rail', '1');
+    var deg = typeof o.northRotation === 'number' && isFinite(o.northRotation)
+      ? o.northRotation
+      : 0;
+    root.style.setProperty('--rb-north-rotation', deg + 'deg');
 
-    root.appendChild(northArrow(o.northRotation));
-
-    // Everything above the foot goes in a block that is allowed to clip.
-    // Without it the rail overflowed from the bottom, and what fell off
-    // the end was the mark -- the one thing that must always be on the
-    // sheet. A page with more levels than the rail can hold is a page to
-    // split, but it should not lose its mark while Tim decides that.
     var body = el('div', 'rb-rail__body');
+    body.appendChild(compass());
 
-    var id = el('div', 'rb-rail__id');
-    if (o.residence) id.appendChild(el('p', 'rb-rail__name', o.residence));
-    if (o.address) id.appendChild(el('p', 'rb-rail__addr', o.address));
-    if (o.addressCity) id.appendChild(el('p', 'rb-rail__addr', o.addressCity));
-    if (id.childNodes.length) body.appendChild(id);
+    var head = document.createElement('header');
+    var client = lines('h2', 'rb-rail__client', clientLines(o.residence));
+    if (client) head.appendChild(client);
+    var addr = lines('address', 'rb-rail__address', [o.address, o.addressCity]);
+    if (addr) head.appendChild(addr);
+    if (head.childNodes.length) body.appendChild(head);
 
     if (o.title) {
-      section(body, 'Drawing title');
-      body.appendChild(el('p', 'rb-rail__title', o.title));
+      var titleSection = section('Drawing title');
+      titleSection.appendChild(lines('p', 'rb-rail__title', String(o.title).split('\n')));
+      body.appendChild(titleSection);
     }
 
     if (o.surveyDate || o.correctedNote) {
-      section(body, 'Survey date');
-      if (o.surveyDate) body.appendChild(el('p', 'rb-rail__date', o.surveyDate));
-      if (o.correctedNote) body.appendChild(el('p', 'rb-rail__note', o.correctedNote));
+      var dateSection = section('Survey date');
+      if (o.surveyDate) dateSection.appendChild(el('p', 'rb-rail__date', o.surveyDate));
+      if (o.correctedNote) dateSection.appendChild(el('p', 'rb-rail__note', o.correctedNote));
+      body.appendChild(dateSection);
     }
 
     var stats = Array.isArray(o.stats) ? o.stats.filter(Boolean) : [];
     if (stats.length) {
-      section(body, 'Relative readings');
+      var readings = section('Relative readings');
       stats.forEach(function (item) {
-        if (item.name) body.appendChild(el('p', 'rb-rail__level', item.name));
+        var level = el('div', 'rb-rail__level');
+        if (item.name) level.appendChild(el('h4', 'rb-rail__level-name', item.name));
+        var list = el('dl', 'rb-rail__readings');
         var dec = item.decimalPlaces;
-        readingRow(body, 'High', item.hi, dec);
-        readingRow(body, 'Low', item.lo, dec);
-        readingRow(body, 'Difference', item.delta, dec);
+        readingRow(list, 'High', item.hi, dec);
+        readingRow(list, 'Low', item.lo, dec);
+        readingRow(list, 'Difference', item.delta, dec);
+        if (list.childNodes.length) level.appendChild(list);
+        readings.appendChild(level);
       });
+      body.appendChild(readings);
     }
 
     // A line the investigator writes, for pages whose rail would otherwise be
@@ -144,34 +170,31 @@
     // most subsequent damage, pictures 5, 6 and 10." It is his sentence, not
     // a generated one, so nothing is written here that he did not write.
     if (o.note) {
-      section(body, o.noteLabel || 'Notes');
-      body.appendChild(el('p', 'rb-rail__text', o.note));
+      var noteSection = section(o.noteLabel || 'Notes');
+      noteSection.appendChild(el('p', 'rb-rail__note', o.note));
+      body.appendChild(noteSection);
     }
 
-    // The foot is pushed down by the sections above it, so it sits on the
-    // bottom edge however much is in the rail. Figure N stands above the
-    // mark here as well as in the upper left of the drawing -- Tim keeps that
-    // one repetition deliberately, because the foot of the rail is where the
-    // eye lands.
     root.appendChild(body);
 
-    var foot = el('div', 'rb-rail__foot');
-    if (o.figureLabel) foot.appendChild(el('p', 'rb-rail__figure', o.figureLabel));
-    if (o.markSrc) {
-      var mark = el('div', 'rb-rail__mark');
-      var img = document.createElement('img');
-      img.src = o.markSrc;
-      img.alt = '';
-      mark.appendChild(img);
-      foot.appendChild(mark);
+    var foot = el('footer', 'rb-rail__foot');
+    if (o.figureLabel) {
+      foot.appendChild(el('p', 'rb-rail__figure', String(o.figureLabel).toUpperCase()));
     }
-    if (foot.childNodes.length) root.appendChild(foot);
+    if (o.markSrc) {
+      var img = document.createElement('img');
+      img.className = 'rb-rail__logo';
+      img.src = o.markSrc;
+      img.alt = 'Sandia GEO';
+      foot.appendChild(img);
+    }
+    root.appendChild(foot);
 
     return root;
   }
 
   window.ToolboxReportRail = {
     render: render,
-    northArrow: northArrow,
+    compass: compass,
   };
 })();
