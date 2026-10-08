@@ -243,6 +243,9 @@
     // other sheet in the book still carries it, so the report is not short of
     // the mark.
     if (page.type === 'pictures') return false;
+    // A figure page carries the mark in its rail, at the foot, so there is
+    // nothing to float in the corner -- and nothing to drag or lock either.
+    if (page.type === 'floor' && !(page.meta && page.meta.reserved)) return false;
     return page.type !== 'cover';
   }
 
@@ -1624,6 +1627,51 @@
    * thumbnail size would overwrite the real page's with numbers measured off
    * a stamp. Those three places check the flag; everything else is shared.
    */
+  // The rail says the date the way the finished reports say it -- "September
+  // 1, 2026" rather than 09/01/2026. The short form is still what the rest of
+  // the book uses.
+  function longSurveyDate(value) {
+    if (!value) return '';
+    var d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? value + 'T12:00:00' : value);
+    if (isNaN(d.getTime())) return '';
+    var months = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+      'August', 'September', 'October', 'November', 'December'];
+    return months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+  }
+
+  /**
+   * The rail for a figure page.
+   *
+   * One rail serves every figure page: a section it has nothing for is simply
+   * absent, so a Pictures page is the same component with no readings rather
+   * than a second layout to keep in step with this one.
+   */
+  function railForPage(page) {
+    var api = window.ToolboxReportRail;
+    if (!api || typeof api.render !== 'function') return null;
+    var meta = page.meta || {};
+    var ev = page.evidence || {};
+    var text = page.reportText || {};
+    var scopeTitle = meta.scopeTitle || meta.levelName || '';
+    var title = page.type === 'floor'
+      ? ('Floor Level Survey' + (scopeTitle ? '\n' + scopeTitle : ''))
+      : (page.title || '');
+    var dateText = formatSurveyDate(meta.surveyDate || ev.surveyDate || '', true);
+    return api.render({
+      northRotation: typeof meta.northRotation === 'number' ? meta.northRotation : 0,
+      residence: ev.residenceTitle || ev.customerName || '',
+      address: ev.address || '',
+      addressCity: ev.addressCity || '',
+      title: title,
+      surveyDate: longSurveyDate(meta.surveyDate || ev.surveyDate || '') || dateText,
+      correctedNote: page.type === 'floor' ? 'Corrected for flooring differences' : '',
+      stats: page.type === 'floor' && meta.imported ? ev.stats : null,
+      note: text.railNote || '',
+      figureLabel: meta.figureNumber ? ('Figure ' + meta.figureNumber) : '',
+      markSrc: BRAND_LOGO,
+    });
+  }
+
   function renderSheet(sheet, page, pages, opts) {
     var thumb = !!(opts && opts.thumb);
     sheet.textContent = '';
@@ -1691,6 +1739,7 @@
       // other pages use is a band of white the plan cannot be moved into, and
       // it clips the plan before the paper edge when it is panned.
       if (page.meta && page.meta.imported) margin.classList.add('rb-sheet__margin--topo-bleed');
+      margin.classList.add('rb-sheet__margin--railed');
       var fl = window.ToolboxReportFloorLayout;
       if (fl && typeof fl.renderPage === 'function') {
         var imported = !!(page.meta && page.meta.imported && page.evidence && page.evidence.figure);
@@ -1734,6 +1783,22 @@
       sectionTitle.textContent = page.title || 'Sheet';
       margin.appendChild(sectionTitle);
       if (page.note) addLine(margin, 'rb-sheet__note', page.note);
+    }
+
+    if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
+      var rail = railForPage(page);
+      if (rail) sheet.appendChild(rail);
+      // Figure N in the upper left, against the sheet rather than inside the
+      // page's margin: an imported slide gives the whole area to the drawing
+      // and builds no header at all, so this is the only place it can live
+      // and still be in the corner Tim wants it in.
+      var figureNo = page.meta && page.meta.figureNumber;
+      if (figureNo) {
+        var tag = document.createElement('p');
+        tag.className = 'rb-figure-tag';
+        tag.textContent = 'Figure ' + figureNo;
+        sheet.appendChild(tag);
+      }
     }
 
     if (window.ToolboxReportOverlay) {

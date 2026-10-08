@@ -360,57 +360,13 @@
     figureNum.className = 'rb-topo-page__figure-num';
     figureNum.textContent = meta.figureNumber ? ('Figure ' + meta.figureNumber) : 'Figure';
     left.appendChild(figureNum);
-    var figureTitle = document.createElement('h1');
-    figureTitle.className = 'rb-topo-page__figure-title';
-    var scopeTitle = meta.scopeTitle || meta.levelName || 'Floor Level Survey';
-    figureTitle.textContent = 'Floor Level Survey — ' + scopeTitle;
-    left.appendChild(figureTitle);
-    var dateLine = document.createElement('p');
-    dateLine.className = 'rb-topo-page__survey-date';
-    var dateText = '';
-    if (typeof options.formatSurveyDate === 'function') {
-      dateText = options.formatSurveyDate(meta.surveyDate || ev.surveyDate || '', true);
-    }
-    dateLine.textContent = dateText ? ('Survey Date: ' + dateText) : 'Survey Date:';
-    left.appendChild(dateLine);
-    var corrected = document.createElement('p');
-    corrected.className = 'rb-topo-page__corrected';
-    corrected.textContent = 'Corrected for Floor Differences';
-    left.appendChild(corrected);
+    // The drawing title, the survey date and the corrected-for note used to
+    // sit here too, and the residence, the address, the compass and the front
+    // door sat opposite. They are all in the rail now, which is the whole
+    // point of it: one place for everything that is not the drawing. Figure N
+    // stays, because that is what the eye looks for first on a sheet.
     header.appendChild(left);
 
-    var right = document.createElement('div');
-    right.className = 'rb-topo-page__header-right';
-    var residence = document.createElement('p');
-    residence.className = 'rb-topo-page__residence';
-    residence.textContent = ev.residenceTitle || ev.customerName || '';
-    right.appendChild(residence);
-    var street = document.createElement('p');
-    street.className = 'rb-topo-page__address';
-    street.textContent = ev.address || '';
-    right.appendChild(street);
-    if (ev.addressCity) {
-      var city = document.createElement('p');
-      city.className = 'rb-topo-page__address-city';
-      city.textContent = ev.addressCity;
-      right.appendChild(city);
-    }
-    var door = document.createElement('div');
-    door.className = 'rb-topo-page__front-door';
-    if (typeof options.renderNorthArrow === 'function') {
-      door.appendChild(options.renderNorthArrow());
-    }
-    var doorMeta = document.createElement('div');
-    doorMeta.className = 'rb-topo-page__front-door-meta';
-    var doorLabel = document.createElement('span');
-    doorLabel.textContent = 'Front Door';
-    var doorValue = document.createElement('strong');
-    doorValue.textContent = meta.frontDoorFacing || ev.frontDoorFacing || '—';
-    doorMeta.appendChild(doorLabel);
-    doorMeta.appendChild(doorValue);
-    door.appendChild(doorMeta);
-    right.appendChild(door);
-    header.appendChild(right);
     root.appendChild(header);
 
     var body = document.createElement('div');
@@ -478,12 +434,11 @@
 
     root.appendChild(body);
 
+    // The readings box that used to sit here is in the rail, listed per
+    // level rather than rolled into one high and one low.
     var footer = document.createElement('div');
     footer.className = 'rb-topo-page__footer';
     if (typeof options.brandMark === 'function') footer.appendChild(options.brandMark());
-    if (imported && statsList.length && typeof options.renderRelativeReadings === 'function') {
-      footer.appendChild(options.renderRelativeReadings(statsList));
-    }
     root.appendChild(footer);
     return { root: root, layout: layout };
   }

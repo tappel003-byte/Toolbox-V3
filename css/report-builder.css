@@ -1530,6 +1530,163 @@ body.report-builder-open .canvas {
   min-width: 0;
 }
 
+/* The figure rail — a narrow column down the right of a figure page.
+   Everything in it is reference matter: it says whose property this is, what
+   the drawing is, when it was surveyed and what the readings were, and it
+   must not pull the eye off the drawing. Right-aligned, and about a tenth of
+   the sheet; 9% was tried and broke the drawing title into a column of single
+   words. */
+.rb-rail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 10.5cqw;
+  box-sizing: border-box;
+  padding: 2.4cqh 1.3cqh 2.4cqh 1.3cqh;
+  border-left: 0.11cqh solid #1a1a1a;
+  background: #fff;
+  color: #17130e;
+  display: flex;
+  flex-direction: column;
+  text-align: right;
+  z-index: 5;
+}
+
+/* North sits at the top, above everything. Rotatable, because north is not
+   always up. */
+.rb-rail__north {
+  align-self: center;
+  width: 3.4cqh;
+  margin-bottom: 1.4cqh;
+}
+
+.rb-rail__north svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  transform: rotate(var(--rb-north-rotation, 0deg));
+}
+
+.rb-rail__name {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.45cqh;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.25;
+}
+
+.rb-rail__addr {
+  margin: 0.2cqh 0 0;
+  font-size: 1.05cqh;
+  color: #4a443c;
+  line-height: 1.35;
+}
+
+.rb-rail__rule {
+  height: 0.07cqh;
+  background: #c9c2b4;
+  margin: 1.25cqh 0 0.9cqh;
+}
+
+.rb-rail__label {
+  margin: 0 0 0.35cqh;
+  font-size: 0.72cqh;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8a8275;
+}
+
+.rb-rail__title {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.5cqh;
+  font-weight: 700;
+  line-height: 1.25;
+  /* "Floor Level Survey" and the level on their own lines, as written. */
+  white-space: pre-line;
+}
+
+.rb-rail__date {
+  margin: 0;
+  font-size: 1.05cqh;
+}
+
+.rb-rail__note,
+.rb-rail__text {
+  margin: 0.2cqh 0 0;
+  font-size: 0.92cqh;
+  color: #6b6459;
+  line-height: 1.4;
+}
+
+.rb-rail__level {
+  margin: 0.65cqh 0 0;
+  font-size: 1cqh;
+  font-weight: 700;
+}
+
+.rb-rail__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6cqh;
+  font-size: 0.95cqh;
+  color: #4a443c;
+  margin-top: 0.1cqh;
+}
+
+.rb-rail__row b {
+  font-weight: 600;
+  color: #17130e;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pushed to the bottom edge however much sits above it. */
+.rb-rail__foot {
+  margin-top: auto;
+  padding-top: 1.4cqh;
+}
+
+.rb-rail__figure {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.3cqh;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.rb-rail__mark {
+  margin-top: 0.9cqh;
+}
+
+.rb-rail__mark img {
+  width: 82%;
+  height: auto;
+  opacity: 0.92;
+}
+
+/* Figure N, upper left of the drawing area. An imported slide builds no
+   header -- the drawing is the slide -- so this sits against the sheet. */
+.rb-figure-tag {
+  position: absolute;
+  left: 2.2cqh;
+  top: 1.9cqh;
+  margin: 0;
+  z-index: 4;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.6cqh;
+  color: #17130e;
+  pointer-events: none;
+}
+
+/* The drawing keeps clear of the rail. */
+.rb-sheet__margin--railed {
+  padding-right: calc(10.5cqw + 1.8cqh);
+}
+
 .rb-pictures-page__grid {
   flex: 1 1 auto;
   min-height: 0;
