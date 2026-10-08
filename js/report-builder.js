@@ -1947,7 +1947,38 @@
     // point sits somewhere different on each boundary, so a marker that is
     // right on one slide would land on a wall on the next.
     var floorCamera = null;
+    // The document's default rendition. Each Floor Survey slide keeps its own
+    // on page.meta.floorView; this is what a slide opens with before it has
+    // been given one, and what older reports carry.
     var floorView = null;
+
+    // The picture is shared. The rendition is not.
+    //
+    // Lock View pins where the plan sits and how big it is, so the building is
+    // framed identically on every Floor Survey slide -- that is the picture,
+    // and it is deliberately one setting for the whole report. What is DRAWN
+    // inside that frame belongs to the slide: one page carries contours, the
+    // next shows the same level with contours off and readings only, a third
+    // shows another level. Those render settings used to be a single object
+    // for the whole report, so turning contours off on one slide turned them
+    // off on all of them, and the copy-a-slide-and-change-it move did not work.
+    function floorViewFor(page) {
+      if (page && page.meta && page.meta.floorView) return page.meta.floorView;
+      return floorView;
+    }
+    function setFloorViewFor(page, next) {
+      if (!page) {
+        floorView = next;
+        return;
+      }
+      page.meta = page.meta || {};
+      page.meta.floorView = next;
+      // Deliberately NOT written back to the document default. A slide that
+      // has not been given its own rendition reads that default, so pushing
+      // one slide's change into it would carry straight through to every
+      // other slide -- which is the behaviour being fixed. The default stays
+      // the baseline a slide opens at.
+    }
     // Whether the frame has been given the plan's proportion yet. Once it has,
     // the frame is whatever it has been dragged to and is never re-fitted.
     var floorFramed = false;
@@ -2287,7 +2318,7 @@
           return mountTopoHost(page, {
             customerFileId: customerFileId,
             camera: floorCamera,
-            settings: floorView,
+            settings: floorViewFor(page),
             locked: !!(floorCamera && floorCamera.locked),
             onCameraChange: function (camera) {
               var locked = !!(floorCamera && floorCamera.locked);
@@ -2295,7 +2326,7 @@
               markDirty();
             },
               onSettingsChange: function (next) {
-              floorView = next;
+              setFloorViewFor(page, next);
               markDirty();
             },
             onReady: function (info) {
@@ -2407,7 +2438,7 @@
         var viewHint = document.createElement('p');
         viewHint.className = 'rb-panel__lead';
         viewHint.textContent = floorCamera && floorCamera.locked
-          ? 'Every Floor Survey slide uses this size and position.'
+          ? 'Every Floor Survey slide frames the plan this way. What is drawn on it stays per slide.'
           : 'Drag the plan to move it. Drag the corner to size it. Lock when it sits where you want it on every slide.';
         railTopEl.appendChild(viewHint);
       }
@@ -2420,7 +2451,7 @@
         releaseRailControls();
       } else if (railControls.el && railControls.key === key) {
         if (railControls.api && typeof railControls.api.update === 'function') {
-          railControls.api.update({ settings: floorView });
+          railControls.api.update({ settings: floorViewFor(page) });
         }
         if (railControls.el.parentNode !== railBodyEl) railBodyEl.appendChild(railControls.el);
       } else {
@@ -2434,10 +2465,10 @@
           workspace: 'report-topo-controls',
           canvasId: meta.canvasId || '',
           areaId: meta.scope === 'all' ? null : (meta.areaId || null),
-          settings: floorView,
+          settings: floorViewFor(page),
           onBack: function () {},
           onSettingsChange: function (next) {
-            floorView = next;
+            setFloorViewFor(activePage(), next);
             markDirty();
             // The drawing is a second root looking at the same settings.
             if (topoHost.api && typeof topoHost.api.update === 'function') {
@@ -4156,6 +4187,13 @@
       }
       if (savedDoc && savedDoc.floorCamera) floorCamera = savedDoc.floorCamera;
       if (savedDoc && savedDoc.floorView) floorView = reviveFloorView(savedDoc.floorView);
+      if (savedDoc && Array.isArray(savedDoc.pages)) {
+        savedDoc.pages.forEach(function (page) {
+          if (page && page.meta && page.meta.floorView) {
+            page.meta.floorView = reviveFloorView(page.meta.floorView);
+          }
+        });
+      }
       if (savedDoc && savedDoc.floorFramed) floorFramed = true;
       var saved = savedReportPages(record);
       if (saved) {
