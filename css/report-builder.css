@@ -1513,14 +1513,12 @@ body.report-builder-open .canvas {
   font-weight: 700;
 }
 
-/* Five across, two down, at three quarters of the page.
-   The grid used to stretch to fill everything under the header, which put ten
-   photographs edge to edge over almost the whole sheet -- Tim: "they're too
-   big so it covers most of the page". The block is scaled to 75% and sits at
-   the top, so the pictures read as plates on a page instead of wallpaper and
-   the bottom quarter stays clear. Width and row height are scaled by the same
-   factor, so every cell keeps its proportion and a landscape photograph
-   shrinks by as much as a portrait one. */
+/* The photographs get the page.
+   They were briefly held to three quarters, because ten of them running edge
+   to edge crowded the Sandia Geo logo in the corner -- Tim: "they're too big
+   so it covers most of the page". The logo is off this page now, so there is
+   nothing to crowd and nothing to hold them back: "I am happy maximizing the
+   space on the page". */
 /* The how-many-across buttons sit in one row on the rail. */
 .rb-ws__row {
   display: flex;
@@ -1535,7 +1533,7 @@ body.report-builder-open .canvas {
 .rb-pictures-page__grid {
   flex: 1 1 auto;
   min-height: 0;
-  width: 75%;
+  width: 100%;
   margin: 0 auto;
   display: grid;
   /* How many across is the investigator's choice; the rows follow from how
@@ -1546,7 +1544,7 @@ body.report-builder-open .canvas {
      the page stays clear. */
   grid-template-columns: repeat(var(--rb-pics-cols, 5), minmax(0, 1fr));
   grid-template-rows: repeat(var(--rb-pics-rows, 2),
-    minmax(0, calc(74% / var(--rb-pics-rows, 2))));
+    minmax(0, calc(100% / var(--rb-pics-rows, 2))));
   gap: 1.4% 1.8%;
   align-content: start;
 }

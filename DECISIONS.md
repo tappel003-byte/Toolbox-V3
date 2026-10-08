@@ -241,7 +241,7 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ## Report Builder: Pictures pages
 
-- **The pictures sit at three quarters (DECIDED Tim, Oct 8, 2026).** Tim: "They're too big so it covers most of the page... maybe 3/4 of what they are now, to where they're sitting off the bottom." The grid is scaled to 75% and sits at the top; the bottom quarter of the page stays clear.
+- **No logo on a Pictures page, and the photographs get the page (DECIDED Tim, Oct 8, 2026).** Tim: "Do we need the logo on that page? Keep the logo off and we can increase the size of the picture." The three-quarter rule earlier the same day came from the photographs crowding the Sandia Geo logo in the corner; with the logo off this page there is nothing to crowd, and the grid uses the whole area under the header. Every other sheet still carries the mark.
 - **How many across is the choice; rows follow (DECIDED Tim, Oct 8, 2026).** 3, 4 or 5 across, picked on the rail, stored per page, 5 by default. Tim asked for pairs (3×1, 4×1, 4×2) and agreed to the simplification: "4×2 really doesn't make a difference", so rows are computed from how many pictures the page holds rather than chosen. One decision instead of two, and no chosen row count can leave a photograph without a cell. Fewer across widens each column and makes each picture bigger — as long as it does not push the page onto another row, which shares the same three-quarter block between more rows.
 
 ---

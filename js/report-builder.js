@@ -236,7 +236,14 @@
   // slide 1. The title page carries the frame, the contact, the address, the
   // date and the contents, and no brand mark. So the cover does not get one.
   function pageTakesBrand(page) {
-    return !!page && page.type !== 'cover';
+    if (!page) return false;
+    // The cover carries its own mark. A Pictures page gives its whole area to
+    // the photographs instead -- Tim: "do we need the logo on that page?
+    // Keep the logo off and we can increase the size of the picture." Every
+    // other sheet in the book still carries it, so the report is not short of
+    // the mark.
+    if (page.type === 'pictures') return false;
+    return page.type !== 'cover';
   }
 
   function renderBrandLayer(sheet, page, box) {
