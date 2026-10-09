@@ -848,18 +848,6 @@
     var root = document.createElement('div');
     root.className = 'rb-pictures-page';
 
-    var header = document.createElement('div');
-    header.className = 'rb-pictures-page__header';
-    var fig = document.createElement('p');
-    fig.className = 'rb-pictures-page__figure-num';
-    fig.textContent = meta.figureNumber ? ('Figure ' + meta.figureNumber) : 'Figure';
-    header.appendChild(fig);
-    var title = document.createElement('h1');
-    title.className = 'rb-pictures-page__title';
-    title.textContent = 'Pictures';
-    header.appendChild(title);
-    root.appendChild(header);
-
     var grid = document.createElement('div');
     grid.className = 'rb-pictures-page__grid';
     var across = picturesAcross(page);
@@ -1289,7 +1277,16 @@
       var page = pages[i];
       if (page.type === 'pictures') {
         var keys = page.meta && Array.isArray(page.meta.photoKeys) ? page.meta.photoKeys : [];
+        // Whose property this is, for the rail. Same three fields every
+        // railed page needs, read from the file rather than from whatever
+        // the page happens to carry.
+        var pName = displayCustomerName(record);
+        var pAddr = addressParts(fullAddress(record) || displayAddress(record) || '');
         page.evidence = {
+          customerName: pName,
+          residenceTitle: residenceTitle(pName),
+          address: pAddr.street || displayAddress(record),
+          addressCity: pAddr.cityLine || '',
           photos: keys.map(function (key) {
             return photoByKey[key] || {
               key: key,
@@ -1762,12 +1759,17 @@
     } else if (page.type === 'distress') {
       var level = String(meta.levelName || '').trim();
       title = 'Picture/Damage Locations' + (level ? '\n' + level : '');
+    } else if (page.type === 'pictures') {
+      title = 'Pictures';
     } else {
       title = page.title || '';
     }
     var rawDate = page._surveyDate || meta.surveyDate || ev.surveyDate || '';
     var dateText = formatSurveyDate(rawDate, true);
     return api.render({
+      // A compass belongs on a drawing of the building. A sheet of
+      // photographs is not oriented to anything, so it does not get one.
+      north: page.type !== 'pictures',
       northRotation: typeof meta.northRotation === 'number' ? meta.northRotation : 0,
       residence: ev.residenceTitle || ev.customerName || '',
       address: ev.address || '',
@@ -1846,6 +1848,7 @@
       margin.appendChild(rows);
     } else if (page.type === 'pictures') {
       margin.classList.add('rb-sheet__margin--pictures');
+      margin.classList.add('rb-sheet__margin--railed');
       margin.appendChild(renderPicturesPage(page));
     } else if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
       margin.classList.add('rb-sheet__margin--topo');
@@ -1899,7 +1902,8 @@
       if (page.note) addLine(margin, 'rb-sheet__note', page.note);
     }
 
-    if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
+    if ((page.type === 'floor' && !(page.meta && page.meta.reserved)) ||
+        page.type === 'pictures') {
       var rail = railForPage(page);
       if (rail) sheet.appendChild(rail);
     }

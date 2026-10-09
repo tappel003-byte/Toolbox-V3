@@ -1494,27 +1494,6 @@ body.report-builder-open .canvas {
   color: #111;
 }
 
-.rb-pictures-page__header {
-  flex: 0 0 auto;
-  margin-bottom: 0.6%;
-}
-
-.rb-pictures-page__figure-num,
-.rb-pictures-page__title {
-  margin: 0;
-  line-height: 1.15;
-}
-
-.rb-pictures-page__figure-num {
-  font-size: clamp(13px, 2cqb, 18px);
-  font-weight: 700;
-}
-
-.rb-pictures-page__title {
-  font-size: clamp(16px, 2.4cqb, 22px);
-  font-weight: 700;
-}
-
 /* The photographs get the page.
    They were briefly held to three quarters, because ten of them running edge
    to edge crowded the Sandia Geo logo in the corner -- Tim: "they're too big

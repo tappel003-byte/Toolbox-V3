@@ -320,6 +320,15 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ---
 
+## The rail on Pictures pages
+
+- **Pictures pages carry the rail (DECIDED Tim, Oct 9, 2026).** Same rail as every other figure: residence, address, drawing title, figure number and the mark. The page's own "Figure N / Pictures" heading is gone — the rail says both.
+- **No compass.** North belongs on a drawing of the building; a sheet of photographs is not oriented to anything.
+- **Five across stays.** With the rail, five across gives a 2.52 × 3.36 in plate; without it, 2.95 × 3.93 in. The rail costs about half an inch each way. Four across with ten photographs does not make them bigger — it makes three rows and a smaller plate.
+- Landscape photographs are limited by the column width, not by the plate's shape, so letterboxing them in a portrait plate leaves grey but does not shrink the picture. Making a landscape shot bigger means letting it span two columns — not decided, not built.
+
+---
+
 ## Picture/Damage Locations page
 
 - **The pre-printed form is gone (DECIDED Tim, Oct 9, 2026).** Tim: "That funky pre-lined template is no longer what I want. I never really wanted it that way — that's just how I had to make it for my boss at my day job, but this is my app, this is what I want." The page ruled a fixed number of empty rows down the sheet whether or not there were pins for them, and cut a long note off at one row's height.

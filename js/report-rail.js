@@ -125,7 +125,7 @@
     root.style.setProperty('--rb-north-rotation', deg + 'deg');
 
     var body = el('div', 'rb-rail__body');
-    body.appendChild(compass());
+    if (o.north !== false) body.appendChild(compass());
 
     var head = document.createElement('header');
     var client = lines('h2', 'rb-rail__client', clientLines(o.residence));
