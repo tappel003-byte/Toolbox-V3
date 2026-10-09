@@ -2018,10 +2018,18 @@ body.report-builder-open .canvas {
 
 .rb-penlog__cell {
   display: flex;
-  align-items: flex-start;
+  /* The photograph number and the pin sit in the middle of their field, as
+     they always have. Only the note starts at the top -- it is the thing
+     that makes the row tall, and text reads from the top down. */
+  align-items: center;
   justify-content: center;
   min-width: 0;
-  min-height: 2.1cqh;
+  /* A row is as tall as its text, but never shorter than the row this page
+     has always used: 0.3 in of an 11 in sheet. */
+  min-height: 2.73cqh;
+  /* The old row was a fixed height with the text centred inside it, so it
+     needed no padding of its own. A row that hugs its text does, or the
+     writing touches the rules above and below it. */
   padding: 0.3cqh 0.35cqh;
   border-right: 1px solid #222;
   border-bottom: 1px solid #c8c8c8;
@@ -2029,10 +2037,16 @@ body.report-builder-open .canvas {
   color: #222;
   font-size: 11px;
   font-size: 1.28cqh;
-  line-height: 1.25;
+  line-height: 1.15;
+}
+
+.rb-penlog__cell.is-note {
+  align-items: flex-start;
 }
 
 .rb-penlog__cell--head {
+  /* 0.32 in, the header height this page has always had. */
+  min-height: 2.91cqh;
   background: #ebe6de;
   border-bottom-color: #222;
   font-weight: 700;
@@ -2095,7 +2109,7 @@ body.report-builder-open .canvas {
   background: transparent;
   color: inherit;
   font: inherit;
-  line-height: 1.25;
+  line-height: 1.15;
 }
 
 .rb-penlog-panel {

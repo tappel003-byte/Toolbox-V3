@@ -29,8 +29,8 @@
 
   var PAGE_W = 17;
   var PAGE_H = 11;
-  var COL_PHOTO = 0.78;
-  var COL_PIN = 0.5;
+  var COL_PHOTO = 0.75;
+  var COL_PIN = 0.45;
   // The rail owns the right-hand 2.125 in of the sheet. Everything here stops
   // short of it -- the page border runs between them, and nothing of this
   // page's may touch it.
