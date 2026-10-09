@@ -1337,6 +1337,8 @@
           slide.residenceTitle = residenceTitle(dName);
           slide.address = dAddr.street || displayAddress(record);
           slide.addressCity = dAddr.cityLine || '';
+          var dNorth = northForCanvas(canvasById(record, page.sourceRef));
+          if (dNorth != null) slide.northRotation = dNorth;
         }
         page.evidence = slide;
       } else if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
@@ -1354,6 +1356,7 @@
           addressFull: addrFull,
           surveyDate: meta.surveyDate || '',
           frontDoorFacing: meta.frontDoorFacing || '',
+          northRotation: northForCanvas(canvasById(record, meta.canvasId)),
           stats: [],
           figure: null,
         };
@@ -1379,6 +1382,7 @@
                 addressFull: addrFull,
                 surveyDate: meta.surveyDate || '',
                 frontDoorFacing: meta.frontDoorFacing || '',
+                northRotation: northForCanvas(canvasById(record, meta.canvasId)),
                 stats: composed.stats || [],
                 figure: {
                   kind: 'composed-topo',
@@ -1752,6 +1756,59 @@
   }
 
   /**
+   * Which way north points on this plan.
+   *
+   * Distress Survey already answers this and answers it right, so the rule
+   * is read from there rather than invented: the front door's real-world
+   * facing is known, and the arrow turns so that facing lines up with the
+   * direction the front door lies in on the plan. Its rotation is
+   * (180 - bearing), because it assumes the front of the building is drawn
+   * at the bottom of the plan.
+   *
+   * That assumption is the part that does not hold. Tim: "I rarely place the
+   * floor plan where the FD is always one direction." But Plan Setup already
+   * records where the front door was tapped on the plan, so the direction
+   * from the middle of the building out to the front door can be measured
+   * instead of assumed. Where the plan IS drawn front-down that measurement
+   * comes out at 180 and this reduces to exactly Distress's rule; where it
+   * is not, this is right and the front-down assumption is not.
+   *
+   * Returns degrees clockwise from plan-up, or null when the facing was
+   * never set.
+   */
+  var NORTH_BEARINGS = { N: 0, NE: 45, E: 90, SE: 135, S: 180, SW: 225, W: 270, NW: 315 };
+
+  function northForCanvas(canvas) {
+    if (!canvas) return null;
+    var beta = NORTH_BEARINGS[String(canvas.frontDoorFacing || '').toUpperCase()];
+    if (typeof beta !== 'number') return null;
+    // The front of the building at the bottom of the plan, until the placed
+    // marker says otherwise.
+    var planAngle = 180;
+    var fd = canvas.frontDoor;
+    if (fd && typeof fd.x === 'number' && typeof fd.y === 'number') {
+      var dx = fd.x - 0.5;
+      var dy = fd.y - 0.5;
+      // A marker dropped almost dead centre gives no direction worth
+      // trusting; the assumption is better than a number made of rounding.
+      if (Math.abs(dx) > 0.02 || Math.abs(dy) > 0.02) {
+        planAngle = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+      }
+    }
+    return ((planAngle - beta) % 360 + 360) % 360;
+  }
+
+  function canvasById(record, canvasId) {
+    var list = record && record.planSetup && Array.isArray(record.planSetup.canvases)
+      ? record.planSetup.canvases
+      : [];
+    for (var i = 0; i < list.length; i += 1) {
+      if (list[i] && list[i].id === canvasId) return list[i];
+    }
+    return null;
+  }
+
+  /**
    * The rail for a figure page.
    *
    * One rail serves every figure page: a section it has nothing for is simply
@@ -1794,7 +1851,11 @@
       // A compass belongs on a drawing of the building. A sheet of
       // photographs, or of property details, is not oriented to anything.
       north: page.type === 'floor' || page.type === 'distress',
-      northRotation: typeof meta.northRotation === 'number' ? meta.northRotation : 0,
+      // Where the front door says north is, unless the investigator has
+      // turned the arrow by hand on this sheet.
+      northRotation: typeof meta.northRotation === 'number'
+        ? meta.northRotation
+        : (typeof ev.northRotation === 'number' ? ev.northRotation : 0),
       residence: ev.residenceTitle || ev.customerName || '',
       address: ev.address || '',
       addressCity: ev.addressCity || '',

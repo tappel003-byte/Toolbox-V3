@@ -320,6 +320,16 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ---
 
+## North on a report figure
+
+- **The arrow is derived, not left at zero (DECIDED Tim, Oct 9, 2026).** Tim: "Get the arrow pointed in the correct direction, oriented for the floor plan. Distress Survey is right."
+- **The rule comes from Distress Survey,** which already answers this: the front door's real-world facing is known, and the arrow turns so that facing lines up with the direction the front door lies in on the plan.
+- **One correction to it.** Distress assumes the front of the building is drawn at the bottom of the plan. Tim: "I rarely place the floor plan where the FD is always one direction." Plan Setup already records where the front door was tapped, so that direction is measured rather than assumed. Where the plan *is* drawn front-down the measurement comes out the same and this reduces to exactly Distress's rule; where it is not, the report is right and the front-down assumption is not.
+- **A hand turn still wins.** Turning the arrow on a sheet pins it for that sheet; untouched sheets follow the front door.
+- Where the plan is not drawn front-down, Distress Survey's own on-screen arrow will differ from the report's. The report's is the correct one. Distress capture is not changed here.
+
+---
+
 ## The rail on every figure page
 
 - **Every figure page carries the rail (DECIDED Tim, Oct 9, 2026).** Tim: "Everything gets the rail — that's the whole point of that rail, isn't it?" Floor Survey, Picture/Damage Locations, Pictures, Diagnostics, and any page type added later. Each one's own heading, figure number and brand mark come off the sheet, because the rail already carries all three.
