@@ -329,6 +329,7 @@ These notes preserve active product possibilities so they are not lost. They are
 - **A short schedule sits centred** in its column rather than hanging from the top of a page it does not fill. Tim: "If there's only two pictures, the two lines need to be in the middle of the page."
 - **A long one runs onto more sheets,** one column carried on, and each sheet repeats the same map — a reader looking up photograph 31 on the second sheet needs the plan as much as the one looking up photograph 3 on the first. A continuation sheet is the same figure continued, not a new figure, and is not a second line in the contents.
 - **The rail is on this page too.** The map keeps its place; the page's own title, figure number, north arrow and mark are gone from the sheet because the rail already carries them. Tim: "Obviously we keep the new rail that we've been working on."
+- **The sheet is a presentation, not a selection surface (DECIDED Tim, Oct 9, 2026).** Tim: "I do not want the cream. This is a presentation mode, not a selection mode." The selected row's highlight is gone from the page entirely; which pin is being worked on shows in the photograph panel beside the sheet. The ring on the selected marker stays on screen, because it is the only sign of which pin a drag will move, and never prints. No selection state is saved to the Customer File.
 - The split is measured on a fixed reference sheet, not on the sheet as drawn, so a report does not repaginate when the window is resized.
 
 ---

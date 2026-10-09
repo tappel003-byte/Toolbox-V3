@@ -276,8 +276,11 @@
     });
 
     (pins || []).forEach(function (pin) {
-      var selected = !measure && pin.id && pin.id === model.selectedPinId;
-      var photoCell = cell('is-row' + (selected ? ' is-selected' : ''), pin.id);
+      // No selected row. Tim: "I do not want the cream. This is a
+      // presentation mode, not a selection mode." Which pin is being worked
+      // on shows in the photograph panel beside the sheet, where it belongs;
+      // the sheet is the figure.
+      var photoCell = cell('is-row', pin.id);
       if (pin.photoLabel) {
         var photoBtn = document.createElement('button');
         photoBtn.type = 'button';
@@ -294,14 +297,14 @@
       }
       grid.appendChild(photoCell);
 
-      var pinCell = cell('is-row is-pin' + (selected ? ' is-selected' : ''), pin.id);
+      var pinCell = cell('is-row is-pin', pin.id);
       var badge = document.createElement('span');
       badge.className = 'rb-penlog__pinnum';
       badge.textContent = String(pin.number);
       pinCell.appendChild(badge);
       grid.appendChild(pinCell);
 
-      var noteCell = cell('is-row is-left is-note' + (selected ? ' is-selected' : ''), pin.id);
+      var noteCell = cell('is-row is-left is-note', pin.id);
       var note = document.createElement('textarea');
       note.className = 'rb-penlog__note';
       note.rows = 1;

@@ -2056,17 +2056,12 @@ body.report-builder-open .canvas {
   justify-content: flex-start;
 }
 
-.rb-penlog__cell.is-selected {
-  background: #f7f1e4;
-}
-
 @media print {
-  /* Which pin is selected is a thing the investigator is doing, not a thing
-     the figure says. The cream row and the dark ring tie a row to its pin
-     while the page is being worked on; on paper they read as a highlight
-     somebody meant, so neither goes in the deck. This block sits below the
-     rules it overrides: equal specificity, so source order decides. */
-  .rb-penlog__cell.is-selected { background: transparent; }
+  /* Which pin is being worked on is not something the figure says. The row
+     highlight is gone entirely; the ring on the marker stays on screen, where
+     it is the only sign of which pin a drag will move, and off the paper.
+     This block sits below the rule it overrides: equal specificity, so source
+     order decides. */
   .rb-penlog__pin.is-selected { box-shadow: none; }
 }
 
