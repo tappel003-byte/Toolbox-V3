@@ -3198,10 +3198,14 @@
             var base = floorViewFor(fp, 0);
             fp.meta.floorView2 = base ? JSON.parse(JSON.stringify(base)) : null;
           }
-          if (!on) {
-            fp._floorSlot = 0;
-            releaseTopoHost(1);
-          }
+          if (!on) fp._floorSlot = 0;
+          // Both frames change width when the sheet goes from one view to two
+          // and back, and a mounted view does not re-fit when its frame
+          // resizes -- it keeps the scale it was fitted at and shows a crop.
+          // That is why the pair came out at two different scales: the first
+          // was still fitted to the full-width frame it was born in. Dropping
+          // both makes each one fit the frame it is actually in.
+          releaseTopoHosts();
           markDirty();
           renderPages();
           flushSave().catch(function () {});

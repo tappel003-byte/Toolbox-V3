@@ -326,7 +326,8 @@ These notes preserve active product possibilities so they are not lost. They are
 - **The rail's controls drive whichever view is selected.** Tim: "Whichever view is highlighted, that's what the rail controls control." Each view keeps its own rendition; the camera stays the book's, so the pair is framed as one figure.
 - **Selection is screen-only.** Which view is being driven is marked by brackets at its corners and never prints — the sheet is a presentation, not a selection surface.
 - **The second view opens as a copy of the first, and nothing else.** Floor Survey already has the control that makes one of them readings-only — Colour fill / Cells / B&W lines / Points only — and it is already in this rail. Tim: "I don't want you to reinvent something, it's already in the code, it's already in the rail functions."
-- Outstanding: the two views do not frame identically, with identical settings, so the cause is not the rendition. The book's stored camera does not describe what the first view is drawing — it reads 0.5 / 0.5 / zoom 1 while the view sits zoomed into its boundary — so the second view, which is given that camera on mount, lands somewhere else. That also means Lock View has been storing a framing it does not reproduce.
+- **A mounted view does not re-fit when its frame resizes**, so going from one view to two left the first still fitted to the full-width frame it was born in, and the pair came out at two scales. Both are dropped and remounted when the count changes, and they now frame identically.
+- Outstanding: in the two-view layout the plan draws at roughly a quarter of the scale that fits its canvas, with the readings at full size. The canvas is correctly sized to its frame, so this is the transform inside the canvas, not the layout.
 
 ---
 
