@@ -20,7 +20,6 @@
   var mountGeneration = 0;
   var penLogUi = {
     selectedPinId: '',
-    property: '',
     noteMap: {},
     onNote: null,
     onSelect: null,
@@ -246,6 +245,7 @@
     // A figure page carries the mark in its rail, at the foot, so there is
     // nothing to float in the corner -- and nothing to drag or lock either.
     if (page.type === 'floor' && !(page.meta && page.meta.reserved)) return false;
+    if (isPenLogPage(page)) return false;
     return page.type !== 'cover';
   }
 
@@ -1305,7 +1305,19 @@
         continue;
       }
       if (page.type === 'distress' && !(page.meta && page.meta.reserved)) {
-        page.evidence = distress.find(function (slide) { return slide.canvasId === page.sourceRef; }) || null;
+        var slide = distress.find(function (item) { return item.canvasId === page.sourceRef; }) || null;
+        if (slide) {
+          // Whose property this is, for the rail. The pins and the plan are
+          // the slide's; the residence and the address belong to the file,
+          // and the rail asks the page for both in one place.
+          var dName = displayCustomerName(record);
+          var dAddr = addressParts(fullAddress(record) || displayAddress(record) || '');
+          slide.customerName = dName;
+          slide.residenceTitle = residenceTitle(dName);
+          slide.address = dAddr.street || displayAddress(record);
+          slide.addressCity = dAddr.cityLine || '';
+        }
+        page.evidence = slide;
       } else if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
         var meta = page.meta || {};
         var customerName = displayCustomerName(record);
@@ -1481,6 +1493,51 @@
   }
 
 
+  /**
+   * The sheets one Distress level's schedule runs across.
+   *
+   * A level's first Picture Locations page plus the continuation sheets that
+   * follow it. They are contiguous and share a sourceRef, so the chain is read
+   * off the page order rather than stored -- there is no second place for it
+   * to be wrong.
+   */
+  function penLogChain(page, pages) {
+    var chain = [];
+    var at = -1;
+    for (var i = 0; i < pages.length; i += 1) if (pages[i].id === page.id) at = i;
+    if (at < 0) return [page];
+    var head = at;
+    while (head > 0 && isPenLogPage(pages[head]) && pages[head].meta.continuation &&
+           isPenLogPage(pages[head - 1]) && pages[head - 1].sourceRef === pages[head].sourceRef) {
+      head -= 1;
+    }
+    for (var j = head; j < pages.length; j += 1) {
+      if (!isPenLogPage(pages[j])) break;
+      if (j > head && (!pages[j].meta.continuation || pages[j].sourceRef !== pages[head].sourceRef)) break;
+      chain.push(pages[j]);
+    }
+    return chain.length ? chain : [page];
+  }
+
+  /** The run of pins this sheet shows: from its own start to the next one's. */
+  function penLogSliceFor(page, chain, pins) {
+    var from = 0;
+    var to = pins.length;
+    for (var i = 0; i < chain.length; i += 1) {
+      if (chain[i].id !== page.id) continue;
+      from = penLogStart(chain[i]);
+      to = i + 1 < chain.length ? penLogStart(chain[i + 1]) : pins.length;
+    }
+    from = Math.max(0, Math.min(pins.length, from));
+    to = Math.max(from, Math.min(pins.length, to));
+    return pins.slice(from, to);
+  }
+
+  function penLogStart(page) {
+    var n = page && page.meta && page.meta.penLogFrom;
+    return typeof n === 'number' && isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+
   function renderPenLogSheet(sheet, page, pages, thumb) {
     var index = 0;
     for (var n = 0; n < pages.length; n += 1) {
@@ -1488,8 +1545,10 @@
     }
     var notes = penLogNoteMap(page, penLogUi.noteMap);
     var pins = penLogPinsForPage(page, notes, penLogOffsetMap(page));
-    if (!pins.some(function (pin) { return pin.id === penLogUi.selectedPinId; })) {
-      penLogUi.selectedPinId = pins[0] ? pins[0].id : '';
+    var chain = penLogChain(page, pages);
+    var shown = penLogSliceFor(page, chain, pins);
+    if (!shown.some(function (pin) { return pin.id === penLogUi.selectedPinId; })) {
+      penLogUi.selectedPinId = shown[0] ? shown[0].id : '';
     }
     // A preview measures itself at stamp size; keeping that would move the
     // pins on the real page.
@@ -1497,9 +1556,12 @@
       title: page.title,
       levelName: page.meta && page.meta.levelName,
       pageNumber: index + 1,
-      property: penLogUi.property,
       plan: (page.evidence && page.evidence.plan) || {},
-      pins: pins,
+      pins: shown,
+      // The map is the whole level on every sheet of it: a reader looking up
+      // photograph 31 on the second sheet needs the same plan in front of
+      // them as the one who looked up photograph 3 on the first.
+      allPins: pins,
       selectedPinId: penLogUi.selectedPinId,
       onNote: function (id, value, source) {
         if (typeof penLogUi.onNote === 'function') penLogUi.onNote(id, value, source);
@@ -1509,6 +1571,17 @@
       },
     });
     if (!thumb) penLogUi.layout = penLogLayout;
+    // A continuation sheet carries its level's figure number, not one of its
+    // own: it is Figure 2 carried on, not Figure 3.
+    var head = chain[0] || page;
+    var headFigure = (head.meta && head.meta.figureNumber) || null;
+    if (!headFigure) {
+      for (var h = 0; h < pages.length; h += 1) if (pages[h].id === head.id) headFigure = h + 1;
+    }
+    page._figureNumber = headFigure;
+    page._figureCont = page !== head;
+    var rail = railForPage(page);
+    if (rail) sheet.appendChild(rail);
   }
 
   // Multicol spills into extra columns off to the side rather than stopping
@@ -1643,6 +1716,21 @@
   }
 
   /**
+   * "Figure N" for the rail's foot.
+   *
+   * Floor and Pictures pages carry a figure number in their meta. A Picture
+   * Locations sheet never has: its figure number has always been its place in
+   * the book, which is what the page printed before the rail existed, and
+   * which a continuation sheet needs anyway because it is a figure of its own.
+   */
+  function figureLabelFor(page) {
+    var meta = (page && page.meta) || {};
+    var n = meta.figureNumber || (page && page._figureNumber) || null;
+    if (!n) return '';
+    return 'Figure ' + n + (page && page._figureCont ? ' (cont.)' : '');
+  }
+
+  /**
    * The rail for a figure page.
    *
    * One rail serves every figure page: a section it has nothing for is simply
@@ -1668,9 +1756,15 @@
     var scopeTitle = meta.scope === 'all'
       ? (meta.scopeTitle || 'Combined')
       : ((stats.length === 1 && stats[0].name) || meta.scopeTitle || meta.levelName || '');
-    var title = page.type === 'floor'
-      ? ('Floor Level Survey' + (scopeTitle ? '\n' + scopeTitle : ''))
-      : (page.title || '');
+    var title;
+    if (page.type === 'floor') {
+      title = 'Floor Level Survey' + (scopeTitle ? '\n' + scopeTitle : '');
+    } else if (page.type === 'distress') {
+      var level = String(meta.levelName || '').trim();
+      title = 'Picture/Damage Locations' + (level ? '\n' + level : '');
+    } else {
+      title = page.title || '';
+    }
     var rawDate = page._surveyDate || meta.surveyDate || ev.surveyDate || '';
     var dateText = formatSurveyDate(rawDate, true);
     return api.render({
@@ -1682,11 +1776,12 @@
       // A field with no value shows a dash rather than leaving its heading
       // standing over nothing, which is what a sheet with no survey date
       // recorded looked like.
-      surveyDate: longSurveyDate(rawDate) || dateText || '\u2014',
+      surveyDate: longSurveyDate(rawDate) || dateText ||
+        (page.type === 'floor' ? '\u2014' : ''),
       correctedNote: page.type === 'floor' ? 'Corrected for flooring differences' : '',
       stats: stats,
       note: text.railNote || '',
-      figureLabel: meta.figureNumber ? ('Figure ' + meta.figureNumber) : '',
+      figureLabel: figureLabelFor(page),
       markSrc: BRAND_LOGO,
     });
   }
@@ -2358,6 +2453,22 @@
       markDirty();
     }
 
+    // Typing into a note changes how tall its row is, which changes how many
+    // rows fit, which can add or drop a sheet -- but not on every keystroke,
+    // which would take the caret with it. It settles once typing pauses, the
+    // same way the discussion chain does.
+    var penReflowTimer = null;
+
+    function schedulePenLogReflow() {
+      if (penReflowTimer) window.clearTimeout(penReflowTimer);
+      penReflowTimer = window.setTimeout(function () {
+        penReflowTimer = null;
+        if (!reflowPenLog()) return;
+        renderPages();
+        flushSave().catch(function () {});
+      }, 700);
+    }
+
     penLogUi.onNote = function (id, value, source) {
       applyPenLogNote(id, value, source);
       var noteEl = root.querySelector('.rb-penlog__note[data-pin-id="' + id + '"]');
@@ -2365,6 +2476,7 @@
         penNoteField.value = value || '';
       }
       if (noteEl && document.activeElement !== noteEl) noteEl.value = value || '';
+      schedulePenLogReflow();
     };
     penLogUi.onSelect = function (id) {
       if (penLogUi.selectedPinId === id) return;
@@ -2707,6 +2819,15 @@
         window.requestAnimationFrame(function () {
           if (penLogUi.layout && typeof penLogUi.layout.layout === 'function') {
             penLogUi.layout.layout();
+          }
+          // How many rows fit can only be answered once the sheet is drawn at
+          // its real size, so the split is settled on the frame after the
+          // page appears rather than when it is built. It reports no change
+          // the second time round, so the re-render it asks for does not come
+          // back again.
+          if (isPenLogPage(current) && reflowPenLog()) {
+            renderPages();
+            flushSave().catch(function () {});
           }
         });
       }
@@ -3770,6 +3891,99 @@
       return true;
     }
 
+    /**
+     * Run each Distress level's schedule across as many sheets as it needs.
+     *
+     * The page used to rule a fixed number of rows and silently scroll
+     * whatever did not fit, so a job with forty photographs printed a page
+     * that was wrong and gave no sign of it. Now the rows are as tall as
+     * their own text and the ones that do not fit go on another sheet.
+     *
+     * Measured, never estimated, and never stored as truth: the split is
+     * recomputed from the rendered page every time, so tightening a note
+     * pulls the next sheet's rows back up and a sheet nobody needs any more
+     * disappears. Only the starting row index is written onto the page, and
+     * only so the rail has a sheet to list.
+     */
+    function reflowPenLog() {
+      var api = window.ToolboxPenLog;
+      if (!api || typeof api.fitCount !== 'function') return false;
+      var current = activePage();
+      if (!current || !isPenLogPage(current)) return false;
+      var chain = penLogChain(current, pages);
+      var head = chain[0];
+      if (!head) return false;
+      var pins = penLogPinsForPage(head, penLogNoteMap(head, penLogUi.noteMap),
+        penLogOffsetMap(head));
+      if (!pins.length) return false;
+
+      // One measurement pass over the whole level: fill a sheet, then start
+      // the next from where it stopped.
+      var starts = [];
+      var at = 0;
+      var guard = 0;
+      while (at < pins.length && guard < 200) {
+        starts.push(at);
+        at += api.fitCount(pins.slice(at));
+        guard += 1;
+      }
+      if (!starts.length) starts = [0];
+
+      var same = starts.length === chain.length;
+      for (var i = 0; same && i < starts.length; i += 1) {
+        if (penLogStart(chain[i]) !== starts[i]) same = false;
+      }
+      if (same) return false;
+
+      for (var k = 0; k < starts.length; k += 1) {
+        if (k < chain.length) {
+          chain[k].meta = chain[k].meta || {};
+          chain[k].meta.penLogFrom = starts[k];
+          continue;
+        }
+        var level = (head.meta && head.meta.levelName) || 'Level';
+        var added = {
+          id: head.id + '-cont-' + k,
+          type: 'distress',
+          title: head.title,
+          tocTitle: head.tocTitle || head.title,
+          railLabel: (head.railLabel || 'Picture Locations') + ' (cont.)',
+          includeInToc: false,
+          note: '',
+          sourceKey: 'distress',
+          sourceRef: head.sourceRef || null,
+          meta: {
+            reserved: false,
+            penLog: true,
+            continuation: true,
+            penLogFrom: starts[k],
+            levelName: level,
+            pinCount: (head.meta && head.meta.pinCount) || 0,
+            photoCount: (head.meta && head.meta.photoCount) || 0,
+          },
+          // Shared with the sheet it continues: one level, one set of pins
+          // and one plan, so there is nothing for a second copy to disagree
+          // with.
+          evidence: head.evidence || null,
+        };
+        var lastId = (chain[chain.length - 1] || head).id;
+        var atIndex = 0;
+        for (var m = 0; m < pages.length; m += 1) if (pages[m].id === lastId) atIndex = m;
+        pages = insertPagesAt(pages, atIndex + 1, [added]);
+        chain.push(added);
+      }
+
+      if (chain.length > starts.length) {
+        var drop = {};
+        for (var d = starts.length; d < chain.length; d += 1) drop[chain[d].id] = true;
+        if (drop[activeId]) activeId = chain[Math.max(0, starts.length - 1)].id;
+        pages = pages.filter(function (page) { return !drop[page.id]; });
+      }
+
+      markDirty();
+      return true;
+    }
+
     function commitRichField(field) {
       if (!field) return false;
       var ovField = field.closest ? field.closest('[data-rb-ov-field]') : null;
@@ -4684,7 +4898,6 @@
         setSaveStatus('');
         return;
       }
-      penLogUi.property = displayAddress(workingRecord) || '';
       var loaded = loadPagesFromRecord(workingRecord);
       seedPenLogNotes(workingRecord);
       root.setAttribute('data-report-ready', 'true');
@@ -4716,7 +4929,9 @@
         snapshotNow();
         window.requestAnimationFrame(function () {
           if (token !== mountGeneration) return;
-          if (reflowDiscussion()) {
+          var moved = reflowDiscussion();
+          if (reflowPenLog()) moved = true;
+          if (moved) {
             renderPages();
             fitSheet(root);
             flushSave().catch(function () {});

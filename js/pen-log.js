@@ -1,33 +1,42 @@
-// Toolbox — Pen Log page for Report Builder.
+// Toolbox — Picture/Damage Locations page for Report Builder.
 //
-// One native 17×11 sheet per Distress level that has pins. The plan image,
-// pin markers, schedule, and report wording are separate elements. Photograph
-// numbers follow the Distress sequence across levels. A report note is stored
-// on record.reportBuilder.penLog and does not change the Distress source.
+// One or more 11×17 sheets per Distress level that has pins: the plan with the
+// pin markers, and beside it the schedule of photograph numbers and what each
+// one shows. Photograph numbers follow the Distress sequence across levels. A
+// report note is stored on record.reportBuilder.penLog and does not change the
+// Distress source.
 //
-// Inch placement follows the inspected 1515 structure: a quiet two-line
-// figure number and Picture/Damage Locations heading, the plan through about
-// x=9.5 in on white, a north arrow above the plan near the schedule, and a
-// schedule from x=10 in. The figure number is this sheet's page number.
-// Company logos from that file are not in this environment.
+// This page was a pre-printed form. It ruled a fixed number of rows down the
+// sheet whether or not there were pins to put in them, carried a Location
+// column filled in from the area name, and cut a long note off at one row's
+// height. Tim: "that funky pre-lined template is no longer what I want. I
+// never really wanted it that way -- that's just how I had to make it for my
+// boss at my day job, but this is my app." And on what replaces it: "things
+// need to just scale to fit properly. If the distress map needs to get
+// smaller, if the notes need to get less wide, it can get more tall, and if we
+// have to use more pages, so be it."
+//
+// So: a row is as tall as its own text, there are no rows without pins, a
+// short schedule sits centred rather than hanging from the top, and what does
+// not fit goes on another sheet. Rules stay between the rows -- Tim: "we can
+// even put the lines down for the reader to read it easily, they just don't
+// need to be a bunch of empty lines." North, the residence, the figure number
+// and the mark are not on this page at all; they are in the rail, like every
+// other figure in the book.
 
 (function () {
   'use strict';
 
   var PAGE_W = 17;
   var PAGE_H = 11;
-  var HEADER_IN = 0.32;
-  var ROW_IN = 0.3;
-  var COL_PHOTO = 0.75;
-  var COL_PIN = 0.45;
-  var COL_LOCATION = 1.35;
+  var COL_PHOTO = 0.78;
+  var COL_PIN = 0.5;
+  // The rail owns the right-hand 2.125 in of the sheet. Everything here stops
+  // short of it -- the page border runs between them, and nothing of this
+  // page's may touch it.
   var LAYOUT = {
-    title: { x: 0.4, y: 0.16, w: 9.0 },
-    plan: { x: 0.4, y: 0.62, w: 9.1, h: 9.58 },
-    north: { x: 9.56, y: 0.18, w: 0.38, h: 0.46 },
-    schedule: { x: 10, y: 0.28, w: 6.55, h: 10.12 },
-    brand: { x: 0.4, y: 10.52 },
-    pageNum: { x: 16.62, y: 10.52 },
+    plan: { x: 0.4, y: 0.45, w: 8.1, h: 10.1 },
+    schedule: { x: 8.8, y: 0.45, w: 5.5, h: 10.1 },
   };
 
   function text(value) {
@@ -116,10 +125,6 @@
     return copy;
   }
 
-  function bodyCapacity() {
-    return Math.max(1, Math.round((LAYOUT.schedule.h - HEADER_IN) / ROW_IN));
-  }
-
   function percentX(inches) {
     return (inches / PAGE_W) * 100;
   }
@@ -135,8 +140,48 @@
     if (box.h) el.style.height = percentY(box.h) + '%';
   }
 
+  /**
+   * Fit a note field to its own text.
+   *
+   * The row is as tall as what is written in it, and a textarea will not do
+   * that by itself. Its height is set in px, which means a different thing at
+   * every scale this sheet is drawn at -- preview, the print deck, paper --
+   * so it is re-measured whenever the page is laid out rather than once at
+   * render.
+   */
+  function autosizeNote(note) {
+    if (!note) return;
+    note.style.height = 'auto';
+    note.style.height = note.scrollHeight + 'px';
+  }
+
+  function autosizeNotes(root) {
+    if (!root) return;
+    var list = root.querySelectorAll('.rb-penlog__note');
+    for (var i = 0; i < list.length; i += 1) autosizeNote(list[i]);
+  }
+
+  /**
+   * Centre a schedule that fits; hang one that does not from the top.
+   *
+   * The split keeps the rows inside the box, except in the one case it
+   * cannot: a single note longer than a whole sheet still has to start
+   * somewhere. Centring that would push its first lines off the top of the
+   * page as well as its last off the bottom, so a schedule too tall for its
+   * box starts at the top and loses only its tail.
+   */
+  function alignSchedule(root) {
+    if (!root) return;
+    var box = root.querySelector('.rb-penlog__schedule:not(.rb-penlog__schedule--probe)');
+    var grid = box && box.querySelector('.rb-penlog__grid');
+    if (!box || !grid) return;
+    box.style.justifyContent = grid.offsetHeight > box.clientHeight ? 'flex-start' : 'center';
+  }
+
   function layoutPlans(root) {
     if (!root) return;
+    autosizeNotes(root);
+    alignSchedule(root);
     var frame = root.querySelector('.rb-penlog__plan');
     var fit = root.querySelector('.rb-penlog__fit');
     if (!frame || !fit) return;
@@ -195,9 +240,164 @@
     return el;
   }
 
+  var COLUMNS = ['Photo', '#', 'Notes'];
+
+  /**
+   * The schedule: one row per photograph, each as tall as what is written in
+   * it.
+   *
+   * There is no row without a pin. The old page ruled 32 of them whether or
+   * not there was anything to say, which is what made it read as a form
+   * somebody had to fill in rather than a figure somebody wrote. A short
+   * schedule sits in the middle of its column instead of hanging from the top
+   * -- Tim: "if there's only two pictures, the two lines need to be in the
+   * middle of the page."
+   *
+   * `measure` builds the same grid off-page so the splitter can ask how much
+   * of it fits before any of it is shown.
+   */
+  function buildSchedule(pins, model, measure) {
+    var grid = document.createElement('div');
+    grid.className = 'rb-penlog__grid';
+    grid.setAttribute('role', 'table');
+    grid.setAttribute('aria-label', 'Picture locations schedule');
+    var notesWidth = LAYOUT.schedule.w - COL_PHOTO - COL_PIN;
+    grid.style.gridTemplateColumns = [COL_PHOTO, COL_PIN, notesWidth].map(function (width) {
+      return width + 'fr';
+    }).join(' ');
+
+    COLUMNS.forEach(function (label, index) {
+      var head = cell('rb-penlog__cell--head' + (index >= 2 ? ' is-left' : ''), '');
+      head.setAttribute('role', 'columnheader');
+      head.textContent = label;
+      if (label === 'Photo') head.title = 'Photo number or range';
+      if (label === '#') head.title = 'Pin number';
+      grid.appendChild(head);
+    });
+
+    (pins || []).forEach(function (pin) {
+      var selected = !measure && pin.id && pin.id === model.selectedPinId;
+      var photoCell = cell('is-row' + (selected ? ' is-selected' : ''), pin.id);
+      if (pin.photoLabel) {
+        var photoBtn = document.createElement('button');
+        photoBtn.type = 'button';
+        photoBtn.className = 'rb-penlog__photo';
+        photoBtn.textContent = pin.photoLabel;
+        photoBtn.setAttribute('data-pin-id', pin.id || '');
+        photoBtn.setAttribute('aria-label', 'Photographs ' + pin.photoLabel);
+        if (!measure) {
+          photoBtn.addEventListener('click', function () {
+            if (typeof model.onSelect === 'function') model.onSelect(pin.id);
+          });
+        }
+        photoCell.appendChild(photoBtn);
+      }
+      grid.appendChild(photoCell);
+
+      var pinCell = cell('is-row is-pin' + (selected ? ' is-selected' : ''), pin.id);
+      var badge = document.createElement('span');
+      badge.className = 'rb-penlog__pinnum';
+      badge.textContent = String(pin.number);
+      pinCell.appendChild(badge);
+      grid.appendChild(pinCell);
+
+      var noteCell = cell('is-row is-left is-note' + (selected ? ' is-selected' : ''), pin.id);
+      var note = document.createElement('textarea');
+      note.className = 'rb-penlog__note';
+      note.rows = 1;
+      note.value = pin.note || '';
+      note.setAttribute('aria-label', 'Report note for pin ' + pin.number);
+      note.setAttribute('data-pin-id', pin.id || '');
+      note.setAttribute('data-source-note', pin.sourceNote || '');
+      if (measure) {
+        note.readOnly = true;
+      } else {
+        note.addEventListener('focus', function () {
+          if (typeof model.onSelect === 'function') model.onSelect(pin.id);
+        });
+        note.addEventListener('input', function (event) {
+          autosizeNote(event.target);
+          if (typeof model.onNote === 'function') {
+            model.onNote(pin.id, event.target.value, pin.sourceNote || '');
+          }
+        });
+      }
+      noteCell.appendChild(note);
+      grid.appendChild(noteCell);
+    });
+
+    return grid;
+  }
+
+  /**
+   * How many of these pins fit on one sheet.
+   *
+   * Measured, not estimated: a note is as tall as its own wrapped text, so
+   * nothing short of laying it out at the real width answers the question.
+   *
+   * It is measured at a FIXED size -- one sheet at 100 px to the inch --
+   * rather than at whatever size the sheet happens to be drawn at on screen.
+   * Everything on this page is sized in cqh, so the geometry is identical at
+   * any scale, but text does not break at identical places: at 1280 px the
+   * same 26 notes split 15 and 11, and at 1700 px they split 16 and 10. A
+   * report that repaginates when you resize the window is not a report. The
+   * reference sheet is the page itself, so the split is the one the paper
+   * gets.
+   *
+   * Returns at least one row -- a note longer than a whole sheet still has to
+   * start somewhere, and clipping one row beats looping forever.
+   */
+  var PROBE_PX_PER_IN = 100;
+
+  function fitCount(pins) {
+    var total = (pins || []).length;
+    if (total <= 1) return total;
+    var host = document.createElement('div');
+    host.className = 'rb-penlog-probe-host';
+    host.setAttribute('aria-hidden', 'true');
+    host.style.width = (PAGE_W * PROBE_PX_PER_IN) + 'px';
+    host.style.height = (PAGE_H * PROBE_PX_PER_IN) + 'px';
+    var sheet = document.createElement('div');
+    sheet.className = 'rb-penlog';
+    var probe = document.createElement('div');
+    probe.className = 'rb-penlog__schedule rb-penlog__schedule--probe';
+    place(probe, LAYOUT.schedule);
+    probe.appendChild(buildSchedule(pins, {}, true));
+    sheet.appendChild(probe);
+    host.appendChild(sheet);
+    document.body.appendChild(host);
+    autosizeNotes(host);
+
+    // A hair of slack. The reference sheet settles the split, but the page is
+    // then drawn at other scales -- a preview, the print deck, paper -- and
+    // sub-pixel rounding can make the same rows a shade taller there, and it
+    // accumulates down a column of sixteen. A tenth of an inch is invisible
+    // and keeps the last row's rule off the bottom edge wherever it lands.
+    var limit = probe.clientHeight - 12;
+    var rows = probe.querySelectorAll('.rb-penlog__cell.is-row[data-pin-id]');
+    var fits = total;
+    var seen = {};
+    var order = [];
+    for (var i = 0; i < rows.length; i += 1) {
+      var id = rows[i].getAttribute('data-pin-id');
+      if (!id || seen[id]) continue;
+      seen[id] = true;
+      order.push(rows[i]);
+    }
+    for (var r = 0; r < order.length; r += 1) {
+      if (order[r].offsetTop + order[r].offsetHeight > limit + 0.5) {
+        fits = r;
+        break;
+      }
+    }
+    document.body.removeChild(host);
+    return Math.max(1, Math.min(total, fits));
+  }
+
   function renderPage(sheet, model) {
     model = model || {};
     var pins = Array.isArray(model.pins) ? model.pins : [];
+    var mapPins = Array.isArray(model.allPins) ? model.allPins : pins;
     var plan = model.plan || {};
     sheet.textContent = '';
     sheet.setAttribute('data-page-kind', 'pen-log');
@@ -210,34 +410,6 @@
     var root = document.createElement('div');
     root.className = 'rb-penlog';
     root.setAttribute('data-level', levelName);
-
-    var title = document.createElement('p');
-    title.className = 'rb-penlog__title';
-    var kicker = document.createElement('span');
-    kicker.className = 'rb-penlog__kicker';
-    kicker.textContent = figureLabel;
-    var heading = document.createElement('span');
-    heading.className = 'rb-penlog__heading';
-    heading.textContent = headingText;
-    title.appendChild(kicker);
-    title.appendChild(heading);
-    place(title, LAYOUT.title);
-    root.appendChild(title);
-
-    var north = document.createElement('p');
-    north.className = 'rb-penlog__north';
-    north.setAttribute('role', 'img');
-    north.setAttribute('aria-label', 'North');
-    var northArrow = document.createElement('span');
-    northArrow.className = 'rb-penlog__north-arrow';
-    northArrow.setAttribute('aria-hidden', 'true');
-    var northLabel = document.createElement('span');
-    northLabel.className = 'rb-penlog__north-label';
-    northLabel.textContent = 'N';
-    north.appendChild(northArrow);
-    north.appendChild(northLabel);
-    place(north, LAYOUT.north);
-    root.appendChild(north);
 
     var frame = document.createElement('div');
     frame.className = 'rb-penlog__plan';
@@ -274,7 +446,7 @@
       missing.textContent = 'Plan image is not on this device.';
       frame.appendChild(missing);
     }
-    pins.forEach(function (pin) {
+    mapPins.forEach(function (pin) {
       if (typeof pin.x !== 'number' || typeof pin.y !== 'number') return;
       var marker = document.createElement('span');
       marker.className = 'rb-penlog__pin' + (pin.exterior ? ' is-exterior' : '');
@@ -300,107 +472,9 @@
     var schedule = document.createElement('div');
     schedule.className = 'rb-penlog__schedule';
     place(schedule, LAYOUT.schedule);
-    var notesWidth = LAYOUT.schedule.w - COL_PHOTO - COL_PIN - COL_LOCATION;
-    var capacity = bodyCapacity();
-    var bodyRows = Math.max(capacity, pins.length);
-    var grid = document.createElement('div');
-    grid.className = 'rb-penlog__grid';
-    grid.setAttribute('role', 'table');
-    grid.setAttribute('aria-label', 'Pen Log schedule');
-    grid.style.gridTemplateColumns = [COL_PHOTO, COL_PIN, COL_LOCATION, notesWidth].map(function (width) {
-      return width + 'fr';
-    }).join(' ');
-    if (pins.length > capacity) {
-      schedule.classList.add('is-scroll');
-      var rowShare = (LAYOUT.schedule.h - HEADER_IN) / capacity;
-      var contentIn = HEADER_IN + rowShare * bodyRows;
-      grid.style.height = (contentIn / LAYOUT.schedule.h * 100) + '%';
-      grid.style.gridTemplateRows = HEADER_IN + 'fr repeat(' + bodyRows + ', ' + rowShare + 'fr)';
-    } else {
-      var rowFr = (LAYOUT.schedule.h - HEADER_IN) / bodyRows;
-      grid.style.gridTemplateRows = HEADER_IN + 'fr repeat(' + bodyRows + ', ' + rowFr + 'fr)';
-    }
-    ['Photo', '#', 'Location', 'Notes'].forEach(function (label, index) {
-      var head = cell('rb-penlog__cell--head' + (index >= 2 ? ' is-left' : ''), '');
-      head.setAttribute('role', 'columnheader');
-      head.textContent = label;
-      if (label === 'Photo') head.title = 'Photo number or range';
-      if (label === '#') head.title = 'Pin number';
-      grid.appendChild(head);
-    });
-    for (var r = 0; r < bodyRows; r += 1) {
-      var pin = pins[r];
-      if (!pin) {
-        for (var e = 0; e < 4; e += 1) grid.appendChild(cell('', ''));
-        continue;
-      }
-      var selected = pin.id && pin.id === model.selectedPinId;
-      var photoCell = cell(selected ? 'is-selected' : '', pin.id);
-      if (pin.photoLabel) {
-        var photoBtn = document.createElement('button');
-        photoBtn.type = 'button';
-        photoBtn.className = 'rb-penlog__photo';
-        photoBtn.textContent = pin.photoLabel;
-        photoBtn.setAttribute('data-pin-id', pin.id || '');
-        photoBtn.setAttribute('aria-label', 'Photographs ' + pin.photoLabel);
-        photoBtn.addEventListener('click', function (id) {
-          return function () {
-            if (typeof model.onSelect === 'function') model.onSelect(id);
-          };
-        }(pin.id));
-        photoCell.appendChild(photoBtn);
-      }
-      grid.appendChild(photoCell);
+    schedule.appendChild(buildSchedule(pins, model));
 
-      var pinCell = cell('is-pin' + (selected ? ' is-selected' : ''), pin.id);
-      var badge = document.createElement('span');
-      badge.className = 'rb-penlog__pinnum';
-      badge.textContent = String(pin.number);
-      pinCell.appendChild(badge);
-      grid.appendChild(pinCell);
-
-      var locationCell = cell('is-left' + (selected ? ' is-selected' : ''), pin.id);
-      locationCell.textContent = pin.location || '';
-      grid.appendChild(locationCell);
-
-      var noteCell = cell('is-left is-note' + (selected ? ' is-selected' : ''), pin.id);
-      var note = document.createElement('textarea');
-      note.className = 'rb-penlog__note';
-      note.value = pin.note || '';
-      note.setAttribute('aria-label', 'Report note for pin ' + pin.number);
-      note.setAttribute('data-pin-id', pin.id || '');
-      note.setAttribute('data-source-note', pin.sourceNote || '');
-      note.addEventListener('focus', function (id) {
-        return function () {
-          if (typeof model.onSelect === 'function') model.onSelect(id);
-        };
-      }(pin.id));
-      note.addEventListener('input', function (id, source) {
-        return function (event) {
-          if (typeof model.onNote === 'function') model.onNote(id, event.target.value, source);
-        };
-      }(pin.id, pin.sourceNote || ''));
-      noteCell.appendChild(note);
-      grid.appendChild(noteCell);
-    }
-    schedule.appendChild(grid);
     root.appendChild(schedule);
-
-    var brand = document.createElement('p');
-    brand.className = 'rb-penlog__brand';
-    brand.textContent = 'Toolbox';
-    place(brand, LAYOUT.brand);
-    root.appendChild(brand);
-
-    var pageNum = document.createElement('p');
-    pageNum.className = 'rb-penlog__page';
-    var footerBits = [];
-    if (text(model.property)) footerBits.push(text(model.property));
-    footerBits.push('Page ' + (model.pageNumber || ''));
-    pageNum.textContent = footerBits.join(' \u00b7 ');
-    pageNum.style.top = percentY(LAYOUT.pageNum.y) + '%';
-    pageNum.style.right = percentX(PAGE_W - LAYOUT.pageNum.x) + '%';
-    root.appendChild(pageNum);
 
     sheet.appendChild(root);
     layoutPlans(root);
@@ -475,11 +549,13 @@
     assignPinNumbers: assignPinNumbers,
     photoRange: photoRange,
     sourceNote: sourceNote,
+    COLUMNS: COLUMNS,
     displayNote: displayNote,
     readNotes: readNotes,
-    bodyCapacity: bodyCapacity,
     renderPage: renderPage,
     layoutPlans: layoutPlans,
+    buildSchedule: buildSchedule,
+    fitCount: fitCount,
     saveNotes: saveNotes,
   };
 

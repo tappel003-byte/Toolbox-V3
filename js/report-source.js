@@ -526,6 +526,14 @@
         return;
       }
       if (!item.meta || typeof item.meta !== 'object') item.meta = {};
+      // A sheet that continues the one before it is the same figure carried
+      // on, not the next one. It takes no number of its own and is not a
+      // second line in the contents -- which is what contents() has always
+      // assumed, and what kept a long discussion from being listed twice.
+      if (item.meta.continuation) {
+        item.includeInToc = false;
+        return;
+      }
       if (isDiscussionPage(item)) {
         item.includeInToc = true;
         item.title = DISCUSSION_SECTION.title;

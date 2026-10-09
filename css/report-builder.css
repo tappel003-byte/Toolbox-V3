@@ -1874,63 +1874,9 @@ body.report-builder-open .canvas {
   background: #fff;
 }
 
-.rb-penlog__title,
-.rb-penlog__brand,
-.rb-penlog__page,
 .rb-penlog__missing {
   margin: 0;
   color: #222;
-}
-
-.rb-penlog__title {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  gap: 0.08cqh;
-  overflow: hidden;
-  color: #222;
-  font-weight: 500;
-  line-height: 1.05;
-  white-space: normal;
-}
-
-.rb-penlog__kicker {
-  font-size: 10px;
-  font-size: 1.05cqh;
-  font-weight: 500;
-  letter-spacing: 0.03em;
-  color: #444;
-}
-
-.rb-penlog__heading {
-  font-size: 13px;
-  font-size: 1.45cqh;
-  font-weight: 500;
-  white-space: normal;
-}
-
-.rb-penlog__north {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 0.08cqh;
-  margin: 0;
-  color: #222;
-  font-size: 10px;
-  font-size: 1.05cqh;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.rb-penlog__north-arrow {
-  width: 0;
-  height: 0;
-  border-left: 0.42cqh solid transparent;
-  border-right: 0.42cqh solid transparent;
-  border-bottom: 0.85cqh solid #222;
 }
 
 .rb-penlog__plan {
@@ -2024,19 +1970,47 @@ body.report-builder-open .canvas {
 
 .rb-penlog__schedule {
   position: absolute;
+  display: flex;
+  flex-direction: column;
+  /* A short schedule sits in the middle of its column rather than hanging
+     from the top of a page it does not fill. */
+  justify-content: center;
   box-sizing: border-box;
   overflow: hidden;
   background: #fff;
 }
 
-.rb-penlog__schedule.is-scroll {
-  overflow: auto;
+/* Where the splitter measures: one sheet at 100 px to the inch, off-screen.
+   A size container, because everything on this page is sized in cqh and has
+   to resolve against a page of known dimensions -- measuring inside the live
+   sheet made the split depend on the window width, so the same report broke
+   15/11 on a laptop and 16/10 on a desktop. */
+.rb-penlog-probe-host {
+  position: fixed;
+  left: -30000px;
+  top: 0;
+  container-type: size;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* The copy it measures in starts at the top rather than centred: the rows are
+   measured from the top of the box, and a centred grid taller than its box
+   starts above it, which made every row look higher up the page than it
+   would really be. */
+.rb-penlog__schedule--probe {
+  justify-content: flex-start;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .rb-penlog__grid {
   display: grid;
+  /* Each row is as tall as its own text. No fixed row count, and no row
+     without a photograph in it. */
+  grid-auto-rows: min-content;
   width: 100%;
-  height: 100%;
   border-top: 1px solid #222;
   border-left: 1px solid #222;
   box-sizing: border-box;
@@ -2044,18 +2018,18 @@ body.report-builder-open .canvas {
 
 .rb-penlog__cell {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   min-width: 0;
-  min-height: 0;
-  padding: 0 0.35cqh;
+  min-height: 2.1cqh;
+  padding: 0.3cqh 0.35cqh;
   border-right: 1px solid #222;
   border-bottom: 1px solid #c8c8c8;
   overflow: hidden;
   color: #222;
   font-size: 11px;
   font-size: 1.28cqh;
-  line-height: 1.15;
+  line-height: 1.25;
 }
 
 .rb-penlog__cell--head {
@@ -2097,36 +2071,21 @@ body.report-builder-open .canvas {
 }
 
 .rb-penlog__note {
+  display: block;
   width: 100%;
-  height: 100%;
+  /* Height is set from the text by autosizeNote(); this is only the floor it
+     starts from before the first measurement. */
+  height: auto;
   min-height: 0;
   margin: 0;
   padding: 0;
   border: 0;
+  overflow: hidden;
   resize: none;
   background: transparent;
   color: inherit;
   font: inherit;
-  line-height: 1.15;
-}
-
-.rb-penlog__brand,
-.rb-penlog__page {
-  position: absolute;
-  color: #555;
-  font-size: 10px;
-  font-size: 1.15cqh;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  line-height: 1;
-}
-
-.rb-penlog__page {
-  max-width: 42%;
-  overflow: hidden;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.25;
 }
 
 .rb-penlog-panel {
