@@ -301,24 +301,39 @@
       // The drawing is the slide. The plan is placed inside it by dragging and
       // zooming, exactly as in Floor Survey -- including off the edge -- so
       // there is no frame to size and nothing to letterbox the plan into.
-      var bare = boxShell('topo', 'topo', true);
-      bare.style.left = '0%';
-      bare.style.top = '0%';
-      bare.style.width = '100%';
-      bare.style.height = '100%';
-      var bareDraw = document.createElement('div');
-      bareDraw.className = 'rb-topo-page__drawing rb-topo-page__drawing--live';
-      var bareView = typeof options.mountTopo === 'function' ? options.mountTopo(page) : null;
-      if (bareView) {
-        bareDraw.appendChild(bareView);
-      } else {
-        var bareNote = document.createElement('p');
-        bareNote.className = 'rb-sheet__note';
-        bareNote.textContent = 'Floor Survey level is not available for this slide.';
-        bareDraw.appendChild(bareNote);
+      // One drawing, or two of the same level side by side. Tim: "it's a long
+      // narrow house... our space allows, maybe I can just put another floor
+      // plan that shows the data points." The second is not a second slide:
+      // it is the same level drawn another way, on the paper the first one is
+      // not using.
+      var slots = Math.max(1, Math.min(2, Number(options.topoSlots) || 1));
+      var activeSlot = Math.max(0, Math.min(slots - 1, Number(options.topoActiveSlot) || 0));
+      var GUTTER = 2; // percent of the stage's width, between the two
+      var share = (100 - (slots - 1) * GUTTER) / slots;
+      for (var slot = 0; slot < slots; slot += 1) {
+        var bare = boxShell('topo', slots > 1 ? ('topo-' + slot) : 'topo', true);
+        bare.setAttribute('data-rb-topo-frame', String(slot));
+        if (slots > 1 && slot === activeSlot) bare.classList.add('is-active');
+        bare.style.left = (slot * (share + GUTTER)) + '%';
+        bare.style.top = '0%';
+        bare.style.width = share + '%';
+        bare.style.height = '100%';
+        var bareDraw = document.createElement('div');
+        bareDraw.className = 'rb-topo-page__drawing rb-topo-page__drawing--live';
+        var bareView = typeof options.mountTopo === 'function'
+          ? options.mountTopo(page, slot)
+          : null;
+        if (bareView) {
+          bareDraw.appendChild(bareView);
+        } else {
+          var bareNote = document.createElement('p');
+          bareNote.className = 'rb-sheet__note';
+          bareNote.textContent = 'Floor Survey level is not available for this slide.';
+          bareDraw.appendChild(bareNote);
+        }
+        bare.insertBefore(bareDraw, bare.firstChild);
+        bareStage.appendChild(bare);
       }
-      bare.insertBefore(bareDraw, bare.firstChild);
-      bareStage.appendChild(bare);
       root.appendChild(bareStage);
       return { root: root, layout: layout };
     }
@@ -386,7 +401,7 @@
       // the same component and the same canvas the investigator draws on, so
       // there is no second renderer to drift. The composed image below is the
       // fallback for a report saved before this.
-      var liveView = typeof options.mountTopo === 'function' ? options.mountTopo(page) : null;
+      var liveView = typeof options.mountTopo === 'function' ? options.mountTopo(page, 0) : null;
       if (liveView) {
         drawing.classList.add('rb-topo-page__drawing--live');
         drawing.appendChild(liveView);

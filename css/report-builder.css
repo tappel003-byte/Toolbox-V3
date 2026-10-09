@@ -855,6 +855,37 @@ body.report-builder-open .canvas {
 .rb-plan-corner--sw { border-bottom-width: 2px; border-left-width: 2px; }
 .rb-plan-corner--se { border-bottom-width: 2px; border-right-width: 2px; }
 
+/* Two views of one level, side by side. Which one the rail's controls are
+   driving is marked by brackets at its corners -- the same crop-mark language
+   as the resize pulls, and like them it is a thing the investigator is doing,
+   so it never reaches the paper. */
+.rb-floor-box[data-rb-topo-frame] { cursor: pointer; }
+
+.rb-floor-box.is-active::before,
+.rb-floor-box.is-active::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 0 solid #1e406e;
+  pointer-events: none;
+}
+
+.rb-floor-box.is-active::before {
+  left: -4px; top: -4px;
+  border-top-width: 2px; border-left-width: 2px;
+}
+
+.rb-floor-box.is-active::after {
+  right: -4px; bottom: -4px;
+  border-bottom-width: 2px; border-right-width: 2px;
+}
+
+@media print {
+  .rb-floor-box.is-active::before,
+  .rb-floor-box.is-active::after { content: none; }
+}
+
 .rb-topo-live {
   position: absolute;
   inset: 0;

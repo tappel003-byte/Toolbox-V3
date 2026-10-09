@@ -260,6 +260,19 @@
    * exactly where a figure number does, and a new page type gets the rail
    * without anyone remembering to add it to a list.
    */
+  // renderSheet is shared by the real sheet and the rail's thumbnails and
+  // lives outside the editing closure, so the two facts it needs about a
+  // floor page -- how many views it carries and which one is being driven --
+  // are read through these rather than captured.
+  function floorSlotsForPage(page) {
+    return page && page.meta && page.meta.floorTwoUp ? 2 : 1;
+  }
+
+  function floorActiveSlotForPage(page) {
+    var n = Number(page && page._floorSlot) || 0;
+    return Math.max(0, Math.min(floorSlotsForPage(page) - 1, n));
+  }
+
   function pageTakesRail(page) {
     if (!page) return false;
     if (page.type === 'cover' || page.type === 'toc') return false;
@@ -1656,45 +1669,73 @@
   // and re-appended: detaching and re-attaching a node leaves its React tree
   // intact, so the view survives every unrelated re-render. It is only
   // unmounted when the slide actually changes to a different level.
-  var topoHost = { el: null, key: '', api: null, hooks: null };
+  /**
+   * The live Floor Survey views a slide is hosting, by slot.
+   *
+   * There used to be exactly one, because a slide drew one plan. A sheet can
+   * now carry two views of the same level -- Tim: "my thoughts are to be able
+   * to put two views of floor on it... we have the colour contours and our
+   * space allows, maybe I can just put another floor plan that shows the data
+   * points" -- so each slot keeps its own mount and they are torn down
+   * together when the slide changes.
+   */
+  var topoHosts = Object.create(null);
 
-  function topoHostKey(page) {
+  function topoHostKey(page, slot) {
     var meta = (page && page.meta) || {};
-    return [page && page.id, meta.canvasId, meta.epochId, meta.areaId || '', meta.scope || ''].join('|');
+    return [page && page.id, slot, meta.canvasId, meta.epochId,
+      meta.areaId || '', meta.scope || ''].join('|');
   }
 
-  function releaseTopoHost() {
-    if (topoHost.api && typeof topoHost.api.unmount === 'function') {
-      try { topoHost.api.unmount(); } catch (err) { /* already gone */ }
+  function releaseTopoHost(slot) {
+    var host = topoHosts[slot];
+    if (!host) return;
+    delete topoHosts[slot];
+    if (host.api && typeof host.api.unmount === 'function') {
+      try { host.api.unmount(); } catch (err) { /* already gone */ }
     }
-    if (topoHost.el && topoHost.el.parentNode) topoHost.el.parentNode.removeChild(topoHost.el);
-    topoHost = { el: null, key: '', api: null, hooks: null };
+    if (host.el && host.el.parentNode) host.el.parentNode.removeChild(host.el);
   }
 
-  function mountTopoHost(page, hooks) {
+  /** Every slot, or every slot past `keep`. */
+  function releaseTopoHosts(keep) {
+    Object.keys(topoHosts).forEach(function (slot) {
+      if (typeof keep === 'number' && Number(slot) < keep) return;
+      releaseTopoHost(slot);
+    });
+  }
+
+  function mountTopoHost(page, slot, hooks) {
     var api = window.ToolboxFloorSurvey;
     if (!api || typeof api.mount !== 'function') return null;
-    var key = topoHostKey(page);
-    if (topoHost.el && topoHost.key === key) {
-      topoHost.hooks = hooks;
+    var n = Number(slot) || 0;
+    var key = topoHostKey(page, n);
+    var host = topoHosts[n];
+    if (host && host.el && host.key === key) {
+      host.hooks = hooks;
       // Lock View changes nothing about WHICH level is shown, so the host is
       // reused rather than rebuilt -- and the view was therefore never told.
       // Lock flipped its own label, saved, and left the slide as steerable as
       // before. Push it the way settings are pushed.
-      if (topoHost.api && typeof topoHost.api.update === 'function') {
-        topoHost.api.update({ locked: !!(hooks && hooks.locked) });
+      if (host.api && typeof host.api.update === 'function') {
+        host.api.update({
+          locked: !!(hooks && hooks.locked),
+          settings: (hooks && hooks.settings) || null,
+        });
       }
-      return topoHost.el;
+      return host.el;
     }
-    releaseTopoHost();
+    releaseTopoHost(n);
     var el = document.createElement('div');
     el.className = 'rb-topo-live';
     el.setAttribute('data-rb-topo-live', '1');
-    topoHost = { el: el, key: key, api: null, hooks: hooks };
+    el.setAttribute('data-rb-topo-slot', String(n));
+    host = { el: el, key: key, api: null, hooks: hooks };
+    topoHosts[n] = host;
     var meta = page.meta || {};
-    // The hooks are read through topoHost so a later re-render can swap them
+    // The hooks are read through the host so a later re-render can swap them
     // without remounting the view.
-    topoHost.api = api.mount(el, {
+    host.api = api.mount(el, {
       customerFileId: (hooks && hooks.customerFileId) || '',
       workspace: 'report-topo',
       canvasId: meta.canvasId || '',
@@ -1704,13 +1745,16 @@
       locked: !!(hooks && hooks.locked),
       onBack: function () {},
       onCameraChange: function (camera) {
-        if (topoHost.hooks && topoHost.hooks.onCameraChange) topoHost.hooks.onCameraChange(camera);
+        if (host.hooks && host.hooks.onCameraChange) host.hooks.onCameraChange(camera, n);
       },
       onSettingsChange: function (next) {
-        if (topoHost.hooks && topoHost.hooks.onSettingsChange) topoHost.hooks.onSettingsChange(next);
+        if (host.hooks && host.hooks.onSettingsChange) host.hooks.onSettingsChange(next, n);
       },
       onStats: function (stats) {
-        if (topoHost.hooks && topoHost.hooks.onStats) topoHost.hooks.onStats(stats);
+        if (host.hooks && host.hooks.onStats) host.hooks.onStats(stats, n);
+      },
+      onReady: function (info) {
+        if (host.hooks && host.hooks.onReady) host.hooks.onReady(info, n);
       },
     });
     return el;
@@ -1956,6 +2000,8 @@
           // single DOM node: handing it to a thumbnail moves it off the
           // sheet and into the stamp, taking the drawing with it.
           mountTopo: thumb ? null : (page._mountTopo || null),
+          topoSlots: thumb ? 1 : floorSlotsForPage(page),
+          topoActiveSlot: thumb ? 0 : floorActiveSlotForPage(page),
         });
         if (page.meta && !thumb) page.meta.layout = rendered.layout;
         margin.appendChild(rendered.root);
@@ -2281,16 +2327,41 @@
     // shows another level. Those render settings used to be a single object
     // for the whole report, so turning contours off on one slide turned them
     // off on all of them, and the copy-a-slide-and-change-it move did not work.
-    function floorViewFor(page) {
-      if (page && page.meta && page.meta.floorView) return page.meta.floorView;
+    //
+    // A sheet may carry two of those renditions at once. Tim: "We have the
+    // colour contours and our space allows -- maybe I can just put another
+    // floor plan that shows the data points." Both show the same level; only
+    // what is drawn differs, and the camera stays the book's, so the two sit
+    // side by side framed identically. The second lives on meta.floorView2:
+    // two named fields rather than an array, because nothing has to be
+    // migrated and a report written before today reads unchanged.
+    function floorSlots(page) {
+      return page && page.meta && page.meta.floorTwoUp ? 2 : 1;
+    }
+    /** Which of them the rail's controls are driving. Not saved: it is where
+     *  the investigator is looking, not part of the report. */
+    function floorSlot(page) {
+      var n = Number(page && page._floorSlot) || 0;
+      return Math.max(0, Math.min(floorSlots(page) - 1, n));
+    }
+    function floorViewFor(page, slot) {
+      var at = typeof slot === 'number' ? slot : floorSlot(page);
+      var meta = (page && page.meta) || {};
+      if (at === 1) return meta.floorView2 || meta.floorView || floorView;
+      if (meta.floorView) return meta.floorView;
       return floorView;
     }
-    function setFloorViewFor(page, next) {
+    function setFloorViewFor(page, next, slot) {
       if (!page) {
         floorView = next;
         return;
       }
       page.meta = page.meta || {};
+      var at = typeof slot === 'number' ? slot : floorSlot(page);
+      if (at === 1) {
+        page.meta.floorView2 = next;
+        return;
+      }
       page.meta.floorView = next;
       // Deliberately NOT written back to the document default. A slide that
       // has not been given its own rendition reads that default, so pushing
@@ -2834,11 +2905,12 @@
       // slide.
       if (current && current.type === 'floor' && current.meta && current.meta.imported &&
           current.meta.canvasId && window.ToolboxFloorSurvey) {
-        current._mountTopo = function (page) {
-          return mountTopoHost(page, {
+        current._mountTopo = function (page, slot) {
+          var at = Number(slot) || 0;
+          return mountTopoHost(page, at, {
             customerFileId: customerFileId,
             camera: floorCamera,
-            settings: floorViewFor(page),
+            settings: floorViewFor(page, at),
             locked: !!(floorCamera && floorCamera.locked),
             onCameraChange: function (camera) {
               var locked = !!(floorCamera && floorCamera.locked);
@@ -2853,15 +2925,19 @@
               };
               markDirty();
             },
-              onSettingsChange: function (next) {
-              setFloorViewFor(page, next);
+              onSettingsChange: function (next, from) {
+              setFloorViewFor(page, next, Number(from) || 0);
               markDirty();
             },
             // The rail's readings and the pill over the plan are the same
             // numbers, so they come from the same place: whatever the drawing
             // is drawing right now. Read from evidence stored at import, the
             // rail said 9.40 / 8.10 beside a pill reading 9.80 / 8.20.
-            onStats: function (stats) {
+            onStats: function (stats, from) {
+              // Both views draw the same level, so both report the same
+              // numbers; the rail takes them from the one its controls are
+              // driving so there is never a question of which it is quoting.
+              if ((Number(from) || 0) !== floorSlot(page)) return;
               var live = Array.isArray(stats) ? stats : [];
               var before = JSON.stringify(page._liveStats || null);
               if (before === JSON.stringify(live)) return;
@@ -2895,7 +2971,7 @@
           });
         };
       } else {
-        releaseTopoHost();
+        releaseTopoHosts();
       }
       renderSheet(sheetEl, current, pages);
       syncPenLogPanel(current);
@@ -3017,17 +3093,30 @@
           ? 'Every Floor Survey slide frames the plan this way. What is drawn on it stays per slide.'
           : 'Drag the plan to move it. Drag the corner to size it. Lock when it sits where you want it on every slide.';
         railTopEl.appendChild(viewHint);
+
+        var twoUp = floorSlots(page) > 1;
+        railTopEl.appendChild(railButton(
+          twoUp ? 'One view' : 'Two views',
+          'secondary', 'data-rb-floor-twoup', twoUp ? 'off' : 'on'));
+        var twoHint = document.createElement('p');
+        twoHint.className = 'rb-panel__lead';
+        twoHint.textContent = twoUp
+          ? 'Click a drawing to pick the one these controls change. The one with the brackets is the one they are changing.'
+          : 'Puts the same level on the sheet twice, so one can show contours and the other the readings.';
+        railTopEl.appendChild(twoHint);
       }
 
       // Middle: the real Floor Survey controls, for an imported slide.
       var api = window.ToolboxFloorSurvey;
       var meta = page.meta || {};
-      var key = [page.id, meta.canvasId, meta.areaId || '', meta.scope || ''].join('|');
+      var key = [page.id, meta.canvasId, meta.areaId || '', meta.scope || '',
+        floorSlot(page)].join('|');
       if (!imported || !api || typeof api.mount !== 'function') {
         releaseRailControls();
       } else if (railControls.el && railControls.key === key) {
         if (railControls.api && typeof railControls.api.update === 'function') {
           railControls.api.update({ settings: floorViewFor(page) });
+          railControls.key = key;
         }
         if (railControls.el.parentNode !== railBodyEl) railBodyEl.appendChild(railControls.el);
       } else {
@@ -3084,6 +3173,40 @@
           pic.meta = pic.meta || {};
           if (pic.meta.picturesAcross === want) return;
           pic.meta.picturesAcross = want;
+          markDirty();
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
+        var twoBtn = event.target.closest('[data-rb-floor-twoup]');
+        if (twoBtn) {
+          event.preventDefault();
+          var fp = activePage();
+          if (!fp || fp.type !== 'floor') return;
+          fp.meta = fp.meta || {};
+          var on = twoBtn.getAttribute('data-rb-floor-twoup') === 'on';
+          fp.meta.floorTwoUp = on;
+          if (on && !fp.meta.floorView2) {
+            // The second view opens showing the readings and not the
+            // contours, because that is what it is for -- the investigator
+            // would otherwise have to turn three things off before the sheet
+            // said anything the first one did not.
+            var base = floorViewFor(fp, 0);
+            var seed = base ? JSON.parse(JSON.stringify(base)) : {};
+            // points-only is Floor Survey's own name for this: the readings
+            // without the surface. Turning the pieces off one at a time
+            // instead left the view computing a contour surface it was not
+            // drawing, and framing itself against it.
+            seed.mode = 'points-only';
+            seed.showLegend = false;
+            seed.showPoints = true;
+            seed.showLabels = true;
+            fp.meta.floorView2 = seed;
+          }
+          if (!on) {
+            fp._floorSlot = 0;
+            releaseTopoHost(1);
+          }
           markDirty();
           renderPages();
           flushSave().catch(function () {});
@@ -3722,6 +3845,19 @@
       if (!target || !target.closest) return;
       var onPlan = !!target.closest('[data-rb-topo-live]') ||
         !!target.closest('[data-plan-resize]');
+      // With two views on the sheet, clicking one is how the rail's controls
+      // are pointed at it. Which one is selected is where the investigator is
+      // looking, not part of the report, so it is never saved and never
+      // printed.
+      var frame = target.closest ? target.closest('[data-rb-topo-frame]') : null;
+      if (frame) {
+        var fpage = activePage();
+        var want = Number(frame.getAttribute('data-rb-topo-frame')) || 0;
+        if (fpage && floorSlots(fpage) > 1 && floorSlot(fpage) !== want) {
+          fpage._floorSlot = want;
+          renderPages();
+        }
+      }
       // Listening on the document rather than the sheet, because an imported
       // floor slide draws full bleed: the plan IS the whole sheet, so there is
       // nowhere on it to click off. Clicking the rail, the toolbar or the

@@ -320,6 +320,16 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ---
 
+## Two views of one level on a sheet
+
+- **A Floor Survey sheet can carry the same level twice (DECIDED Tim, Oct 9, 2026).** Tim: "It's a long narrow house and our space allows — maybe I can just put another floor plan that shows the data points." One shows the contours, the other the readings, side by side on the paper the first one is not using.
+- **The rail's controls drive whichever view is selected.** Tim: "Whichever view is highlighted, that's what the rail controls control." Each view keeps its own rendition; the camera stays the book's, so the pair is framed as one figure.
+- **Selection is screen-only.** Which view is being driven is marked by brackets at its corners and never prints — the sheet is a presentation, not a selection surface.
+- The second view opens in Floor Survey's own points-only mode, so the sheet says something new the moment it appears.
+- Outstanding: the two views do not frame identically yet — the contour view zooms to its boundary and the points view to all the readings. The pair is meant to read as one figure, so this is not finished.
+
+---
+
 ## Handles on the floorplan
 
 - **90° corner pulls, not tiles (DECIDED Tim, Oct 9, 2026).** Tim: "I don't like the circles on the corners, I like the corner 90 degree pulls better for this, and only present when the floorplan surface is selected. The circles printed." A filled tile sits on the drawing and reads as part of it; two lines meeting at a right angle frame the corner and leave the drawing visible underneath.
