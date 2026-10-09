@@ -842,6 +842,19 @@ body.report-builder-open .canvas {
   [data-plan-resize] { display: none !important; }
 }
 
+/* The plan's own corner pulls: the same crop-mark bracket as the frame's. */
+.rb-plan-corner {
+  border: 0 solid #1e406e;
+  background: transparent;
+  box-shadow: none;
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
+}
+
+.rb-plan-corner--nw { border-top-width: 2px; border-left-width: 2px; }
+.rb-plan-corner--ne { border-top-width: 2px; border-right-width: 2px; }
+.rb-plan-corner--sw { border-bottom-width: 2px; border-left-width: 2px; }
+.rb-plan-corner--se { border-bottom-width: 2px; border-right-width: 2px; }
+
 .rb-topo-live {
   position: absolute;
   inset: 0;
@@ -2293,23 +2306,56 @@ body.report-builder-open .canvas {
   outline: 2px solid rgba(193, 74, 43, 0.55);
 }
 
+/* The frame's corner pulls.
+ *
+ * Two lines meeting at a right angle, like a crop mark, rather than a filled
+ * tile. Tim: "I don't like the circles on the corners, I like the corner 90
+ * degree pulls better for this, and only present when the floorplan surface
+ * is selected." A filled tile sits ON the drawing and reads as part of it; a
+ * bracket frames the corner it belongs to and leaves the drawing visible
+ * underneath.
+ *
+ * The box stays 16px so it is still easy to hit on a touch screen -- only
+ * two of its four borders are drawn. */
 .rb-floor-box__resize {
   position: absolute;
   /* Big enough to find and hit. 12px was a speck on a full-page frame. */
   width: 16px;
   height: 16px;
-  border: 1px solid #1e406e;
-  border-radius: 3px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(8, 32, 54, 0.35);
+  border: 0 solid #1e406e;
+  background: transparent;
+  /* A white companion line under the dark one, so the bracket reads against
+     a dark contour as well as against white paper. */
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
   /* Above the drawing it sits on. */
   z-index: 6;
 }
 
-.rb-floor-box__resize--nw { left: -8px; top: -8px; cursor: nwse-resize; }
-.rb-floor-box__resize--ne { right: -8px; top: -8px; cursor: nesw-resize; }
-.rb-floor-box__resize--sw { left: -8px; bottom: -8px; cursor: nesw-resize; }
-.rb-floor-box__resize--se { right: -8px; bottom: -8px; cursor: nwse-resize; }
+/* Only while the floorplan surface is selected -- the same rule the plan's
+   own grips already follow. A handle standing on an unselected drawing is
+   chrome on a figure. */
+.rb-floor-box__resize { display: none; }
+.rb-sheet--plan-selected .rb-floor-box__resize { display: block; }
+
+.rb-floor-box__resize--nw {
+  left: -8px; top: -8px; cursor: nwse-resize;
+  border-top-width: 2px; border-left-width: 2px;
+}
+
+.rb-floor-box__resize--ne {
+  right: -8px; top: -8px; cursor: nesw-resize;
+  border-top-width: 2px; border-right-width: 2px;
+}
+
+.rb-floor-box__resize--sw {
+  left: -8px; bottom: -8px; cursor: nesw-resize;
+  border-bottom-width: 2px; border-left-width: 2px;
+}
+
+.rb-floor-box__resize--se {
+  right: -8px; bottom: -8px; cursor: nwse-resize;
+  border-bottom-width: 2px; border-right-width: 2px;
+}
 
 .rb-topo-page--chrome-only .rb-topo-page__body {
   min-height: 55%;

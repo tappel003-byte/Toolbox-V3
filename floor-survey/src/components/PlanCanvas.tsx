@@ -658,8 +658,14 @@ export function PlanCanvas({
               onPointerMove={cornerPointerMove}
               onPointerUp={cornerPointerUp}
               onPointerCancel={cornerPointerUp}
+              // Two lines meeting at a right angle, like a crop mark, not a
+              // filled tile. Tim: "I like the corner 90 degree pulls better
+              // for this." A tile sits on the drawing and reads as part of
+              // it; a bracket frames its corner and leaves the drawing
+              // visible underneath. The box stays 16px so it is still easy to
+              // hit -- only two of its four borders are drawn.
               className={
-                "absolute z-30 h-4 w-4 rounded-sm border border-slate-600 bg-white shadow touch-none " +
+                "rb-plan-corner rb-plan-corner--" + corner + " absolute z-30 h-4 w-4 touch-none " +
                 (corner === "nw" || corner === "se"
                   ? "cursor-nwse-resize"
                   : "cursor-nesw-resize")

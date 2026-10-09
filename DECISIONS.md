@@ -320,6 +320,14 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ---
 
+## Handles on the floorplan
+
+- **90° corner pulls, not tiles (DECIDED Tim, Oct 9, 2026).** Tim: "I don't like the circles on the corners, I like the corner 90 degree pulls better for this, and only present when the floorplan surface is selected. The circles printed." A filled tile sits on the drawing and reads as part of it; two lines meeting at a right angle frame the corner and leave the drawing visible underneath.
+- **Only while the surface is selected,** and never on paper.
+- Outstanding: Tim is seeing round handles that print. Neither set in the code is round and both are suppressed in print, so there is a third thing not yet found. To be settled from a screenshot of the printed sheet.
+
+---
+
 ## Writing on a report sheet
 
 - **A text box grows with its text (DECIDED Tim, Oct 9, 2026).** Tim: "The text box is not like a PowerPoint text box, it's still some weird thing that we started with." It was a fixed rectangle with the text clipped to it, so past about the fourth line the writing was still there and invisible. Its stored height is the floor it starts at now, never a lid, and its grip sets the width — the measure the words wrap to — not the height.
