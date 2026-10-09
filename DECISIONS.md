@@ -312,10 +312,11 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ## Readings are printed in tenths
 
-- **Tenths of an inch, by design (DECIDED Tim, Oct 8, 2026).** Tim: "These are inches in tenths, so .57 is stupid — it'll never be .57. It'll be .5, .6, .7. My partner every once in a while reads a .55, but I don't. Tenths are the default by design; it's what we measure in." Two decimal places printed a digit the instrument never produced.
-- **The default is one decimal place**, everywhere a reading is drawn or printed: point labels, the High/Low/difference pill, the colour legend, the figure rail, and the composed report figures. The control that sets it stays, so a survey that needs half tenths can be set to two.
-- **Storage is unchanged.** A reading is kept exactly as it was typed, half tenths included; only the display rounds.
-- Slides saved before this carried the old default written into the page. That stored value is cleared once so those slides take the new default; anything chosen after today is kept.
+- **Tenths of an inch is the standard, and always was (STATED Tim, Oct 8, 2026).** Tim: "These are inches in tenths, so .57 is stupid — it'll never be .57. It'll be .5, .6, .7. Tenths are the default by design; it's what we measure in." And on the record of it: "Tenths is always the default. It's not now — it always has been. You just didn't realize it."
+- Not a change of direction. The app printing two places was a defect: it invented a digit the instrument never produced, so a floor read in tenths reported a difference of 1.57 in. Fixing it brought the app to the standard; it did not set one.
+- **One decimal place everywhere a reading is drawn or printed:** point labels, the High/Low/difference pill, the colour legend, the figure rail, and the composed report figures.
+- **Storage is unchanged.** A reading is kept exactly as it was typed; only the display rounds. Data entry and the recovery PDF still show the typed value, because that is where it is entered and what it exists to recover.
+- Tim's remark that a partner occasionally reads a half tenth was background, not a requirement. Nothing was built for it.
 
 ---
 
