@@ -155,10 +155,30 @@
     note.style.height = note.scrollHeight + 'px';
   }
 
+  /**
+   * Indent a note's first line past the room name run in before it.
+   *
+   * The room is taken out of the flow so the note's later lines come back to
+   * the left margin; this is what keeps the first line clear of it. The width
+   * is in px and so means something different at every scale the sheet is
+   * drawn at, which is why it is measured in the layout pass rather than set
+   * once.
+   */
+  function indentForRoom(note) {
+    var cellEl = note && note.parentNode;
+    var room = cellEl && cellEl.querySelector
+      ? cellEl.querySelector('.rb-penlog__room')
+      : null;
+    note.style.textIndent = room ? (room.offsetWidth + 4) + 'px' : '';
+  }
+
   function autosizeNotes(root) {
     if (!root) return;
     var list = root.querySelectorAll('.rb-penlog__note');
-    for (var i = 0; i < list.length; i += 1) autosizeNote(list[i]);
+    for (var i = 0; i < list.length; i += 1) {
+      indentForRoom(list[i]);
+      autosizeNote(list[i]);
+    }
   }
 
   /**
@@ -305,6 +325,21 @@
       grid.appendChild(pinCell);
 
       var noteCell = cell('is-row is-left is-note', pin.id);
+      // The room, where the pin has one. It was a column of its own, filled
+      // in whether or not anything was known; Tim had that dropped and then
+      // asked for the room itself back. So it leads the note instead of
+      // ruling a field: present when Distress has a room for this pin,
+      // absent when it does not, and never an empty label.
+      //
+      // It is not part of the note's text. The note is the investigator's to
+      // write and is stored; the room belongs to the pin, and editing one
+      // must not quietly rewrite the other.
+      if (pin.location) {
+        var room = document.createElement('span');
+        room.className = 'rb-penlog__room';
+        room.textContent = pin.location;
+        noteCell.appendChild(room);
+      }
       var note = document.createElement('textarea');
       note.className = 'rb-penlog__note';
       note.rows = 1;

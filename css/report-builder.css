@@ -2041,7 +2041,27 @@ body.report-builder-open .canvas {
 }
 
 .rb-penlog__cell.is-note {
-  align-items: flex-start;
+  position: relative;
+  display: block;
+}
+
+/* The room the pin is in, run in at the head of its note: "Kitchen -
+   stair-step crack, north wall." It sits out of the flow and the note's
+   first line is indented past it, so the note reads on from the room and
+   still wraps back to the left margin. Setting the two side by side instead
+   stepped every following line in by the length of the room name, which
+   left the column ragged down the page. */
+.rb-penlog__room {
+  position: absolute;
+  top: 0.3cqh;
+  left: 0.35cqh;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.rb-penlog__room::after {
+  content: " \2014";
+  font-weight: 400;
 }
 
 .rb-penlog__cell--head {
