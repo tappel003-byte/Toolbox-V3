@@ -3101,7 +3101,7 @@
         var twoHint = document.createElement('p');
         twoHint.className = 'rb-panel__lead';
         twoHint.textContent = twoUp
-          ? 'Click a drawing to pick the one these controls change. The one with the brackets is the one they are changing.'
+          ? 'Click a drawing to pick the one these controls change. Set that one to Points only to show the readings beside the contours.'
           : 'Puts the same level on the sheet twice, so one can show contours and the other the readings.';
         railTopEl.appendChild(twoHint);
       }
@@ -3187,21 +3187,16 @@
           var on = twoBtn.getAttribute('data-rb-floor-twoup') === 'on';
           fp.meta.floorTwoUp = on;
           if (on && !fp.meta.floorView2) {
-            // The second view opens showing the readings and not the
-            // contours, because that is what it is for -- the investigator
-            // would otherwise have to turn three things off before the sheet
-            // said anything the first one did not.
+            // The second view opens as a copy of the first, and nothing else.
+            // Floor Survey already has the control that makes one of them
+            // readings-only -- Colour fill / Cells / B&W lines / Points only
+            // -- and it is already in this rail. Tim: "I don't want you to
+            // reinvent something, it's already in the code, it's already in
+            // the rail functions." Seeding a second view with hand-picked
+            // flags sets things the investigator did not choose and leaves
+            // the two drawings framed differently.
             var base = floorViewFor(fp, 0);
-            var seed = base ? JSON.parse(JSON.stringify(base)) : {};
-            // points-only is Floor Survey's own name for this: the readings
-            // without the surface. Turning the pieces off one at a time
-            // instead left the view computing a contour surface it was not
-            // drawing, and framing itself against it.
-            seed.mode = 'points-only';
-            seed.showLegend = false;
-            seed.showPoints = true;
-            seed.showLabels = true;
-            fp.meta.floorView2 = seed;
+            fp.meta.floorView2 = base ? JSON.parse(JSON.stringify(base)) : null;
           }
           if (!on) {
             fp._floorSlot = 0;
