@@ -1605,7 +1605,7 @@
     }
     page._figureNumber = headFigure;
     page._figureCont = page !== head;
-    var rail = railForPage(page);
+    var rail = railForPage(page, { noteEditable: !thumb });
     if (rail) sheet.appendChild(rail);
   }
 
@@ -1815,7 +1815,7 @@
    * absent, so a Pictures page is the same component with no readings rather
    * than a second layout to keep in step with this one.
    */
-  function railForPage(page) {
+  function railForPage(page, opts) {
     var api = window.ToolboxReportRail;
     if (!api || typeof api.render !== 'function') return null;
     var meta = page.meta || {};
@@ -1868,6 +1868,7 @@
       correctedNote: page.type === 'floor' ? 'Corrected for flooring differences' : '',
       stats: stats,
       note: text.railNote || '',
+      noteEditable: !!(opts && opts.noteEditable),
       figureLabel: figureLabelFor(page),
       markSrc: BRAND_LOGO,
     });
@@ -1987,7 +1988,7 @@
     }
 
     if (pageTakesRail(page)) {
-      var rail = railForPage(page);
+      var rail = railForPage(page, { noteEditable: !thumb });
       if (rail) sheet.appendChild(rail);
     }
 
@@ -2866,7 +2867,7 @@
               if (before === JSON.stringify(live)) return;
               page._liveStats = live;
               var railEl = sheetEl && sheetEl.querySelector('.rb-rail__rail');
-              var next = railForPage(page);
+              var next = railForPage(page, { noteEditable: true });
               if (railEl && next) sheetEl.replaceChild(next, railEl);
             },
             onReady: function (info) {
@@ -3760,6 +3761,7 @@
       event.preventDefault();
       overlayDrag = {
         id: id,
+        kind: item.kind,
         resize: !!grip,
         startX: event.clientX,
         startY: event.clientY,
@@ -3774,15 +3776,26 @@
       var dy = ((event.clientY - overlayDrag.startY) / overlayDrag.rect.height) * 100;
       var f = overlayDrag.from;
       var api = window.ToolboxReportOverlay;
+      // A text box's height comes from its text, so its grip sets the width
+      // and the measure the words wrap to. Dragging it up and down would be
+      // setting a number the box then ignores.
+      var textBox = overlayDrag.kind === 'text';
       var next = overlayDrag.resize
-        ? { x: f.x, y: f.y, w: Math.max(api.MIN_W, f.w + dx), h: Math.max(api.MIN_H, f.h + dy) }
+        ? {
+          x: f.x, y: f.y,
+          w: Math.max(api.MIN_W, f.w + dx),
+          h: textBox ? f.h : Math.max(api.MIN_H, f.h + dy),
+        }
         : { x: Math.max(0, Math.min(97, f.x + dx)), y: Math.max(0, Math.min(97, f.y + dy)), w: f.w, h: f.h };
       var live = sheetEl.querySelector('[data-rb-ov="' + overlayDrag.id + '"]');
       if (live) {
         live.style.left = next.x + '%';
         live.style.top = next.y + '%';
         live.style.width = next.w + '%';
-        live.style.height = next.h + '%';
+        // A text box is sized by its text; its stored height is only the
+        // floor, so it is written as min-height or the box stops growing.
+        if (textBox) live.style.minHeight = next.h + '%';
+        else live.style.height = next.h + '%';
       }
       overlayDrag.next = next;
     });
@@ -4088,6 +4101,18 @@
         }
         return false;
       }
+      var railNote = field.closest ? field.closest('[data-rb-rail-note]') : null;
+      if (railNote) {
+        var railPage = activePage();
+        if (!railPage) return false;
+        var rApi = window.ToolboxReportText;
+        railPage.reportText = railPage.reportText || {};
+        railPage.reportText.railNote = rApi
+          ? rApi.compact(rApi.fromElement(railNote))
+          : railNote.textContent;
+        markDirty();
+        return true;
+      }
       var sectionField = field.closest ? field.closest('[data-rb-section-field]') : null;
       if (sectionField) {
         var sectionPage = activePage();
@@ -4191,7 +4216,7 @@
 
     sheetEl.addEventListener('input', function (event) {
       var richTarget = event.target.closest(
-        '[data-rb-cover-field], [data-rb-section-field], [data-rb-ov-field]');
+        '[data-rb-cover-field], [data-rb-section-field], [data-rb-ov-field], [data-rb-rail-note]');
       if (richTarget) {
         if (!commitRichField(richTarget)) return;
         scheduleDiscussionReflow(richTarget);

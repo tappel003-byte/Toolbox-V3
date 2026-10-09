@@ -79,6 +79,11 @@
     return node;
   }
 
+  /** The note the investigator writes, which only this person can write.
+   *  Tim: "For the times the information is sparse, like pictures, we might
+   *  use that to have a little bit of report detail -- most subsequent
+   *  damage, pictures 5, 6 and 10." */
+
   /**
    * North, at the top of the rail.
    *
@@ -169,9 +174,27 @@
     // pictures, we might use that to have a little bit of report detail --
     // most subsequent damage, pictures 5, 6 and 10." It is his sentence, not
     // a generated one, so nothing is written here that he did not write.
-    if (o.note) {
-      var noteSection = section(o.noteLabel || 'Notes');
-      noteSection.appendChild(el('p', 'rb-rail__note', o.note));
+    if (o.note || o.noteEditable) {
+      var noteSection = section(o.note ? (o.noteLabel || 'Notes') : '');
+      var noteEl = el('div', 'rb-rail__note rb-rail__note--body');
+      if (o.noteEditable) {
+        // The same kind of field as the report's other writing, so the
+        // formatting controls in the top rail work on it without a second
+        // set of anything.
+        noteEl.className += ' rb-rt';
+        noteEl.setAttribute('contenteditable', 'true');
+        noteEl.setAttribute('spellcheck', 'true');
+        noteEl.setAttribute('role', 'textbox');
+        noteEl.setAttribute('data-rb-rail-note', '1');
+        noteEl.setAttribute('data-rb-rich', 'rail-note');
+        noteEl.setAttribute('aria-label', 'Report note for this figure');
+      }
+      var api = window.ToolboxReportText;
+      noteEl.innerHTML = api && typeof api.toHtml === 'function'
+        ? api.toHtml(o.note || '')
+        : '';
+      noteSection.appendChild(noteEl);
+      noteSection.setAttribute('data-rb-rail-note-section', '1');
       body.appendChild(noteSection);
     }
 

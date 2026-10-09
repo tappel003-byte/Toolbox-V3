@@ -1663,6 +1663,41 @@ body.report-builder-open .canvas {
   line-height: 1.5cqh;
 }
 
+/* The note the investigator writes into the rail. It is a writing field, so
+   it shows where it is when the pointer is over it or the caret is in it,
+   and it is invisible otherwise -- an empty box ruled on every figure would
+   be chrome on a page whose whole point is not having any. */
+.rb-rail__note--body {
+  min-height: 2.4cqh;
+  color: #333;
+  font-size: 1.06cqh;
+  line-height: 1.5cqh;
+}
+
+.rb-rail__note--body[contenteditable="true"]:hover {
+  outline: 1px dashed rgba(139, 94, 60, 0.4);
+  outline-offset: 2px;
+}
+
+.rb-rail__note--body[contenteditable="true"]:focus {
+  outline: 1px solid rgba(139, 94, 60, 0.55);
+  outline-offset: 2px;
+}
+
+.rb-rail__note--body:empty::before {
+  content: "Note";
+  color: #b9aa98;
+}
+
+.rb-rail__note--body:focus:empty::before { content: ""; }
+
+@media print {
+  /* Nothing of the field itself reaches the paper -- only what was written. */
+  .rb-rail__note--body { min-height: 0; outline: none; }
+  .rb-rail__note--body:empty { display: none; }
+  .rb-rail__note--body:empty::before { content: ""; }
+}
+
 .rb-rail__level + .rb-rail__level {
   margin-top: 1.7cqh;
 }
@@ -2871,13 +2906,14 @@ body.report-builder-open .canvas {
 
 .rb-ov__text {
   width: 100%;
-  height: 100%;
+  /* No height and no clipping: the box is as tall as what is written in it.
+     See boxStyle() -- a fixed height with overflow:hidden hid everything past
+     the fourth line. */
   cursor: text;
   font-size: 1.515cqh;
   line-height: 1.22;
   white-space: pre-wrap;
   word-break: break-word;
-  overflow: hidden;
 }
 
 .rb-ov__text:focus { outline: 1px solid rgba(139, 94, 60, 0.55); }

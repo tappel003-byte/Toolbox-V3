@@ -138,9 +138,20 @@
     return base;
   }
 
+  /**
+   * Where a box sits, and how big it is.
+   *
+   * A text box is the exception: its stored height is the floor it starts at,
+   * not a lid. It was a fixed rectangle with the text clipped to it, so
+   * typing past about the fourth line put the writing somewhere nobody could
+   * see it and nothing said so. A PowerPoint box grows downward as you type
+   * and never swallows anything, which is the behaviour the investigator
+   * expects from a thing that looks like one.
+   */
   function boxStyle(item) {
-    return 'left:' + item.x + '%;top:' + item.y + '%;' +
-      'width:' + item.w + '%;height:' + item.h + '%;';
+    var base = 'left:' + item.x + '%;top:' + item.y + '%;width:' + item.w + '%;';
+    if (item.kind === 'text') return base + 'min-height:' + item.h + '%;';
+    return base + 'height:' + item.h + '%;';
   }
 
   function svgEl(name, attrs) {

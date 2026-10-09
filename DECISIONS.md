@@ -320,6 +320,14 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ---
 
+## Writing on a report sheet
+
+- **A text box grows with its text (DECIDED Tim, Oct 9, 2026).** Tim: "The text box is not like a PowerPoint text box, it's still some weird thing that we started with." It was a fixed rectangle with the text clipped to it, so past about the fourth line the writing was still there and invisible. Its stored height is the floor it starts at now, never a lid, and its grip sets the width — the measure the words wrap to — not the height.
+- **The rail carries a note the investigator writes (DECIDED Tim, Oct 9, 2026).** Tim: "Put a text box on the picture rail that gives me access to basically all of the formatting controls." It is the same kind of field as the rest of the report's writing, so the formatting controls in the top rail work on it with nothing added. Available on every railed page, not only Pictures.
+- The field shows where it is on hover and when the caret is in it, and is invisible otherwise; nothing of the field itself prints, only what was written. An empty box ruled onto every figure would be chrome on a page whose point is not having any.
+
+---
+
 ## North on a report figure
 
 - **The arrow is derived, not left at zero (DECIDED Tim, Oct 9, 2026).** Tim: "Get the arrow pointed in the correct direction, oriented for the floor plan. Distress Survey is right."
