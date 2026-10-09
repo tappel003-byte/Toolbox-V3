@@ -66,6 +66,69 @@
 
   const FOREIGN_LOCK_KEY = 'toolboxForeignCheckouts';
   const QUIET_SYNC_DELAY_MS = 1200;
+
+  /**
+   * Connectivity, and the fact that navigator.onLine cannot tell you about it.
+   *
+   * navigator.onLine reports whether this device has a network interface up,
+   * not whether anything is reachable through it. Tethering breaks the
+   * assumption completely: an iPad on a phone's hotspot keeps its Wi-Fi link
+   * when the phone loses signal, so onLine stays true, the app never goes to
+   * offline mode, and every request is made into a connection that accepts
+   * packets and answers nothing.
+   *
+   * Tim, in the field on an iPad mini: "The screen got extremely slow and
+   * locked up... my iPad does not have Wi-Fi, I was using my cell phone as a
+   * hotspot. My phone lost signal but it never lost the link to the iPad."
+   *
+   * The false direction is only one way round. onLine === false is reliable --
+   * no interface means no network -- so it stays as the cheap negative. What
+   * needs proving is the positive, and the only proof is a request that is
+   * allowed to fail.
+   */
+  const PROBE_TIMEOUT_MS = 3000;
+  const REQUEST_TIMEOUT_MS = 45000;
+
+  function offlineByInterface() {
+    return typeof navigator !== 'undefined' && navigator.onLine === false;
+  }
+
+  /**
+   * Is anything actually reachable?
+   *
+   * A HEAD at the app's own origin. The service worker does not intercept it
+   * -- its asset branch takes GET only and its navigation branch takes
+   * navigations -- so this reaches the network or fails, and either way it is
+   * over in three seconds. Nothing is cached about the answer: the point of
+   * asking is that it changes while you are standing in a crawlspace.
+   */
+  async function hasConnectivity() {
+    if (offlineByInterface()) return false;
+    try {
+      await fetchWithTimeout('/', { method: 'HEAD', cache: 'no-store' }, PROBE_TIMEOUT_MS);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
+   * fetch with a deadline.
+   *
+   * Every request in this file went out with no timeout and no abort, so on a
+   * dead-but-connected link they did not fail -- they waited for the operating
+   * system to give up, holding a connection each. Safari allows about six to a
+   * host, so the pool filled and anything that genuinely needed the network
+   * queued behind requests that were never going to be answered.
+   */
+  function fetchWithTimeout(input, init, ms) {
+    const limit = typeof ms === 'number' ? ms : REQUEST_TIMEOUT_MS;
+    if (typeof AbortController !== 'function') return fetch(input, init);
+    const controller = new AbortController();
+    const timer = setTimeout(function () { controller.abort(); }, limit);
+    return fetch(input, Object.assign({}, init || {}, { signal: controller.signal }))
+      .finally(function () { clearTimeout(timer); });
+  }
   let quietSuspend = 0;
   let quietTimer = null;
   let syncQueue = Promise.resolve();
@@ -163,7 +226,7 @@
   async function refreshLocalCheckoutLocks() {
     const locks = readForeignLocks();
     if (!syncApiBase()) return { ok: false, reason: 'config', locks: locks };
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    if (!(await hasConnectivity())) {
       return { ok: false, reason: 'offline', locks: locks };
     }
     try {
@@ -833,7 +896,7 @@
     if (!base) {
       throw new SyncError('config', 'Sync is not configured yet.');
     }
-    if (!navigator.onLine) {
+    if (offlineByInterface()) {
       throw new SyncError('offline', 'Offline — Sync Now needs a network connection.');
     }
     const opts = options || {};
@@ -842,7 +905,7 @@
       headers['x-toolbox-device-id'] = getDeviceId();
     }
     const attempt = async function () {
-      return fetch(base + path, Object.assign({}, opts, {
+      return fetchWithTimeout(base + path, Object.assign({}, opts, {
         headers: headers,
         credentials: 'include',
         redirect: 'manual',
@@ -853,6 +916,9 @@
     try {
       response = await attempt();
     } catch (err) {
+      if (err && err.name === 'AbortError') {
+        throw new SyncError('offline', 'No answer from the network. Working offline.');
+      }
       throw new SyncError('network', 'Network error during sync.');
     }
 
@@ -876,7 +942,7 @@
       const loc = response.headers.get('location');
       if (loc) {
         try {
-          response = await fetch(new URL(loc, base).toString(), {
+          response = await fetchWithTimeout(new URL(loc, base).toString(), {
             method: opts.method || 'GET',
             headers: headers,
             body: opts.body,
@@ -1728,6 +1794,13 @@
     if (typeof options.beforeSync === 'function') {
       await options.beforeSync();
     }
+    // Sync Now is the action taken when the investigator is not sure the
+    // work is safe, so it has to answer, and answer truthfully. Three
+    // seconds to find out there is nothing there beats forty-five spent
+    // looking like it is working.
+    if (syncApiBase() && !(await hasConnectivity())) {
+      throw new SyncError('offline', 'Offline — Sync Now needs a network connection.');
+    }
     const localRecords = await window.ToolboxDB.getAllCustomerFiles();
     localRecords.forEach(function (record) {
       if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
@@ -1860,7 +1933,12 @@
   async function flushQuietSyncBody() {
     const ids = Object.keys(pendingQuiet);
     if (!ids.length) return { ok: true, skipped: 'idle', uploaded: false };
-    if (!syncApiBase() || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+    if (!syncApiBase()) {
+      return { ok: false, skipped: 'offline', pending: ids.slice() };
+    }
+    // Three seconds to find out, instead of forty-five spent discovering it
+    // one hung request at a time.
+    if (!(await hasConnectivity())) {
       return { ok: false, skipped: 'offline', pending: ids.slice() };
     }
     quietSuspend++;

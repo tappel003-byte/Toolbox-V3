@@ -15,7 +15,7 @@
 // sw.js file's own bytes change; a precached static asset edited without
 // bumping this stays served from the stale cache indefinitely on already
 // installed devices, invisibly, no matter how many times it's redeployed.
-const CACHE_NAME = 'toolbox-shell-v196';
+const CACHE_NAME = 'toolbox-shell-v197';
 const OFFLINE_DOCUMENT = '/index.html';
 const DISTRESS_DOCUMENT = '/distress-survey/survey.html';
 
@@ -105,6 +105,19 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+const NAVIGATE_TIMEOUT_MS = 3000;
+const ASSET_TIMEOUT_MS = 8000;
+const UNCACHED_TIMEOUT_MS = 30000;
+
+/** fetch with a deadline, so a dead link fails instead of waiting. */
+function fetchWithin(request, ms) {
+  if (typeof AbortController !== 'function') return fetch(request);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return fetch(request, { signal: controller.signal })
+    .finally(() => clearTimeout(timer));
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -115,25 +128,49 @@ self.addEventListener('fetch', (event) => {
   // Navigations are network-first. Distress runs in an iframe with Customer
   // File query parameters, so its offline fallback must be its own cached
   // document — never the Toolbox index shell.
+  //
+  // Network-FIRST, not network-eventually. A link that accepts connections
+  // and never answers — a tablet tethered to a phone that has lost signal —
+  // does not make this fetch reject; it makes it wait for the operating
+  // system to give up, which on iOS is a minute or more. The cached document
+  // was sitting there the whole time. Opening or reloading Toolbox in the
+  // field is exactly when that must not happen, so the network gets three
+  // seconds and then the cache answers.
   if (req.mode === 'navigate') {
     const fallbackDocument =
       url.pathname === DISTRESS_DOCUMENT ? DISTRESS_DOCUMENT : OFFLINE_DOCUMENT;
     event.respondWith(
-      fetch(req).catch(() => caches.match(fallbackDocument))
+      fetchWithin(req, NAVIGATE_TIMEOUT_MS).catch(() => caches.match(fallbackDocument))
     );
     return;
   }
 
   // Static shell assets: cache first, refresh the cache in the background.
+  // The background refresh is given a deadline too. Without one, every asset
+  // on the page left a request hanging against a dead network, and Safari's
+  // handful of connections to a host filled with requests that would never be
+  // answered -- so anything that genuinely needed the network queued behind
+  // them. That is the difference between an app that is offline and an app
+  // that is stuck.
   event.respondWith(
     caches.match(req).then((cached) => {
-      const network = fetch(req).then((res) => {
-        if (res && res.ok && !res.redirected) {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
-        }
-        return res;
-      }).catch(() => cached);
+      // A cached copy is already the answer, so its background refresh gets a
+      // short deadline -- it exists only to keep the cache warm and must
+      // never hold a connection open on a dead link. An asset with no cached
+      // copy IS the answer, so it gets a long one and its failure is reported
+      // as a failure rather than swallowed into an empty response.
+      const network = fetchWithin(req, cached ? ASSET_TIMEOUT_MS : UNCACHED_TIMEOUT_MS)
+        .then((res) => {
+          if (res && res.ok && !res.redirected) {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+          }
+          return res;
+        })
+        .catch((err) => {
+          if (cached) return cached;
+          throw err;
+        });
       return cached || network;
     })
   );

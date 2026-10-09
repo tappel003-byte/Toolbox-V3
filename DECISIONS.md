@@ -320,6 +320,16 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ---
 
+## Connectivity, and what counts as proof of it
+
+- **`navigator.onLine` is not a connectivity test (FOUND in the field, Tim, Oct 9, 2026).** It reports whether a network interface is up, not whether anything is reachable. Tim, on an iPad mini tethered to his phone: "The screen got extremely slow and locked up... my iPad does not have Wi-Fi, I was using my cell phone as a hotspot. My phone lost signal but it never lost the link to the iPad." The link stayed up, so the app never went to offline mode.
+- **Only the false direction is reliable.** No interface means no network, so that stays as the cheap negative. The positive has to be proved by a request that is allowed to fail — a HEAD at the app's own origin with a three-second deadline, asked fresh each time, because it changes while you are standing in a crawlspace.
+- **Every request gets a deadline.** Nothing in sync or the service worker had one, so on a link that accepts connections and never answers they waited for the operating system, each holding one of the handful of connections Safari allows to a host. That is the difference between an app that is offline and an app that is stuck.
+- **A reload must always be able to fall back to the cache.** The service worker served navigations network-first with no timeout, so opening Toolbox during exactly that failure was the one thing that could not recover.
+- Sync Now answers in three seconds when there is nothing there, rather than looking like it is working for forty-five.
+
+---
+
 ## Two views of one level on a sheet
 
 - **A Floor Survey sheet can carry the same level twice (DECIDED Tim, Oct 9, 2026).** Tim: "It's a long narrow house and our space allows — maybe I can just put another floor plan that shows the data points." One shows the contours, the other the readings, side by side on the paper the first one is not using.
