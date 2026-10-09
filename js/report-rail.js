@@ -96,18 +96,26 @@
   function compass() {
     var wrap = el('div', 'rb-rail__compass');
     wrap.setAttribute('aria-label', 'North orientation');
-    var n = el('span', 'rb-rail__north', 'N');
-    n.setAttribute('aria-hidden', 'true');
-    wrap.appendChild(n);
+    // Distress Survey's arrow, geometry and colours as they are there. Tim:
+    // "I like the north arrow that is already in Distress Survey better than
+    // what we have. I liked the little colour in it too." The red is the same
+    // --accent the pins are drawn in, so the two marks on a Toolbox drawing
+    // belong to each other.
+    //
+    // The whole instrument turns, the N with it, exactly as the widget in
+    // Distress does: there the N sits at the foot of the dial inside the
+    // rotating group. The one this replaces kept an upright N floating above
+    // a rotating rose, which read as a compass that had come loose from its
+    // own label.
     wrap.insertAdjacentHTML('beforeend',
-      '<svg class="rb-rail__rose" viewBox="0 0 100 100" aria-hidden="true"' +
+      '<svg class="rb-rail__rose" viewBox="-30 -30 60 60" aria-hidden="true"' +
       ' focusable="false">' +
-      '<circle cx="50" cy="50" r="46" fill="white" stroke="#1a1a1a"' +
-      ' stroke-width="1.3"/>' +
-      '<path d="M50 14 L35 77 L50 66 Z" fill="#1a1a1a" stroke="#1a1a1a"' +
-      ' stroke-width="1.3" stroke-linejoin="round"/>' +
-      '<path d="M50 14 L65 77 L50 66 Z" fill="white" stroke="#1a1a1a"' +
-      ' stroke-width="1.3" stroke-linejoin="round"/>' +
+      '<circle cx="0" cy="0" r="26" fill="#fffaf0" stroke="#1a1a1a"' +
+      ' stroke-width="1.5"/>' +
+      '<path d="M 0 -22 L 11 14 L 0 5 L -11 14 Z" fill="#c14a2b"/>' +
+      '<text x="0" y="20" fill="#1a1a1a" font-size="11" font-weight="700"' +
+      ' text-anchor="middle" dominant-baseline="central"' +
+      ' font-family="Georgia, \'Times New Roman\', serif">N</text>' +
       '</svg>');
     return wrap;
   }

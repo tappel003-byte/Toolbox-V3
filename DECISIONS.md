@@ -350,6 +350,7 @@ These notes preserve active product possibilities so they are not lost. They are
 ## North on a report figure
 
 - **The arrow is derived, not left at zero (DECIDED Tim, Oct 9, 2026).** Tim: "Get the arrow pointed in the correct direction, oriented for the floor plan. Distress Survey is right."
+- **The arrow is Distress Survey's own (DECIDED Tim, Oct 9, 2026).** Tim: "I like the north arrow that is already in Distress Survey better than what we have. I liked the little colour in it too." Same geometry, same paper dial and ink stroke, and the same `--accent` red the pins are drawn in — so the two marks on a Toolbox drawing belong to each other. The whole instrument turns, the N with it, as it does there.
 - **The rule comes from Distress Survey,** which already answers this: the front door's real-world facing is known, and the arrow turns so that facing lines up with the direction the front door lies in on the plan.
 - **One correction to it.** Distress assumes the front of the building is drawn at the bottom of the plan. Tim: "I rarely place the floor plan where the FD is always one direction." Plan Setup already records where the front door was tapped, so that direction is measured rather than assumed. Where the plan *is* drawn front-down the measurement comes out the same and this reduces to exactly Distress's rule; where it is not, the report is right and the front-down assumption is not.
 - **A hand turn still wins.** Turning the arrow on a sheet pins it for that sheet; untouched sheets follow the front door.

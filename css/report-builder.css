@@ -1620,11 +1620,6 @@ body.report-builder-open .canvas {
   margin: 0cqh 0cqw 2.5cqh;
 }
 
-.rb-rail__north {
-  font-size: 1.6cqh;
-  line-height: 1.8cqh;
-}
-
 /* North is not always up, so the rose can be turned by dragging it. */
 .rb-rail__compass {
   cursor: grab;
@@ -1635,7 +1630,8 @@ body.report-builder-open .canvas {
   cursor: grabbing;
 }
 
-/* Only this SVG rotates. The N above it stays upright. */
+/* The whole instrument turns, the N with it: the N labels the arrow's point,
+   not the sheet. */
 .rb-rail__rose {
   display: block;
   width: 5.8cqh;
