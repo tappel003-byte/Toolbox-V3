@@ -241,12 +241,36 @@
     // Keep the logo off and we can increase the size of the picture." Every
     // other sheet in the book still carries it, so the report is not short of
     // the mark.
-    if (page.type === 'pictures') return false;
-    // A figure page carries the mark in its rail, at the foot, so there is
+    // A railed page carries the mark in its rail, at the foot, so there is
     // nothing to float in the corner -- and nothing to drag or lock either.
-    if (page.type === 'floor' && !(page.meta && page.meta.reserved)) return false;
-    if (isPenLogPage(page)) return false;
+    if (pageTakesRail(page)) return false;
     return page.type !== 'cover';
+  }
+
+  /**
+   * Does this sheet carry the figure rail?
+   *
+   * Every figure page does. Tim: "Everything gets the rail -- that's the
+   * whole point of that rail, isn't it?" The exceptions are the two pages
+   * that are not figures: the cover, which is its own design and carries its
+   * own mark, and Discussion, which he excluded from the start ("this is
+   * your template... on every figure page except Discussion").
+   *
+   * This is the same set the book numbers as figures, so the rail appears
+   * exactly where a figure number does, and a new page type gets the rail
+   * without anyone remembering to add it to a list.
+   */
+  function pageTakesRail(page) {
+    if (!page) return false;
+    if (page.type === 'cover' || page.type === 'toc') return false;
+    if (page.type === 'section' && page.meta && page.meta.sectionId === 'discussion') return false;
+    // A reserved page is a placeholder -- "No Floor Survey is stored on this
+    // Customer File" -- not a figure. Given a rail it announced a drawing
+    // title, a survey date of nothing and "corrected for flooring
+    // differences" over an empty sheet, which dresses up scaffolding as a
+    // deliverable.
+    if (page.meta && page.meta.reserved) return false;
+    return true;
   }
 
   function renderBrandLayer(sheet, page, box) {
@@ -1768,8 +1792,8 @@
     var dateText = formatSurveyDate(rawDate, true);
     return api.render({
       // A compass belongs on a drawing of the building. A sheet of
-      // photographs is not oriented to anything, so it does not get one.
-      north: page.type !== 'pictures',
+      // photographs, or of property details, is not oriented to anything.
+      north: page.type === 'floor' || page.type === 'distress',
       northRotation: typeof meta.northRotation === 'number' ? meta.northRotation : 0,
       residence: ev.residenceTitle || ev.customerName || '',
       address: ev.address || '',
@@ -1806,6 +1830,7 @@
 
     var margin = document.createElement('div');
     margin.className = 'rb-sheet__margin';
+    if (pageTakesRail(page)) margin.classList.add('rb-sheet__margin--railed');
 
     var index = 0;
     for (var i = 0; i < pages.length; i += 1) {
@@ -1848,7 +1873,6 @@
       margin.appendChild(rows);
     } else if (page.type === 'pictures') {
       margin.classList.add('rb-sheet__margin--pictures');
-      margin.classList.add('rb-sheet__margin--railed');
       margin.appendChild(renderPicturesPage(page));
     } else if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
       margin.classList.add('rb-sheet__margin--topo');
@@ -1856,7 +1880,6 @@
       // other pages use is a band of white the plan cannot be moved into, and
       // it clips the plan before the paper edge when it is panned.
       if (page.meta && page.meta.imported) margin.classList.add('rb-sheet__margin--topo-bleed');
-      margin.classList.add('rb-sheet__margin--railed');
       var fl = window.ToolboxReportFloorLayout;
       if (fl && typeof fl.renderPage === 'function') {
         var imported = !!(page.meta && page.meta.imported && page.evidence && page.evidence.figure);
@@ -1902,8 +1925,7 @@
       if (page.note) addLine(margin, 'rb-sheet__note', page.note);
     }
 
-    if ((page.type === 'floor' && !(page.meta && page.meta.reserved)) ||
-        page.type === 'pictures') {
+    if (pageTakesRail(page)) {
       var rail = railForPage(page);
       if (rail) sheet.appendChild(rail);
     }
@@ -1916,10 +1938,10 @@
     }
 
     var hidePageNum = page.type === 'cover' ||
-      page.type === 'pictures' ||
+      // A railed page already says FIGURE N at the foot of its rail.
+      pageTakesRail(page) ||
       // The decks carry no page number on the discussion sheet.
-      (page.type === 'section' && page.meta && page.meta.sectionId === 'discussion') ||
-      (page.type === 'floor' && !(page.meta && page.meta.reserved));
+      (page.type === 'section' && page.meta && page.meta.sectionId === 'discussion');
     if (!hidePageNum) {
       var footer = document.createElement('p');
       footer.className = 'rb-sheet__page';

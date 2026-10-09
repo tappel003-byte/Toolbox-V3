@@ -320,10 +320,13 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ---
 
-## The rail on Pictures pages
+## The rail on every figure page
 
-- **Pictures pages carry the rail (DECIDED Tim, Oct 9, 2026).** Same rail as every other figure: residence, address, drawing title, figure number and the mark. The page's own "Figure N / Pictures" heading is gone — the rail says both.
-- **No compass.** North belongs on a drawing of the building; a sheet of photographs is not oriented to anything.
+- **Every figure page carries the rail (DECIDED Tim, Oct 9, 2026).** Tim: "Everything gets the rail — that's the whole point of that rail, isn't it?" Floor Survey, Picture/Damage Locations, Pictures, Diagnostics, and any page type added later. Each one's own heading, figure number and brand mark come off the sheet, because the rail already carries all three.
+- **Three pages do not take it.** The cover, which is its own design and carries its own mark; Discussion, excluded from the start; and a reserved placeholder ("No Floor Survey is stored on this Customer File"), which is scaffolding, not a figure — given a rail it announced a drawing title and a survey date over an empty sheet. A placeholder keeps the corner mark and the page number.
+- **One rule, not a list of page types,** so a page type added later gets the rail without anyone remembering to add it.
+- **Pictures pages:** same rail — residence, address, drawing title, figure number and the mark.
+- **The compass is only on drawings of the building** — Floor Survey and Picture/Damage Locations. A sheet of photographs is not oriented to anything.
 - **Five across stays.** With the rail, five across gives a 2.52 × 3.36 in plate; without it, 2.95 × 3.93 in. The rail costs about half an inch each way. Four across with ten photographs does not make them bigger — it makes three rows and a smaller plate.
 - Landscape photographs are limited by the column width, not by the plate's shape, so letterboxing them in a portrait plate leaves grey but does not shrink the picture. Making a landscape shot bigger means letting it span two columns — not decided, not built.
 
