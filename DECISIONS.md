@@ -232,12 +232,27 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ## Layers and levels
 
-- **The words, fixed (DECIDED Tim, Oct 8, 2026).** Tim: "I think we are talking about layers and levels. Layers are different floor plans for different levels of the house; a floor plan can have different levels on the same floor plan."
-  - A **layer** is one floor plan — the basement, the main floor, the second story. Each is its own plan image. In code today this is a Plan Setup *canvas*, and it is what Distress's level pill switches between and what Floor Survey keys its readings to.
-  - A **level** is a surface within one layer — a sunken living room or a step-down addition on the same floor plan. In code today this is a Floor Survey *boundary* (`TopoArea`), and the step between two of them is a *transition*, which carries the measured elevation difference.
-  - Use these two words. The code's older names (canvas, area, boundary) mean the same things and are not worth a rename on their own, but nothing new should add a third word for either idea.
-- **Report Builder tells the story in the order Tim sets it.** Slides already move with Earlier and Later on the rail, and that is what orders the layers in the report. Layers are assembled in the order they were added in Customer Setup, which is a starting point, not the finished sequence.
-- **A layer does not need to know what it is (DECIDED Tim, Oct 8, 2026).** Tim: "Hand ordering is fine." Nothing records that a layer is a basement rather than a second story, and nothing should: it is the name the investigator typed, and the report's sequence is set by moving slides with Earlier and Later. No picked list of level types, no inferred ordering.
+- **Three words, and the hierarchy they describe (DECIDED Tim, Oct 10, 2026).** Tim: "In this case levels can have another layer, right — KISS hierarchy." Customer File → levels → layers.
+  - A **level** is one storey of the building — the basement, the main floor, the second story. Each has its own plan image. In code today this is a Plan Setup *canvas*; it is what Distress's level pill switches between, what Floor Survey keys its readings to, and what the Customer File's "+ Add another level" makes.
+  - A **layer** is something that sits on a level. The floor plan picture is the first layer. A black-and-white contour of that level is a second. An application's own data on that level — Floor Survey's readings, Distress's pins — is also a layer in the Vision's sense.
+  - A **boundary** is a surface within one level — a sunken living room or a step-down addition on the same plan. In code this is a Floor Survey `TopoArea`, and the step between two of them is a *transition*, carrying the measured elevation difference.
+  - **This corrects the Oct 8, 2026 entry, which had layer and level the other way round** and called the boundary a "level". `VISION.md` never stopped using the words above: §4 says "when multiple levels exist (for example Basement, Ground Level, Second Floor), each may have its own plan image"; §4 and §6 use "layer" for what an application adds to an established level; and §6 says Floor Survey's topo areas "must not be confused with the shared canvases/levels established in Plan Setup" — which is exactly what calling a boundary a level did. The Vision outranks this log, so this is a correction back to it rather than a change of direction.
+  - Use these three words. The code's older names (canvas, area, boundary) mean the same things and are not worth a rename on their own, but nothing new should add a fourth word for any of them.
+- **Report Builder tells the story in the order Tim sets it.** Slides already move with Earlier and Later on the rail, and that is what orders the levels in the report. Levels are assembled in the order they were added in Customer Setup, which is a starting point, not the finished sequence.
+- **A level does not need to know what it is (DECIDED Tim, Oct 8, 2026).** Tim: "Hand ordering is fine." Nothing records that a level is a basement rather than a second story, and nothing should: it is the name the investigator typed, and the report's sequence is set by moving slides with Earlier and Later. No picked list of level types, no inferred ordering. (Recorded Oct 8 as "a layer does not need to know what it is"; the subject is the storey, which is now called a level.)
+
+### The contour layer — DISCUSSED Oct 10, 2026, NOT AUTHORIZED TO BUILD
+
+Recorded so the design is not re-derived. Tim has not said to build it.
+
+- **Why it is worth doing.** Tim: "The real bang for the buck is that I could show an owner in the field what the pattern looks like and where the damage groups, and pretty much tell the story right then." `VISION.md` §11 already asks for this — showing the owner the result at the property before leaving — so this is a Vision item that was never built, not a new direction.
+- **It is a layer on a level, not another level.** The level keeps its identity, so the pins, the photograph numbering, the drawings, the front door and north are untouched. Only what is drawn underneath them changes. Tim: "It's not a new canvas, it's a new layer."
+- **Alignment is free.** Distress and Floor Survey already read the same plan picture for a level and both measure in that picture's pixels, and pins are stored in those pixels. A contour drawn across the plan's full extent therefore lands pin-perfect with nothing to register.
+- **A saved picture, not a live render.** Floor Survey already draws contours-only in black and white. One action there writes the result onto the level as a second layer, the same kind of media as the plan. Distress then chooses which layers to show — nothing to compute in a crawlspace, it syncs as bytes, and it works offline.
+- **Saved transparent, so layers stack.** Plan, contour, or both. On white it could only replace, which is not a layer. Both together — contour lines over the real plan with the damage pins on top — may be the one that tells the story best.
+- **A snapshot is acceptable because the survey is finished first.** Tim: "Once a floor survey is done we don't typically do more points." So no staleness machinery; at most a line saying when it was made and a way to remake it.
+- **Diagnostics was considered and set aside.** It would have been cheaper — desktop, live render, no change to the capture app — but the value is in the field, in front of the owner, and Diagnostics is a desk workspace (`VISION.md` §13, and the Oct 3 device-intent decision).
+- **Still to settle before any build:** one contour per level from all boundaries combined, or one per boundary; whether the Distress and Report Builder toggles are independent; and where the control sits in the capture app, which is a named capture-app change under the Oct 4, 2026 rule and is Tim's to place.
 
 ---
 
@@ -275,7 +290,7 @@ These notes preserve active product possibilities so they are not lost. They are
 ## Report Builder: rail previews
 
 - **The rail shows the page, not a blank box (DECIDED Tim, Oct 8, 2026).** Tim: "Is there any way to put a preview on the slide? Right now they are just blank, I'd really like them to be a preview." Each thumbnail now renders its own page at sheet size and scales it down, so it is the page rather than a picture of one — it stays right when the page changes. Editor chrome (the lock bar, the Import toolbar, placement outlines, resize corners) is left out, the same set the print deck drops: a preview shows the deliverable.
-- **A Floor Survey slide's drawing is a photograph.** That drawing is a live canvas belonging to the slide being looked at and there is only one of it, so a preview cannot mount its own. A small picture is taken while the investigator is on the slide; previews fill in as the deck is worked through and then stay. Rendering every level up front was the alternative and was rejected as too slow to open a report with many layers.
+- **A Floor Survey slide's drawing is a photograph.** That drawing is a live canvas belonging to the slide being looked at and there is only one of it, so a preview cannot mount its own. A small picture is taken while the investigator is on the slide; previews fill in as the deck is worked through and then stay. Rendering every level up front was the alternative and was rejected as too slow to open a report with many levels.
 
 ---
 
