@@ -223,6 +223,71 @@
     return next;
   }
 
+  /**
+   * Write "another device is working on this" onto the Customer File itself.
+   *
+   * The lock map lives in this device's localStorage and is only written
+   * while listing the Cabinet, so a device that has not listed since the
+   * lease was taken knows nothing -- and a device with no signal can never
+   * find out. Tim's phone was holding a copy of a job his iPad was working
+   * on and presented it as an ordinary job, because a lease that lives only
+   * in the Cabinet cannot be read from a crawlspace.
+   *
+   * On the record, the fact travels with the copy: it survives a reload,
+   * cleared site data, and having no network at all.
+   *
+   * It must not look like an edit. saveCustomerFile does not touch
+   * updatedAt, and nothing here does either -- the customer component's
+   * revision falls back to record.updatedAt, so bumping it would make the
+   * device that is NOT the authority look like it held the newest contact
+   * details.
+   */
+  async function persistForeignCheckoutMarks(localRecords, locks) {
+    const map = locks || {};
+    for (let i = 0; i < (localRecords || []).length; i++) {
+      const record = localRecords[i];
+      if (!record || !record.id) continue;
+      const lock = map[record.id] || null;
+      const had = record.heldByOtherDevice || null;
+      const next = lock
+        ? { deviceId: lock.deviceId || '', deviceLabel: lock.deviceLabel || '', at: lock.checkedAt || '' }
+        : null;
+      if (JSON.stringify(had) === JSON.stringify(next)) continue;
+      if (next) record.heldByOtherDevice = next;
+      else delete record.heldByOtherDevice;
+      try {
+        await window.ToolboxDB.saveCustomerFile(record);
+      } catch (_) {
+        // A mark that cannot be written is not worth failing a sync over;
+        // the localStorage map still has it for this session.
+      }
+    }
+  }
+
+  /**
+   * Is this copy one that another device holds the lease on?
+   *
+   * Synchronous, because the screen asks while it is rendering. Checks the
+   * copy in hand first -- that answer needs no network and no cache -- and
+   * falls back to the lock map for a file the caller has not loaded.
+   */
+  function heldElsewhere(recordOrId) {
+    if (!recordOrId) return false;
+    if (typeof recordOrId === 'string') return isCheckedOutElsewhere(recordOrId);
+    if (recordOrId.heldByOtherDevice) return true;
+    return isCheckedOutElsewhere(recordOrId.id);
+  }
+
+  function heldElsewhereLabel(record) {
+    const mark = record && record.heldByOtherDevice;
+    if (mark) {
+      return mark.deviceLabel
+        ? ('Checked out on ' + mark.deviceLabel)
+        : 'Checked out on another device';
+    }
+    return foreignCheckoutLabel(record && record.id);
+  }
+
   async function refreshLocalCheckoutLocks() {
     const locks = readForeignLocks();
     if (!syncApiBase()) return { ok: false, reason: 'config', locks: locks };
@@ -233,6 +298,7 @@
       const localRecords = await window.ToolboxDB.getAllCustomerFiles();
       const cabinet = await listRemoteCabinet();
       const next = applyLocksFromRemoteIndexes(localRecords, cabinet.files);
+      await persistForeignCheckoutMarks(localRecords, next);
       try {
         await rememberMirrorsFromIndexes(localRecords, cabinet.files);
       } catch (_) {
@@ -1095,9 +1161,42 @@
     if (!id) throw new SyncError('sync', 'Customer File id required.');
     const existingLocal = await window.ToolboxDB.getCustomerFile(id);
     if (existingLocal && !existingLocal.deletedAt) {
-      // Already local: acquire ownership if possible, but do not re-shell.
+      // Already local: take the lease, then bring the copy current.
+      //
+      // This branch used to hand back whatever was on the device without
+      // fetching anything -- "acquire ownership, but do not re-shell" -- and
+      // re-shelling is indeed the wrong thing, but doing nothing is worse.
+      // Tim set a job up on his phone, synced it, worked the survey on his
+      // iPad, checked that in, and then checked out on the phone: he was
+      // handed yesterday's copy with the plans and none of the readings,
+      // and only a manual Sync afterwards brought them down. "I checked out
+      // an empty copy and syncing them gave me my numbers, which also is not
+      // a good thing."
+      //
+      // The reconcile is the ordinary component exchange, not a forced pull,
+      // so local work that is newer than the Cabinet's is pushed rather than
+      // overwritten. Check Out is an online operation by definition -- the
+      // lease was just acquired over the network -- so there is no offline
+      // case to protect here.
       const acquired = await acquireRemoteCheckout(id);
-      const marked = await ensureCheckedOutFromCabinetMarker(existingLocal);
+      let current = existingLocal;
+      try {
+        const remoteIndex = (acquired && acquired.index) || await getRemoteIndex(id);
+        if (remoteIndex) {
+          await syncOneRecord(existingLocal, remoteIndex);
+          current = (await window.ToolboxDB.getCustomerFile(id)) || existingLocal;
+        }
+      } catch (err) {
+        // The lease is held and the local copy is untouched; say so rather
+        // than leaving the investigator believing this copy is current.
+        try { await releaseRemoteCheckout(id); } catch (_) {}
+        throw new SyncError(
+          (err && err.code) || 'sync',
+          'Checked out, but this copy could not be brought up to date. ' +
+          'The lease was released so nothing is held on a stale copy.'
+        );
+      }
+      const marked = await ensureCheckedOutFromCabinetMarker(current);
       return {
         ok: true,
         id: id,
@@ -1162,8 +1261,12 @@
 
   async function ensureCheckedOutFromCabinetMarker(record) {
     if (!record || !record.id) return record;
-    if (record.checkedOutFromCabinet === true) return record;
+    // Taking the lease clears any "someone else has this" mark on this
+    // device's copy: the someone else is now us.
+    const stale = !!record.heldByOtherDevice;
+    if (record.checkedOutFromCabinet === true && !stale) return record;
     record.checkedOutFromCabinet = true;
+    if (stale) delete record.heldByOtherDevice;
     await window.ToolboxDB.saveCustomerFile(record);
     return record;
   }
@@ -2821,6 +2924,8 @@
     flushQuietSync: flushQuietSync,
     noteLocalSave: noteLocalSave,
     refreshLocalCheckoutLocks: refreshLocalCheckoutLocks,
+    heldElsewhere: heldElsewhere,
+    heldElsewhereLabel: heldElsewhereLabel,
     isCheckedOutElsewhere: isCheckedOutElsewhere,
     foreignCheckoutLabel: foreignCheckoutLabel,
     browseCabinet: browseCabinet,

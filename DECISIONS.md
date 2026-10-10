@@ -320,6 +320,15 @@ These notes preserve active product possibilities so they are not lost. They are
 
 ---
 
+## One job, two devices
+
+- **Check Out brings the copy current (DECIDED Tim, Oct 10, 2026).** Checking out a job the device already held took the lease and handed back whatever was on that device, fetching nothing. Tim set a job up on his phone, synced it, surveyed on his iPad, checked that in, then checked out on the phone and was given yesterday's copy with the plans and none of the readings: "I checked out an empty copy and syncing them gave me my numbers, which also is not a good thing." It reconciles now — the ordinary component exchange, so newer local work is pushed rather than overwritten — and if it cannot be brought current the lease is released rather than held on a stale copy.
+- **A copy knows, offline, that another device holds it.** The lock lived only in the device's localStorage and was only written while listing the Cabinet, so a device that had not listed since the lease was taken — or had no signal to list with — presented the job as ordinary and editable. The fact is now written onto the Customer File itself, so it survives a reload, cleared site data, and having no network at all.
+- **Marking a copy is not an edit.** The customer component's revision falls back to the record's `updatedAt`, so stamping it carelessly would make the device that is *not* the authority look like it held the newest contact details. Nothing in the mark touches a timestamp.
+- Still open: a device that syncs a job up keeps its working copy, by design, so two devices can hold one job with no lease on it at all. That is how the phone and the iPad both ended up with this one.
+
+---
+
 ## Connectivity, and what counts as proof of it
 
 - **`navigator.onLine` is not a connectivity test (FOUND in the field, Tim, Oct 9, 2026).** It reports whether a network interface is up, not whether anything is reachable. Tim, on an iPad mini tethered to his phone: "The screen got extremely slow and locked up... my iPad does not have Wi-Fi, I was using my cell phone as a hotspot. My phone lost signal but it never lost the link to the iPad." The link stayed up, so the app never went to offline mode.

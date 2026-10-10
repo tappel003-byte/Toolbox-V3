@@ -1542,14 +1542,20 @@
     let homeLocked = false;
 
     function applyHomeLock(record) {
+      // Ask the copy in hand, not just this device's lock cache. The cache
+      // is only written while listing the Cabinet, so a device that has not
+      // listed since the lease was taken -- or has no signal to list with --
+      // knows nothing, and used to present the job as ordinary and editable.
       homeLocked = !!(record && window.ToolboxSync &&
-        typeof window.ToolboxSync.isCheckedOutElsewhere === 'function' &&
-        window.ToolboxSync.isCheckedOutElsewhere(record.id));
+        typeof window.ToolboxSync.heldElsewhere === 'function' &&
+        window.ToolboxSync.heldElsewhere(record));
       const home = app.querySelector('#cf-home');
       if (home) home.classList.toggle('is-checked-out-elsewhere', homeLocked);
       if (deleteBtn) deleteBtn.hidden = homeLocked || cabinetTrashPending(record);
       if (!homeLocked) return;
-      const label = window.ToolboxSync.foreignCheckoutLabel(record.id) || 'Checked out on another device';
+      const label = (typeof window.ToolboxSync.heldElsewhereLabel === 'function'
+        ? window.ToolboxSync.heldElsewhereLabel(record)
+        : '') || 'Checked out on another device';
       statusEl.textContent = label;
       editTopBtn.hidden = true;
       importBtn.disabled = true;
@@ -1633,8 +1639,8 @@
           ((existing.distress && Array.isArray(existing.distress.surfaces) && existing.distress.surfaces.length) ||
            (existing.planSetup && Array.isArray(existing.planSetup.canvases)))) {
         if (window.ToolboxPlanSetup.ensurePlanSetup(existing)) {
-          if (window.ToolboxSync && typeof window.ToolboxSync.isCheckedOutElsewhere === 'function' &&
-              window.ToolboxSync.isCheckedOutElsewhere(existing.id)) {
+          if (window.ToolboxSync && typeof window.ToolboxSync.heldElsewhere === 'function' &&
+              window.ToolboxSync.heldElsewhere(existing)) {
             return existing;
           }
           return window.ToolboxDB.saveCustomerFile(existing).then(function () {
