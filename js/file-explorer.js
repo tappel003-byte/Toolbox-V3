@@ -486,6 +486,94 @@
       if (bits.length) lead.textContent = bits.join(' · ');
     }
 
+    // What the stored object cannot say about itself.
+    //
+    // The Cabinet knows a photograph's key, size and the moment it was
+    // uploaded. When it was *taken* lives in distress.json, with the pin it
+    // belongs to. Tim: "I want it as the date they were taken, not the date
+    // that I downloaded them to the computer." So the one component that
+    // knows is read once per Customer File and joined on the media id.
+    let photoFacts = {};
+
+    let photoFactsFor = '';
+
+    /**
+     * Read once, and only when a download asks for it.
+     *
+     * Browsing must not reach past the read-only explore route: a missing
+     * object there falls back to the working sync API, which is not what a
+     * back door should be doing on a page view. A download is a request the
+     * investigator made, so that is where the join belongs.
+     */
+    function readPhotoFacts(id) {
+      if (photoFactsFor === id) return Promise.resolve();
+      photoFacts = {};
+      const key = 'cf/' + id + '/distress.json';
+      return window.ToolboxSync.exploreFetchObject(id, key)
+        .then(function (response) { return response.json(); })
+        .then(function (distress) {
+          const facts = {};
+          const pins = distress && Array.isArray(distress.pins) ? distress.pins : [];
+          pins.forEach(function (pin) {
+            const photos = pin && Array.isArray(pin.photos) ? pin.photos : [];
+            photos.forEach(function (photoId) {
+              if (typeof photoId !== 'string' || !photoId) return;
+              facts[photoId] = {
+                kind: 'pin',
+                pin: pin.num != null ? String(pin.num) : '',
+                takenAt: '',
+                description: String(pin.description || ''),
+              };
+            });
+          });
+          const quick = distress && Array.isArray(distress.quickCapture) ? distress.quickCapture : [];
+          quick.forEach(function (item) {
+            if (!item || typeof item.id !== 'string' || !item.id) return;
+            facts[item.id] = {
+              kind: 'quick',
+              pin: '',
+              takenAt: captureIso(item),
+              description: '',
+            };
+          });
+          photoFacts = facts;
+          photoFactsFor = id;
+        })
+        // Without it the pictures still download, under their stored keys.
+        .catch(function () { photoFacts = {}; photoFactsFor = id; });
+    }
+
+    function captureIso(item) {
+      if (!item) return '';
+      if (item.timestamp) return String(item.timestamp);
+      if (typeof item.ts === 'number' && isFinite(item.ts)) return new Date(item.ts).toISOString();
+      if (item.ts) return String(item.ts);
+      return '';
+    }
+
+    function factFor(row) {
+      const key = String(row && row.key || '');
+      const id = key.indexOf('media/') === 0 ? key.slice(6) : key;
+      return photoFacts[id] || null;
+    }
+
+    /** yyyy-mm-dd in the local day the shutter was pressed. */
+    function captureDay(iso) {
+      const parsed = Date.parse(iso || '');
+      if (!isFinite(parsed)) return '';
+      const d = new Date(parsed);
+      const pad = function (n) { return (n < 10 ? '0' : '') + n; };
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    }
+
+    function captureStamp(iso) {
+      const parsed = Date.parse(iso || '');
+      if (!isFinite(parsed)) return '';
+      const d = new Date(parsed);
+      const pad = function (n) { return (n < 10 ? '0' : '') + n; };
+      return captureDay(iso) + '_' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
+    }
+
     function paintCustomer(id, data) {
       showCustomerIdentity(data || {});
       notesEl.innerHTML = '';
@@ -506,6 +594,12 @@
         listEl.appendChild(empty);
         return;
       }
+      paintGroups(id, objects);
+    }
+
+    function paintGroups(id, objects) {
+      stopTileWatching();
+      listEl.innerHTML = '';
       const buckets = {};
       objects.forEach(function (row) {
         const info = classify(row, id);
@@ -766,6 +860,59 @@
       show(index);
     }
 
+    /**
+     * What a picture is called once it leaves Toolbox.
+     *
+     * A Quick Capture is named for the moment it was taken, because that is
+     * the only thing about it anyone will want to sort by afterwards. Tim: "I
+     * want it as the date they were taken, not the date that I downloaded
+     * them to the computer." The storage key -- the thing it used to be named
+     * after -- says nothing to anybody.
+     */
+    function pictureFileName(row) {
+      const fact = factFor(row);
+      const ext = extensionFor(row);
+      if (fact && fact.kind === 'quick' && fact.takenAt) {
+        const stamp = captureStamp(fact.takenAt);
+        if (stamp) return stamp + ext;
+      }
+      if (fact && fact.kind === 'pin' && fact.pin) {
+        return 'pin-' + fact.pin + '-' + downloadName(String(row.key || '')).slice(-10) + ext;
+      }
+      return downloadName(row.key);
+    }
+
+    function extensionFor(row) {
+      const type = String(row && row.contentType || '').toLowerCase();
+      if (type.indexOf('image/png') === 0) return '.png';
+      if (type.indexOf('image/webp') === 0) return '.webp';
+      if (type.indexOf('image/heic') === 0) return '.heic';
+      return '.jpg';
+    }
+
+    /**
+     * The folder the pictures land in, named for the day they were taken.
+     *
+     * One day of Quick Captures becomes that date. Several days keep the span,
+     * so a folder never claims a date that half its contents do not share.
+     * A subject -- Exterior, Interior -- is not stored against a capture yet,
+     * so nothing here invents one.
+     */
+    function picturesZipName(rows, groupTitle) {
+      const stem = String(groupTitle || 'pictures').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const days = {};
+      rows.forEach(function (row) {
+        const fact = factFor(row);
+        if (!fact || fact.kind !== 'quick') return;
+        const day = captureDay(fact.takenAt);
+        if (day) days[day] = 1;
+      });
+      const list = Object.keys(days).sort();
+      if (!list.length) return stem + '.zip';
+      if (list.length === 1) return stem + '-' + list[0] + '.zip';
+      return stem + '-' + list[0] + '_to_' + list[list.length - 1] + '.zip';
+    }
+
     /** Every picture in this group, as one ZIP. */
     function downloadPictures(id, rows, groupTitle, button, notify) {
       if (!window.JSZip) {
@@ -774,6 +921,7 @@
       }
       const label = button.textContent;
       button.disabled = true;
+      button.textContent = 'Reading…';
       let done = 0;
       const zip = new window.JSZip();
       const used = {};
@@ -781,14 +929,14 @@
         return window.ToolboxSync.exploreFetchObject(id, row.key)
           .then(responseBlob)
           .then(function (loaded) {
-            let name = downloadName(row.key);
+            let name = pictureFileName(row);
             if (used[name]) {
               const dot = name.lastIndexOf('.');
               const stem = dot > 0 ? name.slice(0, dot) : name;
               const ext = dot > 0 ? name.slice(dot) : '';
               name = stem + '-' + (used[name] + 1) + ext;
             }
-            used[downloadName(row.key)] = (used[downloadName(row.key)] || 0) + 1;
+            used[pictureFileName(row)] = (used[pictureFileName(row)] || 0) + 1;
             zip.file(name, loaded.buffer);
             done += 1;
             button.textContent = 'Packing ' + done + ' of ' + rows.length + '…';
@@ -798,12 +946,11 @@
       };
       rows.reduce(function (chain, row) {
         return chain.then(function () { return step(row); });
-      }, Promise.resolve()).then(function () {
+      }, readPhotoFacts(id)).then(function () {
         if (!done) throw new Error('none');
         return zip.generateAsync({ type: 'blob' });
       }).then(function (blob) {
-        const stem = String(groupTitle || 'pictures').toLowerCase().replace(/[^a-z0-9]+/g, '-');
-        saveBlob(blob, stem + '.zip');
+        saveBlob(blob, picturesZipName(rows, groupTitle));
         button.disabled = false;
         button.textContent = label;
         if (done < rows.length) {

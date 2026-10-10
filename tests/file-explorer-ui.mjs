@@ -114,7 +114,7 @@ try {
     const originalCreate = URL.createObjectURL.bind(URL);
     URL.createObjectURL = function (blob) {
       const url = originalCreate(blob);
-      downloads.push({ url, size: blob.size, type: blob.type, name: '' });
+      downloads.push({ url, size: blob.size, type: blob.type, name: '', blob });
       return url;
     };
     const originalClick = HTMLAnchorElement.prototype.click;
@@ -172,6 +172,15 @@ try {
       [`media/${fixture.planId}`]: { type: 'image/png', body: fixture.png },
       'media/ph_present': { type: 'image/jpeg', body: fixture.png },
       'media/ph_quick': { type: 'image/jpeg', body: fixture.png },
+      [`cf/${fixture.id}/distress.json`]: {
+        type: 'application/json',
+        // The shutter time, which is the only thing that can name the file
+        // after the day it was taken rather than the day it was downloaded.
+        body: JSON.stringify({
+          pins: [{ num: 4, description: 'Crack', photos: ['ph_present'] }],
+          quickCapture: [{ id: 'ph_quick', ts: Date.parse('2026-03-02T17:45:12.000Z') }],
+        }),
+      },
       'media/fsrec_canvas-ground': { type: 'application/pdf', body: fixture.pdf },
       'media/dxfig_ground': { type: 'image/png', body: fixture.png },
     };
@@ -324,6 +333,29 @@ try {
     await clickAction('media/fsrec_canvas-ground', 'Open');
     const pdf = document.querySelector('.explorer-preview__pdf');
     await clickAction(`media/${fixture.planId}`, 'Download');
+
+    const quickSheet = [...document.querySelectorAll('.explorer-group')]
+      .find((group) => group.dataset.group === 'quick-capture');
+    const quickAll = quickSheet
+      && [...quickSheet.querySelectorAll('button')].find((b) => b.textContent === 'Download all');
+    if (quickAll) {
+      quickAll.click();
+      for (let i = 0; i < 60; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        if (downloads.some((d) => d.clicked && /\.zip$/.test(d.name || ''))) break;
+      }
+    }
+    const quickZipEntry = downloads.filter((d) => /\.zip$/.test(d.name || '')).pop() || {};
+    const quickZip = quickZipEntry.name || '';
+    // Unpack it: the folder saying the right date is not proof that the
+    // pictures inside do.
+    let quickEntries = [];
+    if (quickZipEntry.blob && window.JSZip) {
+      try {
+        const unpacked = await window.JSZip.loadAsync(quickZipEntry.blob);
+        quickEntries = Object.keys(unpacked.files);
+      } catch (_) { quickEntries = []; }
+    }
     document.getElementById('explorer-zip').click();
     await new Promise((resolve) => setTimeout(resolve, 40));
     const afterFiles = await window.ToolboxDB.getAllCustomerFiles();
@@ -374,7 +406,9 @@ try {
           lineHeight: headingStyle.lineHeight,
         };
       })(),
-      downloads,
+      downloads: downloads.map((d) => ({ url: d.url, size: d.size, type: d.type, name: d.name, clicked: d.clicked })),
+      quickZip,
+      quickEntries,
       fetchLog,
       writes,
       beforeCount: beforeFiles.length,
@@ -429,6 +463,14 @@ try {
     !flow.detailText.includes('Distress or Quick Capture'));
   check('pictures are a contact sheet, not a list of identical cards',
     flow.tileCount === 6 && flow.sheetCount === 5);
+  // Tim: "I want it as the date they were taken, not the date that I
+  // downloaded them to the computer." 2026-03-02 is the shutter time seeded
+  // into distress.json; the download happens today.
+  check('Quick Capture downloads are named for the day they were taken',
+    /quick-capture-2026-03-0[23]\.zip$/.test(flow.quickZip), flow.quickZip);
+  check('and so is each picture inside',
+    flow.quickEntries.length === 1 && /^2026-03-0[23]_\d{6}\.jpg$/.test(flow.quickEntries[0]),
+    JSON.stringify(flow.quickEntries));
   check('Floor Survey recovery PDF can be opened and downloaded',
     flow.recoveryText.includes('Floor Survey recovery PDF — Ground') &&
     flow.recoveryActions.includes('Open') &&
