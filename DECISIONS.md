@@ -337,6 +337,18 @@ Authorized by Tim after the design was talked through: "It might be best to star
 
 ---
 
+## Quick Capture
+
+- **A run is a named set (DECIDED Tim, Oct 10, 2026).** See "File Explorer shows the pictures now" above for the naming and what it does to downloads.
+- **The controls follow the part of the screen you can see (DECIDED Tim, Oct 10, 2026).** Tim, from the field: "When I pinched the zoom in I just know the buttons went away. Can you make the photo button just floating?"
+  - The viewfinder is fixed to the page. A pinch on a phone does not move the page — it shrinks the window onto it and lets you pan around — so the bars stay where the page puts them, outside what is now visible, while the camera keeps filling the screen. The shutter was still there and still worked; it could not be seen.
+  - The app already asks not to be zoomed (`user-scalable=no`), and iPhones deliberately ignore that for accessibility. So the answer is to live with the pinch, not to fight it.
+  - The controls ride on one layer, and that layer is mapped onto the rectangle `visualViewport` reports as visible, scaled back down so the shutter stays the same size under a thumb. **At normal zoom nothing is applied at all**, so proven capture behaviour does not move for a fix aimed at the zoomed case.
+  - **Done travels with the shutter.** Being able to shoot but not leave would be a worse trap than the one being fixed — see "Leaving the plans step can never be blocked", Oct 6.
+- **Tapping anywhere to capture is deliberate, not a bug.** The viewfinder says "Tap anywhere to capture" until the first photograph is taken. Raised by Tim alongside the vanishing button and confirmed as working as designed.
+
+---
+
 ## Distress Survey working surface
 
 - **The stage behind the plan is white (DECIDED Tim, Oct 6, 2026).** Tim: "The background in Distress Survey is black, I would like to change that to white like Floor Survey." It was a dark grey, inherited from the standalone app; Floor Survey's working surface is white, and the two should not read as different products. A named change to the integrated capture app under the Oct 4 rule. Nothing else about Distress capture changes.

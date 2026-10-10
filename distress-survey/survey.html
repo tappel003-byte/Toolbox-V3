@@ -6649,12 +6649,16 @@ document.addEventListener('focusin', (e) => {
   .qc-overlay{position:fixed;inset:0;z-index:1200;background:#000;display:none;flex-direction:column}
   .qc-overlay.open{display:flex}
   .qc-video{flex:1;width:100%;height:100%;object-fit:cover;background:#000;-webkit-tap-highlight-color:transparent}
+  /* The controls ride on their own layer so one transform can put the whole
+     set on the part of the screen a pinch has left visible. */
+  .qc-chrome{position:absolute;inset:0;z-index:4;pointer-events:none;transform-origin:top left;will-change:transform}
+  .qc-chrome > *{pointer-events:auto}
   .qc-top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;
-    padding:14px 16px;background:linear-gradient(180deg,rgba(0,0,0,.55),transparent);color:#fff;z-index:2}
+    padding:14px 16px;background:linear-gradient(180deg,rgba(0,0,0,.55),transparent);color:#fff}
   .qc-top .qc-title{font-weight:700;font-size:16px;letter-spacing:.3px}
   .qc-top .qc-count{font-size:14px;opacity:.9}
   .qc-bottom{position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;
-    padding:18px 22px calc(22px + env(safe-area-inset-bottom));background:linear-gradient(0deg,rgba(0,0,0,.55),transparent);z-index:2}
+    padding:18px 22px calc(22px + env(safe-area-inset-bottom));background:linear-gradient(0deg,rgba(0,0,0,.55),transparent)}
   .qc-btn{background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:999px;
     padding:10px 16px;font-weight:600;font-size:14px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
   .qc-btn.primary{background:#fff;color:#111;border-color:#fff}
@@ -6669,20 +6673,22 @@ document.addEventListener('focusin', (e) => {
 
   const html = `
     <div class="qc-overlay" id="qcOverlay">
-      <div class="qc-top">
-        <div>
-          <div class="qc-title">Quick Capture</div>
-          <div class="qc-count" id="qcCount">0 this session · 0 total</div>
-        </div>
-        <button class="qc-btn" id="qcDone">Done</button>
-      </div>
       <video class="qc-video" id="qcVideo" playsinline muted autoplay></video>
       <div class="qc-tap-hint" id="qcHint">Tap anywhere to capture</div>
       <div class="qc-flash" id="qcFlash"></div>
-      <div class="qc-bottom">
-        <button class="qc-btn" id="qcSwap">↺ Camera</button>
-        <button class="qc-btn primary" id="qcShoot">● Capture</button>
-        <span style="width:90px"></span>
+      <div class="qc-chrome" id="qcChrome">
+        <div class="qc-top">
+          <div>
+            <div class="qc-title">Quick Capture</div>
+            <div class="qc-count" id="qcCount">0 this session · 0 total</div>
+          </div>
+          <button class="qc-btn" id="qcDone">Done</button>
+        </div>
+        <div class="qc-bottom">
+          <button class="qc-btn" id="qcSwap">↺ Camera</button>
+          <button class="qc-btn primary" id="qcShoot">● Capture</button>
+          <span style="width:90px"></span>
+        </div>
       </div>
     </div>
   `;
@@ -6733,6 +6739,7 @@ async function openQuickCapture(){
   _qc.sessionCount = 0;
   updateQcCount();
   document.getElementById('qcOverlay').classList.add('open');
+  syncQcChrome();
   // GPS once per session (silent if denied)
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
@@ -6742,6 +6749,49 @@ async function openQuickCapture(){
     );
   }
   await startQcStream();
+}
+
+/**
+ * Keep the viewfinder's controls on the part of the screen you can see.
+ *
+ * Tim: "When I pinched the zoom in I just know the buttons went away."
+ *
+ * The overlay is fixed to the page, and pinching on a phone does not move the
+ * page -- it shrinks the window onto it and lets you pan around. So the bars
+ * stay where the page says they are, which is off the edge of what is now
+ * visible, while the camera keeps filling the screen. The shutter is still
+ * there; you simply cannot see it.
+ *
+ * The visible rectangle is what visualViewport reports, so the bars are moved
+ * onto it and scaled back down so they stay the same size under your thumb.
+ * Done moves with the shutter: being able to shoot but not leave would be a
+ * worse trap than the one being fixed ("leaving can never be blocked",
+ * DECISIONS.md, Oct 6).
+ *
+ * At normal zoom this does nothing at all -- the transform is cleared, and
+ * the bars sit exactly where they always have.
+ */
+function syncQcChrome(){
+  const chrome = document.getElementById('qcChrome');
+  const overlay = document.getElementById('qcOverlay');
+  if (!chrome || !overlay || !overlay.classList.contains('open')) return;
+  const vv = window.visualViewport;
+  const scale = vv && vv.scale ? vv.scale : 1;
+  if (!vv || scale <= 1.01 || !window.innerWidth) {
+    chrome.style.transform = '';
+    return;
+  }
+  // The layer is exactly the page; shrink it onto the visible rectangle and
+  // move it there. Its top bar then sits on the top edge of what can be seen
+  // and its bottom bar on the bottom edge, both at their usual size.
+  const k = vv.width / window.innerWidth;
+  chrome.style.transform =
+    'translate(' + vv.offsetLeft + 'px,' + vv.offsetTop + 'px) scale(' + k + ')';
+}
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncQcChrome);
+  window.visualViewport.addEventListener('scroll', syncQcChrome);
 }
 
 async function startQcStream(){
@@ -6769,7 +6819,10 @@ function stopQcStream(){
 
 function closeQuickCapture(){
   stopQcStream();
-  document.getElementById('qcOverlay').classList.remove('open');
+  const overlay = document.getElementById('qcOverlay');
+  const chrome = overlay.querySelector('.qc-chrome');
+  if (chrome) chrome.style.transform = '';
+  overlay.classList.remove('open');
   const e = document.querySelector('.qc-err'); if (e) e.remove();
   if (_qc.sessionCount > 0) {
     toast(_qc.sessionCount + ' photo' + (_qc.sessionCount===1?'':'s') +
