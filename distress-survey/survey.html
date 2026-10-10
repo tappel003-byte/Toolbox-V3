@@ -7258,6 +7258,7 @@ async function hostContourLayer(canvas) {
     height: Number(layer.height) || (canvas.plan && canvas.plan.height) || 0,
     surveyDate: layer.surveyDate || '',
     createdAt: layer.createdAt || '',
+    areaName: layer.areaName || '',
   };
 }
 
@@ -7420,6 +7421,12 @@ function hostContourDrawnLine() {
   const layer = project && project.contourLayer;
   if (!layer) return '';
   const when = layer.surveyDate || (layer.createdAt ? String(layer.createdAt).slice(0, 10) : '');
+  // Which surface, as well as which survey. A contour of the house and a
+  // contour of the garage look nothing alike and mean nothing like the same
+  // thing, so the sheet should not leave that to be guessed.
+  const what = layer.areaName && layer.areaName !== 'Combined' ? layer.areaName : '';
+  if (what && when) return what + ' \u2014 contour from the survey of ' + when;
+  if (what) return what + ' \u2014 contour';
   return when ? 'Contour from the survey of ' + when : '';
 }
 

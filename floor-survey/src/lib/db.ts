@@ -32,6 +32,7 @@ declare global {
           createdAt?: string;
           surveyDate?: string | null;
           pointCount?: number;
+          areaName?: string;
         },
       ): { canvas: any; retired: string | null } | null;
       clearContourLayer(record: any, canvasId: string): { canvas: any; retired: string | null } | null;
@@ -376,7 +377,7 @@ export async function persistFloorSurveyRecoveryPdf(canvasId: string, dataUrl: s
 export async function persistContourLayer(
   canvasId: string,
   dataUrl: string,
-  meta: { width: number; height: number; pointCount?: number },
+  meta: { width: number; height: number; pointCount?: number; areaName?: string },
 ) {
   if (!dataUrl || !dataUrl.startsWith("data:image/")) {
     throw new Error("Contour layer was not produced");
@@ -399,6 +400,7 @@ export async function persistContourLayer(
     // have to carry the survey date around to write a layer.
     surveyDate: (record.floorSurvey && record.floorSurvey.inspectionDate) || null,
     pointCount: meta.pointCount ?? 0,
+    areaName: meta.areaName || "",
   });
   if (!applied) {
     await window.ToolboxDB.deleteMedia(mediaId);

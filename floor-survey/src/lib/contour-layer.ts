@@ -37,6 +37,9 @@ export type ContourLayerResult = {
    *  it is what gets stored on the level. */
   extent: { x: number; y: number; w: number; h: number };
   pointCount: number;
+  /** The boundary this covers, or "Combined" — so the field can see what it
+   *  is looking at instead of inferring it from the shape. */
+  areaName: string;
 };
 
 /**
@@ -73,6 +76,18 @@ export async function composeContourLayer(options: {
   floor: Floor;
   points: SurveyPoint[];
   settings: RenderSettings;
+  /**
+   * The boundary showing on screen, or null for all of them.
+   *
+   * Separate surfaces are separate: a garage is sloped to drain, so its
+   * contours are the steepest thing on the sheet and say nothing about the
+   * house. Tim: "Two separate levels should not necessarily show the same
+   * thing, plus that's a garage, it's sloped for drainage." Choosing the
+   * boundary in the rail before sending is how that garage stays out, and it
+   * needs no control of its own -- it is the same what-you-see-is-what-you-send
+   * rule as the B&W gate.
+   */
+  areaId?: string | null;
 }): Promise<ContourLayerResult | null> {
   const floor = options.floor;
   const points = Array.isArray(options.points) ? options.points : [];
@@ -83,7 +98,7 @@ export async function composeContourLayer(options: {
   const composed = await composeReportTopoFigure({
     floor,
     points,
-    areaId: null,
+    areaId: options.areaId ?? null,
     settings: backdropSettings(options.settings),
     extent,
     background: "transparent",
@@ -96,5 +111,6 @@ export async function composeContourLayer(options: {
     height: composed.height,
     extent: composed.extent,
     pointCount: points.length,
+    areaName: composed.title || "Combined",
   };
 }

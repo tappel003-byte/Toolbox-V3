@@ -387,6 +387,10 @@
       // rather than guessing whether it is current.
       surveyDate: layer.surveyDate || null,
       pointCount: Number(layer.pointCount) || 0,
+      // Which boundary it covers. Separate surfaces are separate -- a garage
+      // sloped to drain is not the house -- so the field has to be able to see
+      // which one is on screen.
+      areaName: typeof layer.areaName === 'string' ? layer.areaName : '',
     };
     if (!contourLayer(canvas)) {
       canvas.contourLayer = previous || null;

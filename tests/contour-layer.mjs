@@ -414,29 +414,42 @@ const e2eSeed = await page.evaluate(async (planDataUrl) => {
   rec.floorSurvey.inspectionDate = '2026-10-10';
   // A closed boundary across most of the plan, with readings that actually
   // vary so there is something for the contours to follow.
-  const poly = [{ x: 40, y: 40 }, { x: 360, y: 40 }, { x: 360, y: 260 }, { x: 40, y: 260 }];
+  // Two surfaces, as a real job has: the house, and a garage sloped hard for
+  // drainage. The garage is the one that must be able to stay out.
+  const house = [{ x: 30, y: 30 }, { x: 370, y: 30 }, { x: 370, y: 160 }, { x: 30, y: 160 }];
+  const garage = [{ x: 30, y: 180 }, { x: 370, y: 180 }, { x: 370, y: 280 }, { x: 30, y: 280 }];
   const pts = [];
   let n = 0;
   for (let gx = 0; gx < 4; gx++) {
-    for (let gy = 0; gy < 3; gy++) {
+    for (let gy = 0; gy < 2; gy++) {
       n += 1;
       pts.push({
-        id: 'pt-' + n,
-        floorId: canvasId,
-        index: n,
-        x: 70 + gx * 90,
-        y: 70 + gy * 70,
+        id: 'pt-' + n, floorId: canvasId, index: n,
+        x: 60 + gx * 90, y: 60 + gy * 70,
         value: 9.0 - gx * 0.4 - gy * 0.3,
-        isBasePoint: n === 1,
-        label: n === 1 ? 'BP1' : String(n),
-        createdAt: Date.now(),
+        isBasePoint: n === 1, label: n === 1 ? 'BP1' : String(n), createdAt: Date.now(),
+      });
+    }
+  }
+  for (let gx = 0; gx < 4; gx++) {
+    for (let gy = 0; gy < 2; gy++) {
+      n += 1;
+      pts.push({
+        id: 'pt-' + n, floorId: canvasId, index: n,
+        x: 60 + gx * 90, y: 205 + gy * 50,
+        // Sloped to drain: a far steeper fall than the house has.
+        value: 9.0 - gx * 1.6 - gy * 1.2,
+        isBasePoint: false, label: String(n), createdAt: Date.now(),
       });
     }
   }
   rec.floorSurvey.byCanvasId[canvasId] = {
     canvasId,
-    boundary: poly,
-    areas: [{ id: 'area-e2e', name: 'Main', polygon: poly, createdAt: Date.now() }],
+    boundary: house,
+    areas: [
+      { id: 'area-house', name: 'Main', polygon: house, createdAt: Date.now() },
+      { id: 'area-garage', name: 'Garage', polygon: garage, createdAt: Date.now() },
+    ],
     points: pts,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -483,19 +496,36 @@ const sent = await page.evaluate(async () => {
     (b) => /send to distress survey/i.test(b.textContent || ''),
   );
   if (!send) return { error: 'no send button on B&W lines' };
+  // Choose the house, leaving the garage out. A garage is sloped to drain,
+  // so its contours are the steepest thing on the drawing and say nothing
+  // about the house.
+  const area = Array.from(document.querySelectorAll('select')).find((el) =>
+    Array.from(el.options || []).some((o) => /garage/i.test(o.textContent || '')),
+  );
+  if (!area) return { error: 'no boundary selector found' };
+  const house = Array.from(area.options).find((o) => /main/i.test(o.textContent || ''));
+  if (!house) return { error: 'no house boundary in the selector' };
+  area.value = house.value;
+  area.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 900));
   send.click();
   // Composing and writing a 3000px PNG takes a moment.
   for (let i = 0; i < 60; i++) {
     await new Promise((r) => setTimeout(r, 400));
     const label = Array.from(document.querySelectorAll('p')).find((p) =>
-      /Sent\.|Could not|No contours/.test(p.textContent || ''),
+      /^Sent |Could not|No contours/.test(p.textContent || ''),
     );
     if (label) return { message: label.textContent.trim() };
   }
   return { error: 'the send never reported back' };
 });
 check('The send action is offered on B&W lines and reports back', !sent.error, sent.error || sent.message);
-check('It reported success', /^Sent\./.test(sent.message || ''), sent.message || '');
+check('It reported success', /^Sent /.test(sent.message || ''), sent.message || '');
+check(
+  'It names the boundary it sent, not just "sent"',
+  /Sent Main\./.test(sent.message || ''),
+  sent.message || '',
+);
 
 const written = await page.evaluate(async (seed) => {
   const rec = await window.ToolboxDB.getCustomerFile(seed.id);
@@ -518,11 +548,20 @@ const written = await page.evaluate(async (seed) => {
       let clear = 0;
       let ink = 0;
       let coloured = 0;
+      let upperInk = 0;
+      let lowerInk = 0;
+      // The garage sits below 170/300 of the plan; the house above it.
+      const splitRow = Math.round(c.height * (170 / 300));
       for (let i = 0; i < data.length; i += 4) {
         const a = data[i + 3];
         if (a === 0) { clear += 1; continue; }
         const r = data[i], g = data[i + 1], b = data[i + 2];
-        if (r < 120 && g < 120 && b < 120) ink += 1;
+        const dark = r < 120 && g < 120 && b < 120;
+        if (dark) {
+          ink += 1;
+          const row = Math.floor((i / 4) / c.width);
+          if (row < splitRow) upperInk += 1; else lowerInk += 1;
+        }
         // A colour-fill palette would show up as a strong channel spread.
         if (Math.max(r, g, b) - Math.min(r, g, b) > 40) coloured += 1;
       }
@@ -536,6 +575,8 @@ const written = await page.evaluate(async (seed) => {
         clearFraction: clear / total,
         inkFraction: ink / total,
         colouredFraction: coloured / total,
+        upperInk,
+        lowerInk,
         cornerAlpha,
       });
     };
@@ -588,6 +629,23 @@ if (written.layer && written.probe) {
     'The survey date came with it',
     written.layer.surveyDate === '2026-10-10',
     String(written.layer.surveyDate),
+  );
+  check(
+    'The layer records which boundary it covers',
+    written.layer.areaName === 'Main',
+    String(written.layer.areaName),
+  );
+  // The garage sits in the lower third of the plan. If the selected boundary
+  // were ignored, its steep contours would be the densest ink on the sheet.
+  check(
+    'The boundary left out is not in the picture',
+    written.probe.lowerInk === 0,
+    'ink below the house: ' + written.probe.lowerInk,
+  );
+  check(
+    'The boundary chosen is',
+    written.probe.upperInk > 0,
+    'ink in the house: ' + written.probe.upperInk,
   );
 }
 

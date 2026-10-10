@@ -1228,6 +1228,9 @@ export function TopoTab({
                         floor,
                         points,
                         settings: resolved,
+                        // The boundary on screen, not every boundary. A
+                        // garage is sloped to drain and swamps the house.
+                        areaId: selectedAreaId,
                       });
                       if (!drawn) {
                         setLayerState("failed");
@@ -1235,6 +1238,7 @@ export function TopoTab({
                         return;
                       }
                       await persistContourLayer(floor.id, drawn.dataUrl, {
+                        areaName: drawn.areaName,
                         // The plan extent the layer covers, not the picture's
                         // own pixels. The picture is drawn well above plan
                         // resolution so it holds up on paper, and it is
@@ -1246,7 +1250,11 @@ export function TopoTab({
                         pointCount: drawn.pointCount,
                       });
                       setLayerState("done");
-                      setLayerMessage("Sent. Distress Survey can show the pins on it.");
+                      // Name what went, because sending the wrong boundary
+                      // looks exactly like sending nothing.
+                      setLayerMessage(
+                        `Sent ${drawn.areaName}. Distress Survey can show the pins on it.`,
+                      );
                     } catch (err) {
                       setLayerState("failed");
                       setLayerMessage(
