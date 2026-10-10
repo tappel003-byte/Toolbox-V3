@@ -178,7 +178,8 @@ try {
         // after the day it was taken rather than the day it was downloaded.
         body: JSON.stringify({
           pins: [{ num: 4, description: 'Crack', photos: ['ph_present'] }],
-          quickCapture: [{ id: 'ph_quick', ts: Date.parse('2026-03-02T17:45:12.000Z') }],
+          // A named run: the investigator typed "Exterior" when they started.
+          quickCapture: [{ id: 'ph_quick', ts: Date.parse('2026-03-02T17:45:12.000Z'), folder: 'Exterior' }],
         }),
       },
       'media/fsrec_canvas-ground': { type: 'application/pdf', body: fixture.pdf },
@@ -353,7 +354,8 @@ try {
     if (quickZipEntry.blob && window.JSZip) {
       try {
         const unpacked = await window.JSZip.loadAsync(quickZipEntry.blob);
-        quickEntries = Object.keys(unpacked.files);
+        // JSZip lists the folder itself; only the pictures matter here.
+        quickEntries = Object.keys(unpacked.files).filter((name) => !unpacked.files[name].dir);
       } catch (_) { quickEntries = []; }
     }
     document.getElementById('explorer-zip').click();
@@ -466,10 +468,10 @@ try {
   // Tim: "I want it as the date they were taken, not the date that I
   // downloaded them to the computer." 2026-03-02 is the shutter time seeded
   // into distress.json; the download happens today.
-  check('Quick Capture downloads are named for the day they were taken',
-    /quick-capture-2026-03-0[23]\.zip$/.test(flow.quickZip), flow.quickZip);
-  check('and so is each picture inside',
-    flow.quickEntries.length === 1 && /^2026-03-0[23]_\d{6}\.jpg$/.test(flow.quickEntries[0]),
+  check('a named Quick Capture run names the download, with the day it was taken',
+    /^exterior-2026-03-0[23]\.zip$/.test(flow.quickZip), flow.quickZip);
+  check('and the pictures sit in that set, named for when they were taken',
+    flow.quickEntries.length === 1 && /^Exterior\/2026-03-0[23]_\d{6}\.jpg$/.test(flow.quickEntries[0]),
     JSON.stringify(flow.quickEntries));
   check('Floor Survey recovery PDF can be opened and downloaded',
     flow.recoveryText.includes('Floor Survey recovery PDF — Ground') &&

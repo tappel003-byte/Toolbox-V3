@@ -533,6 +533,8 @@
               kind: 'quick',
               pin: '',
               takenAt: captureIso(item),
+              // The set the investigator named when the run started.
+              folder: String(item.folder || '').trim(),
               description: '',
             };
           });
@@ -872,14 +874,20 @@
     function pictureFileName(row) {
       const fact = factFor(row);
       const ext = extensionFor(row);
-      if (fact && fact.kind === 'quick' && fact.takenAt) {
+      if (fact && fact.kind === 'quick') {
         const stamp = captureStamp(fact.takenAt);
-        if (stamp) return stamp + ext;
+        const set = safeFolder(fact.folder);
+        const leaf = (stamp || downloadName(row.key)) + ext;
+        return set ? set + '/' + leaf : leaf;
       }
       if (fact && fact.kind === 'pin' && fact.pin) {
         return 'pin-' + fact.pin + '-' + downloadName(String(row.key || '')).slice(-10) + ext;
       }
       return downloadName(row.key);
+    }
+
+    function safeFolder(name) {
+      return String(name || '').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 60);
     }
 
     function extensionFor(row) {
@@ -901,16 +909,25 @@
     function picturesZipName(rows, groupTitle) {
       const stem = String(groupTitle || 'pictures').toLowerCase().replace(/[^a-z0-9]+/g, '-');
       const days = {};
+      const sets = {};
       rows.forEach(function (row) {
         const fact = factFor(row);
         if (!fact || fact.kind !== 'quick') return;
         const day = captureDay(fact.takenAt);
         if (day) days[day] = 1;
+        const set = safeFolder(fact.folder);
+        if (set) sets[set] = 1;
       });
-      const list = Object.keys(days).sort();
-      if (!list.length) return stem + '.zip';
-      if (list.length === 1) return stem + '-' + list[0] + '.zip';
-      return stem + '-' + list[0] + '_to_' + list[list.length - 1] + '.zip';
+      const dayList = Object.keys(days).sort();
+      const setList = Object.keys(sets);
+      // One named set is the best name there is. Several, and the sets are
+      // folders inside, so the ZIP falls back to the span they cover.
+      const head = setList.length === 1
+        ? setList[0].toLowerCase().replace(/[^a-z0-9]+/g, '-')
+        : stem;
+      if (!dayList.length) return head + '.zip';
+      if (dayList.length === 1) return head + '-' + dayList[0] + '.zip';
+      return head + '-' + dayList[0] + '_to_' + dayList[dayList.length - 1] + '.zip';
     }
 
     /** Every picture in this group, as one ZIP. */

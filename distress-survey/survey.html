@@ -6690,14 +6690,40 @@ document.addEventListener('focusin', (e) => {
   document.body.appendChild(wrap.firstChild);
 })();
 
-let _qc = { stream: null, facing: 'environment', sessionCount: 0, gps: null, busy: false };
+let _qc = { stream: null, facing: 'environment', sessionCount: 0, gps: null, busy: false, folder: '' };
 
+// A Quick Capture run is a named set. Tim: "If I take a bunch of quick
+// captures and I press Done, I should be able to at the start of the quick
+// capture name the file that those go in; then if I do another quick capture
+// later I can start another file."
+//
+// The name is asked for where the app already asked something -- the start of
+// a run -- so this replaces a step rather than adding one. Cancel still means
+// no session, exactly as cancelling the old question did.
 function confirmQuickCapture(){
   closeMenu();
   if (!project) { alert('Open a project first.'); return; }
-  if (confirm('Start Quick Capture?\n\nTakes untethered photos with GPS + timestamp (separate from your pin photos).')) {
-    openQuickCapture();
-  }
+  const typed = prompt(
+    'Name this set of Quick Captures\n\n' +
+    'For example: Exterior, Interior, Grading & Drainage.\n' +
+    'Photos with GPS and a timestamp, separate from your pin photos.',
+    '',
+  );
+  // Cancel is cancel. An empty name is not a reason to lose the photographs,
+  // so the run is named for the day instead.
+  if (typed === null) return;
+  _qc.folder = cleanQcFolder(typed) || qcFolderForToday();
+  openQuickCapture();
+}
+
+function cleanQcFolder(value){
+  return String(value == null ? '' : value).replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 60);
+}
+
+function qcFolderForToday(){
+  const d = new Date();
+  const pad = n => (n < 10 ? '0' : '') + n;
+  return 'Quick Capture ' + d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 }
 
 async function openQuickCapture(){
@@ -6745,7 +6771,10 @@ function closeQuickCapture(){
   stopQcStream();
   document.getElementById('qcOverlay').classList.remove('open');
   const e = document.querySelector('.qc-err'); if (e) e.remove();
-  if (_qc.sessionCount > 0) toast(_qc.sessionCount + ' photo' + (_qc.sessionCount===1?'':'s') + ' added');
+  if (_qc.sessionCount > 0) {
+    toast(_qc.sessionCount + ' photo' + (_qc.sessionCount===1?'':'s') +
+      ' added' + (_qc.folder ? ' to ' + _qc.folder : ''));
+  }
 }
 
 function showQcError(msg){
@@ -6771,6 +6800,8 @@ async function qcCaptureFrame(){
     project.quickCapture = project.quickCapture || [];
     project.quickCapture.push({
       id, ts: Date.now(),
+      // The set this run belongs to, so a later run starts a new one.
+      folder: _qc.folder || '',
       lat: _qc.gps ? _qc.gps.lat : null,
       lng: _qc.gps ? _qc.gps.lng : null,
     });
