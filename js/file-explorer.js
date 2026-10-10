@@ -171,11 +171,30 @@
   }
 
   let previewUrl = '';
+  // Tiles stop watching when the view is rebuilt, or a replaced grid keeps
+  // fetching photographs for a screen that is no longer there.
+  let tileObservers = [];
+
+  function stopTileWatching() {
+    tileObservers.forEach(function (io) {
+      try { io.disconnect(); } catch (_) {}
+    });
+    tileObservers = [];
+  }
 
   function revokePreview() {
     if (previewUrl) {
       try { URL.revokeObjectURL(previewUrl); } catch (_) {}
       previewUrl = '';
+    }
+  }
+
+  let lightboxUrl = '';
+
+  function revokeLightbox() {
+    if (lightboxUrl) {
+      try { URL.revokeObjectURL(lightboxUrl); } catch (_) {}
+      lightboxUrl = '';
     }
   }
 
@@ -193,6 +212,51 @@
     }, 1500);
   }
 
+  // A picture is anything the Cabinet stored as an image: a photograph, a
+  // floor plan, a diagnostics figure. Tim: "These pictures should just be in a
+  // folder where you can see a thumbnail of all of them and then click on the
+  // pictures to make them bigger -- not one at a time."
+  function isPicture(row) {
+    if (!row || row.missing) return false;
+    return String(row.contentType || '').toLowerCase().indexOf('image/') === 0;
+  }
+
+  const THUMB_EDGE = 320;
+
+  /**
+   * Shrink a stored photograph to a tile.
+   *
+   * A survey can hold a hundred full-size photographs. Holding a hundred
+   * object URLs to 4 MB originals is how a phone runs out of memory, so each
+   * one is drawn down to a small canvas and the original is released
+   * immediately. What the grid keeps is the tile, not the photograph.
+   */
+  async function thumbnailFrom(blob) {
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = await new Promise(function (resolve, reject) {
+        const el = new Image();
+        el.onload = function () { resolve(el); };
+        el.onerror = function () { reject(new Error('image')); };
+        el.src = url;
+      });
+      const w = img.naturalWidth || 1;
+      const h = img.naturalHeight || 1;
+      const scale = Math.min(1, THUMB_EDGE / Math.max(w, h));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(w * scale));
+      canvas.height = Math.max(1, Math.round(h * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return '';
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', 0.72);
+    } catch (_) {
+      return '';
+    } finally {
+      try { URL.revokeObjectURL(url); } catch (_) {}
+    }
+  }
+
   async function responseBlob(response) {
     const type = response.headers.get('content-type') || 'application/octet-stream';
     const buffer = await response.arrayBuffer();
@@ -208,6 +272,8 @@
       window.ToolboxApp.registerActiveFlush(null);
     }
     revokePreview();
+    revokeLightbox();
+    stopTileWatching();
     const inside = !!customerId;
     renderShell(
       app,
@@ -431,6 +497,7 @@
         notesEl.appendChild(p);
       });
       const objects = Array.isArray(data.objects) ? data.objects : [];
+      stopTileWatching();
       listEl.innerHTML = '';
       if (!objects.length) {
         const empty = document.createElement('p');
@@ -466,10 +533,286 @@
         const heading = document.createElement('h2');
         heading.textContent = group.title;
         section.appendChild(heading);
-        rows.forEach(function (row) {
+        // Pictures become a contact sheet; everything else stays a row. A
+        // hundred photographs listed as a hundred identical cards is a list of
+        // photographs, not a way to look at them.
+        const pictures = rows.filter(isPicture);
+        const rest = rows.filter(function (row) { return !isPicture(row); });
+        if (pictures.length) {
+          section.appendChild(pictureSheet(id, pictures, group.title, preview, showNotice));
+        }
+        rest.forEach(function (row) {
           section.appendChild(objectRow(id, row));
         });
         listEl.appendChild(section);
+      });
+    }
+
+    /** A grid of thumbnails, with one action to take the whole set. */
+    function pictureSheet(id, rows, groupTitle, preview, notify) {
+      const wrap = document.createElement('div');
+      wrap.className = 'explorer-sheet';
+
+      const bar = document.createElement('div');
+      bar.className = 'explorer-sheet__bar';
+      const count = document.createElement('p');
+      count.className = 'explorer-sheet__count';
+      count.textContent = rows.length + (rows.length === 1 ? ' picture' : ' pictures');
+      bar.appendChild(count);
+      const all = document.createElement('button');
+      all.type = 'button';
+      all.className = 'btn btn--secondary';
+      all.textContent = 'Download all';
+      all.addEventListener('click', function () {
+        downloadPictures(id, rows, groupTitle, all, notify);
+      });
+      bar.appendChild(all);
+      wrap.appendChild(bar);
+
+      const grid = document.createElement('div');
+      grid.className = 'explorer-sheet__grid';
+      const captions = sheetCaptions(rows);
+      rows.forEach(function (row, index) {
+        grid.appendChild(pictureTile(id, row, rows, index, captions[index], notify));
+      });
+      wrap.appendChild(grid);
+      return wrap;
+    }
+
+    function pictureTile(id, row, siblings, index, caption, notify) {
+      const tile = document.createElement('button');
+      tile.type = 'button';
+      tile.className = 'explorer-tile';
+      tile.dataset.key = row.key || '';
+      const frame = document.createElement('span');
+      frame.className = 'explorer-tile__frame';
+      const img = document.createElement('img');
+      img.className = 'explorer-tile__img';
+      img.alt = row._label || 'Photograph';
+      img.loading = 'lazy';
+      frame.appendChild(img);
+      tile.appendChild(frame);
+      const cap = document.createElement('span');
+      cap.className = 'explorer-tile__caption';
+      cap.textContent = caption || '';
+      tile.appendChild(cap);
+      tile.addEventListener('click', function () {
+        openLightbox(id, siblings, index, notify);
+      });
+      // Fetched only when it comes into view, so opening a job with a hundred
+      // photographs over a phone connection does not pull all hundred at once.
+      watchTile(id, row, img, tile);
+      return tile;
+    }
+
+    /**
+     * Say what makes this picture different from the one beside it.
+     *
+     * "porch.jpg" earns its place under a tile. "Distress Survey photograph"
+     * under all eight does not -- a caption repeated across the whole sheet
+     * carries no information, and the group heading already said it. So a
+     * caption that is identical for every tile in the group is dropped, which
+     * is decided per sheet rather than per tile.
+     */
+    function tileCaption(row) {
+      const detail = String(row._detail || '').trim();
+      if (detail) return detail;
+      const label = String(row._label || '').trim();
+      const dash = label.indexOf('\u2014');
+      if (dash >= 0) {
+        const tail = label.slice(dash + 1).trim();
+        if (tail) return tail;
+      }
+      return label;
+    }
+
+    function sheetCaptions(rows) {
+      const captions = rows.map(tileCaption);
+      const distinct = {};
+      captions.forEach(function (text) { distinct[text] = 1; });
+      // All the same? Then it says nothing. Fall back to the date, which at
+      // least differs, and to nothing when even that is absent.
+      // One picture has nothing to be repetitive against, so its name stays.
+      if (rows.length < 2 || Object.keys(distinct).length > 1) return captions;
+      return rows.map(function (row) { return formatFieldDate(row.uploaded) || ''; });
+    }
+
+    function watchTile(id, row, img, tile) {
+      let started = false;
+      const load = function () {
+        if (started) return;
+        started = true;
+        window.ToolboxSync.exploreFetchObject(id, row.key)
+          .then(responseBlob)
+          .then(function (loaded) { return thumbnailFrom(loaded.blob); })
+          .then(function (src) {
+            if (src) {
+              img.src = src;
+              tile.classList.add('is-loaded');
+            } else {
+              tile.classList.add('is-failed');
+            }
+          })
+          .catch(function () { tile.classList.add('is-failed'); });
+      };
+      if (typeof IntersectionObserver !== 'function') { load(); return; }
+      const io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          io.disconnect();
+          load();
+        });
+      }, { rootMargin: '300px' });
+      io.observe(tile);
+      tileObservers.push(io);
+    }
+
+    /**
+     * One picture, full size, with the rest of the set a tap away.
+     *
+     * The old preview opened at the foot of the page, so looking at the
+     * second photograph meant scrolling down to it, back up to the list, and
+     * down again. Over a set of a hundred that is the whole job.
+     */
+    function openLightbox(id, rows, startIndex, notify) {
+      let index = Math.max(0, Math.min(rows.length - 1, startIndex));
+      const box = document.createElement('div');
+      box.className = 'explorer-lightbox';
+      box.setAttribute('role', 'dialog');
+      box.setAttribute('aria-modal', 'true');
+
+      const bar = document.createElement('div');
+      bar.className = 'explorer-lightbox__bar';
+      const title = document.createElement('p');
+      title.className = 'explorer-lightbox__title';
+      bar.appendChild(title);
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'btn btn--secondary';
+      save.textContent = 'Download';
+      bar.appendChild(save);
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'btn btn--ghost';
+      close.textContent = 'Close';
+      bar.appendChild(close);
+      box.appendChild(bar);
+
+      const stage = document.createElement('div');
+      stage.className = 'explorer-lightbox__stage';
+      const prev = document.createElement('button');
+      prev.type = 'button';
+      prev.className = 'explorer-lightbox__step';
+      prev.setAttribute('aria-label', 'Previous picture');
+      prev.textContent = '\u2039';
+      const img = document.createElement('img');
+      img.className = 'explorer-lightbox__img';
+      const next = document.createElement('button');
+      next.type = 'button';
+      next.className = 'explorer-lightbox__step';
+      next.setAttribute('aria-label', 'Next picture');
+      next.textContent = '\u203a';
+      stage.appendChild(prev);
+      stage.appendChild(img);
+      stage.appendChild(next);
+      box.appendChild(stage);
+
+      function teardown() {
+        revokeLightbox();
+        document.removeEventListener('keydown', onKey);
+        box.remove();
+      }
+      function onKey(event) {
+        if (event.key === 'Escape') teardown();
+        else if (event.key === 'ArrowLeft') show(index - 1);
+        else if (event.key === 'ArrowRight') show(index + 1);
+      }
+      function show(nextIndex) {
+        if (nextIndex < 0 || nextIndex >= rows.length) return;
+        index = nextIndex;
+        const row = rows[index];
+        title.textContent = (row._label || 'Picture') + '  ' + (index + 1) + ' of ' + rows.length;
+        prev.disabled = index === 0;
+        next.disabled = index === rows.length - 1;
+        img.removeAttribute('src');
+        box.classList.add('is-loading');
+        window.ToolboxSync.exploreFetchObject(id, row.key)
+          .then(responseBlob)
+          .then(function (loaded) {
+            if (!box.isConnected || rows[index] !== row) return;
+            revokeLightbox();
+            lightboxUrl = URL.createObjectURL(loaded.blob);
+            img.src = lightboxUrl;
+            img.alt = row._label || 'Picture';
+            box.classList.remove('is-loading');
+            save.onclick = function () {
+              saveBlob(loaded.blob, downloadName(row.key));
+            };
+          })
+          .catch(function () {
+            box.classList.remove('is-loading');
+            notify('Could not open that picture.');
+          });
+      }
+
+      prev.addEventListener('click', function () { show(index - 1); });
+      next.addEventListener('click', function () { show(index + 1); });
+      close.addEventListener('click', teardown);
+      box.addEventListener('click', function (event) {
+        if (event.target === box || event.target === stage) teardown();
+      });
+      document.addEventListener('keydown', onKey);
+      document.body.appendChild(box);
+      show(index);
+    }
+
+    /** Every picture in this group, as one ZIP. */
+    function downloadPictures(id, rows, groupTitle, button, notify) {
+      if (!window.JSZip) {
+        notify('ZIP download is unavailable.');
+        return;
+      }
+      const label = button.textContent;
+      button.disabled = true;
+      let done = 0;
+      const zip = new window.JSZip();
+      const used = {};
+      const step = function (row) {
+        return window.ToolboxSync.exploreFetchObject(id, row.key)
+          .then(responseBlob)
+          .then(function (loaded) {
+            let name = downloadName(row.key);
+            if (used[name]) {
+              const dot = name.lastIndexOf('.');
+              const stem = dot > 0 ? name.slice(0, dot) : name;
+              const ext = dot > 0 ? name.slice(dot) : '';
+              name = stem + '-' + (used[name] + 1) + ext;
+            }
+            used[downloadName(row.key)] = (used[downloadName(row.key)] || 0) + 1;
+            zip.file(name, loaded.buffer);
+            done += 1;
+            button.textContent = 'Packing ' + done + ' of ' + rows.length + '…';
+          })
+          // One unreadable object should not lose the other ninety-nine.
+          .catch(function () {});
+      };
+      rows.reduce(function (chain, row) {
+        return chain.then(function () { return step(row); });
+      }, Promise.resolve()).then(function () {
+        if (!done) throw new Error('none');
+        return zip.generateAsync({ type: 'blob' });
+      }).then(function (blob) {
+        const stem = String(groupTitle || 'pictures').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        saveBlob(blob, stem + '.zip');
+        button.disabled = false;
+        button.textContent = label;
+        if (done < rows.length) {
+          notify(done + ' of ' + rows.length + ' pictures were stored and packed.');
+        }
+      }).catch(function () {
+        button.disabled = false;
+        button.textContent = label;
+        notify('Could not package those pictures.');
       });
     }
 

@@ -4112,6 +4112,164 @@ button.cf-home__delete[hidden] {
   font-size: 13px;
 }
 
+/* Contact sheet: see every picture at once, tap one to fill the screen. */
+.explorer-sheet {
+  margin-bottom: 12px;
+}
+
+.explorer-sheet__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.explorer-sheet__count {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.explorer-sheet__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 10px;
+}
+
+.explorer-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.explorer-tile__frame {
+  display: block;
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #efe9df;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.explorer-tile__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity 160ms ease-out;
+}
+
+.explorer-tile.is-loaded .explorer-tile__img {
+  opacity: 1;
+}
+
+.explorer-tile.is-failed .explorer-tile__frame::after {
+  content: 'Not stored';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.explorer-tile__caption {
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-tile:active .explorer-tile__frame {
+  transform: scale(0.98);
+}
+
+.explorer-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  background: rgba(17, 15, 12, 0.94);
+  padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+}
+
+.explorer-lightbox__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 8px;
+  flex: 0 0 auto;
+}
+
+.explorer-lightbox__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: #f6f1e8;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-lightbox__stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The picture gets the whole stage; the arrows sit over it. Beside it they
+   took a fifth of a phone screen away from the thing being looked at. */
+.explorer-lightbox__img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.explorer-lightbox.is-loading .explorer-lightbox__img {
+  opacity: 0.2;
+}
+
+.explorer-lightbox__step {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 64px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(17, 15, 12, 0.55);
+  color: #f6f1e8;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.explorer-lightbox__step:first-of-type { left: 2px; }
+.explorer-lightbox__step:last-of-type { right: 2px; }
+
+.explorer-lightbox__step:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
 .explorer-preview__image {
   display: block;
   max-width: 100%;

@@ -274,24 +274,49 @@ try {
     const notesRow = document.querySelector(`[data-key="cf/${fixture.id}/field-notes.txt"]`);
     const groups = [...document.querySelectorAll('.explorer-group')].map((group) => group.dataset.group);
     const otherPhotos = document.querySelector('[data-group="other-photos"]');
-    const objectCount = document.querySelectorAll('.explorer-row[data-key]').length;
+    const objectCount = document.querySelectorAll('.explorer-row[data-key]').length
+      + document.querySelectorAll('.explorer-tile[data-key]').length;
+    const tileCount = document.querySelectorAll('.explorer-tile[data-key]').length;
+    const sheetCount = document.querySelectorAll('.explorer-sheet').length;
     const note = document.querySelector('.explorer-note');
     const unreferenced = document.querySelector('[data-key="media/ph_unreferenced"]');
 
+    // Pictures are tiles on a contact sheet, not rows with their own buttons:
+    // tapping one opens the lightbox, and Download lives in there.
     async function clickAction(key, label) {
-      const row = document.querySelector(`[data-key="${key}"]`);
-      const button = [...row.querySelectorAll('button')].find((item) => item.textContent === label);
+      const el = document.querySelector(`[data-key="${key}"]`);
+      if (el && el.classList.contains('explorer-tile')) {
+        el.click();
+        await new Promise((resolve) => setTimeout(resolve, 260));
+        if (label === 'Download') {
+          const save = [...document.querySelectorAll('.explorer-lightbox__bar button')]
+            .find((item) => item.textContent === 'Download');
+          if (save) save.click();
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          // Leave no overlay behind, or the next step clicks through it.
+          closeLightbox();
+        }
+        return;
+      }
+      const button = [...el.querySelectorAll('button')].find((item) => item.textContent === label);
       button.click();
       await new Promise((resolve) => setTimeout(resolve, 40));
     }
 
+    function closeLightbox() {
+      const close = [...document.querySelectorAll('.explorer-lightbox__bar button')]
+        .find((item) => item.textContent === 'Close');
+      if (close) close.click();
+    }
+
     await clickAction('media/fsrec_canvas-ground', 'Download');
     await clickAction(`media/${fixture.planId}`, 'Open');
-    const image = document.querySelector('.explorer-preview__image');
+    const image = document.querySelector('.explorer-lightbox__img');
     if (image && !image.complete) {
       await new Promise((resolve) => { image.onload = resolve; image.onerror = resolve; });
     }
     const imageOpened = !!(image && image.complete && image.naturalWidth === 1);
+    closeLightbox();
     await clickAction(`cf/${fixture.id}/index.json`, 'Open');
     const jsonText = document.querySelector('.explorer-preview__text')
       ? document.querySelector('.explorer-preview__text').textContent
@@ -318,6 +343,8 @@ try {
       detailRawKey,
       groups,
       objectCount,
+      tileCount,
+      sheetCount,
       recoveryText: recoveryRow ? recoveryRow.innerText : '',
       recoveryActions: recoveryRow ? [...recoveryRow.querySelectorAll('button')].map((button) => button.textContent) : [],
       quickText: quickRow ? quickRow.innerText : '',
@@ -386,16 +413,22 @@ try {
     flow.groups.join(',') === 'customer,plans,distress,quick-capture,other-photos,floor,diagnostics,report,other,technical' &&
     flow.objectCount === 18 &&
     flow.otherPhotos.includes('Unassigned photo') &&
-    flow.otherPhotos.includes('General photo — Exterior overview') &&
+    flow.otherPhotos.includes('Exterior overview') &&
     flow.otherPhotos.includes('Not stored') &&
     flow.detailText.includes('Plans and canvases') &&
-    flow.detailText.includes('Floor plan — Ground') &&
+    // The plan is a tile under the "Plans and canvases" heading, captioned
+    // with the level it is a plan of.
+    flow.detailText.includes('Ground') &&
     !flow.detailText.includes(`media/${PLAN_ID}`));
   check('Distress and Quick Capture stay distinct',
     flow.distressText.includes('Distress Survey photograph') &&
     !flow.distressText.includes('Quick Capture') &&
-    flow.quickText.includes('Quick Capture photo — porch.jpg') &&
+    // A tile names what sets this picture apart from its neighbours; the
+    // group heading above it already said "Quick Capture".
+    flow.quickText.includes('porch.jpg') &&
     !flow.detailText.includes('Distress or Quick Capture'));
+  check('pictures are a contact sheet, not a list of identical cards',
+    flow.tileCount === 6 && flow.sheetCount === 5);
   check('Floor Survey recovery PDF can be opened and downloaded',
     flow.recoveryText.includes('Floor Survey recovery PDF — Ground') &&
     flow.recoveryActions.includes('Open') &&
@@ -551,10 +584,11 @@ try {
 
   await page.setViewport({ width: 1280, height: 800 });
   await page.evaluate((planId) => {
-    const row = document.querySelector(`[data-key="media/${planId}"]`);
-    [...row.querySelectorAll('button')].find((button) => button.textContent === 'Open').click();
+    const el = document.querySelector(`[data-key="media/${planId}"]`);
+    if (el.classList.contains('explorer-tile')) el.click();
+    else [...el.querySelectorAll('button')].find((button) => button.textContent === 'Open').click();
   }, PLAN_ID);
-  await page.waitForSelector('.explorer-preview__image');
+  await page.waitForSelector('.explorer-lightbox__img');
   await page.screenshot({ path: join(shotDir, 'file-explorer-desktop-preview.png'), fullPage: true });
 } finally {
   await browser.close();
