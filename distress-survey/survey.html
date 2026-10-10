@@ -3644,7 +3644,6 @@ function mountPlan() {
   const img = svgEl('image', { x:0, y:0, width:W, height:H, id:'planLayerImage' });
   img.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', project.plan.dataUrl);
   img.setAttribute('href', project.plan.dataUrl);
-  if (view === 'contour') img.setAttribute('visibility', 'hidden');
   svg.appendChild(img);
   // The contour layer sits over the plan and under everything the investigator
   // draws, so pins and annotations stay on top of whichever layers are showing.
@@ -7382,10 +7381,13 @@ function refreshLevelPill() {
 // between, so it reads 'plan' whatever the session value happens to be.
 function hostLayerView() {
   if (!project || !project.contourLayer || !project.contourLayer.dataUrl) return 'plan';
-  return _hostLayerView === 'contour' || _hostLayerView === 'both' ? _hostLayerView : 'plan';
+  return _hostLayerView === 'both' ? 'both' : 'plan';
 }
 
-const LAYER_VIEW_LABELS = { plan: 'Plan', contour: 'Contour', both: 'Plan + contour' };
+// Contour on its own is gone (DECIDED Tim, Oct 10, 2026): without the walls
+// the pins float and a hall cannot be told from a bedroom, so Plan + contour
+// did everything it did and more.
+const LAYER_VIEW_LABELS = { plan: 'Plan', both: 'Plan + contour' };
 
 function refreshLayerPill() {
   const row = document.getElementById('levelPill');
@@ -7403,7 +7405,7 @@ function refreshLayerPill() {
     const view = hostLayerView();
     label.textContent = LAYER_VIEW_LABELS[view] || 'Plan';
     const drawn = hostContourDrawnLine();
-    menu.innerHTML = ['plan', 'contour', 'both'].map(function (key) {
+    menu.innerHTML = ['plan', 'both'].map(function (key) {
       const active = key === view ? ' active' : '';
       return `<button type="button" role="option" class="${active.trim()}" data-layer-view="${key}">${LAYER_VIEW_LABELS[key]}</button>`;
     }).join('') + (drawn ? `<p class="lp-note">${escapeHtml(drawn)}</p>` : '');
@@ -7452,14 +7454,12 @@ function closeLayerPill() {
 // changes, so there is nothing to save and no numbering to recompute.
 function setLayerView(view) {
   closeLayerPill();
-  const next = view === 'contour' || view === 'both' ? view : 'plan';
+  const next = view === 'both' ? 'both' : 'plan';
   if (next === _hostLayerView) return;
   _hostLayerView = next;
   const applied = hostLayerView();
-  const planImg = document.getElementById('planLayerImage');
   const contourImg = document.getElementById('contourLayerImage');
-  if (planImg) planImg.setAttribute('visibility', applied === 'contour' ? 'hidden' : 'visible');
-  if (contourImg) contourImg.setAttribute('visibility', applied === 'plan' ? 'hidden' : 'visible');
+  if (contourImg) contourImg.setAttribute('visibility', applied === 'both' ? 'visible' : 'hidden');
   refreshLayerPill();
 }
 

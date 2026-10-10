@@ -302,12 +302,14 @@ if (fr) {
       };
     };
     const out = {};
-    window.setLayerView('contour');
-    out.contourOnly = read();
     window.setLayerView('both');
     out.both = read();
     window.setLayerView('plan');
     out.planAgain = read();
+    // Contour on its own is gone; asking for it must not hide the plan.
+    window.setLayerView('contour');
+    out.goneView = read();
+    window.setLayerView('plan');
     out.options = Array.from(
       document.querySelectorAll('#layerPillMenu button[data-layer-view]'),
     ).map((b) => b.getAttribute('data-layer-view')).join(',');
@@ -315,12 +317,6 @@ if (fr) {
     return out;
   });
 
-  check(
-    'Contour only hides the plan',
-    toggled.contourOnly.contour && !toggled.contourOnly.plan &&
-      toggled.contourOnly.label === 'Contour',
-    JSON.stringify(toggled.contourOnly),
-  );
   check(
     'Both shows the plan and the contour at once',
     toggled.both.plan && toggled.both.contour && toggled.both.label === 'Plan + contour',
@@ -332,10 +328,15 @@ if (fr) {
     JSON.stringify(toggled.planAgain),
   );
   check(
-    'The pins are untouched by any of it',
-    toggled.contourOnly.pins === 1 && toggled.both.pins === 1 && toggled.planAgain.pins === 1,
+    'The plan is never hidden any more',
+    toggled.goneView.plan && !toggled.goneView.contour && toggled.goneView.label === 'Plan',
+    JSON.stringify(toggled.goneView),
   );
-  check('Three layer choices, no more', toggled.options === 'plan,contour,both', toggled.options);
+  check(
+    'The pins are untouched by any of it',
+    toggled.both.pins === 1 && toggled.planAgain.pins === 1 && toggled.goneView.pins === 1,
+  );
+  check('Two layer choices, not three', toggled.options === 'plan,both', toggled.options);
   check(
     'It says what the contour was drawn from',
     /2026-10-09/.test(toggled.note),
