@@ -1950,6 +1950,8 @@
         const hadRemote = !!remoteById[record.id];
         const one = await syncOneRecord(record, remoteById[record.id] || null);
         if (exchangeReachedCabinet(one, hadRemote)) await rememberCabinetMirror(record.id);
+        const claimed = await claimWorkingLease(record, remoteById[record.id] || null, one);
+        if (claimed) one.lease = claimed;
         results.push(one);
         delete pendingQuiet[record.id];
         if (one && one.checkoutBlocked && one.uploadBlocked) {
@@ -2077,6 +2079,7 @@
         const hadRemote = !!remoteById[id];
         const result = await syncOneRecord(record, remoteById[id] || null);
         if (exchangeReachedCabinet(result, hadRemote)) await rememberCabinetMirror(id);
+        await claimWorkingLease(record, remoteById[id] || null, result);
         if ((result.components || []).some(function (component) { return component.action === 'push'; })) {
           uploaded = true;
         }
@@ -2616,6 +2619,46 @@
 
     const verified = await writeCabinetTrashState(id, true);
     return { ok: true, id: id, remote: verified, local: false };
+  }
+
+  /**
+   * Having a copy is not permission. Holding the lease is.
+   *
+   * A Customer File created on a device and synced up had never been through
+   * Check Out, so no lease existed for it -- and the whole working-authority
+   * model only applies to files that have one. Tim set a job up on his
+   * phone, synced it, and the iPad could then check it out with nothing to
+   * refuse, because nothing was held. Neither device was wrong; the rule
+   * simply did not reach the most common way a job starts.
+   *
+   * So a device that puts work into the Cabinet takes the lease on it. After
+   * this there is one kind of local copy instead of two, and everything
+   * already built applies to it: the server refuses a second device, Check
+   * In releases and removes, and the held-elsewhere mark has something to
+   * report.
+   *
+   * A failed claim never fails the sync -- the work is in the Cabinet, which
+   * is what Sync Now promised -- but it is reported, because a device that
+   * believes it is the authority and is not is the thing being fixed.
+   */
+  async function claimWorkingLease(record, remote, result) {
+    if (!record || !record.id) return null;
+    // Somebody already holds it: nothing to claim, and the push gate above
+    // has already dealt with whether this device could write.
+    if (remote && hasActiveCheckoutLease(remote)) return null;
+    const pushed = ((result && result.components) || []).some(function (component) {
+      return component && component.action === 'push';
+    });
+    if (!pushed) return null;
+    try {
+      const acquired = await acquireRemoteCheckout(record.id);
+      await ensureCheckedOutFromCabinetMarker(record);
+      return { ok: true, checkout: acquired && acquired.checkout };
+    } catch (err) {
+      // Another device claimed it between the push and here. Its copy is the
+      // authority now; this one keeps its safety copy and stops pretending.
+      return { ok: false, code: (err && err.code) || 'sync' };
+    }
   }
 
   function exchangeReachedCabinet(result, hadRemote) {

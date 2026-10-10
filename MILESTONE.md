@@ -48,7 +48,7 @@ Each Customer File is one job container. Customer Information, Plans/Canvases, D
 **Check In** on the editing device = sync, verify the Cabinet copy, and release exclusive authority. Never cloud-delete. The foundation in this repository also removes that device’s own working copy. That removal is not Trash and does not delete another device’s safety copy.  
 **File Explorer** = read-only server back door. Not an editor.
 
-Any device may create a Customer File locally with no network. First placement into the Cabinet may still happen via Sync of that local file until an explicit Place/Check Out UI exists.
+Any device may create a Customer File locally with no network. First placement into the Cabinet still happens via Sync of that local file — there is no separate Place UI — and that Sync takes the lease on the file for the device that pushed it. Having a copy is not permission; holding the lease is. A job that is in the Cabinet always has exactly one working device.
 
 If a proposed change cannot be explained clearly in 2–3 sentences, stop and simplify it before implementation. Do not add complexity unless it solves a real problem. When two designs protect the data and satisfy the workflow equally well, prefer fewer states, buttons, decisions, assumptions, dependencies, and failure modes. Complexity that is invisible to the investigator still carries a burden of proof if it makes the code fragile.
 
