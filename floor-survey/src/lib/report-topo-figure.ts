@@ -276,6 +276,9 @@ export async function composeReportTopoFigure(options: {
   extent?: ReportTopoExtent | null;
   /** White space around the data when the extent is computed here. */
   margin?: number;
+  /** Paper is white, so that is the default. A contour layer meant to sit over
+   *  the floor plan asks for transparent, so the plan shows through it. */
+  background?: "white" | "transparent";
 }): Promise<ReportTopoComposeResult | null> {
   const floor = options.floor;
   const allPoints = Array.isArray(options.points) ? options.points : [];
@@ -319,8 +322,10 @@ export async function composeReportTopoFigure(options: {
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
 
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, imgW, imgH);
+  if (options.background !== "transparent") {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, imgW, imgH);
+  }
 
   // Draw in plan coordinates; the transform handles the crop and the scale, so
   // every routine below is unchanged and unaware of either.

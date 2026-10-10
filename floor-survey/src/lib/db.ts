@@ -21,6 +21,23 @@ declare global {
       ensureFloorSurvey(record: any): boolean;
       ensureFloorSurveyCanvasRef(record: any, canvasId: string): boolean;
       canvasById(record: any, canvasId: string): any;
+      contourLayer(canvas: any): any;
+      setContourLayer(
+        record: any,
+        canvasId: string,
+        layer: {
+          id: string;
+          width: number;
+          height: number;
+          createdAt?: string;
+          surveyDate?: string | null;
+          pointCount?: number;
+        },
+      ): { canvas: any; retired: string | null } | null;
+      clearContourLayer(record: any, canvasId: string): { canvas: any; retired: string | null } | null;
+    };
+    ToolboxPlanImage?: {
+      newPlanId(): string;
     };
     ToolboxApp?: {
       customerIdentity?: {
@@ -338,6 +355,85 @@ export async function persistFloorSurveyRecoveryPdf(canvasId: string, dataUrl: s
     throw err;
   }
   return mediaId;
+}
+
+/**
+ * Store the contour layer for one level, so Distress Survey can show the
+ * damage pins on it.
+ *
+ * **A fresh media id every time, deliberately.** Sync treats media as
+ * immutable: it skips the upload when the id already exists in the Cabinet,
+ * and skips the download when the id already exists on the device. So
+ * replacing the bytes under a stable id would leave the Cabinet holding the
+ * first contour for ever and every other device holding whichever one it
+ * happened to pull. A new id propagates; the old one is retired once the
+ * record is safely saved.
+ *
+ * That ordering is the Save-checkpoint rule: write the new one successfully
+ * before retiring the previous one, so a failure here leaves the level with
+ * the layer it already had rather than with none.
+ */
+export async function persistContourLayer(
+  canvasId: string,
+  dataUrl: string,
+  meta: { width: number; height: number; pointCount?: number },
+) {
+  if (!dataUrl || !dataUrl.startsWith("data:image/")) {
+    throw new Error("Contour layer was not produced");
+  }
+  const record = await loadRecord(requireCfId());
+  const canvas = window.ToolboxPlanSetup.canvasById(record, canvasId);
+  if (!canvas) throw new Error("Level not found on this Customer File");
+
+  const mediaId = window.ToolboxPlanImage?.newPlanId
+    ? window.ToolboxPlanImage.newPlanId()
+    : `pl_ct_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+
+  await window.ToolboxDB.putMedia(mediaId, dataUrl);
+  const applied = window.ToolboxPlanSetup.setContourLayer(record, canvasId, {
+    id: mediaId,
+    width: meta.width,
+    height: meta.height,
+    createdAt: new Date().toISOString(),
+    // Provenance comes off the record we already hold, so the caller does not
+    // have to carry the survey date around to write a layer.
+    surveyDate: (record.floorSurvey && record.floorSurvey.inspectionDate) || null,
+    pointCount: meta.pointCount ?? 0,
+  });
+  if (!applied) {
+    await window.ToolboxDB.deleteMedia(mediaId);
+    throw new Error("Contour layer could not be written to this level");
+  }
+  try {
+    await saveRecord(record);
+  } catch (err) {
+    await window.ToolboxDB.deleteMedia(mediaId);
+    throw err;
+  }
+  // Only now is the previous layer unreferenced.
+  if (applied.retired) {
+    await window.ToolboxDB.deleteMedia(applied.retired).catch(() => {});
+  }
+  return mediaId;
+}
+
+/** Take the contour layer off one level. The plan is untouched. */
+export async function removeContourLayer(canvasId: string) {
+  const record = await loadRecord(requireCfId());
+  const applied = window.ToolboxPlanSetup.clearContourLayer(record, canvasId);
+  if (!applied) return false;
+  await saveRecord(record);
+  if (applied.retired) {
+    await window.ToolboxDB.deleteMedia(applied.retired).catch(() => {});
+  }
+  return true;
+}
+
+/** What is on this level now, so the rail can say when it was drawn. */
+export async function readContourLayer(canvasId: string) {
+  const record = await loadRecord(requireCfId());
+  const canvas = window.ToolboxPlanSetup.canvasById(record, canvasId);
+  return window.ToolboxPlanSetup.contourLayer(canvas) || null;
 }
 
 /** Persist GPS captured at BP1 / base station (field tap). Report Builder reads later. */

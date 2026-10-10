@@ -124,6 +124,14 @@ interface Props {
   excludedIds?: Set<string>;
   onExcludedIdsChange?: (ids: Set<string>) => void;
   /**
+   * Offer "Send to Distress Survey" on a black-and-white contour.
+   *
+   * Only the field workspace passes this. Report Builder mounts the same
+   * component on a slide, and a report sheet is not where a field layer is
+   * written. Defaults to off so no other mount gains the action by accident.
+   */
+  allowContourLayer?: boolean;
+  /**
    * The High, Low and difference this view is drawing, per boundary.
    *
    * A report sheet shows these numbers twice: on the pill over the plan and
@@ -409,11 +417,15 @@ export function TopoTab({
   locked = false,
   onStats,
   resizeCorners = false,
+  allowContourLayer = false,
 }: Props) {
   const selectedId =
     selectedIds && selectedIds.size > 0 ? (selectedIds.values().next().value ?? null) : null;
   const [openCorner, setOpenCorner] = useState<null | "contours" | "palette" | "labels">(null);
   const [warningDismissed, setWarningDismissed] = useState(false);
+  // "Send to Distress Survey" — idle while nothing has been asked for.
+  const [layerState, setLayerState] = useState<"idle" | "working" | "done" | "failed">("idle");
+  const [layerMessage, setLayerMessage] = useState("");
   // Stats pill (High/Low/Δ chip) size — Auto by viewport, or a locked local size.
   const [statsChipLocked, setStatsChipLocked] = useState<number | null>(null);
   const [statsChipAuto, setStatsChipAuto] = useState(28);
@@ -1183,6 +1195,80 @@ export function TopoTab({
                 <option value="points-only">Points only</option>
               </select>
             </div>
+            {/*
+              Send to Distress Survey.
+
+              Only on B&W lines, and only in the field app. Tim: "I wonder if
+              the button only triggers when we do black-and-white contours."
+              It does, which makes it what you see is what you send -- there is
+              no mode for the writer to override, so the picture that lands
+              under the damage pins is the one on this screen. The one thing it
+              drops is the reading labels, because the pins go where those
+              would be.
+            */}
+            {allowContourLayer && resolved.mode === "contour-bw" && (
+              <div className="border-t pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 w-full text-xs"
+                  disabled={layerState === "working"}
+                  onClick={async () => {
+                    setLayerState("working");
+                    setLayerMessage("");
+                    try {
+                      // Imported here rather than at the top: the composer
+                      // reads renderTopo out of this module, so a static
+                      // import would close a cycle through it.
+                      const [{ composeContourLayer }, { persistContourLayer }] = await Promise.all([
+                        import("@/lib/contour-layer"),
+                        import("@/lib/db"),
+                      ]);
+                      const drawn = await composeContourLayer({
+                        floor,
+                        points,
+                        settings: resolved,
+                      });
+                      if (!drawn) {
+                        setLayerState("failed");
+                        setLayerMessage("No contours to send yet — this level needs a closed boundary with readings inside it.");
+                        return;
+                      }
+                      await persistContourLayer(floor.id, drawn.dataUrl, {
+                        // The plan extent the layer covers, not the picture's
+                        // own pixels. The picture is drawn well above plan
+                        // resolution so it holds up on paper, and it is
+                        // stretched back into this box wherever it is shown --
+                        // so this is the number that says the two layers line
+                        // up, in the same units as the plan's own.
+                        width: drawn.extent.w,
+                        height: drawn.extent.h,
+                        pointCount: drawn.pointCount,
+                      });
+                      setLayerState("done");
+                      setLayerMessage("Sent. Distress Survey can show the pins on it.");
+                    } catch (err) {
+                      setLayerState("failed");
+                      setLayerMessage(
+                        (err as Error)?.message || "Could not send the contour to Distress Survey.",
+                      );
+                    }
+                  }}
+                >
+                  {layerState === "working" ? "Sending…" : "Send to Distress Survey"}
+                </Button>
+                {layerMessage && (
+                  <p
+                    className={
+                      "mt-1 text-[10px] leading-tight " +
+                      (layerState === "failed" ? "text-destructive" : "text-muted-foreground")
+                    }
+                  >
+                    {layerMessage}
+                  </p>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <Label className="text-xs">First</Label>

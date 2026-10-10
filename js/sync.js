@@ -529,11 +529,27 @@
     return index;
   }
 
+  // Every media id the plans component owns: each level's plan picture, plus
+  // its contour layer where Floor Survey has written one. Both must travel as
+  // bytes -- a layer the Cabinet does not hold is a layer the next device
+  // cannot show.
+  function canvasMediaIds(canvas) {
+    const ids = [];
+    if (canvas && canvas.plan && canvas.plan.id) ids.push(canvas.plan.id);
+    const layer = canvas && canvas.contourLayer;
+    if (layer && typeof layer.id === 'string' && layer.id) ids.push(layer.id);
+    return ids;
+  }
+
   function planMediaIds(record) {
     const canvases = record && record.planSetup && Array.isArray(record.planSetup.canvases)
       ? record.planSetup.canvases
       : [];
-    return canvases.map(function (c) { return c && c.plan && c.plan.id; }).filter(Boolean);
+    const ids = [];
+    canvases.forEach(function (c) {
+      canvasMediaIds(c).forEach(function (id) { ids.push(id); });
+    });
+    return ids;
   }
 
   function collectDistressPhotoId(ids, id) {
@@ -763,7 +779,11 @@
     if (!payload || typeof payload !== 'object') return [];
     if (name === 'plans') {
       const canvases = Array.isArray(payload.canvases) ? payload.canvases : [];
-      return canvases.map(function (c) { return c && c.plan && c.plan.id; }).filter(Boolean);
+      const ids = [];
+      canvases.forEach(function (c) {
+        canvasMediaIds(c).forEach(function (id) { ids.push(id); });
+      });
+      return ids;
     }
     if (name === 'distress') {
       const pins = Array.isArray(payload.pins) ? payload.pins : [];
@@ -2234,6 +2254,15 @@
         canvas && canvas.plan && canvas.plan.id,
         'plan',
         name ? 'Floor plan — ' + name : 'Floor plan image',
+      );
+      const layer = canvas && canvas.contourLayer;
+      exploreConsiderMedia(
+        refs,
+        notes,
+        'plans.json',
+        layer && layer.id,
+        'plan',
+        name ? 'Contour layer — ' + name : 'Contour layer',
       );
     });
     const pins = distress && Array.isArray(distress.pins) ? distress.pins : [];

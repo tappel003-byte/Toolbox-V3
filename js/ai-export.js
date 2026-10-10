@@ -1008,6 +1008,8 @@
 
     var planDocuments = canvases.map(function (canvas, index) {
       var plan = canvas && canvas.plan && typeof canvas.plan === 'object' ? canvas.plan : null;
+      var layer = canvas && canvas.contourLayer && typeof canvas.contourLayer === 'object' &&
+        canvas.contourLayer.id ? canvas.contourLayer : null;
       return {
         id: canvas && canvas.id || null,
         name: canvas && canvas.name || 'Floor Plan',
@@ -1016,6 +1018,17 @@
         frontDoorFacing: canvas && canvas.frontDoorFacing || '',
         frontDoor: canvas && canvas.frontDoor || null,
         plan: plan ? { mediaId: plan.id || null, width: plan.width || null, height: plan.height || null, file: null } : null,
+        // The level's second layer: a black-and-white contour of this level,
+        // drawn at the plan's own extent, so a reader can lay the two over
+        // each other without registering anything.
+        contourLayer: layer ? {
+          mediaId: layer.id || null,
+          width: layer.width || null,
+          height: layer.height || null,
+          surveyDate: layer.surveyDate || '',
+          createdAt: layer.createdAt || '',
+          file: null,
+        } : null,
       };
     });
 
@@ -1036,6 +1049,27 @@
       }
       var path = 'plans/images/' + slug(canvas.id, 'plan-' + (canvas.order + 1)) + '.' + extFromMime(media.mime);
       canvas.plan.file = path;
+      storedImages += 1;
+      binaries.push({ path: path, bytes: media.bytes });
+    }));
+
+    await Promise.all(planDocuments.map(async function (canvas) {
+      if (!canvas.contourLayer || !canvas.contourLayer.mediaId) return;
+      var media = null;
+      try {
+        media = await mediaBytes(await options.getPlanMedia(canvas.contourLayer.mediaId));
+      } catch (err) {
+        media = null;
+      }
+      if (!media || !media.bytes) {
+        missingImages += 1;
+        gaps.push('Contour layer ' + canvas.contourLayer.mediaId + ' for ' + canvas.name +
+          ' is not stored on this device.');
+        return;
+      }
+      var path = 'plans/images/' + slug(canvas.id, 'plan-' + (canvas.order + 1)) +
+        '-contour.' + extFromMime(media.mime);
+      canvas.contourLayer.file = path;
       storedImages += 1;
       binaries.push({ path: path, bytes: media.bytes });
     }));

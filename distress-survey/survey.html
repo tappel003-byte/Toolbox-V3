@@ -357,6 +357,31 @@
     background:transparent;font-size:13px;font-weight:600;color:var(--ink)}
   .level-pill .lp-menu button.active{background:var(--accent-soft);color:var(--accent)}
   .level-pill .lp-menu button:active{background:var(--line)}
+  /* Layers on this level. Same row and same pill as Level, because it is the
+     same kind of choice -- and off the canvas, which the working surface keeps. */
+  .level-pill{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .lp-layers{position:relative}
+  .lp-layers > button{
+    display:inline-flex;align-items:center;gap:3px;max-width:min(10rem,100%);
+    height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--line);
+    background:var(--paper);color:var(--ink);font-size:12px;font-weight:600;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lp-layers > button:active{transform:scale(.97)}
+  .lp-layers .lp-menu{
+    display:none;position:absolute;top:calc(100% + 2px);left:0;min-width:11rem;
+    background:var(--paper);border:1px solid var(--line);border-radius:10px;
+    box-shadow:0 8px 24px rgba(0,0,0,.14);z-index:80;padding:4px;max-height:50vh;overflow:auto}
+  .lp-layers.open .lp-menu{display:block}
+  .lp-layers .lp-menu button{
+    display:block;width:100%;text-align:left;padding:10px 12px;border:none;border-radius:8px;
+    background:transparent;font-size:13px;font-weight:600;color:var(--ink)}
+  .lp-layers .lp-menu button.active{background:var(--accent-soft);color:var(--accent)}
+  .lp-layers .lp-menu button:active{background:var(--line)}
+  .lp-layers .lp-note{padding:4px 12px 6px;font-size:10px;color:var(--muted);line-height:1.3}
+  /* Both pills set their own display, which beats the hidden attribute on its
+     own -- a one-level job showed an empty "Level" button next to the layers
+     pill. */
+  .level-pill[hidden], .level-pill > button[hidden], .lp-layers[hidden]{display:none !important}
   body.host-mode #screenHome,
   body.host-mode #screenSetup,
   body.host-mode #screenTrash{display:none !important}
@@ -807,6 +832,12 @@
         <span id="levelPillLabel">Level</span><span class="lp-caret">▾</span>
       </button>
       <div class="lp-menu" id="levelPillMenu" role="listbox"></div>
+      <div class="lp-layers" id="layerPill" hidden>
+        <button type="button" id="layerPillBtn" onclick="toggleLayerPill(event)" aria-haspopup="listbox" aria-expanded="false">
+          <span id="layerPillLabel">Plan</span><span class="lp-caret">▾</span>
+        </button>
+        <div class="lp-menu" id="layerPillMenu" role="listbox"></div>
+      </div>
     </div>
     <button class="icon-btn" id="wSave" onclick="manualSave()" title="Save">💾</button>
     <button class="icon-btn" id="wUndo" onclick="undo()" title="Undo">↶</button>
@@ -1067,6 +1098,11 @@ const HOST_MODE = !!TOOLBOX_CF_ID;
 let _hostRecord = null;
 let _hostCanvases = [];
 let _hostActiveCanvasId = null;
+// Which layers of this level are showing: the plan picture, the black-and-white
+// contour of it, or both at once. One value for the session, not saved to the
+// Customer File -- it is a view, like the zoom, and the sheet of record is the
+// report. Default is the plan, which is what this app has always shown.
+let _hostLayerView = 'plan';
 
 const MAX_IMG_DIM = 2400;        // floor plan downscale cap
 const MAX_PHOTO_DIM = 1600;      // photo downscale cap
@@ -3604,10 +3640,23 @@ function mountPlan() {
     '</filter>';
   svg.appendChild(defs);
   // image
-  const img = svgEl('image', { x:0, y:0, width:W, height:H });
+  const view = hostLayerView();
+  const img = svgEl('image', { x:0, y:0, width:W, height:H, id:'planLayerImage' });
   img.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', project.plan.dataUrl);
   img.setAttribute('href', project.plan.dataUrl);
+  if (view === 'contour') img.setAttribute('visibility', 'hidden');
   svg.appendChild(img);
+  // The contour layer sits over the plan and under everything the investigator
+  // draws, so pins and annotations stay on top of whichever layers are showing.
+  // It is transparent where there are no lines, which is what lets both show
+  // at once.
+  if (project.contourLayer && project.contourLayer.dataUrl) {
+    const contour = svgEl('image', { x:0, y:0, width:W, height:H, id:'contourLayerImage' });
+    contour.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', project.contourLayer.dataUrl);
+    contour.setAttribute('href', project.contourLayer.dataUrl);
+    if (view === 'plan') contour.setAttribute('visibility', 'hidden');
+    svg.appendChild(contour);
+  }
   // groups
   svg.appendChild(svgEl('g', { id:'gDrawings' }));
   svg.appendChild(svgEl('g', { id:'gPins' }));
@@ -7178,6 +7227,40 @@ async function hostPlanDataUrl(canvas) {
   return await db.getMedia(canvas.plan.id);
 }
 
+// The level's second layer, written by Floor Survey: a black-and-white contour
+// of this same level, drawn at this same plan's pixel extent. That is why the
+// pins land in the right place on it with nothing to line up.
+function hostContourLayerOf(canvas) {
+  const ps = hostPlanSetup();
+  if (ps && typeof ps.contourLayer === 'function') return ps.contourLayer(canvas);
+  const layer = canvas && canvas.contourLayer;
+  if (!layer || typeof layer.id !== 'string' || !layer.id) return null;
+  return layer;
+}
+
+async function hostContourLayer(canvas) {
+  const layer = hostContourLayerOf(canvas);
+  if (!layer) return null;
+  const db = hostDB();
+  let dataUrl = null;
+  try {
+    dataUrl = await db.getMedia(layer.id);
+  } catch (_) {
+    dataUrl = null;
+  }
+  // The bytes can be absent on a device that has the record but has not pulled
+  // this media yet. No layer is shown rather than an empty one offered.
+  if (!dataUrl) return null;
+  return {
+    id: layer.id,
+    dataUrl: dataUrl,
+    width: Number(layer.width) || (canvas.plan && canvas.plan.width) || 0,
+    height: Number(layer.height) || (canvas.plan && canvas.plan.height) || 0,
+    surveyDate: layer.surveyDate || '',
+    createdAt: layer.createdAt || '',
+  };
+}
+
 async function hostBuildProjectFromCF() {
   const rec = _hostRecord;
   const d = rec.distress || {};
@@ -7185,6 +7268,7 @@ async function hostBuildProjectFromCF() {
   if (!canvas) throw new Error('No floor plans on this Customer File yet.');
   const dataUrl = await hostPlanDataUrl(canvas);
   if (!dataUrl) throw new Error('Add a plan in the Customer File first.');
+  const contour = await hostContourLayer(canvas);
 
   // Proven project shape; CF supplies address/plan/rooms/front door/building type.
   const fd = canvas.frontDoorFacing || '';
@@ -7212,6 +7296,7 @@ async function hostBuildProjectFromCF() {
       width: w,
       height: h,
     },
+    contourLayer: contour,
     startNum: typeof d.startNum === 'number' ? d.startNum : 1,
     nextNum: typeof d.nextNum === 'number' ? d.nextNum : 1,
     pins,
@@ -7269,21 +7354,106 @@ function hostVisibleDrawings() {
 
 function refreshLevelPill() {
   const pill = document.getElementById('levelPill');
+  const levelBtn = document.getElementById('levelPillBtn');
   const label = document.getElementById('levelPillLabel');
   const menu = document.getElementById('levelPillMenu');
-  if (!pill || !label || !menu) return;
-  if (!HOST_MODE || _hostCanvases.length <= 1) {
-    pill.hidden = true;
+  if (!pill || !label || !menu || !levelBtn) return;
+  // The level button is for choosing between levels, so it appears only when
+  // there is a choice. The row itself can still be needed for the layers pill
+  // on a one-level job, so it is shown or hidden separately below.
+  const multi = HOST_MODE && _hostCanvases.length > 1;
+  levelBtn.hidden = !multi;
+  if (!multi) {
     pill.classList.remove('open');
-    return;
+    menu.innerHTML = '';
+  } else {
+    const cur = _hostCanvases.find(c => c.id === _hostActiveCanvasId);
+    label.textContent = (cur && cur.name) || 'Level';
+    menu.innerHTML = _hostCanvases.map(c => {
+      const active = c.id === _hostActiveCanvasId ? ' active' : '';
+      return `<button type="button" role="option" class="${active.trim()}" data-canvas-id="${c.id}">${escapeHtml(c.name || 'Level')}</button>`;
+    }).join('');
   }
-  pill.hidden = false;
-  const cur = _hostCanvases.find(c => c.id === _hostActiveCanvasId);
-  label.textContent = (cur && cur.name) || 'Level';
-  menu.innerHTML = _hostCanvases.map(c => {
-    const active = c.id === _hostActiveCanvasId ? ' active' : '';
-    return `<button type="button" role="option" class="${active.trim()}" data-canvas-id="${c.id}">${escapeHtml(c.name || 'Level')}</button>`;
-  }).join('');
+  refreshLayerPill();
+}
+
+// Which layers are showing. A level with no contour has nothing to choose
+// between, so it reads 'plan' whatever the session value happens to be.
+function hostLayerView() {
+  if (!project || !project.contourLayer || !project.contourLayer.dataUrl) return 'plan';
+  return _hostLayerView === 'contour' || _hostLayerView === 'both' ? _hostLayerView : 'plan';
+}
+
+const LAYER_VIEW_LABELS = { plan: 'Plan', contour: 'Contour', both: 'Plan + contour' };
+
+function refreshLayerPill() {
+  const row = document.getElementById('levelPill');
+  const pill = document.getElementById('layerPill');
+  const label = document.getElementById('layerPillLabel');
+  const menu = document.getElementById('layerPillMenu');
+  const levelBtn = document.getElementById('levelPillBtn');
+  if (!row || !pill || !label || !menu) return;
+  const hasLayer = !!(HOST_MODE && project && project.contourLayer && project.contourLayer.dataUrl);
+  pill.hidden = !hasLayer;
+  if (!hasLayer) {
+    pill.classList.remove('open');
+    menu.innerHTML = '';
+  } else {
+    const view = hostLayerView();
+    label.textContent = LAYER_VIEW_LABELS[view] || 'Plan';
+    const drawn = hostContourDrawnLine();
+    menu.innerHTML = ['plan', 'contour', 'both'].map(function (key) {
+      const active = key === view ? ' active' : '';
+      return `<button type="button" role="option" class="${active.trim()}" data-layer-view="${key}">${LAYER_VIEW_LABELS[key]}</button>`;
+    }).join('') + (drawn ? `<p class="lp-note">${escapeHtml(drawn)}</p>` : '');
+  }
+  // The row carries the level button, the layers pill, or both.
+  const needRow = (levelBtn && !levelBtn.hidden) || hasLayer;
+  row.hidden = !needRow;
+  if (!needRow) row.classList.remove('open');
+}
+
+// What the contour was drawn from, so the investigator is not guessing whether
+// it is this survey's. The readings are finished before a contour is sent, so
+// this is provenance rather than a staleness warning.
+function hostContourDrawnLine() {
+  const layer = project && project.contourLayer;
+  if (!layer) return '';
+  const when = layer.surveyDate || (layer.createdAt ? String(layer.createdAt).slice(0, 10) : '');
+  return when ? 'Contour from the survey of ' + when : '';
+}
+
+function toggleLayerPill(ev) {
+  if (ev) ev.stopPropagation();
+  const pill = document.getElementById('layerPill');
+  if (!pill || pill.hidden) return;
+  closeLevelPill();
+  const open = !pill.classList.contains('open');
+  pill.classList.toggle('open', open);
+  const btn = document.getElementById('layerPillBtn');
+  if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function closeLayerPill() {
+  const pill = document.getElementById('layerPill');
+  if (pill) pill.classList.remove('open');
+  const btn = document.getElementById('layerPillBtn');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+// Showing a different layer redraws the plan. Nothing about the survey
+// changes, so there is nothing to save and no numbering to recompute.
+function setLayerView(view) {
+  closeLayerPill();
+  const next = view === 'contour' || view === 'both' ? view : 'plan';
+  if (next === _hostLayerView) return;
+  _hostLayerView = next;
+  const applied = hostLayerView();
+  const planImg = document.getElementById('planLayerImage');
+  const contourImg = document.getElementById('contourLayerImage');
+  if (planImg) planImg.setAttribute('visibility', applied === 'contour' ? 'hidden' : 'visible');
+  if (contourImg) contourImg.setAttribute('visibility', applied === 'plan' ? 'hidden' : 'visible');
+  refreshLayerPill();
 }
 
 function toggleLevelPill(ev) {
@@ -7323,6 +7493,10 @@ async function switchHostCanvas(canvasId) {
   const w = (canvas.plan && canvas.plan.width) || project.plan.width;
   const h = (canvas.plan && canvas.plan.height) || project.plan.height;
   project.plan = { id: canvas.plan.id, dataUrl, width: w, height: h };
+  project.contourLayer = await hostContourLayer(canvas);
+  // A level with no contour cannot show one, so the view falls back rather
+  // than leaving the plan hidden behind nothing.
+  if (!project.contourLayer) _hostLayerView = 'plan';
   project.frontDoorFacing = canvas.frontDoorFacing || '';
   project.frontDoor = canvas.frontDoor && typeof canvas.frontDoor.x === 'number'
     ? { x: canvas.frontDoor.x, y: canvas.frontDoor.y }
@@ -7610,11 +7784,14 @@ openPinPicker = function () {
 
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#levelPill')) closeLevelPill();
+  if (!e.target.closest('#layerPill')) closeLayerPill();
   const btn = e.target.closest('#levelPillMenu button[data-canvas-id]');
   if (btn) {
     const id = btn.getAttribute('data-canvas-id');
     if (id) switchHostCanvas(id);
   }
+  const layerBtn = e.target.closest('#layerPillMenu button[data-layer-view]');
+  if (layerBtn) setLayerView(layerBtn.getAttribute('data-layer-view'));
 });
 
 

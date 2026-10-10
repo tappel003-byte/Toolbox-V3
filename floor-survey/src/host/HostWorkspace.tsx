@@ -467,6 +467,7 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
             selectedAreaId={topoAreaId}
             onSelectedAreaIdChange={setTopoAreaId}
             onHighlight={(p) => setTopoHighlightIds(new Set([p.id]))}
+            allowContourLayer
           />
         )}
       </main>

@@ -241,9 +241,9 @@ These notes preserve active product possibilities so they are not lost. They are
 - **Report Builder tells the story in the order Tim sets it.** Slides already move with Earlier and Later on the rail, and that is what orders the levels in the report. Levels are assembled in the order they were added in Customer Setup, which is a starting point, not the finished sequence.
 - **A level does not need to know what it is (DECIDED Tim, Oct 8, 2026).** Tim: "Hand ordering is fine." Nothing records that a level is a basement rather than a second story, and nothing should: it is the name the investigator typed, and the report's sequence is set by moving slides with Earlier and Later. No picked list of level types, no inferred ordering. (Recorded Oct 8 as "a layer does not need to know what it is"; the subject is the storey, which is now called a level.)
 
-### The contour layer — DISCUSSED Oct 10, 2026, NOT AUTHORIZED TO BUILD
+### The contour layer — DECIDED and BUILT Oct 10, 2026
 
-Recorded so the design is not re-derived. Tim has not said to build it.
+Authorized by Tim after the design was talked through: "It might be best to start with the Distress Survey contour layer."
 
 - **Why it is worth doing.** Tim: "The real bang for the buck is that I could show an owner in the field what the pattern looks like and where the damage groups, and pretty much tell the story right then." `VISION.md` §11 already asks for this — showing the owner the result at the property before leaving — so this is a Vision item that was never built, not a new direction.
 - **It is a layer on a level, not another level.** The level keeps its identity, so the pins, the photograph numbering, the drawings, the front door and north are untouched. Only what is drawn underneath them changes. Tim: "It's not a new canvas, it's a new layer."
@@ -252,7 +252,16 @@ Recorded so the design is not re-derived. Tim has not said to build it.
 - **Saved transparent, so layers stack.** Plan, contour, or both. On white it could only replace, which is not a layer. Both together — contour lines over the real plan with the damage pins on top — may be the one that tells the story best.
 - **A snapshot is acceptable because the survey is finished first.** Tim: "Once a floor survey is done we don't typically do more points." So no staleness machinery; at most a line saying when it was made and a way to remake it.
 - **Diagnostics was considered and set aside.** It would have been cheaper — desktop, live render, no change to the capture app — but the value is in the field, in front of the owner, and Diagnostics is a desk workspace (`VISION.md` §13, and the Oct 3 device-intent decision).
-- **Still to settle before any build:** one contour per level from all boundaries combined, or one per boundary; whether the Distress and Report Builder toggles are independent; and where the control sits in the capture app, which is a named capture-app change under the Oct 4, 2026 rule and is Tim's to place.
+- **One contour per level, from all boundaries combined** (DECIDED Tim, Oct 10, 2026). One toggle rather than a menu.
+- **The button appears only on B&W lines** (DECIDED Tim, Oct 10, 2026). Tim: "I wonder if the button only triggers when we do black-and-white contours." It does, which makes it what you see is what you send — there is no mode for the writer to override, so the picture that lands under the pins is the one on the screen. The single exception is the reading labels, which come off because the pins go where those would be.
+- **Where the two controls sit** (DECIDED Tim, Oct 10, 2026). In Floor Survey, **Send to Distress Survey** under the Mode control in the Contours panel. In Distress, a **layers pill on the same row as the level pill**, in the same style, appearing only when that level has a contour. Both keep the working surface clear.
+- **Plan / Contour / Plan + contour**, with the layer saved transparent so the third is possible at all.
+- **A fresh media id on every write.** Sync treats media as immutable — it skips the upload when the id is already in the Cabinet and skips the download when the id is already on the device — so replacing the bytes under a stable id would leave the Cabinet holding the first contour for ever. A new id propagates; the old one is retired only after the record is safely saved, which is the Save-checkpoint ordering.
+- **Replacing a level's plan drops its contour,** which was drawn against the old plan and is therefore wrong rather than merely old. It goes with the front door and the rooms, for the same reason they do.
+- **Which layers are showing is a view, not data.** It lives for the session like the zoom and is never written to the Customer File.
+- Not built, and not needed yet: a Report Builder toggle for the same layer. Tim has it as independent from the field one when it comes.
+
+**Found while tracing the media, not fixed here:** the Floor Survey recovery PDF uses a stable media id (`fsrec_<level>`) and overwrites its bytes on every Save. Because sync skips media whose id already exists at either end, the Cabinet keeps the *first* recovery PDF for a level for ever, and a device that has pulled one keeps that one. The field checkpoint is the thing meant to survive a lost device, so this is worth a decision. It is Floor Survey checkpoint behavior and was outside this slice.
 
 ---
 
