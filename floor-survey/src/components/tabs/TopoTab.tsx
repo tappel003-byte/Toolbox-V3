@@ -329,7 +329,7 @@ export const DEFAULT_STATS_PILL_SIZE = 28;
  * with the drawing when the investigator resizes the topo, and it renders the
  * same on a phone, a desktop and on paper.
  */
-function pillHeightImg(
+function chromeSizeImg(
   base: number,
   viewScale: number,
   presentation: boolean,
@@ -339,6 +339,15 @@ function pillHeightImg(
     return planProportionalSize(base, planLongSide(floor.planWidth, floor.planHeight));
   }
   return screenAnchoredImageSize(base, viewScale);
+}
+
+function pillHeightImg(
+  base: number,
+  viewScale: number,
+  presentation: boolean,
+  floor: Floor,
+) {
+  return chromeSizeImg(base, viewScale, presentation, floor);
 }
 
 type PillSeg = { kind: "label" | "hi" | "lo" | "delta"; text: string; w: number };
@@ -710,7 +719,8 @@ export function TopoTab({
     // Point-number labels
     if (resolved.showPoints) {
       const fontBase = resolved.pointLabelFontSize;
-      const fontPx = screenAnchoredImageSize(fontBase, viewScale || 1);
+      // Must match the drawn size exactly, or a tap lands beside the label.
+      const fontPx = chromeSizeImg(fontBase, viewScale || 1, presentation, floor);
       const k = fontPx / fontBase;
       const dec = resolved.decimalPlaces;
       const weight = resolved.pointLabelWeight;
@@ -2008,11 +2018,20 @@ function renderTopoTop(
   const highlightPin = overlay?.highlightPin ?? null;
   const liveLegend = overlay?.liveLegend ?? null;
   const viewScale = overlay?.viewScale || 1;
-  // Label font: chosen screen px holds when the plan is fit-scaled out
-  // (desktop), and grows gently when zoomed in. Exports at 1x still match
-  // the chosen size.
+  // Label font. In capture, the chosen screen px holds when the plan is
+  // fit-scaled out and grows gently when zoomed in -- proven, and right for a
+  // device in your hand.
+  //
+  // On a page it is a fixed fraction of the plan instead, because a picture's
+  // chrome scales with the picture. Screen-anchored, a reading label kept its
+  // size on the sheet while the plan shrank around it: putting the same level
+  // on a sheet twice halved each plan and left the readings at full size, so
+  // the labels swamped the drawing. At the default fit the two formulas land
+  // within a few percent of each other, so nothing moves until the plan is
+  // resized -- which is the case being fixed. Same reasoning, and the same
+  // helper, as the H/L/delta pill and the High and Low markers.
   const fontBase = resolved.pointLabelFontSize;
-  const fontPx = screenAnchoredImageSize(fontBase, viewScale);
+  const fontPx = chromeSizeImg(fontBase, viewScale, !!overlay?.presentation, floor);
   const k = fontPx / fontBase;
   const weight = resolved.pointLabelWeight;
   const color = resolved.pointLabelColor;
@@ -2023,7 +2042,7 @@ function renderTopoTop(
     // stepper (pointSize) instead of font size, so the stepper actually
     // controls what's drawn.
     const dotBase = overlay?.pointSize ?? 6;
-    const dotR = screenAnchoredImageSize(dotBase, viewScale);
+    const dotR = chromeSizeImg(dotBase, viewScale, !!overlay?.presentation, floor);
     const dotColor = overlay?.pointColor ?? "#dc2626";
     const padX = 4 * k;
     const padY = 2.5 * k;
