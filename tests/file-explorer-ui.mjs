@@ -114,7 +114,7 @@ try {
     const originalCreate = URL.createObjectURL.bind(URL);
     URL.createObjectURL = function (blob) {
       const url = originalCreate(blob);
-      downloads.push({ url, size: blob.size, type: blob.type, name: '' });
+      downloads.push({ url, size: blob.size, type: blob.type, name: '', blob });
       return url;
     };
     const originalClick = HTMLAnchorElement.prototype.click;
@@ -172,6 +172,16 @@ try {
       [`media/${fixture.planId}`]: { type: 'image/png', body: fixture.png },
       'media/ph_present': { type: 'image/jpeg', body: fixture.png },
       'media/ph_quick': { type: 'image/jpeg', body: fixture.png },
+      [`cf/${fixture.id}/distress.json`]: {
+        type: 'application/json',
+        // The shutter time, which is the only thing that can name the file
+        // after the day it was taken rather than the day it was downloaded.
+        body: JSON.stringify({
+          pins: [{ num: 4, description: 'Crack', photos: ['ph_present'] }],
+          // A named run: the investigator typed "Exterior" when they started.
+          quickCapture: [{ id: 'ph_quick', ts: Date.parse('2026-03-02T17:45:12.000Z'), folder: 'Exterior' }],
+        }),
+      },
       'media/fsrec_canvas-ground': { type: 'application/pdf', body: fixture.pdf },
       'media/dxfig_ground': { type: 'image/png', body: fixture.png },
     };
@@ -274,24 +284,49 @@ try {
     const notesRow = document.querySelector(`[data-key="cf/${fixture.id}/field-notes.txt"]`);
     const groups = [...document.querySelectorAll('.explorer-group')].map((group) => group.dataset.group);
     const otherPhotos = document.querySelector('[data-group="other-photos"]');
-    const objectCount = document.querySelectorAll('.explorer-row[data-key]').length;
+    const objectCount = document.querySelectorAll('.explorer-row[data-key]').length
+      + document.querySelectorAll('.explorer-tile[data-key]').length;
+    const tileCount = document.querySelectorAll('.explorer-tile[data-key]').length;
+    const sheetCount = document.querySelectorAll('.explorer-sheet').length;
     const note = document.querySelector('.explorer-note');
     const unreferenced = document.querySelector('[data-key="media/ph_unreferenced"]');
 
+    // Pictures are tiles on a contact sheet, not rows with their own buttons:
+    // tapping one opens the lightbox, and Download lives in there.
     async function clickAction(key, label) {
-      const row = document.querySelector(`[data-key="${key}"]`);
-      const button = [...row.querySelectorAll('button')].find((item) => item.textContent === label);
+      const el = document.querySelector(`[data-key="${key}"]`);
+      if (el && el.classList.contains('explorer-tile')) {
+        el.click();
+        await new Promise((resolve) => setTimeout(resolve, 260));
+        if (label === 'Download') {
+          const save = [...document.querySelectorAll('.explorer-lightbox__bar button')]
+            .find((item) => item.textContent === 'Download');
+          if (save) save.click();
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          // Leave no overlay behind, or the next step clicks through it.
+          closeLightbox();
+        }
+        return;
+      }
+      const button = [...el.querySelectorAll('button')].find((item) => item.textContent === label);
       button.click();
       await new Promise((resolve) => setTimeout(resolve, 40));
     }
 
+    function closeLightbox() {
+      const close = [...document.querySelectorAll('.explorer-lightbox__bar button')]
+        .find((item) => item.textContent === 'Close');
+      if (close) close.click();
+    }
+
     await clickAction('media/fsrec_canvas-ground', 'Download');
     await clickAction(`media/${fixture.planId}`, 'Open');
-    const image = document.querySelector('.explorer-preview__image');
+    const image = document.querySelector('.explorer-lightbox__img');
     if (image && !image.complete) {
       await new Promise((resolve) => { image.onload = resolve; image.onerror = resolve; });
     }
     const imageOpened = !!(image && image.complete && image.naturalWidth === 1);
+    closeLightbox();
     await clickAction(`cf/${fixture.id}/index.json`, 'Open');
     const jsonText = document.querySelector('.explorer-preview__text')
       ? document.querySelector('.explorer-preview__text').textContent
@@ -299,6 +334,30 @@ try {
     await clickAction('media/fsrec_canvas-ground', 'Open');
     const pdf = document.querySelector('.explorer-preview__pdf');
     await clickAction(`media/${fixture.planId}`, 'Download');
+
+    const quickSheet = [...document.querySelectorAll('.explorer-group')]
+      .find((group) => group.dataset.group === 'quick-capture');
+    const quickAll = quickSheet
+      && [...quickSheet.querySelectorAll('button')].find((b) => b.textContent === 'Download all');
+    if (quickAll) {
+      quickAll.click();
+      for (let i = 0; i < 60; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        if (downloads.some((d) => d.clicked && /\.zip$/.test(d.name || ''))) break;
+      }
+    }
+    const quickZipEntry = downloads.filter((d) => /\.zip$/.test(d.name || '')).pop() || {};
+    const quickZip = quickZipEntry.name || '';
+    // Unpack it: the folder saying the right date is not proof that the
+    // pictures inside do.
+    let quickEntries = [];
+    if (quickZipEntry.blob && window.JSZip) {
+      try {
+        const unpacked = await window.JSZip.loadAsync(quickZipEntry.blob);
+        // JSZip lists the folder itself; only the pictures matter here.
+        quickEntries = Object.keys(unpacked.files).filter((name) => !unpacked.files[name].dir);
+      } catch (_) { quickEntries = []; }
+    }
     document.getElementById('explorer-zip').click();
     await new Promise((resolve) => setTimeout(resolve, 40));
     const afterFiles = await window.ToolboxDB.getAllCustomerFiles();
@@ -318,6 +377,8 @@ try {
       detailRawKey,
       groups,
       objectCount,
+      tileCount,
+      sheetCount,
       recoveryText: recoveryRow ? recoveryRow.innerText : '',
       recoveryActions: recoveryRow ? [...recoveryRow.querySelectorAll('button')].map((button) => button.textContent) : [],
       quickText: quickRow ? quickRow.innerText : '',
@@ -347,7 +408,9 @@ try {
           lineHeight: headingStyle.lineHeight,
         };
       })(),
-      downloads,
+      downloads: downloads.map((d) => ({ url: d.url, size: d.size, type: d.type, name: d.name, clicked: d.clicked })),
+      quickZip,
+      quickEntries,
       fetchLog,
       writes,
       beforeCount: beforeFiles.length,
@@ -386,16 +449,30 @@ try {
     flow.groups.join(',') === 'customer,plans,distress,quick-capture,other-photos,floor,diagnostics,report,other,technical' &&
     flow.objectCount === 18 &&
     flow.otherPhotos.includes('Unassigned photo') &&
-    flow.otherPhotos.includes('General photo — Exterior overview') &&
+    flow.otherPhotos.includes('Exterior overview') &&
     flow.otherPhotos.includes('Not stored') &&
     flow.detailText.includes('Plans and canvases') &&
-    flow.detailText.includes('Floor plan — Ground') &&
+    // The plan is a tile under the "Plans and canvases" heading, captioned
+    // with the level it is a plan of.
+    flow.detailText.includes('Ground') &&
     !flow.detailText.includes(`media/${PLAN_ID}`));
   check('Distress and Quick Capture stay distinct',
     flow.distressText.includes('Distress Survey photograph') &&
     !flow.distressText.includes('Quick Capture') &&
-    flow.quickText.includes('Quick Capture photo — porch.jpg') &&
+    // A tile names what sets this picture apart from its neighbours; the
+    // group heading above it already said "Quick Capture".
+    flow.quickText.includes('porch.jpg') &&
     !flow.detailText.includes('Distress or Quick Capture'));
+  check('pictures are a contact sheet, not a list of identical cards',
+    flow.tileCount === 6 && flow.sheetCount === 5);
+  // Tim: "I want it as the date they were taken, not the date that I
+  // downloaded them to the computer." 2026-03-02 is the shutter time seeded
+  // into distress.json; the download happens today.
+  check('a named Quick Capture run names the download, with the day it was taken',
+    /^exterior-2026-03-0[23]\.zip$/.test(flow.quickZip), flow.quickZip);
+  check('and the pictures sit in that set, named for when they were taken',
+    flow.quickEntries.length === 1 && /^Exterior\/2026-03-0[23]_\d{6}\.jpg$/.test(flow.quickEntries[0]),
+    JSON.stringify(flow.quickEntries));
   check('Floor Survey recovery PDF can be opened and downloaded',
     flow.recoveryText.includes('Floor Survey recovery PDF — Ground') &&
     flow.recoveryActions.includes('Open') &&
@@ -551,10 +628,11 @@ try {
 
   await page.setViewport({ width: 1280, height: 800 });
   await page.evaluate((planId) => {
-    const row = document.querySelector(`[data-key="media/${planId}"]`);
-    [...row.querySelectorAll('button')].find((button) => button.textContent === 'Open').click();
+    const el = document.querySelector(`[data-key="media/${planId}"]`);
+    if (el.classList.contains('explorer-tile')) el.click();
+    else [...el.querySelectorAll('button')].find((button) => button.textContent === 'Open').click();
   }, PLAN_ID);
-  await page.waitForSelector('.explorer-preview__image');
+  await page.waitForSelector('.explorer-lightbox__img');
   await page.screenshot({ path: join(shotDir, 'file-explorer-desktop-preview.png'), fullPage: true });
 } finally {
   await browser.close();

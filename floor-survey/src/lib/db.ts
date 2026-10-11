@@ -21,6 +21,24 @@ declare global {
       ensureFloorSurvey(record: any): boolean;
       ensureFloorSurveyCanvasRef(record: any, canvasId: string): boolean;
       canvasById(record: any, canvasId: string): any;
+      contourLayer(canvas: any): any;
+      setContourLayer(
+        record: any,
+        canvasId: string,
+        layer: {
+          id: string;
+          width: number;
+          height: number;
+          createdAt?: string;
+          surveyDate?: string | null;
+          pointCount?: number;
+          areaName?: string;
+        },
+      ): { canvas: any; retired: string | null } | null;
+      clearContourLayer(record: any, canvasId: string): { canvas: any; retired: string | null } | null;
+    };
+    ToolboxPlanImage?: {
+      newPlanId(): string;
     };
     ToolboxApp?: {
       customerIdentity?: {
@@ -306,14 +324,39 @@ export async function savePoint(p: SurveyPoint) {
   await saveRecord(record);
 }
 
-/** Stable media id — Save replaces this object instead of storing PDF 1/2/3. */
+/**
+ * The first checkpoint id a canvas ever had.
+ *
+ * Kept because older Customer Files hold it, and because the host still
+ * exports it. New Saves do not use it -- see below for why.
+ */
 export function recoveryPdfMediaIdFor(canvasId: string) {
   return `fsrec_${canvasId}`;
 }
 
 /**
+ * A fresh id for each Save, still under the `fsrec_` prefix that the sync and
+ * cleanup collectors recognise.
+ */
+function newRecoveryPdfMediaId(canvasId: string) {
+  const bare = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  return `fsrec_${canvasId}_${bare}`;
+}
+
+/**
  * Store the recovery PDF for one Floor Survey canvas.
- * The previous PDF is restored if the Customer File record cannot be updated.
+ *
+ * **A new id on every Save, deliberately.** Sync treats media as immutable:
+ * it skips the upload when the id already exists in the Cabinet, and skips
+ * the download when the id already exists on the device. Under the old stable
+ * id the bytes changed but the name did not, so the Cabinet kept the *first*
+ * recovery PDF a canvas ever had and every later Save stayed on the device --
+ * silently, and in the one thing that exists to survive a lost device.
+ *
+ * This is the Save-checkpoint rule rather than a change to it: one checkpoint
+ * per survey, replaced in place, with the new one written successfully before
+ * the previous is retired. No Save 1 / Save 2 / Save 3 history is kept; the
+ * old object is deleted as soon as the record no longer points at it.
  */
 export async function persistFloorSurveyRecoveryPdf(canvasId: string, dataUrl: string) {
   if (!dataUrl || !dataUrl.startsWith("data:application/pdf")) {
@@ -324,8 +367,8 @@ export async function persistFloorSurveyRecoveryPdf(canvasId: string, dataUrl: s
     throw new Error("Floor Survey canvas not found");
   }
   const layer = ensureLayer(record, canvasId);
-  const mediaId = recoveryPdfMediaIdFor(canvasId);
-  const prior = await window.ToolboxDB.getMedia(mediaId);
+  const previousId = typeof layer.recoveryPdfMediaId === "string" ? layer.recoveryPdfMediaId : "";
+  const mediaId = newRecoveryPdfMediaId(canvasId);
   await window.ToolboxDB.putMedia(mediaId, dataUrl);
   try {
     layer.recoveryPdfMediaId = mediaId;
@@ -333,11 +376,96 @@ export async function persistFloorSurveyRecoveryPdf(canvasId: string, dataUrl: s
     layer.updatedAt = Date.now();
     await saveRecord(record);
   } catch (err) {
-    if (prior) await window.ToolboxDB.putMedia(mediaId, prior);
-    else await window.ToolboxDB.deleteMedia(mediaId);
+    // The record still points at the old checkpoint, so the new bytes are
+    // the ones with nothing referring to them.
+    await window.ToolboxDB.deleteMedia(mediaId).catch(() => {});
     throw err;
   }
+  // Only now is the previous checkpoint unreferenced.
+  if (previousId && previousId !== mediaId) {
+    await window.ToolboxDB.deleteMedia(previousId).catch(() => {});
+  }
   return mediaId;
+}
+
+/**
+ * Store the contour layer for one level, so Distress Survey can show the
+ * damage pins on it.
+ *
+ * **A fresh media id every time, deliberately.** Sync treats media as
+ * immutable: it skips the upload when the id already exists in the Cabinet,
+ * and skips the download when the id already exists on the device. So
+ * replacing the bytes under a stable id would leave the Cabinet holding the
+ * first contour for ever and every other device holding whichever one it
+ * happened to pull. A new id propagates; the old one is retired once the
+ * record is safely saved.
+ *
+ * That ordering is the Save-checkpoint rule: write the new one successfully
+ * before retiring the previous one, so a failure here leaves the level with
+ * the layer it already had rather than with none.
+ */
+export async function persistContourLayer(
+  canvasId: string,
+  dataUrl: string,
+  meta: { width: number; height: number; pointCount?: number; areaName?: string },
+) {
+  if (!dataUrl || !dataUrl.startsWith("data:image/")) {
+    throw new Error("Contour layer was not produced");
+  }
+  const record = await loadRecord(requireCfId());
+  const canvas = window.ToolboxPlanSetup.canvasById(record, canvasId);
+  if (!canvas) throw new Error("Level not found on this Customer File");
+
+  const mediaId = window.ToolboxPlanImage?.newPlanId
+    ? window.ToolboxPlanImage.newPlanId()
+    : `pl_ct_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+
+  await window.ToolboxDB.putMedia(mediaId, dataUrl);
+  const applied = window.ToolboxPlanSetup.setContourLayer(record, canvasId, {
+    id: mediaId,
+    width: meta.width,
+    height: meta.height,
+    createdAt: new Date().toISOString(),
+    // Provenance comes off the record we already hold, so the caller does not
+    // have to carry the survey date around to write a layer.
+    surveyDate: (record.floorSurvey && record.floorSurvey.inspectionDate) || null,
+    pointCount: meta.pointCount ?? 0,
+    areaName: meta.areaName || "",
+  });
+  if (!applied) {
+    await window.ToolboxDB.deleteMedia(mediaId);
+    throw new Error("Contour layer could not be written to this level");
+  }
+  try {
+    await saveRecord(record);
+  } catch (err) {
+    await window.ToolboxDB.deleteMedia(mediaId);
+    throw err;
+  }
+  // Only now is the previous layer unreferenced.
+  if (applied.retired) {
+    await window.ToolboxDB.deleteMedia(applied.retired).catch(() => {});
+  }
+  return mediaId;
+}
+
+/** Take the contour layer off one level. The plan is untouched. */
+export async function removeContourLayer(canvasId: string) {
+  const record = await loadRecord(requireCfId());
+  const applied = window.ToolboxPlanSetup.clearContourLayer(record, canvasId);
+  if (!applied) return false;
+  await saveRecord(record);
+  if (applied.retired) {
+    await window.ToolboxDB.deleteMedia(applied.retired).catch(() => {});
+  }
+  return true;
+}
+
+/** What is on this level now, so the rail can say when it was drawn. */
+export async function readContourLayer(canvasId: string) {
+  const record = await loadRecord(requireCfId());
+  const canvas = window.ToolboxPlanSetup.canvasById(record, canvasId);
+  return window.ToolboxPlanSetup.contourLayer(canvas) || null;
 }
 
 /** Persist GPS captured at BP1 / base station (field tap). Report Builder reads later. */

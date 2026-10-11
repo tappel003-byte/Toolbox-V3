@@ -171,11 +171,30 @@
   }
 
   let previewUrl = '';
+  // Tiles stop watching when the view is rebuilt, or a replaced grid keeps
+  // fetching photographs for a screen that is no longer there.
+  let tileObservers = [];
+
+  function stopTileWatching() {
+    tileObservers.forEach(function (io) {
+      try { io.disconnect(); } catch (_) {}
+    });
+    tileObservers = [];
+  }
 
   function revokePreview() {
     if (previewUrl) {
       try { URL.revokeObjectURL(previewUrl); } catch (_) {}
       previewUrl = '';
+    }
+  }
+
+  let lightboxUrl = '';
+
+  function revokeLightbox() {
+    if (lightboxUrl) {
+      try { URL.revokeObjectURL(lightboxUrl); } catch (_) {}
+      lightboxUrl = '';
     }
   }
 
@@ -193,6 +212,51 @@
     }, 1500);
   }
 
+  // A picture is anything the Cabinet stored as an image: a photograph, a
+  // floor plan, a diagnostics figure. Tim: "These pictures should just be in a
+  // folder where you can see a thumbnail of all of them and then click on the
+  // pictures to make them bigger -- not one at a time."
+  function isPicture(row) {
+    if (!row || row.missing) return false;
+    return String(row.contentType || '').toLowerCase().indexOf('image/') === 0;
+  }
+
+  const THUMB_EDGE = 320;
+
+  /**
+   * Shrink a stored photograph to a tile.
+   *
+   * A survey can hold a hundred full-size photographs. Holding a hundred
+   * object URLs to 4 MB originals is how a phone runs out of memory, so each
+   * one is drawn down to a small canvas and the original is released
+   * immediately. What the grid keeps is the tile, not the photograph.
+   */
+  async function thumbnailFrom(blob) {
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = await new Promise(function (resolve, reject) {
+        const el = new Image();
+        el.onload = function () { resolve(el); };
+        el.onerror = function () { reject(new Error('image')); };
+        el.src = url;
+      });
+      const w = img.naturalWidth || 1;
+      const h = img.naturalHeight || 1;
+      const scale = Math.min(1, THUMB_EDGE / Math.max(w, h));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(w * scale));
+      canvas.height = Math.max(1, Math.round(h * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return '';
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', 0.72);
+    } catch (_) {
+      return '';
+    } finally {
+      try { URL.revokeObjectURL(url); } catch (_) {}
+    }
+  }
+
   async function responseBlob(response) {
     const type = response.headers.get('content-type') || 'application/octet-stream';
     const buffer = await response.arrayBuffer();
@@ -208,6 +272,8 @@
       window.ToolboxApp.registerActiveFlush(null);
     }
     revokePreview();
+    revokeLightbox();
+    stopTileWatching();
     const inside = !!customerId;
     renderShell(
       app,
@@ -420,6 +486,96 @@
       if (bits.length) lead.textContent = bits.join(' · ');
     }
 
+    // What the stored object cannot say about itself.
+    //
+    // The Cabinet knows a photograph's key, size and the moment it was
+    // uploaded. When it was *taken* lives in distress.json, with the pin it
+    // belongs to. Tim: "I want it as the date they were taken, not the date
+    // that I downloaded them to the computer." So the one component that
+    // knows is read once per Customer File and joined on the media id.
+    let photoFacts = {};
+
+    let photoFactsFor = '';
+
+    /**
+     * Read once, and only when a download asks for it.
+     *
+     * Browsing must not reach past the read-only explore route: a missing
+     * object there falls back to the working sync API, which is not what a
+     * back door should be doing on a page view. A download is a request the
+     * investigator made, so that is where the join belongs.
+     */
+    function readPhotoFacts(id) {
+      if (photoFactsFor === id) return Promise.resolve();
+      photoFacts = {};
+      const key = 'cf/' + id + '/distress.json';
+      return window.ToolboxSync.exploreFetchObject(id, key)
+        .then(function (response) { return response.json(); })
+        .then(function (distress) {
+          const facts = {};
+          const pins = distress && Array.isArray(distress.pins) ? distress.pins : [];
+          pins.forEach(function (pin) {
+            const photos = pin && Array.isArray(pin.photos) ? pin.photos : [];
+            photos.forEach(function (photoId) {
+              if (typeof photoId !== 'string' || !photoId) return;
+              facts[photoId] = {
+                kind: 'pin',
+                pin: pin.num != null ? String(pin.num) : '',
+                takenAt: '',
+                description: String(pin.description || ''),
+              };
+            });
+          });
+          const quick = distress && Array.isArray(distress.quickCapture) ? distress.quickCapture : [];
+          quick.forEach(function (item) {
+            if (!item || typeof item.id !== 'string' || !item.id) return;
+            facts[item.id] = {
+              kind: 'quick',
+              pin: '',
+              takenAt: captureIso(item),
+              // The set the investigator named when the run started.
+              folder: String(item.folder || '').trim(),
+              description: '',
+            };
+          });
+          photoFacts = facts;
+          photoFactsFor = id;
+        })
+        // Without it the pictures still download, under their stored keys.
+        .catch(function () { photoFacts = {}; photoFactsFor = id; });
+    }
+
+    function captureIso(item) {
+      if (!item) return '';
+      if (item.timestamp) return String(item.timestamp);
+      if (typeof item.ts === 'number' && isFinite(item.ts)) return new Date(item.ts).toISOString();
+      if (item.ts) return String(item.ts);
+      return '';
+    }
+
+    function factFor(row) {
+      const key = String(row && row.key || '');
+      const id = key.indexOf('media/') === 0 ? key.slice(6) : key;
+      return photoFacts[id] || null;
+    }
+
+    /** yyyy-mm-dd in the local day the shutter was pressed. */
+    function captureDay(iso) {
+      const parsed = Date.parse(iso || '');
+      if (!isFinite(parsed)) return '';
+      const d = new Date(parsed);
+      const pad = function (n) { return (n < 10 ? '0' : '') + n; };
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    }
+
+    function captureStamp(iso) {
+      const parsed = Date.parse(iso || '');
+      if (!isFinite(parsed)) return '';
+      const d = new Date(parsed);
+      const pad = function (n) { return (n < 10 ? '0' : '') + n; };
+      return captureDay(iso) + '_' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
+    }
+
     function paintCustomer(id, data) {
       showCustomerIdentity(data || {});
       notesEl.innerHTML = '';
@@ -431,6 +587,7 @@
         notesEl.appendChild(p);
       });
       const objects = Array.isArray(data.objects) ? data.objects : [];
+      stopTileWatching();
       listEl.innerHTML = '';
       if (!objects.length) {
         const empty = document.createElement('p');
@@ -439,6 +596,12 @@
         listEl.appendChild(empty);
         return;
       }
+      paintGroups(id, objects);
+    }
+
+    function paintGroups(id, objects) {
+      stopTileWatching();
+      listEl.innerHTML = '';
       const buckets = {};
       objects.forEach(function (row) {
         const info = classify(row, id);
@@ -466,10 +629,354 @@
         const heading = document.createElement('h2');
         heading.textContent = group.title;
         section.appendChild(heading);
-        rows.forEach(function (row) {
+        // Pictures become a contact sheet; everything else stays a row. A
+        // hundred photographs listed as a hundred identical cards is a list of
+        // photographs, not a way to look at them.
+        const pictures = rows.filter(isPicture);
+        const rest = rows.filter(function (row) { return !isPicture(row); });
+        if (pictures.length) {
+          section.appendChild(pictureSheet(id, pictures, group.title, preview, showNotice));
+        }
+        rest.forEach(function (row) {
           section.appendChild(objectRow(id, row));
         });
         listEl.appendChild(section);
+      });
+    }
+
+    /** A grid of thumbnails, with one action to take the whole set. */
+    function pictureSheet(id, rows, groupTitle, preview, notify) {
+      const wrap = document.createElement('div');
+      wrap.className = 'explorer-sheet';
+
+      const bar = document.createElement('div');
+      bar.className = 'explorer-sheet__bar';
+      const count = document.createElement('p');
+      count.className = 'explorer-sheet__count';
+      count.textContent = rows.length + (rows.length === 1 ? ' picture' : ' pictures');
+      bar.appendChild(count);
+      const all = document.createElement('button');
+      all.type = 'button';
+      all.className = 'btn btn--secondary';
+      all.textContent = 'Download all';
+      all.addEventListener('click', function () {
+        downloadPictures(id, rows, groupTitle, all, notify);
+      });
+      bar.appendChild(all);
+      wrap.appendChild(bar);
+
+      const grid = document.createElement('div');
+      grid.className = 'explorer-sheet__grid';
+      const captions = sheetCaptions(rows);
+      rows.forEach(function (row, index) {
+        grid.appendChild(pictureTile(id, row, rows, index, captions[index], notify));
+      });
+      wrap.appendChild(grid);
+      return wrap;
+    }
+
+    function pictureTile(id, row, siblings, index, caption, notify) {
+      const tile = document.createElement('button');
+      tile.type = 'button';
+      tile.className = 'explorer-tile';
+      tile.dataset.key = row.key || '';
+      const frame = document.createElement('span');
+      frame.className = 'explorer-tile__frame';
+      const img = document.createElement('img');
+      img.className = 'explorer-tile__img';
+      img.alt = row._label || 'Photograph';
+      img.loading = 'lazy';
+      frame.appendChild(img);
+      tile.appendChild(frame);
+      const cap = document.createElement('span');
+      cap.className = 'explorer-tile__caption';
+      cap.textContent = caption || '';
+      tile.appendChild(cap);
+      tile.addEventListener('click', function () {
+        openLightbox(id, siblings, index, notify);
+      });
+      // Fetched only when it comes into view, so opening a job with a hundred
+      // photographs over a phone connection does not pull all hundred at once.
+      watchTile(id, row, img, tile);
+      return tile;
+    }
+
+    /**
+     * Say what makes this picture different from the one beside it.
+     *
+     * "porch.jpg" earns its place under a tile. "Distress Survey photograph"
+     * under all eight does not -- a caption repeated across the whole sheet
+     * carries no information, and the group heading already said it. So a
+     * caption that is identical for every tile in the group is dropped, which
+     * is decided per sheet rather than per tile.
+     */
+    function tileCaption(row) {
+      const detail = String(row._detail || '').trim();
+      if (detail) return detail;
+      const label = String(row._label || '').trim();
+      const dash = label.indexOf('\u2014');
+      if (dash >= 0) {
+        const tail = label.slice(dash + 1).trim();
+        if (tail) return tail;
+      }
+      return label;
+    }
+
+    function sheetCaptions(rows) {
+      const captions = rows.map(tileCaption);
+      const distinct = {};
+      captions.forEach(function (text) { distinct[text] = 1; });
+      // All the same? Then it says nothing. Fall back to the date, which at
+      // least differs, and to nothing when even that is absent.
+      // One picture has nothing to be repetitive against, so its name stays.
+      if (rows.length < 2 || Object.keys(distinct).length > 1) return captions;
+      return rows.map(function (row) { return formatFieldDate(row.uploaded) || ''; });
+    }
+
+    function watchTile(id, row, img, tile) {
+      let started = false;
+      const load = function () {
+        if (started) return;
+        started = true;
+        window.ToolboxSync.exploreFetchObject(id, row.key)
+          .then(responseBlob)
+          .then(function (loaded) { return thumbnailFrom(loaded.blob); })
+          .then(function (src) {
+            if (src) {
+              img.src = src;
+              tile.classList.add('is-loaded');
+            } else {
+              tile.classList.add('is-failed');
+            }
+          })
+          .catch(function () { tile.classList.add('is-failed'); });
+      };
+      if (typeof IntersectionObserver !== 'function') { load(); return; }
+      const io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          io.disconnect();
+          load();
+        });
+      }, { rootMargin: '300px' });
+      io.observe(tile);
+      tileObservers.push(io);
+    }
+
+    /**
+     * One picture, full size, with the rest of the set a tap away.
+     *
+     * The old preview opened at the foot of the page, so looking at the
+     * second photograph meant scrolling down to it, back up to the list, and
+     * down again. Over a set of a hundred that is the whole job.
+     */
+    function openLightbox(id, rows, startIndex, notify) {
+      let index = Math.max(0, Math.min(rows.length - 1, startIndex));
+      const box = document.createElement('div');
+      box.className = 'explorer-lightbox';
+      box.setAttribute('role', 'dialog');
+      box.setAttribute('aria-modal', 'true');
+
+      const bar = document.createElement('div');
+      bar.className = 'explorer-lightbox__bar';
+      const title = document.createElement('p');
+      title.className = 'explorer-lightbox__title';
+      bar.appendChild(title);
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'btn btn--secondary';
+      save.textContent = 'Download';
+      bar.appendChild(save);
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'btn btn--ghost';
+      close.textContent = 'Close';
+      bar.appendChild(close);
+      box.appendChild(bar);
+
+      const stage = document.createElement('div');
+      stage.className = 'explorer-lightbox__stage';
+      const prev = document.createElement('button');
+      prev.type = 'button';
+      prev.className = 'explorer-lightbox__step';
+      prev.setAttribute('aria-label', 'Previous picture');
+      prev.textContent = '\u2039';
+      const img = document.createElement('img');
+      img.className = 'explorer-lightbox__img';
+      const next = document.createElement('button');
+      next.type = 'button';
+      next.className = 'explorer-lightbox__step';
+      next.setAttribute('aria-label', 'Next picture');
+      next.textContent = '\u203a';
+      stage.appendChild(prev);
+      stage.appendChild(img);
+      stage.appendChild(next);
+      box.appendChild(stage);
+
+      function teardown() {
+        revokeLightbox();
+        document.removeEventListener('keydown', onKey);
+        box.remove();
+      }
+      function onKey(event) {
+        if (event.key === 'Escape') teardown();
+        else if (event.key === 'ArrowLeft') show(index - 1);
+        else if (event.key === 'ArrowRight') show(index + 1);
+      }
+      function show(nextIndex) {
+        if (nextIndex < 0 || nextIndex >= rows.length) return;
+        index = nextIndex;
+        const row = rows[index];
+        title.textContent = (row._label || 'Picture') + '  ' + (index + 1) + ' of ' + rows.length;
+        prev.disabled = index === 0;
+        next.disabled = index === rows.length - 1;
+        img.removeAttribute('src');
+        box.classList.add('is-loading');
+        window.ToolboxSync.exploreFetchObject(id, row.key)
+          .then(responseBlob)
+          .then(function (loaded) {
+            if (!box.isConnected || rows[index] !== row) return;
+            revokeLightbox();
+            lightboxUrl = URL.createObjectURL(loaded.blob);
+            img.src = lightboxUrl;
+            img.alt = row._label || 'Picture';
+            box.classList.remove('is-loading');
+            save.onclick = function () {
+              saveBlob(loaded.blob, downloadName(row.key));
+            };
+          })
+          .catch(function () {
+            box.classList.remove('is-loading');
+            notify('Could not open that picture.');
+          });
+      }
+
+      prev.addEventListener('click', function () { show(index - 1); });
+      next.addEventListener('click', function () { show(index + 1); });
+      close.addEventListener('click', teardown);
+      box.addEventListener('click', function (event) {
+        if (event.target === box || event.target === stage) teardown();
+      });
+      document.addEventListener('keydown', onKey);
+      document.body.appendChild(box);
+      show(index);
+    }
+
+    /**
+     * What a picture is called once it leaves Toolbox.
+     *
+     * A Quick Capture is named for the moment it was taken, because that is
+     * the only thing about it anyone will want to sort by afterwards. Tim: "I
+     * want it as the date they were taken, not the date that I downloaded
+     * them to the computer." The storage key -- the thing it used to be named
+     * after -- says nothing to anybody.
+     */
+    function pictureFileName(row) {
+      const fact = factFor(row);
+      const ext = extensionFor(row);
+      if (fact && fact.kind === 'quick') {
+        const stamp = captureStamp(fact.takenAt);
+        const set = safeFolder(fact.folder);
+        const leaf = (stamp || downloadName(row.key)) + ext;
+        return set ? set + '/' + leaf : leaf;
+      }
+      if (fact && fact.kind === 'pin' && fact.pin) {
+        return 'pin-' + fact.pin + '-' + downloadName(String(row.key || '')).slice(-10) + ext;
+      }
+      return downloadName(row.key);
+    }
+
+    function safeFolder(name) {
+      return String(name || '').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 60);
+    }
+
+    function extensionFor(row) {
+      const type = String(row && row.contentType || '').toLowerCase();
+      if (type.indexOf('image/png') === 0) return '.png';
+      if (type.indexOf('image/webp') === 0) return '.webp';
+      if (type.indexOf('image/heic') === 0) return '.heic';
+      return '.jpg';
+    }
+
+    /**
+     * The folder the pictures land in, named for the day they were taken.
+     *
+     * One day of Quick Captures becomes that date. Several days keep the span,
+     * so a folder never claims a date that half its contents do not share.
+     * A subject -- Exterior, Interior -- is not stored against a capture yet,
+     * so nothing here invents one.
+     */
+    function picturesZipName(rows, groupTitle) {
+      const stem = String(groupTitle || 'pictures').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const days = {};
+      const sets = {};
+      rows.forEach(function (row) {
+        const fact = factFor(row);
+        if (!fact || fact.kind !== 'quick') return;
+        const day = captureDay(fact.takenAt);
+        if (day) days[day] = 1;
+        const set = safeFolder(fact.folder);
+        if (set) sets[set] = 1;
+      });
+      const dayList = Object.keys(days).sort();
+      const setList = Object.keys(sets);
+      // One named set is the best name there is. Several, and the sets are
+      // folders inside, so the ZIP falls back to the span they cover.
+      const head = setList.length === 1
+        ? setList[0].toLowerCase().replace(/[^a-z0-9]+/g, '-')
+        : stem;
+      if (!dayList.length) return head + '.zip';
+      if (dayList.length === 1) return head + '-' + dayList[0] + '.zip';
+      return head + '-' + dayList[0] + '_to_' + dayList[dayList.length - 1] + '.zip';
+    }
+
+    /** Every picture in this group, as one ZIP. */
+    function downloadPictures(id, rows, groupTitle, button, notify) {
+      if (!window.JSZip) {
+        notify('ZIP download is unavailable.');
+        return;
+      }
+      const label = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Reading…';
+      let done = 0;
+      const zip = new window.JSZip();
+      const used = {};
+      const step = function (row) {
+        return window.ToolboxSync.exploreFetchObject(id, row.key)
+          .then(responseBlob)
+          .then(function (loaded) {
+            let name = pictureFileName(row);
+            if (used[name]) {
+              const dot = name.lastIndexOf('.');
+              const stem = dot > 0 ? name.slice(0, dot) : name;
+              const ext = dot > 0 ? name.slice(dot) : '';
+              name = stem + '-' + (used[name] + 1) + ext;
+            }
+            used[pictureFileName(row)] = (used[pictureFileName(row)] || 0) + 1;
+            zip.file(name, loaded.buffer);
+            done += 1;
+            button.textContent = 'Packing ' + done + ' of ' + rows.length + '…';
+          })
+          // One unreadable object should not lose the other ninety-nine.
+          .catch(function () {});
+      };
+      rows.reduce(function (chain, row) {
+        return chain.then(function () { return step(row); });
+      }, readPhotoFacts(id)).then(function () {
+        if (!done) throw new Error('none');
+        return zip.generateAsync({ type: 'blob' });
+      }).then(function (blob) {
+        saveBlob(blob, picturesZipName(rows, groupTitle));
+        button.disabled = false;
+        button.textContent = label;
+        if (done < rows.length) {
+          notify(done + ' of ' + rows.length + ' pictures were stored and packed.');
+        }
+      }).catch(function () {
+        button.disabled = false;
+        button.textContent = label;
+        notify('Could not package those pictures.');
       });
     }
 

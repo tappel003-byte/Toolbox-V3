@@ -2026,9 +2026,12 @@ check(
 check(
   'A newly captured Quick Capture photo downloads beside its Distress photo',
   folderDownload.fieldMatches &&
-    folderDownload.fieldPaths.join(',') === 'distress-photos/new-crack.jpg,quick-capture/quick-1.jpg' &&
+    // An unnamed capture is named for the moment the shutter was pressed,
+    // not its position in the list. Tim: "I want it as the date they were
+    // taken, not the date that I downloaded them to the computer."
+    folderDownload.fieldPaths.join(',') === 'distress-photos/new-crack.jpg,quick-capture/2026-08-01_150405.jpg' &&
     /Distress photos,new-crack\.jpg,4,New crack/.test(folderDownload.fieldCsv) &&
-    /Quick Capture,quick-1\.jpg,,,2026-08-01T15:04:05\.000Z,35\.2,-106\.4/.test(folderDownload.fieldCsv),
+    /Quick Capture,2026-08-01_150405\.jpg,,,2026-08-01T15:04:05\.000Z,35\.2,-106\.4/.test(folderDownload.fieldCsv),
   JSON.stringify({ paths: folderDownload.fieldPaths, csv: folderDownload.fieldCsv }),
 );
 

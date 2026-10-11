@@ -150,7 +150,15 @@ function planMediaIds(record) {
   const canvases = record && record.planSetup && Array.isArray(record.planSetup.canvases)
     ? record.planSetup.canvases
     : [];
-  return canvases.map((canvas) => canvas && canvas.plan && canvas.plan.id).filter(Boolean);
+  const ids = [];
+  canvases.forEach((canvas) => {
+    if (canvas && canvas.plan && canvas.plan.id) ids.push(canvas.plan.id);
+    // A level's contour layer is plan media too; left out here its bytes stay
+    // behind when the working copy is removed.
+    const layer = canvas && canvas.contourLayer;
+    if (layer && typeof layer.id === 'string' && layer.id) ids.push(layer.id);
+  });
+  return ids.filter(Boolean);
 }
 
 function collectDistressPhotoId(ids, id) {

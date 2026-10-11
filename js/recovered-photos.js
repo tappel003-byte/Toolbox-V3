@@ -58,6 +58,16 @@
     return '';
   }
 
+  // The moment the shutter was pressed, as a sortable name.
+  function captureStampFor(item) {
+    const parsed = Date.parse(quickTime(item) || '');
+    if (!isFinite(parsed)) return '';
+    const d = new Date(parsed);
+    const pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+      '_' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
+  }
+
   function quickCoord(item, textKey, numberKey) {
     if (!item) return '';
     if (item[textKey]) return String(item[textKey]);
@@ -114,12 +124,19 @@
       const latitude = quickCoord(item, 'latitude', 'lat');
       const longitude = quickCoord(item, 'longitude', 'lng');
       const named = item.sourceName || sourceName(record, item.id, '');
-      const fileName = uniqueFileName(used, safeFileName(named, 'quick-' + (index + 1) + '.jpg'));
+      // A run of Quick Captures is a named set, so it travels as its own
+      // folder: start a run, name it, shoot, press Done; start another later
+      // and it lands somewhere else.
+      const set = String(item.folder || '').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 60);
+      const stamp = captureStampFor(item);
+      const fallback = (stamp || ('quick-' + (index + 1))) + '.jpg';
+      const fileName = uniqueFileName(used, safeFileName(named, fallback));
+      const folderPath = set ? 'quick-capture/' + set : 'quick-capture';
       return {
         id: item.id,
         folder: 'quick',
-        folderPath: 'quick-capture',
-        path: 'quick-capture/' + fileName,
+        folderPath: folderPath,
+        path: folderPath + '/' + fileName,
         folderLabel: 'Quick Capture',
         title: named || ('Quick Capture ' + (index + 1)),
         fileName: fileName,

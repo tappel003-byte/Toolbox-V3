@@ -92,6 +92,7 @@
       c.frontDoor = null;
       changed = true;
     }
+    if (c.contourLayer != null && !contourLayer(c)) { c.contourLayer = null; changed = true; }
     return changed;
   }
 
@@ -328,6 +329,88 @@
     return !!(canvas && canvas.plan && canvas.plan.id && canvas.plan.width && canvas.plan.height);
   }
 
+  // A level's layers. The plan picture is the first; a black-and-white contour
+  // of that level, written by Floor Survey, is the second. Both are drawn at
+  // the plan's own pixel extent, which is why a pin placed on one lands in the
+  // same spot on the other -- Distress and Floor Survey both measure in those
+  // pixels. See DECISIONS.md "Layers and levels".
+  function contourLayer(canvas) {
+    const layer = canvas && canvas.contourLayer;
+    if (!layer || typeof layer !== 'object') return null;
+    if (typeof layer.id !== 'string' || !layer.id) return null;
+    if (!(Number(layer.width) > 0) || !(Number(layer.height) > 0)) return null;
+    return layer;
+  }
+
+  // Every media id a level owns. One function, because a plan id is collected
+  // in six places (sync's two collectors and File Explorer, the local media
+  // cleanup, the AI package, and Customer File export) and a layer the
+  // collectors miss is a layer that does not sync, or whose bytes leak when
+  // the working copy is removed.
+  function canvasMediaIds(canvas) {
+    const ids = [];
+    if (canvas && canvas.plan && canvas.plan.id) ids.push(canvas.plan.id);
+    const layer = contourLayer(canvas);
+    if (layer) ids.push(layer.id);
+    return ids;
+  }
+
+  function planSetupMediaIds(record) {
+    const canvases = record && record.planSetup && Array.isArray(record.planSetup.canvases)
+      ? record.planSetup.canvases
+      : [];
+    const ids = [];
+    canvases.forEach(function (canvas) {
+      canvasMediaIds(canvas).forEach(function (id) { ids.push(id); });
+    });
+    return ids;
+  }
+
+  /**
+   * Write (or replace) the contour layer on one level.
+   *
+   * Replace in place: the new bytes are written before the old id is dropped,
+   * so a failure leaves the level with the layer it already had rather than
+   * with none. The caller saves the record.
+   */
+  function setContourLayer(record, canvasId, layer) {
+    const canvas = canvasById(record, canvasId);
+    if (!canvas) return null;
+    if (!layer || typeof layer.id !== 'string' || !layer.id) return null;
+    const previous = contourLayer(canvas);
+    canvas.contourLayer = {
+      id: layer.id,
+      width: Number(layer.width) || (canvas.plan && canvas.plan.width) || 0,
+      height: Number(layer.height) || (canvas.plan && canvas.plan.height) || 0,
+      createdAt: layer.createdAt || new Date().toISOString(),
+      // Provenance, so the field can see what the contour was drawn from
+      // rather than guessing whether it is current.
+      surveyDate: layer.surveyDate || null,
+      pointCount: Number(layer.pointCount) || 0,
+      // Which boundary it covers. Separate surfaces are separate -- a garage
+      // sloped to drain is not the house -- so the field has to be able to see
+      // which one is on screen.
+      areaName: typeof layer.areaName === 'string' ? layer.areaName : '',
+    };
+    if (!contourLayer(canvas)) {
+      canvas.contourLayer = previous || null;
+      return null;
+    }
+    canvas.updatedAt = new Date().toISOString();
+    if (record.planSetup) record.planSetup.updatedAt = canvas.updatedAt;
+    return { canvas: canvas, retired: previous && previous.id !== layer.id ? previous.id : null };
+  }
+
+  function clearContourLayer(record, canvasId) {
+    const canvas = canvasById(record, canvasId);
+    const previous = contourLayer(canvas);
+    if (!canvas || !previous) return null;
+    canvas.contourLayer = null;
+    canvas.updatedAt = new Date().toISOString();
+    if (record.planSetup) record.planSetup.updatedAt = canvas.updatedAt;
+    return { canvas: canvas, retired: previous.id };
+  }
+
   function formatUpdated(iso) {
     if (window.ToolboxApp && window.ToolboxApp.customerIdentity) {
       return window.ToolboxApp.customerIdentity.formatUpdated(iso);
@@ -504,6 +587,12 @@
     const frontDoorSelect = panel.querySelector('#front-door-select');
     const buildingTypeSelect = panel.querySelector('#building-type-select');
     const panelFeedback = panel.querySelector('#plan-panel-feedback');
+
+    // How long leaving this step will wait for plan processing and room
+    // recognition before giving up on them. Long enough that ordinary work
+    // finishes first, short enough that a stall is an inconvenience rather
+    // than a trap.
+    const IDLE_WAIT_CAP_MS = 8000;
 
     let hydratedPlanDataUrl = null;
     let savingPlan = false;
@@ -848,10 +937,16 @@
           return;
         }
         const oldPlanId = canvas.plan && canvas.plan.id ? canvas.plan.id : null;
+        // A contour layer is drawn at the old plan's extent, so a new plan
+        // makes it wrong rather than merely old. It goes with the front door
+        // and the rooms, for the same reason they do.
+        const oldLayer = contourLayer(canvas);
+        const oldLayerId = oldLayer ? oldLayer.id : null;
         const planId = window.ToolboxPlanImage.newPlanId();
 
         window.ToolboxDB.putMedia(planId, processed.dataUrl).then(function () {
           canvas.plan = { id: planId, width: processed.width, height: processed.height };
+          canvas.contourLayer = null;
           canvas.frontDoor = null;
           canvas.rooms = [];
           canvas.updatedAt = new Date().toISOString();
@@ -862,6 +957,9 @@
           return ctx.flushSave().then(function () {
             if (oldPlanId && oldPlanId !== planId) {
               window.ToolboxDB.deleteMedia(oldPlanId).catch(function () {});
+            }
+            if (oldLayerId) {
+              window.ToolboxDB.deleteMedia(oldLayerId).catch(function () {});
             }
             showPlanPreview(processed.dataUrl, processed.width, processed.height);
             renderRoomsChips();
@@ -903,9 +1001,41 @@
         if (canvas) canvas.frontDoorFacing = frontDoorSelect.value;
         record().planSetup.buildingType = buildingTypeSelect.value || record().planSetup.buildingType;
       },
+      // Leaving this step waits for plan processing and room recognition to
+      // finish, so a plan is never half-written when the investigator walks
+      // away. That wait is now bounded.
+      //
+      // Both of those report when they are done; neither reports when it
+      // never starts. A recognition worker that cannot load, or an image the
+      // decoder will not finish, leaves the busy flag set forever -- and Done
+      // and the Back button both wait on it, so the step could only be left
+      // by force-quitting the app. The buttons were there and did nothing,
+      // which is worse than not having them.
+      //
+      // So: wait, but not indefinitely. Past the cap the flags are cleared,
+      // the disabled controls come back, and the investigator gets out. Work
+      // still in flight finishes if it can; what it cannot do is hold the
+      // door shut. The save that follows is unaffected -- anything already
+      // written is already in the record.
       whenIdle: function () {
         if (!ocrBusy && !savingPlan) return Promise.resolve();
-        return new Promise(function (resolve) { ocrWaiters.push(resolve); });
+        return new Promise(function (resolve) {
+          let settled = false;
+          const release = function () {
+            if (settled) return;
+            settled = true;
+            resolve();
+          };
+          ocrWaiters.push(release);
+          setTimeout(function () {
+            if (settled) return;
+            ocrBusy = false;
+            savingPlan = false;
+            dropBtn.disabled = false;
+            changeBtn.disabled = false;
+            release();
+          }, IDLE_WAIT_CAP_MS);
+        });
       },
       isBusy: function () { return !!ocrBusy || !!savingPlan; },
     };
@@ -917,6 +1047,11 @@
     activeCanvas: activeCanvas,
     canvasById: canvasById,
     hasUsablePlan: hasUsablePlan,
+    contourLayer: contourLayer,
+    canvasMediaIds: canvasMediaIds,
+    planSetupMediaIds: planSetupMediaIds,
+    setContourLayer: setContourLayer,
+    clearContourLayer: clearContourLayer,
     blankCanvas: blankCanvas,
     blankPlanSetup: blankPlanSetup,
     blankDistressSurvey: blankDistressSurvey,

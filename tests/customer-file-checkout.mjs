@@ -475,7 +475,7 @@ try {
     report.J_leaseKept = !!(state.indexes['cf-cloud-1'].checkout &&
       state.indexes['cf-cloud-1'].checkout.deviceId === 'device-ipad');
 
-    // L: local-only first-upload still works
+    // L: local-only first upload works and takes the lease
     const draft = ToolboxApp.blankCustomerFile('cf-local-draft');
     ToolboxPlanSetup.ensurePlanSetup(draft);
     draft.firstName = 'Local';
@@ -484,7 +484,31 @@ try {
     await ToolboxDB.saveCustomerFile(draft);
     const draftSync = await ToolboxSync.syncNow();
     report.L_upload = draftSync.ok === true && !!state.indexes['cf-local-draft'];
-    report.L_noCheckoutForced = !state.indexes['cf-local-draft'].checkout;
+    // Having a copy is not permission -- holding the lease is. The device that
+    // put this job into the Cabinet is the one working it, so it holds it.
+    const draftLease = state.indexes['cf-local-draft'].checkout;
+    report.L_leaseTaken = !!(draftLease && draftLease.deviceId === 'device-ipad' &&
+      draftLease.email === 'tim@example.com');
+    const draftLocal = await ToolboxDB.getCustomerFile('cf-local-draft');
+    report.L_markedLocal = !!(draftLocal && draftLocal.checkedOutFromCabinet);
+
+    // R: the field case. A job set up and synced on one device cannot be
+    // opened for work on a second one. This is the failure Tim hit: the phone
+    // held nothing, so the iPad had nothing to refuse.
+    localStorage.setItem('toolboxDeviceId', 'device-phone2');
+    let rRefused = false;
+    let rCode = null;
+    try {
+      await ToolboxSync.checkOutCustomerFile('cf-local-draft');
+    } catch (err) {
+      rRefused = true;
+      rCode = err && err.code;
+    }
+    report.R_refused = rRefused;
+    report.R_code = rCode;
+    report.R_leaseIntact = !!(state.indexes['cf-local-draft'].checkout &&
+      state.indexes['cf-local-draft'].checkout.deviceId === 'device-ipad');
+    localStorage.setItem('toolboxDeviceId', 'device-ipad');
 
     // H: failed materialization releases lease
     seedRemote('cf-fail-media');
@@ -607,7 +631,10 @@ try {
   check('I: non-owner cannot push checked-out file', out.I_blocked, JSON.stringify(out));
   check('J: owner can Sync while checked out', out.J_syncOk && out.J_pushed && out.J_leaseKept, JSON.stringify(out));
   check('K: Sync Now leaves remote-only remote', out.K_syncOk && out.K_stillRemote, JSON.stringify(out));
-  check('L: local-only first-upload still works', out.L_upload && out.L_noCheckoutForced, JSON.stringify(out));
+  check('L: local-only first upload works and takes the lease',
+    out.L_upload && out.L_leaseTaken && out.L_markedLocal, JSON.stringify(out));
+  check('R: a second device cannot check out a synced local job',
+    out.R_refused && out.R_code === 'checkout' && out.R_leaseIntact, JSON.stringify(out));
   check('M: shell/epoch protections remain', out.M_epoch, JSON.stringify(out));
   check('N: permanent-delete tombstone / 409 remains', out.N_tombstone && out.N_409, JSON.stringify(out));
   check('O: missing ETag fails safely (no unconditional acquire)', out.O_missingEtagFail && out.O_noOwnership, JSON.stringify(out));

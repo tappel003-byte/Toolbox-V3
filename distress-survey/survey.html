@@ -357,6 +357,31 @@
     background:transparent;font-size:13px;font-weight:600;color:var(--ink)}
   .level-pill .lp-menu button.active{background:var(--accent-soft);color:var(--accent)}
   .level-pill .lp-menu button:active{background:var(--line)}
+  /* Layers on this level. Same row and same pill as Level, because it is the
+     same kind of choice -- and off the canvas, which the working surface keeps. */
+  .level-pill{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .lp-layers{position:relative}
+  .lp-layers > button{
+    display:inline-flex;align-items:center;gap:3px;max-width:min(10rem,100%);
+    height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--line);
+    background:var(--paper);color:var(--ink);font-size:12px;font-weight:600;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lp-layers > button:active{transform:scale(.97)}
+  .lp-layers .lp-menu{
+    display:none;position:absolute;top:calc(100% + 2px);left:0;min-width:11rem;
+    background:var(--paper);border:1px solid var(--line);border-radius:10px;
+    box-shadow:0 8px 24px rgba(0,0,0,.14);z-index:80;padding:4px;max-height:50vh;overflow:auto}
+  .lp-layers.open .lp-menu{display:block}
+  .lp-layers .lp-menu button{
+    display:block;width:100%;text-align:left;padding:10px 12px;border:none;border-radius:8px;
+    background:transparent;font-size:13px;font-weight:600;color:var(--ink)}
+  .lp-layers .lp-menu button.active{background:var(--accent-soft);color:var(--accent)}
+  .lp-layers .lp-menu button:active{background:var(--line)}
+  .lp-layers .lp-note{padding:4px 12px 6px;font-size:10px;color:var(--muted);line-height:1.3}
+  /* Both pills set their own display, which beats the hidden attribute on its
+     own -- a one-level job showed an empty "Level" button next to the layers
+     pill. */
+  .level-pill[hidden], .level-pill > button[hidden], .lp-layers[hidden]{display:none !important}
   body.host-mode #screenHome,
   body.host-mode #screenSetup,
   body.host-mode #screenTrash{display:none !important}
@@ -372,7 +397,7 @@
   .icon-btn:active{background:var(--line)}
   .icon-btn:disabled{opacity:.3}
 
-  .stage{flex:1;position:relative;overflow:hidden;background:#2a2a2a;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+  .stage{flex:1;position:relative;overflow:hidden;background:#fff;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
   .stage *{-webkit-touch-callout:none}
   .stage img,.stage svg,.stage svg *{-webkit-touch-callout:none;-webkit-user-drag:none;user-select:none}
   #planSvg{position:absolute;top:0;left:0;width:100%;height:100%;display:block}
@@ -807,6 +832,12 @@
         <span id="levelPillLabel">Level</span><span class="lp-caret">▾</span>
       </button>
       <div class="lp-menu" id="levelPillMenu" role="listbox"></div>
+      <div class="lp-layers" id="layerPill" hidden>
+        <button type="button" id="layerPillBtn" onclick="toggleLayerPill(event)" aria-haspopup="listbox" aria-expanded="false">
+          <span id="layerPillLabel">Plan</span><span class="lp-caret">▾</span>
+        </button>
+        <div class="lp-menu" id="layerPillMenu" role="listbox"></div>
+      </div>
     </div>
     <button class="icon-btn" id="wSave" onclick="manualSave()" title="Save">💾</button>
     <button class="icon-btn" id="wUndo" onclick="undo()" title="Undo">↶</button>
@@ -1067,6 +1098,11 @@ const HOST_MODE = !!TOOLBOX_CF_ID;
 let _hostRecord = null;
 let _hostCanvases = [];
 let _hostActiveCanvasId = null;
+// Which layers of this level are showing: the plan picture, the black-and-white
+// contour of it, or both at once. One value for the session, not saved to the
+// Customer File -- it is a view, like the zoom, and the sheet of record is the
+// report. Default is the plan, which is what this app has always shown.
+let _hostLayerView = 'plan';
 
 const MAX_IMG_DIM = 2400;        // floor plan downscale cap
 const MAX_PHOTO_DIM = 1600;      // photo downscale cap
@@ -3604,10 +3640,22 @@ function mountPlan() {
     '</filter>';
   svg.appendChild(defs);
   // image
-  const img = svgEl('image', { x:0, y:0, width:W, height:H });
+  const view = hostLayerView();
+  const img = svgEl('image', { x:0, y:0, width:W, height:H, id:'planLayerImage' });
   img.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', project.plan.dataUrl);
   img.setAttribute('href', project.plan.dataUrl);
   svg.appendChild(img);
+  // The contour layer sits over the plan and under everything the investigator
+  // draws, so pins and annotations stay on top of whichever layers are showing.
+  // It is transparent where there are no lines, which is what lets both show
+  // at once.
+  if (project.contourLayer && project.contourLayer.dataUrl) {
+    const contour = svgEl('image', { x:0, y:0, width:W, height:H, id:'contourLayerImage' });
+    contour.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', project.contourLayer.dataUrl);
+    contour.setAttribute('href', project.contourLayer.dataUrl);
+    if (view === 'plan') contour.setAttribute('visibility', 'hidden');
+    svg.appendChild(contour);
+  }
   // groups
   svg.appendChild(svgEl('g', { id:'gDrawings' }));
   svg.appendChild(svgEl('g', { id:'gPins' }));
@@ -6601,12 +6649,16 @@ document.addEventListener('focusin', (e) => {
   .qc-overlay{position:fixed;inset:0;z-index:1200;background:#000;display:none;flex-direction:column}
   .qc-overlay.open{display:flex}
   .qc-video{flex:1;width:100%;height:100%;object-fit:cover;background:#000;-webkit-tap-highlight-color:transparent}
+  /* The controls ride on their own layer so one transform can put the whole
+     set on the part of the screen a pinch has left visible. */
+  .qc-chrome{position:absolute;inset:0;z-index:4;pointer-events:none;transform-origin:top left;will-change:transform}
+  .qc-chrome > *{pointer-events:auto}
   .qc-top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;
-    padding:14px 16px;background:linear-gradient(180deg,rgba(0,0,0,.55),transparent);color:#fff;z-index:2}
+    padding:14px 16px;background:linear-gradient(180deg,rgba(0,0,0,.55),transparent);color:#fff}
   .qc-top .qc-title{font-weight:700;font-size:16px;letter-spacing:.3px}
   .qc-top .qc-count{font-size:14px;opacity:.9}
   .qc-bottom{position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;
-    padding:18px 22px calc(22px + env(safe-area-inset-bottom));background:linear-gradient(0deg,rgba(0,0,0,.55),transparent);z-index:2}
+    padding:18px 22px calc(22px + env(safe-area-inset-bottom));background:linear-gradient(0deg,rgba(0,0,0,.55),transparent)}
   .qc-btn{background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:999px;
     padding:10px 16px;font-weight:600;font-size:14px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
   .qc-btn.primary{background:#fff;color:#111;border-color:#fff}
@@ -6621,20 +6673,22 @@ document.addEventListener('focusin', (e) => {
 
   const html = `
     <div class="qc-overlay" id="qcOverlay">
-      <div class="qc-top">
-        <div>
-          <div class="qc-title">Quick Capture</div>
-          <div class="qc-count" id="qcCount">0 this session · 0 total</div>
-        </div>
-        <button class="qc-btn" id="qcDone">Done</button>
-      </div>
       <video class="qc-video" id="qcVideo" playsinline muted autoplay></video>
       <div class="qc-tap-hint" id="qcHint">Tap anywhere to capture</div>
       <div class="qc-flash" id="qcFlash"></div>
-      <div class="qc-bottom">
-        <button class="qc-btn" id="qcSwap">↺ Camera</button>
-        <button class="qc-btn primary" id="qcShoot">● Capture</button>
-        <span style="width:90px"></span>
+      <div class="qc-chrome" id="qcChrome">
+        <div class="qc-top">
+          <div>
+            <div class="qc-title">Quick Capture</div>
+            <div class="qc-count" id="qcCount">0 this session · 0 total</div>
+          </div>
+          <button class="qc-btn" id="qcDone">Done</button>
+        </div>
+        <div class="qc-bottom">
+          <button class="qc-btn" id="qcSwap">↺ Camera</button>
+          <button class="qc-btn primary" id="qcShoot">● Capture</button>
+          <span style="width:90px"></span>
+        </div>
       </div>
     </div>
   `;
@@ -6642,14 +6696,40 @@ document.addEventListener('focusin', (e) => {
   document.body.appendChild(wrap.firstChild);
 })();
 
-let _qc = { stream: null, facing: 'environment', sessionCount: 0, gps: null, busy: false };
+let _qc = { stream: null, facing: 'environment', sessionCount: 0, gps: null, busy: false, folder: '' };
 
+// A Quick Capture run is a named set. Tim: "If I take a bunch of quick
+// captures and I press Done, I should be able to at the start of the quick
+// capture name the file that those go in; then if I do another quick capture
+// later I can start another file."
+//
+// The name is asked for where the app already asked something -- the start of
+// a run -- so this replaces a step rather than adding one. Cancel still means
+// no session, exactly as cancelling the old question did.
 function confirmQuickCapture(){
   closeMenu();
   if (!project) { alert('Open a project first.'); return; }
-  if (confirm('Start Quick Capture?\n\nTakes untethered photos with GPS + timestamp (separate from your pin photos).')) {
-    openQuickCapture();
-  }
+  const typed = prompt(
+    'Name this set of Quick Captures\n\n' +
+    'For example: Exterior, Interior, Grading & Drainage.\n' +
+    'Photos with GPS and a timestamp, separate from your pin photos.',
+    '',
+  );
+  // Cancel is cancel. An empty name is not a reason to lose the photographs,
+  // so the run is named for the day instead.
+  if (typed === null) return;
+  _qc.folder = cleanQcFolder(typed) || qcFolderForToday();
+  openQuickCapture();
+}
+
+function cleanQcFolder(value){
+  return String(value == null ? '' : value).replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 60);
+}
+
+function qcFolderForToday(){
+  const d = new Date();
+  const pad = n => (n < 10 ? '0' : '') + n;
+  return 'Quick Capture ' + d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 }
 
 async function openQuickCapture(){
@@ -6659,6 +6739,7 @@ async function openQuickCapture(){
   _qc.sessionCount = 0;
   updateQcCount();
   document.getElementById('qcOverlay').classList.add('open');
+  syncQcChrome();
   // GPS once per session (silent if denied)
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
@@ -6668,6 +6749,49 @@ async function openQuickCapture(){
     );
   }
   await startQcStream();
+}
+
+/**
+ * Keep the viewfinder's controls on the part of the screen you can see.
+ *
+ * Tim: "When I pinched the zoom in I just know the buttons went away."
+ *
+ * The overlay is fixed to the page, and pinching on a phone does not move the
+ * page -- it shrinks the window onto it and lets you pan around. So the bars
+ * stay where the page says they are, which is off the edge of what is now
+ * visible, while the camera keeps filling the screen. The shutter is still
+ * there; you simply cannot see it.
+ *
+ * The visible rectangle is what visualViewport reports, so the bars are moved
+ * onto it and scaled back down so they stay the same size under your thumb.
+ * Done moves with the shutter: being able to shoot but not leave would be a
+ * worse trap than the one being fixed ("leaving can never be blocked",
+ * DECISIONS.md, Oct 6).
+ *
+ * At normal zoom this does nothing at all -- the transform is cleared, and
+ * the bars sit exactly where they always have.
+ */
+function syncQcChrome(){
+  const chrome = document.getElementById('qcChrome');
+  const overlay = document.getElementById('qcOverlay');
+  if (!chrome || !overlay || !overlay.classList.contains('open')) return;
+  const vv = window.visualViewport;
+  const scale = vv && vv.scale ? vv.scale : 1;
+  if (!vv || scale <= 1.01 || !window.innerWidth) {
+    chrome.style.transform = '';
+    return;
+  }
+  // The layer is exactly the page; shrink it onto the visible rectangle and
+  // move it there. Its top bar then sits on the top edge of what can be seen
+  // and its bottom bar on the bottom edge, both at their usual size.
+  const k = vv.width / window.innerWidth;
+  chrome.style.transform =
+    'translate(' + vv.offsetLeft + 'px,' + vv.offsetTop + 'px) scale(' + k + ')';
+}
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncQcChrome);
+  window.visualViewport.addEventListener('scroll', syncQcChrome);
 }
 
 async function startQcStream(){
@@ -6695,9 +6819,15 @@ function stopQcStream(){
 
 function closeQuickCapture(){
   stopQcStream();
-  document.getElementById('qcOverlay').classList.remove('open');
+  const overlay = document.getElementById('qcOverlay');
+  const chrome = overlay.querySelector('.qc-chrome');
+  if (chrome) chrome.style.transform = '';
+  overlay.classList.remove('open');
   const e = document.querySelector('.qc-err'); if (e) e.remove();
-  if (_qc.sessionCount > 0) toast(_qc.sessionCount + ' photo' + (_qc.sessionCount===1?'':'s') + ' added');
+  if (_qc.sessionCount > 0) {
+    toast(_qc.sessionCount + ' photo' + (_qc.sessionCount===1?'':'s') +
+      ' added' + (_qc.folder ? ' to ' + _qc.folder : ''));
+  }
 }
 
 function showQcError(msg){
@@ -6723,6 +6853,8 @@ async function qcCaptureFrame(){
     project.quickCapture = project.quickCapture || [];
     project.quickCapture.push({
       id, ts: Date.now(),
+      // The set this run belongs to, so a later run starts a new one.
+      folder: _qc.folder || '',
       lat: _qc.gps ? _qc.gps.lat : null,
       lng: _qc.gps ? _qc.gps.lng : null,
     });
@@ -7178,6 +7310,41 @@ async function hostPlanDataUrl(canvas) {
   return await db.getMedia(canvas.plan.id);
 }
 
+// The level's second layer, written by Floor Survey: a black-and-white contour
+// of this same level, drawn at this same plan's pixel extent. That is why the
+// pins land in the right place on it with nothing to line up.
+function hostContourLayerOf(canvas) {
+  const ps = hostPlanSetup();
+  if (ps && typeof ps.contourLayer === 'function') return ps.contourLayer(canvas);
+  const layer = canvas && canvas.contourLayer;
+  if (!layer || typeof layer.id !== 'string' || !layer.id) return null;
+  return layer;
+}
+
+async function hostContourLayer(canvas) {
+  const layer = hostContourLayerOf(canvas);
+  if (!layer) return null;
+  const db = hostDB();
+  let dataUrl = null;
+  try {
+    dataUrl = await db.getMedia(layer.id);
+  } catch (_) {
+    dataUrl = null;
+  }
+  // The bytes can be absent on a device that has the record but has not pulled
+  // this media yet. No layer is shown rather than an empty one offered.
+  if (!dataUrl) return null;
+  return {
+    id: layer.id,
+    dataUrl: dataUrl,
+    width: Number(layer.width) || (canvas.plan && canvas.plan.width) || 0,
+    height: Number(layer.height) || (canvas.plan && canvas.plan.height) || 0,
+    surveyDate: layer.surveyDate || '',
+    createdAt: layer.createdAt || '',
+    areaName: layer.areaName || '',
+  };
+}
+
 async function hostBuildProjectFromCF() {
   const rec = _hostRecord;
   const d = rec.distress || {};
@@ -7185,6 +7352,7 @@ async function hostBuildProjectFromCF() {
   if (!canvas) throw new Error('No floor plans on this Customer File yet.');
   const dataUrl = await hostPlanDataUrl(canvas);
   if (!dataUrl) throw new Error('Add a plan in the Customer File first.');
+  const contour = await hostContourLayer(canvas);
 
   // Proven project shape; CF supplies address/plan/rooms/front door/building type.
   const fd = canvas.frontDoorFacing || '';
@@ -7212,6 +7380,7 @@ async function hostBuildProjectFromCF() {
       width: w,
       height: h,
     },
+    contourLayer: contour,
     startNum: typeof d.startNum === 'number' ? d.startNum : 1,
     nextNum: typeof d.nextNum === 'number' ? d.nextNum : 1,
     pins,
@@ -7269,21 +7438,113 @@ function hostVisibleDrawings() {
 
 function refreshLevelPill() {
   const pill = document.getElementById('levelPill');
+  const levelBtn = document.getElementById('levelPillBtn');
   const label = document.getElementById('levelPillLabel');
   const menu = document.getElementById('levelPillMenu');
-  if (!pill || !label || !menu) return;
-  if (!HOST_MODE || _hostCanvases.length <= 1) {
-    pill.hidden = true;
+  if (!pill || !label || !menu || !levelBtn) return;
+  // The level button is for choosing between levels, so it appears only when
+  // there is a choice. The row itself can still be needed for the layers pill
+  // on a one-level job, so it is shown or hidden separately below.
+  const multi = HOST_MODE && _hostCanvases.length > 1;
+  levelBtn.hidden = !multi;
+  if (!multi) {
     pill.classList.remove('open');
-    return;
+    menu.innerHTML = '';
+  } else {
+    const cur = _hostCanvases.find(c => c.id === _hostActiveCanvasId);
+    label.textContent = (cur && cur.name) || 'Level';
+    menu.innerHTML = _hostCanvases.map(c => {
+      const active = c.id === _hostActiveCanvasId ? ' active' : '';
+      return `<button type="button" role="option" class="${active.trim()}" data-canvas-id="${c.id}">${escapeHtml(c.name || 'Level')}</button>`;
+    }).join('');
   }
-  pill.hidden = false;
-  const cur = _hostCanvases.find(c => c.id === _hostActiveCanvasId);
-  label.textContent = (cur && cur.name) || 'Level';
-  menu.innerHTML = _hostCanvases.map(c => {
-    const active = c.id === _hostActiveCanvasId ? ' active' : '';
-    return `<button type="button" role="option" class="${active.trim()}" data-canvas-id="${c.id}">${escapeHtml(c.name || 'Level')}</button>`;
-  }).join('');
+  refreshLayerPill();
+}
+
+// Which layers are showing. A level with no contour has nothing to choose
+// between, so it reads 'plan' whatever the session value happens to be.
+function hostLayerView() {
+  if (!project || !project.contourLayer || !project.contourLayer.dataUrl) return 'plan';
+  return _hostLayerView === 'both' ? 'both' : 'plan';
+}
+
+// Contour on its own is gone (DECIDED Tim, Oct 10, 2026): without the walls
+// the pins float and a hall cannot be told from a bedroom, so Plan + contour
+// did everything it did and more.
+const LAYER_VIEW_LABELS = { plan: 'Plan', both: 'Plan + contour' };
+
+function refreshLayerPill() {
+  const row = document.getElementById('levelPill');
+  const pill = document.getElementById('layerPill');
+  const label = document.getElementById('layerPillLabel');
+  const menu = document.getElementById('layerPillMenu');
+  const levelBtn = document.getElementById('levelPillBtn');
+  if (!row || !pill || !label || !menu) return;
+  const hasLayer = !!(HOST_MODE && project && project.contourLayer && project.contourLayer.dataUrl);
+  pill.hidden = !hasLayer;
+  if (!hasLayer) {
+    pill.classList.remove('open');
+    menu.innerHTML = '';
+  } else {
+    const view = hostLayerView();
+    label.textContent = LAYER_VIEW_LABELS[view] || 'Plan';
+    const drawn = hostContourDrawnLine();
+    menu.innerHTML = ['plan', 'both'].map(function (key) {
+      const active = key === view ? ' active' : '';
+      return `<button type="button" role="option" class="${active.trim()}" data-layer-view="${key}">${LAYER_VIEW_LABELS[key]}</button>`;
+    }).join('') + (drawn ? `<p class="lp-note">${escapeHtml(drawn)}</p>` : '');
+  }
+  // The row carries the level button, the layers pill, or both.
+  const needRow = (levelBtn && !levelBtn.hidden) || hasLayer;
+  row.hidden = !needRow;
+  if (!needRow) row.classList.remove('open');
+}
+
+// What the contour was drawn from, so the investigator is not guessing whether
+// it is this survey's. The readings are finished before a contour is sent, so
+// this is provenance rather than a staleness warning.
+function hostContourDrawnLine() {
+  const layer = project && project.contourLayer;
+  if (!layer) return '';
+  const when = layer.surveyDate || (layer.createdAt ? String(layer.createdAt).slice(0, 10) : '');
+  // Which surface, as well as which survey. A contour of the house and a
+  // contour of the garage look nothing alike and mean nothing like the same
+  // thing, so the sheet should not leave that to be guessed.
+  const what = layer.areaName && layer.areaName !== 'Combined' ? layer.areaName : '';
+  if (what && when) return what + ' \u2014 contour from the survey of ' + when;
+  if (what) return what + ' \u2014 contour';
+  return when ? 'Contour from the survey of ' + when : '';
+}
+
+function toggleLayerPill(ev) {
+  if (ev) ev.stopPropagation();
+  const pill = document.getElementById('layerPill');
+  if (!pill || pill.hidden) return;
+  closeLevelPill();
+  const open = !pill.classList.contains('open');
+  pill.classList.toggle('open', open);
+  const btn = document.getElementById('layerPillBtn');
+  if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function closeLayerPill() {
+  const pill = document.getElementById('layerPill');
+  if (pill) pill.classList.remove('open');
+  const btn = document.getElementById('layerPillBtn');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+// Showing a different layer redraws the plan. Nothing about the survey
+// changes, so there is nothing to save and no numbering to recompute.
+function setLayerView(view) {
+  closeLayerPill();
+  const next = view === 'both' ? 'both' : 'plan';
+  if (next === _hostLayerView) return;
+  _hostLayerView = next;
+  const applied = hostLayerView();
+  const contourImg = document.getElementById('contourLayerImage');
+  if (contourImg) contourImg.setAttribute('visibility', applied === 'both' ? 'visible' : 'hidden');
+  refreshLayerPill();
 }
 
 function toggleLevelPill(ev) {
@@ -7323,6 +7584,10 @@ async function switchHostCanvas(canvasId) {
   const w = (canvas.plan && canvas.plan.width) || project.plan.width;
   const h = (canvas.plan && canvas.plan.height) || project.plan.height;
   project.plan = { id: canvas.plan.id, dataUrl, width: w, height: h };
+  project.contourLayer = await hostContourLayer(canvas);
+  // A level with no contour cannot show one, so the view falls back rather
+  // than leaving the plan hidden behind nothing.
+  if (!project.contourLayer) _hostLayerView = 'plan';
   project.frontDoorFacing = canvas.frontDoorFacing || '';
   project.frontDoor = canvas.frontDoor && typeof canvas.frontDoor.x === 'number'
     ? { x: canvas.frontDoor.x, y: canvas.frontDoor.y }
@@ -7610,11 +7875,14 @@ openPinPicker = function () {
 
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#levelPill')) closeLevelPill();
+  if (!e.target.closest('#layerPill')) closeLayerPill();
   const btn = e.target.closest('#levelPillMenu button[data-canvas-id]');
   if (btn) {
     const id = btn.getAttribute('data-canvas-id');
     if (id) switchHostCanvas(id);
   }
+  const layerBtn = e.target.closest('#layerPillMenu button[data-layer-view]');
+  if (layerBtn) setLayerView(layerBtn.getAttribute('data-layer-view'));
 });
 
 

@@ -66,6 +66,69 @@
 
   const FOREIGN_LOCK_KEY = 'toolboxForeignCheckouts';
   const QUIET_SYNC_DELAY_MS = 1200;
+
+  /**
+   * Connectivity, and the fact that navigator.onLine cannot tell you about it.
+   *
+   * navigator.onLine reports whether this device has a network interface up,
+   * not whether anything is reachable through it. Tethering breaks the
+   * assumption completely: an iPad on a phone's hotspot keeps its Wi-Fi link
+   * when the phone loses signal, so onLine stays true, the app never goes to
+   * offline mode, and every request is made into a connection that accepts
+   * packets and answers nothing.
+   *
+   * Tim, in the field on an iPad mini: "The screen got extremely slow and
+   * locked up... my iPad does not have Wi-Fi, I was using my cell phone as a
+   * hotspot. My phone lost signal but it never lost the link to the iPad."
+   *
+   * The false direction is only one way round. onLine === false is reliable --
+   * no interface means no network -- so it stays as the cheap negative. What
+   * needs proving is the positive, and the only proof is a request that is
+   * allowed to fail.
+   */
+  const PROBE_TIMEOUT_MS = 3000;
+  const REQUEST_TIMEOUT_MS = 45000;
+
+  function offlineByInterface() {
+    return typeof navigator !== 'undefined' && navigator.onLine === false;
+  }
+
+  /**
+   * Is anything actually reachable?
+   *
+   * A HEAD at the app's own origin. The service worker does not intercept it
+   * -- its asset branch takes GET only and its navigation branch takes
+   * navigations -- so this reaches the network or fails, and either way it is
+   * over in three seconds. Nothing is cached about the answer: the point of
+   * asking is that it changes while you are standing in a crawlspace.
+   */
+  async function hasConnectivity() {
+    if (offlineByInterface()) return false;
+    try {
+      await fetchWithTimeout('/', { method: 'HEAD', cache: 'no-store' }, PROBE_TIMEOUT_MS);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
+   * fetch with a deadline.
+   *
+   * Every request in this file went out with no timeout and no abort, so on a
+   * dead-but-connected link they did not fail -- they waited for the operating
+   * system to give up, holding a connection each. Safari allows about six to a
+   * host, so the pool filled and anything that genuinely needed the network
+   * queued behind requests that were never going to be answered.
+   */
+  function fetchWithTimeout(input, init, ms) {
+    const limit = typeof ms === 'number' ? ms : REQUEST_TIMEOUT_MS;
+    if (typeof AbortController !== 'function') return fetch(input, init);
+    const controller = new AbortController();
+    const timer = setTimeout(function () { controller.abort(); }, limit);
+    return fetch(input, Object.assign({}, init || {}, { signal: controller.signal }))
+      .finally(function () { clearTimeout(timer); });
+  }
   let quietSuspend = 0;
   let quietTimer = null;
   let syncQueue = Promise.resolve();
@@ -160,16 +223,82 @@
     return next;
   }
 
+  /**
+   * Write "another device is working on this" onto the Customer File itself.
+   *
+   * The lock map lives in this device's localStorage and is only written
+   * while listing the Cabinet, so a device that has not listed since the
+   * lease was taken knows nothing -- and a device with no signal can never
+   * find out. Tim's phone was holding a copy of a job his iPad was working
+   * on and presented it as an ordinary job, because a lease that lives only
+   * in the Cabinet cannot be read from a crawlspace.
+   *
+   * On the record, the fact travels with the copy: it survives a reload,
+   * cleared site data, and having no network at all.
+   *
+   * It must not look like an edit. saveCustomerFile does not touch
+   * updatedAt, and nothing here does either -- the customer component's
+   * revision falls back to record.updatedAt, so bumping it would make the
+   * device that is NOT the authority look like it held the newest contact
+   * details.
+   */
+  async function persistForeignCheckoutMarks(localRecords, locks) {
+    const map = locks || {};
+    for (let i = 0; i < (localRecords || []).length; i++) {
+      const record = localRecords[i];
+      if (!record || !record.id) continue;
+      const lock = map[record.id] || null;
+      const had = record.heldByOtherDevice || null;
+      const next = lock
+        ? { deviceId: lock.deviceId || '', deviceLabel: lock.deviceLabel || '', at: lock.checkedAt || '' }
+        : null;
+      if (JSON.stringify(had) === JSON.stringify(next)) continue;
+      if (next) record.heldByOtherDevice = next;
+      else delete record.heldByOtherDevice;
+      try {
+        await window.ToolboxDB.saveCustomerFile(record);
+      } catch (_) {
+        // A mark that cannot be written is not worth failing a sync over;
+        // the localStorage map still has it for this session.
+      }
+    }
+  }
+
+  /**
+   * Is this copy one that another device holds the lease on?
+   *
+   * Synchronous, because the screen asks while it is rendering. Checks the
+   * copy in hand first -- that answer needs no network and no cache -- and
+   * falls back to the lock map for a file the caller has not loaded.
+   */
+  function heldElsewhere(recordOrId) {
+    if (!recordOrId) return false;
+    if (typeof recordOrId === 'string') return isCheckedOutElsewhere(recordOrId);
+    if (recordOrId.heldByOtherDevice) return true;
+    return isCheckedOutElsewhere(recordOrId.id);
+  }
+
+  function heldElsewhereLabel(record) {
+    const mark = record && record.heldByOtherDevice;
+    if (mark) {
+      return mark.deviceLabel
+        ? ('Checked out on ' + mark.deviceLabel)
+        : 'Checked out on another device';
+    }
+    return foreignCheckoutLabel(record && record.id);
+  }
+
   async function refreshLocalCheckoutLocks() {
     const locks = readForeignLocks();
     if (!syncApiBase()) return { ok: false, reason: 'config', locks: locks };
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    if (!(await hasConnectivity())) {
       return { ok: false, reason: 'offline', locks: locks };
     }
     try {
       const localRecords = await window.ToolboxDB.getAllCustomerFiles();
       const cabinet = await listRemoteCabinet();
       const next = applyLocksFromRemoteIndexes(localRecords, cabinet.files);
+      await persistForeignCheckoutMarks(localRecords, next);
       try {
         await rememberMirrorsFromIndexes(localRecords, cabinet.files);
       } catch (_) {
@@ -400,11 +529,27 @@
     return index;
   }
 
+  // Every media id the plans component owns: each level's plan picture, plus
+  // its contour layer where Floor Survey has written one. Both must travel as
+  // bytes -- a layer the Cabinet does not hold is a layer the next device
+  // cannot show.
+  function canvasMediaIds(canvas) {
+    const ids = [];
+    if (canvas && canvas.plan && canvas.plan.id) ids.push(canvas.plan.id);
+    const layer = canvas && canvas.contourLayer;
+    if (layer && typeof layer.id === 'string' && layer.id) ids.push(layer.id);
+    return ids;
+  }
+
   function planMediaIds(record) {
     const canvases = record && record.planSetup && Array.isArray(record.planSetup.canvases)
       ? record.planSetup.canvases
       : [];
-    return canvases.map(function (c) { return c && c.plan && c.plan.id; }).filter(Boolean);
+    const ids = [];
+    canvases.forEach(function (c) {
+      canvasMediaIds(c).forEach(function (id) { ids.push(id); });
+    });
+    return ids;
   }
 
   function collectDistressPhotoId(ids, id) {
@@ -634,7 +779,11 @@
     if (!payload || typeof payload !== 'object') return [];
     if (name === 'plans') {
       const canvases = Array.isArray(payload.canvases) ? payload.canvases : [];
-      return canvases.map(function (c) { return c && c.plan && c.plan.id; }).filter(Boolean);
+      const ids = [];
+      canvases.forEach(function (c) {
+        canvasMediaIds(c).forEach(function (id) { ids.push(id); });
+      });
+      return ids;
     }
     if (name === 'distress') {
       const pins = Array.isArray(payload.pins) ? payload.pins : [];
@@ -833,7 +982,7 @@
     if (!base) {
       throw new SyncError('config', 'Sync is not configured yet.');
     }
-    if (!navigator.onLine) {
+    if (offlineByInterface()) {
       throw new SyncError('offline', 'Offline — Sync Now needs a network connection.');
     }
     const opts = options || {};
@@ -842,7 +991,7 @@
       headers['x-toolbox-device-id'] = getDeviceId();
     }
     const attempt = async function () {
-      return fetch(base + path, Object.assign({}, opts, {
+      return fetchWithTimeout(base + path, Object.assign({}, opts, {
         headers: headers,
         credentials: 'include',
         redirect: 'manual',
@@ -853,6 +1002,9 @@
     try {
       response = await attempt();
     } catch (err) {
+      if (err && err.name === 'AbortError') {
+        throw new SyncError('offline', 'No answer from the network. Working offline.');
+      }
       throw new SyncError('network', 'Network error during sync.');
     }
 
@@ -876,7 +1028,7 @@
       const loc = response.headers.get('location');
       if (loc) {
         try {
-          response = await fetch(new URL(loc, base).toString(), {
+          response = await fetchWithTimeout(new URL(loc, base).toString(), {
             method: opts.method || 'GET',
             headers: headers,
             body: opts.body,
@@ -1029,9 +1181,42 @@
     if (!id) throw new SyncError('sync', 'Customer File id required.');
     const existingLocal = await window.ToolboxDB.getCustomerFile(id);
     if (existingLocal && !existingLocal.deletedAt) {
-      // Already local: acquire ownership if possible, but do not re-shell.
+      // Already local: take the lease, then bring the copy current.
+      //
+      // This branch used to hand back whatever was on the device without
+      // fetching anything -- "acquire ownership, but do not re-shell" -- and
+      // re-shelling is indeed the wrong thing, but doing nothing is worse.
+      // Tim set a job up on his phone, synced it, worked the survey on his
+      // iPad, checked that in, and then checked out on the phone: he was
+      // handed yesterday's copy with the plans and none of the readings,
+      // and only a manual Sync afterwards brought them down. "I checked out
+      // an empty copy and syncing them gave me my numbers, which also is not
+      // a good thing."
+      //
+      // The reconcile is the ordinary component exchange, not a forced pull,
+      // so local work that is newer than the Cabinet's is pushed rather than
+      // overwritten. Check Out is an online operation by definition -- the
+      // lease was just acquired over the network -- so there is no offline
+      // case to protect here.
       const acquired = await acquireRemoteCheckout(id);
-      const marked = await ensureCheckedOutFromCabinetMarker(existingLocal);
+      let current = existingLocal;
+      try {
+        const remoteIndex = (acquired && acquired.index) || await getRemoteIndex(id);
+        if (remoteIndex) {
+          await syncOneRecord(existingLocal, remoteIndex);
+          current = (await window.ToolboxDB.getCustomerFile(id)) || existingLocal;
+        }
+      } catch (err) {
+        // The lease is held and the local copy is untouched; say so rather
+        // than leaving the investigator believing this copy is current.
+        try { await releaseRemoteCheckout(id); } catch (_) {}
+        throw new SyncError(
+          (err && err.code) || 'sync',
+          'Checked out, but this copy could not be brought up to date. ' +
+          'The lease was released so nothing is held on a stale copy.'
+        );
+      }
+      const marked = await ensureCheckedOutFromCabinetMarker(current);
       return {
         ok: true,
         id: id,
@@ -1096,8 +1281,12 @@
 
   async function ensureCheckedOutFromCabinetMarker(record) {
     if (!record || !record.id) return record;
-    if (record.checkedOutFromCabinet === true) return record;
+    // Taking the lease clears any "someone else has this" mark on this
+    // device's copy: the someone else is now us.
+    const stale = !!record.heldByOtherDevice;
+    if (record.checkedOutFromCabinet === true && !stale) return record;
     record.checkedOutFromCabinet = true;
+    if (stale) delete record.heldByOtherDevice;
     await window.ToolboxDB.saveCustomerFile(record);
     return record;
   }
@@ -1728,6 +1917,13 @@
     if (typeof options.beforeSync === 'function') {
       await options.beforeSync();
     }
+    // Sync Now is the action taken when the investigator is not sure the
+    // work is safe, so it has to answer, and answer truthfully. Three
+    // seconds to find out there is nothing there beats forty-five spent
+    // looking like it is working.
+    if (syncApiBase() && !(await hasConnectivity())) {
+      throw new SyncError('offline', 'Offline — Sync Now needs a network connection.');
+    }
     const localRecords = await window.ToolboxDB.getAllCustomerFiles();
     localRecords.forEach(function (record) {
       if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
@@ -1774,6 +1970,8 @@
         const hadRemote = !!remoteById[record.id];
         const one = await syncOneRecord(record, remoteById[record.id] || null);
         if (exchangeReachedCabinet(one, hadRemote)) await rememberCabinetMirror(record.id);
+        const claimed = await claimWorkingLease(record, remoteById[record.id] || null, one);
+        if (claimed) one.lease = claimed;
         results.push(one);
         delete pendingQuiet[record.id];
         if (one && one.checkoutBlocked && one.uploadBlocked) {
@@ -1860,7 +2058,12 @@
   async function flushQuietSyncBody() {
     const ids = Object.keys(pendingQuiet);
     if (!ids.length) return { ok: true, skipped: 'idle', uploaded: false };
-    if (!syncApiBase() || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+    if (!syncApiBase()) {
+      return { ok: false, skipped: 'offline', pending: ids.slice() };
+    }
+    // Three seconds to find out, instead of forty-five spent discovering it
+    // one hung request at a time.
+    if (!(await hasConnectivity())) {
       return { ok: false, skipped: 'offline', pending: ids.slice() };
     }
     quietSuspend++;
@@ -1896,6 +2099,7 @@
         const hadRemote = !!remoteById[id];
         const result = await syncOneRecord(record, remoteById[id] || null);
         if (exchangeReachedCabinet(result, hadRemote)) await rememberCabinetMirror(id);
+        await claimWorkingLease(record, remoteById[id] || null, result);
         if ((result.components || []).some(function (component) { return component.action === 'push'; })) {
           uploaded = true;
         }
@@ -2050,6 +2254,15 @@
         canvas && canvas.plan && canvas.plan.id,
         'plan',
         name ? 'Floor plan — ' + name : 'Floor plan image',
+      );
+      const layer = canvas && canvas.contourLayer;
+      exploreConsiderMedia(
+        refs,
+        notes,
+        'plans.json',
+        layer && layer.id,
+        'plan',
+        name ? 'Contour layer — ' + name : 'Contour layer',
       );
     });
     const pins = distress && Array.isArray(distress.pins) ? distress.pins : [];
@@ -2437,6 +2650,46 @@
     return { ok: true, id: id, remote: verified, local: false };
   }
 
+  /**
+   * Having a copy is not permission. Holding the lease is.
+   *
+   * A Customer File created on a device and synced up had never been through
+   * Check Out, so no lease existed for it -- and the whole working-authority
+   * model only applies to files that have one. Tim set a job up on his
+   * phone, synced it, and the iPad could then check it out with nothing to
+   * refuse, because nothing was held. Neither device was wrong; the rule
+   * simply did not reach the most common way a job starts.
+   *
+   * So a device that puts work into the Cabinet takes the lease on it. After
+   * this there is one kind of local copy instead of two, and everything
+   * already built applies to it: the server refuses a second device, Check
+   * In releases and removes, and the held-elsewhere mark has something to
+   * report.
+   *
+   * A failed claim never fails the sync -- the work is in the Cabinet, which
+   * is what Sync Now promised -- but it is reported, because a device that
+   * believes it is the authority and is not is the thing being fixed.
+   */
+  async function claimWorkingLease(record, remote, result) {
+    if (!record || !record.id) return null;
+    // Somebody already holds it: nothing to claim, and the push gate above
+    // has already dealt with whether this device could write.
+    if (remote && hasActiveCheckoutLease(remote)) return null;
+    const pushed = ((result && result.components) || []).some(function (component) {
+      return component && component.action === 'push';
+    });
+    if (!pushed) return null;
+    try {
+      const acquired = await acquireRemoteCheckout(record.id);
+      await ensureCheckedOutFromCabinetMarker(record);
+      return { ok: true, checkout: acquired && acquired.checkout };
+    } catch (err) {
+      // Another device claimed it between the push and here. Its copy is the
+      // authority now; this one keeps its safety copy and stops pretending.
+      return { ok: false, code: (err && err.code) || 'sync' };
+    }
+  }
+
   function exchangeReachedCabinet(result, hadRemote) {
     if (hadRemote) return true;
     if (!result) return false;
@@ -2743,6 +2996,8 @@
     flushQuietSync: flushQuietSync,
     noteLocalSave: noteLocalSave,
     refreshLocalCheckoutLocks: refreshLocalCheckoutLocks,
+    heldElsewhere: heldElsewhere,
+    heldElsewhereLabel: heldElsewhereLabel,
     isCheckedOutElsewhere: isCheckedOutElsewhere,
     foreignCheckoutLabel: foreignCheckoutLabel,
     browseCabinet: browseCabinet,

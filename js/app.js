@@ -1542,14 +1542,20 @@
     let homeLocked = false;
 
     function applyHomeLock(record) {
+      // Ask the copy in hand, not just this device's lock cache. The cache
+      // is only written while listing the Cabinet, so a device that has not
+      // listed since the lease was taken -- or has no signal to list with --
+      // knows nothing, and used to present the job as ordinary and editable.
       homeLocked = !!(record && window.ToolboxSync &&
-        typeof window.ToolboxSync.isCheckedOutElsewhere === 'function' &&
-        window.ToolboxSync.isCheckedOutElsewhere(record.id));
+        typeof window.ToolboxSync.heldElsewhere === 'function' &&
+        window.ToolboxSync.heldElsewhere(record));
       const home = app.querySelector('#cf-home');
       if (home) home.classList.toggle('is-checked-out-elsewhere', homeLocked);
       if (deleteBtn) deleteBtn.hidden = homeLocked || cabinetTrashPending(record);
       if (!homeLocked) return;
-      const label = window.ToolboxSync.foreignCheckoutLabel(record.id) || 'Checked out on another device';
+      const label = (typeof window.ToolboxSync.heldElsewhereLabel === 'function'
+        ? window.ToolboxSync.heldElsewhereLabel(record)
+        : '') || 'Checked out on another device';
       statusEl.textContent = label;
       editTopBtn.hidden = true;
       importBtn.disabled = true;
@@ -1633,8 +1639,8 @@
           ((existing.distress && Array.isArray(existing.distress.surfaces) && existing.distress.surfaces.length) ||
            (existing.planSetup && Array.isArray(existing.planSetup.canvases)))) {
         if (window.ToolboxPlanSetup.ensurePlanSetup(existing)) {
-          if (window.ToolboxSync && typeof window.ToolboxSync.isCheckedOutElsewhere === 'function' &&
-              window.ToolboxSync.isCheckedOutElsewhere(existing.id)) {
+          if (window.ToolboxSync && typeof window.ToolboxSync.heldElsewhere === 'function' &&
+              window.ToolboxSync.heldElsewhere(existing)) {
             return existing;
           }
           return window.ToolboxDB.saveCustomerFile(existing).then(function () {
@@ -1908,6 +1914,63 @@
     });
   }
 
+  // Report Builder is a desk tool: an 11 x 17 tabloid sheet, used landscape,
+  // beside a page rail and a
+  // formatting bar, placed with a pointer. Below this width the page and the
+  // rail cannot both be on screen without it becoming a different product.
+  // An iPad mini in landscape clears it; in portrait it does not, which is why
+  // this is a notice and not a lock -- nothing is blocked, it just says so
+  // once per session and gets out of the way.
+  var REPORT_DESKTOP_MIN_WIDTH = 900;
+  var reportNoticeSeen = false;
+
+  function reportDesktopNotice(app, id) {
+    if (reportNoticeSeen) return false;
+    if (window.innerWidth >= REPORT_DESKTOP_MIN_WIDTH) return false;
+    // Marked seen only when Continue is pressed, below. Setting it here meant
+    // saying no still silenced it: go back, open Distress, return, and Report
+    // Builder let you straight in without asking.
+
+    var wrap = document.createElement('div');
+    wrap.className = 'rb-smallscreen';
+    wrap.setAttribute('data-rb-smallscreen', '1');
+    var card = document.createElement('div');
+    card.className = 'rb-smallscreen__card';
+    var head = document.createElement('h2');
+    head.className = 'rb-smallscreen__title';
+    head.textContent = 'Report Builder is intended for desktop';
+    var body = document.createElement('p');
+    body.className = 'rb-smallscreen__body';
+    body.textContent =
+      'It lays out an 11 by 17 inch sheet, so it wants a wide screen and a pointer. ' +
+      'You can carry on here if you need to.';
+    var row = document.createElement('div');
+    row.className = 'rb-smallscreen__row';
+    var go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'rb-smallscreen__go';
+    go.textContent = 'Continue anyway';
+    go.addEventListener('click', function () {
+      // Only now: the choice to carry on is what is remembered, so it does not
+      // nag every time this session. Declining is not a choice to remember.
+      reportNoticeSeen = true;
+      if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+    });
+    var back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'rb-smallscreen__back';
+    back.textContent = 'Back to the Customer File';
+    back.addEventListener('click', function () { goCustomerFileHome(id); });
+    row.appendChild(go);
+    row.appendChild(back);
+    card.appendChild(head);
+    card.appendChild(body);
+    card.appendChild(row);
+    wrap.appendChild(card);
+    app.appendChild(wrap);
+    return true;
+  }
+
   function renderReportBuilder(app, id) {
     registerActiveFlush(null);
     document.body.classList.remove('floor-survey-open', 'distress-survey-open', 'diagnostics-open');
@@ -1938,6 +2001,9 @@
       return;
     }
 
+    // Mount first, then lay the notice over the top: Report Builder is fully
+    // working underneath, so dismissing it leaves a live page rather than
+    // needing a second load.
     window.ToolboxReportBuilder.mount(app, {
       customerFileId: id,
       onBack: leave,
@@ -1945,6 +2011,7 @@
         window.location.hash = '#/file/' + encodeURIComponent(id) + '/' + appKey;
       },
     });
+    reportDesktopNotice(app, id);
   }
 
   function renderAppStub(app, id, appKey) {
@@ -2560,10 +2627,31 @@
   // so a refresh never discards an in-progress edit.
   const refreshBtn = document.getElementById('app-refresh');
   if (refreshBtn) {
+    // A plain reload fetches a fresh document that then loads the OLD scripts
+    // and styles from the installed shell, so the app comes back on the
+    // previous version. Refresh asks the service worker to take the new one
+    // first, then reloads.
     refreshBtn.addEventListener('click', function () {
       flushActiveFile();
-      window.location.reload();
+      refreshBtn.disabled = true;
+      refreshBtn.textContent = 'Updating…';
+      if (window.ToolboxUpdate && typeof window.ToolboxUpdate.refresh === 'function') {
+        window.ToolboxUpdate.refresh();
+      } else {
+        window.location.reload();
+      }
     });
+
+    // Say so when a deploy lands while the app is open, rather than leaving
+    // the investigator to guess whether they are looking at the new version.
+    if (window.ToolboxUpdate && typeof window.ToolboxUpdate.onAvailable === 'function') {
+      window.ToolboxUpdate.onAvailable(function () {
+        if (refreshBtn.disabled) return;
+        refreshBtn.classList.add('is-update-ready');
+        refreshBtn.textContent = '↻ Update ready';
+        refreshBtn.title = 'A new version of Toolbox is ready. Click to load it.';
+      });
+    }
   }
 
   function installSafetyGuards() {

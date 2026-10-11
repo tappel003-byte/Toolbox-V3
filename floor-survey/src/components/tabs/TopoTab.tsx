@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { PlanCanvas } from "../PlanCanvas";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PlanCanvas, type PlanCamera } from "../PlanCanvas";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -12,7 +12,7 @@ import {
   STATS_CHIP_MIN,
   STATS_CHIP_SIZE_EVENT,
 } from "@/components/chrome/StatsChip";
-import { screenAnchoredImageSize } from "@/lib/screen-size";
+import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/lib/screen-size";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Undo2, X, Waves, Palette, Tag, SlidersHorizontal, Minus, Plus } from "lucide-react";
@@ -123,16 +123,139 @@ interface Props {
   pointColor?: string;
   excludedIds?: Set<string>;
   onExcludedIdsChange?: (ids: Set<string>) => void;
+  /**
+   * Offer "Send to Distress Survey" on a black-and-white contour.
+   *
+   * Only the field workspace passes this. Report Builder mounts the same
+   * component on a slide, and a report sheet is not where a field layer is
+   * written. Defaults to off so no other mount gains the action by accident.
+   */
+  allowContourLayer?: boolean;
+  /**
+   * The High, Low and difference this view is drawing, per boundary.
+   *
+   * A report sheet shows these numbers twice: on the pill over the plan and
+   * again in its title rail. The rail was reading them from evidence stored
+   * when the slide was imported, so a sheet could say 9.40 / 8.10 while the
+   * pill beside it said 9.80 / 8.20 -- the drawing and its own caption
+   * disagreeing. There is one source, and it is this component.
+   *
+   * Reporting only. Nothing here changes what is drawn.
+   */
+  onStats?: (stats: Array<{
+    areaId: string;
+    name: string;
+    hi: number;
+    lo: number;
+    delta: number;
+    decimalPlaces: number;
+  }>) => void;
   /** null = "All areas". Owned by the route so the stats pills stay in sync. */
   selectedAreaId?: string | null;
   onSelectedAreaIdChange?: (id: string | null) => void;
   /** Tap H or L on an area's stats pill to highlight that point. */
   onHighlight?: (p: SurveyPoint) => void;
+  /** Report Builder hosts this same view on a slide. It needs to read the view
+   *  the investigator sets, and to put a locked one back. */
+  onCamera?: (camera: PlanCamera) => void;
+  cameraRequest?: (PlanCamera & { nonce: number }) | null;
+  /** Report Builder draws its own colour scale, pill and High/Low markers as
+   *  placed boxes, so the drawing carries none of them. */
+  hideCanvasChrome?: boolean;
+  /**
+   * This view is a picture on a page, not a workspace on a screen.
+   *
+   * Report slides, exports and PDFs size their chrome as a fraction of the
+   * plan, so it scales with the drawing and renders identically on any device
+   * and on paper. The field app stays screen-anchored.
+   */
+  presentation?: boolean;
+  /**
+   * The host owns these render settings and persists them itself.
+   *
+   * The field app remembers the legend size on the device, and did it by
+   * writing localStorage into the settings on mount -- which meant a host that
+   * passed settings in had them overwritten by a device-local value every time
+   * the view opened, and then had its own value written back out over the
+   * device's. A report that stored a legend size could not keep it, and sizing
+   * a legend on one job changed it on every other job on that iPad.
+   *
+   * When the host owns the settings, this view neither reads nor writes that
+   * key. It renders what it is given and reports changes back.
+   */
+  settingsOwnedByHost?: boolean;
+  /**
+   * Draw the H / L / delta pill on the canvas even when the level has a single
+   * boundary.
+   *
+   * In the field a lone surface uses the floating StatsChip instead, which is
+   * positioned against the browser window. A report slide is a page, not a
+   * window, so that pill has nowhere to live -- and a one-boundary level would
+   * be the only page in the book with no pill on it. With this on, one boundary
+   * is drawn exactly the way five are.
+   */
+  statsPillForSingleBoundary?: boolean;
+  /**
+   * Nothing but the controls: the Contours, Palette and Labels panels stacked,
+   * with no canvas. This is what Report Builder's rail renders, so the rail
+   * shows the same controls the field app does rather than a rebuilt set that
+   * would drift from them.
+   */
+  controlsOnly?: boolean;
+  /** A picture on a page: no pan, no zoom, the plan fits its frame. */
+  staticView?: boolean;
+  /**
+   * Lock: the view is shown, not steered.
+   *
+   * A locked report slide must not pan, zoom, resize, or let the legend,
+   * the pill or the High/Low markers be dragged -- the whole point is that
+   * the framing the investigator set holds across every slide. The flag
+   * reached the host and stopped there, adding a CSS class that no stylesheet
+   * defined, so Lock looked like it worked and changed nothing.
+   *
+   * Settings are deliberately NOT frozen. Lock is about where things sit;
+   * turning contours off on a locked slide is the point of locking it first.
+   */
+  locked?: boolean;
+  /** Corner grips that resize the drawing, alongside pan and wheel zoom. */
+  resizeCorners?: boolean;
+  /**
+   * Nothing but the canvas.
+   *
+   * The boundary selector, the Contours / Palette / Labels icons and the
+   * diagnostic points panel are positioned against the viewport, which is
+   * right when this view owns the screen and wrong when it is living inside a
+   * report sheet -- they escape the page and float over the application. They
+   * are not contained here; on a slide they belong in Report Builder's rail,
+   * where the controls for whatever is on the page live. So the canvas is
+   * handed over bare and the rail drives it through props.
+   */
+  chromeless?: boolean;
 }
 
 const DEFAULT_LABEL_DX = 8;
 const DEFAULT_LABEL_DY = 6;
 const LONG_PRESS_MS = 350;
+
+/**
+ * The High/Low marker's drawn size, in image coordinates.
+ *
+ * `highLowPinSize` is the size that reads correctly on a plan of the reference
+ * width. It used to be used as a literal image-space number, which meant the
+ * marker was a different fraction of every differently-sized plan -- 1% of an
+ * 1100 px plan, 0.44% of a 2500 px one -- and on a report slide, where the plan
+ * is scaled down to fit the page, it shrank to an unreadable speck beside point
+ * labels that held their size.
+ *
+ * One function, called by the drawing and by the hit test, so the marker cannot
+ * be drawn in one size and grabbed in another.
+ */
+function pinFontPx(settings: RenderSettings, floor: Floor) {
+  return planProportionalSize(
+    settings.highLowPinSize,
+    planLongSide(floor.planWidth, floor.planHeight),
+  );
+}
 
 // Pin geometry — matches drawPin(). Pin box is centered horizontally on the
 // point, sitting above it. These functions keep hit-testing and rendering aligned
@@ -192,8 +315,39 @@ function labelAnchor(p: SurveyPoint, k = 1) {
 export const DEFAULT_STATS_PILL_SIZE = 28;
 
 /** Pill height in IMAGE coords for a given base (screen px) and zoom. */
-function pillHeightImg(base: number, viewScale: number) {
+/**
+ * The H / L / delta pill's drawn height, in image coordinates.
+ *
+ * Two modes, because the two surfaces genuinely want different things.
+ *
+ * In the field the pill is screen-anchored: you zoom into a plan to work and
+ * the numbers have to stay readable on the device in your hand. That is proven
+ * and it stays.
+ *
+ * On a page there is no screen to anchor to. A report slide, an export and a
+ * PDF are pictures, so the pill is a fixed fraction of the plan -- it scales
+ * with the drawing when the investigator resizes the topo, and it renders the
+ * same on a phone, a desktop and on paper.
+ */
+function chromeSizeImg(
+  base: number,
+  viewScale: number,
+  presentation: boolean,
+  floor: Floor,
+) {
+  if (presentation) {
+    return planProportionalSize(base, planLongSide(floor.planWidth, floor.planHeight));
+  }
   return screenAnchoredImageSize(base, viewScale);
+}
+
+function pillHeightImg(
+  base: number,
+  viewScale: number,
+  presentation: boolean,
+  floor: Floor,
+) {
+  return chromeSizeImg(base, viewScale, presentation, floor);
 }
 
 type PillSeg = { kind: "label" | "hi" | "lo" | "delta"; text: string; w: number };
@@ -217,6 +371,25 @@ function pillMetrics(h: number, label: string | null, hi: number, lo: number, de
 }
 
 /** Pill center in image coords for an area. */
+/**
+ * Does the canvas carry the H / L / delta pill?
+ *
+ * The field app draws it per boundary when a level has more than one, and
+ * leaves a lone surface to the floating StatsChip. A report slide has no
+ * window to float against, so it asks for the pill on one boundary too.
+ *
+ * This is one function because the drawing and the hit test must agree: when
+ * they disagree, a pill is drawn where it cannot be grabbed.
+ */
+function statsPillOnCanvas(
+  settings: RenderSettings,
+  areaCount: number,
+  forSingleBoundary: boolean,
+): boolean {
+  if (settings.showStatsPill === false) return false;
+  return areaCount > 1 || (forSingleBoundary && areaCount === 1);
+}
+
 function pillCenter(area: TopoArea, live?: { dx: number; dy: number } | null) {
   const c = areaCentroid(area);
   const dx = live ? live.dx : (area.pillDx ?? 0);
@@ -241,11 +414,27 @@ export function TopoTab({
   selectedAreaId = null,
   onSelectedAreaIdChange,
   onHighlight,
+  onCamera,
+  cameraRequest,
+  hideCanvasChrome = false,
+  presentation = false,
+  settingsOwnedByHost = false,
+  statsPillForSingleBoundary = false,
+  chromeless = false,
+  controlsOnly = false,
+  staticView = false,
+  locked = false,
+  onStats,
+  resizeCorners = false,
+  allowContourLayer = false,
 }: Props) {
   const selectedId =
     selectedIds && selectedIds.size > 0 ? (selectedIds.values().next().value ?? null) : null;
   const [openCorner, setOpenCorner] = useState<null | "contours" | "palette" | "labels">(null);
   const [warningDismissed, setWarningDismissed] = useState(false);
+  // "Send to Distress Survey" — idle while nothing has been asked for.
+  const [layerState, setLayerState] = useState<"idle" | "working" | "done" | "failed">("idle");
+  const [layerMessage, setLayerMessage] = useState("");
   // Stats pill (High/Low/Δ chip) size — Auto by viewport, or a locked local size.
   const [statsChipLocked, setStatsChipLocked] = useState<number | null>(null);
   const [statsChipAuto, setStatsChipAuto] = useState(28);
@@ -307,12 +496,35 @@ export function TopoTab({
   }, [floor.id]);
   // Current canvas zoom — labels are drawn at a screen-constant size.
   const [viewScale, setViewScale] = useState(1);
-  const resolved = resolveSettings(settings);
+  // The plan's zoom against fit. Reported by the canvas with every camera
+  // change; the legend uses it to hold one size on a page.
+  const [planZoom, setPlanZoom] = useState(1);
+  const handleCamera = useCallback(
+    (camera: PlanCamera) => {
+      const z = camera.zoom > 0 ? camera.zoom : 1;
+      setPlanZoom((prev) => (Math.abs(prev - z) > 1e-4 ? z : prev));
+      onCamera?.(camera);
+    },
+    [onCamera],
+  );
+  // On a report slide the colour scale, the H/L/delta pill and the High and Low
+  // markers are placed boxes that are moved, sized and locked on the page, so
+  // the drawing itself carries none of them. Anything drawn into the canvas is
+  // stuck where it was drawn.
+  const resolved = hideCanvasChrome
+    ? resolveSettings({
+        ...resolveSettings(settings),
+        showLegend: false,
+        showStatsPill: false,
+        showHighLow: false,
+      })
+    : resolveSettings(settings);
 
   // Persist legend scale/position across sessions (localStorage). Defaults: 1.5×.
   const LEGEND_STORAGE_KEY = "topo.legend.v1";
   const legendHydratedRef = useRef(false);
   useEffect(() => {
+    if (settingsOwnedByHost) return;
     if (legendHydratedRef.current) return;
     legendHydratedRef.current = true;
     if (typeof window === "undefined") return;
@@ -332,6 +544,7 @@ export function TopoTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
+    if (settingsOwnedByHost) return;
     if (!legendHydratedRef.current) return;
     if (typeof window === "undefined") return;
     try {
@@ -412,6 +625,24 @@ export function TopoTab({
     ],
   );
 
+  // Report the numbers this view is drawing, so a sheet's rail cannot drift
+  // from the pill on its own plan.
+  const onStatsRef = useRef(onStats);
+  onStatsRef.current = onStats;
+  useEffect(() => {
+    if (!onStatsRef.current) return;
+    onStatsRef.current(
+      areaTopos.map((at) => ({
+        areaId: at.area.id,
+        name: at.area.name || "Boundary",
+        hi: at.hi.value,
+        lo: at.lo.value,
+        delta: at.hi.value - at.lo.value,
+        decimalPlaces: resolved.decimalPlaces ?? 2,
+      })),
+    );
+  }, [areaTopos, resolved.decimalPlaces]);
+
   const canRender = areaTopos.length > 0;
   // Single-surface view (focused area, or only one area exists).
   const soloTopo = areaTopos.length === 1 ? areaTopos[0] : null;
@@ -423,6 +654,11 @@ export function TopoTab({
   // High / Low of the focused area (used for pin hit-testing / dragging).
   const hiLo = soloTopo ? { hi: soloTopo.hi, lo: soloTopo.lo } : null;
 
+  // Whether the canvas carries the H / L / delta pill. One definition, used by
+  // both the drawing and the hit test: when those two disagreed about where a
+  // piece of chrome was, it drew in one place and could be grabbed in another.
+  const canvasStatsPill = statsPillOnCanvas(resolved, areaTopos.length, statsPillForSingleBoundary);
+
 
 
 
@@ -432,9 +668,8 @@ export function TopoTab({
     | { kind: "pill"; areaId: string; dx: number; dy: number; tapPoint: SurveyPoint | null };
 
   function hitDraggable(x: number, y: number): Hit | null {
-    // Multi-area canvas pills only — a single surface uses the floating StatsChip.
-    if (resolved.showStatsPill !== false && areaTopos.length > 1) {
-      const h = pillHeightImg(statsChipSize, viewScale);
+    if (canvasStatsPill) {
+      const h = pillHeightImg(statsChipSize, viewScale, presentation, floor);
       const showLabel = true;
       const dec = resolved.decimalPlaces;
       for (let i = areaTopos.length - 1; i >= 0; i--) {
@@ -466,7 +701,7 @@ export function TopoTab({
     // Pins next — they sit above the point dot and are visually on top.
     if (resolved.showHighLow && hiLo && gridAndContours?.grid && resolved.mode !== "points-only") {
       const check = (kind: "pin-high" | "pin-low", pt: SurveyPoint, dx: number, dy: number) => {
-        const fontPx = resolved.highLowPinSize;
+        const fontPx = pinFontPx(resolved, floor);
         const w = pinWidth(kind === "pin-high" ? "High" : "Low", fontPx);
         const cx = pt.x + dx;
         const top = pt.y + pinTopOffset(fontPx) + dy;
@@ -484,7 +719,8 @@ export function TopoTab({
     // Point-number labels
     if (resolved.showPoints) {
       const fontBase = resolved.pointLabelFontSize;
-      const fontPx = screenAnchoredImageSize(fontBase, viewScale || 1);
+      // Must match the drawn size exactly, or a tap lands beside the label.
+      const fontPx = chromeSizeImg(fontBase, viewScale || 1, presentation, floor);
       const k = fontPx / fontBase;
       const dec = resolved.decimalPlaces;
       const weight = resolved.pointLabelWeight;
@@ -613,7 +849,7 @@ export function TopoTab({
     <div className="flex flex-col h-full relative">
       {/* Area selector — only when the floor has more than one drawn area.
           Draggable so report screenshots can clear it off the plan. */}
-      {areas.length > 1 && (
+      {areas.length > 1 && !chromeless && (
         <div
           className="absolute z-30 touch-none"
           style={
@@ -689,7 +925,7 @@ export function TopoTab({
         </div>
       )}
       {/* Corner icons — closed by default, tap to open. Hidden while their own panel is open. */}
-      {openCorner !== "contours" && (
+      {openCorner !== "contours" && !chromeless && !controlsOnly && (
         <CornerIcon
           pos="top-2 left-2 landscape-short:top-auto landscape-short:left-1/2 landscape-short:-translate-x-[calc(100%+0.25rem)] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
           active={false}
@@ -699,7 +935,7 @@ export function TopoTab({
           <Waves className="h-4 w-4" />
         </CornerIcon>
       )}
-      {openCorner !== "palette" && (
+      {openCorner !== "palette" && !chromeless && !controlsOnly && (
         <CornerIcon
           pos="top-2 right-2 landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:translate-x-[0.25rem] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
           active={false}
@@ -709,7 +945,7 @@ export function TopoTab({
           <Palette className="h-4 w-4" />
         </CornerIcon>
       )}
-      {openCorner !== "labels" && (
+      {openCorner !== "labels" && !chromeless && !controlsOnly && (
         <button
           type="button"
           onClick={() => setOpenCorner("labels")}
@@ -720,6 +956,7 @@ export function TopoTab({
         </button>
       )}
       {/* Diagnostic panel toggle — Topo-only. Excludes points from contour math without touching stored data. */}
+      {!chromeless && (
       <button
         type="button"
         onClick={() => setDiagOpen((v) => !v)}
@@ -736,8 +973,9 @@ export function TopoTab({
           <span className="text-[10px] font-mono tabular-nums">{excludedIds.size}</span>
         )}
       </button>
+      )}
 
-      {diagOpen && (
+      {diagOpen && !chromeless && (
         <TopoDiagnosticPanel
           points={points}
           excludedIds={excludedIds}
@@ -769,13 +1007,25 @@ export function TopoTab({
       )}
 
 
-      <div className="flex-1 relative min-h-0 flex flex-col">
+      <div
+        className={
+          controlsOnly
+            ? "flex flex-col gap-3 w-full"
+            : "flex-1 relative min-h-0 flex flex-col"
+        }
+      >
+        {!controlsOnly && (
         <PlanCanvas
           planDataUrl={floor.planDataUrl}
           planWidth={floor.planWidth}
           planHeight={floor.planHeight}
           hidePlan={!resolved.showPlan}
           planOnTop
+          onCamera={handleCamera}
+          cameraRequest={cameraRequest || undefined}
+          staticView={staticView}
+          frozen={locked}
+          resizeCorners={resizeCorners && !locked}
           refitOnResize={false}
           onTransform={(t) => setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s))}
           onImagePointerDown={(x, y) => {
@@ -785,7 +1035,10 @@ export function TopoTab({
             if (resolved.showLegend && areaTopos.length > 0 && resolved.mode !== "points-only") {
               for (let i = areaTopos.length - 1; i >= 0; i--) {
                 const at = areaTopos[i];
-                const box = areaLegendBox(at.area, resolved);
+                const box = areaLegendBox(at.area, resolved, floor, null, {
+                  presentation,
+                  zoom: planZoom,
+                });
                 const inBox =
                   x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h;
                 if (inBox) {
@@ -919,16 +1172,20 @@ export function TopoTab({
               livePill: activePill,
               liveLegend: activeLegend,
               pillSize: statsChipSize,
+              pillForSingleBoundary: statsPillForSingleBoundary,
+              presentation,
+              planZoom,
               pointSize,
               pointColor,
               viewScale,
             });
           }}
         />
+        )}
 
         {/* Contours popover — upper left */}
-        {openCorner === "contours" && (
-          <CornerPanel pos="top-12 left-2 landscape-short:top-2 landscape-short:left-auto landscape-short:right-2" onClose={() => setOpenCorner(null)} title="Contours">
+        {(openCorner === "contours" || controlsOnly) && (
+          <CornerPanel inline={controlsOnly} pos="top-12 left-2 landscape-short:top-2 landscape-short:left-auto landscape-short:right-2" onClose={() => setOpenCorner(null)} title="Contours">
             {gridAndContours?.grid && (
               <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
                 Range {gridAndContours.grid.minValue.toFixed(2)}"–
@@ -948,6 +1205,88 @@ export function TopoTab({
                 <option value="points-only">Points only</option>
               </select>
             </div>
+            {/*
+              Send to Distress Survey.
+
+              Only on B&W lines, and only in the field app. Tim: "I wonder if
+              the button only triggers when we do black-and-white contours."
+              It does, which makes it what you see is what you send -- there is
+              no mode for the writer to override, so the picture that lands
+              under the damage pins is the one on this screen. The one thing it
+              drops is the reading labels, because the pins go where those
+              would be.
+            */}
+            {allowContourLayer && resolved.mode === "contour-bw" && (
+              <div className="border-t pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 w-full text-xs"
+                  disabled={layerState === "working"}
+                  onClick={async () => {
+                    setLayerState("working");
+                    setLayerMessage("");
+                    try {
+                      // Imported here rather than at the top: the composer
+                      // reads renderTopo out of this module, so a static
+                      // import would close a cycle through it.
+                      const [{ composeContourLayer }, { persistContourLayer }] = await Promise.all([
+                        import("@/lib/contour-layer"),
+                        import("@/lib/db"),
+                      ]);
+                      const drawn = await composeContourLayer({
+                        floor,
+                        points,
+                        settings: resolved,
+                        // The boundary on screen, not every boundary. A
+                        // garage is sloped to drain and swamps the house.
+                        areaId: selectedAreaId,
+                      });
+                      if (!drawn) {
+                        setLayerState("failed");
+                        setLayerMessage("No contours to send yet — this level needs a closed boundary with readings inside it.");
+                        return;
+                      }
+                      await persistContourLayer(floor.id, drawn.dataUrl, {
+                        areaName: drawn.areaName,
+                        // The plan extent the layer covers, not the picture's
+                        // own pixels. The picture is drawn well above plan
+                        // resolution so it holds up on paper, and it is
+                        // stretched back into this box wherever it is shown --
+                        // so this is the number that says the two layers line
+                        // up, in the same units as the plan's own.
+                        width: drawn.extent.w,
+                        height: drawn.extent.h,
+                        pointCount: drawn.pointCount,
+                      });
+                      setLayerState("done");
+                      // Name what went, because sending the wrong boundary
+                      // looks exactly like sending nothing.
+                      setLayerMessage(
+                        `Sent ${drawn.areaName}. Distress Survey can show the pins on it.`,
+                      );
+                    } catch (err) {
+                      setLayerState("failed");
+                      setLayerMessage(
+                        (err as Error)?.message || "Could not send the contour to Distress Survey.",
+                      );
+                    }
+                  }}
+                >
+                  {layerState === "working" ? "Sending…" : "Send to Distress Survey"}
+                </Button>
+                {layerMessage && (
+                  <p
+                    className={
+                      "mt-1 text-[10px] leading-tight " +
+                      (layerState === "failed" ? "text-destructive" : "text-muted-foreground")
+                    }
+                  >
+                    {layerMessage}
+                  </p>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <Label className="text-xs">First</Label>
@@ -1020,8 +1359,9 @@ export function TopoTab({
         )}
 
         {/* Palette popover — upper right */}
-        {openCorner === "palette" && (
+        {(openCorner === "palette" || controlsOnly) && (
           <CornerPanel
+            inline={controlsOnly}
             pos="top-12 right-2 w-60 landscape-short:top-2"
             onClose={() => setOpenCorner(null)}
             title="Palette"
@@ -1041,8 +1381,9 @@ export function TopoTab({
         )}
 
         {/* Labels & layers popover — lower right */}
-        {openCorner === "labels" && (
+        {(openCorner === "labels" || controlsOnly) && (
           <CornerPanel
+            inline={controlsOnly}
             pos="bottom-14 right-3"
             onClose={() => setOpenCorner(null)}
             title="Labels & layers"
@@ -1060,7 +1401,12 @@ export function TopoTab({
                 max={3}
                 step={1}
                 onChange={(v) =>
-                  update({ decimalPlaces: Math.max(0, Math.min(3, Math.round(v ?? 2))) })
+                  update({
+                    decimalPlaces: Math.max(
+                      0,
+                      Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
+                    ),
+                  })
                 }
               />
               <SwitchRow
@@ -1258,21 +1604,29 @@ function CornerPanel({
   title,
   onClose,
   children,
+  inline = false,
 }: {
   pos: string;
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  /** In Report Builder's rail these are not corner popovers floating over a
+   *  canvas -- they are a stacked column of controls. Same contents, so there
+   *  is one definition of what a Contours panel contains. */
+  inline?: boolean;
 }) {
   return (
     <div
       className={
-        "absolute z-30 rounded-xl border bg-card/95 backdrop-blur shadow-2xl p-3 w-64 max-h-[calc(100%-4rem)] overflow-auto space-y-3 text-sm " +
-        pos
+        inline
+          ? "rounded-xl border bg-card p-3 w-full overflow-visible space-y-3 text-sm"
+          : "absolute z-30 rounded-xl border bg-card/95 backdrop-blur shadow-2xl p-3 w-64 max-h-[calc(100%-4rem)] overflow-auto space-y-3 text-sm " +
+            pos
       }
     >
       <div className="flex items-center justify-between -mt-1">
         <span className="text-xs font-semibold">{title}</span>
+        {!inline && (
         <button
           type="button"
           onClick={onClose}
@@ -1281,6 +1635,7 @@ function CornerPanel({
         >
           <X className="h-3.5 w-3.5" />
         </button>
+        )}
       </div>
       {children}
     </div>
@@ -1455,9 +1810,13 @@ export function renderTopo(
   points: SurveyPoint[],
   settings: RenderSettings,
   areaTopos: AreaTopo[],
+  /** Forwarded so a caller that is not the live canvas -- Report Builder's
+   *  figure composer -- can still say how big the drawing will be seen, which
+   *  is what sizes the reading labels and dots. */
+  overlay?: Parameters<typeof renderTopoTop>[5],
 ) {
   renderTopoBase(ctx, floor, settings, areaTopos);
-  renderTopoTop(ctx, floor, points, settings, areaTopos);
+  renderTopoTop(ctx, floor, points, settings, areaTopos, overlay);
 }
 
 // Base pass: contour fills / lines / boundary. Meant to sit UNDER the wall plan.
@@ -1469,11 +1828,23 @@ function renderTopoBase(
 ) {
   const w = Math.max(1, Math.ceil(floor.planWidth ?? 1000));
   const h = Math.max(1, Math.ceil(floor.planHeight ?? 750));
+  // The contour fills are drawn into an offscreen layer and then stamped on.
+  // Sizing that layer to the PLAN's pixels capped the contours at plan
+  // resolution however large they were finally drawn, so every band edge came
+  // out stair-stepped once the drawing was shown bigger than the plan image --
+  // the pixelation on a report slide. The layer is sized for the resolution it
+  // will actually be seen at instead: the transform in force here already
+  // carries the zoom and the device pixel ratio.
+  const m = typeof ctx.getTransform === "function" ? ctx.getTransform() : null;
+  const outScale = m ? Math.max(Math.abs(m.a), Math.abs(m.d)) || 1 : 1;
+  // Capped so a deep zoom on a large plan cannot ask for an enormous bitmap.
+  const layerScale = Math.min(4, Math.max(1, outScale));
   const layer = document.createElement("canvas");
-  layer.width = w;
-  layer.height = h;
+  layer.width = Math.ceil(w * layerScale);
+  layer.height = Math.ceil(h * layerScale);
   const layerCtx = layer.getContext("2d");
   if (!layerCtx) return;
+  layerCtx.setTransform(layerScale, 0, 0, layerScale, 0, 0);
   renderTopoBaseLayer(layerCtx, floor, settings, areaTopos);
   ctx.drawImage(layer, 0, 0, w, h);
 }
@@ -1627,6 +1998,13 @@ function renderTopoTop(
     liveLegend?: { id: string; dx: number; dy: number } | null;
     /** Base (1x zoom) stats-pill height in screen px. */
     pillSize?: number;
+    /** A picture on a page: size chrome against the plan, not the screen. */
+    presentation?: boolean;
+    /** The plan's zoom against its fit-to-frame size. Keeps the legend's
+     *  printed size steady while the plan itself is resized. */
+    planZoom?: number;
+    /** Draw the pill on a one-boundary level too (a report slide does). */
+    pillForSingleBoundary?: boolean;
     pointSize?: number;
     pointColor?: string;
     viewScale?: number;
@@ -1640,11 +2018,20 @@ function renderTopoTop(
   const highlightPin = overlay?.highlightPin ?? null;
   const liveLegend = overlay?.liveLegend ?? null;
   const viewScale = overlay?.viewScale || 1;
-  // Label font: chosen screen px holds when the plan is fit-scaled out
-  // (desktop), and grows gently when zoomed in. Exports at 1x still match
-  // the chosen size.
+  // Label font. In capture, the chosen screen px holds when the plan is
+  // fit-scaled out and grows gently when zoomed in -- proven, and right for a
+  // device in your hand.
+  //
+  // On a page it is a fixed fraction of the plan instead, because a picture's
+  // chrome scales with the picture. Screen-anchored, a reading label kept its
+  // size on the sheet while the plan shrank around it: putting the same level
+  // on a sheet twice halved each plan and left the readings at full size, so
+  // the labels swamped the drawing. At the default fit the two formulas land
+  // within a few percent of each other, so nothing moves until the plan is
+  // resized -- which is the case being fixed. Same reasoning, and the same
+  // helper, as the H/L/delta pill and the High and Low markers.
   const fontBase = resolved.pointLabelFontSize;
-  const fontPx = screenAnchoredImageSize(fontBase, viewScale);
+  const fontPx = chromeSizeImg(fontBase, viewScale, !!overlay?.presentation, floor);
   const k = fontPx / fontBase;
   const weight = resolved.pointLabelWeight;
   const color = resolved.pointLabelColor;
@@ -1655,7 +2042,7 @@ function renderTopoTop(
     // stepper (pointSize) instead of font size, so the stepper actually
     // controls what's drawn.
     const dotBase = overlay?.pointSize ?? 6;
-    const dotR = screenAnchoredImageSize(dotBase, viewScale);
+    const dotR = chromeSizeImg(dotBase, viewScale, !!overlay?.presentation, floor);
     const dotColor = overlay?.pointColor ?? "#dc2626";
     const padX = 4 * k;
     const padY = 2.5 * k;
@@ -1780,7 +2167,10 @@ function renderTopoTop(
           at.grid,
           areaTopos.length === 1 ? at.contours : null,
           !!live,
-          areaLegendBox(at.area, resolved, live),
+          areaLegendBox(at.area, resolved, floor, live, {
+            presentation: !!overlay?.presentation,
+            zoom: overlay?.planZoom,
+          }),
         );
       }
     }
@@ -1793,19 +2183,19 @@ function renderTopoTop(
       const lDx = livePinLow ? livePinLow.dx : (floor.lowPinDx ?? 0);
       const lDy = livePinLow ? livePinLow.dy : (floor.lowPinDy ?? 0);
       for (const at of areaTopos) {
-        drawPin(ctx, at.hi.x + hDx, at.hi.y + hDy, "High", "#b51d16", resolved.highLowPinSize, highlightPin === "pin-high");
-        drawPin(ctx, at.lo.x + lDx, at.lo.y + lDy, "Low", "#1f5f9f", resolved.highLowPinSize, highlightPin === "pin-low");
+        drawPin(ctx, at.hi.x + hDx, at.hi.y + hDy, "High", "#b51d16", pinFontPx(resolved, floor), highlightPin === "pin-high");
+        drawPin(ctx, at.lo.x + lDx, at.lo.y + lDy, "Low", "#1f5f9f", pinFontPx(resolved, floor), highlightPin === "pin-low");
       }
     }
   }
 
-  // Multi-area only: one named canvas pill per boundary. A single surface
-  // uses the floating StatsChip so H / L / Δ is not drawn twice.
-  // Report Builder figure pages turn this off and use fixed chrome slots.
-  if (resolved.showStatsPill !== false && areaTopos.length > 1) {
+  // One named pill per boundary. In the field a lone surface uses the floating
+  // StatsChip instead, so H / L / Δ is not drawn twice; a report slide asks for
+  // it here so one boundary looks the same as five.
+  if (statsPillOnCanvas(resolved, areaTopos.length, !!overlay?.pillForSingleBoundary)) {
     const livePill = overlay?.livePill ?? null;
     const base = overlay?.pillSize ?? DEFAULT_STATS_PILL_SIZE;
-    const h = pillHeightImg(base, viewScale);
+    const h = pillHeightImg(base, viewScale, !!overlay?.presentation, floor);
     for (const at of areaTopos) {
       const live = livePill && livePill.id === at.area.id ? livePill : null;
       drawStatsPill(
@@ -2145,12 +2535,47 @@ function legendBox(settings: RenderSettings) {
 }
 
 /** Color-legend box for one boundary on the All boundaries view. */
+/**
+ * The colour legend's box, in image coordinates.
+ *
+ * Every dimension inside drawLegend() is a multiple of the returned `scale`,
+ * so making that one number plan-proportional sizes the whole legend. It was
+ * a literal image-space 82 x 226 before, which made it 7.5% of an 1100 px plan
+ * and 3.3% of a 2500 px one -- the same drift the High/Low markers had.
+ *
+ * Shared by the drawing and the hit test so the legend cannot be drawn in one
+ * place and grabbed in another.
+ */
 function areaLegendBox(
   area: TopoArea,
   settings: RenderSettings,
+  floor: Floor,
   live?: { dx: number; dy: number } | null,
+  fit?: { presentation?: boolean; zoom?: number } | null,
 ) {
-  const s = settings.legendScale ?? 1;
+  let s = planProportionalSize(
+    settings.legendScale ?? 1,
+    planLongSide(floor.planWidth, floor.planHeight),
+  );
+  // On a page, hold the legend's printed size while the plan is resized.
+  //
+  // The legend is a key, not part of the drawing: it should read the same on
+  // every slide whatever size the investigator has dragged the plan to. Drawn
+  // in image coordinates it did the opposite -- the corner grips scaled it
+  // along with the walls and the contours.
+  //
+  // Dividing by the plan's zoom cancels that. Written out, the legend's height
+  // on the sheet is LEGEND_BASE_H x legendScale x (planLong / 1100) x scale,
+  // and scale = zoom x fitScale, with fitScale = frameLong / planLong; the
+  // plan's size cancels and what is left is the FRAME's long side, which is
+  // the sheet. So the legend is a fixed fraction of the page at any zoom, on
+  // any plan, on screen and on paper. At the default fit (zoom 1) this is
+  // exactly the size it has always been, so nothing moves until the plan is
+  // resized -- which is the case being fixed.
+  if (fit?.presentation) {
+    const zoom = fit.zoom && fit.zoom > 0 ? fit.zoom : 1;
+    s /= zoom;
+  }
   const anchor = areaLegendAnchor(area);
   const dx = live ? live.dx : (area.legendDx ?? 0);
   const dy = live ? live.dy : (area.legendDy ?? 0);

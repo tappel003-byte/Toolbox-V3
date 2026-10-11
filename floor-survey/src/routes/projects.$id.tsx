@@ -441,6 +441,7 @@ function ProjectWorkspace() {
               several boundaries are on the same level. */}
           <StatsChip
             storageKey={`stats-chip-pos:${activeFloor.id}:solo`}
+            decimals={settings.decimalPlaces}
             points={
               mode === "topo" && topoExcludedIds.size
                 ? statsPoints.filter((p) => !topoExcludedIds.has(p.id))

@@ -1,12 +1,22 @@
 # Repository Protection
 
-This repository is a proven operational field application and a permanent fallback/reference implementation for Toolbox.
+This is the integrated Toolbox copy of Floor Survey. It is also the reference implementation
+of proven field behavior.
 
-**Do not modify this repository as part of Toolbox-V3 development.**
+**Changes are allowed, case by case, and must be named and approved first.**
 
-Agents may read and study this repository to understand proven field behavior, UX, data structures, and implementation details.
+The ecosystem evolves and this tree evolves with it. What is protected is proven field
+behavior, not the files.
 
-When functionality is needed in Toolbox-V3, implement it in `tappel003-byte/Toolbox-V3`. Do not refactor, modernize, clean up, or otherwise alter this standalone application unless Tim explicitly authorizes work on this repository.
+Before changing anything an investigator would notice in the capture app — a gesture, a
+default, a visible size, a control's placement, how data is written — name the specific
+change and get Tim's approval. Record approved changes in `DECISIONS.md`.
+
+Plumbing that leaves field behavior identical does not need approval: an optional prop
+defaulting to current behavior, a shared function extracted, an existing component hosted
+somewhere new. "Identical" is a claim — show the diff, don't assert it.
+
+The standalone repositories `field-reporter-pro` and `floorplan-topo-maker` remain untouched.
 
 **Preserve proven behavior. This repository is the reference.**
 

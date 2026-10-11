@@ -6,6 +6,33 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
+/**
+ * A view that survives a change of canvas size -- and a change of plan.
+ *
+ * Both numbers are deliberately relative to something rather than absolute.
+ * `zoom` is a multiple of fit, so a plan stored at 3000 px and the same plan
+ * stored at 1500 px are drawn the same size on the page. The centre is a
+ * fraction of the image for the same reason: as raw image pixels, a camera
+ * set on one level put a different part of the building in the middle of the
+ * page on a level whose plan happened to be exported at a different size.
+ * Levels of one building must land in exactly the same place on every slide;
+ * that is the whole point of locking the view.
+ */
+export interface PlanCamera {
+  /** Centre of the view, as a fraction of the image (0-1). */
+  cx: number;
+  cy: number;
+  /** Multiple of fit-to-view. 1 = exactly fitted. */
+  zoom: number;
+  /**
+   * Set on every camera this component reports. Its absence means a camera
+   * saved before cx/cy were fractions, whose numbers are image pixels; those
+   * are applied as they were written and are rewritten the first time the
+   * plan is moved.
+   */
+  rel?: boolean;
+}
+
 export interface CanvasTransform {
   scale: number;
   tx: number;
@@ -42,8 +69,49 @@ interface Props {
   planOnTop?: boolean;
   /** When nonce changes, pan (and gently zoom in if too far out) so (x,y) is centered. */
   focusRequest?: { x: number; y: number; nonce: number };
+  /**
+   * The view, in terms that do not depend on how big this canvas happens to be.
+   *
+   * scale/tx/ty are wrapper pixels, so the same numbers frame differently in a
+   * Floor Survey window, on a report sheet and in a 17 x 11 in PDF. A camera is
+   * instead "this image point is in the middle, at this multiple of fit", which
+   * reproduces the same framing at any size -- which is what lets one locked
+   * view carry from the screen to the page.
+   */
+  onCamera?: (camera: PlanCamera) => void;
+  /** Apply a camera when the nonce changes. Runs after fit, so it wins. */
+  cameraRequest?: PlanCamera & { nonce: number };
   /** Keep the current pan/zoom when the wrapper changes size, e.g. mobile keyboard. */
   refitOnResize?: boolean;
+  /**
+   * Corner grips that resize the drawing.
+   *
+   * One addition to what this canvas already does, not a replacement for it:
+   * pan and wheel zoom stay exactly as they are. Dragging a corner scales the
+   * plan about the opposite corner, which gives finer control over the size
+   * than the wheel does -- the reason it was asked for.
+   */
+  resizeCorners?: boolean;
+  /**
+   * A picture on a page, not a viewport.
+   *
+   * On a report slide the plan is sized and placed by dragging the frame and
+   * its corner, the way a picture is handled in PowerPoint -- so the canvas
+   * itself does not pan or zoom, and the plan always fits whatever the frame
+   * has been made. Scroll-to-zoom is the wrong gesture there: it navigates a
+   * viewport when what is wanted is to resize a picture.
+   */
+  staticView?: boolean;
+  /**
+   * Show the view but do not let it be steered.
+   *
+   * This is what Lock on a report slide needs, and it is deliberately NOT
+   * `staticView`: that one also refits the plan whenever the box changes
+   * size, which would throw away the very framing Lock was pressed to keep.
+   * This only takes the hands off -- no pan, no pinch, no wheel, and no
+   * chrome dragging, since those gestures all arrive through these handlers.
+   */
+  frozen?: boolean;
   /** Optional per-floor plan-image transform (Align mode). Applied to the raster only; points/overlays unchanged. */
   planTransform?: { tx: number; ty: number; scale: number; rotation: number };
 }
@@ -69,7 +137,12 @@ export function PlanCanvas({
   hidePlan = false,
   planOnTop = false,
   focusRequest,
+  onCamera,
+  cameraRequest,
   refitOnResize = true,
+  staticView = false,
+  frozen = false,
+  resizeCorners = false,
   planTransform,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -82,6 +155,8 @@ export function PlanCanvas({
   transformRef.current = transform;
   const onTransformRef = useRef(onTransform);
   onTransformRef.current = onTransform;
+  const onCameraRef = useRef(onCamera);
+  onCameraRef.current = onCamera;
 
   const imgW = planWidth ?? IMPLIED_W;
   const imgH = planHeight ?? IMPLIED_H;
@@ -100,11 +175,30 @@ export function PlanCanvas({
     img.src = planDataUrl;
   }, [planDataUrl]);
 
-  const applyTransform = useCallback((t: CanvasTransform) => {
-    transformRef.current = t;
-    setTransform(t);
-    onTransformRef.current?.(t);
-  }, []);
+  /** Scale at which the plan exactly fits the current wrapper. */
+  const fitScale = useCallback(() => {
+    const wrap = wrapRef.current;
+    if (!wrap || !wrap.clientWidth || !wrap.clientHeight) return 1;
+    return Math.min(wrap.clientWidth / imgW, wrap.clientHeight / imgH) || 1;
+  }, [imgW, imgH]);
+
+  const applyTransform = useCallback(
+    (t: CanvasTransform) => {
+      transformRef.current = t;
+      setTransform(t);
+      onTransformRef.current?.(t);
+      const wrap = wrapRef.current;
+      if (onCameraRef.current && wrap && t.scale > 0) {
+        onCameraRef.current({
+          cx: (wrap.clientWidth / 2 - t.tx) / t.scale / (imgW || 1),
+          cy: (wrap.clientHeight / 2 - t.ty) / t.scale / (imgH || 1),
+          zoom: t.scale / (fitScale() || 1),
+          rel: true,
+        });
+      }
+    },
+    [fitScale, imgW, imgH],
+  );
 
   // Fit-to-view only on first load/new plan, or when the user taps Fit.
   const fit = useCallback(() => {
@@ -132,15 +226,55 @@ export function PlanCanvas({
     const ro = new ResizeObserver(() => {
       const w = wrap.clientWidth;
       const h = wrap.clientHeight;
-      if (Math.abs(w - lastW) > 20 || Math.abs(h - lastH) > 20) {
+      // A picture follows its frame exactly, so any change refits; a viewport
+      // only refits on a big change, to survive a mobile keyboard.
+      if (staticView ? w !== lastW || h !== lastH : Math.abs(w - lastW) > 20 || Math.abs(h - lastH) > 20) {
         lastW = w;
         lastH = h;
-        if (refitOnResize) fit();
+        if (staticView || refitOnResize) fit();
       }
     });
     ro.observe(wrap);
     return () => ro.disconnect();
-  }, [fit, refitOnResize]);
+  }, [fit, refitOnResize, staticView]);
+
+  // Apply a stored camera. This runs after the fit effect above, so a locked
+  // view is not overwritten by the fit that happens when the plan finishes
+  // loading. Because the camera is expressed against fit, the same stored
+  // numbers frame the same thing whatever size this canvas is.
+  const cameraNonceRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!cameraRequest) return;
+    if (cameraNonceRef.current === cameraRequest.nonce) return;
+    const wrap = wrapRef.current;
+    if (!wrap || !wrap.clientWidth || !wrap.clientHeight) return;
+    // Wait for the plan, or the fit that runs when it finishes loading would
+    // throw the stored view away a moment after it was applied.
+    if (planDataUrl && !imgLoaded) return;
+    cameraNonceRef.current = cameraRequest.nonce;
+    const scale = (cameraRequest.zoom || 1) * (fitScale() || 1);
+    // A camera written before the centre became a fraction holds image
+    // pixels; it is applied as written rather than silently reinterpreted.
+    const cx = cameraRequest.rel ? cameraRequest.cx * imgW : cameraRequest.cx;
+    const cy = cameraRequest.rel ? cameraRequest.cy * imgH : cameraRequest.cy;
+    const tx = wrap.clientWidth / 2 - cx * scale;
+    const ty = wrap.clientHeight / 2 - cy * scale;
+    // A stored view that does not actually show the plan is not a view. The
+    // report's camera is saved as it is panned and is shared by every Floor
+    // Survey slide, so one pan past the edge would otherwise open every slide
+    // on blank paper with no way back. If the plan would be entirely off the
+    // canvas, fit instead.
+    const onScreen =
+      tx < wrap.clientWidth &&
+      ty < wrap.clientHeight &&
+      tx + imgW * scale > 0 &&
+      ty + imgH * scale > 0;
+    if (!onScreen) {
+      fit();
+      return;
+    }
+    applyTransform({ scale, tx, ty });
+  }, [cameraRequest, fitScale, applyTransform, fit, imgW, imgH, imgLoaded, canvasSizeTick, planDataUrl]);
 
   // Programmatic focus: pan (and gently zoom in if too zoomed out) to center (x,y).
   const focusNonceRef = useRef<number | undefined>(undefined);
@@ -396,6 +530,82 @@ export function PlanCanvas({
     singleStart.current = null;
   }
 
+  // Corner resize. Scales about the OPPOSITE corner, so the corner being held
+  // is the one that moves and the drawing grows or shrinks from the other.
+  const cornerDrag = useRef<
+    | {
+        pointerId: number;
+        corner: "nw" | "ne" | "sw" | "se";
+        anchorX: number;
+        anchorY: number;
+        imgX: number;
+        imgY: number;
+        startDist: number;
+        startScale: number;
+      }
+    | null
+  >(null);
+
+  function cornerPointerDown(
+    corner: "nw" | "ne" | "sw" | "se",
+    e: ReactPointerEvent<HTMLSpanElement>,
+  ) {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = wrap.getBoundingClientRect();
+    const t = transformRef.current;
+    // The grips belong to the PLAN, so the corner that stays still is the
+    // plan's opposite corner -- not the opposite corner of the canvas. Anchored
+    // to the canvas, resizing dragged the plan around relative to the page,
+    // which is not what grabbing a picture's corner does.
+    const imgX = corner === "nw" || corner === "sw" ? imgW : 0;
+    const imgY = corner === "nw" || corner === "ne" ? imgH : 0;
+    const anchorX = t.tx + imgX * t.scale;
+    const anchorY = t.ty + imgY * t.scale;
+    const dist = Math.hypot(e.clientX - (rect.left + anchorX), e.clientY - (rect.top + anchorY));
+    cornerDrag.current = {
+      pointerId: e.pointerId,
+      corner,
+      anchorX,
+      anchorY,
+      imgX,
+      imgY,
+      startDist: Math.max(1, dist),
+      startScale: t.scale,
+    };
+    try {
+      (e.currentTarget as HTMLSpanElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* capture is a convenience */
+    }
+  }
+
+  function cornerPointerMove(e: ReactPointerEvent<HTMLSpanElement>) {
+    const d = cornerDrag.current;
+    const wrap = wrapRef.current;
+    if (!d || !wrap || d.pointerId !== e.pointerId) return;
+    e.preventDefault();
+    const rect = wrap.getBoundingClientRect();
+    const dist = Math.hypot(
+      e.clientX - (rect.left + d.anchorX),
+      e.clientY - (rect.top + d.anchorY),
+    );
+    const next = Math.max(0.05, Math.min(20, d.startScale * (dist / d.startDist)));
+    applyTransform({
+      scale: next,
+      tx: d.anchorX - d.imgX * next,
+      ty: d.anchorY - d.imgY * next,
+    });
+  }
+
+  function cornerPointerUp(e: ReactPointerEvent<HTMLSpanElement>) {
+    if (cornerDrag.current && cornerDrag.current.pointerId === e.pointerId) {
+      cornerDrag.current = null;
+    }
+  }
+
   // wheel zoom for desktop
   function onWheel(e: React.WheelEvent<HTMLDivElement>) {
     e.preventDefault();
@@ -421,15 +631,59 @@ export function PlanCanvas({
         data-canvas-tx={transform.tx}
         data-canvas-ty={transform.ty}
         className="absolute inset-0 touch-none overflow-hidden select-none"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-        onWheel={onWheel}
-        style={{ cursor: "crosshair" }}
+        onPointerDown={staticView || frozen ? undefined : onPointerDown}
+        onPointerMove={staticView || frozen ? undefined : onPointerMove}
+        onPointerUp={staticView || frozen ? undefined : onPointerUp}
+        onPointerCancel={staticView || frozen ? undefined : onPointerCancel}
+        onWheel={staticView || frozen ? undefined : onWheel}
+        style={{ cursor: staticView || frozen ? "default" : "crosshair" }}
       >
         <canvas ref={canvasRef} />
       </div>
+      {resizeCorners &&
+        (["nw", "ne", "sw", "se"] as const).map((corner) => {
+          // The grips sit on the PLAN's own corners and travel with it when it
+          // is panned or zoomed, rather than sitting at the corners of the
+          // canvas. The wrapper is inset-0 inside this box, so the transform's
+          // local coordinates are this box's coordinates.
+          const left =
+            transform.tx + (corner === "ne" || corner === "se" ? imgW * transform.scale : 0);
+          const top =
+            transform.ty + (corner === "sw" || corner === "se" ? imgH * transform.scale : 0);
+          return (
+            <span
+              key={corner}
+              data-plan-resize={corner}
+              onPointerDown={(e) => cornerPointerDown(corner, e)}
+              onPointerMove={cornerPointerMove}
+              onPointerUp={cornerPointerUp}
+              onPointerCancel={cornerPointerUp}
+              // Two lines meeting at a right angle, like a crop mark, not a
+              // filled tile. Tim: "I like the corner 90 degree pulls better
+              // for this." A tile sits on the drawing and reads as part of
+              // it; a bracket frames its corner and leaves the drawing
+              // visible underneath. The box stays 16px so it is still easy to
+              // hit -- only two of its four borders are drawn.
+              className={
+                "rb-plan-corner rb-plan-corner--" + corner + " absolute z-30 h-4 w-4 touch-none " +
+                (corner === "nw" || corner === "se"
+                  ? "cursor-nwse-resize"
+                  : "cursor-nesw-resize")
+              }
+              // Tucked just inside the plan's corner rather than centred on
+              // it: a grip straddling the corner has half its area outside the
+              // drawing, where the slide's chrome overlays sit on top, and the
+              // bottom pair then could not be grabbed at all.
+              style={{
+                left,
+                top,
+                transform: `translate(${corner === "ne" || corner === "se" ? "-100%" : "0"}, ${
+                  corner === "sw" || corner === "se" ? "-100%" : "0"
+                })`,
+              }}
+            />
+          );
+        })}
     </div>
   );
 }
