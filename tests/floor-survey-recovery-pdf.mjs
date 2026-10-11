@@ -251,8 +251,10 @@ async function recoveryRecord() {
   return page.evaluate(async (ids) => {
     const rec = await window.ToolboxDB.getCustomerFile(ids.FILE_ID);
     const layer = rec.floorSurvey.byCanvasId[ids.CANVAS_ID];
+    // Read what the record points at, not a name guessed from the canvas id:
+    // each Save mints a new one so the Cabinet actually receives it.
     const mediaId = window.ToolboxFloorSurvey.recoveryPdfMediaIdFor(ids.CANVAS_ID);
-    const pdf = await window.ToolboxDB.getMedia(mediaId);
+    const pdf = await window.ToolboxDB.getMedia(layer.recoveryPdfMediaId || mediaId);
     const db = await new Promise((res, rej) => {
       const req = indexedDB.open('toolbox', 2);
       req.onsuccess = () => res(req.result);
@@ -311,9 +313,13 @@ check(
     saved.tone === 'ok' &&
     stored.points.length === 5 &&
     stored.points.some((p) => p.id === 'pt-se' && p.value === 8.75) &&
-    stored.mediaIdOnLayer === stored.expectedId &&
-    stored.pdf.startsWith('data:application/pdf') &&
-    stored.recoveryKeys.length === 1,
+    // The id is minted per Save so the Cabinet actually receives the new
+    // one; what must stay true is that there is exactly one, and the layer
+    // points at it.
+    stored.mediaIdOnLayer.startsWith(stored.expectedId) &&
+    stored.recoveryKeys.length === 1 &&
+    stored.recoveryKeys[0] === stored.mediaIdOnLayer &&
+    stored.pdf.startsWith('data:application/pdf'),
   JSON.stringify({ status: saved, points: stored.points, keys: stored.recoveryKeys, mediaId: stored.mediaIdOnLayer }),
 );
 check(
@@ -353,17 +359,28 @@ const replaced = await recoveryRecord();
 check(
   'Second Save replaces the recovery PDF',
   second.status === 'Saved · Recovery PDF updated.' &&
+    // Replaced, not accumulated: still exactly one, and the old object is
+    // gone rather than left behind as Save 1 / Save 2.
     replaced.recoveryKeys.length === 1 &&
-    replaced.mediaIdOnLayer === stored.expectedId &&
+    replaced.recoveryKeys[0] === replaced.mediaIdOnLayer &&
     replaced.pdf.startsWith('data:application/pdf') &&
     replaced.pdf !== firstPdf &&
     replaced.points.some((p) => p.id === 'pt-mid' && p.value === 6.5),
   JSON.stringify({
     keys: replaced.recoveryKeys,
-    sameId: replaced.mediaIdOnLayer === stored.expectedId,
     changed: replaced.pdf !== firstPdf,
     mid: replaced.points.find((p) => p.id === 'pt-mid'),
   }),
+);
+check(
+  'and under a new name, so the File Cabinet receives it',
+  // Sync skips media whose id it already holds. Under the old stable id the
+  // bytes changed but the name did not, so the Cabinet kept the first
+  // recovery PDF a canvas ever had and every later Save stayed on the
+  // device -- silently, in the one thing meant to survive a lost device.
+  replaced.mediaIdOnLayer !== stored.mediaIdOnLayer &&
+    replaced.mediaIdOnLayer.startsWith(stored.expectedId),
+  JSON.stringify({ first: stored.mediaIdOnLayer, second: replaced.mediaIdOnLayer }),
 );
 
 const knownGood = replaced.pdf;

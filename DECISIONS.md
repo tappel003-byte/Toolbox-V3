@@ -388,6 +388,15 @@ Authorized by Tim after the design was talked through: "It might be best to star
 
 ---
 
+## The field checkpoint reaches the Cabinet every time
+
+- **A Save mints a new checkpoint id (FIXED Oct 11, 2026).** The Floor Survey recovery PDF was stored under one stable name per level and overwritten on every Save. Sync treats media as immutable — it skips the upload when the id is already in the Cabinet and skips the download when the id is already on the device — so the Cabinet kept the **first** recovery PDF a level ever had, and every Save after that stayed on the device. Silently, in the one thing that exists to survive a lost device.
+- **This is the Save-checkpoint rule, not a change to it.** One checkpoint per survey, replaced in place, the new one written successfully before the previous is retired, and no Save 1 / Save 2 / Save 3 history: the old object is deleted as soon as the record stops pointing at it. The only thing that changed is that the replacement has a name of its own, which is what makes it travel.
+- The `fsrec_` prefix is kept, because the sync collector and the local cleanup both recognise checkpoints by it.
+- Found while tracing media for the contour layer, which had the same shape and was built with a fresh id from the start.
+
+---
+
 ## Connectivity, and what counts as proof of it
 
 - **`navigator.onLine` is not a connectivity test (FOUND in the field, Tim, Oct 9, 2026).** It reports whether a network interface is up, not whether anything is reachable. Tim, on an iPad mini tethered to his phone: "The screen got extremely slow and locked up... my iPad does not have Wi-Fi, I was using my cell phone as a hotspot. My phone lost signal but it never lost the link to the iPad." The link stayed up, so the app never went to offline mode.
