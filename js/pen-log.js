@@ -441,7 +441,8 @@
     sheet.setAttribute('data-page-kind', 'pen-log');
     var levelName = text(model.levelName) || 'Level';
     var figureNumber = model.pageNumber ? String(model.pageNumber) : '';
-    var figureLabel = figureNumber ? 'Figure ' + figureNumber : 'Figure';
+    var figureLabel = (figureNumber ? 'Figure ' + figureNumber : 'Figure') +
+      (model.figureCont ? ' (cont.)' : '');
     var headingText = 'Picture/Damage Locations';
     sheet.setAttribute('aria-label', figureLabel + ', ' + headingText + ', ' + levelName + ', 11 by 17 inch landscape');
 

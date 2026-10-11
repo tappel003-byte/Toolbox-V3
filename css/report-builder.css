@@ -693,22 +693,11 @@ body.report-builder-open .canvas {
   flex: 0 0 auto;
 }
 
-.rb-topo-page__header-left,
-.rb-topo-page__header-right {
+.rb-topo-page__header-left {
   min-width: 0;
 }
 
-.rb-topo-page__header-right {
-  text-align: right;
-}
-
-.rb-topo-page__figure-num,
-.rb-topo-page__figure-title,
-.rb-topo-page__survey-date,
-.rb-topo-page__corrected,
-.rb-topo-page__residence,
-.rb-topo-page__address,
-.rb-topo-page__address-city {
+.rb-topo-page__figure-num {
   margin: 0;
 }
 
@@ -717,44 +706,6 @@ body.report-builder-open .canvas {
   font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.1;
-}
-
-.rb-topo-page__figure-title {
-  margin-top: 1px;
-  font-size: clamp(12px, 1.9cqb, 18px);
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  line-height: 1.2;
-}
-
-.rb-topo-page__survey-date,
-.rb-topo-page__corrected {
-  margin-top: 2px;
-  font-size: clamp(10px, 1.45cqb, 13px);
-  font-weight: 500;
-  color: #222;
-}
-
-.rb-topo-page__residence {
-  font-size: clamp(12px, 1.9cqb, 17px);
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.rb-topo-page__address,
-.rb-topo-page__address-city {
-  font-size: clamp(10px, 1.5cqb, 13px);
-  font-weight: 500;
-  color: #222;
-  line-height: 1.25;
-}
-
-.rb-topo-page__front-door {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 6px;
 }
 
 .rb-topo-page__north {
@@ -767,26 +718,6 @@ body.report-builder-open .canvas {
   display: block;
   width: 100%;
   height: 100%;
-}
-
-.rb-topo-page__front-door-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  line-height: 1.15;
-}
-
-.rb-topo-page__front-door-meta span {
-  font-size: clamp(8px, 1.1cqb, 10px);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #555;
-}
-
-.rb-topo-page__front-door-meta strong {
-  font-size: clamp(11px, 1.6cqb, 14px);
-  font-weight: 700;
 }
 
 .rb-topo-page__body {
@@ -932,46 +863,6 @@ body.report-builder-open .canvas {
   width: auto;
   height: auto;
   object-fit: contain;
-}
-
-.rb-topo-page__chrome {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-}
-
-.rb-topo-page__stat-block {
-  position: absolute;
-  top: 8%;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 5px;
-  max-width: 28%;
-}
-
-.rb-topo-page__stat-block--left {
-  left: 1.5%;
-}
-
-.rb-topo-page__stat-block--right {
-  right: 1.5%;
-  left: auto;
-  align-items: flex-end;
-}
-
-.rb-topo-page__stat-block--right .rb-topo-stats {
-  align-self: flex-end;
-}
-
-.rb-topo-page__stat-name {
-  padding: 2px 6px;
-  border: 1px solid rgba(23, 19, 14, 0.35);
-  background: rgba(255, 255, 255, 0.92);
-  font-size: clamp(9px, 1.2cqb, 11px);
-  font-weight: 700;
-  line-height: 1.2;
 }
 
 /* High / Low markers. Placed boxes like the colour scale and the pill, not

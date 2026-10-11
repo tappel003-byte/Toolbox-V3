@@ -406,16 +406,6 @@
     return map;
   }
 
-  function insertIndexBeforeClosing(pages) {
-    var closing = { discussion: 1, conclusions: 1, limitations: 1 };
-    for (var i = 0; i < pages.length; i += 1) {
-      var sectionId = pages[i] && pages[i].meta && pages[i].meta.sectionId;
-      if (sectionId && closing[sectionId]) return i;
-      if (pages[i] && pages[i].type === 'diagnostics') return i;
-    }
-    return pages.length;
-  }
-
   function lastIndexOfType(pages, type) {
     var index = -1;
     for (var i = 0; i < pages.length; i += 1) {
@@ -442,6 +432,46 @@
       return api.assignFigureNumbers(pages);
     }
     return pages;
+  }
+
+  /**
+   * Renumber the figures in the order the book is actually in.
+   *
+   * Earlier and Later put a sheet where the investigator wants it, so the
+   * numbering has to follow the rail rather than the order the book would be
+   * assembled in -- renumbering against the canonical order is how a sheet
+   * moved up could end up stamped with the number of the one below it.
+   */
+  function renumberInPlace(pages) {
+    var api = sourceApi();
+    if (api && typeof api.assignFigureNumbers === 'function') api.assignFigureNumbers(pages);
+    return pages;
+  }
+
+  /**
+   * Where a kind of sheet belongs when the book has none of it yet.
+   *
+   * The saved order is the investigator's, so nothing is re-sorted on reopen
+   * -- but a level surveyed after the last save has to arrive somewhere, and
+   * "at the end" put Picture Locations after the Pictures sheets. It goes in
+   * front of the first sheet that belongs after it: Cover, Discussion, Floor
+   * Survey, Picture Locations, Pictures, anything else.
+   */
+  var PAGE_BANDS = { cover: 0, section: 1, floor: 2, distress: 3, pictures: 4 };
+
+  function bandOf(page) {
+    if (!page) return 5;
+    var band = PAGE_BANDS[page.type];
+    return typeof band === 'number' ? band : 5;
+  }
+
+  function firstIndexOfLaterBand(pages, type) {
+    var band = PAGE_BANDS[type];
+    if (typeof band !== 'number') return pages.length;
+    for (var i = 0; i < pages.length; i += 1) {
+      if (bandOf(pages[i]) > band) return i;
+    }
+    return pages.length;
   }
 
   function reconcileReportPages(savedPages, freshPages, photos) {
@@ -521,7 +551,7 @@
       });
       if (!additions.length) return;
       var anchor = lastIndexOfType(pages, type);
-      var at = anchor >= 0 ? anchor + 1 : insertIndexBeforeClosing(pages);
+      var at = anchor >= 0 ? anchor + 1 : firstIndexOfLaterBand(pages, type);
       pages = insertPagesAt(pages, at, additions);
     }
 
@@ -572,10 +602,12 @@
       if (queue.length) {
         var startFig = maxFigureNumber(pages) + 1;
         var created = buildPicturesPages(queue, startFig, pages);
+        // Pictures come after the Picture Locations sheets that point at
+        // them, which is the order ensurePicturesInFreshPages builds too.
         var at = lastIndexOfType(pages, 'pictures');
-        if (at < 0) at = lastIndexOfType(pages, 'floor');
         if (at < 0) at = lastIndexOfType(pages, 'distress');
-        at = at >= 0 ? at + 1 : insertIndexBeforeClosing(pages);
+        if (at < 0) at = lastIndexOfType(pages, 'floor');
+        at = at >= 0 ? at + 1 : firstIndexOfLaterBand(pages, 'pictures');
         pages = insertPagesAt(pages, at, created);
       }
     }
@@ -589,7 +621,14 @@
       pictures[0].railLabel = 'Pictures';
     }
 
-    return renumberFigures(pages);
+    // The saved order is the investigator's. Earlier and Later put a sheet
+    // where they want it and autosave stores it -- and this is where that
+    // choice was being thrown away, because re-sorting into assembly order on
+    // every reopen undid the move. New source sheets are inserted at their own
+    // anchor above, so a re-sort has nothing left to do here. A saved document
+    // with no cover is not one of ours; let the assembler rebuild that one.
+    if (!pages.some(function (page) { return page.type === 'cover'; })) return renumberFigures(pages);
+    return renumberInPlace(pages);
   }
 
   function ensurePicturesInFreshPages(pages, photos) {
@@ -639,60 +678,6 @@
     if (n == null) return '';
     var places = typeof dec === 'number' ? dec : 2;
     return n.toFixed(places);
-  }
-
-  function renderTopoLegend(stats) {
-    var box = document.createElement('div');
-    box.className = 'rb-topo-legend';
-    var elev = document.createElement('div');
-    elev.className = 'rb-topo-legend__elev';
-    elev.textContent = 'ELEV.';
-    box.appendChild(elev);
-    var bar = document.createElement('div');
-    bar.className = 'rb-topo-legend__bar';
-    var legend = stats.legend || { min: 0, max: 0, stops: [] };
-    var stops = Array.isArray(legend.stops) ? legend.stops.slice() : [];
-    // High at top of the bar.
-    for (var i = stops.length - 1; i >= 0; i -= 1) {
-      var seg = document.createElement('span');
-      seg.style.background = stops[i].color || '#ccc';
-      bar.appendChild(seg);
-    }
-    box.appendChild(bar);
-    var labels = document.createElement('div');
-    labels.className = 'rb-topo-legend__labels';
-    var hiLabel = document.createElement('span');
-    hiLabel.textContent = formatReading(legend.max, stats.decimalPlaces) || '—';
-    var loLabel = document.createElement('span');
-    loLabel.textContent = formatReading(legend.min, stats.decimalPlaces) || '—';
-    labels.appendChild(hiLabel);
-    labels.appendChild(loLabel);
-    box.appendChild(labels);
-    return box;
-  }
-
-  function renderTopoStats(stats) {
-    var pill = document.createElement('div');
-    pill.className = 'rb-topo-stats';
-    if (stats.name) {
-      var label = document.createElement('span');
-      label.className = 'rb-topo-stats__label';
-      label.textContent = stats.name;
-      pill.appendChild(label);
-    }
-    function coloredStat(className, letter, value) {
-      var el = document.createElement('span');
-      el.className = className;
-      var bold = document.createElement('b');
-      bold.textContent = letter;
-      el.appendChild(bold);
-      el.appendChild(document.createTextNode(' ' + (value || '—')));
-      return el;
-    }
-    pill.appendChild(coloredStat('rb-topo-stats__hi', 'H', formatReading(stats.hi, stats.decimalPlaces)));
-    pill.appendChild(coloredStat('rb-topo-stats__lo', 'L', formatReading(stats.lo, stats.decimalPlaces)));
-    pill.appendChild(coloredStat('rb-topo-stats__delta', '\u0394', formatReading(stats.delta, stats.decimalPlaces)));
-    return pill;
   }
 
   function renderNorthArrow() {
@@ -750,115 +735,6 @@
       (deltaText ? (' ' + deltaText + '"') : '');
     box.appendChild(total);
     return box;
-  }
-
-  function renderTopoFigurePage(page, evidence) {
-    var meta = page.meta || {};
-    var root = document.createElement('div');
-    root.className = 'rb-topo-page';
-
-    var header = document.createElement('div');
-    header.className = 'rb-topo-page__header';
-
-    var left = document.createElement('div');
-    left.className = 'rb-topo-page__header-left';
-    var num = meta.figureNumber || '';
-    var scopeTitle = meta.scopeTitle || meta.levelName || 'Floor Level Survey';
-    var figureNum = document.createElement('p');
-    figureNum.className = 'rb-topo-page__figure-num';
-    figureNum.textContent = num ? ('Figure ' + num) : 'Figure';
-    left.appendChild(figureNum);
-    var figureTitle = document.createElement('h1');
-    figureTitle.className = 'rb-topo-page__figure-title';
-    figureTitle.textContent = 'Floor Level Survey — ' + scopeTitle;
-    left.appendChild(figureTitle);
-    var dateLine = document.createElement('p');
-    dateLine.className = 'rb-topo-page__survey-date';
-    var dateText = formatSurveyDate(meta.surveyDate || evidence.surveyDate || '', true);
-    dateLine.textContent = dateText ? ('Survey Date: ' + dateText) : 'Survey Date:';
-    left.appendChild(dateLine);
-    var corrected = document.createElement('p');
-    corrected.className = 'rb-topo-page__corrected';
-    corrected.textContent = 'Corrected for Floor Differences';
-    left.appendChild(corrected);
-    header.appendChild(left);
-
-    var right = document.createElement('div');
-    right.className = 'rb-topo-page__header-right';
-    var residence = document.createElement('p');
-    residence.className = 'rb-topo-page__residence';
-    residence.textContent = evidence.residenceTitle ||
-      residenceTitle(evidence.customerName || '') ||
-      (evidence.customerName || '');
-    right.appendChild(residence);
-    var parts = addressParts(evidence.addressFull || evidence.address || meta.address || '');
-    var street = document.createElement('p');
-    street.className = 'rb-topo-page__address';
-    street.textContent = parts.street || evidence.address || '';
-    right.appendChild(street);
-    if (parts.cityLine) {
-      var city = document.createElement('p');
-      city.className = 'rb-topo-page__address-city';
-      city.textContent = parts.cityLine;
-      right.appendChild(city);
-    }
-    var door = document.createElement('div');
-    door.className = 'rb-topo-page__front-door';
-    door.appendChild(renderNorthArrow());
-    var doorMeta = document.createElement('div');
-    doorMeta.className = 'rb-topo-page__front-door-meta';
-    var doorLabel = document.createElement('span');
-    doorLabel.textContent = 'Front Door';
-    var doorValue = document.createElement('strong');
-    doorValue.textContent = meta.frontDoorFacing || evidence.frontDoorFacing || '—';
-    doorMeta.appendChild(doorLabel);
-    doorMeta.appendChild(doorValue);
-    door.appendChild(doorMeta);
-    right.appendChild(door);
-    header.appendChild(right);
-    root.appendChild(header);
-
-    var body = document.createElement('div');
-    body.className = 'rb-topo-page__body';
-    var drawing = document.createElement('div');
-    drawing.className = 'rb-topo-page__drawing';
-    var figure = evidence.figure || {};
-    if (!evidenceImage(drawing, figure.dataUrl, 'rb-topo-page__image', scopeTitle)) {
-      addLine(drawing, 'rb-sheet__note', 'Topo figure could not be composed from Floor Survey readings.');
-    }
-    body.appendChild(drawing);
-
-    var chrome = document.createElement('aside');
-    chrome.className = 'rb-topo-page__chrome';
-    var statsList = Array.isArray(evidence.stats) ? evidence.stats : [];
-    if (!statsList.length) {
-      addLine(chrome, 'rb-sheet__note', 'H / L / Δ unavailable for this figure.');
-    } else {
-      statsList.forEach(function (stats, index) {
-        var block = document.createElement('div');
-        var side = statsList.length === 1
-          ? 'left'
-          : (index % 2 === 0 ? 'left' : 'right');
-        block.className = 'rb-topo-page__stat-block rb-topo-page__stat-block--' + side;
-        if (stats.name) {
-          var name = document.createElement('div');
-          name.className = 'rb-topo-page__stat-name';
-          name.textContent = stats.name;
-          block.appendChild(name);
-        }
-        block.appendChild(renderTopoLegend(stats));
-        block.appendChild(renderTopoStats(stats));
-        chrome.appendChild(block);
-      });
-    }
-    body.appendChild(chrome);
-    root.appendChild(body);
-
-    var footer = document.createElement('div');
-    footer.className = 'rb-topo-page__footer';
-    footer.appendChild(renderRelativeReadings(statsList));
-    root.appendChild(footer);
-    return root;
   }
 
   // How many pictures across a Pictures page lays them out.
@@ -957,7 +833,14 @@
   // one uniform style, which makes bolding a word inside it impossible. The
   // deck-measured sizes in the stylesheet remain the DEFAULT; anything set
   // here overrides it for that field and persists on the page.
-  function coverField(tag, className, fieldKey, value, locked) {
+  /**
+   * One editable line of the cover. Always a div: the formatting controls in
+   * the top rail work on rich text, which an <input> cannot hold, so every
+   * field is a contenteditable rather than a form control. It used to take a
+   * tag name and ignore it, which is how a test came to look for .value on
+   * something that only ever had .textContent.
+   */
+  function coverField(className, fieldKey, value, locked) {
     var el = document.createElement('div');
     el.className = className + ' rb-rt';
     el.setAttribute('data-rb-cover-field', fieldKey);
@@ -1088,17 +971,17 @@
     addLine(prepared, 'rb-cover__label', 'Prepared For:');
     var contact = document.createElement('div');
     contact.className = 'rb-cover__contact';
-    contact.appendChild(coverField('input', 'rb-cover__name', 'name', text.name, locked));
-    contact.appendChild(coverField('input', 'rb-cover__email', 'email', text.email, locked));
-    contact.appendChild(coverField('input', 'rb-cover__phone', 'phone', text.phone, locked));
+    contact.appendChild(coverField('rb-cover__name', 'name', text.name, locked));
+    contact.appendChild(coverField('rb-cover__email', 'email', text.email, locked));
+    contact.appendChild(coverField('rb-cover__phone', 'phone', text.phone, locked));
     prepared.appendChild(contact);
     stage.appendChild(prepared);
 
     var identity = coverBoxShell('identity', layout, locked);
     identity.classList.add('rb-cover-box--identity');
     addLine(identity, 'rb-cover__product', 'FLOOR LEVEL SURVEY');
-    identity.appendChild(coverField('input', 'rb-cover__street', 'street', text.street, locked));
-    identity.appendChild(coverField('input', 'rb-cover__city', 'cityLine', text.cityLine, locked));
+    identity.appendChild(coverField('rb-cover__street', 'street', text.street, locked));
+    identity.appendChild(coverField('rb-cover__city', 'cityLine', text.cityLine, locked));
     stage.appendChild(identity);
 
     var dateBox = coverBoxShell('date', layout, locked);
@@ -1113,9 +996,9 @@
     dateLabel.className = 'rb-cover__label';
     dateLabel.textContent = 'Survey Date:';
     dateRow.appendChild(dateLabel);
-    dateRow.appendChild(coverField('input', 'rb-cover__date-value', 'surveyDate', text.surveyDate, locked));
+    dateRow.appendChild(coverField('rb-cover__date-value', 'surveyDate', text.surveyDate, locked));
     dateBox.appendChild(dateRow);
-    dateBox.appendChild(coverField('input', 'rb-cover__corrected', 'corrected', text.corrected, locked));
+    dateBox.appendChild(coverField('rb-cover__corrected', 'corrected', text.corrected, locked));
     stage.appendChild(dateBox);
 
     var contents = coverBoxShell('contents', layout, locked);
@@ -1137,7 +1020,7 @@
       num.className = 'rb-cover__contents-num';
       num.textContent = line.figureNumber ? ('Figure ' + line.figureNumber) : '';
       row.appendChild(num);
-      var field = coverField('input', 'rb-cover__contents-field', 'contents:' + index, line.text, locked);
+      var field = coverField('rb-cover__contents-field', 'contents:' + index, line.text, locked);
       field.setAttribute('data-rb-cover-page', line.pageId || '');
       field.setAttribute('aria-label', 'Contents line ' + (index + 1));
       row.appendChild(field);
@@ -1220,10 +1103,6 @@
   function renderEvidence(margin, page) {
     var evidence = page.evidence;
     if (!evidence) return false;
-    if (page.type === 'floor' && evidence.composed) {
-      margin.appendChild(renderTopoFigurePage(page, evidence));
-      return true;
-    }
     var frame = document.createElement('div');
     frame.className = 'rb-evidence-frame';
     if (page.type === 'distress') {
@@ -1577,10 +1456,6 @@
   }
 
   function renderPenLogSheet(sheet, page, pages, thumb) {
-    var index = 0;
-    for (var n = 0; n < pages.length; n += 1) {
-      if (pages[n].id === page.id) index = n;
-    }
     var notes = penLogNoteMap(page, penLogUi.noteMap);
     var pins = penLogPinsForPage(page, notes, penLogOffsetMap(page));
     var chain = penLogChain(page, pages);
@@ -1588,12 +1463,26 @@
     if (!shown.some(function (pin) { return pin.id === penLogUi.selectedPinId; })) {
       penLogUi.selectedPinId = shown[0] ? shown[0].id : '';
     }
+    // A continuation sheet carries its level's figure number, not one of its
+    // own: it is Figure 2 carried on, not Figure 3. Worked out before the
+    // sheet is drawn, because the sheet's own label has to say the same
+    // number the rail prints on it -- a screen reader hearing "Figure 4" off
+    // a sheet stamped FIGURE 2 is reading a different sheet.
+    var head = chain[0] || page;
+    var headFigure = (head.meta && head.meta.figureNumber) || null;
+    if (!headFigure) {
+      for (var h = 0; h < pages.length; h += 1) if (pages[h].id === head.id) headFigure = h + 1;
+    }
+    page._figureNumber = headFigure;
+    page._figureCont = page !== head;
+
     // A preview measures itself at stamp size; keeping that would move the
     // pins on the real page.
     var penLogLayout = window.ToolboxPenLog.renderPage(sheet, {
       title: page.title,
       levelName: page.meta && page.meta.levelName,
-      pageNumber: index + 1,
+      pageNumber: headFigure,
+      figureCont: page !== head,
       plan: (page.evidence && page.evidence.plan) || {},
       pins: shown,
       // The map is the whole level on every sheet of it: a reader looking up
@@ -1609,15 +1498,6 @@
       },
     });
     if (!thumb) penLogUi.layout = penLogLayout;
-    // A continuation sheet carries its level's figure number, not one of its
-    // own: it is Figure 2 carried on, not Figure 3.
-    var head = chain[0] || page;
-    var headFigure = (head.meta && head.meta.figureNumber) || null;
-    if (!headFigure) {
-      for (var h = 0; h < pages.length; h += 1) if (pages[h].id === head.id) headFigure = h + 1;
-    }
-    page._figureNumber = headFigure;
-    page._figureCont = page !== head;
     var rail = railForPage(page, { noteEditable: !thumb });
     if (rail) sheet.appendChild(rail);
   }
@@ -2009,7 +1889,7 @@
         addLine(margin, 'rb-sheet__note', 'Floor Survey page unavailable.');
       }
     } else if (page.type === 'distress' || page.type === 'diagnostics') {
-      var kicker = page.type === 'distress' ? 'Distress Survey' : page.type === 'floor' ? 'Floor Survey' : 'Diagnostics';
+      var kicker = page.type === 'distress' ? 'Distress Survey' : 'Diagnostics';
       addLine(margin, 'rb-sheet__kicker', kicker);
       var evidenceTitle = document.createElement('h1');
       evidenceTitle.className = 'rb-sheet__title';
@@ -3037,6 +2917,30 @@
       return btn;
     }
 
+    /**
+     * The way back to the application this sheet came from.
+     *
+     * Every sheet that owns a source gets one, which is what the rail is for:
+     * a Pictures sheet and a Picture Locations sheet come from Distress
+     * Survey, a Floor Survey sheet from Floor Survey. Only the Floor Survey
+     * sheet had one, so from the other two the only way back was the
+     * browser's Back button -- and the return the Distress copy offers
+     * ("Return to report") had nothing to start it. The foot is cleared on
+     * every slide, so a Pictures sheet cannot be left showing the Floor
+     * Survey button belonging to the slide before it.
+     */
+    function setRailFootSource(key) {
+      if (!railFootEl) return;
+      railFootEl.textContent = '';
+      railFootEl.appendChild(railButton(
+        key === 'floor' ? 'Open Floor Survey' : 'Open Distress Survey',
+        'secondary', 'data-rb-source', key));
+      var footHint = document.createElement('p');
+      footHint.className = 'rb-panel__lead';
+      footHint.textContent = 'For changes other than formatting.';
+      railFootEl.appendChild(footHint);
+    }
+
     function syncRail(page) {
       if (!railEl) return;
       var isPictures = !!(page && page.type === 'pictures');
@@ -3060,13 +2964,17 @@
         picHint.textContent = 'Fewer across makes each picture bigger. Rows follow from how many this page holds.';
         railTopEl.appendChild(picHint);
         if (railBodyEl) railBodyEl.textContent = '';
+        setRailFootSource('distress');
         return;
       }
       var isFloor = !!(page && page.type === 'floor' && !(page.meta && page.meta.reserved));
       if (!isFloor) {
         releaseRailControls();
         railEl.hidden = true;
-        if (railIdleEl) railIdleEl.hidden = false;
+        // A Picture Locations sheet has a workspace -- the Pen Log panel
+        // right below -- so telling the investigator to open a slide to see
+        // one, directly above the one they are looking at, is noise.
+        if (railIdleEl) railIdleEl.hidden = isPenLogPage(page);
         return;
       }
       railEl.hidden = false;
@@ -3086,7 +2994,7 @@
         railTopEl.appendChild(
           railButton(floorCamera && floorCamera.locked ? 'Unlock view' : 'Lock view',
             floorCamera && floorCamera.locked ? 'secondary' : 'accent',
-            'data-rb-floor-lock', floorCamera && floorCamera.locked ? 'unlock' : 'lock'));
+            'data-rb-floor-view-lock', floorCamera && floorCamera.locked ? 'unlock' : 'lock'));
         var viewHint = document.createElement('p');
         viewHint.className = 'rb-panel__lead';
         viewHint.textContent = floorCamera && floorCamera.locked
@@ -3144,13 +3052,7 @@
         });
       }
 
-      railFootEl.textContent = '';
-      railFootEl.appendChild(
-        railButton('Open Floor Survey', 'secondary', 'data-rb-source', 'floor'));
-      var footHint = document.createElement('p');
-      footHint.className = 'rb-panel__lead';
-      footHint.textContent = 'For changes other than formatting.';
-      railFootEl.appendChild(footHint);
+      setRailFootSource('floor');
     }
 
     // The rail's buttons are built per slide, so they are handled by
@@ -3211,10 +3113,14 @@
           flushSave().catch(function () {});
           return;
         }
-        var lockBtn = event.target.closest('[data-rb-floor-lock]');
+        // Lock view and Lock layout are two different locks on the same
+        // sheet, so they carry two different names. One selector that matched
+        // both is how a test came to click the camera and wait forever for
+        // the layout to lock.
+        var lockBtn = event.target.closest('[data-rb-floor-view-lock]');
         if (lockBtn) {
           event.preventDefault();
-          var want = lockBtn.getAttribute('data-rb-floor-lock') === 'lock';
+          var want = lockBtn.getAttribute('data-rb-floor-view-lock') === 'lock';
           // Lock View is about the camera -- the plan sitting in the same
           // place on every Floor Survey slide. It is deliberately not about
           // the chrome, which stays movable per slide.
@@ -4906,7 +4812,7 @@
       var moved = pages[index];
       pages[index] = pages[index - 1];
       pages[index - 1] = moved;
-      renumberFigures(pages);
+      renumberInPlace(pages);
       markDirty();
       renderPages();
     });
@@ -4917,7 +4823,7 @@
       var moved = pages[index];
       pages[index] = pages[index + 1];
       pages[index + 1] = moved;
-      renumberFigures(pages);
+      renumberInPlace(pages);
       markDirty();
       renderPages();
     });
@@ -5249,6 +5155,12 @@
       '      <div id="rb-penlog-panel" class="rb-penlog-panel" hidden>' +
       '        <h2>Pen Log</h2>' +
       '        <p class="rb-panel__lead">Report wording stays on the Pen Log. Distress Survey keeps the source note.</p>' +
+      // A Picture Locations sheet's workspace is this panel, not the rail, so
+      // its way back to the application sits here. At the top rather than the
+      // foot the other workspaces use: under a level with twenty
+      // photographs, a button below the list is a long scroll from the sheet
+      // it belongs to.
+      '        <button type="button" class="btn btn--secondary rb-ws__btn" data-rb-source="distress">Open Distress Survey</button>' +
       '        <p class="rb-panel__status" id="rb-save-state" aria-live="polite"></p>' +
       '        <label class="rb-panel__label" for="rb-report-note">Report note</label>' +
       '        <textarea id="rb-report-note" class="rb-panel__note" rows="3"></textarea>' +

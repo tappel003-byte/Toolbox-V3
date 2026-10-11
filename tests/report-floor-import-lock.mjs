@@ -116,39 +116,53 @@ await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box="t
   timeout: 20000,
 });
 
+// An imported slide is the plan and nothing else. The lock on offer is Lock
+// view -- the camera, so the plan sits the same way on every Floor Survey
+// slide -- and it lives in the rail, not on the sheet. The figure block, the
+// readings box, the colour scale and the H/L/delta pill are deliberately held
+// back until the drawing underneath them is right; asserting their absence is
+// what keeps that a decision rather than something that quietly slipped off
+// the sheet.
 const afterImport = await page.evaluate(() => ({
   imported: !!document.querySelector('[data-rb-floor-box="topo"]'),
-  lock: document.querySelector('[data-rb-floor-lock]')?.getAttribute('data-rb-floor-lock') || '',
+  viewLock: document.querySelector('[data-rb-floor-view-lock]')?.getAttribute('data-rb-floor-view-lock') || '',
   legend: !!document.querySelector('.rb-floor-box--legend'),
   pill: !!document.querySelector('.rb-floor-box--pill'),
 }));
 check(
-  'Import places topo, legend, pill and offers Lock',
-  afterImport.imported && afterImport.lock === 'lock' && afterImport.legend && afterImport.pill,
+  'Import places the topo frame and offers Lock view',
+  afterImport.imported && afterImport.viewLock === 'lock',
+  JSON.stringify(afterImport),
+);
+check(
+  'the deck chrome is still held back',
+  !afterImport.legend && !afterImport.pill,
   JSON.stringify(afterImport),
 );
 
 if (afterImport.imported) {
-  await page.click('[data-rb-floor-lock="lock"]');
-  await page.waitForFunction(() => document.querySelector('[data-rb-floor-lock="unlock"]'), { timeout: 10000 });
+  // Importing re-renders the sheet, so a handle taken before it is detached.
+  await page.evaluate(() => document.querySelector('[data-rb-floor-view-lock="lock"]').click());
+  await page.waitForFunction(
+    () => document.querySelector('[data-rb-floor-view-lock="unlock"]'), { timeout: 10000 });
   await page.waitForFunction(() => {
     const text = document.querySelector('#rb-save-status')?.textContent || '';
     return /^Saved/.test(text) && !/Saving/.test(text);
   }, { timeout: 10000 });
   await page.waitForFunction(async () => {
     const record = await window.ToolboxDB.getCustomerFile('rb-floor-lock');
-    return !!record.reportBuilder?.floorLayout?.locked;
+    return !!record.reportBuilder?.floorCamera?.locked;
   }, { timeout: 10000 });
   const locked = await page.evaluate(async () => {
     const record = await window.ToolboxDB.getCustomerFile('rb-floor-lock');
     return {
-      docLocked: !!record.reportBuilder?.floorLayout?.locked,
-      hasTopo: !!record.reportBuilder?.floorLayout?.topo,
-      btn: document.querySelector('[data-rb-floor-lock]')?.getAttribute('data-rb-floor-lock') || '',
-      boxLocked: !!document.querySelector('.rb-floor-box.is-locked'),
+      cameraLocked: !!record.reportBuilder?.floorCamera?.locked,
+      hasLayout: !!record.reportBuilder?.floorLayout?.topo,
+      btn: document.querySelector('[data-rb-floor-view-lock]')?.getAttribute('data-rb-floor-view-lock') || '',
     };
   });
-  check('Lock persists floorLayout on Customer File', locked.docLocked && locked.hasTopo && locked.btn === 'unlock' && locked.boxLocked, JSON.stringify(locked));
+  check('Lock view persists the camera on the Customer File',
+    locked.cameraLocked && locked.hasLayout && locked.btn === 'unlock', JSON.stringify(locked));
 }
 
 const staged = await page.evaluate(async () => {

@@ -62,10 +62,15 @@ const field = fs.readFileSync('floor-survey/src/components/tabs/FieldTab.tsx', '
 check('Helper lives in floor-survey/src/lib/screen-size.ts', /export function screenAnchoredSize/.test(src));
 check('Topo uses screenAnchoredImageSize for labels', /screenAnchoredImageSize/.test(topo));
 check('Data/Field uses screenAnchoredImageSize for labels', /screenAnchoredImageSize/.test(field));
+// The rule has a name of its own now, so check the rule rather than the
+// shape of the code around it: a lone boundary uses the floating chip and
+// gets no canvas pill, unless a report slide asks for one so that one
+// boundary is drawn the same way five are.
 check(
   'Single-boundary Topo does not draw a second canvas stats pill',
-  /Multi-area only: one named canvas pill/.test(topo) &&
-    /if \(areaTopos\.length > 1\) \{\s*\n\s*const livePill/.test(topo),
+  /function statsPillOnCanvas\(/.test(topo) &&
+    /return areaCount > 1 \|\| \(forSingleBoundary && areaCount === 1\);/.test(topo) &&
+    /if \(statsPillOnCanvas\(/.test(topo),
 );
 
 const failed = results.filter((r) => !r.ok);

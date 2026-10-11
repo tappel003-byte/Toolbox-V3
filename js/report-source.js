@@ -469,38 +469,6 @@
     });
   }
 
-  function diagnosticsPages(source) {
-    var block = source.diagnostics || { status: 'absent', figures: [] };
-    var figures = Array.isArray(block.figures) ? block.figures : [];
-    if (!figures.length) {
-      return [page({
-        id: 'diagnostics-reserved',
-        type: 'diagnostics',
-        title: 'Diagnostics',
-        railLabel: 'Diagnostics',
-        sourceKey: 'diagnostics',
-        note: block.status === 'present'
-          ? 'Diagnostics output is stored. No figure is outlined yet.'
-          : 'No Diagnostics output is stored on this Customer File.',
-        meta: { reserved: true },
-      })];
-    }
-    return figures.map(function (figure, index) {
-      var title = text(figure.title) || ('Diagnostics ' + (index + 1));
-      return page({
-        id: 'diagnostics-' + (figure.id || (index + 1)),
-        type: 'diagnostics',
-        title: title,
-        tocTitle: title.indexOf('Diagnostics') === 0 ? title : ('Diagnostics — ' + title),
-        railLabel: 'Diagnostics · ' + title,
-        sourceKey: 'diagnostics',
-        sourceRef: figure.id || null,
-        note: 'Reserved for Diagnostics output. No interpretation is written here.',
-        meta: { reserved: false },
-      });
-    });
-  }
-
   function sectionPage(section) {
     return page({
       id: 'section-' + section.id,

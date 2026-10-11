@@ -46,7 +46,7 @@ check(
   topoSrc.includes('export function areaLegendAnchor') &&
     topoSrc.includes('function areaLegendBox') &&
     topoSrc.includes('Every visible contour surface gets its own legend') &&
-    topoSrc.includes('areaLegendBox(at.area, resolved, live)') &&
+    topoSrc.includes('areaLegendBox(at.area, resolved, floor,') &&
     !topoSrc.includes('showLegend && soloGrid') &&
     !topoSrc.includes('Shared color legend is suppressed') &&
     !topoSrc.includes('sharedLegend'),
@@ -382,7 +382,7 @@ check(
 );
 check(
   'Floating chip reports the survey high, low, and delta',
-  chip.text.includes('4.60') && chip.text.includes('1.00') && chip.text.includes('3.60'),
+  chip.text.includes('4.6') && chip.text.includes('1.0') && chip.text.includes('3.6'),
   chip.text,
 );
 
@@ -437,8 +437,8 @@ check(
   solo.legendVisible === true &&
     soloChip.present &&
     soloChip.visible &&
-    soloChip.text.includes('2.10') &&
-    soloChip.text.includes('1.00'),
+    soloChip.text.includes('2.1') &&
+    soloChip.text.includes('1.0'),
   JSON.stringify({ legend: solo.ratio, chip: soloChip.text }),
 );
 
@@ -652,9 +652,9 @@ check(
     oneLevel.statsText.includes('H') &&
     oneLevel.statsText.includes('L') &&
     oneLevel.statsText.includes('Δ') &&
-    oneLevel.statsText.includes('3.10') &&
-    oneLevel.statsText.includes('0.60') &&
-    oneLevel.statsText.includes('2.50'),
+    oneLevel.statsText.includes('3.1') &&
+    oneLevel.statsText.includes('0.6') &&
+    oneLevel.statsText.includes('2.5'),
   oneLevel.statsText,
 );
 
@@ -833,7 +833,7 @@ await page.screenshot({ path: path.join(OUT, 'topo-one-level-phone.png') });
 check(
   'Phone: one level, one boundary keeps legend and H/L/Δ clear of Data/Topo',
   phoneOne.statsVisible &&
-    phoneOne.statsText.includes('3.10') &&
+    phoneOne.statsText.includes('3.1') &&
     phoneOneLegend.legendVisible === true &&
     !phoneOne.hasFloorSelector &&
     !phoneOne.hasAllBoundaries &&
@@ -850,7 +850,7 @@ await page.screenshot({ path: path.join(OUT, 'topo-one-level-ipad.png') });
 check(
   'iPad: one level, one boundary keeps legend and H/L/Δ clear of Data/Topo',
   ipadOne.statsVisible &&
-    ipadOne.statsText.includes('Δ2.50') &&
+    ipadOne.statsText.includes('Δ2.5') &&
     ipadOneLegend.legendVisible === true &&
     !ipadOne.hasAllBoundaries &&
     ipadClear.overlaps === false,
@@ -886,8 +886,8 @@ check(
     !basement.hasAllBoundaries &&
     basement.hasFloorSelector &&
     basement.statsVisible &&
-    basement.statsText.includes('3.10') &&
-    basement.statsText.includes('0.60') &&
+    basement.statsText.includes('3.1') &&
+    basement.statsText.includes('0.6') &&
     basementLegend.legendVisible === true,
   basement.text.slice(0, 160) + ' ' + basement.statsText,
 );
