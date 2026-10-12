@@ -57,6 +57,7 @@ export function clearStatsChipSize() {
 }
 
 import { defaultRenderSettings, type SurveyPoint } from "@/lib/types";
+import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 
 interface Props {
   points: SurveyPoint[];
@@ -140,8 +141,8 @@ export function StatsChip({
   }, []);
 
   const height = userSize ?? autoSize;
-  const fontPx = Math.max(9, Math.round(height * 0.42));
-  const padPx = Math.max(4, Math.round(height * 0.22));
+  const fontPx = Math.round(statsPillFont(height, 9));
+  const padPx = Math.round(statsPillPad(height, 4));
 
   // Default: bottom center, above the bottom pill row. Persisted position wins.
   useEffect(() => {
@@ -239,7 +240,7 @@ export function StatsChip({
   return (
     <div
       ref={ref}
-      className="fixed z-40 flex items-stretch rounded-full bg-white/95 backdrop-blur shadow-sm border border-gray-300 overflow-hidden font-medium tabular-nums select-none touch-none cursor-grab active:cursor-grabbing"
+      className="fixed z-40 flex items-stretch rounded-full bg-white/95 backdrop-blur shadow-sm border border-gray-300 overflow-hidden font-medium select-none touch-none cursor-grab active:cursor-grabbing"
       style={{
         left: pos.x,
         top: pos.y + stackIndex * (height + 6),
@@ -255,36 +256,35 @@ export function StatsChip({
     >
       {label && (
         <div
-          className="flex items-center border-r border-gray-200 text-gray-500 max-w-[8rem] truncate"
-          style={{ paddingLeft: padPx, paddingRight: padPx }}
+          className="flex items-center border-r border-gray-200 max-w-[8rem] truncate"
+          style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.label }}
         >
           {label}
         </div>
       )}
+      {/* Reading and letter in one colour, as the shipped decks set them.
+          Tabular figures in the interface face, not a monospace: a
+          monospaced 1 hangs air on both sides, which is most of what made
+          this read loose beside the deck. */}
       <div
-        className="flex items-center gap-0.5 text-gray-700"
-        style={{ paddingLeft: padPx, paddingRight: padPx }}
+        className="flex items-center font-semibold"
+        style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.hi }}
         onPointerUp={(e) => endDrag(e, "hi")}
       >
-        {/* Same red as the High pin marker on the plan (#b51d16). */}
-        <span className="font-semibold" style={{ color: "#b51d16" }}>
-          H
-        </span>
-        <span className="font-mono">{stats.hi.value.toFixed(decimals)}</span>
+        {statsPillText("H", stats.hi.value.toFixed(decimals))}
       </div>
       <div
-        className="flex items-center gap-0.5 border-l border-gray-200 text-gray-700"
-        style={{ paddingLeft: padPx, paddingRight: padPx }}
+        className="flex items-center border-l border-gray-200 font-semibold"
+        style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.lo }}
         onPointerUp={(e) => endDrag(e, "lo")}
       >
-        <span className="font-semibold text-sky-600">L</span>
-        <span className="font-mono">{stats.lo.value.toFixed(decimals)}</span>
+        {statsPillText("L", stats.lo.value.toFixed(decimals))}
       </div>
       <div
-        className="flex items-center gap-0.5 border-l border-gray-200 text-gray-500"
-        style={{ paddingLeft: padPx, paddingRight: padPx }}
+        className="flex items-center border-l border-gray-200 font-semibold"
+        style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.delta }}
       >
-        <span className="font-mono">Δ{stats.delta.toFixed(decimals)}</span>
+        {statsPillText("Δ", stats.delta.toFixed(decimals))}
       </div>
     </div>
   );

@@ -943,12 +943,18 @@ body.report-builder-open .canvas {
   line-height: 1.1;
 }
 
+/* The report slide's H / L / delta pill. Set like the field app's, which is
+   set like the shipped Mitchell deck: the readings packed close to their
+   dividers, and each one in the colour of its own letter -- the reds and
+   blues measured off that deck, which this had drifted away from. See
+   floor-survey/src/lib/stats-pill.ts, the one place those numbers are
+   written down. */
 .rb-topo-stats {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 3px 7px;
-  padding: 3px 7px;
+  gap: 3px 4px;
+  padding: 3px 4px;
   border: 1px solid rgba(23, 19, 14, 0.45);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.96);
@@ -960,7 +966,7 @@ body.report-builder-open .canvas {
 }
 
 .rb-topo-stats__label {
-  color: #333;
+  color: #6b7280;
   font-weight: 700;
 }
 
@@ -969,11 +975,11 @@ body.report-builder-open .canvas {
 }
 
 .rb-topo-stats__lo {
-  color: #1d4ed8;
+  color: #1f5f9f;
 }
 
 .rb-topo-stats__delta {
-  color: #444;
+  color: #6b7280;
 }
 
 .rb-topo-stats b {

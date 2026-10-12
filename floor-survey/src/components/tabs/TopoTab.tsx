@@ -13,6 +13,7 @@ import {
   STATS_CHIP_SIZE_EVENT,
 } from "@/components/chrome/StatsChip";
 import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/lib/screen-size";
+import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Undo2, X, Waves, Palette, Tag, SlidersHorizontal, Minus, Plus } from "lucide-react";
@@ -354,8 +355,8 @@ type PillSeg = { kind: "label" | "hi" | "lo" | "delta"; text: string; w: number 
 
 /** Segment layout + typography for one pill, in image coords. */
 function pillMetrics(h: number, label: string | null, hi: number, lo: number, dec: number) {
-  const font = Math.max(4, h * 0.42);
-  const pad = Math.max(2, h * 0.22);
+  const font = statsPillFont(h);
+  const pad = statsPillPad(h);
   const seg = (kind: PillSeg["kind"], text: string): PillSeg => ({
     kind,
     text,
@@ -363,9 +364,9 @@ function pillMetrics(h: number, label: string | null, hi: number, lo: number, de
   });
   const segs: PillSeg[] = [];
   if (label) segs.push(seg("label", label));
-  segs.push(seg("hi", `H ${hi.toFixed(dec)}`));
-  segs.push(seg("lo", `L ${lo.toFixed(dec)}`));
-  segs.push(seg("delta", `\u0394${(hi - lo).toFixed(dec)}`));
+  segs.push(seg("hi", statsPillText("H", hi.toFixed(dec))));
+  segs.push(seg("lo", statsPillText("L", lo.toFixed(dec))));
+  segs.push(seg("delta", statsPillText("\u0394", (hi - lo).toFixed(dec))));
   const total = segs.reduce((s, x) => s + x.w, 0);
   return { font, pad, h, segs, total };
 }
@@ -2249,12 +2250,12 @@ function drawStatsPill(
     ctx.font = `600 ${m.font}px sans-serif`;
     ctx.fillStyle =
       s.kind === "hi"
-        ? "#b51d16"
+        ? STATS_PILL_COLORS.hi
         : s.kind === "lo"
-          ? "#1f5f9f"
+          ? STATS_PILL_COLORS.lo
           : s.kind === "delta"
-            ? "#6b7280"
-            : "#6b7280";
+            ? STATS_PILL_COLORS.delta
+            : STATS_PILL_COLORS.label;
     ctx.fillText(s.text, sx + s.w / 2, center.cy);
     sx += s.w;
   });
