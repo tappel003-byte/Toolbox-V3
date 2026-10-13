@@ -1793,6 +1793,12 @@
       stats: stats,
       note: text.railNote || '',
       noteEditable: !!(opts && opts.noteEditable),
+      // Tim: "All text on the rail needs to be editable by the user." Every
+      // block takes the investigator's words when there are any and the
+      // generated line when there are not; the same flag that makes the note
+      // writable makes the rest writable, so a thumbnail stays inert.
+      editable: !!(opts && opts.noteEditable),
+      edits: text.rail || {},
       figureLabel: figureLabelFor(page),
       markSrc: BRAND_LOGO,
     });
@@ -4142,6 +4148,29 @@
         }
         return false;
       }
+      // Any other block of the rail: the client, the address, the drawing
+      // title, the date and its note, a boundary's name, a reading's label or
+      // its number, a section heading, the figure number. Emptying one drops
+      // the override rather than storing a blank, which is how the generated
+      // line comes back.
+      var railField = field.closest ? field.closest('[data-rb-rail-field]') : null;
+      if (railField) {
+        var fieldPage = activePage();
+        if (!fieldPage) return false;
+        var fApi = window.ToolboxReportText;
+        var fieldKey = railField.getAttribute('data-rb-rail-field') || '';
+        if (!fieldKey) return false;
+        fieldPage.reportText = fieldPage.reportText || {};
+        fieldPage.reportText.rail = fieldPage.reportText.rail || {};
+        var written = fApi ? fApi.compact(fApi.fromElement(railField)) : railField.textContent;
+        if (fApi && typeof fApi.isEmpty === 'function' && fApi.isEmpty(written)) {
+          delete fieldPage.reportText.rail[fieldKey];
+        } else {
+          fieldPage.reportText.rail[fieldKey] = written;
+        }
+        markDirty();
+        return true;
+      }
       var railNote = field.closest ? field.closest('[data-rb-rail-note]') : null;
       if (railNote) {
         var railPage = activePage();
@@ -4233,6 +4262,20 @@
       if (field && formatToolbar) formatToolbar.noteField(field);
     });
 
+    // A block of the rail emptied and left behind goes back to the line the
+    // Customer File generates for it. Waiting for the investigator to leave
+    // the block, rather than acting on the keystroke that empties it, is what
+    // lets them clear a line and type a new one: the generated text would
+    // otherwise land back under the caret mid-edit.
+    sheetEl.addEventListener('focusout', function (event) {
+      var field = event.target.closest && event.target.closest('[data-rb-rail-field]');
+      if (!field || field.textContent.trim()) return;
+      var page = activePage();
+      var rail = page && page.reportText && page.reportText.rail;
+      if (rail && rail[field.getAttribute('data-rb-rail-field')]) return;
+      renderPages();
+    });
+
     // Typing and pasting change how much text there is, so the chain has to
     // be re-flowed -- but not on every keystroke, which would fight the
     // caret. It runs once typing pauses, and only re-renders if the split
@@ -4257,7 +4300,8 @@
 
     sheetEl.addEventListener('input', function (event) {
       var richTarget = event.target.closest(
-        '[data-rb-cover-field], [data-rb-section-field], [data-rb-ov-field], [data-rb-rail-note]');
+        '[data-rb-cover-field], [data-rb-section-field], [data-rb-ov-field], ' +
+        '[data-rb-rail-note], [data-rb-rail-field]');
       if (richTarget) {
         if (!commitRichField(richTarget)) return;
         scheduleDiscussionReflow(richTarget);
