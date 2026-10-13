@@ -97,7 +97,9 @@ await page.evaluate(async ({ png, id }) => {
 async function openFloorSheet() {
   await page.goto(`${BASE}#/file/${FILE}/report`, { waitUntil: 'networkidle0' });
   await page.waitForFunction(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]'), { timeout: 20000 });
-  await page.click('.rb-thumb[data-page-id^="floor-"]');
+  // Clicked from inside the page: the rail of stamps is rebuilt whenever the
+  // book re-renders, which can happen between resolving a handle and using it.
+  await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]').click());
   await page.waitForFunction(
     () => document.querySelector('.rb-sheet [data-rb-rail-field="client"]'), { timeout: 20000 });
 }

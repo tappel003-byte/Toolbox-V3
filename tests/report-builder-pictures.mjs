@@ -235,7 +235,10 @@ await page.waitForFunction(() => {
   const btn = document.querySelector('.rb-thumb[data-page-id^="pictures-"]');
   return !!btn;
 }, { timeout: 15000 });
-await page.click('.rb-thumb[data-page-id^="pictures-"]');
+// The rail of stamps is rebuilt whenever the book re-renders, which can
+// happen between resolving a handle and clicking it. Clicking from inside the
+// page re-finds the stamp at the moment of the click instead.
+await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="pictures-"]').click());
 await page.waitForFunction(() => document.querySelectorAll('.rb-pictures-page__cell').length >= 3, {
   timeout: 15000,
 });

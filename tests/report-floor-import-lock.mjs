@@ -101,7 +101,7 @@ await page.evaluate(async (png) => {
 await page.goto(`${BASE}#/file/rb-floor-lock/report`, { waitUntil: 'networkidle0' });
 await page.waitForFunction(() => document.querySelector('.rb-shell'), { timeout: 15000 });
 await page.waitForFunction(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]'), { timeout: 15000 });
-await page.click('.rb-thumb[data-page-id^="floor-"]');
+await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]').click());
 await page.waitForFunction(() => document.querySelector('[data-rb-floor-import]'), { timeout: 15000 });
 
 const chromeOnly = await page.evaluate(() => ({

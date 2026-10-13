@@ -427,7 +427,7 @@ await page.waitForFunction(() => {
   const label = document.querySelector('#rb-file-label')?.textContent || '';
   return document.querySelector('.rb-shell') && /Riley Chen/.test(label);
 }, { timeout: 15000 });
-await page.click('.rb-thumb[data-page-id="cover"]');
+await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id="cover"]').click());
 await page.waitForFunction(() => document.querySelector('.rb-sheet')?.getAttribute('data-page-type') === 'cover');
 await page.click('[data-rb-cover-lock="lock"]');
 await page.waitForFunction(() => document.querySelector('[data-rb-cover-lock="unlock"]'), { timeout: 10000 });

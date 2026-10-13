@@ -75,7 +75,7 @@ const opened = await page.evaluate(captionsNow);
 check('a blank Customer File opens as Cover, Discussion, Floor Survey',
   opened.join(' | ') === START.join(' | '), opened.join(' | '));
 
-await page.click('.rb-thumb[data-page-id="floor-reserved"]');
+await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id="floor-reserved"]').click());
 await page.waitForFunction(() => document.querySelector('.rb-sheet').getAttribute('data-page-id') === 'floor-reserved');
 await page.click('#rb-page-earlier');
 await page.waitForFunction((want) => {
