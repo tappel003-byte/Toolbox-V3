@@ -177,7 +177,7 @@ try {
         // The shutter time, which is the only thing that can name the file
         // after the day it was taken rather than the day it was downloaded.
         body: JSON.stringify({
-          pins: [{ num: 4, description: 'Crack', photos: ['ph_present'] }],
+          pins: [{ num: 4, location: 'Hall', description: 'Hairline crack, north wall', photos: ['ph_present'] }],
           // A named run: the investigator typed "Exterior" when they started.
           quickCapture: [{ id: 'ph_quick', ts: Date.parse('2026-03-02T17:45:12.000Z'), folder: 'Exterior' }],
         }),
@@ -348,6 +348,28 @@ try {
     }
     const quickZipEntry = downloads.filter((d) => /\.zip$/.test(d.name || '')).pop() || {};
     const quickZip = quickZipEntry.name || '';
+
+    // The Distress sheet's own Download all, for the pin photograph's name.
+    const distressSheet = [...document.querySelectorAll('.explorer-group')]
+      .find((group) => group.dataset.group === 'distress');
+    const distressAll = distressSheet
+      && [...distressSheet.querySelectorAll('button')].find((b) => b.textContent === 'Download all');
+    let distressEntries = [];
+    if (distressAll) {
+      const before = downloads.filter((d) => /\.zip$/.test(d.name || '')).length;
+      distressAll.click();
+      for (let i = 0; i < 60; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        if (downloads.filter((d) => /\.zip$/.test(d.name || '')).length > before) break;
+      }
+      const entry = downloads.filter((d) => /\.zip$/.test(d.name || '')).pop();
+      if (entry && entry.blob && window.JSZip) {
+        try {
+          const unpacked = await window.JSZip.loadAsync(entry.blob);
+          distressEntries = Object.keys(unpacked.files).filter((name) => !unpacked.files[name].dir);
+        } catch (_) { distressEntries = []; }
+      }
+    }
     // Unpack it: the folder saying the right date is not proof that the
     // pictures inside do.
     let quickEntries = [];
@@ -410,6 +432,7 @@ try {
       })(),
       downloads: downloads.map((d) => ({ url: d.url, size: d.size, type: d.type, name: d.name, clicked: d.clicked })),
       quickZip,
+      distressEntries,
       quickEntries,
       fetchLog,
       writes,
@@ -470,6 +493,12 @@ try {
   // into distress.json; the download happens today.
   check('a named Quick Capture run names the download, with the day it was taken',
     /^exterior-2026-03-0[23]\.zip$/.test(flow.quickZip), flow.quickZip);
+  // A pin photograph is stored as an id; everything a person would call it by
+  // is on the pin it hangs from, so that is what names it.
+  check('a Distress photograph is named after its pin, its room and its note',
+    flow.distressEntries.length === 1 &&
+    /^pin-04-hall-hairline-crack.*\.jpg$/.test(flow.distressEntries[0]),
+    JSON.stringify(flow.distressEntries));
   check('and the pictures sit in that set, named for when they were taken',
     flow.quickEntries.length === 1 && /^Exterior\/2026-03-0[23]_\d{6}\.jpg$/.test(flow.quickEntries[0]),
     JSON.stringify(flow.quickEntries));

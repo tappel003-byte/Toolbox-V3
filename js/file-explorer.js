@@ -516,11 +516,17 @@
           const pins = distress && Array.isArray(distress.pins) ? distress.pins : [];
           pins.forEach(function (pin) {
             const photos = pin && Array.isArray(pin.photos) ? pin.photos : [];
-            photos.forEach(function (photoId) {
+            photos.forEach(function (photoId, order) {
               if (typeof photoId !== 'string' || !photoId) return;
               facts[photoId] = {
                 kind: 'pin',
                 pin: pin.num != null ? String(pin.num) : '',
+                // Which of that pin's photographs this is, so three shots of
+                // one crack come back in the order they were taken rather
+                // than as the same name with a number stuck on the end.
+                seq: order + 1,
+                count: photos.length,
+                room: String(pin.location || ''),
                 takenAt: '',
                 description: String(pin.description || ''),
               };
@@ -880,10 +886,43 @@
         const leaf = (stamp || downloadName(row.key)) + ext;
         return set ? set + '/' + leaf : leaf;
       }
-      if (fact && fact.kind === 'pin' && fact.pin) {
-        return 'pin-' + fact.pin + '-' + downloadName(String(row.key || '')).slice(-10) + ext;
+      if (fact && fact.kind === 'pin') {
+        return pinFileName(fact) + ext;
       }
       return downloadName(row.key);
+    }
+
+    /**
+     * What a Distress photograph is called when it leaves the Cabinet.
+     *
+     * A pin photograph is stored as an id and nothing else -- everything a
+     * person would call it by lives on the pin it hangs from. So the name is
+     * built from what the investigator already wrote there: the pin number,
+     * the room, and the start of the note. "pin-04-hall-hairline-crack.jpg"
+     * instead of "pin-4-ph_8f21c0a9.jpg", which named it after a storage key
+     * and told nobody anything.
+     *
+     * The number is padded so a folder of thirty sorts 4 before 10, and a pin
+     * with more than one photograph numbers them in the order they were taken.
+     */
+    function pinFileName(fact) {
+      const num = String(fact.pin || '').trim();
+      const head = num ? 'pin-' + (num.length < 2 ? '0' + num : num) : 'pin';
+      const seq = fact.count > 1 ? '-' + fact.seq : '';
+      const words = [slugWords(fact.room, 24), slugWords(fact.description, 40)]
+        .filter(Boolean).join('-');
+      return head + seq + (words ? '-' + words : '');
+    }
+
+    /** Lower-case, hyphenated, and cut at a whole word. */
+    function slugWords(text, max) {
+      const clean = String(text || '').toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      if (clean.length <= max) return clean;
+      const cut = clean.slice(0, max);
+      const at = cut.lastIndexOf('-');
+      return (at > 8 ? cut.slice(0, at) : cut).replace(/-+$/, '');
     }
 
     function safeFolder(name) {

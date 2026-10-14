@@ -374,6 +374,7 @@ Authorized by Tim after the design was talked through: "It might be best to star
 - **One decimal place everywhere a reading is drawn or printed:** point labels, the High/Low/difference pill, the colour legend, the figure rail, and the composed report figures.
 - **Storage is unchanged.** A reading is kept exactly as it was typed; only the display rounds. Data entry and the recovery PDF still show the typed value, because that is where it is entered and what it exists to recover.
 - Tim's remark that a partner occasionally reads a half tenth was background, not a requirement. Nothing was built for it.
+- **The Data tab keeps two places, labels included (DECIDED Tim, Oct 14, 2026).** Shown that the plan reads 9.00 on Data while the chip beneath it reads 9.7, Tim: "let's just leave it that way — if someone wants to put in a 9.15 that's fine, it's not something I'll ever do, but functionality is OK, it doesn't cost us anything, it's already built that way." So the exemption above is not only the entry field: the whole Data tab, including the labels drawn on the plan there, shows the reading as typed. Tenths remain the rule everywhere the reading is presented rather than entered — Topo, the pill, the legend, the rail and the report figures.
 
 ---
 
