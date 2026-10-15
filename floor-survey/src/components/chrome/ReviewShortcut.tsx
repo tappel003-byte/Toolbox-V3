@@ -1,3 +1,4 @@
+import { readingText } from "@/lib/reading";
 import type { SurveyPoint } from "@/lib/types";
 
 /**
@@ -15,7 +16,7 @@ export function ReviewShortcut({
 }) {
   const selected = points.find((p) => selectedIds.has(p.id));
   const label = selected
-    ? selected.value.toFixed(2)
+    ? readingText(selected.value)
     : `${points.length} pt${points.length === 1 ? "" : "s"}`;
 
   return (

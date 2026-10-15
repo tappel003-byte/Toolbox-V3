@@ -1,3 +1,4 @@
+import { readingText } from "@/lib/reading";
 import { useMemo, useState } from "react";
 import { X, StickyNote, ArrowUpDown } from "lucide-react";
 import type { Floor, SurveyPoint } from "@/lib/types";
@@ -110,9 +111,9 @@ export function ReviewTab({
                 : `${stats.count} / ${points.length}`
             }
           />
-          <Stat label="Range" value={stats.range.toFixed(2) + '"'} />
-          <Stat label="Min" value={stats.min.toFixed(2) + '"'} />
-          <Stat label="Max" value={stats.max.toFixed(2) + '"'} />
+          <Stat label="Range" value={readingText(stats.range) + '"'} />
+          <Stat label="Min" value={readingText(stats.min) + '"'} />
+          <Stat label="Max" value={readingText(stats.max) + '"'} />
         </div>
       )}
       <div className="flex-1 overflow-auto">
@@ -174,7 +175,7 @@ export function ReviewTab({
                         {p.notes && (
                           <StickyNote className="h-3 w-3 text-muted-foreground shrink-0" />
                         )}
-                        <span>{displayValue(p).toFixed(2)}"</span>
+                        <span>{readingText(displayValue(p))}"</span>
                       </div>
                       {p.notes && (
                         <p className="text-[11px] font-sans font-normal text-muted-foreground mt-0.5 whitespace-pre-wrap break-words text-left">

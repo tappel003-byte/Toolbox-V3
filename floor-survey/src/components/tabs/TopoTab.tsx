@@ -1,3 +1,4 @@
+import { readingText } from "@/lib/reading";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PlanCanvas, type PlanCamera } from "../PlanCanvas";
 import { Button } from "@/components/ui/button";
@@ -1189,8 +1190,8 @@ export function TopoTab({
           <CornerPanel inline={controlsOnly} pos="top-12 left-2 landscape-short:top-2 landscape-short:left-auto landscape-short:right-2" onClose={() => setOpenCorner(null)} title="Contours">
             {gridAndContours?.grid && (
               <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
-                Range {gridAndContours.grid.minValue.toFixed(2)}"–
-                {gridAndContours.grid.maxValue.toFixed(2)}"
+                Range {readingText(gridAndContours.grid.minValue)}"–
+                {readingText(gridAndContours.grid.maxValue)}"
               </p>
             )}
             <div>

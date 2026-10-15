@@ -1,3 +1,4 @@
+import { readingText } from "@/lib/reading";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { X, Link2 } from "lucide-react";
@@ -275,7 +276,7 @@ export function AddTransitionSheet({
             />
             {chained && valid && (
               <span className="text-[10px] text-muted-foreground font-mono">
-                = {aBase.toFixed(2)}" corrected
+                = {readingText(aBase)}" corrected
               </span>
             )}
           </label>

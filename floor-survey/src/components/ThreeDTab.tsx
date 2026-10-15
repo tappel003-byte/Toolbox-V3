@@ -1,3 +1,4 @@
+import { readingText } from "@/lib/reading";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -537,7 +538,7 @@ export function ThreeDTab({
     if (value == null || !Number.isFinite(value)) return "";
     const api = diagnosticsApi();
     if (api && typeof api.formatInches === "function") return api.formatInches(value);
-    return value.toFixed(2) + " in";
+    return readingText(value) + " in";
   };
 
   composeRef.current = () => {
