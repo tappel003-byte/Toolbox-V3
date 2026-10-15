@@ -1,16 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 /**
- * The chip's height when the investigator has not chosen one.
+ * The chip's height until someone sets one.
  *
- * This used to be three heights picked from `window.innerWidth` -- 24 on a
+ * It used to be three heights picked from `window.innerWidth` -- 24 on a
  * phone, 32 on a tablet, 40 on a desktop. That made the same Customer File
  * render at three different sizes depending on what you opened it on, and on a
  * report slide it meant the pill's size depended on the browser window rather
  * than on the page it was printed to. One number instead: the middle of the
  * three, which is what a tablet showed.
+ *
+ * What survived that change for a while was an "Auto" idea and a "Use Auto
+ * size for this screen" link, which by then only cleared the chosen size back
+ * to this number. Tim: "I don't think I'll ever use that setting because it's
+ * always wrong -- you just adjust it to the size that you want and it stays
+ * that size." So there is no Auto: the size is the last one set, kept on this
+ * device and used by every job on it, and this is only where it starts.
  */
-const DEFAULT_CHIP_HEIGHT = 32;
+export const DEFAULT_STATS_CHIP_SIZE = 32;
 
 /** localStorage key holding the user's chosen chip height in px. */
 export const STATS_CHIP_SIZE_KEY = "stats-chip-size";
@@ -30,11 +37,6 @@ export function getStatsChipSize(): number | null {
   }
 }
 
-/** The height used when the investigator has not chosen one. */
-export function autoStatsChipSize(): number {
-  return DEFAULT_CHIP_HEIGHT;
-}
-
 /** Persist a chip height and notify any mounted chip immediately. */
 export function setStatsChipSize(px: number) {
   const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(px)));
@@ -46,15 +48,6 @@ export function setStatsChipSize(px: number) {
   window.dispatchEvent(new CustomEvent(STATS_CHIP_SIZE_EVENT, { detail: n }));
 }
 
-/** Clear a locked size so the chip follows phone / iPad / desktop Auto again. */
-export function clearStatsChipSize() {
-  try {
-    window.localStorage.removeItem(STATS_CHIP_SIZE_KEY);
-  } catch {
-    /* ignore */
-  }
-  window.dispatchEvent(new CustomEvent(STATS_CHIP_SIZE_EVENT, { detail: null }));
-}
 
 import { defaultRenderSettings, type SurveyPoint } from "@/lib/types";
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
@@ -119,28 +112,23 @@ export function StatsChip({
     return null;
   });
 
-  // User-chosen height (px) wins over the automatic width tier.
+  // The size last set on this device, until someone sets another. Nothing
+  // watches the window: the size does not depend on the screen, so turning the
+  // phone or dragging a window cannot change it.
   const [userSize, setUserSize] = useState<number | null>(null);
-  const [autoSize, setAutoSize] = useState<number>(DEFAULT_CHIP_HEIGHT);
   useEffect(() => {
     setUserSize(getStatsChipSize());
-    setAutoSize(autoStatsChipSize());
-    const onResize = () => setAutoSize(autoStatsChipSize());
     const onSize = (e: Event) => {
       const detail = (e as CustomEvent<number | null>).detail;
       setUserSize(typeof detail === "number" ? detail : null);
     };
-    window.addEventListener("resize", onResize);
-    window.addEventListener("orientationchange", onResize);
     window.addEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     return () => {
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("orientationchange", onResize);
       window.removeEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     };
   }, []);
 
-  const height = userSize ?? autoSize;
+  const height = userSize ?? DEFAULT_STATS_CHIP_SIZE;
   const fontPx = Math.round(statsPillFont(height, 9));
   const padPx = Math.round(statsPillPad(height, 4));
 

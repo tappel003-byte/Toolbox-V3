@@ -367,6 +367,8 @@ Authorized by Tim after the design was talked through: "It might be best to star
 
 ---
 
+- **The stats pill has no Auto: set it once and it stays (DECIDED Tim, Oct 15, 2026).** The pill's size used to be picked from `window.innerWidth` — 24, 32 or 40 — and when that tier was removed an "Auto" idea and a "Use Auto size for this screen" link survived it. By then the link only reset the size to a fixed 32, on any screen, under a label promising something about the screen. Tim: "I don't think I'll ever use that setting because it's always wrong. I think you just adjust it to the size that you want, it stays that size." So the link, the Auto label and the window listeners are gone. The size is the last one set, kept on this device and used by every job on it; 32 is only where it starts. Tim accepted per-device: "it can be for this device, although it would be nice to just change it one time and it stays one time" — which is what it does, since the size has never been stored per job.
+
 ## Readings are printed in tenths
 
 - **Tenths of an inch is the standard, and always was (STATED Tim, Oct 8, 2026).** Tim: "These are inches in tenths, so .57 is stupid — it'll never be .57. It'll be .5, .6, .7. Tenths are the default by design; it's what we measure in." And on the record of it: "Tenths is always the default. It's not now — it always has been. You just didn't realize it."

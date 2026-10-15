@@ -5,8 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import {
-  autoStatsChipSize,
-  clearStatsChipSize,
+  DEFAULT_STATS_CHIP_SIZE,
   getStatsChipSize,
   setStatsChipSize,
   STATS_CHIP_MAX,
@@ -437,27 +436,22 @@ export function TopoTab({
   // "Send to Distress Survey" — idle while nothing has been asked for.
   const [layerState, setLayerState] = useState<"idle" | "working" | "done" | "failed">("idle");
   const [layerMessage, setLayerMessage] = useState("");
-  // Stats pill (High/Low/Δ chip) size — Auto by viewport, or a locked local size.
+  // Stats pill (High/Low/Δ chip) size: the last size set on this device, used
+  // by every job on it. Nothing watches the window any more -- the size does
+  // not depend on the screen, so a resize cannot change it.
   const [statsChipLocked, setStatsChipLocked] = useState<number | null>(null);
-  const [statsChipAuto, setStatsChipAuto] = useState(28);
   useEffect(() => {
     setStatsChipLocked(getStatsChipSize());
-    setStatsChipAuto(autoStatsChipSize());
-    const onResize = () => setStatsChipAuto(autoStatsChipSize());
     const onSize = (e: Event) => {
       const detail = (e as CustomEvent<number | null>).detail;
       setStatsChipLocked(typeof detail === "number" ? detail : null);
     };
-    window.addEventListener("resize", onResize);
-    window.addEventListener("orientationchange", onResize);
     window.addEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     return () => {
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("orientationchange", onResize);
       window.removeEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     };
   }, []);
-  const statsChipSize = statsChipLocked ?? statsChipAuto;
+  const statsChipSize = statsChipLocked ?? DEFAULT_STATS_CHIP_SIZE;
   const [legendDrag, setLegendDrag] = useState<{
     areaId: string;
     /** Pointer offset inside the legend box. */
@@ -1447,34 +1441,30 @@ export function TopoTab({
                   update({ legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)) })
                 }
               />
-              <div className="col-span-2 space-y-1">
+              {/* Set once, and it stays. Tim: "I don't think I'll ever use that
+                  setting because it's always wrong -- you just adjust it to
+                  the size that you want and it stays that size." There used to
+                  be a "Use Auto size for this screen" link under this, back
+                  when Auto read the window width and picked 24, 32 or 40. That
+                  was taken out so a job did not render at three sizes
+                  depending on what opened it, which left the link clearing the
+                  size to a fixed 32 under a label promising something about
+                  this screen. The size is simply the last one set, kept on
+                  this device and used by every job on it. */}
+              <div className="col-span-2">
                 <StepperControl
                   label="Stats pill size"
                   value={statsChipSize}
                   min={STATS_CHIP_MIN}
                   max={STATS_CHIP_MAX}
                   step={2}
-                  format={(v) =>
-                    statsChipLocked == null ? `Auto ${Math.round(v)}px` : `${Math.round(v)}px`
-                  }
+                  format={(v) => `${Math.round(v)}px`}
                   onChange={(v) => {
                     const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(v)));
                     setStatsChipLocked(n);
                     setStatsChipSize(n);
                   }}
                 />
-                {statsChipLocked != null && (
-                  <button
-                    type="button"
-                    className="text-[11px] text-muted-foreground underline underline-offset-2"
-                    onClick={() => {
-                      setStatsChipLocked(null);
-                      clearStatsChipSize();
-                    }}
-                  >
-                    Use Auto size for this screen
-                  </button>
-                )}
               </div>
               <div className="col-span-2 flex items-center justify-between gap-2">
                 <Label className="text-xs">Label bg</Label>

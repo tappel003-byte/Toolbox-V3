@@ -754,30 +754,14 @@ await page.evaluate(() => {
 });
 await page.click('[aria-label="Labels & layers"]');
 await new Promise((r) => setTimeout(r, 300));
-const lockedUi = await page.evaluate(() => {
+// The size set is the size kept, and there is no Auto to fall back to. Tim:
+// "I don't think I'll ever use that setting because it's always wrong -- you
+// just adjust it to the size that you want and it stays that size." The link
+// that used to sit under this stepper said "Use Auto size for this screen"
+// and by then only reset the size to a fixed 32, on any screen.
+const sizedUi = await page.evaluate(() => {
   const autoBtn = [...document.querySelectorAll('button')].find((b) =>
-    /Use Auto size for this screen/i.test(b.textContent || ''),
-  );
-  const output = document.querySelector('[aria-label^="Stats pill size:"]');
-  return {
-    hasAuto: !!autoBtn,
-    label: output ? (output.getAttribute('aria-label') || output.textContent || '') : '',
-  };
-});
-check(
-  'Locked stats pill size offers Use Auto for this screen',
-  lockedUi.hasAuto && /44px/.test(lockedUi.label),
-  JSON.stringify(lockedUi),
-);
-await page.evaluate(() => {
-  [...document.querySelectorAll('button')]
-    .find((b) => /Use Auto size for this screen/i.test(b.textContent || ''))
-    ?.click();
-});
-await new Promise((r) => setTimeout(r, 200));
-const afterAuto = await page.evaluate(() => {
-  const autoBtn = [...document.querySelectorAll('button')].find((b) =>
-    /Use Auto size for this screen/i.test(b.textContent || ''),
+    /Use Auto size/i.test(b.textContent || ''),
   );
   const output = document.querySelector('[aria-label^="Stats pill size:"]');
   const chip = document.querySelector('[aria-label="Elevation stats — drag to move"]');
@@ -789,9 +773,10 @@ const afterAuto = await page.evaluate(() => {
   };
 });
 check(
-  'Use Auto clears the locked stats pill size on desktop',
-  !afterAuto.hasAuto && /Auto/i.test(afterAuto.label) && afterAuto.stored == null && afterAuto.chipHeight <= 40,
-  JSON.stringify(afterAuto),
+  'the stats pill is the size it was set to, with no Auto to undo it',
+  !sizedUi.hasAuto && /44px/.test(sizedUi.label) && !/Auto/i.test(sizedUi.label) &&
+    sizedUi.chipHeight === 44 && sizedUi.stored === '44',
+  JSON.stringify(sizedUi),
 );
 await page.evaluate(() => {
   const label = [...document.querySelectorAll('label')].find((n) => (n.textContent || '').trim() === 'Legend');
