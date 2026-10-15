@@ -59,6 +59,30 @@ async function stopServer(server) {
   });
 }
 
+/**
+ * Wait for the Distress iframe to be open and drawn.
+ *
+ * The pin count is part of the condition when one is given: the cached
+ * document arrives before the Customer File has been read back out of
+ * IndexedDB, so a wait that stops at the title can look at a plan whose pins
+ * have not been placed on it yet.
+ *
+ * It is a condition with a generous ceiling rather than a tuned one. This
+ * suite runs beside forty others on one machine, and an offline relaunch that
+ * takes a second on an idle machine can take most of a minute on a busy one;
+ * a ceiling set by what an idle machine needs is why this test used to fail
+ * only during a full sweep.
+ */
+async function waitForDistress(pins) {
+  await page.waitForFunction((want) => {
+    const child = document.querySelector('iframe');
+    const doc = child?.contentDocument;
+    if (!doc || doc.title !== 'Distress Survey – Field Reporter') return false;
+    if (!doc.querySelector('#screenWork.active')) return false;
+    return want == null || doc.querySelectorAll('#gPins .pin').length === want;
+  }, { timeout: 90000 }, pins);
+}
+
 const port = await freePort();
 const host = 'toolbox-offline.test';
 const base = `http://${host}:${port}/index.html`;
@@ -169,11 +193,7 @@ try {
   server = null;
 
   await page.click('[data-app="distress"]');
-  await page.waitForFunction(() => {
-    const frame = document.querySelector('iframe');
-    return frame?.contentDocument?.title === 'Distress Survey – Field Reporter' &&
-      frame.contentDocument.querySelector('#screenWork.active');
-  }, { timeout: 15000 });
+  await waitForDistress();
 
   let frame = page.frames().find((item) => /distress-survey\/survey\.html/.test(item.url()));
   const launch = await frame.evaluate(() => ({
@@ -218,14 +238,27 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
+  // Placing an observation is a tap on the plan, and the plan does not take a
+  // tap until the sheet that was open has finished closing -- until then the
+  // tap lands on the sheet's backdrop and is swallowed. A swallowed tap used
+  // to leave the previous sheet open, and the description below was typed into
+  // the observation that was already there instead of a new one. So wait for
+  // the sheet to be gone, tap, and confirm the new observation landed.
+  await frame.waitForFunction(() => !document.querySelector('#pinSheet.open'), { timeout: 15000 });
   await tapPlan(0.72, 0.68);
-  await frame.waitForSelector('#pinSheet.open');
+  await frame.waitForFunction(
+    () => document.querySelectorAll('#gPins .pin').length === 2 &&
+      !!document.querySelector('#pinSheet.open'),
+    { timeout: 30000 });
   await frame.evaluate(() => {
     const description = document.getElementById('pinDesc');
     description.value = 'Added and edited offline';
     description.dispatchEvent(new Event('input', { bubbles: true }));
   });
-  await new Promise((resolve) => setTimeout(resolve, 700));
+  await page.waitForFunction(async () => {
+    const record = await ToolboxDB.getCustomerFile('offline-distress');
+    return (record.distress.pins || []).some((pin) => pin.description === 'Added and edited offline');
+  }, { timeout: 30000, polling: 200 });
   await frame.click('#pinSheet .ghost');
 
   const offlineSaved = await page.evaluate(async () => {
@@ -241,15 +274,14 @@ try {
   await frame.evaluate(() => document.querySelector('#screenWork .back-btn')?.click());
   await page.waitForFunction(() => location.hash === '#/file/offline-distress' && !document.querySelector('iframe'));
   await page.click('[data-app="distress"]');
-  await page.waitForFunction(() => {
-    const child = document.querySelector('iframe');
-    return child?.contentDocument?.title === 'Distress Survey – Field Reporter' &&
-      child.contentDocument.querySelectorAll('#gPins .pin').length === 2;
-  }, { timeout: 15000 });
+  await waitForDistress(2);
   check('Distress reopens offline with offline changes intact', true);
 
   server = startServer(port);
   await waitForServer(port);
+  // The claim here is that nothing happens -- no reload, no lost edit -- when
+  // the origin comes back, and absence is the one thing a condition cannot be
+  // waited for. So this pause stays a pause.
   await new Promise((resolve) => setTimeout(resolve, 500));
   const reconnected = await page.evaluate(async () => {
     const child = document.querySelector('iframe');

@@ -19,6 +19,11 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
 
 - A stated need is not an approved architecture.
 - Brainstorming is not implementation authorization.
+- A question is not an instruction. "Would this look better?" is discussion;
+  "do it" is the go-ahead. Where it is not plain which one a message is, ask
+  which it is before building (Tim, Oct 15, 2026: "I asked a question if it
+  would look better and you went ahead and built it immediately... please just
+  make sure that the commands are there before you do something").
 - Routine implementation details do not require product-owner approval.
 - If ambiguity would materially affect workflow, data ownership, proven behavior, architecture, or the professional deliverable, **stop and ask** rather than silently choosing. Batch non-blocking questions for a meaningful review checkpoint when practical, instead of interrupting for each one.
 - One implementer modifies a given problem at a time.
