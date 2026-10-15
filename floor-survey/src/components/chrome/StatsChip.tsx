@@ -22,8 +22,18 @@ export const DEFAULT_STATS_CHIP_SIZE = 32;
 /** localStorage key holding the user's chosen chip height in px. */
 export const STATS_CHIP_SIZE_KEY = "stats-chip-size";
 export const STATS_CHIP_SIZE_EVENT = "stats-chip-size-change";
-export const STATS_CHIP_MIN = 20;
-export const STATS_CHIP_MAX = 56;
+/**
+ * How small and how large the pill may be set.
+ *
+ * These are the ends of the stepper, not a judgement about what is readable.
+ * Tim, with the stepper sitting on its old floor of 20 and the minus greyed
+ * out: "I do not need to be limited to change the pill size to the size that
+ * I want." A dense plan wants a smaller pill than a sparse one, and a pill on
+ * a printed sheet is not the pill on a phone, so the range is as wide as the
+ * stepper can usefully be and the choice is his.
+ */
+export const STATS_CHIP_MIN = 8;
+export const STATS_CHIP_MAX = 120;
 
 /** Read the user's chosen chip height, or null when unset (auto). */
 export function getStatsChipSize(): number | null {

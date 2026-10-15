@@ -778,6 +778,37 @@ check(
     sizedUi.chipHeight === 44 && sizedUi.stored === '44',
   JSON.stringify(sizedUi),
 );
+
+// And the stepper goes as small and as large as he wants it. Tim, with the
+// minus greyed out at the old floor of 20: "I do not need to be limited to
+// change the pill size to the size that I want." A dense plan wants a smaller
+// pill than a sparse one, so the ends are wide and the choice is his.
+const pressSize = async (which, times) => {
+  for (let i = 0; i < times; i += 1) {
+    await page.evaluate((aria) => document.querySelector(`[aria-label="${aria}"]`)?.click(), which);
+    await new Promise((r) => setTimeout(r, 60));
+  }
+};
+const sizeNow = () => page.evaluate(() => ({
+  shown: document.querySelector('[aria-label^="Stats pill size:"]')?.textContent.trim(),
+  stored: localStorage.getItem('stats-chip-size'),
+}));
+await pressSize('Decrease Stats pill size', 30);
+const smallest = await sizeNow();
+await pressSize('Increase Stats pill size', 90);
+const largest = await sizeNow();
+check(
+  'the pill size is not held at the old floor of 20 or ceiling of 56',
+  smallest.shown === '8px' && smallest.stored === '8' &&
+    largest.shown === '120px' && largest.stored === '120',
+  JSON.stringify({ smallest, largest }),
+);
+// Back to the size the rest of this suite was written against.
+await page.evaluate(() => {
+  localStorage.setItem('stats-chip-size', '44');
+  window.dispatchEvent(new CustomEvent('stats-chip-size-change', { detail: 44 }));
+});
+await new Promise((r) => setTimeout(r, 200));
 await page.evaluate(() => {
   const label = [...document.querySelectorAll('label')].find((n) => (n.textContent || '').trim() === 'Legend');
   label?.parentElement?.querySelector('[role="switch"]')?.click();
