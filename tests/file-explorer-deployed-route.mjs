@@ -83,7 +83,16 @@ const server = spawn('python3', ['-m', 'http.server', String(port), '--bind', '1
   cwd: new URL('..', import.meta.url).pathname,
   stdio: 'ignore',
 });
-await new Promise((resolve) => setTimeout(resolve, 400));
+// Wait for the server this run spawned to actually answer. A fixed pause is a
+// coin flip when the machine is busy running the whole sweep: it passes alone
+// and times out in the suite, which is how this came back red once in forty.
+for (let i = 0; i < 100; i += 1) {
+  try {
+    const probe = await fetch(`http://127.0.0.1:${port}/index.html`);
+    if (probe.ok) break;
+  } catch (_) { /* not listening yet */ }
+  await new Promise((resolve) => setTimeout(resolve, 100));
+}
 
 const browser = await puppeteer.launch({
   executablePath: findChrome(),
