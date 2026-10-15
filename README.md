@@ -10,6 +10,7 @@ This repository is a clean rebuild. It does not inherit Toolbox-V2's architectur
 - **`AGENTS.md`** — implementation guardrails for anyone (human or AI) working in this repository.
 - **`MILESTONE.md`** — the current, and only currently allowed, unit of work.
 - **`DECISIONS.md`** — durable decision log, summarizing what's already been decided in VISION.md.
+- **`TODO.md`** — parked work. Noticed, worth doing, not being done yet. A holding list, not an authority: nothing on it is approved to build.
 
 ## References, not architecture
 
