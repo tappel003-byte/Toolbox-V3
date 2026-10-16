@@ -876,6 +876,31 @@
   // there. Treating it as one froze the cover against the Customer File: a
   // phone or email added to the file after the report was first opened could
   // never appear, because the blank saved alongside it kept winning.
+  // What the correction actually corrects for.
+  //
+  // The shipped decks say "Corrected for Floor Differences"; the figure rail
+  // has always said flooring. Tim, asked which is right: "proper English
+  // wins." It is flooring -- Floor Survey corrects a reading for the covering
+  // underfoot, and calls it a flooring correction everywhere the investigator
+  // meets it: "Correct for flooring", "Flooring correction", "Active flooring
+  // corrections". The cover now says the same word as the rail and as the app.
+  var CORRECTED_NOTE = 'Corrected for Flooring Differences';
+
+  /**
+   * Replace a line nobody has touched.
+   *
+   * Seeded cover text is written onto the page as soon as it renders, so a
+   * Customer File built before this change carries the old wording as though
+   * it had been typed. A line that still reads exactly as the old default was
+   * never the investigator's word, so it takes the new one; anything else is
+   * his and is left alone.
+   */
+  function retireOldWording(value, oldText, newText) {
+    var api = window.ToolboxReportText;
+    var plain = api && api.isModel(value) ? api.toPlain(value) : String(value == null ? '' : value);
+    return plain.trim() === oldText ? newText : value;
+  }
+
   function keepRich(value, fallback) {
     if (value == null) return fallback;
     var api = window.ToolboxReportText;
@@ -929,7 +954,8 @@
       street: keepRich(prior.street, parts.street || meta.address || ''),
       cityLine: keepRich(prior.cityLine, parts.cityLine || ''),
       surveyDate: keepRich(prior.surveyDate, formatSurveyDate(meta.floorSurveyDate || '', false)),
-      corrected: keepRich(prior.corrected, 'Corrected for Floor Differences'),
+      corrected: retireOldWording(
+        keepRich(prior.corrected, CORRECTED_NOTE), 'Corrected for Floor Differences', CORRECTED_NOTE),
       contents: contents,
     };
   }
@@ -1888,6 +1914,10 @@
           mountTopo: thumb ? null : (page._mountTopo || null),
           topoSlots: thumb ? 1 : floorSlotsForPage(page),
           topoActiveSlot: thumb ? 0 : floorActiveSlotForPage(page),
+          // The cover's aerial view, carried onto this page automatically and
+          // taken off it with the x. Settled Oct 10, 2026.
+          overviewUrl: page._overviewUrl || '',
+          overviewHidden: !!(page.meta && page.meta.hideOverview),
         });
         if (page.meta && !thumb) page.meta.layout = rendered.layout;
         margin.appendChild(rendered.root);
@@ -2780,6 +2810,13 @@
         current._coverLayout = coverLayout;
         current._overviewUrl = coverOverviewUrl;
       }
+      // The cover's aerial view belongs to the book, not to the cover, so
+      // every Floor Survey page is handed it too -- the stamps as well as the
+      // sheet, or the preview would disagree with the page it is a preview
+      // of. Settled Oct 10, 2026.
+      (pages || []).forEach(function (item) {
+        if (item && item.type === 'floor') item._overviewUrl = coverOverviewUrl;
+      });
       if (current && current.type === 'section' && current.meta &&
           current.meta.sectionId === 'discussion') {
         current._facts = discussionFacts(current);
@@ -4544,6 +4581,23 @@
         }
         return;
       }
+      // The x on the site overview. Settled Oct 10, 2026: the cover's aerial
+      // view appears on every Floor Survey page by itself, "and then if it's
+      // not right you just delete it" -- on that page, leaving the cover and
+      // the other pages alone.
+      var overviewBtn = event.target.closest('[data-rb-floor-overview]');
+      if (overviewBtn) {
+        event.preventDefault();
+        var overviewPage = activePage();
+        if (!overviewPage || overviewPage.type !== 'floor') return;
+        overviewPage.meta = overviewPage.meta || {};
+        overviewPage.meta.hideOverview = true;
+        dirty = true;
+        setSaveStatus('Saving…');
+        renderPages();
+        flushSave().catch(function () {});
+        return;
+      }
       var lockBtn = event.target.closest('[data-rb-floor-lock]');
       if (!lockBtn) return;
       event.preventDefault();
@@ -4675,6 +4729,8 @@
       // behave exactly as the workspace it came from. The frame is moved and
       // sized from its handles, which sit on its edge, outside the drawing.
       if (!resize && event.target.closest('[data-rb-topo-live]')) return;
+      // The x is a button, not a grab handle.
+      if (event.target.closest('[data-rb-floor-overview]')) return;
       var stage = stageRect('[data-rb-floor-stage]');
       if (!stage || stage.width < 8 || stage.height < 8) return;
       event.preventDefault();
@@ -4732,7 +4788,24 @@
         ? window.ToolboxReportFloorLayout.cloneLayout(floorDrag.layout)
         : JSON.parse(JSON.stringify(floorDrag.layout));
       var flApi = window.ToolboxReportFloorLayout;
-      if (floorDrag.id === 'topo') {
+      if (floorDrag.id === 'overview') {
+        var ov = floorDrag.layout.overview;
+        if (floorDrag.resize) {
+          var ovMinW = flApi ? flApi.MIN_OVERVIEW_W : 6;
+          var ovMinH = flApi ? flApi.MIN_OVERVIEW_H : 6;
+          var ovWest = floorDrag.corner === 'nw' || floorDrag.corner === 'sw';
+          var ovNorth = floorDrag.corner === 'nw' || floorDrag.corner === 'ne';
+          var ovW = Math.max(ovMinW, ovWest ? ov.w - dx : ov.w + dx);
+          var ovH = Math.max(ovMinH, ovNorth ? ov.h - dy : ov.h + dy);
+          layout.overview.w = ovW;
+          layout.overview.h = ovH;
+          layout.overview.x = ovWest ? ov.x + (ov.w - ovW) : ov.x;
+          layout.overview.y = ovNorth ? ov.y + (ov.h - ovH) : ov.y;
+        } else {
+          layout.overview.x = ov.x + dx;
+          layout.overview.y = ov.y + dy;
+        }
+      } else if (floorDrag.id === 'topo') {
         if (floorDrag.resize) {
           // The held corner moves and the opposite one stays put, which is what
           // a corner handle means. Resizing only ever from the bottom right
@@ -4779,7 +4852,12 @@
       if (!floorLayout.locked) floorLayout = flApi ? flApi.cloneLayout(layout) : layout;
       var box = sheetEl.querySelector('[data-rb-floor-box="' + floorDrag.id + '"]');
       if (!box) return;
-      if (floorDrag.id === 'topo') {
+      if (floorDrag.id === 'overview') {
+        box.style.left = layout.overview.x + '%';
+        box.style.top = layout.overview.y + '%';
+        box.style.width = layout.overview.w + '%';
+        box.style.height = layout.overview.h + '%';
+      } else if (floorDrag.id === 'topo') {
         box.style.left = layout.topo.x + '%';
         box.style.top = layout.topo.y + '%';
         box.style.width = layout.topo.w + '%';

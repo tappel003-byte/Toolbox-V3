@@ -202,6 +202,7 @@ body.report-builder-open .canvas {
 .rb-sheet--thumb .rb-cover-box__resize,
 .rb-sheet--thumb .rb-cover-box__move,
 .rb-sheet--thumb .rb-floor-box__resize,
+.rb-sheet--thumb .rb-floor-overview__remove,
 .rb-sheet--thumb .rb-floor-empty,
 .rb-sheet--thumb .rb-discussion__overflow,
 /* The live drawing cannot mount in a preview, and saying so on a stamp is
@@ -2218,6 +2219,69 @@ body.report-builder-open .canvas {
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+/* The site overview on a Floor Survey page.
+ *
+ * The cover's aerial view of the property, carried onto the figure pages by
+ * itself and placed where the shipped decks put it: lower left, clear of the
+ * rail. It is moved and sized like any other box, and the x takes it off this
+ * page alone. Settled Oct 10, 2026; Tim, Oct 16: "able to delete on FS pages
+ * if too cluttered, and moveable by user." */
+.rb-floor-box--overview {
+  z-index: 3;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(23, 19, 14, 0.22);
+}
+
+.rb-floor-overview__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Its own corner pulls, unlike the drawing's, which appear only while the
+   plan is selected. There is nothing to select here -- the box is small and
+   its handles are how it is sized. */
+.rb-floor-box--overview .rb-floor-box__resize {
+  display: block;
+}
+
+.rb-floor-overview__remove {
+  position: absolute;
+  top: 2%;
+  right: 2%;
+  z-index: 7;
+  width: 4cqh;
+  height: 4cqh;
+  min-width: 14px;
+  min-height: 14px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(23, 19, 14, 0.62);
+  color: #fff;
+  font-size: 2.6cqh;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.rb-floor-box--overview:hover .rb-floor-overview__remove,
+.rb-floor-overview__remove:focus-visible {
+  opacity: 1;
+}
+
+@media print {
+  .rb-floor-overview__remove { display: none; }
+  .rb-floor-box--overview { box-shadow: none; }
 }
 
 .rb-floor-box:not(.is-locked) {

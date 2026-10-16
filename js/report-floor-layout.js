@@ -6,6 +6,8 @@
 
   var MIN_TOPO_W = 35;
   var MIN_TOPO_H = 35;
+  var MIN_OVERVIEW_W = 6;
+  var MIN_OVERVIEW_H = 6;
   var OVERLAY_KINDS = { legend: 1, pill: 1, 'pin-hi': 1, 'pin-lo': 1 };
   var MIN_SCALE = 0.65;
   var MAX_SCALE = 1.85;
@@ -39,6 +41,11 @@
       // the page. The old 10/6/80/88 was invented and squeezed it into the
       // margin box, which is why the plan looked small and cropped.
       topo: { x: 8.82, y: 8.33, w: 83.05, h: 87.91 },
+      // The aerial view of the property, where the decks put it: lower left,
+      // clear of the rail down the right. Put on the cover once and it is on
+      // every Floor Survey page; moved here, it moves on all of them; deleted
+      // here, it is gone from this page only.
+      overview: { x: 2.5, y: 74, w: 16, h: 18 },
       overlays: [
         { id: 'legend-0', kind: 'legend', statsIndex: 0, x: slot.x, y: slot.legendY, scale: 1 },
         { id: 'pill-0', kind: 'pill', statsIndex: 0, x: slot.x, y: slot.pillY, scale: 1 },
@@ -76,6 +83,7 @@
     var base = defaultLayout();
     var src = raw && typeof raw === 'object' ? raw : {};
     var topo = src.topo && typeof src.topo === 'object' ? src.topo : {};
+    var over = src.overview && typeof src.overview === 'object' ? src.overview : base.overview;
     var layout = {
       locked: !!src.locked,
       topo: {
@@ -89,6 +97,12 @@
         y: clamp(topo.y, -300, 300),
         w: clamp(topo.w, MIN_TOPO_W, 600),
         h: clamp(topo.h, MIN_TOPO_H, 600),
+      },
+      overview: {
+        x: clamp(over.x, -300, 300),
+        y: clamp(over.y, -300, 300),
+        w: clamp(over.w, MIN_OVERVIEW_W, 300),
+        h: clamp(over.h, MIN_OVERVIEW_H, 300),
       },
       overlays: [],
     };
@@ -241,6 +255,41 @@
     return pin;
   }
 
+  /**
+   * The site overview, as it appears on a Floor Survey page.
+   *
+   * Settled Oct 10, 2026: "once you put it in on the cover page it should
+   * automatically go in there, and then if it's not right you just delete
+   * it." So there is nothing to add here -- the picture is the cover's, and
+   * this page either carries it or has had it taken off. Tim, Oct 16: "able
+   * to delete on FS pages if too cluttered, and moveable by user."
+   */
+  function renderOverview(options, layout, locked) {
+    var url = options && options.overviewUrl;
+    if (!url || (options && options.overviewHidden)) return null;
+    var box = boxShell('overview', 'overview', locked);
+    box.style.left = layout.overview.x + '%';
+    box.style.top = layout.overview.y + '%';
+    box.style.width = layout.overview.w + '%';
+    box.style.height = layout.overview.h + '%';
+    var image = document.createElement('img');
+    image.className = 'rb-floor-overview__image';
+    image.src = url;
+    image.alt = 'Site overview';
+    image.setAttribute('draggable', 'false');
+    box.insertBefore(image, box.firstChild);
+    if (!locked) {
+      var remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'rb-floor-overview__remove';
+      remove.setAttribute('data-rb-floor-overview', 'remove');
+      remove.setAttribute('aria-label', 'Remove the site overview from this page');
+      remove.textContent = '\u00d7';
+      box.appendChild(remove);
+    }
+    return box;
+  }
+
   function boxShell(kind, id, locked) {
     var el = document.createElement('div');
     el.className = 'rb-floor-box rb-floor-box--' + kind + (locked ? ' is-locked' : '');
@@ -334,6 +383,8 @@
         bare.insertBefore(bareDraw, bare.firstChild);
         bareStage.appendChild(bare);
       }
+      var overviewBox = renderOverview(options, layout, locked);
+      if (overviewBox) bareStage.appendChild(overviewBox);
       root.appendChild(bareStage);
       return { root: root, layout: layout };
     }
@@ -469,5 +520,7 @@
     MAX_SCALE: MAX_SCALE,
     MIN_TOPO_W: MIN_TOPO_W,
     MIN_TOPO_H: MIN_TOPO_H,
+    MIN_OVERVIEW_W: MIN_OVERVIEW_W,
+    MIN_OVERVIEW_H: MIN_OVERVIEW_H,
   };
 })();

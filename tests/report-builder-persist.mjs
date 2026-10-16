@@ -62,6 +62,41 @@ await page.waitForFunction(() => /^Saved/.test(document.querySelector('#rb-save-
   timeout: 10000,
 });
 
+// The cover says what is actually corrected for. Tim, asked whether the
+// decks' "Corrected for Floor Differences" or the rail's flooring is right:
+// "proper English wins." Floor Survey corrects a reading for the covering
+// underfoot and calls it a flooring correction everywhere else.
+const coverNote = () => page.evaluate(
+  () => document.querySelector('.rb-cover__corrected')?.textContent.trim() || '');
+check('the cover reads "Corrected for Flooring Differences"',
+  (await coverNote()) === 'Corrected for Flooring Differences', await coverNote());
+
+// A cover built before that change carries the old line as though it had been
+// typed, so a line still reading exactly as the old default takes the new one,
+// while a line the investigator wrote over is his. The Customer File is
+// written with Report Builder closed -- an open book autosaves its own copy
+// back over anything changed underneath it.
+async function coverLineAfterStoring(stored) {
+  await page.goto(`${BASE}#/file/rb-persist`, { waitUntil: 'networkidle0' });
+  await page.evaluate(async (text) => {
+    const record = await window.ToolboxDB.getCustomerFile('rb-persist');
+    const cover = (record.reportBuilder?.pages || []).find((p) => p.type === 'cover');
+    cover.reportText.corrected = text;
+    await window.ToolboxDB.saveCustomerFile(record);
+  }, stored);
+  await page.goto(`${BASE}#/file/rb-persist/report`, { waitUntil: 'networkidle0' });
+  await page.waitForFunction(
+    () => (document.querySelector('.rb-cover__corrected')?.textContent || '').trim().length > 0,
+    { timeout: 10000 });
+  return coverNote();
+}
+check('an older cover takes the new wording',
+  (await coverLineAfterStoring('Corrected for Floor Differences')) ===
+    'Corrected for Flooring Differences');
+check('a line written over is left alone',
+  (await coverLineAfterStoring('Corrected for carpet and tile')) ===
+    'Corrected for carpet and tile');
+
 // A blank Customer File opens as Cover, Discussion, Floor Survey: the
 // Diagnostics sheet this used to move is no longer part of the book, so the
 // move under test is the Floor Survey sheet up past Discussion. What matters
