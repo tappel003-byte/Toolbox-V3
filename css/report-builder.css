@@ -1862,6 +1862,13 @@ body.report-builder-open .canvas {
   object-fit: fill;
 }
 
+/* The contour layer lies on the plan, at the same extent, under the pins. */
+.rb-penlog__image--contour {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 .rb-penlog__missing {
   position: absolute;
   left: 8%;

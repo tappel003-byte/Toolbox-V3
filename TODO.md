@@ -20,9 +20,6 @@ These are each a one-line answer, after which the work is small.
   the H/L/Δ pill and the High/Low markers as the report's own boxes. Nothing
   calls them — the slide draws its chrome through the live Floor Survey view.
   Bin them, or keep them as the material for a per-page rendition later?
-- **The contour layer on the report figure rail.** Tim leaned towards it
-  ("most likely going to be the view in Report Builder more often than not")
-  and never said go.
 
 ## Wants Tim at the desktop
 

@@ -479,6 +479,25 @@
         layoutPlans(root);
       });
       fit.appendChild(img);
+      // The contour layer over the plan, when this sheet is showing it.
+      //
+      // Floor Survey writes a black-and-white contour of a level as a second
+      // layer, saved transparent and drawn at the plan's own pixel extent --
+      // the same extent the pins are placed in. So it stacks straight on top
+      // with nothing to register: walls underneath, contours over them, pins
+      // over both. Tim, on seeing it in the field: "this is most likely going
+      // to be the view in Report Builder more often than not, because it's
+      // very telling."
+      var contour = model.contour || null;
+      var contourUrl = contour && typeof contour.dataUrl === 'string' &&
+        contour.dataUrl.indexOf('data:image/') === 0 ? contour.dataUrl : '';
+      if (contourUrl) {
+        var layerImg = document.createElement('img');
+        layerImg.className = 'rb-penlog__image rb-penlog__image--contour';
+        layerImg.alt = (model.levelName || 'Floor') + ' contours';
+        layerImg.src = contourUrl;
+        fit.appendChild(layerImg);
+      }
     } else {
       var missing = document.createElement('p');
       missing.className = 'rb-penlog__missing';

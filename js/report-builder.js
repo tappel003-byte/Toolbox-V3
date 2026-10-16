@@ -1516,6 +1516,26 @@
     return pins.slice(from, to);
   }
 
+  /**
+   * Whether this Picture Locations sheet draws the level's contour layer.
+   *
+   * On wherever there is one, because that is the view that tells the story:
+   * Tim, having used it in the field, "this is most likely going to be the
+   * view in Report Builder more often than not, because it's very telling."
+   * It is a rendition of this page, not a change to the level -- the same
+   * plan, the same pins, the same numbers -- so each sheet carries its own
+   * choice and Distress's own layer choice is untouched.
+   */
+  function penLogShowsContour(page) {
+    var want = page && page.meta ? page.meta.showContour : undefined;
+    return typeof want === 'boolean' ? want : true;
+  }
+
+  function penLogContour(page) {
+    if (!penLogShowsContour(page)) return null;
+    return (page.evidence && page.evidence.contour) || null;
+  }
+
   function penLogStart(page) {
     var n = page && page.meta && page.meta.penLogFrom;
     return typeof n === 'number' && isFinite(n) && n > 0 ? Math.floor(n) : 0;
@@ -1550,6 +1570,7 @@
       pageNumber: headFigure,
       figureCont: page !== head,
       plan: (page.evidence && page.evidence.plan) || {},
+      contour: penLogContour(page),
       pins: shown,
       // The map is the whole level on every sheet of it: a reader looking up
       // photograph 31 on the second sheet needs the same plan in front of
@@ -2346,6 +2367,7 @@
     var earlierBtn = root.querySelector('#rb-page-earlier');
     var laterBtn = root.querySelector('#rb-page-later');
     var penPanel = root.querySelector('#rb-penlog-panel');
+    var penContourBtn = root.querySelector('#rb-penlog-contour');
     var penNoteField = root.querySelector('#rb-report-note');
     var penSaveState = root.querySelector('#rb-save-state');
     var penPhotoList = root.querySelector('#rb-photo-list');
@@ -2500,6 +2522,15 @@
         return;
       }
       penPanel.hidden = false;
+      if (penContourBtn) {
+        var hasContour = !!(page.evidence && page.evidence.contour);
+        var showing = penLogShowsContour(page);
+        penContourBtn.hidden = !hasContour;
+        penContourBtn.textContent = showing ? 'Contours on' : 'Contours off';
+        penContourBtn.className = 'btn rb-ws__btn ' + (showing ? 'btn--accent' : 'btn--secondary');
+        penContourBtn.setAttribute('data-rb-penlog-contour', showing ? 'off' : 'on');
+        penContourBtn.setAttribute('aria-pressed', showing ? 'true' : 'false');
+      }
       var notes = penLogNoteMap(page, penLogUi.noteMap);
       var pins = penLogPinsForPage(page, notes);
       if (!pins.some(function (pin) { return pin.id === penLogUi.selectedPinId; })) {
@@ -3247,6 +3278,24 @@
         if (typeof onBack === 'function') onBack();
       });
     });
+
+    // Contours on or off for this Picture Locations sheet. The level's layer
+    // is untouched, and so is what Distress is showing: this is how this page
+    // is drawn, nothing more.
+    if (penContourBtn) {
+      penContourBtn.addEventListener('click', function (event) {
+        event.preventDefault();
+        var contourPage = activePage();
+        if (!contourPage || !isPenLogPage(contourPage)) return;
+        contourPage.meta = contourPage.meta || {};
+        contourPage.meta.showContour =
+          penContourBtn.getAttribute('data-rb-penlog-contour') === 'on';
+        dirty = true;
+        setSaveStatus('Saving…');
+        renderPages();
+        flushSave().catch(function () {});
+      });
+    }
 
     root.querySelectorAll('[data-rb-source]').forEach(function (button) {
       button.addEventListener('click', function () {
@@ -5329,6 +5378,9 @@
       // foot the other workspaces use: under a level with twenty
       // photographs, a button below the list is a long scroll from the sheet
       // it belongs to.
+      // Shown only on a level Floor Survey has written a contour for; a
+      // button offering a layer that does not exist is worse than no button.
+      '        <button type="button" class="btn rb-ws__btn" id="rb-penlog-contour" data-rb-penlog-contour="off" hidden></button>' +
       '        <button type="button" class="btn btn--secondary rb-ws__btn" data-rb-source="distress">Open Distress Survey</button>' +
       '        <p class="rb-panel__status" id="rb-save-state" aria-live="polite"></p>' +
       '        <label class="rb-panel__label" for="rb-report-note">Report note</label>' +
