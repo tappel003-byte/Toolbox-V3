@@ -16,12 +16,10 @@ so.
 
 These are each a one-line answer, after which the work is small.
 
-- **The Import button's promise.** It says it loads the topo, the legend and
-  the H/L/Δ, but only the plan arrives — the rest is deliberately held back.
-  Fix the words, or bring the pieces back?
-- **The old colour-scale code.** The block that drew the colour scale, the
-  H/L/Δ pill and the High/Low markers can no longer run. Bin it, or keep it as
-  the material for putting those pieces back on the rebuilt sheet?
+- **The old colour-scale code.** Three functions that drew the colour scale,
+  the H/L/Δ pill and the High/Low markers as the report's own boxes. Nothing
+  calls them — the slide draws its chrome through the live Floor Survey view.
+  Bin them, or keep them as the material for a per-page rendition later?
 - **The contour layer on the report figure rail.** Tim leaned towards it
   ("most likely going to be the view in Report Builder more often than not")
   and never said go.

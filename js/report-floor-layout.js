@@ -183,6 +183,14 @@
     return n.toFixed(typeof dec === 'number' ? dec : 2);
   }
 
+  // The colour scale, the pill and the High/Low markers, drawn as the report's
+  // own boxes rather than by the Floor Survey view.
+  //
+  // Nothing calls these three. The slide draws its chrome through the live
+  // view, which is what makes Import's promise true, and these are what a
+  // page of its own would be built from if the per-page rendition is ever
+  // wanted. They are kept deliberately, as material, pending a word on
+  // whether to bin them -- see TODO.md, "The old colour-scale code".
   function renderLegend(stats) {
     var box = document.createElement('div');
     box.className = 'rb-topo-legend';
@@ -439,59 +447,16 @@
     body.className = 'rb-topo-page__body rb-floor-stage';
     body.setAttribute('data-rb-floor-stage', '1');
 
-    if (imported) {
-      var topo = boxShell('topo', 'topo', locked);
-      topo.style.left = layout.topo.x + '%';
-      topo.style.top = layout.topo.y + '%';
-      topo.style.width = layout.topo.w + '%';
-      topo.style.height = layout.topo.h + '%';
-      var drawing = document.createElement('div');
-      drawing.className = 'rb-topo-page__drawing';
-      var figure = ev.figure || {};
-      // The live Floor Survey view, when Report Builder hands one over. It is
-      // the same component and the same canvas the investigator draws on, so
-      // there is no second renderer to drift. The composed image below is the
-      // fallback for a report saved before this.
-      var liveView = typeof options.mountTopo === 'function' ? options.mountTopo(page, 0) : null;
-      if (liveView) {
-        drawing.classList.add('rb-topo-page__drawing--live');
-        drawing.appendChild(liveView);
-      } else if (figure.dataUrl && figure.dataUrl.indexOf('data:image/') === 0) {
-        var img = document.createElement('img');
-        img.className = 'rb-topo-page__image';
-        img.src = figure.dataUrl;
-        img.alt = scopeTitle;
-        drawing.appendChild(img);
-      } else {
-        var miss = document.createElement('p');
-        miss.className = 'rb-sheet__note';
-        miss.textContent = 'Topo figure could not be composed from Floor Survey readings.';
-        drawing.appendChild(miss);
-      }
-      topo.insertBefore(drawing, topo.firstChild);
-      body.appendChild(topo);
-
-      // Rebuilding this page from the decks. Until the drawing itself is
-      // right, the slide carries the plan and nothing else -- the colour
-      // scale, the pill and the High/Low markers come back one at a time,
-      // placed at the deck's own coordinates, once there is something correct
-      // to place them against.
-      var SHOW_CHROME = false;
-      if (SHOW_CHROME) layout.overlays.forEach(function (overlay) {
-        var stats = statsList[overlay.statsIndex] || statsList[0];
-        if (!stats) return;
-        var box = boxShell(overlay.kind, overlay.id, locked);
-        box.style.left = overlay.x + '%';
-        box.style.top = overlay.y + '%';
-        box.style.transform = 'scale(' + overlay.scale + ')';
-        box.style.transformOrigin = 'top left';
-        if (overlay.kind === 'legend') box.appendChild(renderLegend(stats));
-        else if (overlay.kind === 'pin-hi') box.appendChild(renderPin('hi', stats));
-        else if (overlay.kind === 'pin-lo') box.appendChild(renderPin('lo', stats));
-        else box.appendChild(renderPill(stats));
-        body.appendChild(box);
-      });
-    } else {
+    // Only a page that has not been imported reaches here: an imported sheet
+    // is the drawing and nothing else, and returns above. What used to sit in
+    // this spot was a second way of drawing the slide -- a topo box holding
+    // the composed image, with the colour scale, the pill and the High/Low
+    // markers as boxes of this page's own -- and it had been unreachable long
+    // enough to have gone bad: it referred to a variable that no longer
+    // exists, so it would have thrown had anything called it. The slide draws
+    // its own chrome through the live Floor Survey view now, which is why
+    // Import delivers the legend and the H/L/Δ it promises.
+    {
       var empty = document.createElement('div');
       empty.className = 'rb-floor-empty';
       empty.textContent = 'Floor Survey graphics are not on this slide yet. Import when ready.';
