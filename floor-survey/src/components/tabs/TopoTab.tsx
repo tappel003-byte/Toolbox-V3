@@ -119,7 +119,6 @@ interface Props {
   onFloorChange: (floor: Floor) => void;
   settings: RenderSettings;
   onSettingsChange: (s: RenderSettings) => void;
-  selectedIds?: Set<string>;
   pointSize?: number;
   pointColor?: string;
   excludedIds?: Set<string>;
@@ -154,8 +153,6 @@ interface Props {
   /** null = "All areas". Owned by the route so the stats pills stay in sync. */
   selectedAreaId?: string | null;
   onSelectedAreaIdChange?: (id: string | null) => void;
-  /** Tap H or L on an area's stats pill to highlight that point. */
-  onHighlight?: (p: SurveyPoint) => void;
   /** Report Builder hosts this same view on a slide. It needs to read the view
    *  the investigator sets, and to put a locked one back. */
   onCamera?: (camera: PlanCamera) => void;
@@ -407,14 +404,12 @@ export function TopoTab({
   onFloorChange,
   settings,
   onSettingsChange,
-  selectedIds,
   pointSize = 6,
   pointColor = "#dc2626",
   excludedIds: excludedIdsProp,
   onExcludedIdsChange,
   selectedAreaId = null,
   onSelectedAreaIdChange,
-  onHighlight,
   onCamera,
   cameraRequest,
   hideCanvasChrome = false,
@@ -429,8 +424,6 @@ export function TopoTab({
   resizeCorners = false,
   allowContourLayer = false,
 }: Props) {
-  const selectedId =
-    selectedIds && selectedIds.size > 0 ? (selectedIds.values().next().value ?? null) : null;
   const [openCorner, setOpenCorner] = useState<null | "contours" | "palette" | "labels">(null);
   const [warningDismissed, setWarningDismissed] = useState(false);
   // "Send to Distress Survey" — idle while nothing has been asked for.
@@ -573,8 +566,6 @@ export function TopoTab({
     active: boolean; // true after long-press fires
   } | null>(null);
   const longPressTimer = useRef<number | null>(null);
-  // Point to highlight if the current pill press ends as a tap (no drag).
-  const pillTapRef = useRef<SurveyPoint | null>(null);
   type LastMove =
     | { kind: "label"; id: string; prevDx: number | undefined; prevDy: number | undefined }
     | { kind: "pin-high" | "pin-low"; prevDx: number | undefined; prevDy: number | undefined }
@@ -661,7 +652,7 @@ export function TopoTab({
   type Hit =
     | { kind: "label"; point: SurveyPoint }
     | { kind: "pin-high" | "pin-low"; point: SurveyPoint; dx: number; dy: number }
-    | { kind: "pill"; areaId: string; dx: number; dy: number; tapPoint: SurveyPoint | null };
+    | { kind: "pill"; areaId: string; dx: number; dy: number };
 
   function hitDraggable(x: number, y: number): Hit | null {
     if (canvasStatsPill) {
@@ -675,22 +666,11 @@ export function TopoTab({
         const x0 = cx - m.total / 2;
         const y0 = cy - h / 2;
         if (x < x0 || x > x0 + m.total || y < y0 || y > y0 + h) continue;
-        let sx = x0;
-        let tapPoint: SurveyPoint | null = null;
-        for (const s of m.segs) {
-          if (x >= sx && x <= sx + s.w) {
-            if (s.kind === "hi") tapPoint = at.hi;
-            else if (s.kind === "lo") tapPoint = at.lo;
-            break;
-          }
-          sx += s.w;
-        }
         return {
           kind: "pill",
           areaId: at.area.id,
           dx: at.area.pillDx ?? 0,
           dy: at.area.pillDy ?? 0,
-          tapPoint,
         };
       }
     }
@@ -1057,7 +1037,6 @@ export function TopoTab({
                 hit.kind === "label" ? (hit.point.labelDx ?? DEFAULT_LABEL_DX) : hit.dx;
               const startDy =
                 hit.kind === "label" ? (hit.point.labelDy ?? DEFAULT_LABEL_DY) : hit.dy;
-              pillTapRef.current = hit.kind === "pill" ? hit.tapPoint : null;
               const immediate = hit.kind === "pill";
               setDrag({
                 kind: hit.kind,
@@ -1126,12 +1105,13 @@ export function TopoTab({
                 if (drag.kind === "label") commitLabelMove(drag.id, drag.dx, drag.dy);
                 else if (drag.kind === "pill") commitPillMove(drag.id, drag.dx, drag.dy);
                 else commitPinMove(drag.kind, drag.dx, drag.dy);
-              } else if (drag.kind === "pill" && !moved && pillTapRef.current) {
-                // Quick tap on the pill's H or L segment highlights that point.
-                onHighlight?.(pillTapRef.current);
               }
+              // A tap on the pill does nothing. It used to highlight the High
+              // or the Low point whose reading was under the finger. Tim: "if
+              // you click the numbers on the high low pills it highlights the
+              // high or the low on the top -- I don't think I want that." The
+              // pill is a readout and a thing to drag, not a control.
             }
-            pillTapRef.current = null;
             setDrag(null);
           }}
           drawOverlay={(ctx) => {
@@ -1158,7 +1138,7 @@ export function TopoTab({
                 : null;
             renderTopoTop(ctx, floor, visiblePoints, resolved, areaTopos, {
               liveDrag: activeLabel,
-              highlightId: activeLabel?.id ?? selectedId,
+              highlightId: activeLabel?.id ?? null,
               livePinHigh: activePinHigh,
               livePinLow: activePinLow,
               highlightPin:

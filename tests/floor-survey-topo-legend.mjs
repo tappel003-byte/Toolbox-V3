@@ -803,6 +803,53 @@ check(
     largest.shown === '120px' && largest.stored === '120',
   JSON.stringify({ smallest, largest }),
 );
+// One size setting, every pill. The floating chip used to hold its type at
+// 9px and its padding at 4px however small the pill was set, so a level set
+// small showed pills on the plan that had shrunk and a chip that had not.
+// Tim: "the sizing did not apply to all three pills in this scenario."
+await page.evaluate(() => {
+  localStorage.setItem('stats-chip-size', '14');
+  window.dispatchEvent(new CustomEvent('stats-chip-size-change', { detail: 14 }));
+});
+await new Promise((r) => setTimeout(r, 300));
+const smallChip = await page.evaluate(() => {
+  const el = document.querySelector('[aria-label="Elevation stats — drag to move"]');
+  if (!el) return null;
+  const seg = el.children[el.children.length - 1];
+  return {
+    height: Math.round(el.getBoundingClientRect().height),
+    font: Math.round(parseFloat(getComputedStyle(seg).fontSize)),
+    pad: Math.round(parseFloat(getComputedStyle(seg).paddingLeft)),
+  };
+});
+check(
+  'the floating chip shrinks with the size, as the drawn pills do',
+  !!smallChip && smallChip.height === 14 && smallChip.font === 6 && smallChip.pad === 2,
+  JSON.stringify(smallChip),
+);
+
+// A tap on a reading does nothing. It used to highlight the High or the Low
+// point on the plan. Tim: "if you click the numbers on the high low pills it
+// highlights the high or the low on the top -- I don't think I want that."
+const planPixels = () => page.evaluate(() =>
+  [...document.querySelectorAll('canvas')].map((c) => c.toDataURL()).join('|').length +
+  ':' + [...document.querySelectorAll('canvas')].map((c) => c.toDataURL().slice(-40)).join('|'));
+const beforeTap = await planPixels();
+const tapTarget = await page.evaluate(() => {
+  const el = document.querySelector('[aria-label="Elevation stats — drag to move"]');
+  const seg = [...el.children].find((n) => /^H/.test(n.textContent.trim()));
+  const r = seg.getBoundingClientRect();
+  return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+});
+await page.mouse.click(tapTarget.x, tapTarget.y);
+await new Promise((r) => setTimeout(r, 700));
+const afterTap = await planPixels();
+check(
+  'tapping the High reading leaves the plan exactly as it was',
+  beforeTap === afterTap,
+  JSON.stringify({ same: beforeTap === afterTap }),
+);
+
 // Back to the size the rest of this suite was written against.
 await page.evaluate(() => {
   localStorage.setItem('stats-chip-size', '44');

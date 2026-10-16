@@ -76,7 +76,6 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [topoHighlightIds, setTopoHighlightIds] = useState<Set<string>>(new Set());
   const [topoExcludedIds, setTopoExcludedIds] = useState<Set<string>>(new Set());
   const [topoAreaId, setTopoAreaId] = useState<string | null>(null);
   useEffect(() => {
@@ -486,12 +485,10 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
             onSettingsChange={setSettings}
             pointSize={pointSize}
             pointColor={pointColor}
-            selectedIds={topoHighlightIds}
             excludedIds={topoExcludedIds}
             onExcludedIdsChange={setTopoExcludedIds}
             selectedAreaId={topoAreaId}
             onSelectedAreaIdChange={setTopoAreaId}
-            onHighlight={(p) => setTopoHighlightIds(new Set([p.id]))}
             allowContourLayer
           />
         )}
@@ -515,14 +512,6 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
                 ? statsPoints.filter((p) => !topoExcludedIds.has(p.id))
                 : statsPoints
             }
-            onHighlight={(p) => {
-              if (mode === "topo") {
-                setTopoHighlightIds(new Set([p.id]));
-                return;
-              }
-              setSelectedIds(new Set([p.id]));
-              setFocusRequest({ x: p.x, y: p.y, nonce: Date.now() });
-            }}
           />
         </>
       )}

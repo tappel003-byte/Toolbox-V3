@@ -64,7 +64,6 @@ import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@
 
 interface Props {
   points: SurveyPoint[];
-  onHighlight?: (point: SurveyPoint) => void;
   storageKey?: string;
   /** Optional area name shown as a leading segment (combined multi-area view). */
   label?: string;
@@ -87,14 +86,17 @@ function topChromeHeight() {
 /**
  * Floating pill: High / Low / Delta.
  * - Drag anywhere on the chip to move it (5px threshold).
- * - Quick tap on High/Low = highlight that point.
- * - Size follows the viewport width tier unless the user picked a size in
- *   Topo → Labels & layers → "Stats pill size" (persisted in localStorage).
+ * - A tap does nothing. Tapping the High or the Low reading used to highlight
+ *   that point on the plan. Tim, looking at it: "if you click the numbers on
+ *   the high low pills it highlights the high or the low on the top -- I don't
+ *   think I want that." The pill is a readout and a thing to drag out of the
+ *   way, not a control.
+ * - Size is the one set in Topo → Labels & layers → "Stats pill size", kept on
+ *   this device; the pills drawn on the plan take the same size.
  * - Position persists per storageKey and clamps to viewport on resize/rotate.
  */
 export function StatsChip({
   points,
-  onHighlight,
   storageKey = "stats-chip-pos",
   label,
   stackIndex = 0,
@@ -138,9 +140,15 @@ export function StatsChip({
     };
   }, []);
 
+  // The same type and air as the pills drawn on the plan, with no floor of
+  // its own. This chip used to hold its type at 9px and its padding at 4px
+  // however small the pill was set, so a level set to 14px showed two small
+  // pills on the drawing and one that had stopped shrinking. Tim: "the sizing
+  // did not apply to all three pills." One size setting, three pills, one
+  // size.
   const height = userSize ?? DEFAULT_STATS_CHIP_SIZE;
-  const fontPx = Math.round(statsPillFont(height, 9));
-  const padPx = Math.round(statsPillPad(height, 4));
+  const fontPx = Math.round(statsPillFont(height));
+  const padPx = Math.round(statsPillPad(height));
 
   // Default: bottom center, above the bottom pill row. Persisted position wins.
   useEffect(() => {
@@ -210,19 +218,16 @@ export function StatsChip({
     const y = Math.min(Math.max(top, d.originY + dy), window.innerHeight - h - 4);
     setPos({ x, y });
   };
-  const endDrag = (e: React.PointerEvent, target?: "hi" | "lo") => {
+  const endDrag = (e: React.PointerEvent) => {
     const d = drag.current;
     if (!d || d.pointerId !== e.pointerId) return;
     drag.current = null;
-    if (d.moved) {
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(pos));
-      } catch {
-        /* ignore */
-      }
-      return;
+    if (!d.moved) return;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(pos));
+    } catch {
+      /* ignore */
     }
-    if (target && stats) onHighlight?.(target === "hi" ? stats.hi : stats.lo);
   };
 
   if (!stats || !pos) {
@@ -267,14 +272,12 @@ export function StatsChip({
       <div
         className="flex items-center font-semibold"
         style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.hi }}
-        onPointerUp={(e) => endDrag(e, "hi")}
       >
         {statsPillText("H", stats.hi.value.toFixed(decimals))}
       </div>
       <div
         className="flex items-center border-l border-gray-200 font-semibold"
         style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.lo }}
-        onPointerUp={(e) => endDrag(e, "lo")}
       >
         {statsPillText("L", stats.lo.value.toFixed(decimals))}
       </div>

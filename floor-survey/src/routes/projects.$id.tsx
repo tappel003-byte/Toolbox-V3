@@ -70,7 +70,6 @@ function ProjectWorkspace() {
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [topoHighlightIds, setTopoHighlightIds] = useState<Set<string>>(new Set());
   // Diagnostic exclusions live at the route so the StatsChip can filter with
   // them on Topo. Session-only: cleared when floor changes or when leaving Topo.
   const [topoExcludedIds, setTopoExcludedIds] = useState<Set<string>>(new Set());
@@ -437,12 +436,10 @@ function ProjectWorkspace() {
             onSettingsChange={setSettings}
             pointSize={pointSize}
             pointColor={pointColor}
-            selectedIds={topoHighlightIds}
             excludedIds={topoExcludedIds}
             onExcludedIdsChange={setTopoExcludedIds}
             selectedAreaId={topoAreaId}
             onSelectedAreaIdChange={setTopoAreaId}
-            onHighlight={(p) => setTopoHighlightIds(new Set([p.id]))}
           />
         )}
         {mode === "export" && (
@@ -472,14 +469,6 @@ function ProjectWorkspace() {
                 ? statsPoints.filter((p) => !topoExcludedIds.has(p.id))
                 : statsPoints
             }
-            onHighlight={(p) => {
-              if (mode === "topo") {
-                setTopoHighlightIds(new Set([p.id]));
-                return;
-              }
-              setSelectedIds(new Set([p.id]));
-              setFocusRequest({ x: p.x, y: p.y, nonce: Date.now() });
-            }}
           />
         </>
       )}
