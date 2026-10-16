@@ -1453,6 +1453,18 @@ body.report-builder-open .canvas {
   min-width: 0;
 }
 
+/* Five grids will not sit across the panel in one row -- squeezed to fit,
+   each one clipped its own name. They wrap onto a second line instead. */
+.rb-ws__row--wrap {
+  flex-wrap: wrap;
+}
+
+.rb-ws__row--wrap .rb-ws__btn {
+  flex: 1 1 28%;
+  min-width: 3.6rem;
+  width: auto;
+}
+
 /* The figure rail — a narrow column down the right of a figure page.
    Everything in it is reference matter: whose property this is, what the
    drawing is, when it was surveyed, the readings, and the mark. It must not

@@ -19,14 +19,9 @@ These are each a one-line answer, after which the work is small.
 - **The Import button's promise.** It says it loads the topo, the legend and
   the H/L/Δ, but only the plan arrives — the rest is deliberately held back.
   Fix the words, or bring the pieces back?
-- **"Corrected for flooring differences".** The shipped decks say "Corrected
-  for Floor Differences". The figure sheets say "flooring". Which is right?
 - **The old colour-scale code.** The block that drew the colour scale, the
   H/L/Δ pill and the High/Low markers can no longer run. Bin it, or keep it as
   the material for putting those pieces back on the rebuilt sheet?
-- **The Google overview on Floor Survey pages.** Decided Oct 10 — once it is on
-  the cover it goes on the figure pages too, and a wrong one is deleted. Never
-  built.
 - **The contour layer on the report figure rail.** Tim leaned towards it
   ("most likely going to be the view in Report Builder more often than not")
   and never said go.
@@ -39,7 +34,6 @@ pages.
 
 - The cover page. Tim: "I do not like the cover page at all."
 - The Discussion page, never rebuilt.
-- The leftover Pictures page that strands photographs in the corner.
 - The chevrons in the contents, and the empty dashed site-overview box.
 - Bringing the colour scale, the H/L/Δ pill and the High/Low markers back onto
   an imported Floor Survey slide. They are switched off on purpose until the

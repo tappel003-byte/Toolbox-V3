@@ -737,20 +737,60 @@
     return box;
   }
 
-  // How many pictures across a Pictures page lays them out.
+  // The grid a Pictures page lays its photographs out on.
   //
-  // Five is the full page. Fewer across makes each one bigger, which is the
-  // point when a page only carries three or four photographs and they are
-  // worth seeing properly. Rows follow from how many pictures the page holds
-  // rather than being chosen separately: 4 x 1 and 4 x 2 are the same
-  // decision made twice, and a chosen row count could leave a photograph with
-  // nowhere to go.
-  var PICTURES_ACROSS = [3, 4, 5];
-  var PICTURES_ACROSS_DEFAULT = 5;
+  // Only the number across is chosen; the rows follow from how many pictures
+  // the page holds, so 4 x 1 and 4 x 2 are one decision rather than two and
+  // no choice can leave a photograph with nowhere to go. The rail names the
+  // grid each choice produces -- 5 x 2, 4 x 2 -- because that is how the
+  // layout is thought about: Tim, on a page carrying one stranded
+  // photograph, "if we have 10 pictures per slide and we can change our grid
+  // to 5 by 2 or 4 by 2 or 4 by 1, 5 by 1, then it would probably look less
+  // improper."
+  var PICTURES_ACROSS = [1, 2, 3, 4, 5];
+
+  /**
+   * The grid a page falls into when nobody has chosen one.
+   *
+   * It used to be five across whatever the page held, which is what stranded
+   * the last photograph of a set: eleven pictures made a full page and then a
+   * page with one picture in a fifth of a row, marooned in the corner. The
+   * grid now fits the page -- the number across that leaves the fewest empty
+   * cells, the widest of those when several tie, and never more than two rows
+   * deep, because a landscape sheet with captions has room for two.
+   *
+   * One picture therefore fills its sheet, four sit in a row of four, six go
+   * three and three. Ten is still five across, which is what a full page has
+   * always looked like.
+   */
+  function defaultPicturesAcross(count) {
+    var n = Math.max(1, Number(count) || 1);
+    var best = 1;
+    var bestGaps = Infinity;
+    PICTURES_ACROSS.forEach(function (cols) {
+      if (cols > n) return;
+      var rows = Math.ceil(n / cols);
+      if (rows > 2 && n <= 2 * PICTURES_ACROSS[PICTURES_ACROSS.length - 1]) return;
+      var gaps = (rows * cols) - n;
+      if (gaps < bestGaps || (gaps === bestGaps && cols > best)) {
+        best = cols;
+        bestGaps = gaps;
+      }
+    });
+    return best;
+  }
+
+  function picturesOnPage(page) {
+    var evidence = (page && page.evidence) || {};
+    if (Array.isArray(evidence.photos) && evidence.photos.length) return evidence.photos.length;
+    var keys = page && page.meta && page.meta.photoKeys;
+    return Array.isArray(keys) ? keys.length : 0;
+  }
 
   function picturesAcross(page) {
     var n = page && page.meta ? Number(page.meta.picturesAcross) : 0;
-    return PICTURES_ACROSS.indexOf(n) >= 0 ? n : PICTURES_ACROSS_DEFAULT;
+    if (PICTURES_ACROSS.indexOf(n) >= 0) return n;
+    return defaultPicturesAcross(picturesOnPage(page));
   }
 
   function renderPicturesPage(page) {
@@ -2994,17 +3034,24 @@
         if (railTitleEl) railTitleEl.textContent = 'Pictures';
         railTopEl.textContent = '';
         var acrossNow = picturesAcross(page);
+        // Each button is named for the grid it makes of the pictures on this
+        // page -- 5 x 2, 4 x 2, 4 x 1 -- rather than for its number of
+        // columns, which is how the sheet is actually thought about.
+        var onPage = Math.max(1, picturesOnPage(page));
         var row = document.createElement('div');
-        row.className = 'rb-ws__row';
+        row.className = 'rb-ws__row rb-ws__row--wrap';
         PICTURES_ACROSS.forEach(function (n) {
-          var btn = railButton(String(n) + ' across',
+          if (n > onPage) return;
+          var label = String(n) + ' \u00d7 ' + Math.ceil(onPage / n);
+          var btn = railButton(label,
             n === acrossNow ? 'accent' : 'secondary', 'data-rb-pics-across', String(n));
           row.appendChild(btn);
         });
         railTopEl.appendChild(row);
         var picHint = document.createElement('p');
         picHint.className = 'rb-panel__lead';
-        picHint.textContent = 'Fewer across makes each picture bigger. Rows follow from how many this page holds.';
+        picHint.textContent = 'Across \u00d7 down. Fewer across makes each picture bigger; ' +
+          'a page starts on the grid that fits what it holds.';
         railTopEl.appendChild(picHint);
         if (railBodyEl) railBodyEl.textContent = '';
         setRailFootSource('distress');
