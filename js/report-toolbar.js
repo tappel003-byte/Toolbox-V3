@@ -298,13 +298,14 @@
   }
 
   function selectionState(field) {
-    var state = { bold: false, italic: false, underline: false, bullet: false, number: false,
-      align: 'left', size: '', font: '', color: '' };
+    var state = { bold: false, italic: false, underline: false, strike: false,
+      bullet: false, number: false, align: 'left', size: '', font: '', color: '' };
     if (!field) return state;
     try {
       state.bold = document.queryCommandState('bold');
       state.italic = document.queryCommandState('italic');
       state.underline = document.queryCommandState('underline');
+      state.strike = document.queryCommandState('strikeThrough');
       // queryCommandState only recognises lists it built itself; the
       // Bullets button owns this markup, so the blocks are the truth.
       var bulletBlocks = blocksInSelection(field).filter(function (b) { return b !== field; });
@@ -410,6 +411,17 @@
     // Text direction: the letter turned on its side, with the arrow.
     dir: svg('<path d="M4 20V8M4 8 7 11M4 8 1.2 11" />' +
       '<path d="M10.5 19.5 15 5l4.5 14.5M12 15.5h6"/>'),
+
+    // Strikethrough: the ribbon's S with the rule straight through it.
+    strike: svg('<path d="M15.5 7.5a4 4 0 0 0-7 2c0 1.4 1.1 2.1 3 2.5"/>' +
+      '<path d="M8.5 16.5a4.2 4.2 0 0 0 7-2.2"/><path d="M3 12h18"/>'),
+
+    // Clear all formatting: the ribbon's A with an eraser beside it.
+    clearfmt: svg(letterA(1.5, 5, 11, 13) +
+      '<path d="M14.5 18.5h7"/><path d="m15.5 15.5 4-4 3 3-4 4z"/>'),
+
+    // Change case: the ribbon's big A beside a small one.
+    textcase: svg(letterA(1.5, 4, 10, 15) + letterA(13.5, 11, 8, 8)),
 
     // Numbering: 1, 2, 3 against the same three lines the bullet icon uses.
     number: svg('<path d="M9 6.5h12M9 12h12M9 17.5h12"/>' +
@@ -608,6 +620,9 @@
       '    <button type="button" class="rb-format__btn rb-format__btn--b" data-rb-fmt="bold" aria-label="Bold" title="Bold">B</button>' +
       '    <button type="button" class="rb-format__btn rb-format__btn--i" data-rb-fmt="italic" aria-label="Italic" title="Italic">I</button>' +
       '    <button type="button" class="rb-format__btn rb-format__btn--u" data-rb-fmt="underline" aria-label="Underline" title="Underline">U</button>' +
+      iconBtn('data-rb-fmt', 'strike', 'Strikethrough') +
+      iconBtn('data-rb-fmt', 'textcase', 'Change case', 'Change case \u2014 UPPER, lower, Capitals') +
+      iconBtn('data-rb-fmt', 'clearfmt', 'Clear all formatting') +
       textColorButton() +
       '  </span>' +
       '  <span class="rb-format__group">' +
@@ -654,6 +669,40 @@
   // command would apply to nothing.
   function hold(event) { event.preventDefault(); }
 
+  /**
+   * Change case, the way the ribbon's Aa button does it.
+   *
+   * PowerPoint offers a menu; one button that steps through the three cases
+   * anybody uses -- UPPER, lower, Capitalise Each Word -- is the same job
+   * with one less decision, and pressing it again carries on round.
+   */
+  var CASES = [
+    function (t) { return t.toUpperCase(); },
+    function (t) { return t.toLowerCase(); },
+    function (t) {
+      return t.toLowerCase().replace(/(^|[\s(\[\u2014-])([a-z\u00e0-\u00ff])/g,
+        function (all, before, letter) { return before + letter.toUpperCase(); });
+    },
+  ];
+  var caseStep = 0;
+
+  function stepCase() {
+    var sel = window.getSelection();
+    if (!sel || sel.isCollapsed) return;
+    var text = String(sel.toString() || '');
+    if (!text.trim()) return;
+    for (var i = 0; i < CASES.length; i += 1) {
+      var candidate = CASES[(caseStep + i) % CASES.length](text);
+      if (candidate !== text) {
+        caseStep = (caseStep + i + 1) % CASES.length;
+        // insertText keeps the run's bold, colour and size; replacing the
+        // nodes by hand would not.
+        exec('insertText', candidate);
+        return;
+      }
+    }
+  }
+
   function run(command, field) {
     switch (command) {
       case 'bold': exec('bold'); break;
@@ -669,6 +718,13 @@
       case 'indent': stepIndent(field, 1); break;
       case 'outdent': stepIndent(field, -1); break;
       case 'dir': toggleDirection(field); break;
+      case 'strike': exec('strikeThrough'); break;
+      // What the ribbon's Clear All Formatting clears: the character
+      // formatting on the selection. Bullets, numbering, indent and
+      // alignment belong to the paragraph and are left where they are, the
+      // same as PowerPoint leaves them.
+      case 'clearfmt': exec('removeFormat'); break;
+      case 'textcase': stepCase(); break;
       default: return false;
     }
     return true;
@@ -765,7 +821,7 @@
       bar.classList.toggle('is-ready', !!field);
       if (hint) hint.textContent = field ? '' : 'Select text on the sheet to format it.';
       var state = selectionState(field);
-      ['bold', 'italic', 'underline', 'bullet', 'number'].forEach(function (k) {
+      ['bold', 'italic', 'underline', 'strike', 'bullet', 'number'].forEach(function (k) {
         var btn = bar.querySelector('[data-rb-fmt="' + k + '"]');
         if (btn) btn.classList.toggle('is-on', !!state[k]);
       });

@@ -2492,7 +2492,7 @@ body.report-builder-open .canvas {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px 10px;
+  gap: 2px 7px;
   min-width: 0;
 }
 
@@ -2500,7 +2500,7 @@ body.report-builder-open .canvas {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding-right: 8px;
+  padding-right: 6px;
   border-right: 1px solid var(--line);
 }
 
@@ -2511,8 +2511,11 @@ body.report-builder-open .canvas {
   align-items: center;
   justify-content: center;
   /* Ribbon-sized. 28px was tight for a touch target and cramped the icons;
-     there is room across the top for the real thing. */
-  min-width: 32px;
+     there is room across the top for the real thing. 30px with the gutters
+     pulled in keeps the whole bar on one row down to a 1600px screen, which
+     three more controls had cost it -- a second row of ours comes straight
+     off the height of the sheet. */
+  min-width: 30px;
   height: 32px;
   padding: 0 7px;
   border: 1px solid transparent;
@@ -2525,6 +2528,17 @@ body.report-builder-open .canvas {
 }
 
 .rb-format__btn--icon { padding: 0 6px; gap: 2px; }
+
+/* On a smaller desktop the bar pulls itself in rather than taking a second
+   row: a row of ours comes straight off the height of the sheet, and the
+   sheet is the thing being worked on. Full ribbon sizing comes back as soon
+   as there is room for it. */
+@media (max-width: 1800px) {
+  .rb-format { gap: 2px 5px; }
+  .rb-format__group { padding-right: 4px; }
+  .rb-format__btn { min-width: 28px; padding: 0 5px; }
+  .rb-format__btn--icon { padding: 0 4px; }
+}
 
 .rb-format__btn svg {
   display: block;

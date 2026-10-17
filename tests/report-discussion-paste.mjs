@@ -198,6 +198,63 @@ check('its headings stay headings and its bullets stay bullets',
 check('and it arrives in the report’s own type, not the chat’s',
   stored.styled === 0, String(stored.styled));
 
+// A narrative that arrives as plain prose is formatted here, so the bar has
+// to carry what the ribbon carries. Tim: "this is why we need full editing
+// control with all of the different PowerPoint icons -- section, indent,
+// bullets etc. If it comes in as plain text so be it."
+const bar = await page.evaluate(() => ({
+  commands: [...document.querySelectorAll('.rb-format [data-rb-fmt]')]
+    .map((b) => b.getAttribute('data-rb-fmt')),
+  rows: new Set([...document.querySelectorAll('.rb-format__group')]
+    .map((g) => Math.round(g.getBoundingClientRect().top))).size,
+}));
+check('the bar carries the ribbon\u2019s controls',
+  ['bold', 'italic', 'underline', 'strike', 'textcase', 'clearfmt', 'textcolor',
+    'bullet', 'number', 'outdent', 'indent',
+    'left', 'center', 'right', 'justify'].every((c) => bar.commands.indexOf(c) !== -1),
+  bar.commands.join(','));
+
+async function selectFirstBlock() {
+  await page.evaluate(() => {
+    const body = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) .rb-discussion__body');
+    body.focus();
+    const range = document.createRange();
+    range.selectNodeContents(body.children[0]);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+  await new Promise((r) => setTimeout(r, 300));
+}
+async function press(command) {
+  await selectFirstBlock();
+  await page.evaluate((c) => {
+    const btn = document.querySelector('.rb-format [data-rb-fmt="' + c + '"]');
+    btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  }, command);
+  await new Promise((r) => setTimeout(r, 700));
+  return page.evaluate(() => {
+    const body = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) .rb-discussion__body');
+    return { html: body.children[0].innerHTML, text: body.children[0].textContent };
+  });
+}
+const struck = await press('strike');
+check('strikethrough marks the words and stays on them',
+  /<(s|strike)>/i.test(struck.html), struck.html.slice(0, 80));
+const upper = await press('textcase');
+const lower = await press('textcase');
+const title = await press('textcase');
+check('change case steps UPPER, lower, then Capitals',
+  upper.text === upper.text.toUpperCase() &&
+  lower.text === lower.text.toLowerCase() &&
+  title.text !== upper.text && title.text !== lower.text,
+  JSON.stringify({ upper: upper.text, lower: lower.text, title: title.text }));
+const cleared = await press('clearfmt');
+check('clear all formatting leaves the words and takes the rest',
+  !/<(b|strong|s|strike|i|em|u)>/i.test(cleared.html) && cleared.text === title.text,
+  cleared.html.slice(0, 80));
+
 // Take it away again and the sheet it needed goes with it.
 await openDiscussion();
 await page.evaluate(() => {

@@ -61,6 +61,7 @@
     if (raw.italic === true) run.italic = true;
     else if (raw.italic === false) run.italic = false;
     if (raw.underline) run.underline = true;
+    if (raw.strike) run.strike = true;
     var size = parseFloat(raw.size);
     if (isFinite(size) && size > 0) run.size = Math.round(size * 10) / 10;
     if (raw.font) run.font = String(raw.font);
@@ -144,6 +145,7 @@
           if (r.italic === true) run.italic = true;
           else if (r.italic === false) run.italic = false;
           if (r.underline) run.underline = true;
+          if (r.strike) run.strike = true;
           if (r.size) run.size = r.size;
           if (r.font) run.font = r.font;
           if (r.color) run.color = r.color;
@@ -181,6 +183,7 @@
     if (run.italic === false) style += 'font-style:normal;';
     var html = text;
     if (run.underline) html = '<u>' + html + '</u>';
+    if (run.strike) html = '<s>' + html + '</s>';
     if (run.italic === true) html = '<em>' + html + '</em>';
     if (run.bold === true) html = '<strong>' + html + '</strong>';
     if (style) html = '<span style="' + style + '">' + html + '</span>';
@@ -395,12 +398,14 @@
       if (ctx.italic === true) run.italic = true;
       else if (ctx.italic === false) run.italic = false;
       if (ctx.underline) run.underline = true;
+      if (ctx.strike) run.strike = true;
       if (ctx.size) run.size = ctx.size;
       if (ctx.font) run.font = ctx.font;
       if (ctx.color) run.color = ctx.color;
       var last = current.runs[current.runs.length - 1];
       if (last && last.bold === run.bold && last.italic === run.italic &&
-          !!last.underline === !!run.underline && last.size === run.size &&
+          !!last.underline === !!run.underline && !!last.strike === !!run.strike &&
+          last.size === run.size &&
           last.font === run.font && last.color === run.color) {
         last.text += run.text;
         return;
@@ -449,6 +454,8 @@
             child.style && child.style.fontStyle, 'italic'),
           underline: ctx.underline || tag === 'U' ||
             (child.style && /underline/.test(child.style.textDecoration || '')),
+          strike: ctx.strike || tag === 'S' || tag === 'STRIKE' || tag === 'DEL' ||
+            (child.style && /line-through/.test(child.style.textDecoration || '')),
           size: styleSize(child) || ctx.size,
           font: styleFont(child) || ctx.font,
           color: styleColor(child) || ctx.color,
@@ -457,7 +464,10 @@
       }
     }
 
-    walk(root, { bold: null, italic: null, underline: false, size: null, font: null, color: null });
+    walk(root, {
+      bold: null, italic: null, underline: false, strike: false,
+      size: null, font: null, color: null,
+    });
     if (!model.paragraphs.length) model.paragraphs.push(blankParagraph());
     // contenteditable leaves a trailing empty block behind constantly.
     while (model.paragraphs.length > 1) {
