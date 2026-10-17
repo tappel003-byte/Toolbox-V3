@@ -309,20 +309,11 @@
       brand.appendChild(grip);
     }
     sheet.appendChild(brand);
-
-    // The control rides beside the logo rather than in a fixed corner, which
-    // put it straight on top of the artwork once the logo was placed there.
-    var lock = document.createElement('button');
-    lock.type = 'button';
-    lock.className = 'rb-brand__lock';
-    lock.setAttribute('data-rb-brand-lock', placed.locked ? 'unlock' : 'lock');
-    lock.textContent = placed.locked ? 'Unlock logo' : 'Lock logo';
-    var GAP = 1.2;
-    var WIDTH = 13; // roughly what "Unlock logo" occupies at this size
-    var right = placed.x + placed.w + GAP;
-    lock.style.left = (right + WIDTH <= 99 ? right : Math.max(0, placed.x - GAP - WIDTH)) + '%';
-    lock.style.top = (placed.y + Math.max(0, (placed.h - 2.6) / 2)) + '%';
-    sheet.appendChild(lock);
+    // Lock logo used to stand on the paper beside the mark. It is in the side
+    // rail with the slide's other controls, where Lock layout went: on the
+    // sheet it was chrome printed over the report, and once the logo was
+    // locked the mark stopped taking the pointer, so a button that only
+    // appeared on hover could never have been reached to unlock it again.
   }
 
   function nextPicturesPageId(pages) {
@@ -3001,10 +2992,21 @@
             : floorLayout;
         }
       }
-      if (current && current.type === 'cover') {
-        current._coverLayout = coverLayout;
-        current._overviewUrl = coverOverviewUrl;
-      }
+      // Stamped on every page that needs it, not only on the one being
+      // looked at. The print deck renders the same page objects, and a value
+      // only the active page carried was missing from the printed sheet:
+      // a Discussion printed as a blank sheet whenever the investigator had
+      // moved to another slide before pressing Print.
+      pages.forEach(function (item) {
+        if (!item) return;
+        if (item.type === 'cover') {
+          item._coverLayout = coverLayout;
+          item._overviewUrl = coverOverviewUrl;
+        } else if (item.type === 'section' && item.meta &&
+                   item.meta.sectionId === 'discussion') {
+          item._facts = discussionFacts(item);
+        }
+      });
       // The cover's aerial view belongs to the book, not to the cover, so
       // every Floor Survey page is handed it too -- the stamps as well as the
       // sheet, or the preview would disagree with the page it is a preview
@@ -3018,10 +3020,6 @@
         // is handed over on the page like the aerial view is.
         item._floorView = floorViewFor(item);
       });
-      if (current && current.type === 'section' && current.meta &&
-          current.meta.sectionId === 'discussion') {
-        current._facts = discussionFacts(current);
-      }
       if (current) current._brandBox = currentBrandBox(current);
       // Only the slide being looked at hosts the live view; the others are not
       // in the DOM. The camera is the book's, so every level opens framed the
@@ -3208,6 +3206,30 @@
         if (railFootEl) railFootEl.textContent = '';
         return;
       }
+      if (pageTakesBrand(page)) {
+        releaseRailControls();
+        railEl.hidden = false;
+        if (railIdleEl) railIdleEl.hidden = true;
+        if (railTitleEl) railTitleEl.textContent = page.type === 'section' ? 'Discussion' : 'Sheet';
+        var brandBox = window.ToolboxReportDiscussion
+          ? window.ToolboxReportDiscussion.normalizeBrandBox(currentBrandBox(page))
+          : (currentBrandBox(page) || {});
+        var brandLocked = !!brandBox.locked;
+        railTopEl.textContent = '';
+        railTopEl.appendChild(railButton(
+          brandLocked ? 'Unlock logo' : 'Lock logo',
+          brandLocked ? 'secondary' : 'accent',
+          'data-rb-brand-lock', brandLocked ? 'unlock' : 'lock'));
+        var brandHint = document.createElement('p');
+        brandHint.className = 'rb-panel__lead';
+        brandHint.textContent = brandLocked
+          ? 'The mark is placed. It sits here on every page that carries it.'
+          : 'Drag the mark to move it. Drag its corner to size it. Lock when it sits where you want it.';
+        railTopEl.appendChild(brandHint);
+        if (railBodyEl) railBodyEl.textContent = '';
+        if (railFootEl) railFootEl.textContent = '';
+        return;
+      }
       var isPictures = !!(page && page.type === 'pictures');
       if (isPictures) {
         releaseRailControls();
@@ -3344,6 +3366,22 @@
     // delegation rather than by listeners attached once at mount.
     if (railEl) {
       railEl.addEventListener('click', function (event) {
+        var brandLockBtn = event.target.closest('[data-rb-brand-lock]');
+        if (brandLockBtn) {
+          event.preventDefault();
+          var brandPage = activePage();
+          if (!brandPage) return;
+          var brandApi = window.ToolboxReportDiscussion;
+          var brandNext = brandApi
+            ? brandApi.normalizeBrandBox(currentBrandBox(brandPage))
+            : (currentBrandBox(brandPage) || {});
+          brandNext.locked = brandLockBtn.getAttribute('data-rb-brand-lock') === 'lock';
+          applyBrandBox(brandNext);
+          markDirty();
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
         var coverLock = event.target.closest('[data-rb-cover-lock]');
         if (coverLock) {
           event.preventDefault();
@@ -3490,20 +3528,6 @@
     });
 
     sheetEl.addEventListener('click', function (event) {
-      var brandLock = event.target.closest('[data-rb-brand-lock]');
-      if (brandLock) {
-        event.preventDefault();
-        var page = activePage();
-        if (!page) return;
-        var api = window.ToolboxReportDiscussion;
-        var box = api ? api.normalizeBrandBox(currentBrandBox(page)) : (currentBrandBox(page) || {});
-        box.locked = brandLock.getAttribute('data-rb-brand-lock') === 'lock';
-        applyBrandBox(box);
-        markDirty();
-        renderPages();
-        flushSave().catch(function () {});
-        return;
-      }
       var jump = event.target.closest('[data-rb-goto]');
       if (!jump) return;
       var targetId = jump.getAttribute('data-rb-goto');

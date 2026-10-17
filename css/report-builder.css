@@ -680,6 +680,10 @@ body.report-builder-open .canvas {
   margin: 0;
   padding: 0;
   border: 0;
+  /* The height above subtracts the two margins this page does not have, so
+     without this the bled page stopped a margin's depth short of the paper
+     and the drawing printed into the top five sixths of the sheet. */
+  height: 100%;
 }
 
 /* A Diagnostics sheet: the captured 3D view, and the notice that has to
@@ -2929,10 +2933,17 @@ body.report-builder-open .canvas {
    annotations and page controls underneath stay usable. */
 .rb-brand.is-locked { pointer-events: none; }
 
+/* The mark is artwork on the page; what tells you it can be moved is ours,
+   so it waits until the mark is pointed at. Tim, Oct 17, on the title page:
+   "all those corner blocks -- that's one of the things I really dislike." */
 .rb-brand:not(.is-locked) {
-  outline: 1px dashed var(--rb-copper, #8B5E3C);
+  outline: none;
   outline-offset: 2px;
   cursor: move;
+}
+
+.rb-brand:not(.is-locked):hover {
+  outline: 1px dashed var(--rb-copper, #8B5E3C);
 }
 
 .rb-brand__img {
@@ -2945,6 +2956,7 @@ body.report-builder-open .canvas {
 
 .rb-brand__resize {
   position: absolute;
+  display: none;
   width: 13px;
   height: 13px;
   right: -3px;
@@ -2954,26 +2966,10 @@ body.report-builder-open .canvas {
   cursor: nwse-resize;
 }
 
-.rb-brand__lock {
-  position: absolute;
-  /* Above the logo in the stack: the logo overlapped this control, so clicks
-     on Unlock landed on the image instead. */
-  z-index: 8;
-  padding: 2px 8px;
-  border: 1px solid var(--line, #d7d2c8);
-  border-radius: 6px;
-  background: var(--panel, #fff);
-  color: var(--ink, #222);
-  font: inherit;
-  font-size: 1.2cqh;
-  line-height: 1.6;
-  cursor: pointer;
-  white-space: nowrap;
-}
+.rb-brand:not(.is-locked):hover .rb-brand__resize { display: block; }
 
 @media print {
-  .rb-brand__resize,
-  .rb-brand__lock { display: none !important; }
+  .rb-brand__resize { display: none !important; }
   .rb-brand { outline: none !important; }
 }
 

@@ -49,6 +49,8 @@ const CHROME = [
   '.rb-floor-toolbar',
   '[data-rb-cover-lock]',
   '[data-rb-cover-overview]',
+  '.rb-brand__resize',
+  '[data-rb-brand-lock]',
 ];
 
 function check(name, ok, detail = '') {
@@ -179,7 +181,7 @@ async function restingChrome(id) {
     selectors.forEach((sel) => {
       sheet.querySelectorAll(sel).forEach((el) => { if (seen(el)) showing.push(sel); });
     });
-    const outlined = [...sheet.querySelectorAll('.rb-cover-box, .rb-floor-box')]
+    const outlined = [...sheet.querySelectorAll('.rb-cover-box, .rb-floor-box, .rb-brand')]
       .filter((box) => getComputedStyle(box).outlineStyle !== 'none').length;
     return { showing: [...new Set(showing)], outlined };
   }, CHROME);
