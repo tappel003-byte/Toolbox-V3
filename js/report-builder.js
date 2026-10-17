@@ -811,14 +811,18 @@
    */
   var TEMPLATE_KEY = 'toolbox-report-template';
 
+  var templateCache = null;
+
   function storedTemplate() {
+    if (templateCache) return templateCache;
     try {
       var raw = window.localStorage.getItem(TEMPLATE_KEY);
       var value = raw ? JSON.parse(raw) : null;
-      return value && typeof value === 'object' ? value : {};
+      templateCache = value && typeof value === 'object' ? value : {};
     } catch (err) {
-      return {};
+      templateCache = {};
     }
+    return templateCache;
   }
 
   /** Merge one piece in, leaving the others as they were. */
@@ -831,6 +835,7 @@
         else next[key] = JSON.parse(JSON.stringify(piece[key]));
       });
       window.localStorage.setItem(TEMPLATE_KEY, JSON.stringify(next));
+      templateCache = next;
       return true;
     } catch (err) {
       return false;
@@ -1634,7 +1639,11 @@
    */
   function penLogShowsContour(page) {
     var want = page && page.meta ? page.meta.showContour : undefined;
-    return typeof want === 'boolean' ? want : true;
+    if (typeof want === 'boolean') return want;
+    // A sheet that has not been told takes the default; the default is the
+    // investigator's, and on is what it was before he set one.
+    var fromTemplate = storedTemplate().penLogContour;
+    return typeof fromTemplate === 'boolean' ? fromTemplate : true;
   }
 
   function penLogContour(page) {
@@ -3343,6 +3352,14 @@
           : 'Drag the plan to move it. Drag the corner to size it. Lock when it sits where you want it on every slide.';
         railTopEl.appendChild(viewHint);
 
+        railTopEl.appendChild(railButton(
+          'Use this as my default', 'quiet', 'data-rb-template', 'floor'));
+        var floorDefaultHint = document.createElement('p');
+        floorDefaultHint.className = 'rb-panel__lead';
+        floorDefaultHint.textContent =
+          'New reports frame the building this way and draw it with these settings.';
+        railTopEl.appendChild(floorDefaultHint);
+
         var twoUp = floorSlots(page) > 1;
         railTopEl.appendChild(railButton(
           twoUp ? 'One view' : 'Two views',
@@ -3417,9 +3434,27 @@
         if (templateBtn) {
           event.preventDefault();
           var which = templateBtn.getAttribute('data-rb-template');
-          var saved = which === 'cover'
-            ? saveTemplatePiece({ coverLayout: coverLayout })
-            : saveTemplatePiece({ discussionBox: discussionBox, brandBox: brandBox });
+          var saved;
+          if (which === 'cover') {
+            saved = saveTemplatePiece({ coverLayout: coverLayout });
+          } else if (which === 'floor') {
+            // How the building is framed, where the scale and the readings
+            // sit on the page, and what is drawn inside the frame.
+            saved = saveTemplatePiece({
+              floorLayout: floorLayout,
+              floorCamera: floorCamera,
+              floorView: floorViewFor(activePage()) || floorView,
+            });
+          } else {
+            // What the page is actually showing, not only what was moved: a
+            // placement he is happy with as it stands is still the one he
+            // means to keep.
+            var dTmpl = window.ToolboxReportDiscussion;
+            saved = saveTemplatePiece({
+              discussionBox: dTmpl ? dTmpl.normalizeBodyBox(discussionBox) : discussionBox,
+              brandBox: dTmpl ? dTmpl.normalizeBrandBox(currentBrandBox(activePage())) : brandBox,
+            });
+          }
           setSaveStatus(saved
             ? 'Saved as the default for new reports.'
             : 'The default could not be saved on this device.');
@@ -3580,6 +3615,17 @@
         flushSave().catch(function () {});
       });
     }
+
+    root.querySelectorAll('[data-rb-template="penlog"]').forEach(function (button) {
+      button.addEventListener('click', function (event) {
+        event.preventDefault();
+        var penPage = activePage();
+        if (!penPage || !isPenLogPage(penPage)) return;
+        setSaveStatus(saveTemplatePiece({ penLogContour: penLogShowsContour(penPage) })
+          ? 'Saved as the default for new reports.'
+          : 'The default could not be saved on this device.');
+      });
+    });
 
     root.querySelectorAll('[data-rb-source]').forEach(function (button) {
       button.addEventListener('click', function () {
@@ -5643,13 +5689,14 @@
       var fresh = withProperty(api.assemble(source), source);
       var freshPages = ensurePicturesInFreshPages(fresh.pages.slice(), photoList);
       var savedDoc = record && (record.reportBuilder || record.report);
-      if (savedDoc && savedDoc.floorLayout && window.ToolboxReportFloorLayout) {
-        floorLayout = window.ToolboxReportFloorLayout.normalizeLayout(savedDoc.floorLayout);
-      }
       // What this report was given stands. Only a report that has never been
       // placed takes the template -- otherwise setting a new default would
       // reach back and move every book already written.
       var template = storedTemplate();
+      var floorSeed = (savedDoc && savedDoc.floorLayout) || template.floorLayout;
+      if (floorSeed && window.ToolboxReportFloorLayout) {
+        floorLayout = window.ToolboxReportFloorLayout.normalizeLayout(floorSeed);
+      }
       var coverSeed = (savedDoc && savedDoc.coverLayout) || template.coverLayout;
       if (coverSeed && window.ToolboxReportCoverLayout) {
         coverLayout = window.ToolboxReportCoverLayout.normalizeLayout(coverSeed);
@@ -5662,8 +5709,10 @@
       if (discSeed && window.ToolboxReportDiscussion) {
         discussionBox = window.ToolboxReportDiscussion.normalizeBodyBox(discSeed);
       }
-      if (savedDoc && savedDoc.floorCamera) floorCamera = savedDoc.floorCamera;
-      if (savedDoc && savedDoc.floorView) floorView = reviveFloorView(savedDoc.floorView);
+      var cameraSeed = (savedDoc && savedDoc.floorCamera) || template.floorCamera;
+      if (cameraSeed) floorCamera = JSON.parse(JSON.stringify(cameraSeed));
+      var viewSeed = (savedDoc && savedDoc.floorView) || template.floorView;
+      if (viewSeed) floorView = reviveFloorView(viewSeed);
       if (savedDoc && Array.isArray(savedDoc.pages)) {
         savedDoc.pages.forEach(function (page) {
           if (page && page.meta && page.meta.floorView) {
@@ -5834,6 +5883,7 @@
       // Shown only on a level Floor Survey has written a contour for; a
       // button offering a layer that does not exist is worse than no button.
       '        <button type="button" class="btn rb-ws__btn" id="rb-penlog-contour" data-rb-penlog-contour="off" hidden></button>' +
+      '        <button type="button" class="btn btn--quiet rb-ws__btn" data-rb-template="penlog">Use this as my default</button>' +
       '        <button type="button" class="btn btn--secondary rb-ws__btn" data-rb-source="distress">Open Distress Survey</button>' +
       '        <p class="rb-panel__status" id="rb-save-state" aria-live="polite"></p>' +
       '        <label class="rb-panel__label" for="rb-report-note">Report note</label>' +
