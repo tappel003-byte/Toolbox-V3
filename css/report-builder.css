@@ -1821,14 +1821,23 @@ body.report-builder-open .canvas {
    so a page that runs to four rows shrinks the plates to fit rather than
    running off the paper. */
 .rb-pictures-page__frame {
-  flex: 0 1 auto;
+  /* The picture takes every bit of its cell that the label and the caption
+     are not using. It used to be a plate of a fixed portrait shape, which
+     kept the captions in a row starting on one line but letterboxed any
+     photograph that was not 3:4 -- a landscape shot sat small in the middle
+     of a tall white box. Tim: "we just need to maximise the space, too
+     small of a picture doesn't do anything." */
+  /* Takes the room the label and the caption are not using, which gives the
+     picture inside it a real height to be measured against. The picture sits
+     at the FOOT of it, so the caption is directly under the photograph and
+     whatever is left over falls above -- and the pictures along a row line
+     up on their bottom edge. */
+  flex: 1 1 auto;
   width: 100%;
-  aspect-ratio: 3 / 4;
   height: auto;
-  max-height: 100%;
   min-height: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
   overflow: hidden;
   /* No tint behind the picture. The plate is a fixed portrait shape so that
@@ -1841,10 +1850,14 @@ body.report-builder-open .canvas {
 
 .rb-pictures-page__image {
   display: block;
-  max-width: 100%;
-  max-height: 100%;
+  /* Sized to the picture, not to the box: as large as the cell allows in
+     whichever direction runs out first, and no larger. The element is then
+     exactly the photograph, which is what makes the black rule hug it
+     instead of standing off it on white. */
   width: auto;
   height: auto;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
   /* Tim, Oct 17: "we need a black border around all pictures." A rule round
      the photograph itself, not round the space it sits in, so a tall picture
