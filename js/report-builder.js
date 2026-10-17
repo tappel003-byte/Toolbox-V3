@@ -3744,7 +3744,119 @@
       flushSave().catch(function () {});
     }
 
+    /**
+     * Placing a text box, the way PowerPoint places one.
+     *
+     * The button used to drop a box at a fixed spot on the page and leave the
+     * investigator to drag it where they meant -- and it arrived with no
+     * outline and no caret, so on white paper nothing appeared to have
+     * happened at all. Now the button arms the tool, the pointer shows a
+     * crosshair, and the next click or drag on the sheet says where the box
+     * goes and how wide it is. A plain click gets a sensible default width,
+     * which is what PowerPoint does too.
+     */
+    var textPlace = null;
+
+    function beginTextBox(event) {
+      var at = sheetPercent(event);
+      if (!at) return;
+      event.preventDefault();
+      var ghost = document.createElement('div');
+      ghost.className = 'rb-ov-ghost';
+      ghost.style.left = at.x + '%';
+      ghost.style.top = at.y + '%';
+      ghost.style.width = '0%';
+      ghost.style.height = '0%';
+      sheetEl.appendChild(ghost);
+      textPlace = { start: at, ghost: ghost, pointerId: event.pointerId };
+      try { sheetEl.setPointerCapture(event.pointerId); } catch (err) { /* convenience */ }
+    }
+
+    function textPlaceRect(at) {
+      var s = textPlace.start;
+      return {
+        x: Math.min(s.x, at.x),
+        y: Math.min(s.y, at.y),
+        w: Math.abs(at.x - s.x),
+        h: Math.abs(at.y - s.y),
+      };
+    }
+
+    function moveTextBox(event) {
+      var at = sheetPercent(event);
+      if (!at || !textPlace) return;
+      var box = textPlaceRect(at);
+      textPlace.ghost.style.left = box.x + '%';
+      textPlace.ghost.style.top = box.y + '%';
+      textPlace.ghost.style.width = box.w + '%';
+      textPlace.ghost.style.height = box.h + '%';
+    }
+
+    function cancelTextBox() {
+      if (!textPlace) return;
+      if (textPlace.ghost.parentNode) textPlace.ghost.parentNode.removeChild(textPlace.ghost);
+      textPlace = null;
+    }
+
+    function endTextBox(event) {
+      if (!textPlace) return;
+      var at = sheetPercent(event) || textPlace.start;
+      var box = textPlaceRect(at);
+      cancelTextBox();
+      disarmInk();
+      var page = activePage();
+      var api = window.ToolboxReportOverlay;
+      if (!page || !api) return;
+      var item = api.create('text');
+      item.color = overlayColor;
+      // A click rather than a drag: the default measure, starting where the
+      // pointer went down.
+      var drawn = box.w > 3 && box.h > 1.5;
+      item.x = Math.max(0, Math.min(97, drawn ? box.x : box.x));
+      item.y = Math.max(0, Math.min(97, drawn ? box.y : box.y));
+      if (drawn) {
+        item.w = Math.max(api.MIN_W, box.w);
+        item.h = Math.max(api.MIN_H, box.h);
+      }
+      flushHistoryNow();
+      overlayList(page).push(item);
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
+      focusOverlayField(item.id);
+    }
+
+    /** Put the caret in a box the moment it is placed, as PowerPoint does. */
+    function focusOverlayField(id) {
+      window.requestAnimationFrame(function () {
+        var field = sheetEl.querySelector('[data-rb-ov-field="' + id + '"]');
+        if (!field) return;
+        try {
+          // Without preventScroll the stage nudges itself to bring the new
+          // box into view, so the sheet slides under the pointer at the
+          // moment the box appears. The box is already in view: the
+          // investigator just drew it.
+          field.focus({ preventScroll: true });
+          var range = document.createRange();
+          range.selectNodeContents(field);
+          range.collapse(true);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        } catch (err) { /* the box is still there to click */ }
+      });
+    }
+
     function insertOverlay(kind) {
+      // A text box is placed, not dropped: the button arms the tool and the
+      // next click or drag on the sheet says where it goes.
+      if (kind === 'text') {
+        setInkTool('textbox');
+        if (formatToolbar && typeof formatToolbar.setTool === 'function') {
+          formatToolbar.setTool('textbox');
+        }
+        return;
+      }
       var page = activePage();
       var api = window.ToolboxReportOverlay;
       if (!page || !api) return;
@@ -3916,11 +4028,21 @@
     sheetEl.addEventListener('pointerdown', function (event) {
       if (!inkTool) return;
       if (inkTool === 'eraser') { eraseAt(event); return; }
+      if (inkTool === 'textbox') { beginTextBox(event); return; }
       beginInk(event);
     });
-    sheetEl.addEventListener('pointermove', function (event) { if (inkTool) moveInk(event); });
-    sheetEl.addEventListener('pointerup', function (event) { if (inkTool) endInk(event); });
-    sheetEl.addEventListener('pointercancel', function (event) { if (inkTool) endInk(event); });
+    sheetEl.addEventListener('pointermove', function (event) {
+      if (textPlace) { moveTextBox(event); return; }
+      if (inkTool) moveInk(event);
+    });
+    sheetEl.addEventListener('pointerup', function (event) {
+      if (textPlace) { endTextBox(event); return; }
+      if (inkTool) endInk(event);
+    });
+    sheetEl.addEventListener('pointercancel', function (event) {
+      if (textPlace) { cancelTextBox(); return; }
+      if (inkTool) endInk(event);
+    });
     document.addEventListener('keydown', function (event) {
       if (event.key === 'Escape') disarmInk();
     });
@@ -4400,7 +4522,23 @@
     // the block, rather than acting on the keystroke that empties it, is what
     // lets them clear a line and type a new one: the generated text would
     // otherwise land back under the caret mid-edit.
+    // An empty text box is thrown away when it is left, as PowerPoint throws
+    // one away. Placing a box, thinking better of it and clicking elsewhere
+    // used to leave an invisible empty box on the page for ever.
     sheetEl.addEventListener('focusout', function (event) {
+      var ovField = event.target.closest && event.target.closest('[data-rb-ov-field]');
+      if (ovField && !ovField.textContent.trim()) {
+        var ovPage = activePage();
+        var list = ovPage && ovPage.meta && ovPage.meta.overlays;
+        var ovId = ovField.getAttribute('data-rb-ov-field');
+        if (list && list.some(function (o) { return o.id === ovId && o.kind === 'text'; })) {
+          ovPage.meta.overlays = list.filter(function (o) { return o.id !== ovId; });
+          markDirty();
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
+      }
       var field = event.target.closest && event.target.closest('[data-rb-rail-field]');
       if (!field || field.textContent.trim()) return;
       var page = activePage();

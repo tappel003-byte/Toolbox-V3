@@ -44,7 +44,7 @@
   // Both are paragraph properties, so an address block can sit tight while the
   // narrative around it keeps its spacing.
   function blankParagraph() {
-    return { align: 'left', bullet: false, indent: 0, dir: 'ltr', runs: [] };
+    return { align: 'left', bullet: false, numbered: false, indent: 0, dir: 'ltr', runs: [] };
   }
 
   function normalizeRun(raw) {
@@ -64,6 +64,12 @@
     var size = parseFloat(raw.size);
     if (isFinite(size) && size > 0) run.size = Math.round(size * 10) / 10;
     if (raw.font) run.font = String(raw.font);
+    // PowerPoint's font colour. Stored as a hex string, as the decks store
+    // it; absent means the field's own colour, which is what most of a
+    // report is.
+    if (typeof raw.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.color)) {
+      run.color = raw.color.toLowerCase();
+    }
     return run;
   }
 
@@ -71,7 +77,9 @@
     var src = isObject(raw) ? raw : {};
     var para = blankParagraph();
     if (ALIGNMENTS[src.align]) para.align = src.align;
-    para.bullet = !!src.bullet;
+    // Bulleted or numbered, never both. PowerPoint's two list buttons.
+    para.numbered = !!src.numbered;
+    para.bullet = !para.numbered && !!src.bullet;
     var indent = parseInt(src.indent, 10);
     para.indent = isFinite(indent) ? Math.max(0, Math.min(MAX_INDENT, indent)) : 0;
     para.dir = src.dir === 'rtl' ? 'rtl' : 'ltr';
@@ -123,6 +131,7 @@
         var out = {};
         if (p.align !== 'left') out.align = p.align;
         if (p.bullet) out.bullet = true;
+        if (p.numbered) out.numbered = true;
         if (p.indent) out.indent = p.indent;
         if (p.dir === 'rtl') out.dir = 'rtl';
         if (typeof p.spaceAfter === 'number') out.spaceAfter = p.spaceAfter;
@@ -137,6 +146,7 @@
           if (r.underline) run.underline = true;
           if (r.size) run.size = r.size;
           if (r.font) run.font = r.font;
+          if (r.color) run.color = r.color;
           return run;
         });
         return out;
@@ -165,6 +175,7 @@
     var style = '';
     if (run.size) style += 'font-size:' + (run.size * PT_TO_CQH).toFixed(3) + 'cqh;';
     if (run.font) style += "font-family:'" + run.font.replace(/'/g, '') + "';";
+    if (run.color) style += 'color:' + run.color + ';';
     var text = escapeHtml(run.text).replace(/ {2}/g, ' &nbsp;');
     if (run.bold === false) style += 'font-weight:normal;';
     if (run.italic === false) style += 'font-style:normal;';
@@ -210,30 +221,37 @@
     if (typeof para.lineHeight === 'number') style += 'line-height:' + para.lineHeight + ';';
     var inner = para.runs.map(runHtml).join('');
     if (!inner) inner = '<br>';
-    var tag = para.bullet ? 'li' : 'div';
+    var listed = para.bullet || para.numbered;
+    var tag = listed ? 'li' : 'div';
     var attr = typeof para.lineSpacing === 'number'
       ? ' data-rb-line-spacing="' + para.lineSpacing + '"' : '';
+    var cls = 'rb-rt__p' + (para.bullet ? ' rb-rt__p--bullet' : '') +
+      (para.numbered ? ' rb-rt__p--number' : '');
     return '<' + tag + (style ? ' style="' + style + '"' : '') + attr +
-      ' class="rb-rt__p' + (para.bullet ? ' rb-rt__p--bullet' : '') + '">' + inner + '</' + tag + '>';
+      ' class="' + cls + '">' + inner + '</' + tag + '>';
   }
 
-  // Consecutive bullets share one <ul> so browsers treat them as a real list.
+  // Consecutive list items share one <ul> or <ol>, so browsers treat them as
+  // a real list and a numbered run counts 1, 2, 3 rather than 1, 1, 1.
   function toHtml(model) {
     var paras = normalize(model).paragraphs;
     var out = [];
     var i = 0;
     while (i < paras.length) {
-      if (!paras[i].bullet) {
+      var numbered = paras[i].numbered;
+      if (!paras[i].bullet && !numbered) {
         out.push(paragraphHtml(paras[i]));
         i += 1;
         continue;
       }
       var items = [];
-      while (i < paras.length && paras[i].bullet) {
+      while (i < paras.length && (numbered ? paras[i].numbered : paras[i].bullet)) {
         items.push(paragraphHtml(paras[i]));
         i += 1;
       }
-      out.push('<ul class="rb-rt__list">' + items.join('') + '</ul>');
+      out.push(numbered
+        ? '<ol class="rb-rt__list rb-rt__list--number">' + items.join('') + '</ol>'
+        : '<ul class="rb-rt__list">' + items.join('') + '</ul>');
     }
     return out.join('');
   }
@@ -256,6 +274,32 @@
     if (/pt$/.test(raw)) return Math.round(n * 10) / 10;
     if (/px$/.test(raw)) return Math.round((n * 0.75) * 10) / 10;
     return null;
+  }
+
+  /**
+   * A run's colour, whichever way the browser wrote it.
+   *
+   * execCommand('foreColor') emits an inline style under styleWithCSS and a
+   * <font color> tag without it, and pasted text brings rgb(). All three come
+   * back as one hex string.
+   */
+  function styleColor(el) {
+    var raw = (el.style && el.style.color) || '';
+    if (!raw && el.tagName === 'FONT') raw = el.getAttribute('color') || '';
+    raw = String(raw).trim();
+    if (!raw) return null;
+    if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toLowerCase();
+    if (/^#[0-9a-fA-F]{3}$/.test(raw)) {
+      return ('#' + raw[1] + raw[1] + raw[2] + raw[2] + raw[3] + raw[3]).toLowerCase();
+    }
+    var rgb = raw.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    if (!rgb) return null;
+    var hex = '#';
+    for (var i = 1; i <= 3; i += 1) {
+      var n = Math.max(0, Math.min(255, parseInt(rgb[i], 10)));
+      hex += (n < 16 ? '0' : '') + n.toString(16);
+    }
+    return hex;
   }
 
   function styleFont(el) {
@@ -290,13 +334,18 @@
       if (source && source.nodeType === 1) {
         var align = source.style && source.style.textAlign;
         if (ALIGNMENTS[align]) current.align = align;
-        if (source.tagName === 'LI') current.bullet = true;
+        if (source.tagName === 'LI') {
+          var inOl = source.parentNode && source.parentNode.tagName === 'OL';
+          if (inOl) current.numbered = true;
+          else current.bullet = true;
+        }
         // The Bullets button writes its intent onto the block rather
         // than building list markup itself, so the <ul> wrapping and the
         // markers come out as the report's own markup either way.
         var bulletIntent = source.getAttribute && source.getAttribute('data-rb-bullet');
-        if (bulletIntent === '1') current.bullet = true;
-        else if (bulletIntent === '0') current.bullet = false;
+        if (bulletIntent === '1') { current.bullet = true; current.numbered = false; }
+        else if (bulletIntent === 'n') { current.numbered = true; current.bullet = false; }
+        else if (bulletIntent === '0') { current.bullet = false; current.numbered = false; }
         if (source.style && source.style.direction === 'rtl') current.dir = 'rtl';
         var mb = source.style && source.style.marginBottom;
         if (mb) {
@@ -338,9 +387,11 @@
       if (ctx.underline) run.underline = true;
       if (ctx.size) run.size = ctx.size;
       if (ctx.font) run.font = ctx.font;
+      if (ctx.color) run.color = ctx.color;
       var last = current.runs[current.runs.length - 1];
       if (last && last.bold === run.bold && last.italic === run.italic &&
-          !!last.underline === !!run.underline && last.size === run.size && last.font === run.font) {
+          !!last.underline === !!run.underline && last.size === run.size &&
+          last.font === run.font && last.color === run.color) {
         last.text += run.text;
         return;
       }
@@ -383,12 +434,13 @@
             (child.style && /underline/.test(child.style.textDecoration || '')),
           size: styleSize(child) || ctx.size,
           font: styleFont(child) || ctx.font,
+          color: styleColor(child) || ctx.color,
         };
         walk(child, next);
       }
     }
 
-    walk(root, { bold: null, italic: null, underline: false, size: null, font: null });
+    walk(root, { bold: null, italic: null, underline: false, size: null, font: null, color: null });
     if (!model.paragraphs.length) model.paragraphs.push(blankParagraph());
     // contenteditable leaves a trailing empty block behind constantly.
     while (model.paragraphs.length > 1) {

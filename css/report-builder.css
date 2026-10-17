@@ -2380,15 +2380,23 @@ body.report-builder-open .canvas {
   list-style: disc;
 }
 
-.rb-rt__p--bullet { display: list-item; }
+.rb-rt__list--number { list-style: decimal; }
+
+.rb-rt__p--bullet,
+.rb-rt__p--number { display: list-item; }
 
 /* ------------------------------------------------------------------ *
  * Formatting toolbar — always across the top, every page, the way the
  * PowerPoint Home ribbon is. Pages left, canvas centre, Toolbox right.
  * ------------------------------------------------------------------ */
 
+/* The formatting bar takes whatever room is left beside Print and Export,
+   rather than asking for its content width and pushing them onto a second
+   row. With a basis of auto the toolbar was two rows tall while the hint was
+   showing and one row once it went, so the whole sheet jumped nineteen
+   pixels the moment a field took focus. */
 .rb-toolbar__format {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
 }
 
@@ -2521,12 +2529,21 @@ body.report-builder-open .canvas {
   font-weight: 700;
 }
 
+/* The hint takes whatever room is left and never forces the bar onto a
+   second row -- and it is hidden rather than removed when a field has focus.
+   Removing it collapsed that second row, so the bar got shorter and the whole
+   sheet jumped up the moment you started typing. */
 .rb-format__hint {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--muted, #6b6b6b);
   font-size: 12px;
 }
 
-.rb-format.is-ready .rb-format__hint { display: none; }
+.rb-format.is-ready .rb-format__hint { visibility: hidden; }
 
 /* Until a field has focus the text commands have nothing to act on. The
    drawing tools, the weights, the colours and the insert buttons always do --
@@ -2565,6 +2582,7 @@ body.report-builder-open .canvas {
 .rb-sheet--erasing .rb-ov__remove { pointer-events: none; }
 
 /* The armed tool and the chosen weight, shown the way Distress shows them. */
+.rb-format__btn[data-rb-insert].is-on,
 .rb-format__btn[data-rb-tool].is-on,
 .rb-format__btn[data-rb-thick].is-on {
   border-color: var(--line);
@@ -2775,7 +2793,8 @@ body.report-builder-open .canvas {
   padding-left: 1.6em;
 }
 
-.rb-discussion__body .rb-rt__p--bullet { margin: 0 0 0.3em; }
+.rb-discussion__body .rb-rt__p--bullet,
+.rb-discussion__body .rb-rt__p--number { margin: 0 0 0.3em; }
 
 /* ------------------------------------------------------------------ *
  * The logo — one placement, every page
@@ -2957,11 +2976,35 @@ body.report-builder-open .canvas {
   object-fit: contain;
 }
 
+/* A text box, as PowerPoint draws one.
+ *
+ * It has a frame you can see from the moment it is placed -- an empty box with
+ * no outline on white paper looked like nothing had happened -- and a border
+ * ring you grab to move it, with the writing surface filling everything
+ * inside. Clicking the middle of the box used to miss the text entirely,
+ * because the field was a thin strip across the top. */
+.rb-ov--text {
+  display: flex;
+  padding: 5px;
+  outline: 1px dashed rgba(139, 94, 60, 0.5);
+  outline-offset: 0;
+}
+
+.rb-ov--text.is-locked {
+  padding: 0;
+  outline: none;
+}
+
+.rb-ov--text:focus-within {
+  outline: 1px solid rgba(139, 94, 60, 0.75);
+}
+
 .rb-ov__text {
+  flex: 1 1 auto;
   width: 100%;
-  /* No height and no clipping: the box is as tall as what is written in it.
-     See boxStyle() -- a fixed height with overflow:hidden hid everything past
-     the fourth line. */
+  /* No clipping: the box is as tall as what is written in it. See boxStyle()
+     -- a fixed height with overflow:hidden hid everything past the fourth
+     line. */
   cursor: text;
   font-size: 1.515cqh;
   line-height: 1.22;
@@ -2969,7 +3012,16 @@ body.report-builder-open .canvas {
   word-break: break-word;
 }
 
-.rb-ov__text:focus { outline: 1px solid rgba(139, 94, 60, 0.55); }
+.rb-ov__text:focus { outline: none; }
+
+/* The box being dragged out on the sheet before it exists. */
+.rb-ov-ghost {
+  position: absolute;
+  z-index: 10;
+  border: 1px dashed rgba(139, 94, 60, 0.9);
+  background: rgba(139, 94, 60, 0.06);
+  pointer-events: none;
+}
 
 .rb-ov__hint {
   display: flex;
@@ -3032,7 +3084,9 @@ body.report-builder-open .canvas {
   .rb-ov__remove,
   .rb-ov__hint { display: none !important; }
   .rb-ov,
-  .rb-ov__text { outline: none !important; }
+  .rb-ov--text,
+  .rb-ov-ghost,
+  .rb-ov__text { outline: none !important; border: 0 !important; }
 }
 
 /* Undo stays available even with nothing selected -- it is not a text
@@ -3046,6 +3100,42 @@ body.report-builder-open .canvas {
 .rb-format__btn[disabled] {
   opacity: 0.35;
   cursor: default;
+}
+
+/* Font colour: PowerPoint's A over a bar of the colour it will paint, with
+   the rest of the palette on the chevron beside it. */
+.rb-format__menu--color .rb-format__btn--textcolor {
+  position: relative;
+  padding-bottom: 7px;
+}
+
+.rb-format__underbar {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 3px;
+  height: 3px;
+  border-radius: 1px;
+  box-shadow: 0 0 0 1px rgba(23, 19, 14, 0.18);
+}
+
+.rb-format__btn--caret {
+  min-width: 14px;
+  padding-left: 0;
+  padding-right: 2px;
+}
+
+.rb-format__list--color .rb-format__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rb-format__chip {
+  width: 13px;
+  height: 13px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(23, 19, 14, 0.25);
 }
 
 .rb-format__sep {
