@@ -135,16 +135,18 @@ await openReport();
 const full = await picturesSheet(0);
 check('a full page is still five across and two down',
   full.cells === 10 && full.cols === 5 && full.rows === 2, JSON.stringify(full));
-check('the rail names each choice by the grid it makes',
-  full.buttons.join(' | ') === '1 × 10 | 2 × 5 | 3 × 4 | 4 × 3 | 5 × 2', full.buttons.join(' | '));
+// Four across and five across, and nothing else. Tim, Oct 17: "one by 10 and
+// 2 by 5 is ridiculous, I'll never use that. Three by four probably won't
+// ever use... four by three or five by two are the only ways we can ever
+// show pictures."
+check('the rail offers the two grids and names each by the shape it makes',
+  full.buttons.join(' | ') === '4 × 3 | 5 × 2', full.buttons.join(' | '));
 
 const last = await picturesSheet(1);
-check('the page holding one photograph is not drawn five across',
-  last.cells === 1 && last.cols === 1 && last.rows === 1, JSON.stringify(last));
-check('that photograph fills its sheet instead of sitting in the corner',
-  last.cellShare > 50, JSON.stringify(last));
-check('and a page of one offers no grid to change it to',
-  last.buttons.join(' | ') === '1 × 1', last.buttons.join(' | '));
+check('a short page is still laid out on one of the two',
+  last.cells === 1 && (last.cols === 4 || last.cols === 5), JSON.stringify(last));
+check('and both are offered on it, however few pictures it holds',
+  last.buttons.join(' | ') === '4 × 1 | 5 × 1', last.buttons.join(' | '));
 
 // A grid chosen by hand is the grid that is kept.
 await picturesSheet(0);

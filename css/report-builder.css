@@ -1846,6 +1846,11 @@ body.report-builder-open .canvas {
   width: auto;
   height: auto;
   object-fit: contain;
+  /* Tim, Oct 17: "we need a black border around all pictures." A rule round
+     the photograph itself, not round the space it sits in, so a tall picture
+     and a wide one are each framed to their own edge. */
+  border: 0.12cqh solid #1a1a1a;
+  box-sizing: border-box;
 }
 
 .rb-pictures-page__label {

@@ -738,30 +738,31 @@
   // photograph, "if we have 10 pictures per slide and we can change our grid
   // to 5 by 2 or 4 by 2 or 4 by 1, 5 by 1, then it would probably look less
   // improper."
-  var PICTURES_ACROSS = [1, 2, 3, 4, 5];
+  /**
+   * The two ways a page of photographs is ever laid out.
+   *
+   * Tim, Oct 17: "one by 10 and 2 by 5 is ridiculous, I'll never use that.
+   * Three by four probably won't ever use... no, I don't want it. Four by
+   * three or five by two are the only ways we can ever show pictures."
+   * Narrower than four makes each picture big enough to carry the page on
+   * its own, which is not what a locations-and-photographs sheet is for.
+   */
+  var PICTURES_ACROSS = [4, 5];
 
   /**
    * The grid a page falls into when nobody has chosen one.
    *
-   * It used to be five across whatever the page held, which is what stranded
-   * the last photograph of a set: eleven pictures made a full page and then a
-   * page with one picture in a fifth of a row, marooned in the corner. The
-   * grid now fits the page -- the number across that leaves the fewest empty
-   * cells, the widest of those when several tie, and never more than two rows
-   * deep, because a landscape sheet with captions has room for two.
-   *
-   * One picture therefore fills its sheet, four sit in a row of four, six go
-   * three and three. Ten is still five across, which is what a full page has
-   * always looked like.
+   * Five across is what a full page has always looked like; four is the one
+   * to fall to when five would leave a row with a single picture stranded in
+   * it. The rule is the same as it was -- fewest empty cells, the widest of
+   * those when two tie -- read over the two grids that are left.
    */
   function defaultPicturesAcross(count) {
     var n = Math.max(1, Number(count) || 1);
-    var best = 1;
+    var best = PICTURES_ACROSS[PICTURES_ACROSS.length - 1];
     var bestGaps = Infinity;
     PICTURES_ACROSS.forEach(function (cols) {
-      if (cols > n) return;
       var rows = Math.ceil(n / cols);
-      if (rows > 2 && n <= 2 * PICTURES_ACROSS[PICTURES_ACROSS.length - 1]) return;
       var gaps = (rows * cols) - n;
       if (gaps < bestGaps || (gaps === bestGaps && cols > best)) {
         best = cols;
@@ -3300,8 +3301,10 @@
         var onPage = Math.max(1, picturesOnPage(page));
         var row = document.createElement('div');
         row.className = 'rb-ws__row rb-ws__row--wrap';
+        // Both grids are always offered. The guard that hid one wider than
+        // the page's own count made sense when there were five of them; with
+        // only two left it could leave a short page no choice at all.
         PICTURES_ACROSS.forEach(function (n) {
-          if (n > onPage) return;
           var label = String(n) + ' \u00d7 ' + Math.ceil(onPage / n);
           var btn = railButton(label,
             n === acrossNow ? 'accent' : 'secondary', 'data-rb-pics-across', String(n));
