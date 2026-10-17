@@ -30,7 +30,10 @@
   function defaultBoxes() {
     return {
       prepared: { x: 7.94, y: 6.61, w: 41.18, h: 12.24 },
-      identity: { x: 7.94, y: 31.36, w: 58.82, h: 20.55 },
+      // Wide enough for the address, and stopping clear of the CONTENTS
+      // frame at 59.12%. It used to run to 66.76% -- straight under the
+      // contents box -- so a street of any length was printed across it.
+      identity: { x: 7.94, y: 31.36, w: 49.18, h: 20.55 },
       date: { x: 7.94, y: 57.45, w: 41.18, h: 8.44 },
       contents: { x: 59.12, y: 31.82, w: 32.94, h: 31.82 },
       overview: { x: 59.12, y: 66.5, w: 32.94, h: 25.5 },
@@ -60,10 +63,21 @@
     };
   }
 
+  // The identity box's old width, before it was pulled clear of CONTENTS. A
+  // cover carries its layout from the first time it was drawn, so one that
+  // has never been moved is still exactly this wide and still prints its
+  // address across the contents frame; a width nobody chose takes the new
+  // one, and a width that was dragged is the investigator's and is kept.
+  var OLD_IDENTITY_W = 58.82;
+
   function normalizeLayout(raw) {
     var base = defaultLayout();
     var src = raw && typeof raw === 'object' ? raw : {};
     var boxesIn = src.boxes && typeof src.boxes === 'object' ? src.boxes : {};
+    if (boxesIn.identity && Math.abs(Number(boxesIn.identity.w) - OLD_IDENTITY_W) < 0.01) {
+      boxesIn = JSON.parse(JSON.stringify(boxesIn));
+      boxesIn.identity.w = defaultBoxes().identity.w;
+    }
     var defaults = defaultBoxes();
     var boxes = {};
     Object.keys(defaults).forEach(function (id) {

@@ -315,8 +315,15 @@ body.report-builder-open .canvas {
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  height: 100%;
-  margin: 4.5%;
+  /* As tall as the sheet LESS its own two margins. It used to be the full
+     height of the sheet and then pushed down by the top margin, so every
+     page sat the margin's depth below where it ended -- invisible behind
+     overflow:hidden on most pages, and the reason a full Pictures page ran
+     past the bottom of the paper. The margin is a percentage of the sheet's
+     WIDTH, as CSS margins are, so the height subtracts the same unit: 9cqw
+     is exactly the two of them. */
+  height: calc(100% - 9cqw);
+  margin: 4.5cqw;
   /* No border of its own: it used to draw a second, different box at a 4.5%
      inset in another colour, which is what made the page border land in a
      different place depending on which page you were looking at. */
@@ -1309,6 +1316,11 @@ body.report-builder-open .canvas {
   overflow: hidden;
 }
 
+.rb-cover__contents-item:hover .rb-cover__contents-jump,
+.rb-cover__contents-jump:focus-visible {
+  opacity: 1;
+}
+
 .rb-cover__contents-title {
   margin: 0 0 2.73cqh;
   color: var(--rb-copper);
@@ -1366,7 +1378,13 @@ body.report-builder-open .canvas {
   font-weight: 700;
 }
 
+/* The jump to a slide, not a decoration. DECISIONS.md: the contents never
+   uses chevrons -- and a row of them down the contents is exactly what this
+   looked like, because it was always showing. It appears on the line being
+   pointed at, the way every other piece of chrome on a sheet now does. */
 .rb-cover__contents-jump {
+  opacity: 0;
+  transition: opacity 120ms ease;
   flex: 0 0 auto;
   width: 2.2cqh;
   height: 2.2cqh;
@@ -1744,10 +1762,14 @@ body.report-builder-open .canvas {
      above: however many rows there are, they share that, and the bottom of
      the page stays clear. */
   grid-template-columns: repeat(var(--rb-pics-cols, 5), minmax(0, 1fr));
-  grid-template-rows: repeat(var(--rb-pics-rows, 2),
-    minmax(0, calc(100% / var(--rb-pics-rows, 2))));
+  /* Rows share what is left AFTER the gaps, which is what a fraction does
+     and what a percentage does not: `100% / rows` asked for the whole height
+     and then the gaps were added on top, so every Pictures page stood a
+     little taller than its own sheet. On screen the bottom was clipped; in
+     the printed deck it was a page that could spill. */
+  grid-template-rows: repeat(var(--rb-pics-rows, 2), minmax(0, 1fr));
   gap: 1.4% 1.8%;
-  align-content: start;
+  align-content: stretch;
 }
 
 .rb-pictures-page__cell {
@@ -1758,6 +1780,9 @@ body.report-builder-open .canvas {
   min-width: 0;
   min-height: 0;
   margin: 0;
+  /* A cell is its row and no taller: a long caption shortens the plate above
+     it rather than pushing the row -- and the page -- past the paper. */
+  overflow: hidden;
 }
 
 /* The frame is a plate of a fixed shape, as wide as its column.

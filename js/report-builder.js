@@ -854,6 +854,39 @@
     return root;
   }
 
+  /**
+   * Keep the street on one line, the way a deck author would.
+   *
+   * The decks set it at 60pt because "59 Lodge Trail" fits at 60pt. A longer
+   * address does not: it wrapped, and the city line underneath it ran down
+   * into the survey date. PowerPoint calls this shrink text on overflow, and
+   * it is the same answer -- the type comes down until the line fits, and no
+   * further than two thirds, which is still the largest thing on the page.
+   */
+  function fitStreetLine(root) {
+    var fields = root.querySelectorAll('[data-rb-fit-line]');
+    for (var i = 0; i < fields.length; i += 1) {
+      var field = fields[i];
+      var base = parseFloat(field.getAttribute('data-rb-fit-line'));
+      if (!isFinite(base) || base <= 0) continue;
+      field.style.fontSize = base + 'cqh';
+      var size = base;
+      var guard = 0;
+      // A line that does not fit WRAPS rather than overflowing, so the test
+      // is the height: more than one line box deep means it has wrapped.
+      var wrapped = function () {
+        var line = parseFloat(window.getComputedStyle(field).lineHeight);
+        if (!isFinite(line) || line <= 0) line = field.clientHeight;
+        return field.scrollHeight > line * 1.5;
+      };
+      while (wrapped() && size > base * 0.6 && guard < 40) {
+        size = Math.round((size - base * 0.04) * 1000) / 1000;
+        field.style.fontSize = size + 'cqh';
+        guard += 1;
+      }
+    }
+  }
+
   function coverBoxShell(id, layout, locked) {
     var api = window.ToolboxReportCoverLayout;
     var box = (layout && layout.boxes && layout.boxes[id]) || { x: 0, y: 0, w: 20, h: 12 };
@@ -1057,7 +1090,9 @@
     var identity = coverBoxShell('identity', layout, locked);
     identity.classList.add('rb-cover-box--identity');
     addLine(identity, 'rb-cover__product', 'FLOOR LEVEL SURVEY');
-    identity.appendChild(coverField('rb-cover__street', 'street', text.street, locked));
+    var street = coverField('rb-cover__street', 'street', text.street, locked);
+    street.setAttribute('data-rb-fit-line', '7.576');
+    identity.appendChild(street);
     identity.appendChild(coverField('rb-cover__city', 'cityLine', text.cityLine, locked));
     stage.appendChild(identity);
 
@@ -1935,6 +1970,9 @@
         page._coverLayout || (page.meta && page.meta.coverLayout),
         page._overviewUrl || ''
       ));
+      // Measured once the sheet is in the document and has a width: a
+      // stamp and the real page are different sizes, and both are fitted.
+      window.requestAnimationFrame(function () { fitStreetLine(sheet); });
     } else if (page.type === 'section' && page.meta && page.meta.sectionId === 'discussion' &&
                window.ToolboxReportDiscussion) {
       margin.classList.add('rb-sheet__margin--discussion');
