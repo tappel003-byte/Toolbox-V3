@@ -1148,9 +1148,19 @@ body.report-builder-open .canvas {
   touch-action: none;
 }
 
+/* A box shows its dashed edge and its two corner pulls when it is pointed
+   at, not before. Tim, Oct 17: "all those corner blocks -- that's one of the
+   things I really dislike about this page." It is the rule the Floor Survey
+   pieces already follow: twenty brackets standing on a finished title page
+   are our chrome printed over his report. */
 .rb-cover:not(.is-locked) .rb-cover-box {
-  outline: 1px dashed rgba(139, 94, 60, 0.5);
+  outline: none;
   cursor: move;
+}
+
+.rb-cover:not(.is-locked) .rb-cover-box:hover,
+.rb-cover:not(.is-locked) .rb-cover-box:focus-within {
+  outline: 1px dashed rgba(139, 94, 60, 0.5);
 }
 
 .rb-cover.is-locked .rb-cover-box {
@@ -1162,11 +1172,17 @@ body.report-builder-open .canvas {
   position: absolute;
   right: 0;
   bottom: 0;
+  display: none;
   width: 14px;
   height: 14px;
   border-right: 2px solid var(--rb-copper);
   border-bottom: 2px solid var(--rb-copper);
   cursor: nwse-resize;
+}
+
+.rb-cover:not(.is-locked) .rb-cover-box:hover .rb-cover-box__resize,
+.rb-cover:not(.is-locked) .rb-cover-box:focus-within .rb-cover-box__resize {
+  display: block;
 }
 
 /* Fields are transparent inputs so the locked page reads as plain text. */
@@ -2766,11 +2782,17 @@ body.report-builder-open .canvas {
   position: absolute;
   left: 0;
   top: 0;
+  display: none;
   width: 14px;
   height: 14px;
   border-left: 2px solid var(--rb-copper);
   border-top: 2px solid var(--rb-copper);
   cursor: move;
+}
+
+.rb-cover:not(.is-locked) .rb-cover-box:hover .rb-cover-box__move,
+.rb-cover:not(.is-locked) .rb-cover-box:focus-within .rb-cover-box__move {
+  display: block;
 }
 
 .rb-cover.is-locked .rb-cover-box__move { display: none; }

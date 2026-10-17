@@ -310,6 +310,54 @@ check('CONTENTS on title lists Discussion then figures',
 check('title text fields are editable',
   coverBoxes.streetEditable && !!coverBoxes.street,
   JSON.stringify(coverBoxes));
+
+// A title page carries no handles of ours until a box is pointed at. Tim,
+// Oct 17: "all those corner blocks -- that's one of the things I really
+// dislike about this page." Five boxes used to show a dashed edge and two
+// copper brackets each, all the time.
+const coverChrome = await page.evaluate(() => {
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+  const boxes = [...sheet.querySelectorAll('.rb-cover-box')];
+  const shown = (box) => ({
+    outline: getComputedStyle(box).outlineStyle,
+    move: box.querySelector('.rb-cover-box__move')
+      ? getComputedStyle(box.querySelector('.rb-cover-box__move')).display : 'missing',
+    resize: box.querySelector('.rb-cover-box__resize')
+      ? getComputedStyle(box.querySelector('.rb-cover-box__resize')).display : 'missing',
+  });
+  const r = boxes[1].getBoundingClientRect();
+  return {
+    count: boxes.length,
+    rest: boxes.map(shown),
+    point: { x: r.left + 12, y: r.top + 12 },
+  };
+});
+check('no box on the title page shows chrome at rest',
+  coverChrome.count === 5 &&
+  coverChrome.rest.every((s) => s.outline === 'none' && s.move === 'none' && s.resize === 'none'),
+  JSON.stringify(coverChrome.rest));
+await page.mouse.move(coverChrome.point.x, coverChrome.point.y);
+await new Promise((r) => setTimeout(r, 250));
+const coverPointed = await page.evaluate(() => {
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+  const boxes = [...sheet.querySelectorAll('.rb-cover-box')];
+  const box = boxes[1];
+  const other = boxes[0];
+  const look = (b) => ({
+    outline: getComputedStyle(b).outlineStyle,
+    move: getComputedStyle(b.querySelector('.rb-cover-box__move')).display,
+    resize: getComputedStyle(b.querySelector('.rb-cover-box__resize')).display,
+  });
+  return { pointed: look(box), other: look(other) };
+});
+check('the box being pointed at shows its edge and both corners, alone',
+  coverPointed.pointed.outline === 'dashed' &&
+  coverPointed.pointed.move === 'block' &&
+  coverPointed.pointed.resize === 'block' &&
+  coverPointed.other.outline === 'none' &&
+  coverPointed.other.move === 'none',
+  JSON.stringify(coverPointed));
+await page.mouse.move(4, 4);
 await page.evaluate(() => {
   const street = document.querySelector('[data-rb-cover-field="street"]');
   const line = document.querySelector('[data-rb-cover-field="contents:0"]');
