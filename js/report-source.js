@@ -292,26 +292,9 @@
     if (Array.isArray(raw.figures)) {
       raw.figures.forEach(function (figure, index) {
         if (!figure || typeof figure !== 'object') return;
-        var context = figure.context && typeof figure.context === 'object' ? figure.context : {};
-        // A captured view is named after the level it was taken of. Nothing
-        // writes a title onto a figure, so "Diagnostics 2" is the fallback
-        // for a view whose level has no name rather than the usual case.
-        var levelName = text(figure.canvasName) || text(context.levelName);
         figures.push({
           id: figure.id || ('diagnostics-' + (index + 1)),
-          sequence: figure.sequence || (index + 1),
-          kind: text(figure.kind) || '3d-elevation',
-          canvasId: text(figure.canvasId),
-          levelName: levelName,
-          title: text(figure.title) || levelName || ('Diagnostics ' + (index + 1)),
-          mediaId: text(figure.mediaId),
-          surveyDate: text(context.surveyDate),
-          high: typeof context.high === 'number' ? context.high : null,
-          low: typeof context.low === 'number' ? context.low : null,
-          range: typeof context.range === 'number' ? context.range : null,
-          unit: text(context.unit),
-          exaggeration: typeof context.exaggeration === 'number' ? context.exaggeration : null,
-          scaleNotice: text(context.scaleNotice),
+          title: text(figure.title) || ('Diagnostics ' + (index + 1)),
         });
       });
     }
@@ -486,48 +469,6 @@
     });
   }
 
-  /**
-   * One sheet per Diagnostics view that was explicitly added to the report.
-   *
-   * Diagnostics captures nothing on its own -- only Add to Report writes a
-   * figure -- so every figure here is one the investigator chose to put in
-   * the book, and there is no reserved placeholder sheet for a file that has
-   * none. A Customer File with no Diagnostics output simply has no
-   * Diagnostics pages.
-   */
-  function diagnosticsPages(source) {
-    var block = source.diagnostics || { status: 'absent', figures: [] };
-    var figures = Array.isArray(block.figures) ? block.figures : [];
-    return figures.map(function (figure, index) {
-      var levelName = text(figure.levelName);
-      var title = 'Diagnostics' + (levelName ? ' \u2014 ' + levelName : ' ' + (index + 1));
-      return page({
-        id: 'diagnostics-' + (figure.id || (index + 1)),
-        type: 'diagnostics',
-        title: title,
-        tocTitle: title,
-        railLabel: 'Diagnostics' + (levelName ? ' \u00b7 ' + levelName : ''),
-        sourceKey: 'diagnostics',
-        sourceRef: figure.id || null,
-        note: '',
-        meta: {
-          reserved: false,
-          levelName: levelName,
-          canvasId: figure.canvasId || null,
-          mediaId: figure.mediaId || null,
-          surveyDate: figure.surveyDate || '',
-          kind: figure.kind || '3d-elevation',
-          exaggeration: figure.exaggeration,
-          scaleNotice: figure.scaleNotice || '',
-          high: figure.high,
-          low: figure.low,
-          range: figure.range,
-          unit: figure.unit || '',
-        },
-      });
-    });
-  }
-
   function sectionPage(section) {
     return page({
       id: 'section-' + section.id,
@@ -587,7 +528,6 @@
     var cover = [];
     var discussion = [];
     var floor = [];
-    var diagnostics = [];
     var distress = [];
     var pictures = [];
     var other = [];
@@ -603,12 +543,6 @@
       }
       if (item.type === 'floor') {
         floor.push(item);
-        return;
-      }
-      // A Diagnostics view is drawn from the same readings as the Floor
-      // Survey figure, so it follows it rather than trailing the book.
-      if (item.type === 'diagnostics') {
-        diagnostics.push(item);
         return;
       }
       if (item.type === 'distress') {
@@ -634,8 +568,7 @@
     if (!discussion.length) {
       discussion.push(discussionTemplate || sectionPage(DISCUSSION_SECTION));
     }
-    return assignFigureNumbers(
-      cover.concat(discussion, floor, diagnostics, distress, pictures, other));
+    return assignFigureNumbers(cover.concat(discussion, floor, distress, pictures, other));
   }
 
   function assemble(source) {
@@ -659,10 +592,8 @@
       }),
       sectionPage(DISCUSSION_SECTION),
     ];
-    // Typical figure order: Floor Survey, any Diagnostics view taken of it,
-    // then Picture Locations. Pictures drop in via Put on report.
+    // Typical figure order: Floor Survey, then Picture Locations. Pictures drop in via Put on report.
     floorPages(src).forEach(function (item) { pages.push(item); });
-    diagnosticsPages(src).forEach(function (item) { pages.push(item); });
     distressPages(src).forEach(function (item) {
       if (item && item.meta && item.meta.reserved) return;
       pages.push(item);

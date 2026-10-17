@@ -138,19 +138,10 @@ const logic = await page.evaluate(() => {
   assert('floor sheets are consecutive after discussion',
     floorIds.length === 3 && floorAt === 2 &&
     types.slice(floorAt, floorAt + 3).every((type) => type === 'floor'));
-  const diagnosticsIds = sequence.pages.filter((item) => item.type === 'diagnostics')
-    .map((item) => item.id);
-  const diagnosticsAt = types.indexOf('diagnostics');
-  // A Diagnostics view is drawn from the same readings as the Floor Survey
-  // figure, so it sits behind the floor block and in front of the plans the
-  // photographs were taken on.
-  assert('a stored Diagnostics view is assembled behind the floor block',
-    diagnosticsIds.length === 1 && diagnosticsAt === floorAt + 3,
-    JSON.stringify({ diagnosticsIds, diagnosticsAt, floorAt }));
-  assert('picture locations follow the Diagnostics sheet',
-    distressIds.length === 3 && distressAt === diagnosticsAt + 1 &&
-    types.slice(distressAt, distressAt + 3).every((type) => type === 'distress'),
-    types.join(','));
+  assert('picture locations follow the floor block',
+    distressIds.length === 3 && distressAt === floorAt + 3 &&
+    types.slice(distressAt, distressAt + 3).every((type) => type === 'distress'));
+  assert('diagnostics is not auto-assembled', types.indexOf('diagnostics') === -1);
   const toc = src.contents(sequence.pages).map((item) => item.title);
   assert('CONTENTS names discussion, floor, and picture locations',
     toc[0] === 'Floor Level Survey Results - Discussion' &&
