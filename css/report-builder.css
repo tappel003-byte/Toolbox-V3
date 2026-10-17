@@ -663,6 +663,7 @@ body.report-builder-open .canvas {
 
 .rb-sheet__margin--topo,
 .rb-sheet__margin--cover,
+.rb-sheet__margin--diagnostics,
 .rb-sheet__margin--pictures {
   margin: 2.2%;
   padding: 1.6% 2% 1.4%;
@@ -679,6 +680,34 @@ body.report-builder-open .canvas {
   margin: 0;
   padding: 0;
   border: 0;
+}
+
+/* A Diagnostics sheet: the captured 3D view, and the notice that has to
+   travel with it. The view is a PNG of a fixed shape, so it is fitted rather
+   than cropped -- a 3D elevation cut off at the edge loses the corner of the
+   floor it was taken to show. */
+.rb-diagnostics-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 1.2cqh;
+  color: #17130e;
+}
+
+.rb-diagnostics-page__view {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+}
+
+.rb-diagnostics-page__notice {
+  flex: 0 0 auto;
+  margin: 0;
+  color: #555;
+  font-size: 1.4cqh;
+  font-style: italic;
 }
 
 .rb-topo-page {

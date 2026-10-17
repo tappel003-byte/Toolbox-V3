@@ -455,14 +455,16 @@
    * -- but a level surveyed after the last save has to arrive somewhere, and
    * "at the end" put Picture Locations after the Pictures sheets. It goes in
    * front of the first sheet that belongs after it: Cover, Discussion, Floor
-   * Survey, Picture Locations, Pictures, anything else.
+   * Survey, Diagnostics, Picture Locations, Pictures, anything else.
    */
-  var PAGE_BANDS = { cover: 0, section: 1, floor: 2, distress: 3, pictures: 4 };
+  var PAGE_BANDS = {
+    cover: 0, section: 1, floor: 2, diagnostics: 3, distress: 4, pictures: 5,
+  };
 
   function bandOf(page) {
-    if (!page) return 5;
+    if (!page) return 6;
     var band = PAGE_BANDS[page.type];
-    return typeof band === 'number' ? band : 5;
+    return typeof band === 'number' ? band : 6;
   }
 
   function firstIndexOfLaterBand(pages, type) {
@@ -556,6 +558,9 @@
     }
 
     addMissingOfType('floor');
+    // A view added to the report from Diagnostics after the book was last
+    // saved arrives behind its Floor Survey figure, not at the end.
+    addMissingOfType('diagnostics');
     addMissingOfType('distress');
 
     var photoList = photos || [];
@@ -1397,10 +1402,23 @@
         page.evidence = chromeEv;
       } else if (page.type === 'diagnostics' && !(page.meta && page.meta.reserved)) {
         var fig = diagnostics.find(function (item) { return item.id === page.sourceRef; });
+        // The same three fields every railed page needs -- the residence and
+        // the address belong to the file, not to the view.
+        var xName = displayCustomerName(record);
+        var xAddr = addressParts(fullAddress(record) || displayAddress(record) || '');
+        var xEvidence = {
+          customerName: xName,
+          residenceTitle: residenceTitle(xName),
+          address: xAddr.street || displayAddress(record),
+          addressCity: xAddr.cityLine || '',
+          dataUrl: null,
+          context: (fig && fig.context) || null,
+        };
         if (fig && window.ToolboxDB && window.ToolboxDB.getMedia) {
-          var dataUrl = await window.ToolboxDB.getMedia(fig.mediaId).catch(function () { return null; });
-          page.evidence = { dataUrl: dataUrl };
+          xEvidence.dataUrl = await window.ToolboxDB.getMedia(fig.mediaId)
+            .catch(function () { return null; });
         }
+        page.evidence = xEvidence;
       }
       result.push(page);
     }
@@ -1856,6 +1874,42 @@
   }
 
   /**
+   * The line that rides under a Diagnostics view wherever it is shown.
+   *
+   * Diagnostics states it on its own screen and writes it onto every figure
+   * it captures. A 3D view with the vertical blown up is read as a picture of
+   * a floor unless it says so, and the report is the one place it matters.
+   */
+  function diagnosticsNotice(page) {
+    var meta = page.meta || {};
+    var context = (page.evidence && page.evidence.context) || {};
+    var notice = String(meta.scaleNotice || context.scaleNotice || '').trim();
+    if (!notice) return '';
+    var times = typeof meta.exaggeration === 'number' ? meta.exaggeration
+      : (typeof context.exaggeration === 'number' ? context.exaggeration : null);
+    return times ? notice + ' Vertical scale \u00d7' + times + '.' : notice;
+  }
+
+  /** The level's high, low and difference, in the rail's own shape. */
+  function diagnosticsStats(page) {
+    var meta = page.meta || {};
+    var context = (page.evidence && page.evidence.context) || {};
+    var hi = typeof meta.high === 'number' ? meta.high : context.high;
+    var lo = typeof meta.low === 'number' ? meta.low : context.low;
+    if (typeof hi !== 'number' || typeof lo !== 'number') return [];
+    var delta = typeof meta.range === 'number' ? meta.range
+      : (typeof context.range === 'number' ? context.range : hi - lo);
+    return [{
+      areaId: meta.canvasId || null,
+      name: meta.levelName || context.levelName || '',
+      hi: hi,
+      lo: lo,
+      delta: delta,
+      decimalPlaces: 2,
+    }];
+  }
+
+  /**
    * The rail for a figure page.
    *
    * One rail serves every figure page: a section it has nothing for is simply
@@ -1875,9 +1929,12 @@
     // Live first: what the drawing is drawing. Evidence stored at import is
     // only a fallback for a slide whose view has not reported yet.
     var live = Array.isArray(page._liveStats) ? page._liveStats.filter(Boolean) : null;
-    var stats = page.type === 'floor' && meta.imported
-      ? (live && live.length ? live : (Array.isArray(ev.stats) ? ev.stats.filter(Boolean) : []))
-      : [];
+    var stats = [];
+    if (page.type === 'floor' && meta.imported) {
+      stats = live && live.length ? live : (Array.isArray(ev.stats) ? ev.stats.filter(Boolean) : []);
+    } else if (page.type === 'diagnostics') {
+      stats = diagnosticsStats(page);
+    }
     var scopeTitle = meta.scope === 'all'
       ? (meta.scopeTitle || 'Combined')
       : ((stats.length === 1 && stats[0].name) || meta.scopeTitle || meta.levelName || '');
@@ -1889,6 +1946,9 @@
       title = 'Picture/Damage Locations' + (level ? '\n' + level : '');
     } else if (page.type === 'pictures') {
       title = 'Pictures';
+    } else if (page.type === 'diagnostics') {
+      var dxLevel = String(meta.levelName || '').trim();
+      title = 'Diagnostics' + (dxLevel ? '\n' + dxLevel : '');
     } else {
       title = page.title || '';
     }
@@ -2033,6 +2093,22 @@
       } else if (!renderEvidence(margin, page)) {
         addLine(margin, 'rb-sheet__note', 'Floor Survey page unavailable.');
       }
+    } else if (page.type === 'diagnostics' && !(page.meta && page.meta.reserved)) {
+      // The view fills the sheet the way a floor plan does, with the rail
+      // carrying the title block. What it must not lose on the way into the
+      // report is the notice Diagnostics prints under it: the vertical scale
+      // is exaggerated, so the picture is not a measurement.
+      margin.classList.add('rb-sheet__margin--diagnostics');
+      var dxPage = document.createElement('div');
+      dxPage.className = 'rb-diagnostics-page';
+      var dxEv = page.evidence || {};
+      if (!evidenceImage(dxPage, dxEv.dataUrl, 'rb-diagnostics-page__view',
+        'Diagnostics view' + (page.meta && page.meta.levelName ? ' of ' + page.meta.levelName : ''))) {
+        addLine(dxPage, 'rb-sheet__note', 'This Diagnostics view is not stored on this device.');
+      }
+      var dxNotice = diagnosticsNotice(page);
+      if (dxNotice) addLine(dxPage, 'rb-diagnostics-page__notice', dxNotice);
+      margin.appendChild(dxPage);
     } else if (page.type === 'distress' || page.type === 'diagnostics') {
       var kicker = page.type === 'distress' ? 'Distress Survey' : 'Diagnostics';
       addLine(margin, 'rb-sheet__kicker', kicker);
