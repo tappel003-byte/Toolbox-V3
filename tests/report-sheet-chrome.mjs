@@ -194,6 +194,39 @@ for (const slide of slides) {
     JSON.stringify(rest));
 }
 
+// A page that bleeds gets the whole sheet. The page box takes its height as
+// the sheet less its own two margins, so a page that sets margin:0 and
+// nothing else came out a margin's depth short of the paper -- an inch and a
+// half of the title page and of the discussion's writing area, with the mark
+// still drawn against the sheet and left stranded below. Tim, looking at the
+// discussion: "we can go down a bit further."
+for (const slide of slides) {
+  await page.evaluate((want) => {
+    document.querySelector(`.rb-thumb[data-page-id="${want}"]`)?.click();
+  }, slide.id);
+  await page.waitForFunction(
+    (want) => document.querySelector('.rb-sheet')?.getAttribute('data-page-id') === want,
+    { timeout: 15000 }, slide.id);
+  const box = await page.evaluate(() => {
+    const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+    const margin = sheet.querySelector('.rb-sheet__margin');
+    if (!margin) return null;
+    const sr = sheet.getBoundingClientRect();
+    const mr = margin.getBoundingClientRect();
+    const inset = Math.round(mr.left - sr.left);
+    return {
+      share: Math.round((mr.height / sr.height) * 100),
+      inset,
+      bleeds: inset <= 1,
+    };
+  });
+  if (!box) continue;
+  // An inset page keeps its margins top and bottom; a bled one keeps none.
+  check(`${slide.caption || slide.id} fills the paper it was given`,
+    box.bleeds ? box.share >= 99 : box.share >= 88 && box.share <= 93,
+    JSON.stringify(box));
+}
+
 // The handles are not gone, only waiting: a cover box still has both of its
 // corner pulls in the sheet, ready for the pointer.
 await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id="cover"]')?.click());

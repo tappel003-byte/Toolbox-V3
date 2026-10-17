@@ -662,9 +662,14 @@ body.report-builder-open .canvas {
    Legend + H/L/Δ + relative-readings are report chrome, not field Topo paste. */
 
 .rb-sheet__margin--topo,
-.rb-sheet__margin--cover,
 .rb-sheet__margin--pictures {
   margin: 2.2%;
+  /* A margin of its own means a height of its own. The base rule subtracts
+     the 4.5cqw margins it sets; these pages set 2.2% instead, and without
+     this they went on subtracting the larger pair -- three quarters of an
+     inch of page that nothing could be put on. A CSS margin is a share of
+     the WIDTH either way, so the height subtracts the same unit. */
+  height: calc(100% - 4.4cqw);
   padding: 1.6% 2% 1.4%;
   border-color: rgba(30, 64, 110, 0.55);
 }
@@ -675,13 +680,21 @@ body.report-builder-open .canvas {
    white the plan could never be moved into, and the same boundary cut the plan
    off when it was panned, which read as geometry having been deleted. It is
    also why the band was not symmetrical: the top and bottom padding differ. */
+/* The pages that bleed: no margin, no padding, and -- the part that has to
+   travel with them -- the whole height of the sheet.
+   .rb-sheet__margin takes its height as the sheet LESS its own two margins,
+   so a page that sets margin:0 and nothing else came out a margin's depth
+   short of the paper: a sixth of an inch and a half of writing area gone,
+   with the brand mark still drawn against the sheet and so left stranded
+   below it. Tim, looking at the discussion page: "we can go down a bit
+   further." Keeping the two declarations in one rule is what stops the next
+   bled page losing the same inch and a half. */
+.rb-sheet__margin--cover,
+.rb-sheet__margin--discussion,
 .rb-sheet__margin--topo-bleed {
   margin: 0;
   padding: 0;
   border: 0;
-  /* The height above subtracts the two margins this page does not have, so
-     without this the bled page stopped a margin's depth short of the paper
-     and the drawing printed into the top five sixths of the sheet. */
   height: 100%;
 }
 
@@ -1091,9 +1104,6 @@ body.report-builder-open .canvas {
  * ------------------------------------------------------------------ */
 
 .rb-sheet__margin--cover {
-  margin: 0;
-  padding: 0;
-  border: 0;
   overflow: visible;
 }
 
@@ -2834,9 +2844,6 @@ body.report-builder-open .canvas {
  * ------------------------------------------------------------------ */
 
 .rb-sheet__margin--discussion {
-  margin: 0;
-  padding: 0;
-  border: 0;
   overflow: visible;
 }
 
