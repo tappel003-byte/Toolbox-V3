@@ -358,6 +358,40 @@ check('the box being pointed at shows its edge and both corners, alone',
   coverPointed.other.move === 'none',
   JSON.stringify(coverPointed));
 await page.mouse.move(4, 4);
+
+// And the empty site-overview frame with its buttons: ours, not the
+// report's. Tim, Oct 17: "if I don't drop in a picture I want all the other
+// buttons to go away."
+const ovRest = await page.evaluate(() => {
+  const box = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) .rb-cover-box--overview');
+  const r = box.getBoundingClientRect();
+  return {
+    empty: getComputedStyle(box.querySelector('.rb-cover__overview-empty')).visibility,
+    actions: getComputedStyle(box.querySelector('.rb-cover__overview-actions')).visibility,
+    point: { x: r.left + r.width / 2, y: r.top + r.height / 2 },
+    h: Math.round(r.height),
+  };
+});
+check('an empty site overview shows no frame and no buttons at rest',
+  ovRest.empty === 'hidden' && ovRest.actions === 'hidden', JSON.stringify(ovRest));
+await page.mouse.move(ovRest.point.x, ovRest.point.y);
+await new Promise((r) => setTimeout(r, 250));
+const ovPointed = await page.evaluate(() => {
+  const box = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) .rb-cover-box--overview');
+  return {
+    empty: getComputedStyle(box.querySelector('.rb-cover__overview-empty')).visibility,
+    actions: getComputedStyle(box.querySelector('.rb-cover__overview-actions')).visibility,
+    buttons: [...box.querySelectorAll('[data-rb-cover-overview]')]
+      .map((b) => b.getAttribute('data-rb-cover-overview')),
+    h: Math.round(box.getBoundingClientRect().height),
+  };
+});
+check('pointing at it offers Paste and Add, and nothing has moved',
+  ovPointed.empty === 'visible' && ovPointed.actions === 'visible' &&
+  ovPointed.buttons.indexOf('paste') !== -1 && ovPointed.buttons.indexOf('pick') !== -1 &&
+  ovPointed.h === ovRest.h,
+  JSON.stringify({ ovRest, ovPointed }));
+await page.mouse.move(4, 4);
 await page.evaluate(() => {
   const street = document.querySelector('[data-rb-cover-field="street"]');
   const line = document.querySelector('[data-rb-cover-field="contents:0"]');

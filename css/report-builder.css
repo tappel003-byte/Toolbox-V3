@@ -1444,6 +1444,23 @@ body.report-builder-open .canvas {
 
 .rb-cover.is-locked .rb-cover__overview-empty { display: none; }
 
+/* The empty frame and the buttons under it are ours, not the report's, so
+   they wait until the investigator points at that corner of the page. Tim,
+   Oct 17: "if I don't drop in a picture I want all the other buttons to go
+   away." Hidden rather than removed, so nothing jumps or resizes when they
+   appear -- the photo keeps the same place on the page either way. */
+.rb-cover:not(.is-locked) .rb-cover__overview-empty,
+.rb-cover:not(.is-locked) .rb-cover__overview-actions {
+  visibility: hidden;
+}
+
+.rb-cover:not(.is-locked) .rb-cover-box--overview:hover .rb-cover__overview-empty,
+.rb-cover:not(.is-locked) .rb-cover-box--overview:hover .rb-cover__overview-actions,
+.rb-cover:not(.is-locked) .rb-cover-box--overview:focus-within .rb-cover__overview-empty,
+.rb-cover:not(.is-locked) .rb-cover-box--overview:focus-within .rb-cover__overview-actions {
+  visibility: visible;
+}
+
 .rb-cover__overview-actions {
   flex: 0 0 auto;
   display: flex;
