@@ -34,10 +34,60 @@
   // The rail owns the right-hand 2.125 in of the sheet. Everything here stops
   // short of it -- the page border runs between them, and nothing of this
   // page's may touch it.
+  // Where the plan and the schedule start, in inches on the sheet. From here
+  // they are the investigator's: both are dragged and sized on the page.
+  // Tim: "Everything here needs to be movable. I should be able to move the
+  // floor plan if I want, and I want to be able to move the notes if I want."
   var LAYOUT = {
     plan: { x: 0.4, y: 0.45, w: 8.1, h: 10.1 },
     schedule: { x: 8.8, y: 0.45, w: 5.5, h: 10.1 },
   };
+
+  var SHEET_W = 17;
+  var SHEET_H = 11;
+
+  function defaultLayout() {
+    return JSON.parse(JSON.stringify(LAYOUT));
+  }
+
+  function clampBox(raw, fallback) {
+    var src = raw && typeof raw === 'object' ? raw : {};
+    var fb = fallback;
+    function num(v, dflt, lo, hi) {
+      var n = typeof v === 'number' && isFinite(v) ? v : dflt;
+      return Math.round(Math.max(lo, Math.min(hi, n)) * 1000) / 1000;
+    }
+    // Nothing smaller than an inch and a half: below that neither piece can
+    // be read, and a box dragged to nothing cannot be found again.
+    var box = {
+      x: num(src.x, fb.x, 0, SHEET_W - 1.5),
+      y: num(src.y, fb.y, 0, SHEET_H - 1.5),
+      w: num(src.w, fb.w, 1.5, SHEET_W),
+      h: num(src.h, fb.h, 1.5, SHEET_H),
+    };
+    if (box.x + box.w > SHEET_W) box.w = Math.round((SHEET_W - box.x) * 1000) / 1000;
+    if (box.y + box.h > SHEET_H) box.h = Math.round((SHEET_H - box.y) * 1000) / 1000;
+    return box;
+  }
+
+  /** One placement for every Picture Locations sheet in the report, the way
+   *  the Floor Survey layout is the report's rather than the slide's. */
+  function normalizeLayout(raw) {
+    var src = raw && typeof raw === 'object' ? raw : {};
+    return {
+      plan: clampBox(src.plan, LAYOUT.plan),
+      schedule: clampBox(src.schedule, LAYOUT.schedule),
+    };
+  }
+
+  function isDefaultLayout(raw) {
+    var box = normalizeLayout(raw);
+    return ['plan', 'schedule'].every(function (key) {
+      return ['x', 'y', 'w', 'h'].every(function (k) {
+        return Math.abs(box[key][k] - LAYOUT[key][k]) < 0.01;
+      });
+    });
+  }
 
   function text(value) {
     return typeof value === 'string' ? value.trim() : '';
@@ -276,12 +326,16 @@
    * `measure` builds the same grid off-page so the splitter can ask how much
    * of it fits before any of it is shown.
    */
-  function buildSchedule(pins, model, measure) {
+  function buildSchedule(pins, model, measure, scheduleBox) {
     var grid = document.createElement('div');
     grid.className = 'rb-penlog__grid';
     grid.setAttribute('role', 'table');
     grid.setAttribute('aria-label', 'Picture locations schedule');
-    var notesWidth = LAYOUT.schedule.w - COL_PHOTO - COL_PIN;
+    // Photo and # keep their width; the notes column takes what is left, so
+    // a schedule the investigator has widened gives the room to the writing
+    // rather than to the two narrow columns beside it.
+    var width = (scheduleBox && scheduleBox.w) || LAYOUT.schedule.w;
+    var notesWidth = Math.max(1, width - COL_PHOTO - COL_PIN);
     grid.style.gridTemplateColumns = [COL_PHOTO, COL_PIN, notesWidth].map(function (width) {
       return width + 'fr';
     }).join(' ');
@@ -387,7 +441,8 @@
    */
   var PROBE_PX_PER_IN = 100;
 
-  function fitCount(pins) {
+  function fitCount(pins, scheduleBox) {
+    var box = clampBox(scheduleBox, LAYOUT.schedule);
     var total = (pins || []).length;
     if (total <= 1) return total;
     var host = document.createElement('div');
@@ -399,8 +454,8 @@
     sheet.className = 'rb-penlog';
     var probe = document.createElement('div');
     probe.className = 'rb-penlog__schedule rb-penlog__schedule--probe';
-    place(probe, LAYOUT.schedule);
-    probe.appendChild(buildSchedule(pins, {}, true));
+    place(probe, box);
+    probe.appendChild(buildSchedule(pins, {}, true, box));
     sheet.appendChild(probe);
     host.appendChild(sheet);
     document.body.appendChild(host);
@@ -450,9 +505,11 @@
     root.className = 'rb-penlog';
     root.setAttribute('data-level', levelName);
 
+    var placement = normalizeLayout(model.layout);
     var frame = document.createElement('div');
     frame.className = 'rb-penlog__plan';
-    place(frame, LAYOUT.plan);
+    frame.setAttribute('data-rb-penlog-box', 'plan');
+    place(frame, placement.plan);
     var planWidth = Number(plan.width);
     var planHeight = Number(plan.height);
     if (planWidth > 0 && planHeight > 0) {
@@ -529,8 +586,28 @@
 
     var schedule = document.createElement('div');
     schedule.className = 'rb-penlog__schedule';
-    place(schedule, LAYOUT.schedule);
-    schedule.appendChild(buildSchedule(pins, model));
+    schedule.setAttribute('data-rb-penlog-box', 'schedule');
+    place(schedule, placement.schedule);
+    schedule.appendChild(buildSchedule(pins, model, false, placement.schedule));
+
+    // Each piece is moved from its top-left corner and sized from its
+    // bottom-right, both waiting until it is pointed at -- the rule every
+    // other placed thing on a sheet follows.
+    if (!model.locked) {
+      [frame, schedule].forEach(function (box) {
+        var which = box.getAttribute('data-rb-penlog-box');
+        var move = document.createElement('span');
+        move.className = 'rb-penlog__move';
+        move.setAttribute('data-rb-penlog-move', which);
+        move.setAttribute('title', 'Drag to move');
+        box.appendChild(move);
+        var grip = document.createElement('span');
+        grip.className = 'rb-penlog__resize';
+        grip.setAttribute('data-rb-penlog-resize', which);
+        grip.setAttribute('title', 'Drag to size');
+        box.appendChild(grip);
+      });
+    }
 
     root.appendChild(schedule);
 
@@ -615,6 +692,9 @@
     buildSchedule: buildSchedule,
     fitCount: fitCount,
     saveNotes: saveNotes,
+    normalizeLayout: normalizeLayout,
+    defaultLayout: defaultLayout,
+    isDefaultLayout: isDefaultLayout,
   };
 
   if (typeof window !== 'undefined') window.ToolboxPenLog = api;

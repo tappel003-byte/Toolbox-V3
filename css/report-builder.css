@@ -1921,6 +1921,64 @@ body.report-builder-open .canvas {
   position: absolute;
 }
 
+/* The plan and the schedule are placed pieces. Each shows its edge and its
+   two pulls when it is pointed at and nothing before, the rule every other
+   placed thing on a sheet follows. Tim: "Everything here needs to be
+   movable. I should be able to move the floor plan if I want, and I want to
+   be able to move the notes if I want." */
+.rb-penlog__plan,
+.rb-penlog__schedule {
+  outline: none;
+  outline-offset: 3px;
+}
+
+.rb-penlog__plan:hover,
+.rb-penlog__schedule:hover {
+  outline: 1px dashed rgba(139, 94, 60, 0.4);
+}
+
+.rb-penlog__move,
+.rb-penlog__resize {
+  position: absolute;
+  display: none;
+  z-index: 6;
+  width: 14px;
+  height: 14px;
+}
+
+.rb-penlog__move {
+  left: -3px;
+  top: -3px;
+  border-left: 2px solid var(--rb-copper, #8B5E3C);
+  border-top: 2px solid var(--rb-copper, #8B5E3C);
+  cursor: move;
+}
+
+.rb-penlog__resize {
+  right: -3px;
+  bottom: -3px;
+  border-right: 2px solid var(--rb-copper, #8B5E3C);
+  border-bottom: 2px solid var(--rb-copper, #8B5E3C);
+  cursor: nwse-resize;
+}
+
+.rb-penlog__plan:hover .rb-penlog__move,
+.rb-penlog__plan:hover .rb-penlog__resize,
+.rb-penlog__schedule:hover .rb-penlog__move,
+.rb-penlog__schedule:hover .rb-penlog__resize {
+  display: block;
+}
+
+.rb-sheet--thumb .rb-penlog__move,
+.rb-sheet--thumb .rb-penlog__resize { display: none !important; }
+
+@media print {
+  .rb-penlog__move,
+  .rb-penlog__resize { display: none !important; }
+  .rb-penlog__plan,
+  .rb-penlog__schedule { outline: none !important; }
+}
+
 .rb-penlog__image {
   display: block;
   width: 100%;

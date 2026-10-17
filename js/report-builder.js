@@ -1687,6 +1687,8 @@
       figureCont: page !== head,
       plan: (page.evidence && page.evidence.plan) || {},
       contour: penLogContour(page),
+      layout: page._penLogLayout || null,
+      locked: !!thumb,
       pins: shown,
       // The map is the whole level on every sheet of it: a reader looking up
       // photograph 31 on the second sheet needs the same plan in front of
@@ -2244,7 +2246,7 @@
   }
 
   function persistableDocument(pages, activePageId, prior, floorLayout, coverLayout, brandBox,
-    floorCamera, floorView, floorFramed, discussionBox) {
+    floorCamera, floorView, floorFramed, discussionBox, penLogLayout) {
     var notes = collectPenLogNotes(pages);
     if ((!notes || !Object.keys(notes).length) && prior && prior.penLog && prior.penLog.notes) {
       notes = prior.penLog.notes;
@@ -2285,6 +2287,12 @@
     // included, so the re-flow measures the same box it splits by.
     var discBody = discussionBox || (prior && prior.discussionBox);
     if (discBody) doc.discussionBox = discApi ? discApi.normalizeBodyBox(discBody) : discBody;
+    var penApi = window.ToolboxPenLog;
+    var penBoxes = penLogLayout || (prior && prior.penLogLayout);
+    if (penBoxes) {
+      doc.penLogLayout = penApi && penApi.normalizeLayout
+        ? penApi.normalizeLayout(penBoxes) : penBoxes;
+    }
     var camera = floorCamera || (prior && prior.floorCamera);
     if (camera) doc.floorCamera = JSON.parse(JSON.stringify(camera));
     var view = floorView || (prior && prior.floorView);
@@ -2425,6 +2433,10 @@
     // it, and then it is his. Tim: "if you let me adjust the size of the box
     // then I can use the white space that I want."
     var discussionBox = null;
+    // Where the plan and the schedule sit on a Picture Locations sheet. One
+    // placement for the whole report, like the Floor Survey layout: level on
+    // level, the sheets have to register with each other.
+    var penLogBoxLayout = null;
     // One camera for every Floor Survey slide: the same part of the plan at the
     // same zoom, so clicking through Combined, Main Level, Kitchen and Garage
     // is a flip book -- the building does not move. The chrome (colour scale,
@@ -2496,6 +2508,7 @@
     var floorDrag = null;
     var coverDrag = null;
     var discDrag = null;
+    var penDrag = null;
     pageSeq = pages.length;
 
     host.innerHTML = shellHtml();
@@ -2590,7 +2603,8 @@
         floorCamera,
         floorView,
         floorFramed,
-        discussionBox
+        discussionBox,
+        penLogBoxLayout
       );
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;
@@ -3036,6 +3050,8 @@
                    item.meta.sectionId === 'discussion') {
           item._facts = discussionFacts(item);
           item._discussionBox = discussionBox;
+        } else if (isPenLogPage(item)) {
+          item._penLogLayout = penLogBoxLayout;
         }
       });
       // The cover's aerial view belongs to the book, not to the cover, so
@@ -4626,6 +4642,13 @@
      * disappears. Only the starting row index is written onto the page, and
      * only so the rail has a sheet to list.
      */
+    function penLogBoxes() {
+      var api = window.ToolboxPenLog;
+      return api && api.normalizeLayout
+        ? api.normalizeLayout(penLogBoxLayout)
+        : (penLogBoxLayout || {});
+    }
+
     function reflowPenLog() {
       var api = window.ToolboxPenLog;
       if (!api || typeof api.fitCount !== 'function') return false;
@@ -4645,7 +4668,7 @@
       var guard = 0;
       while (at < pins.length && guard < 200) {
         starts.push(at);
-        at += api.fitCount(pins.slice(at));
+        at += api.fitCount(pins.slice(at), penLogBoxes().schedule);
         guard += 1;
       }
       if (!starts.length) starts = [0];
@@ -5236,6 +5259,26 @@
       var editableTarget = event.target.closest('[data-rb-rich]');
       if (editableTarget && editableTarget.getAttribute('contenteditable') === 'true') return;
       var current = activePage();
+      var penGrip = event.target.closest('[data-rb-penlog-move], [data-rb-penlog-resize]');
+      if (penGrip) {
+        var penStage = stageRect('.rb-penlog');
+        if (!penStage || penStage.width < 8 || penStage.height < 8) return;
+        event.preventDefault();
+        var penResize = !!event.target.closest('[data-rb-penlog-resize]');
+        penDrag = {
+          which: penGrip.getAttribute(penResize ? 'data-rb-penlog-resize' : 'data-rb-penlog-move'),
+          resize: penResize,
+          startX: event.clientX,
+          startY: event.clientY,
+          // Inches, because the pen log's own model is in inches on a
+          // 17 x 11 sheet rather than in percentages of it.
+          perInX: penStage.width / 17,
+          perInY: penStage.height / 11,
+          boxes: penLogBoxes(),
+        };
+        try { penGrip.setPointerCapture(event.pointerId); } catch (_) {}
+        return;
+      }
       var discGrip = event.target.closest('[data-rb-disc-move], [data-rb-disc-resize]');
       if (discGrip) {
         var discStage = stageRect('.rb-sheet__margin--discussion');
@@ -5313,6 +5356,35 @@
     });
 
     sheetEl.addEventListener('pointermove', function (event) {
+      if (penDrag) {
+        var pdx = (event.clientX - penDrag.startX) / penDrag.perInX;
+        var pdy = (event.clientY - penDrag.startY) / penDrag.perInY;
+        var penApi2 = window.ToolboxPenLog;
+        var nextPen = JSON.parse(JSON.stringify(penDrag.boxes));
+        var moving = nextPen[penDrag.which];
+        if (!moving) return;
+        if (penDrag.resize) {
+          moving.w += pdx;
+          moving.h += pdy;
+        } else {
+          moving.x += pdx;
+          moving.y += pdy;
+        }
+        penLogBoxLayout = penApi2 && penApi2.normalizeLayout
+          ? penApi2.normalizeLayout(nextPen) : nextPen;
+        // Moved live; the split waits for the pointer to come up, because
+        // re-measuring the whole level sixty times a second would rebuild
+        // every sheet of it.
+        var livePen = sheetEl.querySelector('[data-rb-penlog-box="' + penDrag.which + '"]');
+        if (livePen) {
+          var b = penLogBoxLayout[penDrag.which];
+          livePen.style.left = ((b.x / 17) * 100) + '%';
+          livePen.style.top = ((b.y / 11) * 100) + '%';
+          livePen.style.width = ((b.w / 17) * 100) + '%';
+          livePen.style.height = ((b.h / 11) * 100) + '%';
+        }
+        return;
+      }
       if (discDrag) {
         var ddx = ((event.clientX - discDrag.startX) / discDrag.stageW) * 100;
         var ddy = ((event.clientY - discDrag.startY) / discDrag.stageH) * 100;
@@ -5453,6 +5525,17 @@
     });
 
     function endLayoutDrag() {
+      if (penDrag) {
+        var wasResize = penDrag.resize;
+        penDrag = null;
+        markDirty();
+        // A schedule given more or less room holds a different number of
+        // rows, so the level is split again before the sheets are drawn.
+        if (wasResize) reflowPenLog();
+        renderPages();
+        flushSave().catch(function () {});
+        return;
+      }
       if (discDrag) {
         discDrag = null;
         markDirty();
@@ -5711,6 +5794,10 @@
       var discSeed = (savedDoc && savedDoc.discussionBox) || template.discussionBox;
       if (discSeed && window.ToolboxReportDiscussion) {
         discussionBox = window.ToolboxReportDiscussion.normalizeBodyBox(discSeed);
+      }
+      var penSeed = (savedDoc && savedDoc.penLogLayout) || template.penLogLayout;
+      if (penSeed && window.ToolboxPenLog && window.ToolboxPenLog.normalizeLayout) {
+        penLogBoxLayout = window.ToolboxPenLog.normalizeLayout(penSeed);
       }
       var cameraSeed = (savedDoc && savedDoc.floorCamera) || template.floorCamera;
       if (cameraSeed) floorCamera = JSON.parse(JSON.stringify(cameraSeed));
