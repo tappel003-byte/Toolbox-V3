@@ -1848,7 +1848,12 @@ body.report-builder-open .canvas {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: #f7f5f1;
+  /* No tint behind the picture. The plate is a fixed portrait shape so that
+     every caption in a row starts on the same line, and a photograph that
+     does not fill it used to leave a tan band above and below. Tim: "there's
+     a tan in the background for portrait pictures -- I don't want that to
+     show." The space is still reserved; it is just paper now. */
+  background: none;
 }
 
 .rb-pictures-page__image {
