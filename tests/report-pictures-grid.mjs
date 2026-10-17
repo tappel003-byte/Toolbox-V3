@@ -160,6 +160,37 @@ const chosen = await picturesSheet(0);
 check('a grid chosen by hand survives leaving and coming back',
   chosen.cols === 4 && chosen.rows === 3, JSON.stringify(chosen));
 
+// A long description is printed whole. The caption box used to stop at a
+// little under four lines and scroll, so what the investigator wrote read
+// complete on screen and printed with its end missing.
+const LONG = 'Hairline crack in the ceiling drywall running east to west, roughly four ' +
+  'feet long and widening toward the exterior wall, with a secondary branch above the ' +
+  'window header that continues into the corner bead and appears to follow the framing line.';
+await picturesSheet(0);
+await page.evaluate((text) => {
+  const field = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-caption]');
+  field.value = text;
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+}, LONG);
+await new Promise((r) => setTimeout(r, 600));
+const caption = await page.evaluate(() => {
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+  const field = sheet.querySelector('[data-rb-caption]');
+  const sr = sheet.getBoundingClientRect();
+  const past = [...sheet.querySelectorAll('.rb-pictures-page__cell *')]
+    .filter((el) => el.getBoundingClientRect().bottom > sr.bottom + 1).length;
+  return {
+    cut: field.scrollHeight - field.clientHeight,
+    lines: Math.round(field.clientHeight / parseFloat(getComputedStyle(field).lineHeight)),
+    past,
+    overflow: sheet.scrollHeight - Math.round(sr.height),
+  };
+});
+check('a long description is shown whole, not cut off at four lines',
+  caption.cut <= 1 && caption.lines > 4, JSON.stringify(caption));
+check('and nothing it pushed runs off the paper',
+  caption.past === 0 && caption.overflow <= 1, JSON.stringify(caption));
+
 await page.screenshot({ path: `${OUT}/report-pictures-grid.png` });
 await browser.close();
 const failed = results.filter((r) => !r.ok);

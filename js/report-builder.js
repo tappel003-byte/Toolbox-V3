@@ -846,6 +846,43 @@
   }
 
   /**
+   * No photograph's description is printed half-written.
+   *
+   * A caption is a box on a grid: the page cannot grow, so something has to
+   * give when the investigator writes a long one. It used to be the words --
+   * the box stopped at a little under four lines and scrolled, so a full
+   * description read complete on screen and printed with its end missing.
+   *
+   * What gives now is, in order: the plate above it, which shrinks; then the
+   * type, down to two thirds, the way a deck author would set it. Only a
+   * description longer than that reaches the end of the room, and by then the
+   * words are smaller rather than gone.
+   */
+  function fitCaptions(root) {
+    var fields = root.querySelectorAll('[data-rb-caption]');
+    for (var i = 0; i < fields.length; i += 1) fitCaption(fields[i]);
+  }
+
+  function fitCaption(field) {
+    if (!field) return;
+    field.style.fontSize = '';
+    field.style.height = 'auto';
+    var base = parseFloat(window.getComputedStyle(field).fontSize);
+    if (!isFinite(base) || base <= 0) return;
+    // Grown to the words; the stylesheet's max-height is what stops it.
+    field.style.height = field.scrollHeight + 'px';
+    var size = base;
+    var guard = 0;
+    while (field.scrollHeight > field.clientHeight + 1 && size > base * 0.66 && guard < 24) {
+      size = Math.round((size - base * 0.05) * 100) / 100;
+      field.style.fontSize = size + 'px';
+      field.style.height = 'auto';
+      field.style.height = field.scrollHeight + 'px';
+      guard += 1;
+    }
+  }
+
+  /**
    * Keep the street on one line, the way a deck author would.
    *
    * The decks set it at 60pt because "59 Lodge Trail" fits at 60pt. A longer
@@ -1983,6 +2020,10 @@
     } else if (page.type === 'pictures') {
       margin.classList.add('rb-sheet__margin--pictures');
       margin.appendChild(renderPicturesPage(page));
+      // Measured once the sheet has a width, like the cover's street. Never
+      // on a stamp: a thumbnail is too small to read either way, and there
+      // are as many of them as there are pages.
+      if (!thumb) window.requestAnimationFrame(function () { fitCaptions(sheet); });
     } else if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
       margin.classList.add('rb-sheet__margin--topo');
       // Once imported, the drawing gets the whole sheet: the inset box the
@@ -4711,6 +4752,8 @@
       current.reportText = current.reportText || {};
       current.reportText.captions = current.reportText.captions || {};
       current.reportText.captions[key] = field.value;
+      // As it is typed, so the writer sees what will print.
+      fitCaption(field);
       markDirty();
     });
 

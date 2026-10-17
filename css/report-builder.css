@@ -1844,11 +1844,17 @@ body.report-builder-open .canvas {
   line-height: 1.2;
 }
 
+/* The caption takes the room its words need, and the plate above it gives
+   way. It used to stop at a little under four lines and scroll: a long
+   description looked complete on screen and printed with its last sentences
+   missing. Half the cell is the limit, so the photograph never disappears
+   behind the writing; past that the type comes down instead (fitCaptions). */
 .rb-pictures-page__caption {
   flex: 0 0 auto;
   width: 100%;
+  height: auto;
   min-height: 2.6em;
-  max-height: 3.8em;
+  max-height: 50%;
   margin: 0;
   padding: 0;
   border: 0;
@@ -1859,7 +1865,7 @@ body.report-builder-open .canvas {
   font: inherit;
   font-size: clamp(9px, 1.2cqb, 12px);
   line-height: 1.25;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .rb-pictures-page__caption:focus {
