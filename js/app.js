@@ -1006,8 +1006,24 @@
         menu.classList.remove('is-open');
         requestCheckInCustomerFile(record);
       });
+      // Send is offered beside Check In, not instead of it. A checked-out
+      // file whose Cabinet copy has gone cannot be checked in -- there is
+      // nothing to check it in to -- and with only Check In on the menu the
+      // work was trapped on the device with no way off it. Send puts it
+      // back. It still refuses to write over a Check Out another device
+      // holds, so offering it takes nothing away from that protection.
+      const sendBackBtn = document.createElement('button');
+      sendBackBtn.type = 'button';
+      sendBackBtn.className = 'cabinet-row-menu__action';
+      sendBackBtn.textContent = 'Send to File Cabinet';
+      sendBackBtn.addEventListener('click', function (event) {
+        event.stopPropagation();
+        menu.classList.remove('is-open');
+        requestSendToFileCabinet(record);
+      });
       menu.appendChild(menuToggle);
       menu.appendChild(checkInBtn);
+      menu.appendChild(sendBackBtn);
     } else {
       const sendBtn = document.createElement('button');
       sendBtn.type = 'button';

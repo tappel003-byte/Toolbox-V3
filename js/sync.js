@@ -1500,12 +1500,15 @@
 
     let remote = await getRemoteIndex(id);
     if (!remote) {
-      throw new SyncError('incomplete', 'Checked-out Customer File is missing from the File Cabinet.');
+      throw new SyncError('incomplete',
+        'This Customer File is no longer in the File Cabinet, so there is nothing to check it in to. Use Send to File Cabinet to put it back. Nothing on this device has been changed.');
     }
 
     const synced = await syncOneRecord(record, remote);
     if (synced && synced.checkoutBlocked) {
-      throw new SyncError('checkout', 'Could not write checked-out changes (ownership blocked).');
+      throw new SyncError('checkout', synced.checkoutBlockedReason === 'identity'
+        ? 'Toolbox could not confirm your sign-in, so it will not write over the Cabinet copy. Reconnect and try Check In again. Nothing on this device has been changed.'
+        : 'Another device holds the Check Out for this Customer File. Check it in from that device, or Check Out again here first. Nothing on this device has been changed.');
     }
 
     remote = await verifyRemoteCabinetCopy(record);
@@ -1753,6 +1756,12 @@
     // only the owning user+device may push. Local data is preserved.
     let mayPush = !options.materializeOnly;
     let checkoutBlocked = false;
+    // Why it was blocked, because the two reasons need different words and
+    // different actions. A phone whose sign-in has lapsed cannot be told
+    // apart from a file somebody else holds unless this is carried out:
+    // both end up here, and "ownership blocked" sent the investigator
+    // looking for a device that does not have his file.
+    let checkoutBlockedReason = '';
     if (mayPush && remote && remote.checkout && trimStr(remote.checkout.deviceId) &&
         normalizeEmail(remote.checkout.email) && !options.bypassCheckoutPushGate) {
       let identity = null;
@@ -1762,9 +1771,14 @@
         identity = null;
       }
       const deviceId = getDeviceId();
-      if (!identity || !checkoutOwnerMatches(remote.checkout, identity.email, deviceId)) {
+      if (!identity) {
         mayPush = false;
         checkoutBlocked = true;
+        checkoutBlockedReason = 'identity';
+      } else if (!checkoutOwnerMatches(remote.checkout, identity.email, deviceId)) {
+        mayPush = false;
+        checkoutBlocked = true;
+        checkoutBlockedReason = 'other-device';
       }
     }
 
@@ -1793,6 +1807,7 @@
         preserved: true,
         components: componentResults,
         checkoutBlocked: true,
+        checkoutBlockedReason: checkoutBlockedReason,
         uploadBlocked: uploadBlocked,
       };
     }
