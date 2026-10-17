@@ -119,7 +119,14 @@ const piece = (which) => page.evaluate((kind) => {
   const r = box.getBoundingClientRect();
   return {
     x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height),
-    scale: !!box.querySelector('.rb-topo-legend__bar span'),
+    // The colour scale is Floor Survey's own, painted by Floor Survey and
+    // placed here as a picture.
+    scale: (() => {
+      const img = box.querySelector('.rb-topo-legend__img');
+      if (!img) return false;
+      return /^data:image\/png/.test(img.getAttribute('src') || '') &&
+        img.naturalWidth > 40 && img.naturalHeight > img.naturalWidth;
+    })(),
     readings: (box.querySelector('.rb-topo-stats')?.textContent || '').replace(/\s+/g, ' ').trim(),
     outline: getComputedStyle(box).outlineStyle,
     grips: [...box.querySelectorAll('.rb-floor-box__resize')]
@@ -208,6 +215,123 @@ check('and both are still where they were put after coming back',
   Math.abs(reopened.x - afterPan.x) < 4 && Math.abs(reopened.y - afterPan.y) < 4 &&
   Math.abs(reopenedPill.x - afterPanPill.x) < 4 && Math.abs(reopenedPill.y - afterPanPill.y) < 4,
   JSON.stringify({ reopened, reopenedPill }));
+
+// Right-click a piece to move it behind or in front of the others. Tim: "I
+// need to be able to right click and put images behind or in front."
+const stackOf = () => page.evaluate(() => {
+  const read = (sel) => {
+    const el = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) ' + sel);
+    return el ? Number(el.style.zIndex) : null;
+  };
+  return {
+    scale: read('[data-rb-floor-box^="legend"]'),
+    plan: read('[data-rb-floor-box^="topo"]'),
+    readings: read('[data-rb-floor-box^="pill"]'),
+  };
+});
+const stackStart = await stackOf();
+check('the drawing is underneath, the scale and the readings on top',
+  stackStart.plan < stackStart.scale && stackStart.plan < stackStart.readings,
+  JSON.stringify(stackStart));
+
+const scaleAt = await piece('legend');
+await page.mouse.click(scaleAt.x + scaleAt.w / 2, scaleAt.y + scaleAt.h / 2, { button: 'right' });
+await new Promise((r) => setTimeout(r, 400));
+const menu = await page.evaluate(() => {
+  const el = document.querySelector('[data-rb-stackmenu]');
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return {
+    items: [...el.querySelectorAll('.rb-stackmenu__item')].map((b) => b.textContent.trim()),
+    onScreen: r.left >= 0 && r.top >= 0 &&
+      r.right <= window.innerWidth && r.bottom <= window.innerHeight,
+  };
+});
+check('right-clicking a piece offers behind and in front, on the screen',
+  !!menu && menu.items.join(' | ') === 'Bring to front | Send to back' && menu.onScreen,
+  JSON.stringify(menu));
+
+await page.screenshot({ path: `${OUT}/report-floor-stackmenu.png` });
+await page.click('[data-rb-stackmenu] [data-rb-stack="back"]');
+await new Promise((r) => setTimeout(r, 900));
+const stackBack = await stackOf();
+check('Send to back puts the colour scale under the drawing',
+  stackBack.scale < stackBack.plan && stackBack.readings === stackStart.readings &&
+  !(await page.$('[data-rb-stackmenu]')),
+  JSON.stringify({ stackStart, stackBack }));
+
+await openSlide();
+const stackKept = await stackOf();
+check('and it is still behind when the report is reopened',
+  stackKept.scale < stackKept.plan, JSON.stringify(stackKept));
+
+const planAt = await piece('topo');
+await page.mouse.click(planAt.x + planAt.w / 2, planAt.y + 14, { button: 'right' });
+await new Promise((r) => setTimeout(r, 400));
+await page.click('[data-rb-stackmenu] [data-rb-stack="back"]');
+await new Promise((r) => setTimeout(r, 900));
+const stackPlanBack = await stackOf();
+check('and the drawing itself can be sent behind the scale again',
+  stackPlanBack.plan < stackPlanBack.scale,
+  JSON.stringify(stackPlanBack));
+
+// The scale is a key on the paper, so its size belongs to the paper. Tim:
+// "it does not lock the size, its different than the FS legend." It was drawn
+// here in screen pixels -- an 8px label beside an 88px bar -- so it was a
+// different fraction of the sheet on every window, and different again in
+// print. It is Floor Survey's own scale now, at the size Floor Survey draws
+// it: 226 of its 1100-unit reference across the long side of the sheet.
+const sheetShare = () => page.evaluate(() => {
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)').getBoundingClientRect();
+  const box = document.querySelector(
+    '.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="legend"]').getBoundingClientRect();
+  return {
+    sheet: Math.round(sheet.width),
+    tall: +((box.height / sheet.width) * 100).toFixed(1),
+    wide: +((box.width / sheet.width) * 100).toFixed(1),
+    ticks: (document.querySelector('.rb-topo-legend__img') || {}).naturalHeight || 0,
+  };
+});
+const wideWindow = await sheetShare();
+await page.setViewport({ width: 1280, height: 860, deviceScaleFactor: 1 });
+await new Promise((r) => setTimeout(r, 1400));
+const narrowWindow = await sheetShare();
+check('the colour scale is the size Floor Survey draws it, whatever the window',
+  narrowWindow.sheet < wideWindow.sheet - 100 &&
+  Math.abs(wideWindow.tall - 20.5) < 0.6 && Math.abs(narrowWindow.tall - 20.5) < 0.6 &&
+  Math.abs(wideWindow.wide - narrowWindow.wide) < 0.3,
+  JSON.stringify({ wideWindow, narrowWindow }));
+await page.setViewport({ width: 1700, height: 1050, deviceScaleFactor: 1 });
+await new Promise((r) => setTimeout(r, 1200));
+
+// And on the paper. The printed deck declares its sheets in inches, so this
+// is the one place the scale's size can be read in the units it is cut at.
+await page.evaluate(() => { window.print = () => {}; });
+await page.emulateMediaType('print');
+await page.click('#rb-print');
+await page.waitForFunction(
+  () => !!document.querySelector('.rb-print .rb-sheet [data-rb-floor-box^="legend"]'),
+  { timeout: 20000 });
+await new Promise((r) => setTimeout(r, 1200));
+const printed = await page.evaluate(() => {
+  const sheet = [...document.querySelectorAll('.rb-print .rb-sheet')]
+    .find((el) => el.querySelector('[data-rb-floor-box^="legend"]'));
+  const box = sheet.querySelector('[data-rb-floor-box^="legend"]');
+  const img = sheet.querySelector('.rb-topo-legend__img');
+  // 96 CSS px to the inch.
+  return {
+    sheetIn: +(sheet.getBoundingClientRect().width / 96).toFixed(2),
+    tallIn: +(box.getBoundingClientRect().height / 96).toFixed(2),
+    wideIn: +(box.getBoundingClientRect().width / 96).toFixed(2),
+    painted: !!img && /^data:image\/png/.test(img.getAttribute('src') || ''),
+  };
+});
+check('and it keeps that size on the printed sheet',
+  printed.painted && Math.abs(printed.sheetIn - 17) < 0.2 &&
+  Math.abs(printed.tallIn - 3.49) < 0.12 && Math.abs(printed.wideIn - 1.27) < 0.08,
+  JSON.stringify(printed));
+await page.emulateMediaType(null);
+await new Promise((r) => setTimeout(r, 600));
 
 await page.screenshot({ path: `${OUT}/report-floor-chrome.png` });
 await browser.close();

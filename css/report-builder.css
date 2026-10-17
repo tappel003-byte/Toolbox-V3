@@ -921,51 +921,26 @@ body.report-builder-open .canvas {
 .rb-topo-pin--lo .rb-topo-pin__dot { background: #E9C46A; }
 .rb-topo-pin__value { font-weight: 700; }
 
+/* The colour scale on a Floor Survey page: Floor Survey's own scale, painted
+   by Floor Survey and placed here as a picture.
+ *
+ * Its size is the paper's, not the screen's. Tim: "it does not lock the
+ * size." It was drawn here in screen pixels -- an 8px label and an 88px bar
+ * -- so the scale was a different fraction of the sheet on every window and
+ * a different size again on the printed page. 20.5cqw is the size the Floor
+ * Survey screen draws it: 226 units of its own 1100-unit reference across the
+ * long side of what it is drawn on, which on a sheet is the paper. Legend
+ * size still scales it from there, the same control as in the field. */
 .rb-topo-legend {
-  display: grid;
-  grid-template-columns: auto 16px auto;
-  grid-template-rows: auto 1fr;
-  gap: 2px 4px;
-  padding: 4px 5px;
-  border: 1px solid rgba(23, 19, 14, 0.55);
-  background: rgba(255, 255, 255, 0.94);
+  width: 7.44cqw;
+  height: 20.5cqw;
 }
 
-.rb-topo-legend__elev {
-  grid-column: 1 / -1;
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-align: center;
-  color: #444;
-}
-
-.rb-topo-legend__bar {
-  grid-column: 2;
-  grid-row: 2;
-  display: flex;
-  flex-direction: column;
-  width: 16px;
-  min-height: 88px;
-  border: 1px solid #17130e;
-  overflow: hidden;
-}
-
-.rb-topo-legend__bar span {
-  flex: 1 1 0;
-  min-height: 2px;
-}
-
-.rb-topo-legend__labels {
-  grid-column: 3;
-  grid-row: 2;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  font-size: 9px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
+.rb-topo-legend__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
 }
 
 /* The report slide's H / L / delta pill. Set like the field app's, which is
@@ -2391,9 +2366,7 @@ body.report-builder-open .canvas {
   z-index: 4;
 }
 
-.rb-floor-box--chrome .rb-topo-legend {
-  background: rgba(255, 255, 255, 0.96);
-}
+
 
 /* The piece shows its handles and its dashed edge when it is pointed at,
    not before. Tim: "the corner chevrons don't need to be there unless it's
@@ -3458,4 +3431,47 @@ body.report-builder-open .canvas {
 
 @media print {
   .rb-smallscreen { display: none !important; }
+}
+
+/* ------------------------------------------------------------------ *
+ * Right-click a piece of a Floor Survey page: behind, or in front.
+ *
+ * Tim: "I need to be able to right click and put images behind or in
+ * front." Two choices, at the pointer, gone on the next click. It is the
+ * only menu Report Builder opens, so it is deliberately plain: the sheet is
+ * the thing being looked at.
+ * ------------------------------------------------------------------ */
+
+.rb-stackmenu {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  padding: 4px;
+  border: 1px solid rgba(23, 19, 14, 0.18);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(23, 19, 14, 0.18);
+}
+
+.rb-stackmenu__item {
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: #17130e;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rb-stackmenu__item:hover,
+.rb-stackmenu__item:focus-visible {
+  background: rgba(139, 94, 60, 0.12);
+}
+
+@media print {
+  .rb-stackmenu { display: none !important; }
 }

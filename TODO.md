@@ -16,10 +16,12 @@ so.
 
 These are each a one-line answer, after which the work is small.
 
-- **The old colour-scale code.** Three functions that drew the colour scale,
-  the H/L/Δ pill and the High/Low markers as the report's own boxes. Nothing
-  calls them — the slide draws its chrome through the live Floor Survey view.
-  Bin them, or keep them as the material for a per-page rendition later?
+- **The old High/Low marker code.** One function that drew the High and Low
+  markers as the report's own boxes. Nothing calls it — the markers point at a
+  spot on the floor, so the drawing carries them. Bin it, or keep it as the
+  material for a per-page rendition later? (The colour scale that sat beside
+  it is gone: a sheet shows Floor Survey's own scale now. The H/L/Δ pill is
+  live.)
 
 ## Wants Tim at the desktop
 

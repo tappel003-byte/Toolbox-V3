@@ -2593,7 +2593,19 @@ function areaLegendBox(
   };
 }
 
-function drawLegend(
+export const LEGEND_SHAPE = { w: LEGEND_BASE_W, h: LEGEND_BASE_H };
+
+/**
+ * The colour scale, drawn.
+ *
+ * Exported because a report sheet shows this legend rather than one of its
+ * own. It had one of its own -- built out of HTML, out of the colours the
+ * slide happened to report, with the high and the low where the contour
+ * values belong -- and Tim, looking at a sheet: "the Legend is not right and
+ * it does not lock the size, its different than the FS legend." There is one
+ * colour scale in Toolbox, and this is it.
+ */
+export function drawLegend(
   ctx: CanvasRenderingContext2D,
   settings: RenderSettings,
   grid: Grid,

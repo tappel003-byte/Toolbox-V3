@@ -44,6 +44,25 @@
     return { x: column, legendY: 13 + row, pillY: 13 + row + PILL_DROP };
   }
 
+  /**
+   * Which piece sits over which, before anything is sent anywhere.
+   *
+   * The drawing is the page, the aerial view sits on it, and the colour scale
+   * and the readings sit on top of both so they can always be read. One scale
+   * for every piece on the sheet, so "behind" and "in front" mean the same
+   * thing whatever two pieces are being compared. Tim: "I need to be able to
+   * right click and put images behind or in front."
+   */
+  var BASE_STACK = { topo: 1, overview: 2, legend: 3, pill: 3 };
+  var MIN_STACK = -40;
+  var MAX_STACK = 40;
+
+  function stackOf(piece, kind) {
+    var base = BASE_STACK[kind] || 1;
+    var raw = piece && typeof piece.z === 'number' && isFinite(piece.z) ? piece.z : base;
+    return Math.max(MIN_STACK, Math.min(MAX_STACK, raw));
+  }
+
   function defaultLayout() {
     var slot = scaleSlot(0);
     return {
@@ -98,6 +117,7 @@
     var layout = {
       locked: !!src.locked,
       topo: {
+        z: stackOf(topo, 'topo'),
         // The frame goes where it is put and is as big as it is made,
         // including off the page and larger than it. Clamping x and y to 0 and
         // w and h to 100 meant it could not be moved past the top or left edge
@@ -110,6 +130,7 @@
         h: clamp(topo.h, MIN_TOPO_H, 600),
       },
       overview: {
+        z: stackOf(over, 'overview'),
         x: clamp(over.x, -300, 300),
         y: clamp(over.y, -300, 300),
         w: clamp(over.w, MIN_OVERVIEW_W, 300),
@@ -128,9 +149,11 @@
       // scale keeps the spot, the readings take the one under it.
       if (kind === 'chrome') {
         layout.overlays.push({ id: 'legend-' + at, kind: 'legend', statsIndex: at,
-          x: x, y: y, scale: clamp(item.scale, MIN_SCALE, MAX_SCALE) });
+          x: x, y: y, z: stackOf(item, 'legend'),
+          scale: clamp(item.scale, MIN_SCALE, MAX_SCALE) });
         layout.overlays.push({ id: 'pill-' + at, kind: 'pill', statsIndex: at,
-          x: x, y: clamp(y + PILL_DROP, 0, 92), scale: clamp(item.scale, MIN_SCALE, MAX_SCALE) });
+          x: x, y: clamp(y + PILL_DROP, 0, 92), z: stackOf(item, 'pill'),
+          scale: clamp(item.scale, MIN_SCALE, MAX_SCALE) });
         return;
       }
       layout.overlays.push({
@@ -139,6 +162,7 @@
         statsIndex: at,
         x: x,
         y: y,
+        z: stackOf(item, kind),
         scale: clamp(item.scale, MIN_SCALE, MAX_SCALE),
       });
     });
@@ -161,13 +185,13 @@
       if (!have['legend:' + i]) {
         next.overlays.push({
           id: 'legend-' + i, kind: 'legend', statsIndex: i,
-          x: slot.x, y: slot.legendY, scale: 1,
+          x: slot.x, y: slot.legendY, z: BASE_STACK.legend, scale: 1,
         });
       }
       if (!have['pill:' + i]) {
         next.overlays.push({
           id: 'pill-' + i, kind: 'pill', statsIndex: i,
-          x: slot.x, y: slot.pillY, scale: 1,
+          x: slot.x, y: slot.pillY, z: BASE_STACK.pill, scale: 1,
         });
       }
       // The High and Low markers are NOT boxes on the page. They point at a
@@ -185,42 +209,13 @@
     return n.toFixed(typeof dec === 'number' ? dec : 2);
   }
 
-  // The colour scale, the pill and the High/Low markers, drawn as the report's
-  // own boxes rather than by the Floor Survey view.
+  // The pill and the High/Low markers, drawn as the report's own boxes.
   //
-  // Nothing calls these three. The slide draws its chrome through the live
-  // view, which is what makes Import's promise true, and these are what a
-  // page of its own would be built from if the per-page rendition is ever
-  // wanted. They are kept deliberately, as material, pending a word on
-  // whether to bin them -- see TODO.md, "The old colour-scale code".
-  function renderLegend(stats) {
-    var box = document.createElement('div');
-    box.className = 'rb-topo-legend';
-    var elev = document.createElement('div');
-    elev.className = 'rb-topo-legend__elev';
-    elev.textContent = 'ELEV.';
-    box.appendChild(elev);
-    var bar = document.createElement('div');
-    bar.className = 'rb-topo-legend__bar';
-    var legend = stats.legend || { min: 0, max: 0, stops: [] };
-    var stops = Array.isArray(legend.stops) ? legend.stops.slice() : [];
-    for (var i = stops.length - 1; i >= 0; i -= 1) {
-      var seg = document.createElement('span');
-      seg.style.background = stops[i].color || '#ccc';
-      bar.appendChild(seg);
-    }
-    box.appendChild(bar);
-    var labels = document.createElement('div');
-    labels.className = 'rb-topo-legend__labels';
-    var hiLabel = document.createElement('span');
-    hiLabel.textContent = formatReading(legend.max, stats.decimalPlaces) || '—';
-    var loLabel = document.createElement('span');
-    loLabel.textContent = formatReading(legend.min, stats.decimalPlaces) || '—';
-    labels.appendChild(hiLabel);
-    labels.appendChild(loLabel);
-    box.appendChild(labels);
-    return box;
-  }
+  // The colour scale used to be here too, built out of HTML. It is Floor
+  // Survey's own now, painted by Floor Survey and placed as a picture -- see
+  // renderLegendCard. renderPin is not called: the High and Low markers point
+  // at a spot on the floor, so the drawing carries them, and this is what a
+  // page of its own would be built from if that is ever wanted.
 
   function renderPill(stats) {
     var pill = document.createElement('div');
@@ -291,23 +286,32 @@
   }
 
   /**
-   * The colour scale for a boundary, drawn on the page.
+   * The colour scale for a boundary, on the page.
    *
-   * The slide reports its palette as bands, low to high, because the scale
-   * on the page has to be the scale under the plan -- one palette, read from
-   * the drawing itself rather than guessed at here.
+   * It is the Floor Survey screen's own colour scale, painted by Floor Survey
+   * and placed here as a picture. Tim, looking at a sheet: "the Legend is not
+   * right and it does not lock the size, its different than the FS legend",
+   * and "the legend contour was incorrect." The sheet used to draw a scale of
+   * its own out of HTML, from the band colours the live view happened to
+   * report: no tick values at the contour lines, the high and the low where
+   * those values belong, ELEV. at the top instead of the foot, and every
+   * dimension in screen pixels, so its size on the paper changed with the
+   * window. There is one colour scale in Toolbox; this shows that one.
    */
-  function renderLegendCard(raw) {
-    var stats = raw || {};
-    if (!stats.legend && Array.isArray(stats.bands) && stats.bands.length) {
-      stats = Object.keys(stats).reduce(function (out, k) { out[k] = stats[k]; return out; }, {});
-      stats.legend = {
-        min: stats.lo,
-        max: stats.hi,
-        stops: stats.bands.map(function (color) { return { color: color }; }),
-      };
-    }
-    return renderLegend(stats);
+  function renderLegendCard(options, overlay) {
+    var box = document.createElement('div');
+    box.className = 'rb-topo-legend';
+    var at = (overlay && typeof overlay.statsIndex === 'number') ? overlay.statsIndex : 0;
+    box.setAttribute('data-rb-legend', String(at));
+    var urls = (options && options.legendUrls) || null;
+    var url = urls && urls[at] ? urls[at] : '';
+    var image = document.createElement('img');
+    image.className = 'rb-topo-legend__img';
+    image.alt = 'Elevation colour scale';
+    image.setAttribute('draggable', 'false');
+    if (url) image.src = url;
+    box.appendChild(image);
+    return box;
   }
 
   /** How big the readings are drawn: the panel's Stats pill size, where 32
@@ -333,6 +337,7 @@
     var box = boxShell('overview', 'overview', locked);
     box.style.left = layout.overview.x + '%';
     box.style.top = layout.overview.y + '%';
+    box.style.zIndex = String(layout.overview.z);
     box.style.width = layout.overview.w + '%';
     box.style.height = layout.overview.h + '%';
     var image = document.createElement('img');
@@ -435,6 +440,7 @@
         bare.style.top = '0%';
         bare.style.width = share + '%';
         bare.style.height = '100%';
+        bare.style.zIndex = String(layout.topo.z);
         var bareDraw = document.createElement('div');
         bareDraw.className = 'rb-topo-page__drawing rb-topo-page__drawing--live';
         var bareView = typeof options.mountTopo === 'function'
@@ -474,11 +480,12 @@
         }
         piece.style.left = overlay.x + '%';
         piece.style.top = overlay.y + '%';
+        piece.style.zIndex = String(overlay.z);
         piece.style.transform = 'scale(' +
           (overlay.kind === 'legend' ? legendScale(options) : pillScale(options)) + ')';
         piece.style.transformOrigin = 'top left';
         piece.insertBefore(
-          overlay.kind === 'legend' ? renderLegendCard(stats) : renderPill(stats),
+          overlay.kind === 'legend' ? renderLegendCard(options, overlay) : renderPill(stats),
           piece.firstChild);
         bareStage.appendChild(piece);
       });
@@ -578,5 +585,7 @@
     MIN_TOPO_H: MIN_TOPO_H,
     MIN_OVERVIEW_W: MIN_OVERVIEW_W,
     MIN_OVERVIEW_H: MIN_OVERVIEW_H,
+    MIN_STACK: MIN_STACK,
+    MAX_STACK: MAX_STACK,
   };
 })();

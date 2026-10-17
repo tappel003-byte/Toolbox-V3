@@ -226,6 +226,50 @@ check('and the pair is still where it was put when the report is reopened',
   framedAlike(panned[0], reopened[0]) && framedAlike(panned[0], reopened[1]),
   JSON.stringify({ panned: panned[0], reopened }));
 
+// The printed sheet is a frame of another size again -- 17 in of paper where
+// the screen had about 12 -- and the drawing printed small because it kept
+// the pixels it was fitted at. It shows the same view on paper as on screen.
+const screenInk = (await views())[0];
+await page.evaluate(() => { window.print = () => {}; });
+await page.emulateMediaType('print');
+await page.click('#rb-print');
+await page.waitForFunction(
+  () => [...document.querySelectorAll('.rb-print .rb-sheet')]
+    .some((el) => el.querySelector('[data-rb-topo-live] canvas')), { timeout: 20000 });
+await new Promise((r) => setTimeout(r, 2500));
+const printedInk = await page.evaluate(() => {
+  const sheet = [...document.querySelectorAll('.rb-print .rb-sheet')]
+    .find((el) => el.querySelector('[data-rb-topo-live] canvas'));
+  const canvas = sheet.querySelector('[data-rb-topo-live] canvas');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  const data = ctx.getImageData(0, 0, w, h).data;
+  let x0 = w; let y0 = h; let x1 = -1; let y1 = -1;
+  for (let y = 0; y < h; y += 2) {
+    for (let x = 0; x < w; x += 2) {
+      const i = (y * w + x) * 4;
+      if (data[i] < 200 || data[i + 1] < 200 || data[i + 2] < 200) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  return {
+    sheetIn: +(sheet.getBoundingClientRect().width / 96).toFixed(2),
+    x: +(x0 / w).toFixed(3),
+    y: +(y0 / h).toFixed(3),
+    w: +((x1 - x0) / w).toFixed(3),
+    h: +((y1 - y0) / h).toFixed(3),
+  };
+});
+check('and the printed sheet shows the same view, on 17 in of paper',
+  Math.abs(printedInk.sheetIn - 17) < 0.2 && framedAlike(screenInk, printedInk, 0.02),
+  JSON.stringify({ screenInk, printedInk }));
+await page.emulateMediaType(null);
+
 await page.screenshot({ path: `${OUT}/report-floor-framing.png` });
 await browser.close();
 const failed = results.filter((r) => !r.ok);

@@ -1807,6 +1807,80 @@
     });
   }
 
+  /**
+   * The colour scales a sheet is showing, painted by Floor Survey.
+   *
+   * The scale on a Floor Survey page is the one from the Floor Survey screen
+   * -- same grid, same contour values, same palette -- so the page asks Floor
+   * Survey to paint it and places the picture. Painting means building the
+   * boundary's grid, so each one is kept against what it was painted from and
+   * re-used: a sheet and its thumbnail show the same picture, and nothing is
+   * painted twice.
+   */
+  var legendImages = Object.create(null);
+  var legendPainting = Object.create(null);
+
+  /** What a painted scale depends on. A change to any of it is a new scale. */
+  function legendKey(page, statsIndex, settings) {
+    var meta = (page && page.meta) || {};
+    var view = settings || {};
+    return [
+      meta.canvasId || '', meta.scope === 'all' ? '' : (meta.areaId || ''), statsIndex,
+      view.palette || '', view.reversePalette ? 'r' : '',
+      view.firstContour, view.contourStep, view.contourCount,
+      view.minClamp, view.maxClamp, view.decimalPlaces,
+    ].join('|');
+  }
+
+  /**
+   * Make sure every colour scale these pages need has been painted.
+   *
+   * Called from renderPages, and it draws the pages again once pictures have
+   * arrived. The cache is what stops that from going round for ever: the
+   * second pass finds every scale already painted and asks for nothing.
+   */
+  function ensureFloorLegends(fileId, pages, redraw) {
+    var api = window.ToolboxFloorSurvey;
+    if (!api || typeof api.renderTopoLegendImage !== 'function') return;
+    var wanted = [];
+    (pages || []).forEach(function (page) {
+      if (!page || page.type !== 'floor') return;
+      var meta = page.meta || {};
+      if (!meta.imported || !meta.canvasId) return;
+      var stats = page._liveStats ||
+        ((page.evidence && Array.isArray(page.evidence.stats)) ? page.evidence.stats : []);
+      var count = Math.max(1, stats.length);
+      var urls = [];
+      for (var i = 0; i < count; i += 1) {
+        var key = legendKey(page, i, page._floorView);
+        urls.push(legendImages[key] || '');
+        if (!legendImages[key] && !legendPainting[key]) {
+          wanted.push({ page: page, index: i, key: key });
+        }
+      }
+      page._legendUrls = urls;
+    });
+    if (!wanted.length) return;
+    wanted.forEach(function (job) { legendPainting[job.key] = true; });
+    Promise.all(wanted.map(function (job) {
+      var meta = job.page.meta || {};
+      return api.renderTopoLegendImage({
+        customerFileId: fileId,
+        canvasId: meta.canvasId || '',
+        areaId: meta.scope === 'all' ? null : (meta.areaId || null),
+        statsIndex: job.index,
+        settings: job.page._floorView || null,
+      }).then(function (painted) {
+        delete legendPainting[job.key];
+        if (painted && painted.dataUrl) legendImages[job.key] = painted.dataUrl;
+      }).catch(function () {
+        delete legendPainting[job.key];
+      });
+    })).then(function () {
+      if (typeof redraw === 'function') redraw();
+    });
+  }
+
   /** Every slot, or every slot past `keep`. */
   function releaseTopoHosts(keep) {
     Object.keys(topoHosts).forEach(function (slot) {
@@ -2135,6 +2209,9 @@
           // own Legend size says the scale should be.
           stats: page._liveStats || null,
           settings: page._floorView || null,
+          // The colour scales, as pictures painted by Floor Survey. One per
+          // boundary, in the order the readings come in.
+          legendUrls: page._legendUrls || null,
           // The readings are sized by Stats pill size, which is kept on this
           // device rather than in the report -- the same number the drawing's
           // own pill used before it came off the picture.
@@ -3092,6 +3169,10 @@
         // is handed over on the page like the aerial view is.
         item._floorView = floorViewFor(item);
       });
+      // The colour scales, painted by Floor Survey. Asked for after the view
+      // settings are on the pages, because they are part of what the scale is
+      // drawn from.
+      ensureFloorLegends(customerFileId, pages, renderPages);
       if (current) current._brandBox = currentBrandBox(current);
       // Only the slide being looked at hosts the live view; the others are not
       // in the DOM. The camera is the book's, so every level opens framed the
@@ -5591,6 +5672,107 @@
     }
     sheetEl.addEventListener('pointerup', endLayoutDrag);
     sheetEl.addEventListener('pointercancel', endLayoutDrag);
+
+    /**
+     * Right-click a piece of a Floor Survey page to move it behind or in
+     * front of the others.
+     *
+     * Tim: "I need to be able to right click and put images behind or in
+     * front." Two choices and nothing else -- the drawing, the aerial view,
+     * the colour scale and the readings all sit on one stack, so "behind" and
+     * "in front" mean the same thing whichever two pieces overlap.
+     */
+    var stackMenu = null;
+
+    function stackMenuAway(event) {
+      if (event.target.closest && event.target.closest('[data-rb-stackmenu]')) return;
+      closeStackMenu();
+    }
+
+    function stackMenuKey(event) {
+      if (event.key === 'Escape') closeStackMenu();
+    }
+
+    function closeStackMenu() {
+      if (stackMenu && stackMenu.parentNode) stackMenu.parentNode.removeChild(stackMenu);
+      stackMenu = null;
+      // The two listeners the menu needs live only while it is open: the
+      // report is mounted again every time the investigator comes back to it,
+      // and listeners left on the document would pile up one deep per visit.
+      document.removeEventListener('pointerdown', stackMenuAway, true);
+      document.removeEventListener('keydown', stackMenuKey, true);
+    }
+
+    function restackFloorPiece(box, toFront) {
+      var page = activePage();
+      var flApi = window.ToolboxReportFloorLayout;
+      if (!page || page.type !== 'floor' || !flApi) return;
+      var layout = flApi.normalizeLayout((page.meta && page.meta.layout) || floorLayout);
+      if (layout.locked) return;
+      var id = box.getAttribute('data-rb-floor-box') || '';
+      var kind = box.getAttribute('data-rb-floor-kind') || 'topo';
+      var stack = [layout.topo.z, layout.overview.z].concat(
+        layout.overlays.map(function (item) { return item.z; }));
+      var want = toFront
+        ? Math.max.apply(null, stack) + 1
+        : Math.min.apply(null, stack) - 1;
+      want = Math.max(flApi.MIN_STACK, Math.min(flApi.MAX_STACK, want));
+      if (kind === 'topo') {
+        layout.topo.z = want;
+      } else if (kind === 'overview') {
+        layout.overview.z = want;
+      } else {
+        var found = false;
+        layout.overlays.forEach(function (item) {
+          if (item.id !== id) return;
+          item.z = want;
+          found = true;
+        });
+        if (!found) return;
+      }
+      page.meta = page.meta || {};
+      page.meta.layout = layout;
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
+    }
+
+    sheetEl.addEventListener('contextmenu', function (event) {
+      var box = event.target.closest('[data-rb-floor-box]');
+      if (!box) { closeStackMenu(); return; }
+      var page = activePage();
+      var flApi = window.ToolboxReportFloorLayout;
+      if (!page || page.type !== 'floor' || !flApi) return;
+      var layout = flApi.normalizeLayout((page.meta && page.meta.layout) || floorLayout);
+      // A locked page is shown, not arranged.
+      if (layout.locked) return;
+      event.preventDefault();
+      closeStackMenu();
+      stackMenu = document.createElement('div');
+      stackMenu.className = 'rb-stackmenu';
+      stackMenu.setAttribute('data-rb-stackmenu', '1');
+      [['Bring to front', true], ['Send to back', false]].forEach(function (choice) {
+        var item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'rb-stackmenu__item';
+        item.setAttribute('data-rb-stack', choice[1] ? 'front' : 'back');
+        item.textContent = choice[0];
+        item.addEventListener('click', function () {
+          closeStackMenu();
+          restackFloorPiece(box, choice[1]);
+        });
+        stackMenu.appendChild(item);
+      });
+      document.body.appendChild(stackMenu);
+      // Kept on the screen: a piece near the right or the bottom edge would
+      // otherwise open its menu off the page.
+      var w = stackMenu.offsetWidth;
+      var h = stackMenu.offsetHeight;
+      stackMenu.style.left = Math.max(4, Math.min(window.innerWidth - w - 4, event.clientX)) + 'px';
+      stackMenu.style.top = Math.max(4, Math.min(window.innerHeight - h - 4, event.clientY)) + 'px';
+      document.addEventListener('pointerdown', stackMenuAway, true);
+      document.addEventListener('keydown', stackMenuKey, true);
+    });
 
     if (penNoteField) {
       penNoteField.addEventListener('input', function () {
