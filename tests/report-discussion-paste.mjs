@@ -371,6 +371,56 @@ await page.waitForFunction(
   { timeout: 20000 });
 check('and deleting it pulls the continuation sheet back out of the book', true, '');
 
+// Where the stable pieces sit is house style, not something to redo on every
+// job -- VISION and DECISIONS: "Cover, discussion slots... and other stable
+// pieces stay template-friendly." Tim: "if we have a white space that we like
+// and it does apply... that might just be a template."
+await openDiscussion();
+await dragGrip('[data-rb-disc-resize]', -240, -160);
+const shaped = await boxNow();
+await page.evaluate(() => document.querySelector('[data-rb-template="discussion"]')?.click());
+await new Promise((r) => setTimeout(r, 600));
+const kept = await page.evaluate(() => {
+  try { return JSON.parse(localStorage.getItem('toolbox-report-template') || '{}'); }
+  catch { return {}; }
+});
+check('Use this as my default keeps the placement for next time',
+  !!kept.discussionBox && Math.abs(kept.discussionBox.w - shaped.w) < 1.5,
+  JSON.stringify({ kept: kept.discussionBox, shaped }));
+
+const SECOND = `${FILE}-next`;
+await page.evaluate(async (id) => {
+  const record = window.ToolboxApp.blankCustomerFile(id);
+  window.ToolboxPlanSetup.ensurePlanSetup(record);
+  record.firstName = 'Nora';
+  record.lastName = 'Vance';
+  record.propertyAddress = '1 Fresh Street';
+  await window.ToolboxDB.saveCustomerFile(record);
+}, SECOND);
+await page.goto(`${BASE}#/file/${SECOND}/report`, { waitUntil: 'networkidle0' });
+await page.waitForFunction(
+  () => document.querySelector('.rb-thumb[data-page-id="section-discussion"]'), { timeout: 25000 });
+await openDiscussion();
+const nextJob = await boxNow();
+check('and the next job opens with it',
+  Math.abs(nextJob.w - shaped.w) < 1.5 && Math.abs(nextJob.h - shaped.h) < 1.5,
+  JSON.stringify({ shaped, nextJob }));
+
+// A report already written keeps what it was given: setting a default must
+// not reach back and move a book that is finished.
+await page.evaluate(() => {
+  try { localStorage.setItem('toolbox-report-template', JSON.stringify({ discussionBox: { x: 40, y: 40, w: 40, h: 40 } })); }
+  catch { /* no store, nothing to prove */ }
+});
+await page.goto(`${BASE}#/file/${SECOND}/report`, { waitUntil: 'networkidle0' });
+await page.waitForFunction(
+  () => document.querySelector('.rb-thumb[data-page-id="section-discussion"]'), { timeout: 25000 });
+await openDiscussion();
+const unchanged = await boxNow();
+check('a report already placed is not moved by a later default',
+  Math.abs(unchanged.w - nextJob.w) < 1.5 && Math.abs(unchanged.h - nextJob.h) < 1.5,
+  JSON.stringify({ nextJob, unchanged }));
+
 await page.screenshot({ path: `${OUT}/report-discussion-paste.png` });
 await browser.close();
 const failed = results.filter((r) => !r.ok);

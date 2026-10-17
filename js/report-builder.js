@@ -795,6 +795,48 @@
     }
   }
 
+  /**
+   * The placements a new report starts from.
+   *
+   * VISION and DECISIONS both settle this: "Cover, discussion slots, TOC from
+   * finished slide order, and other stable pieces stay template-friendly."
+   * Where those boxes sit is house style, not something to redo on every job
+   * -- Tim: "if we have a white space that we like and it does apply... that
+   * might just be a template."
+   *
+   * It is kept beside Stats pill size, on the device, because that is the
+   * shelf this product already has for a setting that is the investigator's
+   * rather than the Customer File's. Making it follow him between devices is
+   * a sync slice, and sync shape needs its own authorization.
+   */
+  var TEMPLATE_KEY = 'toolbox-report-template';
+
+  function storedTemplate() {
+    try {
+      var raw = window.localStorage.getItem(TEMPLATE_KEY);
+      var value = raw ? JSON.parse(raw) : null;
+      return value && typeof value === 'object' ? value : {};
+    } catch (err) {
+      return {};
+    }
+  }
+
+  /** Merge one piece in, leaving the others as they were. */
+  function saveTemplatePiece(piece) {
+    if (!piece || typeof piece !== 'object') return false;
+    try {
+      var next = storedTemplate();
+      Object.keys(piece).forEach(function (key) {
+        if (piece[key] == null) delete next[key];
+        else next[key] = JSON.parse(JSON.stringify(piece[key]));
+      });
+      window.localStorage.setItem(TEMPLATE_KEY, JSON.stringify(next));
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
   function renderPicturesPage(page) {
     var meta = page.meta || {};
     var evidence = page.evidence || {};
@@ -3181,6 +3223,12 @@
           ? 'Title layout locked. Unlock to edit text or move boxes.'
           : 'Edit any text. Drag boxes to place. Resize from the corner.';
         railTopEl.appendChild(coverHint);
+        railTopEl.appendChild(railButton(
+          'Use this as my default', 'quiet', 'data-rb-template', 'cover'));
+        var coverDefaultHint = document.createElement('p');
+        coverDefaultHint.className = 'rb-panel__lead';
+        coverDefaultHint.textContent = 'New reports start with these boxes where they are here.';
+        railTopEl.appendChild(coverDefaultHint);
         if (railBodyEl) railBodyEl.textContent = '';
         if (railFootEl) railFootEl.textContent = '';
         return;
@@ -3219,6 +3267,12 @@
           resetHint.textContent = 'Back to where the reports put it.';
           railTopEl.appendChild(resetHint);
         }
+        railTopEl.appendChild(railButton(
+          'Use this as my default', 'quiet', 'data-rb-template', 'discussion'));
+        var discDefaultHint = document.createElement('p');
+        discDefaultHint.className = 'rb-panel__lead';
+        discDefaultHint.textContent = 'New reports start with the writing area and the mark where they are here.';
+        railTopEl.appendChild(discDefaultHint);
         if (railBodyEl) railBodyEl.textContent = '';
         if (railFootEl) railFootEl.textContent = '';
         return;
@@ -3359,6 +3413,18 @@
     // delegation rather than by listeners attached once at mount.
     if (railEl) {
       railEl.addEventListener('click', function (event) {
+        var templateBtn = event.target.closest('[data-rb-template]');
+        if (templateBtn) {
+          event.preventDefault();
+          var which = templateBtn.getAttribute('data-rb-template');
+          var saved = which === 'cover'
+            ? saveTemplatePiece({ coverLayout: coverLayout })
+            : saveTemplatePiece({ discussionBox: discussionBox, brandBox: brandBox });
+          setSaveStatus(saved
+            ? 'Saved as the default for new reports.'
+            : 'The default could not be saved on this device.');
+          return;
+        }
         var discReset = event.target.closest('[data-rb-disc-reset]');
         if (discReset) {
           event.preventDefault();
@@ -5580,14 +5646,21 @@
       if (savedDoc && savedDoc.floorLayout && window.ToolboxReportFloorLayout) {
         floorLayout = window.ToolboxReportFloorLayout.normalizeLayout(savedDoc.floorLayout);
       }
-      if (savedDoc && savedDoc.coverLayout && window.ToolboxReportCoverLayout) {
-        coverLayout = window.ToolboxReportCoverLayout.normalizeLayout(savedDoc.coverLayout);
+      // What this report was given stands. Only a report that has never been
+      // placed takes the template -- otherwise setting a new default would
+      // reach back and move every book already written.
+      var template = storedTemplate();
+      var coverSeed = (savedDoc && savedDoc.coverLayout) || template.coverLayout;
+      if (coverSeed && window.ToolboxReportCoverLayout) {
+        coverLayout = window.ToolboxReportCoverLayout.normalizeLayout(coverSeed);
       }
-      if (savedDoc && savedDoc.brandBox && window.ToolboxReportDiscussion) {
-        brandBox = window.ToolboxReportDiscussion.normalizeBrandBox(savedDoc.brandBox);
+      var brandSeed = (savedDoc && savedDoc.brandBox) || template.brandBox;
+      if (brandSeed && window.ToolboxReportDiscussion) {
+        brandBox = window.ToolboxReportDiscussion.normalizeBrandBox(brandSeed);
       }
-      if (savedDoc && savedDoc.discussionBox && window.ToolboxReportDiscussion) {
-        discussionBox = window.ToolboxReportDiscussion.normalizeBodyBox(savedDoc.discussionBox);
+      var discSeed = (savedDoc && savedDoc.discussionBox) || template.discussionBox;
+      if (discSeed && window.ToolboxReportDiscussion) {
+        discussionBox = window.ToolboxReportDiscussion.normalizeBodyBox(discSeed);
       }
       if (savedDoc && savedDoc.floorCamera) floorCamera = savedDoc.floorCamera;
       if (savedDoc && savedDoc.floorView) floorView = reviveFloorView(savedDoc.floorView);
