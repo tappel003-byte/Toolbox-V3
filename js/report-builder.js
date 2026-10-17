@@ -1979,6 +1979,11 @@
           // taken off it with the x. Settled Oct 10, 2026.
           overviewUrl: page._overviewUrl || '',
           overviewHidden: !!(page.meta && page.meta.hideOverview),
+          // The colour scale and the readings are drawn on the page now, from
+          // whatever the drawing is drawing -- including how big the slide's
+          // own Legend size says the scale should be.
+          stats: page._liveStats || null,
+          settings: page._floorView || null,
         });
         if (page.meta && !thumb) page.meta.layout = rendered.layout;
         margin.appendChild(rendered.root);
@@ -2886,7 +2891,13 @@
       // sheet, or the preview would disagree with the page it is a preview
       // of. Settled Oct 10, 2026.
       (pages || []).forEach(function (item) {
-        if (item && item.type === 'floor') item._overviewUrl = coverOverviewUrl;
+        if (!item || item.type !== 'floor') return;
+        item._overviewUrl = coverOverviewUrl;
+        // How big the colour scale is drawn on the page. It is the slide's
+        // own Legend size -- the same control that sizes it on the Floor
+        // Survey screen -- and renderSheet runs outside this closure, so it
+        // is handed over on the page like the aerial view is.
+        item._floorView = floorViewFor(item);
       });
       if (current && current.type === 'section' && current.meta &&
           current.meta.sectionId === 'discussion') {
@@ -3176,6 +3187,11 @@
             if (host && host.api && typeof host.api.update === 'function') {
               host.api.update({ settings: next });
             }
+            // The sheet draws the colour scale and the readings itself now,
+            // and Legend size is what sizes them, so the page is redrawn too
+            // -- the live view is re-appended rather than rebuilt, so the
+            // drawing does not flicker or lose its place.
+            renderPages();
             flushSave().catch(function () {});
           },
         });

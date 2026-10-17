@@ -149,6 +149,8 @@ interface Props {
     lo: number;
     delta: number;
     decimalPlaces: number;
+    /** The colour scale's bands, low to high, for a page that draws its own. */
+    bands?: string[];
   }>) => void;
   /** null = "All areas". Owned by the route so the stats pills stay in sync. */
   selectedAreaId?: string | null;
@@ -160,6 +162,19 @@ interface Props {
   /** Report Builder draws its own colour scale, pill and High/Low markers as
    *  placed boxes, so the drawing carries none of them. */
   hideCanvasChrome?: boolean;
+  /**
+   * The colour scale and the H/L/delta readings are drawn ON THE PAGE, as one
+   * piece the investigator places, so this drawing leaves them off.
+   *
+   * Unlike `hideCanvasChrome` this does not touch the settings: it only skips
+   * drawing those two. The settings matter because every control in the
+   * slide's panel writes the resolved object straight back to the Customer
+   * File, so forcing a flag to false there is how a report once came back
+   * with its chrome switched off by nobody. The High and Low markers stay on
+   * the drawing: they point at a spot on the floor, so they belong to the
+   * picture and travel with it.
+   */
+  chromeOnPage?: boolean;
   /**
    * This view is a picture on a page, not a workspace on a screen.
    *
@@ -413,6 +428,7 @@ export function TopoTab({
   onCamera,
   cameraRequest,
   hideCanvasChrome = false,
+  chromeOnPage = false,
   presentation = false,
   settingsOwnedByHost = false,
   statsPillForSingleBoundary = false,
@@ -618,6 +634,12 @@ export function TopoTab({
   onStatsRef.current = onStats;
   useEffect(() => {
     if (!onStatsRef.current) return;
+    // The bands are this drawing's own palette, sampled low to high, so a
+    // colour scale drawn on the page cannot disagree with the fill under it.
+    const bands: string[] = [];
+    for (let i = 0; i < 12; i += 1) {
+      bands.push(paletteColor(i / 11, resolved.palette, !!resolved.reversePalette));
+    }
     onStatsRef.current(
       areaTopos.map((at) => ({
         areaId: at.area.id,
@@ -626,9 +648,10 @@ export function TopoTab({
         lo: at.lo.value,
         delta: at.hi.value - at.lo.value,
         decimalPlaces: resolved.decimalPlaces ?? 2,
+        bands: bands.slice(),
       })),
     );
-  }, [areaTopos, resolved.decimalPlaces]);
+  }, [areaTopos, resolved.decimalPlaces, resolved.palette, resolved.reversePalette]);
 
   const canRender = areaTopos.length > 0;
   // Single-surface view (focused area, or only one area exists).
@@ -644,7 +667,8 @@ export function TopoTab({
   // Whether the canvas carries the H / L / delta pill. One definition, used by
   // both the drawing and the hit test: when those two disagreed about where a
   // piece of chrome was, it drew in one place and could be grabbed in another.
-  const canvasStatsPill = statsPillOnCanvas(resolved, areaTopos.length, statsPillForSingleBoundary);
+  const canvasStatsPill = !chromeOnPage &&
+    statsPillOnCanvas(resolved, areaTopos.length, statsPillForSingleBoundary);
 
 
 
@@ -1008,7 +1032,8 @@ export function TopoTab({
             // Legend tap: start drag only. Size is edited in Labels & layers.
             // Every visible contour surface gets its own legend next to that
             // boundary — All boundaries, Main Floor alone, or Lower Bedroom alone.
-            if (resolved.showLegend && areaTopos.length > 0 && resolved.mode !== "points-only") {
+            if (resolved.showLegend && !chromeOnPage && areaTopos.length > 0 &&
+                resolved.mode !== "points-only") {
               for (let i = areaTopos.length - 1; i >= 0; i--) {
                 const at = areaTopos[i];
                 const box = areaLegendBox(at.area, resolved, floor, null, {
@@ -1149,6 +1174,7 @@ export function TopoTab({
               liveLegend: activeLegend,
               pillSize: statsChipSize,
               pillForSingleBoundary: statsPillForSingleBoundary,
+              chromeOnPage,
               presentation,
               planZoom,
               pointSize,
@@ -1977,6 +2003,7 @@ function renderTopoTop(
     planZoom?: number;
     /** Draw the pill on a one-boundary level too (a report slide does). */
     pillForSingleBoundary?: boolean;
+    chromeOnPage?: boolean;
     pointSize?: number;
     pointColor?: string;
     viewScale?: number;
@@ -2127,7 +2154,7 @@ function renderTopoTop(
     // Legend ON: one color/elevation legend per contour surface on screen.
     // Same path for All boundaries, a single named boundary, or one-boundary
     // floors — the legend sits on that boundary so it stays in view.
-    if (resolved.showLegend) {
+    if (resolved.showLegend && !overlay?.chromeOnPage) {
       for (const at of areaTopos) {
         const live =
           liveLegend && liveLegend.id === at.area.id
@@ -2164,7 +2191,8 @@ function renderTopoTop(
   // One named pill per boundary. In the field a lone surface uses the floating
   // StatsChip instead, so H / L / Δ is not drawn twice; a report slide asks for
   // it here so one boundary looks the same as five.
-  if (statsPillOnCanvas(resolved, areaTopos.length, !!overlay?.pillForSingleBoundary)) {
+  if (!overlay?.chromeOnPage &&
+      statsPillOnCanvas(resolved, areaTopos.length, !!overlay?.pillForSingleBoundary)) {
     const livePill = overlay?.livePill ?? null;
     const base = overlay?.pillSize ?? DEFAULT_STATS_PILL_SIZE;
     const h = pillHeightImg(base, viewScale, !!overlay?.presentation, floor);

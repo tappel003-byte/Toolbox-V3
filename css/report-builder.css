@@ -2240,6 +2240,56 @@ body.report-builder-open .canvas {
   object-fit: contain;
 }
 
+/* The colour scale and a boundary's readings, as one piece on the page.
+ *
+ * They used to be painted into the plan's own picture, so panning the plan
+ * carried them along. Tim: "putting the contour legend in the pill, one
+ * place, and being able to move the floor plan with contours separately."
+ * One box: scale on the left, the boundary's name and its H / L / delta
+ * beside it, dragged like any other box on the sheet. */
+.rb-floor-box--chrome {
+  display: block;
+  width: auto;
+  height: auto;
+  z-index: 4;
+}
+
+.rb-topo-chrome {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The scale carries the box; the readings sit beside it with no second
+   frame, so the piece reads as one thing rather than two stuck together. */
+.rb-topo-chrome .rb-topo-legend {
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.rb-topo-chrome__read {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* The piece shows its handles and its dashed edge when it is pointed at,
+   not before. Tim: "the corner chevrons don't need to be there unless it's
+   selected." A finished figure carries no chrome of ours. */
+.rb-floor-box.rb-floor-box--chrome:not(.is-locked) {
+  outline: none;
+  background: none;
+}
+
+.rb-floor-box.rb-floor-box--chrome:not(.is-locked):hover,
+.rb-floor-box.rb-floor-box--chrome:not(.is-locked):focus-within {
+  outline: 1px dashed rgba(139, 94, 60, 0.45);
+  outline-offset: 2px;
+}
+
+.rb-floor-box--chrome .rb-floor-box__resize { display: none; }
+.rb-floor-box--chrome:hover .rb-floor-box__resize,
+.rb-floor-box--chrome:focus-within .rb-floor-box__resize { display: block; }
+
 /* The site overview on a Floor Survey page.
  *
  * The cover's aerial view of the property, carried onto the figure pages by

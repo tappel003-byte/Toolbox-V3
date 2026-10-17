@@ -8,7 +8,14 @@
   var MIN_TOPO_H = 35;
   var MIN_OVERVIEW_W = 6;
   var MIN_OVERVIEW_H = 6;
-  var OVERLAY_KINDS = { legend: 1, pill: 1, 'pin-hi': 1, 'pin-lo': 1 };
+  // One piece per boundary: the colour scale and that boundary's H / L /
+  // delta, together. Tim: "putting the contour legend in the pill, one place,
+  // and being able to move the floor plan with contours separately." They
+  // were two things drawn into the plan's own picture, so moving the plan
+  // carried them along and the scale could not be put where it was wanted.
+  // `legend` and `pill` are the two older kinds, still read so a report saved
+  // before this opens, and folded into one on sight.
+  var OVERLAY_KINDS = { chrome: 1, legend: 1, pill: 1, 'pin-hi': 1, 'pin-lo': 1 };
   var MIN_SCALE = 0.65;
   var MAX_SCALE = 1.85;
 
@@ -28,9 +35,9 @@
   // meant index 0 kept a stale position forever: layoutForStats only fills in
   // what is missing, and index 0 was never missing.
   function scaleSlot(i) {
-    var column = i < 3 ? 2 : 86;
+    var column = i < 3 ? 8 : 76;
     var row = (i % 3) * SCALE_PITCH;
-    return { x: column, legendY: 6 + row, pillY: 6 + row + PILL_DROP };
+    return { x: column, legendY: 13 + row, pillY: 13 + row + PILL_DROP };
   }
 
   function defaultLayout() {
@@ -47,8 +54,7 @@
       // here, it is gone from this page only.
       overview: { x: 2.5, y: 74, w: 16, h: 18 },
       overlays: [
-        { id: 'legend-0', kind: 'legend', statsIndex: 0, x: slot.x, y: slot.legendY, scale: 1 },
-        { id: 'pill-0', kind: 'pill', statsIndex: 0, x: slot.x, y: slot.pillY, scale: 1 },
+        { id: 'chrome-0', kind: 'chrome', statsIndex: 0, x: slot.x, y: slot.legendY, scale: 1 },
       ],
     };
   }
@@ -107,12 +113,26 @@
       overlays: [],
     };
     var list = Array.isArray(src.overlays) ? src.overlays : base.overlays;
+    var seenChrome = {};
     list.forEach(function (item, index) {
       if (!item || typeof item !== 'object') return;
+      var kind = OVERLAY_KINDS[item.kind] ? item.kind : 'chrome';
+      var at = typeof item.statsIndex === 'number' ? item.statsIndex : 0;
+      // A report saved when the scale and the pill were separate boxes keeps
+      // where its scale was put; the pill that used to sit under it is folded
+      // into the same piece rather than left as a second one.
+      if (kind === 'legend' || kind === 'pill') {
+        if (kind === 'pill' || seenChrome[at]) return;
+        kind = 'chrome';
+      }
+      if (kind === 'chrome') {
+        if (seenChrome[at]) return;
+        seenChrome[at] = true;
+      }
       layout.overlays.push({
-        id: item.id || ('overlay-' + index),
-        kind: OVERLAY_KINDS[item.kind] ? item.kind : 'legend',
-        statsIndex: typeof item.statsIndex === 'number' ? item.statsIndex : 0,
+        id: kind === 'chrome' ? ('chrome-' + at) : (item.id || ('overlay-' + index)),
+        kind: kind,
+        statsIndex: at,
         x: clamp(item.x, 0, 92),
         y: clamp(item.y, 0, 92),
         scale: clamp(item.scale, MIN_SCALE, MAX_SCALE),
@@ -134,45 +154,21 @@
     next.overlays.forEach(function (o) { have[o.kind + ':' + o.statsIndex] = true; });
     for (var i = 0; i < count; i += 1) {
       var slot = scaleSlot(i);
-      if (!have['legend:' + i]) {
+      if (!have['chrome:' + i]) {
         next.overlays.push({
-          id: 'legend-' + i,
-          kind: 'legend',
+          id: 'chrome-' + i,
+          kind: 'chrome',
           statsIndex: i,
           x: slot.x,
           y: slot.legendY,
           scale: 1,
         });
       }
-      if (!have['pill:' + i]) {
-        next.overlays.push({
-          id: 'pill-' + i,
-          kind: 'pill',
-          statsIndex: i,
-          x: slot.x,
-          y: slot.pillY,
-          scale: 1,
-        });
-      }
-      // The High and Low markers start where the readings are and are then
-      // moved like anything else. The composer hands back their position as a
-      // fraction of the figure, so they land on the right reading whatever
-      // frame or scale the figure was drawn at.
-      var st = stats[i];
-      ['hi', 'lo'].forEach(function (which) {
-        var key = 'pin-' + which + ':' + i;
-        if (have[key]) return;
-        var src = st && (which === 'hi' ? st.hiPin : st.loPin);
-        if (!src) return;
-        next.overlays.push({
-          id: 'pin-' + which + '-' + i,
-          kind: 'pin-' + which,
-          statsIndex: i,
-          x: clamp(next.topo.x + src.fx * next.topo.w, 0, 92),
-          y: clamp(next.topo.y + src.fy * next.topo.h, 0, 92),
-          scale: 1,
-        });
-      });
+      // The High and Low markers are NOT boxes on the page. They point at a
+      // spot on the floor, so they are drawn into the picture and travel with
+      // it when the plan is panned or zoomed -- which is the one thing the
+      // scale and the readings must not do. They used to be placed here from
+      // a composed figure's coordinates; the drawing carries them itself now.
     }
     return next;
   }
@@ -264,6 +260,54 @@
   }
 
   /**
+   * The colour scale and this boundary's readings, as one piece on the page.
+   *
+   * Both used to be drawn into the plan's own picture, so moving the plan
+   * moved them with it and neither could be put where the sheet wanted it.
+   * Tim: "putting the contour legend in the pill, one place, and being able
+   * to move the floor plan with contours separately... those need to be able
+   * to move just like they do on the FS page." So: one box, dragged by the
+   * investigator, sized from its corner, and the drawing underneath pans and
+   * zooms without touching it.
+   */
+  /**
+   * How big the piece is drawn.
+   *
+   * The Floor Survey screen sizes its colour scale from Labels & layers and
+   * moves it by dragging; a slide does the same, so there is one control for
+   * the size and it is the one already in the panel. 1.5x is the scale's own
+   * default there.
+   */
+  function legendScale(options) {
+    var raw = options && options.settings && Number(options.settings.legendScale);
+    var n = isFinite(raw) && raw > 0 ? raw : 1;
+    return Math.max(MIN_SCALE, Math.min(MAX_SCALE, n));
+  }
+
+  function renderChrome(raw) {
+    // The slide reports its palette as bands, low to high, because the scale
+    // on the page has to be the scale under the plan -- one palette, read
+    // from the drawing itself rather than guessed at here.
+    var stats = raw || {};
+    if (!stats.legend && Array.isArray(stats.bands) && stats.bands.length) {
+      stats = Object.keys(stats).reduce(function (out, k) { out[k] = stats[k]; return out; }, {});
+      stats.legend = {
+        min: stats.lo,
+        max: stats.hi,
+        stops: stats.bands.map(function (color) { return { color: color }; }),
+      };
+    }
+    var box = document.createElement('div');
+    box.className = 'rb-topo-chrome';
+    box.appendChild(renderLegend(stats));
+    var side = document.createElement('div');
+    side.className = 'rb-topo-chrome__read';
+    side.appendChild(renderPill(stats));
+    box.appendChild(side);
+    return box;
+  }
+
+  /**
    * The site overview, as it appears on a Floor Survey page.
    *
    * Settled Oct 10, 2026: "once you put it in on the cover page it should
@@ -331,7 +375,12 @@
     var meta = page && page.meta || {};
     var ev = evidence || {};
     var imported = !!(options && options.imported);
-    var statsList = Array.isArray(ev.stats) ? ev.stats : [];
+    // What the drawing is drawing right now, when it has said; the evidence
+    // stored at import otherwise. The same rule the rail follows, so the
+    // scale and the readings on the page cannot quote different numbers from
+    // the pill the plan used to carry.
+    var live = options && Array.isArray(options.stats) ? options.stats : null;
+    var statsList = live && live.length ? live : (Array.isArray(ev.stats) ? ev.stats : []);
     var layout = layoutForStats(options && options.layout, statsList.length || 1, statsList);
     var locked = !!layout.locked;
 
@@ -391,6 +440,30 @@
         bare.insertBefore(bareDraw, bare.firstChild);
         bareStage.appendChild(bare);
       }
+      // The scale and the readings, one piece per boundary, on the page.
+      layout.overlays.forEach(function (overlay) {
+        if (overlay.kind !== 'chrome') return;
+        var stats = statsList[overlay.statsIndex];
+        if (!stats) return;
+        // Dragged to move, sized from the panel's Legend size -- which is
+        // exactly how the colour scale behaves on the Floor Survey screen.
+        // Tim: "those need to be able to move just like they do on the FS
+        // page." So this box has no corner handles: one control for the
+        // size, in the place the investigator already knows.
+        var piece = boxShell('chrome', overlay.id, true);
+        piece.classList.remove('is-locked');
+        if (!locked) {
+          piece.setAttribute('tabindex', '0');
+          piece.setAttribute('role', 'button');
+          piece.setAttribute('aria-label', 'Move the colour scale and readings');
+        }
+        piece.style.left = overlay.x + '%';
+        piece.style.top = overlay.y + '%';
+        piece.style.transform = 'scale(' + legendScale(options) + ')';
+        piece.style.transformOrigin = 'top left';
+        piece.insertBefore(renderChrome(stats), piece.firstChild);
+        bareStage.appendChild(piece);
+      });
       var overviewBox = renderOverview(options, layout, locked);
       if (overviewBox) bareStage.appendChild(overviewBox);
       root.appendChild(bareStage);

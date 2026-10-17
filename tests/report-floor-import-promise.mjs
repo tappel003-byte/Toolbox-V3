@@ -172,10 +172,12 @@ check('the slide is imported and nothing has the chrome switched off',
 // resize."
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
+// The colour scale is a piece on the page now, sized by this stepper, which
+// is how the Floor Survey screen sizes its own.
 const drawing = () => page.evaluate(() => {
-  const canvas = [...document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) canvas')]
-    .sort((a, b) => b.width * b.height - a.width * a.height)[0];
-  return canvas ? canvas.toDataURL().length + ':' + canvas.toDataURL().slice(-64) : '';
+  const box = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="chrome"]');
+  const r = box ? box.getBoundingClientRect() : null;
+  return r ? Math.round(r.width) + 'x' + Math.round(r.height) : '';
 });
 const beforeLegend = await drawing();
 for (let i = 0; i < 3; i += 1) {
@@ -184,9 +186,9 @@ for (let i = 0; i < 3; i += 1) {
 }
 await new Promise((resolve) => setTimeout(resolve, 1200));
 const afterLegend = await drawing();
-check('the colour scale resizes from the panel, on the drawing',
+check('the colour scale resizes from the panel, on the sheet',
   !!beforeLegend && afterLegend !== beforeLegend,
-  JSON.stringify({ changed: afterLegend !== beforeLegend }));
+  JSON.stringify({ before: beforeLegend, after: afterLegend }));
 check('and nothing threw while it did', errors.length === 0, errors.join(' | '));
 
 await page.screenshot({ path: `${OUT}/report-floor-import-promise.png` });

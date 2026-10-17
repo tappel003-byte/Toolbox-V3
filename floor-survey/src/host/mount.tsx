@@ -46,6 +46,7 @@ export type MountOptions = {
     lo: number;
     delta: number;
     decimalPlaces: number;
+    bands?: string[];
   }>) => void;
   onReady?: (info: {
     levelName: string;
