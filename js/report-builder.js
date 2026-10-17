@@ -1787,6 +1787,26 @@
     if (host.el && host.el.parentNode) host.el.parentNode.removeChild(host.el);
   }
 
+  /**
+   * Hand a camera to the views a slide is hosting, except the one it came from.
+   *
+   * Two views on a sheet are two windows on one level, so they are two windows
+   * on one camera. Tim: "I need them to be side by side exactly. not one
+   * higher one lower." A pan used to be told only to the book, and the book
+   * does not re-mount a view that is already showing the right level -- so
+   * dragging either drawing left the other where it was, and the pair sat at
+   * different heights until the report was closed and opened again.
+   */
+  function pushCameraToTopoHosts(camera, except) {
+    if (!camera) return;
+    Object.keys(topoHosts).forEach(function (slot) {
+      if (Number(slot) === Number(except)) return;
+      var host = topoHosts[slot];
+      if (!host || !host.api || typeof host.api.update !== 'function') return;
+      host.api.update({ camera: camera });
+    });
+  }
+
   /** Every slot, or every slot past `keep`. */
   function releaseTopoHosts(keep) {
     Object.keys(topoHosts).forEach(function (slot) {
@@ -3086,8 +3106,17 @@
             camera: floorCamera,
             settings: floorViewFor(page, at),
             locked: !!(floorCamera && floorCamera.locked),
-            onCameraChange: function (camera) {
+            onCameraChange: function (camera, from) {
               var locked = !!(floorCamera && floorCamera.locked);
+              // A view that has just been handed a camera reports it straight
+              // back. Reading that as a fresh pan would save the report again
+              // and bounce the camera between the two views, so a camera that
+              // is the one already held is not news.
+              var same = !!floorCamera &&
+                Math.abs((floorCamera.cx || 0) - (camera.cx || 0)) < 1e-4 &&
+                Math.abs((floorCamera.cy || 0) - (camera.cy || 0)) < 1e-4 &&
+                Math.abs((floorCamera.zoom || 0) - (camera.zoom || 0)) < 1e-4;
+              if (same) return;
               // rel marks a camera whose centre is a fraction of the plan
               // rather than image pixels. Dropping it here would make every
               // stored view read as the old pixel form, which is exactly the
@@ -3097,6 +3126,7 @@
                 cx: camera.cx, cy: camera.cy, zoom: camera.zoom,
                 rel: !!camera.rel, locked: locked,
               };
+              pushCameraToTopoHosts(floorCamera, from);
               markDirty();
             },
               onSettingsChange: function (next, from) {

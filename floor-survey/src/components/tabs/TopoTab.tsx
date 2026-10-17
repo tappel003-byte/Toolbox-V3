@@ -1027,6 +1027,11 @@ export function TopoTab({
           frozen={locked}
           resizeCorners={resizeCorners && !locked}
           refitOnResize={false}
+          // A slide's drawing is a picture on paper: when the frame changes
+          // size -- the window, one view becoming two, screen to printed
+          // sheet -- it shows the same view in the new frame rather than
+          // keeping pixels measured against the old one.
+          reframeOnResize={presentation}
           onTransform={(t) => setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s))}
           onImagePointerDown={(x, y) => {
             // Legend tap: start drag only. Size is edited in Labels & layers.

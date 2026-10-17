@@ -84,6 +84,19 @@ interface Props {
   /** Keep the current pan/zoom when the wrapper changes size, e.g. mobile keyboard. */
   refitOnResize?: boolean;
   /**
+   * Re-frame the same view when the wrapper changes size.
+   *
+   * A drawing hosted on a report sheet is a picture that follows its frame,
+   * and the frame is sized by the paper: it changes with the window, when a
+   * sheet goes from one view to two, and between the screen and the printed
+   * page. scale/tx/ty are wrapper pixels, so none of that survived -- the
+   * plan kept the scale and the offset it was fitted at and sat shifted and
+   * cropped in the new frame. The camera is expressed against fit, so
+   * putting it back frames exactly the same thing at any size. This is not
+   * `refitOnResize`, which fits afresh and so discards the framing.
+   */
+  reframeOnResize?: boolean;
+  /**
    * Corner grips that resize the drawing.
    *
    * One addition to what this canvas already does, not a replacement for it:
@@ -140,6 +153,7 @@ export function PlanCanvas({
   onCamera,
   cameraRequest,
   refitOnResize = true,
+  reframeOnResize = false,
   staticView = false,
   frozen = false,
   resizeCorners = false,
@@ -182,26 +196,42 @@ export function PlanCanvas({
     return Math.min(wrap.clientWidth / imgW, wrap.clientHeight / imgH) || 1;
   }, [imgW, imgH]);
 
+  // The view this canvas is showing, in terms that do not depend on its size.
+  // Kept so a change of frame can put the same view back.
+  const cameraRef = useRef<PlanCamera | null>(null);
+
   const applyTransform = useCallback(
-    (t: CanvasTransform) => {
+    (t: CanvasTransform, silent?: boolean) => {
       transformRef.current = t;
       setTransform(t);
       onTransformRef.current?.(t);
       const wrap = wrapRef.current;
-      if (onCameraRef.current && wrap && t.scale > 0) {
-        onCameraRef.current({
+      if (wrap && t.scale > 0) {
+        const camera: PlanCamera = {
           cx: (wrap.clientWidth / 2 - t.tx) / t.scale / (imgW || 1),
           cy: (wrap.clientHeight / 2 - t.ty) / t.scale / (imgH || 1),
           zoom: t.scale / (fitScale() || 1),
           rel: true,
-        });
+        };
+        cameraRef.current = camera;
+        // A re-frame is the same view in a new frame, not a new view, so it
+        // is not reported out: it is neither a change for the report to store
+        // nor something to push at a second view of the same level.
+        if (onCameraRef.current && !silent) onCameraRef.current(camera);
       }
     },
     [fitScale, imgW, imgH],
   );
 
+  // A camera has been supplied, so this canvas is showing the host's view
+  // rather than finding its own. Set during render, before the effects below
+  // run, so the fit that happens while the plan loads knows not to announce
+  // itself as a framing choice.
+  const hasCameraRef = useRef(false);
+  if (cameraRequest) hasCameraRef.current = true;
+
   // Fit-to-view only on first load/new plan, or when the user taps Fit.
-  const fit = useCallback(() => {
+  const fit = useCallback((silent?: boolean) => {
     const wrap = wrapRef.current;
     if (!wrap) return;
     const cw = wrap.clientWidth;
@@ -210,11 +240,16 @@ export function PlanCanvas({
     const tx = (cw - imgW * s) / 2;
     const ty = (ch - imgH * s) / 2;
     const t = { scale: s, tx, ty };
-    applyTransform(t);
+    applyTransform(t, silent);
   }, [imgW, imgH, applyTransform]);
 
   useEffect(() => {
-    fit();
+    // The plan has arrived and this is the view until the host's camera is
+    // put back, a moment later. Reporting it would tell the host its stored
+    // framing had been changed to fit -- and on a report sheet showing two
+    // views of one level, that fit was then pushed at the other view, so a
+    // reopened sheet lost the framing one of the two had been given.
+    fit(hasCameraRef.current);
   }, [fit, planDataUrl, imgLoaded]);
 
   // Re-fit when the wrapper resizes (e.g. orientation change phone/tablet)
@@ -273,7 +308,14 @@ export function PlanCanvas({
       fit();
       return;
     }
-    applyTransform({ scale, tx, ty });
+    // Obeying a camera is not choosing one, so it is not reported back. Two
+    // views of one level on a report sheet are handed each other's camera,
+    // and a view that answered "here is my camera" the moment it was given
+    // one put the pair into a loop: the answer arrived a drag-step late, was
+    // read as a fresh pan, and was pushed back at the view being dragged --
+    // which snapped it backwards, so neither drawing ended up where it was
+    // put and the two sat at different heights.
+    applyTransform({ scale, tx, ty }, true);
   }, [cameraRequest, fitScale, applyTransform, fit, imgW, imgH, imgLoaded, canvasSizeTick, planDataUrl]);
 
   // Programmatic focus: pan (and gently zoom in if too zoomed out) to center (x,y).
@@ -303,6 +345,28 @@ export function PlanCanvas({
     if (wrapRef.current) ro.observe(wrapRef.current);
     return () => ro.disconnect();
   }, []);
+
+  // The frame changed: put the same view back in it. See `reframeOnResize`.
+  const reframeTickRef = useRef(canvasSizeTick);
+  useEffect(() => {
+    if (!reframeOnResize) return;
+    if (reframeTickRef.current === canvasSizeTick) return;
+    reframeTickRef.current = canvasSizeTick;
+    const wrap = wrapRef.current;
+    const camera = cameraRef.current;
+    if (!wrap || !camera || !wrap.clientWidth || !wrap.clientHeight) return;
+    // Before the plan has loaded there is nothing to frame, and the fit that
+    // runs when it arrives would undo this a moment later.
+    if (planDataUrl && !imgLoaded) return;
+    const scale = (camera.zoom || 1) * (fitScale() || 1);
+    if (!(scale > 0)) return;
+    const cx = camera.rel === false ? camera.cx : camera.cx * imgW;
+    const cy = camera.rel === false ? camera.cy : camera.cy * imgH;
+    applyTransform(
+      { scale, tx: wrap.clientWidth / 2 - cx * scale, ty: wrap.clientHeight / 2 - cy * scale },
+      true,
+    );
+  }, [canvasSizeTick, reframeOnResize, fitScale, applyTransform, imgW, imgH, imgLoaded, planDataUrl]);
 
   // Render
   const render = useCallback(() => {
