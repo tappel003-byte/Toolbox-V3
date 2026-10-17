@@ -118,11 +118,14 @@ await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box="t
 
 // An imported slide is the plan and nothing else. The lock on offer is Lock
 // view -- the camera, so the plan sits the same way on every Floor Survey
-// slide -- and it lives in the rail, not on the sheet. The figure block, the
-// readings box, the colour scale and the H/L/delta pill are deliberately held
-// back until the drawing underneath them is right; asserting their absence is
-// what keeps that a decision rather than something that quietly slipped off
-// the sheet.
+// slide -- and it lives in the rail, not on the sheet.
+//
+// The colour scale and the H / L / delta are no longer held back and no
+// longer painted into the plan's picture: they are two boxes ON THE PAGE,
+// each moved on its own, so the plan can be panned and zoomed underneath
+// without carrying them along. Tim, Oct 17: "those need to be movable
+// separately... the high/low/delta pill, the contour legend, those are all
+// movable." The figure block and the readings box stay off the sheet.
 const afterImport = await page.evaluate(() => ({
   imported: !!document.querySelector('[data-rb-floor-box="topo"]'),
   viewLock: document.querySelector('[data-rb-floor-view-lock]')?.getAttribute('data-rb-floor-view-lock') || '',
@@ -135,8 +138,8 @@ check(
   JSON.stringify(afterImport),
 );
 check(
-  'the deck chrome is still held back',
-  !afterImport.legend && !afterImport.pill,
+  'the colour scale and the readings are placed on the page',
+  afterImport.legend && afterImport.pill,
   JSON.stringify(afterImport),
 );
 

@@ -2254,22 +2254,8 @@ body.report-builder-open .canvas {
   z-index: 4;
 }
 
-.rb-topo-chrome {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* The scale carries the box; the readings sit beside it with no second
-   frame, so the piece reads as one thing rather than two stuck together. */
-.rb-topo-chrome .rb-topo-legend {
+.rb-floor-box--chrome .rb-topo-legend {
   background: rgba(255, 255, 255, 0.96);
-}
-
-.rb-topo-chrome__read {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
 }
 
 /* The piece shows its handles and its dashed edge when it is pointed at,

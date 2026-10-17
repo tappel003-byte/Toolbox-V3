@@ -1,5 +1,5 @@
 /**
- * The colour scale and the readings are one piece, on the page.
+ * The colour scale and the readings are pieces on the page, each moved alone.
  * Run: node tests/report-floor-chrome.mjs   (needs a static server on 8765)
  *
  * They used to be painted into the plan's own picture — two separate things,
@@ -9,11 +9,15 @@
  * contours separately... those need to be able to move just like they do on
  * the FS page."
  *
+ * And: "those need to be movable separately... the high/low/delta pill, the
+ * contour legend, those are all movable."
+ *
  * So the drawing carries the plan, the contours, the readings and the High
  * and Low markers — those point at a spot on the floor and belong to the
- * picture — and the scale and that boundary's H / L / delta are one box on
- * the page, dragged where they are wanted and left there while the plan is
- * panned and zoomed underneath.
+ * picture — while the colour scale and that boundary's H / L / delta are two
+ * boxes on the page. Each is dragged on its own, neither moves when the
+ * other does, and the plan pans and zooms underneath without taking either
+ * along.
  */
 import { createRequire } from 'module';
 import { mkdir } from 'fs/promises';
@@ -108,8 +112,9 @@ async function openSlide() {
   await new Promise((r) => setTimeout(r, 2500));
 }
 
-const piece = () => page.evaluate(() => {
-  const box = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="chrome"]');
+const piece = (which) => page.evaluate((kind) => {
+  const box = document.querySelector(
+    '.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="' + kind + '"]');
   if (!box) return null;
   const r = box.getBoundingClientRect();
   return {
@@ -120,27 +125,51 @@ const piece = () => page.evaluate(() => {
     grips: [...box.querySelectorAll('.rb-floor-box__resize')]
       .filter((g) => getComputedStyle(g).display !== 'none').length,
   };
-});
+}, which);
+
+/** Drag a piece by its left edge and report where both ended up. */
+async function dragPiece(which, dx, dy) {
+  const from = { legend: await piece('legend'), pill: await piece('pill') };
+  const box = from[which];
+  await page.mouse.move(box.x + 3, box.y + box.h / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 3 + dx, box.y + box.h / 2 + dy, { steps: 14 });
+  await page.mouse.up();
+  await new Promise((r) => setTimeout(r, 900));
+  const to = { legend: await piece('legend'), pill: await piece('pill') };
+  return {
+    legend: { dx: to.legend.x - from.legend.x, dy: to.legend.y - from.legend.y },
+    pill: { dx: to.pill.x - from.pill.x, dy: to.pill.y - from.pill.y },
+  };
+}
 
 await openSlide();
 
-const placed = await piece();
-check('the scale and the readings are one piece on the page',
-  !!placed && placed.scale && /H\s*9\.4/.test(placed.readings) && /L\s*7\.1/.test(placed.readings),
-  JSON.stringify(placed));
-check('and it carries no chrome of its own until it is pointed at',
-  !!placed && placed.outline === 'none' && placed.grips === 0, JSON.stringify(placed));
+const scaleBox = await piece('legend');
+const pillBox = await piece('pill');
+check('the colour scale is a piece on the page',
+  !!scaleBox && scaleBox.scale, JSON.stringify(scaleBox));
+check('the readings are a piece of their own',
+  !!pillBox && /H\s*9\.4/.test(pillBox.readings) && /L\s*7\.1/.test(pillBox.readings),
+  JSON.stringify(pillBox));
+check('and neither carries chrome of its own until it is pointed at',
+  scaleBox.outline === 'none' && scaleBox.grips === 0 &&
+  pillBox.outline === 'none' && pillBox.grips === 0,
+  JSON.stringify({ scaleBox, pillBox }));
 
-// It moves where it is dragged, like every other box on the sheet.
-await page.mouse.move(placed.x + 6, placed.y + placed.h / 2);
-await page.mouse.down();
-await page.mouse.move(placed.x + 6 + 230, placed.y + placed.h / 2 + 170, { steps: 14 });
-await page.mouse.up();
-await new Promise((r) => setTimeout(r, 900));
-const moved = await piece();
-check('it moves where it is dragged',
-  moved.x > placed.x + 180 && moved.y > placed.y + 120,
-  JSON.stringify({ from: { x: placed.x, y: placed.y }, to: { x: moved.x, y: moved.y } }));
+// Each moves on its own, and leaves the other where it was.
+const draggedScale = await dragPiece('legend', 150, 220);
+check('the colour scale moves on its own',
+  draggedScale.legend.dx > 110 && draggedScale.legend.dy > 170 &&
+  draggedScale.pill.dx === 0 && draggedScale.pill.dy === 0,
+  JSON.stringify(draggedScale));
+
+const draggedPill = await dragPiece('pill', 240, -90);
+check('and the readings move on their own',
+  draggedPill.pill.dx > 200 && draggedPill.pill.dy < -60 &&
+  draggedPill.legend.dx === 0 && draggedPill.legend.dy === 0,
+  JSON.stringify(draggedPill));
+const moved = await piece('legend');
 
 // And the plan moves underneath it without taking it along.
 const planBox = await page.evaluate(() => {
@@ -152,8 +181,9 @@ await page.mouse.down();
 await page.mouse.move(planBox.x + planBox.w * 0.75 - 150, planBox.y + planBox.h * 0.75 - 110, { steps: 14 });
 await page.mouse.up();
 await new Promise((r) => setTimeout(r, 1200));
-const afterPan = await piece();
-check('panning the plan leaves it exactly where it was put',
+const afterPan = await piece('legend');
+const afterPanPill = await piece('pill');
+check('panning the plan leaves both exactly where they were put',
   Math.abs(afterPan.x - moved.x) < 3 && Math.abs(afterPan.y - moved.y) < 3,
   JSON.stringify({ moved: { x: moved.x, y: moved.y }, afterPan: { x: afterPan.x, y: afterPan.y } }));
 
@@ -163,21 +193,21 @@ const stored = await page.evaluate(async (id) => {
   const record = await window.ToolboxDB.getCustomerFile(id);
   const floor = (record.reportBuilder?.pages || []).find((p) => p.type === 'floor');
   const overlays = floor?.meta?.layout?.overlays || [];
-  return {
-    kinds: overlays.map((o) => o.kind).sort(),
-    chrome: overlays.find((o) => o.kind === 'chrome') || null,
-  };
+  return { kinds: overlays.map((o) => o.kind).sort() };
 }, FILE);
-check('one piece per boundary is what the Customer File carries',
-  stored.kinds.filter((k) => k === 'chrome').length === 1 &&
-  stored.kinds.indexOf('legend') === -1 && stored.kinds.indexOf('pill') === -1,
+check('the Customer File carries one of each, per boundary',
+  stored.kinds.filter((k) => k === 'legend').length === 1 &&
+  stored.kinds.filter((k) => k === 'pill').length === 1 &&
+  stored.kinds.indexOf('chrome') === -1,
   JSON.stringify(stored.kinds));
 
 await openSlide();
-const reopened = await piece();
-check('and it is still where it was put after coming back',
-  Math.abs(reopened.x - afterPan.x) < 4 && Math.abs(reopened.y - afterPan.y) < 4,
-  JSON.stringify({ afterPan: { x: afterPan.x, y: afterPan.y }, reopened: { x: reopened.x, y: reopened.y } }));
+const reopened = await piece('legend');
+const reopenedPill = await piece('pill');
+check('and both are still where they were put after coming back',
+  Math.abs(reopened.x - afterPan.x) < 4 && Math.abs(reopened.y - afterPan.y) < 4 &&
+  Math.abs(reopenedPill.x - afterPanPill.x) < 4 && Math.abs(reopenedPill.y - afterPanPill.y) < 4,
+  JSON.stringify({ reopened, reopenedPill }));
 
 await page.screenshot({ path: `${OUT}/report-floor-chrome.png` });
 await browser.close();

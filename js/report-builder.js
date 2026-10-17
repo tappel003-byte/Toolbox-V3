@@ -793,6 +793,17 @@
     return defaultPicturesAcross(picturesOnPage(page));
   }
 
+  /** The Stats pill size set in Labels & layers, kept per device. */
+  function storedStatsPillPx() {
+    try {
+      var raw = window.localStorage.getItem('stats-chip-size');
+      var n = raw == null ? NaN : Number(raw);
+      return isFinite(n) && n > 0 ? n : 32;
+    } catch (err) {
+      return 32;
+    }
+  }
+
   function renderPicturesPage(page) {
     var meta = page.meta || {};
     var evidence = page.evidence || {};
@@ -1984,6 +1995,10 @@
           // own Legend size says the scale should be.
           stats: page._liveStats || null,
           settings: page._floorView || null,
+          // The readings are sized by Stats pill size, which is kept on this
+          // device rather than in the report -- the same number the drawing's
+          // own pill used before it came off the picture.
+          pillPx: storedStatsPillPx(),
         });
         if (page.meta && !thumb) page.meta.layout = rendered.layout;
         margin.appendChild(rendered.root);

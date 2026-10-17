@@ -175,7 +175,7 @@ page.on('pageerror', (error) => errors.push(error.message));
 // The colour scale is a piece on the page now, sized by this stepper, which
 // is how the Floor Survey screen sizes its own.
 const drawing = () => page.evaluate(() => {
-  const box = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="chrome"]');
+  const box = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="legend"]');
   const r = box ? box.getBoundingClientRect() : null;
   return r ? Math.round(r.width) + 'x' + Math.round(r.height) : '';
 });

@@ -8,14 +8,18 @@
   var MIN_TOPO_H = 35;
   var MIN_OVERVIEW_W = 6;
   var MIN_OVERVIEW_H = 6;
-  // One piece per boundary: the colour scale and that boundary's H / L /
-  // delta, together. Tim: "putting the contour legend in the pill, one place,
-  // and being able to move the floor plan with contours separately." They
-  // were two things drawn into the plan's own picture, so moving the plan
-  // carried them along and the scale could not be put where it was wanted.
-  // `legend` and `pill` are the two older kinds, still read so a report saved
-  // before this opens, and folded into one on sight.
-  var OVERLAY_KINDS = { chrome: 1, legend: 1, pill: 1, 'pin-hi': 1, 'pin-lo': 1 };
+  // The pieces a Floor Survey slide places on the page: the colour scale and
+  // that boundary's H / L / delta. Each is its own box and each moves on its
+  // own -- Tim: "those need to be movable separately... the high/low/delta
+  // pill, the contour legend, those are all movable." They used to be
+  // painted into the plan's own picture, so moving the plan carried them
+  // along and neither could be put where the sheet wanted it. The High and
+  // Low markers are NOT here: they point at a spot on the floor, so they
+  // stay in the picture and are nudged on the drawing itself.
+  //
+  // `chrome` was a short-lived kind that held both at once; it is still read
+  // so a report saved while it existed opens, and splits back into two.
+  var OVERLAY_KINDS = { legend: 1, pill: 1, chrome: 1, 'pin-hi': 1, 'pin-lo': 1 };
   var MIN_SCALE = 0.65;
   var MAX_SCALE = 1.85;
 
@@ -54,7 +58,8 @@
       // here, it is gone from this page only.
       overview: { x: 2.5, y: 74, w: 16, h: 18 },
       overlays: [
-        { id: 'chrome-0', kind: 'chrome', statsIndex: 0, x: slot.x, y: slot.legendY, scale: 1 },
+        { id: 'legend-0', kind: 'legend', statsIndex: 0, x: slot.x, y: slot.legendY, scale: 1 },
+        { id: 'pill-0', kind: 'pill', statsIndex: 0, x: slot.x, y: slot.pillY, scale: 1 },
       ],
     };
   }
@@ -113,28 +118,27 @@
       overlays: [],
     };
     var list = Array.isArray(src.overlays) ? src.overlays : base.overlays;
-    var seenChrome = {};
     list.forEach(function (item, index) {
       if (!item || typeof item !== 'object') return;
-      var kind = OVERLAY_KINDS[item.kind] ? item.kind : 'chrome';
+      var kind = OVERLAY_KINDS[item.kind] ? item.kind : 'legend';
       var at = typeof item.statsIndex === 'number' ? item.statsIndex : 0;
-      // A report saved when the scale and the pill were separate boxes keeps
-      // where its scale was put; the pill that used to sit under it is folded
-      // into the same piece rather than left as a second one.
-      if (kind === 'legend' || kind === 'pill') {
-        if (kind === 'pill' || seenChrome[at]) return;
-        kind = 'chrome';
-      }
+      var x = clamp(item.x, 0, 92);
+      var y = clamp(item.y, 0, 92);
+      // A report saved while the two were one box opens as two again: the
+      // scale keeps the spot, the readings take the one under it.
       if (kind === 'chrome') {
-        if (seenChrome[at]) return;
-        seenChrome[at] = true;
+        layout.overlays.push({ id: 'legend-' + at, kind: 'legend', statsIndex: at,
+          x: x, y: y, scale: clamp(item.scale, MIN_SCALE, MAX_SCALE) });
+        layout.overlays.push({ id: 'pill-' + at, kind: 'pill', statsIndex: at,
+          x: x, y: clamp(y + PILL_DROP, 0, 92), scale: clamp(item.scale, MIN_SCALE, MAX_SCALE) });
+        return;
       }
       layout.overlays.push({
-        id: kind === 'chrome' ? ('chrome-' + at) : (item.id || ('overlay-' + index)),
+        id: item.id || ('overlay-' + index),
         kind: kind,
         statsIndex: at,
-        x: clamp(item.x, 0, 92),
-        y: clamp(item.y, 0, 92),
+        x: x,
+        y: y,
         scale: clamp(item.scale, MIN_SCALE, MAX_SCALE),
       });
     });
@@ -154,14 +158,16 @@
     next.overlays.forEach(function (o) { have[o.kind + ':' + o.statsIndex] = true; });
     for (var i = 0; i < count; i += 1) {
       var slot = scaleSlot(i);
-      if (!have['chrome:' + i]) {
+      if (!have['legend:' + i]) {
         next.overlays.push({
-          id: 'chrome-' + i,
-          kind: 'chrome',
-          statsIndex: i,
-          x: slot.x,
-          y: slot.legendY,
-          scale: 1,
+          id: 'legend-' + i, kind: 'legend', statsIndex: i,
+          x: slot.x, y: slot.legendY, scale: 1,
+        });
+      }
+      if (!have['pill:' + i]) {
+        next.overlays.push({
+          id: 'pill-' + i, kind: 'pill', statsIndex: i,
+          x: slot.x, y: slot.pillY, scale: 1,
         });
       }
       // The High and Low markers are NOT boxes on the page. They point at a
@@ -284,10 +290,14 @@
     return Math.max(MIN_SCALE, Math.min(MAX_SCALE, n));
   }
 
-  function renderChrome(raw) {
-    // The slide reports its palette as bands, low to high, because the scale
-    // on the page has to be the scale under the plan -- one palette, read
-    // from the drawing itself rather than guessed at here.
+  /**
+   * The colour scale for a boundary, drawn on the page.
+   *
+   * The slide reports its palette as bands, low to high, because the scale
+   * on the page has to be the scale under the plan -- one palette, read from
+   * the drawing itself rather than guessed at here.
+   */
+  function renderLegendCard(raw) {
     var stats = raw || {};
     if (!stats.legend && Array.isArray(stats.bands) && stats.bands.length) {
       stats = Object.keys(stats).reduce(function (out, k) { out[k] = stats[k]; return out; }, {});
@@ -297,14 +307,15 @@
         stops: stats.bands.map(function (color) { return { color: color }; }),
       };
     }
-    var box = document.createElement('div');
-    box.className = 'rb-topo-chrome';
-    box.appendChild(renderLegend(stats));
-    var side = document.createElement('div');
-    side.className = 'rb-topo-chrome__read';
-    side.appendChild(renderPill(stats));
-    box.appendChild(side);
-    return box;
+    return renderLegend(stats);
+  }
+
+  /** How big the readings are drawn: the panel's Stats pill size, where 32
+   *  is the size that has always been the default. */
+  function pillScale(options) {
+    var raw = options && Number(options.pillPx);
+    var n = isFinite(raw) && raw > 0 ? raw : 32;
+    return Math.max(MIN_SCALE, Math.min(MAX_SCALE, n / 32));
   }
 
   /**
@@ -440,28 +451,35 @@
         bare.insertBefore(bareDraw, bare.firstChild);
         bareStage.appendChild(bare);
       }
-      // The scale and the readings, one piece per boundary, on the page.
+      // The colour scale and the readings: two pieces, each moved on its own.
+      //
+      // Each is dragged to move and sized from the control that has always
+      // sized it -- Legend size for the scale, Stats pill size for the
+      // readings -- which is how both behave on the Floor Survey screen.
+      // Tim: "those need to be able to move just like they do on the FS
+      // page." So neither carries corner handles: two controls for one size
+      // is one too many.
       layout.overlays.forEach(function (overlay) {
-        if (overlay.kind !== 'chrome') return;
+        if (overlay.kind !== 'legend' && overlay.kind !== 'pill') return;
         var stats = statsList[overlay.statsIndex];
         if (!stats) return;
-        // Dragged to move, sized from the panel's Legend size -- which is
-        // exactly how the colour scale behaves on the Floor Survey screen.
-        // Tim: "those need to be able to move just like they do on the FS
-        // page." So this box has no corner handles: one control for the
-        // size, in the place the investigator already knows.
-        var piece = boxShell('chrome', overlay.id, true);
+        var piece = boxShell(overlay.kind, overlay.id, true);
         piece.classList.remove('is-locked');
+        piece.classList.add('rb-floor-box--chrome');
         if (!locked) {
           piece.setAttribute('tabindex', '0');
           piece.setAttribute('role', 'button');
-          piece.setAttribute('aria-label', 'Move the colour scale and readings');
+          piece.setAttribute('aria-label',
+            overlay.kind === 'legend' ? 'Move the colour scale' : 'Move the readings');
         }
         piece.style.left = overlay.x + '%';
         piece.style.top = overlay.y + '%';
-        piece.style.transform = 'scale(' + legendScale(options) + ')';
+        piece.style.transform = 'scale(' +
+          (overlay.kind === 'legend' ? legendScale(options) : pillScale(options)) + ')';
         piece.style.transformOrigin = 'top left';
-        piece.insertBefore(renderChrome(stats), piece.firstChild);
+        piece.insertBefore(
+          overlay.kind === 'legend' ? renderLegendCard(stats) : renderPill(stats),
+          piece.firstChild);
         bareStage.appendChild(piece);
       });
       var overviewBox = renderOverview(options, layout, locked);
