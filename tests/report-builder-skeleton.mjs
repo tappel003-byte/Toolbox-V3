@@ -522,6 +522,33 @@ const locked = await page.evaluate(async () => {
 });
 check('title Lock persists coverLayout', locked.btn === 'unlock' && locked.locked, JSON.stringify(locked));
 
+// Lock layout lives in the side rail, not on the paper. Tim, Oct 17: "yes,
+// side rail please." And it has to still be reachable once the layout IS
+// locked -- on the sheet it went away with the rest of the editor chrome,
+// so a locked title page could not be unlocked again.
+const lockWhere = await page.evaluate(() => {
+  const btn = document.querySelector('[data-rb-cover-lock]');
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+  const r = btn.getBoundingClientRect();
+  return {
+    onSheet: sheet.contains(btn),
+    inRail: !!btn.closest('.rb-panel'),
+    label: btn.textContent.trim(),
+    visible: getComputedStyle(btn).display !== 'none' && r.width > 0 && r.height > 0,
+  };
+});
+check('Lock layout sits in the side rail and is still there when locked',
+  !lockWhere.onSheet && lockWhere.inRail && lockWhere.visible &&
+  lockWhere.label === 'Unlock layout',
+  JSON.stringify(lockWhere));
+await page.click('[data-rb-cover-lock="unlock"]');
+await page.waitForFunction(() => document.querySelector('[data-rb-cover-lock="lock"]'), { timeout: 10000 });
+const unlocked = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('rb-skeleton');
+  return !!(record?.reportBuilder?.coverLayout || {}).locked;
+});
+check('and Unlock layout puts it back', unlocked === false, String(unlocked));
+
 const reportSaved = await page.evaluate(async () => {
   const record = await window.ToolboxDB.getCustomerFile('rb-skeleton');
   const doc = record && record.reportBuilder;

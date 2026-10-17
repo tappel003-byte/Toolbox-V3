@@ -193,8 +193,6 @@ body.report-builder-open .canvas {
    outlines and the resize corners -- has no business in a stamp either, and
    it is sized in px rather than cqh, so it came out full size on a 150 px
    preview and buried the page underneath it. */
-.rb-sheet--thumb .rb-cover__bar,
-.rb-sheet--thumb .rb-cover__hint,
 .rb-sheet--thumb .rb-floor-toolbar,
 .rb-sheet--thumb .rb-cover__contents-jump,
 .rb-sheet--thumb .rb-cover__overview-actions,
@@ -1110,28 +1108,6 @@ body.report-builder-open .canvas {
   background: #fff;
   color: var(--rb-ink);
   font-family: Calibri, Carlito, "Segoe UI", system-ui, -apple-system, sans-serif;
-}
-
-/* Editor chrome only. Floats over the sheet so it never shifts the page
-   geometry, and disappears entirely once the layout is locked. */
-.rb-cover__bar {
-  position: absolute;
-  z-index: 4;
-  left: 1.2%;
-  bottom: 1.2%;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  margin: 0;
-}
-
-.rb-cover.is-locked .rb-cover__bar { display: none; }
-
-.rb-cover__hint {
-  margin: 0;
-  color: #666;
-  font-size: 1.3cqh;
 }
 
 .rb-cover__stage {
@@ -2769,7 +2745,6 @@ body.report-builder-open .canvas {
 
   /* Editor chrome never prints, whether or not the layout happens to be
      locked. A dashed placement outline on a deliverable is a defect. */
-  .rb-cover__bar,
   .rb-floor-toolbar,
   .rb-cover__contents-jump,
   .rb-cover__overview-actions,

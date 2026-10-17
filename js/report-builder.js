@@ -1055,21 +1055,11 @@
     root.className = 'rb-cover' + (locked ? ' is-locked' : '');
     root.setAttribute('data-rb-cover-stage', '1');
 
-    var bar = document.createElement('div');
-    bar.className = 'rb-cover__bar';
-    var lockBtn = document.createElement('button');
-    lockBtn.type = 'button';
-    lockBtn.className = 'btn btn--secondary';
-    lockBtn.setAttribute('data-rb-cover-lock', locked ? 'unlock' : 'lock');
-    lockBtn.textContent = locked ? 'Unlock layout' : 'Lock layout';
-    bar.appendChild(lockBtn);
-    var hint = document.createElement('p');
-    hint.className = 'rb-cover__hint';
-    hint.textContent = locked
-      ? 'Title layout locked. Unlock to edit text or move boxes.'
-      : 'Edit any text. Drag boxes to place. Resize from the corner.';
-    bar.appendChild(hint);
-    root.appendChild(bar);
+    // Lock layout and the line of instructions beside it used to stand on
+    // the paper itself, bottom-left. They are the side rail's, with every
+    // other control for the open slide. Tim, Oct 17: "yes, side rail
+    // please." Locked, they used to vanish with the rest of the editor
+    // chrome, which left no way to unlock a title page once it was locked.
 
     var stage = document.createElement('div');
     stage.className = 'rb-cover__stage';
@@ -3121,6 +3111,27 @@
 
     function syncRail(page) {
       if (!railEl) return;
+      if (page && page.type === 'cover') {
+        releaseRailControls();
+        railEl.hidden = false;
+        if (railIdleEl) railIdleEl.hidden = true;
+        if (railTitleEl) railTitleEl.textContent = 'Title page';
+        var coverLocked = !!(coverLayout && coverLayout.locked);
+        railTopEl.textContent = '';
+        railTopEl.appendChild(railButton(
+          coverLocked ? 'Unlock layout' : 'Lock layout',
+          coverLocked ? 'secondary' : 'accent',
+          'data-rb-cover-lock', coverLocked ? 'unlock' : 'lock'));
+        var coverHint = document.createElement('p');
+        coverHint.className = 'rb-panel__lead';
+        coverHint.textContent = coverLocked
+          ? 'Title layout locked. Unlock to edit text or move boxes.'
+          : 'Edit any text. Drag boxes to place. Resize from the corner.';
+        railTopEl.appendChild(coverHint);
+        if (railBodyEl) railBodyEl.textContent = '';
+        if (railFootEl) railFootEl.textContent = '';
+        return;
+      }
       var isPictures = !!(page && page.type === 'pictures');
       if (isPictures) {
         releaseRailControls();
@@ -3257,6 +3268,18 @@
     // delegation rather than by listeners attached once at mount.
     if (railEl) {
       railEl.addEventListener('click', function (event) {
+        var coverLock = event.target.closest('[data-rb-cover-lock]');
+        if (coverLock) {
+          event.preventDefault();
+          var coverApi = window.ToolboxReportCoverLayout;
+          coverLayout = coverApi ? coverApi.normalizeLayout(coverLayout) : coverLayout;
+          coverLayout.locked = coverLock.getAttribute('data-rb-cover-lock') === 'lock';
+          dirty = true;
+          setSaveStatus('Saving…');
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
         var importBtn = event.target.closest('[data-rb-floor-import]');
         if (importBtn) {
           event.preventDefault();
@@ -4854,19 +4877,6 @@
       if (event.target.closest('[data-rb-floor-import]')) {
         event.preventDefault();
         importActiveFloorPage();
-        return;
-      }
-      var coverLock = event.target.closest('[data-rb-cover-lock]');
-      if (coverLock) {
-        event.preventDefault();
-        var coverApi = window.ToolboxReportCoverLayout;
-        coverLayout = coverApi ? coverApi.normalizeLayout(coverLayout) : coverLayout;
-        var coverMode = coverLock.getAttribute('data-rb-cover-lock');
-        coverLayout.locked = coverMode === 'lock';
-        dirty = true;
-        setSaveStatus('Saving…');
-        renderPages();
-        flushSave().catch(function () {});
         return;
       }
       var overviewAct = event.target.closest('[data-rb-cover-overview]');
