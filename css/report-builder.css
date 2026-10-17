@@ -2263,10 +2263,13 @@ body.report-builder-open .canvas {
   user-select: none;
 }
 
-/* Its own corner pulls, unlike the drawing's, which appear only while the
-   plan is selected. There is nothing to select here -- the box is small and
-   its handles are how it is sized. */
-.rb-floor-box--overview .rb-floor-box__resize {
+/* Its corner pulls appear when it is pointed at, not before. Tim: "the
+   corner chevrons on the corners of it don't need to be there unless it's
+   selected." Four brackets standing on a finished figure are chrome on the
+   drawing, which is the one thing the rail rebuild was for. */
+.rb-floor-box--overview:hover .rb-floor-box__resize,
+.rb-floor-box--overview:focus-within .rb-floor-box__resize,
+.rb-floor-box--overview.is-picked .rb-floor-box__resize {
   display: block;
 }
 

@@ -3162,11 +3162,19 @@
           settings: floorViewFor(page),
           onBack: function () {},
           onSettingsChange: function (next) {
-            setFloorViewFor(activePage(), next);
+            var live = activePage();
+            setFloorViewFor(live, next);
             markDirty();
-            // The drawing is a second root looking at the same settings.
-            if (topoHost.api && typeof topoHost.api.update === 'function') {
-              topoHost.api.update({ settings: next });
+            // The drawing is a second root looking at the same settings, and
+            // it has to be told. This named `topoHost`, a single mount that
+            // stopped existing when a sheet gained the option of two
+            // drawings -- so every control in this panel threw, and the
+            // colour scale, the pill, the labels and the palette all read as
+            // doing nothing at all. The setting was stored; the drawing was
+            // never informed.
+            var host = topoHosts[floorSlot(live)] || topoHosts[0];
+            if (host && host.api && typeof host.api.update === 'function') {
+              host.api.update({ settings: next });
             }
             flushSave().catch(function () {});
           },

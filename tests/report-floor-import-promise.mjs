@@ -162,6 +162,33 @@ check('the slide is imported and nothing has the chrome switched off',
   settings.imported && settings.legend !== false && settings.pill !== false &&
     settings.highLow !== false, JSON.stringify(settings));
 
+// And what the panel changes, the drawing shows.
+//
+// Every control in the slide's Floor Survey panel went through one callback
+// that still named a mount removed when a sheet gained the option of two
+// drawings. It threw on every press: the setting was stored, the drawing was
+// never told, and the colour scale, the pill, the labels and the palette all
+// read as doing nothing. Tim: "the contour legend on the FS pages does not
+// resize."
+const errors = [];
+page.on('pageerror', (error) => errors.push(error.message));
+const drawing = () => page.evaluate(() => {
+  const canvas = [...document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) canvas')]
+    .sort((a, b) => b.width * b.height - a.width * a.height)[0];
+  return canvas ? canvas.toDataURL().length + ':' + canvas.toDataURL().slice(-64) : '';
+});
+const beforeLegend = await drawing();
+for (let i = 0; i < 3; i += 1) {
+  await page.evaluate(() => document.querySelector('[aria-label="Increase Legend size"]')?.click());
+  await new Promise((resolve) => setTimeout(resolve, 300));
+}
+await new Promise((resolve) => setTimeout(resolve, 1200));
+const afterLegend = await drawing();
+check('the colour scale resizes from the panel, on the drawing',
+  !!beforeLegend && afterLegend !== beforeLegend,
+  JSON.stringify({ changed: afterLegend !== beforeLegend }));
+check('and nothing threw while it did', errors.length === 0, errors.join(' | '));
+
 await page.screenshot({ path: `${OUT}/report-floor-import-promise.png` });
 await browser.close();
 const failed = results.filter((r) => !r.ok);
