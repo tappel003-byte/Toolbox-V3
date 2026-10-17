@@ -561,6 +561,32 @@ try {
   check('Cabinet browse remains lightweight', out.browseOk && out.browseHasCloudOnly && out.browseNoMaterialize, JSON.stringify(out));
   check('Existing Check Out still works', out.co2Ok, JSON.stringify(out));
   check('Local-only remove primitive exists; stub hard-delete still local', out.removeLocalExists && out.stubLocalGone, JSON.stringify(out));
+
+  // The report carries pictures of its own -- the cover's aerial view and
+  // anything inserted onto a sheet. Check In clears the working copy off the
+  // device, so if those bytes were never listed they were never uploaded,
+  // and the Cabinet copy was a book of empty frames. The report component
+  // was the only one whose media list was empty.
+  const reportMedia = await page.evaluate(() => {
+    const ids = window.ToolboxSync.reportMediaIds({
+      reportBuilder: {
+        coverLayout: { overviewMediaId: 'report-cover-overview-abc' },
+        pages: [
+          { id: 'cover', meta: {} },
+          { id: 'floor-1', meta: { overlays: [
+            { id: 'ov-1', kind: 'image', mediaId: 'rbimg_one' },
+            { id: 'ov-2', kind: 'rect' },
+          ] } },
+          { id: 'pictures-1', meta: { overlays: [{ id: 'ov-3', kind: 'image', mediaId: 'rbimg_two' }] } },
+        ],
+      },
+    });
+    return { ids: ids.sort(), empty: window.ToolboxSync.reportMediaIds({}) };
+  });
+  check('the report lists the pictures it carries, so they upload with it',
+    reportMedia.ids.join(',') === 'rbimg_one,rbimg_two,report-cover-overview-abc' &&
+    reportMedia.empty.length === 0,
+    JSON.stringify(reportMedia));
 } finally {
   await browser.close();
   server.kill('SIGTERM');

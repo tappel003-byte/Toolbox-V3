@@ -594,11 +594,42 @@
     return Array.from(new Set(ids));
   }
 
+  /**
+   * The pictures a report carries of its own.
+   *
+   * The cover's aerial view of the property, and anything inserted onto a
+   * sheet with the picture tool. They live on the Customer File like a plan
+   * or a Distress photograph, and the report that prints them holds nothing
+   * but their ids -- so a Cabinet copy without the bytes is a book of empty
+   * frames. Nothing listed them, so nothing uploaded them: the report
+   * component was the one component whose media list was empty.
+   */
+  function reportMediaIds(source) {
+    const doc = source && typeof source === 'object'
+      ? (source.reportBuilder || source.report || source)
+      : null;
+    if (!doc || typeof doc !== 'object') return [];
+    const ids = [];
+    const push = function (id) {
+      if (typeof id === 'string' && id) ids.push(id);
+    };
+    push(doc.coverLayout && doc.coverLayout.overviewMediaId);
+    const pages = Array.isArray(doc.pages) ? doc.pages : [];
+    pages.forEach(function (page) {
+      const meta = page && page.meta;
+      push(meta && meta.coverLayout && meta.coverLayout.overviewMediaId);
+      const overlays = meta && Array.isArray(meta.overlays) ? meta.overlays : [];
+      overlays.forEach(function (overlay) { push(overlay && overlay.mediaId); });
+    });
+    return Array.from(new Set(ids));
+  }
+
   function mediaIdsForComponent(record, name) {
     if (name === 'plans') return planMediaIds(record);
     if (name === 'distress') return distressPhotoIds(record);
     if (name === 'diagnostics') return diagnosticsFigureMediaIds(record);
     if (name === 'floor') return recoveryPdfIdsFromFloor(record && record.floorSurvey);
+    if (name === 'report') return reportMediaIds(record);
     return [];
   }
 
@@ -800,6 +831,7 @@
     }
     if (name === 'diagnostics') return diagnosticsFigureMediaIds(payload);
     if (name === 'floor') return recoveryPdfIdsFromFloor(payload);
+    if (name === 'report') return reportMediaIds(payload);
     return [];
   }
 
@@ -1325,6 +1357,15 @@
     for (let i = 0; i < figureIds.length; i++) {
       if (!(await remoteMediaExists(figureIds[i]))) {
         throw new SyncError('incomplete', 'Cabinet verification failed: Diagnostics figure missing remotely.');
+      }
+    }
+    // Check In clears the working copy off this device, so the report's own
+    // pictures are checked with everything else first. Fail closed: a book
+    // whose cover photo did not reach the Cabinet stays on the phone.
+    const reportIds = reportMediaIds(record);
+    for (let i = 0; i < reportIds.length; i++) {
+      if (!(await remoteMediaExists(reportIds[i]))) {
+        throw new SyncError('incomplete', 'Cabinet verification failed: report picture missing remotely.');
       }
     }
     return remote;
@@ -2988,6 +3029,7 @@
     mediaIdsForComponent: mediaIdsForComponent,
     planMediaIds: planMediaIds,
     distressPhotoIds: distressPhotoIds,
+    reportMediaIds: reportMediaIds,
     SyncError: SyncError,
     syncNow: function (options) {
       return enqueueSyncWork(function () { return syncNow(options); });
