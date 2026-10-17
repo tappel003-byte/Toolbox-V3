@@ -263,7 +263,17 @@
   // This reads that back into the model rather than storing it, which is what
   // keeps the saved report clean no matter what was pasted into it.
 
-  var BLOCK_TAGS = { DIV: 1, P: 1, LI: 1, H1: 1, H2: 1, H3: 1, H4: 1, BLOCKQUOTE: 1 };
+  var BLOCK_TAGS = { DIV: 1, P: 1, LI: 1, H1: 1, H2: 1, H3: 1, H4: 1, H5: 1, H6: 1, BLOCKQUOTE: 1 };
+
+  // A heading is bold at the field's own size, which is how the shipped
+  // reports set them and what fromMarkdown already does with `##`. A heading
+  // pasted as HTML -- which is what the clipboard carries when the narrative
+  // is copied out of a chat answer rather than out of its markdown -- is
+  // only bold because the browser's own stylesheet says so, and a browser
+  // default is not an inline style, so it used to arrive as plain text and
+  // the section headings in a pasted discussion came in indistinguishable
+  // from the paragraphs under them.
+  var HEADING_TAGS = { H1: 1, H2: 1, H3: 1, H4: 1, H5: 1, H6: 1 };
 
   function styleSize(el) {
     var raw = el.style && el.style.fontSize;
@@ -398,6 +408,13 @@
       current.runs.push(run);
     }
 
+    function assignBold(ctx) {
+      var next = {};
+      Object.keys(ctx).forEach(function (key) { next[key] = ctx[key]; });
+      next.bold = true;
+      return next;
+    }
+
     function walk(node, ctx) {
       for (var i = 0; i < node.childNodes.length; i += 1) {
         var child = node.childNodes[i];
@@ -422,7 +439,7 @@
         }
         if (BLOCK_TAGS[tag]) {
           startParagraph(child);
-          walk(child, ctx);
+          walk(child, HEADING_TAGS[tag] ? assignBold(ctx) : ctx);
           continue;
         }
         var next = {
