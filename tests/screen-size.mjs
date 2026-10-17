@@ -66,11 +66,16 @@ check('Data/Field uses screenAnchoredImageSize for labels', /screenAnchoredImage
 // shape of the code around it: a lone boundary uses the floating chip and
 // gets no canvas pill, unless a report slide asks for one so that one
 // boundary is drawn the same way five are.
+// The rule, and the fact that both the drawing and the hit test ask it --
+// not the shape of the line around the question. A report slide draws the
+// colour scale and the readings as a box on the page now, so the call sits
+// behind a `chromeOnPage` check and an `if (statsPillOnCanvas(` match broke
+// on a change that altered nothing about the rule.
 check(
   'Single-boundary Topo does not draw a second canvas stats pill',
   /function statsPillOnCanvas\(/.test(topo) &&
     /return areaCount > 1 \|\| \(forSingleBoundary && areaCount === 1\);/.test(topo) &&
-    /if \(statsPillOnCanvas\(/.test(topo),
+    (topo.match(/statsPillOnCanvas\(/g) || []).length >= 3,
 );
 
 const failed = results.filter((r) => !r.ok);
