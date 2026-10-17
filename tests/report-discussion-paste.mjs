@@ -255,6 +255,110 @@ check('clear all formatting leaves the words and takes the rest',
   !/<(b|strong|s|strike|i|em|u)>/i.test(cleared.html) && cleared.text === title.text,
   cleared.html.slice(0, 80));
 
+// The writing area is a box the investigator places. Tim: "if you let me
+// adjust the size of the box then I can use the white space that I want."
+await openDiscussion();
+// Pointer off the sheet and nothing focused: the writing area is being
+// looked at, not worked in.
+await page.evaluate(() => document.activeElement?.blur());
+await page.mouse.move(4, 4);
+await new Promise((r) => setTimeout(r, 400));
+const atRest = await page.evaluate(() => {
+  const box = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-disc-box]');
+  const grips = [...box.querySelectorAll('[data-rb-disc-move], [data-rb-disc-resize]')];
+  return {
+    grips: grips.length,
+    showing: grips.filter((g) => getComputedStyle(g).display !== 'none').length,
+    outline: getComputedStyle(box).outlineStyle,
+  };
+});
+check('the writing area shows no handles until it is pointed at',
+  atRest.grips === 2 && atRest.showing === 0 && atRest.outline === 'none',
+  JSON.stringify(atRest));
+
+function boxNow() {
+  return page.evaluate(() => {
+    const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+    const sr = sheet.getBoundingClientRect();
+    const r = sheet.querySelector('[data-rb-disc-box]').getBoundingClientRect();
+    return {
+      x: +(((r.left - sr.left) / sr.width) * 100).toFixed(1),
+      y: +(((r.top - sr.top) / sr.height) * 100).toFixed(1),
+      w: +((r.width / sr.width) * 100).toFixed(1),
+      h: +((r.height / sr.height) * 100).toFixed(1),
+      sheets: document.querySelectorAll(
+        '.rb-thumb[data-page-id="section-discussion"], .rb-thumb[data-page-id^="discussion-cont"]').length,
+    };
+  });
+}
+// How the narrative is divided between the sheets. A smaller box does not
+// always need one more sheet -- the one after it may have had room -- so
+// what proves the re-flow ran is that the first sheet gives text up.
+function splitNow() {
+  return page.evaluate(async (id) => {
+    const record = await window.ToolboxDB.getCustomerFile(id);
+    const api = window.ToolboxReportText;
+    return (record.reportBuilder?.pages || [])
+      .filter((p) => p.type === 'section' && p.meta?.sectionId === 'discussion')
+      .map((p) => api.normalize(p.reportText?.body || '').paragraphs.length);
+  }, FILE);
+}
+async function dragGrip(selector, dx, dy) {
+  const at = await page.evaluate((sel) => {
+    const g = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) ' + sel);
+    g.style.display = 'block';
+    const r = g.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  }, selector);
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.down();
+  await page.mouse.move(at.x + dx, at.y + dy, { steps: 12 });
+  await page.mouse.up();
+  await new Promise((r) => setTimeout(r, 1500));
+}
+
+const boxStart = await boxNow();
+const splitStart = await splitNow();
+await dragGrip('[data-rb-disc-resize]', -220, -150);
+const boxSmaller = await boxNow();
+const splitSmaller = await splitNow();
+check('dragging its corner makes the writing area smaller',
+  boxSmaller.w < boxStart.w - 5 && boxSmaller.h < boxStart.h - 5,
+  JSON.stringify({ boxStart, boxSmaller }));
+check('and the narrative re-flows into the room that is left',
+  splitSmaller[0] < splitStart[0] &&
+  splitSmaller.reduce((a, b) => a + b, 0) === splitStart.reduce((a, b) => a + b, 0),
+  JSON.stringify({ splitStart, splitSmaller }));
+
+await dragGrip('[data-rb-disc-move]', 60, 40);
+const boxMoved = await boxNow();
+check('dragging its corner handle moves it without resizing it',
+  boxMoved.x > boxSmaller.x + 1 && boxMoved.y > boxSmaller.y + 1 &&
+  Math.abs(boxMoved.w - boxSmaller.w) < 1.5 && Math.abs(boxMoved.h - boxSmaller.h) < 1.5,
+  JSON.stringify({ boxSmaller, boxMoved }));
+
+await page.waitForFunction(
+  () => /^Saved/.test(document.querySelector('#rb-save-status')?.textContent || ''),
+  { timeout: 15000 });
+await page.goto(`${BASE}#/file/${FILE}/report`, { waitUntil: 'networkidle0' });
+await page.waitForFunction(
+  () => document.querySelector('.rb-thumb[data-page-id="section-discussion"]'), { timeout: 25000 });
+await openDiscussion();
+const boxReopened = await boxNow();
+check('where it was put is where it is when the report is reopened',
+  Math.abs(boxReopened.x - boxMoved.x) < 1.5 && Math.abs(boxReopened.y - boxMoved.y) < 1.5 &&
+  Math.abs(boxReopened.w - boxMoved.w) < 1.5 && Math.abs(boxReopened.h - boxMoved.h) < 1.5,
+  JSON.stringify({ boxMoved, boxReopened }));
+
+// And a way back to the placement the shipped reports use.
+await page.evaluate(() => document.querySelector('[data-rb-disc-reset]')?.click());
+await new Promise((r) => setTimeout(r, 1800));
+const boxReset = await boxNow();
+check('Reset writing area puts it back where the reports put it',
+  Math.abs(boxReset.x - boxStart.x) < 1 && Math.abs(boxReset.w - boxStart.w) < 1 &&
+  Math.abs(boxReset.h - boxStart.h) < 1,
+  JSON.stringify({ boxStart, boxReset }));
+
 // Take it away again and the sheet it needed goes with it.
 await openDiscussion();
 await page.evaluate(() => {

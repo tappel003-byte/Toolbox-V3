@@ -203,6 +203,8 @@ body.report-builder-open .canvas {
 .rb-sheet--thumb .rb-floor-overview__remove,
 .rb-sheet--thumb .rb-floor-empty,
 .rb-sheet--thumb .rb-discussion__overflow,
+.rb-sheet--thumb .rb-discussion__move,
+.rb-sheet--thumb .rb-discussion__resize,
 /* The live drawing cannot mount in a preview, and saying so on a stamp is
    noise -- the picture of the drawing goes here instead, once one has been
    taken. */
@@ -2857,12 +2859,65 @@ body.report-builder-open .canvas {
   font-family: Calibri, Carlito, "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
+/* The writing area as a placed box: where it sits and how big it is belong
+   to the investigator, and the white space around it is his. Tim: "if you
+   let me adjust the size of the box then I can use the white space that I
+   want." It starts where the shipped decks put it. */
+.rb-discussion__box {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  column-gap: inherit;
+}
+
+/* Its edge and its two pulls appear when it is pointed at, not before --
+   the rule every other piece on a sheet now follows. */
+.rb-discussion:not(.is-locked) .rb-discussion__box:hover,
+.rb-discussion:not(.is-locked) .rb-discussion__box:focus-within {
+  outline: 1px dashed rgba(139, 94, 60, 0.4);
+  outline-offset: 3px;
+}
+
+.rb-discussion__move,
+.rb-discussion__resize {
+  position: absolute;
+  display: none;
+  z-index: 3;
+  width: 14px;
+  height: 14px;
+}
+
+.rb-discussion__move {
+  left: -3px;
+  top: -3px;
+  border-left: 2px solid var(--rb-copper, #8B5E3C);
+  border-top: 2px solid var(--rb-copper, #8B5E3C);
+  cursor: move;
+}
+
+.rb-discussion__resize {
+  right: -3px;
+  bottom: -3px;
+  border-right: 2px solid var(--rb-copper, #8B5E3C);
+  border-bottom: 2px solid var(--rb-copper, #8B5E3C);
+  cursor: nwse-resize;
+}
+
+.rb-discussion:not(.is-locked) .rb-discussion__box:hover .rb-discussion__move,
+.rb-discussion:not(.is-locked) .rb-discussion__box:hover .rb-discussion__resize,
+.rb-discussion:not(.is-locked) .rb-discussion__box:focus-within .rb-discussion__move,
+.rb-discussion:not(.is-locked) .rb-discussion__box:focus-within .rb-discussion__resize {
+  display: block;
+}
+
 /* 12 pt on an 11 in page = 1.515cqh. No clamp: a clamped size stops scaling
    and would print smaller than it previews. */
 .rb-discussion__body {
   position: absolute;
+  inset: 0;
   z-index: 1;
   box-sizing: border-box;
+  column-gap: inherit;
   column-count: 2;
   /* Fill the first column, then flow into the second -- what a PowerPoint
      two-column text box does, and what the shipped reports show. Balancing
@@ -2894,10 +2949,7 @@ body.report-builder-open .canvas {
   outline-offset: 2px;
 }
 
-.rb-discussion:not(.is-locked) .rb-discussion__body:hover {
-  outline: 1px dashed rgba(139, 94, 60, 0.3);
-  outline-offset: 2px;
-}
+
 
 .rb-discussion__body .rb-rt__p { margin: 0 0 0.75em; }
 .rb-discussion__body .rb-rt__p:last-child { margin-bottom: 0; }
@@ -2972,8 +3024,11 @@ body.report-builder-open .canvas {
 .rb-brand:not(.is-locked):hover .rb-brand__resize { display: block; }
 
 @media print {
-  .rb-brand__resize { display: none !important; }
-  .rb-brand { outline: none !important; }
+  .rb-brand__resize,
+  .rb-discussion__move,
+  .rb-discussion__resize { display: none !important; }
+  .rb-brand,
+  .rb-discussion__box { outline: none !important; }
 }
 
 /* Said on screen, never printed: the page cannot show what does not fit. */

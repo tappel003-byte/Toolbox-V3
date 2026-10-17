@@ -1997,6 +1997,7 @@
       var discussionEl = window.ToolboxReportDiscussion.renderPage(page, {
         locked: !!(page.meta && page.meta.locked),
         facts: page._facts || null,
+        box: page._discussionBox || null,
       });
       margin.appendChild(discussionEl);
       if (!thumb) watchDiscussionOverflow(discussionEl);
@@ -2190,7 +2191,8 @@
     };
   }
 
-  function persistableDocument(pages, activePageId, prior, floorLayout, coverLayout, brandBox, floorCamera, floorView, floorFramed) {
+  function persistableDocument(pages, activePageId, prior, floorLayout, coverLayout, brandBox,
+    floorCamera, floorView, floorFramed, discussionBox) {
     var notes = collectPenLogNotes(pages);
     if ((!notes || !Object.keys(notes).length) && prior && prior.penLog && prior.penLog.notes) {
       notes = prior.penLog.notes;
@@ -2227,6 +2229,10 @@
     var discApi = window.ToolboxReportDiscussion;
     var brand = brandBox || (prior && prior.brandBox);
     if (brand) doc.brandBox = discApi ? discApi.normalizeBrandBox(brand) : brand;
+    // One writing area for the whole discussion, continuation sheets
+    // included, so the re-flow measures the same box it splits by.
+    var discBody = discussionBox || (prior && prior.discussionBox);
+    if (discBody) doc.discussionBox = discApi ? discApi.normalizeBodyBox(discBody) : discBody;
     var camera = floorCamera || (prior && prior.floorCamera);
     if (camera) doc.floorCamera = JSON.parse(JSON.stringify(camera));
     var view = floorView || (prior && prior.floorView);
@@ -2362,6 +2368,11 @@
     // otherwise, so a report saved before this still shows where its logo was
     // put (the per-sheet copy is adopted on open).
     var brandBox = null;
+    // Where the discussion's writing area sits and how big it is. One
+    // placement for the whole discussion; null until the investigator moves
+    // it, and then it is his. Tim: "if you let me adjust the size of the box
+    // then I can use the white space that I want."
+    var discussionBox = null;
     // One camera for every Floor Survey slide: the same part of the plan at the
     // same zoom, so clicking through Combined, Main Level, Kitchen and Garage
     // is a flip book -- the building does not move. The chrome (colour scale,
@@ -2432,6 +2443,7 @@
     var coverOverviewUrl = '';
     var floorDrag = null;
     var coverDrag = null;
+    var discDrag = null;
     pageSeq = pages.length;
 
     host.innerHTML = shellHtml();
@@ -2525,7 +2537,8 @@
         brandBox,
         floorCamera,
         floorView,
-        floorFramed
+        floorFramed,
+        discussionBox
       );
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;
@@ -2970,6 +2983,7 @@
         } else if (item.type === 'section' && item.meta &&
                    item.meta.sectionId === 'discussion') {
           item._facts = discussionFacts(item);
+          item._discussionBox = discussionBox;
         }
       });
       // The cover's aerial view belongs to the book, not to the cover, so
@@ -3191,6 +3205,20 @@
           ? 'The mark is placed. It sits here on every page that carries it.'
           : 'Drag the mark to move it. Drag its corner to size it. Lock when it sits where you want it.';
         railTopEl.appendChild(brandHint);
+        // A box dragged small cannot be put back by hand, so the way back to
+        // the placement the shipped decks measure is one button. Offered only
+        // once it has been moved.
+        var discApiRail = window.ToolboxReportDiscussion;
+        if (page.type === 'section' && discApiRail &&
+            typeof discApiRail.isDefaultBodyBox === 'function' &&
+            !discApiRail.isDefaultBodyBox(discussionBox)) {
+          railTopEl.appendChild(railButton(
+            'Reset writing area', 'quiet', 'data-rb-disc-reset', '1'));
+          var resetHint = document.createElement('p');
+          resetHint.className = 'rb-panel__lead';
+          resetHint.textContent = 'Back to where the reports put it.';
+          railTopEl.appendChild(resetHint);
+        }
         if (railBodyEl) railBodyEl.textContent = '';
         if (railFootEl) railFootEl.textContent = '';
         return;
@@ -3331,6 +3359,17 @@
     // delegation rather than by listeners attached once at mount.
     if (railEl) {
       railEl.addEventListener('click', function (event) {
+        var discReset = event.target.closest('[data-rb-disc-reset]');
+        if (discReset) {
+          event.preventDefault();
+          var dRapi = window.ToolboxReportDiscussion;
+          discussionBox = dRapi ? dRapi.defaultBodyBox() : null;
+          markDirty();
+          if (reflowDiscussion()) flushSave().catch(function () {});
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
         var brandLockBtn = event.target.closest('[data-rb-brand-lock]');
         if (brandLockBtn) {
           event.preventDefault();
@@ -5082,6 +5121,23 @@
       var editableTarget = event.target.closest('[data-rb-rich]');
       if (editableTarget && editableTarget.getAttribute('contenteditable') === 'true') return;
       var current = activePage();
+      var discGrip = event.target.closest('[data-rb-disc-move], [data-rb-disc-resize]');
+      if (discGrip) {
+        var discStage = stageRect('.rb-sheet__margin--discussion');
+        if (!discStage || discStage.width < 8 || discStage.height < 8) return;
+        event.preventDefault();
+        var dApi = window.ToolboxReportDiscussion;
+        discDrag = {
+          resize: !!event.target.closest('[data-rb-disc-resize]'),
+          startX: event.clientX,
+          startY: event.clientY,
+          stageW: discStage.width,
+          stageH: discStage.height,
+          box: dApi ? dApi.normalizeBodyBox(discussionBox) : discussionBox,
+        };
+        try { discGrip.setPointerCapture(event.pointerId); } catch (_) {}
+        return;
+      }
       if (current && current.type === 'cover') {
         if (coverLayout && coverLayout.locked) return;
         var coverResize = event.target.closest('[data-rb-cover-resize]');
@@ -5142,6 +5198,26 @@
     });
 
     sheetEl.addEventListener('pointermove', function (event) {
+      if (discDrag) {
+        var ddx = ((event.clientX - discDrag.startX) / discDrag.stageW) * 100;
+        var ddy = ((event.clientY - discDrag.startY) / discDrag.stageH) * 100;
+        var dApi2 = window.ToolboxReportDiscussion;
+        var nextBox = {
+          x: discDrag.box.x + (discDrag.resize ? 0 : ddx),
+          y: discDrag.box.y + (discDrag.resize ? 0 : ddy),
+          w: discDrag.box.w + (discDrag.resize ? ddx : 0),
+          h: discDrag.box.h + (discDrag.resize ? ddy : 0),
+        };
+        discussionBox = dApi2 ? dApi2.normalizeBodyBox(nextBox) : nextBox;
+        // Moved live on the sheet; the re-flow waits for the pointer to come
+        // up, because splitting the narrative again on every pixel would
+        // rebuild the book sixty times a second.
+        var liveBox = sheetEl.querySelector('[data-rb-disc-box]');
+        if (liveBox && dApi2) liveBox.style.cssText = dApi2.bodyStyle
+          ? dApi2.bodyStyle(discussionBox)
+          : liveBox.style.cssText;
+        return;
+      }
       if (coverDrag) {
         var coverPage = activePage();
         if (!coverPage || coverPage.type !== 'cover') return;
@@ -5262,6 +5338,15 @@
     });
 
     function endLayoutDrag() {
+      if (discDrag) {
+        discDrag = null;
+        markDirty();
+        // The room changed, so the split has to change with it: text that no
+        // longer fits moves on, and text that now does comes back.
+        if (reflowDiscussion()) flushSave().catch(function () {});
+        renderPages();
+        return;
+      }
       if (coverDrag) {
         coverDrag = null;
         markDirty();
@@ -5500,6 +5585,9 @@
       }
       if (savedDoc && savedDoc.brandBox && window.ToolboxReportDiscussion) {
         brandBox = window.ToolboxReportDiscussion.normalizeBrandBox(savedDoc.brandBox);
+      }
+      if (savedDoc && savedDoc.discussionBox && window.ToolboxReportDiscussion) {
+        discussionBox = window.ToolboxReportDiscussion.normalizeBodyBox(savedDoc.discussionBox);
       }
       if (savedDoc && savedDoc.floorCamera) floorCamera = savedDoc.floorCamera;
       if (savedDoc && savedDoc.floorView) floorView = reviveFloorView(savedDoc.floorView);

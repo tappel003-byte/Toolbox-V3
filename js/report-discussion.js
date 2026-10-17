@@ -45,13 +45,53 @@
   var BRAND = { x: 5.68, y: 94.39, w: 11.32, h: 2.55 };
   var BODY_BOTTOM = 93.49; // text stops above the brand mark
 
-  function bodyStyle() {
-    return 'left:' + BODY.x + '%;top:' + BODY.y + '%;width:' + BODY.w + '%;' +
+  // Where the writing starts, as the decks set it. From here it is the
+  // investigator's: the box is dragged and sized on the page, and what it
+  // does not cover is white space he chose. Tim: "if you let me adjust the
+  // size of the box then I can use the white space that I want."
+  function defaultBodyBox() {
+    return { x: BODY.x, y: BODY.y, w: BODY.w, h: BODY_BOTTOM - BODY.y };
+  }
+
+  // One placement for the whole discussion, continuation sheets included.
+  // The re-flow measures one sheet and splits the narrative by it, so two
+  // sheets with different writing areas would be split by the wrong one --
+  // and a discussion that changes shape halfway through is not a report.
+  function normalizeBodyBox(raw) {
+    var src = raw && typeof raw === 'object' ? raw : {};
+    var fb = defaultBodyBox();
+    function clamp(n, lo, hi, dflt) {
+      var v = typeof n === 'number' && isFinite(n) ? n : dflt;
+      return Math.round(Math.max(lo, Math.min(hi, v)) * 100) / 100;
+    }
+    var box = {
+      x: clamp(src.x, 0, 80, fb.x),
+      y: clamp(src.y, 0, 85, fb.y),
+      // Narrower than a fifth of the page is not two columns of anything, and
+      // shorter than a tenth cannot hold a paragraph.
+      w: clamp(src.w, 20, 100, fb.w),
+      h: clamp(src.h, 10, 100, fb.h),
+    };
+    if (box.x + box.w > 100) box.w = Math.round((100 - box.x) * 100) / 100;
+    if (box.y + box.h > 100) box.h = Math.round((100 - box.y) * 100) / 100;
+    return box;
+  }
+
+  function isDefaultBodyBox(raw) {
+    var box = normalizeBodyBox(raw);
+    var fb = defaultBodyBox();
+    return Math.abs(box.x - fb.x) < 0.02 && Math.abs(box.y - fb.y) < 0.02 &&
+      Math.abs(box.w - fb.w) < 0.02 && Math.abs(box.h - fb.h) < 0.02;
+  }
+
+  function bodyStyle(raw) {
+    var box = normalizeBodyBox(raw);
+    return 'left:' + box.x + '%;top:' + box.y + '%;width:' + box.w + '%;' +
       // cqw, not %: a percentage column-gap resolves against a box that is not
       // the page, which collapsed the gutter to 0.43% of the sheet. cqw is a
       // share of the sheet itself, so the two columns come out at the deck's
-      // 44.7% each.
-      'height:' + (BODY_BOTTOM - BODY.y) + '%;column-gap:' + BODY.gutter + 'cqw;';
+      // 44.7% each -- and stay that gutter whatever width the box is given.
+      'height:' + box.h + '%;column-gap:' + BODY.gutter + 'cqw;';
   }
 
   // Heading + value on one line, as the decks set them: the label bold, the
@@ -104,9 +144,16 @@
     // The page frame is drawn once against the sheet, the same shape in the
     // same place on every page, so this one no longer draws its own.
 
+    // The box is the placement; the body fills it. The handles have to sit
+    // beside the writing rather than inside it -- anything inside a
+    // contenteditable is content, and would be typed over and saved.
+    var boxEl = document.createElement('div');
+    boxEl.className = 'rb-discussion__box';
+    boxEl.setAttribute('data-rb-disc-box', '1');
+    boxEl.style.cssText = bodyStyle(opts.box);
+
     var body = document.createElement('div');
     body.className = 'rb-discussion__body rb-rt';
-    body.style.cssText = bodyStyle();
     body.setAttribute('data-rb-section-field', 'body');
     body.setAttribute('data-rb-rich', 'discussion:body');
     body.setAttribute('role', 'textbox');
@@ -126,7 +173,20 @@
     }
     if (value == null && opts.facts) value = seedBody(opts.facts);
     body.innerHTML = api ? api.toHtml(value) : '';
-    root.appendChild(body);
+    boxEl.appendChild(body);
+    if (!locked) {
+      var move = document.createElement('span');
+      move.className = 'rb-discussion__move';
+      move.setAttribute('data-rb-disc-move', '1');
+      move.setAttribute('title', 'Drag to move the writing area');
+      boxEl.appendChild(move);
+      var grip = document.createElement('span');
+      grip.className = 'rb-discussion__resize';
+      grip.setAttribute('data-rb-disc-resize', '1');
+      grip.setAttribute('title', 'Drag to size the writing area');
+      boxEl.appendChild(grip);
+    }
+    root.appendChild(boxEl);
 
     // The logo is not drawn here. It is one placement for the whole book, on
     // every page type, so Report Builder draws it against the sheet rather
@@ -153,6 +213,10 @@
   window.ToolboxReportDiscussion = {
     renderPage: renderPage,
     normalizeBrandBox: normalizeBrandBox,
+    normalizeBodyBox: normalizeBodyBox,
+    bodyStyle: bodyStyle,
+    defaultBodyBox: defaultBodyBox,
+    isDefaultBodyBox: isDefaultBodyBox,
     BRAND: BRAND,
     seedBody: seedBody,
     BODY_PT: BODY_PT,
