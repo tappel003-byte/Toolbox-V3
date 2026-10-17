@@ -135,18 +135,18 @@ await openReport();
 const full = await picturesSheet(0);
 check('a full page is still five across and two down',
   full.cells === 10 && full.cols === 5 && full.rows === 2, JSON.stringify(full));
-// Four across and five across, and nothing else. Tim, Oct 17: "one by 10 and
-// 2 by 5 is ridiculous, I'll never use that. Three by four probably won't
-// ever use... four by three or five by two are the only ways we can ever
-// show pictures."
-check('the rail offers the two grids and names each by the shape it makes',
-  full.buttons.join(' | ') === '4 × 3 | 5 × 2', full.buttons.join(' | '));
+// Two, three, four or five in a row, and nothing outside that. Tim, Oct 17:
+// "three big pictures, two big pictures, four big pictures, five big
+// pictures, two in a row etc. Too small of a picture just does not work --
+// some of that one by 10 that you had, or 10 by one, it just did not work."
+check('the rail offers every grid and names each by the shape it makes',
+  full.buttons.join(' | ') === '2 × 5 | 3 × 4 | 4 × 3 | 5 × 2', full.buttons.join(' | '));
 
 const last = await picturesSheet(1);
-check('a short page is still laid out on one of the two',
-  last.cells === 1 && (last.cols === 4 || last.cols === 5), JSON.stringify(last));
-check('and both are offered on it, however few pictures it holds',
-  last.buttons.join(' | ') === '4 × 1 | 5 × 1', last.buttons.join(' | '));
+check('a short page is laid out on one of them, never one picture wide',
+  last.cells === 1 && last.cols >= 2 && last.cols <= 5, JSON.stringify(last));
+check('and all four are offered on it, however few pictures it holds',
+  last.buttons.join(' | ') === '2 × 1 | 3 × 1 | 4 × 1 | 5 × 1', last.buttons.join(' | '));
 
 // A grid chosen by hand is the grid that is kept.
 await picturesSheet(0);

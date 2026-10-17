@@ -739,30 +739,35 @@
   // to 5 by 2 or 4 by 2 or 4 by 1, 5 by 1, then it would probably look less
   // improper."
   /**
-   * The two ways a page of photographs is ever laid out.
+   * How many pictures stand in a row: two, three, four or five.
    *
-   * Tim, Oct 17: "one by 10 and 2 by 5 is ridiculous, I'll never use that.
-   * Three by four probably won't ever use... no, I don't want it. Four by
-   * three or five by two are the only ways we can ever show pictures."
-   * Narrower than four makes each picture big enough to carry the page on
-   * its own, which is not what a locations-and-photographs sheet is for.
+   * Tim, Oct 17: "three big pictures, two big pictures, four big pictures,
+   * five big pictures, two in a row etc. Too small of a picture just does
+   * not work -- some of that one by 10 that you had, or 10 by one, it just
+   * did not work." So five is the ceiling, because narrower than that each
+   * picture stops being readable, and one across is out: a single column
+   * down the sheet was the layout he threw out twice.
    */
-  var PICTURES_ACROSS = [4, 5];
+  var PICTURES_ACROSS = [2, 3, 4, 5];
 
   /**
    * The grid a page falls into when nobody has chosen one.
    *
-   * Five across is what a full page has always looked like; four is the one
-   * to fall to when five would leave a row with a single picture stranded in
-   * it. The rule is the same as it was -- fewest empty cells, the widest of
-   * those when two tie -- read over the two grids that are left.
+   * Fewest empty cells, and the widest of those when two tie -- but never a
+   * third row while a grid of two will hold the page, because rows share the
+   * height between them and a third one is what makes the pictures too small
+   * to read. Ten fall five and five; eight go four and four; four stand two
+   * and two; three stand in a row of three.
    */
   function defaultPicturesAcross(count) {
     var n = Math.max(1, Number(count) || 1);
-    var best = PICTURES_ACROSS[PICTURES_ACROSS.length - 1];
+    var widest = PICTURES_ACROSS[PICTURES_ACROSS.length - 1];
+    var shallow = n <= widest * 2;
+    var best = widest;
     var bestGaps = Infinity;
     PICTURES_ACROSS.forEach(function (cols) {
       var rows = Math.ceil(n / cols);
+      if (shallow && rows > 2) return;
       var gaps = (rows * cols) - n;
       if (gaps < bestGaps || (gaps === bestGaps && cols > best)) {
         best = cols;
