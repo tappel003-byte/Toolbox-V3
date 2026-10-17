@@ -511,6 +511,122 @@ check('phone pen log leaves a usable report note and keeps the sheet clear',
   JSON.stringify(phone));
 await page.screenshot({ path: `${OUT}/pen-log-phone.png`, fullPage: true });
 
+// The plan and the schedule are pieces the investigator places. Tim:
+// "Everything here needs to be movable. I should be able to move the floor
+// plan if I want, and I want to be able to move the notes if I want."
+// Back to the desk: placing pieces is pointer work, and the phone above
+// scales the whole sheet down far too small to drag a corner on.
+await page.setViewport({ width: 1440, height: 960, deviceScaleFactor: 1 });
+await page.goto(`${BASE}#/`, { waitUntil: 'networkidle0' });
+await page.goto(`${BASE}#/file/rb-penlog/report`, { waitUntil: 'networkidle0' });
+await page.waitForFunction(
+  () => !!document.querySelector('.rb-sheet:not(.rb-sheet--thumb) .rb-penlog'), { timeout: 20000 });
+await page.evaluate(() => {
+  const thumb = [...document.querySelectorAll('.rb-thumb')]
+    .find((t) => /^distress-/.test(t.getAttribute('data-page-id') || ''));
+  thumb?.click();
+});
+await new Promise((r) => setTimeout(r, 1200));
+await page.mouse.move(4, 4);
+await new Promise((r) => setTimeout(r, 300));
+
+function penBoxes() {
+  return page.evaluate(() => {
+    const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+    const sr = sheet.getBoundingClientRect();
+    const read = (which) => {
+      const el = sheet.querySelector(`[data-rb-penlog-box="${which}"]`);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return {
+        x: +(((r.left - sr.left) / sr.width) * 17).toFixed(2),
+        y: +(((r.top - sr.top) / sr.height) * 11).toFixed(2),
+        w: +((r.width / sr.width) * 17).toFixed(2),
+        h: +((r.height / sr.height) * 11).toFixed(2),
+      };
+    };
+    const grips = [...sheet.querySelectorAll('[data-rb-penlog-move], [data-rb-penlog-resize]')];
+    return {
+      plan: read('plan'),
+      schedule: read('schedule'),
+      grips: grips.length,
+      showing: grips.filter((g) => getComputedStyle(g).display !== 'none').length,
+    };
+  });
+}
+async function dragPen(selector, dx, dy) {
+  // Point at the piece first, the way the investigator does: the handles
+  // are revealed by hovering the box, not by being forced visible.
+  const box = await page.evaluate((sel) => {
+    const g = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) ' + sel);
+    // Just inside the corner the handle sits on, rather than the middle of
+    // the piece: the plan's own drawing fills the centre.
+    const r = g.closest('[data-rb-penlog-box]').getBoundingClientRect();
+    const corner = /resize/.test(sel);
+    return corner
+      ? { x: r.right - 6, y: r.bottom - 6 }
+      : { x: r.left + 6, y: r.top + 6 };
+  }, selector);
+  await page.mouse.move(box.x, box.y);
+  await new Promise((r) => setTimeout(r, 250));
+  const at = await page.evaluate((sel) => {
+    const g = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) ' + sel);
+    const r = g.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2, shown: getComputedStyle(g).display };
+  }, selector);
+  if (at.shown === 'none') throw new Error('handle did not appear on hover: ' + selector);
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.down();
+  await page.mouse.move(at.x + dx, at.y + dy, { steps: 12 });
+  await page.mouse.up();
+  await new Promise((r) => setTimeout(r, 1500));
+}
+
+const penStart = await penBoxes();
+check('both pieces carry handles, and show none until pointed at',
+  penStart.grips === 4 && penStart.showing === 0, JSON.stringify(penStart));
+
+await dragPen('[data-rb-penlog-move="plan"]', 60, 40);
+const penMoved = await penBoxes();
+check('the floor plan goes where it is dragged',
+  penMoved.plan.x > penStart.plan.x + 0.3 && penMoved.plan.y > penStart.plan.y + 0.2 &&
+  Math.abs(penMoved.schedule.x - penStart.schedule.x) < 0.1,
+  JSON.stringify({ penStart: penStart.plan, penMoved: penMoved.plan }));
+
+await dragPen('[data-rb-penlog-resize="schedule"]', 90, -60);
+const penSized = await penBoxes();
+check('the notes take the size they are given, and the plan stays put',
+  penSized.schedule.w > penMoved.schedule.w + 0.5 &&
+  penSized.schedule.h < penMoved.schedule.h - 0.3 &&
+  Math.abs(penSized.plan.x - penMoved.plan.x) < 0.1,
+  JSON.stringify({ before: penMoved.schedule, after: penSized.schedule }));
+
+await page.waitForFunction(
+  () => /^Saved/.test(document.querySelector('#rb-save-status')?.textContent || ''), { timeout: 15000 });
+const penStored = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('rb-penlog');
+  return (record.reportBuilder || {}).penLogLayout || null;
+});
+check('the placement is kept on the Customer File',
+  !!penStored && Math.abs(penStored.schedule.w - penSized.schedule.w) < 0.3,
+  JSON.stringify(penStored));
+
+await page.goto(`${BASE}#/`, { waitUntil: 'networkidle0' });
+await page.goto(`${BASE}#/file/rb-penlog/report`, { waitUntil: 'networkidle0' });
+await page.waitForFunction(
+  () => !!document.querySelector('.rb-sheet:not(.rb-sheet--thumb)'), { timeout: 20000 });
+await page.evaluate(() => {
+  const thumb = [...document.querySelectorAll('.rb-thumb')]
+    .find((t) => /^distress-/.test(t.getAttribute('data-page-id') || ''));
+  thumb?.click();
+});
+await new Promise((r) => setTimeout(r, 1500));
+const penReopened = await penBoxes();
+check('and it is still where it was put when the report is reopened',
+  Math.abs(penReopened.plan.x - penSized.plan.x) < 0.3 &&
+  Math.abs(penReopened.schedule.w - penSized.schedule.w) < 0.3,
+  JSON.stringify({ penSized, penReopened }));
+
 await browser.close();
 
 const failed = results.filter((item) => !item.ok);
