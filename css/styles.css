@@ -4225,6 +4225,15 @@ button.cf-home__delete[hidden] {
   white-space: nowrap;
 }
 
+/* Where else this picture is listed. A tile has no room to say it, so the
+   lightbox does. */
+.explorer-lightbox__also {
+  margin: 0;
+  padding: 0 12px 8px;
+  color: rgba(246, 241, 232, 0.72);
+  font-size: 12px;
+}
+
 .explorer-lightbox__stage {
   position: relative;
   flex: 1;

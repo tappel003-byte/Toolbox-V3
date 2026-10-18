@@ -165,8 +165,10 @@ try {
       { key: `media/${fixture.planId}`, size: fixture.png.length, contentType: 'image/png', purpose: 'plan', label: 'Floor plan — Ground' },
       { key: 'media/ph_present', size: fixture.png.length, contentType: 'image/jpeg', purpose: 'distress-photo', label: 'Distress Survey photograph' },
       { key: 'media/ph_quick', size: fixture.png.length, contentType: 'image/jpeg', purpose: 'quick-capture', label: 'Quick Capture photo — porch.jpg' },
-      { key: 'media/ph_loose', size: fixture.png.length, contentType: 'image/jpeg', purpose: 'unassigned-photo', label: 'Unassigned photo' },
-      { key: 'media/ph_general', size: fixture.png.length, contentType: 'image/jpeg', purpose: 'general-photo', label: 'General photo — Exterior overview' },
+      // No content type, exactly as the Cabinet reports these on real jobs.
+      // They are still photographs, and they still belong on the sheet.
+      { key: 'media/ph_loose', size: fixture.png.length, purpose: 'unassigned-photo', label: 'Unassigned photo' },
+      { key: 'media/ph_general', size: fixture.png.length, purpose: 'general-photo', label: 'General photo — Exterior overview' },
       { key: 'media/ph_general_missing', missing: true, purpose: 'general-photo', label: 'General photo' },
       { key: 'media/fsrec_canvas-ground', size: fixture.pdf.length, contentType: 'application/pdf', purpose: 'floor-pdf', label: 'Floor Survey recovery PDF — Ground' },
       { key: 'media/dxfig_ground', size: fixture.png.length, contentType: 'image/png', purpose: 'diagnostics-figure', label: 'Diagnostics figure — Ground' },
@@ -296,6 +298,11 @@ try {
     const objectCount = document.querySelectorAll('.explorer-row[data-key]').length
       + document.querySelectorAll('.explorer-tile[data-key]').length;
     const tileCount = document.querySelectorAll('.explorer-tile[data-key]').length;
+    // The two the Cabinet reported with no content type at all.
+    const untypedOnSheet = ['media/ph_loose', 'media/ph_general'].every(function (key) {
+      const el = document.querySelector(`[data-key="${key}"]`);
+      return !!el && el.classList.contains('explorer-tile');
+    });
     const sheetCount = document.querySelectorAll('.explorer-sheet').length;
     const note = document.querySelector('.explorer-note');
     const unreferenced = document.querySelector('[data-key="media/ph_unreferenced"]');
@@ -410,6 +417,7 @@ try {
       objectCount,
       tileCount,
       sheetCount,
+      untypedOnSheet,
       recoveryText: recoveryRow ? recoveryRow.innerText : '',
       recoveryActions: recoveryRow ? [...recoveryRow.querySelectorAll('button')].map((button) => button.textContent) : [],
       quickText: quickRow ? quickRow.innerText : '',
@@ -497,6 +505,13 @@ try {
     !flow.detailText.includes('Distress or Quick Capture'));
   check('pictures are a contact sheet, not a list of identical cards',
     flow.tileCount === 6 && flow.sheetCount === 5);
+  // What a stored item is FOR decides whether it is a picture, not what the
+  // server calls it. The Cabinet does not always report a content type, and
+  // when it did not, every photograph fell out of the sheet and into a card
+  // of its own -- Tim, looking at exactly that: "how does this help anybody
+  // to look at one picture at a time?"
+  check('a photograph with no stored type is still on the sheet',
+    flow.untypedOnSheet);
   // Tim: "I want it as the date they were taken, not the date that I
   // downloaded them to the computer." 2026-03-02 is the shutter time seeded
   // into distress.json; the download happens today.

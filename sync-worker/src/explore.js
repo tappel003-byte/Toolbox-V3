@@ -61,11 +61,22 @@ function objectMeta(key, source) {
   return meta;
 }
 
-async function listPrefix(cabinet, prefix) {
+/**
+ * Every object under a prefix.
+ *
+ * `withTypes` asks the store for each object's content type as well. It is not
+ * free -- a listing that carries metadata comes back in smaller pages -- so it
+ * is only asked for where the answer is used. A listing without it reports no
+ * type at all, which is how every stored picture came to be listed as an
+ * ordinary file rather than shown on the contact sheet.
+ */
+async function listPrefix(cabinet, prefix, withTypes) {
   const found = [];
   let cursor;
   for (;;) {
-    const listed = await cabinet.list(cursor ? { prefix: prefix, cursor: cursor } : { prefix: prefix });
+    const options = cursor ? { prefix: prefix, cursor: cursor } : { prefix: prefix };
+    if (withTypes) options.include = ['httpMetadata'];
+    const listed = await cabinet.list(options);
     const objects = listed && listed.objects ? listed.objects : [];
     for (let i = 0; i < objects.length; i++) found.push(objects[i]);
     if (!listed || !listed.truncated) break;
@@ -440,7 +451,7 @@ export async function readCustomerFileListing(cabinet, id) {
   }
   const prefix = 'cf/' + id + '/';
   const indexKey = prefix + 'index.json';
-  const listed = await listPrefix(cabinet, prefix);
+  const listed = await listPrefix(cabinet, prefix, true);
   const stored = [];
   const storedByKey = Object.create(null);
   listed.forEach(function (obj) {

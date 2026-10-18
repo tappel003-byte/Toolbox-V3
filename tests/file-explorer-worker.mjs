@@ -137,21 +137,30 @@ function createCabinet(seed) {
   return {
     ops,
     objects,
+    // R2 reports an object's content type on a listing only when the caller
+    // asks for it. The fake used to hand it over every time, which is how a
+    // listing that never asked still looked right here and reported no types
+    // at all against the real store.
     async list(opts) {
       const prefix = (opts && opts.prefix) || '';
-      ops.push('list ' + prefix);
+      const include = (opts && Array.isArray(opts.include)) ? opts.include : [];
+      const withTypes = include.indexOf('httpMetadata') !== -1;
+      ops.push('list ' + prefix + (withTypes ? ' +types' : ''));
       const keys = [...objects.keys()].filter((key) => key.startsWith(prefix)).sort();
       return {
         truncated: false,
         objects: keys.map((key) => {
           const row = objects.get(key);
-          return {
+          const listedRow = {
             key,
             size: row.bytes.byteLength,
             uploaded: row.uploaded,
             etag: row.etag,
-            httpMetadata: row.contentType ? { contentType: row.contentType } : {},
           };
+          if (withTypes && row.contentType) {
+            listedRow.httpMetadata = { contentType: row.contentType };
+          }
+          return listedRow;
         }),
       };
     },
@@ -425,7 +434,9 @@ const mediaHeads = [
 ];
 check('detail lists only this customer prefix and referenced media heads',
   detailOps.every((op) => {
-    if (op.startsWith('list ')) return op === `list cf/${ID}/`;
+    // +types: a stored file's own content type comes back with the listing,
+    // so a picture stored in the file is recognised as one.
+    if (op.startsWith('list ')) return op === `list cf/${ID}/ +types`;
     if (op.startsWith('head ')) return mediaHeads.includes(op.slice(5));
     if (op.startsWith('read ')) {
       return [

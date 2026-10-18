@@ -216,9 +216,34 @@
   // floor plan, a diagnostics figure. Tim: "These pictures should just be in a
   // folder where you can see a thumbnail of all of them and then click on the
   // pictures to make them bigger -- not one at a time."
+  //
+  // What a stored item is FOR is the first answer, not what the server calls
+  // it. This asked the server's content type alone, and on real jobs the
+  // server does not always have one to give -- so every photograph fell out of
+  // the contact sheet and into a card of its own, which is the screen Tim was
+  // looking at when he asked "how does this help anybody to look at one
+  // picture at a time?". A Distress photograph is a picture whatever the
+  // storage says, and that never changes.
+  const PICTURE_PURPOSES = {
+    'plan': 1,
+    'distress-photo': 1,
+    'quick-capture': 1,
+    'unassigned-photo': 1,
+    'general-photo': 1,
+    'floor-figure': 1,
+    'diagnostics-figure': 1,
+  };
+
+  const PICTURE_NAME = /\.(jpe?g|png|gif|webp|bmp|heic|heif)$/i;
+
   function isPicture(row) {
     if (!row || row.missing) return false;
-    return String(row.contentType || '').toLowerCase().indexOf('image/') === 0;
+    if (String(row.contentType || '').toLowerCase().indexOf('image/') === 0) return true;
+    if (PICTURE_PURPOSES[String(row.purpose || '')]) return true;
+    // Last, the name it was given. A stored file keeps its extension, and an
+    // extension is a better answer than nothing.
+    return PICTURE_NAME.test(String(row.label || '')) ||
+      PICTURE_NAME.test(String(row.key || ''));
   }
 
   const THUMB_EDGE = 320;
@@ -800,6 +825,14 @@
       bar.appendChild(close);
       box.appendChild(bar);
 
+      // Where else this picture is listed. On a row this sat under the title;
+      // a tile has no room for it, so it is said here, which is where the
+      // investigator is when it matters.
+      const also = document.createElement('p');
+      also.className = 'explorer-lightbox__also';
+      also.hidden = true;
+      box.appendChild(also);
+
       const stage = document.createElement('div');
       stage.className = 'explorer-lightbox__stage';
       const prev = document.createElement('button');
@@ -834,6 +867,9 @@
         index = nextIndex;
         const row = rows[index];
         title.textContent = (row._label || 'Picture') + '  ' + (index + 1) + ' of ' + rows.length;
+        const sharedNote = alsoNote(row);
+        also.textContent = sharedNote;
+        also.hidden = !sharedNote;
         prev.disabled = index === 0;
         next.disabled = index === rows.length - 1;
         img.removeAttribute('src');

@@ -212,6 +212,15 @@ try {
       detailNoticeHidden: !!(detailNotice && detailNotice.hidden),
       detailNoticeText: detailNotice ? detailNotice.textContent : '',
       preview: document.querySelector('.explorer-preview__text').textContent,
+      // Stored pictures, as the fallback route reports them: no type at all.
+      untypedTiles: document.querySelectorAll('.explorer-tile[data-key]').length,
+      // A stored picture left as a row. The Floor Survey recovery PDF is not
+      // one -- a PDF is not a picture -- and neither is anything not stored.
+      untypedRows: [...document.querySelectorAll('.explorer-row[data-key]')]
+        .filter((row) => !row.className.includes('missing') &&
+          ['plan', 'distress-photo', 'quick-capture', 'unassigned-photo',
+            'general-photo', 'floor-figure', 'diagnostics-figure']
+            .indexOf(row.dataset.purpose || '') !== -1).length,
       fetchLog,
     };
   }, { files: FILES, plans: PLANS, distress: DISTRESS, floor: FLOOR, diagnostics: DIAGNOSTICS, customer: CUSTOMER });
@@ -226,24 +235,35 @@ try {
   check('the 404 body is not shown as the Explorer screen',
     flow.noticeHidden && flow.noticeText !== 'Not found' && !/^Not found$/.test(flow.rootText),
     flow.noticeText);
+  // The fallback route reports no content type for anything, which is also
+  // true of the Cabinet on real jobs. The pictures still have to reach the
+  // contact sheet, so what shows on the page is a tile's caption -- the part
+  // that tells one picture from its neighbours -- rather than its full label,
+  // which the lightbox gives when the picture is opened. Items that are not
+  // stored stay as rows, under their full names.
   check('opening a file does not stop on explore 404',
     flow.detailText.includes('Plans and canvases') &&
     flow.detailText.includes('Distress Survey') &&
-    flow.detailText.includes('Floor plan — Ground') &&
+    flow.detailText.includes('Quick Capture') &&
+    flow.detailText.includes('Ground') &&
     flow.detailText.includes('Distress Survey photograph') &&
-    flow.detailText.includes('Quick Capture photo — porch.jpg') &&
+    flow.detailText.includes('porch.jpg') &&
     flow.detailText.includes('Unassigned photo') &&
+    flow.detailText.includes('Exterior overview') &&
+    flow.detailText.includes('File overview') &&
     flow.detailText.includes('Unassigned photo — Loose crack') &&
-    flow.detailText.includes('General photo — Exterior overview') &&
-    flow.detailText.includes('General photo — File overview') &&
-    flow.detailText.includes('Also listed in Unassigned photos.') &&
     !flow.detailText.includes('media/room-note') &&
     flow.detailText.includes('Floor Survey recovery PDF — Ground') &&
-    flow.detailText.includes('Diagnostics figure — Ground') &&
     !flow.detailText.includes('Distress or Quick Capture') &&
     /Not stored/.test(flow.detailText) &&
     flow.detailNoticeHidden,
     flow.detailNoticeText + ' ' + flow.detailText);
+  // Every photograph reaches the sheet even though the fallback route knows
+  // no content types. Tim, looking at the one-card-per-picture list this
+  // replaced: "how does this help anybody to look at one picture at a time?"
+  check('photographs reach the contact sheet without the server naming a type',
+    flow.untypedTiles >= 6 && flow.untypedRows === 0,
+    JSON.stringify({ tiles: flow.untypedTiles, rows: flow.untypedRows }));
   check('JSON from the cabinet component route opens as text', flow.preview.includes('plan-1'));
   check('fallback reads do not check out or write',
     flow.fetchLog.every((entry) => entry.method === 'GET') &&
