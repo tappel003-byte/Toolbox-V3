@@ -52,6 +52,39 @@ to use it."
 - **Stats pill size**, behind the sliders icon in Topo.
 - **Send to File Cabinet and Check In**, inside the three-dot menu.
 
+## The File Explorer list
+
+Decided with Tim, Oct 18, 2026, looking at an opened job on his phone. The
+contact sheet landed that morning; this is what is still on the list.
+
+- **A folder view.** Real filenames, folders you walk with a breadcrumb,
+  pictures as a sheet and everything else in a tight table. Tim: "Explorer
+  needs to kind of look and feel like an actual Microsoft file explorer."
+- **Open says what is in a component, not what it is made of.** Today Open on
+  Distress, Floor Survey or Report Builder prints the raw file. Tim: "who in
+  the world is this helpful?" It should read *Floor Survey -- 2 levels · Main
+  Level 48 readings · surveyed Sep 29, 2026*, with Download still handing over
+  the real file and the raw text behind Technical details.
+- **A picture of the survey, before a PDF of it.** Tim: "I wonder if we just
+  for this initially we just take screenshots of the floor level survey, of
+  the distress survey." A picture of the drawing is readable by anyone, costs
+  almost nothing, and can be replaced by a proper PDF later without changing
+  where it lives. Floor Survey already makes a recovery PDF; Report Builder
+  already prints one; Distress has nothing today.
+- **The Cabinet index and the Trash record are not documents.** They sit in the
+  list today as if they were things to open. They belong behind Technical
+  details with the keys and the ids.
+- **The readings CSV, and what X and Y mean.** Tim, on the objection that
+  without a scale the positions are meaningless: "we have our starting point
+  and we actually name it in the beginning, so if we have a starting point we
+  at least have a layout." He is right. The base point is a named origin, so
+  every reading is a true position relative to it -- the shape of the floor,
+  which corner is low, how the slope runs -- and only the *units* are missing.
+  The elevations are real inches either way. BP1 now carries a GPS fix and the
+  front door's facing gives orientation, so origin, bearing and relative
+  positions are all in hand; setting a level's scale is what turns them into
+  distances on the ground.
+
 ## Where the Cabinet is heading
 
 Raised by Tim, Oct 18, 2026, alongside the File Explorer decisions. Neither is
