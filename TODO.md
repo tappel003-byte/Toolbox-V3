@@ -52,6 +52,30 @@ to use it."
 - **Stats pill size**, behind the sliders icon in Topo.
 - **Send to File Cabinet and Check In**, inside the three-dot menu.
 
+## Where the Cabinet is heading
+
+Raised by Tim, Oct 18, 2026, alongside the File Explorer decisions. Neither is
+in the current milestone; both are written down so they do not evaporate.
+
+- **Finding a job by what was in it, not just who it was for.** Tim: "let's say
+  I wanted to find pictures of settlement for a website and I remember one in
+  2022... maybe we have a description of what the job was — real estate
+  inspection, settlement, 6 inches elevation difference, three-quarter inch
+  drywall cracks." The words are already typed: pin notes, the report's
+  discussion, the job type. The headline numbers need no typing at all — the
+  biggest elevation difference and the span it crosses, how many levels, pins
+  and photographs are all computable from the survey when a job is filed. One
+  line of description per job at close-out covers the rest. The limit to state
+  plainly: this searches what was *written* about a picture, never what is
+  *in* it.
+- **A map of filed jobs.** Tim: "what would be really, really cool — we drop a
+  pin on a map with completed reports." The data is already captured: Set Base
+  Point stores a GPS fix with its accuracy, and an address picked from the
+  suggestion list stores its coordinates. So a job is placed from its base
+  point where there is one, and from the address otherwise, with no new
+  service. A map of customers' houses stays behind the same sign-in as
+  everything else.
+
 ## Open elsewhere
 
 - **The Distress field checkpoint.** Floor Survey has one — its recovery PDF.
