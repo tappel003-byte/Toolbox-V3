@@ -95,8 +95,14 @@ in the current milestone; both are written down so they do not evaporate.
 - **Take Over**, and the post-release **Remove From This Device / Keep Local
   Copy / Archive as Revision** choice. Both parked on purpose by
   `MILESTONE.md`.
-- **A real job through a real Check Out.** Fred Keulen is the candidate the
-  milestone names. Nothing has been proven on a real file yet, only in tests.
+- **A real job through a real Check Out.** Not untried, as this line used to
+  say. Real jobs are in the Cabinet -- Chalmers Ford, Fred Keulen, Janis
+  Fensterer, Jason Mitchell -- real reports have been built on them, and Tim
+  checked a file in from his phone on Oct 17 after the refusal-reason fix. What
+  has not been written down is a deliberate two-device round trip: check out on
+  one device, work, check in, and confirm the other device sees the work and
+  gives up its copy. Tim, Oct 18, on the old wording: "that's not all very
+  true, is it -- what do you think I got screenshots from yesterday?"
 
 ## Known, and not a defect
 
