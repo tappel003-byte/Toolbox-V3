@@ -497,7 +497,48 @@ Authorized by Tim after the design was talked through: "It might be best to star
 
 ## Closeout
 
-- The final PDF is the durable closeout record. Exact long-term archival packaging (ZIP structure, folder conventions, etc.) is not yet decided.
+- The final PDF is the durable closeout record.
+
+## The File Cabinet is the repository, and File Explorer is how you look in it
+
+Decided by Tim, Oct 18, 2026, after walking through the File Explorer he built
+in PGG Photo Documentation.
+
+- **The Cabinet holds every job, permanently.** Tim: "ours is potentially going
+  to be the repository for all of our job files." Cloudflare storage is not
+  expensive; until it becomes an issue everything lives there, with a copy
+  downloaded to their own server as backup. Nothing is deleted to free space —
+  that is the standalone staging screen's lifecycle, not this one's.
+- **File Explorer looks and behaves like a real file explorer.** Tim: "Explorer
+  needs to kind of look and feel like an actual Microsoft file explorer, that's
+  the whole point of this." Folders you walk, files with real names, a
+  breadcrumb back up, pictures as a sheet of thumbnails. Tim, on the one-card-
+  per-photograph list it replaced: "How does this help anybody to look at one
+  picture at a time?"
+- **The whole file is visible in the drawer,** not just the pictures. Tim: "all
+  the pieces and parts that make up a report, all of the actual good stuff
+  needs to be visible — PDFs of a floor survey, PDF of the distress survey." If
+  he wants pictures from 2022, or wants to read a readings file looking for
+  half-inch cracks, he does it there.
+- **A readings CSV lives in the Floor Survey folder.** Tim: "in the floor survey
+  folder we should have a CSV file of the XY&Z points."
+- **Two drawers: working and completed.** Tim: "File Cabinet has a folder that
+  we're working on; when it's done it goes into another drawer, and in that
+  drawer we need to be able to see the whole file." A couple of shipped and paid
+  jobs sitting at the top of the working list is what prompted it.
+- **Completed is marked at Check In.** Tim: "when we check a file back into the
+  file cabinet there should be a checkmark showing completed, and then that goes
+  up to Explorer."
+- **Completed jobs are filed by year and month of the floor survey date.** Tim:
+  "floor survey date is the one to go by; if there's no floor survey then
+  distress survey is next; if there is neither, well then we're probably not
+  using this app." So there is no third fallback to design for.
+- **Search by first name, last name, address and city,** and it has to reach
+  filed jobs as well as working ones.
+
+Not decided here: when the PDFs and the CSV are built (at filing, or kept
+current while a job is live), and whether a filed job can be brought back to a
+device or is look-only from then on.
 
 ## Process
 
