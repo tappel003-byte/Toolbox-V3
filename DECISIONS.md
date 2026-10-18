@@ -535,6 +535,15 @@ in PGG Photo Documentation.
   using this app." So there is no third fallback to design for.
 - **Search by first name, last name, address and city,** and it has to reach
   filed jobs as well as working ones.
+- **Search reads a card catalogue, not the jobs.** Tim: "seems to me like we
+  could learn something from a library... I think we just log first name, last
+  name, address, all of those in a table of contents and that's our searchable."
+  One card per job — first and last name, address, city, the field work date
+  that decides where it is filed, whether it is completed, and where the file
+  lives — kept as one small list the Cabinet updates, so finding a job is
+  instant whether it holds fifty or five thousand. The catalogue is a
+  convenience: where a card and its job disagree, the job wins and the card is
+  rewritten.
 
 Not decided here: when the PDFs and the CSV are built (at filing, or kept
 current while a job is live), and whether a filed job can be brought back to a
