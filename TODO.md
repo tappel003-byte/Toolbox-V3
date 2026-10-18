@@ -71,6 +71,22 @@ contact sheet landed that morning; this is what is still on the list.
   almost nothing, and can be replaced by a proper PDF later without changing
   where it lives. Floor Survey already makes a recovery PDF; Report Builder
   already prints one; Distress has nothing today.
+- **What a filed job shows, and what it hides.** Tim: "when the report is
+  completed that is a source of truth... I don't want all of that code, that
+  doesn't mean anything to me -- it might just be, down the road, if I still
+  have all of these things that will mean something to [Toolbox] but not
+  really anything else." So the drawer shows the report, the floor survey
+  picture and its readings, the distress map and its pin list, the
+  photographs and the plans. The component files stay stored -- they are the
+  only thing that could rebuild a job inside Toolbox -- but behind Technical
+  details, with Download still handing them over. One distinction to hold on
+  to: the report is the source of truth for what was *concluded*, the
+  readings for what was *measured*, and a dispute years later wants both.
+- **Distress gets the same pair as Floor Survey.** The picture map -- the plan
+  with its numbered pins -- and the pins as a readable file: pin number,
+  level, room, the note, and which photographs belong to it. That is what
+  makes "find the half-inch cracks" work, and it is the same material the
+  report's Picture/Damage Locations page already carries.
 - **The Cabinet index and the Trash record are not documents.** They sit in the
   list today as if they were things to open. They belong behind Technical
   details with the keys and the ids.
