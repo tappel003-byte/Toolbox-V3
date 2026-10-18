@@ -76,6 +76,17 @@ in the current milestone; both are written down so they do not evaporate.
   service. A map of customers' houses stays behind the same sign-in as
   everything else.
 
+  Tim's vision for it, Oct 18: "as we grow we are going to build over the
+  years -- it's 2026 now, in 2030 we'll have five years of pins on a map, and
+  then I can always zoom into an area and then filter by year." So the map is
+  a view of the catalogue with a date filter on it, not a second store: a card
+  already carries the coordinates and the field work date. Two things that
+  only matter at that size -- jobs in one neighbourhood cluster into a single
+  pin with a count until you zoom in, and the year filter is a range rather
+  than one year. The drawn streets underneath are a service call like the
+  address lookup; the people already used for addresses serve map tiles too,
+  so it is likely the same account rather than a new one.
+
 ## Open elsewhere
 
 - **The Distress field checkpoint.** Floor Survey has one — its recovery PDF.
