@@ -155,21 +155,27 @@ in the current milestone; both are written down so they do not evaporate.
 
 ## Known, and not a defect
 
-- **Switching between the workspaces, after the Report Builder listener fix.**
-  Tim and Lee, moving between Pictures, File Explorer, Distress, Floor Survey,
-  Report Builder and Diagnostics on a real job, hit "not enough memory,
-  reload". The cause was one listener the formatting ribbon left on the page
-  per visit, each holding a whole report; that is fixed and covered by
-  `tests/report-builder-teardown.mjs`.
-  What is left is not a leak, and this is written down so nobody chases it
-  again. Measured over twelve laps of entering and leaving, with a forced
-  collection before each sample: the whole cycle grows about 0.09 MB a lap and
-  flattens; Distress rises to 11.5 MB and comes back down to 10; Diagnostics
-  settles around 0.15 MB a lap, almost all of it V8's own compiled code and
-  inline-cache metadata rather than anything of ours; File Explorer is 0.01.
-  Three laps is not enough to measure any of this -- the first visit's one-off
-  cost of loading a workspace dominates, and reading that as a per-visit leak
-  is how this was briefly mis-diagnosed as three separate faults.
+- **Running out of memory on a real job. Found, and fixed.** Tim and Lee,
+  moving between Pictures, File Explorer, Distress, Floor Survey, Report
+  Builder and Diagnostics on one file, hit "Aw, Snap! Out of Memory". Two
+  separate causes, both now fixed:
+  one listener the formatting ribbon left on the page per visit, each holding
+  a whole report (`tests/report-builder-teardown.mjs`); and Report Builder's
+  undo history, which wrote the entire job -- photographs and all -- into
+  every step. On a job with sixty photographs one step was 54 MB and six
+  ordinary edits took the tab from 74 MB to 874 MB
+  (`tests/report-builder-undo-memory.mjs` holds it at 0.08 MB a step).
+  Two lessons worth keeping. First, a leak and a size are different problems
+  and look the same from outside: laps of entering and leaving a workspace,
+  measured with a forced collection, were flat the whole time the real fault
+  was sitting in plain sight, because it only shows when the report is
+  *edited*. Second, measure with a real forced collection through the
+  debugger -- `window.gc()` on its own gave readings that looked like 80 MB
+  of retention and was not.
+  What the workspaces cost when nothing is being edited, for reference:
+  library 6.5 MB, Distress 9.7, File Explorer 7, and everything comes back
+  when you leave. Three laps is not enough to measure any of it -- the first
+  visit's one-off load cost dominates.
 
 - **A gap in the point numbers.** Tim's Main Level list runs 1, 2, 4, 5 — no 3.
   Every delete path renumbers, undo and redo keep it contiguous, and it cannot
