@@ -455,7 +455,10 @@ try {
     await ToolboxDB.saveCustomerFile(ownLocal);
     state.deleteCalls = [];
     const ownSend = await ToolboxSync.sendToFileCabinet('cf-legacy-own');
-    report.ownLeaseOk = ownSend && ownSend.ok === true && ownSend.path === 'own-lease';
+    // One action now, so there is one name for what it did. A copy that was
+    // already in the Cabinet is reconciled with it, whoever held the lease.
+    report.ownLeaseOk = ownSend && ownSend.ok === true &&
+      ownSend.action === 'check-in' && ownSend.path === 'reconcile-existing';
     report.ownLeaseLocalGone = !(await ToolboxDB.getCustomerFile('cf-legacy-own'));
     report.ownLeaseReleased = !(state.indexes['cf-legacy-own'] && state.indexes['cf-legacy-own'].checkout);
     report.ownLeaseRemoteRemains = !!state.indexes['cf-legacy-own'];
@@ -555,7 +558,7 @@ try {
   check('Failed Check In write keeps local + lease', out.ciFailKeptLocal && out.ciFailLeaseKept, JSON.stringify(out));
   check('Failed lease release keeps local', out.ciRelFailKeptLocal && out.ciRelFailLeaseKept, JSON.stringify(out));
   check('Legacy same-id/no-lease Send reconciles and clears local', out.legacyOk && out.legacyLocalGone && out.legacyRemoteRemains && out.legacyPushed && out.legacyNoLease && out.legacyNoCloudDelete, JSON.stringify(out));
-  check('Legacy same-id/own-lease Send releases and clears local', out.ownLeaseOk && out.ownLeaseLocalGone && out.ownLeaseReleased && out.ownLeaseRemoteRemains && out.ownLeaseNoCloudDelete, JSON.stringify(out));
+  check('a copy already in the Cabinet, under this device\'s own lease, is released and cleared', out.ownLeaseOk && out.ownLeaseLocalGone && out.ownLeaseReleased && out.ownLeaseRemoteRemains && out.ownLeaseNoCloudDelete, JSON.stringify(out));
   check('Legacy same-id/foreign-lease Send refused', out.foreignRefused && out.foreignLocalKept && out.foreignLeaseKept, JSON.stringify(out));
   check('Legacy own-lease Send release failure keeps local', out.legacyRelFailKeptLocal && out.legacyRelFailLeaseKept, JSON.stringify(out));
   check('Cabinet browse remains lightweight', out.browseOk && out.browseHasCloudOnly && out.browseNoMaterialize, JSON.stringify(out));

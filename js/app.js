@@ -1013,79 +1013,28 @@
       return shell;
     }
 
-    if (cabinetBacked) {
-      const checkInBtn = document.createElement('button');
-      checkInBtn.type = 'button';
-      checkInBtn.className = 'cabinet-row-menu__action';
-      checkInBtn.textContent = 'Check In';
-      checkInBtn.addEventListener('click', function (event) {
-        event.stopPropagation();
-        menu.classList.remove('is-open');
-        requestCheckInCustomerFile(record);
-      });
-      // Send is offered beside Check In, not instead of it. A checked-out
-      // file whose Cabinet copy has gone cannot be checked in -- there is
-      // nothing to check it in to -- and with only Check In on the menu the
-      // work was trapped on the device with no way off it. Send puts it
-      // back. It still refuses to write over a Check Out another device
-      // holds, so offering it takes nothing away from that protection.
-      const sendBackBtn = document.createElement('button');
-      sendBackBtn.type = 'button';
-      sendBackBtn.className = 'cabinet-row-menu__action';
-      sendBackBtn.textContent = 'Send to File Cabinet';
-      sendBackBtn.addEventListener('click', function (event) {
-        event.stopPropagation();
-        menu.classList.remove('is-open');
-        requestSendToFileCabinet(record);
-      });
-      menu.appendChild(menuToggle);
-      menu.appendChild(checkInBtn);
-      menu.appendChild(sendBackBtn);
-    } else {
-      const sendBtn = document.createElement('button');
-      sendBtn.type = 'button';
-      sendBtn.className = 'cabinet-row-menu__action';
-      sendBtn.textContent = 'Send to File Cabinet';
-      sendBtn.addEventListener('click', function (event) {
-        event.stopPropagation();
-        menu.classList.remove('is-open');
-        requestSendToFileCabinet(record);
-      });
-      menu.appendChild(menuToggle);
-      menu.appendChild(sendBtn);
-    }
+    // One action, on every local file. Tim, after a morning of pressing the
+    // wrong one of two: "it is definite that the only options we need are to
+    // check it out and to check it in. Period." Send to File Cabinet is gone;
+    // Check In covers the file that was never checked out as well, because
+    // filing it means the same thing either way -- put the work in the
+    // Cabinet, give up the lease, clear this device.
+    void cabinetBacked;
+    const checkInBtn = document.createElement('button');
+    checkInBtn.type = 'button';
+    checkInBtn.className = 'cabinet-row-menu__action';
+    checkInBtn.textContent = 'Check In';
+    checkInBtn.addEventListener('click', function (event) {
+      event.stopPropagation();
+      menu.classList.remove('is-open');
+      requestCheckInCustomerFile(record);
+    });
+    menu.appendChild(menuToggle);
+    menu.appendChild(checkInBtn);
 
     shell.appendChild(row);
     shell.appendChild(menu);
     return shell;
-  }
-
-  function requestSendToFileCabinet(record) {
-    const name = displayName(record);
-    if (!window.ToolboxSync || typeof window.ToolboxSync.sendToFileCabinet !== 'function') {
-      cabinetNotice = 'Send to File Cabinet is unavailable.';
-      window.location.hash = '#/';
-      render();
-      return;
-    }
-    confirmAction({
-      title: 'Send to File Cabinet?',
-      message: name + ' will be placed in the File Cabinet and removed from this device.',
-      cancelLabel: 'Cancel',
-      confirmLabel: 'Send to File Cabinet',
-    }).then(function (confirmed) {
-      if (!confirmed) return;
-      return window.ToolboxSync.sendToFileCabinet(record.id).then(function () {
-        cabinetNotice = name + ' was sent to the File Cabinet.';
-        window.location.hash = '#/';
-        render();
-      }).catch(function (err) {
-        console.warn('Send to File Cabinet failed:', err);
-        cabinetNotice = (err && err.message) || 'Send to File Cabinet failed.';
-        window.location.hash = '#/';
-        render();
-      });
-    });
   }
 
   function requestCheckInCustomerFile(record) {
@@ -1098,7 +1047,8 @@
     }
     confirmAction({
       title: 'Check In Customer File?',
-      message: name + ' will sync to the File Cabinet, release the Check Out, and be removed from this device.',
+      message: name + ' will be put in the File Cabinet, released so another device can work on it, ' +
+        'and removed from this device.',
       cancelLabel: 'Cancel',
       confirmLabel: 'Check In',
     }).then(function (confirmed) {

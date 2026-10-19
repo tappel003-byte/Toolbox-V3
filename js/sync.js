@@ -1393,96 +1393,29 @@
   }
 
   /**
-   * Place / clear working copy into the File Cabinet.
+   * Check In: put the work in the File Cabinet, give up the lease, clear this
+   * device.
    *
-   * - No remote: first-upload Sync, verify, local-only remove.
-   * - Same-id remote, no lease: reconcile via existing syncOneRecord LWW, verify, local-only remove.
-   * - Same-id remote, own lease (even without local checkedOutFromCabinet): Check In ceremony.
-   * - Same-id remote, foreign lease: refuse; keep local.
+   * There were two of these. Send to File Cabinet handled a file that had
+   * never been checked out, Check In handled one that had, and each refused
+   * the other's case -- so a file that was checked out was offered a Send
+   * button that could only say "use Check In", and Tim went round in circles
+   * on a real job: "I'm lost. I don't know exactly where I'm at."
    *
-   * Never cloud-deletes. Local removal only after successful verification.
-   */
-  async function sendToFileCabinet(id) {
-    if (!id) throw new SyncError('sync', 'Customer File id required.');
-    const record = await window.ToolboxDB.getCustomerFile(id);
-    if (!record || record.deletedAt) {
-      throw new SyncError('sync', 'Customer File is not available on this device.');
-    }
-    if (record.cabinetTrashRequestedAt) {
-      throw new SyncError('sync', 'This Customer File is waiting to move to File Cabinet Trash.');
-    }
-    if (isCheckedOutFromCabinet(record)) {
-      throw new SyncError('sync', 'This Customer File is checked out from the Cabinet. Use Check In.');
-    }
-    if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
-
-    let remote = await getRemoteIndex(id);
-    let synced = null;
-    let released = null;
-    let path = 'first-upload';
-
-    if (!remote) {
-      synced = await syncOneRecord(record, null);
-      if (synced && synced.checkoutBlocked) {
-        throw new SyncError('checkout', 'Could not write to the File Cabinet (checkout blocked).');
-      }
-      remote = await verifyRemoteCabinetCopy(record);
-    } else if (hasActiveCheckoutLease(remote)) {
-      let identity = null;
-      try {
-        identity = await fetchAccessIdentity();
-      } catch (_) {
-        identity = null;
-      }
-      const deviceId = getDeviceId();
-      if (!identity || !checkoutOwnerMatches(remote.checkout, identity.email, deviceId)) {
-        const err = new SyncError(
-          'checkout',
-          'This Customer File is checked out elsewhere and cannot be sent from this device.',
-        );
-        err.checkout = remote.checkout;
-        throw err;
-      }
-      // Own lease without local provenance — complete Check In safety ceremony.
-      path = 'own-lease';
-      synced = await syncOneRecord(record, remote);
-      if (synced && synced.checkoutBlocked) {
-        throw new SyncError('checkout', 'Could not write checked-out changes (ownership blocked).');
-      }
-      await verifyRemoteCabinetCopy(record);
-      const releaseResult = await releaseCheckoutAndVerify(id);
-      released = releaseResult.released;
-      remote = releaseResult.remote;
-    } else {
-      // Legacy already-synced: same id remote, no lease — reconcile then clear local.
-      path = 'reconcile-existing';
-      synced = await syncOneRecord(record, remote);
-      if (synced && synced.checkoutBlocked) {
-        throw new SyncError('checkout', 'Could not write to the File Cabinet (checkout blocked).');
-      }
-      remote = await verifyRemoteCabinetCopy(record);
-    }
-
-    await removeLocalWorkingCopyOnly(record);
-    const stillLocal = await window.ToolboxDB.getCustomerFile(id);
-    if (stillLocal) {
-      throw new SyncError('sync', 'Cabinet copy verified, but local working copy could not be cleared.');
-    }
-
-    return {
-      ok: true,
-      id: id,
-      action: 'send-to-file-cabinet',
-      path: path,
-      remote: remote,
-      released: released,
-      sync: synced,
-    };
-  }
-
-  /**
-   * Check In: Sync write-back, verify Cabinet copy, release lease, then remove
-   * local working copy only (cloud/cabinet copy remains).
+   * Tim settled both halves of it. First the rule: "Send the file should
+   * release everything so that someone else can work on it, period,
+   * regardless of where it was taken." Then the shape: "the only options we
+   * need are to check it out and to check it in. Period." Which leaves one
+   * action covering every local file:
+   *
+   *  - nothing in the Cabinet yet: upload it, then release the lease that
+   *    upload takes, so it is not filed and held at the same time;
+   *  - our own lease: write back, verify, release;
+   *  - no lease on a copy that is already there: write back, verify;
+   *  - somebody else's lease: refuse, and change nothing here.
+   *
+   * Nothing is released and nothing is removed from this device until the
+   * Cabinet copy has been verified complete.
    */
   async function checkInCustomerFile(id) {
     if (!id) throw new SyncError('sync', 'Customer File id required.');
@@ -1493,17 +1426,34 @@
     if (record.cabinetTrashRequestedAt) {
       throw new SyncError('sync', 'This Customer File is waiting to move to File Cabinet Trash.');
     }
-    if (!isCheckedOutFromCabinet(record)) {
-      throw new SyncError('sync', 'This Customer File is not a checked-out Cabinet file. Use Send to File Cabinet.');
-    }
     if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
 
     let remote = await getRemoteIndex(id);
-    if (!remote) {
-      throw new SyncError('incomplete',
-        'This Customer File is no longer in the File Cabinet, so there is nothing to check it in to. Use Send to File Cabinet to put it back. Nothing on this device has been changed.');
+
+    // Somebody else is working on it. Say so and leave this device alone.
+    if (remote && hasActiveCheckoutLease(remote)) {
+      let identity = null;
+      try {
+        identity = await fetchAccessIdentity();
+      } catch (_) {
+        identity = null;
+      }
+      const deviceId = getDeviceId();
+      if (!identity) {
+        throw new SyncError('checkout',
+          'Toolbox could not confirm your sign-in, so it will not write over the Cabinet copy. ' +
+          'Reconnect and try Check In again. Nothing on this device has been changed.');
+      }
+      if (!checkoutOwnerMatches(remote.checkout, identity.email, deviceId)) {
+        const err = new SyncError('checkout',
+          'Another device holds the Check Out for this Customer File. Check it in from that ' +
+          'device, or Check Out again here first. Nothing on this device has been changed.');
+        err.checkout = remote.checkout;
+        throw err;
+      }
     }
 
+    const firstUpload = !remote;
     const synced = await syncOneRecord(record, remote);
     if (synced && synced.checkoutBlocked) {
       throw new SyncError('checkout', synced.checkoutBlockedReason === 'identity'
@@ -1511,10 +1461,17 @@
         : 'Another device holds the Check Out for this Customer File. Check it in from that device, or Check Out again here first. Nothing on this device has been changed.');
     }
 
+    // Proof before anything is given up or thrown away.
     remote = await verifyRemoteCabinetCopy(record);
 
-    const releaseResult = await releaseCheckoutAndVerify(id);
-    remote = releaseResult.remote;
+    // Putting work into the Cabinet takes the lease on it, so a first upload
+    // arrives holding one. Filed means available, so it goes back.
+    let released = null;
+    if (hasActiveCheckoutLease(remote)) {
+      const releaseResult = await releaseCheckoutAndVerify(id);
+      released = releaseResult.released;
+      remote = releaseResult.remote;
+    }
 
     await removeLocalWorkingCopyOnly(record);
     const stillLocal = await window.ToolboxDB.getCustomerFile(id);
@@ -1526,10 +1483,19 @@
       ok: true,
       id: id,
       action: 'check-in',
+      path: firstUpload ? 'first-upload' : 'reconcile-existing',
       remote: remote,
-      released: releaseResult.released,
+      released: released,
       sync: synced,
     };
+  }
+
+  /**
+   * The old name for the same thing, kept so nothing that still calls it
+   * breaks. There is one action now, and it is Check In.
+   */
+  async function sendToFileCabinet(id) {
+    return checkInCustomerFile(id);
   }
 
   /**
