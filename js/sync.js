@@ -1634,22 +1634,81 @@
     return !!data.exists;
   }
 
+  /**
+   * The same saving on the way up.
+   *
+   * dataUrlToBytes decodes the photograph into a string and then copies it
+   * byte by byte into an array -- the same several-times-over cost as the
+   * download had, paid on a phone after a day of shooting. The browser can
+   * decode a data URL into a Blob in its own code, so it does.
+   */
+  async function dataUrlToBlob(dataUrl) {
+    if (typeof fetch !== 'function' || typeof Blob !== 'function') return null;
+    try {
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      return blob && blob.size ? blob : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   async function putRemoteMedia(mediaId, dataUrl) {
-    const packed = dataUrlToBytes(dataUrl);
-    if (!packed) throw new SyncError('sync', 'Unsupported media format for ' + mediaId);
+    const head = typeof dataUrl === 'string'
+      ? /^data:([^;,]+)?(;base64)?,/.exec(dataUrl) : null;
+    const blob = head ? await dataUrlToBlob(dataUrl) : null;
+    const body = blob || (function () {
+      const packed = dataUrlToBytes(dataUrl);
+      if (!packed) throw new SyncError('sync', 'Unsupported media format for ' + mediaId);
+      return packed;
+    })();
+    const contentType = blob
+      ? (blob.type || (head && head[1]) || 'application/octet-stream')
+      : body.contentType;
     await apiFetch('/media/' + encodeURIComponent(mediaId), {
       method: 'PUT',
       headers: {
-        'content-type': packed.contentType,
+        'content-type': contentType,
         'x-toolbox-encoding': 'raw',
       },
-      body: packed.bytes,
+      body: blob || body.bytes,
+    });
+  }
+
+  /**
+   * Turn a response into a data URL without building the photograph twice in
+   * script memory.
+   *
+   * The hand-written conversion below it reads the whole photograph into an
+   * array, builds a second copy of it as a string -- two bytes of memory for
+   * every byte of photograph, assembled in pieces -- and then base64s that
+   * into a third copy a third larger again. A 4 MB photograph costs something
+   * like 25 MB while it is being converted, and a Customer File with a couple
+   * of hundred Quick Captures put Tim's desktop browser on the floor: "Aw,
+   * Snap! Out of Memory."
+   *
+   * The browser can do the same job in its own code, from a Blob it already
+   * holds, without any of those copies. That is all this does.
+   */
+  function blobToDataUrl(blob) {
+    return new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onload = function () { resolve(String(reader.result || '')); };
+      reader.onerror = function () { reject(reader.error || new Error('media read failed')); };
+      reader.readAsDataURL(blob);
     });
   }
 
   async function getRemoteMediaDataUrl(mediaId) {
     const response = await apiFetch('/media/' + encodeURIComponent(mediaId));
     const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    if (typeof FileReader === 'function' && typeof response.blob === 'function') {
+      const blob = await response.blob();
+      // The stored type wins when the response did not carry one, so a
+      // photograph does not come back as a nameless stream of bytes.
+      const typed = blob.type ? blob : new Blob([blob], { type: contentType });
+      return blobToDataUrl(typed);
+    }
     const buffer = await response.arrayBuffer();
     return bytesToDataUrl(buffer, contentType);
   }
@@ -3099,6 +3158,8 @@
       newerIso: newerIso,
       dataUrlToBytes: dataUrlToBytes,
       bytesToDataUrl: bytesToDataUrl,
+      putRemoteMedia: putRemoteMedia,
+      getRemoteMediaDataUrl: getRemoteMediaDataUrl,
       shellForRemotePull: shellForRemotePull,
       decideComponentAction: decideComponentAction,
       compareInventories: compareInventories,

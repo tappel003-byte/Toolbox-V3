@@ -551,6 +551,7 @@ try {
       indexes: Object.create(null),
       components: Object.create(null),
       media: Object.create(null),
+      mediaReads: { blob: 0, arrayBuffer: 0 },
       purged: Object.create(null),
     };
 
@@ -634,10 +635,20 @@ try {
         const mediaId = decodeURIComponent(match[1]);
         if (method === 'GET') {
           if (!cabinet.media[mediaId]) return new Response('Not found', { status: 404 });
-          return new Response(cabinet.media[mediaId].bytes, {
+          const sent = new Response(cabinet.media[mediaId].bytes, {
             status: 200,
             headers: { 'content-type': cabinet.media[mediaId].contentType || 'application/octet-stream' },
           });
+          // Which way the photograph was taken off the wire. Reading it as a
+          // file lets the browser do the base64 in its own code; reading it
+          // as an array means rebuilding the photograph twice over in script
+          // memory, which is what put a real desktop out of memory on a job
+          // with a couple of hundred Quick Captures.
+          const asBlob = sent.blob.bind(sent);
+          const asBuffer = sent.arrayBuffer.bind(sent);
+          sent.blob = function () { cabinet.mediaReads.blob += 1; return asBlob(); };
+          sent.arrayBuffer = function () { cabinet.mediaReads.arrayBuffer += 1; return asBuffer(); };
+          return sent;
         }
         if (method === 'PUT') {
           const bytes = opts.body instanceof Uint8Array ? opts.body : new Uint8Array(await (new Response(opts.body)).arrayBuffer());
@@ -921,6 +932,26 @@ try {
     const orphanPull = await ToolboxDB.getCustomerFile('cf-media-pull');
     if (orphanPull) await ToolboxDB.permanentlyDeleteCustomerFiles([orphanPull]);
 
+    // P2: a photograph goes up and comes back byte for byte, and is read as a
+    // file rather than rebuilt as text on the way.
+    cabinet.mediaReads.blob = 0;
+    cabinet.mediaReads.arrayBuffer = 0;
+    const everyByte = new Uint8Array(256 * 64);
+    for (let i = 0; i < everyByte.length; i += 1) everyByte[i] = i % 256;
+    const everyByteUrl = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.readAsDataURL(new Blob([everyByte], { type: 'image/jpeg' }));
+    });
+    await ToolboxSync._test.putRemoteMedia('ph_every_byte', everyByteUrl);
+    const storedBytes = cabinet.media['ph_every_byte']
+      ? cabinet.media['ph_every_byte'].bytes : new Uint8Array();
+    out.P2_uploadRaw = storedBytes.length === everyByte.length &&
+      storedBytes[1] === 1 && storedBytes[255] === 255 && storedBytes[256] === 0;
+    const cameBack = await ToolboxSync._test.getRemoteMediaDataUrl('ph_every_byte');
+    out.P2_roundTrip = cameBack === everyByteUrl;
+    out.P2_readAsFile = cabinet.mediaReads.blob >= 1 && cabinet.mediaReads.arrayBuffer === 0;
+
     // Q: remote-only must not fail Sync; trash-state on overlapping IDs still converges
     const invLocal = ToolboxApp.blankCustomerFile('cf-inv');
     ToolboxPlanSetup.ensurePlanSetup(invLocal);
@@ -1006,6 +1037,19 @@ try {
   check('N: missing cloud without purge can be repopulated', hardening.N_repopulateOk && hardening.N_customerBack, JSON.stringify(hardening));
   check('O: required media push failure prevents clean sync success', hardening.O_pushFail, JSON.stringify(hardening));
   check('P: required media pull failure prevents clean sync success', hardening.P_pullFail, JSON.stringify(hardening));
+  // A photograph is moved as a file, not rebuilt as text. The old conversion
+  // read the whole photograph into an array, built a second copy of it as a
+  // string and base64'd that into a third copy a third larger again -- about
+  // five times the photograph in scratch memory, each way, for every picture
+  // on the job. Tim's desktop died on a Customer File with a couple of
+  // hundred Quick Captures: "Aw, Snap! Out of Memory."
+  check('a photograph goes up and comes back byte for byte, read as a file',
+    hardening.P2_uploadRaw && hardening.P2_roundTrip && hardening.P2_readAsFile,
+    JSON.stringify({
+      uploadRaw: hardening.P2_uploadRaw,
+      roundTrip: hardening.P2_roundTrip,
+      readAsFile: hardening.P2_readAsFile,
+    }));
   check('Q: remote-only does not fail Sync; trash converges on overlapping IDs', hardening.Q_remoteOnlyOk && hardening.Q_neighborNotLocal && hardening.Q_compareDetects && hardening.Q_trashPullOk && hardening.Q_localNowTrashed && hardening.Q_postPassMismatch, JSON.stringify(hardening));
   check('R: imported native Customer File participates in sync', hardening.R_importOk && hardening.R_importCustomer, JSON.stringify(hardening));
   check('S: sequential local working-set edits update cloud', hardening.S_aPush && hardening.S_bPush && hardening.S_localMatches, JSON.stringify(hardening));
