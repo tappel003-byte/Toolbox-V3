@@ -953,9 +953,19 @@
       refresh();
     });
 
-    document.addEventListener('mousedown', function (event) {
+    // A click anywhere else shuts an open menu. It has to be listened for on
+    // the whole page, so it has to be taken off again when the ribbon goes --
+    // this one was not, and the listener is a live reference to everything it
+    // can see: this ribbon, the callback Report Builder handed it, and
+    // through that the entire Report Builder session, including the undo
+    // history with a full copy of the report in it. So every visit to Report
+    // Builder left one behind, holding one whole report. Measured at about a
+    // megabyte a visit on a job with twelve photographs, and it never came
+    // back. Tim: "I was getting a not enough memory reload."
+    function onOutsideMouseDown(event) {
       if (!event.target.closest || !event.target.closest('.rb-format__menu')) closeMenus();
-    });
+    }
+    document.addEventListener('mousedown', onOutsideMouseDown);
 
     function onSelectionChange() {
       rememberSelection();
@@ -982,7 +992,10 @@
         if (r) r.disabled = !canRedo;
       },
       noteField: function (field) { activeField = field || null; refresh(); },
-      destroy: function () { document.removeEventListener('selectionchange', onSelectionChange); },
+      destroy: function () {
+        document.removeEventListener('selectionchange', onSelectionChange);
+        document.removeEventListener('mousedown', onOutsideMouseDown);
+      },
     };
   }
 
