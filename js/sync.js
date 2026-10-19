@@ -1692,6 +1692,76 @@
     await putRemoteMedia(mediaId, asDataUrl);
   }
 
+  /**
+   * What a long operation is doing, while it does it.
+   *
+   * Check In and Check Out move every photograph on the job, one component
+   * at a time, and said nothing at all until they finished or failed. Tim,
+   * waiting on one: "there's no way to know that you're waiting on nothing to
+   * happen." A listener is attached for the length of one operation and told
+   * where it has got to.
+   */
+  var progressListeners = [];
+
+  function onSyncProgress(fn) {
+    if (typeof fn !== 'function') return function () {};
+    progressListeners.push(fn);
+    return function () {
+      progressListeners = progressListeners.filter(function (item) { return item !== fn; });
+    };
+  }
+
+  function emitProgress(info) {
+    if (!progressListeners.length) return;
+    progressListeners.slice().forEach(function (fn) {
+      try { fn(info); } catch (_) { /* a listener must not break a sync */ }
+    });
+  }
+
+  /** What a component is called when it is being reported on. */
+  var COMPONENT_LABELS = {
+    customer: 'customer details',
+    plans: 'plans',
+    distress: 'Distress photographs',
+    floor: 'Floor Survey',
+    diagnostics: 'Diagnostics',
+    report: 'report pictures',
+    trash: 'trash record',
+  };
+
+  /**
+   * Run a handful at a time, in order, with a fixed number in flight.
+   *
+   * One photograph at a time meant one round trip at a time: on a connection
+   * that could carry the whole job in seconds, two hundred pictures is two
+   * hundred waits with the line idle in between. A few at once fills it. The
+   * limit stays small on purpose -- each one in flight is a photograph held
+   * in memory, and memory is what put a desktop on the floor.
+   */
+  async function runWithLimit(items, limit, worker) {
+    const list = Array.isArray(items) ? items : [];
+    if (!list.length) return;
+    const width = Math.max(1, Math.min(limit || 1, list.length));
+    let next = 0;
+    let done = 0;
+    const runners = [];
+    for (let i = 0; i < width; i += 1) {
+      runners.push((async function () {
+        for (;;) {
+          const at = next;
+          next += 1;
+          if (at >= list.length) return;
+          await worker(list[at], at);
+          done += 1;
+          if (typeof worker.onDone === 'function') worker.onDone(done, list.length);
+        }
+      })());
+    }
+    await Promise.all(runners);
+  }
+
+  var MEDIA_AT_ONCE = 4;
+
   async function ensureLocalMedia(mediaId, kind) {
     const existing = await getLocalMedia(mediaId, kind);
     if (existing != null && existing !== '') return;
@@ -1703,9 +1773,15 @@
     const payload = extractComponent(record, name);
     const mediaIds = mediaIdsForComponent(record, name);
     const kind = name === 'distress' ? 'distress' : 'plans';
-    for (let i = 0; i < mediaIds.length; i++) {
-      await ensureRemoteMedia(mediaIds[i], kind === 'distress' ? 'distress' : 'plan');
-    }
+    const label = COMPONENT_LABELS[name] || name;
+    if (mediaIds.length) emitProgress({ stage: 'up', component: name, label: label, done: 0, total: mediaIds.length });
+    const pushOne = async function (mediaId) {
+      await ensureRemoteMedia(mediaId, kind === 'distress' ? 'distress' : 'plan');
+    };
+    pushOne.onDone = function (done, total) {
+      emitProgress({ stage: 'up', component: name, label: label, done: done, total: total });
+    };
+    await runWithLimit(mediaIds, MEDIA_AT_ONCE, pushOne);
     await putRemoteComponent(record.id, name, payload);
   }
 
@@ -1715,9 +1791,15 @@
     // Required media must be local before the component becomes authoritative.
     const mediaIds = mediaIdsFromPayload(payload, name);
     const kind = name === 'distress' ? 'distress' : 'plan';
-    for (let i = 0; i < mediaIds.length; i++) {
-      await ensureLocalMedia(mediaIds[i], kind === 'distress' ? 'distress' : 'plan');
-    }
+    const label = COMPONENT_LABELS[name] || name;
+    if (mediaIds.length) emitProgress({ stage: 'down', component: name, label: label, done: 0, total: mediaIds.length });
+    const pullOne = async function (mediaId) {
+      await ensureLocalMedia(mediaId, kind === 'distress' ? 'distress' : 'plan');
+    };
+    pullOne.onDone = function (done, total) {
+      emitProgress({ stage: 'down', component: name, label: label, done: done, total: total });
+    };
+    await runWithLimit(mediaIds, MEDIA_AT_ONCE, pullOne);
     applyComponent(record, name, payload);
     return { pulled: true, mediaOk: true };
   }
@@ -3086,6 +3168,7 @@
     checkOutCustomerFile: function (id) {
       return enqueueSyncWork(function () { return checkOutCustomerFile(id); });
     },
+    onSyncProgress: onSyncProgress,
     sendToFileCabinet: function (id) {
       return enqueueSyncWork(function () { return sendToFileCabinet(id); });
     },

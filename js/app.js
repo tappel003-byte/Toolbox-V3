@@ -806,10 +806,13 @@
         event.stopPropagation();
         btn.disabled = true;
         btn.textContent = unfinished ? 'Downloading…' : 'Checking out…';
+        const stop = watchSyncProgress(function (where) { btn.textContent = where; });
         window.ToolboxSync.checkOutCustomerFile(entry.id).then(function () {
+          stop();
           cabinetNotice = (entry.displayName || 'Customer File') + ' checked out to this device.';
           window.location.hash = '#/';
         }).catch(function (err) {
+          stop();
           console.warn('Check Out failed:', err);
           cabinetNotice = (err && err.message) || 'Check Out failed.';
           // Stay on File Cabinet so the failure notice is visible after re-render.
@@ -1037,6 +1040,33 @@
     return shell;
   }
 
+  /**
+   * Say where a long operation has got to, while it runs.
+   *
+   * Check In and Check Out move every photograph on the job and used to show
+   * nothing until they finished. Tim, waiting on one: "there's no way to know
+   * that you're waiting on nothing to happen."
+   */
+  function watchSyncProgress(show) {
+    if (!window.ToolboxSync || typeof window.ToolboxSync.onSyncProgress !== 'function') {
+      return function () {};
+    }
+    return window.ToolboxSync.onSyncProgress(function (info) {
+      if (!info || !info.total) return;
+      show(info.label + ' ' + info.done + ' of ' + info.total);
+    });
+  }
+
+  /** The notice line on the Customer Files screen, written to directly. */
+  function liveNotice(app) {
+    const notice = app ? app.querySelector('#cabinet-notice') : null;
+    return function (text) {
+      if (!notice) return;
+      notice.textContent = text;
+      notice.hidden = !text;
+    };
+  }
+
   function requestCheckInCustomerFile(record) {
     const name = displayName(record);
     if (!window.ToolboxSync || typeof window.ToolboxSync.checkInCustomerFile !== 'function') {
@@ -1053,11 +1083,18 @@
       confirmLabel: 'Check In',
     }).then(function (confirmed) {
       if (!confirmed) return;
+      const show = liveNotice(document.getElementById('app') || document);
+      show('Checking in ' + name + '…');
+      const stop = watchSyncProgress(function (where) {
+        show('Checking in ' + name + ' — ' + where);
+      });
       return window.ToolboxSync.checkInCustomerFile(record.id).then(function () {
+        stop();
         cabinetNotice = name + ' was checked in.';
         window.location.hash = '#/';
         render();
       }).catch(function (err) {
+        stop();
         console.warn('Check In failed:', err);
         cabinetNotice = (err && err.message) || 'Check In failed.';
         window.location.hash = '#/';
