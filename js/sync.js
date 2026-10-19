@@ -1327,6 +1327,31 @@
    * After Sync write-back / first upload: confirm the Cabinet still holds this
    * Customer File index and required media. Fail closed — keep local.
    */
+  /**
+   * Is every one of these in the Cabinet? Asked of all of them at once.
+   *
+   * This was a loop that waited for each answer before asking the next
+   * question: on a job with two hundred photographs, two hundred round trips
+   * end to end with nothing else happening, which is most of the time Check
+   * In spent "doing nothing". The question and the answer are unchanged, and
+   * it still fails closed -- the first one missing stops the whole check.
+   */
+  async function verifyMediaPresent(ids, label, failure) {
+    const list = (Array.isArray(ids) ? ids : []).filter(Boolean);
+    if (!list.length) return;
+    emitProgress({ stage: 'check', component: 'verify', label: label, done: 0, total: list.length });
+    let missing = '';
+    const checkOne = async function (mediaId) {
+      if (missing) return;
+      if (!(await remoteMediaExists(mediaId))) missing = mediaId;
+    };
+    checkOne.onDone = function (done, total) {
+      emitProgress({ stage: 'check', component: 'verify', label: label, done: done, total: total });
+    };
+    await runWithLimit(list, CHECKS_AT_ONCE, checkOne);
+    if (missing) throw new SyncError('incomplete', failure);
+  }
+
   async function verifyRemoteCabinetCopy(record) {
     if (!record || !record.id) {
       throw new SyncError('incomplete', 'Cannot verify Cabinet copy without a Customer File.');
@@ -1335,39 +1360,20 @@
     if (!remote || remote.id !== record.id) {
       throw new SyncError('incomplete', 'Cabinet verification failed: remote index missing.');
     }
-    const planIds = planMediaIds(record);
-    for (let i = 0; i < planIds.length; i++) {
-      if (!(await remoteMediaExists(planIds[i]))) {
-        throw new SyncError('incomplete', 'Cabinet verification failed: plan media missing remotely.');
-      }
-    }
-    const photoIds = distressPhotoIds(record);
-    for (let i = 0; i < photoIds.length; i++) {
-      if (!(await remoteMediaExists(photoIds[i]))) {
-        throw new SyncError('incomplete', 'Cabinet verification failed: Distress media missing remotely.');
-      }
-    }
-    const pdfIds = recoveryPdfIdsFromFloor(record.floorSurvey);
-    for (let i = 0; i < pdfIds.length; i++) {
-      if (!(await remoteMediaExists(pdfIds[i]))) {
-        throw new SyncError('incomplete', 'Cabinet verification failed: Floor Survey recovery PDF missing remotely.');
-      }
-    }
-    const figureIds = diagnosticsFigureMediaIds(record);
-    for (let i = 0; i < figureIds.length; i++) {
-      if (!(await remoteMediaExists(figureIds[i]))) {
-        throw new SyncError('incomplete', 'Cabinet verification failed: Diagnostics figure missing remotely.');
-      }
-    }
+    await verifyMediaPresent(planMediaIds(record), 'Checking plans',
+      'Cabinet verification failed: plan media missing remotely.');
+    await verifyMediaPresent(distressPhotoIds(record), 'Checking Distress photographs',
+      'Cabinet verification failed: Distress media missing remotely.');
+    await verifyMediaPresent(recoveryPdfIdsFromFloor(record.floorSurvey),
+      'Checking Floor Survey recovery',
+      'Cabinet verification failed: Floor Survey recovery PDF missing remotely.');
+    await verifyMediaPresent(diagnosticsFigureMediaIds(record), 'Checking Diagnostics figures',
+      'Cabinet verification failed: Diagnostics figure missing remotely.');
     // Check In clears the working copy off this device, so the report's own
     // pictures are checked with everything else first. Fail closed: a book
     // whose cover photo did not reach the Cabinet stays on the phone.
-    const reportIds = reportMediaIds(record);
-    for (let i = 0; i < reportIds.length; i++) {
-      if (!(await remoteMediaExists(reportIds[i]))) {
-        throw new SyncError('incomplete', 'Cabinet verification failed: report picture missing remotely.');
-      }
-    }
+    await verifyMediaPresent(reportMediaIds(record), 'Checking report pictures',
+      'Cabinet verification failed: report picture missing remotely.');
     return remote;
   }
 
@@ -1760,7 +1766,20 @@
     await Promise.all(runners);
   }
 
-  var MEDIA_AT_ONCE = 4;
+  // How many photographs are in flight at once.
+  //
+  // One at a time meant one round trip at a time, and a round trip is mostly
+  // waiting. Tim: "my download is 345 and up is 51 ... now takes forever,
+  // that doesn't make sense to me." It does not: the line is idle between
+  // pictures, so the speed of the line barely matters. Eight fills it without
+  // holding much -- a Distress photograph is a few hundred kilobytes after
+  // the survey downsizes it, so eight in flight is a handful of megabytes,
+  // well clear of what put a desktop on the floor.
+  var MEDIA_AT_ONCE = 8;
+
+  /** Asking whether the Cabinet has something carries no photograph with it,
+   *  so more of those can be in the air at once. */
+  var CHECKS_AT_ONCE = 16;
 
   async function ensureLocalMedia(mediaId, kind) {
     const existing = await getLocalMedia(mediaId, kind);
@@ -2611,16 +2630,22 @@
       }
       payloads[name] = read.payload;
     }
+    // Which of the job's pictures are actually in the Cabinet. Asked of all
+    // of them at once: one question at a time meant a folder of two hundred
+    // photographs took two hundred round trips before it would open.
     const mediaRefs = exploreMediaRefs(payloads, notes);
-    for (let i = 0; i < mediaRefs.length; i++) {
-      const ref = mediaRefs[i];
+    const rows = new Array(mediaRefs.length);
+    await runWithLimit(mediaRefs, CHECKS_AT_ONCE, async function (ref, at) {
       const key = 'media/' + ref.id;
       const exists = await remoteMediaExists(ref.id);
       const row = exists ? { key: key } : { key: key, missing: true };
       row.purpose = ref.purpose;
       row.label = ref.label;
       if (ref.also && ref.also.length) row.also = ref.also.slice();
-      objects.push(row);
+      rows[at] = row;
+    });
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i]) objects.push(rows[i]);
     }
     objects.sort(compareKeys);
     const body = {
@@ -3209,6 +3234,7 @@
       bytesToDataUrl: bytesToDataUrl,
       putRemoteMedia: putRemoteMedia,
       getRemoteMediaDataUrl: getRemoteMediaDataUrl,
+      putLocalMedia: putLocalMedia,
       shellForRemotePull: shellForRemotePull,
       decideComponentAction: decideComponentAction,
       compareInventories: compareInventories,

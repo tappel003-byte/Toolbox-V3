@@ -75,6 +75,11 @@ try {
       failNextPutIndex: false,
       failNextRelease: false,
       fetchLog: [],
+      // Watching how the Cabinet copy is proved: how many "is this picture
+      // here?" questions are in the air at once, counted only after the index
+      // has been written, which is where proving starts.
+      verifying: false,
+      flight: { now: 0, most: 0 },
     };
 
     function compKey(id, name) { return id + '::' + name; }
@@ -200,6 +205,7 @@ try {
           else delete body.checkout;
           state.indexes[id] = body;
           state.etags[id] = state.etags[id] || 'etag-1';
+          if (state.watchVerify === id) state.verifying = true;
           return new Response(JSON.stringify({ ok: true }), {
             status: 200, headers: { 'content-type': 'application/json' },
           });
@@ -228,6 +234,12 @@ try {
       match = /^media\/([^/]+)\/exists$/.exec(path);
       if (match && method === 'GET') {
         const mediaId = decodeURIComponent(match[1]);
+        if (state.verifying) {
+          state.flight.now += 1;
+          if (state.flight.now > state.flight.most) state.flight.most = state.flight.now;
+          await new Promise((r) => setTimeout(r, 12));
+          state.flight.now -= 1;
+        }
         return new Response(JSON.stringify({ exists: !!state.media[mediaId] }), {
           status: 200, headers: { 'content-type': 'application/json' },
         });
@@ -543,6 +555,44 @@ try {
     report.stubLocalGone = !(await ToolboxDB.getCustomerFile('cf-stub-del'));
     report.removeLocalExists = typeof ToolboxDB.removeLocalWorkingCopy === 'function';
 
+    // --- Proving the Cabinet copy, on a job with real photographs ---
+    //
+    // Check In asks the Cabinet about every picture on the job before it
+    // clears the working copy off the device. That proof stays; what changed
+    // is that it used to ask one question at a time and wait for each answer,
+    // so a job with two hundred photographs spent two hundred round trips
+    // doing nothing visible. Tim: "my download is 345 and up is 51 ... now
+    // takes forever, that doesn't make sense to me."
+    const many = ToolboxApp.blankCustomerFile('cf-verify-many');
+    ToolboxPlanSetup.ensurePlanSetup(many);
+    many.firstName = 'Verify';
+    many.lastName = 'Many';
+    many.propertyAddress = '12 Proof Road';
+    many.customerUpdatedAt = '2026-09-23T03:00:00.000Z';
+    const manyPins = [];
+    for (let i = 1; i <= 12; i += 1) {
+      const photoId = 'ph_verify_' + i;
+      await ToolboxSync._test.putLocalMedia(
+        photoId, 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=',
+        'distress');
+      manyPins.push({ id: 'pinv-' + i, num: i, photos: [photoId] });
+    }
+    many.distress = {
+      updatedAt: '2026-09-23T03:00:00.000Z',
+      mode: 'internal', startNum: 1, nextNum: 13, pins: manyPins,
+    };
+    await ToolboxDB.saveCustomerFile(many);
+    state.watchVerify = 'cf-verify-many';
+    state.verifying = false;
+    state.flight = { now: 0, most: 0 };
+    const manyIn = await ToolboxSync.checkInCustomerFile('cf-verify-many');
+    state.watchVerify = '';
+    state.verifying = false;
+    report.verifyOk = !!(manyIn && manyIn.ok);
+    report.verifyAtOnce = state.flight.most;
+    report.verifyAllUploaded = manyPins.every((pin) => !!state.media[pin.photos[0]]);
+    report.verifyLocalGone = !(await ToolboxDB.getCustomerFile('cf-verify-many'));
+
     return report;
   });
 
@@ -564,6 +614,10 @@ try {
   check('Cabinet browse remains lightweight', out.browseOk && out.browseHasCloudOnly && out.browseNoMaterialize, JSON.stringify(out));
   check('Existing Check Out still works', out.co2Ok, JSON.stringify(out));
   check('Local-only remove primitive exists; stub hard-delete still local', out.removeLocalExists && out.stubLocalGone, JSON.stringify(out));
+  check('the Cabinet copy is proved picture by picture, several at a time',
+    out.verifyOk && out.verifyAllUploaded && out.verifyLocalGone && out.verifyAtOnce >= 4,
+    JSON.stringify({ ok: out.verifyOk, mostAtOnce: out.verifyAtOnce,
+      uploaded: out.verifyAllUploaded, cleared: out.verifyLocalGone }));
 
   // The report carries pictures of its own -- the cover's aerial view and
   // anything inserted onto a sheet. Check In clears the working copy off the
