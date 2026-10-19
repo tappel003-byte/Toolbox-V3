@@ -570,8 +570,22 @@
     return String(entry && entry.displayName || '').trim() || 'Customer File';
   }
 
+  /** Is the lease ours while the file itself never arrived? */
+  function heldButNotHere(entry) {
+    return !!entry && entry.availability === 'checked-out-here' && entry.presence !== 'local';
+  }
+
   function cabinetIndexStatus(entry) {
     if (!entry) return '';
+    // "On this device" used to be said on the strength of the lease alone.
+    // A Check Out takes the lease first and brings the file down after, so a
+    // download that did not finish left the row claiming the job was here
+    // while the device held nothing -- and the Check Out button is only drawn
+    // for a row marked available, so there was no way back in. Tim, looking
+    // at exactly that: "it says it's on this device and it's clearly not --
+    // where the hell did it go?" Nothing was lost; the Cabinet copy is whole.
+    // The row says what is true, and offers the action that finishes it.
+    if (heldButNotHere(entry)) return 'Checked out here · not downloaded yet';
     if (entry.availability === 'checked-out-here') return 'On this device';
     if (entry.availability === 'checked-out-elsewhere') {
       const who = entry.checkout && entry.checkout.email ? entry.checkout.email : '';
@@ -780,15 +794,18 @@
 
     const actions = document.createElement('div');
     actions.className = 'cabinet-row__actions';
-    if (entry.availability === 'available' && entry.presence !== 'local') {
+    const unfinished = heldButNotHere(entry);
+    if (unfinished || (entry.availability === 'available' && entry.presence !== 'local')) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'btn btn--secondary cabinet-checkout-btn';
-      btn.textContent = 'Check Out';
+      // Taking the lease again is the same call: the server hands this device
+      // back the lease it already holds, and the file comes down this time.
+      btn.textContent = unfinished ? 'Finish Check Out' : 'Check Out';
       btn.addEventListener('click', function (event) {
         event.stopPropagation();
         btn.disabled = true;
-        btn.textContent = 'Checking out…';
+        btn.textContent = unfinished ? 'Downloading…' : 'Checking out…';
         window.ToolboxSync.checkOutCustomerFile(entry.id).then(function () {
           cabinetNotice = (entry.displayName || 'Customer File') + ' checked out to this device.';
           window.location.hash = '#/';

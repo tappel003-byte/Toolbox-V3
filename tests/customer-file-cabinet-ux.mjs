@@ -293,6 +293,20 @@ try {
         },
       },
     });
+    // The lease is this device's, and the file never arrived. A Check Out
+    // takes the lease first and downloads after, so an interrupted one leaves
+    // exactly this: held here, nothing local. Tim hit it on a real job --
+    // "it says it's on this device and it's clearly not. Where the hell did
+    // it go?" -- and the row offered him no way back in.
+    seedRemote('cf-stranded', {
+      customer: { firstName: 'Janis', lastName: 'Stranded', propertyAddress: '15 Rabbitbrush' },
+      index: {
+        checkout: {
+          email: 'tim@example.com', sub: 'sub-tim', deviceId: 'device-ipad',
+          checkedOutAt: '2026-10-19T14:00:00.000Z',
+        },
+      },
+    });
     seedRemote('cf-gamma', {
       customer: { firstName: 'Gamma', lastName: 'Three', propertyAddress: '300 Gamma Gate' },
       index: { createdAt: '2026-09-23T18:00:00.000Z' },
@@ -382,7 +396,17 @@ try {
       beta: rowSnapshot('cf-beta'),
       gamma: rowSnapshot('cf-gamma'),
       delta: rowSnapshot('cf-delta'),
+      stranded: rowSnapshot('cf-stranded'),
     };
+    // Says what is true, and offers the action that finishes it.
+    const strandedShell = document.querySelector(
+      '.cabinet-row-shell--cloud[data-customer-file-id="cf-stranded"]');
+    const strandedBtn = strandedShell
+      ? strandedShell.querySelector('.cabinet-checkout-btn') : null;
+    report.strandedSaysNotHere = !!(report.rows.stranded &&
+      /not downloaded/i.test(report.rows.stranded.status) &&
+      !/^On this device$/i.test(report.rows.stranded.status));
+    report.strandedHasWayBack = !!strandedBtn && /Finish Check Out/i.test(strandedBtn.textContent);
     report.addressPrimary = !!(report.rows.delta &&
       report.rows.delta.address.indexOf('1246 Mountain Valley Rd') === 0 &&
       report.rows.delta.owner === 'Nora Quinn');
@@ -565,6 +589,16 @@ try {
   check('field-work date prefers stored survey date over created/updated clocks', out.deltaSurveyDate && out.deltaNotUpdated && out.alphaCreatedFallback, JSON.stringify(out.rows));
   check('search matches city, ZIP, mailing address, company, spouse, email, and phone', out.zipSearch && out.citySearch && out.mailingSearch && out.companySearch && out.spouseSearch && out.emailSearch && out.phoneSearch, JSON.stringify(out));
   check('normal availability is implied by Check Out; exceptional status remains', out.noRedundantAvailability && out.statusElsewhere && out.checkoutButtons >= 1 && out.noOnlineLocationLine, JSON.stringify(out));
+  // A Check Out takes the lease before it downloads the file, so one that is
+  // interrupted leaves the lease held here with nothing on the device. The
+  // row used to read "On this device" on the strength of the lease alone and
+  // carried no button, because a button is only drawn for a row marked
+  // available -- so the job could not be opened and could not be fetched
+  // again. Tim: "it says it's on this device and it's clearly not. Where the
+  // hell did it go?"
+  check('a Check Out that never landed says so, and can be finished',
+    out.strandedSaysNotHere && out.strandedHasWayBack,
+    JSON.stringify({ row: out.rows && out.rows.stranded, wayBack: out.strandedHasWayBack }));
   check('normal File Cabinet cards have no Delete chip', out.cardDeleteButtons === 0 && out.cardDeleteLabel === false, JSON.stringify(out));
   check('File Cabinet has no separate move-to-Trash control', out.noCabinetManage, JSON.stringify(out));
   check('Check Out returns to #/ with confirmation', out.afterCheckoutHash === '#/' && /Gamma.*checked out to this device/i.test(out.afterCheckoutNotice), JSON.stringify(out));
