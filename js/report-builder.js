@@ -3968,12 +3968,72 @@
       if (historyTimer) { clearTimeout(historyTimer); historyTimer = null; snapshotNow(); }
     }
 
+    /**
+     * A step of history, without a second copy of the photographs.
+     *
+     * A step used to be JSON.stringify of the pages. The pages carry their
+     * evidence, and evidence carries every photograph on the slide as text,
+     * so one step was the whole job written out again: measured at 54 MB on
+     * a job with sixty photographs, and a step is taken every time anything
+     * changes, up to sixty of them. Two or three edits on a real job is a
+     * gigabyte, and the tab dies -- "Aw, Snap! Out of Memory", which is what
+     * Tim and Lee hit moving between the workspaces on one file.
+     *
+     * A photograph never changes while the report is open, so a step does not
+     * need its own copy of one. This copies the structure and keeps the same
+     * text: in JavaScript, text handed from one object to another is not
+     * copied, so sixty steps share one set of photographs between them.
+     *
+     * It follows JSON's rules deliberately, because that is what the history
+     * was built on: a function is dropped from an object and becomes null in
+     * a list, and undefined is dropped. A loop cannot occur in a report --
+     * stringify would have thrown on one -- but if one ever did, it ends
+     * here as null rather than running forever.
+     */
+    function cloneStep(value, seen) {
+      if (value === null || typeof value !== 'object') {
+        return typeof value === 'function' ? undefined : value;
+      }
+      var visited = seen || new Set();
+      if (visited.has(value)) return null;
+      visited.add(value);
+      var out;
+      if (Array.isArray(value)) {
+        out = [];
+        for (var i = 0; i < value.length; i += 1) {
+          var item = cloneStep(value[i], visited);
+          out.push(item === undefined ? null : item);
+        }
+      } else {
+        out = {};
+        Object.keys(value).forEach(function (key) {
+          var next = cloneStep(value[key], visited);
+          if (next !== undefined) out[key] = next;
+        });
+      }
+      visited.delete(value);
+      return out;
+    }
+
+    /** Has anything actually changed? Asked of what the report saves --
+     *  which is the pages without their evidence, so it stays small. */
+    function historySignature() {
+      try {
+        return JSON.stringify({
+          pages: pages.map(persistablePage),
+          activeId: activeId,
+        });
+      } catch (err) {
+        return String(pages.length) + '|' + String(activeId);
+      }
+    }
+
     function snapshotNow() {
       if (restoring) return;
-      var shot = JSON.stringify({ pages: pages, activeId: activeId });
-      if (historyAt >= 0 && history[historyAt] === shot) return;
+      var sig = historySignature();
+      if (historyAt >= 0 && history[historyAt] && history[historyAt].sig === sig) return;
       history = history.slice(0, historyAt + 1);
-      history.push(shot);
+      history.push({ sig: sig, pages: cloneStep(pages), activeId: activeId });
       if (history.length > HISTORY_LIMIT) history.shift();
       historyAt = history.length - 1;
       updateHistoryButtons();
@@ -3992,9 +4052,12 @@
 
     function applyHistory(index) {
       if (index < 0 || index >= history.length) return false;
-      var shot = JSON.parse(history[index]);
+      var shot = history[index];
+      if (!shot) return false;
       restoring = true;
-      pages = shot.pages;
+      // A fresh copy, so stepping back twice to the same place does not hand
+      // out the same objects to be edited in place.
+      pages = cloneStep(shot.pages);
       activeId = shot.activeId;
       historyAt = index;
       renderPages();
