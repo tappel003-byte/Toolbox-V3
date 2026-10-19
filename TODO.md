@@ -155,6 +155,22 @@ in the current milestone; both are written down so they do not evaporate.
 
 ## Known, and not a defect
 
+- **Switching between the workspaces, after the Report Builder listener fix.**
+  Tim and Lee, moving between Pictures, File Explorer, Distress, Floor Survey,
+  Report Builder and Diagnostics on a real job, hit "not enough memory,
+  reload". The cause was one listener the formatting ribbon left on the page
+  per visit, each holding a whole report; that is fixed and covered by
+  `tests/report-builder-teardown.mjs`.
+  What is left is not a leak, and this is written down so nobody chases it
+  again. Measured over twelve laps of entering and leaving, with a forced
+  collection before each sample: the whole cycle grows about 0.09 MB a lap and
+  flattens; Distress rises to 11.5 MB and comes back down to 10; Diagnostics
+  settles around 0.15 MB a lap, almost all of it V8's own compiled code and
+  inline-cache metadata rather than anything of ours; File Explorer is 0.01.
+  Three laps is not enough to measure any of this -- the first visit's one-off
+  cost of loading a workspace dominates, and reading that as a per-visit leak
+  is how this was briefly mis-diagnosed as three separate faults.
+
 - **A gap in the point numbers.** Tim's Main Level list runs 1, 2, 4, 5 — no 3.
   Every delete path renumbers, undo and redo keep it contiguous, and it cannot
   be reproduced; every surface reads the same stored number, so nothing
