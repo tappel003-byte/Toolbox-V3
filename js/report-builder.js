@@ -5675,11 +5675,24 @@
         box.style.width = layout.topo.w + '%';
         box.style.height = layout.topo.h + '%';
       } else {
+        // Moving a piece moves it. It does not resize it.
+        //
+        // The colour scale and the readings are sized by one control each --
+        // Legend size and Stats pill size, the same two that size them in
+        // Floor Survey -- and renderPage draws them at that size. This wrote
+        // a second size over the top: the per-piece `scale` left in the
+        // layout by an older build that gave these two corner handles. So a
+        // piece sat at one size until it was touched and jumped to another
+        // the moment it was dragged, and whichever of the two was right was
+        // luck. Tim: "the high-low delta pill needs to be selected and moved
+        // before it sizes right... legends, you have to select before they
+        // size right."
+        //
+        // One size, from the control. The drag writes position only.
         for (var n = 0; n < layout.overlays.length; n += 1) {
           if (layout.overlays[n].id === floorDrag.id) {
             box.style.left = layout.overlays[n].x + '%';
             box.style.top = layout.overlays[n].y + '%';
-            box.style.transform = 'scale(' + layout.overlays[n].scale + ')';
           }
         }
       }

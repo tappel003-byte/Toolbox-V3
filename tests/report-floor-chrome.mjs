@@ -96,6 +96,10 @@ await page.evaluate(async (id) => {
     },
   };
   await window.ToolboxDB.saveCustomerFile(record);
+  // The readings are sized by Stats pill size, the control that sizes them in
+  // Floor Survey. Set away from its default so a piece drawn at the wrong
+  // size is visible as a wrong size rather than as the default.
+  try { window.localStorage.setItem('stats-chip-size', '48'); } catch (_) {}
 }, FILE);
 
 async function openSlide() {
@@ -176,6 +180,20 @@ check('and the readings move on their own',
   draggedPill.pill.dx > 200 && draggedPill.pill.dy < -60 &&
   draggedPill.legend.dx === 0 && draggedPill.legend.dy === 0,
   JSON.stringify(draggedPill));
+
+// Moving a piece moves it. It used to resize it too: the drag wrote a second
+// size over the top -- the per-piece scale left in the layout by an older
+// build that gave these two corner handles -- so a piece sat at one size
+// until it was touched and jumped to another the moment it was dragged. Tim:
+// "the high-low delta pill needs to be selected and moved before it sizes
+// right... legends, you have to select before they size right."
+const pillAfterMove = await piece('pill');
+check('and moving a piece does not resize it',
+  pillAfterMove.h > 22 &&
+  Math.abs(pillAfterMove.w - pillBox.w) < 2 && Math.abs(pillAfterMove.h - pillBox.h) < 2,
+  JSON.stringify({ before: { w: pillBox.w, h: pillBox.h },
+    after: { w: pillAfterMove.w, h: pillAfterMove.h } }));
+
 const moved = await piece('legend');
 
 // And the plan moves underneath it without taking it along.
