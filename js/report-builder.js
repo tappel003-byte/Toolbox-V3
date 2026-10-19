@@ -27,6 +27,32 @@
   };
   var fitObserver = null;
   var formatToolbar = null;
+  /**
+   * Listeners this mount put on the document, so leaving can take them off.
+   *
+   * Report Builder added five of these on every visit and removed none. A
+   * listener is a live reference to everything its function can see, which
+   * here is the whole session: the pages, the rendered thumbnails, and every
+   * photograph loaded into them. So each visit left a complete previous visit
+   * behind, and the browser could not collect any of it -- about a megabyte
+   * per lap on a job with twelve photographs, more on a real one. Tim,
+   * switching between the applications: "I was getting a not enough memory
+   * reload."
+   */
+  var mountListeners = [];
+  /** A mount's own teardown, which module-level unmount cannot reach inside to do. */
+  var mountCleanup = null;
+
+  function onDocument(type, handler, options) {
+    document.addEventListener(type, handler, options);
+    mountListeners.push({ type: type, handler: handler, options: options });
+  }
+
+  function releaseMountListeners() {
+    mountListeners.splice(0).forEach(function (item) {
+      try { document.removeEventListener(item.type, item.handler, item.options); } catch (_) {}
+    });
+  }
   // Object URLs for pictures placed on sheets, keyed by media id.
   var overlayUrlCache = {};
   var coverPasteHandler = null;
@@ -2911,6 +2937,25 @@
     var floorShots = Object.create(null);
     var floorShotTimer = null;
 
+    // Leaving takes this visit's own state with it.
+    //
+    // thumbCache holds a rendered miniature of every page: detached screens,
+    // each with its photographs, its compass and the rest of its drawing
+    // still in them. floorShots holds a picture of every Floor Survey drawing
+    // that has been looked at. Both belong to one visit, and unmount is a
+    // module-level function that cannot see inside a mount -- so the mount
+    // hands it the way to clear them. Measured before this: a job with twelve
+    // photographs cost about a megabyte every time Report Builder was opened
+    // and left, with a whole screen's worth of elements retained each time.
+    mountCleanup = function () {
+      Object.keys(thumbCache).forEach(function (key) { delete thumbCache[key]; });
+      Object.keys(floorShots).forEach(function (key) { delete floorShots[key]; });
+      if (floorShotTimer) {
+        clearTimeout(floorShotTimer);
+        floorShotTimer = null;
+      }
+    };
+
     function thumbSignature(page) {
       var shot = floorShots[page.id] || '';
       try {
@@ -3973,7 +4018,7 @@
       formatToolbar.setHistory(historyAt > 0, historyAt < history.length - 1);
     }
 
-    document.addEventListener('keydown', function (event) {
+    onDocument('keydown', function (event) {
       var meta = event.ctrlKey || event.metaKey;
       if (!meta) return;
       var key = (event.key || '').toLowerCase();
@@ -4445,7 +4490,7 @@
     // propagation, so the canvas's own pan, wheel zoom and grip drags are
     // untouched. While a drawing tool is armed the shield above swallows the
     // event first, so the plan is correctly not selectable then.
-    document.addEventListener('pointerdown', function (event) {
+    onDocument('pointerdown', function (event) {
       if (inkTool) return;
       if (!sheetEl || !sheetEl.isConnected) return;
       var target = event.target;
@@ -4494,7 +4539,7 @@
       if (textPlace) { cancelTextBox(); return; }
       if (inkTool) endInk(event);
     });
-    document.addEventListener('keydown', function (event) {
+    onDocument('keydown', function (event) {
       if (event.key === 'Escape') disarmInk();
     });
 
@@ -5346,14 +5391,14 @@
       event.stopPropagation();
     }, true);
 
-    document.addEventListener('pointermove', function (event) {
+    onDocument('pointermove', function (event) {
       if (!northDrag) return;
       var deg = northAngle(event);
       if (northDrag.rail) northDrag.rail.style.setProperty('--rb-north-rotation', deg + 'deg');
       event.preventDefault();
     });
 
-    document.addEventListener('pointerup', function (event) {
+    onDocument('pointerup', function (event) {
       if (!northDrag) return;
       var deg = northAngle(event);
       var page = northDrag.page;
@@ -6208,6 +6253,32 @@
 
   function unmount() {
     mountGeneration += 1;
+    // Everything this mount was holding goes with it.
+    //
+    // Leaving Report Builder tore down the screen and kept the contents: the
+    // pictures it had loaded, the colour scales it had painted, the live
+    // Floor Survey views it had mounted, and the pen log's callbacks -- which
+    // close over the whole session, so the entire previous visit stayed
+    // reachable through them. Measured on a job with twelve photographs it
+    // cost about a megabyte every time the investigator went in and came out,
+    // and none of it came back under a forced collection. Tim, switching
+    // between the applications: "I was getting a not enough memory reload."
+    // The same walk with no photographs on the job was flat, which is what
+    // pointed at the pictures.
+    if (mountCleanup) {
+      try { mountCleanup(); } catch (_) { /* leaving anyway */ }
+      mountCleanup = null;
+    }
+    releaseMountListeners();
+    releaseTopoHosts();
+    overlayUrlCache = {};
+    legendImages = Object.create(null);
+    legendPainting = Object.create(null);
+    penLogUi.onNote = null;
+    penLogUi.onSelect = null;
+    penLogUi.layout = null;
+    penLogUi.noteMap = {};
+    penLogUi.selectedPinId = '';
     if (formatToolbar) {
       formatToolbar.destroy();
       formatToolbar = null;
