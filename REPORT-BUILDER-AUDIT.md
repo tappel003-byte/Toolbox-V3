@@ -75,18 +75,42 @@ the list fixes — and by the finish line it is finishing work, not a feature.
 **Below — on the list, not during the build:** pin size, the Explorer items,
 and everything else in the "On the list, not being built" section of
 `TODO.md`.
+## The honest number — corrected after looking at the pages
 
-## The honest number
+The first version of this audit said "about 90%". Tim: "I think you're looking
+at what puts on a page, not how it puts it on the page." He is right, and for
+a thing whose whole purpose is to be handed to a client that is the wrong
+measure. The pages were then photographed as Report Builder opens them, and
+looked at.
 
-Tim's estimate was 70%. Split in two, it reads better than that:
+What the pictures show, sheet by sheet:
 
-- **What fills itself in: about 90%.** Five sheet types, four of them complete
-  on open, the fifth one button away.
-- **What it looks like when it does: the 70%.** The cover, the Discussion
-  page, and the chrome on a floor slide are the remaining work, and all three
-  are a look-at-it-together loop rather than something that can be finished
-  alone.
+- **Pictures** is closest to deliverable: a clean four-across grid, captions
+  under each photograph, title block, figure number, logo. What is wrong is
+  placement — a wide empty band across the top before the first row, and a
+  loose gap between the two rows, so the grid floats rather than sits.
+- **Picture Locations** has everything on it and is composed wrongly. The
+  drawing sits in the upper left, the schedule floats out to the right with
+  nothing tying the two together, and the bottom quarter of the sheet is
+  empty. The pins are too small to read their own numbers — the same thing
+  the pin-size slider on the list is for.
+- **Floor Survey** is a dashed empty box and a button.
+- **The cover** has every fact on it and uses half the page; the lower half is
+  blank. Tim had already said he does not like it.
+- **Discussion** was never rebuilt.
 
-Which means the way to finish Report Builder is one short build (import and
-contour) followed by one desktop session on the four appearance items — not a
-long list of missing capability.
+So the count that matters is not four of five. It is: one sheet type near
+deliverable, one composed wrongly, one empty until a button is pressed, and
+two never finished. Tim's 70% was generous, not pessimistic.
+
+What does not need redoing, and is worth saying because it is most of the
+engine: the book assembles itself — right pages, right order, figure numbers,
+contents, evidence attached, photographs placed, the contour drawn wherever
+the level has one, autosave, undo, print. None of that is the problem. The
+problem is that the sheets those parts produce are not yet the sheets Tim
+hands over.
+
+Which means finishing Report Builder is: one short build (the figure importing
+itself, Done taking points), then page-by-page composition against real
+finished reports — the loop `MILESTONE.md` already authorizes — with Tim at a
+desktop saying yes or no to each sheet.
