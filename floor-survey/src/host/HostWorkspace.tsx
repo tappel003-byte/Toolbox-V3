@@ -297,6 +297,8 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
       setSaveTone(null);
     }, 3200);
   }, []);
+  const doneLock = useRef(false);
+  const [doneBusy, setDoneBusy] = useState(false);
   const handleSave = useCallback(async () => {
     if (saveLock.current || !activeFloor) return;
     saveLock.current = true;
@@ -329,41 +331,42 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
       saveLock.current = false;
       return;
     }
-    // Done taking points.
-    //
-    // Tim: "When we drop our first point for survey it says is this your
-    // first point, capture GPS. When we drop our last point there really is
-    // no complete. If we had a complete -- I'm done taking points -- generate
-    // the contour immediately, it could hit save. Closing out all the points
-    // could actually be a trigger for a lot of things."
-    //
-    // This is that trigger, and it is Save itself rather than a button beside
-    // it: Save is already the deliberate "this is the version worth keeping"
-    // moment, and one button is one button. Press it again after adding more
-    // points and the contour is drawn again. It is not a state and not a
-    // lock.
-    //
-    // What it files is the level's contour layer, which is the ONE thing
-    // Distress Survey and Report Builder were both waiting on: the contour is
-    // filed on the level, and both apps read the level, so filing it is
-    // sending it to both. Report Builder already draws it wherever a level
-    // has one -- measured Oct 20 -- so a Picture Locations sheet stops
-    // printing a bare plan without anything else being wired.
-    //
-    // Which boundary: whichever one is already on the level, so a deliberate
-    // choice made in the Topo rail -- "that's a garage, it's sloped for
-    // drainage" -- is not quietly replaced by a combined one. A level with no
-    // layer yet gets all of its boundaries.
-    //
-    // A failure here never fails the Save. The readings are already written;
-    // the contour is a picture of them and can be drawn again.
+    showSaveStatus("Saved · Recovery PDF updated.", "ok");
+    setSaving(false);
+    saveLock.current = false;
+  }, [activeFloor, points, showSaveStatus]);
+
+  /**
+   * Done taking points.
+   *
+   * Tim: "When we drop our first point for survey it says is this your first
+   * point, capture GPS etc. When we drop our last point there really is no
+   * complete. If we had a complete -- I'm done taking points -- generate the
+   * contour immediately, it could hit save... next to the Save button there
+   * should be a pill of a button that says Done. I hit Done and it's done."
+   *
+   * So Done is Save plus the one thing the rest of Toolbox was waiting on:
+   * the level's contour layer. It is filed on the LEVEL, and Distress Survey
+   * and Report Builder both read the level -- so filing it is sending it to
+   * both, and there is no second step to wire. Measured Oct 20: Report
+   * Builder already draws it wherever a level has one.
+   *
+   * It is a button, not a state, and not a lock. Press it again tomorrow
+   * after adding points and the contour is drawn again.
+   *
+   * Which boundary: whichever one the level already carries, so a deliberate
+   * choice made in the Topo rail -- "that's a garage, it's sloped for
+   * drainage" -- is not quietly replaced by a combined one. A level with no
+   * layer yet gets all of its boundaries.
+   */
+  const handleDone = useCallback(async () => {
+    if (doneLock.current || !activeFloor) return;
+    doneLock.current = true;
+    setDoneBusy(true);
     try {
-      const [{ composeContourLayer }, { persistContourLayer }, { readContourLayer }] =
-        await Promise.all([
-          import("@/lib/contour-layer"),
-          import("@/lib/db"),
-          import("@/lib/db"),
-        ]);
+      await handleSave();
+      const [{ composeContourLayer }, { persistContourLayer, readContourLayer }] =
+        await Promise.all([import("@/lib/contour-layer"), import("@/lib/db")]);
       const held = await readContourLayer(activeFloor.id).catch(() => null);
       const areas = Array.isArray(activeFloor.areas) ? activeFloor.areas : [];
       const keptArea = held && held.areaName
@@ -376,12 +379,11 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
         areaId: keptArea ? keptArea.id : null,
       });
       if (!drawn) {
+        // Saying nothing here looks exactly like working.
         showSaveStatus(
           "Saved · no contour yet — this level needs a closed boundary with readings inside it.",
-          "ok",
+          "err",
         );
-        setSaving(false);
-        saveLock.current = false;
         return;
       }
       await persistContourLayer(activeFloor.id, drawn.dataUrl, {
@@ -390,18 +392,15 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
         height: drawn.extent.h,
         pointCount: drawn.pointCount,
       });
+      showSaveStatus(`Done · ${drawn.areaName} contour sent.`, "ok");
     } catch (err) {
       console.error(err);
-      showSaveStatus("Saved · Recovery PDF updated · contour not drawn", "err");
-      setSaving(false);
-      saveLock.current = false;
-      return;
+      showSaveStatus("Saved · contour not drawn", "err");
+    } finally {
+      setDoneBusy(false);
+      doneLock.current = false;
     }
-
-    showSaveStatus("Saved · Recovery PDF and contour updated.", "ok");
-    setSaving(false);
-    saveLock.current = false;
-  }, [activeFloor, points, settings, showSaveStatus]);
+  }, [activeFloor, points, settings, handleSave, showSaveStatus]);
   const handleFloorChange = useCallback((f: Floor) => {
     setFloors((prev) => prev.map((p) => (p.id === f.id ? f : p)));
   }, []);
@@ -466,6 +465,8 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
         undoEnabled={undoActive && history.canUndo}
         redoEnabled={undoActive && history.canRedo}
         onSave={handleSave}
+        onDone={handleDone}
+        doneBusy={doneBusy}
         saving={saving}
         saveStatus={saveStatus}
         saveTone={saveTone}

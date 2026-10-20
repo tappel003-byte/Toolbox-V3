@@ -15,6 +15,9 @@ type Props = {
   undoEnabled?: boolean;
   redoEnabled?: boolean;
   onSave?: () => void | Promise<void>;
+  /** Done taking points on this level: saves, and files the contour. */
+  onDone?: () => void | Promise<void>;
+  doneBusy?: boolean;
   saving?: boolean;
   saveStatus?: string | null;
   saveTone?: "ok" | "err" | null;
@@ -41,6 +44,8 @@ export function AppTopBar({
   undoEnabled = true,
   redoEnabled = true,
   onSave,
+  onDone,
+  doneBusy = false,
   saving = false,
   saveStatus = null,
   saveTone = null,
@@ -134,6 +139,36 @@ export function AppTopBar({
         >
           {saveTone === "ok" ? "✅" : "💾"}
         </button>
+        {/*
+          Done taking points.
+
+          A survey had a beginning and no end: the first point asks whether it
+          is BP1 and takes the GPS, and the last point asks nothing, so there
+          was nowhere for the work after it to hang. Tim: "If we had a
+          complete -- I'm done taking points -- generate the contour
+          immediately... next to the Save button there should be a pill of a
+          button that says Done. I hit Done and it's done."
+
+          It is a button, not a state: press it again after adding points
+          tomorrow and the contour is drawn again. Nothing is locked.
+        */}
+        {onDone && (
+          <button
+            type="button"
+            onClick={() => {
+              if (doneBusy || saving) return;
+              void onDone();
+            }}
+            disabled={doneBusy || saving}
+            className="inline-flex items-center justify-center h-7 shrink-0 rounded-full border border-emerald-700/40 bg-emerald-50 px-3 text-xs font-semibold text-emerald-900 hover:bg-emerald-100 disabled:opacity-40"
+            aria-label="Done taking points"
+            title="Done taking points — saves and draws the contour"
+            aria-busy={doneBusy}
+            data-floor-done
+          >
+            {doneBusy ? "Working…" : "Done"}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => undoEnabled && fire("app:undo")}

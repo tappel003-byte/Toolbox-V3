@@ -481,9 +481,15 @@ const sent = await page.evaluate(async () => {
   clickText('topo');
   await new Promise((r) => setTimeout(r, 1200));
   // Open the Contours panel.
-  const waves = Array.from(document.querySelectorAll('button')).find(
-    (b) => (b.getAttribute('title') || b.getAttribute('aria-label') || '').toLowerCase().includes('contour'),
+  // The Contours corner, by its own label -- not any button whose tooltip
+  // happens to mention a contour. The Done pill's does, and it sits earlier
+  // in the top bar, so a loose match pressed Done instead and the panel
+  // never opened.
+  const labelled = (needle) => Array.from(document.querySelectorAll('button')).find(
+    (b) => (b.getAttribute('title') || b.getAttribute('aria-label') || '')
+      .trim().toLowerCase() === needle,
   );
+  const waves = labelled('contours');
   if (waves) waves.click();
   await new Promise((r) => setTimeout(r, 600));
   const select = Array.from(document.querySelectorAll('select')).find((el) =>
