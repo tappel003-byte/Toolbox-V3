@@ -455,6 +455,21 @@
     var statsList = live && live.length ? live : (Array.isArray(ev.stats) ? ev.stats : []);
     var layout = layoutForStats(options && options.layout, statsList.length || 1, statsList);
     var locked = !!layout.locked;
+    // The everything-at-once sheet carries no colour scale and no H/L/delta.
+    //
+    // Tim, Oct 20: "Whenever we bring in different levels with multiple
+    // topos, we do not bring in the pill, high-low delta pill. We do not
+    // bring in the contour legend." Several boundaries meant several scales
+    // and several pills stacked down the margin, each one reading a surface
+    // the eye cannot pick out of a combined drawing. The slots themselves
+    // are untouched -- a sheet showing one boundary still gets its pair.
+    var combinedSheet = meta.scope === 'all' && statsList.length >= 2;
+    // A sheet drawn as readings alone has no contour colours, so a colour
+    // scale on it is a key to something that is not there. The readings
+    // themselves stay: H / L / delta describe the numbers, which are the
+    // whole point of the sheet. This is what a garage opens as.
+    var view = (options && options.settings) || null;
+    var readingsOnly = !!(view && view.mode === 'points-only');
 
     var root = document.createElement('div');
     root.className = 'rb-topo-page' + (imported ? ' rb-topo-page--imported' : ' rb-topo-page--chrome-only');
@@ -523,6 +538,8 @@
       // is one too many.
       layout.overlays.forEach(function (overlay) {
         if (overlay.kind !== 'legend' && overlay.kind !== 'pill') return;
+        if (combinedSheet) return;
+        if (readingsOnly && overlay.kind === 'legend') return;
         var stats = statsList[overlay.statsIndex];
         if (!stats) return;
         var piece = boxShell(overlay.kind, overlay.id, true);
@@ -535,7 +552,14 @@
             overlay.kind === 'legend' ? 'Move the colour scale' : 'Move the readings');
         }
         piece.style.left = overlay.x + '%';
-        piece.style.top = overlay.y + '%';
+        // With no colour scale above it, the readings take the scale's own
+        // slot rather than floating in the middle of the drawing where the
+        // scale used to end. Only a pill still sitting on its default: one
+        // the investigator dragged is his and is left where he put it.
+        var slotNow = scaleSlot(overlay.statsIndex || 0);
+        var liftPill = readingsOnly && overlay.kind === 'pill' &&
+          sameSpot(overlay.x, slotNow.x) && sameSpot(overlay.y, slotNow.pillY);
+        piece.style.top = (liftPill ? slotNow.legendY : overlay.y) + '%';
         piece.style.zIndex = String(overlay.z);
         piece.style.transform = 'scale(' +
           (overlay.kind === 'legend' ? legendScale(options) : pillScale(options)) + ')';
@@ -562,7 +586,10 @@
       toolbar.appendChild(importBtn);
       var hint = document.createElement('span');
       hint.className = 'rb-floor-toolbar__hint';
-      hint.textContent = 'Loads topo, legend, and H/L/Δ onto this slide.';
+      // A combined sheet gets neither, so it must not promise them.
+      hint.textContent = combinedSheet
+        ? 'Loads every boundary of this level onto one slide.'
+        : 'Loads topo, legend, and H/L/Δ onto this slide.';
       toolbar.appendChild(hint);
     } else {
       var lockBtn = document.createElement('button');

@@ -115,16 +115,21 @@ const logic = await page.evaluate(() => {
   assert('distress counts stay with the level',
     source.distress.levels[0].pinCount === 1 && source.distress.levels[0].photoCount === 1 &&
     source.distress.levels[1].photoCount === 2);
-  assert('floor figures stay consecutive and unmerged',
+  // Main Level leads whatever order the canvases were drawn in -- the
+  // Basement is canvas 0 here and still comes second. Tim, Oct 20: "Main
+  // level always gets brought in first."
+  assert('floor figures stay consecutive and unmerged, Main Level first',
     source.floor.figures.map((figure) => figure.id).join(',') ===
-      'floor-current::canvas-b,floor-current::canvas-m,epoch-jan::canvas-b',
+      'floor-current::canvas-m,floor-current::canvas-b,epoch-jan::canvas-b',
     source.floor.figures.map((figure) => figure.id).join(','));
+  const byName = (name) => source.floor.figures.find((figure) => figure.name === name);
   assert('stored topo media is referenced on the outline',
-    source.floor.figures[0].figureMediaId === 'fsrec_canvas-b' &&
-    source.floor.figures[0].readingCount === 1);
+    byName('Basement').figureMediaId === 'fsrec_canvas-b' &&
+    byName('Basement').readingCount === 1,
+    JSON.stringify(byName('Basement')));
   assert('areas without closed polygons stay one level figure',
-    source.floor.figures[1].areaCount === 0 && source.floor.figures[1].name === 'Main Level',
-    JSON.stringify(source.floor.figures[1]));
+    byName('Main Level').areaCount === 0,
+    JSON.stringify(byName('Main Level')));
 
   const sequence = src.assemble(source);
   const distressIds = sequence.pages.filter((item) => item.type === 'distress').map((item) => item.id);

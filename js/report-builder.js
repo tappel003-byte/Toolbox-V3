@@ -5266,6 +5266,17 @@
         if (!meta.layout || (floorLayout && floorLayout.locked)) {
           page.meta.layout = flApi ? flApi.cloneLayout(floorLayout) : floorLayout;
         }
+        // A garage arrives as readings, not contours. Tim, Oct 20: "I just
+        // want data points in the garage. Period. I can always change them
+        // later." Only ever seeded here, on the slide's first import, and
+        // only when the slide has no rendition of its own -- Points only is
+        // the rail's existing control, so changing it afterwards is the same
+        // one click as on any other slide, and that choice is then kept.
+        if (meta.pointsOnly && !page.meta.floorView) {
+          var seeded = floorView ? JSON.parse(JSON.stringify(floorView)) : {};
+          seeded.mode = 'points-only';
+          page.meta.floorView = seeded;
+        }
         page.meta.imported = true;
         page.meta.autoImported = true;
         changed = true;

@@ -92,11 +92,17 @@ const outline = await page.evaluate(() => {
 
   const source = src.read(record);
   const ids = source.floor.figures.map((f) => f.id);
-  assert('Combined then named boundaries',
+  // The boundaries first, the everything-at-once sheet last. Tim, Oct 20:
+  // "We bring any floor level survey that has all levels lastly, and we just
+  // say combined view for exhibit." It used to lead the level, so a report
+  // opened on the busiest drawing in the book.
+  assert('named boundaries, then Combined last',
     ids.join(',') ===
-      'floor-current::canvas-main::all,floor-current::canvas-main::area-main,floor-current::canvas-main::area-lower',
+      'floor-current::canvas-main::area-main,floor-current::canvas-main::area-lower,floor-current::canvas-main::all',
     ids.join(','));
-  assert('Combined scope is all', source.floor.figures[0].scope === 'all' && source.floor.figures[0].name === 'Combined');
+  const last = source.floor.figures[source.floor.figures.length - 1];
+  assert('Combined scope is all',
+    last.scope === 'all' && last.name === 'Combined View for Exhibit', last.name);
   assert('Front Door facing is outlined', source.floor.figures[0].frontDoorFacing === 'West');
   assert('compose flag is set', source.floor.figures.every((f) => f.compose === true));
   assert('cover meta carries contact fields',
@@ -271,11 +277,11 @@ function readSheet() {
 const combined = await page.evaluate(readSheet);
 
 check('Combined page uses the topo template', combined.type === 'floor' && combined.hasTopo, JSON.stringify(combined));
-check('Combined figure number is Figure 1',
-  combined.figureLabel === 'Figure 1' && combined.railFigure === 'FIGURE 1',
+check('Combined is the last of the level\'s figures',
+  combined.figureLabel === 'Figure 3' && combined.railFigure === 'FIGURE 3',
   `${combined.figureLabel} | ${combined.railFigure}`);
 check('the rail names the drawing and its scope',
-  combined.title === 'Floor Level SurveyCombined', combined.title);
+  combined.title === 'Floor Level SurveyCombined View for Exhibit', combined.title);
 check('the rail carries the survey date and the corrected note',
   /February 11, 2026/.test(combined.date) && /Corrected for floor/i.test(combined.corrected),
   `${combined.date} | ${combined.corrected}`);
@@ -307,8 +313,8 @@ await page.waitForFunction(() => {
   return title && /Main Level/.test(title.textContent || '');
 }, { timeout: 15000 });
 const mainLevel = await page.evaluate(readSheet);
-check('Main Level page is Figure 2 and names its own level',
-  mainLevel.figureLabel === 'Figure 2' && mainLevel.title === 'Floor Level SurveyMain Level',
+check('Main Level page is Figure 1 and names its own level',
+  mainLevel.figureLabel === 'Figure 1' && mainLevel.title === 'Floor Level SurveyMain Level',
   `${mainLevel.figureLabel} | ${mainLevel.title}`);
 check('Main Level keeps the same rail blocks',
   mainLevel.date === combined.date && mainLevel.residence === combined.residence &&
@@ -325,8 +331,8 @@ await page.waitForFunction(() => {
   return title && /Lower Level/.test(title.textContent || '');
 }, { timeout: 15000 });
 const lower = await page.evaluate(readSheet);
-check('Lower Level page is Figure 3 and names its own level',
-  lower.figureLabel === 'Figure 3' && lower.title === 'Floor Level SurveyLower Level',
+check('Lower Level page is Figure 2 and names its own level',
+  lower.figureLabel === 'Figure 2' && lower.title === 'Floor Level SurveyLower Level',
   `${lower.figureLabel} | ${lower.title}`);
 check('every level is drawn from the same template',
   lower.hasTopo && lower.mark === combined.mark && lower.compass === combined.compass &&

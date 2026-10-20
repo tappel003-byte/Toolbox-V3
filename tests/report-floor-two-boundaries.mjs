@@ -98,8 +98,12 @@ async function openCombined() {
   await page.goto(`${BASE}#/file/${FILE}/report`, { waitUntil: 'networkidle0' });
   await page.waitForFunction(() => !!document.querySelector('.rb-sheet'), { timeout: 40000 });
   await new Promise((r) => setTimeout(r, 5000));
+  // The caption alone. A thumb's full text includes the cover's CONTENTS,
+  // which lists every figure in the book -- so matching on it picks the cover
+  // whatever is being looked for.
   const at = await page.evaluate(() => [...document.querySelectorAll('.rb-thumb')]
-    .findIndex((t) => /Combined/i.test(t.textContent || '')));
+    .findIndex((t) => /Combined/i.test(
+      (t.querySelector('.rb-thumb__caption') || {}).textContent || '')));
   await page.evaluate((n) => document.querySelectorAll('.rb-thumb')[n < 0 ? 2 : n].click(), at);
   await page.waitForFunction(
     () => document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="legend"]').length >= 2,
