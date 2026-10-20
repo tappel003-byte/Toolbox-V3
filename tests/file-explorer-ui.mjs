@@ -541,6 +541,16 @@ try {
     };
     window.showSaveFilePicker = realPicker;
 
+    // A job the Cabinet holds nothing for but its own record files: it says
+    // so, rather than showing one closed line and no explanation.
+    window.location.hash = `#/explore/${fixture.other}`;
+    await pause(400);
+    const bare = {
+      folders: document.querySelectorAll('.explorer-folder').length,
+      records: document.querySelectorAll('.explorer-records').length,
+      text: document.getElementById('explorer-list').innerText,
+    };
+
     const afterFiles = await window.ToolboxDB.getAllCustomerFiles();
 
     return {
@@ -585,6 +595,7 @@ try {
       })),
       cancelled,
       fallback,
+      bare,
       quickZip,
       distressEntries,
       quickEntries,
@@ -710,6 +721,10 @@ try {
     flow.fetchLog.every((entry) => entry.path.startsWith('explore/') || /^media\//.test(entry.path)) &&
     !flow.fetchLog.some((entry) => entry.path.includes('checkout')),
     JSON.stringify(flow.fetchLog));
+  check('a job with nothing but record files says so',
+    flow.bare.folders === 0 && flow.bare.records === 1 &&
+    /No pictures, plans or surveys/.test(flow.bare.text),
+    JSON.stringify(flow.bare));
   check('browsing does not create a local working copy',
     flow.writes.length === 0 && flow.beforeCount === flow.afterCount,
     JSON.stringify({ writes: flow.writes, before: flow.beforeCount, after: flow.afterCount }));

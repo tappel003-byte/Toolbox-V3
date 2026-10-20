@@ -819,11 +819,22 @@
       const buckets = sorted.buckets;
       if (!openFolder) {
         crumb.innerHTML = '';
+        let folders = 0;
         GROUPS.forEach(function (group) {
           const rows = buckets[group.id];
           if (!rows || !rows.length) return;
+          folders += 1;
           listEl.appendChild(folderRow(id, group, rows));
         });
+        // A job the Cabinet holds nothing for but its own record files: say
+        // so, rather than showing one closed line and no explanation.
+        if (!folders) {
+          const empty = document.createElement('p');
+          empty.className = 'cabinet-empty';
+          empty.textContent = 'No pictures, plans or surveys are stored for this ' +
+            'Customer File yet.';
+          listEl.appendChild(empty);
+        }
         if (sorted.records.length) listEl.appendChild(recordFiles(id, sorted.records));
         return;
       }
