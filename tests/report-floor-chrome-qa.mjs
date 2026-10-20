@@ -142,17 +142,48 @@ check('the Floor Survey controls keep their full height on a short screen',
   short.controls > 300,
   JSON.stringify({ tall, short }));
 
+const tabNames = await page.evaluate(() =>
+  [...document.querySelectorAll('[role=tab]')].map((b) => b.textContent.trim()));
+check('the rail is three tabs, named in the app\'s own words',
+  tabNames.join(' | ') === 'Contours | Labels | Layers', JSON.stringify(tabNames));
+
+// Each size sits beside the thing it sizes, on one tab, rather than buried in
+// a pile of switches.
+await openTab('Layers');
 const named = await page.evaluate(() => {
   const panel = document.querySelector('.rb-panel');
   const names = [...panel.querySelectorAll('label')].map((n) => (n.textContent || '').trim());
-  return { legend: names.includes('Legend size'), pill: names.includes('Stats pill size') };
+  return { order: names, legend: names.includes('Legend size'), pill: names.includes('Stats pill size') };
 });
-check('Legend size and Stats pill size are both in the rail',
-  named.legend && named.pill, JSON.stringify(named));
+check('Legend size and Stats pill size are together, each under its own piece',
+  named.legend && named.pill &&
+  named.order.indexOf('Legend size') === named.order.indexOf('Legend') + 1 &&
+  named.order.indexOf('Stats pill size') === named.order.indexOf('High / low') + 1,
+  JSON.stringify(named.order));
 await page.setViewport({ width: 1700, height: 1050 });
 await new Promise((r) => setTimeout(r, 2000));
 
 // --- Both size controls actually move their piece on the sheet ---
+/**
+ * Open one of the rail's tabs.
+ *
+ * The Floor Survey controls are three tabs in Report Builder now -- Contours,
+ * Labels, Layers -- rather than a thousand pixels of panel stacked open at
+ * once. So a control is reached by naming its tab first, which is the point:
+ * "the contour rail has always been very cluttered... the most common used
+ * controls are hidden deeper."
+ */
+async function openTab(name) {
+  const found = await page.evaluate((n) => {
+    const b = [...document.querySelectorAll('[role=tab]')].find((x) => x.textContent.trim() === n);
+    if (!b) return false;
+    b.click();
+    return true;
+  }, name);
+  await new Promise((r) => setTimeout(r, 900));
+  return found;
+}
+
 async function bump(label, times) {
   for (let i = 0; i < times; i += 1) {
     const ok = await page.evaluate((t) => {
@@ -169,6 +200,7 @@ async function bump(label, times) {
   return true;
 }
 
+await openTab('Layers');
 const legendWas = await box('legend-0');
 check('Legend size is a control that can be pressed', await bump('Legend size', 3));
 const legendNow = await box('legend-0');
@@ -176,6 +208,7 @@ check('and pressing it makes the colour scale on the sheet bigger',
   legendNow.w > legendWas.w + 5 && legendNow.h > legendWas.h + 5,
   JSON.stringify({ was: legendWas, now: legendNow }));
 
+await openTab('Layers');
 const pillWas = await box('pill-0');
 check('Stats pill size is a control that can be pressed', await bump('Stats pill size', 3));
 const pillNow = await box('pill-0');
@@ -222,6 +255,7 @@ async function toggle(label) {
 await toggle('contour legend');            // locked, at whatever size it is
 const lockedFirst = await box('legend-0');
 await toggle('contour legend');            // unlocked again
+await openTab('Layers');
 await bump('Legend size', 2);              // and made bigger
 const biggerUnlocked = await box('legend-0');
 await toggle('contour legend');            // locked at the NEW size
@@ -240,6 +274,7 @@ await page.evaluate(() => {
   if (b) b.click();
 });
 await new Promise((r) => setTimeout(r, 2200));
+await openTab('Layers');
 const lockedWas = await box('pill-0');
 await bump('Stats pill size', 3);
 const lockedNow = await box('pill-0');
