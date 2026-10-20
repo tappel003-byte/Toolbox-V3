@@ -1155,7 +1155,9 @@ body.report-builder-open .canvas {
   cursor: nwse-resize;
 }
 
-.rb-cover:not(.is-locked) .rb-cover-box:hover .rb-cover-box__resize,
+/* Highlighted, never merely hovered. Tim: the pulls "only show up when the
+   box is highlighted, period." A pointer passing over a box is not a choice
+   to work on it; clicking it, or reaching it by keyboard, is. */
 .rb-cover:not(.is-locked) .rb-cover-box:focus-within .rb-cover-box__resize,
 .rb-cover:not(.is-locked) .rb-cover-box.is-active .rb-cover-box__resize {
   display: block;
@@ -1981,10 +1983,10 @@ body.report-builder-open .canvas {
   cursor: nwse-resize;
 }
 
-.rb-penlog__plan:hover .rb-penlog__move,
-.rb-penlog__plan:hover .rb-penlog__resize,
-.rb-penlog__schedule:hover .rb-penlog__move,
-.rb-penlog__schedule:hover .rb-penlog__resize {
+[data-rb-penlog-box].is-picked > .rb-penlog__move,
+[data-rb-penlog-box].is-picked > .rb-penlog__resize,
+[data-rb-penlog-box]:focus-within > .rb-penlog__move,
+[data-rb-penlog-box]:focus-within > .rb-penlog__resize {
   display: block;
 }
 
@@ -2413,9 +2415,10 @@ body.report-builder-open .canvas {
   outline-offset: 2px;
 }
 
-.rb-floor-box--chrome .rb-floor-box__resize { display: none; }
-.rb-floor-box--chrome:hover .rb-floor-box__resize,
-.rb-floor-box--chrome:focus-within .rb-floor-box__resize { display: block; }
+/* The colour scale and the readings carry no corner pulls at all: each is
+   sized from the control that has always sized it, and two controls for one
+   size is one too many. */
+.rb-floor-box--chrome .rb-floor-box__resize { display: none !important; }
 
 /* The site overview on a Floor Survey page.
  *
@@ -2444,7 +2447,6 @@ body.report-builder-open .canvas {
    corner chevrons on the corners of it don't need to be there unless it's
    selected." Four brackets standing on a finished figure are chrome on the
    drawing, which is the one thing the rail rebuild was for. */
-.rb-floor-box--overview:hover .rb-floor-box__resize,
 .rb-floor-box--overview:focus-within .rb-floor-box__resize,
 .rb-floor-box--overview.is-picked .rb-floor-box__resize {
   display: block;
@@ -2521,8 +2523,20 @@ body.report-builder-open .canvas {
 /* Only while the floorplan surface is selected -- the same rule the plan's
    own grips already follow. A handle standing on an unselected drawing is
    chrome on a figure. */
+/* The one box being worked on. It used to be the whole sheet: clicking the
+   drawing lit the pulls on the plan AND on the aerial view at once, which is
+   chrome standing on a figure nobody is touching. */
 .rb-floor-box__resize { display: none; }
-.rb-sheet--plan-selected .rb-floor-box__resize { display: block; }
+.rb-floor-box.is-picked > .rb-floor-box__resize,
+.rb-floor-box:focus-within > .rb-floor-box__resize { display: block; }
+
+/* A picked box says so, the way a picked cover box does -- except the plan
+   itself, which IS the sheet on an imported slide, and the colour scale and
+   readings, which are sized from the rail and have nothing to pull. */
+.rb-floor-box.is-picked:not(.rb-floor-box--topo):not(.rb-floor-box--chrome) {
+  outline: 1px dashed rgba(30, 64, 110, 0.55);
+  outline-offset: 2px;
+}
 
 .rb-floor-box__resize--nw {
   left: -8px; top: -8px; cursor: nwse-resize;
@@ -2903,7 +2917,9 @@ body.report-builder-open .canvas {
   cursor: move;
 }
 
-.rb-cover:not(.is-locked) .rb-cover-box:hover .rb-cover-box__move,
+/* The move corner follows the resize pull exactly: one rule for both, so a
+   box either is being worked on or is not. It used to come out on hover,
+   which left the two corners of one box obeying different rules. */
 .rb-cover:not(.is-locked) .rb-cover-box:focus-within .rb-cover-box__move,
 .rb-cover:not(.is-locked) .rb-cover-box.is-active .rb-cover-box__move {
   display: block;

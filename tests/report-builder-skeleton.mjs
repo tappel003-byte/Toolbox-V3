@@ -341,8 +341,27 @@ check('no box on the title page shows chrome at rest',
   coverChrome.count === 5 &&
   coverChrome.rest.every((s) => s.outline === 'none' && s.move === 'none' && s.resize === 'none'),
   JSON.stringify(coverChrome.rest));
+// Pointing shows the box's edge, so the investigator can see it is a box.
+// Its corners are a different thing: they are the controls, and they come out
+// when the box is highlighted and at no other time. Tim: "I don't like them
+// visible all the time. I wanted them to where you highlighted it."
 await page.mouse.move(coverChrome.point.x, coverChrome.point.y);
-await new Promise((r) => setTimeout(r, 250));
+await new Promise((r) => setTimeout(r, 300));
+const coverHovered = await page.evaluate(() => {
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+  const box = [...sheet.querySelectorAll('.rb-cover-box')][1];
+  return {
+    outline: getComputedStyle(box).outlineStyle,
+    move: getComputedStyle(box.querySelector('.rb-cover-box__move')).display,
+    resize: getComputedStyle(box.querySelector('.rb-cover-box__resize')).display,
+  };
+});
+check('pointing shows the edge and no corner at all',
+  coverHovered.outline === 'dashed' &&
+  coverHovered.move === 'none' && coverHovered.resize === 'none',
+  JSON.stringify(coverHovered));
+await page.mouse.click(coverChrome.point.x, coverChrome.point.y);
+await new Promise((r) => setTimeout(r, 400));
 const coverPointed = await page.evaluate(() => {
   const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
   const boxes = [...sheet.querySelectorAll('.rb-cover-box')];
@@ -355,7 +374,7 @@ const coverPointed = await page.evaluate(() => {
   });
   return { pointed: look(box), other: look(other) };
 });
-check('the box being pointed at shows its edge and both corners, alone',
+check('the box being worked on shows its edge and both corners, alone',
   coverPointed.pointed.outline === 'dashed' &&
   coverPointed.pointed.move === 'block' &&
   coverPointed.pointed.resize === 'block' &&

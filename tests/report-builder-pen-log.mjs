@@ -555,8 +555,10 @@ function penBoxes() {
   });
 }
 async function dragPen(selector, dx, dy) {
-  // Point at the piece first, the way the investigator does: the handles
-  // are revealed by hovering the box, not by being forced visible.
+  // Pick the piece first, the way the investigator does. The handles used to
+  // come out on hover; they come out when the box is highlighted now, and at
+  // no other time. Tim: the pulls "only show up when the box is highlighted,
+  // period."
   const box = await page.evaluate((sel) => {
     const g = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) ' + sel);
     // Just inside the corner the handle sits on, rather than the middle of
@@ -568,13 +570,15 @@ async function dragPen(selector, dx, dy) {
       : { x: r.left + 6, y: r.top + 6 };
   }, selector);
   await page.mouse.move(box.x, box.y);
-  await new Promise((r) => setTimeout(r, 250));
+  await page.mouse.down();
+  await page.mouse.up();
+  await new Promise((r) => setTimeout(r, 300));
   const at = await page.evaluate((sel) => {
     const g = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) ' + sel);
     const r = g.getBoundingClientRect();
     return { x: r.x + r.width / 2, y: r.y + r.height / 2, shown: getComputedStyle(g).display };
   }, selector);
-  if (at.shown === 'none') throw new Error('handle did not appear on hover: ' + selector);
+  if (at.shown === 'none') throw new Error('handle did not appear once picked: ' + selector);
   await page.mouse.move(at.x, at.y);
   await page.mouse.down();
   await page.mouse.move(at.x + dx, at.y + dy, { steps: 12 });

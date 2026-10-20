@@ -4647,7 +4647,33 @@
       // margin around the page has to deselect, the way clicking away from a
       // picture does in PowerPoint.
       sheetEl.classList.toggle('rb-sheet--plan-selected', onPlan);
+      pickBox(target);
     }, true);
+
+    /**
+     * The box being worked on, and only it, wears its pulls.
+     *
+     * Tim: chevrons are the resize pull, "and they only show up when the box
+     * is highlighted, period." They used to come out on hover -- so they
+     * appeared under a pointer that was only passing over, and a box reached
+     * by any other means had none -- and on a Floor Survey sheet every box on
+     * the page showed them at once as soon as the drawing was clicked.
+     *
+     * One marker, set here for every kind of box that moves. The cover sets
+     * its own, by the same rule and at the same moment.
+     */
+    function pickBox(target) {
+      if (!sheetEl || !sheetEl.isConnected) return;
+      var picked = target && target.closest
+        ? target.closest('[data-rb-floor-box],[data-rb-penlog-box]')
+        : null;
+      if (picked && !sheetEl.contains(picked)) picked = null;
+      var lit = sheetEl.querySelectorAll('.is-picked');
+      for (var i = 0; i < lit.length; i += 1) {
+        if (lit[i] !== picked) lit[i].classList.remove('is-picked');
+      }
+      if (picked) picked.classList.add('is-picked');
+    }
 
     // Drawing listens on the sheet too, but only acts while a tool is armed,
     // and the armed layer above has already stopped the event reaching anything

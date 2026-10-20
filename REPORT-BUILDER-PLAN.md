@@ -40,7 +40,7 @@ being drawn.
 
 Until that is known, this is not work to do. It is a question to answer.
 
-## 2. Every piece lands in the same place, every time
+## 2. Every piece lands in the same place, every time — **done, Oct 20**
 
 The colour scale, the H/L/Δ pill and the aerial each have a home on a Floor
 Survey sheet. On a two-boundary sheet the second scale currently runs off the
@@ -50,17 +50,43 @@ One placement rule, applied the same way whatever the sheet holds: each
 boundary's scale and its pill together, never off the paper, identical from
 sheet to sheet. Moved afterwards by hand, because everything is movable.
 
-## 3. Pictures line up
+## 3. Pictures line up — **done, Oct 20**
 
 Every plate is clipped to the identical box, so the centre is the same on
 every picture and the rows line up. The caption sits under it and its font
 shrinks to fit rather than pushing the picture around.
 
-## 4. Chevron pulls, on anything that moves
+## 4. Chevron pulls, on anything that moves — **done, Oct 20**
 
 The resize pull is a chevron, on every movable box on every sheet — cover,
 figure, pictures, text. It appears when the box is highlighted and at no other
 time, and never prints.
+
+---
+
+## What those three became, in the code
+
+**2.** Each boundary's scale and pill sit together in a slot measured from the
+real height of a colour scale, and a report saved under the old guessed slots
+takes the corrected one unless the position was chosen by hand. On top of
+that, Tim's decisions of Oct 20: Main Level leads, the everything-at-once
+sheet comes last as *Combined View for Exhibit* and carries no scale and no
+pill, a garage arrives as readings rather than contours, and any sheet drawn
+as readings alone drops the colour scale with it.
+
+**3.** The caption is a block of fixed height in every cell, three lines deep.
+The words fit it by coming down in size, to half at the floor, and the plate
+above never moves — so the pictures along a row sit on one line. The printed
+deck measures its own captions, which it had never done.
+
+**4.** A pull shows on the box being worked on and on no other, on the cover,
+on a Floor Survey sheet and on a Picture Locations sheet alike. Hover does
+nothing. Nothing prints.
+
+**Still Tim's to settle:** whether a photograph is *cropped* to fill the
+identical plate or *fitted* inside it. Cropping makes every picture literally
+the same rectangle; it also cuts evidence off the edge of a photograph. Not
+mine to choose.
 
 ---
 
