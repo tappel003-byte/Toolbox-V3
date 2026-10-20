@@ -160,6 +160,28 @@ finished because we continue to add new features. I don't know if we should
 add new features during the build process when Report Builder isn't even
 completed." Things land here until Report Builder is finished.
 
+- **Done taking points.** Tim, Oct 20: "when we drop our first appointment for
+  survey it says is this your first point, capture GPS etc. When we drop our
+  last point there really is no complete. If we had a complete -- I'm done
+  taking points -- generate the contour immediately, it could hit save.
+  Closing out all the points could actually be a trigger for a lot of things."
+  Floor Survey has a beginning and no end, so there is nowhere for the work
+  after it to hang. A Done button on a level files the black-and-white contour
+  for that level and takes the Save checkpoint. That is the whole trigger:
+  "send to Distress" and "into Report Builder" are not separate steps, because
+  the contour is filed on the **level** and both apps read the level.
+  It is not a state and not a lock. Press it again tomorrow after adding
+  points and it redraws -- no prompt, no edit-versus-add branch. Tim, on the
+  version with a prompt: "I think you're trying to make this more complicated
+  than maybe it should be." He is right; the button is the whole thing.
+  One thing worth keeping, which costs nothing: a contour already records how
+  many readings it was drawn from, so a level holding more readings than its
+  picture can say the contour is behind rather than printing a stale one
+  quietly.
+  Today the contour is drawn by a button in Floor Survey's Topo tab, on B&W
+  lines only -- "what you see is what you send", Tim's own call. That button
+  stays; a step that can be forgotten must not be the only way.
+
 - **Pin size, one number per level.** From PGG photo documentation, pull
   request #2 -- a slider from 0.3x to 2.5x with a Reset, 1.0 being the size
   for a ~2,500 sq ft plan. Tim's reason is capture, not print: "if I'm working
