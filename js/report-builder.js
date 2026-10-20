@@ -3363,6 +3363,9 @@
       renderSheet(sheetEl, current, pages);
       syncPenLogPanel(current);
       fitSheet(root);
+      // The sheet is rebuilt on every render, so the box being worked on has
+      // to be marked again or the pulls disappear mid-drag.
+      if (typeof paintCoverSelection === 'function') paintCoverSelection();
       // A Floor Survey slide's drawing is live and belongs to the slide being
       // looked at, so its preview is a picture taken while it is on screen.
       scheduleFloorShot(current);
@@ -5589,6 +5592,46 @@
       markDirty();
       flushSave().catch(function () {});
     });
+
+    /**
+     * Which cover box is being worked on.
+     *
+     * The pulls used to appear on hover alone. Two things made that fail in
+     * practice: a box is mostly text, so pointing at it often means pointing
+     * at a field rather than the box, and the contents frame had a list
+     * hanging out below its own rectangle -- so the rows Tim was clicking
+     * were not inside the box at all, and nothing lit up. Tim: "I do like the
+     * corner pull but I don't like them visible all the time. I wanted them
+     * to where you highlighted it, but I highlighted that box numerous times
+     * yesterday and it would not show the pulls."
+     *
+     * So a click selects a box and the pulls stay out until something else is
+     * clicked. Hover still shows them, for anyone who already knows where
+     * they are.
+     */
+    var coverSelected = '';
+
+    function paintCoverSelection() {
+      if (!sheetEl) return;
+      var boxes = sheetEl.querySelectorAll('[data-rb-cover-box]');
+      for (var i = 0; i < boxes.length; i += 1) {
+        var id = boxes[i].getAttribute('data-rb-cover-box');
+        boxes[i].classList.toggle('is-active', !!coverSelected && id === coverSelected);
+      }
+    }
+
+    function selectCoverBox(id) {
+      if (coverSelected === (id || '')) return;
+      coverSelected = id || '';
+      paintCoverSelection();
+    }
+
+    // A click anywhere on the sheet decides which box is being worked on;
+    // one outside them all puts the pulls away.
+    sheetEl.addEventListener('pointerdown', function (event) {
+      var inBox = event.target.closest('[data-rb-cover-box]');
+      selectCoverBox(inBox ? inBox.getAttribute('data-rb-cover-box') : '');
+    }, true);
 
     sheetEl.addEventListener('pointerdown', function (event) {
       if (event.target.closest('a, button, input, textarea, label, select')) return;

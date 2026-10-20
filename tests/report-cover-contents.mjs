@@ -160,6 +160,59 @@ check('the frame grew rather than the list being cut',
   JSON.stringify({ fourLines: four.lines, fourHeight: four.has,
     sixLines: six.lines, sixHeight: six.has }));
 
+// Clicking a box brings out its pulls, and they stay out.
+//
+// They used to appear on hover alone, which failed in practice: a cover box
+// is mostly text, so pointing at one usually means pointing at a field, and
+// the contents frame had its list hanging below its own rectangle -- so the
+// rows being clicked were not inside the box and nothing lit up. Tim: "I do
+// like the corner pull but I don't like them visible all the time. I wanted
+// them to where you highlighted it, but I highlighted that box numerous
+// times yesterday and it would not show the pulls."
+const pulls = await page.evaluate(() => {
+  const box = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-cover-box="contents"]');
+  const shown = (sel) => {
+    const el = box.querySelector(sel);
+    return !!el && getComputedStyle(el).display !== 'none';
+  };
+  return { move: shown('.rb-cover-box__move'), grip: shown('.rb-cover-box__resize') };
+});
+check('the pulls are not on show until a box is worked on',
+  !pulls.move && !pulls.grip, JSON.stringify(pulls));
+
+const rowPoint = await page.evaluate(() => {
+  const items = [...document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) .rb-cover__contents-item')];
+  // The "Figure N" label of a row well down the list: not editable, not the
+  // jump chevron -- the part of a row a person clicks meaning "this box".
+  const num = items[Math.min(5, items.length - 1)].querySelector('.rb-cover__contents-num');
+  const r = num.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+});
+await page.mouse.click(rowPoint.x, rowPoint.y);
+await new Promise((r) => setTimeout(r, 400));
+const afterClick = await page.evaluate(() => {
+  const box = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-cover-box="contents"]');
+  const shown = (sel) => {
+    const el = box.querySelector(sel);
+    return !!el && getComputedStyle(el).display !== 'none';
+  };
+  return { active: box.classList.contains('is-active'),
+    move: shown('.rb-cover-box__move'), grip: shown('.rb-cover-box__resize'),
+    outline: getComputedStyle(box).outlineStyle };
+});
+// And they stay out when the pointer goes elsewhere.
+await page.mouse.move(30, 940);
+await new Promise((r) => setTimeout(r, 300));
+const afterMoveAway = await page.evaluate(() => {
+  const box = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-cover-box="contents"]');
+  const el = box.querySelector('.rb-cover-box__resize');
+  return { grip: !!el && getComputedStyle(el).display !== 'none' };
+});
+check('clicking a contents line brings the pulls out, and they stay',
+  afterClick.active && afterClick.move && afterClick.grip &&
+  afterClick.outline === 'dashed' && afterMoveAway.grip,
+  JSON.stringify({ afterClick, afterMoveAway }));
+
 // The printed cover is its own sheet and has to measure itself.
 await page.evaluate(() => { window.print = () => {}; });
 await page.emulateMediaType('print');

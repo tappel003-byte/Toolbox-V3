@@ -1125,8 +1125,16 @@ body.report-builder-open .canvas {
   cursor: move;
 }
 
+/* Pointed at, or clicked on. Hover alone was not enough: a cover box is
+   mostly text, so pointing at one usually means pointing at a field, and the
+   contents frame had its list hanging below its own rectangle -- so the rows
+   being clicked were not inside the box and nothing lit up. Tim: "I do like
+   the corner pull but I don't like them visible all the time. I wanted them
+   to where you highlighted it, but I highlighted that box numerous times
+   yesterday and it would not show the pulls." */
 .rb-cover:not(.is-locked) .rb-cover-box:hover,
-.rb-cover:not(.is-locked) .rb-cover-box:focus-within {
+.rb-cover:not(.is-locked) .rb-cover-box:focus-within,
+.rb-cover:not(.is-locked) .rb-cover-box.is-active {
   outline: 1px dashed rgba(139, 94, 60, 0.5);
 }
 
@@ -1148,7 +1156,8 @@ body.report-builder-open .canvas {
 }
 
 .rb-cover:not(.is-locked) .rb-cover-box:hover .rb-cover-box__resize,
-.rb-cover:not(.is-locked) .rb-cover-box:focus-within .rb-cover-box__resize {
+.rb-cover:not(.is-locked) .rb-cover-box:focus-within .rb-cover-box__resize,
+.rb-cover:not(.is-locked) .rb-cover-box.is-active .rb-cover-box__resize {
   display: block;
 }
 
@@ -2876,7 +2885,8 @@ body.report-builder-open .canvas {
 }
 
 .rb-cover:not(.is-locked) .rb-cover-box:hover .rb-cover-box__move,
-.rb-cover:not(.is-locked) .rb-cover-box:focus-within .rb-cover-box__move {
+.rb-cover:not(.is-locked) .rb-cover-box:focus-within .rb-cover-box__move,
+.rb-cover:not(.is-locked) .rb-cover-box.is-active .rb-cover-box__move {
   display: block;
 }
 
