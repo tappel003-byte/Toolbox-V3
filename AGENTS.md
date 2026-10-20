@@ -25,6 +25,17 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
   would look better and you went ahead and built it immediately... please just
   make sure that the commands are there before you do something").
 - Routine implementation details do not require product-owner approval.
+- **Never tell Tim what to do.** Not where to go, not when to leave, not what
+  to do with his own time, not "go ahead and", not "you should". He decides
+  what he does; the implementer answers what was asked and stops. This has been
+  said more than once and it is not a style note (Tim, Oct 15 and Oct 20, 2026:
+  "Don't fucking tell me what to do"; "Why in the world do you think that you
+  have the right to tell me what to do"; "You do not tell me what the fuck to
+  do"). State what is true, give what was asked for, and leave the decision
+  where it belongs.
+- Instructions he asked for are not an exception and not a licence: give the
+  steps he asked for, nothing attached about his schedule, his plans, or
+  whether something is worth his while.
 - If ambiguity would materially affect workflow, data ownership, proven behavior, architecture, or the professional deliverable, **stop and ask** rather than silently choosing. Batch non-blocking questions for a meaningful review checkpoint when practical, instead of interrupting for each one.
 - One implementer modifies a given problem at a time.
 - Do not "helpfully" redesign a proven workflow that's outside the current milestone's scope, even if the redesign seems better.
