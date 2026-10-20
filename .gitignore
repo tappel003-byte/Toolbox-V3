@@ -5,3 +5,6 @@ js/floor-survey/*.map
 sync-worker/.wrangler/
 /publish/
 qafull.png
+
+# Screenshots taken while checking a change on screen. Scratch, never shipped.
+.shots/
