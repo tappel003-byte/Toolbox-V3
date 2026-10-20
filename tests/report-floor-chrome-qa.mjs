@@ -205,6 +205,34 @@ check('the colour scale does the same',
   legendRight.leftPct > 80,
   JSON.stringify({ middle: legendMiddle, right: legendRight }));
 
+// --- Locking a piece does not change its size ---
+//
+// The lock used to prefer a size the piece had been locked at before, so
+// after unlocking it, resizing it and locking it again, it jumped back to
+// the older size the instant it was locked. Tim: "lock contour vs unlock the
+// legend changes size."
+async function toggle(label) {
+  await page.evaluate((t) => {
+    const b = [...document.querySelectorAll('[data-rb-floor-piece-lock]')]
+      .find((n) => new RegExp('^(Lock|Unlock) ' + t + '$', 'i').test((n.textContent || '').trim()));
+    if (b) b.click();
+  }, label);
+  await new Promise((r) => setTimeout(r, 2200));
+}
+await toggle('contour legend');            // locked, at whatever size it is
+const lockedFirst = await box('legend-0');
+await toggle('contour legend');            // unlocked again
+await bump('Legend size', 2);              // and made bigger
+const biggerUnlocked = await box('legend-0');
+await toggle('contour legend');            // locked at the NEW size
+const lockedAgain = await box('legend-0');
+check('locking a piece leaves it exactly the size it already was',
+  Math.abs(lockedAgain.w - biggerUnlocked.w) <= 1 &&
+  Math.abs(lockedAgain.h - biggerUnlocked.h) <= 1 &&
+  biggerUnlocked.w > lockedFirst.w,
+  JSON.stringify({ lockedFirst, biggerUnlocked, lockedAgain }));
+await toggle('contour legend');            // leave it unlocked for what follows
+
 // --- A locked piece still answers its own size control ---
 await page.evaluate(() => {
   const b = [...document.querySelectorAll('[data-rb-floor-piece-lock]')]

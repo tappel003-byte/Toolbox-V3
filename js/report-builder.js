@@ -3981,10 +3981,15 @@
           if (wantLock) {
             // The size it is drawn at now: the rail control's, unless this
             // piece already carried a locked size.
-            var held = pLayout[lockKey] && pLayout[lockKey].scale;
+            // The size it is drawn at RIGHT NOW, always. It used to prefer a
+            // size this piece had been locked at before, so after unlocking,
+            // resizing and locking again the piece jumped back to that older
+            // size the moment it was locked. Tim: "lock contour vs unlock the
+            // legend changes size." A lock freezes what is on the sheet; it
+            // does not remember an earlier one.
             pLayout[lockKey] = {
               locked: true,
-              scale: held || (which === 'legend' ? liveLegendScale() : livePillScale()),
+              scale: which === 'legend' ? liveLegendScale() : livePillScale(),
             };
             // Every sheet takes this sheet's placement for that piece, so the
             // locked piece is in one spot across the book.
