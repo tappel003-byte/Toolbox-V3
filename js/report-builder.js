@@ -77,6 +77,45 @@
     }
     sheet.style.width = Math.floor(width) + 'px';
     sheet.style.height = Math.floor(height) + 'px';
+    fitCoverContents(root);
+  }
+
+  /**
+   * Keep a grown contents box on the paper.
+   *
+   * The box is as tall as its figures now, which is right until there are
+   * more figures than the sheet has room for. Rather than clip the list --
+   * which is what it used to do, silently -- the type steps down until it
+   * fits. A floor of 0.6 keeps it readable; at that size the frame holds
+   * around fifty lines, which is past any real report.
+   *
+   * Measured rather than counted, because what fits depends on the sheet's
+   * size on screen, the font the device has, and how long the titles are.
+   */
+  var CONTENTS_FIT_FLOOR = 0.6;
+
+  function fitCoverContents(scope) {
+    var root = scope || document;
+    var boxes = root.querySelectorAll
+      ? root.querySelectorAll('[data-rb-cover-box="contents"]')
+      : [];
+    for (var i = 0; i < boxes.length; i += 1) {
+      var box = boxes[i];
+      var sheet = box.closest ? box.closest('.rb-sheet') : null;
+      if (!sheet) continue;
+      var sheetH = sheet.clientHeight;
+      if (!(sheetH > 40)) continue;
+      box.style.setProperty('--rb-contents-fit', '1');
+      var boxRect = box.getBoundingClientRect();
+      var sheetRect = sheet.getBoundingClientRect();
+      var top = boxRect.top - sheetRect.top;
+      // The same breathing room the deck leaves under the frame.
+      var room = sheetH * 0.96 - top;
+      var needs = box.scrollHeight;
+      if (!(needs > 0) || !(room > 0) || needs <= room) continue;
+      var fit = Math.max(CONTENTS_FIT_FLOOR, room / needs);
+      box.style.setProperty('--rb-contents-fit', fit.toFixed(3));
+    }
   }
 
   function watchSheet(root) {
@@ -1212,6 +1251,24 @@
 
     var contents = coverBoxShell('contents', layout, locked);
     contents.classList.add('rb-cover-box--contents');
+    // The contents box is as tall as its contents.
+    //
+    // It was a fixed rectangle, and the list inside it was clipped to that
+    // rectangle. On a four-level job -- eleven figures -- the frame showed
+    // seven and a half and the rest were simply gone, so the cover of a real
+    // report told the client it contained less than it did. Tim: "the table
+    // of content box doesn't change with the data... it doesn't automatically
+    // adjust with the contents."
+    //
+    // The stored height is a floor now, not a ceiling, so a box dragged
+    // taller keeps that size and a box with more in it grows past it. What it
+    // must never do is hide a figure; if the grown box would run off the
+    // bottom of the sheet, fitCoverContents steps the type down instead.
+    var contentsBox = (layout.boxes && layout.boxes.contents) || null;
+    if (contentsBox) {
+      contents.style.height = 'auto';
+      contents.style.minHeight = contentsBox.h + '%';
+    }
     var contentsInner = document.createElement('div');
     contentsInner.className = 'rb-cover__contents';
     addLine(contentsInner, 'rb-cover__contents-title', 'CONTENTS');
@@ -6027,6 +6084,9 @@
           document.body.appendChild(printDeck);
           document.body.classList.add('is-printing');
           relayoutPrintedPlans(printDeck);
+          // The printed cover is a different sheet from the one on screen, so
+          // its contents is measured and stepped down on its own.
+          fitCoverContents(printDeck);
           window.addEventListener('afterprint', clearPrintDeck, { once: true });
           window.requestAnimationFrame(function () {
             window.requestAnimationFrame(function () { window.print(); });

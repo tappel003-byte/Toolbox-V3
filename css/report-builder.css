@@ -1290,13 +1290,16 @@ body.report-builder-open .canvas {
 
 .rb-cover-box--contents { overflow: visible; }
 
+/* As tall as what is in it. The frame used to be a fixed rectangle with the
+   list clipped inside it, so a job with more figures than the rectangle held
+   printed a contents that was missing its last pages. */
 .rb-cover__contents {
-  height: 100%;
+  min-height: 100%;
   border: 0.379cqh solid var(--rb-frame);
   padding: 2.45cqh 1.6cqw 1.6cqh 2.35cqw;
   background: transparent;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .rb-cover__contents-item:hover .rb-cover__contents-jump,
@@ -1307,7 +1310,7 @@ body.report-builder-open .canvas {
 .rb-cover__contents-title {
   margin: 0 0 2.73cqh;
   color: var(--rb-copper);
-  font-size: 1.515cqh;
+  font-size: calc(1.515cqh * var(--rb-contents-fit, 1));
   font-weight: 700;
   line-height: 1;
   letter-spacing: 0.25em;
@@ -1318,7 +1321,7 @@ body.report-builder-open .canvas {
   flex-direction: column;
   /* The deck's list box is 21.73% of page height over 7 lines = 3.10% each.
      13 pt at 1.25 leading is 2.05, so the gap carries the remaining 1.05. */
-  gap: 1.05cqh;
+  gap: calc(1.05cqh * var(--rb-contents-fit, 1));
 }
 
 /* Two columns: "Figure N" is derived from slide order and is not editable,
@@ -1329,7 +1332,7 @@ body.report-builder-open .canvas {
   gap: 0;
   width: 100%;
   color: var(--rb-ink);
-  font-size: 1.641cqh;
+  font-size: calc(1.641cqh * var(--rb-contents-fit, 1));
   line-height: 1.25;
 }
 
