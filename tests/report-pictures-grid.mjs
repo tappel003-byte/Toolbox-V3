@@ -135,17 +135,22 @@ await openReport();
 const full = await picturesSheet(0);
 check('a full page is still five across and two down',
   full.cells === 10 && full.cols === 5 && full.rows === 2, JSON.stringify(full));
-// Two, three, four or five in a row, and nothing outside that. Tim, Oct 17:
-// "three big pictures, two big pictures, four big pictures, five big
-// pictures, two in a row etc. Too small of a picture just does not work --
-// some of that one by 10 that you had, or 10 by one, it just did not work."
-check('the rail offers every grid and names each by the shape it makes',
-  full.buttons.join(' | ') === '2 × 5 | 3 × 4 | 4 × 3 | 5 × 2', full.buttons.join(' | '));
+// Two, three, four or five in a row -- but only while the page does not
+// stack more than three deep. Rows share the height, and a short row makes a
+// NARROW picture as well as a short one, so ten photographs two across came
+// out the size of postage stamps. Tim, Oct 20, looking at exactly that:
+// "These are worthless views. Remove these." And Oct 17, settling the same
+// point: "Too small of a picture just does not work -- some of that one by 10
+// that you had, or 10 by one, it just did not work."
+check('a full page is offered only the grids that keep the pictures readable',
+  full.buttons.join(' | ') === '4 × 3 | 5 × 2', full.buttons.join(' | '));
 
 const last = await picturesSheet(1);
 check('a short page is laid out on one of them, never one picture wide',
   last.cells === 1 && last.cols >= 2 && last.cols <= 5, JSON.stringify(last));
-check('and all four are offered on it, however few pictures it holds',
+// A short page stacks no more than one row whatever grid it takes, so all
+// four come back -- which is what keeps "two big pictures" available.
+check('and all four are offered on a short page, however few it holds',
   last.buttons.join(' | ') === '2 × 1 | 3 × 1 | 4 × 1 | 5 × 1', last.buttons.join(' | '));
 
 // A grid chosen by hand is the grid that is kept.

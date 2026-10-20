@@ -45,12 +45,19 @@
 
   function onDocument(type, handler, options) {
     document.addEventListener(type, handler, options);
-    mountListeners.push({ type: type, handler: handler, options: options });
+    mountListeners.push({ on: document, type: type, handler: handler, options: options });
+  }
+
+  /** The same, for something announced on the window rather than the page. */
+  function onWindow(type, handler, options) {
+    window.addEventListener(type, handler, options);
+    mountListeners.push({ on: window, type: type, handler: handler, options: options });
   }
 
   function releaseMountListeners() {
     mountListeners.splice(0).forEach(function (item) {
-      try { document.removeEventListener(item.type, item.handler, item.options); } catch (_) {}
+      var target = item.on || document;
+      try { target.removeEventListener(item.type, item.handler, item.options); } catch (_) {}
     });
   }
   // Object URLs for pictures placed on sheets, keyed by media id.
@@ -816,6 +823,38 @@
   var PICTURES_ACROSS = [2, 3, 4, 5];
 
   /**
+   * How deep a Pictures sheet may stack before the pictures stop being worth
+   * printing.
+   *
+   * The rows share the block's height between them, so every extra row makes
+   * every picture shorter -- and a picture is sized by whichever of its two
+   * dimensions runs out first, so a short row makes a NARROW picture too,
+   * however wide its column is. Ten photographs two across is five rows: on a
+   * 17 x 11 sheet that left each one about the size of a postage stamp,
+   * marooned in a cell many times its size.
+   *
+   * Tim, looking at exactly that: "These are worthless views. Remove these."
+   * And earlier, settling the same point: "Too small of a picture just does
+   * not work."
+   *
+   * Three rows is the floor of useful. On a full page of ten that leaves four
+   * across and five across; on a shorter page two and three come back, which
+   * is what keeps "two big pictures" and "three big pictures" available.
+   */
+  var MAX_PICTURE_ROWS = 3;
+
+  /** The grids worth offering for a page holding this many photographs. */
+  function picturesGrids(count) {
+    var n = Math.max(1, Number(count) || 1);
+    var fit = PICTURES_ACROSS.filter(function (cols) {
+      return Math.ceil(n / cols) <= MAX_PICTURE_ROWS;
+    });
+    // A page carrying more than even the widest grid can hold in three rows
+    // still has to offer something: the shallowest there is.
+    return fit.length ? fit : [PICTURES_ACROSS[PICTURES_ACROSS.length - 1]];
+  }
+
+  /**
    * The grid a page falls into when nobody has chosen one.
    *
    * Fewest empty cells, and the widest of those when two tie -- but never a
@@ -826,11 +865,12 @@
    */
   function defaultPicturesAcross(count) {
     var n = Math.max(1, Number(count) || 1);
+    var choices = picturesGrids(n);
     var widest = PICTURES_ACROSS[PICTURES_ACROSS.length - 1];
     var shallow = n <= widest * 2;
-    var best = widest;
+    var best = choices[choices.length - 1];
     var bestGaps = Infinity;
-    PICTURES_ACROSS.forEach(function (cols) {
+    choices.forEach(function (cols) {
       var rows = Math.ceil(n / cols);
       if (shallow && rows > 2) return;
       var gaps = (rows * cols) - n;
@@ -851,7 +891,9 @@
 
   function picturesAcross(page) {
     var n = page && page.meta ? Number(page.meta.picturesAcross) : 0;
-    if (PICTURES_ACROSS.indexOf(n) >= 0) return n;
+    // A grid chosen before the three-row floor existed, or before photographs
+    // were added to the page, is not honoured if it now stacks too deep.
+    if (picturesGrids(picturesOnPage(page)).indexOf(n) >= 0) return n;
     return defaultPicturesAcross(picturesOnPage(page));
   }
 
@@ -2691,6 +2733,38 @@
       return isFinite(n) && n > 0 ? n : 1;
     }
 
+    /**
+     * A locked piece still answers its own size control.
+     *
+     * The lock keeps the size in the report so it is the same on every sheet
+     * and on every machine. If the control that sets that size then did
+     * nothing while the piece was locked, it would read as broken -- the same
+     * fault as the pill not resizing at all, wearing a different hat. So the
+     * control writes through: it changes the locked size, on every sheet at
+     * once, which is what a locked piece means.
+     */
+    function pushPieceScale(which, scale) {
+      var flApi = window.ToolboxReportFloorLayout;
+      if (!flApi || !isFinite(scale) || scale <= 0) return false;
+      var key = which === 'pill' ? 'pillLock' : 'legendLock';
+      var touched = false;
+      pages.forEach(function (fp) {
+        if (!fp || fp.type !== 'floor' || (fp.meta && fp.meta.reserved)) return;
+        fp.meta = fp.meta || {};
+        var own = flApi.normalizeLayout(fp.meta.layout || floorLayout);
+        if (!own[key] || !own[key].locked) return;
+        own[key] = { locked: true, scale: scale };
+        fp.meta.layout = own;
+        touched = true;
+      });
+      if (touched) {
+        floorLayout = flApi.normalizeLayout(floorLayout);
+        floorLayout[key] = { locked: true, scale: scale };
+        markDirty();
+      }
+      return touched;
+    }
+
     function floorPieceLocked(page, kind) {
       var flApi = window.ToolboxReportFloorLayout;
       var raw = (page && page.meta && page.meta.layout) || floorLayout;
@@ -3577,10 +3651,9 @@
         var onPage = Math.max(1, picturesOnPage(page));
         var row = document.createElement('div');
         row.className = 'rb-ws__row rb-ws__row--wrap';
-        // Both grids are always offered. The guard that hid one wider than
-        // the page's own count made sense when there were five of them; with
-        // only two left it could leave a short page no choice at all.
-        PICTURES_ACROSS.forEach(function (n) {
+        // Only the grids that keep the pictures worth printing: anything
+        // deeper than three rows made each one too small to read.
+        picturesGrids(onPage).forEach(function (n) {
           var label = String(n) + ' \u00d7 ' + Math.ceil(onPage / n);
           var btn = railButton(label,
             n === acrossNow ? 'accent' : 'secondary', 'data-rb-pics-across', String(n));
@@ -3711,6 +3784,9 @@
             var live = activePage();
             setFloorViewFor(live, next);
             markDirty();
+            // Legend size is one of these settings, so a locked colour scale
+            // takes the new size rather than ignoring the control.
+            pushPieceScale('legend', liveLegendScale());
             // The drawing is a second root looking at the same settings, and
             // it has to be told. This named `topoHost`, a single mount that
             // stopped existing when a sheet gained the option of two
@@ -4750,6 +4826,25 @@
     // propagation, so the canvas's own pan, wheel zoom and grip drags are
     // untouched. While a drawing tool is armed the shield above swallows the
     // event first, so the plan is correctly not selectable then.
+    /**
+     * The readings pill's size is set in Labels & layers, and the sheet has
+     * to hear about it.
+     *
+     * Floor Survey keeps that size on the device and announces the change on
+     * the window; Report Builder read the stored number when it drew a sheet
+     * but never listened, so pressing + moved the readout from 32px to 38px
+     * and the pill on the paper did not move at all. Tim: "You can't change
+     * the pill size."
+     *
+     * The colour scale never had this fault because its size travels in the
+     * slide's own settings, which already re-draw the sheet.
+     */
+    onWindow('stats-chip-size-change', function () {
+      if (!sheetEl || !sheetEl.isConnected) return;
+      if (pushPieceScale('pill', livePillScale())) flushSave().catch(function () {});
+      renderPages();
+    });
+
     onDocument('pointerdown', function (event) {
       if (inkTool) return;
       if (!sheetEl || !sheetEl.isConnected) return;

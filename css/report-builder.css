@@ -764,12 +764,31 @@ body.report-builder-open .canvas {
    Named rb-ws, NOT rb-rail: .rb-rail is already the pages rail on the left and
    carries overflow:hidden, which clipped every control below Palette the
    moment this reused the name. */
-.rb-ws { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+/* One scroller for the whole rail.
+ *
+ * The buttons at the top used to be pinned and the controls beneath them got
+ * whatever height was left. Add two buttons and that share shrinks: on a
+ * 1536 x 864 screen the Floor Survey controls -- Contours, Mode, Step, Line
+ * thickness, Palette, a thousand pixels of them -- were squeezed into a 64px
+ * scroller, which reads as gone. Tim, looking at his own rail after three
+ * locks replaced one: "I didn't tell you to get rid of all the contour
+ * settings, did I?"
+ *
+ * Nothing is pinned now, so nothing can be squeezed out: the rail is one
+ * list that scrolls, the way a settings panel does. The cost is that the way
+ * back scrolls with it, which is a smaller loss than a panel disappearing. */
+.rb-ws {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
 .rb-ws__title { margin: 0; font-size: 18px; }
 .rb-ws__top,
 .rb-ws__foot { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
-/* The controls scroll; the Import button and the way back stay put. */
-.rb-ws__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.rb-ws__body { flex: 0 0 auto; min-height: 0; overflow: visible; }
 .rb-ws__btn { width: 100%; }
 .rb-ws__controls { display: block; }
 .rb-ws__controls .floor-survey-host,
@@ -2392,9 +2411,19 @@ body.report-builder-open .canvas {
  * place, and being able to move the floor plan with contours separately."
  * One box: scale on the left, the boundary's name and its H / L / delta
  * beside it, dragged like any other box on the sheet. */
+/* The colour scale and the readings are as wide as what is written in them,
+   wherever they are put.
+ *
+ * They are absolutely positioned inside the sheet, and `width: auto` means an
+ * absolutely positioned box is squeezed by its container's edge: dragged to
+ * the right-hand margin the readings pill went from 138px to 84px and the
+ * line wrapped onto itself. Tim: "The pill actually compresses if you move it
+ * too far to the right." max-content takes the edge out of it -- the box is
+ * the size of its own contents and nothing else. */
 .rb-floor-box--chrome {
   display: block;
-  width: auto;
+  width: max-content;
+  max-width: none;
   height: auto;
   z-index: 4;
 }
