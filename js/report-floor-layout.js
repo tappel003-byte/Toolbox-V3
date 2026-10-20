@@ -119,10 +119,37 @@
     return Math.max(MIN_STACK, Math.min(MAX_STACK, raw));
   }
 
+  /**
+   * A lock on one piece: where it sits AND how big it is drawn.
+   *
+   * Tim: "I think lock legend, lock high/low/delta pin locks the size and the
+   * location... I might want to lock floor survey, I might want to lock a
+   * legend contour and then I might want to lock the high/low delta pin, and
+   * all of those can be separate." They can, and it is less machinery than
+   * what it replaces -- one switch named Lock layout that moved both pieces
+   * together and said nothing about either.
+   *
+   * The size is kept HERE, in the report, rather than read from the device's
+   * own Legend size and Stats pill size. That is what makes a locked piece
+   * the same size on another machine, which is the whole of "they should all
+   * just come in exactly the same size".
+   */
+  function pieceLock(raw) {
+    var src = raw && typeof raw === 'object' ? raw : {};
+    return {
+      locked: !!src.locked,
+      scale: isFinite(Number(src.scale)) && Number(src.scale) > 0
+        ? clamp(Number(src.scale), MIN_SCALE, MAX_SCALE)
+        : null,
+    };
+  }
+
   function defaultLayout() {
     var slot = scaleSlot(0);
     return {
       locked: false,
+      legendLock: { locked: false, scale: null },
+      pillLock: { locked: false, scale: null },
       // The decks put the drawing at 8.82 / 8.33, 83.05 x 87.91 -- it fills
       // the page. The old 10/6/80/88 was invented and squeezed it into the
       // margin box, which is why the plan looked small and cropped.
@@ -170,8 +197,16 @@
     var src = raw && typeof raw === 'object' ? raw : {};
     var topo = src.topo && typeof src.topo === 'object' ? src.topo : {};
     var over = src.overview && typeof src.overview === 'object' ? src.overview : base.overview;
+    // A report saved under the single Lock layout opens with both pieces
+    // locked, because that is what that switch meant. Its own size was never
+    // stored, so it is picked up the first time each piece is drawn.
+    var wasOneLock = !!src.locked;
     var layout = {
-      locked: !!src.locked,
+      locked: wasOneLock,
+      legendLock: src.legendLock ? pieceLock(src.legendLock)
+        : { locked: wasOneLock, scale: null },
+      pillLock: src.pillLock ? pieceLock(src.pillLock)
+        : { locked: wasOneLock, scale: null },
       topo: {
         z: stackOf(topo, 'topo'),
         // The frame goes where it is put and is as big as it is made,
@@ -542,10 +577,13 @@
         if (readingsOnly && overlay.kind === 'legend') return;
         var stats = statsList[overlay.statsIndex];
         if (!stats) return;
+        var pieceLocked = overlay.kind === 'legend'
+          ? !!(layout.legendLock && layout.legendLock.locked)
+          : !!(layout.pillLock && layout.pillLock.locked);
         var piece = boxShell(overlay.kind, overlay.id, true);
-        piece.classList.remove('is-locked');
+        if (!pieceLocked) piece.classList.remove('is-locked');
         piece.classList.add('rb-floor-box--chrome');
-        if (!locked) {
+        if (!pieceLocked) {
           piece.setAttribute('tabindex', '0');
           piece.setAttribute('role', 'button');
           piece.setAttribute('aria-label',
@@ -561,8 +599,13 @@
           sameSpot(overlay.x, slotNow.x) && sameSpot(overlay.y, slotNow.pillY);
         piece.style.top = (liftPill ? slotNow.legendY : overlay.y) + '%';
         piece.style.zIndex = String(overlay.z);
+        // Locked: the size stored with the lock, so this piece is drawn
+        // identically on every sheet and on every machine. Unlocked: the
+        // rail's own control, which is how it has always been sized.
+        var lock = overlay.kind === 'legend' ? layout.legendLock : layout.pillLock;
+        var live = overlay.kind === 'legend' ? legendScale(options) : pillScale(options);
         piece.style.transform = 'scale(' +
-          (overlay.kind === 'legend' ? legendScale(options) : pillScale(options)) + ')';
+          ((lock && lock.locked && lock.scale) ? lock.scale : live) + ')';
         piece.style.transformOrigin = 'top left';
         piece.insertBefore(
           overlay.kind === 'legend' ? renderLegendCard(options, overlay) : renderPill(stats),
@@ -591,20 +634,11 @@
         ? 'Loads every boundary of this level onto one slide.'
         : 'Loads topo, legend, and H/L/Δ onto this slide.';
       toolbar.appendChild(hint);
-    } else {
-      var lockBtn = document.createElement('button');
-      lockBtn.type = 'button';
-      lockBtn.className = locked ? 'btn btn--secondary' : 'btn btn--accent';
-      lockBtn.setAttribute('data-rb-floor-lock', locked ? 'unlock' : 'lock');
-      lockBtn.textContent = locked ? 'Unlock layout' : 'Lock layout';
-      toolbar.appendChild(lockBtn);
-      var status = document.createElement('span');
-      status.className = 'rb-floor-toolbar__hint';
-      status.textContent = locked
-        ? 'Layout locked for this report’s Floor Survey pages.'
-        : 'Drag boxes to place. Resize from the corner. Then Lock.';
-      toolbar.appendChild(status);
     }
+    // Lock layout stood here. It only ever reached an imported sheet, which
+    // returns above, so it was unreachable -- and it has been replaced by
+    // three locks in the rail, one for the plan, one for the colour scale and
+    // one for the readings, each over both place and size.
     root.appendChild(toolbar);
 
     var header = document.createElement('div');

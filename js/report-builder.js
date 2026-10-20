@@ -2669,6 +2669,37 @@
       var n = Number(page && page._floorSlot) || 0;
       return Math.max(0, Math.min(floorSlots(page) - 1, n));
     }
+    /**
+     * Is this piece locked on this sheet?
+     *
+     * Three locks, each over one thing and over both its position and its
+     * size. Tim: "I might want to lock floor survey, I might want to lock a
+     * legend contour and then I might want to lock the high/low delta pin,
+     * and all of those can be separate." The colour scale and the readings
+     * have one each; the plan frame and the aerial view still answer to the
+     * report-wide lock a report may already carry.
+     */
+    /** The size the rail's own control is drawing each piece at right now. */
+    function liveLegendScale() {
+      var view = floorViewFor(activePage());
+      var n = Number(view && view.legendScale);
+      return isFinite(n) && n > 0 ? n : 1;
+    }
+
+    function livePillScale() {
+      var n = storedStatsPillPx() / 32;
+      return isFinite(n) && n > 0 ? n : 1;
+    }
+
+    function floorPieceLocked(page, kind) {
+      var flApi = window.ToolboxReportFloorLayout;
+      var raw = (page && page.meta && page.meta.layout) || floorLayout;
+      var layout = flApi ? flApi.normalizeLayout(raw) : (raw || {});
+      if (kind === 'legend') return !!(layout.legendLock && layout.legendLock.locked);
+      if (kind === 'pill') return !!(layout.pillLock && layout.pillLock.locked);
+      return !!layout.locked;
+    }
+
     function floorViewFor(page, slot) {
       var at = typeof slot === 'number' ? slot : floorSlot(page);
       var meta = (page && page.meta) || {};
@@ -3589,16 +3620,46 @@
         hint.textContent = 'Brings this level onto the slide.';
         railTopEl.appendChild(hint);
       } else {
+        // Three locks, each over one thing, each over where it sits AND how
+        // big it is drawn. Tim: "lock view doesn't really tell us what we're
+        // supposed to do... I might want to lock floor survey, I might want
+        // to lock a legend contour and then I might want to lock the high/low
+        // delta pin, and all of those can be separate." They replace Lock
+        // view, which was only ever the plan's framing under a name that
+        // sounded like everything, and Lock layout, which moved the scale and
+        // the readings together and named neither.
+        var planLocked = !!(floorCamera && floorCamera.locked);
         railTopEl.appendChild(
-          railButton(floorCamera && floorCamera.locked ? 'Unlock view' : 'Lock view',
-            floorCamera && floorCamera.locked ? 'secondary' : 'accent',
-            'data-rb-floor-view-lock', floorCamera && floorCamera.locked ? 'unlock' : 'lock'));
+          railButton(planLocked ? 'Unlock floor survey' : 'Lock floor survey',
+            planLocked ? 'secondary' : 'accent',
+            'data-rb-floor-view-lock', planLocked ? 'unlock' : 'lock'));
         var viewHint = document.createElement('p');
         viewHint.className = 'rb-panel__lead';
-        viewHint.textContent = floorCamera && floorCamera.locked
+        viewHint.textContent = planLocked
           ? 'Every Floor Survey slide frames the plan this way. What is drawn on it stays per slide.'
           : 'Drag the plan to move it. Drag the corner to size it. Lock when it sits where you want it on every slide.';
         railTopEl.appendChild(viewHint);
+
+        var pieceApi = window.ToolboxReportFloorLayout;
+        var pieceLayout = pieceApi
+          ? pieceApi.normalizeLayout((page.meta && page.meta.layout) || floorLayout)
+          : ((page.meta && page.meta.layout) || floorLayout || {});
+        [
+          { key: 'legend', name: 'contour legend',
+            on: !!(pieceLayout.legendLock && pieceLayout.legendLock.locked) },
+          { key: 'pill', name: 'high/low/delta',
+            on: !!(pieceLayout.pillLock && pieceLayout.pillLock.locked) },
+        ].forEach(function (piece) {
+          var label = (piece.on ? 'Unlock ' : 'Lock ') + piece.name;
+          railTopEl.appendChild(railButton(label, piece.on ? 'secondary' : 'quiet',
+            'data-rb-floor-piece-lock', piece.key + ':' + (piece.on ? 'unlock' : 'lock')));
+          var pieceHint = document.createElement('p');
+          pieceHint.className = 'rb-panel__lead';
+          pieceHint.textContent = piece.on
+            ? 'Same place and same size on every slide, on any device.'
+            : 'Place and size it, then lock so every slide gets it exactly there.';
+          railTopEl.appendChild(pieceHint);
+        });
 
         railTopEl.appendChild(railButton(
           'Use this as my default', 'quiet', 'data-rb-template', 'floor'));
@@ -3801,10 +3862,78 @@
           flushSave().catch(function () {});
           return;
         }
-        // Lock view and Lock layout are two different locks on the same
-        // sheet, so they carry two different names. One selector that matched
-        // both is how a test came to click the camera and wait forever for
-        // the layout to lock.
+        // Lock contour legend / Lock high/low/delta.
+        //
+        // Locking takes this sheet's placement AND the size it is being drawn
+        // at right now, writes both into the report, and gives the same pair to
+        // every Floor Survey sheet. Tim: "they should all just come in exactly
+        // in the same place always, always in the same size... maybe it just
+        // needs to be the last location that I brought them in." This is that:
+        // the one in front of him when he locks it.
+        var pieceBtn = event.target.closest('[data-rb-floor-piece-lock]');
+        if (pieceBtn) {
+          event.preventDefault();
+          var pCurrent = activePage();
+          if (!pCurrent || pCurrent.type !== 'floor') return;
+          var parts = (pieceBtn.getAttribute('data-rb-floor-piece-lock') || '').split(':');
+          var which = parts[0] === 'pill' ? 'pill' : 'legend';
+          var wantLock = parts[1] !== 'unlock';
+          var pApi = window.ToolboxReportFloorLayout;
+          if (!pApi) return;
+          var pLayout = pApi.normalizeLayout((pCurrent.meta && pCurrent.meta.layout) || floorLayout);
+          var lockKey = which === 'legend' ? 'legendLock' : 'pillLock';
+          if (wantLock) {
+            // The size it is drawn at now: the rail control's, unless this
+            // piece already carried a locked size.
+            var held = pLayout[lockKey] && pLayout[lockKey].scale;
+            pLayout[lockKey] = {
+              locked: true,
+              scale: held || (which === 'legend' ? liveLegendScale() : livePillScale()),
+            };
+            // Every sheet takes this sheet's placement for that piece, so the
+            // locked piece is in one spot across the book.
+            var placed = {};
+            pLayout.overlays.forEach(function (o) {
+              if (o.kind === which) placed[o.statsIndex] = { x: o.x, y: o.y, z: o.z };
+            });
+            pages.forEach(function (fp) {
+              if (!fp || fp.type !== 'floor' || (fp.meta && fp.meta.reserved)) return;
+              fp.meta = fp.meta || {};
+              var own = pApi.normalizeLayout(fp.meta.layout || floorLayout);
+              own[lockKey] = { locked: true, scale: pLayout[lockKey].scale };
+              own.overlays.forEach(function (o) {
+                var spot = o.kind === which ? placed[o.statsIndex] : null;
+                if (!spot) return;
+                o.x = spot.x;
+                o.y = spot.y;
+                o.z = spot.z;
+              });
+              fp.meta.layout = own;
+            });
+            floorLayout = pApi.normalizeLayout(floorLayout);
+            floorLayout[lockKey] = { locked: true, scale: pLayout[lockKey].scale };
+          } else {
+            pages.forEach(function (fp) {
+              if (!fp || fp.type !== 'floor' || (fp.meta && fp.meta.reserved)) return;
+              fp.meta = fp.meta || {};
+              var own = pApi.normalizeLayout(fp.meta.layout || floorLayout);
+              own[lockKey] = { locked: false, scale: own[lockKey] ? own[lockKey].scale : null };
+              fp.meta.layout = own;
+            });
+            floorLayout = pApi.normalizeLayout(floorLayout);
+            floorLayout[lockKey] = { locked: false, scale: floorLayout[lockKey].scale };
+          }
+          dirty = true;
+          setSaveStatus('Saving…');
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
+
+        // Lock floor survey: the plan's framing, and nothing else on the
+        // sheet. Each of the three locks carries its own name, so a selector
+        // cannot match two of them -- which is how a test once came to click
+        // the camera and wait forever for something else to lock.
         var lockBtn = event.target.closest('[data-rb-floor-view-lock]');
         if (lockBtn) {
           event.preventDefault();
@@ -5252,17 +5381,6 @@
       markDirty();
     });
 
-    function applyLayoutToFloorPages(layout) {
-      var flApi = window.ToolboxReportFloorLayout;
-      var next = flApi ? flApi.normalizeLayout(layout) : layout;
-      floorLayout = next;
-      pages.forEach(function (page) {
-        if (!page || page.type !== 'floor' || (page.meta && page.meta.reserved)) return;
-        page.meta = page.meta || {};
-        page.meta.layout = flApi ? flApi.cloneLayout(next) : next;
-      });
-    }
-
     /**
      * Put the Floor Survey drawings on their sheets, without being asked.
      *
@@ -5552,28 +5670,10 @@
         flushSave().catch(function () {});
         return;
       }
-      var lockBtn = event.target.closest('[data-rb-floor-lock]');
-      if (!lockBtn) return;
-      event.preventDefault();
-      var current = activePage();
-      if (!current || current.type !== 'floor') return;
-      var mode = lockBtn.getAttribute('data-rb-floor-lock');
-      var flApi = window.ToolboxReportFloorLayout;
-      var layout = (current.meta && current.meta.layout) || floorLayout;
-      layout = flApi ? flApi.normalizeLayout(layout) : layout;
-      if (mode === 'lock') {
-        layout.locked = true;
-        applyLayoutToFloorPages(layout);
-      } else {
-        layout.locked = false;
-        floorLayout = flApi ? flApi.normalizeLayout(layout) : layout;
-        current.meta = current.meta || {};
-        current.meta.layout = flApi ? flApi.cloneLayout(floorLayout) : floorLayout;
-      }
-      dirty = true;
-      setSaveStatus('Saving…');
-      renderPages();
-      flushSave().catch(function () {});
+      // The old single Lock layout had no button left to press: it lived on
+      // a toolbar that an imported sheet never draws. Three locks in the rail
+      // replaced it -- Lock floor survey, Lock contour legend, Lock
+      // high/low/delta -- and each is handled above.
     });
 
     function stageRect(selector) {
@@ -5749,11 +5849,14 @@
         return;
       }
       if (!current || current.type !== 'floor') return;
-      if (current.meta && current.meta.layout && current.meta.layout.locked) return;
-      if (floorLayout && floorLayout.locked) return;
       var resize = event.target.closest('[data-rb-floor-resize]');
       var box = event.target.closest('[data-rb-floor-box]');
       if (!box) return;
+      // Each piece answers to its own lock. The colour scale and the readings
+      // have one each; the plan and the aerial follow whatever is left of the
+      // old single lock on this report.
+      var dragKind = box.getAttribute('data-rb-floor-kind') || 'topo';
+      if (floorPieceLocked(current, dragKind)) return;
       // Inside the drawing the gestures are Floor Survey's: drag pans the plan,
       // the wheel zooms it, and it can be moved anywhere including off the
       // edge. Report Builder must not claim those -- the slide is meant to
