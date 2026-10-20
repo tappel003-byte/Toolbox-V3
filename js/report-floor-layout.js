@@ -28,20 +28,76 @@
     return Math.max(lo, Math.min(hi, x));
   }
 
-  // A colour scale is about 21.6% of the page tall, measured, and its pill
-  // sits under it, so each boundary needs this much room down the side.
-  var SCALE_PITCH = 31;
-  var PILL_DROP = 23;
+  /**
+   * How tall a colour scale really is on the paper.
+   *
+   * The stylesheet draws it 20.5cqw tall -- a share of the sheet's WIDTH,
+   * because that is how Floor Survey sizes it and it must not change with
+   * the plan. These slots are in percentages of the sheet's HEIGHT, and an
+   * 11 x 17 sheet is 17/11 wider than it is tall, so the same scale is 31.7%
+   * of the height. The old numbers below were guessed at "about 21.6%", and
+   * everything that followed was wrong because of it: the pill dropped 23%
+   * landed INSIDE its own scale, and the next boundary started 31% down,
+   * before the one above it had ended. Measured on a two-boundary sheet:
+   * scale 0 from 13 to 44.7 with its pill at 36, scale 1 starting at 44.
+   *
+   * Tim, looking at exactly that on his own job: "the pen and the contour
+   * legends are not right... they all should be able to line up exactly."
+   */
+  var LEGEND_TALL = 20.5 * (17 / 11);
+  var PILL_TALL = 2.4;
+  var GAP = 1.4;
 
-  // Where boundary i's colour scale and pill start. Down the left for the
-  // first three, then down the right. One definition, used both for the very
-  // first layout and when more boundaries turn up, because two copies of it
-  // meant index 0 kept a stale position forever: layoutForStats only fills in
-  // what is missing, and index 0 was never missing.
+  // The pill sits under its own scale, clear of it.
+  var PILL_DROP = Math.round((LEGEND_TALL + GAP) * 10) / 10;
+  // The next boundary's pair starts under the pill of the one above.
+  var SCALE_PITCH = Math.round((PILL_DROP + PILL_TALL + GAP) * 10) / 10;
+
+  // Where boundary i's colour scale and pill start. A pair is 36.5% of the
+  // page tall, so two fit down a column and the third starts a second one.
+  // One definition, used both for the very first layout and when more
+  // boundaries turn up, because two copies of it meant index 0 kept a stale
+  // position forever: layoutForStats only fills in what is missing, and
+  // index 0 was never missing.
+  var PER_COLUMN = 2;
+
   function scaleSlot(i) {
-    var column = i < 3 ? 8 : 76;
-    var row = (i % 3) * SCALE_PITCH;
+    var column = i < PER_COLUMN ? 8 : 76;
+    var row = (i % PER_COLUMN) * SCALE_PITCH;
     return { x: column, legendY: 13 + row, pillY: 13 + row + PILL_DROP };
+  }
+
+  /**
+   * A pair that was never placed by hand takes the corrected slot.
+   *
+   * The old slots overlapped, and a report saved under them carries those
+   * positions for ever -- normalizeLayout keeps what is stored, which is
+   * right for anything the investigator dragged and wrong for a position
+   * nobody chose. The same repair the cover's identity box already uses: a
+   * box sitting exactly on an old default was not placed, so it moves; a box
+   * anywhere else is his and is left alone.
+   */
+  function oldSlot(i) {
+    var column = i < 3 ? 8 : 76;
+    var row = (i % 3) * 31;
+    return { x: column, legendY: 13 + row, pillY: 13 + row + 23 };
+  }
+
+  function sameSpot(a, b) {
+    return Math.abs(Number(a) - Number(b)) < 0.01;
+  }
+
+  function repairSlot(item) {
+    if (!item || (item.kind !== 'legend' && item.kind !== 'pill')) return item;
+    var at = typeof item.statsIndex === 'number' ? item.statsIndex : 0;
+    var was = oldSlot(at);
+    var now = scaleSlot(at);
+    var wasY = item.kind === 'legend' ? was.legendY : was.pillY;
+    var nowY = item.kind === 'legend' ? now.legendY : now.pillY;
+    if (!sameSpot(item.x, was.x) || !sameSpot(item.y, wasY)) return item;
+    item.x = now.x;
+    item.y = nowY;
+    return item;
   }
 
   /**
@@ -156,7 +212,7 @@
           scale: clamp(item.scale, MIN_SCALE, MAX_SCALE) });
         return;
       }
-      layout.overlays.push({
+      layout.overlays.push(repairSlot({
         id: item.id || ('overlay-' + index),
         kind: kind,
         statsIndex: at,
@@ -164,7 +220,7 @@
         y: y,
         z: stackOf(item, kind),
         scale: clamp(item.scale, MIN_SCALE, MAX_SCALE),
-      });
+      }));
     });
     if (!layout.overlays.length) layout.overlays = base.overlays.slice();
     return layout;
