@@ -57,9 +57,25 @@ to use it."
 Decided with Tim, Oct 18, 2026, looking at an opened job on his phone. The
 contact sheet landed that morning; this is what is still on the list.
 
-- **A folder view.** Real filenames, folders you walk with a breadcrumb,
-  pictures as a sheet and everything else in a tight table. Tim: "Explorer
-  needs to kind of look and feel like an actual Microsoft file explorer."
+- ~~**A folder view.**~~ Built Oct 20. A job opens as a list of folders saying
+  what is in each, one is open at a time, and the path across the top is the
+  way back up. Pictures are a contact sheet inside a folder. What is still
+  not there: real stored filenames rather than what Toolbox calls a thing,
+  and folders inside folders.
+- ~~**The code files, out of the way.**~~ Built Oct 20. The record files are
+  at the foot of a job behind one closed Technical details line, still
+  downloadable. Tim: "see the code like Neo in the Matrix."
+- ~~**Save it where I point it.**~~ Built Oct 20. Every Download in Explorer
+  opens a Save As dialog, so a copy lands on the office server, an external
+  drive, a flash drive or Drive. Chrome and Edge on a desktop; everywhere
+  else falls back to the ordinary download. Tim: "I could be saving it to a
+  Google Drive... that's a good idea."
+  Still on the list, from the same conversation: saving as *folders* rather
+  than one ZIP (the same dialog can hand back a folder, which PGG never
+  did); choosing what goes in the copy -- whole job, pictures only, report
+  only; saving just what you are looking at; a readable cover sheet inside
+  the copy so a folder opened in 2031 explains itself; and a progress line
+  while a big one is packed.
 - **Open says what is in a component, not what it is made of.** Today Open on
   Distress, Floor Survey or Report Builder prints the raw file. Tim: "who in
   the world is this helpful?" It should read *Floor Survey -- 2 levels · Main
