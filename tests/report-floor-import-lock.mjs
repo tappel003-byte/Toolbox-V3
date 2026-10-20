@@ -102,19 +102,20 @@ await page.goto(`${BASE}#/file/rb-floor-lock/report`, { waitUntil: 'networkidle0
 await page.waitForFunction(() => document.querySelector('.rb-shell'), { timeout: 15000 });
 await page.waitForFunction(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]'), { timeout: 15000 });
 await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]').click());
-await page.waitForFunction(() => document.querySelector('[data-rb-floor-import]'), { timeout: 15000 });
-
-const chromeOnly = await page.evaluate(() => ({
+// A Floor Survey page used to open as a dashed empty box and a button, once
+// per level. Tim: "Toolbox knows we have three levels, they can bring the
+// three levels in... I don't know why it needs to be hit." It does it itself
+// now, so the page opens with its drawing and there is no button to press.
+await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box="topo"]'), {
+  timeout: 20000,
+});
+const onOpen = await page.evaluate(() => ({
   hasImport: !!document.querySelector('[data-rb-floor-import]'),
   hasTopoBox: !!document.querySelector('[data-rb-floor-box="topo"]'),
   empty: !!document.querySelector('.rb-floor-empty'),
 }));
-check('Floor page starts chrome-only with Import', chromeOnly.hasImport && chromeOnly.empty && !chromeOnly.hasTopoBox, JSON.stringify(chromeOnly));
-
-await page.click('[data-rb-floor-import]');
-await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box="topo"]'), {
-  timeout: 20000,
-});
+check('Floor page opens with its drawing, nothing to import',
+  !onOpen.hasImport && onOpen.hasTopoBox && !onOpen.empty, JSON.stringify(onOpen));
 
 // An imported slide is the plan and nothing else. The lock on offer is Lock
 // view -- the camera, so the plan sits the same way on every Floor Survey

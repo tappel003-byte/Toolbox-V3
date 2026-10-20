@@ -98,15 +98,16 @@ await page.evaluate(async (id) => {
 await page.goto(`${BASE}#/file/${FILE}/report`, { waitUntil: 'networkidle0' });
 await page.waitForFunction(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]'), { timeout: 20000 });
 await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]').click());
-await page.waitForFunction(() => document.querySelector('[data-rb-floor-import]'), { timeout: 20000 });
-
-const promised = await page.evaluate(
-  () => (document.querySelector('.rb-floor-toolbar__hint')?.textContent || '').trim());
-check('the button still promises the topo, the legend and the H/L/Δ',
-  /topo/i.test(promised) && /legend/i.test(promised) && /H\/L/i.test(promised), promised);
-
-await page.click('[data-rb-floor-import]');
+// The slide brings its own drawing in now -- Tim: "I don't know why it needs
+// to be hit" -- so what used to be the button's promise is what the page
+// simply arrives carrying. The promise is unchanged; nobody has to ask for it.
 await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box="topo"]'), { timeout: 25000 });
+const unasked = await page.evaluate(() => ({
+  topo: !!document.querySelector('[data-rb-floor-box="topo"]'),
+  button: !!document.querySelector('[data-rb-floor-import]'),
+}));
+check('the slide arrives carrying the topo, with nothing to press',
+  unasked.topo && !unasked.button, JSON.stringify(unasked));
 await new Promise((resolve) => setTimeout(resolve, 2500));
 
 /** What is actually painted on the slide's drawing. */

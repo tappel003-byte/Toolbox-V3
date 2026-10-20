@@ -5226,6 +5226,66 @@
       });
     }
 
+    /**
+     * Put the Floor Survey drawings on their sheets, without being asked.
+     *
+     * A Floor Survey sheet opened as a dashed empty box and an "Import Floor
+     * Survey" button, once per level. Tim: "I wonder if we even need to hit a
+     * button to bring in the contour... Toolbox knows we have three levels,
+     * they can bring the three levels in on one, and then the main level, and
+     * then subsequent levels thereafter. I don't know why it needs to be hit."
+     * It does know -- the pages are already one per figure, in order -- so the
+     * button was asking the investigator to tell it something it had worked
+     * out itself.
+     *
+     * This runs BEFORE evidence is attached, which is the only place it can
+     * run. A floor page's drawing is composed by attachEvidence, and only for
+     * a page that already says it is imported, so a sheet with no figure can
+     * never grow one by being asked afterwards. Marking first means the one
+     * evidence pass the report already does composes them.
+     *
+     * A level that cannot produce a drawing is put back afterwards by
+     * dropFailedFloorImports, so it shows the button rather than an empty
+     * frame. Returns whether anything changed.
+     */
+    function markFloorPagesForImport() {
+      var flApi = window.ToolboxReportFloorLayout;
+      var changed = false;
+      pages.forEach(function (page) {
+        if (!page || page.type !== 'floor') return;
+        var meta = page.meta || {};
+        if (meta.reserved || meta.imported) return;
+        // A level to draw, and something to draw it from: either Floor
+        // Survey composes it live, or a rendering was stored earlier.
+        if (!meta.canvasId) return;
+        if (!meta.compose && !meta.figureMediaId) return;
+        page.meta = meta;
+        if (!meta.layout || (floorLayout && floorLayout.locked)) {
+          page.meta.layout = flApi ? flApi.cloneLayout(floorLayout) : floorLayout;
+        }
+        page.meta.imported = true;
+        page.meta.autoImported = true;
+        changed = true;
+      });
+      return changed;
+    }
+
+    /** Anything that could not be drawn goes back to offering the button. */
+    function dropFailedFloorImports() {
+      var changed = false;
+      pages.forEach(function (page) {
+        if (!page || page.type !== 'floor') return;
+        var meta = page.meta || {};
+        if (!meta.autoImported) return;
+        delete page.meta.autoImported;
+        var figure = page.evidence && page.evidence.figure;
+        if (figure) return;
+        page.meta.imported = false;
+        changed = true;
+      });
+      return changed;
+    }
+
     function importActiveFloorPage() {
       var current = activePage();
       if (!current || current.type !== 'floor' || (current.meta && current.meta.reserved)) return;
@@ -6272,10 +6332,19 @@
           setSaveStatus(formatSavedAt(lastSavedAt));
           if (draftEl) draftEl.textContent = 'Saved';
         }
-        return attachEvidence(workingRecord, pages.slice());
-      }).then(function (enriched) {
+        var autoImported = markFloorPagesForImport();
+        return attachEvidence(workingRecord, pages.slice()).then(function (enriched) {
+          return { enriched: enriched, autoImported: autoImported };
+        });
+      }).then(function (outcome) {
         if (token !== mountGeneration) return;
+        var enriched = outcome.enriched;
         pages = enriched;
+        dropFailedFloorImports();
+        if (outcome.autoImported) {
+          markDirty();
+          flushSave().catch(function () {});
+        }
         adoptLegacyBrandBox();
         renderPages();
         fitSheet(root);

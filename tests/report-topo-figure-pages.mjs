@@ -251,6 +251,10 @@ function readSheet() {
     hasTopo: !!sheetEl.querySelector('.rb-topo-page'),
     figureNum: text('.rb-topo-page__figure-num'),
     railFigure: text('.rb-rail__figure'),
+    // Either corner counts: an empty sheet labels its own drawing area, a
+    // drawn one labels the rail foot.
+    figureLabel: (text('.rb-topo-page__figure-num') || text('.rb-rail__figure'))
+      .replace(/^FIGURE /, 'Figure '),
     title: text('.rb-rail__title'),
     date: text('.rb-rail__date'),
     corrected: text('.rb-rail__note'),
@@ -268,8 +272,8 @@ const combined = await page.evaluate(readSheet);
 
 check('Combined page uses the topo template', combined.type === 'floor' && combined.hasTopo, JSON.stringify(combined));
 check('Combined figure number is Figure 1',
-  combined.figureNum === 'Figure 1' && combined.railFigure === 'FIGURE 1',
-  `${combined.figureNum} | ${combined.railFigure}`);
+  combined.figureLabel === 'Figure 1' && combined.railFigure === 'FIGURE 1',
+  `${combined.figureLabel} | ${combined.railFigure}`);
 check('the rail names the drawing and its scope',
   combined.title === 'Floor Level SurveyCombined', combined.title);
 check('the rail carries the survey date and the corrected note',
@@ -284,9 +288,12 @@ check('the rail carries the residence and the address',
 check('the compass is turned to the front door', combined.compass === 1 && combined.north === '270deg',
   `${combined.compass} | ${combined.north}`);
 check('the Sandia GEO mark is in the rail foot', combined.mark === 'Sandia GEO', combined.mark);
-check('an unimported sheet says so and offers Import',
-  /Import when ready/i.test(combined.empty) && combined.importOffered,
-  `${combined.empty} | ${combined.importOffered}`);
+// A Floor Survey sheet brings its own drawing in now, so there is no empty
+// drawing area and nothing to press. Tim: "I don't know why it needs to be
+// hit in." What Import used to place is report-floor-import-lock's subject.
+check('the sheet arrives drawn, with no Import to press',
+  !combined.empty && !combined.importOffered && combined.hasTopo,
+  `${combined.empty} | ${combined.importOffered} | ${combined.hasTopo}`);
 
 // Open Main Level and confirm the same rail, a level of its own, and the
 // next figure number.
@@ -301,8 +308,8 @@ await page.waitForFunction(() => {
 }, { timeout: 15000 });
 const mainLevel = await page.evaluate(readSheet);
 check('Main Level page is Figure 2 and names its own level',
-  mainLevel.figureNum === 'Figure 2' && mainLevel.title === 'Floor Level SurveyMain Level',
-  `${mainLevel.figureNum} | ${mainLevel.title}`);
+  mainLevel.figureLabel === 'Figure 2' && mainLevel.title === 'Floor Level SurveyMain Level',
+  `${mainLevel.figureLabel} | ${mainLevel.title}`);
 check('Main Level keeps the same rail blocks',
   mainLevel.date === combined.date && mainLevel.residence === combined.residence &&
   mainLevel.address === combined.address && mainLevel.north === combined.north,
@@ -319,8 +326,8 @@ await page.waitForFunction(() => {
 }, { timeout: 15000 });
 const lower = await page.evaluate(readSheet);
 check('Lower Level page is Figure 3 and names its own level',
-  lower.figureNum === 'Figure 3' && lower.title === 'Floor Level SurveyLower Level',
-  `${lower.figureNum} | ${lower.title}`);
+  lower.figureLabel === 'Figure 3' && lower.title === 'Floor Level SurveyLower Level',
+  `${lower.figureLabel} | ${lower.title}`);
 check('every level is drawn from the same template',
   lower.hasTopo && lower.mark === combined.mark && lower.compass === combined.compass &&
   lower.corrected === combined.corrected,
