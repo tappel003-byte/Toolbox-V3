@@ -817,10 +817,15 @@
    * five big pictures, two in a row etc. Too small of a picture just does
    * not work -- some of that one by 10 that you had, or 10 by one, it just
    * did not work." So five is the ceiling, because narrower than that each
-   * picture stops being readable, and one across is out: a single column
-   * down the sheet was the layout he threw out twice.
+   * picture stops being readable.
+   *
+   * One across is back, Oct 20: "one row is acceptable. 5 by 1... 1 by 4, 1
+   * by 3, 1 by 2, 1 by 1. The most rows are 2." What he threw out twice was a
+   * column ten deep, and the two-row floor below forbids that on its own -- a
+   * single column can now hold one picture or two, which is a big picture and
+   * a pair, not a strip.
    */
-  var PICTURES_ACROSS = [2, 3, 4, 5];
+  var PICTURES_ACROSS = [1, 2, 3, 4, 5];
 
   /**
    * How deep a Pictures sheet may stack before the pictures stop being worth
@@ -837,11 +842,16 @@
    * And earlier, settling the same point: "Too small of a picture just does
    * not work."
    *
-   * Three rows is the floor of useful. On a full page of ten that leaves four
-   * across and five across; on a shorter page two and three come back, which
-   * is what keeps "two big pictures" and "three big pictures" available.
+   * Two rows, and never a third. Tim, Oct 20: "we need to just worry about
+   * pictures going in 5 columns, 2 rows. No more than 2 rows ever. So it
+   * could be 4 by 2, it could be 1 by 4 or whatever, but no more than 2 rows.
+   * Otherwise, it's too much."
+   *
+   * On a full page of ten that leaves five across; on shorter pages two,
+   * three and four come back, which is what keeps "two big pictures" and
+   * "three big pictures" available.
    */
-  var MAX_PICTURE_ROWS = 3;
+  var MAX_PICTURE_ROWS = 2;
 
   /** The grids worth offering for a page holding this many photographs. */
   function picturesGrids(count) {
@@ -6368,6 +6378,116 @@
     // browser's print dialog -- which is also how a PDF comes out of it.
     // The deliverable is the PDF; there is no separate export path to keep
     // in step with what the investigator sees on screen.
+    /**
+     * Shrink every picture in the printed deck to what the paper can show.
+     *
+     * A phone hands over a 4032 x 3024 photograph. On a Pictures sheet it is
+     * printed about two and a half inches wide -- call it 500 dots at 200 to
+     * the inch. The other 23 million pixels are carried into the PDF and
+     * thrown away by whatever opens it. Tim, on a deck he had just saved:
+     * "I was trying to attach a recently saved PDF but it's too big... The
+     * PDF rendered horribly." Measured on his file: 53.9 MB.
+     *
+     * So each picture is redrawn, once, at the size it will actually print,
+     * and the deck carries that instead. Nothing in the Customer File is
+     * touched -- the original photograph stays exactly as captured, and only
+     * this throwaway deck holds the smaller copy.
+     *
+     * 200 dots to the inch is the target. It is what a photograph in a
+     * printed report needs; past that the file grows and the page does not
+     * change. A picture already smaller than its target is left alone, so
+     * nothing is ever blown up.
+     */
+    var PRINT_DPI = 200;
+    var SHEET_INCHES = 17;
+
+    /**
+     * Wait until the deck has actually been laid out.
+     *
+     * Measured too early, an <img> reports its natural width rather than the
+     * width it will print at -- so a 4032px photograph looked like a 4032px
+     * box, "wide enough to need 8400 dots", and every picture was left alone.
+     * The first attempt at this shrank nothing at all and said so: 0 redrawn,
+     * 21.9 MB to 21.9 MB.
+     */
+    function deckSettled(deck) {
+      var waits = [].slice.call(deck.querySelectorAll('img'))
+        .filter(function (img) { return !(img.complete && img.naturalWidth > 0); })
+        .map(function (img) {
+          return new Promise(function (done) {
+            img.addEventListener('load', done, { once: true });
+            img.addEventListener('error', done, { once: true });
+          });
+        });
+      return Promise.all(waits).then(function () {
+        return new Promise(function (done) {
+          window.requestAnimationFrame(function () {
+            window.requestAnimationFrame(function () { done(); });
+          });
+        });
+      });
+    }
+
+    function shrinkPrintImages(deck) {
+      if (!deck) return Promise.resolve({ before: 0, after: 0, redrawn: 0 });
+      return deckSettled(deck).then(function () { return shrinkSettledDeck(deck); });
+    }
+
+    function shrinkSettledDeck(deck) {
+      var sheet = deck.querySelector('.rb-sheet');
+      var sheetPx = sheet ? sheet.getBoundingClientRect().width : 0;
+      if (!(sheetPx > 0)) return Promise.resolve({ before: 0, after: 0, redrawn: 0 });
+      var jobs = [];
+      var before = 0;
+      var after = 0;
+      var redrawn = 0;
+      [].slice.call(deck.querySelectorAll('img')).forEach(function (img) {
+        var src = img.getAttribute('src') || '';
+        if (src.indexOf('data:image/') !== 0) return;
+        before += Math.round(src.length * 0.75);
+        var drawn = img.getBoundingClientRect().width;
+        if (!(drawn > 0) || !(img.naturalWidth > 0)) { after += Math.round(src.length * 0.75); return; }
+        // How wide this picture prints, and therefore how many dots it needs.
+        var inches = (drawn / sheetPx) * SHEET_INCHES;
+        var want = Math.max(1, Math.round(inches * PRINT_DPI));
+        if (img.naturalWidth <= want) { after += Math.round(src.length * 0.75); return; }
+        var scale = want / img.naturalWidth;
+        var canvas = document.createElement('canvas');
+        canvas.width = want;
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        var ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        jobs.push(new Promise(function (done) {
+          var paint = function () {
+            try {
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              // A drawing with flat colour and hard lines keeps its edges in
+              // PNG and smears in JPEG; a photograph is the other way about.
+              // Whatever it came in as is what it goes out as.
+              var asPng = /^data:image\/png/i.test(src);
+              var next = canvas.toDataURL(asPng ? 'image/png' : 'image/jpeg', 0.82);
+              if (next && next.length < src.length) {
+                img.setAttribute('src', next);
+                after += Math.round(next.length * 0.75);
+                redrawn += 1;
+              } else {
+                after += Math.round(src.length * 0.75);
+              }
+            } catch (err) {
+              after += Math.round(src.length * 0.75);
+            }
+            done();
+          };
+          if (img.complete && img.naturalWidth > 0) paint();
+          else img.addEventListener('load', paint, { once: true });
+        }));
+      });
+      return Promise.all(jobs).then(function () {
+        return { before: before, after: after, redrawn: redrawn };
+      });
+    }
+
     function buildPrintDeck() {
       var deck = document.createElement('div');
       deck.className = 'rb-print';
@@ -6439,8 +6559,18 @@
           // the block printed missing.
           fitCaptions(printDeck);
           window.addEventListener('afterprint', clearPrintDeck, { once: true });
-          window.requestAnimationFrame(function () {
-            window.requestAnimationFrame(function () { window.print(); });
+          // Every picture redrawn at the size it prints, before the dialog
+          // opens: once it is open the deck is what it is.
+          shrinkPrintImages(printDeck).then(function (weighed) {
+            window.__toolboxPrintWeight = weighed;
+            if (weighed) {
+              console.info('Report print: ' + weighed.redrawn + ' pictures redrawn, ' +
+                (weighed.before / 1048576).toFixed(1) + ' MB to ' +
+                (weighed.after / 1048576).toFixed(1) + ' MB.');
+            }
+            window.requestAnimationFrame(function () {
+              window.requestAnimationFrame(function () { window.print(); });
+            });
           });
         });
       });

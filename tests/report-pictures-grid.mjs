@@ -142,30 +142,37 @@ check('a full page is still five across and two down',
 // "These are worthless views. Remove these." And Oct 17, settling the same
 // point: "Too small of a picture just does not work -- some of that one by 10
 // that you had, or 10 by one, it just did not work."
-check('a full page is offered only the grids that keep the pictures readable',
-  full.buttons.join(' | ') === '4 × 3 | 5 × 2', full.buttons.join(' | '));
+check('a full page is offered only the grid that keeps the pictures readable',
+  full.buttons.join(' | ') === '5 × 2', full.buttons.join(' | '));
 
 const last = await picturesSheet(1);
-check('a short page is laid out on one of them, never one picture wide',
-  last.cells === 1 && last.cols >= 2 && last.cols <= 5, JSON.stringify(last));
-// A short page stacks no more than one row whatever grid it takes, so all
-// four come back -- which is what keeps "two big pictures" available.
-check('and all four are offered on a short page, however few it holds',
-  last.buttons.join(' | ') === '2 × 1 | 3 × 1 | 4 × 1 | 5 × 1', last.buttons.join(' | '));
+// A page carrying one photograph gives it the sheet. The rule against a
+// single column was about a strip ten deep, which two rows already forbids.
+check('a page holding one photograph gives it the whole width',
+  last.cells === 1 && last.cols === 1 && last.rows === 1, JSON.stringify(last));
+// A short page stacks one row whatever grid it takes, so every grid comes
+// back -- which is what keeps "two big pictures" available, and one big one.
+// Tim, Oct 20: "one row is acceptable. 5 by 1... 1 by 4, 1 by 3, 1 by 2, 1 by
+// 1. The most rows are 2."
+check('and every grid is offered on a short page, however few it holds',
+  last.buttons.join(' | ') === '1 × 1 | 2 × 1 | 3 × 1 | 4 × 1 | 5 × 1',
+  last.buttons.join(' | '));
 
-// A grid chosen by hand is the grid that is kept.
-await picturesSheet(0);
-await page.evaluate(() => document.querySelector('[data-rb-pics-across="4"]').click());
+// A grid chosen by hand is the grid that is kept. Tried on the short page,
+// because a full page of ten is offered only one grid that keeps its
+// pictures readable and so has nothing to choose between.
+await picturesSheet(1);
+await page.evaluate(() => document.querySelector('[data-rb-pics-across="3"]').click());
 await page.waitForFunction(
   () => Number(document.querySelector('.rb-sheet:not(.rb-sheet--thumb) .rb-pictures-page__grid')
-    .style.getPropertyValue('--rb-pics-cols')) === 4, { timeout: 15000 });
+    .style.getPropertyValue('--rb-pics-cols')) === 3, { timeout: 15000 });
 await page.waitForFunction(
   () => /^Saved/.test(document.querySelector('#rb-save-status')?.textContent || ''), { timeout: 15000 });
 
 await openReport();
-const chosen = await picturesSheet(0);
+const chosen = await picturesSheet(1);
 check('a grid chosen by hand survives leaving and coming back',
-  chosen.cols === 4 && chosen.rows === 3, JSON.stringify(chosen));
+  chosen.cols === 3 && chosen.rows === 1, JSON.stringify(chosen));
 
 // A long description is printed whole. The caption box used to stop at a
 // little under four lines and scroll, so what the investigator wrote read
