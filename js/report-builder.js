@@ -964,18 +964,26 @@
   }
 
   /**
-   * No photograph's description is printed half-written.
+   * The words fit the caption. The caption never moves the picture.
    *
-   * A caption is a box on a grid: the page cannot grow, so something has to
-   * give when the investigator writes a long one. It used to be the words --
-   * the box stopped at a little under four lines and scrolled, so a full
-   * description read complete on screen and printed with its end missing.
+   * A caption is a block of fixed height in every cell -- three lines deep,
+   * set by the stylesheet from a size the shrinking does not touch. When a
+   * description is too long for it the TYPE comes down, the way a deck author
+   * would set it, and the plate above is left exactly where it is.
    *
-   * What gives now is, in order: the plate above it, which shrinks; then the
-   * type, down to two thirds, the way a deck author would set it. Only a
-   * description longer than that reaches the end of the room, and by then the
-   * words are smaller rather than gone.
+   * It used to work the other way: the box grew to the words and the plate
+   * gave way, so one long description lifted its own picture clear of the
+   * row. Tim, looking at his own deck: "Pictures look good except for the one
+   * in the upper right hand corner, which has apparently too much text to
+   * center the picture." And: "I want to shrink the font. I said that
+   * already."
+   *
+   * Half size is the floor. A description that will not fit even then is
+   * longer than a plate caption, and the page is not the place to discover
+   * it -- what shows is as much as half-size type holds.
    */
+  var CAPTION_FLOOR = 0.5;
+
   function fitCaptions(root) {
     var fields = root.querySelectorAll('[data-rb-caption]');
     for (var i = 0; i < fields.length; i += 1) fitCaption(fields[i]);
@@ -983,19 +991,19 @@
 
   function fitCaption(field) {
     if (!field) return;
+    // Back to the stylesheet's size before measuring: a caption shortened
+    // since the last pass must be allowed to grow back to full size.
     field.style.fontSize = '';
-    field.style.height = 'auto';
     var base = parseFloat(window.getComputedStyle(field).fontSize);
     if (!isFinite(base) || base <= 0) return;
-    // Grown to the words; the stylesheet's max-height is what stops it.
-    field.style.height = field.scrollHeight + 'px';
     var size = base;
     var guard = 0;
-    while (field.scrollHeight > field.clientHeight + 1 && size > base * 0.66 && guard < 24) {
-      size = Math.round((size - base * 0.05) * 100) / 100;
+    // The box is the stylesheet's and is never written to here. Only the
+    // type changes, and only downwards.
+    while (field.scrollHeight > field.clientHeight + 1 &&
+      size > base * CAPTION_FLOOR && guard < 40) {
+      size = Math.round((size - base * 0.04) * 100) / 100;
       field.style.fontSize = size + 'px';
-      field.style.height = 'auto';
-      field.style.height = field.scrollHeight + 'px';
       guard += 1;
     }
   }
@@ -6201,6 +6209,11 @@
           // The printed cover is a different sheet from the one on screen, so
           // its contents is measured and stepped down on its own.
           fitCoverContents(printDeck);
+          // And so is every printed caption. The deck is built fresh and had
+          // never been measured, so a description that fitted on screen by
+          // coming down in size printed at full size -- and what did not fit
+          // the block printed missing.
+          fitCaptions(printDeck);
           window.addEventListener('afterprint', clearPrintDeck, { once: true });
           window.requestAnimationFrame(function () {
             window.requestAnimationFrame(function () { window.print(); });

@@ -1792,9 +1792,20 @@ body.report-builder-open .canvas {
   min-width: 0;
   min-height: 0;
   margin: 0;
-  /* A cell is its row and no taller: a long caption shortens the plate above
-     it rather than pushing the row -- and the page -- past the paper. */
+  /* A cell is its row and no taller. */
   overflow: hidden;
+  /* The caption's size, held apart from the caption itself.
+
+     The caption's own font shrinks to fit (fitCaptions), and the block it
+     sits in must NOT shrink with it or the picture above would move every
+     time a description got long -- which is the thing being fixed. So the
+     block is measured from this, which never changes, and the type inside it
+     is measured from the inline size fitCaptions sets.
+
+     Tim, Oct 20: "If you clip the picture the exact same size every fucking
+     time, the middle never changes." */
+  --rb-cap-size: clamp(9px, 1.2cqb, 12px);
+  --rb-cap-lines: 3;
 }
 
 /* The frame is a plate of a fixed shape, as wide as its column.
@@ -1853,25 +1864,33 @@ body.report-builder-open .canvas {
   box-sizing: border-box;
 }
 
+/* One line, always: "Photograph 12" wrapping in one cell and not in the next
+   would move that cell's picture, which is the same fault as a long caption. */
 .rb-pictures-page__label {
   flex: 0 0 auto;
   margin: 0.35em 0 0.1em;
   font-size: clamp(10px, 1.35cqb, 13px);
   font-weight: 700;
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* The caption takes the room its words need, and the plate above it gives
-   way. It used to stop at a little under four lines and scroll: a long
-   description looked complete on screen and printed with its last sentences
-   missing. Half the cell is the limit, so the photograph never disappears
-   behind the writing; past that the type comes down instead (fitCaptions). */
+/* The caption is a block of fixed height, three lines deep, in every cell on
+   every sheet. The words fit it by coming down in size (fitCaptions), never
+   by taking room from the photograph -- so the plate above is identical from
+   cell to cell and the pictures along a row line up exactly.
+
+   It used to be the other way about: the caption took the room its words
+   needed and the plate gave way, which put one picture in a row higher than
+   its neighbours. Tim, on his own deck: "Pictures look good except for the
+   one in the upper right hand corner, which has apparently too much text to
+   center the picture." */
 .rb-pictures-page__caption {
   flex: 0 0 auto;
   width: 100%;
-  height: auto;
-  min-height: 2.6em;
-  max-height: 50%;
+  height: calc(var(--rb-cap-size) * 1.25 * var(--rb-cap-lines));
   margin: 0;
   padding: 0;
   border: 0;
@@ -1880,7 +1899,7 @@ body.report-builder-open .canvas {
   background: transparent;
   color: #222;
   font: inherit;
-  font-size: clamp(9px, 1.2cqb, 12px);
+  font-size: var(--rb-cap-size);
   line-height: 1.25;
   overflow: hidden;
 }
