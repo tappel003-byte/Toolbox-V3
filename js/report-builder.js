@@ -3726,12 +3726,11 @@
           railButton(planLocked ? 'Unlock floor survey' : 'Lock floor survey',
             planLocked ? 'secondary' : 'accent',
             'data-rb-floor-view-lock', planLocked ? 'unlock' : 'lock'));
-        var viewHint = document.createElement('p');
-        viewHint.className = 'rb-panel__lead';
-        viewHint.textContent = planLocked
-          ? 'Every Floor Survey slide frames the plan this way. What is drawn on it stays per slide.'
-          : 'Drag the plan to move it. Drag the corner to size it. Lock when it sits where you want it on every slide.';
-        railTopEl.appendChild(viewHint);
+        // No paragraph under it. These five buttons carried five explanations
+        // between them -- 218px of the 457 above the tabs -- which pushed the
+        // controls themselves off the bottom of the window. Tim, looking at
+        // the Contours tab: "No, there's nothing there." The labels say what
+        // the buttons do; the prose was mine, and it was in the way.
 
         var pieceApi = window.ToolboxReportFloorLayout;
         var pieceLayout = pieceApi
@@ -3746,20 +3745,13 @@
           var label = (piece.on ? 'Unlock ' : 'Lock ') + piece.name;
           railTopEl.appendChild(railButton(label, piece.on ? 'secondary' : 'quiet',
             'data-rb-floor-piece-lock', piece.key + ':' + (piece.on ? 'unlock' : 'lock')));
-          var pieceHint = document.createElement('p');
-          pieceHint.className = 'rb-panel__lead';
-          pieceHint.textContent = piece.on
-            ? 'Same place and same size on every slide, on any device.'
-            : 'Place and size it, then lock so every slide gets it exactly there.';
-          railTopEl.appendChild(pieceHint);
         });
 
         railTopEl.appendChild(railButton(
           'Use this as my default', 'quiet', 'data-rb-template', 'floor'));
         var floorDefaultHint = document.createElement('p');
         floorDefaultHint.className = 'rb-panel__lead';
-        floorDefaultHint.textContent =
-          'New reports frame the building this way and draw it with these settings.';
+        floorDefaultHint.textContent = 'New reports start here.';
         railTopEl.appendChild(floorDefaultHint);
 
         var twoUp = floorSlots(page) > 1;
@@ -3769,8 +3761,8 @@
         var twoHint = document.createElement('p');
         twoHint.className = 'rb-panel__lead';
         twoHint.textContent = twoUp
-          ? 'Click a drawing to pick the one these controls change. Set that one to Points only to show the readings beside the contours.'
-          : 'Puts the same level on the sheet twice, so one can show contours and the other the readings.';
+          ? 'Click a drawing to aim these controls at it.'
+          : 'The same level twice: contours on one, readings on the other.';
         railTopEl.appendChild(twoHint);
       }
 
