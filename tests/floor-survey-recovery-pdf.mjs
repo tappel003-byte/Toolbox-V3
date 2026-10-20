@@ -279,6 +279,25 @@ async function recoveryRecord() {
       pdfWidth: width ? Number(width[1]) : 0,
       pdfHeight: height ? Number(height[1]) : 0,
       updatedAt: layer.recoveryPdfUpdatedAt || '',
+      // Done taking points: Save files the level's contour as well, which is
+      // the one thing Distress Survey and Report Builder were both waiting
+      // on. Both read the level, so filing it is sending it to both.
+      contour: (function () {
+        const canvas = window.ToolboxPlanSetup.canvasById(rec, ids.CANVAS_ID);
+        const found = window.ToolboxPlanSetup.contourLayer(canvas);
+        return found
+          ? { id: found.id, w: found.width, h: found.height, points: found.pointCount,
+              area: found.areaName || '' }
+          : null;
+      })(),
+      // The picture the layer points at is really in the media store: a
+      // level holding an id with no bytes behind it is a bare plan with a
+      // promise on it.
+      contourStored: (function () {
+        const canvas = window.ToolboxPlanSetup.canvasById(rec, ids.CANVAS_ID);
+        const found = window.ToolboxPlanSetup.contourLayer(canvas);
+        return !!found && keys.indexOf(found.id) !== -1;
+      })(),
     };
   }, { FILE_ID, CANVAS_ID });
 }
@@ -307,9 +326,20 @@ check(
 const saved = await clickSave();
 const afterSaveView = await readViewport();
 const stored = await recoveryRecord();
+// Tim: "When we drop our last point there really is no complete. If we had a
+// complete -- I'm done taking points -- generate the contour immediately, it
+// could hit save." Save is that moment, so the level comes away carrying its
+// contour and nobody has to remember a button in another tab.
+check('Save files the level\'s contour, drawn from the readings',
+  !!stored.contour && !!stored.contour.id &&
+  stored.contour.points === stored.points.length &&
+  stored.contour.w > 0 && stored.contour.h > 0 &&
+  stored.contourStored,
+  JSON.stringify({ contour: stored.contour, stored: stored.contourStored,
+    readings: stored.points.length }));
 check(
   'Save persists points and one recovery PDF',
-  saved.status === 'Saved · Recovery PDF updated.' &&
+  saved.status === 'Saved · Recovery PDF and contour updated.' &&
     saved.tone === 'ok' &&
     stored.points.length === 5 &&
     stored.points.some((p) => p.id === 'pt-se' && p.value === 8.75) &&
@@ -358,7 +388,7 @@ const second = await clickSave();
 const replaced = await recoveryRecord();
 check(
   'Second Save replaces the recovery PDF',
-  second.status === 'Saved · Recovery PDF updated.' &&
+  second.status === 'Saved · Recovery PDF and contour updated.' &&
     // Replaced, not accumulated: still exactly one, and the old object is
     // gone rather than left behind as Save 1 / Save 2.
     replaced.recoveryKeys.length === 1 &&
@@ -414,7 +444,7 @@ check(
   failedStore.status === 'Survey saved · Recovery PDF not updated' &&
     failedStore.tone === 'err' &&
     afterStoreFail.pdf === knownGood &&
-    !failedStore.status.includes('Saved · Recovery PDF updated'),
+    !failedStore.status.includes('Recovery PDF and contour updated'),
   JSON.stringify({ status: failedStore, samePdf: afterStoreFail.pdf === knownGood }),
 );
 
@@ -425,7 +455,7 @@ const offlineSave = await clickSave();
 const offlineStored = await recoveryRecord();
 check(
   'Save works offline',
-  offlineSave.status === 'Saved · Recovery PDF updated.' &&
+  offlineSave.status === 'Saved · Recovery PDF and contour updated.' &&
     offlineSave.tone === 'ok' &&
     offlineStored.recoveryKeys.length === 1 &&
     offlineStored.pdf.startsWith('data:application/pdf'),
@@ -456,7 +486,7 @@ const ipadLayout = await page.evaluate(() => {
     confirmed: host.querySelector('[data-save-status]')?.getAttribute('data-save-status') || '',
   };
 });
-check('iPad Save confirmation is the success text', ipadSaved.status === 'Saved · Recovery PDF updated.', ipadSaved.status);
+check('iPad Save confirmation is the success text', ipadSaved.status === 'Saved · Recovery PDF and contour updated.', ipadSaved.status);
 check('iPad Save control stays in the header without overlap', ipadLayout.gap >= 0 && ipadLayout.backGap >= 0 && ipadLayout.inHeader && !ipadLayout.overlap, JSON.stringify(ipadLayout));
 
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
@@ -481,7 +511,7 @@ const phoneLayout = await page.evaluate(() => {
 });
 check(
   'Phone confirmation stays in the top bar',
-  phoneSaved.status === 'Saved · Recovery PDF updated.' && phoneLayout.gapToSave >= -1 && !phoneLayout.overlapSave && !phoneLayout.overlapUndo && phoneLayout.moreVisible,
+  phoneSaved.status === 'Saved · Recovery PDF and contour updated.' && phoneLayout.gapToSave >= -1 && !phoneLayout.overlapSave && !phoneLayout.overlapUndo && phoneLayout.moreVisible,
   JSON.stringify(phoneLayout),
 );
 

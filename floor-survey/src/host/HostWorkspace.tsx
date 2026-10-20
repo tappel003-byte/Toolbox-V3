@@ -329,10 +329,79 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
       saveLock.current = false;
       return;
     }
-    showSaveStatus("Saved · Recovery PDF updated.", "ok");
+    // Done taking points.
+    //
+    // Tim: "When we drop our first point for survey it says is this your
+    // first point, capture GPS. When we drop our last point there really is
+    // no complete. If we had a complete -- I'm done taking points -- generate
+    // the contour immediately, it could hit save. Closing out all the points
+    // could actually be a trigger for a lot of things."
+    //
+    // This is that trigger, and it is Save itself rather than a button beside
+    // it: Save is already the deliberate "this is the version worth keeping"
+    // moment, and one button is one button. Press it again after adding more
+    // points and the contour is drawn again. It is not a state and not a
+    // lock.
+    //
+    // What it files is the level's contour layer, which is the ONE thing
+    // Distress Survey and Report Builder were both waiting on: the contour is
+    // filed on the level, and both apps read the level, so filing it is
+    // sending it to both. Report Builder already draws it wherever a level
+    // has one -- measured Oct 20 -- so a Picture Locations sheet stops
+    // printing a bare plan without anything else being wired.
+    //
+    // Which boundary: whichever one is already on the level, so a deliberate
+    // choice made in the Topo rail -- "that's a garage, it's sloped for
+    // drainage" -- is not quietly replaced by a combined one. A level with no
+    // layer yet gets all of its boundaries.
+    //
+    // A failure here never fails the Save. The readings are already written;
+    // the contour is a picture of them and can be drawn again.
+    try {
+      const [{ composeContourLayer }, { persistContourLayer }, { readContourLayer }] =
+        await Promise.all([
+          import("@/lib/contour-layer"),
+          import("@/lib/db"),
+          import("@/lib/db"),
+        ]);
+      const held = await readContourLayer(activeFloor.id).catch(() => null);
+      const areas = Array.isArray(activeFloor.areas) ? activeFloor.areas : [];
+      const keptArea = held && held.areaName
+        ? areas.find((area) => area && area.name === held.areaName)
+        : null;
+      const drawn = await composeContourLayer({
+        floor: activeFloor,
+        points,
+        settings,
+        areaId: keptArea ? keptArea.id : null,
+      });
+      if (!drawn) {
+        showSaveStatus(
+          "Saved · no contour yet — this level needs a closed boundary with readings inside it.",
+          "ok",
+        );
+        setSaving(false);
+        saveLock.current = false;
+        return;
+      }
+      await persistContourLayer(activeFloor.id, drawn.dataUrl, {
+        areaName: drawn.areaName,
+        width: drawn.extent.w,
+        height: drawn.extent.h,
+        pointCount: drawn.pointCount,
+      });
+    } catch (err) {
+      console.error(err);
+      showSaveStatus("Saved · Recovery PDF updated · contour not drawn", "err");
+      setSaving(false);
+      saveLock.current = false;
+      return;
+    }
+
+    showSaveStatus("Saved · Recovery PDF and contour updated.", "ok");
     setSaving(false);
     saveLock.current = false;
-  }, [activeFloor, points, showSaveStatus]);
+  }, [activeFloor, points, settings, showSaveStatus]);
   const handleFloorChange = useCallback((f: Floor) => {
     setFloors((prev) => prev.map((p) => (p.id === f.id ? f : p)));
   }, []);
