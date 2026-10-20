@@ -70,7 +70,7 @@ time, and never prints.
 real height of a colour scale, and a report saved under the old guessed slots
 takes the corrected one unless the position was chosen by hand. On top of
 that, Tim's decisions of Oct 20: Main Level leads, the everything-at-once
-sheet comes last as *Combined View for Exhibit* and carries no scale and no
+sheet comes last as *Combined View* and carries no scale and no
 pill, a garage arrives as readings rather than contours, and any sheet drawn
 as readings alone drops the colour scale with it.
 

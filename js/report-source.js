@@ -168,8 +168,12 @@
     return map[key] || raw;
   }
 
-  /** The sheet that carries every boundary of a level at once. */
-  var COMBINED_NAME = 'Combined View for Exhibit';
+  /** The sheet that carries every boundary of a level at once.
+   *
+   * Tim first said "combined view for exhibit", then took it back the same
+   * day: "I know I told you that's what I said but I don't think it sounds
+   * good... just combined view." */
+  var COMBINED_NAME = 'Combined View';
 
   function isMainLevel(name) {
     return /\bmain\b/i.test(text(name));

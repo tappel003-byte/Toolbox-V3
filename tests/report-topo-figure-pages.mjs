@@ -102,7 +102,7 @@ const outline = await page.evaluate(() => {
     ids.join(','));
   const last = source.floor.figures[source.floor.figures.length - 1];
   assert('Combined scope is all',
-    last.scope === 'all' && last.name === 'Combined View for Exhibit', last.name);
+    last.scope === 'all' && last.name === 'Combined View', last.name);
   assert('Front Door facing is outlined', source.floor.figures[0].frontDoorFacing === 'West');
   assert('compose flag is set', source.floor.figures.every((f) => f.compose === true));
   assert('cover meta carries contact fields',
@@ -281,7 +281,7 @@ check('Combined is the last of the level\'s figures',
   combined.figureLabel === 'Figure 3' && combined.railFigure === 'FIGURE 3',
   `${combined.figureLabel} | ${combined.railFigure}`);
 check('the rail names the drawing and its scope',
-  combined.title === 'Floor Level SurveyCombined View for Exhibit', combined.title);
+  combined.title === 'Floor Level SurveyCombined View', combined.title);
 check('the rail carries the survey date and the corrected note',
   /February 11, 2026/.test(combined.date) && /Corrected for floor/i.test(combined.corrected),
   `${combined.date} | ${combined.corrected}`);

@@ -9,7 +9,8 @@
  *    order the canvases happened to be created, so a basement could open the
  *    report.
  *  - "We bring any floor level survey that has all levels lastly, and we just
- *    say combined view for exhibit." The everything-at-once sheet used to LEAD
+ *    say combined view" -- he took "for exhibit" back the same day: "I don't
+ *    think it sounds good." The everything-at-once sheet used to LEAD
  *    its level, so the busiest drawing in the book was the first one seen.
  *  - "Whenever we bring in different levels with multiple topos, we do not
  *    bring in the pill, high-low delta pill. We do not bring in the contour
@@ -144,7 +145,7 @@ const titles = await page.evaluate(async (id) => {
 }, FILE);
 
 check('and it is named for what it is on an exhibit',
-  titles.some((t) => /Combined View for Exhibit/.test(t.title)),
+  titles.some((t) => /Combined View/.test(t.title)),
   JSON.stringify(titles.map((t) => t.title)));
 
 check('the garage opens on readings alone',
