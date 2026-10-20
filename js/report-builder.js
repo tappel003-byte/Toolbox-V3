@@ -820,10 +820,9 @@
    * picture stops being readable.
    *
    * One across is back, Oct 20: "one row is acceptable. 5 by 1... 1 by 4, 1
-   * by 3, 1 by 2, 1 by 1. The most rows are 2." What he threw out twice was a
-   * column ten deep, and the two-row floor below forbids that on its own -- a
-   * single column can now hold one picture or two, which is a big picture and
-   * a pair, not a strip.
+   * by 3, 1 by 2, 1 by 1. The most rows are 2." Then, seeing 1 x 2 offered:
+   * "1x2 NO." So a single column is one picture given the whole sheet and
+   * nothing else -- two stacked down one column is the strip he threw out.
    */
   var PICTURES_ACROSS = [1, 2, 3, 4, 5];
 
@@ -857,6 +856,9 @@
   function picturesGrids(count) {
     var n = Math.max(1, Number(count) || 1);
     var fit = PICTURES_ACROSS.filter(function (cols) {
+      // One column is one picture given the whole sheet, and nothing else:
+      // two stacked down a single column is a strip. Tim, Oct 20: "1x2 NO."
+      if (cols === 1) return n === 1;
       return Math.ceil(n / cols) <= MAX_PICTURE_ROWS;
     });
     // A page carrying more than even the widest grid can hold in three rows
@@ -979,6 +981,14 @@
     var rows = Math.max(1, Math.ceil((photos.length || 1) / across));
     grid.style.setProperty('--rb-pics-cols', String(across));
     grid.style.setProperty('--rb-pics-rows', String(rows));
+    // A single row is a row, not a band stretched down the whole sheet. The
+    // rows share the block's height between them, so with only one of them it
+    // took all of it -- and because a picture sits at the foot of its cell so
+    // the captions line up, two photographs ended up along the bottom edge
+    // under a page of white. Tim: "if we're going to have one row, it needs
+    // to be centered or at the top, not at the bottom. That doesn't even make
+    // sense at all."
+    if (rows === 1) grid.classList.add('rb-pictures-page__grid--one-row');
     if (!photos.length) {
       addLine(grid, 'rb-sheet__note', 'No photographs are available for this page yet.');
     }

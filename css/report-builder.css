@@ -1805,6 +1805,14 @@ body.report-builder-open .canvas {
   align-content: stretch;
 }
 
+/* One row sits at the top of the sheet and is as tall as it needs to be,
+   rather than being stretched down the page with its pictures hanging off
+   the bottom edge. */
+.rb-pictures-page__grid--one-row {
+  grid-template-rows: auto;
+  align-content: start;
+}
+
 .rb-pictures-page__cell {
   display: flex;
   flex-direction: column;
