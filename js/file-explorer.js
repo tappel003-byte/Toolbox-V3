@@ -111,6 +111,28 @@
     return { purpose: 'other', label: 'Stored file', detail: '' };
   }
 
+  /**
+   * Is this one of Toolbox's own record files?
+   *
+   * Tim, looking at a job's folder: "if you hit open or anything other than
+   * the pictures it really does not do anything, show anything to anybody
+   * who doesn't read code -- see the code like Neo in the Matrix." He is
+   * right. customer.json, distress.json, floor.json and the rest are how
+   * Toolbox writes a Customer File down; they are not a thing anybody opens
+   * on purpose, and listing them beside the photographs makes a job look
+   * like a developer's folder instead of a job.
+   *
+   * They are not hidden -- the Cabinet is the repository, and a file in it
+   * must be reachable -- they are put behind one line at the foot of the
+   * job, closed.
+   */
+  function isRecordFile(row, id) {
+    const key = String((row && row.key) || '');
+    const prefix = 'cf/' + id + '/';
+    if (key.indexOf(prefix) !== 0) return false;
+    return /\.json$/i.test(key.slice(prefix.length));
+  }
+
   function groupIdFor(purpose) {
     if (purpose === 'plan') return 'plans';
     if (purpose === 'distress-photo') return 'distress';
@@ -198,7 +220,7 @@
     }
   }
 
-  function saveBlob(blob, filename) {
+  function anchorSave(blob, filename) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -210,6 +232,104 @@
     setTimeout(function () {
       try { URL.revokeObjectURL(url); } catch (_) {}
     }, 1500);
+  }
+
+  /**
+   * Put a copy where the investigator points.
+   *
+   * Tim: "I could be saving it to a Google Drive, I can save it to my
+   * desktop, I can save it to a flash drive, I can save it to an external
+   * whatever from Explorer." The browser can offer a proper Save As dialog,
+   * so it does, and what comes out of the Cabinet lands straight on the
+   * office server or the drive rather than in Downloads to be moved by hand.
+   *
+   * Two details decide whether this works at all:
+   *
+   * The dialog may only be opened while the click that asked for it is still
+   * fresh -- a few seconds -- so the place is chosen BEFORE the file is
+   * fetched, not after. On a big job the fetch is the slow part, and asking
+   * afterwards is how this fails on exactly the files worth saving.
+   *
+   * The file is then streamed into the chosen place instead of being handed
+   * over whole, so a job of photographs is not held in memory twice.
+   *
+   * Save As is Chrome and Edge on a desktop. Everywhere else -- iPhone, iPad,
+   * Safari, Firefox -- it falls back to the ordinary download, which is what
+   * Toolbox did before, and says so plainly rather than pretending.
+   */
+  function canChooseWhere() {
+    try {
+      return typeof window.showSaveFilePicker === 'function';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  const SAVE_CANCELLED = { cancelled: true };
+
+  async function choosePlace(filename, mimeType) {
+    if (!canChooseWhere()) return null;
+    const dot = filename.lastIndexOf('.');
+    const ext = dot > 0 ? filename.slice(dot) : '';
+    const accept = {};
+    accept[mimeType || 'application/octet-stream'] = ext ? [ext] : [];
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        excludeAcceptAllOption: false,
+        types: [{ description: ext === '.zip' ? 'ZIP package' : 'File', accept: accept }],
+      });
+      return await handle.createWritable().then(function (writable) {
+        return { name: handle.name || filename, writable: writable };
+      });
+    } catch (err) {
+      // The investigator closed the dialog: nothing was saved, and nothing
+      // should be claimed. Anything else -- a browser that offers the dialog
+      // and then refuses it -- falls back to the ordinary download.
+      if (err && err.name === 'AbortError') return SAVE_CANCELLED;
+      return null;
+    }
+  }
+
+  /**
+   * Ask where first, then make the file, then write it there.
+   * `produce` returns the Blob; it is only called once a place is settled.
+   */
+  async function saveWhereChosen(filename, mimeType, produce) {
+    const place = await choosePlace(filename, mimeType);
+    if (place === SAVE_CANCELLED) return { cancelled: true };
+    let blob;
+    try {
+      blob = await produce();
+    } catch (err) {
+      if (place && place.writable) {
+        try { await place.writable.abort(); } catch (_) {}
+      }
+      throw err;
+    }
+    if (place && place.writable) {
+      try {
+        if (blob.stream && typeof blob.stream === 'function') {
+          await blob.stream().pipeTo(place.writable);
+        } else {
+          await place.writable.write(blob);
+          await place.writable.close();
+        }
+      } catch (err) {
+        try { await place.writable.abort(); } catch (_) {}
+        throw err;
+      }
+      return { chosen: true, name: place.name };
+    }
+    anchorSave(blob, filename);
+    return { chosen: false, name: filename };
+  }
+
+  /** What to tell the investigator once it is written. */
+  function savedNotice(result) {
+    if (!result || result.cancelled) return '';
+    if (result.chosen) return 'Saved ' + result.name + ' where you chose.';
+    return 'Saved ' + result.name + ' to your downloads.';
   }
 
   // A picture is anything the Cabinet stored as an image: a photograph, a
@@ -354,7 +474,14 @@
     sub.textContent = inside ? 'Missing items are marked not stored.' : '';
     crumb.textContent = '';
 
-    app.querySelector('#explorer-back').addEventListener('click', function () {
+    const backBtn = app.querySelector('#explorer-back');
+    backBtn.addEventListener('click', function () {
+      // Inside a folder, Back goes up one, the way it does in Windows.
+      if (inside && openFolder) {
+        leaveFolder(customerId);
+        backBtn.textContent = '‹ File Explorer';
+        return;
+      }
       window.location.hash = inside ? '#/explore' : '#/';
     });
 
@@ -500,9 +627,17 @@
       return article;
     }
 
+    let jobName = '';
+    /** Everything the Cabinet holds for this job, and which folder is open. */
+    let jobObjects = [];
+    let openFolder = '';
+
     function showCustomerIdentity(data) {
       const name = data && data.displayName;
-      if (name) titleEl.textContent = name;
+      if (name) {
+        titleEl.textContent = name;
+        jobName = name;
+      }
       const bits = [];
       if (data && data.propertyAddress) bits.push(data.propertyAddress);
       const date = usefulDate(data);
@@ -627,52 +762,198 @@
         listEl.appendChild(empty);
         return;
       }
-      paintGroups(id, objects);
+      jobObjects = objects;
+      openFolder = '';
+      paintJob(id);
     }
 
-    function paintGroups(id, objects) {
-      stopTileWatching();
-      listEl.innerHTML = '';
+    /** Sort a folder's contents: the things worth seeing first, then by name. */
+    function sortRows(id, rows) {
+      rows.sort(function (a, b) {
+        const rank = purposeRank(classify(a, id).purpose) - purposeRank(classify(b, id).purpose);
+        if (rank) return rank;
+        const labelA = String(a._label || '');
+        const labelB = String(b._label || '');
+        if (labelA < labelB) return -1;
+        if (labelA > labelB) return 1;
+        return String(a.key || '') < String(b.key || '') ? -1 : 1;
+      });
+      return rows;
+    }
+
+    function sortJob(id) {
       const buckets = {};
-      objects.forEach(function (row) {
+      const records = [];
+      jobObjects.forEach(function (row) {
         const info = classify(row, id);
         row._label = info.label;
         row._detail = info.detail;
+        if (isRecordFile(row, id)) {
+          records.push(row);
+          return;
+        }
         const gid = groupIdFor(info.purpose);
         if (!buckets[gid]) buckets[gid] = [];
         buckets[gid].push(row);
       });
-      GROUPS.forEach(function (group) {
-        const rows = buckets[group.id];
-        if (!rows || !rows.length) return;
-        rows.sort(function (a, b) {
-          const rank = purposeRank(classify(a, id).purpose) - purposeRank(classify(b, id).purpose);
-          if (rank) return rank;
-          const labelA = String(a._label || '');
-          const labelB = String(b._label || '');
-          if (labelA < labelB) return -1;
-          if (labelA > labelB) return 1;
-          return String(a.key || '') < String(b.key || '') ? -1 : 1;
+      return { buckets: buckets, records: records };
+    }
+
+    /**
+     * A job is folders you walk into, not one long page.
+     *
+     * Tim: "Explorer needs to kind of look and feel like an actual Microsoft
+     * file explorer -- that's the whole point of this one." Every group used
+     * to be stacked on the same screen, so a job with two hundred
+     * photographs was two hundred thumbnails to scroll past before the floor
+     * survey. Now the job opens as a short list of folders with what is in
+     * each, and one of them is opened at a time.
+     */
+    function paintJob(id) {
+      stopTileWatching();
+      revokePreview();
+      preview.hidden = true;
+      preview.innerHTML = '';
+      listEl.innerHTML = '';
+      const sorted = sortJob(id);
+      const buckets = sorted.buckets;
+      if (!openFolder) {
+        crumb.innerHTML = '';
+        GROUPS.forEach(function (group) {
+          const rows = buckets[group.id];
+          if (!rows || !rows.length) return;
+          listEl.appendChild(folderRow(id, group, rows));
         });
-        const section = document.createElement('section');
-        section.className = 'explorer-group';
-        section.dataset.group = group.id;
-        const heading = document.createElement('h2');
-        heading.textContent = group.title;
-        section.appendChild(heading);
-        // Pictures become a contact sheet; everything else stays a row. A
-        // hundred photographs listed as a hundred identical cards is a list of
-        // photographs, not a way to look at them.
-        const pictures = rows.filter(isPicture);
-        const rest = rows.filter(function (row) { return !isPicture(row); });
-        if (pictures.length) {
-          section.appendChild(pictureSheet(id, pictures, group.title, preview, showNotice));
-        }
-        rest.forEach(function (row) {
-          section.appendChild(objectRow(id, row));
-        });
-        listEl.appendChild(section);
+        if (sorted.records.length) listEl.appendChild(recordFiles(id, sorted.records));
+        return;
+      }
+      const group = GROUPS.filter(function (item) { return item.id === openFolder; })[0];
+      const rows = group ? buckets[group.id] : null;
+      if (!group || !rows || !rows.length) {
+        openFolder = '';
+        paintJob(id);
+        return;
+      }
+      // The path across the top is the way back up, the way it is in a file
+      // explorer. One way up, not a button beside it saying the same thing.
+      crumb.innerHTML = '';
+      const home = document.createElement('button');
+      home.type = 'button';
+      home.className = 'explorer-up';
+      home.textContent = jobName || 'Customer File';
+      home.addEventListener('click', function () { leaveFolder(id); });
+      crumb.appendChild(home);
+      const sep = document.createElement('span');
+      sep.className = 'explorer-crumb__sep';
+      sep.textContent = ' › ';
+      crumb.appendChild(sep);
+      const here = document.createElement('span');
+      here.className = 'explorer-crumb__here';
+      here.textContent = group.title;
+      crumb.appendChild(here);
+      const section = document.createElement('section');
+      section.className = 'explorer-group';
+      section.dataset.group = group.id;
+      const heading = document.createElement('h2');
+      heading.textContent = group.title;
+      section.appendChild(heading);
+      sortRows(id, rows);
+      // Pictures become a contact sheet; everything else stays a row. A
+      // hundred photographs listed as a hundred identical cards is a list of
+      // photographs, not a way to look at them.
+      const pictures = rows.filter(isPicture);
+      const rest = rows.filter(function (row) { return !isPicture(row); });
+      if (pictures.length) {
+        section.appendChild(pictureSheet(id, pictures, group.title, preview, showNotice));
+      }
+      rest.forEach(function (row) {
+        section.appendChild(objectRow(id, row));
       });
+      listEl.appendChild(section);
+    }
+
+    function enterFolder(id, groupId) {
+      openFolder = groupId;
+      showNotice('');
+      if (backBtn) backBtn.textContent = '‹ Back';
+      // What the pictures in here are called -- the pin, the room, the day
+      // the shutter was pressed -- lives in distress.json, and naming a
+      // download needs it in hand before the Save As dialog can be opened.
+      // Walking into a folder is the investigator asking for this folder, so
+      // it is read once here rather than on every page view.
+      readPhotoFacts(id).catch(function () {});
+      paintJob(id);
+      try { listEl.scrollIntoView({ block: 'start' }); } catch (_) {}
+    }
+
+    function leaveFolder(id) {
+      openFolder = '';
+      showNotice('');
+      if (backBtn) backBtn.textContent = '‹ File Explorer';
+      paintJob(id);
+    }
+
+    /** What is in a folder, said in the words of the thing itself. */
+    function folderCount(rows) {
+      const pictures = rows.filter(isPicture).length;
+      const rest = rows.length - pictures;
+      const parts = [];
+      if (pictures) parts.push(pictures + (pictures === 1 ? ' picture' : ' pictures'));
+      if (rest) parts.push(rest + (rest === 1 ? ' file' : ' files'));
+      return parts.join(' · ');
+    }
+
+    function folderRow(id, group, rows) {
+      const article = document.createElement('article');
+      article.className = 'explorer-folder';
+      article.dataset.group = group.id;
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'explorer-folder__open';
+      open.addEventListener('click', function () { enterFolder(id, group.id); });
+      const icon = document.createElement('span');
+      icon.className = 'explorer-folder__icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = '📁';
+      open.appendChild(icon);
+      const text = document.createElement('span');
+      text.className = 'explorer-folder__text';
+      const title = document.createElement('strong');
+      title.textContent = group.title;
+      text.appendChild(title);
+      const count = document.createElement('span');
+      count.className = 'explorer-folder__count';
+      count.textContent = folderCount(rows);
+      text.appendChild(count);
+      open.appendChild(text);
+      const chev = document.createElement('span');
+      chev.className = 'explorer-folder__chev';
+      chev.setAttribute('aria-hidden', 'true');
+      chev.textContent = '›';
+      open.appendChild(chev);
+      article.appendChild(open);
+      return article;
+    }
+
+    /** Toolbox's own record files, at the foot of the job, closed. */
+    function recordFiles(id, rows) {
+      const box = document.createElement('details');
+      box.className = 'explorer-records';
+      const summary = document.createElement('summary');
+      summary.textContent = 'Technical details';
+      box.appendChild(summary);
+      const note = document.createElement('p');
+      note.className = 'explorer-records__note';
+      note.textContent = 'How Toolbox writes this job down. Nothing in here is a ' +
+        'picture, a survey or a report — those are above.';
+      box.appendChild(note);
+      rows.sort(function (a, b) {
+        return String(a._label || '') < String(b._label || '') ? -1 : 1;
+      });
+      rows.forEach(function (row) {
+        box.appendChild(objectRow(id, row));
+      });
+      return box;
     }
 
     /** A grid of thumbnails, with one action to take the whole set. */
@@ -884,7 +1165,13 @@
             img.alt = row._label || 'Picture';
             box.classList.remove('is-loading');
             save.onclick = function () {
-              saveBlob(loaded.blob, downloadName(row.key));
+              saveWhereChosen(downloadName(row.key), loaded.type, function () {
+                return loaded.blob;
+              }).then(function (result) {
+                notify(savedNotice(result));
+              }).catch(function () {
+                notify('Could not save that picture.');
+              });
             };
           })
           .catch(function () {
@@ -1005,7 +1292,7 @@
       return head + '-' + dayList[0] + '_to_' + dayList[dayList.length - 1] + '.zip';
     }
 
-    /** Every picture in this group, as one ZIP. */
+    /** Every picture in this group, as one ZIP, wherever you point it. */
     function downloadPictures(id, rows, groupTitle, button, notify) {
       if (!window.JSZip) {
         notify('ZIP download is unavailable.');
@@ -1013,7 +1300,7 @@
       }
       const label = button.textContent;
       button.disabled = true;
-      button.textContent = 'Reading…';
+      button.textContent = canChooseWhere() ? 'Where to?' : 'Reading…';
       let done = 0;
       const zip = new window.JSZip();
       const used = {};
@@ -1036,18 +1323,25 @@
           // One unreadable object should not lose the other ninety-nine.
           .catch(function () {});
       };
-      rows.reduce(function (chain, row) {
-        return chain.then(function () { return step(row); });
-      }, readPhotoFacts(id)).then(function () {
-        if (!done) throw new Error('none');
-        return zip.generateAsync({ type: 'blob' });
-      }).then(function (blob) {
-        saveBlob(blob, picturesZipName(rows, groupTitle));
+      saveWhereChosen(picturesZipName(rows, groupTitle), 'application/zip', function () {
+        button.textContent = 'Reading…';
+        return rows.reduce(function (chain, row) {
+          return chain.then(function () { return step(row); });
+        }, readPhotoFacts(id)).then(function () {
+          if (!done) throw new Error('none');
+          button.textContent = 'Packing…';
+          return zip.generateAsync({ type: 'blob' });
+        });
+      }).then(function (result) {
         button.disabled = false;
         button.textContent = label;
-        if (done < rows.length) {
-          notify(done + ' of ' + rows.length + ' pictures were stored and packed.');
+        if (result.cancelled) {
+          notify('');
+          return;
         }
+        notify(done < rows.length
+          ? done + ' of ' + rows.length + ' pictures were stored and packed. ' + savedNotice(result)
+          : savedNotice(result));
       }).catch(function () {
         button.disabled = false;
         button.textContent = label;
@@ -1188,11 +1482,14 @@
       notify('');
       const previous = button.textContent;
       button.disabled = true;
-      button.textContent = 'Downloading…';
-      window.ToolboxSync.exploreFetchObject(id, key).then(function (response) {
-        return responseBlob(response);
-      }).then(function (loaded) {
-        saveBlob(loaded.blob, downloadName(key));
+      button.textContent = canChooseWhere() ? 'Where to?' : 'Downloading…';
+      saveWhereChosen(downloadName(key), '', function () {
+        button.textContent = 'Downloading…';
+        return window.ToolboxSync.exploreFetchObject(id, key)
+          .then(responseBlob)
+          .then(function (loaded) { return loaded.blob; });
+      }).then(function (result) {
+        notify(savedNotice(result));
       }).catch(function (err) {
         notify(errorText(err));
       }).then(function () {
@@ -1201,18 +1498,32 @@
       });
     }
 
+    /**
+     * The whole job, wherever you point it.
+     *
+     * The name used to come from the server, in the header on the answer --
+     * which cannot be read until the job has been fetched, and by then the
+     * Save As dialog can no longer be opened. So the name is made here,
+     * from what the Cabinet already told us about the job, before anything
+     * is fetched.
+     */
+    function archiveFileName(id) {
+      const stem = slugWords(jobName, 48);
+      return (stem || ('cf-' + id)) + '.zip';
+    }
+
     function downloadArchive(id, button, notify) {
       notify('');
       const previous = button.textContent;
       button.disabled = true;
-      button.textContent = 'Preparing ZIP…';
-      window.ToolboxSync.exploreFetchArchive(id).then(function (response) {
-        const disposition = response.headers.get('content-disposition') || '';
-        const named = /filename="([^"]+)"/.exec(disposition);
-        const filename = (named && named[1]) || ('cf-' + id + '.zip');
-        return responseBlob(response).then(function (loaded) {
-          saveBlob(loaded.blob, filename);
-        });
+      button.textContent = canChooseWhere() ? 'Where to?' : 'Preparing ZIP…';
+      saveWhereChosen(archiveFileName(id), 'application/zip', function () {
+        button.textContent = 'Preparing ZIP…';
+        return window.ToolboxSync.exploreFetchArchive(id)
+          .then(responseBlob)
+          .then(function (loaded) { return loaded.blob; });
+      }).then(function (result) {
+        notify(savedNotice(result));
       }).catch(function (err) {
         notify(errorText(err));
       }).then(function () {

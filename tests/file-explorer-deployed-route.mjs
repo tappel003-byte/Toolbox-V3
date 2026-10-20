@@ -193,9 +193,40 @@ try {
     const rootText = document.getElementById('explorer-list').innerText;
     const mitchell = [...document.querySelectorAll('.explorer-row__key')].find((button) => button.textContent === 'Mitchell');
     mitchell.click();
-    await waitFor(() => document.querySelector('[data-key="media/ph_missing"]'));
+    // A job opens as folders; its contents are one level down, and the record
+    // files sit behind the Technical details line at the foot.
+    await waitFor(() => document.querySelector('.explorer-folder'));
+    const folderText = document.getElementById('explorer-list').innerText;
     const detailNotice = document.getElementById('explorer-notice');
-    const detailText = document.getElementById('explorer-list').innerText;
+    let detailText = folderText;
+    const folderIds = [...document.querySelectorAll('.explorer-folder')]
+      .map((folder) => folder.dataset.group);
+    const upAgain = async function () {
+      const up = document.querySelector('#explorer-crumb .explorer-up');
+      if (up) up.click();
+      await waitFor(() => !!document.querySelector('.explorer-folder'));
+    };
+    let tilesSeen = 0;
+    let pictureRowsSeen = 0;
+    for (let i = 0; i < folderIds.length; i += 1) {
+      document.querySelector(`.explorer-folder[data-group="${folderIds[i]}"] .explorer-folder__open`).click();
+      await waitFor(() => !document.querySelector('.explorer-folder'));
+      detailText += '\n' + document.getElementById('explorer-list').innerText;
+      tilesSeen += document.querySelectorAll('.explorer-tile[data-key]').length;
+      pictureRowsSeen += [...document.querySelectorAll('.explorer-row[data-key]')]
+        .filter((row) => !row.className.includes('missing') &&
+          ['plan', 'distress-photo', 'quick-capture', 'unassigned-photo',
+            'general-photo', 'floor-figure', 'diagnostics-figure']
+            .indexOf(row.dataset.purpose || '') !== -1).length;
+      if (document.querySelector('[data-key="media/ph_missing"]')) {
+        // Seen where it belongs: inside the Distress folder.
+        detailText += '\n[ph_missing seen]';
+      }
+      await upAgain();
+    }
+    const records = document.querySelector('.explorer-records');
+    if (records) records.open = true;
+    detailText += '\n' + document.getElementById('explorer-list').innerText;
     const plansRow = document.querySelector('[data-key="cf/cf-1/plans.json"]');
     const open = [...plansRow.querySelectorAll('button')].find((button) => button.textContent === 'Open');
     open.click();
@@ -213,14 +244,10 @@ try {
       detailNoticeText: detailNotice ? detailNotice.textContent : '',
       preview: document.querySelector('.explorer-preview__text').textContent,
       // Stored pictures, as the fallback route reports them: no type at all.
-      untypedTiles: document.querySelectorAll('.explorer-tile[data-key]').length,
+      untypedTiles: tilesSeen,
       // A stored picture left as a row. The Floor Survey recovery PDF is not
       // one -- a PDF is not a picture -- and neither is anything not stored.
-      untypedRows: [...document.querySelectorAll('.explorer-row[data-key]')]
-        .filter((row) => !row.className.includes('missing') &&
-          ['plan', 'distress-photo', 'quick-capture', 'unassigned-photo',
-            'general-photo', 'floor-figure', 'diagnostics-figure']
-            .indexOf(row.dataset.purpose || '') !== -1).length,
+      untypedRows: pictureRowsSeen,
       fetchLog,
     };
   }, { files: FILES, plans: PLANS, distress: DISTRESS, floor: FLOOR, diagnostics: DIAGNOSTICS, customer: CUSTOMER });

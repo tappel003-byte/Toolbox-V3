@@ -97,6 +97,7 @@ function jsonResponse(body, status = 200) {
 
 try {
   const page = await browser.newPage();
+  page.on('pageerror', (error) => console.log('PAGEERROR', error.message));
   await page.setViewport({ width: 1280, height: 800 });
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'networkidle0' });
   await page.waitForFunction(() => window.ToolboxSync && window.ToolboxFileExplorer && window.ToolboxDB);
@@ -126,6 +127,37 @@ try {
       downloads.push({ url, size: blob.size, type: blob.type, name: '', blob });
       return url;
     };
+    // Tonight's Save As, as Chrome and Edge present it on a desktop: the
+    // dialog hands back a place, and the file is streamed into it. Headless
+    // Chrome has the function but never answers it, so the test supplies a
+    // dialog that does. `pickerMode` lets the same run cover a cancelled
+    // dialog and a browser that has none.
+    const picked = [];
+    let pickerMode = 'accept';
+    const realPicker = window.showSaveFilePicker;
+    window.showSaveFilePicker = async function (options) {
+      if (pickerMode === 'none') throw new Error('no picker here');
+      if (pickerMode === 'cancel') {
+        const err = new Error('The user aborted a request.');
+        err.name = 'AbortError';
+        throw err;
+      }
+      const name = (options && options.suggestedName) || 'file';
+      const entry = { name, chunks: [], types: options && options.types };
+      picked.push(entry);
+      return {
+        name,
+        createWritable: async function () {
+          return new WritableStream({
+            write(chunk) { entry.chunks.push(chunk); },
+          });
+        },
+      };
+    };
+    function pickedBlob(entry) {
+      return new Blob(entry.chunks);
+    }
+
     const originalClick = HTMLAnchorElement.prototype.click;
     HTMLAnchorElement.prototype.click = function () {
       const last = downloads[downloads.length - 1];
@@ -283,33 +315,106 @@ try {
     const rootKey = document.querySelector('.explorer-row__key');
     rootKey.click();
     await new Promise((resolve) => setTimeout(resolve, 50));
-    const detailText = document.getElementById('explorer-list').innerText;
     const detailTitle = document.getElementById('explorer-title').textContent;
     const detailLead = document.getElementById('explorer-lead').textContent;
+
+    // A job opens as folders now, so the job's contents are walked rather
+    // than read off one long page. Tim: "Explorer needs to kind of look and
+    // feel like an actual Microsoft file explorer."
+    const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const folderIds = () => [...document.querySelectorAll('.explorer-folder')]
+      .map((folder) => folder.dataset.group);
+    const atRoot = () => !!document.querySelector('.explorer-folder');
+    async function backToFolders() {
+      const up = document.querySelector('#explorer-crumb .explorer-up');
+      if (up) { up.click(); await pause(70); }
+    }
+    async function openFolderNamed(gid) {
+      if (!atRoot()) await backToFolders();
+      const row = document.querySelector(`.explorer-folder[data-group="${gid}"] .explorer-folder__open`);
+      if (!row) return false;
+      row.click();
+      await pause(90);
+      return true;
+    }
+    function openRecordsBox() {
+      const box = document.querySelector('.explorer-records');
+      if (box) box.open = true;
+      return !!box;
+    }
+    /** Put whatever holds this key on the screen, wherever it lives. */
+    async function ensureVisible(key) {
+      if (document.querySelector(`[data-key="${key}"]`)) return true;
+      await backToFolders();
+      openRecordsBox();
+      if (document.querySelector(`[data-key="${key}"]`)) return true;
+      const ids = folderIds();
+      for (let i = 0; i < ids.length; i += 1) {
+        await openFolderNamed(ids[i]);
+        if (document.querySelector(`[data-key="${key}"]`)) return true;
+        await backToFolders();
+      }
+      return false;
+    }
+
+    const rowFacts = {};
+    const WATCH = [
+      'media/ph_missing', 'media/fsrec_missing', 'media/fsrec_canvas-ground',
+      'media/ph_quick', 'media/ph_present', `cf/${fixture.id}/field-notes.txt`,
+    ];
+    function snapWatched() {
+      WATCH.forEach((key) => {
+        if (rowFacts[key]) return;
+        const el = document.querySelector(`[data-key="${key}"]`);
+        if (!el) return;
+        rowFacts[key] = {
+          text: el.innerText,
+          actions: [...el.querySelectorAll('button')].map((button) => button.textContent),
+          buttons: el.querySelectorAll('button').length,
+        };
+      });
+    }
+
+    await backToFolders();
+    const groups = folderIds();
+    openRecordsBox();
     const detailRawKey = document.querySelector('.explorer-row__technical code').textContent;
-    const missingRow = document.querySelector('[data-key="media/ph_missing"]');
-    const missingPdf = document.querySelector('[data-key="media/fsrec_missing"]');
-    const recoveryRow = document.querySelector('[data-key="media/fsrec_canvas-ground"]');
-    const quickRow = document.querySelector('[data-key="media/ph_quick"]');
-    const distressRow = document.querySelector('[data-key="media/ph_present"]');
-    const notesRow = document.querySelector(`[data-key="cf/${fixture.id}/field-notes.txt"]`);
-    const groups = [...document.querySelectorAll('.explorer-group')].map((group) => group.dataset.group);
-    const otherPhotos = document.querySelector('[data-group="other-photos"]');
-    const objectCount = document.querySelectorAll('.explorer-row[data-key]').length
-      + document.querySelectorAll('.explorer-tile[data-key]').length;
-    const tileCount = document.querySelectorAll('.explorer-tile[data-key]').length;
-    // The two the Cabinet reported with no content type at all.
-    const untypedOnSheet = ['media/ph_loose', 'media/ph_general'].every(function (key) {
-      const el = document.querySelector(`[data-key="${key}"]`);
-      return !!el && el.classList.contains('explorer-tile');
-    });
-    const sheetCount = document.querySelectorAll('.explorer-sheet').length;
+    let detailText = document.getElementById('explorer-list').innerText;
+    let objectCount = document.querySelectorAll('.explorer-row[data-key]').length;
+    let tileCount = 0;
+    let sheetCount = 0;
+    let otherPhotosText = '';
+    let untypedOnSheet = false;
+    let sawUnreferenced = !!document.querySelector('[data-key="media/ph_unreferenced"]');
+    snapWatched();
+    for (let i = 0; i < groups.length; i += 1) {
+      await openFolderNamed(groups[i]);
+      detailText += '\n' + document.getElementById('explorer-list').innerText;
+      objectCount += document.querySelectorAll('.explorer-row[data-key]').length
+        + document.querySelectorAll('.explorer-tile[data-key]').length;
+      tileCount += document.querySelectorAll('.explorer-tile[data-key]').length;
+      sheetCount += document.querySelectorAll('.explorer-sheet').length;
+      if (document.querySelector('[data-key="media/ph_unreferenced"]')) sawUnreferenced = true;
+      if (groups[i] === 'other-photos') {
+        const box = document.querySelector('[data-group="other-photos"]');
+        otherPhotosText = box ? box.innerText : '';
+        // The two the Cabinet reported with no content type at all.
+        untypedOnSheet = ['media/ph_loose', 'media/ph_general'].every(function (key) {
+          const el = document.querySelector(`[data-key="${key}"]`);
+          return !!el && el.classList.contains('explorer-tile');
+        });
+      }
+      snapWatched();
+      await backToFolders();
+    }
+    const fact = (key) => rowFacts[key] || { text: '', actions: [], buttons: -1 };
     const note = document.querySelector('.explorer-note');
-    const unreferenced = document.querySelector('[data-key="media/ph_unreferenced"]');
+    const unreferenced = sawUnreferenced;
 
     // Pictures are tiles on a contact sheet, not rows with their own buttons:
     // tapping one opens the lightbox, and Download lives in there.
     async function clickAction(key, label) {
+      await ensureVisible(key);
       const el = document.querySelector(`[data-key="${key}"]`);
       if (el && el.classList.contains('explorer-tile')) {
         el.click();
@@ -318,7 +423,7 @@ try {
           const save = [...document.querySelectorAll('.explorer-lightbox__bar button')]
             .find((item) => item.textContent === 'Download');
           if (save) save.click();
-          await new Promise((resolve) => setTimeout(resolve, 60));
+          await new Promise((resolve) => setTimeout(resolve, 250));
           // Leave no overlay behind, or the next step clicks through it.
           closeLightbox();
         }
@@ -326,7 +431,7 @@ try {
       }
       const button = [...el.querySelectorAll('button')].find((item) => item.textContent === label);
       button.click();
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
 
     function closeLightbox() {
@@ -347,10 +452,24 @@ try {
     const jsonText = document.querySelector('.explorer-preview__text')
       ? document.querySelector('.explorer-preview__text').textContent
       : '';
+    const previewFont = (function () {
+      const heading = document.querySelector('.explorer-preview__head h2');
+      if (!heading) return null;
+      const headingStyle = getComputedStyle(heading);
+      const parentStyle = getComputedStyle(heading.parentElement);
+      return {
+        weight: headingStyle.fontWeight,
+        size: headingStyle.fontSize,
+        family: headingStyle.fontFamily,
+        parentFamily: parentStyle.fontFamily,
+        lineHeight: headingStyle.lineHeight,
+      };
+    })();
     await clickAction('media/fsrec_canvas-ground', 'Open');
     const pdf = document.querySelector('.explorer-preview__pdf');
     await clickAction(`media/${fixture.planId}`, 'Download');
 
+    await openFolderNamed('quick-capture');
     const quickSheet = [...document.querySelectorAll('.explorer-group')]
       .find((group) => group.dataset.group === 'quick-capture');
     const quickAll = quickSheet
@@ -359,29 +478,30 @@ try {
       quickAll.click();
       for (let i = 0; i < 60; i += 1) {
         await new Promise((resolve) => setTimeout(resolve, 100));
-        if (downloads.some((d) => d.clicked && /\.zip$/.test(d.name || ''))) break;
+        if (picked.some((entry) => /\.zip$/.test(entry.name) && entry.chunks.length)) break;
       }
     }
-    const quickZipEntry = downloads.filter((d) => /\.zip$/.test(d.name || '')).pop() || {};
+    const quickZipEntry = picked.filter((entry) => /\.zip$/.test(entry.name)).pop() || { name: '', chunks: [] };
     const quickZip = quickZipEntry.name || '';
 
     // The Distress sheet's own Download all, for the pin photograph's name.
+    await openFolderNamed('distress');
     const distressSheet = [...document.querySelectorAll('.explorer-group')]
       .find((group) => group.dataset.group === 'distress');
     const distressAll = distressSheet
       && [...distressSheet.querySelectorAll('button')].find((b) => b.textContent === 'Download all');
     let distressEntries = [];
     if (distressAll) {
-      const before = downloads.filter((d) => /\.zip$/.test(d.name || '')).length;
+      const before = picked.filter((entry) => /\.zip$/.test(entry.name)).length;
       distressAll.click();
       for (let i = 0; i < 60; i += 1) {
         await new Promise((resolve) => setTimeout(resolve, 100));
-        if (downloads.filter((d) => /\.zip$/.test(d.name || '')).length > before) break;
+        if (picked.filter((entry) => /\.zip$/.test(entry.name)).length > before) break;
       }
-      const entry = downloads.filter((d) => /\.zip$/.test(d.name || '')).pop();
-      if (entry && entry.blob && window.JSZip) {
+      const entry = picked.filter((item) => /\.zip$/.test(item.name)).pop();
+      if (entry && entry.chunks.length && window.JSZip) {
         try {
-          const unpacked = await window.JSZip.loadAsync(entry.blob);
+          const unpacked = await window.JSZip.loadAsync(pickedBlob(entry));
           distressEntries = Object.keys(unpacked.files).filter((name) => !unpacked.files[name].dir);
         } catch (_) { distressEntries = []; }
       }
@@ -389,15 +509,38 @@ try {
     // Unpack it: the folder saying the right date is not proof that the
     // pictures inside do.
     let quickEntries = [];
-    if (quickZipEntry.blob && window.JSZip) {
+    if (quickZipEntry.chunks && quickZipEntry.chunks.length && window.JSZip) {
       try {
-        const unpacked = await window.JSZip.loadAsync(quickZipEntry.blob);
+        const unpacked = await window.JSZip.loadAsync(pickedBlob(quickZipEntry));
         // JSZip lists the folder itself; only the pictures matter here.
         quickEntries = Object.keys(unpacked.files).filter((name) => !unpacked.files[name].dir);
       } catch (_) { quickEntries = []; }
     }
     document.getElementById('explorer-zip').click();
-    await new Promise((resolve) => setTimeout(resolve, 40));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    // Closing the dialog saves nothing, and must not say it did.
+    pickerMode = 'cancel';
+    const beforeCancel = picked.length;
+    const cancelNotices = [];
+    await clickAction('media/fsrec_canvas-ground', 'Download');
+    cancelNotices.push(document.getElementById('explorer-notice').textContent);
+    const cancelled = { added: picked.length - beforeCancel, notices: cancelNotices };
+
+    // iPhone, iPad, Safari, Firefox: no dialog, so it falls back to the
+    // ordinary download, exactly as Toolbox did before.
+    pickerMode = 'none';
+    window.showSaveFilePicker = undefined;
+    const beforeFallback = downloads.filter((d) => d.clicked).length;
+    await clickAction('media/fsrec_canvas-ground', 'Download');
+    const fallbackNotice = document.getElementById('explorer-notice').textContent;
+    const fallback = {
+      added: downloads.filter((d) => d.clicked).length - beforeFallback,
+      notice: fallbackNotice,
+      last: (downloads.filter((d) => d.clicked).pop() || {}).name || '',
+    };
+    window.showSaveFilePicker = realPicker;
+
     const afterFiles = await window.ToolboxDB.getAllCustomerFiles();
 
     return {
@@ -418,36 +561,30 @@ try {
       tileCount,
       sheetCount,
       untypedOnSheet,
-      recoveryText: recoveryRow ? recoveryRow.innerText : '',
-      recoveryActions: recoveryRow ? [...recoveryRow.querySelectorAll('button')].map((button) => button.textContent) : [],
-      quickText: quickRow ? quickRow.innerText : '',
-      distressText: distressRow ? distressRow.innerText : '',
-      notesText: notesRow ? notesRow.innerText : '',
-      missingText: missingRow ? missingRow.innerText : '',
-      missingDownloads: missingRow ? missingRow.querySelectorAll('button').length : -1,
-      missingPdfText: missingPdf ? missingPdf.innerText : '',
-      missingPdfDownloads: missingPdf ? missingPdf.querySelectorAll('button').length : -1,
+      recoveryText: fact('media/fsrec_canvas-ground').text,
+      recoveryActions: fact('media/fsrec_canvas-ground').actions,
+      quickText: fact('media/ph_quick').text,
+      distressText: fact('media/ph_present').text,
+      notesText: fact(`cf/${fixture.id}/field-notes.txt`).text,
+      missingText: fact('media/ph_missing').text,
+      missingDownloads: fact('media/ph_missing').buttons,
+      missingPdfText: fact('media/fsrec_missing').text,
+      missingPdfDownloads: fact('media/fsrec_missing').buttons,
       note: note ? note.textContent : '',
       unreferenced: !!unreferenced,
       imageOpened,
       jsonText,
       pdfSrc: pdf ? pdf.getAttribute('src') : '',
       pdfTitle: pdf ? pdf.getAttribute('title') : '',
-      otherPhotos: otherPhotos ? otherPhotos.innerText : '',
-      previewFont: (function () {
-        const heading = document.querySelector('.explorer-preview__head h2');
-        if (!heading) return null;
-        const headingStyle = getComputedStyle(heading);
-        const parentStyle = getComputedStyle(heading.parentElement);
-        return {
-          weight: headingStyle.fontWeight,
-          size: headingStyle.fontSize,
-          family: headingStyle.fontFamily,
-          parentFamily: parentStyle.fontFamily,
-          lineHeight: headingStyle.lineHeight,
-        };
-      })(),
+      otherPhotos: otherPhotosText,
+      previewFont,
       downloads: downloads.map((d) => ({ url: d.url, size: d.size, type: d.type, name: d.name, clicked: d.clicked })),
+      picked: picked.map((entry) => ({
+        name: entry.name,
+        size: entry.chunks.reduce((total, chunk) => total + (chunk.byteLength || chunk.length || 0), 0),
+      })),
+      cancelled,
+      fallback,
       quickZip,
       distressEntries,
       quickEntries,
@@ -486,7 +623,7 @@ try {
     flow.detailLead.includes('10 Oak Street') &&
     flow.detailLead.includes('Mar 1, 2026') &&
     flow.detailRawKey.startsWith(`cf/${ID}/`) &&
-    flow.groups.join(',') === 'customer,plans,distress,quick-capture,other-photos,floor,diagnostics,report,other,technical' &&
+    flow.groups.join(',') === 'plans,distress,quick-capture,other-photos,floor,diagnostics,other' &&
     flow.objectCount === 18 &&
     flow.otherPhotos.includes('Unassigned photo') &&
     flow.otherPhotos.includes('Exterior overview') &&
@@ -549,14 +686,28 @@ try {
     flow.previewFont.family === flow.previewFont.parentFamily &&
     flow.previewFont.lineHeight === '21.6px',
     JSON.stringify(flow.previewFont));
-  check('individual download saves the object bytes',
-    flow.downloads.some((item) => item.clicked && item.type === 'image/png' && item.size === PNG.length && item.name.includes(PLAN_ID)) &&
-    flow.downloads.some((item) => item.clicked && item.type === 'application/pdf' && item.size === PDF.length && item.name.includes('fsrec_canvas-ground')));
-  check('ZIP download uses the archive response',
-    flow.downloads.some((item) => item.clicked && item.type === 'application/zip' && item.name === `cf-${ID}.zip`));
+  // Tim: "I could be saving it to a Google Drive, I can save it to my
+  // desktop, I can save it to a flash drive, I can save it to an external
+  // whatever from Explorer." The bytes have to arrive in the place chosen,
+  // not in Downloads to be carried there by hand.
+  check('a saved file carries the stored bytes into the place you chose',
+    flow.picked.some((item) => item.name.includes(PLAN_ID) && item.size === PNG.length) &&
+    flow.picked.some((item) => item.name.includes('fsrec_canvas-ground') && item.size === PDF.length),
+    JSON.stringify(flow.picked));
+  check('closing the Save dialog saves nothing and claims nothing',
+    flow.cancelled.added === 0 && flow.cancelled.notices.every((text) => !/saved/i.test(text || '')),
+    JSON.stringify(flow.cancelled));
+  check('a browser with no Save dialog still downloads, and says where it went',
+    flow.fallback.added === 1 && /downloads/i.test(flow.fallback.notice) &&
+    flow.fallback.last.includes('fsrec_canvas-ground'),
+    JSON.stringify(flow.fallback));
+  check('ZIP download uses the archive response, named after the job',
+    flow.picked.some((item) => item.name === 'ada-mitchell.zip' && item.size > 0),
+    JSON.stringify(flow.picked.map((item) => item.name)));
   check('browsing does not check out or write the cabinet',
     flow.fetchLog.length > 0 &&
-    flow.fetchLog.every((entry) => entry.method === 'GET' && entry.path.startsWith('explore/')) &&
+    flow.fetchLog.every((entry) => entry.method === 'GET') &&
+    flow.fetchLog.every((entry) => entry.path.startsWith('explore/') || /^media\//.test(entry.path)) &&
     !flow.fetchLog.some((entry) => entry.path.includes('checkout')),
     JSON.stringify(flow.fetchLog));
   check('browsing does not create a local working copy',
@@ -609,6 +760,21 @@ try {
     const rootShot = join(shotDir, `file-explorer-${name}-list.png`);
     await page.screenshot({ path: rootShot, fullPage: true });
     await page.click('.explorer-row__key');
+    // A job opens as folders; the cards live inside one.
+    await page.waitForFunction(() => document.querySelector('.explorer-folder'));
+    const folderShot = join(shotDir, `file-explorer-${name}-folders.png`);
+    await page.screenshot({ path: folderShot, fullPage: true });
+    const folderMetrics = await page.evaluate(() => {
+      const folders = [...document.querySelectorAll('.explorer-folder')];
+      const doc = document.documentElement;
+      return {
+        count: folders.length,
+        overflow: folders.some((el) => el.getBoundingClientRect().right > window.innerWidth + 1),
+        pageOverflow: doc.scrollWidth > doc.clientWidth + 1,
+        text: folders.map((el) => el.innerText.replace(/\s+/g, ' ').trim()),
+      };
+    });
+    await page.click('.explorer-folder[data-group="distress"] .explorer-folder__open');
     await page.waitForFunction(() => document.querySelector('[data-key="media/ph_missing"]'));
     const detailCards = await cardFit();
     const detailShot = join(shotDir, `file-explorer-${name}-detail.png`);
@@ -638,7 +804,9 @@ try {
         }
       }
       const rows = [...document.querySelectorAll('.explorer-row')];
-      const rowOverflow = rows.some((row) => row.getBoundingClientRect().right > window.innerWidth + 1);
+      const folders = [...document.querySelectorAll('.explorer-folder')];
+      const rowOverflow = rows.concat(folders)
+        .some((row) => row.getBoundingClientRect().right > window.innerWidth + 1);
       const doc = document.documentElement;
       return {
         crowded,
@@ -647,17 +815,26 @@ try {
         buttons,
         titleWidth: Math.round(title.width),
         rowCount: rows.length,
+        folderCount: folders.length,
       };
     });
-    return { metrics, listCards, detailCards, rootShot, detailShot };
+    return { metrics, listCards, detailCards, rootShot, detailShot, folderShot, folderMetrics };
   }
 
   const desktop = await layoutSnapshot(1280, 800, 'desktop');
   const tablet = await layoutSnapshot(768, 1024, 'ipad');
   const phone = await layoutSnapshot(390, 844, 'phone');
   check('desktop layout does not crowd the app bar or rows',
-    !desktop.metrics.crowded && !desktop.metrics.rowOverflow && !desktop.metrics.pageOverflow && desktop.metrics.rowCount >= 4,
-    JSON.stringify(desktop.metrics));
+    !desktop.metrics.crowded && !desktop.metrics.rowOverflow && !desktop.metrics.pageOverflow &&
+    desktop.folderMetrics.count >= 4,
+    JSON.stringify({ metrics: desktop.metrics, folders: desktop.folderMetrics.count }));
+  // A job opens as folders, and each one says what is in it in words.
+  check('a job opens as folders that say what they hold',
+    [desktop, tablet, phone].every((shot) =>
+      shot.folderMetrics.count >= 4 && !shot.folderMetrics.overflow && !shot.folderMetrics.pageOverflow) &&
+    desktop.folderMetrics.text.some((line) => /Distress Survey .*picture/i.test(line)) &&
+    desktop.folderMetrics.text.some((line) => /Floor Survey/i.test(line)),
+    JSON.stringify(desktop.folderMetrics.text));
   check('iPad layout does not crowd the app bar or rows',
     !tablet.metrics.crowded && !tablet.metrics.rowOverflow && !tablet.metrics.pageOverflow,
     JSON.stringify(tablet.metrics));
@@ -680,6 +857,13 @@ try {
     JSON.stringify({ list: desktop.listCards[0], detail: desktop.detailCards[0] }));
 
   await page.setViewport({ width: 1280, height: 800 });
+  await page.evaluate(() => {
+    const up = document.querySelector('#explorer-crumb .explorer-up');
+    if (up) up.click();
+  });
+  await page.waitForFunction(() => document.querySelector('.explorer-folder[data-group="plans"]'));
+  await page.click('.explorer-folder[data-group="plans"] .explorer-folder__open');
+  await page.waitForFunction((planId) => document.querySelector(`[data-key="media/${planId}"]`), {}, PLAN_ID);
   await page.evaluate((planId) => {
     const el = document.querySelector(`[data-key="media/${planId}"]`);
     if (el.classList.contains('explorer-tile')) el.click();

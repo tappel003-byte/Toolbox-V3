@@ -3958,6 +3958,84 @@ button.cf-home__delete[hidden] {
   font-weight: 750;
 }
 
+/* A job opens as folders you walk into, the way a file explorer does.
+   Tim: "Explorer needs to kind of look and feel like an actual Microsoft
+   file explorer -- that's the whole point of this one." */
+.explorer-folder {
+  margin-top: 8px;
+}
+
+.explorer-folder__open {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.explorer-folder__open:hover,
+.explorer-folder__open:focus-visible {
+  border-color: var(--navy);
+  background: #fff;
+}
+
+.explorer-folder__icon {
+  font-size: 1.3rem;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.explorer-folder__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.explorer-folder__text strong {
+  color: var(--navy);
+  font-size: 0.98rem;
+  font-weight: 750;
+}
+
+.explorer-folder__count {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.explorer-folder__chev {
+  flex: 0 0 auto;
+  color: var(--ink-soft);
+  font-size: 1.2rem;
+}
+
+/* The path across the top of an open folder. Its first part is the way up,
+   the way it is in a file explorer -- one way up, not two. */
+.explorer-up {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--navy);
+  font-weight: 650;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.explorer-crumb__sep,
+.explorer-crumb__here {
+  color: var(--ink-soft);
+}
+
 .explorer-row {
   display: flex;
   flex-wrap: wrap;
@@ -4018,6 +4096,30 @@ button.cf-home__delete[hidden] {
   font-size: 15px;
   line-height: 1.35;
   overflow-wrap: anywhere;
+}
+
+/* Toolbox's own record files, at the foot of a job and closed.
+   Tim: "I don't want all of that code that doesn't mean anything to me." */
+.explorer-records {
+  margin-top: 20px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.explorer-records > summary {
+  cursor: pointer;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.explorer-records__note {
+  margin: 6px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .explorer-row__technical {
