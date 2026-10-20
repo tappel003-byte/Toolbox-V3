@@ -291,16 +291,27 @@
     }
   }
 
+  /** A served answer, as opposed to a file already in hand. */
+  function isResponse(value) {
+    return !!value && typeof value.arrayBuffer === 'function' && !!value.headers;
+  }
+
   /**
    * Ask where first, then make the file, then write it there.
-   * `produce` returns the Blob; it is only called once a place is settled.
+   *
+   * `produce` returns either the Blob or the answer the server is still
+   * sending. An answer is poured straight into the chosen place as it
+   * arrives: a whole job's ZIP can be gigabytes, and the browser has no
+   * business holding one in memory to hand it over in a single piece --
+   * which is exactly the kind of thing that put a desktop on the floor.
+   * It is only called once a place is settled.
    */
   async function saveWhereChosen(filename, mimeType, produce) {
     const place = await choosePlace(filename, mimeType);
     if (place === SAVE_CANCELLED) return { cancelled: true };
-    let blob;
+    let made;
     try {
-      blob = await produce();
+      made = await produce();
     } catch (err) {
       if (place && place.writable) {
         try { await place.writable.abort(); } catch (_) {}
@@ -309,11 +320,16 @@
     }
     if (place && place.writable) {
       try {
-        if (blob.stream && typeof blob.stream === 'function') {
-          await blob.stream().pipeTo(place.writable);
+        if (isResponse(made) && made.body && typeof made.body.pipeTo === 'function') {
+          await made.body.pipeTo(place.writable);
         } else {
-          await place.writable.write(blob);
-          await place.writable.close();
+          const blob = isResponse(made) ? await made.blob() : made;
+          if (blob.stream && typeof blob.stream === 'function') {
+            await blob.stream().pipeTo(place.writable);
+          } else {
+            await place.writable.write(blob);
+            await place.writable.close();
+          }
         }
       } catch (err) {
         try { await place.writable.abort(); } catch (_) {}
@@ -321,6 +337,8 @@
       }
       return { chosen: true, name: place.name };
     }
+    // No dialog: the ordinary download, which needs the file in hand.
+    const blob = isResponse(made) ? await made.blob() : made;
     anchorSave(blob, filename);
     return { chosen: false, name: filename };
   }
@@ -1496,9 +1514,7 @@
       button.textContent = canChooseWhere() ? 'Where to?' : 'Downloading…';
       saveWhereChosen(downloadName(key), '', function () {
         button.textContent = 'Downloading…';
-        return window.ToolboxSync.exploreFetchObject(id, key)
-          .then(responseBlob)
-          .then(function (loaded) { return loaded.blob; });
+        return window.ToolboxSync.exploreFetchObject(id, key);
       }).then(function (result) {
         notify(savedNotice(result));
       }).catch(function (err) {
@@ -1530,9 +1546,7 @@
       button.textContent = canChooseWhere() ? 'Where to?' : 'Preparing ZIP…';
       saveWhereChosen(archiveFileName(id), 'application/zip', function () {
         button.textContent = 'Preparing ZIP…';
-        return window.ToolboxSync.exploreFetchArchive(id)
-          .then(responseBlob)
-          .then(function (loaded) { return loaded.blob; });
+        return window.ToolboxSync.exploreFetchArchive(id);
       }).then(function (result) {
         notify(savedNotice(result));
       }).catch(function (err) {
