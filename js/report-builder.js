@@ -4665,7 +4665,7 @@
     function pickBox(target) {
       if (!sheetEl || !sheetEl.isConnected) return;
       var picked = target && target.closest
-        ? target.closest('[data-rb-floor-box],[data-rb-penlog-box]')
+        ? target.closest('[data-rb-floor-box],[data-rb-penlog-box],[data-rb-disc-box]')
         : null;
       if (picked && !sheetEl.contains(picked)) picked = null;
       var lit = sheetEl.querySelectorAll('.is-picked');

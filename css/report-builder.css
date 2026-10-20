@@ -3000,8 +3000,11 @@ body.report-builder-open .canvas {
   cursor: nwse-resize;
 }
 
-.rb-discussion:not(.is-locked) .rb-discussion__box:hover .rb-discussion__move,
-.rb-discussion:not(.is-locked) .rb-discussion__box:hover .rb-discussion__resize,
+/* The writing box follows every other box: its corners come out when it is
+   being worked on, not when a pointer passes over it. Clicking into the
+   writing counts -- that is focus-within -- so typing is unaffected. */
+.rb-discussion:not(.is-locked) .rb-discussion__box.is-picked .rb-discussion__move,
+.rb-discussion:not(.is-locked) .rb-discussion__box.is-picked .rb-discussion__resize,
 .rb-discussion:not(.is-locked) .rb-discussion__box:focus-within .rb-discussion__move,
 .rb-discussion:not(.is-locked) .rb-discussion__box:focus-within .rb-discussion__resize {
   display: block;

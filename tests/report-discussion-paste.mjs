@@ -44,7 +44,13 @@ const SECTION = (n) =>
   `<li>Door binding at the top corner of the hall door</li>` +
   `<li>Separation at the baseboard of approximately one quarter inch</li></ul>` +
   `<p style="font-family:Inter;line-height:1.7;color:#374151">The pattern of movement is consistent across the measured area and does not reverse direction within any single room.</p>`;
-const ANSWER = [1, 2, 3, 4, 5, 6].map(SECTION).join('');
+// Enough of them to be longer than one sheet holds. Six sections came to
+// about 3,700 characters, which FITS a two-column box 1152 x 712 at this type
+// size -- so the test asked for a continuation sheet that was never due, and
+// had been failing on that ever since. The point of the test is a narrative
+// too long for one sheet, so the fixture has to be one.
+const SECTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+const ANSWER = SECTIONS.map(SECTION).join('');
 const WORDS = ANSWER.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().split(' ').length;
 
 function check(name, ok, detail = '') {
@@ -150,9 +156,25 @@ await page.evaluate(() => {
 await page.keyboard.down('Control');
 await page.keyboard.press('KeyV');
 await page.keyboard.up('Control');
-await page.waitForFunction(
-  () => document.querySelectorAll('.rb-thumb[data-page-id^="discussion-cont"]').length >= 1,
-  { timeout: 20000 });
+// Polled from the driver, not from inside the page.
+//
+// The re-flow is on a 700ms timer, and a headless page that nobody is looking
+// at throttles its timers to the point where that one does not fire for tens
+// of seconds. waitForFunction runs INSIDE that same page, so it waited out
+// its whole timeout on a page that was asleep rather than wrong. Asking the
+// page a question from out here wakes it, which is what a real browser tab in
+// front of a person does continuously.
+async function waitForSheets(wanted, timeoutMs, what) {
+  const until = Date.now() + timeoutMs;
+  for (;;) {
+    const n = await page.evaluate(
+      () => document.querySelectorAll('.rb-thumb[data-page-id^="discussion-cont"]').length);
+    if (wanted(n)) return n;
+    if (Date.now() > until) throw new Error(what + ' within ' + timeoutMs + 'ms (saw ' + n + ')');
+    await new Promise((r) => setTimeout(r, 400));
+  }
+}
+await waitForSheets((n) => n >= 1, 20000, 'no continuation sheet');
 await new Promise((r) => setTimeout(r, 1200));
 
 const flowed = await page.evaluate(() => {
@@ -193,7 +215,7 @@ const stored = await page.evaluate(async (id) => {
 check('every word of it is on the Customer File',
   stored.words >= WORDS, JSON.stringify({ stored: stored.words, pasted: WORDS }));
 check('its headings stay headings and its bullets stay bullets',
-  stored.headings === 6 && stored.bullets === 18,
+  stored.headings === SECTIONS.length && stored.bullets === SECTIONS.length * 3,
   JSON.stringify({ headings: stored.headings, bullets: stored.bullets }));
 check('and it arrives in the report’s own type, not the chat’s',
   stored.styled === 0, String(stored.styled));
@@ -360,15 +382,27 @@ check('Reset writing area puts it back where the reports put it',
   JSON.stringify({ boxStart, boxReset }));
 
 // Take it away again and the sheet it needed goes with it.
+// Emptying the first sheet does not delete what is written on the ones after
+// it -- the narrative is one body split across sheets, and the later sheets
+// hold their own share of it. So the writing is cleared sheet by sheet, the
+// way a person deleting it would, and the book gives a sheet back each time.
 await openDiscussion();
-await page.evaluate(() => {
-  const body = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) .rb-discussion__body');
-  body.innerHTML = '';
-  body.dispatchEvent(new Event('input', { bubbles: true }));
-});
-await page.waitForFunction(
-  () => document.querySelectorAll('.rb-thumb[data-page-id^="discussion-cont"]').length === 0,
-  { timeout: 20000 });
+const shrank = [];
+for (let round = 0; round < 8; round += 1) {
+  const left = await page.evaluate(
+    () => document.querySelectorAll('.rb-thumb[data-page-id^="discussion-cont"]').length);
+  shrank.push(left);
+  if (left === 0) break;
+  await page.evaluate(() => {
+    const body = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) .rb-discussion__body');
+    body.innerHTML = '';
+    body.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await waitForSheets((n) => n < left, 20000, 'the book kept a sheet it no longer needed');
+}
+await waitForSheets((n) => n === 0, 20000, 'continuation sheet never went away');
+check('every sheet the narrative needed came back out as it was deleted',
+  shrank[shrank.length - 1] === 0 && shrank.length > 1, JSON.stringify(shrank));
 check('and deleting it pulls the continuation sheet back out of the book', true, '');
 
 // Where the stable pieces sit is house style, not something to redo on every
