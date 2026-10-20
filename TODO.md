@@ -152,6 +152,40 @@ in the current milestone; both are written down so they do not evaporate.
   address lookup; the people already used for addresses serve map tiles too,
   so it is likely the same account rather than a new one.
 
+## On the list, not being built
+
+Agreed with Tim, Oct 20, 2026, after the second conversation in two days that
+would have added work to Report Builder: "Report Builder continues to not get
+finished because we continue to add new features. I don't know if we should
+add new features during the build process when Report Builder isn't even
+completed." Things land here until Report Builder is finished.
+
+- **Pin size, one number per level.** From PGG photo documentation, pull
+  request #2 -- a slider from 0.3x to 2.5x with a Reset, 1.0 being the size
+  for a ~2,500 sq ft plan. Tim's reason is capture, not print: "if I'm working
+  on a 100,000 square-foot facility in Distress Survey the pins can just bunch
+  up with each other until it gets lost, even in the capture... I have gone
+  from a 100,000 square-foot facility to a 1,500 square-foot home with PGG in
+  the same week."
+  Settled in the discussion: **one number, two controls, never two numbers** --
+  the legend and the H/L/delta pill each had two sizes until Oct 19, and the
+  page drew one while a drag applied the other. The number belongs on the
+  **level**, beside its plan, its front door and its north, because both
+  Distress and Report Builder already pull the level, and a house and a
+  detached shop in one job each get their own.
+  What it meets in V3, read Oct 20: pins are sized in three places, not PGG's
+  two -- the survey screen (plan's long side x 0.009, inline), the exported
+  picture map (x 0.00875, inline), and Report Builder's pen-log sheet, which
+  redraws the pins itself at 1.75% of the plan's long side, matched on purpose
+  to the survey's export. V3's survey copy is older than PGG's: it has no
+  `onScreenPinRadius()` or `exportPinRadius()` to multiply, so the multiplier
+  goes in at the two inline spots. The likeliest way to ship this broken is
+  the host bridge: `hostPersistSurvey()` and the loader beside it copy a named
+  list of fields between the Customer File and the survey, so a new field is
+  silently dropped and the slider resets the moment you leave the screen. Also
+  needed: the Edit pin button is disabled until the first pin exists, which is
+  the same thing PGG's own commit had to fix so the size can be set first.
+
 ## Open elsewhere
 
 - **The Distress field checkpoint.** Floor Survey has one — its recovery PDF.
