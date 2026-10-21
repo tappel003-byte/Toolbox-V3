@@ -1,6 +1,6 @@
 /**
- * Three locks on a Floor Survey sheet, each over one piece and over both
- * where it sits and how big it is drawn.
+ * One Lock layout button on a Floor Survey sheet: it pins the framing and
+ * both pieces, where they sit and how big they are drawn.
  * Run: node tests/report-floor-piece-locks.mjs   (needs a static server on 8765)
  *
  * There were two locks before, and neither name said what it did. "Lock view"
@@ -116,19 +116,24 @@ async function openSheet(match) {
 
 check('the job made a Main Level sheet', await openSheet('Floor · Main Level'));
 
+// Every button in the Floor Survey rail, wherever in it they sit. The locks
+// used to be pinned above the controls; they are below them now, because the
+// tab strip has to be the first thing in the panel.
 const railLabels = () => page.evaluate(() =>
-  [...document.querySelectorAll('.rb-panel__top .btn, [data-rb-floor-view-lock], [data-rb-floor-piece-lock]')]
+  [...document.querySelectorAll('.rb-panel .btn')]
     .map((b) => (b.textContent || '').trim()).filter(Boolean));
 
 const labels = await railLabels();
-check('the rail offers three locks, each naming its own piece',
-  labels.some((l) => /^Lock floor survey$/i.test(l)) &&
-  labels.some((l) => /^Lock contour legend$/i.test(l)) &&
-  labels.some((l) => /^Lock high\/low\/delta$/i.test(l)),
-  JSON.stringify(labels));
-
-check('and nothing is called Lock view or Lock layout any more',
-  !labels.some((l) => /^Lock view$/i.test(l)) && !labels.some((l) => /^Lock layout$/i.test(l)),
+// One button, as it was before three replaced it. Tim: "Lock layout is
+// better, one button vs three, let's go back to that." What had actually
+// broken was that Lock layout drew its button only on a sheet that had not
+// been imported, so it could never be pressed -- a missing button, answered
+// with two extra states.
+check('the rail offers one Lock layout, not three separate locks',
+  labels.some((l) => /^Lock layout$/i.test(l)) &&
+  !labels.some((l) => /^Lock contour legend$/i.test(l)) &&
+  !labels.some((l) => /^Lock high\/low\/delta$/i.test(l)) &&
+  !labels.some((l) => /^Lock floor survey$/i.test(l)),
   JSON.stringify(labels));
 
 /** Where and how big each piece is drawn on the open sheet. */
@@ -170,9 +175,8 @@ check('an unlocked colour scale still moves',
   JSON.stringify({ was: before['legend-0'], now: afterDrag['legend-0'] }));
 
 await page.evaluate(() => {
-  const btn = [...document.querySelectorAll('[data-rb-floor-piece-lock]')]
-    .find((b) => /^Lock contour legend$/i.test((b.textContent || '').trim()));
-  btn.click();
+  const btn = document.querySelector('[data-rb-floor-lock-all]');
+  if (btn) btn.click();
 });
 await new Promise((r) => setTimeout(r, 2500));
 
@@ -186,8 +190,10 @@ check('and it can no longer be dragged off that spot',
   lockedHere['legend-0'].movable === false,
   JSON.stringify(lockedHere['legend-0']));
 
-check('while the readings, which were not locked, still move',
-  lockedHere['pill-0'].movable === true, JSON.stringify(lockedHere['pill-0']));
+// One lock covers both pieces, which is the simplification: there is no
+// state where the scale is pinned and the readings are not.
+check('and the readings are held by the same button',
+  lockedHere['pill-0'].movable === false, JSON.stringify(lockedHere['pill-0']));
 
 // The other level's sheet gets the same place and the same size.
 check('the Basement sheet opens', await openSheet('Floor · Basement'));
@@ -215,7 +221,7 @@ const stored = await page.evaluate(async (id) => {
 check('the lock and its size are saved on the Customer File, on every sheet',
   stored.length >= 2 &&
   stored.every((s) => s.legend && s.legend.locked === true && s.legend.scale > 0) &&
-  stored.every((s) => !s.pill || s.pill.locked === false),
+  stored.every((s) => s.pill && s.pill.locked === true && s.pill.scale > 0),
   JSON.stringify(stored));
 
 check('and every sheet stored the same spot for it',
@@ -225,8 +231,7 @@ check('and every sheet stored the same spot for it',
 
 // Unlocking gives it back.
 await page.evaluate(() => {
-  const btn = [...document.querySelectorAll('[data-rb-floor-piece-lock]')]
-    .find((b) => /^Unlock contour legend$/i.test((b.textContent || '').trim()));
+  const btn = document.querySelector('[data-rb-floor-lock-all]');
   if (btn) btn.click();
 });
 await new Promise((r) => setTimeout(r, 2000));
