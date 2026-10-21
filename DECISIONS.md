@@ -118,7 +118,7 @@ Concrete Customer File record ownership for later app plug-in. Architecture is c
 - **First implementation slice — AUTHORIZED (Tim, Oct 1, 2026).** Build and ship only this:
   1. Cover with Customer File identity + TOC.
   2. Discussion / Damage Summary as an editable empty slot (no invented narrative).
-  3. One Floor Level topo figure page per boundary / epoch: Combined / All when useful, then each named boundary (e.g. Main, Kitchen / Living). Mitchell and 1515 Los Nietos are the proof targets.
+  3. One Floor Level topo figure page per boundary / epoch: each named boundary (e.g. Main, Kitchen / Living), then that level's Combined View last. Mitchell and 1515 Los Nietos are the proof targets. (Order corrected Oct 20–21, 2026 — see “Combined View”.)
   4. Fixed chrome on every topo figure page, Mitchell / 1515 visual slots: figure title/number and survey date top-left; residence / address / Front Door (with north cue) top-right; contour legend + H/L/Δ overlaid on the registered drawing frame; relative-readings box and brand strip at the bottom. Cover uses Prepared For + FLOOR LEVEL SURVEY identity with a CONTENTS box. Same slot positions on every related topo page.
   5. Recovery PDF may fall back when compose is unavailable; cut-and-paste field Topo screenshots are not the path.
   **Out of this slice:** Pen Log / drawing toolbar, picture pages polish, epoch divider banners, side-by-side epoch pages, mark-complete + date, Report Builder startup questionnaire, full PowerPoint-like flexibility beyond adapting these assembled pages.
@@ -318,6 +318,17 @@ Authorized by Tim after the design was talked through: "It might be best to star
   - This supersedes the Oct 8 decision to drop the mark from Pictures pages: the mark lives in the rail, so it comes back on every figure page without taking space from the photographs.
   - Earlier the same day Tim had called a drawing-office title block "very mechanical". The rail is the same intent — a sheet that reads as an engineering firm's rather than a PowerPoint template's — without the gridded cells.
   - **Every line in the rail is the investigator's to change (DECIDED Tim, Oct 13, 2026).** Tim: "All text on the rail needs to be editable by the user." The rail is generated — the client and address from the Customer File, the date and the readings from the survey, the figure number from the slide's place in the book — and generated is right until the one time it is not. So every block takes his words when he writes any: the client, the address, the drawing title, the date and the line under it, each boundary's name, each reading's label and its number, the section headings and the figure number. The readings are included deliberately, on his call, and a reading he has written over no longer has to agree with the survey behind it. Nothing is stored until a block is typed over; emptying a block drops what was written and the generated line comes back, which is the way out and is the same gesture as the edit. A reading is keyed by its boundary, so a surface renamed in Floor Survey keeps the words written about it.
+
+---
+
+## Combined View
+
+- **The combined sheet is a reference, and it comes last (DECIDED Tim, Oct 20–21, 2026).** Tim: "Combined view is confusing the way we have it — multiple legends, multiple high/low pills, just not usable. That's why there's Combined View and it's just showing the topos: no legend, no high/low/delta pills. That's why it's last: it's a reference, and it references what's before."
+  - **Why it carries neither.** One boundary gets one colour scale and one H / L / delta. Put every boundary of a level on one sheet and that becomes a column of scales and a column of pills down the margin — and each one is re-ranged to its own high and low, so they cannot be read against each other anyway. A key that cannot be compared is worse than no key.
+  - **So the sheet is the drawings.** Every boundary of the level, nothing else on it.
+  - **And it is last, not first.** It is read after the boundary sheets, as the thing that puts them together — which is the opposite of leading the level, where it was the busiest drawing in the book and the first one seen.
+  - **Named Combined View.** Tim first said "combined view for exhibit" and took the tail back the same day: "I don't think it sounds good... just combined view."
+  - **This supersedes** `VISION.md` §12's "Floor Survey starting with Combined as Figure 1" and the Oct 1 slice line "Combined / All when useful, then each named boundary."
 
 ---
 
