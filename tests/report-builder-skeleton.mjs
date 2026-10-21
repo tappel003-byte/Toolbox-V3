@@ -501,9 +501,12 @@ if (floorThumb) {
       source: document.querySelector('[data-rb-source]')?.getAttribute('data-rb-source') || '',
     };
   });
-  check('floor sheet names itself in the rail and numbers itself on the sheet',
+  // The rail carries the number, and nothing is in the drawing's upper left.
+  // Tim, Oct 21: the figure number "does not need to be in the upper
+  // left-hand corner anymore now that we have the title block."
+  check('floor sheet names and numbers itself in the rail, not on the drawing',
     /Floor Level Survey/.test(floorSheet.title) && /Basement/.test(floorSheet.title) &&
-    /^Figure \d+$/.test(floorSheet.figureNum) && /^FIGURE \d+$/.test(floorSheet.railFigure),
+    floorSheet.figureNum === '' && /^FIGURE \d+$/.test(floorSheet.railFigure),
     JSON.stringify(floorSheet));
   check('floor sheet keeps the survey date',
     /March 2, 2026|2026-03-02|03\/02\/26|03\/02\/2026/.test(floorSheet.date), floorSheet.date);
