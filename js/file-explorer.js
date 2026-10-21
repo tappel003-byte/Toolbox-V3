@@ -139,13 +139,14 @@
     if (purpose === 'unassigned-photo' || purpose === 'general-photo') return 'other-photos';
     if (purpose === 'floor-pdf' || purpose === 'floor-figure') return 'floor';
     if (purpose === 'diagnostics-figure') return 'diagnostics';
+    if (purpose === 'report-overview' || purpose === 'report-picture') return 'report';
     const known = GROUPS.some(function (group) { return group.id === purpose; });
     return known ? purpose : 'other';
   }
 
   function purposeRank(purpose) {
     if (purpose === 'floor-pdf' || purpose === 'distress-photo' || purpose === 'plan' || purpose === 'diagnostics-figure') return 0;
-    if (purpose === 'floor-figure' || purpose === 'quick-capture') return 1;
+    if (purpose === 'floor-figure' || purpose === 'quick-capture' || purpose === 'report-overview') return 1;
     return 2;
   }
 

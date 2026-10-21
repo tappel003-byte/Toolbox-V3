@@ -61,7 +61,15 @@ const diagnosticsBody = JSON.stringify({
     { mediaId: 'dxfig_missing' },
   ],
 });
-const reportBody = JSON.stringify({ updatedAt: '2026-03-02T00:00:00.000Z' });
+// One cover overview the Cabinet holds and one report picture it does not:
+// which is the question the back door is for.
+const reportBody = JSON.stringify({
+  updatedAt: '2026-03-02T00:00:00.000Z',
+  coverLayout: { overviewMediaId: 'report-cover-overview-present' },
+  pages: [
+    { title: 'Pictures', meta: { overlays: [{ id: 'ov-1', kind: 'image', mediaId: 'rbimg_missing' }] } },
+  ],
+});
 const customerBody = JSON.stringify({
   firstName: 'Ada',
   lastName: 'Mitchell',
@@ -201,6 +209,7 @@ function seedCabinet() {
     { key: `cf/${TRASH_ID}/trash.json`, body: trashComponentBody, contentType: 'application/json' },
     { key: `cf/${TRASH_ID}/floor.json`, body: trashFloorBody, contentType: 'application/json' },
     { key: 'media/fsrec_canvas1', body: pdf, contentType: 'application/pdf' },
+    { key: 'media/report-cover-overview-present', body: jpeg, contentType: 'image/jpeg' },
     { key: `cf/${ID}/customer.json`, body: customerBody, contentType: 'application/json' },
     { key: `cf/${OTHER}/index.json`, body: otherIndexBody, contentType: 'application/json' },
     { key: 'cf/badjson/index.json', body: badIndexBody, contentType: 'application/json' },
@@ -349,6 +358,8 @@ const expectedKeys = [
   'media/ph_loose',
   'media/ph_missing',
   'media/ph_present',
+  'media/rbimg_missing',
+  'media/report-cover-overview-present',
   'media/ph_quick',
   'media/ph_unassigned_missing',
   `media/${PLAN_ID}`,
@@ -431,6 +442,8 @@ const mediaHeads = [
   'media/fsrec_missing',
   'media/dxfig_ground',
   'media/dxfig_missing',
+  'media/report-cover-overview-present',
+  'media/rbimg_missing',
 ];
 check('detail lists only this customer prefix and referenced media heads',
   detailOps.every((op) => {
@@ -445,11 +458,22 @@ check('detail lists only this customer prefix and referenced media heads',
         `read cf/${ID}/distress.json`,
         `read cf/${ID}/floor.json`,
         `read cf/${ID}/diagnostics.json`,
+        `read cf/${ID}/report.json`,
         `read cf/${ID}/customer.json`,
       ].includes(op);
     }
     return false;
   }), detailOps.join(' | '));
+
+// The question a stalled Check Out asks: is that picture in the Cabinet?
+const coverRow = (detail.objects || []).find((row) => row.key === 'media/report-cover-overview-present');
+const reportRow = (detail.objects || []).find((row) => row.key === 'media/rbimg_missing');
+check('a report picture the Cabinet holds is listed as stored',
+  !!coverRow && !coverRow.missing && coverRow.label === 'Report cover overview',
+  JSON.stringify(coverRow));
+check('a report picture the Cabinet does not hold is listed as missing',
+  !!reportRow && reportRow.missing === true && /^Report picture/.test(reportRow.label || ''),
+  JSON.stringify(reportRow));
 
 const badDetail = await call('explore/files/badjson', cabinet);
 const badJson = await badDetail.json();
@@ -526,6 +550,7 @@ check('zip paths are the real keys plus missing.txt', JSON.stringify(names) === 
   'media/ph_loose',
   'media/ph_present',
   'media/ph_quick',
+  'media/report-cover-overview-present',
   'missing.txt',
 ].sort()), JSON.stringify(names));
 const outDir = join(dir, 'out');
@@ -533,7 +558,7 @@ check('zip index bytes match storage', readFileSync(join(outDir, 'cf', ID, 'inde
 check('zip plan bytes match storage', Buffer.compare(readFileSync(join(outDir, 'media', PLAN_ID)), Buffer.from(jpeg)) === 0);
 check('zip pdf bytes match storage', Buffer.compare(readFileSync(join(outDir, 'media', 'fsrec_canvas-ground')), Buffer.from(pdf)) === 0);
 check('missing.txt lists only the absent referenced keys',
-  readFileSync(join(outDir, 'missing.txt'), 'utf8') === 'media/dxfig_missing\nmedia/fsrec_missing\nmedia/ph_file_missing\nmedia/ph_general_missing\nmedia/ph_missing\nmedia/ph_unassigned_missing\n');
+  readFileSync(join(outDir, 'missing.txt'), 'utf8') === 'media/dxfig_missing\nmedia/fsrec_missing\nmedia/ph_file_missing\nmedia/ph_general_missing\nmedia/ph_missing\nmedia/ph_unassigned_missing\nmedia/rbimg_missing\n');
 rmSync(dir, { recursive: true, force: true });
 
 const trashDetail = await call(`explore/files/${TRASH_ID}`, cabinet);

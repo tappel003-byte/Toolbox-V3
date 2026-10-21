@@ -2660,6 +2660,44 @@
         canvas ? 'Diagnostics figure — ' + canvas : 'Diagnostics figure',
       );
     });
+    // The report's own pictures. These were the one kind of referenced media
+    // the back door never looked for, which is why "is that picture actually
+    // in the Cabinet?" was the one question it could not answer.
+    const report = payloads.report;
+    exploreConsiderMedia(
+      refs,
+      notes,
+      'report.json',
+      report && report.coverLayout && report.coverLayout.overviewMediaId,
+      'report-overview',
+      'Report cover overview',
+    );
+    const reportPages = report && Array.isArray(report.pages) ? report.pages : [];
+    reportPages.forEach(function (page) {
+      const meta = page && page.meta;
+      if (!meta || typeof meta !== 'object') return;
+      exploreConsiderMedia(
+        refs,
+        notes,
+        'report.json',
+        meta.coverLayout && meta.coverLayout.overviewMediaId,
+        'report-overview',
+        'Report cover overview',
+      );
+      const title = trimStr(page && page.title);
+      const overlays = Array.isArray(meta.overlays) ? meta.overlays : [];
+      overlays.forEach(function (overlay) {
+        if (!overlay || typeof overlay !== 'object') return;
+        exploreConsiderMedia(
+          refs,
+          notes,
+          'report.json',
+          overlay.mediaId,
+          'report-picture',
+          title ? 'Report picture — ' + title : 'Report picture',
+        );
+      });
+    });
     return exploreMergeRefs(refs);
   }
 
@@ -2699,6 +2737,8 @@
       'floor-pdf': 1,
       'floor-figure': 2,
       'diagnostics-figure': 1,
+      'report-overview': 2,
+      'report-picture': 3,
     };
     const map = Object.create(null);
     const order = [];
