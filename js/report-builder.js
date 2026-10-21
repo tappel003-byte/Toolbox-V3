@@ -2785,6 +2785,23 @@
       return touched;
     }
 
+    /**
+     * Is this slide's layout locked?
+     *
+     * One lock covers the framing and both pieces, so any of the three being
+     * set reads as locked and the button turns them all off together. A
+     * report saved while there were three separate locks opens showing the
+     * state it was left in rather than losing it.
+     */
+    function layoutIsLocked(page) {
+      var flApi = window.ToolboxReportFloorLayout;
+      var raw = (page && page.meta && page.meta.layout) || floorLayout;
+      var layout = flApi ? flApi.normalizeLayout(raw) : (raw || {});
+      return !!(floorCamera && floorCamera.locked) ||
+        !!(layout.legendLock && layout.legendLock.locked) ||
+        !!(layout.pillLock && layout.pillLock.locked);
+    }
+
     function floorPieceLocked(page, kind) {
       var flApi = window.ToolboxReportFloorLayout;
       var raw = (page && page.meta && page.meta.layout) || floorLayout;
@@ -3746,41 +3763,34 @@
         // dropdown."
         floorRailExtras = function () {
           var wrap = document.createDocumentFragment();
-          var planLocked = !!(floorCamera && floorCamera.locked);
           var pieceApi = window.ToolboxReportFloorLayout;
           var pieceLayout = pieceApi
             ? pieceApi.normalizeLayout((page.meta && page.meta.layout) || floorLayout)
             : ((page.meta && page.meta.layout) || floorLayout || {});
-          var legendOn = !!(pieceLayout.legendLock && pieceLayout.legendLock.locked);
-          var pillOn = !!(pieceLayout.pillLock && pieceLayout.pillLock.locked);
-          var anyLocked = planLocked || legendOn || pillOn;
+          // One lock, as it was before three replaced it. Tim: "Lock layout is
+          // better, one button vs three, let's go back to that."
+          //
+          // What was broken was never the idea: Lock layout drew its button
+          // only on a sheet that had not been imported, and an imported sheet
+          // returns before that code runs -- so the button existed and could
+          // not be pressed. Splitting it in three solved a missing button with
+          // two extra states. His Oct 8 line already drew the right boundary:
+          // "Lock the picture, not the rendition." The picture -- the framing,
+          // and where the colour scale and the readings sit and how big they
+          // are -- is what this pins. Contours on or off, palette and mode
+          // stay free per slide, which is the reason to lock first.
+          var locked = layoutIsLocked(page);
+          wrap.appendChild(railButton(
+            locked ? 'Unlock layout' : 'Lock layout',
+            locked ? 'secondary' : 'accent',
+            'data-rb-floor-lock-all', locked ? 'unlock' : 'lock'));
+          var lockHint = document.createElement('p');
+          lockHint.className = 'rb-panel__lead';
+          lockHint.textContent = locked
+            ? 'Framing and chrome held on every Floor Survey slide. Contours and palette stay per slide.'
+            : 'Place it, then lock so every slide is framed the same.';
+          wrap.appendChild(lockHint);
 
-          var fold = document.createElement('details');
-          fold.className = 'rb-fold';
-          // Open when something is locked, so a lock is never a hidden state.
-          fold.open = anyLocked;
-          var head = document.createElement('summary');
-          head.className = 'rb-fold__head';
-          head.textContent = anyLocked ? 'Locking — on' : 'Locking';
-          fold.appendChild(head);
-
-          fold.appendChild(
-            railButton(planLocked ? 'Unlock floor survey' : 'Lock floor survey',
-              planLocked ? 'secondary' : 'quiet',
-              'data-rb-floor-view-lock', planLocked ? 'unlock' : 'lock'));
-          [
-            { key: 'legend', name: 'contour legend', on: legendOn },
-            { key: 'pill', name: 'high/low/delta', on: pillOn },
-          ].forEach(function (piece) {
-            fold.appendChild(railButton(
-              (piece.on ? 'Unlock ' : 'Lock ') + piece.name,
-              piece.on ? 'secondary' : 'quiet',
-              'data-rb-floor-piece-lock', piece.key + ':' + (piece.on ? 'unlock' : 'lock')));
-          });
-          wrap.appendChild(fold);
-
-          // Not locking, so not in that fold: one puts the same level on the
-          // sheet twice, the other saves this framing for new reports.
           var twoUp = floorSlots(page) > 1;
           wrap.appendChild(railButton(
             twoUp ? 'One view' : 'Two views',
@@ -3983,21 +3993,23 @@
         // in the same place always, always in the same size... maybe it just
         // needs to be the last location that I brought them in." This is that:
         // the one in front of him when he locks it.
-        var pieceBtn = event.target.closest('[data-rb-floor-piece-lock]');
+        var pieceBtn = event.target.closest('[data-rb-floor-lock-all]');
         if (pieceBtn) {
           event.preventDefault();
           var pCurrent = activePage();
           if (!pCurrent || pCurrent.type !== 'floor') return;
-          var parts = (pieceBtn.getAttribute('data-rb-floor-piece-lock') || '').split(':');
-          var which = parts[0] === 'pill' ? 'pill' : 'legend';
-          var wantLock = parts[1] !== 'unlock';
+          var wantLock = pieceBtn.getAttribute('data-rb-floor-lock-all') !== 'unlock';
+          // The framing goes with it: one button, one idea. "Lock the picture,
+          // not the rendition" (Tim, Oct 8) -- so contours, palette and mode
+          // stay free per slide.
+          if (!floorCamera) floorCamera = { cx: 0.5, cy: 0.5, zoom: 1, rel: true, locked: false };
+          floorCamera.locked = wantLock;
+          ['legend', 'pill'].forEach(function (which) {
           var pApi = window.ToolboxReportFloorLayout;
           if (!pApi) return;
           var pLayout = pApi.normalizeLayout((pCurrent.meta && pCurrent.meta.layout) || floorLayout);
           var lockKey = which === 'legend' ? 'legendLock' : 'pillLock';
           if (wantLock) {
-            // The size it is drawn at now: the rail control's, unless this
-            // piece already carried a locked size.
             // The size it is drawn at RIGHT NOW, always. It used to prefer a
             // size this piece had been locked at before, so after unlocking,
             // resizing and locking again the piece jumped back to that older
@@ -4041,27 +4053,9 @@
             floorLayout = pApi.normalizeLayout(floorLayout);
             floorLayout[lockKey] = { locked: false, scale: floorLayout[lockKey].scale };
           }
+          });
           dirty = true;
           setSaveStatus('Saving…');
-          renderPages();
-          flushSave().catch(function () {});
-          return;
-        }
-
-        // Lock floor survey: the plan's framing, and nothing else on the
-        // sheet. Each of the three locks carries its own name, so a selector
-        // cannot match two of them -- which is how a test once came to click
-        // the camera and wait forever for something else to lock.
-        var lockBtn = event.target.closest('[data-rb-floor-view-lock]');
-        if (lockBtn) {
-          event.preventDefault();
-          var want = lockBtn.getAttribute('data-rb-floor-view-lock') === 'lock';
-          // Lock View is about the camera -- the plan sitting in the same
-          // place on every Floor Survey slide. It is deliberately not about
-          // the chrome, which stays movable per slide.
-          if (!floorCamera) floorCamera = { cx: 0.5, cy: 0.5, zoom: 1, rel: true, locked: false };
-          floorCamera.locked = want;
-          markDirty();
           renderPages();
           flushSave().catch(function () {});
           return;

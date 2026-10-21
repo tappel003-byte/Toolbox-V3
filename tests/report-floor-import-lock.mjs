@@ -129,12 +129,12 @@ check('Floor page opens with its drawing, nothing to import',
 // movable." The figure block and the readings box stay off the sheet.
 const afterImport = await page.evaluate(() => ({
   imported: !!document.querySelector('[data-rb-floor-box="topo"]'),
-  viewLock: document.querySelector('[data-rb-floor-view-lock]')?.getAttribute('data-rb-floor-view-lock') || '',
+  viewLock: document.querySelector('[data-rb-floor-lock-all]')?.getAttribute('data-rb-floor-lock-all') || '',
   legend: !!document.querySelector('.rb-floor-box--legend'),
   pill: !!document.querySelector('.rb-floor-box--pill'),
 }));
 check(
-  'Import places the topo frame and offers Lock view',
+  'Import places the topo frame and offers Lock layout',
   afterImport.imported && afterImport.viewLock === 'lock',
   JSON.stringify(afterImport),
 );
@@ -146,9 +146,9 @@ check(
 
 if (afterImport.imported) {
   // Importing re-renders the sheet, so a handle taken before it is detached.
-  await page.evaluate(() => document.querySelector('[data-rb-floor-view-lock="lock"]').click());
+  await page.evaluate(() => document.querySelector('[data-rb-floor-lock-all="lock"]').click());
   await page.waitForFunction(
-    () => document.querySelector('[data-rb-floor-view-lock="unlock"]'), { timeout: 10000 });
+    () => document.querySelector('[data-rb-floor-lock-all="unlock"]'), { timeout: 10000 });
   await page.waitForFunction(() => {
     const text = document.querySelector('#rb-save-status')?.textContent || '';
     return /^Saved/.test(text) && !/Saving/.test(text);
@@ -162,11 +162,16 @@ if (afterImport.imported) {
     return {
       cameraLocked: !!record.reportBuilder?.floorCamera?.locked,
       hasLayout: !!record.reportBuilder?.floorLayout?.topo,
-      btn: document.querySelector('[data-rb-floor-view-lock]')?.getAttribute('data-rb-floor-view-lock') || '',
+      btn: document.querySelector('[data-rb-floor-lock-all]')?.getAttribute('data-rb-floor-lock-all') || '',
+      legendLocked: !!record.reportBuilder?.floorLayout?.legendLock?.locked,
+      pillLocked: !!record.reportBuilder?.floorLayout?.pillLock?.locked,
     };
   });
-  check('Lock view persists the camera on the Customer File',
-    locked.cameraLocked && locked.hasLayout && locked.btn === 'unlock', JSON.stringify(locked));
+  // One button, one idea: the framing AND both pieces. Tim, Oct 21: "Lock
+  // layout is better, one button vs three, let's go back to that."
+  check('Lock layout persists the framing and both pieces on the Customer File',
+    locked.cameraLocked && locked.hasLayout && locked.btn === 'unlock' &&
+    locked.legendLocked && locked.pillLocked, JSON.stringify(locked));
 }
 
 const staged = await page.evaluate(async () => {
