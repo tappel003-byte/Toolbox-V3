@@ -450,6 +450,17 @@ Authorized by Tim after the design was talked through: "It might be best to star
 
 ---
 
+## A picture the job can travel without
+
+- **One report picture used to end a whole Check Out (FOUND in the field, Tim, Oct 21, 2026).** Tim checked 4925 Edwards Drive out three times on an iPad mini and got nothing each time: "I have checked out 4925 Edwards three times and it does not show up on my iPad. It doesn't even show that it's checked out." The row stopped at **report pictures 0 of 1** and went back to Check Out. The Cabinet held the report but not one of its pictures; the fetch failed; and a materialization that fails releases the lease behind it, so the job neither arrived nor looked like it had ever been asked for. The error the screen had to offer was "Not found".
+- **Which pictures the job cannot travel without: plan images and Distress photographs.** A level with no plan picture, or a pin with no photograph, is not a job anybody can work. One of those missing still stops the exchange dead, still leaves nothing on the device, and still lets go of the lease.
+- **Which it can: report pictures and Diagnostics figures.** They are desk-side composition material, and neither Report Builder nor Diagnostics is required to work offline at all (DECIDED Tim, Oct 3, 2026). Report Builder already held the right position on this in its own code — "a missing picture is not a failed report" — and the exchange did not. The job travels, the report travels with it, and the picture that did not travel is **named on the screen** instead of turning up as an empty frame days later.
+- **Check In applies the same test from the other side.** A report picture this device still holds that did not reach the Cabinet is a failed upload with something real to lose, and it still keeps the job here, because Check In clears this device afterwards. A report picture that is in neither place is already gone; refusing to file the job will not bring it back and would strand the job on one device, so it is named and the job goes.
+- **A refusal now says what it refused.** "The File Cabinet could not hand over a plan image this job needs, so the job was not brought onto this device. Nothing here was changed." Offline and sign-in keep their own wording.
+- Sync Now's answers are untouched: "Sync complete." and "Everything is already synced." A picture that exists nowhere is nothing to upload, so neither sentence is made to carry a failure.
+
+---
+
 ## Connectivity, and what counts as proof of it
 
 - **`navigator.onLine` is not a connectivity test (FOUND in the field, Tim, Oct 9, 2026).** It reports whether a network interface is up, not whether anything is reachable. Tim, on an iPad mini tethered to his phone: "The screen got extremely slow and locked up... my iPad does not have Wi-Fi, I was using my cell phone as a hotspot. My phone lost signal but it never lost the link to the iPad." The link stayed up, so the app never went to offline mode.

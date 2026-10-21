@@ -807,9 +807,17 @@
         btn.disabled = true;
         btn.textContent = unfinished ? 'Downloading…' : 'Checking out…';
         const stop = watchSyncProgress(function (where) { btn.textContent = where; });
-        window.ToolboxSync.checkOutCustomerFile(entry.id).then(function () {
+        window.ToolboxSync.checkOutCustomerFile(entry.id).then(function (result) {
           stop();
-          cabinetNotice = (entry.displayName || 'Customer File') + ' checked out to this device.';
+          // A report picture the Cabinet could not hand over no longer takes
+          // the whole job down with it, so the job arrives and the picture
+          // that did not is said here rather than found as an empty frame
+          // later on.
+          const leftBehind = typeof window.ToolboxSync.describeMissingMedia === 'function'
+            ? window.ToolboxSync.describeMissingMedia(result && result.missingMedia)
+            : '';
+          cabinetNotice = (entry.displayName || 'Customer File') + ' checked out to this device.' +
+            (leftBehind ? ' ' + leftBehind : '');
           window.location.hash = '#/';
         }).catch(function (err) {
           stop();
@@ -1088,9 +1096,12 @@
       const stop = watchSyncProgress(function (where) {
         show('Checking in ' + name + ' — ' + where);
       });
-      return window.ToolboxSync.checkInCustomerFile(record.id).then(function () {
+      return window.ToolboxSync.checkInCustomerFile(record.id).then(function (result) {
         stop();
-        cabinetNotice = name + ' was checked in.';
+        const leftBehind = typeof window.ToolboxSync.describeMissingMedia === 'function'
+          ? window.ToolboxSync.describeMissingMedia(result && result.missingMedia)
+          : '';
+        cabinetNotice = name + ' was checked in.' + (leftBehind ? ' ' + leftBehind : '');
         window.location.hash = '#/';
         render();
       }).catch(function (err) {
