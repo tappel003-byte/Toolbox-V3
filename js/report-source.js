@@ -168,6 +168,30 @@
     return map[key] || raw;
   }
 
+  /** The sheet that carries every boundary of a level at once.
+   *
+   * Tim first said "combined view for exhibit", then took it back the same
+   * day: "I know I told you that's what I said but I don't think it sounds
+   * good... just combined view." */
+  var COMBINED_NAME = 'Combined View';
+
+  function isMainLevel(name) {
+    return /\bmain\b/i.test(text(name));
+  }
+
+  /**
+   * A garage is brought in as readings, not contours.
+   *
+   * Tim, Oct 20: "I just want data points in the garage. Period. I can always
+   * change them later." The slab is often not topographed at all, so the
+   * contours it would arrive with are a picture of nothing. It opens on
+   * Points only -- the rendition control Floor Survey already has -- and the
+   * same control changes it back on any slide where he does want them.
+   */
+  function isGarage(name) {
+    return /\bgarage\b/i.test(text(name));
+  }
+
   function figuresFromMap(byCanvasId, epoch, info) {
     var map = byCanvasId && typeof byCanvasId === 'object' && !Array.isArray(byCanvasId) ? byCanvasId : {};
     var canvasIds = Object.keys(map).filter(function (canvasId) {
@@ -175,6 +199,11 @@
     }).sort(function (a, b) {
       var canvasA = info[a];
       var canvasB = info[b];
+      // Main Level leads the report whatever order the canvases were made
+      // in. Tim, Oct 20: "Main level always gets brought in first."
+      var mainA = isMainLevel(canvasA ? canvasA.name : '') ? 0 : 1;
+      var mainB = isMainLevel(canvasB ? canvasB.name : '') ? 0 : 1;
+      if (mainA !== mainB) return mainA - mainB;
       var orderA = canvasA ? canvasA.order : 10000;
       var orderB = canvasB ? canvasB.order : 10000;
       if (orderA !== orderB) return orderA - orderB;
@@ -201,15 +230,14 @@
         readingCount: readingCount,
         areaCount: closed.length,
         frontDoorFacing: facing,
+        pointsOnly: isGarage(levelName),
         compose: true,
       };
       if (closed.length >= 2) {
-        figures.push(Object.assign({}, base, {
-          id: epoch.id + '::' + canvasId + '::all',
-          name: 'Combined',
-          scope: 'all',
-          areaId: null,
-        }));
+        // Each boundary on its own first, the everything-at-once sheet last.
+        // Tim, Oct 20: "We bring any floor level survey that has all levels
+        // lastly, and we just say combined view for exhibit." It used to lead
+        // the level, so a report opened on the busiest sheet it has.
         closed.forEach(function (area) {
           var areaName = text(area.name) || 'Boundary';
           figures.push(Object.assign({}, base, {
@@ -219,6 +247,12 @@
             areaId: area.id || null,
           }));
         });
+        figures.push(Object.assign({}, base, {
+          id: epoch.id + '::' + canvasId + '::all',
+          name: COMBINED_NAME,
+          scope: 'all',
+          areaId: null,
+        }));
       } else if (closed.length === 1) {
         var only = closed[0];
         var onlyName = text(only.name) || levelName;
@@ -431,7 +465,7 @@
       var sheetTitle = 'Floor Level Survey — ' + scopeTitle;
       if (severalEpochs && epochLabel) sheetTitle += ' — ' + epochLabel;
       var rail = scopeTitle;
-      if (levelName && levelName !== scopeTitle && figure.scope === 'all' && scopeTitle === 'Combined') {
+      if (levelName && levelName !== scopeTitle && figure.scope === 'all' && scopeTitle === COMBINED_NAME) {
         rail = levelName + ' · Combined';
       } else if (levelName && figure.scope === 'area' && scopeTitle !== levelName) {
         rail = scopeTitle;
@@ -463,40 +497,9 @@
           areaCount: figure.areaCount || 0,
           figureMediaId: figure.figureMediaId || null,
           frontDoorFacing: text(figure.frontDoorFacing),
+          pointsOnly: !!figure.pointsOnly,
           compose: !!figure.compose,
         },
-      });
-    });
-  }
-
-  function diagnosticsPages(source) {
-    var block = source.diagnostics || { status: 'absent', figures: [] };
-    var figures = Array.isArray(block.figures) ? block.figures : [];
-    if (!figures.length) {
-      return [page({
-        id: 'diagnostics-reserved',
-        type: 'diagnostics',
-        title: 'Diagnostics',
-        railLabel: 'Diagnostics',
-        sourceKey: 'diagnostics',
-        note: block.status === 'present'
-          ? 'Diagnostics output is stored. No figure is outlined yet.'
-          : 'No Diagnostics output is stored on this Customer File.',
-        meta: { reserved: true },
-      })];
-    }
-    return figures.map(function (figure, index) {
-      var title = text(figure.title) || ('Diagnostics ' + (index + 1));
-      return page({
-        id: 'diagnostics-' + (figure.id || (index + 1)),
-        type: 'diagnostics',
-        title: title,
-        tocTitle: title.indexOf('Diagnostics') === 0 ? title : ('Diagnostics — ' + title),
-        railLabel: 'Diagnostics · ' + title,
-        sourceKey: 'diagnostics',
-        sourceRef: figure.id || null,
-        note: 'Reserved for Diagnostics output. No interpretation is written here.',
-        meta: { reserved: false },
       });
     });
   }

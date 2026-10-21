@@ -1,3 +1,4 @@
+import { readingText } from "@/lib/reading";
 // Flooring transition helpers — pure functions. See mem://features/transitions-spec-locked.
 
 import type { SurveyPoint, Transition } from "./types";
@@ -150,7 +151,7 @@ export function withCorrectedValues(
 /** Format a signed delta like "+0.4" / "-0.4". Trims to 1 decimal for label brevity. */
 export function formatDelta(d: number): string {
   const sign = d >= 0 ? "+" : "-";
-  return `${sign}${Math.abs(d).toFixed(2)}`;
+  return `${sign}${readingText(Math.abs(d))}`;
 }
 
 /** Short label for the transition chip / detail dialog: "Carpet correction +0.4"" */

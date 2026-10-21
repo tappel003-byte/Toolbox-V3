@@ -193,8 +193,6 @@ body.report-builder-open .canvas {
    outlines and the resize corners -- has no business in a stamp either, and
    it is sized in px rather than cqh, so it came out full size on a 150 px
    preview and buried the page underneath it. */
-.rb-sheet--thumb .rb-cover__bar,
-.rb-sheet--thumb .rb-cover__hint,
 .rb-sheet--thumb .rb-floor-toolbar,
 .rb-sheet--thumb .rb-cover__contents-jump,
 .rb-sheet--thumb .rb-cover__overview-actions,
@@ -202,8 +200,11 @@ body.report-builder-open .canvas {
 .rb-sheet--thumb .rb-cover-box__resize,
 .rb-sheet--thumb .rb-cover-box__move,
 .rb-sheet--thumb .rb-floor-box__resize,
+.rb-sheet--thumb .rb-floor-overview__remove,
 .rb-sheet--thumb .rb-floor-empty,
 .rb-sheet--thumb .rb-discussion__overflow,
+.rb-sheet--thumb .rb-discussion__move,
+.rb-sheet--thumb .rb-discussion__resize,
 /* The live drawing cannot mount in a preview, and saying so on a stamp is
    noise -- the picture of the drawing goes here instead, once one has been
    taken. */
@@ -314,8 +315,15 @@ body.report-builder-open .canvas {
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  height: 100%;
-  margin: 4.5%;
+  /* As tall as the sheet LESS its own two margins. It used to be the full
+     height of the sheet and then pushed down by the top margin, so every
+     page sat the margin's depth below where it ended -- invisible behind
+     overflow:hidden on most pages, and the reason a full Pictures page ran
+     past the bottom of the paper. The margin is a percentage of the sheet's
+     WIDTH, as CSS margins are, so the height subtracts the same unit: 9cqw
+     is exactly the two of them. */
+  height: calc(100% - 9cqw);
+  margin: 4.5cqw;
   /* No border of its own: it used to draw a second, different box at a 4.5%
      inset in another colour, which is what made the page border land in a
      different place depending on which page you were looking at. */
@@ -656,9 +664,14 @@ body.report-builder-open .canvas {
    Legend + H/L/Δ + relative-readings are report chrome, not field Topo paste. */
 
 .rb-sheet__margin--topo,
-.rb-sheet__margin--cover,
 .rb-sheet__margin--pictures {
   margin: 2.2%;
+  /* A margin of its own means a height of its own. The base rule subtracts
+     the 4.5cqw margins it sets; these pages set 2.2% instead, and without
+     this they went on subtracting the larger pair -- three quarters of an
+     inch of page that nothing could be put on. A CSS margin is a share of
+     the WIDTH either way, so the height subtracts the same unit. */
+  height: calc(100% - 4.4cqw);
   padding: 1.6% 2% 1.4%;
   border-color: rgba(30, 64, 110, 0.55);
 }
@@ -669,10 +682,22 @@ body.report-builder-open .canvas {
    white the plan could never be moved into, and the same boundary cut the plan
    off when it was panned, which read as geometry having been deleted. It is
    also why the band was not symmetrical: the top and bottom padding differ. */
+/* The pages that bleed: no margin, no padding, and -- the part that has to
+   travel with them -- the whole height of the sheet.
+   .rb-sheet__margin takes its height as the sheet LESS its own two margins,
+   so a page that sets margin:0 and nothing else came out a margin's depth
+   short of the paper: a sixth of an inch and a half of writing area gone,
+   with the brand mark still drawn against the sheet and so left stranded
+   below it. Tim, looking at the discussion page: "we can go down a bit
+   further." Keeping the two declarations in one rule is what stops the next
+   bled page losing the same inch and a half. */
+.rb-sheet__margin--cover,
+.rb-sheet__margin--discussion,
 .rb-sheet__margin--topo-bleed {
   margin: 0;
   padding: 0;
   border: 0;
+  height: 100%;
 }
 
 .rb-topo-page {
@@ -693,22 +718,11 @@ body.report-builder-open .canvas {
   flex: 0 0 auto;
 }
 
-.rb-topo-page__header-left,
-.rb-topo-page__header-right {
+.rb-topo-page__header-left {
   min-width: 0;
 }
 
-.rb-topo-page__header-right {
-  text-align: right;
-}
-
-.rb-topo-page__figure-num,
-.rb-topo-page__figure-title,
-.rb-topo-page__survey-date,
-.rb-topo-page__corrected,
-.rb-topo-page__residence,
-.rb-topo-page__address,
-.rb-topo-page__address-city {
+.rb-topo-page__figure-num {
   margin: 0;
 }
 
@@ -717,44 +731,6 @@ body.report-builder-open .canvas {
   font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.1;
-}
-
-.rb-topo-page__figure-title {
-  margin-top: 1px;
-  font-size: clamp(12px, 1.9cqb, 18px);
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  line-height: 1.2;
-}
-
-.rb-topo-page__survey-date,
-.rb-topo-page__corrected {
-  margin-top: 2px;
-  font-size: clamp(10px, 1.45cqb, 13px);
-  font-weight: 500;
-  color: #222;
-}
-
-.rb-topo-page__residence {
-  font-size: clamp(12px, 1.9cqb, 17px);
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.rb-topo-page__address,
-.rb-topo-page__address-city {
-  font-size: clamp(10px, 1.5cqb, 13px);
-  font-weight: 500;
-  color: #222;
-  line-height: 1.25;
-}
-
-.rb-topo-page__front-door {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 6px;
 }
 
 .rb-topo-page__north {
@@ -767,26 +743,6 @@ body.report-builder-open .canvas {
   display: block;
   width: 100%;
   height: 100%;
-}
-
-.rb-topo-page__front-door-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  line-height: 1.15;
-}
-
-.rb-topo-page__front-door-meta span {
-  font-size: clamp(8px, 1.1cqb, 10px);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #555;
-}
-
-.rb-topo-page__front-door-meta strong {
-  font-size: clamp(11px, 1.6cqb, 14px);
-  font-weight: 700;
 }
 
 .rb-topo-page__body {
@@ -808,12 +764,31 @@ body.report-builder-open .canvas {
    Named rb-ws, NOT rb-rail: .rb-rail is already the pages rail on the left and
    carries overflow:hidden, which clipped every control below Palette the
    moment this reused the name. */
-.rb-ws { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+/* One scroller for the whole rail.
+ *
+ * The buttons at the top used to be pinned and the controls beneath them got
+ * whatever height was left. Add two buttons and that share shrinks: on a
+ * 1536 x 864 screen the Floor Survey controls -- Contours, Mode, Step, Line
+ * thickness, Palette, a thousand pixels of them -- were squeezed into a 64px
+ * scroller, which reads as gone. Tim, looking at his own rail after three
+ * locks replaced one: "I didn't tell you to get rid of all the contour
+ * settings, did I?"
+ *
+ * Nothing is pinned now, so nothing can be squeezed out: the rail is one
+ * list that scrolls, the way a settings panel does. The cost is that the way
+ * back scrolls with it, which is a smaller loss than a panel disappearing. */
+.rb-ws {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
 .rb-ws__title { margin: 0; font-size: 18px; }
 .rb-ws__top,
 .rb-ws__foot { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
-/* The controls scroll; the Import button and the way back stay put. */
-.rb-ws__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.rb-ws__body { flex: 0 0 auto; min-height: 0; overflow: visible; }
 .rb-ws__btn { width: 100%; }
 .rb-ws__controls { display: block; }
 .rb-ws__controls .floor-survey-host,
@@ -934,46 +909,6 @@ body.report-builder-open .canvas {
   object-fit: contain;
 }
 
-.rb-topo-page__chrome {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-}
-
-.rb-topo-page__stat-block {
-  position: absolute;
-  top: 8%;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 5px;
-  max-width: 28%;
-}
-
-.rb-topo-page__stat-block--left {
-  left: 1.5%;
-}
-
-.rb-topo-page__stat-block--right {
-  right: 1.5%;
-  left: auto;
-  align-items: flex-end;
-}
-
-.rb-topo-page__stat-block--right .rb-topo-stats {
-  align-self: flex-end;
-}
-
-.rb-topo-page__stat-name {
-  padding: 2px 6px;
-  border: 1px solid rgba(23, 19, 14, 0.35);
-  background: rgba(255, 255, 255, 0.92);
-  font-size: clamp(9px, 1.2cqb, 11px);
-  font-weight: 700;
-  line-height: 1.2;
-}
-
 /* High / Low markers. Placed boxes like the colour scale and the pill, not
    pixels inside the figure, so they can be nudged off a wall or a doorway. */
 .rb-topo-pin {
@@ -1005,59 +940,40 @@ body.report-builder-open .canvas {
 .rb-topo-pin--lo .rb-topo-pin__dot { background: #E9C46A; }
 .rb-topo-pin__value { font-weight: 700; }
 
+/* The colour scale on a Floor Survey page: Floor Survey's own scale, painted
+   by Floor Survey and placed here as a picture.
+ *
+ * Its size is the paper's, not the screen's. Tim: "it does not lock the
+ * size." It was drawn here in screen pixels -- an 8px label and an 88px bar
+ * -- so the scale was a different fraction of the sheet on every window and
+ * a different size again on the printed page. 20.5cqw is the size the Floor
+ * Survey screen draws it: 226 units of its own 1100-unit reference across the
+ * long side of what it is drawn on, which on a sheet is the paper. Legend
+ * size still scales it from there, the same control as in the field. */
 .rb-topo-legend {
-  display: grid;
-  grid-template-columns: auto 16px auto;
-  grid-template-rows: auto 1fr;
-  gap: 2px 4px;
-  padding: 4px 5px;
-  border: 1px solid rgba(23, 19, 14, 0.55);
-  background: rgba(255, 255, 255, 0.94);
+  width: 7.44cqw;
+  height: 20.5cqw;
 }
 
-.rb-topo-legend__elev {
-  grid-column: 1 / -1;
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-align: center;
-  color: #444;
+.rb-topo-legend__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
 }
 
-.rb-topo-legend__bar {
-  grid-column: 2;
-  grid-row: 2;
-  display: flex;
-  flex-direction: column;
-  width: 16px;
-  min-height: 88px;
-  border: 1px solid #17130e;
-  overflow: hidden;
-}
-
-.rb-topo-legend__bar span {
-  flex: 1 1 0;
-  min-height: 2px;
-}
-
-.rb-topo-legend__labels {
-  grid-column: 3;
-  grid-row: 2;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  font-size: 9px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-}
-
+/* The report slide's H / L / delta pill. Set like the field app's, which is
+   set like the shipped Mitchell deck: the readings packed close to their
+   dividers, and each one in the colour of its own letter -- the reds and
+   blues measured off that deck, which this had drifted away from. See
+   floor-survey/src/lib/stats-pill.ts, the one place those numbers are
+   written down. */
 .rb-topo-stats {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 3px 7px;
-  padding: 3px 7px;
+  gap: 3px 4px;
+  padding: 3px 4px;
   border: 1px solid rgba(23, 19, 14, 0.45);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.96);
@@ -1069,7 +985,7 @@ body.report-builder-open .canvas {
 }
 
 .rb-topo-stats__label {
-  color: #333;
+  color: #6b7280;
   font-weight: 700;
 }
 
@@ -1078,11 +994,11 @@ body.report-builder-open .canvas {
 }
 
 .rb-topo-stats__lo {
-  color: #1d4ed8;
+  color: #1f5f9f;
 }
 
 .rb-topo-stats__delta {
-  color: #444;
+  color: #6b7280;
 }
 
 .rb-topo-stats b {
@@ -1184,9 +1100,6 @@ body.report-builder-open .canvas {
  * ------------------------------------------------------------------ */
 
 .rb-sheet__margin--cover {
-  margin: 0;
-  padding: 0;
-  border: 0;
   overflow: visible;
 }
 
@@ -1207,28 +1120,6 @@ body.report-builder-open .canvas {
   font-family: Calibri, Carlito, "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
-/* Editor chrome only. Floats over the sheet so it never shifts the page
-   geometry, and disappears entirely once the layout is locked. */
-.rb-cover__bar {
-  position: absolute;
-  z-index: 4;
-  left: 1.2%;
-  bottom: 1.2%;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  margin: 0;
-}
-
-.rb-cover.is-locked .rb-cover__bar { display: none; }
-
-.rb-cover__hint {
-  margin: 0;
-  color: #666;
-  font-size: 1.3cqh;
-}
-
 .rb-cover__stage {
   position: relative;
   flex: 1 1 auto;
@@ -1243,9 +1134,27 @@ body.report-builder-open .canvas {
   touch-action: none;
 }
 
+/* A box shows its dashed edge and its two corner pulls when it is pointed
+   at, not before. Tim, Oct 17: "all those corner blocks -- that's one of the
+   things I really dislike about this page." It is the rule the Floor Survey
+   pieces already follow: twenty brackets standing on a finished title page
+   are our chrome printed over his report. */
 .rb-cover:not(.is-locked) .rb-cover-box {
-  outline: 1px dashed rgba(139, 94, 60, 0.5);
+  outline: none;
   cursor: move;
+}
+
+/* Pointed at, or clicked on. Hover alone was not enough: a cover box is
+   mostly text, so pointing at one usually means pointing at a field, and the
+   contents frame had its list hanging below its own rectangle -- so the rows
+   being clicked were not inside the box and nothing lit up. Tim: "I do like
+   the corner pull but I don't like them visible all the time. I wanted them
+   to where you highlighted it, but I highlighted that box numerous times
+   yesterday and it would not show the pulls." */
+.rb-cover:not(.is-locked) .rb-cover-box:hover,
+.rb-cover:not(.is-locked) .rb-cover-box:focus-within,
+.rb-cover:not(.is-locked) .rb-cover-box.is-active {
+  outline: 1px dashed rgba(139, 94, 60, 0.5);
 }
 
 .rb-cover.is-locked .rb-cover-box {
@@ -1257,11 +1166,20 @@ body.report-builder-open .canvas {
   position: absolute;
   right: 0;
   bottom: 0;
+  display: none;
   width: 14px;
   height: 14px;
   border-right: 2px solid var(--rb-copper);
   border-bottom: 2px solid var(--rb-copper);
   cursor: nwse-resize;
+}
+
+/* Highlighted, never merely hovered. Tim: the pulls "only show up when the
+   box is highlighted, period." A pointer passing over a box is not a choice
+   to work on it; clicking it, or reaching it by keyboard, is. */
+.rb-cover:not(.is-locked) .rb-cover-box:focus-within .rb-cover-box__resize,
+.rb-cover:not(.is-locked) .rb-cover-box.is-active .rb-cover-box__resize {
+  display: block;
 }
 
 /* Fields are transparent inputs so the locked page reads as plain text. */
@@ -1402,19 +1320,27 @@ body.report-builder-open .canvas {
 
 .rb-cover-box--contents { overflow: visible; }
 
+/* As tall as what is in it. The frame used to be a fixed rectangle with the
+   list clipped inside it, so a job with more figures than the rectangle held
+   printed a contents that was missing its last pages. */
 .rb-cover__contents {
-  height: 100%;
+  min-height: 100%;
   border: 0.379cqh solid var(--rb-frame);
   padding: 2.45cqh 1.6cqw 1.6cqh 2.35cqw;
   background: transparent;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
+}
+
+.rb-cover__contents-item:hover .rb-cover__contents-jump,
+.rb-cover__contents-jump:focus-visible {
+  opacity: 1;
 }
 
 .rb-cover__contents-title {
   margin: 0 0 2.73cqh;
   color: var(--rb-copper);
-  font-size: 1.515cqh;
+  font-size: calc(1.515cqh * var(--rb-contents-fit, 1));
   font-weight: 700;
   line-height: 1;
   letter-spacing: 0.25em;
@@ -1425,7 +1351,7 @@ body.report-builder-open .canvas {
   flex-direction: column;
   /* The deck's list box is 21.73% of page height over 7 lines = 3.10% each.
      13 pt at 1.25 leading is 2.05, so the gap carries the remaining 1.05. */
-  gap: 1.05cqh;
+  gap: calc(1.05cqh * var(--rb-contents-fit, 1));
 }
 
 /* Two columns: "Figure N" is derived from slide order and is not editable,
@@ -1436,7 +1362,7 @@ body.report-builder-open .canvas {
   gap: 0;
   width: 100%;
   color: var(--rb-ink);
-  font-size: 1.641cqh;
+  font-size: calc(1.641cqh * var(--rb-contents-fit, 1));
   line-height: 1.25;
 }
 
@@ -1468,7 +1394,13 @@ body.report-builder-open .canvas {
   font-weight: 700;
 }
 
+/* The jump to a slide, not a decoration. DECISIONS.md: the contents never
+   uses chevrons -- and a row of them down the contents is exactly what this
+   looked like, because it was always showing. It appears on the line being
+   pointed at, the way every other piece of chrome on a sheet now does. */
 .rb-cover__contents-jump {
+  opacity: 0;
+  transition: opacity 120ms ease;
   flex: 0 0 auto;
   width: 2.2cqh;
   height: 2.2cqh;
@@ -1512,6 +1444,23 @@ body.report-builder-open .canvas {
 
 .rb-cover.is-locked .rb-cover__overview-empty { display: none; }
 
+/* The empty frame and the buttons under it are ours, not the report's, so
+   they wait until the investigator points at that corner of the page. Tim,
+   Oct 17: "if I don't drop in a picture I want all the other buttons to go
+   away." Hidden rather than removed, so nothing jumps or resizes when they
+   appear -- the photo keeps the same place on the page either way. */
+.rb-cover:not(.is-locked) .rb-cover__overview-empty,
+.rb-cover:not(.is-locked) .rb-cover__overview-actions {
+  visibility: hidden;
+}
+
+.rb-cover:not(.is-locked) .rb-cover-box--overview:hover .rb-cover__overview-empty,
+.rb-cover:not(.is-locked) .rb-cover-box--overview:hover .rb-cover__overview-actions,
+.rb-cover:not(.is-locked) .rb-cover-box--overview:focus-within .rb-cover__overview-empty,
+.rb-cover:not(.is-locked) .rb-cover-box--overview:focus-within .rb-cover__overview-actions {
+  visibility: visible;
+}
+
 .rb-cover__overview-actions {
   flex: 0 0 auto;
   display: flex;
@@ -1553,6 +1502,18 @@ body.report-builder-open .canvas {
 .rb-ws__row .rb-ws__btn {
   flex: 1;
   min-width: 0;
+}
+
+/* Five grids will not sit across the panel in one row -- squeezed to fit,
+   each one clipped its own name. They wrap onto a second line instead. */
+.rb-ws__row--wrap {
+  flex-wrap: wrap;
+}
+
+.rb-ws__row--wrap .rb-ws__btn {
+  flex: 1 1 28%;
+  min-width: 3.6rem;
+  width: auto;
 }
 
 /* The figure rail — a narrow column down the right of a figure page.
@@ -1834,9 +1795,21 @@ body.report-builder-open .canvas {
      above: however many rows there are, they share that, and the bottom of
      the page stays clear. */
   grid-template-columns: repeat(var(--rb-pics-cols, 5), minmax(0, 1fr));
-  grid-template-rows: repeat(var(--rb-pics-rows, 2),
-    minmax(0, calc(100% / var(--rb-pics-rows, 2))));
+  /* Rows share what is left AFTER the gaps, which is what a fraction does
+     and what a percentage does not: `100% / rows` asked for the whole height
+     and then the gaps were added on top, so every Pictures page stood a
+     little taller than its own sheet. On screen the bottom was clipped; in
+     the printed deck it was a page that could spill. */
+  grid-template-rows: repeat(var(--rb-pics-rows, 2), minmax(0, 1fr));
   gap: 1.4% 1.8%;
+  align-content: stretch;
+}
+
+/* One row sits at the top of the sheet and is as tall as it needs to be,
+   rather than being stretched down the page with its pictures hanging off
+   the bottom edge. */
+.rb-pictures-page__grid--one-row {
+  grid-template-rows: auto;
   align-content: start;
 }
 
@@ -1848,6 +1821,20 @@ body.report-builder-open .canvas {
   min-width: 0;
   min-height: 0;
   margin: 0;
+  /* A cell is its row and no taller. */
+  overflow: hidden;
+  /* The caption's size, held apart from the caption itself.
+
+     The caption's own font shrinks to fit (fitCaptions), and the block it
+     sits in must NOT shrink with it or the picture above would move every
+     time a description got long -- which is the thing being fixed. So the
+     block is measured from this, which never changes, and the type inside it
+     is measured from the inline size fitCaptions sets.
+
+     Tim, Oct 20: "If you clip the picture the exact same size every fucking
+     time, the middle never changes." */
+  --rb-cap-size: clamp(9px, 1.2cqb, 12px);
+  --rb-cap-lines: 3;
 }
 
 /* The frame is a plate of a fixed shape, as wide as its column.
@@ -1861,41 +1848,78 @@ body.report-builder-open .canvas {
    so a page that runs to four rows shrinks the plates to fit rather than
    running off the paper. */
 .rb-pictures-page__frame {
-  flex: 0 1 auto;
+  /* The picture takes every bit of its cell that the label and the caption
+     are not using. It used to be a plate of a fixed portrait shape, which
+     kept the captions in a row starting on one line but letterboxed any
+     photograph that was not 3:4 -- a landscape shot sat small in the middle
+     of a tall white box. Tim: "we just need to maximise the space, too
+     small of a picture doesn't do anything." */
+  /* Takes the room the label and the caption are not using, which gives the
+     picture inside it a real height to be measured against. The picture sits
+     at the FOOT of it, so the caption is directly under the photograph and
+     whatever is left over falls above -- and the pictures along a row line
+     up on their bottom edge. */
+  flex: 1 1 auto;
   width: 100%;
-  aspect-ratio: 3 / 4;
   height: auto;
-  max-height: 100%;
   min-height: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
   overflow: hidden;
-  background: #f7f5f1;
+  /* No tint behind the picture. The plate is a fixed portrait shape so that
+     every caption in a row starts on the same line, and a photograph that
+     does not fill it used to leave a tan band above and below. Tim: "there's
+     a tan in the background for portrait pictures -- I don't want that to
+     show." The space is still reserved; it is just paper now. */
+  background: none;
 }
 
 .rb-pictures-page__image {
   display: block;
-  max-width: 100%;
-  max-height: 100%;
+  /* Sized to the picture, not to the box: as large as the cell allows in
+     whichever direction runs out first, and no larger. The element is then
+     exactly the photograph, which is what makes the black rule hug it
+     instead of standing off it on white. */
   width: auto;
   height: auto;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
+  /* Tim, Oct 17: "we need a black border around all pictures." A rule round
+     the photograph itself, not round the space it sits in, so a tall picture
+     and a wide one are each framed to their own edge. */
+  border: 0.12cqh solid #1a1a1a;
+  box-sizing: border-box;
 }
 
+/* One line, always: "Photograph 12" wrapping in one cell and not in the next
+   would move that cell's picture, which is the same fault as a long caption. */
 .rb-pictures-page__label {
   flex: 0 0 auto;
   margin: 0.35em 0 0.1em;
   font-size: clamp(10px, 1.35cqb, 13px);
   font-weight: 700;
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/* The caption is a block of fixed height, three lines deep, in every cell on
+   every sheet. The words fit it by coming down in size (fitCaptions), never
+   by taking room from the photograph -- so the plate above is identical from
+   cell to cell and the pictures along a row line up exactly.
+
+   It used to be the other way about: the caption took the room its words
+   needed and the plate gave way, which put one picture in a row higher than
+   its neighbours. Tim, on his own deck: "Pictures look good except for the
+   one in the upper right hand corner, which has apparently too much text to
+   center the picture." */
 .rb-pictures-page__caption {
   flex: 0 0 auto;
   width: 100%;
-  min-height: 2.6em;
-  max-height: 3.8em;
+  height: calc(var(--rb-cap-size) * 1.25 * var(--rb-cap-lines));
   margin: 0;
   padding: 0;
   border: 0;
@@ -1904,9 +1928,9 @@ body.report-builder-open .canvas {
   background: transparent;
   color: #222;
   font: inherit;
-  font-size: clamp(9px, 1.2cqb, 12px);
+  font-size: var(--rb-cap-size);
   line-height: 1.25;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .rb-pictures-page__caption:focus {
@@ -1945,11 +1969,76 @@ body.report-builder-open .canvas {
   position: absolute;
 }
 
+/* The plan and the schedule are placed pieces. Each shows its edge and its
+   two pulls when it is pointed at and nothing before, the rule every other
+   placed thing on a sheet follows. Tim: "Everything here needs to be
+   movable. I should be able to move the floor plan if I want, and I want to
+   be able to move the notes if I want." */
+.rb-penlog__plan,
+.rb-penlog__schedule {
+  outline: none;
+  outline-offset: 3px;
+}
+
+.rb-penlog__plan:hover,
+.rb-penlog__schedule:hover {
+  outline: 1px dashed rgba(139, 94, 60, 0.4);
+}
+
+.rb-penlog__move,
+.rb-penlog__resize {
+  position: absolute;
+  display: none;
+  z-index: 6;
+  width: 14px;
+  height: 14px;
+}
+
+.rb-penlog__move {
+  left: -3px;
+  top: -3px;
+  border-left: 2px solid var(--rb-copper, #8B5E3C);
+  border-top: 2px solid var(--rb-copper, #8B5E3C);
+  cursor: move;
+}
+
+.rb-penlog__resize {
+  right: -3px;
+  bottom: -3px;
+  border-right: 2px solid var(--rb-copper, #8B5E3C);
+  border-bottom: 2px solid var(--rb-copper, #8B5E3C);
+  cursor: nwse-resize;
+}
+
+[data-rb-penlog-box].is-picked > .rb-penlog__move,
+[data-rb-penlog-box].is-picked > .rb-penlog__resize,
+[data-rb-penlog-box]:focus-within > .rb-penlog__move,
+[data-rb-penlog-box]:focus-within > .rb-penlog__resize {
+  display: block;
+}
+
+.rb-sheet--thumb .rb-penlog__move,
+.rb-sheet--thumb .rb-penlog__resize { display: none !important; }
+
+@media print {
+  .rb-penlog__move,
+  .rb-penlog__resize { display: none !important; }
+  .rb-penlog__plan,
+  .rb-penlog__schedule { outline: none !important; }
+}
+
 .rb-penlog__image {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: fill;
+}
+
+/* The contour layer lies on the plan, at the same extent, under the pins. */
+.rb-penlog__image--contour {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 .rb-penlog__missing {
@@ -2323,6 +2412,116 @@ body.report-builder-open .canvas {
   object-fit: contain;
 }
 
+/* The colour scale and a boundary's readings, as one piece on the page.
+ *
+ * They used to be painted into the plan's own picture, so panning the plan
+ * carried them along. Tim: "putting the contour legend in the pill, one
+ * place, and being able to move the floor plan with contours separately."
+ * One box: scale on the left, the boundary's name and its H / L / delta
+ * beside it, dragged like any other box on the sheet. */
+/* The colour scale and the readings are as wide as what is written in them,
+   wherever they are put.
+ *
+ * They are absolutely positioned inside the sheet, and `width: auto` means an
+ * absolutely positioned box is squeezed by its container's edge: dragged to
+ * the right-hand margin the readings pill went from 138px to 84px and the
+ * line wrapped onto itself. Tim: "The pill actually compresses if you move it
+ * too far to the right." max-content takes the edge out of it -- the box is
+ * the size of its own contents and nothing else. */
+.rb-floor-box--chrome {
+  display: block;
+  width: max-content;
+  max-width: none;
+  height: auto;
+  z-index: 4;
+}
+
+
+
+/* The piece shows its handles and its dashed edge when it is pointed at,
+   not before. Tim: "the corner chevrons don't need to be there unless it's
+   selected." A finished figure carries no chrome of ours. */
+.rb-floor-box.rb-floor-box--chrome:not(.is-locked) {
+  outline: none;
+  background: none;
+}
+
+.rb-floor-box.rb-floor-box--chrome:not(.is-locked):hover,
+.rb-floor-box.rb-floor-box--chrome:not(.is-locked):focus-within {
+  outline: 1px dashed rgba(139, 94, 60, 0.45);
+  outline-offset: 2px;
+}
+
+/* The colour scale and the readings carry no corner pulls at all: each is
+   sized from the control that has always sized it, and two controls for one
+   size is one too many. */
+.rb-floor-box--chrome .rb-floor-box__resize { display: none !important; }
+
+/* The site overview on a Floor Survey page.
+ *
+ * The cover's aerial view of the property, carried onto the figure pages by
+ * itself and placed where the shipped decks put it: lower left, clear of the
+ * rail. It is moved and sized like any other box, and the x takes it off this
+ * page alone. Settled Oct 10, 2026; Tim, Oct 16: "able to delete on FS pages
+ * if too cluttered, and moveable by user." */
+.rb-floor-box--overview {
+  z-index: 3;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(23, 19, 14, 0.22);
+}
+
+.rb-floor-overview__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Its corner pulls appear when it is pointed at, not before. Tim: "the
+   corner chevrons on the corners of it don't need to be there unless it's
+   selected." Four brackets standing on a finished figure are chrome on the
+   drawing, which is the one thing the rail rebuild was for. */
+.rb-floor-box--overview:focus-within .rb-floor-box__resize,
+.rb-floor-box--overview.is-picked .rb-floor-box__resize {
+  display: block;
+}
+
+.rb-floor-overview__remove {
+  position: absolute;
+  top: 2%;
+  right: 2%;
+  z-index: 7;
+  width: 4cqh;
+  height: 4cqh;
+  min-width: 14px;
+  min-height: 14px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(23, 19, 14, 0.62);
+  color: #fff;
+  font-size: 2.6cqh;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.rb-floor-box--overview:hover .rb-floor-overview__remove,
+.rb-floor-overview__remove:focus-visible {
+  opacity: 1;
+}
+
+@media print {
+  .rb-floor-overview__remove { display: none; }
+  .rb-floor-box--overview { box-shadow: none; }
+}
+
 .rb-floor-box:not(.is-locked) {
   cursor: move;
   outline: 1px dashed rgba(30, 64, 110, 0.35);
@@ -2361,8 +2560,20 @@ body.report-builder-open .canvas {
 /* Only while the floorplan surface is selected -- the same rule the plan's
    own grips already follow. A handle standing on an unselected drawing is
    chrome on a figure. */
+/* The one box being worked on. It used to be the whole sheet: clicking the
+   drawing lit the pulls on the plan AND on the aerial view at once, which is
+   chrome standing on a figure nobody is touching. */
 .rb-floor-box__resize { display: none; }
-.rb-sheet--plan-selected .rb-floor-box__resize { display: block; }
+.rb-floor-box.is-picked > .rb-floor-box__resize,
+.rb-floor-box:focus-within > .rb-floor-box__resize { display: block; }
+
+/* A picked box says so, the way a picked cover box does -- except the plan
+   itself, which IS the sheet on an imported slide, and the colour scale and
+   readings, which are sized from the rail and have nothing to pull. */
+.rb-floor-box.is-picked:not(.rb-floor-box--topo):not(.rb-floor-box--chrome) {
+  outline: 1px dashed rgba(30, 64, 110, 0.55);
+  outline-offset: 2px;
+}
 
 .rb-floor-box__resize--nw {
   left: -8px; top: -8px; cursor: nwse-resize;
@@ -2400,15 +2611,23 @@ body.report-builder-open .canvas {
   list-style: disc;
 }
 
-.rb-rt__p--bullet { display: list-item; }
+.rb-rt__list--number { list-style: decimal; }
+
+.rb-rt__p--bullet,
+.rb-rt__p--number { display: list-item; }
 
 /* ------------------------------------------------------------------ *
  * Formatting toolbar — always across the top, every page, the way the
  * PowerPoint Home ribbon is. Pages left, canvas centre, Toolbox right.
  * ------------------------------------------------------------------ */
 
+/* The formatting bar takes whatever room is left beside Print and Export,
+   rather than asking for its content width and pushing them onto a second
+   row. With a basis of auto the toolbar was two rows tall while the hint was
+   showing and one row once it went, so the whole sheet jumped nineteen
+   pixels the moment a field took focus. */
 .rb-toolbar__format {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
 }
 
@@ -2416,7 +2635,7 @@ body.report-builder-open .canvas {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px 10px;
+  gap: 2px 7px;
   min-width: 0;
 }
 
@@ -2424,7 +2643,7 @@ body.report-builder-open .canvas {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding-right: 8px;
+  padding-right: 6px;
   border-right: 1px solid var(--line);
 }
 
@@ -2435,8 +2654,11 @@ body.report-builder-open .canvas {
   align-items: center;
   justify-content: center;
   /* Ribbon-sized. 28px was tight for a touch target and cramped the icons;
-     there is room across the top for the real thing. */
-  min-width: 32px;
+     there is room across the top for the real thing. 30px with the gutters
+     pulled in keeps the whole bar on one row down to a 1600px screen, which
+     three more controls had cost it -- a second row of ours comes straight
+     off the height of the sheet. */
+  min-width: 30px;
   height: 32px;
   padding: 0 7px;
   border: 1px solid transparent;
@@ -2449,6 +2671,17 @@ body.report-builder-open .canvas {
 }
 
 .rb-format__btn--icon { padding: 0 6px; gap: 2px; }
+
+/* On a smaller desktop the bar pulls itself in rather than taking a second
+   row: a row of ours comes straight off the height of the sheet, and the
+   sheet is the thing being worked on. Full ribbon sizing comes back as soon
+   as there is room for it. */
+@media (max-width: 1800px) {
+  .rb-format { gap: 2px 5px; }
+  .rb-format__group { padding-right: 4px; }
+  .rb-format__btn { min-width: 28px; padding: 0 5px; }
+  .rb-format__btn--icon { padding: 0 4px; }
+}
 
 .rb-format__btn svg {
   display: block;
@@ -2541,12 +2774,21 @@ body.report-builder-open .canvas {
   font-weight: 700;
 }
 
+/* The hint takes whatever room is left and never forces the bar onto a
+   second row -- and it is hidden rather than removed when a field has focus.
+   Removing it collapsed that second row, so the bar got shorter and the whole
+   sheet jumped up the moment you started typing. */
 .rb-format__hint {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--muted, #6b6b6b);
   font-size: 12px;
 }
 
-.rb-format.is-ready .rb-format__hint { display: none; }
+.rb-format.is-ready .rb-format__hint { visibility: hidden; }
 
 /* Until a field has focus the text commands have nothing to act on. The
    drawing tools, the weights, the colours and the insert buttons always do --
@@ -2585,6 +2827,7 @@ body.report-builder-open .canvas {
 .rb-sheet--erasing .rb-ov__remove { pointer-events: none; }
 
 /* The armed tool and the chosen weight, shown the way Distress shows them. */
+.rb-format__btn[data-rb-insert].is-on,
 .rb-format__btn[data-rb-tool].is-on,
 .rb-format__btn[data-rb-thick].is-on {
   border-color: var(--line);
@@ -2674,7 +2917,6 @@ body.report-builder-open .canvas {
 
   /* Editor chrome never prints, whether or not the layout happens to be
      locked. A dashed placement outline on a deliverable is a defect. */
-  .rb-cover__bar,
   .rb-floor-toolbar,
   .rb-cover__contents-jump,
   .rb-cover__overview-actions,
@@ -2704,11 +2946,20 @@ body.report-builder-open .canvas {
   position: absolute;
   left: 0;
   top: 0;
+  display: none;
   width: 14px;
   height: 14px;
   border-left: 2px solid var(--rb-copper);
   border-top: 2px solid var(--rb-copper);
   cursor: move;
+}
+
+/* The move corner follows the resize pull exactly: one rule for both, so a
+   box either is being worked on or is not. It used to come out on hover,
+   which left the two corners of one box obeying different rules. */
+.rb-cover:not(.is-locked) .rb-cover-box:focus-within .rb-cover-box__move,
+.rb-cover:not(.is-locked) .rb-cover-box.is-active .rb-cover-box__move {
+  display: block;
 }
 
 .rb-cover.is-locked .rb-cover-box__move { display: none; }
@@ -2729,9 +2980,6 @@ body.report-builder-open .canvas {
  * ------------------------------------------------------------------ */
 
 .rb-sheet__margin--discussion {
-  margin: 0;
-  padding: 0;
-  border: 0;
   overflow: visible;
 }
 
@@ -2745,12 +2993,68 @@ body.report-builder-open .canvas {
   font-family: Calibri, Carlito, "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
+/* The writing area as a placed box: where it sits and how big it is belong
+   to the investigator, and the white space around it is his. Tim: "if you
+   let me adjust the size of the box then I can use the white space that I
+   want." It starts where the shipped decks put it. */
+.rb-discussion__box {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  column-gap: inherit;
+}
+
+/* Its edge and its two pulls appear when it is pointed at, not before --
+   the rule every other piece on a sheet now follows. */
+.rb-discussion:not(.is-locked) .rb-discussion__box:hover,
+.rb-discussion:not(.is-locked) .rb-discussion__box:focus-within {
+  outline: 1px dashed rgba(139, 94, 60, 0.4);
+  outline-offset: 3px;
+}
+
+.rb-discussion__move,
+.rb-discussion__resize {
+  position: absolute;
+  display: none;
+  z-index: 3;
+  width: 14px;
+  height: 14px;
+}
+
+.rb-discussion__move {
+  left: -3px;
+  top: -3px;
+  border-left: 2px solid var(--rb-copper, #8B5E3C);
+  border-top: 2px solid var(--rb-copper, #8B5E3C);
+  cursor: move;
+}
+
+.rb-discussion__resize {
+  right: -3px;
+  bottom: -3px;
+  border-right: 2px solid var(--rb-copper, #8B5E3C);
+  border-bottom: 2px solid var(--rb-copper, #8B5E3C);
+  cursor: nwse-resize;
+}
+
+/* The writing box follows every other box: its corners come out when it is
+   being worked on, not when a pointer passes over it. Clicking into the
+   writing counts -- that is focus-within -- so typing is unaffected. */
+.rb-discussion:not(.is-locked) .rb-discussion__box.is-picked .rb-discussion__move,
+.rb-discussion:not(.is-locked) .rb-discussion__box.is-picked .rb-discussion__resize,
+.rb-discussion:not(.is-locked) .rb-discussion__box:focus-within .rb-discussion__move,
+.rb-discussion:not(.is-locked) .rb-discussion__box:focus-within .rb-discussion__resize {
+  display: block;
+}
+
 /* 12 pt on an 11 in page = 1.515cqh. No clamp: a clamped size stops scaling
    and would print smaller than it previews. */
 .rb-discussion__body {
   position: absolute;
+  inset: 0;
   z-index: 1;
   box-sizing: border-box;
+  column-gap: inherit;
   column-count: 2;
   /* Fill the first column, then flow into the second -- what a PowerPoint
      two-column text box does, and what the shipped reports show. Balancing
@@ -2782,10 +3086,7 @@ body.report-builder-open .canvas {
   outline-offset: 2px;
 }
 
-.rb-discussion:not(.is-locked) .rb-discussion__body:hover {
-  outline: 1px dashed rgba(139, 94, 60, 0.3);
-  outline-offset: 2px;
-}
+
 
 .rb-discussion__body .rb-rt__p { margin: 0 0 0.75em; }
 .rb-discussion__body .rb-rt__p:last-child { margin-bottom: 0; }
@@ -2795,7 +3096,8 @@ body.report-builder-open .canvas {
   padding-left: 1.6em;
 }
 
-.rb-discussion__body .rb-rt__p--bullet { margin: 0 0 0.3em; }
+.rb-discussion__body .rb-rt__p--bullet,
+.rb-discussion__body .rb-rt__p--number { margin: 0 0 0.3em; }
 
 /* ------------------------------------------------------------------ *
  * The logo — one placement, every page
@@ -2823,10 +3125,17 @@ body.report-builder-open .canvas {
    annotations and page controls underneath stay usable. */
 .rb-brand.is-locked { pointer-events: none; }
 
+/* The mark is artwork on the page; what tells you it can be moved is ours,
+   so it waits until the mark is pointed at. Tim, Oct 17, on the title page:
+   "all those corner blocks -- that's one of the things I really dislike." */
 .rb-brand:not(.is-locked) {
-  outline: 1px dashed var(--rb-copper, #8B5E3C);
+  outline: none;
   outline-offset: 2px;
   cursor: move;
+}
+
+.rb-brand:not(.is-locked):hover {
+  outline: 1px dashed var(--rb-copper, #8B5E3C);
 }
 
 .rb-brand__img {
@@ -2839,6 +3148,7 @@ body.report-builder-open .canvas {
 
 .rb-brand__resize {
   position: absolute;
+  display: none;
   width: 13px;
   height: 13px;
   right: -3px;
@@ -2848,27 +3158,14 @@ body.report-builder-open .canvas {
   cursor: nwse-resize;
 }
 
-.rb-brand__lock {
-  position: absolute;
-  /* Above the logo in the stack: the logo overlapped this control, so clicks
-     on Unlock landed on the image instead. */
-  z-index: 8;
-  padding: 2px 8px;
-  border: 1px solid var(--line, #d7d2c8);
-  border-radius: 6px;
-  background: var(--panel, #fff);
-  color: var(--ink, #222);
-  font: inherit;
-  font-size: 1.2cqh;
-  line-height: 1.6;
-  cursor: pointer;
-  white-space: nowrap;
-}
+.rb-brand:not(.is-locked):hover .rb-brand__resize { display: block; }
 
 @media print {
   .rb-brand__resize,
-  .rb-brand__lock { display: none !important; }
-  .rb-brand { outline: none !important; }
+  .rb-discussion__move,
+  .rb-discussion__resize { display: none !important; }
+  .rb-brand,
+  .rb-discussion__box { outline: none !important; }
 }
 
 /* Said on screen, never printed: the page cannot show what does not fit. */
@@ -2977,11 +3274,35 @@ body.report-builder-open .canvas {
   object-fit: contain;
 }
 
+/* A text box, as PowerPoint draws one.
+ *
+ * It has a frame you can see from the moment it is placed -- an empty box with
+ * no outline on white paper looked like nothing had happened -- and a border
+ * ring you grab to move it, with the writing surface filling everything
+ * inside. Clicking the middle of the box used to miss the text entirely,
+ * because the field was a thin strip across the top. */
+.rb-ov--text {
+  display: flex;
+  padding: 5px;
+  outline: 1px dashed rgba(139, 94, 60, 0.5);
+  outline-offset: 0;
+}
+
+.rb-ov--text.is-locked {
+  padding: 0;
+  outline: none;
+}
+
+.rb-ov--text:focus-within {
+  outline: 1px solid rgba(139, 94, 60, 0.75);
+}
+
 .rb-ov__text {
+  flex: 1 1 auto;
   width: 100%;
-  /* No height and no clipping: the box is as tall as what is written in it.
-     See boxStyle() -- a fixed height with overflow:hidden hid everything past
-     the fourth line. */
+  /* No clipping: the box is as tall as what is written in it. See boxStyle()
+     -- a fixed height with overflow:hidden hid everything past the fourth
+     line. */
   cursor: text;
   font-size: 1.515cqh;
   line-height: 1.22;
@@ -2989,7 +3310,16 @@ body.report-builder-open .canvas {
   word-break: break-word;
 }
 
-.rb-ov__text:focus { outline: 1px solid rgba(139, 94, 60, 0.55); }
+.rb-ov__text:focus { outline: none; }
+
+/* The box being dragged out on the sheet before it exists. */
+.rb-ov-ghost {
+  position: absolute;
+  z-index: 10;
+  border: 1px dashed rgba(139, 94, 60, 0.9);
+  background: rgba(139, 94, 60, 0.06);
+  pointer-events: none;
+}
 
 .rb-ov__hint {
   display: flex;
@@ -3052,7 +3382,9 @@ body.report-builder-open .canvas {
   .rb-ov__remove,
   .rb-ov__hint { display: none !important; }
   .rb-ov,
-  .rb-ov__text { outline: none !important; }
+  .rb-ov--text,
+  .rb-ov-ghost,
+  .rb-ov__text { outline: none !important; border: 0 !important; }
 }
 
 /* Undo stays available even with nothing selected -- it is not a text
@@ -3066,6 +3398,42 @@ body.report-builder-open .canvas {
 .rb-format__btn[disabled] {
   opacity: 0.35;
   cursor: default;
+}
+
+/* Font colour: PowerPoint's A over a bar of the colour it will paint, with
+   the rest of the palette on the chevron beside it. */
+.rb-format__menu--color .rb-format__btn--textcolor {
+  position: relative;
+  padding-bottom: 7px;
+}
+
+.rb-format__underbar {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 3px;
+  height: 3px;
+  border-radius: 1px;
+  box-shadow: 0 0 0 1px rgba(23, 19, 14, 0.18);
+}
+
+.rb-format__btn--caret {
+  min-width: 14px;
+  padding-left: 0;
+  padding-right: 2px;
+}
+
+.rb-format__list--color .rb-format__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rb-format__chip {
+  width: 13px;
+  height: 13px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(23, 19, 14, 0.25);
 }
 
 .rb-format__sep {
@@ -3151,4 +3519,47 @@ body.report-builder-open .canvas {
 
 @media print {
   .rb-smallscreen { display: none !important; }
+}
+
+/* ------------------------------------------------------------------ *
+ * Right-click a piece of a Floor Survey page: behind, or in front.
+ *
+ * Tim: "I need to be able to right click and put images behind or in
+ * front." Two choices, at the pointer, gone on the next click. It is the
+ * only menu Report Builder opens, so it is deliberately plain: the sheet is
+ * the thing being looked at.
+ * ------------------------------------------------------------------ */
+
+.rb-stackmenu {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  padding: 4px;
+  border: 1px solid rgba(23, 19, 14, 0.18);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(23, 19, 14, 0.18);
+}
+
+.rb-stackmenu__item {
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: #17130e;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rb-stackmenu__item:hover,
+.rb-stackmenu__item:focus-visible {
+  background: rgba(139, 94, 60, 0.12);
+}
+
+@media print {
+  .rb-stackmenu { display: none !important; }
 }

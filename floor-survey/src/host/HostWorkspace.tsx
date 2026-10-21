@@ -40,6 +40,17 @@ export type HostWorkspaceProps = {
   onReturnToReport?: () => void;
 };
 
+/** The label size last set on this Customer File, within the panel's range. */
+function storedLabelFontSize(id: string): number {
+  try {
+    const raw = localStorage.getItem(`dpp-font:${id}`);
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n >= 6 && n <= 28 ? n : defaultRenderSettings.pointLabelFontSize;
+  } catch {
+    return defaultRenderSettings.pointLabelFontSize;
+  }
+}
+
 export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: HostWorkspaceProps) {
   const id = customerFileId;
   const [project, setProject] = useState<ProjectMeta | null>(null);
@@ -47,11 +58,24 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
   const [activeFloorId, setActiveFloorId] = useState<string | null>(null);
   const [points, setPoints] = useState<SurveyPoint[]>([]);
   const [mode, setMode] = useState<Mode>("field");
-  const [settings, setSettings] = useState<RenderSettings>(defaultRenderSettings);
+  // The label size is kept with the dot size and the dot colour beside it in
+  // the Data panel. Tim: "whatever last setting it goes to it stays on." It
+  // was the one of the three nobody had stored, so a plan set to 8px for a
+  // dense level came back at the default on the next open.
+  const [settings, setSettings] = useState<RenderSettings>(() => ({
+    ...defaultRenderSettings,
+    pointLabelFontSize: storedLabelFontSize(id),
+  }));
+  useEffect(() => {
+    try {
+      localStorage.setItem(`dpp-font:${id}`, String(settings.pointLabelFontSize));
+    } catch {
+      /* ignore */
+    }
+  }, [settings.pointLabelFontSize, id]);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [topoHighlightIds, setTopoHighlightIds] = useState<Set<string>>(new Set());
   const [topoExcludedIds, setTopoExcludedIds] = useState<Set<string>>(new Set());
   const [topoAreaId, setTopoAreaId] = useState<string | null>(null);
   useEffect(() => {
@@ -273,6 +297,8 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
       setSaveTone(null);
     }, 3200);
   }, []);
+  const doneLock = useRef(false);
+  const [doneBusy, setDoneBusy] = useState(false);
   const handleSave = useCallback(async () => {
     if (saveLock.current || !activeFloor) return;
     saveLock.current = true;
@@ -309,6 +335,72 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
     setSaving(false);
     saveLock.current = false;
   }, [activeFloor, points, showSaveStatus]);
+
+  /**
+   * Done taking points.
+   *
+   * Tim: "When we drop our first point for survey it says is this your first
+   * point, capture GPS etc. When we drop our last point there really is no
+   * complete. If we had a complete -- I'm done taking points -- generate the
+   * contour immediately, it could hit save... next to the Save button there
+   * should be a pill of a button that says Done. I hit Done and it's done."
+   *
+   * So Done is Save plus the one thing the rest of Toolbox was waiting on:
+   * the level's contour layer. It is filed on the LEVEL, and Distress Survey
+   * and Report Builder both read the level -- so filing it is sending it to
+   * both, and there is no second step to wire. Measured Oct 20: Report
+   * Builder already draws it wherever a level has one.
+   *
+   * It is a button, not a state, and not a lock. Press it again tomorrow
+   * after adding points and the contour is drawn again.
+   *
+   * Which boundary: whichever one the level already carries, so a deliberate
+   * choice made in the Topo rail -- "that's a garage, it's sloped for
+   * drainage" -- is not quietly replaced by a combined one. A level with no
+   * layer yet gets all of its boundaries.
+   */
+  const handleDone = useCallback(async () => {
+    if (doneLock.current || !activeFloor) return;
+    doneLock.current = true;
+    setDoneBusy(true);
+    try {
+      await handleSave();
+      const [{ composeContourLayer }, { persistContourLayer, readContourLayer }] =
+        await Promise.all([import("@/lib/contour-layer"), import("@/lib/db")]);
+      const held = await readContourLayer(activeFloor.id).catch(() => null);
+      const areas = Array.isArray(activeFloor.areas) ? activeFloor.areas : [];
+      const keptArea = held && held.areaName
+        ? areas.find((area) => area && area.name === held.areaName)
+        : null;
+      const drawn = await composeContourLayer({
+        floor: activeFloor,
+        points,
+        settings,
+        areaId: keptArea ? keptArea.id : null,
+      });
+      if (!drawn) {
+        // Saying nothing here looks exactly like working.
+        showSaveStatus(
+          "Saved · no contour yet — this level needs a closed boundary with readings inside it.",
+          "err",
+        );
+        return;
+      }
+      await persistContourLayer(activeFloor.id, drawn.dataUrl, {
+        areaName: drawn.areaName,
+        width: drawn.extent.w,
+        height: drawn.extent.h,
+        pointCount: drawn.pointCount,
+      });
+      showSaveStatus(`Done · ${drawn.areaName} contour sent.`, "ok");
+    } catch (err) {
+      console.error(err);
+      showSaveStatus("Saved · contour not drawn", "err");
+    } finally {
+      setDoneBusy(false);
+      doneLock.current = false;
+    }
+  }, [activeFloor, points, settings, handleSave, showSaveStatus]);
   const handleFloorChange = useCallback((f: Floor) => {
     setFloors((prev) => prev.map((p) => (p.id === f.id ? f : p)));
   }, []);
@@ -373,6 +465,8 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
         undoEnabled={undoActive && history.canUndo}
         redoEnabled={undoActive && history.canRedo}
         onSave={handleSave}
+        onDone={handleDone}
+        doneBusy={doneBusy}
         saving={saving}
         saveStatus={saveStatus}
         saveTone={saveTone}
@@ -461,12 +555,10 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
             onSettingsChange={setSettings}
             pointSize={pointSize}
             pointColor={pointColor}
-            selectedIds={topoHighlightIds}
             excludedIds={topoExcludedIds}
             onExcludedIdsChange={setTopoExcludedIds}
             selectedAreaId={topoAreaId}
             onSelectedAreaIdChange={setTopoAreaId}
-            onHighlight={(p) => setTopoHighlightIds(new Set([p.id]))}
             allowContourLayer
           />
         )}
@@ -490,14 +582,6 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
                 ? statsPoints.filter((p) => !topoExcludedIds.has(p.id))
                 : statsPoints
             }
-            onHighlight={(p) => {
-              if (mode === "topo") {
-                setTopoHighlightIds(new Set([p.id]));
-                return;
-              }
-              setSelectedIds(new Set([p.id]));
-              setFocusRequest({ x: p.x, y: p.y, nonce: Date.now() });
-            }}
           />
         </>
       )}

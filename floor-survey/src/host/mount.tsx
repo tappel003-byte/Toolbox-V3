@@ -11,6 +11,7 @@ import {
   renderFloorSurveyRecoveryCanvas,
   setRecoveryRendererForTests,
 } from "@/lib/recovery-pdf";
+import { renderTopoLegendImage, topoLegendShape } from "@/lib/topo-legend-image";
 import {
   composeReportTopoFigure,
   composeReportTopoFigureForPage,
@@ -46,6 +47,7 @@ export type MountOptions = {
     lo: number;
     delta: number;
     decimalPlaces: number;
+    bands?: string[];
   }>) => void;
   onReady?: (info: {
     levelName: string;
@@ -182,6 +184,8 @@ declare global {
       listReportTopoPageSpecs: typeof listReportTopoPageSpecs;
       reportTopoDataExtent: typeof reportTopoDataExtent;
       reportTopoExtentForPage: typeof reportTopoExtentForPage;
+      renderTopoLegendImage: typeof renderTopoLegendImage;
+      topoLegendShape: typeof topoLegendShape;
     };
     ToolboxDB?: {
       getMedia?: (id: string) => Promise<string | null>;
@@ -203,6 +207,8 @@ window.ToolboxFloorSurvey = {
   listReportTopoPageSpecs,
   reportTopoDataExtent,
   reportTopoExtentForPage,
+  renderTopoLegendImage,
+  topoLegendShape,
 };
 
 // Vite's IIFE assigns this module's exports onto the ToolboxFloorSurvey global
@@ -219,4 +225,6 @@ export {
   listReportTopoPageSpecs,
   reportTopoDataExtent,
   reportTopoExtentForPage,
+  renderTopoLegendImage,
+  topoLegendShape,
 };

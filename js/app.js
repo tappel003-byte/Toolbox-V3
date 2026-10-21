@@ -570,8 +570,22 @@
     return String(entry && entry.displayName || '').trim() || 'Customer File';
   }
 
+  /** Is the lease ours while the file itself never arrived? */
+  function heldButNotHere(entry) {
+    return !!entry && entry.availability === 'checked-out-here' && entry.presence !== 'local';
+  }
+
   function cabinetIndexStatus(entry) {
     if (!entry) return '';
+    // "On this device" used to be said on the strength of the lease alone.
+    // A Check Out takes the lease first and brings the file down after, so a
+    // download that did not finish left the row claiming the job was here
+    // while the device held nothing -- and the Check Out button is only drawn
+    // for a row marked available, so there was no way back in. Tim, looking
+    // at exactly that: "it says it's on this device and it's clearly not --
+    // where the hell did it go?" Nothing was lost; the Cabinet copy is whole.
+    // The row says what is true, and offers the action that finishes it.
+    if (heldButNotHere(entry)) return 'Checked out here · not downloaded yet';
     if (entry.availability === 'checked-out-here') return 'On this device';
     if (entry.availability === 'checked-out-elsewhere') {
       const who = entry.checkout && entry.checkout.email ? entry.checkout.email : '';
@@ -780,19 +794,25 @@
 
     const actions = document.createElement('div');
     actions.className = 'cabinet-row__actions';
-    if (entry.availability === 'available' && entry.presence !== 'local') {
+    const unfinished = heldButNotHere(entry);
+    if (unfinished || (entry.availability === 'available' && entry.presence !== 'local')) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'btn btn--secondary cabinet-checkout-btn';
-      btn.textContent = 'Check Out';
+      // Taking the lease again is the same call: the server hands this device
+      // back the lease it already holds, and the file comes down this time.
+      btn.textContent = unfinished ? 'Finish Check Out' : 'Check Out';
       btn.addEventListener('click', function (event) {
         event.stopPropagation();
         btn.disabled = true;
-        btn.textContent = 'Checking out…';
+        btn.textContent = unfinished ? 'Downloading…' : 'Checking out…';
+        const stop = watchSyncProgress(function (where) { btn.textContent = where; });
         window.ToolboxSync.checkOutCustomerFile(entry.id).then(function () {
+          stop();
           cabinetNotice = (entry.displayName || 'Customer File') + ' checked out to this device.';
           window.location.hash = '#/';
         }).catch(function (err) {
+          stop();
           console.warn('Check Out failed:', err);
           cabinetNotice = (err && err.message) || 'Check Out failed.';
           // Stay on File Cabinet so the failure notice is visible after re-render.
@@ -996,63 +1016,55 @@
       return shell;
     }
 
-    if (cabinetBacked) {
-      const checkInBtn = document.createElement('button');
-      checkInBtn.type = 'button';
-      checkInBtn.className = 'cabinet-row-menu__action';
-      checkInBtn.textContent = 'Check In';
-      checkInBtn.addEventListener('click', function (event) {
-        event.stopPropagation();
-        menu.classList.remove('is-open');
-        requestCheckInCustomerFile(record);
-      });
-      menu.appendChild(menuToggle);
-      menu.appendChild(checkInBtn);
-    } else {
-      const sendBtn = document.createElement('button');
-      sendBtn.type = 'button';
-      sendBtn.className = 'cabinet-row-menu__action';
-      sendBtn.textContent = 'Send to File Cabinet';
-      sendBtn.addEventListener('click', function (event) {
-        event.stopPropagation();
-        menu.classList.remove('is-open');
-        requestSendToFileCabinet(record);
-      });
-      menu.appendChild(menuToggle);
-      menu.appendChild(sendBtn);
-    }
+    // One action, on every local file. Tim, after a morning of pressing the
+    // wrong one of two: "it is definite that the only options we need are to
+    // check it out and to check it in. Period." Send to File Cabinet is gone;
+    // Check In covers the file that was never checked out as well, because
+    // filing it means the same thing either way -- put the work in the
+    // Cabinet, give up the lease, clear this device.
+    void cabinetBacked;
+    const checkInBtn = document.createElement('button');
+    checkInBtn.type = 'button';
+    checkInBtn.className = 'cabinet-row-menu__action';
+    checkInBtn.textContent = 'Check In';
+    checkInBtn.addEventListener('click', function (event) {
+      event.stopPropagation();
+      menu.classList.remove('is-open');
+      requestCheckInCustomerFile(record);
+    });
+    menu.appendChild(menuToggle);
+    menu.appendChild(checkInBtn);
 
     shell.appendChild(row);
     shell.appendChild(menu);
     return shell;
   }
 
-  function requestSendToFileCabinet(record) {
-    const name = displayName(record);
-    if (!window.ToolboxSync || typeof window.ToolboxSync.sendToFileCabinet !== 'function') {
-      cabinetNotice = 'Send to File Cabinet is unavailable.';
-      window.location.hash = '#/';
-      render();
-      return;
+  /**
+   * Say where a long operation has got to, while it runs.
+   *
+   * Check In and Check Out move every photograph on the job and used to show
+   * nothing until they finished. Tim, waiting on one: "there's no way to know
+   * that you're waiting on nothing to happen."
+   */
+  function watchSyncProgress(show) {
+    if (!window.ToolboxSync || typeof window.ToolboxSync.onSyncProgress !== 'function') {
+      return function () {};
     }
-    confirmAction({
-      title: 'Send to File Cabinet?',
-      message: name + ' will be placed in the File Cabinet and removed from this device.',
-      cancelLabel: 'Cancel',
-      confirmLabel: 'Send to File Cabinet',
-    }).then(function (confirmed) {
-      if (!confirmed) return;
-      return window.ToolboxSync.sendToFileCabinet(record.id).then(function () {
-        cabinetNotice = name + ' was sent to the File Cabinet.';
-        window.location.hash = '#/';
-        render();
-      }).catch(function (err) {
-        console.warn('Send to File Cabinet failed:', err);
-        cabinetNotice = (err && err.message) || 'Send to File Cabinet failed.';
-        window.location.hash = '#/';
-        render();
-      });
+    return window.ToolboxSync.onSyncProgress(function (info) {
+      if (!info || !info.total) return;
+      show(info.label + ' ' + info.done + ' of ' + info.total);
     });
+  }
+
+  /** The notice line on the Customer Files screen, written to directly. */
+  function liveNotice(app) {
+    const notice = app ? app.querySelector('#cabinet-notice') : null;
+    return function (text) {
+      if (!notice) return;
+      notice.textContent = text;
+      notice.hidden = !text;
+    };
   }
 
   function requestCheckInCustomerFile(record) {
@@ -1065,16 +1077,24 @@
     }
     confirmAction({
       title: 'Check In Customer File?',
-      message: name + ' will sync to the File Cabinet, release the Check Out, and be removed from this device.',
+      message: name + ' will be put in the File Cabinet, released so another device can work on it, ' +
+        'and removed from this device.',
       cancelLabel: 'Cancel',
       confirmLabel: 'Check In',
     }).then(function (confirmed) {
       if (!confirmed) return;
+      const show = liveNotice(document.getElementById('app') || document);
+      show('Checking in ' + name + '…');
+      const stop = watchSyncProgress(function (where) {
+        show('Checking in ' + name + ' — ' + where);
+      });
       return window.ToolboxSync.checkInCustomerFile(record.id).then(function () {
+        stop();
         cabinetNotice = name + ' was checked in.';
         window.location.hash = '#/';
         render();
       }).catch(function (err) {
+        stop();
         console.warn('Check In failed:', err);
         cabinetNotice = (err && err.message) || 'Check In failed.';
         window.location.hash = '#/';

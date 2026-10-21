@@ -83,7 +83,16 @@ const server = spawn('python3', ['-m', 'http.server', String(port), '--bind', '1
   cwd: new URL('..', import.meta.url).pathname,
   stdio: 'ignore',
 });
-await new Promise((resolve) => setTimeout(resolve, 400));
+// Wait for the server this run spawned to actually answer. A fixed pause is a
+// coin flip when the machine is busy running the whole sweep: it passes alone
+// and times out in the suite, which is how this came back red once in forty.
+for (let i = 0; i < 100; i += 1) {
+  try {
+    const probe = await fetch(`http://127.0.0.1:${port}/index.html`);
+    if (probe.ok) break;
+  } catch (_) { /* not listening yet */ }
+  await new Promise((resolve) => setTimeout(resolve, 100));
+}
 
 const browser = await puppeteer.launch({
   executablePath: findChrome(),
@@ -184,9 +193,40 @@ try {
     const rootText = document.getElementById('explorer-list').innerText;
     const mitchell = [...document.querySelectorAll('.explorer-row__key')].find((button) => button.textContent === 'Mitchell');
     mitchell.click();
-    await waitFor(() => document.querySelector('[data-key="media/ph_missing"]'));
+    // A job opens as folders; its contents are one level down, and the record
+    // files sit behind the Technical details line at the foot.
+    await waitFor(() => document.querySelector('.explorer-folder'));
+    const folderText = document.getElementById('explorer-list').innerText;
     const detailNotice = document.getElementById('explorer-notice');
-    const detailText = document.getElementById('explorer-list').innerText;
+    let detailText = folderText;
+    const folderIds = [...document.querySelectorAll('.explorer-folder')]
+      .map((folder) => folder.dataset.group);
+    const upAgain = async function () {
+      const up = document.querySelector('#explorer-crumb .explorer-up');
+      if (up) up.click();
+      await waitFor(() => !!document.querySelector('.explorer-folder'));
+    };
+    let tilesSeen = 0;
+    let pictureRowsSeen = 0;
+    for (let i = 0; i < folderIds.length; i += 1) {
+      document.querySelector(`.explorer-folder[data-group="${folderIds[i]}"] .explorer-folder__open`).click();
+      await waitFor(() => !document.querySelector('.explorer-folder'));
+      detailText += '\n' + document.getElementById('explorer-list').innerText;
+      tilesSeen += document.querySelectorAll('.explorer-tile[data-key]').length;
+      pictureRowsSeen += [...document.querySelectorAll('.explorer-row[data-key]')]
+        .filter((row) => !row.className.includes('missing') &&
+          ['plan', 'distress-photo', 'quick-capture', 'unassigned-photo',
+            'general-photo', 'floor-figure', 'diagnostics-figure']
+            .indexOf(row.dataset.purpose || '') !== -1).length;
+      if (document.querySelector('[data-key="media/ph_missing"]')) {
+        // Seen where it belongs: inside the Distress folder.
+        detailText += '\n[ph_missing seen]';
+      }
+      await upAgain();
+    }
+    const records = document.querySelector('.explorer-records');
+    if (records) records.open = true;
+    detailText += '\n' + document.getElementById('explorer-list').innerText;
     const plansRow = document.querySelector('[data-key="cf/cf-1/plans.json"]');
     const open = [...plansRow.querySelectorAll('button')].find((button) => button.textContent === 'Open');
     open.click();
@@ -203,6 +243,11 @@ try {
       detailNoticeHidden: !!(detailNotice && detailNotice.hidden),
       detailNoticeText: detailNotice ? detailNotice.textContent : '',
       preview: document.querySelector('.explorer-preview__text').textContent,
+      // Stored pictures, as the fallback route reports them: no type at all.
+      untypedTiles: tilesSeen,
+      // A stored picture left as a row. The Floor Survey recovery PDF is not
+      // one -- a PDF is not a picture -- and neither is anything not stored.
+      untypedRows: pictureRowsSeen,
       fetchLog,
     };
   }, { files: FILES, plans: PLANS, distress: DISTRESS, floor: FLOOR, diagnostics: DIAGNOSTICS, customer: CUSTOMER });
@@ -217,24 +262,35 @@ try {
   check('the 404 body is not shown as the Explorer screen',
     flow.noticeHidden && flow.noticeText !== 'Not found' && !/^Not found$/.test(flow.rootText),
     flow.noticeText);
+  // The fallback route reports no content type for anything, which is also
+  // true of the Cabinet on real jobs. The pictures still have to reach the
+  // contact sheet, so what shows on the page is a tile's caption -- the part
+  // that tells one picture from its neighbours -- rather than its full label,
+  // which the lightbox gives when the picture is opened. Items that are not
+  // stored stay as rows, under their full names.
   check('opening a file does not stop on explore 404',
     flow.detailText.includes('Plans and canvases') &&
     flow.detailText.includes('Distress Survey') &&
-    flow.detailText.includes('Floor plan — Ground') &&
+    flow.detailText.includes('Quick Capture') &&
+    flow.detailText.includes('Ground') &&
     flow.detailText.includes('Distress Survey photograph') &&
-    flow.detailText.includes('Quick Capture photo — porch.jpg') &&
+    flow.detailText.includes('porch.jpg') &&
     flow.detailText.includes('Unassigned photo') &&
+    flow.detailText.includes('Exterior overview') &&
+    flow.detailText.includes('File overview') &&
     flow.detailText.includes('Unassigned photo — Loose crack') &&
-    flow.detailText.includes('General photo — Exterior overview') &&
-    flow.detailText.includes('General photo — File overview') &&
-    flow.detailText.includes('Also listed in Unassigned photos.') &&
     !flow.detailText.includes('media/room-note') &&
     flow.detailText.includes('Floor Survey recovery PDF — Ground') &&
-    flow.detailText.includes('Diagnostics figure — Ground') &&
     !flow.detailText.includes('Distress or Quick Capture') &&
     /Not stored/.test(flow.detailText) &&
     flow.detailNoticeHidden,
     flow.detailNoticeText + ' ' + flow.detailText);
+  // Every photograph reaches the sheet even though the fallback route knows
+  // no content types. Tim, looking at the one-card-per-picture list this
+  // replaced: "how does this help anybody to look at one picture at a time?"
+  check('photographs reach the contact sheet without the server naming a type',
+    flow.untypedTiles >= 6 && flow.untypedRows === 0,
+    JSON.stringify({ tiles: flow.untypedTiles, rows: flow.untypedRows }));
   check('JSON from the cabinet component route opens as text', flow.preview.includes('plan-1'));
   check('fallback reads do not check out or write',
     flow.fetchLog.every((entry) => entry.method === 'GET') &&

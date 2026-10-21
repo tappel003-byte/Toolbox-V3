@@ -594,11 +594,42 @@
     return Array.from(new Set(ids));
   }
 
+  /**
+   * The pictures a report carries of its own.
+   *
+   * The cover's aerial view of the property, and anything inserted onto a
+   * sheet with the picture tool. They live on the Customer File like a plan
+   * or a Distress photograph, and the report that prints them holds nothing
+   * but their ids -- so a Cabinet copy without the bytes is a book of empty
+   * frames. Nothing listed them, so nothing uploaded them: the report
+   * component was the one component whose media list was empty.
+   */
+  function reportMediaIds(source) {
+    const doc = source && typeof source === 'object'
+      ? (source.reportBuilder || source.report || source)
+      : null;
+    if (!doc || typeof doc !== 'object') return [];
+    const ids = [];
+    const push = function (id) {
+      if (typeof id === 'string' && id) ids.push(id);
+    };
+    push(doc.coverLayout && doc.coverLayout.overviewMediaId);
+    const pages = Array.isArray(doc.pages) ? doc.pages : [];
+    pages.forEach(function (page) {
+      const meta = page && page.meta;
+      push(meta && meta.coverLayout && meta.coverLayout.overviewMediaId);
+      const overlays = meta && Array.isArray(meta.overlays) ? meta.overlays : [];
+      overlays.forEach(function (overlay) { push(overlay && overlay.mediaId); });
+    });
+    return Array.from(new Set(ids));
+  }
+
   function mediaIdsForComponent(record, name) {
     if (name === 'plans') return planMediaIds(record);
     if (name === 'distress') return distressPhotoIds(record);
     if (name === 'diagnostics') return diagnosticsFigureMediaIds(record);
     if (name === 'floor') return recoveryPdfIdsFromFloor(record && record.floorSurvey);
+    if (name === 'report') return reportMediaIds(record);
     return [];
   }
 
@@ -800,6 +831,7 @@
     }
     if (name === 'diagnostics') return diagnosticsFigureMediaIds(payload);
     if (name === 'floor') return recoveryPdfIdsFromFloor(payload);
+    if (name === 'report') return reportMediaIds(payload);
     return [];
   }
 
@@ -1295,6 +1327,31 @@
    * After Sync write-back / first upload: confirm the Cabinet still holds this
    * Customer File index and required media. Fail closed — keep local.
    */
+  /**
+   * Is every one of these in the Cabinet? Asked of all of them at once.
+   *
+   * This was a loop that waited for each answer before asking the next
+   * question: on a job with two hundred photographs, two hundred round trips
+   * end to end with nothing else happening, which is most of the time Check
+   * In spent "doing nothing". The question and the answer are unchanged, and
+   * it still fails closed -- the first one missing stops the whole check.
+   */
+  async function verifyMediaPresent(ids, label, failure) {
+    const list = (Array.isArray(ids) ? ids : []).filter(Boolean);
+    if (!list.length) return;
+    emitProgress({ stage: 'check', component: 'verify', label: label, done: 0, total: list.length });
+    let missing = '';
+    const checkOne = async function (mediaId) {
+      if (missing) return;
+      if (!(await remoteMediaExists(mediaId))) missing = mediaId;
+    };
+    checkOne.onDone = function (done, total) {
+      emitProgress({ stage: 'check', component: 'verify', label: label, done: done, total: total });
+    };
+    await runWithLimit(list, CHECKS_AT_ONCE, checkOne);
+    if (missing) throw new SyncError('incomplete', failure);
+  }
+
   async function verifyRemoteCabinetCopy(record) {
     if (!record || !record.id) {
       throw new SyncError('incomplete', 'Cannot verify Cabinet copy without a Customer File.');
@@ -1303,30 +1360,20 @@
     if (!remote || remote.id !== record.id) {
       throw new SyncError('incomplete', 'Cabinet verification failed: remote index missing.');
     }
-    const planIds = planMediaIds(record);
-    for (let i = 0; i < planIds.length; i++) {
-      if (!(await remoteMediaExists(planIds[i]))) {
-        throw new SyncError('incomplete', 'Cabinet verification failed: plan media missing remotely.');
-      }
-    }
-    const photoIds = distressPhotoIds(record);
-    for (let i = 0; i < photoIds.length; i++) {
-      if (!(await remoteMediaExists(photoIds[i]))) {
-        throw new SyncError('incomplete', 'Cabinet verification failed: Distress media missing remotely.');
-      }
-    }
-    const pdfIds = recoveryPdfIdsFromFloor(record.floorSurvey);
-    for (let i = 0; i < pdfIds.length; i++) {
-      if (!(await remoteMediaExists(pdfIds[i]))) {
-        throw new SyncError('incomplete', 'Cabinet verification failed: Floor Survey recovery PDF missing remotely.');
-      }
-    }
-    const figureIds = diagnosticsFigureMediaIds(record);
-    for (let i = 0; i < figureIds.length; i++) {
-      if (!(await remoteMediaExists(figureIds[i]))) {
-        throw new SyncError('incomplete', 'Cabinet verification failed: Diagnostics figure missing remotely.');
-      }
-    }
+    await verifyMediaPresent(planMediaIds(record), 'Checking plans',
+      'Cabinet verification failed: plan media missing remotely.');
+    await verifyMediaPresent(distressPhotoIds(record), 'Checking Distress photographs',
+      'Cabinet verification failed: Distress media missing remotely.');
+    await verifyMediaPresent(recoveryPdfIdsFromFloor(record.floorSurvey),
+      'Checking Floor Survey recovery',
+      'Cabinet verification failed: Floor Survey recovery PDF missing remotely.');
+    await verifyMediaPresent(diagnosticsFigureMediaIds(record), 'Checking Diagnostics figures',
+      'Cabinet verification failed: Diagnostics figure missing remotely.');
+    // Check In clears the working copy off this device, so the report's own
+    // pictures are checked with everything else first. Fail closed: a book
+    // whose cover photo did not reach the Cabinet stays on the phone.
+    await verifyMediaPresent(reportMediaIds(record), 'Checking report pictures',
+      'Cabinet verification failed: report picture missing remotely.');
     return remote;
   }
 
@@ -1352,96 +1399,29 @@
   }
 
   /**
-   * Place / clear working copy into the File Cabinet.
+   * Check In: put the work in the File Cabinet, give up the lease, clear this
+   * device.
    *
-   * - No remote: first-upload Sync, verify, local-only remove.
-   * - Same-id remote, no lease: reconcile via existing syncOneRecord LWW, verify, local-only remove.
-   * - Same-id remote, own lease (even without local checkedOutFromCabinet): Check In ceremony.
-   * - Same-id remote, foreign lease: refuse; keep local.
+   * There were two of these. Send to File Cabinet handled a file that had
+   * never been checked out, Check In handled one that had, and each refused
+   * the other's case -- so a file that was checked out was offered a Send
+   * button that could only say "use Check In", and Tim went round in circles
+   * on a real job: "I'm lost. I don't know exactly where I'm at."
    *
-   * Never cloud-deletes. Local removal only after successful verification.
-   */
-  async function sendToFileCabinet(id) {
-    if (!id) throw new SyncError('sync', 'Customer File id required.');
-    const record = await window.ToolboxDB.getCustomerFile(id);
-    if (!record || record.deletedAt) {
-      throw new SyncError('sync', 'Customer File is not available on this device.');
-    }
-    if (record.cabinetTrashRequestedAt) {
-      throw new SyncError('sync', 'This Customer File is waiting to move to File Cabinet Trash.');
-    }
-    if (isCheckedOutFromCabinet(record)) {
-      throw new SyncError('sync', 'This Customer File is checked out from the Cabinet. Use Check In.');
-    }
-    if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
-
-    let remote = await getRemoteIndex(id);
-    let synced = null;
-    let released = null;
-    let path = 'first-upload';
-
-    if (!remote) {
-      synced = await syncOneRecord(record, null);
-      if (synced && synced.checkoutBlocked) {
-        throw new SyncError('checkout', 'Could not write to the File Cabinet (checkout blocked).');
-      }
-      remote = await verifyRemoteCabinetCopy(record);
-    } else if (hasActiveCheckoutLease(remote)) {
-      let identity = null;
-      try {
-        identity = await fetchAccessIdentity();
-      } catch (_) {
-        identity = null;
-      }
-      const deviceId = getDeviceId();
-      if (!identity || !checkoutOwnerMatches(remote.checkout, identity.email, deviceId)) {
-        const err = new SyncError(
-          'checkout',
-          'This Customer File is checked out elsewhere and cannot be sent from this device.',
-        );
-        err.checkout = remote.checkout;
-        throw err;
-      }
-      // Own lease without local provenance — complete Check In safety ceremony.
-      path = 'own-lease';
-      synced = await syncOneRecord(record, remote);
-      if (synced && synced.checkoutBlocked) {
-        throw new SyncError('checkout', 'Could not write checked-out changes (ownership blocked).');
-      }
-      await verifyRemoteCabinetCopy(record);
-      const releaseResult = await releaseCheckoutAndVerify(id);
-      released = releaseResult.released;
-      remote = releaseResult.remote;
-    } else {
-      // Legacy already-synced: same id remote, no lease — reconcile then clear local.
-      path = 'reconcile-existing';
-      synced = await syncOneRecord(record, remote);
-      if (synced && synced.checkoutBlocked) {
-        throw new SyncError('checkout', 'Could not write to the File Cabinet (checkout blocked).');
-      }
-      remote = await verifyRemoteCabinetCopy(record);
-    }
-
-    await removeLocalWorkingCopyOnly(record);
-    const stillLocal = await window.ToolboxDB.getCustomerFile(id);
-    if (stillLocal) {
-      throw new SyncError('sync', 'Cabinet copy verified, but local working copy could not be cleared.');
-    }
-
-    return {
-      ok: true,
-      id: id,
-      action: 'send-to-file-cabinet',
-      path: path,
-      remote: remote,
-      released: released,
-      sync: synced,
-    };
-  }
-
-  /**
-   * Check In: Sync write-back, verify Cabinet copy, release lease, then remove
-   * local working copy only (cloud/cabinet copy remains).
+   * Tim settled both halves of it. First the rule: "Send the file should
+   * release everything so that someone else can work on it, period,
+   * regardless of where it was taken." Then the shape: "the only options we
+   * need are to check it out and to check it in. Period." Which leaves one
+   * action covering every local file:
+   *
+   *  - nothing in the Cabinet yet: upload it, then release the lease that
+   *    upload takes, so it is not filed and held at the same time;
+   *  - our own lease: write back, verify, release;
+   *  - no lease on a copy that is already there: write back, verify;
+   *  - somebody else's lease: refuse, and change nothing here.
+   *
+   * Nothing is released and nothing is removed from this device until the
+   * Cabinet copy has been verified complete.
    */
   async function checkInCustomerFile(id) {
     if (!id) throw new SyncError('sync', 'Customer File id required.');
@@ -1452,25 +1432,52 @@
     if (record.cabinetTrashRequestedAt) {
       throw new SyncError('sync', 'This Customer File is waiting to move to File Cabinet Trash.');
     }
-    if (!isCheckedOutFromCabinet(record)) {
-      throw new SyncError('sync', 'This Customer File is not a checked-out Cabinet file. Use Send to File Cabinet.');
-    }
     if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
 
     let remote = await getRemoteIndex(id);
-    if (!remote) {
-      throw new SyncError('incomplete', 'Checked-out Customer File is missing from the File Cabinet.');
+
+    // Somebody else is working on it. Say so and leave this device alone.
+    if (remote && hasActiveCheckoutLease(remote)) {
+      let identity = null;
+      try {
+        identity = await fetchAccessIdentity();
+      } catch (_) {
+        identity = null;
+      }
+      const deviceId = getDeviceId();
+      if (!identity) {
+        throw new SyncError('checkout',
+          'Toolbox could not confirm your sign-in, so it will not write over the Cabinet copy. ' +
+          'Reconnect and try Check In again. Nothing on this device has been changed.');
+      }
+      if (!checkoutOwnerMatches(remote.checkout, identity.email, deviceId)) {
+        const err = new SyncError('checkout',
+          'Another device holds the Check Out for this Customer File. Check it in from that ' +
+          'device, or Check Out again here first. Nothing on this device has been changed.');
+        err.checkout = remote.checkout;
+        throw err;
+      }
     }
 
+    const firstUpload = !remote;
     const synced = await syncOneRecord(record, remote);
     if (synced && synced.checkoutBlocked) {
-      throw new SyncError('checkout', 'Could not write checked-out changes (ownership blocked).');
+      throw new SyncError('checkout', synced.checkoutBlockedReason === 'identity'
+        ? 'Toolbox could not confirm your sign-in, so it will not write over the Cabinet copy. Reconnect and try Check In again. Nothing on this device has been changed.'
+        : 'Another device holds the Check Out for this Customer File. Check it in from that device, or Check Out again here first. Nothing on this device has been changed.');
     }
 
+    // Proof before anything is given up or thrown away.
     remote = await verifyRemoteCabinetCopy(record);
 
-    const releaseResult = await releaseCheckoutAndVerify(id);
-    remote = releaseResult.remote;
+    // Putting work into the Cabinet takes the lease on it, so a first upload
+    // arrives holding one. Filed means available, so it goes back.
+    let released = null;
+    if (hasActiveCheckoutLease(remote)) {
+      const releaseResult = await releaseCheckoutAndVerify(id);
+      released = releaseResult.released;
+      remote = releaseResult.remote;
+    }
 
     await removeLocalWorkingCopyOnly(record);
     const stillLocal = await window.ToolboxDB.getCustomerFile(id);
@@ -1482,10 +1489,19 @@
       ok: true,
       id: id,
       action: 'check-in',
+      path: firstUpload ? 'first-upload' : 'reconcile-existing',
       remote: remote,
-      released: releaseResult.released,
+      released: released,
       sync: synced,
     };
+  }
+
+  /**
+   * The old name for the same thing, kept so nothing that still calls it
+   * breaks. There is one action now, and it is Check In.
+   */
+  async function sendToFileCabinet(id) {
+    return checkInCustomerFile(id);
   }
 
   /**
@@ -1590,22 +1606,81 @@
     return !!data.exists;
   }
 
+  /**
+   * The same saving on the way up.
+   *
+   * dataUrlToBytes decodes the photograph into a string and then copies it
+   * byte by byte into an array -- the same several-times-over cost as the
+   * download had, paid on a phone after a day of shooting. The browser can
+   * decode a data URL into a Blob in its own code, so it does.
+   */
+  async function dataUrlToBlob(dataUrl) {
+    if (typeof fetch !== 'function' || typeof Blob !== 'function') return null;
+    try {
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      return blob && blob.size ? blob : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   async function putRemoteMedia(mediaId, dataUrl) {
-    const packed = dataUrlToBytes(dataUrl);
-    if (!packed) throw new SyncError('sync', 'Unsupported media format for ' + mediaId);
+    const head = typeof dataUrl === 'string'
+      ? /^data:([^;,]+)?(;base64)?,/.exec(dataUrl) : null;
+    const blob = head ? await dataUrlToBlob(dataUrl) : null;
+    const body = blob || (function () {
+      const packed = dataUrlToBytes(dataUrl);
+      if (!packed) throw new SyncError('sync', 'Unsupported media format for ' + mediaId);
+      return packed;
+    })();
+    const contentType = blob
+      ? (blob.type || (head && head[1]) || 'application/octet-stream')
+      : body.contentType;
     await apiFetch('/media/' + encodeURIComponent(mediaId), {
       method: 'PUT',
       headers: {
-        'content-type': packed.contentType,
+        'content-type': contentType,
         'x-toolbox-encoding': 'raw',
       },
-      body: packed.bytes,
+      body: blob || body.bytes,
+    });
+  }
+
+  /**
+   * Turn a response into a data URL without building the photograph twice in
+   * script memory.
+   *
+   * The hand-written conversion below it reads the whole photograph into an
+   * array, builds a second copy of it as a string -- two bytes of memory for
+   * every byte of photograph, assembled in pieces -- and then base64s that
+   * into a third copy a third larger again. A 4 MB photograph costs something
+   * like 25 MB while it is being converted, and a Customer File with a couple
+   * of hundred Quick Captures put Tim's desktop browser on the floor: "Aw,
+   * Snap! Out of Memory."
+   *
+   * The browser can do the same job in its own code, from a Blob it already
+   * holds, without any of those copies. That is all this does.
+   */
+  function blobToDataUrl(blob) {
+    return new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onload = function () { resolve(String(reader.result || '')); };
+      reader.onerror = function () { reject(reader.error || new Error('media read failed')); };
+      reader.readAsDataURL(blob);
     });
   }
 
   async function getRemoteMediaDataUrl(mediaId) {
     const response = await apiFetch('/media/' + encodeURIComponent(mediaId));
     const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    if (typeof FileReader === 'function' && typeof response.blob === 'function') {
+      const blob = await response.blob();
+      // The stored type wins when the response did not carry one, so a
+      // photograph does not come back as a nameless stream of bytes.
+      const typed = blob.type ? blob : new Blob([blob], { type: contentType });
+      return blobToDataUrl(typed);
+    }
     const buffer = await response.arrayBuffer();
     return bytesToDataUrl(buffer, contentType);
   }
@@ -1623,6 +1698,89 @@
     await putRemoteMedia(mediaId, asDataUrl);
   }
 
+  /**
+   * What a long operation is doing, while it does it.
+   *
+   * Check In and Check Out move every photograph on the job, one component
+   * at a time, and said nothing at all until they finished or failed. Tim,
+   * waiting on one: "there's no way to know that you're waiting on nothing to
+   * happen." A listener is attached for the length of one operation and told
+   * where it has got to.
+   */
+  var progressListeners = [];
+
+  function onSyncProgress(fn) {
+    if (typeof fn !== 'function') return function () {};
+    progressListeners.push(fn);
+    return function () {
+      progressListeners = progressListeners.filter(function (item) { return item !== fn; });
+    };
+  }
+
+  function emitProgress(info) {
+    if (!progressListeners.length) return;
+    progressListeners.slice().forEach(function (fn) {
+      try { fn(info); } catch (_) { /* a listener must not break a sync */ }
+    });
+  }
+
+  /** What a component is called when it is being reported on. */
+  var COMPONENT_LABELS = {
+    customer: 'customer details',
+    plans: 'plans',
+    distress: 'Distress photographs',
+    floor: 'Floor Survey',
+    diagnostics: 'Diagnostics',
+    report: 'report pictures',
+    trash: 'trash record',
+  };
+
+  /**
+   * Run a handful at a time, in order, with a fixed number in flight.
+   *
+   * One photograph at a time meant one round trip at a time: on a connection
+   * that could carry the whole job in seconds, two hundred pictures is two
+   * hundred waits with the line idle in between. A few at once fills it. The
+   * limit stays small on purpose -- each one in flight is a photograph held
+   * in memory, and memory is what put a desktop on the floor.
+   */
+  async function runWithLimit(items, limit, worker) {
+    const list = Array.isArray(items) ? items : [];
+    if (!list.length) return;
+    const width = Math.max(1, Math.min(limit || 1, list.length));
+    let next = 0;
+    let done = 0;
+    const runners = [];
+    for (let i = 0; i < width; i += 1) {
+      runners.push((async function () {
+        for (;;) {
+          const at = next;
+          next += 1;
+          if (at >= list.length) return;
+          await worker(list[at], at);
+          done += 1;
+          if (typeof worker.onDone === 'function') worker.onDone(done, list.length);
+        }
+      })());
+    }
+    await Promise.all(runners);
+  }
+
+  // How many photographs are in flight at once.
+  //
+  // One at a time meant one round trip at a time, and a round trip is mostly
+  // waiting. Tim: "my download is 345 and up is 51 ... now takes forever,
+  // that doesn't make sense to me." It does not: the line is idle between
+  // pictures, so the speed of the line barely matters. Eight fills it without
+  // holding much -- a Distress photograph is a few hundred kilobytes after
+  // the survey downsizes it, so eight in flight is a handful of megabytes,
+  // well clear of what put a desktop on the floor.
+  var MEDIA_AT_ONCE = 8;
+
+  /** Asking whether the Cabinet has something carries no photograph with it,
+   *  so more of those can be in the air at once. */
+  var CHECKS_AT_ONCE = 16;
+
   async function ensureLocalMedia(mediaId, kind) {
     const existing = await getLocalMedia(mediaId, kind);
     if (existing != null && existing !== '') return;
@@ -1634,9 +1792,15 @@
     const payload = extractComponent(record, name);
     const mediaIds = mediaIdsForComponent(record, name);
     const kind = name === 'distress' ? 'distress' : 'plans';
-    for (let i = 0; i < mediaIds.length; i++) {
-      await ensureRemoteMedia(mediaIds[i], kind === 'distress' ? 'distress' : 'plan');
-    }
+    const label = COMPONENT_LABELS[name] || name;
+    if (mediaIds.length) emitProgress({ stage: 'up', component: name, label: label, done: 0, total: mediaIds.length });
+    const pushOne = async function (mediaId) {
+      await ensureRemoteMedia(mediaId, kind === 'distress' ? 'distress' : 'plan');
+    };
+    pushOne.onDone = function (done, total) {
+      emitProgress({ stage: 'up', component: name, label: label, done: done, total: total });
+    };
+    await runWithLimit(mediaIds, MEDIA_AT_ONCE, pushOne);
     await putRemoteComponent(record.id, name, payload);
   }
 
@@ -1646,9 +1810,15 @@
     // Required media must be local before the component becomes authoritative.
     const mediaIds = mediaIdsFromPayload(payload, name);
     const kind = name === 'distress' ? 'distress' : 'plan';
-    for (let i = 0; i < mediaIds.length; i++) {
-      await ensureLocalMedia(mediaIds[i], kind === 'distress' ? 'distress' : 'plan');
-    }
+    const label = COMPONENT_LABELS[name] || name;
+    if (mediaIds.length) emitProgress({ stage: 'down', component: name, label: label, done: 0, total: mediaIds.length });
+    const pullOne = async function (mediaId) {
+      await ensureLocalMedia(mediaId, kind === 'distress' ? 'distress' : 'plan');
+    };
+    pullOne.onDone = function (done, total) {
+      emitProgress({ stage: 'down', component: name, label: label, done: done, total: total });
+    };
+    await runWithLimit(mediaIds, MEDIA_AT_ONCE, pullOne);
     applyComponent(record, name, payload);
     return { pulled: true, mediaOk: true };
   }
@@ -1712,6 +1882,12 @@
     // only the owning user+device may push. Local data is preserved.
     let mayPush = !options.materializeOnly;
     let checkoutBlocked = false;
+    // Why it was blocked, because the two reasons need different words and
+    // different actions. A phone whose sign-in has lapsed cannot be told
+    // apart from a file somebody else holds unless this is carried out:
+    // both end up here, and "ownership blocked" sent the investigator
+    // looking for a device that does not have his file.
+    let checkoutBlockedReason = '';
     if (mayPush && remote && remote.checkout && trimStr(remote.checkout.deviceId) &&
         normalizeEmail(remote.checkout.email) && !options.bypassCheckoutPushGate) {
       let identity = null;
@@ -1721,9 +1897,14 @@
         identity = null;
       }
       const deviceId = getDeviceId();
-      if (!identity || !checkoutOwnerMatches(remote.checkout, identity.email, deviceId)) {
+      if (!identity) {
         mayPush = false;
         checkoutBlocked = true;
+        checkoutBlockedReason = 'identity';
+      } else if (!checkoutOwnerMatches(remote.checkout, identity.email, deviceId)) {
+        mayPush = false;
+        checkoutBlocked = true;
+        checkoutBlockedReason = 'other-device';
       }
     }
 
@@ -1752,6 +1933,7 @@
         preserved: true,
         components: componentResults,
         checkoutBlocked: true,
+        checkoutBlockedReason: checkoutBlockedReason,
         uploadBlocked: uploadBlocked,
       };
     }
@@ -2448,16 +2630,22 @@
       }
       payloads[name] = read.payload;
     }
+    // Which of the job's pictures are actually in the Cabinet. Asked of all
+    // of them at once: one question at a time meant a folder of two hundred
+    // photographs took two hundred round trips before it would open.
     const mediaRefs = exploreMediaRefs(payloads, notes);
-    for (let i = 0; i < mediaRefs.length; i++) {
-      const ref = mediaRefs[i];
+    const rows = new Array(mediaRefs.length);
+    await runWithLimit(mediaRefs, CHECKS_AT_ONCE, async function (ref, at) {
       const key = 'media/' + ref.id;
       const exists = await remoteMediaExists(ref.id);
       const row = exists ? { key: key } : { key: key, missing: true };
       row.purpose = ref.purpose;
       row.label = ref.label;
       if (ref.also && ref.also.length) row.also = ref.also.slice();
-      objects.push(row);
+      rows[at] = row;
+    });
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i]) objects.push(rows[i]);
     }
     objects.sort(compareKeys);
     const body = {
@@ -2988,6 +3176,7 @@
     mediaIdsForComponent: mediaIdsForComponent,
     planMediaIds: planMediaIds,
     distressPhotoIds: distressPhotoIds,
+    reportMediaIds: reportMediaIds,
     SyncError: SyncError,
     syncNow: function (options) {
       return enqueueSyncWork(function () { return syncNow(options); });
@@ -3004,6 +3193,7 @@
     checkOutCustomerFile: function (id) {
       return enqueueSyncWork(function () { return checkOutCustomerFile(id); });
     },
+    onSyncProgress: onSyncProgress,
     sendToFileCabinet: function (id) {
       return enqueueSyncWork(function () { return sendToFileCabinet(id); });
     },
@@ -3042,6 +3232,9 @@
       newerIso: newerIso,
       dataUrlToBytes: dataUrlToBytes,
       bytesToDataUrl: bytesToDataUrl,
+      putRemoteMedia: putRemoteMedia,
+      getRemoteMediaDataUrl: getRemoteMediaDataUrl,
+      putLocalMedia: putLocalMedia,
       shellForRemotePull: shellForRemotePull,
       decideComponentAction: decideComponentAction,
       compareInventories: compareInventories,

@@ -46,7 +46,7 @@ check(
   topoSrc.includes('export function areaLegendAnchor') &&
     topoSrc.includes('function areaLegendBox') &&
     topoSrc.includes('Every visible contour surface gets its own legend') &&
-    topoSrc.includes('areaLegendBox(at.area, resolved, live)') &&
+    topoSrc.includes('areaLegendBox(at.area, resolved, floor,') &&
     !topoSrc.includes('showLegend && soloGrid') &&
     !topoSrc.includes('Shared color legend is suppressed') &&
     !topoSrc.includes('sharedLegend'),
@@ -382,7 +382,7 @@ check(
 );
 check(
   'Floating chip reports the survey high, low, and delta',
-  chip.text.includes('4.60') && chip.text.includes('1.00') && chip.text.includes('3.60'),
+  chip.text.includes('4.6') && chip.text.includes('1.0') && chip.text.includes('3.6'),
   chip.text,
 );
 
@@ -437,8 +437,8 @@ check(
   solo.legendVisible === true &&
     soloChip.present &&
     soloChip.visible &&
-    soloChip.text.includes('2.10') &&
-    soloChip.text.includes('1.00'),
+    soloChip.text.includes('2.1') &&
+    soloChip.text.includes('1.0'),
   JSON.stringify({ legend: solo.ratio, chip: soloChip.text }),
 );
 
@@ -652,9 +652,9 @@ check(
     oneLevel.statsText.includes('H') &&
     oneLevel.statsText.includes('L') &&
     oneLevel.statsText.includes('Δ') &&
-    oneLevel.statsText.includes('3.10') &&
-    oneLevel.statsText.includes('0.60') &&
-    oneLevel.statsText.includes('2.50'),
+    oneLevel.statsText.includes('3.1') &&
+    oneLevel.statsText.includes('0.6') &&
+    oneLevel.statsText.includes('2.5'),
   oneLevel.statsText,
 );
 
@@ -754,30 +754,14 @@ await page.evaluate(() => {
 });
 await page.click('[aria-label="Labels & layers"]');
 await new Promise((r) => setTimeout(r, 300));
-const lockedUi = await page.evaluate(() => {
+// The size set is the size kept, and there is no Auto to fall back to. Tim:
+// "I don't think I'll ever use that setting because it's always wrong -- you
+// just adjust it to the size that you want and it stays that size." The link
+// that used to sit under this stepper said "Use Auto size for this screen"
+// and by then only reset the size to a fixed 32, on any screen.
+const sizedUi = await page.evaluate(() => {
   const autoBtn = [...document.querySelectorAll('button')].find((b) =>
-    /Use Auto size for this screen/i.test(b.textContent || ''),
-  );
-  const output = document.querySelector('[aria-label^="Stats pill size:"]');
-  return {
-    hasAuto: !!autoBtn,
-    label: output ? (output.getAttribute('aria-label') || output.textContent || '') : '',
-  };
-});
-check(
-  'Locked stats pill size offers Use Auto for this screen',
-  lockedUi.hasAuto && /44px/.test(lockedUi.label),
-  JSON.stringify(lockedUi),
-);
-await page.evaluate(() => {
-  [...document.querySelectorAll('button')]
-    .find((b) => /Use Auto size for this screen/i.test(b.textContent || ''))
-    ?.click();
-});
-await new Promise((r) => setTimeout(r, 200));
-const afterAuto = await page.evaluate(() => {
-  const autoBtn = [...document.querySelectorAll('button')].find((b) =>
-    /Use Auto size for this screen/i.test(b.textContent || ''),
+    /Use Auto size/i.test(b.textContent || ''),
   );
   const output = document.querySelector('[aria-label^="Stats pill size:"]');
   const chip = document.querySelector('[aria-label="Elevation stats — drag to move"]');
@@ -789,10 +773,89 @@ const afterAuto = await page.evaluate(() => {
   };
 });
 check(
-  'Use Auto clears the locked stats pill size on desktop',
-  !afterAuto.hasAuto && /Auto/i.test(afterAuto.label) && afterAuto.stored == null && afterAuto.chipHeight <= 40,
-  JSON.stringify(afterAuto),
+  'the stats pill is the size it was set to, with no Auto to undo it',
+  !sizedUi.hasAuto && /44px/.test(sizedUi.label) && !/Auto/i.test(sizedUi.label) &&
+    sizedUi.chipHeight === 44 && sizedUi.stored === '44',
+  JSON.stringify(sizedUi),
 );
+
+// And the stepper goes as small and as large as he wants it. Tim, with the
+// minus greyed out at the old floor of 20: "I do not need to be limited to
+// change the pill size to the size that I want." A dense plan wants a smaller
+// pill than a sparse one, so the ends are wide and the choice is his.
+const pressSize = async (which, times) => {
+  for (let i = 0; i < times; i += 1) {
+    await page.evaluate((aria) => document.querySelector(`[aria-label="${aria}"]`)?.click(), which);
+    await new Promise((r) => setTimeout(r, 60));
+  }
+};
+const sizeNow = () => page.evaluate(() => ({
+  shown: document.querySelector('[aria-label^="Stats pill size:"]')?.textContent.trim(),
+  stored: localStorage.getItem('stats-chip-size'),
+}));
+await pressSize('Decrease Stats pill size', 30);
+const smallest = await sizeNow();
+await pressSize('Increase Stats pill size', 90);
+const largest = await sizeNow();
+check(
+  'the pill size is not held at the old floor of 20 or ceiling of 56',
+  smallest.shown === '8px' && smallest.stored === '8' &&
+    largest.shown === '120px' && largest.stored === '120',
+  JSON.stringify({ smallest, largest }),
+);
+// One size setting, every pill. The floating chip used to hold its type at
+// 9px and its padding at 4px however small the pill was set, so a level set
+// small showed pills on the plan that had shrunk and a chip that had not.
+// Tim: "the sizing did not apply to all three pills in this scenario."
+await page.evaluate(() => {
+  localStorage.setItem('stats-chip-size', '14');
+  window.dispatchEvent(new CustomEvent('stats-chip-size-change', { detail: 14 }));
+});
+await new Promise((r) => setTimeout(r, 300));
+const smallChip = await page.evaluate(() => {
+  const el = document.querySelector('[aria-label="Elevation stats — drag to move"]');
+  if (!el) return null;
+  const seg = el.children[el.children.length - 1];
+  return {
+    height: Math.round(el.getBoundingClientRect().height),
+    font: Math.round(parseFloat(getComputedStyle(seg).fontSize)),
+    pad: Math.round(parseFloat(getComputedStyle(seg).paddingLeft)),
+  };
+});
+check(
+  'the floating chip shrinks with the size, as the drawn pills do',
+  !!smallChip && smallChip.height === 14 && smallChip.font === 6 && smallChip.pad === 2,
+  JSON.stringify(smallChip),
+);
+
+// A tap on a reading does nothing. It used to highlight the High or the Low
+// point on the plan. Tim: "if you click the numbers on the high low pills it
+// highlights the high or the low on the top -- I don't think I want that."
+const planPixels = () => page.evaluate(() =>
+  [...document.querySelectorAll('canvas')].map((c) => c.toDataURL()).join('|').length +
+  ':' + [...document.querySelectorAll('canvas')].map((c) => c.toDataURL().slice(-40)).join('|'));
+const beforeTap = await planPixels();
+const tapTarget = await page.evaluate(() => {
+  const el = document.querySelector('[aria-label="Elevation stats — drag to move"]');
+  const seg = [...el.children].find((n) => /^H/.test(n.textContent.trim()));
+  const r = seg.getBoundingClientRect();
+  return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+});
+await page.mouse.click(tapTarget.x, tapTarget.y);
+await new Promise((r) => setTimeout(r, 700));
+const afterTap = await planPixels();
+check(
+  'tapping the High reading leaves the plan exactly as it was',
+  beforeTap === afterTap,
+  JSON.stringify({ same: beforeTap === afterTap }),
+);
+
+// Back to the size the rest of this suite was written against.
+await page.evaluate(() => {
+  localStorage.setItem('stats-chip-size', '44');
+  window.dispatchEvent(new CustomEvent('stats-chip-size-change', { detail: 44 }));
+});
+await new Promise((r) => setTimeout(r, 200));
 await page.evaluate(() => {
   const label = [...document.querySelectorAll('label')].find((n) => (n.textContent || '').trim() === 'Legend');
   label?.parentElement?.querySelector('[role="switch"]')?.click();
@@ -833,7 +896,7 @@ await page.screenshot({ path: path.join(OUT, 'topo-one-level-phone.png') });
 check(
   'Phone: one level, one boundary keeps legend and H/L/Δ clear of Data/Topo',
   phoneOne.statsVisible &&
-    phoneOne.statsText.includes('3.10') &&
+    phoneOne.statsText.includes('3.1') &&
     phoneOneLegend.legendVisible === true &&
     !phoneOne.hasFloorSelector &&
     !phoneOne.hasAllBoundaries &&
@@ -850,7 +913,7 @@ await page.screenshot({ path: path.join(OUT, 'topo-one-level-ipad.png') });
 check(
   'iPad: one level, one boundary keeps legend and H/L/Δ clear of Data/Topo',
   ipadOne.statsVisible &&
-    ipadOne.statsText.includes('Δ2.50') &&
+    ipadOne.statsText.includes('Δ2.5') &&
     ipadOneLegend.legendVisible === true &&
     !ipadOne.hasAllBoundaries &&
     ipadClear.overlaps === false,
@@ -886,8 +949,8 @@ check(
     !basement.hasAllBoundaries &&
     basement.hasFloorSelector &&
     basement.statsVisible &&
-    basement.statsText.includes('3.10') &&
-    basement.statsText.includes('0.60') &&
+    basement.statsText.includes('3.1') &&
+    basement.statsText.includes('0.6') &&
     basementLegend.legendVisible === true,
   basement.text.slice(0, 160) + ' ' + basement.statsText,
 );

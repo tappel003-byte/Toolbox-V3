@@ -1,3 +1,4 @@
+import { readingText } from "@/lib/reading";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Delete, Check, X, Repeat2, Trash2, ArrowLeftRight, Undo2 } from "lucide-react";
@@ -238,7 +239,7 @@ export function NumericKeypad({
                     onClick={repeatLast}
                     className="flex-1 h-11 landscape-short:h-9 rounded-lg border border-dashed border-primary/40 bg-primary/5 text-primary text-sm font-medium flex items-center justify-center gap-1.5 active:scale-[0.99]"
                   >
-                    <Repeat2 className="h-4 w-4" /> Repeat ({repeatValue!.toFixed(2)})
+                    <Repeat2 className="h-4 w-4" /> Repeat ({readingText(repeatValue!)})
                   </button>
                 )}
               </div>

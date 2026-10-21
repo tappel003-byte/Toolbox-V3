@@ -1,11 +1,11 @@
+import { readingText } from "@/lib/reading";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PlanCanvas, type PlanCamera } from "../PlanCanvas";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import {
-  autoStatsChipSize,
-  clearStatsChipSize,
+  DEFAULT_STATS_CHIP_SIZE,
   getStatsChipSize,
   setStatsChipSize,
   STATS_CHIP_MAX,
@@ -13,6 +13,7 @@ import {
   STATS_CHIP_SIZE_EVENT,
 } from "@/components/chrome/StatsChip";
 import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/lib/screen-size";
+import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Undo2, X, Waves, Palette, Tag, SlidersHorizontal, Minus, Plus } from "lucide-react";
@@ -118,7 +119,6 @@ interface Props {
   onFloorChange: (floor: Floor) => void;
   settings: RenderSettings;
   onSettingsChange: (s: RenderSettings) => void;
-  selectedIds?: Set<string>;
   pointSize?: number;
   pointColor?: string;
   excludedIds?: Set<string>;
@@ -149,12 +149,12 @@ interface Props {
     lo: number;
     delta: number;
     decimalPlaces: number;
+    /** The colour scale's bands, low to high, for a page that draws its own. */
+    bands?: string[];
   }>) => void;
   /** null = "All areas". Owned by the route so the stats pills stay in sync. */
   selectedAreaId?: string | null;
   onSelectedAreaIdChange?: (id: string | null) => void;
-  /** Tap H or L on an area's stats pill to highlight that point. */
-  onHighlight?: (p: SurveyPoint) => void;
   /** Report Builder hosts this same view on a slide. It needs to read the view
    *  the investigator sets, and to put a locked one back. */
   onCamera?: (camera: PlanCamera) => void;
@@ -162,6 +162,19 @@ interface Props {
   /** Report Builder draws its own colour scale, pill and High/Low markers as
    *  placed boxes, so the drawing carries none of them. */
   hideCanvasChrome?: boolean;
+  /**
+   * The colour scale and the H/L/delta readings are drawn ON THE PAGE, as one
+   * piece the investigator places, so this drawing leaves them off.
+   *
+   * Unlike `hideCanvasChrome` this does not touch the settings: it only skips
+   * drawing those two. The settings matter because every control in the
+   * slide's panel writes the resolved object straight back to the Customer
+   * File, so forcing a flag to false there is how a report once came back
+   * with its chrome switched off by nobody. The High and Low markers stay on
+   * the drawing: they point at a spot on the floor, so they belong to the
+   * picture and travel with it.
+   */
+  chromeOnPage?: boolean;
   /**
    * This view is a picture on a page, not a workspace on a screen.
    *
@@ -354,8 +367,8 @@ type PillSeg = { kind: "label" | "hi" | "lo" | "delta"; text: string; w: number 
 
 /** Segment layout + typography for one pill, in image coords. */
 function pillMetrics(h: number, label: string | null, hi: number, lo: number, dec: number) {
-  const font = Math.max(4, h * 0.42);
-  const pad = Math.max(2, h * 0.22);
+  const font = statsPillFont(h);
+  const pad = statsPillPad(h);
   const seg = (kind: PillSeg["kind"], text: string): PillSeg => ({
     kind,
     text,
@@ -363,9 +376,9 @@ function pillMetrics(h: number, label: string | null, hi: number, lo: number, de
   });
   const segs: PillSeg[] = [];
   if (label) segs.push(seg("label", label));
-  segs.push(seg("hi", `H ${hi.toFixed(dec)}`));
-  segs.push(seg("lo", `L ${lo.toFixed(dec)}`));
-  segs.push(seg("delta", `\u0394${(hi - lo).toFixed(dec)}`));
+  segs.push(seg("hi", statsPillText("H", hi.toFixed(dec))));
+  segs.push(seg("lo", statsPillText("L", lo.toFixed(dec))));
+  segs.push(seg("delta", statsPillText("\u0394", (hi - lo).toFixed(dec))));
   const total = segs.reduce((s, x) => s + x.w, 0);
   return { font, pad, h, segs, total };
 }
@@ -406,17 +419,16 @@ export function TopoTab({
   onFloorChange,
   settings,
   onSettingsChange,
-  selectedIds,
   pointSize = 6,
   pointColor = "#dc2626",
   excludedIds: excludedIdsProp,
   onExcludedIdsChange,
   selectedAreaId = null,
   onSelectedAreaIdChange,
-  onHighlight,
   onCamera,
   cameraRequest,
   hideCanvasChrome = false,
+  chromeOnPage = false,
   presentation = false,
   settingsOwnedByHost = false,
   statsPillForSingleBoundary = false,
@@ -428,34 +440,29 @@ export function TopoTab({
   resizeCorners = false,
   allowContourLayer = false,
 }: Props) {
-  const selectedId =
-    selectedIds && selectedIds.size > 0 ? (selectedIds.values().next().value ?? null) : null;
   const [openCorner, setOpenCorner] = useState<null | "contours" | "palette" | "labels">(null);
+  /** Which tab the rail shows. Report Builder only; the field screen opens one corner panel at a time. */
+  const [ctrlTab, setCtrlTab] = useState<"contours" | "labels" | "layers">("contours");
   const [warningDismissed, setWarningDismissed] = useState(false);
   // "Send to Distress Survey" — idle while nothing has been asked for.
   const [layerState, setLayerState] = useState<"idle" | "working" | "done" | "failed">("idle");
   const [layerMessage, setLayerMessage] = useState("");
-  // Stats pill (High/Low/Δ chip) size — Auto by viewport, or a locked local size.
+  // Stats pill (High/Low/Δ chip) size: the last size set on this device, used
+  // by every job on it. Nothing watches the window any more -- the size does
+  // not depend on the screen, so a resize cannot change it.
   const [statsChipLocked, setStatsChipLocked] = useState<number | null>(null);
-  const [statsChipAuto, setStatsChipAuto] = useState(28);
   useEffect(() => {
     setStatsChipLocked(getStatsChipSize());
-    setStatsChipAuto(autoStatsChipSize());
-    const onResize = () => setStatsChipAuto(autoStatsChipSize());
     const onSize = (e: Event) => {
       const detail = (e as CustomEvent<number | null>).detail;
       setStatsChipLocked(typeof detail === "number" ? detail : null);
     };
-    window.addEventListener("resize", onResize);
-    window.addEventListener("orientationchange", onResize);
     window.addEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     return () => {
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("orientationchange", onResize);
       window.removeEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     };
   }, []);
-  const statsChipSize = statsChipLocked ?? statsChipAuto;
+  const statsChipSize = statsChipLocked ?? DEFAULT_STATS_CHIP_SIZE;
   const [legendDrag, setLegendDrag] = useState<{
     areaId: string;
     /** Pointer offset inside the legend box. */
@@ -577,8 +584,6 @@ export function TopoTab({
     active: boolean; // true after long-press fires
   } | null>(null);
   const longPressTimer = useRef<number | null>(null);
-  // Point to highlight if the current pill press ends as a tap (no drag).
-  const pillTapRef = useRef<SurveyPoint | null>(null);
   type LastMove =
     | { kind: "label"; id: string; prevDx: number | undefined; prevDy: number | undefined }
     | { kind: "pin-high" | "pin-low"; prevDx: number | undefined; prevDy: number | undefined }
@@ -631,6 +636,12 @@ export function TopoTab({
   onStatsRef.current = onStats;
   useEffect(() => {
     if (!onStatsRef.current) return;
+    // The bands are this drawing's own palette, sampled low to high, so a
+    // colour scale drawn on the page cannot disagree with the fill under it.
+    const bands: string[] = [];
+    for (let i = 0; i < 12; i += 1) {
+      bands.push(paletteColor(i / 11, resolved.palette, !!resolved.reversePalette));
+    }
     onStatsRef.current(
       areaTopos.map((at) => ({
         areaId: at.area.id,
@@ -639,9 +650,10 @@ export function TopoTab({
         lo: at.lo.value,
         delta: at.hi.value - at.lo.value,
         decimalPlaces: resolved.decimalPlaces ?? 2,
+        bands: bands.slice(),
       })),
     );
-  }, [areaTopos, resolved.decimalPlaces]);
+  }, [areaTopos, resolved.decimalPlaces, resolved.palette, resolved.reversePalette]);
 
   const canRender = areaTopos.length > 0;
   // Single-surface view (focused area, or only one area exists).
@@ -657,7 +669,8 @@ export function TopoTab({
   // Whether the canvas carries the H / L / delta pill. One definition, used by
   // both the drawing and the hit test: when those two disagreed about where a
   // piece of chrome was, it drew in one place and could be grabbed in another.
-  const canvasStatsPill = statsPillOnCanvas(resolved, areaTopos.length, statsPillForSingleBoundary);
+  const canvasStatsPill = !chromeOnPage &&
+    statsPillOnCanvas(resolved, areaTopos.length, statsPillForSingleBoundary);
 
 
 
@@ -665,7 +678,7 @@ export function TopoTab({
   type Hit =
     | { kind: "label"; point: SurveyPoint }
     | { kind: "pin-high" | "pin-low"; point: SurveyPoint; dx: number; dy: number }
-    | { kind: "pill"; areaId: string; dx: number; dy: number; tapPoint: SurveyPoint | null };
+    | { kind: "pill"; areaId: string; dx: number; dy: number };
 
   function hitDraggable(x: number, y: number): Hit | null {
     if (canvasStatsPill) {
@@ -679,22 +692,11 @@ export function TopoTab({
         const x0 = cx - m.total / 2;
         const y0 = cy - h / 2;
         if (x < x0 || x > x0 + m.total || y < y0 || y > y0 + h) continue;
-        let sx = x0;
-        let tapPoint: SurveyPoint | null = null;
-        for (const s of m.segs) {
-          if (x >= sx && x <= sx + s.w) {
-            if (s.kind === "hi") tapPoint = at.hi;
-            else if (s.kind === "lo") tapPoint = at.lo;
-            break;
-          }
-          sx += s.w;
-        }
         return {
           kind: "pill",
           areaId: at.area.id,
           dx: at.area.pillDx ?? 0,
           dy: at.area.pillDy ?? 0,
-          tapPoint,
         };
       }
     }
@@ -1027,12 +1029,18 @@ export function TopoTab({
           frozen={locked}
           resizeCorners={resizeCorners && !locked}
           refitOnResize={false}
+          // A slide's drawing is a picture on paper: when the frame changes
+          // size -- the window, one view becoming two, screen to printed
+          // sheet -- it shows the same view in the new frame rather than
+          // keeping pixels measured against the old one.
+          reframeOnResize={presentation}
           onTransform={(t) => setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s))}
           onImagePointerDown={(x, y) => {
             // Legend tap: start drag only. Size is edited in Labels & layers.
             // Every visible contour surface gets its own legend next to that
             // boundary — All boundaries, Main Floor alone, or Lower Bedroom alone.
-            if (resolved.showLegend && areaTopos.length > 0 && resolved.mode !== "points-only") {
+            if (resolved.showLegend && !chromeOnPage && areaTopos.length > 0 &&
+                resolved.mode !== "points-only") {
               for (let i = areaTopos.length - 1; i >= 0; i--) {
                 const at = areaTopos[i];
                 const box = areaLegendBox(at.area, resolved, floor, null, {
@@ -1061,7 +1069,6 @@ export function TopoTab({
                 hit.kind === "label" ? (hit.point.labelDx ?? DEFAULT_LABEL_DX) : hit.dx;
               const startDy =
                 hit.kind === "label" ? (hit.point.labelDy ?? DEFAULT_LABEL_DY) : hit.dy;
-              pillTapRef.current = hit.kind === "pill" ? hit.tapPoint : null;
               const immediate = hit.kind === "pill";
               setDrag({
                 kind: hit.kind,
@@ -1130,12 +1137,13 @@ export function TopoTab({
                 if (drag.kind === "label") commitLabelMove(drag.id, drag.dx, drag.dy);
                 else if (drag.kind === "pill") commitPillMove(drag.id, drag.dx, drag.dy);
                 else commitPinMove(drag.kind, drag.dx, drag.dy);
-              } else if (drag.kind === "pill" && !moved && pillTapRef.current) {
-                // Quick tap on the pill's H or L segment highlights that point.
-                onHighlight?.(pillTapRef.current);
               }
+              // A tap on the pill does nothing. It used to highlight the High
+              // or the Low point whose reading was under the finger. Tim: "if
+              // you click the numbers on the high low pills it highlights the
+              // high or the low on the top -- I don't think I want that." The
+              // pill is a readout and a thing to drag, not a control.
             }
-            pillTapRef.current = null;
             setDrag(null);
           }}
           drawOverlay={(ctx) => {
@@ -1162,7 +1170,7 @@ export function TopoTab({
                 : null;
             renderTopoTop(ctx, floor, visiblePoints, resolved, areaTopos, {
               liveDrag: activeLabel,
-              highlightId: activeLabel?.id ?? selectedId,
+              highlightId: activeLabel?.id ?? null,
               livePinHigh: activePinHigh,
               livePinLow: activePinLow,
               highlightPin:
@@ -1173,6 +1181,7 @@ export function TopoTab({
               liveLegend: activeLegend,
               pillSize: statsChipSize,
               pillForSingleBoundary: statsPillForSingleBoundary,
+              chromeOnPage,
               presentation,
               planZoom,
               pointSize,
@@ -1184,12 +1193,12 @@ export function TopoTab({
         )}
 
         {/* Contours popover — upper left */}
-        {(openCorner === "contours" || controlsOnly) && (
+        {(openCorner === "contours" && !controlsOnly) && (
           <CornerPanel inline={controlsOnly} pos="top-12 left-2 landscape-short:top-2 landscape-short:left-auto landscape-short:right-2" onClose={() => setOpenCorner(null)} title="Contours">
             {gridAndContours?.grid && (
               <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
-                Range {gridAndContours.grid.minValue.toFixed(2)}"–
-                {gridAndContours.grid.maxValue.toFixed(2)}"
+                Range {readingText(gridAndContours.grid.minValue)}"–
+                {readingText(gridAndContours.grid.maxValue)}"
               </p>
             )}
             <div>
@@ -1359,7 +1368,7 @@ export function TopoTab({
         )}
 
         {/* Palette popover — upper right */}
-        {(openCorner === "palette" || controlsOnly) && (
+        {(openCorner === "palette" && !controlsOnly) && (
           <CornerPanel
             inline={controlsOnly}
             pos="top-12 right-2 w-60 landscape-short:top-2"
@@ -1381,7 +1390,7 @@ export function TopoTab({
         )}
 
         {/* Labels & layers popover — lower right */}
-        {(openCorner === "labels" || controlsOnly) && (
+        {(openCorner === "labels" && !controlsOnly) && (
           <CornerPanel
             inline={controlsOnly}
             pos="bottom-14 right-3"
@@ -1445,34 +1454,30 @@ export function TopoTab({
                   update({ legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)) })
                 }
               />
-              <div className="col-span-2 space-y-1">
+              {/* Set once, and it stays. Tim: "I don't think I'll ever use that
+                  setting because it's always wrong -- you just adjust it to
+                  the size that you want and it stays that size." There used to
+                  be a "Use Auto size for this screen" link under this, back
+                  when Auto read the window width and picked 24, 32 or 40. That
+                  was taken out so a job did not render at three sizes
+                  depending on what opened it, which left the link clearing the
+                  size to a fixed 32 under a label promising something about
+                  this screen. The size is simply the last one set, kept on
+                  this device and used by every job on it. */}
+              <div className="col-span-2">
                 <StepperControl
                   label="Stats pill size"
                   value={statsChipSize}
                   min={STATS_CHIP_MIN}
                   max={STATS_CHIP_MAX}
                   step={2}
-                  format={(v) =>
-                    statsChipLocked == null ? `Auto ${Math.round(v)}px` : `${Math.round(v)}px`
-                  }
+                  format={(v) => `${Math.round(v)}px`}
                   onChange={(v) => {
                     const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(v)));
                     setStatsChipLocked(n);
                     setStatsChipSize(n);
                   }}
                 />
-                {statsChipLocked != null && (
-                  <button
-                    type="button"
-                    className="text-[11px] text-muted-foreground underline underline-offset-2"
-                    onClick={() => {
-                      setStatsChipLocked(null);
-                      clearStatsChipSize();
-                    }}
-                  >
-                    Use Auto size for this screen
-                  </button>
-                )}
               </div>
               <div className="col-span-2 flex items-center justify-between gap-2">
                 <Label className="text-xs">Label bg</Label>
@@ -1560,6 +1565,413 @@ export function TopoTab({
               </Button>
             </details>
           </CornerPanel>
+        )}
+
+        {/*
+          Three tabs, for the copy of this panel that Report Builder mounts.
+
+          The three panels used to be forced open at once and stacked down the
+          rail -- about a thousand pixels of it -- with "Labels & layers"
+          doing three unrelated jobs under one name: what is drawn, how the
+          numbers read, and how big each piece is. Legend size sat in the
+          middle of a pile of switches. Tim: "the contour rail has always been
+          very cluttered... the most common used controls are hidden deeper."
+
+          The names are the app's own words, not invented categories. Each
+          size sits beside the thing it sizes -- Legend size under Legend,
+          Stats pill size under High / low -- so a piece and its size are
+          never in two different places.
+
+          The field screen is untouched: it still opens these as three corner
+          panels, one at a time.
+        */}
+        {controlsOnly && (
+          <div className="flex flex-col gap-2">
+            <div role="tablist" className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/40 p-1">
+              {([
+                ["contours", "Contours"],
+                ["labels", "Labels"],
+                ["layers", "Layers"],
+              ] as const).map(([key, name]) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={ctrlTab === key}
+                  onClick={() => setCtrlTab(key)}
+                  className={
+                    "h-8 rounded-md text-xs font-medium transition-colors " +
+                    (ctrlTab === key
+                      ? "bg-background shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground")
+                  }
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+            <div className="rounded-xl border bg-card p-3 w-full overflow-visible space-y-3 text-sm">
+              {ctrlTab === "contours" && (
+                <>
+                  {gridAndContours?.grid && (
+                    <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
+                      Range {readingText(gridAndContours.grid.minValue)}"–
+                      {readingText(gridAndContours.grid.maxValue)}"
+                    </p>
+                  )}
+                  <div>
+                    <Label className="text-xs">Mode</Label>
+                    <select
+                      value={resolved.mode}
+                      onChange={(e) => update({ mode: e.target.value as RenderSettings["mode"] })}
+                      className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
+                    >
+                      <option value="contour-fill">Color fill</option>
+                      <option value="contour-cells">Color cells</option>
+                      <option value="contour-bw">B&W lines</option>
+                      <option value="points-only">Points only</option>
+                    </select>
+                  </div>
+                  {/*
+                    Send to Distress Survey.
+
+                    Only on B&W lines, and only in the field app. Tim: "I wonder if
+                    the button only triggers when we do black-and-white contours."
+                    It does, which makes it what you see is what you send -- there is
+                    no mode for the writer to override, so the picture that lands
+                    under the damage pins is the one on this screen. The one thing it
+                    drops is the reading labels, because the pins go where those
+                    would be.
+                  */}
+                  {allowContourLayer && resolved.mode === "contour-bw" && (
+                    <div className="border-t pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 w-full text-xs"
+                        disabled={layerState === "working"}
+                        onClick={async () => {
+                          setLayerState("working");
+                          setLayerMessage("");
+                          try {
+                            // Imported here rather than at the top: the composer
+                            // reads renderTopo out of this module, so a static
+                            // import would close a cycle through it.
+                            const [{ composeContourLayer }, { persistContourLayer }] = await Promise.all([
+                              import("@/lib/contour-layer"),
+                              import("@/lib/db"),
+                            ]);
+                            const drawn = await composeContourLayer({
+                              floor,
+                              points,
+                              settings: resolved,
+                              // The boundary on screen, not every boundary. A
+                              // garage is sloped to drain and swamps the house.
+                              areaId: selectedAreaId,
+                            });
+                            if (!drawn) {
+                              setLayerState("failed");
+                              setLayerMessage("No contours to send yet — this level needs a closed boundary with readings inside it.");
+                              return;
+                            }
+                            await persistContourLayer(floor.id, drawn.dataUrl, {
+                              areaName: drawn.areaName,
+                              // The plan extent the layer covers, not the picture's
+                              // own pixels. The picture is drawn well above plan
+                              // resolution so it holds up on paper, and it is
+                              // stretched back into this box wherever it is shown --
+                              // so this is the number that says the two layers line
+                              // up, in the same units as the plan's own.
+                              width: drawn.extent.w,
+                              height: drawn.extent.h,
+                              pointCount: drawn.pointCount,
+                            });
+                            setLayerState("done");
+                            // Name what went, because sending the wrong boundary
+                            // looks exactly like sending nothing.
+                            setLayerMessage(
+                              `Sent ${drawn.areaName}. Distress Survey can show the pins on it.`,
+                            );
+                          } catch (err) {
+                            setLayerState("failed");
+                            setLayerMessage(
+                              (err as Error)?.message || "Could not send the contour to Distress Survey.",
+                            );
+                          }
+                        }}
+                      >
+                        {layerState === "working" ? "Sending…" : "Send to Distress Survey"}
+                      </Button>
+                      {layerMessage && (
+                        <p
+                          className={
+                            "mt-1 text-[10px] leading-tight " +
+                            (layerState === "failed" ? "text-destructive" : "text-muted-foreground")
+                          }
+                        >
+                          {layerMessage}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label className="text-xs">First</Label>
+                      <Input
+                        type="number"
+                        step="0.05"
+                        enterKeyHint="done"
+                        value={resolved.firstContour ?? ""}
+                        placeholder="auto"
+                        onChange={(e) =>
+                          update({
+                            firstContour: e.target.value === "" ? null : parseFloat(e.target.value),
+                          })
+                        }
+                        className="mt-1 h-9 text-base"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Step</Label>
+                      <StepInput
+                        value={resolved.contourStep}
+                        onCommit={(step) => update({ contourStep: step, interval: step })}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Count</Label>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        enterKeyHint="done"
+                        value={resolved.contourCount ?? ""}
+                        placeholder="auto"
+                        onChange={(e) => {
+                          const raw = e.target.value.trim();
+                          if (raw === "" || raw.toLowerCase() === "auto") {
+                            update({ contourCount: null });
+                          } else {
+                            const n = parseInt(raw, 10);
+                            update({ contourCount: isFinite(n) ? Math.max(2, n) : null });
+                          }
+                        }}
+                        className="mt-1 h-9 text-base"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Line thickness</Label>
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        {resolved.lineThickness.toFixed(1)}
+                      </span>
+                    </div>
+                    <Slider
+                      min={0.5}
+                      max={4}
+                      step={0.1}
+                      value={[resolved.lineThickness]}
+                      onValueChange={(v) => update({ lineThickness: v[0] })}
+                      className="mt-2"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Contours on</Label>
+                    <Switch
+                      checked={resolved.showContours}
+                      onCheckedChange={(v) => update({ showContours: v })}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Reverse</Label>
+                    <Switch
+                      checked={resolved.reversePalette}
+                      onCheckedChange={(v) => update({ reversePalette: v })}
+                    />
+                  </div>
+                  <PalettePicker
+                    value={resolved.palette}
+                    onChange={(p) => update({ palette: p })}
+                  />
+                </>
+              )}
+              {ctrlTab === "labels" && (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <SwitchRow
+                                    label="Labels"
+                                    checked={resolved.showLabels}
+                                    onChange={(v) => update({ showLabels: v })}
+                                  />
+                    <NumberControl
+                                    label="Decimals"
+                                    value={resolved.decimalPlaces}
+                                    min={0}
+                                    max={3}
+                                    step={1}
+                                    onChange={(v) =>
+                                      update({
+                                        decimalPlaces: Math.max(
+                                          0,
+                                          Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
+                                        ),
+                                      })
+                                    }
+                                  />
+                    <SwitchRow
+                                    label="Declutter"
+                                    checked={resolved.declutterLabels !== false}
+                                    onChange={(v) => update({ declutterLabels: v })}
+                                  />
+                    <div className="col-span-2 flex items-center justify-between gap-2">
+                                    <Label className="text-xs">Label bg</Label>
+                                    <div className="inline-flex rounded-md border overflow-hidden">
+                                      {(["white", "transparent", "plain"] as const).map((opt) => (
+                                        <button
+                                          key={opt}
+                                          type="button"
+                                          className={`px-2 py-1 text-xs ${
+                                            resolved.pointLabelBackground === opt
+                                              ? "bg-primary text-primary-foreground"
+                                              : "bg-background"
+                                          }`}
+                                          onClick={() => update({ pointLabelBackground: opt })}
+                                        >
+                                          {opt === "white" ? "Box" : opt === "transparent" ? "Border" : "Plain"}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                  </div>
+                  <details className="border-t pt-2">
+                                <summary className="text-xs text-muted-foreground cursor-pointer select-none">
+                                  Label style
+                                </summary>
+                                <div className="grid grid-cols-2 gap-2 mt-2">
+                                  <StepperControl
+                                    label="Point label size"
+                                    value={resolved.pointLabelFontSize}
+                                    min={6}
+                                    max={28}
+                                    step={1}
+                                    onChange={(v) =>
+                                      update({ pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))) })
+                                    }
+                                  />
+                                  <StepperControl
+                                    label="High / low size"
+                                    value={resolved.highLowPinSize}
+                                    min={7}
+                                    max={28}
+                                    step={1}
+                                    onChange={(v) =>
+                                      update({ highLowPinSize: Math.max(7, Math.min(28, Math.round(v))) })
+                                    }
+                                  />
+                                  <div>
+                                    <Label className="text-xs">Weight</Label>
+                                    <select
+                                      value={resolved.pointLabelWeight}
+                                      onChange={(e) =>
+                                        update({ pointLabelWeight: e.target.value as "normal" | "bold" })
+                                      }
+                                      className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
+                                    >
+                                      <option value="normal">Normal</option>
+                                      <option value="bold">Bold</option>
+                                    </select>
+                                  </div>
+                                  <div className="col-span-2">
+                                    <Label className="text-xs">Color</Label>
+                                    <div className="mt-1 flex items-center gap-2">
+                                      <input
+                                        type="color"
+                                        value={resolved.pointLabelColor}
+                                        onChange={(e) => update({ pointLabelColor: e.target.value })}
+                                        className="h-9 w-12 rounded-md border bg-background p-1 cursor-pointer"
+                                      />
+                                      <Input
+                                        enterKeyHint="done"
+                                        value={resolved.pointLabelColor}
+                                        onChange={(e) => update({ pointLabelColor: e.target.value })}
+                                        className="h-9 flex-1 font-mono text-base"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={resetAllLabelPositions}
+                                  className="mt-2 w-full h-8"
+                                >
+                                  Reset label positions
+                                </Button>
+                              </details>
+                </>
+              )}
+              {ctrlTab === "layers" && (
+                <div className="grid grid-cols-2 gap-2">
+                  <SwitchRow
+                                  label="Floor plan"
+                                  checked={resolved.showPlan}
+                                  onChange={(v) => update({ showPlan: v })}
+                                />
+                  <SwitchRow
+                                  label="Points"
+                                  checked={resolved.showPoints}
+                                  onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
+                                />
+                  <SwitchRow
+                                  label="Legend"
+                                  checked={resolved.showLegend}
+                                  onChange={(v) => update({ showLegend: v })}
+                                />
+                  <StepperControl
+                                  label="Legend size"
+                                  value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+                                  min={0.4}
+                                  max={4}
+                                  step={0.1}
+                                  format={(v) => `${v.toFixed(1)}×`}
+                                  onChange={(v) =>
+                                    update({ legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)) })
+                                  }
+                                />
+                  <SwitchRow
+                                  label="High / low"
+                                  checked={resolved.showHighLow}
+                                  onChange={(v) => update({ showHighLow: v })}
+                                />
+                  {/* Set once, and it stays. Tim: "I don't think I'll ever use that
+                                    setting because it's always wrong -- you just adjust it to
+                                    the size that you want and it stays that size." There used to
+                                    be a "Use Auto size for this screen" link under this, back
+                                    when Auto read the window width and picked 24, 32 or 40. That
+                                    was taken out so a job did not render at three sizes
+                                    depending on what opened it, which left the link clearing the
+                                    size to a fixed 32 under a label promising something about
+                                    this screen. The size is simply the last one set, kept on
+                                    this device and used by every job on it. */}
+                                <div className="col-span-2">
+                                  <StepperControl
+                                    label="Stats pill size"
+                                    value={statsChipSize}
+                                    min={STATS_CHIP_MIN}
+                                    max={STATS_CHIP_MAX}
+                                    step={2}
+                                    format={(v) => `${Math.round(v)}px`}
+                                    onChange={(v) => {
+                                      const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(v)));
+                                      setStatsChipLocked(n);
+                                      setStatsChipSize(n);
+                                    }}
+                                  />
+                                </div>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -2005,6 +2417,7 @@ function renderTopoTop(
     planZoom?: number;
     /** Draw the pill on a one-boundary level too (a report slide does). */
     pillForSingleBoundary?: boolean;
+    chromeOnPage?: boolean;
     pointSize?: number;
     pointColor?: string;
     viewScale?: number;
@@ -2155,7 +2568,7 @@ function renderTopoTop(
     // Legend ON: one color/elevation legend per contour surface on screen.
     // Same path for All boundaries, a single named boundary, or one-boundary
     // floors — the legend sits on that boundary so it stays in view.
-    if (resolved.showLegend) {
+    if (resolved.showLegend && !overlay?.chromeOnPage) {
       for (const at of areaTopos) {
         const live =
           liveLegend && liveLegend.id === at.area.id
@@ -2192,7 +2605,8 @@ function renderTopoTop(
   // One named pill per boundary. In the field a lone surface uses the floating
   // StatsChip instead, so H / L / Δ is not drawn twice; a report slide asks for
   // it here so one boundary looks the same as five.
-  if (statsPillOnCanvas(resolved, areaTopos.length, !!overlay?.pillForSingleBoundary)) {
+  if (!overlay?.chromeOnPage &&
+      statsPillOnCanvas(resolved, areaTopos.length, !!overlay?.pillForSingleBoundary)) {
     const livePill = overlay?.livePill ?? null;
     const base = overlay?.pillSize ?? DEFAULT_STATS_PILL_SIZE;
     const h = pillHeightImg(base, viewScale, !!overlay?.presentation, floor);
@@ -2249,12 +2663,12 @@ function drawStatsPill(
     ctx.font = `600 ${m.font}px sans-serif`;
     ctx.fillStyle =
       s.kind === "hi"
-        ? "#b51d16"
+        ? STATS_PILL_COLORS.hi
         : s.kind === "lo"
-          ? "#1f5f9f"
+          ? STATS_PILL_COLORS.lo
           : s.kind === "delta"
-            ? "#6b7280"
-            : "#6b7280";
+            ? STATS_PILL_COLORS.delta
+            : STATS_PILL_COLORS.label;
     ctx.fillText(s.text, sx + s.w / 2, center.cy);
     sx += s.w;
   });
@@ -2588,7 +3002,19 @@ function areaLegendBox(
   };
 }
 
-function drawLegend(
+export const LEGEND_SHAPE = { w: LEGEND_BASE_W, h: LEGEND_BASE_H };
+
+/**
+ * The colour scale, drawn.
+ *
+ * Exported because a report sheet shows this legend rather than one of its
+ * own. It had one of its own -- built out of HTML, out of the colours the
+ * slide happened to report, with the high and the low where the contour
+ * values belong -- and Tim, looking at a sheet: "the Legend is not right and
+ * it does not lock the size, its different than the FS legend." There is one
+ * colour scale in Toolbox, and this is it.
+ */
+export function drawLegend(
   ctx: CanvasRenderingContext2D,
   settings: RenderSettings,
   grid: Grid,

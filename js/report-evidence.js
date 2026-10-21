@@ -260,6 +260,14 @@
     return epochs;
   }
 
+  /** A level's contour layer, through Plan Setup so one definition decides. */
+  function contourLayerOf(canvas) {
+    var api = window.ToolboxPlanSetup;
+    if (api && typeof api.contourLayer === 'function') return api.contourLayer(canvas);
+    var layer = canvas && canvas.contourLayer;
+    return layer && typeof layer === 'object' && layer.id ? layer : null;
+  }
+
   async function distressSlides(record, deps) {
     var distress = record && record.distress && typeof record.distress === 'object' ? record.distress : {};
     var pins = Array.isArray(distress.pins) ? distress.pins : [];
@@ -284,6 +292,10 @@
           levelName: canvas ? (canvas.name || canvasId) : (canvasId || 'Unassigned level'),
           order: canvasId && order[canvasId] != null ? order[canvasId] : 10000,
           plan: canvas && canvas.plan ? canvas.plan : null,
+          // The level's contour layer, if Floor Survey has written one. It is
+          // drawn at the plan's own pixel extent and saved transparent, so it
+          // lies over the plan with nothing to register.
+          contour: contourLayerOf(canvas),
           pins: [],
         };
         groups.push(groupIndex[key]);
@@ -304,6 +316,8 @@
       var group = groups[g];
       var plan = group.plan;
       var planUrl = await resolveMedia(plan && plan.id, null, deps.getMedia);
+      var contour = group.contour;
+      var contourUrl = contour ? await resolveMedia(contour.id, null, deps.getMedia) : null;
       var slidePins = [];
       for (var p = 0; p < group.pins.length; p += 1) {
         var item = group.pins[p];
@@ -348,6 +362,14 @@
           dataUrl: planUrl,
           missing: !planUrl,
         },
+        contour: contour && contourUrl ? {
+          mediaId: contour.id,
+          width: contour.width,
+          height: contour.height,
+          dataUrl: contourUrl,
+          areaName: contour.areaName || '',
+          surveyDate: contour.surveyDate || null,
+        } : null,
         pins: slidePins,
       });
     }

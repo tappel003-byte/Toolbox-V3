@@ -279,7 +279,7 @@ Authorized by Tim after the design was talked through: "It might be best to star
 - **Replacing a level's plan drops its contour,** which was drawn against the old plan and is therefore wrong rather than merely old. It goes with the front door and the rooms, for the same reason they do.
 - **Which layers are showing is a view, not data.** It lives for the session like the zoom and is never written to the Customer File.
 - **Accepted on a live job (Tim, Oct 10, 2026):** 15 Rabbitbrush, 52 pins over the house contours with the garage left out. "I couldn't be happier with this. This is excellent."
-- **Leaning, NOT YET DECIDED: this becomes the usual Distress view in Report Builder.** Tim: "I almost think this is most likely going to be the view in Report Builder more often than not, because it's very telling." Not authorized. What it needs settled first is whether the layer choice is a per-page rendition on the figure rail — which is what "lock the picture, not the rendition" would say — and what a page defaults to when its level has a contour. The Distress and Report Builder choices were already decided to be independent of each other.
+- **It is the usual Distress view in Report Builder (DECIDED Tim, Oct 16, 2026).** Tim: "I almost think this is most likely going to be the view in Report Builder more often than not, because it's very telling," and then yes to building it. A Picture Locations sheet draws the level's contour layer under the damage pins wherever the level has one: walls from the plan, contours over them, numbered pins on top. The two questions this was waiting on are answered the way the leaning pointed. **The choice is a rendition of the page**, kept on that sheet (`meta.showContour`) — the level keeps its layer, the sheet keeps the same plan, pins and numbers, and what Distress itself is showing is untouched, which is the independence already decided. **A page with a contour starts with it on**, because that is the view worth seeing first; the button in the Pen Log panel turns it off per sheet and appears only on a level that has a layer to offer.
 
 **Found while tracing the media, not fixed here:** the Floor Survey recovery PDF uses a stable media id (`fsrec_<level>`) and overwrites its bytes on every Save. Because sync skips media whose id already exists at either end, the Cabinet keeps the *first* recovery PDF for a level for ever, and a device that has pulled one keeps that one. The field checkpoint is the thing meant to survive a lost device, so this is worth a decision. It is Floor Survey checkpoint behavior and was outside this slice.
 
@@ -306,6 +306,7 @@ Authorized by Tim after the design was talked through: "It might be best to star
   - **No overflow handling for the readings.** Tim: "I don't see five boundaries, this was not your typical. If we have to, we would just use different combinations." A page with more levels than the rail can list is a page that should be split, not a case to engineer around.
   - This supersedes the Oct 8 decision to drop the mark from Pictures pages: the mark lives in the rail, so it comes back on every figure page without taking space from the photographs.
   - Earlier the same day Tim had called a drawing-office title block "very mechanical". The rail is the same intent — a sheet that reads as an engineering firm's rather than a PowerPoint template's — without the gridded cells.
+  - **Every line in the rail is the investigator's to change (DECIDED Tim, Oct 13, 2026).** Tim: "All text on the rail needs to be editable by the user." The rail is generated — the client and address from the Customer File, the date and the readings from the survey, the figure number from the slide's place in the book — and generated is right until the one time it is not. So every block takes his words when he writes any: the client, the address, the drawing title, the date and the line under it, each boundary's name, each reading's label and its number, the section headings and the figure number. The readings are included deliberately, on his call, and a reading he has written over no longer has to agree with the survey behind it. Nothing is stored until a block is typed over; emptying a block drops what was written and the generated line comes back, which is the way out and is the same gesture as the edit. A reading is keyed by its boundary, so a surface renamed in Floor Survey keeps the words written about it.
 
 ---
 
@@ -366,6 +367,22 @@ Authorized by Tim after the design was talked through: "It might be best to star
 
 ---
 
+- **The stats pill has no Auto: set it once and it stays (DECIDED Tim, Oct 15, 2026).** The pill's size used to be picked from `window.innerWidth` — 24, 32 or 40 — and when that tier was removed an "Auto" idea and a "Use Auto size for this screen" link survived it. By then the link only reset the size to a fixed 32, on any screen, under a label promising something about the screen. Tim: "I don't think I'll ever use that setting because it's always wrong. I think you just adjust it to the size that you want, it stays that size." So the link, the Auto label and the window listeners are gone. The size is the last one set, kept on this device and used by every job on it; 32 is only where it starts. Tim accepted per-device: "it can be for this device, although it would be nice to just change it one time and it stays one time" — which is what it does, since the size has never been stored per job.
+
+- **The pill is set to any size wanted, and the setting reaches all of them (DECIDED Tim, Oct 16, 2026).** The stepper stopped at 20px with the minus greyed out, and at 56px. Tim: "I do not need to be limited to change the pill size to the size that I want." The ends are now 8 and 120. The same setting now reaches every pill: the floating chip used to hold its type at 9px and its padding at 4px however small the pill was set, so a level set to 14 showed two pills on the drawing that had shrunk and a third that had not — "the sizing did not apply to all three pills in this scenario." One setting, one size, three pills.
+
+- **The colour scale and the readings are pieces on the page, each moved alone (DECIDED Tim, Oct 17, 2026).** Tim: "putting the contour legend in the pill, one place, and being able to move the floor plan with contours separately... those need to be able to move just like they do on the FS page," and then, on seeing them joined: "those need to be movable separately — the high/low/delta pill, the contour legend, those are all movable." They were painted into the plan's own picture, so panning the plan carried them along and neither could be put where the sheet wanted it. A Floor Survey slide now draws the plan, the contours, the readings and the High and Low markers — the markers point at a spot on the floor, so they stay in the picture, travel with it, and are nudged on the drawing as they always were — while the colour scale and that boundary's H / L / Δ are **two boxes on the page**, one of each per boundary. Each is dragged on its own and neither moves when the other does. Sizes come from the controls that have always set them: Legend size for the scale, Stats pill size for the readings, both in the panel, which is how they behave on the Floor Survey screen; neither box carries corner handles, because two controls for one size is one too many. Neither shows an outline or a handle until it is pointed at.
+
+- **The text box works the way PowerPoint's does (DECIDED Tim, Oct 17, 2026).** Tim: "we talked about the text box tool and the functionality was supposed to be almost exactly like PowerPoint... I know the text box is not correct." It was wrong five ways, each checked on the sheet rather than in the code: the button dropped a box at a fixed spot, with no outline and no caret, so on white paper nothing appeared to have happened; the writing surface was a thin strip across the top of the box, so clicking the middle of it did nothing; the border did not move it; and an empty box left behind stayed on the page invisibly for ever. Now the button arms the tool and the sheet takes a crosshair, the next click or drag says where the box goes and how wide it is, the caret is already in it, the whole inside is the writing surface, the border moves it and the words inside are for selecting, and an empty box is thrown away when it is left — as PowerPoint throws one away.
+
+- **Font colour, numbering and justify (DECIDED Tim, Oct 17, 2026).** Measured against the Home ribbon, the bar was missing three things an investigator reaches for. The coloured dots on it had always been the *annotation* colour — the ink of a circle or an arrow — so there was no way to make a word red. There is now a font colour button in PowerPoint's own form, an A over a bar of the colour it paints, with the palette on the chevron beside it; a Numbering button beside Bullets; and Justify beside the three alignments. A run carries its colour and a paragraph knows whether it is bulleted or numbered, so both travel with the Customer File and both map straight to .pptx if the deck is ever exported. The text box icon was redrawn as well: a dashed box with a large A and a text cursor, because the old one read as the picture icon standing next to it.
+
+- **A Pictures page starts on the grid that fits it (DECIDED Tim, Oct 16, 2026).** Every page was laid out five across, so eleven photographs made a full page and then a page holding one picture a fifth of a row wide, marooned in the corner. Tim: "it just strands a photo, but we also have the functionality of changing the layout — so if we have 10 pictures per slide and we can change our grid to 5 by 2 or 4 by 2 or 4 by 1, 5 by 1, then it would probably look less improper." So a page opens on the grid that leaves the fewest empty cells, no more than two rows deep: one picture fills its sheet, four sit in a row of four, six go three and three, ten is still five across. The choice stays his — the rail now offers one across up to five, each named for the grid it makes of that page, and a grid chosen by hand is kept. How many photographs go on a page is unchanged at ten, and the rows still follow from the page rather than being picked separately, so no choice can leave a photograph with nowhere to go.
+
+- **It is "Corrected for Flooring Differences" (DECIDED Tim, Oct 16, 2026).** The shipped decks say "Corrected for Floor Differences" and the figure rail has always said flooring. Tim, asked which is right: "proper English wins." Flooring is what is actually corrected for — the covering underfoot — and it is the word the app uses everywhere the investigator meets it: "Correct for flooring", "Flooring correction", "Active flooring corrections". The cover page now says it that way too; the rail already did. A cover built before this that still carries the old line word for word takes the new one, and a line someone has written over is left alone. This supersedes the wording quoted in the Oct 3 cover entry and in VISION.md, which was updated to match.
+
+- **A tap on a pill does nothing (DECIDED Tim, Oct 16, 2026).** Tapping the High or the Low reading — on the floating chip or on a pill drawn on the plan — used to highlight that point on the drawing. Tim: "if you click the numbers on the high low pills it highlights the high or the low on the top, I don't think I want that." The pill is a readout and a thing to drag out of the way, not a control. Dragging is unchanged, and nothing else highlighted a point that way, so the highlight went with it.
+
 ## Readings are printed in tenths
 
 - **Tenths of an inch is the standard, and always was (STATED Tim, Oct 8, 2026).** Tim: "These are inches in tenths, so .57 is stupid — it'll never be .57. It'll be .5, .6, .7. Tenths are the default by design; it's what we measure in." And on the record of it: "Tenths is always the default. It's not now — it always has been. You just didn't realize it."
@@ -373,6 +390,10 @@ Authorized by Tim after the design was talked through: "It might be best to star
 - **One decimal place everywhere a reading is drawn or printed:** point labels, the High/Low/difference pill, the colour legend, the figure rail, and the composed report figures.
 - **Storage is unchanged.** A reading is kept exactly as it was typed; only the display rounds. Data entry and the recovery PDF still show the typed value, because that is where it is entered and what it exists to recover.
 - Tim's remark that a partner occasionally reads a half tenth was background, not a requirement. Nothing was built for it.
+- **A reading is shown the way it was taken: the hundredth appears only when it was typed (DECIDED Tim, Oct 15, 2026).** Shown that the plan reads 9.00 on Data while the chip beneath it reads 9.7, Tim first left it alone: "if someone wants to put in a 9.15 that's fine, it's not something I'll ever do, but functionality is OK, it doesn't cost us anything, it's already built that way." Looking at a whole Main Level of them the next day he settled it: "if we were only to show the tenths and not the hundredths this would really clean up... we can still show the hundredths, but only if they're typed in. If we don't have a hundredth typed in, then we don't show the zero."
+  - So 9.30 prints as 9.3 and 9.15 prints as 9.15. One place is the floor: 9.00 prints as 9.0, not 9, because a measurement with no decimal reads as a count.
+  - This is the rule on every surface that shows a reading **as entered** — the Data plan and its list, Review, the point detail, the keypad's repeat, the transition corrections, the recovery PDF. Where a reading is **presented** rather than entered it is still rounded to tenths, as above: Topo, the H/L/Δ pill, the colour legend, the figure rail and the report figures.
+  - Storage is still untouched. A reading is kept exactly as it was typed; only the display changes.
 
 ---
 
@@ -385,6 +406,9 @@ Authorized by Tim after the design was talked through: "It might be best to star
 - **So a device that puts work into the Cabinet takes the lease on it.** After this there is one kind of local copy instead of two, and everything already built applies to it: the server refuses a second device, Check In releases and removes, and the held-elsewhere mark has something to report. A job created and synced now reads *Checked out to this device — Check in when finished*, which is what it is.
 - **The claim never fails the sync.** The work reached the Cabinet, which is what Sync Now promised, and saying otherwise would be describing a success as a failure. If the claim itself fails the device simply is not the authority, and says so.
 - This replaced a stopgap, not a principle: `MILESTONE.md` allowed first placement into the Cabinet by plain Sync "until an explicit Place/Check Out UI exists", and the test that asserted a first upload must *not* take a lease encoded that stopgap. Both now say the rule.
+- **Sending a file to the Cabinet always gives up the lease (DECIDED Tim, Oct 19, 2026).** Tim: "Send the file should release everything so that someone else can work on it, period, regardless of where it was taken. If I took it on my phone originally and sent it up to the Cabinet, then I'm assuming something or some other device is going to work on it. So we should always give up any sort of lease." Putting a job back is handing it over; there is no such thing as filed-but-still-held.
+- **Which makes Send and Check In one action.** Both now mean: put the work in the Cabinet, give up the lease, clear the device. The only thing left between them — whether a Cabinet copy already exists — is Toolbox's problem, not the investigator's. Two buttons that sound different, one of which silently refused a file that was checked out, is what sent Tim round in circles on Oct 19.
+- **Nothing is released and nothing is removed until the Cabinet copy is verified complete.** If the upload is short a photograph the file stays on the device and says so. This is the existing Check In rule and it governs the merged action.
 
 ---
 
@@ -476,7 +500,57 @@ Authorized by Tim after the design was talked through: "It might be best to star
 
 ## Closeout
 
-- The final PDF is the durable closeout record. Exact long-term archival packaging (ZIP structure, folder conventions, etc.) is not yet decided.
+- The final PDF is the durable closeout record.
+
+## The File Cabinet is the repository, and File Explorer is how you look in it
+
+Decided by Tim, Oct 18, 2026, after walking through the File Explorer he built
+in PGG Photo Documentation.
+
+- **The Cabinet holds every job, permanently.** Tim: "ours is potentially going
+  to be the repository for all of our job files." Cloudflare storage is not
+  expensive; until it becomes an issue everything lives there, with a copy
+  downloaded to their own server as backup. Nothing is deleted to free space —
+  that is the standalone staging screen's lifecycle, not this one's.
+- **File Explorer looks and behaves like a real file explorer.** Tim: "Explorer
+  needs to kind of look and feel like an actual Microsoft file explorer, that's
+  the whole point of this." Folders you walk, files with real names, a
+  breadcrumb back up, pictures as a sheet of thumbnails. Tim, on the one-card-
+  per-photograph list it replaced: "How does this help anybody to look at one
+  picture at a time?"
+- **The whole file is visible in the drawer,** not just the pictures. Tim: "all
+  the pieces and parts that make up a report, all of the actual good stuff
+  needs to be visible — PDFs of a floor survey, PDF of the distress survey." If
+  he wants pictures from 2022, or wants to read a readings file looking for
+  half-inch cracks, he does it there.
+- **A readings CSV lives in the Floor Survey folder.** Tim: "in the floor survey
+  folder we should have a CSV file of the XY&Z points."
+- **Two drawers: working and completed.** Tim: "File Cabinet has a folder that
+  we're working on; when it's done it goes into another drawer, and in that
+  drawer we need to be able to see the whole file." A couple of shipped and paid
+  jobs sitting at the top of the working list is what prompted it.
+- **Completed is marked at Check In.** Tim: "when we check a file back into the
+  file cabinet there should be a checkmark showing completed, and then that goes
+  up to Explorer."
+- **Completed jobs are filed by year and month of the floor survey date.** Tim:
+  "floor survey date is the one to go by; if there's no floor survey then
+  distress survey is next; if there is neither, well then we're probably not
+  using this app." So there is no third fallback to design for.
+- **Search by first name, last name, address and city,** and it has to reach
+  filed jobs as well as working ones.
+- **Search reads a card catalogue, not the jobs.** Tim: "seems to me like we
+  could learn something from a library... I think we just log first name, last
+  name, address, all of those in a table of contents and that's our searchable."
+  One card per job — first and last name, address, city, the field work date
+  that decides where it is filed, whether it is completed, and where the file
+  lives — kept as one small list the Cabinet updates, so finding a job is
+  instant whether it holds fifty or five thousand. The catalogue is a
+  convenience: where a card and its job disagree, the job wins and the card is
+  rewritten.
+
+Not decided here: when the PDFs and the CSV are built (at filing, or kept
+current while a job is live), and whether a filed job can be brought back to a
+device or is look-only from then on.
 
 ## Process
 

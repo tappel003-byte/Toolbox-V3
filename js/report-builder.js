@@ -27,6 +27,39 @@
   };
   var fitObserver = null;
   var formatToolbar = null;
+  /**
+   * Listeners this mount put on the document, so leaving can take them off.
+   *
+   * Report Builder added five of these on every visit and removed none. A
+   * listener is a live reference to everything its function can see, which
+   * here is the whole session: the pages, the rendered thumbnails, and every
+   * photograph loaded into them. So each visit left a complete previous visit
+   * behind, and the browser could not collect any of it -- about a megabyte
+   * per lap on a job with twelve photographs, more on a real one. Tim,
+   * switching between the applications: "I was getting a not enough memory
+   * reload."
+   */
+  var mountListeners = [];
+  /** A mount's own teardown, which module-level unmount cannot reach inside to do. */
+  var mountCleanup = null;
+
+  function onDocument(type, handler, options) {
+    document.addEventListener(type, handler, options);
+    mountListeners.push({ on: document, type: type, handler: handler, options: options });
+  }
+
+  /** The same, for something announced on the window rather than the page. */
+  function onWindow(type, handler, options) {
+    window.addEventListener(type, handler, options);
+    mountListeners.push({ on: window, type: type, handler: handler, options: options });
+  }
+
+  function releaseMountListeners() {
+    mountListeners.splice(0).forEach(function (item) {
+      var target = item.on || document;
+      try { target.removeEventListener(item.type, item.handler, item.options); } catch (_) {}
+    });
+  }
   // Object URLs for pictures placed on sheets, keyed by media id.
   var overlayUrlCache = {};
   var coverPasteHandler = null;
@@ -51,6 +84,45 @@
     }
     sheet.style.width = Math.floor(width) + 'px';
     sheet.style.height = Math.floor(height) + 'px';
+    fitCoverContents(root);
+  }
+
+  /**
+   * Keep a grown contents box on the paper.
+   *
+   * The box is as tall as its figures now, which is right until there are
+   * more figures than the sheet has room for. Rather than clip the list --
+   * which is what it used to do, silently -- the type steps down until it
+   * fits. A floor of 0.6 keeps it readable; at that size the frame holds
+   * around fifty lines, which is past any real report.
+   *
+   * Measured rather than counted, because what fits depends on the sheet's
+   * size on screen, the font the device has, and how long the titles are.
+   */
+  var CONTENTS_FIT_FLOOR = 0.6;
+
+  function fitCoverContents(scope) {
+    var root = scope || document;
+    var boxes = root.querySelectorAll
+      ? root.querySelectorAll('[data-rb-cover-box="contents"]')
+      : [];
+    for (var i = 0; i < boxes.length; i += 1) {
+      var box = boxes[i];
+      var sheet = box.closest ? box.closest('.rb-sheet') : null;
+      if (!sheet) continue;
+      var sheetH = sheet.clientHeight;
+      if (!(sheetH > 40)) continue;
+      box.style.setProperty('--rb-contents-fit', '1');
+      var boxRect = box.getBoundingClientRect();
+      var sheetRect = sheet.getBoundingClientRect();
+      var top = boxRect.top - sheetRect.top;
+      // The same breathing room the deck leaves under the frame.
+      var room = sheetH * 0.96 - top;
+      var needs = box.scrollHeight;
+      if (!(needs > 0) || !(room > 0) || needs <= room) continue;
+      var fit = Math.max(CONTENTS_FIT_FLOOR, room / needs);
+      box.style.setProperty('--rb-contents-fit', fit.toFixed(3));
+    }
   }
 
   function watchSheet(root) {
@@ -309,20 +381,11 @@
       brand.appendChild(grip);
     }
     sheet.appendChild(brand);
-
-    // The control rides beside the logo rather than in a fixed corner, which
-    // put it straight on top of the artwork once the logo was placed there.
-    var lock = document.createElement('button');
-    lock.type = 'button';
-    lock.className = 'rb-brand__lock';
-    lock.setAttribute('data-rb-brand-lock', placed.locked ? 'unlock' : 'lock');
-    lock.textContent = placed.locked ? 'Unlock logo' : 'Lock logo';
-    var GAP = 1.2;
-    var WIDTH = 13; // roughly what "Unlock logo" occupies at this size
-    var right = placed.x + placed.w + GAP;
-    lock.style.left = (right + WIDTH <= 99 ? right : Math.max(0, placed.x - GAP - WIDTH)) + '%';
-    lock.style.top = (placed.y + Math.max(0, (placed.h - 2.6) / 2)) + '%';
-    sheet.appendChild(lock);
+    // Lock logo used to stand on the paper beside the mark. It is in the side
+    // rail with the slide's other controls, where Lock layout went: on the
+    // sheet it was chrome printed over the report, and once the logo was
+    // locked the mark stopped taking the pointer, so a button that only
+    // appeared on hover could never have been reached to unlock it again.
   }
 
   function nextPicturesPageId(pages) {
@@ -406,16 +469,6 @@
     return map;
   }
 
-  function insertIndexBeforeClosing(pages) {
-    var closing = { discussion: 1, conclusions: 1, limitations: 1 };
-    for (var i = 0; i < pages.length; i += 1) {
-      var sectionId = pages[i] && pages[i].meta && pages[i].meta.sectionId;
-      if (sectionId && closing[sectionId]) return i;
-      if (pages[i] && pages[i].type === 'diagnostics') return i;
-    }
-    return pages.length;
-  }
-
   function lastIndexOfType(pages, type) {
     var index = -1;
     for (var i = 0; i < pages.length; i += 1) {
@@ -442,6 +495,46 @@
       return api.assignFigureNumbers(pages);
     }
     return pages;
+  }
+
+  /**
+   * Renumber the figures in the order the book is actually in.
+   *
+   * Earlier and Later put a sheet where the investigator wants it, so the
+   * numbering has to follow the rail rather than the order the book would be
+   * assembled in -- renumbering against the canonical order is how a sheet
+   * moved up could end up stamped with the number of the one below it.
+   */
+  function renumberInPlace(pages) {
+    var api = sourceApi();
+    if (api && typeof api.assignFigureNumbers === 'function') api.assignFigureNumbers(pages);
+    return pages;
+  }
+
+  /**
+   * Where a kind of sheet belongs when the book has none of it yet.
+   *
+   * The saved order is the investigator's, so nothing is re-sorted on reopen
+   * -- but a level surveyed after the last save has to arrive somewhere, and
+   * "at the end" put Picture Locations after the Pictures sheets. It goes in
+   * front of the first sheet that belongs after it: Cover, Discussion, Floor
+   * Survey, Picture Locations, Pictures, anything else.
+   */
+  var PAGE_BANDS = { cover: 0, section: 1, floor: 2, distress: 3, pictures: 4 };
+
+  function bandOf(page) {
+    if (!page) return 5;
+    var band = PAGE_BANDS[page.type];
+    return typeof band === 'number' ? band : 5;
+  }
+
+  function firstIndexOfLaterBand(pages, type) {
+    var band = PAGE_BANDS[type];
+    if (typeof band !== 'number') return pages.length;
+    for (var i = 0; i < pages.length; i += 1) {
+      if (bandOf(pages[i]) > band) return i;
+    }
+    return pages.length;
   }
 
   function reconcileReportPages(savedPages, freshPages, photos) {
@@ -521,7 +614,7 @@
       });
       if (!additions.length) return;
       var anchor = lastIndexOfType(pages, type);
-      var at = anchor >= 0 ? anchor + 1 : insertIndexBeforeClosing(pages);
+      var at = anchor >= 0 ? anchor + 1 : firstIndexOfLaterBand(pages, type);
       pages = insertPagesAt(pages, at, additions);
     }
 
@@ -572,10 +665,12 @@
       if (queue.length) {
         var startFig = maxFigureNumber(pages) + 1;
         var created = buildPicturesPages(queue, startFig, pages);
+        // Pictures come after the Picture Locations sheets that point at
+        // them, which is the order ensurePicturesInFreshPages builds too.
         var at = lastIndexOfType(pages, 'pictures');
-        if (at < 0) at = lastIndexOfType(pages, 'floor');
         if (at < 0) at = lastIndexOfType(pages, 'distress');
-        at = at >= 0 ? at + 1 : insertIndexBeforeClosing(pages);
+        if (at < 0) at = lastIndexOfType(pages, 'floor');
+        at = at >= 0 ? at + 1 : firstIndexOfLaterBand(pages, 'pictures');
         pages = insertPagesAt(pages, at, created);
       }
     }
@@ -589,7 +684,14 @@
       pictures[0].railLabel = 'Pictures';
     }
 
-    return renumberFigures(pages);
+    // The saved order is the investigator's. Earlier and Later put a sheet
+    // where they want it and autosave stores it -- and this is where that
+    // choice was being thrown away, because re-sorting into assembly order on
+    // every reopen undid the move. New source sheets are inserted at their own
+    // anchor above, so a re-sort has nothing left to do here. A saved document
+    // with no cover is not one of ours; let the assembler rebuild that one.
+    if (!pages.some(function (page) { return page.type === 'cover'; })) return renumberFigures(pages);
+    return renumberInPlace(pages);
   }
 
   function ensurePicturesInFreshPages(pages, photos) {
@@ -639,60 +741,6 @@
     if (n == null) return '';
     var places = typeof dec === 'number' ? dec : 2;
     return n.toFixed(places);
-  }
-
-  function renderTopoLegend(stats) {
-    var box = document.createElement('div');
-    box.className = 'rb-topo-legend';
-    var elev = document.createElement('div');
-    elev.className = 'rb-topo-legend__elev';
-    elev.textContent = 'ELEV.';
-    box.appendChild(elev);
-    var bar = document.createElement('div');
-    bar.className = 'rb-topo-legend__bar';
-    var legend = stats.legend || { min: 0, max: 0, stops: [] };
-    var stops = Array.isArray(legend.stops) ? legend.stops.slice() : [];
-    // High at top of the bar.
-    for (var i = stops.length - 1; i >= 0; i -= 1) {
-      var seg = document.createElement('span');
-      seg.style.background = stops[i].color || '#ccc';
-      bar.appendChild(seg);
-    }
-    box.appendChild(bar);
-    var labels = document.createElement('div');
-    labels.className = 'rb-topo-legend__labels';
-    var hiLabel = document.createElement('span');
-    hiLabel.textContent = formatReading(legend.max, stats.decimalPlaces) || '—';
-    var loLabel = document.createElement('span');
-    loLabel.textContent = formatReading(legend.min, stats.decimalPlaces) || '—';
-    labels.appendChild(hiLabel);
-    labels.appendChild(loLabel);
-    box.appendChild(labels);
-    return box;
-  }
-
-  function renderTopoStats(stats) {
-    var pill = document.createElement('div');
-    pill.className = 'rb-topo-stats';
-    if (stats.name) {
-      var label = document.createElement('span');
-      label.className = 'rb-topo-stats__label';
-      label.textContent = stats.name;
-      pill.appendChild(label);
-    }
-    function coloredStat(className, letter, value) {
-      var el = document.createElement('span');
-      el.className = className;
-      var bold = document.createElement('b');
-      bold.textContent = letter;
-      el.appendChild(bold);
-      el.appendChild(document.createTextNode(' ' + (value || '—')));
-      return el;
-    }
-    pill.appendChild(coloredStat('rb-topo-stats__hi', 'H', formatReading(stats.hi, stats.decimalPlaces)));
-    pill.appendChild(coloredStat('rb-topo-stats__lo', 'L', formatReading(stats.lo, stats.decimalPlaces)));
-    pill.appendChild(coloredStat('rb-topo-stats__delta', '\u0394', formatReading(stats.delta, stats.decimalPlaces)));
-    return pill;
   }
 
   function renderNorthArrow() {
@@ -752,129 +800,171 @@
     return box;
   }
 
-  function renderTopoFigurePage(page, evidence) {
-    var meta = page.meta || {};
-    var root = document.createElement('div');
-    root.className = 'rb-topo-page';
+  // The grid a Pictures page lays its photographs out on.
+  //
+  // Only the number across is chosen; the rows follow from how many pictures
+  // the page holds, so 4 x 1 and 4 x 2 are one decision rather than two and
+  // no choice can leave a photograph with nowhere to go. The rail names the
+  // grid each choice produces -- 5 x 2, 4 x 2 -- because that is how the
+  // layout is thought about: Tim, on a page carrying one stranded
+  // photograph, "if we have 10 pictures per slide and we can change our grid
+  // to 5 by 2 or 4 by 2 or 4 by 1, 5 by 1, then it would probably look less
+  // improper."
+  /**
+   * How many pictures stand in a row: two, three, four or five.
+   *
+   * Tim, Oct 17: "three big pictures, two big pictures, four big pictures,
+   * five big pictures, two in a row etc. Too small of a picture just does
+   * not work -- some of that one by 10 that you had, or 10 by one, it just
+   * did not work." So five is the ceiling, because narrower than that each
+   * picture stops being readable.
+   *
+   * One across is back, Oct 20: "one row is acceptable. 5 by 1... 1 by 4, 1
+   * by 3, 1 by 2, 1 by 1. The most rows are 2." Then, seeing 1 x 2 offered:
+   * "1x2 NO." So a single column is one picture given the whole sheet and
+   * nothing else -- two stacked down one column is the strip he threw out.
+   */
+  var PICTURES_ACROSS = [1, 2, 3, 4, 5];
 
-    var header = document.createElement('div');
-    header.className = 'rb-topo-page__header';
+  /**
+   * How deep a Pictures sheet may stack before the pictures stop being worth
+   * printing.
+   *
+   * The rows share the block's height between them, so every extra row makes
+   * every picture shorter -- and a picture is sized by whichever of its two
+   * dimensions runs out first, so a short row makes a NARROW picture too,
+   * however wide its column is. Ten photographs two across is five rows: on a
+   * 17 x 11 sheet that left each one about the size of a postage stamp,
+   * marooned in a cell many times its size.
+   *
+   * Tim, looking at exactly that: "These are worthless views. Remove these."
+   * And earlier, settling the same point: "Too small of a picture just does
+   * not work."
+   *
+   * Two rows, and never a third. Tim, Oct 20: "we need to just worry about
+   * pictures going in 5 columns, 2 rows. No more than 2 rows ever. So it
+   * could be 4 by 2, it could be 1 by 4 or whatever, but no more than 2 rows.
+   * Otherwise, it's too much."
+   *
+   * On a full page of ten that leaves five across; on shorter pages two,
+   * three and four come back, which is what keeps "two big pictures" and
+   * "three big pictures" available.
+   */
+  var MAX_PICTURE_ROWS = 2;
 
-    var left = document.createElement('div');
-    left.className = 'rb-topo-page__header-left';
-    var num = meta.figureNumber || '';
-    var scopeTitle = meta.scopeTitle || meta.levelName || 'Floor Level Survey';
-    var figureNum = document.createElement('p');
-    figureNum.className = 'rb-topo-page__figure-num';
-    figureNum.textContent = num ? ('Figure ' + num) : 'Figure';
-    left.appendChild(figureNum);
-    var figureTitle = document.createElement('h1');
-    figureTitle.className = 'rb-topo-page__figure-title';
-    figureTitle.textContent = 'Floor Level Survey — ' + scopeTitle;
-    left.appendChild(figureTitle);
-    var dateLine = document.createElement('p');
-    dateLine.className = 'rb-topo-page__survey-date';
-    var dateText = formatSurveyDate(meta.surveyDate || evidence.surveyDate || '', true);
-    dateLine.textContent = dateText ? ('Survey Date: ' + dateText) : 'Survey Date:';
-    left.appendChild(dateLine);
-    var corrected = document.createElement('p');
-    corrected.className = 'rb-topo-page__corrected';
-    corrected.textContent = 'Corrected for Floor Differences';
-    left.appendChild(corrected);
-    header.appendChild(left);
-
-    var right = document.createElement('div');
-    right.className = 'rb-topo-page__header-right';
-    var residence = document.createElement('p');
-    residence.className = 'rb-topo-page__residence';
-    residence.textContent = evidence.residenceTitle ||
-      residenceTitle(evidence.customerName || '') ||
-      (evidence.customerName || '');
-    right.appendChild(residence);
-    var parts = addressParts(evidence.addressFull || evidence.address || meta.address || '');
-    var street = document.createElement('p');
-    street.className = 'rb-topo-page__address';
-    street.textContent = parts.street || evidence.address || '';
-    right.appendChild(street);
-    if (parts.cityLine) {
-      var city = document.createElement('p');
-      city.className = 'rb-topo-page__address-city';
-      city.textContent = parts.cityLine;
-      right.appendChild(city);
-    }
-    var door = document.createElement('div');
-    door.className = 'rb-topo-page__front-door';
-    door.appendChild(renderNorthArrow());
-    var doorMeta = document.createElement('div');
-    doorMeta.className = 'rb-topo-page__front-door-meta';
-    var doorLabel = document.createElement('span');
-    doorLabel.textContent = 'Front Door';
-    var doorValue = document.createElement('strong');
-    doorValue.textContent = meta.frontDoorFacing || evidence.frontDoorFacing || '—';
-    doorMeta.appendChild(doorLabel);
-    doorMeta.appendChild(doorValue);
-    door.appendChild(doorMeta);
-    right.appendChild(door);
-    header.appendChild(right);
-    root.appendChild(header);
-
-    var body = document.createElement('div');
-    body.className = 'rb-topo-page__body';
-    var drawing = document.createElement('div');
-    drawing.className = 'rb-topo-page__drawing';
-    var figure = evidence.figure || {};
-    if (!evidenceImage(drawing, figure.dataUrl, 'rb-topo-page__image', scopeTitle)) {
-      addLine(drawing, 'rb-sheet__note', 'Topo figure could not be composed from Floor Survey readings.');
-    }
-    body.appendChild(drawing);
-
-    var chrome = document.createElement('aside');
-    chrome.className = 'rb-topo-page__chrome';
-    var statsList = Array.isArray(evidence.stats) ? evidence.stats : [];
-    if (!statsList.length) {
-      addLine(chrome, 'rb-sheet__note', 'H / L / Δ unavailable for this figure.');
-    } else {
-      statsList.forEach(function (stats, index) {
-        var block = document.createElement('div');
-        var side = statsList.length === 1
-          ? 'left'
-          : (index % 2 === 0 ? 'left' : 'right');
-        block.className = 'rb-topo-page__stat-block rb-topo-page__stat-block--' + side;
-        if (stats.name) {
-          var name = document.createElement('div');
-          name.className = 'rb-topo-page__stat-name';
-          name.textContent = stats.name;
-          block.appendChild(name);
-        }
-        block.appendChild(renderTopoLegend(stats));
-        block.appendChild(renderTopoStats(stats));
-        chrome.appendChild(block);
-      });
-    }
-    body.appendChild(chrome);
-    root.appendChild(body);
-
-    var footer = document.createElement('div');
-    footer.className = 'rb-topo-page__footer';
-    footer.appendChild(renderRelativeReadings(statsList));
-    root.appendChild(footer);
-    return root;
+  /** The grids worth offering for a page holding this many photographs. */
+  function picturesGrids(count) {
+    var n = Math.max(1, Number(count) || 1);
+    var fit = PICTURES_ACROSS.filter(function (cols) {
+      // One column is one picture given the whole sheet, and nothing else:
+      // two stacked down a single column is a strip. Tim, Oct 20: "1x2 NO."
+      if (cols === 1) return n === 1;
+      return Math.ceil(n / cols) <= MAX_PICTURE_ROWS;
+    });
+    // A page carrying more than even the widest grid can hold in three rows
+    // still has to offer something: the shallowest there is.
+    return fit.length ? fit : [PICTURES_ACROSS[PICTURES_ACROSS.length - 1]];
   }
 
-  // How many pictures across a Pictures page lays them out.
-  //
-  // Five is the full page. Fewer across makes each one bigger, which is the
-  // point when a page only carries three or four photographs and they are
-  // worth seeing properly. Rows follow from how many pictures the page holds
-  // rather than being chosen separately: 4 x 1 and 4 x 2 are the same
-  // decision made twice, and a chosen row count could leave a photograph with
-  // nowhere to go.
-  var PICTURES_ACROSS = [3, 4, 5];
-  var PICTURES_ACROSS_DEFAULT = 5;
+  /**
+   * The grid a page falls into when nobody has chosen one.
+   *
+   * Fewest empty cells, and the widest of those when two tie -- but never a
+   * third row while a grid of two will hold the page, because rows share the
+   * height between them and a third one is what makes the pictures too small
+   * to read. Ten fall five and five; eight go four and four; four stand two
+   * and two; three stand in a row of three.
+   */
+  function defaultPicturesAcross(count) {
+    var n = Math.max(1, Number(count) || 1);
+    var choices = picturesGrids(n);
+    var widest = PICTURES_ACROSS[PICTURES_ACROSS.length - 1];
+    var shallow = n <= widest * 2;
+    var best = choices[choices.length - 1];
+    var bestGaps = Infinity;
+    choices.forEach(function (cols) {
+      var rows = Math.ceil(n / cols);
+      if (shallow && rows > 2) return;
+      var gaps = (rows * cols) - n;
+      if (gaps < bestGaps || (gaps === bestGaps && cols > best)) {
+        best = cols;
+        bestGaps = gaps;
+      }
+    });
+    return best;
+  }
+
+  function picturesOnPage(page) {
+    var evidence = (page && page.evidence) || {};
+    if (Array.isArray(evidence.photos) && evidence.photos.length) return evidence.photos.length;
+    var keys = page && page.meta && page.meta.photoKeys;
+    return Array.isArray(keys) ? keys.length : 0;
+  }
 
   function picturesAcross(page) {
     var n = page && page.meta ? Number(page.meta.picturesAcross) : 0;
-    return PICTURES_ACROSS.indexOf(n) >= 0 ? n : PICTURES_ACROSS_DEFAULT;
+    // A grid chosen before the three-row floor existed, or before photographs
+    // were added to the page, is not honoured if it now stacks too deep.
+    if (picturesGrids(picturesOnPage(page)).indexOf(n) >= 0) return n;
+    return defaultPicturesAcross(picturesOnPage(page));
+  }
+
+  /** The Stats pill size set in Labels & layers, kept per device. */
+  function storedStatsPillPx() {
+    try {
+      var raw = window.localStorage.getItem('stats-chip-size');
+      var n = raw == null ? NaN : Number(raw);
+      return isFinite(n) && n > 0 ? n : 32;
+    } catch (err) {
+      return 32;
+    }
+  }
+
+  /**
+   * The placements a new report starts from.
+   *
+   * VISION and DECISIONS both settle this: "Cover, discussion slots, TOC from
+   * finished slide order, and other stable pieces stay template-friendly."
+   * Where those boxes sit is house style, not something to redo on every job
+   * -- Tim: "if we have a white space that we like and it does apply... that
+   * might just be a template."
+   *
+   * It is kept beside Stats pill size, on the device, because that is the
+   * shelf this product already has for a setting that is the investigator's
+   * rather than the Customer File's. Making it follow him between devices is
+   * a sync slice, and sync shape needs its own authorization.
+   */
+  var TEMPLATE_KEY = 'toolbox-report-template';
+
+  var templateCache = null;
+
+  function storedTemplate() {
+    if (templateCache) return templateCache;
+    try {
+      var raw = window.localStorage.getItem(TEMPLATE_KEY);
+      var value = raw ? JSON.parse(raw) : null;
+      templateCache = value && typeof value === 'object' ? value : {};
+    } catch (err) {
+      templateCache = {};
+    }
+    return templateCache;
+  }
+
+  /** Merge one piece in, leaving the others as they were. */
+  function saveTemplatePiece(piece) {
+    if (!piece || typeof piece !== 'object') return false;
+    try {
+      var next = storedTemplate();
+      Object.keys(piece).forEach(function (key) {
+        if (piece[key] == null) delete next[key];
+        else next[key] = JSON.parse(JSON.stringify(piece[key]));
+      });
+      window.localStorage.setItem(TEMPLATE_KEY, JSON.stringify(next));
+      templateCache = next;
+      return true;
+    } catch (err) {
+      return false;
+    }
   }
 
   function renderPicturesPage(page) {
@@ -891,6 +981,14 @@
     var rows = Math.max(1, Math.ceil((photos.length || 1) / across));
     grid.style.setProperty('--rb-pics-cols', String(across));
     grid.style.setProperty('--rb-pics-rows', String(rows));
+    // A single row is a row, not a band stretched down the whole sheet. The
+    // rows share the block's height between them, so with only one of them it
+    // took all of it -- and because a picture sits at the foot of its cell so
+    // the captions line up, two photographs ended up along the bottom edge
+    // under a page of white. Tim: "if we're going to have one row, it needs
+    // to be centered or at the top, not at the bottom. That doesn't even make
+    // sense at all."
+    if (rows === 1) grid.classList.add('rb-pictures-page__grid--one-row');
     if (!photos.length) {
       addLine(grid, 'rb-sheet__note', 'No photographs are available for this page yet.');
     }
@@ -927,6 +1025,84 @@
     return root;
   }
 
+  /**
+   * The words fit the caption. The caption never moves the picture.
+   *
+   * A caption is a block of fixed height in every cell -- three lines deep,
+   * set by the stylesheet from a size the shrinking does not touch. When a
+   * description is too long for it the TYPE comes down, the way a deck author
+   * would set it, and the plate above is left exactly where it is.
+   *
+   * It used to work the other way: the box grew to the words and the plate
+   * gave way, so one long description lifted its own picture clear of the
+   * row. Tim, looking at his own deck: "Pictures look good except for the one
+   * in the upper right hand corner, which has apparently too much text to
+   * center the picture." And: "I want to shrink the font. I said that
+   * already."
+   *
+   * Half size is the floor. A description that will not fit even then is
+   * longer than a plate caption, and the page is not the place to discover
+   * it -- what shows is as much as half-size type holds.
+   */
+  var CAPTION_FLOOR = 0.5;
+
+  function fitCaptions(root) {
+    var fields = root.querySelectorAll('[data-rb-caption]');
+    for (var i = 0; i < fields.length; i += 1) fitCaption(fields[i]);
+  }
+
+  function fitCaption(field) {
+    if (!field) return;
+    // Back to the stylesheet's size before measuring: a caption shortened
+    // since the last pass must be allowed to grow back to full size.
+    field.style.fontSize = '';
+    var base = parseFloat(window.getComputedStyle(field).fontSize);
+    if (!isFinite(base) || base <= 0) return;
+    var size = base;
+    var guard = 0;
+    // The box is the stylesheet's and is never written to here. Only the
+    // type changes, and only downwards.
+    while (field.scrollHeight > field.clientHeight + 1 &&
+      size > base * CAPTION_FLOOR && guard < 40) {
+      size = Math.round((size - base * 0.04) * 100) / 100;
+      field.style.fontSize = size + 'px';
+      guard += 1;
+    }
+  }
+
+  /**
+   * Keep the street on one line, the way a deck author would.
+   *
+   * The decks set it at 60pt because "59 Lodge Trail" fits at 60pt. A longer
+   * address does not: it wrapped, and the city line underneath it ran down
+   * into the survey date. PowerPoint calls this shrink text on overflow, and
+   * it is the same answer -- the type comes down until the line fits, and no
+   * further than two thirds, which is still the largest thing on the page.
+   */
+  function fitStreetLine(root) {
+    var fields = root.querySelectorAll('[data-rb-fit-line]');
+    for (var i = 0; i < fields.length; i += 1) {
+      var field = fields[i];
+      var base = parseFloat(field.getAttribute('data-rb-fit-line'));
+      if (!isFinite(base) || base <= 0) continue;
+      field.style.fontSize = base + 'cqh';
+      var size = base;
+      var guard = 0;
+      // A line that does not fit WRAPS rather than overflowing, so the test
+      // is the height: more than one line box deep means it has wrapped.
+      var wrapped = function () {
+        var line = parseFloat(window.getComputedStyle(field).lineHeight);
+        if (!isFinite(line) || line <= 0) line = field.clientHeight;
+        return field.scrollHeight > line * 1.5;
+      };
+      while (wrapped() && size > base * 0.6 && guard < 40) {
+        size = Math.round((size - base * 0.04) * 1000) / 1000;
+        field.style.fontSize = size + 'cqh';
+        guard += 1;
+      }
+    }
+  }
+
   function coverBoxShell(id, layout, locked) {
     var api = window.ToolboxReportCoverLayout;
     var box = (layout && layout.boxes && layout.boxes[id]) || { x: 0, y: 0, w: 20, h: 12 };
@@ -957,7 +1133,14 @@
   // one uniform style, which makes bolding a word inside it impossible. The
   // deck-measured sizes in the stylesheet remain the DEFAULT; anything set
   // here overrides it for that field and persists on the page.
-  function coverField(tag, className, fieldKey, value, locked) {
+  /**
+   * One editable line of the cover. Always a div: the formatting controls in
+   * the top rail work on rich text, which an <input> cannot hold, so every
+   * field is a contenteditable rather than a form control. It used to take a
+   * tag name and ignore it, which is how a test came to look for .value on
+   * something that only ever had .textContent.
+   */
+  function coverField(className, fieldKey, value, locked) {
     var el = document.createElement('div');
     el.className = className + ' rb-rt';
     el.setAttribute('data-rb-cover-field', fieldKey);
@@ -993,6 +1176,31 @@
   // there. Treating it as one froze the cover against the Customer File: a
   // phone or email added to the file after the report was first opened could
   // never appear, because the blank saved alongside it kept winning.
+  // What the correction actually corrects for.
+  //
+  // The shipped decks say "Corrected for Floor Differences"; the figure rail
+  // has always said flooring. Tim, asked which is right: "proper English
+  // wins." It is flooring -- Floor Survey corrects a reading for the covering
+  // underfoot, and calls it a flooring correction everywhere the investigator
+  // meets it: "Correct for flooring", "Flooring correction", "Active flooring
+  // corrections". The cover now says the same word as the rail and as the app.
+  var CORRECTED_NOTE = 'Corrected for Flooring Differences';
+
+  /**
+   * Replace a line nobody has touched.
+   *
+   * Seeded cover text is written onto the page as soon as it renders, so a
+   * Customer File built before this change carries the old wording as though
+   * it had been typed. A line that still reads exactly as the old default was
+   * never the investigator's word, so it takes the new one; anything else is
+   * his and is left alone.
+   */
+  function retireOldWording(value, oldText, newText) {
+    var api = window.ToolboxReportText;
+    var plain = api && api.isModel(value) ? api.toPlain(value) : String(value == null ? '' : value);
+    return plain.trim() === oldText ? newText : value;
+  }
+
   function keepRich(value, fallback) {
     if (value == null) return fallback;
     var api = window.ToolboxReportText;
@@ -1046,7 +1254,8 @@
       street: keepRich(prior.street, parts.street || meta.address || ''),
       cityLine: keepRich(prior.cityLine, parts.cityLine || ''),
       surveyDate: keepRich(prior.surveyDate, formatSurveyDate(meta.floorSurveyDate || '', false)),
-      corrected: keepRich(prior.corrected, 'Corrected for Floor Differences'),
+      corrected: retireOldWording(
+        keepRich(prior.corrected, CORRECTED_NOTE), 'Corrected for Floor Differences', CORRECTED_NOTE),
       contents: contents,
     };
   }
@@ -1062,21 +1271,11 @@
     root.className = 'rb-cover' + (locked ? ' is-locked' : '');
     root.setAttribute('data-rb-cover-stage', '1');
 
-    var bar = document.createElement('div');
-    bar.className = 'rb-cover__bar';
-    var lockBtn = document.createElement('button');
-    lockBtn.type = 'button';
-    lockBtn.className = 'btn btn--secondary';
-    lockBtn.setAttribute('data-rb-cover-lock', locked ? 'unlock' : 'lock');
-    lockBtn.textContent = locked ? 'Unlock layout' : 'Lock layout';
-    bar.appendChild(lockBtn);
-    var hint = document.createElement('p');
-    hint.className = 'rb-cover__hint';
-    hint.textContent = locked
-      ? 'Title layout locked. Unlock to edit text or move boxes.'
-      : 'Edit any text. Drag boxes to place. Resize from the corner.';
-    bar.appendChild(hint);
-    root.appendChild(bar);
+    // Lock layout and the line of instructions beside it used to stand on
+    // the paper itself, bottom-left. They are the side rail's, with every
+    // other control for the open slide. Tim, Oct 17: "yes, side rail
+    // please." Locked, they used to vanish with the rest of the editor
+    // chrome, which left no way to unlock a title page once it was locked.
 
     var stage = document.createElement('div');
     stage.className = 'rb-cover__stage';
@@ -1088,17 +1287,19 @@
     addLine(prepared, 'rb-cover__label', 'Prepared For:');
     var contact = document.createElement('div');
     contact.className = 'rb-cover__contact';
-    contact.appendChild(coverField('input', 'rb-cover__name', 'name', text.name, locked));
-    contact.appendChild(coverField('input', 'rb-cover__email', 'email', text.email, locked));
-    contact.appendChild(coverField('input', 'rb-cover__phone', 'phone', text.phone, locked));
+    contact.appendChild(coverField('rb-cover__name', 'name', text.name, locked));
+    contact.appendChild(coverField('rb-cover__email', 'email', text.email, locked));
+    contact.appendChild(coverField('rb-cover__phone', 'phone', text.phone, locked));
     prepared.appendChild(contact);
     stage.appendChild(prepared);
 
     var identity = coverBoxShell('identity', layout, locked);
     identity.classList.add('rb-cover-box--identity');
     addLine(identity, 'rb-cover__product', 'FLOOR LEVEL SURVEY');
-    identity.appendChild(coverField('input', 'rb-cover__street', 'street', text.street, locked));
-    identity.appendChild(coverField('input', 'rb-cover__city', 'cityLine', text.cityLine, locked));
+    var street = coverField('rb-cover__street', 'street', text.street, locked);
+    street.setAttribute('data-rb-fit-line', '7.576');
+    identity.appendChild(street);
+    identity.appendChild(coverField('rb-cover__city', 'cityLine', text.cityLine, locked));
     stage.appendChild(identity);
 
     var dateBox = coverBoxShell('date', layout, locked);
@@ -1113,13 +1314,31 @@
     dateLabel.className = 'rb-cover__label';
     dateLabel.textContent = 'Survey Date:';
     dateRow.appendChild(dateLabel);
-    dateRow.appendChild(coverField('input', 'rb-cover__date-value', 'surveyDate', text.surveyDate, locked));
+    dateRow.appendChild(coverField('rb-cover__date-value', 'surveyDate', text.surveyDate, locked));
     dateBox.appendChild(dateRow);
-    dateBox.appendChild(coverField('input', 'rb-cover__corrected', 'corrected', text.corrected, locked));
+    dateBox.appendChild(coverField('rb-cover__corrected', 'corrected', text.corrected, locked));
     stage.appendChild(dateBox);
 
     var contents = coverBoxShell('contents', layout, locked);
     contents.classList.add('rb-cover-box--contents');
+    // The contents box is as tall as its contents.
+    //
+    // It was a fixed rectangle, and the list inside it was clipped to that
+    // rectangle. On a four-level job -- eleven figures -- the frame showed
+    // seven and a half and the rest were simply gone, so the cover of a real
+    // report told the client it contained less than it did. Tim: "the table
+    // of content box doesn't change with the data... it doesn't automatically
+    // adjust with the contents."
+    //
+    // The stored height is a floor now, not a ceiling, so a box dragged
+    // taller keeps that size and a box with more in it grows past it. What it
+    // must never do is hide a figure; if the grown box would run off the
+    // bottom of the sheet, fitCoverContents steps the type down instead.
+    var contentsBox = (layout.boxes && layout.boxes.contents) || null;
+    if (contentsBox) {
+      contents.style.height = 'auto';
+      contents.style.minHeight = contentsBox.h + '%';
+    }
     var contentsInner = document.createElement('div');
     contentsInner.className = 'rb-cover__contents';
     addLine(contentsInner, 'rb-cover__contents-title', 'CONTENTS');
@@ -1137,7 +1356,7 @@
       num.className = 'rb-cover__contents-num';
       num.textContent = line.figureNumber ? ('Figure ' + line.figureNumber) : '';
       row.appendChild(num);
-      var field = coverField('input', 'rb-cover__contents-field', 'contents:' + index, line.text, locked);
+      var field = coverField('rb-cover__contents-field', 'contents:' + index, line.text, locked);
       field.setAttribute('data-rb-cover-page', line.pageId || '');
       field.setAttribute('aria-label', 'Contents line ' + (index + 1));
       row.appendChild(field);
@@ -1220,10 +1439,6 @@
   function renderEvidence(margin, page) {
     var evidence = page.evidence;
     if (!evidence) return false;
-    if (page.type === 'floor' && evidence.composed) {
-      margin.appendChild(renderTopoFigurePage(page, evidence));
-      return true;
-    }
     var frame = document.createElement('div');
     frame.className = 'rb-evidence-frame';
     if (page.type === 'distress') {
@@ -1571,16 +1786,36 @@
     return pins.slice(from, to);
   }
 
+  /**
+   * Whether this Picture Locations sheet draws the level's contour layer.
+   *
+   * On wherever there is one, because that is the view that tells the story:
+   * Tim, having used it in the field, "this is most likely going to be the
+   * view in Report Builder more often than not, because it's very telling."
+   * It is a rendition of this page, not a change to the level -- the same
+   * plan, the same pins, the same numbers -- so each sheet carries its own
+   * choice and Distress's own layer choice is untouched.
+   */
+  function penLogShowsContour(page) {
+    var want = page && page.meta ? page.meta.showContour : undefined;
+    if (typeof want === 'boolean') return want;
+    // A sheet that has not been told takes the default; the default is the
+    // investigator's, and on is what it was before he set one.
+    var fromTemplate = storedTemplate().penLogContour;
+    return typeof fromTemplate === 'boolean' ? fromTemplate : true;
+  }
+
+  function penLogContour(page) {
+    if (!penLogShowsContour(page)) return null;
+    return (page.evidence && page.evidence.contour) || null;
+  }
+
   function penLogStart(page) {
     var n = page && page.meta && page.meta.penLogFrom;
     return typeof n === 'number' && isFinite(n) && n > 0 ? Math.floor(n) : 0;
   }
 
   function renderPenLogSheet(sheet, page, pages, thumb) {
-    var index = 0;
-    for (var n = 0; n < pages.length; n += 1) {
-      if (pages[n].id === page.id) index = n;
-    }
     var notes = penLogNoteMap(page, penLogUi.noteMap);
     var pins = penLogPinsForPage(page, notes, penLogOffsetMap(page));
     var chain = penLogChain(page, pages);
@@ -1588,13 +1823,30 @@
     if (!shown.some(function (pin) { return pin.id === penLogUi.selectedPinId; })) {
       penLogUi.selectedPinId = shown[0] ? shown[0].id : '';
     }
+    // A continuation sheet carries its level's figure number, not one of its
+    // own: it is Figure 2 carried on, not Figure 3. Worked out before the
+    // sheet is drawn, because the sheet's own label has to say the same
+    // number the rail prints on it -- a screen reader hearing "Figure 4" off
+    // a sheet stamped FIGURE 2 is reading a different sheet.
+    var head = chain[0] || page;
+    var headFigure = (head.meta && head.meta.figureNumber) || null;
+    if (!headFigure) {
+      for (var h = 0; h < pages.length; h += 1) if (pages[h].id === head.id) headFigure = h + 1;
+    }
+    page._figureNumber = headFigure;
+    page._figureCont = page !== head;
+
     // A preview measures itself at stamp size; keeping that would move the
     // pins on the real page.
     var penLogLayout = window.ToolboxPenLog.renderPage(sheet, {
       title: page.title,
       levelName: page.meta && page.meta.levelName,
-      pageNumber: index + 1,
+      pageNumber: headFigure,
+      figureCont: page !== head,
       plan: (page.evidence && page.evidence.plan) || {},
+      contour: penLogContour(page),
+      layout: page._penLogLayout || null,
+      locked: !!thumb,
       pins: shown,
       // The map is the whole level on every sheet of it: a reader looking up
       // photograph 31 on the second sheet needs the same plan in front of
@@ -1609,15 +1861,6 @@
       },
     });
     if (!thumb) penLogUi.layout = penLogLayout;
-    // A continuation sheet carries its level's figure number, not one of its
-    // own: it is Figure 2 carried on, not Figure 3.
-    var head = chain[0] || page;
-    var headFigure = (head.meta && head.meta.figureNumber) || null;
-    if (!headFigure) {
-      for (var h = 0; h < pages.length; h += 1) if (pages[h].id === head.id) headFigure = h + 1;
-    }
-    page._figureNumber = headFigure;
-    page._figureCont = page !== head;
     var rail = railForPage(page, { noteEditable: !thumb });
     if (rail) sheet.appendChild(rail);
   }
@@ -1695,6 +1938,100 @@
       try { host.api.unmount(); } catch (err) { /* already gone */ }
     }
     if (host.el && host.el.parentNode) host.el.parentNode.removeChild(host.el);
+  }
+
+  /**
+   * Hand a camera to the views a slide is hosting, except the one it came from.
+   *
+   * Two views on a sheet are two windows on one level, so they are two windows
+   * on one camera. Tim: "I need them to be side by side exactly. not one
+   * higher one lower." A pan used to be told only to the book, and the book
+   * does not re-mount a view that is already showing the right level -- so
+   * dragging either drawing left the other where it was, and the pair sat at
+   * different heights until the report was closed and opened again.
+   */
+  function pushCameraToTopoHosts(camera, except) {
+    if (!camera) return;
+    Object.keys(topoHosts).forEach(function (slot) {
+      if (Number(slot) === Number(except)) return;
+      var host = topoHosts[slot];
+      if (!host || !host.api || typeof host.api.update !== 'function') return;
+      host.api.update({ camera: camera });
+    });
+  }
+
+  /**
+   * The colour scales a sheet is showing, painted by Floor Survey.
+   *
+   * The scale on a Floor Survey page is the one from the Floor Survey screen
+   * -- same grid, same contour values, same palette -- so the page asks Floor
+   * Survey to paint it and places the picture. Painting means building the
+   * boundary's grid, so each one is kept against what it was painted from and
+   * re-used: a sheet and its thumbnail show the same picture, and nothing is
+   * painted twice.
+   */
+  var legendImages = Object.create(null);
+  var legendPainting = Object.create(null);
+
+  /** What a painted scale depends on. A change to any of it is a new scale. */
+  function legendKey(page, statsIndex, settings) {
+    var meta = (page && page.meta) || {};
+    var view = settings || {};
+    return [
+      meta.canvasId || '', meta.scope === 'all' ? '' : (meta.areaId || ''), statsIndex,
+      view.palette || '', view.reversePalette ? 'r' : '',
+      view.firstContour, view.contourStep, view.contourCount,
+      view.minClamp, view.maxClamp, view.decimalPlaces,
+    ].join('|');
+  }
+
+  /**
+   * Make sure every colour scale these pages need has been painted.
+   *
+   * Called from renderPages, and it draws the pages again once pictures have
+   * arrived. The cache is what stops that from going round for ever: the
+   * second pass finds every scale already painted and asks for nothing.
+   */
+  function ensureFloorLegends(fileId, pages, redraw) {
+    var api = window.ToolboxFloorSurvey;
+    if (!api || typeof api.renderTopoLegendImage !== 'function') return;
+    var wanted = [];
+    (pages || []).forEach(function (page) {
+      if (!page || page.type !== 'floor') return;
+      var meta = page.meta || {};
+      if (!meta.imported || !meta.canvasId) return;
+      var stats = page._liveStats ||
+        ((page.evidence && Array.isArray(page.evidence.stats)) ? page.evidence.stats : []);
+      var count = Math.max(1, stats.length);
+      var urls = [];
+      for (var i = 0; i < count; i += 1) {
+        var key = legendKey(page, i, page._floorView);
+        urls.push(legendImages[key] || '');
+        if (!legendImages[key] && !legendPainting[key]) {
+          wanted.push({ page: page, index: i, key: key });
+        }
+      }
+      page._legendUrls = urls;
+    });
+    if (!wanted.length) return;
+    wanted.forEach(function (job) { legendPainting[job.key] = true; });
+    Promise.all(wanted.map(function (job) {
+      var meta = job.page.meta || {};
+      return api.renderTopoLegendImage({
+        customerFileId: fileId,
+        canvasId: meta.canvasId || '',
+        areaId: meta.scope === 'all' ? null : (meta.areaId || null),
+        statsIndex: job.index,
+        settings: job.page._floorView || null,
+      }).then(function (painted) {
+        delete legendPainting[job.key];
+        if (painted && painted.dataUrl) legendImages[job.key] = painted.dataUrl;
+      }).catch(function () {
+        delete legendPainting[job.key];
+      });
+    })).then(function () {
+      if (typeof redraw === 'function') redraw();
+    });
   }
 
   /** Every slot, or every slot past `keep`. */
@@ -1913,6 +2250,12 @@
       stats: stats,
       note: text.railNote || '',
       noteEditable: !!(opts && opts.noteEditable),
+      // Tim: "All text on the rail needs to be editable by the user." Every
+      // block takes the investigator's words when there are any and the
+      // generated line when there are not; the same flag that makes the note
+      // writable makes the rest writable, so a thumbnail stays inert.
+      editable: !!(opts && opts.noteEditable),
+      edits: text.rail || {},
       figureLabel: figureLabelFor(page),
       markSrc: BRAND_LOGO,
     });
@@ -1951,12 +2294,16 @@
         page._coverLayout || (page.meta && page.meta.coverLayout),
         page._overviewUrl || ''
       ));
+      // Measured once the sheet is in the document and has a width: a
+      // stamp and the real page are different sizes, and both are fitted.
+      window.requestAnimationFrame(function () { fitStreetLine(sheet); });
     } else if (page.type === 'section' && page.meta && page.meta.sectionId === 'discussion' &&
                window.ToolboxReportDiscussion) {
       margin.classList.add('rb-sheet__margin--discussion');
       var discussionEl = window.ToolboxReportDiscussion.renderPage(page, {
         locked: !!(page.meta && page.meta.locked),
         facts: page._facts || null,
+        box: page._discussionBox || null,
       });
       margin.appendChild(discussionEl);
       if (!thumb) watchDiscussionOverflow(discussionEl);
@@ -1980,6 +2327,10 @@
     } else if (page.type === 'pictures') {
       margin.classList.add('rb-sheet__margin--pictures');
       margin.appendChild(renderPicturesPage(page));
+      // Measured once the sheet has a width, like the cover's street. Never
+      // on a stamp: a thumbnail is too small to read either way, and there
+      // are as many of them as there are pages.
+      if (!thumb) window.requestAnimationFrame(function () { fitCaptions(sheet); });
     } else if (page.type === 'floor' && !(page.meta && page.meta.reserved)) {
       margin.classList.add('rb-sheet__margin--topo');
       // Once imported, the drawing gets the whole sheet: the inset box the
@@ -2002,6 +2353,22 @@
           mountTopo: thumb ? null : (page._mountTopo || null),
           topoSlots: thumb ? 1 : floorSlotsForPage(page),
           topoActiveSlot: thumb ? 0 : floorActiveSlotForPage(page),
+          // The cover's aerial view, carried onto this page automatically and
+          // taken off it with the x. Settled Oct 10, 2026.
+          overviewUrl: page._overviewUrl || '',
+          overviewHidden: !!(page.meta && page.meta.hideOverview),
+          // The colour scale and the readings are drawn on the page now, from
+          // whatever the drawing is drawing -- including how big the slide's
+          // own Legend size says the scale should be.
+          stats: page._liveStats || null,
+          settings: page._floorView || null,
+          // The colour scales, as pictures painted by Floor Survey. One per
+          // boundary, in the order the readings come in.
+          legendUrls: page._legendUrls || null,
+          // The readings are sized by Stats pill size, which is kept on this
+          // device rather than in the report -- the same number the drawing's
+          // own pill used before it came off the picture.
+          pillPx: storedStatsPillPx(),
         });
         if (page.meta && !thumb) page.meta.layout = rendered.layout;
         margin.appendChild(rendered.root);
@@ -2009,7 +2376,7 @@
         addLine(margin, 'rb-sheet__note', 'Floor Survey page unavailable.');
       }
     } else if (page.type === 'distress' || page.type === 'diagnostics') {
-      var kicker = page.type === 'distress' ? 'Distress Survey' : page.type === 'floor' ? 'Floor Survey' : 'Diagnostics';
+      var kicker = page.type === 'distress' ? 'Distress Survey' : 'Diagnostics';
       addLine(margin, 'rb-sheet__kicker', kicker);
       var evidenceTitle = document.createElement('h1');
       evidenceTitle.className = 'rb-sheet__title';
@@ -2133,7 +2500,8 @@
     };
   }
 
-  function persistableDocument(pages, activePageId, prior, floorLayout, coverLayout, brandBox, floorCamera, floorView, floorFramed) {
+  function persistableDocument(pages, activePageId, prior, floorLayout, coverLayout, brandBox,
+    floorCamera, floorView, floorFramed, discussionBox, penLogLayout) {
     var notes = collectPenLogNotes(pages);
     if ((!notes || !Object.keys(notes).length) && prior && prior.penLog && prior.penLog.notes) {
       notes = prior.penLog.notes;
@@ -2170,6 +2538,16 @@
     var discApi = window.ToolboxReportDiscussion;
     var brand = brandBox || (prior && prior.brandBox);
     if (brand) doc.brandBox = discApi ? discApi.normalizeBrandBox(brand) : brand;
+    // One writing area for the whole discussion, continuation sheets
+    // included, so the re-flow measures the same box it splits by.
+    var discBody = discussionBox || (prior && prior.discussionBox);
+    if (discBody) doc.discussionBox = discApi ? discApi.normalizeBodyBox(discBody) : discBody;
+    var penApi = window.ToolboxPenLog;
+    var penBoxes = penLogLayout || (prior && prior.penLogLayout);
+    if (penBoxes) {
+      doc.penLogLayout = penApi && penApi.normalizeLayout
+        ? penApi.normalizeLayout(penBoxes) : penBoxes;
+    }
     var camera = floorCamera || (prior && prior.floorCamera);
     if (camera) doc.floorCamera = JSON.parse(JSON.stringify(camera));
     var view = floorView || (prior && prior.floorView);
@@ -2305,6 +2683,15 @@
     // otherwise, so a report saved before this still shows where its logo was
     // put (the per-sheet copy is adopted on open).
     var brandBox = null;
+    // Where the discussion's writing area sits and how big it is. One
+    // placement for the whole discussion; null until the investigator moves
+    // it, and then it is his. Tim: "if you let me adjust the size of the box
+    // then I can use the white space that I want."
+    var discussionBox = null;
+    // Where the plan and the schedule sit on a Picture Locations sheet. One
+    // placement for the whole report, like the Floor Survey layout: level on
+    // level, the sheets have to register with each other.
+    var penLogBoxLayout = null;
     // One camera for every Floor Survey slide: the same part of the plan at the
     // same zoom, so clicking through Combined, Main Level, Kitchen and Garage
     // is a flip book -- the building does not move. The chrome (colour scale,
@@ -2344,6 +2731,69 @@
       var n = Number(page && page._floorSlot) || 0;
       return Math.max(0, Math.min(floorSlots(page) - 1, n));
     }
+    /**
+     * Is this piece locked on this sheet?
+     *
+     * Three locks, each over one thing and over both its position and its
+     * size. Tim: "I might want to lock floor survey, I might want to lock a
+     * legend contour and then I might want to lock the high/low delta pin,
+     * and all of those can be separate." The colour scale and the readings
+     * have one each; the plan frame and the aerial view still answer to the
+     * report-wide lock a report may already carry.
+     */
+    /** The size the rail's own control is drawing each piece at right now. */
+    function liveLegendScale() {
+      var view = floorViewFor(activePage());
+      var n = Number(view && view.legendScale);
+      return isFinite(n) && n > 0 ? n : 1;
+    }
+
+    function livePillScale() {
+      var n = storedStatsPillPx() / 32;
+      return isFinite(n) && n > 0 ? n : 1;
+    }
+
+    /**
+     * A locked piece still answers its own size control.
+     *
+     * The lock keeps the size in the report so it is the same on every sheet
+     * and on every machine. If the control that sets that size then did
+     * nothing while the piece was locked, it would read as broken -- the same
+     * fault as the pill not resizing at all, wearing a different hat. So the
+     * control writes through: it changes the locked size, on every sheet at
+     * once, which is what a locked piece means.
+     */
+    function pushPieceScale(which, scale) {
+      var flApi = window.ToolboxReportFloorLayout;
+      if (!flApi || !isFinite(scale) || scale <= 0) return false;
+      var key = which === 'pill' ? 'pillLock' : 'legendLock';
+      var touched = false;
+      pages.forEach(function (fp) {
+        if (!fp || fp.type !== 'floor' || (fp.meta && fp.meta.reserved)) return;
+        fp.meta = fp.meta || {};
+        var own = flApi.normalizeLayout(fp.meta.layout || floorLayout);
+        if (!own[key] || !own[key].locked) return;
+        own[key] = { locked: true, scale: scale };
+        fp.meta.layout = own;
+        touched = true;
+      });
+      if (touched) {
+        floorLayout = flApi.normalizeLayout(floorLayout);
+        floorLayout[key] = { locked: true, scale: scale };
+        markDirty();
+      }
+      return touched;
+    }
+
+    function floorPieceLocked(page, kind) {
+      var flApi = window.ToolboxReportFloorLayout;
+      var raw = (page && page.meta && page.meta.layout) || floorLayout;
+      var layout = flApi ? flApi.normalizeLayout(raw) : (raw || {});
+      if (kind === 'legend') return !!(layout.legendLock && layout.legendLock.locked);
+      if (kind === 'pill') return !!(layout.pillLock && layout.pillLock.locked);
+      return !!layout.locked;
+    }
+
     function floorViewFor(page, slot) {
       var at = typeof slot === 'number' ? slot : floorSlot(page);
       var meta = (page && page.meta) || {};
@@ -2375,6 +2825,8 @@
     var coverOverviewUrl = '';
     var floorDrag = null;
     var coverDrag = null;
+    var discDrag = null;
+    var penDrag = null;
     pageSeq = pages.length;
 
     host.innerHTML = shellHtml();
@@ -2390,6 +2842,7 @@
     var earlierBtn = root.querySelector('#rb-page-earlier');
     var laterBtn = root.querySelector('#rb-page-later');
     var penPanel = root.querySelector('#rb-penlog-panel');
+    var penContourBtn = root.querySelector('#rb-penlog-contour');
     var penNoteField = root.querySelector('#rb-report-note');
     var penSaveState = root.querySelector('#rb-save-state');
     var penPhotoList = root.querySelector('#rb-photo-list');
@@ -2467,7 +2920,9 @@
         brandBox,
         floorCamera,
         floorView,
-        floorFramed
+        floorFramed,
+        discussionBox,
+        penLogBoxLayout
       );
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;
@@ -2544,6 +2999,15 @@
         return;
       }
       penPanel.hidden = false;
+      if (penContourBtn) {
+        var hasContour = !!(page.evidence && page.evidence.contour);
+        var showing = penLogShowsContour(page);
+        penContourBtn.hidden = !hasContour;
+        penContourBtn.textContent = showing ? 'Contours on' : 'Contours off';
+        penContourBtn.className = 'btn rb-ws__btn ' + (showing ? 'btn--accent' : 'btn--secondary');
+        penContourBtn.setAttribute('data-rb-penlog-contour', showing ? 'off' : 'on');
+        penContourBtn.setAttribute('aria-pressed', showing ? 'true' : 'false');
+      }
       var notes = penLogNoteMap(page, penLogUi.noteMap);
       var pins = penLogPinsForPage(page, notes);
       if (!pins.some(function (pin) { return pin.id === penLogUi.selectedPinId; })) {
@@ -2662,6 +3126,25 @@
     var thumbCache = Object.create(null);
     var floorShots = Object.create(null);
     var floorShotTimer = null;
+
+    // Leaving takes this visit's own state with it.
+    //
+    // thumbCache holds a rendered miniature of every page: detached screens,
+    // each with its photographs, its compass and the rest of its drawing
+    // still in them. floorShots holds a picture of every Floor Survey drawing
+    // that has been looked at. Both belong to one visit, and unmount is a
+    // module-level function that cannot see inside a mount -- so the mount
+    // hands it the way to clear them. Measured before this: a job with twelve
+    // photographs cost about a megabyte every time Report Builder was opened
+    // and left, with a whole screen's worth of elements retained each time.
+    mountCleanup = function () {
+      Object.keys(thumbCache).forEach(function (key) { delete thumbCache[key]; });
+      Object.keys(floorShots).forEach(function (key) { delete floorShots[key]; });
+      if (floorShotTimer) {
+        clearTimeout(floorShotTimer);
+        floorShotTimer = null;
+      }
+    };
 
     function thumbSignature(page) {
       var shot = floorShots[page.id] || '';
@@ -2890,14 +3373,41 @@
             : floorLayout;
         }
       }
-      if (current && current.type === 'cover') {
-        current._coverLayout = coverLayout;
-        current._overviewUrl = coverOverviewUrl;
-      }
-      if (current && current.type === 'section' && current.meta &&
-          current.meta.sectionId === 'discussion') {
-        current._facts = discussionFacts(current);
-      }
+      // Stamped on every page that needs it, not only on the one being
+      // looked at. The print deck renders the same page objects, and a value
+      // only the active page carried was missing from the printed sheet:
+      // a Discussion printed as a blank sheet whenever the investigator had
+      // moved to another slide before pressing Print.
+      pages.forEach(function (item) {
+        if (!item) return;
+        if (item.type === 'cover') {
+          item._coverLayout = coverLayout;
+          item._overviewUrl = coverOverviewUrl;
+        } else if (item.type === 'section' && item.meta &&
+                   item.meta.sectionId === 'discussion') {
+          item._facts = discussionFacts(item);
+          item._discussionBox = discussionBox;
+        } else if (isPenLogPage(item)) {
+          item._penLogLayout = penLogBoxLayout;
+        }
+      });
+      // The cover's aerial view belongs to the book, not to the cover, so
+      // every Floor Survey page is handed it too -- the stamps as well as the
+      // sheet, or the preview would disagree with the page it is a preview
+      // of. Settled Oct 10, 2026.
+      (pages || []).forEach(function (item) {
+        if (!item || item.type !== 'floor') return;
+        item._overviewUrl = coverOverviewUrl;
+        // How big the colour scale is drawn on the page. It is the slide's
+        // own Legend size -- the same control that sizes it on the Floor
+        // Survey screen -- and renderSheet runs outside this closure, so it
+        // is handed over on the page like the aerial view is.
+        item._floorView = floorViewFor(item);
+      });
+      // The colour scales, painted by Floor Survey. Asked for after the view
+      // settings are on the pages, because they are part of what the scale is
+      // drawn from.
+      ensureFloorLegends(customerFileId, pages, renderPages);
       if (current) current._brandBox = currentBrandBox(current);
       // Only the slide being looked at hosts the live view; the others are not
       // in the DOM. The camera is the book's, so every level opens framed the
@@ -2912,8 +3422,17 @@
             camera: floorCamera,
             settings: floorViewFor(page, at),
             locked: !!(floorCamera && floorCamera.locked),
-            onCameraChange: function (camera) {
+            onCameraChange: function (camera, from) {
               var locked = !!(floorCamera && floorCamera.locked);
+              // A view that has just been handed a camera reports it straight
+              // back. Reading that as a fresh pan would save the report again
+              // and bounce the camera between the two views, so a camera that
+              // is the one already held is not news.
+              var same = !!floorCamera &&
+                Math.abs((floorCamera.cx || 0) - (camera.cx || 0)) < 1e-4 &&
+                Math.abs((floorCamera.cy || 0) - (camera.cy || 0)) < 1e-4 &&
+                Math.abs((floorCamera.zoom || 0) - (camera.zoom || 0)) < 1e-4;
+              if (same) return;
               // rel marks a camera whose centre is a fraction of the plan
               // rather than image pixels. Dropping it here would make every
               // stored view read as the old pixel form, which is exactly the
@@ -2923,6 +3442,7 @@
                 cx: camera.cx, cy: camera.cy, zoom: camera.zoom,
                 rel: !!camera.rel, locked: locked,
               };
+              pushCameraToTopoHosts(floorCamera, from);
               markDirty();
             },
               onSettingsChange: function (next, from) {
@@ -2976,6 +3496,9 @@
       renderSheet(sheetEl, current, pages);
       syncPenLogPanel(current);
       fitSheet(root);
+      // The sheet is rebuilt on every render, so the box being worked on has
+      // to be marked again or the pulls disappear mid-drag.
+      if (typeof paintCoverSelection === 'function') paintCoverSelection();
       // A Floor Survey slide's drawing is live and belongs to the slide being
       // looked at, so its preview is a picture taken while it is on screen.
       scheduleFloorShot(current);
@@ -3037,8 +3560,103 @@
       return btn;
     }
 
+    /**
+     * The way back to the application this sheet came from.
+     *
+     * Every sheet that owns a source gets one, which is what the rail is for:
+     * a Pictures sheet and a Picture Locations sheet come from Distress
+     * Survey, a Floor Survey sheet from Floor Survey. Only the Floor Survey
+     * sheet had one, so from the other two the only way back was the
+     * browser's Back button -- and the return the Distress copy offers
+     * ("Return to report") had nothing to start it. The foot is cleared on
+     * every slide, so a Pictures sheet cannot be left showing the Floor
+     * Survey button belonging to the slide before it.
+     */
+    function setRailFootSource(key) {
+      if (!railFootEl) return;
+      railFootEl.textContent = '';
+      railFootEl.appendChild(railButton(
+        key === 'floor' ? 'Open Floor Survey' : 'Open Distress Survey',
+        'secondary', 'data-rb-source', key));
+      var footHint = document.createElement('p');
+      footHint.className = 'rb-panel__lead';
+      footHint.textContent = 'For changes other than formatting.';
+      railFootEl.appendChild(footHint);
+    }
+
     function syncRail(page) {
       if (!railEl) return;
+      if (page && page.type === 'cover') {
+        releaseRailControls();
+        railEl.hidden = false;
+        if (railIdleEl) railIdleEl.hidden = true;
+        if (railTitleEl) railTitleEl.textContent = 'Title page';
+        var coverLocked = !!(coverLayout && coverLayout.locked);
+        railTopEl.textContent = '';
+        railTopEl.appendChild(railButton(
+          coverLocked ? 'Unlock layout' : 'Lock layout',
+          coverLocked ? 'secondary' : 'accent',
+          'data-rb-cover-lock', coverLocked ? 'unlock' : 'lock'));
+        var coverHint = document.createElement('p');
+        coverHint.className = 'rb-panel__lead';
+        coverHint.textContent = coverLocked
+          ? 'Title layout locked. Unlock to edit text or move boxes.'
+          : 'Edit any text. Drag boxes to place. Resize from the corner.';
+        railTopEl.appendChild(coverHint);
+        railTopEl.appendChild(railButton(
+          'Use this as my default', 'quiet', 'data-rb-template', 'cover'));
+        var coverDefaultHint = document.createElement('p');
+        coverDefaultHint.className = 'rb-panel__lead';
+        coverDefaultHint.textContent = 'New reports start with these boxes where they are here.';
+        railTopEl.appendChild(coverDefaultHint);
+        if (railBodyEl) railBodyEl.textContent = '';
+        if (railFootEl) railFootEl.textContent = '';
+        return;
+      }
+      if (pageTakesBrand(page)) {
+        releaseRailControls();
+        railEl.hidden = false;
+        if (railIdleEl) railIdleEl.hidden = true;
+        if (railTitleEl) railTitleEl.textContent = page.type === 'section' ? 'Discussion' : 'Sheet';
+        var brandBox = window.ToolboxReportDiscussion
+          ? window.ToolboxReportDiscussion.normalizeBrandBox(currentBrandBox(page))
+          : (currentBrandBox(page) || {});
+        var brandLocked = !!brandBox.locked;
+        railTopEl.textContent = '';
+        railTopEl.appendChild(railButton(
+          brandLocked ? 'Unlock logo' : 'Lock logo',
+          brandLocked ? 'secondary' : 'accent',
+          'data-rb-brand-lock', brandLocked ? 'unlock' : 'lock'));
+        var brandHint = document.createElement('p');
+        brandHint.className = 'rb-panel__lead';
+        brandHint.textContent = brandLocked
+          ? 'The mark is placed. It sits here on every page that carries it.'
+          : 'Drag the mark to move it. Drag its corner to size it. Lock when it sits where you want it.';
+        railTopEl.appendChild(brandHint);
+        // A box dragged small cannot be put back by hand, so the way back to
+        // the placement the shipped decks measure is one button. Offered only
+        // once it has been moved.
+        var discApiRail = window.ToolboxReportDiscussion;
+        if (page.type === 'section' && discApiRail &&
+            typeof discApiRail.isDefaultBodyBox === 'function' &&
+            !discApiRail.isDefaultBodyBox(discussionBox)) {
+          railTopEl.appendChild(railButton(
+            'Reset writing area', 'quiet', 'data-rb-disc-reset', '1'));
+          var resetHint = document.createElement('p');
+          resetHint.className = 'rb-panel__lead';
+          resetHint.textContent = 'Back to where the reports put it.';
+          railTopEl.appendChild(resetHint);
+        }
+        railTopEl.appendChild(railButton(
+          'Use this as my default', 'quiet', 'data-rb-template', 'discussion'));
+        var discDefaultHint = document.createElement('p');
+        discDefaultHint.className = 'rb-panel__lead';
+        discDefaultHint.textContent = 'New reports start with the writing area and the mark where they are here.';
+        railTopEl.appendChild(discDefaultHint);
+        if (railBodyEl) railBodyEl.textContent = '';
+        if (railFootEl) railFootEl.textContent = '';
+        return;
+      }
       var isPictures = !!(page && page.type === 'pictures');
       if (isPictures) {
         releaseRailControls();
@@ -3047,26 +3665,38 @@
         if (railTitleEl) railTitleEl.textContent = 'Pictures';
         railTopEl.textContent = '';
         var acrossNow = picturesAcross(page);
+        // Each button is named for the grid it makes of the pictures on this
+        // page -- 5 x 2, 4 x 2, 4 x 1 -- rather than for its number of
+        // columns, which is how the sheet is actually thought about.
+        var onPage = Math.max(1, picturesOnPage(page));
         var row = document.createElement('div');
-        row.className = 'rb-ws__row';
-        PICTURES_ACROSS.forEach(function (n) {
-          var btn = railButton(String(n) + ' across',
+        row.className = 'rb-ws__row rb-ws__row--wrap';
+        // Only the grids that keep the pictures worth printing: anything
+        // deeper than three rows made each one too small to read.
+        picturesGrids(onPage).forEach(function (n) {
+          var label = String(n) + ' \u00d7 ' + Math.ceil(onPage / n);
+          var btn = railButton(label,
             n === acrossNow ? 'accent' : 'secondary', 'data-rb-pics-across', String(n));
           row.appendChild(btn);
         });
         railTopEl.appendChild(row);
         var picHint = document.createElement('p');
         picHint.className = 'rb-panel__lead';
-        picHint.textContent = 'Fewer across makes each picture bigger. Rows follow from how many this page holds.';
+        picHint.textContent = 'Across \u00d7 down. Fewer across makes each picture bigger; ' +
+          'a page starts on the grid that fits what it holds.';
         railTopEl.appendChild(picHint);
         if (railBodyEl) railBodyEl.textContent = '';
+        setRailFootSource('distress');
         return;
       }
       var isFloor = !!(page && page.type === 'floor' && !(page.meta && page.meta.reserved));
       if (!isFloor) {
         releaseRailControls();
         railEl.hidden = true;
-        if (railIdleEl) railIdleEl.hidden = false;
+        // A Picture Locations sheet has a workspace -- the Pen Log panel
+        // right below -- so telling the investigator to open a slide to see
+        // one, directly above the one they are looking at, is noise.
+        if (railIdleEl) railIdleEl.hidden = isPenLogPage(page);
         return;
       }
       railEl.hidden = false;
@@ -3083,16 +3713,46 @@
         hint.textContent = 'Brings this level onto the slide.';
         railTopEl.appendChild(hint);
       } else {
+        // Three locks, each over one thing, each over where it sits AND how
+        // big it is drawn. Tim: "lock view doesn't really tell us what we're
+        // supposed to do... I might want to lock floor survey, I might want
+        // to lock a legend contour and then I might want to lock the high/low
+        // delta pin, and all of those can be separate." They replace Lock
+        // view, which was only ever the plan's framing under a name that
+        // sounded like everything, and Lock layout, which moved the scale and
+        // the readings together and named neither.
+        var planLocked = !!(floorCamera && floorCamera.locked);
         railTopEl.appendChild(
-          railButton(floorCamera && floorCamera.locked ? 'Unlock view' : 'Lock view',
-            floorCamera && floorCamera.locked ? 'secondary' : 'accent',
-            'data-rb-floor-lock', floorCamera && floorCamera.locked ? 'unlock' : 'lock'));
-        var viewHint = document.createElement('p');
-        viewHint.className = 'rb-panel__lead';
-        viewHint.textContent = floorCamera && floorCamera.locked
-          ? 'Every Floor Survey slide frames the plan this way. What is drawn on it stays per slide.'
-          : 'Drag the plan to move it. Drag the corner to size it. Lock when it sits where you want it on every slide.';
-        railTopEl.appendChild(viewHint);
+          railButton(planLocked ? 'Unlock floor survey' : 'Lock floor survey',
+            planLocked ? 'secondary' : 'accent',
+            'data-rb-floor-view-lock', planLocked ? 'unlock' : 'lock'));
+        // No paragraph under it. These five buttons carried five explanations
+        // between them -- 218px of the 457 above the tabs -- which pushed the
+        // controls themselves off the bottom of the window. Tim, looking at
+        // the Contours tab: "No, there's nothing there." The labels say what
+        // the buttons do; the prose was mine, and it was in the way.
+
+        var pieceApi = window.ToolboxReportFloorLayout;
+        var pieceLayout = pieceApi
+          ? pieceApi.normalizeLayout((page.meta && page.meta.layout) || floorLayout)
+          : ((page.meta && page.meta.layout) || floorLayout || {});
+        [
+          { key: 'legend', name: 'contour legend',
+            on: !!(pieceLayout.legendLock && pieceLayout.legendLock.locked) },
+          { key: 'pill', name: 'high/low/delta',
+            on: !!(pieceLayout.pillLock && pieceLayout.pillLock.locked) },
+        ].forEach(function (piece) {
+          var label = (piece.on ? 'Unlock ' : 'Lock ') + piece.name;
+          railTopEl.appendChild(railButton(label, piece.on ? 'secondary' : 'quiet',
+            'data-rb-floor-piece-lock', piece.key + ':' + (piece.on ? 'unlock' : 'lock')));
+        });
+
+        railTopEl.appendChild(railButton(
+          'Use this as my default', 'quiet', 'data-rb-template', 'floor'));
+        var floorDefaultHint = document.createElement('p');
+        floorDefaultHint.className = 'rb-panel__lead';
+        floorDefaultHint.textContent = 'New reports start here.';
+        railTopEl.appendChild(floorDefaultHint);
 
         var twoUp = floorSlots(page) > 1;
         railTopEl.appendChild(railButton(
@@ -3101,8 +3761,8 @@
         var twoHint = document.createElement('p');
         twoHint.className = 'rb-panel__lead';
         twoHint.textContent = twoUp
-          ? 'Click a drawing to pick the one these controls change. Set that one to Points only to show the readings beside the contours.'
-          : 'Puts the same level on the sheet twice, so one can show contours and the other the readings.';
+          ? 'Click a drawing to aim these controls at it.'
+          : 'The same level twice: contours on one, readings on the other.';
         railTopEl.appendChild(twoHint);
       }
 
@@ -3133,30 +3793,109 @@
           settings: floorViewFor(page),
           onBack: function () {},
           onSettingsChange: function (next) {
-            setFloorViewFor(activePage(), next);
+            var live = activePage();
+            setFloorViewFor(live, next);
             markDirty();
-            // The drawing is a second root looking at the same settings.
-            if (topoHost.api && typeof topoHost.api.update === 'function') {
-              topoHost.api.update({ settings: next });
+            // Legend size is one of these settings, so a locked colour scale
+            // takes the new size rather than ignoring the control.
+            pushPieceScale('legend', liveLegendScale());
+            // The drawing is a second root looking at the same settings, and
+            // it has to be told. This named `topoHost`, a single mount that
+            // stopped existing when a sheet gained the option of two
+            // drawings -- so every control in this panel threw, and the
+            // colour scale, the pill, the labels and the palette all read as
+            // doing nothing at all. The setting was stored; the drawing was
+            // never informed.
+            var host = topoHosts[floorSlot(live)] || topoHosts[0];
+            if (host && host.api && typeof host.api.update === 'function') {
+              host.api.update({ settings: next });
             }
+            // The sheet draws the colour scale and the readings itself now,
+            // and Legend size is what sizes them, so the page is redrawn too
+            // -- the live view is re-appended rather than rebuilt, so the
+            // drawing does not flicker or lose its place.
+            renderPages();
             flushSave().catch(function () {});
           },
         });
       }
 
-      railFootEl.textContent = '';
-      railFootEl.appendChild(
-        railButton('Open Floor Survey', 'secondary', 'data-rb-source', 'floor'));
-      var footHint = document.createElement('p');
-      footHint.className = 'rb-panel__lead';
-      footHint.textContent = 'For changes other than formatting.';
-      railFootEl.appendChild(footHint);
+      setRailFootSource('floor');
     }
 
     // The rail's buttons are built per slide, so they are handled by
     // delegation rather than by listeners attached once at mount.
     if (railEl) {
       railEl.addEventListener('click', function (event) {
+        var templateBtn = event.target.closest('[data-rb-template]');
+        if (templateBtn) {
+          event.preventDefault();
+          var which = templateBtn.getAttribute('data-rb-template');
+          var saved;
+          if (which === 'cover') {
+            saved = saveTemplatePiece({ coverLayout: coverLayout });
+          } else if (which === 'floor') {
+            // How the building is framed, where the scale and the readings
+            // sit on the page, and what is drawn inside the frame.
+            saved = saveTemplatePiece({
+              floorLayout: floorLayout,
+              floorCamera: floorCamera,
+              floorView: floorViewFor(activePage()) || floorView,
+            });
+          } else {
+            // What the page is actually showing, not only what was moved: a
+            // placement he is happy with as it stands is still the one he
+            // means to keep.
+            var dTmpl = window.ToolboxReportDiscussion;
+            saved = saveTemplatePiece({
+              discussionBox: dTmpl ? dTmpl.normalizeBodyBox(discussionBox) : discussionBox,
+              brandBox: dTmpl ? dTmpl.normalizeBrandBox(currentBrandBox(activePage())) : brandBox,
+            });
+          }
+          setSaveStatus(saved
+            ? 'Saved as the default for new reports.'
+            : 'The default could not be saved on this device.');
+          return;
+        }
+        var discReset = event.target.closest('[data-rb-disc-reset]');
+        if (discReset) {
+          event.preventDefault();
+          var dRapi = window.ToolboxReportDiscussion;
+          discussionBox = dRapi ? dRapi.defaultBodyBox() : null;
+          markDirty();
+          if (reflowDiscussion()) flushSave().catch(function () {});
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
+        var brandLockBtn = event.target.closest('[data-rb-brand-lock]');
+        if (brandLockBtn) {
+          event.preventDefault();
+          var brandPage = activePage();
+          if (!brandPage) return;
+          var brandApi = window.ToolboxReportDiscussion;
+          var brandNext = brandApi
+            ? brandApi.normalizeBrandBox(currentBrandBox(brandPage))
+            : (currentBrandBox(brandPage) || {});
+          brandNext.locked = brandLockBtn.getAttribute('data-rb-brand-lock') === 'lock';
+          applyBrandBox(brandNext);
+          markDirty();
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
+        var coverLock = event.target.closest('[data-rb-cover-lock]');
+        if (coverLock) {
+          event.preventDefault();
+          var coverApi = window.ToolboxReportCoverLayout;
+          coverLayout = coverApi ? coverApi.normalizeLayout(coverLayout) : coverLayout;
+          coverLayout.locked = coverLock.getAttribute('data-rb-cover-lock') === 'lock';
+          dirty = true;
+          setSaveStatus('Saving…');
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
         var importBtn = event.target.closest('[data-rb-floor-import]');
         if (importBtn) {
           event.preventDefault();
@@ -3211,10 +3950,87 @@
           flushSave().catch(function () {});
           return;
         }
-        var lockBtn = event.target.closest('[data-rb-floor-lock]');
+        // Lock contour legend / Lock high/low/delta.
+        //
+        // Locking takes this sheet's placement AND the size it is being drawn
+        // at right now, writes both into the report, and gives the same pair to
+        // every Floor Survey sheet. Tim: "they should all just come in exactly
+        // in the same place always, always in the same size... maybe it just
+        // needs to be the last location that I brought them in." This is that:
+        // the one in front of him when he locks it.
+        var pieceBtn = event.target.closest('[data-rb-floor-piece-lock]');
+        if (pieceBtn) {
+          event.preventDefault();
+          var pCurrent = activePage();
+          if (!pCurrent || pCurrent.type !== 'floor') return;
+          var parts = (pieceBtn.getAttribute('data-rb-floor-piece-lock') || '').split(':');
+          var which = parts[0] === 'pill' ? 'pill' : 'legend';
+          var wantLock = parts[1] !== 'unlock';
+          var pApi = window.ToolboxReportFloorLayout;
+          if (!pApi) return;
+          var pLayout = pApi.normalizeLayout((pCurrent.meta && pCurrent.meta.layout) || floorLayout);
+          var lockKey = which === 'legend' ? 'legendLock' : 'pillLock';
+          if (wantLock) {
+            // The size it is drawn at now: the rail control's, unless this
+            // piece already carried a locked size.
+            // The size it is drawn at RIGHT NOW, always. It used to prefer a
+            // size this piece had been locked at before, so after unlocking,
+            // resizing and locking again the piece jumped back to that older
+            // size the moment it was locked. Tim: "lock contour vs unlock the
+            // legend changes size." A lock freezes what is on the sheet; it
+            // does not remember an earlier one.
+            pLayout[lockKey] = {
+              locked: true,
+              scale: which === 'legend' ? liveLegendScale() : livePillScale(),
+            };
+            // Every sheet takes this sheet's placement for that piece, so the
+            // locked piece is in one spot across the book.
+            var placed = {};
+            pLayout.overlays.forEach(function (o) {
+              if (o.kind === which) placed[o.statsIndex] = { x: o.x, y: o.y, z: o.z };
+            });
+            pages.forEach(function (fp) {
+              if (!fp || fp.type !== 'floor' || (fp.meta && fp.meta.reserved)) return;
+              fp.meta = fp.meta || {};
+              var own = pApi.normalizeLayout(fp.meta.layout || floorLayout);
+              own[lockKey] = { locked: true, scale: pLayout[lockKey].scale };
+              own.overlays.forEach(function (o) {
+                var spot = o.kind === which ? placed[o.statsIndex] : null;
+                if (!spot) return;
+                o.x = spot.x;
+                o.y = spot.y;
+                o.z = spot.z;
+              });
+              fp.meta.layout = own;
+            });
+            floorLayout = pApi.normalizeLayout(floorLayout);
+            floorLayout[lockKey] = { locked: true, scale: pLayout[lockKey].scale };
+          } else {
+            pages.forEach(function (fp) {
+              if (!fp || fp.type !== 'floor' || (fp.meta && fp.meta.reserved)) return;
+              fp.meta = fp.meta || {};
+              var own = pApi.normalizeLayout(fp.meta.layout || floorLayout);
+              own[lockKey] = { locked: false, scale: own[lockKey] ? own[lockKey].scale : null };
+              fp.meta.layout = own;
+            });
+            floorLayout = pApi.normalizeLayout(floorLayout);
+            floorLayout[lockKey] = { locked: false, scale: floorLayout[lockKey].scale };
+          }
+          dirty = true;
+          setSaveStatus('Saving…');
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
+
+        // Lock floor survey: the plan's framing, and nothing else on the
+        // sheet. Each of the three locks carries its own name, so a selector
+        // cannot match two of them -- which is how a test once came to click
+        // the camera and wait forever for something else to lock.
+        var lockBtn = event.target.closest('[data-rb-floor-view-lock]');
         if (lockBtn) {
           event.preventDefault();
-          var want = lockBtn.getAttribute('data-rb-floor-lock') === 'lock';
+          var want = lockBtn.getAttribute('data-rb-floor-view-lock') === 'lock';
           // Lock View is about the camera -- the plan sitting in the same
           // place on every Floor Survey slide. It is deliberately not about
           // the chrome, which stays movable per slide.
@@ -3252,6 +4068,35 @@
       });
     });
 
+    // Contours on or off for this Picture Locations sheet. The level's layer
+    // is untouched, and so is what Distress is showing: this is how this page
+    // is drawn, nothing more.
+    if (penContourBtn) {
+      penContourBtn.addEventListener('click', function (event) {
+        event.preventDefault();
+        var contourPage = activePage();
+        if (!contourPage || !isPenLogPage(contourPage)) return;
+        contourPage.meta = contourPage.meta || {};
+        contourPage.meta.showContour =
+          penContourBtn.getAttribute('data-rb-penlog-contour') === 'on';
+        dirty = true;
+        setSaveStatus('Saving…');
+        renderPages();
+        flushSave().catch(function () {});
+      });
+    }
+
+    root.querySelectorAll('[data-rb-template="penlog"]').forEach(function (button) {
+      button.addEventListener('click', function (event) {
+        event.preventDefault();
+        var penPage = activePage();
+        if (!penPage || !isPenLogPage(penPage)) return;
+        setSaveStatus(saveTemplatePiece({ penLogContour: penLogShowsContour(penPage) })
+          ? 'Saved as the default for new reports.'
+          : 'The default could not be saved on this device.');
+      });
+    });
+
     root.querySelectorAll('[data-rb-source]').forEach(function (button) {
       button.addEventListener('click', function () {
         var key = button.getAttribute('data-rb-source');
@@ -3269,20 +4114,6 @@
     });
 
     sheetEl.addEventListener('click', function (event) {
-      var brandLock = event.target.closest('[data-rb-brand-lock]');
-      if (brandLock) {
-        event.preventDefault();
-        var page = activePage();
-        if (!page) return;
-        var api = window.ToolboxReportDiscussion;
-        var box = api ? api.normalizeBrandBox(currentBrandBox(page)) : (currentBrandBox(page) || {});
-        box.locked = brandLock.getAttribute('data-rb-brand-lock') === 'lock';
-        applyBrandBox(box);
-        markDirty();
-        renderPages();
-        flushSave().catch(function () {});
-        return;
-      }
       var jump = event.target.closest('[data-rb-goto]');
       if (!jump) return;
       var targetId = jump.getAttribute('data-rb-goto');
@@ -3427,12 +4258,72 @@
       if (historyTimer) { clearTimeout(historyTimer); historyTimer = null; snapshotNow(); }
     }
 
+    /**
+     * A step of history, without a second copy of the photographs.
+     *
+     * A step used to be JSON.stringify of the pages. The pages carry their
+     * evidence, and evidence carries every photograph on the slide as text,
+     * so one step was the whole job written out again: measured at 54 MB on
+     * a job with sixty photographs, and a step is taken every time anything
+     * changes, up to sixty of them. Two or three edits on a real job is a
+     * gigabyte, and the tab dies -- "Aw, Snap! Out of Memory", which is what
+     * Tim and Lee hit moving between the workspaces on one file.
+     *
+     * A photograph never changes while the report is open, so a step does not
+     * need its own copy of one. This copies the structure and keeps the same
+     * text: in JavaScript, text handed from one object to another is not
+     * copied, so sixty steps share one set of photographs between them.
+     *
+     * It follows JSON's rules deliberately, because that is what the history
+     * was built on: a function is dropped from an object and becomes null in
+     * a list, and undefined is dropped. A loop cannot occur in a report --
+     * stringify would have thrown on one -- but if one ever did, it ends
+     * here as null rather than running forever.
+     */
+    function cloneStep(value, seen) {
+      if (value === null || typeof value !== 'object') {
+        return typeof value === 'function' ? undefined : value;
+      }
+      var visited = seen || new Set();
+      if (visited.has(value)) return null;
+      visited.add(value);
+      var out;
+      if (Array.isArray(value)) {
+        out = [];
+        for (var i = 0; i < value.length; i += 1) {
+          var item = cloneStep(value[i], visited);
+          out.push(item === undefined ? null : item);
+        }
+      } else {
+        out = {};
+        Object.keys(value).forEach(function (key) {
+          var next = cloneStep(value[key], visited);
+          if (next !== undefined) out[key] = next;
+        });
+      }
+      visited.delete(value);
+      return out;
+    }
+
+    /** Has anything actually changed? Asked of what the report saves --
+     *  which is the pages without their evidence, so it stays small. */
+    function historySignature() {
+      try {
+        return JSON.stringify({
+          pages: pages.map(persistablePage),
+          activeId: activeId,
+        });
+      } catch (err) {
+        return String(pages.length) + '|' + String(activeId);
+      }
+    }
+
     function snapshotNow() {
       if (restoring) return;
-      var shot = JSON.stringify({ pages: pages, activeId: activeId });
-      if (historyAt >= 0 && history[historyAt] === shot) return;
+      var sig = historySignature();
+      if (historyAt >= 0 && history[historyAt] && history[historyAt].sig === sig) return;
       history = history.slice(0, historyAt + 1);
-      history.push(shot);
+      history.push({ sig: sig, pages: cloneStep(pages), activeId: activeId });
       if (history.length > HISTORY_LIMIT) history.shift();
       historyAt = history.length - 1;
       updateHistoryButtons();
@@ -3451,9 +4342,12 @@
 
     function applyHistory(index) {
       if (index < 0 || index >= history.length) return false;
-      var shot = JSON.parse(history[index]);
+      var shot = history[index];
+      if (!shot) return false;
       restoring = true;
-      pages = shot.pages;
+      // A fresh copy, so stepping back twice to the same place does not hand
+      // out the same objects to be edited in place.
+      pages = cloneStep(shot.pages);
       activeId = shot.activeId;
       historyAt = index;
       renderPages();
@@ -3477,7 +4371,7 @@
       formatToolbar.setHistory(historyAt > 0, historyAt < history.length - 1);
     }
 
-    document.addEventListener('keydown', function (event) {
+    onDocument('keydown', function (event) {
       var meta = event.ctrlKey || event.metaKey;
       if (!meta) return;
       var key = (event.key || '').toLowerCase();
@@ -3699,7 +4593,119 @@
       flushSave().catch(function () {});
     }
 
+    /**
+     * Placing a text box, the way PowerPoint places one.
+     *
+     * The button used to drop a box at a fixed spot on the page and leave the
+     * investigator to drag it where they meant -- and it arrived with no
+     * outline and no caret, so on white paper nothing appeared to have
+     * happened at all. Now the button arms the tool, the pointer shows a
+     * crosshair, and the next click or drag on the sheet says where the box
+     * goes and how wide it is. A plain click gets a sensible default width,
+     * which is what PowerPoint does too.
+     */
+    var textPlace = null;
+
+    function beginTextBox(event) {
+      var at = sheetPercent(event);
+      if (!at) return;
+      event.preventDefault();
+      var ghost = document.createElement('div');
+      ghost.className = 'rb-ov-ghost';
+      ghost.style.left = at.x + '%';
+      ghost.style.top = at.y + '%';
+      ghost.style.width = '0%';
+      ghost.style.height = '0%';
+      sheetEl.appendChild(ghost);
+      textPlace = { start: at, ghost: ghost, pointerId: event.pointerId };
+      try { sheetEl.setPointerCapture(event.pointerId); } catch (err) { /* convenience */ }
+    }
+
+    function textPlaceRect(at) {
+      var s = textPlace.start;
+      return {
+        x: Math.min(s.x, at.x),
+        y: Math.min(s.y, at.y),
+        w: Math.abs(at.x - s.x),
+        h: Math.abs(at.y - s.y),
+      };
+    }
+
+    function moveTextBox(event) {
+      var at = sheetPercent(event);
+      if (!at || !textPlace) return;
+      var box = textPlaceRect(at);
+      textPlace.ghost.style.left = box.x + '%';
+      textPlace.ghost.style.top = box.y + '%';
+      textPlace.ghost.style.width = box.w + '%';
+      textPlace.ghost.style.height = box.h + '%';
+    }
+
+    function cancelTextBox() {
+      if (!textPlace) return;
+      if (textPlace.ghost.parentNode) textPlace.ghost.parentNode.removeChild(textPlace.ghost);
+      textPlace = null;
+    }
+
+    function endTextBox(event) {
+      if (!textPlace) return;
+      var at = sheetPercent(event) || textPlace.start;
+      var box = textPlaceRect(at);
+      cancelTextBox();
+      disarmInk();
+      var page = activePage();
+      var api = window.ToolboxReportOverlay;
+      if (!page || !api) return;
+      var item = api.create('text');
+      item.color = overlayColor;
+      // A click rather than a drag: the default measure, starting where the
+      // pointer went down.
+      var drawn = box.w > 3 && box.h > 1.5;
+      item.x = Math.max(0, Math.min(97, drawn ? box.x : box.x));
+      item.y = Math.max(0, Math.min(97, drawn ? box.y : box.y));
+      if (drawn) {
+        item.w = Math.max(api.MIN_W, box.w);
+        item.h = Math.max(api.MIN_H, box.h);
+      }
+      flushHistoryNow();
+      overlayList(page).push(item);
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
+      focusOverlayField(item.id);
+    }
+
+    /** Put the caret in a box the moment it is placed, as PowerPoint does. */
+    function focusOverlayField(id) {
+      window.requestAnimationFrame(function () {
+        var field = sheetEl.querySelector('[data-rb-ov-field="' + id + '"]');
+        if (!field) return;
+        try {
+          // Without preventScroll the stage nudges itself to bring the new
+          // box into view, so the sheet slides under the pointer at the
+          // moment the box appears. The box is already in view: the
+          // investigator just drew it.
+          field.focus({ preventScroll: true });
+          var range = document.createRange();
+          range.selectNodeContents(field);
+          range.collapse(true);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        } catch (err) { /* the box is still there to click */ }
+      });
+    }
+
     function insertOverlay(kind) {
+      // A text box is placed, not dropped: the button arms the tool and the
+      // next click or drag on the sheet says where it goes.
+      if (kind === 'text') {
+        setInkTool('textbox');
+        if (formatToolbar && typeof formatToolbar.setTool === 'function') {
+          formatToolbar.setTool('textbox');
+        }
+        return;
+      }
       var page = activePage();
       var api = window.ToolboxReportOverlay;
       if (!page || !api) return;
@@ -3837,7 +4843,26 @@
     // propagation, so the canvas's own pan, wheel zoom and grip drags are
     // untouched. While a drawing tool is armed the shield above swallows the
     // event first, so the plan is correctly not selectable then.
-    document.addEventListener('pointerdown', function (event) {
+    /**
+     * The readings pill's size is set in Labels & layers, and the sheet has
+     * to hear about it.
+     *
+     * Floor Survey keeps that size on the device and announces the change on
+     * the window; Report Builder read the stored number when it drew a sheet
+     * but never listened, so pressing + moved the readout from 32px to 38px
+     * and the pill on the paper did not move at all. Tim: "You can't change
+     * the pill size."
+     *
+     * The colour scale never had this fault because its size travels in the
+     * slide's own settings, which already re-draw the sheet.
+     */
+    onWindow('stats-chip-size-change', function () {
+      if (!sheetEl || !sheetEl.isConnected) return;
+      if (pushPieceScale('pill', livePillScale())) flushSave().catch(function () {});
+      renderPages();
+    });
+
+    onDocument('pointerdown', function (event) {
       if (inkTool) return;
       if (!sheetEl || !sheetEl.isConnected) return;
       var target = event.target;
@@ -3863,7 +4888,33 @@
       // margin around the page has to deselect, the way clicking away from a
       // picture does in PowerPoint.
       sheetEl.classList.toggle('rb-sheet--plan-selected', onPlan);
+      pickBox(target);
     }, true);
+
+    /**
+     * The box being worked on, and only it, wears its pulls.
+     *
+     * Tim: chevrons are the resize pull, "and they only show up when the box
+     * is highlighted, period." They used to come out on hover -- so they
+     * appeared under a pointer that was only passing over, and a box reached
+     * by any other means had none -- and on a Floor Survey sheet every box on
+     * the page showed them at once as soon as the drawing was clicked.
+     *
+     * One marker, set here for every kind of box that moves. The cover sets
+     * its own, by the same rule and at the same moment.
+     */
+    function pickBox(target) {
+      if (!sheetEl || !sheetEl.isConnected) return;
+      var picked = target && target.closest
+        ? target.closest('[data-rb-floor-box],[data-rb-penlog-box],[data-rb-disc-box]')
+        : null;
+      if (picked && !sheetEl.contains(picked)) picked = null;
+      var lit = sheetEl.querySelectorAll('.is-picked');
+      for (var i = 0; i < lit.length; i += 1) {
+        if (lit[i] !== picked) lit[i].classList.remove('is-picked');
+      }
+      if (picked) picked.classList.add('is-picked');
+    }
 
     // Drawing listens on the sheet too, but only acts while a tool is armed,
     // and the armed layer above has already stopped the event reaching anything
@@ -3871,12 +4922,22 @@
     sheetEl.addEventListener('pointerdown', function (event) {
       if (!inkTool) return;
       if (inkTool === 'eraser') { eraseAt(event); return; }
+      if (inkTool === 'textbox') { beginTextBox(event); return; }
       beginInk(event);
     });
-    sheetEl.addEventListener('pointermove', function (event) { if (inkTool) moveInk(event); });
-    sheetEl.addEventListener('pointerup', function (event) { if (inkTool) endInk(event); });
-    sheetEl.addEventListener('pointercancel', function (event) { if (inkTool) endInk(event); });
-    document.addEventListener('keydown', function (event) {
+    sheetEl.addEventListener('pointermove', function (event) {
+      if (textPlace) { moveTextBox(event); return; }
+      if (inkTool) moveInk(event);
+    });
+    sheetEl.addEventListener('pointerup', function (event) {
+      if (textPlace) { endTextBox(event); return; }
+      if (inkTool) endInk(event);
+    });
+    sheetEl.addEventListener('pointercancel', function (event) {
+      if (textPlace) { cancelTextBox(); return; }
+      if (inkTool) endInk(event);
+    });
+    onDocument('keydown', function (event) {
       if (event.key === 'Escape') disarmInk();
     });
 
@@ -4140,6 +5201,13 @@
      * disappears. Only the starting row index is written onto the page, and
      * only so the rail has a sheet to list.
      */
+    function penLogBoxes() {
+      var api = window.ToolboxPenLog;
+      return api && api.normalizeLayout
+        ? api.normalizeLayout(penLogBoxLayout)
+        : (penLogBoxLayout || {});
+    }
+
     function reflowPenLog() {
       var api = window.ToolboxPenLog;
       if (!api || typeof api.fitCount !== 'function') return false;
@@ -4159,7 +5227,7 @@
       var guard = 0;
       while (at < pins.length && guard < 200) {
         starts.push(at);
-        at += api.fitCount(pins.slice(at));
+        at += api.fitCount(pins.slice(at), penLogBoxes().schedule);
         guard += 1;
       }
       if (!starts.length) starts = [0];
@@ -4235,6 +5303,29 @@
           return true;
         }
         return false;
+      }
+      // Any other block of the rail: the client, the address, the drawing
+      // title, the date and its note, a boundary's name, a reading's label or
+      // its number, a section heading, the figure number. Emptying one drops
+      // the override rather than storing a blank, which is how the generated
+      // line comes back.
+      var railField = field.closest ? field.closest('[data-rb-rail-field]') : null;
+      if (railField) {
+        var fieldPage = activePage();
+        if (!fieldPage) return false;
+        var fApi = window.ToolboxReportText;
+        var fieldKey = railField.getAttribute('data-rb-rail-field') || '';
+        if (!fieldKey) return false;
+        fieldPage.reportText = fieldPage.reportText || {};
+        fieldPage.reportText.rail = fieldPage.reportText.rail || {};
+        var written = fApi ? fApi.compact(fApi.fromElement(railField)) : railField.textContent;
+        if (fApi && typeof fApi.isEmpty === 'function' && fApi.isEmpty(written)) {
+          delete fieldPage.reportText.rail[fieldKey];
+        } else {
+          fieldPage.reportText.rail[fieldKey] = written;
+        }
+        markDirty();
+        return true;
       }
       var railNote = field.closest ? field.closest('[data-rb-rail-note]') : null;
       if (railNote) {
@@ -4327,6 +5418,36 @@
       if (field && formatToolbar) formatToolbar.noteField(field);
     });
 
+    // A block of the rail emptied and left behind goes back to the line the
+    // Customer File generates for it. Waiting for the investigator to leave
+    // the block, rather than acting on the keystroke that empties it, is what
+    // lets them clear a line and type a new one: the generated text would
+    // otherwise land back under the caret mid-edit.
+    // An empty text box is thrown away when it is left, as PowerPoint throws
+    // one away. Placing a box, thinking better of it and clicking elsewhere
+    // used to leave an invisible empty box on the page for ever.
+    sheetEl.addEventListener('focusout', function (event) {
+      var ovField = event.target.closest && event.target.closest('[data-rb-ov-field]');
+      if (ovField && !ovField.textContent.trim()) {
+        var ovPage = activePage();
+        var list = ovPage && ovPage.meta && ovPage.meta.overlays;
+        var ovId = ovField.getAttribute('data-rb-ov-field');
+        if (list && list.some(function (o) { return o.id === ovId && o.kind === 'text'; })) {
+          ovPage.meta.overlays = list.filter(function (o) { return o.id !== ovId; });
+          markDirty();
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
+      }
+      var field = event.target.closest && event.target.closest('[data-rb-rail-field]');
+      if (!field || field.textContent.trim()) return;
+      var page = activePage();
+      var rail = page && page.reportText && page.reportText.rail;
+      if (rail && rail[field.getAttribute('data-rb-rail-field')]) return;
+      renderPages();
+    });
+
     // Typing and pasting change how much text there is, so the chain has to
     // be re-flowed -- but not on every keystroke, which would fight the
     // caret. It runs once typing pauses, and only re-renders if the split
@@ -4351,7 +5472,8 @@
 
     sheetEl.addEventListener('input', function (event) {
       var richTarget = event.target.closest(
-        '[data-rb-cover-field], [data-rb-section-field], [data-rb-ov-field], [data-rb-rail-note]');
+        '[data-rb-cover-field], [data-rb-section-field], [data-rb-ov-field], ' +
+        '[data-rb-rail-note], [data-rb-rail-field]');
       if (richTarget) {
         if (!commitRichField(richTarget)) return;
         scheduleDiscussionReflow(richTarget);
@@ -4366,18 +5488,80 @@
       current.reportText = current.reportText || {};
       current.reportText.captions = current.reportText.captions || {};
       current.reportText.captions[key] = field.value;
+      // As it is typed, so the writer sees what will print.
+      fitCaption(field);
       markDirty();
     });
 
-    function applyLayoutToFloorPages(layout) {
+    /**
+     * Put the Floor Survey drawings on their sheets, without being asked.
+     *
+     * A Floor Survey sheet opened as a dashed empty box and an "Import Floor
+     * Survey" button, once per level. Tim: "I wonder if we even need to hit a
+     * button to bring in the contour... Toolbox knows we have three levels,
+     * they can bring the three levels in on one, and then the main level, and
+     * then subsequent levels thereafter. I don't know why it needs to be hit."
+     * It does know -- the pages are already one per figure, in order -- so the
+     * button was asking the investigator to tell it something it had worked
+     * out itself.
+     *
+     * This runs BEFORE evidence is attached, which is the only place it can
+     * run. A floor page's drawing is composed by attachEvidence, and only for
+     * a page that already says it is imported, so a sheet with no figure can
+     * never grow one by being asked afterwards. Marking first means the one
+     * evidence pass the report already does composes them.
+     *
+     * A level that cannot produce a drawing is put back afterwards by
+     * dropFailedFloorImports, so it shows the button rather than an empty
+     * frame. Returns whether anything changed.
+     */
+    function markFloorPagesForImport() {
       var flApi = window.ToolboxReportFloorLayout;
-      var next = flApi ? flApi.normalizeLayout(layout) : layout;
-      floorLayout = next;
+      var changed = false;
       pages.forEach(function (page) {
-        if (!page || page.type !== 'floor' || (page.meta && page.meta.reserved)) return;
-        page.meta = page.meta || {};
-        page.meta.layout = flApi ? flApi.cloneLayout(next) : next;
+        if (!page || page.type !== 'floor') return;
+        var meta = page.meta || {};
+        if (meta.reserved || meta.imported) return;
+        // A level to draw, and something to draw it from: either Floor
+        // Survey composes it live, or a rendering was stored earlier.
+        if (!meta.canvasId) return;
+        if (!meta.compose && !meta.figureMediaId) return;
+        page.meta = meta;
+        if (!meta.layout || (floorLayout && floorLayout.locked)) {
+          page.meta.layout = flApi ? flApi.cloneLayout(floorLayout) : floorLayout;
+        }
+        // A garage arrives as readings, not contours. Tim, Oct 20: "I just
+        // want data points in the garage. Period. I can always change them
+        // later." Only ever seeded here, on the slide's first import, and
+        // only when the slide has no rendition of its own -- Points only is
+        // the rail's existing control, so changing it afterwards is the same
+        // one click as on any other slide, and that choice is then kept.
+        if (meta.pointsOnly && !page.meta.floorView) {
+          var seeded = floorView ? JSON.parse(JSON.stringify(floorView)) : {};
+          seeded.mode = 'points-only';
+          page.meta.floorView = seeded;
+        }
+        page.meta.imported = true;
+        page.meta.autoImported = true;
+        changed = true;
       });
+      return changed;
+    }
+
+    /** Anything that could not be drawn goes back to offering the button. */
+    function dropFailedFloorImports() {
+      var changed = false;
+      pages.forEach(function (page) {
+        if (!page || page.type !== 'floor') return;
+        var meta = page.meta || {};
+        if (!meta.autoImported) return;
+        delete page.meta.autoImported;
+        var figure = page.evidence && page.evidence.figure;
+        if (figure) return;
+        page.meta.imported = false;
+        changed = true;
+      });
+      return changed;
     }
 
     function importActiveFloorPage() {
@@ -4558,19 +5742,6 @@
         importActiveFloorPage();
         return;
       }
-      var coverLock = event.target.closest('[data-rb-cover-lock]');
-      if (coverLock) {
-        event.preventDefault();
-        var coverApi = window.ToolboxReportCoverLayout;
-        coverLayout = coverApi ? coverApi.normalizeLayout(coverLayout) : coverLayout;
-        var coverMode = coverLock.getAttribute('data-rb-cover-lock');
-        coverLayout.locked = coverMode === 'lock';
-        dirty = true;
-        setSaveStatus('Saving…');
-        renderPages();
-        flushSave().catch(function () {});
-        return;
-      }
       var overviewAct = event.target.closest('[data-rb-cover-overview]');
       if (overviewAct) {
         event.preventDefault();
@@ -4594,28 +5765,27 @@
         }
         return;
       }
-      var lockBtn = event.target.closest('[data-rb-floor-lock]');
-      if (!lockBtn) return;
-      event.preventDefault();
-      var current = activePage();
-      if (!current || current.type !== 'floor') return;
-      var mode = lockBtn.getAttribute('data-rb-floor-lock');
-      var flApi = window.ToolboxReportFloorLayout;
-      var layout = (current.meta && current.meta.layout) || floorLayout;
-      layout = flApi ? flApi.normalizeLayout(layout) : layout;
-      if (mode === 'lock') {
-        layout.locked = true;
-        applyLayoutToFloorPages(layout);
-      } else {
-        layout.locked = false;
-        floorLayout = flApi ? flApi.normalizeLayout(layout) : layout;
-        current.meta = current.meta || {};
-        current.meta.layout = flApi ? flApi.cloneLayout(floorLayout) : floorLayout;
+      // The x on the site overview. Settled Oct 10, 2026: the cover's aerial
+      // view appears on every Floor Survey page by itself, "and then if it's
+      // not right you just delete it" -- on that page, leaving the cover and
+      // the other pages alone.
+      var overviewBtn = event.target.closest('[data-rb-floor-overview]');
+      if (overviewBtn) {
+        event.preventDefault();
+        var overviewPage = activePage();
+        if (!overviewPage || overviewPage.type !== 'floor') return;
+        overviewPage.meta = overviewPage.meta || {};
+        overviewPage.meta.hideOverview = true;
+        dirty = true;
+        setSaveStatus('Saving…');
+        renderPages();
+        flushSave().catch(function () {});
+        return;
       }
-      dirty = true;
-      setSaveStatus('Saving…');
-      renderPages();
-      flushSave().catch(function () {});
+      // The old single Lock layout had no button left to press: it lived on
+      // a toolbar that an imported sheet never draws. Three locks in the rail
+      // replaced it -- Lock floor survey, Lock contour legend, Lock
+      // high/low/delta -- and each is handled above.
     });
 
     function stageRect(selector) {
@@ -4661,14 +5831,14 @@
       event.stopPropagation();
     }, true);
 
-    document.addEventListener('pointermove', function (event) {
+    onDocument('pointermove', function (event) {
       if (!northDrag) return;
       var deg = northAngle(event);
       if (northDrag.rail) northDrag.rail.style.setProperty('--rb-north-rotation', deg + 'deg');
       event.preventDefault();
     });
 
-    document.addEventListener('pointerup', function (event) {
+    onDocument('pointerup', function (event) {
       if (!northDrag) return;
       var deg = northAngle(event);
       var page = northDrag.page;
@@ -4680,6 +5850,46 @@
       flushSave().catch(function () {});
     });
 
+    /**
+     * Which cover box is being worked on.
+     *
+     * The pulls used to appear on hover alone. Two things made that fail in
+     * practice: a box is mostly text, so pointing at it often means pointing
+     * at a field rather than the box, and the contents frame had a list
+     * hanging out below its own rectangle -- so the rows Tim was clicking
+     * were not inside the box at all, and nothing lit up. Tim: "I do like the
+     * corner pull but I don't like them visible all the time. I wanted them
+     * to where you highlighted it, but I highlighted that box numerous times
+     * yesterday and it would not show the pulls."
+     *
+     * So a click selects a box and the pulls stay out until something else is
+     * clicked. Hover still shows them, for anyone who already knows where
+     * they are.
+     */
+    var coverSelected = '';
+
+    function paintCoverSelection() {
+      if (!sheetEl) return;
+      var boxes = sheetEl.querySelectorAll('[data-rb-cover-box]');
+      for (var i = 0; i < boxes.length; i += 1) {
+        var id = boxes[i].getAttribute('data-rb-cover-box');
+        boxes[i].classList.toggle('is-active', !!coverSelected && id === coverSelected);
+      }
+    }
+
+    function selectCoverBox(id) {
+      if (coverSelected === (id || '')) return;
+      coverSelected = id || '';
+      paintCoverSelection();
+    }
+
+    // A click anywhere on the sheet decides which box is being worked on;
+    // one outside them all puts the pulls away.
+    sheetEl.addEventListener('pointerdown', function (event) {
+      var inBox = event.target.closest('[data-rb-cover-box]');
+      selectCoverBox(inBox ? inBox.getAttribute('data-rb-cover-box') : '');
+    }, true);
+
     sheetEl.addEventListener('pointerdown', function (event) {
       if (event.target.closest('a, button, input, textarea, label, select')) return;
       // Clicking into report text places a caret; it does not start a move.
@@ -4690,6 +5900,43 @@
       var editableTarget = event.target.closest('[data-rb-rich]');
       if (editableTarget && editableTarget.getAttribute('contenteditable') === 'true') return;
       var current = activePage();
+      var penGrip = event.target.closest('[data-rb-penlog-move], [data-rb-penlog-resize]');
+      if (penGrip) {
+        var penStage = stageRect('.rb-penlog');
+        if (!penStage || penStage.width < 8 || penStage.height < 8) return;
+        event.preventDefault();
+        var penResize = !!event.target.closest('[data-rb-penlog-resize]');
+        penDrag = {
+          which: penGrip.getAttribute(penResize ? 'data-rb-penlog-resize' : 'data-rb-penlog-move'),
+          resize: penResize,
+          startX: event.clientX,
+          startY: event.clientY,
+          // Inches, because the pen log's own model is in inches on a
+          // 17 x 11 sheet rather than in percentages of it.
+          perInX: penStage.width / 17,
+          perInY: penStage.height / 11,
+          boxes: penLogBoxes(),
+        };
+        try { penGrip.setPointerCapture(event.pointerId); } catch (_) {}
+        return;
+      }
+      var discGrip = event.target.closest('[data-rb-disc-move], [data-rb-disc-resize]');
+      if (discGrip) {
+        var discStage = stageRect('.rb-sheet__margin--discussion');
+        if (!discStage || discStage.width < 8 || discStage.height < 8) return;
+        event.preventDefault();
+        var dApi = window.ToolboxReportDiscussion;
+        discDrag = {
+          resize: !!event.target.closest('[data-rb-disc-resize]'),
+          startX: event.clientX,
+          startY: event.clientY,
+          stageW: discStage.width,
+          stageH: discStage.height,
+          box: dApi ? dApi.normalizeBodyBox(discussionBox) : discussionBox,
+        };
+        try { discGrip.setPointerCapture(event.pointerId); } catch (_) {}
+        return;
+      }
       if (current && current.type === 'cover') {
         if (coverLayout && coverLayout.locked) return;
         var coverResize = event.target.closest('[data-rb-cover-resize]');
@@ -4714,17 +5961,22 @@
         return;
       }
       if (!current || current.type !== 'floor') return;
-      if (current.meta && current.meta.layout && current.meta.layout.locked) return;
-      if (floorLayout && floorLayout.locked) return;
       var resize = event.target.closest('[data-rb-floor-resize]');
       var box = event.target.closest('[data-rb-floor-box]');
       if (!box) return;
+      // Each piece answers to its own lock. The colour scale and the readings
+      // have one each; the plan and the aerial follow whatever is left of the
+      // old single lock on this report.
+      var dragKind = box.getAttribute('data-rb-floor-kind') || 'topo';
+      if (floorPieceLocked(current, dragKind)) return;
       // Inside the drawing the gestures are Floor Survey's: drag pans the plan,
       // the wheel zooms it, and it can be moved anywhere including off the
       // edge. Report Builder must not claim those -- the slide is meant to
       // behave exactly as the workspace it came from. The frame is moved and
       // sized from its handles, which sit on its edge, outside the drawing.
       if (!resize && event.target.closest('[data-rb-topo-live]')) return;
+      // The x is a button, not a grab handle.
+      if (event.target.closest('[data-rb-floor-overview]')) return;
       var stage = stageRect('[data-rb-floor-stage]');
       if (!stage || stage.width < 8 || stage.height < 8) return;
       event.preventDefault();
@@ -4748,6 +6000,55 @@
     });
 
     sheetEl.addEventListener('pointermove', function (event) {
+      if (penDrag) {
+        var pdx = (event.clientX - penDrag.startX) / penDrag.perInX;
+        var pdy = (event.clientY - penDrag.startY) / penDrag.perInY;
+        var penApi2 = window.ToolboxPenLog;
+        var nextPen = JSON.parse(JSON.stringify(penDrag.boxes));
+        var moving = nextPen[penDrag.which];
+        if (!moving) return;
+        if (penDrag.resize) {
+          moving.w += pdx;
+          moving.h += pdy;
+        } else {
+          moving.x += pdx;
+          moving.y += pdy;
+        }
+        penLogBoxLayout = penApi2 && penApi2.normalizeLayout
+          ? penApi2.normalizeLayout(nextPen) : nextPen;
+        // Moved live; the split waits for the pointer to come up, because
+        // re-measuring the whole level sixty times a second would rebuild
+        // every sheet of it.
+        var livePen = sheetEl.querySelector('[data-rb-penlog-box="' + penDrag.which + '"]');
+        if (livePen) {
+          var b = penLogBoxLayout[penDrag.which];
+          livePen.style.left = ((b.x / 17) * 100) + '%';
+          livePen.style.top = ((b.y / 11) * 100) + '%';
+          livePen.style.width = ((b.w / 17) * 100) + '%';
+          livePen.style.height = ((b.h / 11) * 100) + '%';
+        }
+        return;
+      }
+      if (discDrag) {
+        var ddx = ((event.clientX - discDrag.startX) / discDrag.stageW) * 100;
+        var ddy = ((event.clientY - discDrag.startY) / discDrag.stageH) * 100;
+        var dApi2 = window.ToolboxReportDiscussion;
+        var nextBox = {
+          x: discDrag.box.x + (discDrag.resize ? 0 : ddx),
+          y: discDrag.box.y + (discDrag.resize ? 0 : ddy),
+          w: discDrag.box.w + (discDrag.resize ? ddx : 0),
+          h: discDrag.box.h + (discDrag.resize ? ddy : 0),
+        };
+        discussionBox = dApi2 ? dApi2.normalizeBodyBox(nextBox) : nextBox;
+        // Moved live on the sheet; the re-flow waits for the pointer to come
+        // up, because splitting the narrative again on every pixel would
+        // rebuild the book sixty times a second.
+        var liveBox = sheetEl.querySelector('[data-rb-disc-box]');
+        if (liveBox && dApi2) liveBox.style.cssText = dApi2.bodyStyle
+          ? dApi2.bodyStyle(discussionBox)
+          : liveBox.style.cssText;
+        return;
+      }
       if (coverDrag) {
         var coverPage = activePage();
         if (!coverPage || coverPage.type !== 'cover') return;
@@ -4782,7 +6083,24 @@
         ? window.ToolboxReportFloorLayout.cloneLayout(floorDrag.layout)
         : JSON.parse(JSON.stringify(floorDrag.layout));
       var flApi = window.ToolboxReportFloorLayout;
-      if (floorDrag.id === 'topo') {
+      if (floorDrag.id === 'overview') {
+        var ov = floorDrag.layout.overview;
+        if (floorDrag.resize) {
+          var ovMinW = flApi ? flApi.MIN_OVERVIEW_W : 6;
+          var ovMinH = flApi ? flApi.MIN_OVERVIEW_H : 6;
+          var ovWest = floorDrag.corner === 'nw' || floorDrag.corner === 'sw';
+          var ovNorth = floorDrag.corner === 'nw' || floorDrag.corner === 'ne';
+          var ovW = Math.max(ovMinW, ovWest ? ov.w - dx : ov.w + dx);
+          var ovH = Math.max(ovMinH, ovNorth ? ov.h - dy : ov.h + dy);
+          layout.overview.w = ovW;
+          layout.overview.h = ovH;
+          layout.overview.x = ovWest ? ov.x + (ov.w - ovW) : ov.x;
+          layout.overview.y = ovNorth ? ov.y + (ov.h - ovH) : ov.y;
+        } else {
+          layout.overview.x = ov.x + dx;
+          layout.overview.y = ov.y + dy;
+        }
+      } else if (floorDrag.id === 'topo') {
         if (floorDrag.resize) {
           // The held corner moves and the opposite one stays put, which is what
           // a corner handle means. Resizing only ever from the bottom right
@@ -4829,23 +6147,61 @@
       if (!floorLayout.locked) floorLayout = flApi ? flApi.cloneLayout(layout) : layout;
       var box = sheetEl.querySelector('[data-rb-floor-box="' + floorDrag.id + '"]');
       if (!box) return;
-      if (floorDrag.id === 'topo') {
+      if (floorDrag.id === 'overview') {
+        box.style.left = layout.overview.x + '%';
+        box.style.top = layout.overview.y + '%';
+        box.style.width = layout.overview.w + '%';
+        box.style.height = layout.overview.h + '%';
+      } else if (floorDrag.id === 'topo') {
         box.style.left = layout.topo.x + '%';
         box.style.top = layout.topo.y + '%';
         box.style.width = layout.topo.w + '%';
         box.style.height = layout.topo.h + '%';
       } else {
+        // Moving a piece moves it. It does not resize it.
+        //
+        // The colour scale and the readings are sized by one control each --
+        // Legend size and Stats pill size, the same two that size them in
+        // Floor Survey -- and renderPage draws them at that size. This wrote
+        // a second size over the top: the per-piece `scale` left in the
+        // layout by an older build that gave these two corner handles. So a
+        // piece sat at one size until it was touched and jumped to another
+        // the moment it was dragged, and whichever of the two was right was
+        // luck. Tim: "the high-low delta pill needs to be selected and moved
+        // before it sizes right... legends, you have to select before they
+        // size right."
+        //
+        // One size, from the control. The drag writes position only.
         for (var n = 0; n < layout.overlays.length; n += 1) {
           if (layout.overlays[n].id === floorDrag.id) {
             box.style.left = layout.overlays[n].x + '%';
             box.style.top = layout.overlays[n].y + '%';
-            box.style.transform = 'scale(' + layout.overlays[n].scale + ')';
           }
         }
       }
     });
 
     function endLayoutDrag() {
+      if (penDrag) {
+        var wasResize = penDrag.resize;
+        penDrag = null;
+        markDirty();
+        // A schedule given more or less room holds a different number of
+        // rows, so the level is split again before the sheets are drawn.
+        if (wasResize) reflowPenLog();
+        renderPages();
+        flushSave().catch(function () {});
+        return;
+      }
+      if (discDrag) {
+        discDrag = null;
+        markDirty();
+        // The room changed, so the split has to change with it: text that no
+        // longer fits moves on, and text that now does comes back.
+        if (reflowDiscussion()) flushSave().catch(function () {});
+        renderPages();
+        return;
+      }
       if (coverDrag) {
         coverDrag = null;
         markDirty();
@@ -4857,6 +6213,107 @@
     }
     sheetEl.addEventListener('pointerup', endLayoutDrag);
     sheetEl.addEventListener('pointercancel', endLayoutDrag);
+
+    /**
+     * Right-click a piece of a Floor Survey page to move it behind or in
+     * front of the others.
+     *
+     * Tim: "I need to be able to right click and put images behind or in
+     * front." Two choices and nothing else -- the drawing, the aerial view,
+     * the colour scale and the readings all sit on one stack, so "behind" and
+     * "in front" mean the same thing whichever two pieces overlap.
+     */
+    var stackMenu = null;
+
+    function stackMenuAway(event) {
+      if (event.target.closest && event.target.closest('[data-rb-stackmenu]')) return;
+      closeStackMenu();
+    }
+
+    function stackMenuKey(event) {
+      if (event.key === 'Escape') closeStackMenu();
+    }
+
+    function closeStackMenu() {
+      if (stackMenu && stackMenu.parentNode) stackMenu.parentNode.removeChild(stackMenu);
+      stackMenu = null;
+      // The two listeners the menu needs live only while it is open: the
+      // report is mounted again every time the investigator comes back to it,
+      // and listeners left on the document would pile up one deep per visit.
+      document.removeEventListener('pointerdown', stackMenuAway, true);
+      document.removeEventListener('keydown', stackMenuKey, true);
+    }
+
+    function restackFloorPiece(box, toFront) {
+      var page = activePage();
+      var flApi = window.ToolboxReportFloorLayout;
+      if (!page || page.type !== 'floor' || !flApi) return;
+      var layout = flApi.normalizeLayout((page.meta && page.meta.layout) || floorLayout);
+      if (layout.locked) return;
+      var id = box.getAttribute('data-rb-floor-box') || '';
+      var kind = box.getAttribute('data-rb-floor-kind') || 'topo';
+      var stack = [layout.topo.z, layout.overview.z].concat(
+        layout.overlays.map(function (item) { return item.z; }));
+      var want = toFront
+        ? Math.max.apply(null, stack) + 1
+        : Math.min.apply(null, stack) - 1;
+      want = Math.max(flApi.MIN_STACK, Math.min(flApi.MAX_STACK, want));
+      if (kind === 'topo') {
+        layout.topo.z = want;
+      } else if (kind === 'overview') {
+        layout.overview.z = want;
+      } else {
+        var found = false;
+        layout.overlays.forEach(function (item) {
+          if (item.id !== id) return;
+          item.z = want;
+          found = true;
+        });
+        if (!found) return;
+      }
+      page.meta = page.meta || {};
+      page.meta.layout = layout;
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
+    }
+
+    sheetEl.addEventListener('contextmenu', function (event) {
+      var box = event.target.closest('[data-rb-floor-box]');
+      if (!box) { closeStackMenu(); return; }
+      var page = activePage();
+      var flApi = window.ToolboxReportFloorLayout;
+      if (!page || page.type !== 'floor' || !flApi) return;
+      var layout = flApi.normalizeLayout((page.meta && page.meta.layout) || floorLayout);
+      // A locked page is shown, not arranged.
+      if (layout.locked) return;
+      event.preventDefault();
+      closeStackMenu();
+      stackMenu = document.createElement('div');
+      stackMenu.className = 'rb-stackmenu';
+      stackMenu.setAttribute('data-rb-stackmenu', '1');
+      [['Bring to front', true], ['Send to back', false]].forEach(function (choice) {
+        var item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'rb-stackmenu__item';
+        item.setAttribute('data-rb-stack', choice[1] ? 'front' : 'back');
+        item.textContent = choice[0];
+        item.addEventListener('click', function () {
+          closeStackMenu();
+          restackFloorPiece(box, choice[1]);
+        });
+        stackMenu.appendChild(item);
+      });
+      document.body.appendChild(stackMenu);
+      // Kept on the screen: a piece near the right or the bottom edge would
+      // otherwise open its menu off the page.
+      var w = stackMenu.offsetWidth;
+      var h = stackMenu.offsetHeight;
+      stackMenu.style.left = Math.max(4, Math.min(window.innerWidth - w - 4, event.clientX)) + 'px';
+      stackMenu.style.top = Math.max(4, Math.min(window.innerHeight - h - 4, event.clientY)) + 'px';
+      document.addEventListener('pointerdown', stackMenuAway, true);
+      document.addEventListener('keydown', stackMenuKey, true);
+    });
 
     if (penNoteField) {
       penNoteField.addEventListener('input', function () {
@@ -4906,7 +6363,7 @@
       var moved = pages[index];
       pages[index] = pages[index - 1];
       pages[index - 1] = moved;
-      renumberFigures(pages);
+      renumberInPlace(pages);
       markDirty();
       renderPages();
     });
@@ -4917,7 +6374,7 @@
       var moved = pages[index];
       pages[index] = pages[index + 1];
       pages[index + 1] = moved;
-      renumberFigures(pages);
+      renumberInPlace(pages);
       markDirty();
       renderPages();
     });
@@ -4928,6 +6385,116 @@
     // browser's print dialog -- which is also how a PDF comes out of it.
     // The deliverable is the PDF; there is no separate export path to keep
     // in step with what the investigator sees on screen.
+    /**
+     * Shrink every picture in the printed deck to what the paper can show.
+     *
+     * A phone hands over a 4032 x 3024 photograph. On a Pictures sheet it is
+     * printed about two and a half inches wide -- call it 500 dots at 200 to
+     * the inch. The other 23 million pixels are carried into the PDF and
+     * thrown away by whatever opens it. Tim, on a deck he had just saved:
+     * "I was trying to attach a recently saved PDF but it's too big... The
+     * PDF rendered horribly." Measured on his file: 53.9 MB.
+     *
+     * So each picture is redrawn, once, at the size it will actually print,
+     * and the deck carries that instead. Nothing in the Customer File is
+     * touched -- the original photograph stays exactly as captured, and only
+     * this throwaway deck holds the smaller copy.
+     *
+     * 200 dots to the inch is the target. It is what a photograph in a
+     * printed report needs; past that the file grows and the page does not
+     * change. A picture already smaller than its target is left alone, so
+     * nothing is ever blown up.
+     */
+    var PRINT_DPI = 200;
+    var SHEET_INCHES = 17;
+
+    /**
+     * Wait until the deck has actually been laid out.
+     *
+     * Measured too early, an <img> reports its natural width rather than the
+     * width it will print at -- so a 4032px photograph looked like a 4032px
+     * box, "wide enough to need 8400 dots", and every picture was left alone.
+     * The first attempt at this shrank nothing at all and said so: 0 redrawn,
+     * 21.9 MB to 21.9 MB.
+     */
+    function deckSettled(deck) {
+      var waits = [].slice.call(deck.querySelectorAll('img'))
+        .filter(function (img) { return !(img.complete && img.naturalWidth > 0); })
+        .map(function (img) {
+          return new Promise(function (done) {
+            img.addEventListener('load', done, { once: true });
+            img.addEventListener('error', done, { once: true });
+          });
+        });
+      return Promise.all(waits).then(function () {
+        return new Promise(function (done) {
+          window.requestAnimationFrame(function () {
+            window.requestAnimationFrame(function () { done(); });
+          });
+        });
+      });
+    }
+
+    function shrinkPrintImages(deck) {
+      if (!deck) return Promise.resolve({ before: 0, after: 0, redrawn: 0 });
+      return deckSettled(deck).then(function () { return shrinkSettledDeck(deck); });
+    }
+
+    function shrinkSettledDeck(deck) {
+      var sheet = deck.querySelector('.rb-sheet');
+      var sheetPx = sheet ? sheet.getBoundingClientRect().width : 0;
+      if (!(sheetPx > 0)) return Promise.resolve({ before: 0, after: 0, redrawn: 0 });
+      var jobs = [];
+      var before = 0;
+      var after = 0;
+      var redrawn = 0;
+      [].slice.call(deck.querySelectorAll('img')).forEach(function (img) {
+        var src = img.getAttribute('src') || '';
+        if (src.indexOf('data:image/') !== 0) return;
+        before += Math.round(src.length * 0.75);
+        var drawn = img.getBoundingClientRect().width;
+        if (!(drawn > 0) || !(img.naturalWidth > 0)) { after += Math.round(src.length * 0.75); return; }
+        // How wide this picture prints, and therefore how many dots it needs.
+        var inches = (drawn / sheetPx) * SHEET_INCHES;
+        var want = Math.max(1, Math.round(inches * PRINT_DPI));
+        if (img.naturalWidth <= want) { after += Math.round(src.length * 0.75); return; }
+        var scale = want / img.naturalWidth;
+        var canvas = document.createElement('canvas');
+        canvas.width = want;
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        var ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        jobs.push(new Promise(function (done) {
+          var paint = function () {
+            try {
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              // A drawing with flat colour and hard lines keeps its edges in
+              // PNG and smears in JPEG; a photograph is the other way about.
+              // Whatever it came in as is what it goes out as.
+              var asPng = /^data:image\/png/i.test(src);
+              var next = canvas.toDataURL(asPng ? 'image/png' : 'image/jpeg', 0.82);
+              if (next && next.length < src.length) {
+                img.setAttribute('src', next);
+                after += Math.round(next.length * 0.75);
+                redrawn += 1;
+              } else {
+                after += Math.round(src.length * 0.75);
+              }
+            } catch (err) {
+              after += Math.round(src.length * 0.75);
+            }
+            done();
+          };
+          if (img.complete && img.naturalWidth > 0) paint();
+          else img.addEventListener('load', paint, { once: true });
+        }));
+      });
+      return Promise.all(jobs).then(function () {
+        return { before: before, after: after, redrawn: redrawn };
+      });
+    }
+
     function buildPrintDeck() {
       var deck = document.createElement('div');
       deck.className = 'rb-print';
@@ -4990,9 +6557,27 @@
           document.body.appendChild(printDeck);
           document.body.classList.add('is-printing');
           relayoutPrintedPlans(printDeck);
+          // The printed cover is a different sheet from the one on screen, so
+          // its contents is measured and stepped down on its own.
+          fitCoverContents(printDeck);
+          // And so is every printed caption. The deck is built fresh and had
+          // never been measured, so a description that fitted on screen by
+          // coming down in size printed at full size -- and what did not fit
+          // the block printed missing.
+          fitCaptions(printDeck);
           window.addEventListener('afterprint', clearPrintDeck, { once: true });
-          window.requestAnimationFrame(function () {
-            window.requestAnimationFrame(function () { window.print(); });
+          // Every picture redrawn at the size it prints, before the dialog
+          // opens: once it is open the deck is what it is.
+          shrinkPrintImages(printDeck).then(function (weighed) {
+            window.__toolboxPrintWeight = weighed;
+            if (weighed) {
+              console.info('Report print: ' + weighed.redrawn + ' pictures redrawn, ' +
+                (weighed.before / 1048576).toFixed(1) + ' MB to ' +
+                (weighed.after / 1048576).toFixed(1) + ' MB.');
+            }
+            window.requestAnimationFrame(function () {
+              window.requestAnimationFrame(function () { window.print(); });
+            });
           });
         });
       });
@@ -5076,17 +6661,34 @@
       var fresh = withProperty(api.assemble(source), source);
       var freshPages = ensurePicturesInFreshPages(fresh.pages.slice(), photoList);
       var savedDoc = record && (record.reportBuilder || record.report);
-      if (savedDoc && savedDoc.floorLayout && window.ToolboxReportFloorLayout) {
-        floorLayout = window.ToolboxReportFloorLayout.normalizeLayout(savedDoc.floorLayout);
+      // What this report was given stands. Only a report that has never been
+      // placed takes the template -- otherwise setting a new default would
+      // reach back and move every book already written.
+      var template = storedTemplate();
+      var floorSeed = (savedDoc && savedDoc.floorLayout) || template.floorLayout;
+      if (floorSeed && window.ToolboxReportFloorLayout) {
+        floorLayout = window.ToolboxReportFloorLayout.normalizeLayout(floorSeed);
       }
-      if (savedDoc && savedDoc.coverLayout && window.ToolboxReportCoverLayout) {
-        coverLayout = window.ToolboxReportCoverLayout.normalizeLayout(savedDoc.coverLayout);
+      var coverSeed = (savedDoc && savedDoc.coverLayout) || template.coverLayout;
+      if (coverSeed && window.ToolboxReportCoverLayout) {
+        coverLayout = window.ToolboxReportCoverLayout.normalizeLayout(coverSeed);
       }
-      if (savedDoc && savedDoc.brandBox && window.ToolboxReportDiscussion) {
-        brandBox = window.ToolboxReportDiscussion.normalizeBrandBox(savedDoc.brandBox);
+      var brandSeed = (savedDoc && savedDoc.brandBox) || template.brandBox;
+      if (brandSeed && window.ToolboxReportDiscussion) {
+        brandBox = window.ToolboxReportDiscussion.normalizeBrandBox(brandSeed);
       }
-      if (savedDoc && savedDoc.floorCamera) floorCamera = savedDoc.floorCamera;
-      if (savedDoc && savedDoc.floorView) floorView = reviveFloorView(savedDoc.floorView);
+      var discSeed = (savedDoc && savedDoc.discussionBox) || template.discussionBox;
+      if (discSeed && window.ToolboxReportDiscussion) {
+        discussionBox = window.ToolboxReportDiscussion.normalizeBodyBox(discSeed);
+      }
+      var penSeed = (savedDoc && savedDoc.penLogLayout) || template.penLogLayout;
+      if (penSeed && window.ToolboxPenLog && window.ToolboxPenLog.normalizeLayout) {
+        penLogBoxLayout = window.ToolboxPenLog.normalizeLayout(penSeed);
+      }
+      var cameraSeed = (savedDoc && savedDoc.floorCamera) || template.floorCamera;
+      if (cameraSeed) floorCamera = JSON.parse(JSON.stringify(cameraSeed));
+      var viewSeed = (savedDoc && savedDoc.floorView) || template.floorView;
+      if (viewSeed) floorView = reviveFloorView(viewSeed);
       if (savedDoc && Array.isArray(savedDoc.pages)) {
         savedDoc.pages.forEach(function (page) {
           if (page && page.meta && page.meta.floorView) {
@@ -5158,10 +6760,19 @@
           setSaveStatus(formatSavedAt(lastSavedAt));
           if (draftEl) draftEl.textContent = 'Saved';
         }
-        return attachEvidence(workingRecord, pages.slice());
-      }).then(function (enriched) {
+        var autoImported = markFloorPagesForImport();
+        return attachEvidence(workingRecord, pages.slice()).then(function (enriched) {
+          return { enriched: enriched, autoImported: autoImported };
+        });
+      }).then(function (outcome) {
         if (token !== mountGeneration) return;
+        var enriched = outcome.enriched;
         pages = enriched;
+        dropFailedFloorImports();
+        if (outcome.autoImported) {
+          markDirty();
+          flushSave().catch(function () {});
+        }
         adoptLegacyBrandBox();
         renderPages();
         fitSheet(root);
@@ -5249,6 +6860,16 @@
       '      <div id="rb-penlog-panel" class="rb-penlog-panel" hidden>' +
       '        <h2>Pen Log</h2>' +
       '        <p class="rb-panel__lead">Report wording stays on the Pen Log. Distress Survey keeps the source note.</p>' +
+      // A Picture Locations sheet's workspace is this panel, not the rail, so
+      // its way back to the application sits here. At the top rather than the
+      // foot the other workspaces use: under a level with twenty
+      // photographs, a button below the list is a long scroll from the sheet
+      // it belongs to.
+      // Shown only on a level Floor Survey has written a contour for; a
+      // button offering a layer that does not exist is worse than no button.
+      '        <button type="button" class="btn rb-ws__btn" id="rb-penlog-contour" data-rb-penlog-contour="off" hidden></button>' +
+      '        <button type="button" class="btn btn--quiet rb-ws__btn" data-rb-template="penlog">Use this as my default</button>' +
+      '        <button type="button" class="btn btn--secondary rb-ws__btn" data-rb-source="distress">Open Distress Survey</button>' +
       '        <p class="rb-panel__status" id="rb-save-state" aria-live="polite"></p>' +
       '        <label class="rb-panel__label" for="rb-report-note">Report note</label>' +
       '        <textarea id="rb-report-note" class="rb-panel__note" rows="3"></textarea>' +
@@ -5265,6 +6886,32 @@
 
   function unmount() {
     mountGeneration += 1;
+    // Everything this mount was holding goes with it.
+    //
+    // Leaving Report Builder tore down the screen and kept the contents: the
+    // pictures it had loaded, the colour scales it had painted, the live
+    // Floor Survey views it had mounted, and the pen log's callbacks -- which
+    // close over the whole session, so the entire previous visit stayed
+    // reachable through them. Measured on a job with twelve photographs it
+    // cost about a megabyte every time the investigator went in and came out,
+    // and none of it came back under a forced collection. Tim, switching
+    // between the applications: "I was getting a not enough memory reload."
+    // The same walk with no photographs on the job was flat, which is what
+    // pointed at the pictures.
+    if (mountCleanup) {
+      try { mountCleanup(); } catch (_) { /* leaving anyway */ }
+      mountCleanup = null;
+    }
+    releaseMountListeners();
+    releaseTopoHosts();
+    overlayUrlCache = {};
+    legendImages = Object.create(null);
+    legendPainting = Object.create(null);
+    penLogUi.onNote = null;
+    penLogUi.onSelect = null;
+    penLogUi.layout = null;
+    penLogUi.noteMap = {};
+    penLogUi.selectedPinId = '';
     if (formatToolbar) {
       formatToolbar.destroy();
       formatToolbar = null;

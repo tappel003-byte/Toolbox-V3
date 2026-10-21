@@ -75,6 +75,11 @@ try {
       failNextPutIndex: false,
       failNextRelease: false,
       fetchLog: [],
+      // Watching how the Cabinet copy is proved: how many "is this picture
+      // here?" questions are in the air at once, counted only after the index
+      // has been written, which is where proving starts.
+      verifying: false,
+      flight: { now: 0, most: 0 },
     };
 
     function compKey(id, name) { return id + '::' + name; }
@@ -200,6 +205,7 @@ try {
           else delete body.checkout;
           state.indexes[id] = body;
           state.etags[id] = state.etags[id] || 'etag-1';
+          if (state.watchVerify === id) state.verifying = true;
           return new Response(JSON.stringify({ ok: true }), {
             status: 200, headers: { 'content-type': 'application/json' },
           });
@@ -228,6 +234,12 @@ try {
       match = /^media\/([^/]+)\/exists$/.exec(path);
       if (match && method === 'GET') {
         const mediaId = decodeURIComponent(match[1]);
+        if (state.verifying) {
+          state.flight.now += 1;
+          if (state.flight.now > state.flight.most) state.flight.most = state.flight.now;
+          await new Promise((r) => setTimeout(r, 12));
+          state.flight.now -= 1;
+        }
         return new Response(JSON.stringify({ exists: !!state.media[mediaId] }), {
           status: 200, headers: { 'content-type': 'application/json' },
         });
@@ -455,7 +467,10 @@ try {
     await ToolboxDB.saveCustomerFile(ownLocal);
     state.deleteCalls = [];
     const ownSend = await ToolboxSync.sendToFileCabinet('cf-legacy-own');
-    report.ownLeaseOk = ownSend && ownSend.ok === true && ownSend.path === 'own-lease';
+    // One action now, so there is one name for what it did. A copy that was
+    // already in the Cabinet is reconciled with it, whoever held the lease.
+    report.ownLeaseOk = ownSend && ownSend.ok === true &&
+      ownSend.action === 'check-in' && ownSend.path === 'reconcile-existing';
     report.ownLeaseLocalGone = !(await ToolboxDB.getCustomerFile('cf-legacy-own'));
     report.ownLeaseReleased = !(state.indexes['cf-legacy-own'] && state.indexes['cf-legacy-own'].checkout);
     report.ownLeaseRemoteRemains = !!state.indexes['cf-legacy-own'];
@@ -540,6 +555,44 @@ try {
     report.stubLocalGone = !(await ToolboxDB.getCustomerFile('cf-stub-del'));
     report.removeLocalExists = typeof ToolboxDB.removeLocalWorkingCopy === 'function';
 
+    // --- Proving the Cabinet copy, on a job with real photographs ---
+    //
+    // Check In asks the Cabinet about every picture on the job before it
+    // clears the working copy off the device. That proof stays; what changed
+    // is that it used to ask one question at a time and wait for each answer,
+    // so a job with two hundred photographs spent two hundred round trips
+    // doing nothing visible. Tim: "my download is 345 and up is 51 ... now
+    // takes forever, that doesn't make sense to me."
+    const many = ToolboxApp.blankCustomerFile('cf-verify-many');
+    ToolboxPlanSetup.ensurePlanSetup(many);
+    many.firstName = 'Verify';
+    many.lastName = 'Many';
+    many.propertyAddress = '12 Proof Road';
+    many.customerUpdatedAt = '2026-09-23T03:00:00.000Z';
+    const manyPins = [];
+    for (let i = 1; i <= 12; i += 1) {
+      const photoId = 'ph_verify_' + i;
+      await ToolboxSync._test.putLocalMedia(
+        photoId, 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=',
+        'distress');
+      manyPins.push({ id: 'pinv-' + i, num: i, photos: [photoId] });
+    }
+    many.distress = {
+      updatedAt: '2026-09-23T03:00:00.000Z',
+      mode: 'internal', startNum: 1, nextNum: 13, pins: manyPins,
+    };
+    await ToolboxDB.saveCustomerFile(many);
+    state.watchVerify = 'cf-verify-many';
+    state.verifying = false;
+    state.flight = { now: 0, most: 0 };
+    const manyIn = await ToolboxSync.checkInCustomerFile('cf-verify-many');
+    state.watchVerify = '';
+    state.verifying = false;
+    report.verifyOk = !!(manyIn && manyIn.ok);
+    report.verifyAtOnce = state.flight.most;
+    report.verifyAllUploaded = manyPins.every((pin) => !!state.media[pin.photos[0]]);
+    report.verifyLocalGone = !(await ToolboxDB.getCustomerFile('cf-verify-many'));
+
     return report;
   });
 
@@ -555,12 +608,42 @@ try {
   check('Failed Check In write keeps local + lease', out.ciFailKeptLocal && out.ciFailLeaseKept, JSON.stringify(out));
   check('Failed lease release keeps local', out.ciRelFailKeptLocal && out.ciRelFailLeaseKept, JSON.stringify(out));
   check('Legacy same-id/no-lease Send reconciles and clears local', out.legacyOk && out.legacyLocalGone && out.legacyRemoteRemains && out.legacyPushed && out.legacyNoLease && out.legacyNoCloudDelete, JSON.stringify(out));
-  check('Legacy same-id/own-lease Send releases and clears local', out.ownLeaseOk && out.ownLeaseLocalGone && out.ownLeaseReleased && out.ownLeaseRemoteRemains && out.ownLeaseNoCloudDelete, JSON.stringify(out));
+  check('a copy already in the Cabinet, under this device\'s own lease, is released and cleared', out.ownLeaseOk && out.ownLeaseLocalGone && out.ownLeaseReleased && out.ownLeaseRemoteRemains && out.ownLeaseNoCloudDelete, JSON.stringify(out));
   check('Legacy same-id/foreign-lease Send refused', out.foreignRefused && out.foreignLocalKept && out.foreignLeaseKept, JSON.stringify(out));
   check('Legacy own-lease Send release failure keeps local', out.legacyRelFailKeptLocal && out.legacyRelFailLeaseKept, JSON.stringify(out));
   check('Cabinet browse remains lightweight', out.browseOk && out.browseHasCloudOnly && out.browseNoMaterialize, JSON.stringify(out));
   check('Existing Check Out still works', out.co2Ok, JSON.stringify(out));
   check('Local-only remove primitive exists; stub hard-delete still local', out.removeLocalExists && out.stubLocalGone, JSON.stringify(out));
+  check('the Cabinet copy is proved picture by picture, several at a time',
+    out.verifyOk && out.verifyAllUploaded && out.verifyLocalGone && out.verifyAtOnce >= 4,
+    JSON.stringify({ ok: out.verifyOk, mostAtOnce: out.verifyAtOnce,
+      uploaded: out.verifyAllUploaded, cleared: out.verifyLocalGone }));
+
+  // The report carries pictures of its own -- the cover's aerial view and
+  // anything inserted onto a sheet. Check In clears the working copy off the
+  // device, so if those bytes were never listed they were never uploaded,
+  // and the Cabinet copy was a book of empty frames. The report component
+  // was the only one whose media list was empty.
+  const reportMedia = await page.evaluate(() => {
+    const ids = window.ToolboxSync.reportMediaIds({
+      reportBuilder: {
+        coverLayout: { overviewMediaId: 'report-cover-overview-abc' },
+        pages: [
+          { id: 'cover', meta: {} },
+          { id: 'floor-1', meta: { overlays: [
+            { id: 'ov-1', kind: 'image', mediaId: 'rbimg_one' },
+            { id: 'ov-2', kind: 'rect' },
+          ] } },
+          { id: 'pictures-1', meta: { overlays: [{ id: 'ov-3', kind: 'image', mediaId: 'rbimg_two' }] } },
+        ],
+      },
+    });
+    return { ids: ids.sort(), empty: window.ToolboxSync.reportMediaIds({}) };
+  });
+  check('the report lists the pictures it carries, so they upload with it',
+    reportMedia.ids.join(',') === 'rbimg_one,rbimg_two,report-cover-overview-abc' &&
+    reportMedia.empty.length === 0,
+    JSON.stringify(reportMedia));
 } finally {
   await browser.close();
   server.kill('SIGTERM');

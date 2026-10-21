@@ -225,6 +225,44 @@ async function readViewport() {
   });
 }
 
+async function clickDone() {
+  // Done saves first, so the Save confirmation flashes past on the way. What
+  // is being waited for is Done's own word.
+  await page.evaluate(() => {
+    window.__doneResult = null;
+    const el = document.querySelector('[data-save-status]');
+    const obs = new MutationObserver(() => {
+      const status = el.getAttribute('data-save-status') || '';
+      if (/done|contour/i.test(status)) {
+        window.__doneResult = { status, tone: el.getAttribute('data-save-tone') || '' };
+      }
+    });
+    obs.observe(el, { attributes: true, attributeFilter: ['data-save-status', 'data-save-tone'] });
+  });
+  await page.click('[data-floor-done]');
+  await page.waitForFunction(() => window.__doneResult && window.__doneResult.status, { timeout: 25000 });
+  return page.evaluate(() => window.__doneResult);
+}
+
+async function watchStatus() {
+  await page.evaluate(() => {
+    window.__saveResult = null;
+    const el = document.querySelector('[data-save-status]');
+    let sawBlank = !(el?.getAttribute('data-save-status') || '');
+    const obs = new MutationObserver(() => {
+      const status = el.getAttribute('data-save-status') || '';
+      if (!status) sawBlank = true;
+      if (sawBlank && status) {
+        window.__saveResult = {
+          status,
+          tone: el.getAttribute('data-save-tone') || '',
+        };
+      }
+    });
+    obs.observe(el, { attributes: true, attributeFilter: ['data-save-status', 'data-save-tone'] });
+  });
+}
+
 async function clickSave() {
   await page.evaluate(() => {
     window.__saveResult = null;
@@ -279,6 +317,25 @@ async function recoveryRecord() {
       pdfWidth: width ? Number(width[1]) : 0,
       pdfHeight: height ? Number(height[1]) : 0,
       updatedAt: layer.recoveryPdfUpdatedAt || '',
+      // Done taking points: Save files the level's contour as well, which is
+      // the one thing Distress Survey and Report Builder were both waiting
+      // on. Both read the level, so filing it is sending it to both.
+      contour: (function () {
+        const canvas = window.ToolboxPlanSetup.canvasById(rec, ids.CANVAS_ID);
+        const found = window.ToolboxPlanSetup.contourLayer(canvas);
+        return found
+          ? { id: found.id, w: found.width, h: found.height, points: found.pointCount,
+              area: found.areaName || '' }
+          : null;
+      })(),
+      // The picture the layer points at is really in the media store: a
+      // level holding an id with no bytes behind it is a bare plan with a
+      // promise on it.
+      contourStored: (function () {
+        const canvas = window.ToolboxPlanSetup.canvasById(rec, ids.CANVAS_ID);
+        const found = window.ToolboxPlanSetup.contourLayer(canvas);
+        return !!found && keys.indexOf(found.id) !== -1;
+      })(),
     };
   }, { FILE_ID, CANVAS_ID });
 }
@@ -307,6 +364,50 @@ check(
 const saved = await clickSave();
 const afterSaveView = await readViewport();
 const stored = await recoveryRecord();
+// Tim: "When we drop our last point there really is no complete. If we had a
+// complete -- I'm done taking points -- generate the contour immediately, it
+// could hit save." Save is that moment, so the level comes away carrying its
+// contour and nobody has to remember a button in another tab.
+check('Save alone does not file a contour — Done is the end of point-taking',
+  !stored.contour, JSON.stringify({ contour: stored.contour }));
+
+// Done taking points. Tim: "Next to the Save button there should be a pill of
+// a button that says Done. I hit Done and it's done." It saves, and it files
+// the level's contour -- which is the one thing Distress Survey and Report
+// Builder were both waiting on, since both read the level.
+const donePill = await page.evaluate(() => {
+  const el = document.querySelector('[data-floor-done]');
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  const save = document.querySelector('[aria-label="Save"]').getBoundingClientRect();
+  return { label: el.textContent.trim(), w: Math.round(r.width), h: Math.round(r.height),
+    besideSave: Math.abs(r.left - save.right) < 24, pill: getComputedStyle(el).borderRadius };
+});
+check('a Done pill sits next to Save',
+  !!donePill && donePill.label === 'Done' && donePill.besideSave &&
+  parseFloat(donePill.pill) >= 12,
+  JSON.stringify(donePill));
+
+const done = await clickDone();
+const afterDone = await recoveryRecord();
+check('Done files the level\'s contour, drawn from the readings',
+  /Done/.test(done.status) && done.tone === 'ok' &&
+  !!afterDone.contour && !!afterDone.contour.id &&
+  afterDone.contour.points === afterDone.points.length &&
+  afterDone.contour.w > 0 && afterDone.contour.h > 0 &&
+  afterDone.contourStored,
+  JSON.stringify({ status: done.status, contour: afterDone.contour,
+    stored: afterDone.contourStored }));
+
+// Press it again: a button, not a state. Nothing is locked, and the level
+// ends up with exactly one contour.
+const doneAgain = await clickDone();
+const afterAgain = await recoveryRecord();
+check('pressing Done again redraws it, and leaves one',
+  /Done/.test(doneAgain.status) && !!afterAgain.contour &&
+  afterAgain.contourStored &&
+  afterAgain.allMediaKeys.filter((key) => key === afterDone.contour.id).length === 0,
+  JSON.stringify({ was: afterDone.contour.id, now: afterAgain.contour.id }));
 check(
   'Save persists points and one recovery PDF',
   saved.status === 'Saved · Recovery PDF updated.' &&

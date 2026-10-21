@@ -62,10 +62,20 @@ const field = fs.readFileSync('floor-survey/src/components/tabs/FieldTab.tsx', '
 check('Helper lives in floor-survey/src/lib/screen-size.ts', /export function screenAnchoredSize/.test(src));
 check('Topo uses screenAnchoredImageSize for labels', /screenAnchoredImageSize/.test(topo));
 check('Data/Field uses screenAnchoredImageSize for labels', /screenAnchoredImageSize/.test(field));
+// The rule has a name of its own now, so check the rule rather than the
+// shape of the code around it: a lone boundary uses the floating chip and
+// gets no canvas pill, unless a report slide asks for one so that one
+// boundary is drawn the same way five are.
+// The rule, and the fact that both the drawing and the hit test ask it --
+// not the shape of the line around the question. A report slide draws the
+// colour scale and the readings as a box on the page now, so the call sits
+// behind a `chromeOnPage` check and an `if (statsPillOnCanvas(` match broke
+// on a change that altered nothing about the rule.
 check(
   'Single-boundary Topo does not draw a second canvas stats pill',
-  /Multi-area only: one named canvas pill/.test(topo) &&
-    /if \(areaTopos\.length > 1\) \{\s*\n\s*const livePill/.test(topo),
+  /function statsPillOnCanvas\(/.test(topo) &&
+    /return areaCount > 1 \|\| \(forSingleBoundary && areaCount === 1\);/.test(topo) &&
+    (topo.match(/statsPillOnCanvas\(/g) || []).length >= 3,
 );
 
 const failed = results.filter((r) => !r.ok);

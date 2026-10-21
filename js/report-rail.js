@@ -58,24 +58,85 @@
     return [text.slice(0, at), text.slice(at + 1)];
   }
 
+  /**
+   * A block of the rail the investigator can type over.
+   *
+   * Tim: "All text on the rail needs to be editable by the user." Every line
+   * here is generated -- from the Customer File, from the survey, from the
+   * slide's own position in the book -- and generated is right until the one
+   * time it is not: a client who goes by another name, a date that needs a
+   * qualifier, a reading he wants to state differently on the sheet.
+   *
+   * So each block carries its own saved text. Nothing is stored until it is
+   * typed over; the generated line shows until then; and emptying the block
+   * drops the override, which puts the generated line back. That is the way
+   * out, and it is the same gesture as the edit.
+   *
+   * A block nobody has touched keeps exactly the markup it had before any of
+   * this -- plain text nodes, no paragraph wrappers -- so a sheet nobody has
+   * edited sets precisely as it set before.
+   */
+  function editable(node, o, key, aria) {
+    if (!node || !o.editable) return node;
+    node.className += ' rb-rt';
+    node.setAttribute('contenteditable', 'true');
+    node.setAttribute('spellcheck', 'true');
+    node.setAttribute('role', 'textbox');
+    node.setAttribute('data-rb-rail-field', key);
+    node.setAttribute('data-rb-rich', 'rail:' + key);
+    if (aria) node.setAttribute('aria-label', aria);
+    return node;
+  }
+
+  /** The investigator's text for a block, or null where they have written none. */
+  function savedHtml(o, key) {
+    var edits = o && o.edits;
+    var model = edits && Object.prototype.hasOwnProperty.call(edits, key) ? edits[key] : null;
+    var api = window.ToolboxReportText;
+    if (!model || !api || typeof api.toHtml !== 'function') return null;
+    if (typeof api.isEmpty === 'function' && api.isEmpty(model)) return null;
+    return api.toHtml(model);
+  }
+
+  /**
+   * One block: what the investigator wrote, or the generated lines.
+   *
+   * A block with nothing to say is still not drawn. Editable means the text
+   * that is there can be changed, not that every sheet grows empty boxes to
+   * type into.
+   */
+  function block(tag, cls, parts, o, key, aria) {
+    var html = savedHtml(o, key);
+    if (html != null) {
+      var written = el(tag, cls);
+      written.innerHTML = html;
+      return editable(written, o, key, aria);
+    }
+    return editable(lines(tag, cls, parts), o, key, aria);
+  }
+
   function formatReading(value, dec) {
     var n = typeof value === 'number' && isFinite(value) ? value : null;
     if (n == null) return '';
     return n.toFixed(typeof dec === 'number' ? dec : 1);
   }
 
-  function readingRow(list, label, value, dec) {
+  function readingRow(list, label, value, dec, o, keyBase) {
     var text = formatReading(value, dec);
-    if (!text) return;
+    // A reading the investigator has written over keeps its row even when the
+    // survey has no number for it any more -- their sheet, their words.
+    if (!text && savedHtml(o, keyBase + ':value') == null) return;
     var row = el('div', 'rb-rail__reading');
-    row.appendChild(el('dt', 'rb-rail__reading-label', label));
-    row.appendChild(el('dd', 'rb-rail__reading-value', text + ' in'));
+    row.appendChild(block('dt', 'rb-rail__reading-label', [label], o, keyBase + ':label',
+      label + ' label'));
+    row.appendChild(block('dd', 'rb-rail__reading-value', [text ? text + ' in' : ''], o,
+      keyBase + ':value', label + ' reading'));
     list.appendChild(row);
   }
 
-  function section(label) {
+  function section(label, o, key) {
     var node = el('section', 'rb-rail__section');
-    if (label) node.appendChild(el('h3', 'rb-rail__label', label));
+    if (label) node.appendChild(block('h3', 'rb-rail__label', [label], o, key, 'Section heading'));
     return node;
   }
 
@@ -141,36 +202,49 @@
     if (o.north !== false) body.appendChild(compass());
 
     var head = document.createElement('header');
-    var client = lines('h2', 'rb-rail__client', clientLines(o.residence));
+    var client = block('h2', 'rb-rail__client', clientLines(o.residence), o, 'client',
+      'Client name');
     if (client) head.appendChild(client);
-    var addr = lines('address', 'rb-rail__address', [o.address, o.addressCity]);
+    var addr = block('address', 'rb-rail__address', [o.address, o.addressCity], o, 'address',
+      'Property address');
     if (addr) head.appendChild(addr);
     if (head.childNodes.length) body.appendChild(head);
 
-    if (o.title) {
-      var titleSection = section('Drawing title');
-      titleSection.appendChild(lines('p', 'rb-rail__title', String(o.title).split('\n')));
+    var titleEl = block('p', 'rb-rail__title', String(o.title || '').split('\n'), o, 'title',
+      'Drawing title');
+    if (titleEl) {
+      var titleSection = section('Drawing title', o, 'head:title');
+      titleSection.appendChild(titleEl);
       body.appendChild(titleSection);
     }
 
-    if (o.surveyDate || o.correctedNote) {
-      var dateSection = section('Survey date');
-      if (o.surveyDate) dateSection.appendChild(el('p', 'rb-rail__date', o.surveyDate));
-      if (o.correctedNote) dateSection.appendChild(el('p', 'rb-rail__note', o.correctedNote));
+    var dateEl = block('p', 'rb-rail__date', [o.surveyDate], o, 'date', 'Survey date');
+    var correctedEl = block('p', 'rb-rail__note', [o.correctedNote], o, 'corrected',
+      'Note under the survey date');
+    if (dateEl || correctedEl) {
+      var dateSection = section('Survey date', o, 'head:date');
+      if (dateEl) dateSection.appendChild(dateEl);
+      if (correctedEl) dateSection.appendChild(correctedEl);
       body.appendChild(dateSection);
     }
 
     var stats = Array.isArray(o.stats) ? o.stats.filter(Boolean) : [];
     if (stats.length) {
-      var readings = section('Relative readings');
-      stats.forEach(function (item) {
+      var readings = section('Relative readings', o, 'head:readings');
+      stats.forEach(function (item, index) {
+        // Keyed by the boundary itself, so a surface renamed or re-measured
+        // in Floor Survey keeps the words written about it, and a second
+        // boundary added later cannot inherit the first one's.
+        var keyBase = 'lvl:' + (item.areaId || ('#' + index));
         var level = el('div', 'rb-rail__level');
-        if (item.name) level.appendChild(el('h4', 'rb-rail__level-name', item.name));
+        var nameEl = block('h4', 'rb-rail__level-name', [item.name], o, keyBase + ':name',
+          'Boundary name');
+        if (nameEl) level.appendChild(nameEl);
         var list = el('dl', 'rb-rail__readings');
         var dec = item.decimalPlaces;
-        readingRow(list, 'High', item.hi, dec);
-        readingRow(list, 'Low', item.lo, dec);
-        readingRow(list, 'Difference', item.delta, dec);
+        readingRow(list, 'High', item.hi, dec, o, keyBase + ':hi');
+        readingRow(list, 'Low', item.lo, dec, o, keyBase + ':lo');
+        readingRow(list, 'Difference', item.delta, dec, o, keyBase + ':delta');
         if (list.childNodes.length) level.appendChild(list);
         readings.appendChild(level);
       });
@@ -183,7 +257,7 @@
     // most subsequent damage, pictures 5, 6 and 10." It is his sentence, not
     // a generated one, so nothing is written here that he did not write.
     if (o.note || o.noteEditable) {
-      var noteSection = section(o.note ? (o.noteLabel || 'Notes') : '');
+      var noteSection = section(o.note ? (o.noteLabel || 'Notes') : '', o, 'head:notes');
       var noteEl = el('div', 'rb-rail__note rb-rail__note--body');
       if (o.noteEditable) {
         // The same kind of field as the report's other writing, so the
@@ -209,9 +283,9 @@
     root.appendChild(body);
 
     var foot = el('footer', 'rb-rail__foot');
-    if (o.figureLabel) {
-      foot.appendChild(el('p', 'rb-rail__figure', String(o.figureLabel).toUpperCase()));
-    }
+    var figureEl = block('p', 'rb-rail__figure', [String(o.figureLabel || '').toUpperCase()], o,
+      'figure', 'Figure number');
+    if (figureEl) foot.appendChild(figureEl);
     if (o.markSrc) {
       var img = document.createElement('img');
       img.className = 'rb-rail__logo';

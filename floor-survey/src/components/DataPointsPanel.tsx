@@ -1,3 +1,4 @@
+import { readingText } from "@/lib/reading";
 import {
   useEffect,
   useMemo,
@@ -368,7 +369,7 @@ export function DataPointsPanel({
                       </span>
                       <span className="flex-1 min-w-0">
                         <div className="font-mono tabular-nums">
-                          {displayValue(p).toFixed(2)}
+                          {readingText(displayValue(p))}
                           {p.isBasePoint && (
                             <span className="ml-1.5 text-[9px] uppercase text-green-700">
                               {p.label ?? "BP"}

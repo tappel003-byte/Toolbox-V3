@@ -1,3 +1,4 @@
+import { readingText } from "@/lib/reading";
 import {
   useEffect,
   useMemo,
@@ -194,7 +195,7 @@ export function TopoDiagnosticPanel({
                           "font-mono tabular-nums " + (excluded ? "line-through" : "")
                         }
                       >
-                        {p.value.toFixed(2)}
+                        {readingText(p.value)}
                       </span>
                       {p.isBasePoint && (
                         <span className="ml-1.5 text-[9px] uppercase text-green-700">

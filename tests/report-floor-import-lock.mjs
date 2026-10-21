@@ -101,54 +101,72 @@ await page.evaluate(async (png) => {
 await page.goto(`${BASE}#/file/rb-floor-lock/report`, { waitUntil: 'networkidle0' });
 await page.waitForFunction(() => document.querySelector('.rb-shell'), { timeout: 15000 });
 await page.waitForFunction(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]'), { timeout: 15000 });
-await page.click('.rb-thumb[data-page-id^="floor-"]');
-await page.waitForFunction(() => document.querySelector('[data-rb-floor-import]'), { timeout: 15000 });
-
-const chromeOnly = await page.evaluate(() => ({
+await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]').click());
+// A Floor Survey page used to open as a dashed empty box and a button, once
+// per level. Tim: "Toolbox knows we have three levels, they can bring the
+// three levels in... I don't know why it needs to be hit." It does it itself
+// now, so the page opens with its drawing and there is no button to press.
+await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box="topo"]'), {
+  timeout: 20000,
+});
+const onOpen = await page.evaluate(() => ({
   hasImport: !!document.querySelector('[data-rb-floor-import]'),
   hasTopoBox: !!document.querySelector('[data-rb-floor-box="topo"]'),
   empty: !!document.querySelector('.rb-floor-empty'),
 }));
-check('Floor page starts chrome-only with Import', chromeOnly.hasImport && chromeOnly.empty && !chromeOnly.hasTopoBox, JSON.stringify(chromeOnly));
+check('Floor page opens with its drawing, nothing to import',
+  !onOpen.hasImport && onOpen.hasTopoBox && !onOpen.empty, JSON.stringify(onOpen));
 
-await page.click('[data-rb-floor-import]');
-await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box="topo"]'), {
-  timeout: 20000,
-});
-
+// An imported slide is the plan and nothing else. The lock on offer is Lock
+// view -- the camera, so the plan sits the same way on every Floor Survey
+// slide -- and it lives in the rail, not on the sheet.
+//
+// The colour scale and the H / L / delta are no longer held back and no
+// longer painted into the plan's picture: they are two boxes ON THE PAGE,
+// each moved on its own, so the plan can be panned and zoomed underneath
+// without carrying them along. Tim, Oct 17: "those need to be movable
+// separately... the high/low/delta pill, the contour legend, those are all
+// movable." The figure block and the readings box stay off the sheet.
 const afterImport = await page.evaluate(() => ({
   imported: !!document.querySelector('[data-rb-floor-box="topo"]'),
-  lock: document.querySelector('[data-rb-floor-lock]')?.getAttribute('data-rb-floor-lock') || '',
+  viewLock: document.querySelector('[data-rb-floor-view-lock]')?.getAttribute('data-rb-floor-view-lock') || '',
   legend: !!document.querySelector('.rb-floor-box--legend'),
   pill: !!document.querySelector('.rb-floor-box--pill'),
 }));
 check(
-  'Import places topo, legend, pill and offers Lock',
-  afterImport.imported && afterImport.lock === 'lock' && afterImport.legend && afterImport.pill,
+  'Import places the topo frame and offers Lock view',
+  afterImport.imported && afterImport.viewLock === 'lock',
+  JSON.stringify(afterImport),
+);
+check(
+  'the colour scale and the readings are placed on the page',
+  afterImport.legend && afterImport.pill,
   JSON.stringify(afterImport),
 );
 
 if (afterImport.imported) {
-  await page.click('[data-rb-floor-lock="lock"]');
-  await page.waitForFunction(() => document.querySelector('[data-rb-floor-lock="unlock"]'), { timeout: 10000 });
+  // Importing re-renders the sheet, so a handle taken before it is detached.
+  await page.evaluate(() => document.querySelector('[data-rb-floor-view-lock="lock"]').click());
+  await page.waitForFunction(
+    () => document.querySelector('[data-rb-floor-view-lock="unlock"]'), { timeout: 10000 });
   await page.waitForFunction(() => {
     const text = document.querySelector('#rb-save-status')?.textContent || '';
     return /^Saved/.test(text) && !/Saving/.test(text);
   }, { timeout: 10000 });
   await page.waitForFunction(async () => {
     const record = await window.ToolboxDB.getCustomerFile('rb-floor-lock');
-    return !!record.reportBuilder?.floorLayout?.locked;
+    return !!record.reportBuilder?.floorCamera?.locked;
   }, { timeout: 10000 });
   const locked = await page.evaluate(async () => {
     const record = await window.ToolboxDB.getCustomerFile('rb-floor-lock');
     return {
-      docLocked: !!record.reportBuilder?.floorLayout?.locked,
-      hasTopo: !!record.reportBuilder?.floorLayout?.topo,
-      btn: document.querySelector('[data-rb-floor-lock]')?.getAttribute('data-rb-floor-lock') || '',
-      boxLocked: !!document.querySelector('.rb-floor-box.is-locked'),
+      cameraLocked: !!record.reportBuilder?.floorCamera?.locked,
+      hasLayout: !!record.reportBuilder?.floorLayout?.topo,
+      btn: document.querySelector('[data-rb-floor-view-lock]')?.getAttribute('data-rb-floor-view-lock') || '',
     };
   });
-  check('Lock persists floorLayout on Customer File', locked.docLocked && locked.hasTopo && locked.btn === 'unlock' && locked.boxLocked, JSON.stringify(locked));
+  check('Lock view persists the camera on the Customer File',
+    locked.cameraLocked && locked.hasLayout && locked.btn === 'unlock', JSON.stringify(locked));
 }
 
 const staged = await page.evaluate(async () => {

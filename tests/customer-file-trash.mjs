@@ -202,9 +202,14 @@ const emptyMenu = await page.evaluate(() => ({
   danger: document.querySelectorAll('.cabinet-row-menu__danger').length,
   actions: [...document.querySelectorAll('.cabinet-row-menu.is-open button')].map((node) => node.textContent),
 }));
+// Two words, not three. Tim: "it is definite that the only options we need
+// are to check it out and to check it in. Period." Send to File Cabinet was
+// the same action under a second name, and is gone.
 check(
-  'On this device menu has Send and no Delete chip',
-  emptyMenu.danger === 0 && emptyMenu.actions.includes('Send to File Cabinet') && !emptyMenu.actions.some((label) => /Delete/i.test(label)),
+  'On this device menu has Check In and no Delete chip',
+  emptyMenu.danger === 0 && emptyMenu.actions.includes('Check In') &&
+  !emptyMenu.actions.some((label) => /Delete/i.test(label)) &&
+  !emptyMenu.actions.some((label) => /Send/i.test(label)),
   JSON.stringify(emptyMenu),
 );
 await page.screenshot({ path: `${OUT}/customer-file-list-menu-phone.png` });

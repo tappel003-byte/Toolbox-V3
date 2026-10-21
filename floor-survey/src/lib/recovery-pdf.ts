@@ -1,3 +1,4 @@
+import { readingText } from "@/lib/reading";
 /**
  * Floor Survey field-data recovery sheet.
  *
@@ -40,7 +41,7 @@ export function recoveryCanvasSize(planWidth?: number, planHeight?: number) {
 }
 
 export function recoveryReadingLabel(point: SurveyPoint, floor: Floor): string {
-  const valueText = Number.isFinite(point.value) ? point.value.toFixed(2) : "—";
+  const valueText = readingText(point.value);
   const transition = point.transitionId
     ? floor.transitions?.find((item) => item.id === point.transitionId)
     : undefined;

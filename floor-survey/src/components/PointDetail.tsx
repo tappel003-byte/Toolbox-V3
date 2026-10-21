@@ -1,3 +1,4 @@
+import { readingText } from "@/lib/reading";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -118,7 +119,7 @@ export function PointDetail({
                     <div className="text-xs text-amber-900/90 dark:text-amber-200/90 flex items-center justify-between gap-2">
                       <span>Corrected value</span>
                       <span className="font-mono tabular-nums font-semibold">
-                        {corrected.toFixed(2)}"
+                        {readingText(corrected)}"
                       </span>
                     </div>
                   )}
@@ -167,7 +168,7 @@ export function PointDetail({
             />
             {activeTransition && validRaw && (
               <div className="mt-1 text-[11px] text-muted-foreground font-mono text-right">
-                = {corrected.toFixed(2)}" corrected
+                = {readingText(corrected)}" corrected
               </div>
             )}
           </div>

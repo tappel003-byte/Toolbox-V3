@@ -92,11 +92,17 @@ const outline = await page.evaluate(() => {
 
   const source = src.read(record);
   const ids = source.floor.figures.map((f) => f.id);
-  assert('Combined then named boundaries',
+  // The boundaries first, the everything-at-once sheet last. Tim, Oct 20:
+  // "We bring any floor level survey that has all levels lastly, and we just
+  // say combined view for exhibit." It used to lead the level, so a report
+  // opened on the busiest drawing in the book.
+  assert('named boundaries, then Combined last',
     ids.join(',') ===
-      'floor-current::canvas-main::all,floor-current::canvas-main::area-main,floor-current::canvas-main::area-lower',
+      'floor-current::canvas-main::area-main,floor-current::canvas-main::area-lower,floor-current::canvas-main::all',
     ids.join(','));
-  assert('Combined scope is all', source.floor.figures[0].scope === 'all' && source.floor.figures[0].name === 'Combined');
+  const last = source.floor.figures[source.floor.figures.length - 1];
+  assert('Combined scope is all',
+    last.scope === 'all' && last.name === 'Combined View', last.name);
   assert('Front Door facing is outlined', source.floor.figures[0].frontDoorFacing === 'West');
   assert('compose flag is set', source.floor.figures.every((f) => f.compose === true));
   assert('cover meta carries contact fields',
@@ -230,113 +236,90 @@ await page.evaluate(() => {
 });
 await page.waitForFunction(() => document.querySelector('.rb-topo-page'), { timeout: 20000 });
 
-const combined = await page.evaluate(() => {
-  const sheet = document.querySelector('.rb-sheet');
-  const pageRoot = document.querySelector('.rb-topo-page');
-  const legends = [...document.querySelectorAll('.rb-topo-legend')];
-  const stats = [...document.querySelectorAll('.rb-topo-stats')];
-  const door = document.querySelector('.rb-topo-page__front-door strong');
-  const img = document.querySelector('.rb-topo-page__image');
-  const chrome = document.querySelector('.rb-topo-page__chrome');
-  const drawing = document.querySelector('.rb-topo-page__drawing');
-  const leftBlock = document.querySelector('.rb-topo-page__stat-block--left');
-  const rightBlock = document.querySelector('.rb-topo-page__stat-block--right');
-  const readings = document.querySelector('.rb-topo-page__readings');
-  const brand = document.querySelector('.rb-topo-page__brand-name');
-  const c = chrome ? chrome.getBoundingClientRect() : null;
-  const d = drawing ? drawing.getBoundingClientRect() : null;
+/**
+ * What a Floor Survey figure sheet is now.
+ *
+ * The sheet is the drawing. Everything that is not the drawing -- the title,
+ * the survey date, the residence and address, the compass, the relative
+ * readings and the Sandia GEO mark -- is one rail down the right-hand side,
+ * the same rail a Picture Locations sheet and a Pictures sheet carry. Only
+ * Figure N stays on the sheet itself, in the corner the eye looks for first.
+ * Before the level is imported the drawing area says so rather than guessing
+ * at a drawing; what Import then places is report-floor-import-lock's
+ * subject, not this one's.
+ */
+function readSheet() {
+  const sheetEl = document.querySelector('.rb-sheet');
+  const text = (sel) => sheetEl.querySelector(sel)?.textContent?.replace(/\s+/g, ' ').trim() || '';
+  const rail = sheetEl.querySelector('.rb-rail__rail');
   return {
-    type: sheet && sheet.getAttribute('data-page-type'),
-    hasTopo: !!pageRoot,
-    figureNum: document.querySelector('.rb-topo-page__figure-num')?.textContent || '',
-    title: document.querySelector('.rb-topo-page__figure-title')?.textContent || '',
-    date: document.querySelector('.rb-topo-page__survey-date')?.textContent || '',
-    residence: document.querySelector('.rb-topo-page__residence')?.textContent || '',
-    address: document.querySelector('.rb-topo-page__address')?.textContent || '',
-    city: document.querySelector('.rb-topo-page__address-city')?.textContent || '',
-    door: door ? door.textContent : '',
-    legendCount: legends.length,
-    statsCount: stats.length,
-    statsText: stats.map((n) => n.textContent.replace(/\s+/g, ' ').trim()),
-    hasImage: !!(img && img.src && img.src.indexOf('data:image/') === 0),
-    chromeOverlaysDrawing: !!(c && d &&
-      c.left <= d.left + 2 && c.right >= d.right - 2 &&
-      c.top <= d.top + 2 && c.bottom >= d.bottom - 2),
-    leftAndRightBlocks: !!(leftBlock && rightBlock),
-    corrected: document.querySelector('.rb-topo-page__corrected')?.textContent || '',
-    readings: readings ? readings.textContent.replace(/\s+/g, ' ').trim() : '',
-    brand: brand ? brand.textContent : '',
+    type: sheetEl.getAttribute('data-page-type'),
+    hasTopo: !!sheetEl.querySelector('.rb-topo-page'),
+    figureNum: text('.rb-topo-page__figure-num'),
+    railFigure: text('.rb-rail__figure'),
+    // Either corner counts: an empty sheet labels its own drawing area, a
+    // drawn one labels the rail foot.
+    figureLabel: (text('.rb-topo-page__figure-num') || text('.rb-rail__figure'))
+      .replace(/^FIGURE /, 'Figure '),
+    title: text('.rb-rail__title'),
+    date: text('.rb-rail__date'),
+    corrected: text('.rb-rail__note'),
+    residence: text('.rb-rail__client'),
+    address: text('.rb-rail__address'),
+    north: rail ? getComputedStyle(rail).getPropertyValue('--rb-north-rotation').trim() : '',
+    compass: sheetEl.querySelectorAll('.rb-rail__compass').length,
+    mark: [...sheetEl.querySelectorAll('.rb-rail__logo')].map((n) => n.alt).join(','),
+    empty: text('.rb-floor-empty'),
+    importOffered: !!document.querySelector('[data-rb-floor-import]'),
   };
-});
+}
 
-check('Combined page uses topo template', combined.type === 'floor' && combined.hasTopo, JSON.stringify(combined));
-check('Combined figure number is Figure 1', combined.figureNum === 'Figure 1', combined.figureNum);
-check('Combined title is scope only', /Floor Level Survey — Combined/.test(combined.title), combined.title);
-check('Survey date slot is filled', /02\/11\/2026/.test(combined.date), combined.date);
-check('Residence title uses last name', /Rivera Residence/.test(combined.residence), combined.residence);
-check('Address slots are filled', /1857 Cerros Colorados/.test(combined.address) && /Santa Fe/.test(combined.city || ''),
-  `${combined.address} | ${combined.city}`);
-check('Front Door slot is West', combined.door === 'West', combined.door);
-check('Combined shows two legends', combined.legendCount === 2, String(combined.legendCount));
-check('Combined shows two H/L/Δ pills', combined.statsCount === 2, combined.statsText.join(' | '));
-check('Composed drawing image is present', combined.hasImage);
-check('Legend chrome overlays the drawing frame', combined.chromeOverlaysDrawing);
-check('Combined uses left and right legend slots', combined.leftAndRightBlocks);
-check('Corrected note is under the title', /Corrected for Floor Differences/.test(combined.corrected));
-check('Relative readings box is present', /High Relative Reading/.test(combined.readings) &&
-  /Total Relative Elevation Difference/.test(combined.readings), combined.readings);
-check('Sandia Geo brand mark is present', /SANDIA GEO/.test(combined.brand), combined.brand);
+const combined = await page.evaluate(readSheet);
 
-// Open Main Level page and confirm same chrome geometry
+check('Combined page uses the topo template', combined.type === 'floor' && combined.hasTopo, JSON.stringify(combined));
+check('Combined is the last of the level\'s figures',
+  combined.figureLabel === 'Figure 3' && combined.railFigure === 'FIGURE 3',
+  `${combined.figureLabel} | ${combined.railFigure}`);
+check('the rail names the drawing and its scope',
+  combined.title === 'Floor Level SurveyCombined View', combined.title);
+check('the rail carries the survey date and the corrected note',
+  /February 11, 2026/.test(combined.date) && /Corrected for floor/i.test(combined.corrected),
+  `${combined.date} | ${combined.corrected}`);
+check('the rail carries the residence and the address',
+  /RiveraResidence/.test(combined.residence) &&
+  /1857 Cerros Colorados/.test(combined.address) && /Santa Fe/.test(combined.address),
+  `${combined.residence} | ${combined.address}`);
+// The front door faces west, and the compass says so by turning rather than
+// by a Front Door line of its own.
+check('the compass is turned to the front door', combined.compass === 1 && combined.north === '270deg',
+  `${combined.compass} | ${combined.north}`);
+check('the Sandia GEO mark is in the rail foot', combined.mark === 'Sandia GEO', combined.mark);
+// A Floor Survey sheet brings its own drawing in now, so there is no empty
+// drawing area and nothing to press. Tim: "I don't know why it needs to be
+// hit in." What Import used to place is report-floor-import-lock's subject.
+check('the sheet arrives drawn, with no Import to press',
+  !combined.empty && !combined.importOffered && combined.hasTopo,
+  `${combined.empty} | ${combined.importOffered} | ${combined.hasTopo}`);
+
+// Open Main Level and confirm the same rail, a level of its own, and the
+// next figure number.
 await page.evaluate(() => {
   const thumb = [...document.querySelectorAll('.rb-thumb')].find((node) =>
     /Floor · Main Level/i.test(node.textContent || ''));
   if (thumb) thumb.click();
 });
 await page.waitForFunction(() => {
-  const title = document.querySelector('.rb-topo-page__figure-title');
+  const title = document.querySelector('.rb-sheet .rb-rail__title');
   return title && /Main Level/.test(title.textContent || '');
 }, { timeout: 15000 });
-
-const mainLevel = await page.evaluate(() => {
-  const chrome = document.querySelector('.rb-topo-page__chrome');
-  const drawing = document.querySelector('.rb-topo-page__drawing');
-  const door = document.querySelector('.rb-topo-page__front-door');
-  const legend = document.querySelector('.rb-topo-legend');
-  const stats = document.querySelector('.rb-topo-stats');
-  const readings = document.querySelector('.rb-topo-page__readings');
-  const leftBlock = document.querySelector('.rb-topo-page__stat-block--left');
-  const rightBlock = document.querySelector('.rb-topo-page__stat-block--right');
-  const c = chrome.getBoundingClientRect();
-  const d = drawing.getBoundingClientRect();
-  const doorBox = door.getBoundingClientRect();
-  return {
-    figureNum: document.querySelector('.rb-topo-page__figure-num')?.textContent || '',
-    title: document.querySelector('.rb-topo-page__figure-title')?.textContent || '',
-    legendCount: document.querySelectorAll('.rb-topo-legend').length,
-    statsText: stats ? stats.textContent.replace(/\s+/g, ' ').trim() : '',
-    overlay: c.left <= d.left + 2 && c.right >= d.right - 2,
-    doorTop: Math.round(doorBox.top),
-    doorRight: Math.round(doorBox.right),
-    legendTop: legend ? Math.round(legend.getBoundingClientRect().top) : null,
-    leftOnly: !!leftBlock && !rightBlock,
-    hi: /H\s*10\.00/.test(stats?.textContent || ''),
-    lo: /L\s*5\.50/.test(stats?.textContent || ''),
-    delta: /Δ\s*4\.50/.test(stats?.textContent || ''),
-    readingsFilled: /High Relative Reading -\s*10\.00/.test(readings?.textContent || '') &&
-      /Low Relative Reading -\s*5\.50/.test(readings?.textContent || '') &&
-      /1\.80|4\.50/.test(readings?.textContent || ''),
-  };
-});
-
-check('Main Level page title', /Figure 2/.test(mainLevel.figureNum) && /Main Level/.test(mainLevel.title),
-  `${mainLevel.figureNum} | ${mainLevel.title}`);
-check('Main Level has one legend and matching H/L/Δ',
-  mainLevel.legendCount === 1 && mainLevel.hi && mainLevel.lo && mainLevel.delta,
-  mainLevel.statsText);
-check('Main Level legend stays over the drawing', mainLevel.overlay);
-check('Main Level uses left legend slot only', mainLevel.leftOnly);
-check('Main Level fills relative readings values', mainLevel.readingsFilled);
+const mainLevel = await page.evaluate(readSheet);
+check('Main Level page is Figure 1 and names its own level',
+  mainLevel.figureLabel === 'Figure 1' && mainLevel.title === 'Floor Level SurveyMain Level',
+  `${mainLevel.figureLabel} | ${mainLevel.title}`);
+check('Main Level keeps the same rail blocks',
+  mainLevel.date === combined.date && mainLevel.residence === combined.residence &&
+  mainLevel.address === combined.address && mainLevel.north === combined.north,
+  JSON.stringify(mainLevel));
 
 await page.evaluate(() => {
   const thumb = [...document.querySelectorAll('.rb-thumb')].find((node) =>
@@ -344,28 +327,17 @@ await page.evaluate(() => {
   if (thumb) thumb.click();
 });
 await page.waitForFunction(() => {
-  const title = document.querySelector('.rb-topo-page__figure-title');
+  const title = document.querySelector('.rb-sheet .rb-rail__title');
   return title && /Lower Level/.test(title.textContent || '');
 }, { timeout: 15000 });
-
-const lower = await page.evaluate(() => {
-  const door = document.querySelector('.rb-topo-page__front-door');
-  const leftBlock = document.querySelector('.rb-topo-page__stat-block--left');
-  return {
-    figureNum: document.querySelector('.rb-topo-page__figure-num')?.textContent || '',
-    title: document.querySelector('.rb-topo-page__figure-title')?.textContent || '',
-    doorTop: Math.round(door.getBoundingClientRect().top),
-    doorRight: Math.round(door.getBoundingClientRect().right),
-    leftLeft: leftBlock ? Math.round(leftBlock.getBoundingClientRect().left) : null,
-    statsText: document.querySelector('.rb-topo-stats')?.textContent.replace(/\s+/g, ' ').trim() || '',
-  };
-});
-
-check('Lower Level page title', /Figure 3/.test(lower.figureNum) && /Lower Level/.test(lower.title),
-  `${lower.figureNum} | ${lower.title}`);
-check('Front Door slot position matches across pages',
-  lower.doorTop === mainLevel.doorTop && lower.doorRight === mainLevel.doorRight,
-  JSON.stringify({ lower, main: { top: mainLevel.doorTop, right: mainLevel.doorRight } }));
+const lower = await page.evaluate(readSheet);
+check('Lower Level page is Figure 2 and names its own level',
+  lower.figureLabel === 'Figure 2' && lower.title === 'Floor Level SurveyLower Level',
+  `${lower.figureLabel} | ${lower.title}`);
+check('every level is drawn from the same template',
+  lower.hasTopo && lower.mark === combined.mark && lower.compass === combined.compass &&
+  lower.corrected === combined.corrected,
+  JSON.stringify(lower));
 
 await page.screenshot({ path: `${OUT}/report-topo-figure-lower.png`, fullPage: false });
 await page.evaluate(() => {
@@ -373,7 +345,8 @@ await page.evaluate(() => {
     /Combined/i.test(node.querySelector('.rb-thumb__caption')?.textContent || ''));
   if (thumb) thumb.click();
 });
-await page.waitForFunction(() => /Combined/.test(document.querySelector('.rb-topo-page__figure-title')?.textContent || ''));
+await page.waitForFunction(
+  () => /Combined/.test(document.querySelector('.rb-sheet .rb-rail__title')?.textContent || ''));
 await page.screenshot({ path: `${OUT}/report-topo-figure-combined.png`, fullPage: false });
 
 await writeFile(`${OUT}/report-topo-figure-pages.json`, JSON.stringify(results, null, 2));

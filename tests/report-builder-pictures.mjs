@@ -124,16 +124,20 @@ await page.waitForFunction(() => document.querySelectorAll('.rb-pictures-page__c
 });
 
 const grid = await page.evaluate(() => {
-  const labels = [...document.querySelectorAll('.rb-pictures-page__label')].map((n) => n.textContent);
-  const captions = [...document.querySelectorAll('.rb-pictures-page__caption')].map((n) => n.value);
-  return { labels, captions, figure: document.querySelector('.rb-pictures-page__figure-num')?.textContent || '' };
+  const sheet = document.querySelector('.rb-sheet');
+  const labels = [...sheet.querySelectorAll('.rb-pictures-page__label')].map((n) => n.textContent);
+  const captions = [...sheet.querySelectorAll('.rb-pictures-page__caption')].map((n) => n.value);
+  // The figure number is printed by the sheet's rail, the same one a Floor
+  // Survey or Picture Locations sheet carries, rather than by a slot of the
+  // Pictures page's own.
+  return { labels, captions, figure: sheet.querySelector('.rb-rail__figure')?.textContent || '' };
 });
 check(
   'Pictures grid shows Photo NN and seeded captions',
   grid.labels.includes('Photo 01') &&
     grid.labels.includes('Photo 02') &&
     grid.captions.some((c) => /Front door/.test(c)) &&
-    /Figure/.test(grid.figure),
+    /FIGURE/.test(grid.figure),
   JSON.stringify(grid),
 );
 
@@ -231,7 +235,10 @@ await page.waitForFunction(() => {
   const btn = document.querySelector('.rb-thumb[data-page-id^="pictures-"]');
   return !!btn;
 }, { timeout: 15000 });
-await page.click('.rb-thumb[data-page-id^="pictures-"]');
+// The rail of stamps is rebuilt whenever the book re-renders, which can
+// happen between resolving a handle and clicking it. Clicking from inside the
+// page re-finds the stamp at the moment of the click instead.
+await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="pictures-"]').click());
 await page.waitForFunction(() => document.querySelectorAll('.rb-pictures-page__cell').length >= 3, {
   timeout: 15000,
 });

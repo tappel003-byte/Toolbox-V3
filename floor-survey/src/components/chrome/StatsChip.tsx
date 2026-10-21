@@ -1,22 +1,39 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 /**
- * The chip's height when the investigator has not chosen one.
+ * The chip's height until someone sets one.
  *
- * This used to be three heights picked from `window.innerWidth` -- 24 on a
+ * It used to be three heights picked from `window.innerWidth` -- 24 on a
  * phone, 32 on a tablet, 40 on a desktop. That made the same Customer File
  * render at three different sizes depending on what you opened it on, and on a
  * report slide it meant the pill's size depended on the browser window rather
  * than on the page it was printed to. One number instead: the middle of the
  * three, which is what a tablet showed.
+ *
+ * What survived that change for a while was an "Auto" idea and a "Use Auto
+ * size for this screen" link, which by then only cleared the chosen size back
+ * to this number. Tim: "I don't think I'll ever use that setting because it's
+ * always wrong -- you just adjust it to the size that you want and it stays
+ * that size." So there is no Auto: the size is the last one set, kept on this
+ * device and used by every job on it, and this is only where it starts.
  */
-const DEFAULT_CHIP_HEIGHT = 32;
+export const DEFAULT_STATS_CHIP_SIZE = 32;
 
 /** localStorage key holding the user's chosen chip height in px. */
 export const STATS_CHIP_SIZE_KEY = "stats-chip-size";
 export const STATS_CHIP_SIZE_EVENT = "stats-chip-size-change";
-export const STATS_CHIP_MIN = 20;
-export const STATS_CHIP_MAX = 56;
+/**
+ * How small and how large the pill may be set.
+ *
+ * These are the ends of the stepper, not a judgement about what is readable.
+ * Tim, with the stepper sitting on its old floor of 20 and the minus greyed
+ * out: "I do not need to be limited to change the pill size to the size that
+ * I want." A dense plan wants a smaller pill than a sparse one, and a pill on
+ * a printed sheet is not the pill on a phone, so the range is as wide as the
+ * stepper can usefully be and the choice is his.
+ */
+export const STATS_CHIP_MIN = 8;
+export const STATS_CHIP_MAX = 120;
 
 /** Read the user's chosen chip height, or null when unset (auto). */
 export function getStatsChipSize(): number | null {
@@ -30,11 +47,6 @@ export function getStatsChipSize(): number | null {
   }
 }
 
-/** The height used when the investigator has not chosen one. */
-export function autoStatsChipSize(): number {
-  return DEFAULT_CHIP_HEIGHT;
-}
-
 /** Persist a chip height and notify any mounted chip immediately. */
 export function setStatsChipSize(px: number) {
   const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(px)));
@@ -46,21 +58,12 @@ export function setStatsChipSize(px: number) {
   window.dispatchEvent(new CustomEvent(STATS_CHIP_SIZE_EVENT, { detail: n }));
 }
 
-/** Clear a locked size so the chip follows phone / iPad / desktop Auto again. */
-export function clearStatsChipSize() {
-  try {
-    window.localStorage.removeItem(STATS_CHIP_SIZE_KEY);
-  } catch {
-    /* ignore */
-  }
-  window.dispatchEvent(new CustomEvent(STATS_CHIP_SIZE_EVENT, { detail: null }));
-}
 
 import { defaultRenderSettings, type SurveyPoint } from "@/lib/types";
+import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 
 interface Props {
   points: SurveyPoint[];
-  onHighlight?: (point: SurveyPoint) => void;
   storageKey?: string;
   /** Optional area name shown as a leading segment (combined multi-area view). */
   label?: string;
@@ -83,14 +86,17 @@ function topChromeHeight() {
 /**
  * Floating pill: High / Low / Delta.
  * - Drag anywhere on the chip to move it (5px threshold).
- * - Quick tap on High/Low = highlight that point.
- * - Size follows the viewport width tier unless the user picked a size in
- *   Topo → Labels & layers → "Stats pill size" (persisted in localStorage).
+ * - A tap does nothing. Tapping the High or the Low reading used to highlight
+ *   that point on the plan. Tim, looking at it: "if you click the numbers on
+ *   the high low pills it highlights the high or the low on the top -- I don't
+ *   think I want that." The pill is a readout and a thing to drag out of the
+ *   way, not a control.
+ * - Size is the one set in Topo → Labels & layers → "Stats pill size", kept on
+ *   this device; the pills drawn on the plan take the same size.
  * - Position persists per storageKey and clamps to viewport on resize/rotate.
  */
 export function StatsChip({
   points,
-  onHighlight,
   storageKey = "stats-chip-pos",
   label,
   stackIndex = 0,
@@ -118,30 +124,31 @@ export function StatsChip({
     return null;
   });
 
-  // User-chosen height (px) wins over the automatic width tier.
+  // The size last set on this device, until someone sets another. Nothing
+  // watches the window: the size does not depend on the screen, so turning the
+  // phone or dragging a window cannot change it.
   const [userSize, setUserSize] = useState<number | null>(null);
-  const [autoSize, setAutoSize] = useState<number>(DEFAULT_CHIP_HEIGHT);
   useEffect(() => {
     setUserSize(getStatsChipSize());
-    setAutoSize(autoStatsChipSize());
-    const onResize = () => setAutoSize(autoStatsChipSize());
     const onSize = (e: Event) => {
       const detail = (e as CustomEvent<number | null>).detail;
       setUserSize(typeof detail === "number" ? detail : null);
     };
-    window.addEventListener("resize", onResize);
-    window.addEventListener("orientationchange", onResize);
     window.addEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     return () => {
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("orientationchange", onResize);
       window.removeEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     };
   }, []);
 
-  const height = userSize ?? autoSize;
-  const fontPx = Math.max(9, Math.round(height * 0.42));
-  const padPx = Math.max(4, Math.round(height * 0.22));
+  // The same type and air as the pills drawn on the plan, with no floor of
+  // its own. This chip used to hold its type at 9px and its padding at 4px
+  // however small the pill was set, so a level set to 14px showed two small
+  // pills on the drawing and one that had stopped shrinking. Tim: "the sizing
+  // did not apply to all three pills." One size setting, three pills, one
+  // size.
+  const height = userSize ?? DEFAULT_STATS_CHIP_SIZE;
+  const fontPx = Math.round(statsPillFont(height));
+  const padPx = Math.round(statsPillPad(height));
 
   // Default: bottom center, above the bottom pill row. Persisted position wins.
   useEffect(() => {
@@ -211,19 +218,16 @@ export function StatsChip({
     const y = Math.min(Math.max(top, d.originY + dy), window.innerHeight - h - 4);
     setPos({ x, y });
   };
-  const endDrag = (e: React.PointerEvent, target?: "hi" | "lo") => {
+  const endDrag = (e: React.PointerEvent) => {
     const d = drag.current;
     if (!d || d.pointerId !== e.pointerId) return;
     drag.current = null;
-    if (d.moved) {
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(pos));
-      } catch {
-        /* ignore */
-      }
-      return;
+    if (!d.moved) return;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(pos));
+    } catch {
+      /* ignore */
     }
-    if (target && stats) onHighlight?.(target === "hi" ? stats.hi : stats.lo);
   };
 
   if (!stats || !pos) {
@@ -239,7 +243,7 @@ export function StatsChip({
   return (
     <div
       ref={ref}
-      className="fixed z-40 flex items-stretch rounded-full bg-white/95 backdrop-blur shadow-sm border border-gray-300 overflow-hidden font-medium tabular-nums select-none touch-none cursor-grab active:cursor-grabbing"
+      className="fixed z-40 flex items-stretch rounded-full bg-white/95 backdrop-blur shadow-sm border border-gray-300 overflow-hidden font-medium select-none touch-none cursor-grab active:cursor-grabbing"
       style={{
         left: pos.x,
         top: pos.y + stackIndex * (height + 6),
@@ -255,36 +259,33 @@ export function StatsChip({
     >
       {label && (
         <div
-          className="flex items-center border-r border-gray-200 text-gray-500 max-w-[8rem] truncate"
-          style={{ paddingLeft: padPx, paddingRight: padPx }}
+          className="flex items-center border-r border-gray-200 max-w-[8rem] truncate"
+          style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.label }}
         >
           {label}
         </div>
       )}
+      {/* Reading and letter in one colour, as the shipped decks set them.
+          Tabular figures in the interface face, not a monospace: a
+          monospaced 1 hangs air on both sides, which is most of what made
+          this read loose beside the deck. */}
       <div
-        className="flex items-center gap-0.5 text-gray-700"
-        style={{ paddingLeft: padPx, paddingRight: padPx }}
-        onPointerUp={(e) => endDrag(e, "hi")}
+        className="flex items-center font-semibold"
+        style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.hi }}
       >
-        {/* Same red as the High pin marker on the plan (#b51d16). */}
-        <span className="font-semibold" style={{ color: "#b51d16" }}>
-          H
-        </span>
-        <span className="font-mono">{stats.hi.value.toFixed(decimals)}</span>
+        {statsPillText("H", stats.hi.value.toFixed(decimals))}
       </div>
       <div
-        className="flex items-center gap-0.5 border-l border-gray-200 text-gray-700"
-        style={{ paddingLeft: padPx, paddingRight: padPx }}
-        onPointerUp={(e) => endDrag(e, "lo")}
+        className="flex items-center border-l border-gray-200 font-semibold"
+        style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.lo }}
       >
-        <span className="font-semibold text-sky-600">L</span>
-        <span className="font-mono">{stats.lo.value.toFixed(decimals)}</span>
+        {statsPillText("L", stats.lo.value.toFixed(decimals))}
       </div>
       <div
-        className="flex items-center gap-0.5 border-l border-gray-200 text-gray-500"
-        style={{ paddingLeft: padPx, paddingRight: padPx }}
+        className="flex items-center border-l border-gray-200 font-semibold"
+        style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.delta }}
       >
-        <span className="font-mono">Δ{stats.delta.toFixed(decimals)}</span>
+        {statsPillText("Δ", stats.delta.toFixed(decimals))}
       </div>
     </div>
   );

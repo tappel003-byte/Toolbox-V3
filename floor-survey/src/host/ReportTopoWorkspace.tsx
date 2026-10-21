@@ -64,6 +64,7 @@ export type ReportTopoWorkspaceProps = {
     lo: number;
     delta: number;
     decimalPlaces: number;
+    bands?: string[];
   }>) => void;
   onReady?: (info: {
     levelName: string;
@@ -217,6 +218,10 @@ export function ReportTopoWorkspace({
         cameraRequest={cameraRequest}
         onStats={onStats}
         statsPillForSingleBoundary
+        // The colour scale and the H/L/delta readings are one piece on the
+        // page, placed by the investigator, so the drawing leaves them off
+        // and can be panned and zoomed without carrying them along.
+        chromeOnPage
         presentation
         locked={locked}
         settingsOwnedByHost

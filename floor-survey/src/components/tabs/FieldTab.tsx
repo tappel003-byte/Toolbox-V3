@@ -1,3 +1,4 @@
+import { readingText } from "@/lib/reading";
 import { useEffect, useRef, useState } from "react";
 import { closedAreas } from "@/lib/areas";
 import { PlanCanvas, type CanvasTransform } from "../PlanCanvas";
@@ -442,7 +443,7 @@ export function FieldTab({
     const pad = 4 * k;
     const markerR = screenAnchoredImageSize(pointSize, s);
     for (const p of points) {
-      const text = p.value.toFixed(2);
+      const text = readingText(p.value);
       const w = text.length * fontPx * 0.62;
       const h = fontPx + 2 * k;
       const lx = p.x + markerR + 4 * k;
@@ -1034,8 +1035,8 @@ export function FieldTab({
           const labelTextFor = (p: SurveyPoint) => {
             const lt = p.transitionId ? transitions.find((t) => t.id === p.transitionId) : null;
             return lt && !p.isTransitionAnchor
-              ? `${p.value.toFixed(2)}${formatDelta(transitionDelta(lt, floor.transitionGroupAverages))}`
-              : p.value.toFixed(2);
+              ? `${readingText(p.value)}${formatDelta(transitionDelta(lt, floor.transitionGroupAverages))}`
+              : readingText(p.value);
           };
           const labelRectFor = (p: SurveyPoint) => {
             ctx.font = `bold ${lblFontPx}px sans-serif`;
@@ -1124,8 +1125,8 @@ export function FieldTab({
             // Label — anchors show only the raw reading, downstream points show `raw+delta`.
             if (visibleLabelIds.has(p.id)) {
               const label = isDownstream
-                ? `${p.value.toFixed(2)}${formatDelta(transitionDelta(linkedT!, floor.transitionGroupAverages))}`
-                : p.value.toFixed(2);
+                ? `${readingText(p.value)}${formatDelta(transitionDelta(linkedT!, floor.transitionGroupAverages))}`
+                : readingText(p.value);
               const markerHalo = isAnchor ? Math.max(markerR + 3, 6) : markerR;
               const lx = p.x + markerHalo + 4 * k;
               const ly = p.y + markerHalo + 3 * k;

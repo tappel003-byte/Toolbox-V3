@@ -34,6 +34,17 @@ export const Route = createFileRoute("/projects/$id")({
   component: ProjectWorkspace,
 });
 
+/** The label size last set on this Customer File, within the panel's range. */
+function storedLabelFontSize(id: string): number {
+  try {
+    const raw = localStorage.getItem(`dpp-font:${id}`);
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n >= 6 && n <= 28 ? n : defaultRenderSettings.pointLabelFontSize;
+  } catch {
+    return defaultRenderSettings.pointLabelFontSize;
+  }
+}
+
 function ProjectWorkspace() {
   const { id } = Route.useParams();
   const [project, setProject] = useState<ProjectMeta | null>(null);
@@ -41,11 +52,24 @@ function ProjectWorkspace() {
   const [activeFloorId, setActiveFloorId] = useState<string | null>(null);
   const [points, setPoints] = useState<SurveyPoint[]>([]);
   const [mode, setMode] = useState<Mode>("field");
-  const [settings, setSettings] = useState<RenderSettings>(defaultRenderSettings);
+  // The label size is kept with the dot size and the dot colour beside it in
+  // the Data panel. Tim: "whatever last setting it goes to it stays on." It
+  // was the one of the three nobody had stored, so a plan set to 8px for a
+  // dense level came back at the default on the next open.
+  const [settings, setSettings] = useState<RenderSettings>(() => ({
+    ...defaultRenderSettings,
+    pointLabelFontSize: storedLabelFontSize(id),
+  }));
+  useEffect(() => {
+    try {
+      localStorage.setItem(`dpp-font:${id}`, String(settings.pointLabelFontSize));
+    } catch {
+      /* ignore */
+    }
+  }, [settings.pointLabelFontSize, id]);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [topoHighlightIds, setTopoHighlightIds] = useState<Set<string>>(new Set());
   // Diagnostic exclusions live at the route so the StatsChip can filter with
   // them on Topo. Session-only: cleared when floor changes or when leaving Topo.
   const [topoExcludedIds, setTopoExcludedIds] = useState<Set<string>>(new Set());
@@ -412,12 +436,10 @@ function ProjectWorkspace() {
             onSettingsChange={setSettings}
             pointSize={pointSize}
             pointColor={pointColor}
-            selectedIds={topoHighlightIds}
             excludedIds={topoExcludedIds}
             onExcludedIdsChange={setTopoExcludedIds}
             selectedAreaId={topoAreaId}
             onSelectedAreaIdChange={setTopoAreaId}
-            onHighlight={(p) => setTopoHighlightIds(new Set([p.id]))}
           />
         )}
         {mode === "export" && (
@@ -447,14 +469,6 @@ function ProjectWorkspace() {
                 ? statsPoints.filter((p) => !topoExcludedIds.has(p.id))
                 : statsPoints
             }
-            onHighlight={(p) => {
-              if (mode === "topo") {
-                setTopoHighlightIds(new Set([p.id]));
-                return;
-              }
-              setSelectedIds(new Set([p.id]));
-              setFocusRequest({ x: p.x, y: p.y, nonce: Date.now() });
-            }}
           />
         </>
       )}

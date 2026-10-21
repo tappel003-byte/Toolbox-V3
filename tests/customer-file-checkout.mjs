@@ -87,6 +87,7 @@ try {
       media: Object.create(null),
       purged: Object.create(null),
       etags: Object.create(null),
+      flight: { now: 0, most: 0 },
     };
 
     function compKey(id, name) { return id + '::' + name; }
@@ -291,6 +292,13 @@ try {
         const mediaId = decodeURIComponent(match[1]);
         if (method === 'GET') {
           if (!state.media[mediaId]) return new Response('Not found', { status: 404 });
+          // How many photographs are being fetched at the same moment. One at
+          // a time meant one round trip at a time, which is what made a job
+          // with a couple of hundred pictures take minutes on a fast line.
+          state.flight.now += 1;
+          if (state.flight.now > state.flight.most) state.flight.most = state.flight.now;
+          await new Promise((r) => setTimeout(r, 12));
+          state.flight.now -= 1;
           return new Response(state.media[mediaId].bytes, {
             status: 200,
             headers: { 'content-type': state.media[mediaId].contentType || 'application/octet-stream' },
@@ -370,7 +378,23 @@ try {
       state.media['ph_cloud'] = { bytes: new Uint8Array([5, 6, 7, 8]), contentType: 'image/jpeg' };
     }
 
+    /** A job with enough photographs to see the difference. */
+    function seedManyPhotos(id, howMany) {
+      const pins = [];
+      for (let i = 1; i <= howMany; i += 1) {
+        const photoId = 'ph_many_' + i;
+        state.media[photoId] = { bytes: new Uint8Array([i, i, i, i]), contentType: 'image/jpeg' };
+        pins.push({ id: 'pin-' + i, num: i, photos: [photoId] });
+      }
+      state.components[id + '::distress'] = {
+        updatedAt: '2026-09-24T10:00:00.000Z',
+        mode: 'internal', startNum: 1, nextNum: howMany + 1, pins: pins,
+      };
+      state.indexes[id].distressUpdatedAt = '2026-09-24T10:00:00.000Z';
+    }
+
     const report = {};
+    state.flight = { now: 0, most: 0 };
 
     // Clear local
     const prior = await ToolboxDB.getAllCustomerFiles();
@@ -593,6 +617,30 @@ try {
       state.indexes['cf-etag-race'].checkout.deviceId === 'device-ipad');
     delete state.forceEtagPreconditionFail['cf-etag-race'];
 
+    // S: a photograph-heavy job comes down several at a time, and says where
+    // it has got to while it does. Tim, waiting on one with nothing on screen:
+    // "there's no way to know that you're waiting on nothing to happen" -- and
+    // on his connection the wait was round trips, not bytes.
+    seedRemote('cf-many');
+    seedManyPhotos('cf-many', 9);
+    const seen = [];
+    const stopWatching = ToolboxSync.onSyncProgress((info) => { seen.push(info); });
+    state.flight.now = 0;
+    state.flight.most = 0;
+    const manyOut = await ToolboxSync.checkOutCustomerFile('cf-many');
+    stopWatching();
+    const photos = seen.filter((info) => info.component === 'distress');
+    report.S_ok = manyOut && manyOut.ok === true;
+    report.S_several = state.flight.most >= 2;
+    report.S_counted = photos.length > 0 &&
+      photos[photos.length - 1].done === 9 && photos[photos.length - 1].total === 9;
+    report.S_named = photos.length > 0 && /photograph/i.test(photos[0].label || '');
+    report.S_rose = photos.some((info) => info.done > 0 && info.done < info.total);
+    report.S_silentAfter = (function () {
+      const before = seen.length;
+      return before > 0;
+    })();
+
     // Q: release fails safely when ETag unavailable
     seedRemote('cf-release-no-etag');
     state.indexes['cf-release-no-etag'] = Object.assign({}, state.indexes['cf-release-no-etag'], {
@@ -640,6 +688,14 @@ try {
   check('O: missing ETag fails safely (no unconditional acquire)', out.O_missingEtagFail && out.O_noOwnership, JSON.stringify(out));
   check('P: failed ETag precondition cannot acquire ownership', out.P_preconditionRefused && out.P_noLocalOwnership, JSON.stringify(out));
   check('Q: release fails safely when ETag unavailable', out.Q_releaseMissingEtagFail && out.Q_leaseKept, JSON.stringify(out));
+  // Several photographs are fetched at once, and the operation says where it
+  // is up to while it runs.
+  check('photographs come down several at a time, counted as they land',
+    out.S_ok && out.S_several && out.S_counted && out.S_named && out.S_rose,
+    JSON.stringify({
+      ok: out.S_ok, mostAtOnce: out.S_several, reachedTotal: out.S_counted,
+      named: out.S_named, roseThroughTheMiddle: out.S_rose,
+    }));
 } finally {
   await browser.close();
   server.kill('SIGTERM');

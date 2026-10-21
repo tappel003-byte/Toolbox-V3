@@ -150,20 +150,23 @@ await page.waitForFunction(() => {
 const rail = await page.evaluate(() => {
   return [...document.querySelectorAll('.rb-thumb__caption')].map((node) => node.textContent);
 });
-check('a level without pins does not get a Pen Log',
-  rail.indexOf('Pen Log · Main Level') !== -1 &&
-  rail.indexOf('Pen Log · Upper Floor') !== -1 &&
-  rail.indexOf('Pen Log · Roof') === -1 &&
-  rail.indexOf('Pen Log · Main Level') < rail.indexOf('Pen Log · Upper Floor'),
+check('a level without pins does not get a Picture Locations sheet',
+  rail.indexOf('Picture Locations · Main Level') !== -1 &&
+  rail.indexOf('Picture Locations · Upper Floor') !== -1 &&
+  rail.indexOf('Picture Locations · Roof') === -1 &&
+  rail.indexOf('Picture Locations · Main Level') < rail.indexOf('Picture Locations · Upper Floor'),
   rail.join(' | '));
 await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id="distress-canvas-main"]').click());
+// Scoped to the live sheet throughout. The rail of stamps is the same markup
+// with every data- attribute stripped by sanitizeThumb, so an unscoped
+// document query answers for a thumbnail: no data-level, and a fit box of
+// zero width.
 await page.waitForFunction(() => {
-  const title = document.querySelector('.rb-penlog__title');
-  const fit = document.querySelector('.rb-penlog__fit');
-  const heading = document.querySelector('.rb-penlog__heading');
-  const page = document.querySelector('.rb-penlog');
-  return title && heading && heading.textContent === 'Picture/Damage Locations' &&
-    page && page.getAttribute('data-level') === 'Main Level' &&
+  const title = document.querySelector('.rb-sheet .rb-rail__title');
+  const fit = document.querySelector('.rb-sheet .rb-penlog__fit');
+  const sheetPage = document.querySelector('.rb-sheet .rb-penlog');
+  return title && /Picture\/Damage Locations/.test(title.textContent) &&
+    sheetPage && sheetPage.getAttribute('data-level') === 'Main Level' &&
     fit && fit.getBoundingClientRect().width > 40;
 });
 
@@ -186,16 +189,19 @@ check('opening the report leaves Distress source unchanged',
   JSON.stringify(openedClean));
 
 const wideLayout = await page.evaluate(() => {
-  const sheet = document.querySelector('.rb-sheet').getBoundingClientRect();
-  const planEl = document.querySelector('.rb-penlog__plan');
+  const sheetEl = document.querySelector('.rb-sheet');
+  const sheet = sheetEl.getBoundingClientRect();
+  const planEl = sheetEl.querySelector('.rb-penlog__plan');
   const plan = planEl.getBoundingClientRect();
-  const fit = document.querySelector('.rb-penlog__fit').getBoundingClientRect();
-  const schedule = document.querySelector('.rb-penlog__schedule').getBoundingClientRect();
-  const title = document.querySelector('.rb-penlog__title').getBoundingClientRect();
-  const north = document.querySelector('.rb-penlog__north').getBoundingClientRect();
-  const footer = document.querySelector('.rb-penlog__page').getBoundingClientRect();
-  const brand = document.querySelector('.rb-penlog__brand').getBoundingClientRect();
-  const pin = document.querySelector('.rb-penlog__pin[data-pin-id="pin-w1"]').getBoundingClientRect();
+  const fit = sheetEl.querySelector('.rb-penlog__fit').getBoundingClientRect();
+  const schedule = sheetEl.querySelector('.rb-penlog__schedule').getBoundingClientRect();
+  // The sheet's own title block, north arrow, footer and logo are all one
+  // rail now -- the same rail a Floor Survey sheet and a Pictures sheet use.
+  const railBox = sheetEl.querySelector('.rb-rail__rail').getBoundingClientRect();
+  const title = sheetEl.querySelector('.rb-rail__title').getBoundingClientRect();
+  const north = sheetEl.querySelector('.rb-rail__compass').getBoundingClientRect();
+  const brand = sheetEl.querySelector('.rb-rail__logo').getBoundingClientRect();
+  const pin = sheetEl.querySelector('.rb-penlog__pin[data-pin-id="pin-w1"]').getBoundingClientRect();
   const contentLeft = plan.left + planEl.clientLeft;
   const contentTop = plan.top + planEl.clientTop;
   const frame = window.ToolboxPenLog.containedFrame(planEl.clientWidth, planEl.clientHeight, 1600, 900);
@@ -211,35 +217,40 @@ const wideLayout = await page.evaluate(() => {
   function hit(a, b) {
     return !(a.right <= b.left + 1 || a.left >= b.right - 1 || a.bottom <= b.top + 1 || a.top >= b.bottom - 1);
   }
-  const rail = document.querySelector('.rb-rail').getBoundingClientRect();
+  // The rail of page stamps down the left of the workspace, not the sheet's
+  // own information rail.
+  const workspaceRail = document.querySelector('aside[aria-label="Report pages"]').getBoundingClientRect();
   const panel = document.querySelector('.rb-panel').getBoundingClientRect();
   return {
     plan: inches(plan),
     schedule: inches(schedule),
+    sheetRail: inches(railBox),
     title: inches(title),
     north: inches(north),
-    footer: inches(footer),
     brand: inches(brand),
-    kicker: document.querySelector('.rb-penlog__kicker').textContent,
-    heading: document.querySelector('.rb-penlog__heading').textContent,
-    level: document.querySelector('.rb-penlog').getAttribute('data-level'),
+    figure: sheetEl.querySelector('.rb-rail__figure').textContent,
+    titleText: title ? sheetEl.querySelector('.rb-rail__title').textContent : '',
+    titleBreaks: sheetEl.querySelectorAll('.rb-rail__title br').length,
+    aria: sheetEl.getAttribute('aria-label'),
+    level: sheetEl.querySelector('.rb-penlog').getAttribute('data-level'),
     planBorder: getComputedStyle(planEl).borderTopWidth,
     planBg: getComputedStyle(planEl).backgroundColor,
-    footerText: document.querySelector('.rb-penlog__page').textContent,
-    blankRows: document.querySelectorAll('.rb-penlog__grid .rb-penlog__cell').length,
+    blankRows: sheetEl.querySelectorAll('.rb-penlog__grid .rb-penlog__cell').length,
     fitTopGap: fit.top - contentTop,
     fitBottomGap: (contentTop + planEl.clientHeight) - fit.bottom,
     fitLeftGap: fit.left - contentLeft,
     pinDx: (pin.left + pin.width / 2) - (contentLeft + expected.x),
     pinDy: (pin.top + pin.height / 2) - (contentTop + expected.y),
-    sheetImages: document.querySelectorAll('.rb-sheet img').length,
+    // The plan, and the Sandia GEO mark in the rail's foot.
+    sheetImages: sheetEl.querySelectorAll('img').length,
     panelImages: document.querySelectorAll('#rb-photo-list img').length,
-    cards: document.querySelectorAll('.rb-sheet .rb-evidence-observation').length,
-    headers: [...document.querySelectorAll('.rb-penlog__cell--head')].map((node) => node.textContent).join(','),
-    photos: [...document.querySelectorAll('.rb-penlog__photo')].map((node) => node.textContent).join(','),
-    pins: [...document.querySelectorAll('.rb-penlog__pinnum')].map((node) => node.textContent).join(','),
+    cards: sheetEl.querySelectorAll('.rb-evidence-observation').length,
+    headers: [...sheetEl.querySelectorAll('.rb-penlog__cell--head')].map((node) => node.textContent).join(','),
+    photos: [...sheetEl.querySelectorAll('.rb-penlog__photo')].map((node) => node.textContent).join(','),
+    pins: [...sheetEl.querySelectorAll('.rb-penlog__pinnum')].map((node) => node.textContent).join(','),
     overlapPlan: hit(plan, schedule),
-    overlapChrome: hit(rail, sheet) || hit(panel, sheet),
+    overlapRail: hit(schedule, railBox),
+    overlapChrome: hit(workspaceRail, sheet) || hit(panel, sheet),
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
   };
 });
@@ -247,25 +258,31 @@ check('wide plan is letterboxed and the pin stays on the image',
   wideLayout.fitTopGap > 8 && wideLayout.fitBottomGap > 8 && wideLayout.fitLeftGap < 3 &&
   Math.abs(wideLayout.pinDx) < 2 && Math.abs(wideLayout.pinDy) < 2,
   JSON.stringify({ fitTopGap: wideLayout.fitTopGap, fitLeftGap: wideLayout.fitLeftGap, pinDx: wideLayout.pinDx, pinDy: wideLayout.pinDy }));
-check('schedule starts near 10 inches and ends near 10.4 inches',
-  near(wideLayout.schedule.x, 10, 0.15) && near(wideLayout.schedule.b, 10.4, 0.15) &&
-  near(wideLayout.plan.r, 9.5, 0.15) && wideLayout.title.y < 0.6 && wideLayout.brand.y > 10.2,
-  JSON.stringify({ plan: wideLayout.plan, schedule: wideLayout.schedule, title: wideLayout.title, brand: wideLayout.brand }));
-check('title is two lines, north sits in the gutter, and the footer names the property',
-  wideLayout.kicker === 'Figure 4' && wideLayout.heading === 'Picture/Damage Locations' &&
+check('the plan, the schedule and the rail each own a band of the sheet',
+  near(wideLayout.plan.r, 8.5, 0.2) &&
+  near(wideLayout.schedule.x, 8.8, 0.2) && near(wideLayout.schedule.b, 10.5, 0.2) &&
+  wideLayout.sheetRail.x > wideLayout.schedule.r &&
+  !wideLayout.overlapPlan && !wideLayout.overlapRail,
+  JSON.stringify({ plan: wideLayout.plan, schedule: wideLayout.schedule, sheetRail: wideLayout.sheetRail }));
+check('the rail carries the two-line title, the compass above it and the mark at its foot',
+  wideLayout.titleText === 'Picture/Damage LocationsMain Level' && wideLayout.titleBreaks === 1 &&
   wideLayout.level === 'Main Level' &&
   wideLayout.planBorder === '0px' && wideLayout.planBg === 'rgb(255, 255, 255)' &&
-  wideLayout.title.r < wideLayout.schedule.x + 0.05 &&
-  wideLayout.north.x > wideLayout.plan.r - 0.05 && wideLayout.north.r < wideLayout.schedule.x + 0.08 &&
-  wideLayout.north.y < wideLayout.plan.y &&
-  wideLayout.footerText === '15 Example Court \u00b7 Page 4' &&
-  wideLayout.footer.x > 8 && wideLayout.footer.y > 10.2 &&
-  wideLayout.blankRows > 8,
-  JSON.stringify({ title: wideLayout.title, north: wideLayout.north, footer: wideLayout.footer, footerText: wideLayout.footerText, kicker: wideLayout.kicker, heading: wideLayout.heading, planBorder: wideLayout.planBorder, planBg: wideLayout.planBg }));
+  wideLayout.north.y < wideLayout.title.y && wideLayout.brand.y > wideLayout.title.b &&
+  wideLayout.brand.y > 9.5 && wideLayout.blankRows > 8,
+  JSON.stringify({ title: wideLayout.title, north: wideLayout.north, brand: wideLayout.brand,
+    titleText: wideLayout.titleText, planBorder: wideLayout.planBorder, planBg: wideLayout.planBg }));
+// Two places name the figure -- the rail prints it, the sheet's accessible
+// label says it -- and they have to say the same number. They did not: the
+// label counted the page's position in the book while the rail printed the
+// figure number, so a sheet stamped FIGURE 2 announced itself as Figure 4.
+check('the printed figure number and the sheet label agree',
+  wideLayout.figure === 'FIGURE 2' && /^Figure 2, Picture\/Damage Locations, Main Level/.test(wideLayout.aria),
+  `${wideLayout.figure} | ${wideLayout.aria}`);
 check('pen log is a plan and schedule, with photographs beside the page',
-  !wideLayout.overlapPlan && wideLayout.headers === 'Photo,#,Location,Notes' &&
+  !wideLayout.overlapPlan && wideLayout.headers === 'Photo,#,Notes' &&
   wideLayout.photos === '1\u20132,3' && wideLayout.pins === '1,3' &&
-  wideLayout.sheetImages === 1 && wideLayout.panelImages === 3 && wideLayout.cards === 0,
+  wideLayout.sheetImages === 2 && wideLayout.panelImages === 3 && wideLayout.cards === 0,
   JSON.stringify(wideLayout));
 check('desktop sheet stays clear of the rail and panel',
   !wideLayout.overlapChrome && !wideLayout.overflow);
@@ -274,7 +291,7 @@ const sheetShot = await page.$('.rb-sheet');
 await sheetShot.screenshot({ path: `${OUT}/pen-log-after-desktop-wide.png` });
 await page.screenshot({ path: `${OUT}/pen-log-after-desktop-workspace.png` });
 
-await page.click('.rb-penlog__photo');
+await page.click('.rb-sheet .rb-penlog__photo');
 const selected = await page.evaluate(() => ({
   note: document.querySelector('#rb-report-note').value,
   current: document.querySelector('.rb-photo.is-current figcaption').textContent,
@@ -285,19 +302,19 @@ check('a photo number opens that pin’s photographs',
 
 await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id="distress-canvas-upper"]').click());
 await page.waitForFunction(() => {
-  const title = document.querySelector('.rb-penlog__title');
-  const fit = document.querySelector('.rb-penlog__fit');
-  const heading = document.querySelector('.rb-penlog__heading');
-  const page = document.querySelector('.rb-penlog');
-  return title && heading && heading.textContent === 'Picture/Damage Locations' &&
-    page && page.getAttribute('data-level') === 'Upper Floor' &&
+  const title = document.querySelector('.rb-sheet .rb-rail__title');
+  const fit = document.querySelector('.rb-sheet .rb-penlog__fit');
+  const sheetPage = document.querySelector('.rb-sheet .rb-penlog');
+  return title && /Picture\/Damage Locations/.test(title.textContent) &&
+    sheetPage && sheetPage.getAttribute('data-level') === 'Upper Floor' &&
     fit && fit.getBoundingClientRect().height > 40;
 });
 const tallLayout = await page.evaluate(() => {
-  const planEl = document.querySelector('.rb-penlog__plan');
+  const sheetEl = document.querySelector('.rb-sheet');
+  const planEl = sheetEl.querySelector('.rb-penlog__plan');
   const plan = planEl.getBoundingClientRect();
-  const fit = document.querySelector('.rb-penlog__fit').getBoundingClientRect();
-  const pin = document.querySelector('.rb-penlog__pin[data-pin-id="pin-u2"]').getBoundingClientRect();
+  const fit = sheetEl.querySelector('.rb-penlog__fit').getBoundingClientRect();
+  const pin = sheetEl.querySelector('.rb-penlog__pin[data-pin-id="pin-u2"]').getBoundingClientRect();
   const contentLeft = plan.left + planEl.clientLeft;
   const contentTop = plan.top + planEl.clientTop;
   const frame = window.ToolboxPenLog.containedFrame(planEl.clientWidth, planEl.clientHeight, 800, 1600);
@@ -307,8 +324,8 @@ const tallLayout = await page.evaluate(() => {
     fitTopGap: fit.top - contentTop,
     pinDx: (pin.left + pin.width / 2) - (contentLeft + expected.x),
     pinDy: (pin.top + pin.height / 2) - (contentTop + expected.y),
-    photos: [...document.querySelectorAll('.rb-penlog__photo')].map((node) => node.textContent).join(','),
-    pins: [...document.querySelectorAll('.rb-penlog__pinnum')].map((node) => node.textContent).join(','),
+    photos: [...sheetEl.querySelectorAll('.rb-penlog__photo')].map((node) => node.textContent).join(','),
+    pins: [...sheetEl.querySelectorAll('.rb-penlog__pinnum')].map((node) => node.textContent).join(','),
     panelImages: document.querySelectorAll('#rb-photo-list img').length,
   };
 });
@@ -321,7 +338,7 @@ check('upper floor continues the photograph sequence',
   JSON.stringify(tallLayout));
 await (await page.$('.rb-sheet')).screenshot({ path: `${OUT}/pen-log-after-desktop-tall.png` });
 
-await page.click('.rb-penlog__photo[data-pin-id="pin-u2"]');
+await page.click('.rb-sheet .rb-penlog__photo[data-pin-id="pin-u2"]');
 await page.waitForFunction(() => {
   const note = document.querySelector('#rb-report-note');
   return note && note.getAttribute('data-pin-id') === 'pin-u2';
@@ -340,7 +357,7 @@ await page.waitForFunction(async () => {
 const saved = await page.evaluate(async () => {
   const record = await window.ToolboxDB.getCustomerFile('rb-penlog');
   const source = record.distress.pins.find((pin) => pin.id === 'pin-u2');
-  const pageNote = document.querySelector('.rb-penlog__note[data-pin-id="pin-u2"]').value;
+  const pageNote = document.querySelector('.rb-sheet .rb-penlog__note[data-pin-id="pin-u2"]').value;
   const panelNote = document.querySelector('#rb-report-note').value;
   const status = (document.querySelector('#rb-save-state') && document.querySelector('#rb-save-state').textContent) ||
     (document.querySelector('#rb-save-status') && document.querySelector('#rb-save-status').textContent) || '';
@@ -374,13 +391,13 @@ await page.waitForFunction(() => {
 });
 await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id="distress-canvas-upper"]').click());
 await page.waitForFunction(() => {
-  const field = document.querySelector('.rb-penlog__note[data-pin-id="pin-u2"]');
+  const field = document.querySelector('.rb-sheet .rb-penlog__note[data-pin-id="pin-u2"]');
   return field && field.value === '1/4 inch crack';
 });
 const reloaded = await page.evaluate(async () => {
   const record = await window.ToolboxDB.getCustomerFile('rb-penlog');
   return {
-    pageNote: document.querySelector('.rb-penlog__note[data-pin-id="pin-u2"]').value,
+    pageNote: document.querySelector('.rb-sheet .rb-penlog__note[data-pin-id="pin-u2"]').value,
     description: record.distress.pins.find((pin) => pin.id === 'pin-u2').description,
     status: document.querySelector('#rb-save-state').textContent,
   };
@@ -401,13 +418,13 @@ await page.waitForFunction(() => {
 });
 await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id="distress-canvas-upper"]').click());
 await page.waitForFunction(() => {
-  const field = document.querySelector('.rb-penlog__note[data-pin-id="pin-u2"]');
+  const field = document.querySelector('.rb-sheet .rb-penlog__note[data-pin-id="pin-u2"]');
   return field && field.value === '1/4 inch crack';
 });
 const offlineReopen = await page.evaluate(async () => {
   const record = await window.ToolboxDB.getCustomerFile('rb-penlog');
   return {
-    pageNote: document.querySelector('.rb-penlog__note[data-pin-id="pin-u2"]').value,
+    pageNote: document.querySelector('.rb-sheet .rb-penlog__note[data-pin-id="pin-u2"]').value,
     description: record.distress.pins.find((pin) => pin.id === 'pin-u2').description,
     offline: !navigator.onLine,
   };
@@ -426,7 +443,7 @@ await page.waitForFunction(() => {
     document.querySelector('.rb-thumb[data-page-id="distress-canvas-upper"]');
 });
 await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id="distress-canvas-main"]').click());
-await page.waitForFunction(() => document.querySelector('.rb-penlog') && document.querySelector('.rb-penlog').getAttribute('data-level') === 'Main Level');
+await page.waitForFunction(() => document.querySelector('.rb-sheet .rb-penlog') && document.querySelector('.rb-sheet .rb-penlog').getAttribute('data-level') === 'Main Level');
 await page.screenshot({ path: `${OUT}/pen-log-ipad.png` });
 const ipad = await page.evaluate(() => {
   const sheet = document.querySelector('.rb-sheet').getBoundingClientRect();
@@ -455,19 +472,30 @@ await page.waitForFunction(() => {
     document.querySelector('.rb-thumb[data-page-id="distress-canvas-upper"]');
 });
 await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id="distress-canvas-upper"]').click());
-await page.waitForFunction(() => document.querySelector('.rb-penlog') && document.querySelector('.rb-penlog').getAttribute('data-level') === 'Upper Floor');
-await page.click('.rb-penlog__photo[data-pin-id="pin-u2"]');
+await page.waitForFunction(() => document.querySelector('.rb-sheet .rb-penlog') && document.querySelector('.rb-sheet .rb-penlog').getAttribute('data-level') === 'Upper Floor');
+// The schedule is measured and reflowed after the sheet first appears, so
+// data-level is on the page before the photograph rows are. Wait for the row
+// itself. On a phone the whole sheet is scaled down to fit and the number is
+// far too small for a synthetic tap to land on; what is under test here is
+// the layout once a pin is selected, not the tap.
+await page.waitForFunction(
+  () => document.querySelector('.rb-sheet .rb-penlog__photo[data-pin-id="pin-u2"]'),
+  { timeout: 15000 });
+await page.evaluate(() => document.querySelector('.rb-sheet .rb-penlog__photo[data-pin-id="pin-u2"]').click());
 const phone = await page.evaluate(() => {
   const sheet = document.querySelector('.rb-sheet').getBoundingClientRect();
-  const link = document.querySelector('[data-rb-source="distress"]').getBoundingClientRect();
+  // A Picture Locations sheet's workspace is the Pen Log panel: the report
+  // note and that pin's photographs. It carries no Open Distress Survey
+  // button -- only a Floor Survey sheet has a way back to its application.
+  const photos = document.querySelector('#rb-photo-list');
+  const photoBox = photos ? photos.getBoundingClientRect() : { width: 0, height: 0 };
   function hit(a, b) {
     return !(a.right <= b.left + 1 || a.left >= b.right - 1 || a.bottom <= b.top + 1 || a.top >= b.bottom - 1);
   }
   const placed = {
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
     sheetVisible: sheet.width > 140 && sheet.height > 80,
-    linkReady: link.width > 40 && link.height > 20,
-    overlapLink: hit(sheet, link),
+    photosReady: photoBox.width > 40 && photoBox.height > 20,
   };
   document.querySelector('#rb-report-note').scrollIntoView({ block: 'center' });
   const note = document.querySelector('#rb-report-note').getBoundingClientRect();
@@ -479,9 +507,129 @@ const phone = await page.evaluate(() => {
 });
 check('phone pen log leaves a usable report note and keeps the sheet clear',
   !phone.overflow && phone.sheetVisible && phone.noteReady && phone.noteValue === '1/4 inch crack' &&
-  !phone.overlapSheet && phone.linkReady && !phone.overlapLink,
+  !phone.overlapSheet && phone.photosReady,
   JSON.stringify(phone));
 await page.screenshot({ path: `${OUT}/pen-log-phone.png`, fullPage: true });
+
+// The plan and the schedule are pieces the investigator places. Tim:
+// "Everything here needs to be movable. I should be able to move the floor
+// plan if I want, and I want to be able to move the notes if I want."
+// Back to the desk: placing pieces is pointer work, and the phone above
+// scales the whole sheet down far too small to drag a corner on.
+await page.setViewport({ width: 1440, height: 960, deviceScaleFactor: 1 });
+await page.goto(`${BASE}#/`, { waitUntil: 'networkidle0' });
+await page.goto(`${BASE}#/file/rb-penlog/report`, { waitUntil: 'networkidle0' });
+await page.waitForFunction(
+  () => !!document.querySelector('.rb-sheet:not(.rb-sheet--thumb) .rb-penlog'), { timeout: 20000 });
+await page.evaluate(() => {
+  const thumb = [...document.querySelectorAll('.rb-thumb')]
+    .find((t) => /^distress-/.test(t.getAttribute('data-page-id') || ''));
+  thumb?.click();
+});
+await new Promise((r) => setTimeout(r, 1200));
+await page.mouse.move(4, 4);
+await new Promise((r) => setTimeout(r, 300));
+
+function penBoxes() {
+  return page.evaluate(() => {
+    const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+    const sr = sheet.getBoundingClientRect();
+    const read = (which) => {
+      const el = sheet.querySelector(`[data-rb-penlog-box="${which}"]`);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return {
+        x: +(((r.left - sr.left) / sr.width) * 17).toFixed(2),
+        y: +(((r.top - sr.top) / sr.height) * 11).toFixed(2),
+        w: +((r.width / sr.width) * 17).toFixed(2),
+        h: +((r.height / sr.height) * 11).toFixed(2),
+      };
+    };
+    const grips = [...sheet.querySelectorAll('[data-rb-penlog-move], [data-rb-penlog-resize]')];
+    return {
+      plan: read('plan'),
+      schedule: read('schedule'),
+      grips: grips.length,
+      showing: grips.filter((g) => getComputedStyle(g).display !== 'none').length,
+    };
+  });
+}
+async function dragPen(selector, dx, dy) {
+  // Pick the piece first, the way the investigator does. The handles used to
+  // come out on hover; they come out when the box is highlighted now, and at
+  // no other time. Tim: the pulls "only show up when the box is highlighted,
+  // period."
+  const box = await page.evaluate((sel) => {
+    const g = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) ' + sel);
+    // Just inside the corner the handle sits on, rather than the middle of
+    // the piece: the plan's own drawing fills the centre.
+    const r = g.closest('[data-rb-penlog-box]').getBoundingClientRect();
+    const corner = /resize/.test(sel);
+    return corner
+      ? { x: r.right - 6, y: r.bottom - 6 }
+      : { x: r.left + 6, y: r.top + 6 };
+  }, selector);
+  await page.mouse.move(box.x, box.y);
+  await page.mouse.down();
+  await page.mouse.up();
+  await new Promise((r) => setTimeout(r, 300));
+  const at = await page.evaluate((sel) => {
+    const g = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) ' + sel);
+    const r = g.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2, shown: getComputedStyle(g).display };
+  }, selector);
+  if (at.shown === 'none') throw new Error('handle did not appear once picked: ' + selector);
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.down();
+  await page.mouse.move(at.x + dx, at.y + dy, { steps: 12 });
+  await page.mouse.up();
+  await new Promise((r) => setTimeout(r, 1500));
+}
+
+const penStart = await penBoxes();
+check('both pieces carry handles, and show none until pointed at',
+  penStart.grips === 4 && penStart.showing === 0, JSON.stringify(penStart));
+
+await dragPen('[data-rb-penlog-move="plan"]', 60, 40);
+const penMoved = await penBoxes();
+check('the floor plan goes where it is dragged',
+  penMoved.plan.x > penStart.plan.x + 0.3 && penMoved.plan.y > penStart.plan.y + 0.2 &&
+  Math.abs(penMoved.schedule.x - penStart.schedule.x) < 0.1,
+  JSON.stringify({ penStart: penStart.plan, penMoved: penMoved.plan }));
+
+await dragPen('[data-rb-penlog-resize="schedule"]', 90, -60);
+const penSized = await penBoxes();
+check('the notes take the size they are given, and the plan stays put',
+  penSized.schedule.w > penMoved.schedule.w + 0.5 &&
+  penSized.schedule.h < penMoved.schedule.h - 0.3 &&
+  Math.abs(penSized.plan.x - penMoved.plan.x) < 0.1,
+  JSON.stringify({ before: penMoved.schedule, after: penSized.schedule }));
+
+await page.waitForFunction(
+  () => /^Saved/.test(document.querySelector('#rb-save-status')?.textContent || ''), { timeout: 15000 });
+const penStored = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('rb-penlog');
+  return (record.reportBuilder || {}).penLogLayout || null;
+});
+check('the placement is kept on the Customer File',
+  !!penStored && Math.abs(penStored.schedule.w - penSized.schedule.w) < 0.3,
+  JSON.stringify(penStored));
+
+await page.goto(`${BASE}#/`, { waitUntil: 'networkidle0' });
+await page.goto(`${BASE}#/file/rb-penlog/report`, { waitUntil: 'networkidle0' });
+await page.waitForFunction(
+  () => !!document.querySelector('.rb-sheet:not(.rb-sheet--thumb)'), { timeout: 20000 });
+await page.evaluate(() => {
+  const thumb = [...document.querySelectorAll('.rb-thumb')]
+    .find((t) => /^distress-/.test(t.getAttribute('data-page-id') || ''));
+  thumb?.click();
+});
+await new Promise((r) => setTimeout(r, 1500));
+const penReopened = await penBoxes();
+check('and it is still where it was put when the report is reopened',
+  Math.abs(penReopened.plan.x - penSized.plan.x) < 0.3 &&
+  Math.abs(penReopened.schedule.w - penSized.schedule.w) < 0.3,
+  JSON.stringify({ penSized, penReopened }));
 
 await browser.close();
 

@@ -115,16 +115,21 @@ const logic = await page.evaluate(() => {
   assert('distress counts stay with the level',
     source.distress.levels[0].pinCount === 1 && source.distress.levels[0].photoCount === 1 &&
     source.distress.levels[1].photoCount === 2);
-  assert('floor figures stay consecutive and unmerged',
+  // Main Level leads whatever order the canvases were drawn in -- the
+  // Basement is canvas 0 here and still comes second. Tim, Oct 20: "Main
+  // level always gets brought in first."
+  assert('floor figures stay consecutive and unmerged, Main Level first',
     source.floor.figures.map((figure) => figure.id).join(',') ===
-      'floor-current::canvas-b,floor-current::canvas-m,epoch-jan::canvas-b',
+      'floor-current::canvas-m,floor-current::canvas-b,epoch-jan::canvas-b',
     source.floor.figures.map((figure) => figure.id).join(','));
+  const byName = (name) => source.floor.figures.find((figure) => figure.name === name);
   assert('stored topo media is referenced on the outline',
-    source.floor.figures[0].figureMediaId === 'fsrec_canvas-b' &&
-    source.floor.figures[0].readingCount === 1);
+    byName('Basement').figureMediaId === 'fsrec_canvas-b' &&
+    byName('Basement').readingCount === 1,
+    JSON.stringify(byName('Basement')));
   assert('areas without closed polygons stay one level figure',
-    source.floor.figures[1].areaCount === 0 && source.floor.figures[1].name === 'Main Level',
-    JSON.stringify(source.floor.figures[1]));
+    byName('Main Level').areaCount === 0,
+    JSON.stringify(byName('Main Level')));
 
   const sequence = src.assemble(source);
   const distressIds = sequence.pages.filter((item) => item.type === 'distress').map((item) => item.id);
@@ -234,8 +239,10 @@ await page.goto(`${BASE}#/file/rb-skeleton/report`, { waitUntil: 'networkidle0' 
 await page.waitForFunction(() => {
   const ready = document.querySelector('.rb-shell')?.getAttribute('data-report-ready') === 'true';
   const label = document.querySelector('#rb-file-label')?.textContent || '';
+  // Cover fields are rich text, so they are contenteditable divs rather than
+  // inputs: they carry textContent, never a value.
   const name = document.querySelector('[data-rb-cover-field="name"]');
-  return ready && /Riley Chen/.test(label) && name && name.value === 'Riley Chen';
+  return ready && /Riley Chen/.test(label) && name && name.textContent === 'Riley Chen';
 }, { timeout: 20000 });
 
 const opened = await page.evaluate(() => {
@@ -245,17 +252,20 @@ const opened = await page.evaluate(() => {
   const toc = [...document.querySelectorAll('.rb-thumb__caption')].map((node) => node.textContent);
   return {
     type: sheet.getAttribute('data-page-type'),
-    title: document.querySelector('[data-rb-cover-field="name"]')?.value ||
-      document.querySelector('.rb-cover__name')?.textContent || '',
-    address: document.querySelector('[data-rb-cover-field="street"]')?.value ||
-      document.querySelector('.rb-cover__street')?.textContent || '',
+    title: document.querySelector('[data-rb-cover-field="name"]')?.textContent || '',
+    address: document.querySelector('[data-rb-cover-field="street"]')?.textContent || '',
     product: document.querySelector('.rb-cover__product')?.textContent || '',
     contents: document.querySelector('.rb-cover__contents-title')?.textContent || '',
     ratio: Math.round(ratio * 100) / 100,
-    links: [...document.querySelectorAll('[data-rb-source]')].map((node) => node.getAttribute('data-rb-source')),
+    // The way back to an application belongs to the slide that came from
+    // it, so a cover offers none. Counted as visible, because the Pen Log
+    // panel's button is in the shell markup whether or not it is shown.
+    links: [...document.querySelectorAll('[data-rb-source]')]
+      .filter((node) => node.getBoundingClientRect().width > 0)
+      .map((node) => node.getAttribute('data-rb-source')),
     captions: toc,
-    fakeTools: [...document.querySelectorAll('[data-rb-tool]')].map((node) => node.textContent),
-    lead: document.querySelector('.rb-toolbar__lead')?.textContent || '',
+    tools: [...document.querySelectorAll('[data-rb-tool]')].map((node) => node.getAttribute('data-rb-tool')),
+    lead: document.querySelector('[data-rb-fmt-hint]')?.textContent || '',
     exportAi: !!document.querySelector('#rb-export-ai'),
     saveStatus: document.querySelector('#rb-save-status')?.textContent || '',
   };
@@ -267,25 +277,30 @@ check('cover shows FLOOR LEVEL SURVEY and CONTENTS',
   opened.product === 'FLOOR LEVEL SURVEY' && opened.contents === 'CONTENTS',
   `${opened.product} | ${opened.contents}`);
 check('sheet is 11×17 landscape', opened.ratio > 1.5 && opened.ratio < 1.58, String(opened.ratio));
-check('source jump links remain', opened.links.join(',') === 'floor,distress,diagnostics', opened.links.join(','));
+check('a cover offers no way back to an application', opened.links.length === 0, opened.links.join(','));
 check('rail lists Discussion, floor, then picture locations',
   opened.captions.indexOf('Discussion') !== -1 &&
   opened.captions.indexOf('Floor · Basement') !== -1 &&
   opened.captions.indexOf('Picture Locations · Basement') !== -1 &&
   opened.captions.indexOf('Floor · Basement') < opened.captions.indexOf('Picture Locations · Basement'),
   opened.captions.join(' | '));
-check('fake composition toolbar is gone', opened.fakeTools.length === 0, opened.fakeTools.join(','));
-check('workspace keeps Export for AI and rebuild lead',
-  opened.exportAi && /screenshots/i.test(opened.lead),
+check('the toolbar carries the real drawing tools',
+  ['pencil', 'rect', 'circle', 'arrow', 'eraser'].every((t) => opened.tools.indexOf(t) !== -1),
+  opened.tools.join(','));
+check('workspace keeps Export for AI and the formatting hint',
+  opened.exportAi && /Select text on the sheet/i.test(opened.lead),
   opened.lead);
 const coverBoxes = await page.evaluate(() => ({
   boxes: [...document.querySelectorAll('[data-rb-cover-box]')].map((n) => n.getAttribute('data-rb-cover-box')),
   maps: !!document.querySelector('.rb-cover__maps-link'),
   lock: document.querySelector('[data-rb-cover-lock]')?.getAttribute('data-rb-cover-lock') || '',
-  contents: [...document.querySelectorAll('[data-rb-cover-field^="contents:"]')].map((n) => n.value.trim()),
-  streetEditable: !!document.querySelector('[data-rb-cover-field="street"]:not([readonly])'),
-  street: document.querySelector('[data-rb-cover-field="street"]')?.value || '',
-  city: document.querySelector('[data-rb-cover-field="cityLine"]')?.value || '',
+  contents: [...document.querySelectorAll('[data-rb-cover-field^="contents:"]')].map((n) => n.textContent.trim()),
+  streetEditable: document.querySelector('[data-rb-cover-field="street"]')?.getAttribute('contenteditable') === 'true',
+  street: document.querySelector('[data-rb-cover-field="street"]')?.textContent || '',
+  city: document.querySelector('[data-rb-cover-field="cityLine"]')?.textContent || '',
+  // A contents line holds the title only; Figure N is derived from slide
+  // order and printed in its own column beside it.
+  figures: [...document.querySelectorAll('.rb-cover__contents-num')].map((n) => n.textContent.trim()),
 }));
 check('title page has movable Mitchell boxes',
   coverBoxes.boxes.join(',') === 'prepared,identity,date,contents,overview' &&
@@ -294,20 +309,122 @@ check('title page has movable Mitchell boxes',
   JSON.stringify(coverBoxes));
 check('CONTENTS on title lists Discussion then figures',
   /Discussion/i.test(coverBoxes.contents[0] || '') &&
-  coverBoxes.contents.some((t) => /Figure 1/.test(t)),
-  coverBoxes.contents.join(' | '));
+  coverBoxes.figures.indexOf('Figure 1') !== -1 &&
+  coverBoxes.contents.length > 1,
+  `${coverBoxes.contents.join(' | ')} :: ${coverBoxes.figures.join(',')}`);
 check('title text fields are editable',
   coverBoxes.streetEditable && !!coverBoxes.street,
   JSON.stringify(coverBoxes));
+
+// A title page carries no handles of ours until a box is pointed at. Tim,
+// Oct 17: "all those corner blocks -- that's one of the things I really
+// dislike about this page." Five boxes used to show a dashed edge and two
+// copper brackets each, all the time.
+const coverChrome = await page.evaluate(() => {
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+  const boxes = [...sheet.querySelectorAll('.rb-cover-box')];
+  const shown = (box) => ({
+    outline: getComputedStyle(box).outlineStyle,
+    move: box.querySelector('.rb-cover-box__move')
+      ? getComputedStyle(box.querySelector('.rb-cover-box__move')).display : 'missing',
+    resize: box.querySelector('.rb-cover-box__resize')
+      ? getComputedStyle(box.querySelector('.rb-cover-box__resize')).display : 'missing',
+  });
+  const r = boxes[1].getBoundingClientRect();
+  return {
+    count: boxes.length,
+    rest: boxes.map(shown),
+    point: { x: r.left + 12, y: r.top + 12 },
+  };
+});
+check('no box on the title page shows chrome at rest',
+  coverChrome.count === 5 &&
+  coverChrome.rest.every((s) => s.outline === 'none' && s.move === 'none' && s.resize === 'none'),
+  JSON.stringify(coverChrome.rest));
+// Pointing shows the box's edge, so the investigator can see it is a box.
+// Its corners are a different thing: they are the controls, and they come out
+// when the box is highlighted and at no other time. Tim: "I don't like them
+// visible all the time. I wanted them to where you highlighted it."
+await page.mouse.move(coverChrome.point.x, coverChrome.point.y);
+await new Promise((r) => setTimeout(r, 300));
+const coverHovered = await page.evaluate(() => {
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+  const box = [...sheet.querySelectorAll('.rb-cover-box')][1];
+  return {
+    outline: getComputedStyle(box).outlineStyle,
+    move: getComputedStyle(box.querySelector('.rb-cover-box__move')).display,
+    resize: getComputedStyle(box.querySelector('.rb-cover-box__resize')).display,
+  };
+});
+check('pointing shows the edge and no corner at all',
+  coverHovered.outline === 'dashed' &&
+  coverHovered.move === 'none' && coverHovered.resize === 'none',
+  JSON.stringify(coverHovered));
+await page.mouse.click(coverChrome.point.x, coverChrome.point.y);
+await new Promise((r) => setTimeout(r, 400));
+const coverPointed = await page.evaluate(() => {
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+  const boxes = [...sheet.querySelectorAll('.rb-cover-box')];
+  const box = boxes[1];
+  const other = boxes[0];
+  const look = (b) => ({
+    outline: getComputedStyle(b).outlineStyle,
+    move: getComputedStyle(b.querySelector('.rb-cover-box__move')).display,
+    resize: getComputedStyle(b.querySelector('.rb-cover-box__resize')).display,
+  });
+  return { pointed: look(box), other: look(other) };
+});
+check('the box being worked on shows its edge and both corners, alone',
+  coverPointed.pointed.outline === 'dashed' &&
+  coverPointed.pointed.move === 'block' &&
+  coverPointed.pointed.resize === 'block' &&
+  coverPointed.other.outline === 'none' &&
+  coverPointed.other.move === 'none',
+  JSON.stringify(coverPointed));
+await page.mouse.move(4, 4);
+
+// And the empty site-overview frame with its buttons: ours, not the
+// report's. Tim, Oct 17: "if I don't drop in a picture I want all the other
+// buttons to go away."
+const ovRest = await page.evaluate(() => {
+  const box = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) .rb-cover-box--overview');
+  const r = box.getBoundingClientRect();
+  return {
+    empty: getComputedStyle(box.querySelector('.rb-cover__overview-empty')).visibility,
+    actions: getComputedStyle(box.querySelector('.rb-cover__overview-actions')).visibility,
+    point: { x: r.left + r.width / 2, y: r.top + r.height / 2 },
+    h: Math.round(r.height),
+  };
+});
+check('an empty site overview shows no frame and no buttons at rest',
+  ovRest.empty === 'hidden' && ovRest.actions === 'hidden', JSON.stringify(ovRest));
+await page.mouse.move(ovRest.point.x, ovRest.point.y);
+await new Promise((r) => setTimeout(r, 250));
+const ovPointed = await page.evaluate(() => {
+  const box = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) .rb-cover-box--overview');
+  return {
+    empty: getComputedStyle(box.querySelector('.rb-cover__overview-empty')).visibility,
+    actions: getComputedStyle(box.querySelector('.rb-cover__overview-actions')).visibility,
+    buttons: [...box.querySelectorAll('[data-rb-cover-overview]')]
+      .map((b) => b.getAttribute('data-rb-cover-overview')),
+    h: Math.round(box.getBoundingClientRect().height),
+  };
+});
+check('pointing at it offers Paste and Add, and nothing has moved',
+  ovPointed.empty === 'visible' && ovPointed.actions === 'visible' &&
+  ovPointed.buttons.indexOf('paste') !== -1 && ovPointed.buttons.indexOf('pick') !== -1 &&
+  ovPointed.h === ovRest.h,
+  JSON.stringify({ ovRest, ovPointed }));
+await page.mouse.move(4, 4);
 await page.evaluate(() => {
   const street = document.querySelector('[data-rb-cover-field="street"]');
   const line = document.querySelector('[data-rb-cover-field="contents:0"]');
   if (street) {
-    street.value = '15 Example Court Edited';
+    street.textContent = '15 Example Court Edited';
     street.dispatchEvent(new Event('input', { bubbles: true }));
   }
   if (line) {
-    line.value = 'Floor Level Survey Results - Discussion EDIT';
+    line.textContent = 'Floor Level Survey Results - Discussion EDIT';
     line.dispatchEvent(new Event('input', { bubbles: true }));
   }
 });
@@ -326,9 +443,18 @@ const editedCover = await page.evaluate(async () => {
     contents0: text && text.contents && text.contents[0] && text.contents[0].text,
   };
 });
+// Cover wording is stored as the same rich-text model the rest of the report
+// uses, not as a bare string.
+const plain = (value) => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return (value.paragraphs || [])
+    .map((para) => (para.runs || []).map((run) => run.text || '').join(''))
+    .join('\n');
+};
 check('edited title text persists on Customer File',
-  editedCover.street === '15 Example Court Edited' &&
-  /Discussion EDIT/.test(editedCover.contents0 || ''),
+  plain(editedCover.street) === '15 Example Court Edited' &&
+  /Discussion EDIT/.test(plain(editedCover.contents0)),
   JSON.stringify(editedCover));
 const saveStatus = await page.evaluate(() => document.querySelector('#rb-save-status')?.textContent || '');
 check('report autosaves onto the Customer File', /^Saved/.test(saveStatus), saveStatus);
@@ -357,22 +483,47 @@ check('rail lists the Basement floor sheet', !!floorThumb, floorThumb);
 if (floorThumb) {
   await page.click(`.rb-thumb[data-page-id="${floorThumb}"]`);
   await page.waitForFunction(() => document.querySelector('.rb-sheet').getAttribute('data-page-type') === 'floor');
-  const floorSheet = await page.evaluate(() => ({
-    title: document.querySelector('.rb-sheet__title')?.textContent ||
-      document.querySelector('.rb-topo-page__figure-title')?.textContent || '',
-    figure: document.querySelector('.rb-figure')?.textContent ||
-      (document.querySelector('.rb-topo-page__image') ? 'Composed topo figure' : ''),
-    meta: document.querySelector('.rb-sheet__meta')?.textContent ||
-      document.querySelector('.rb-topo-page__survey-date')?.textContent || '',
-    current: document.querySelector('[data-rb-source="floor"]').classList.contains('is-current'),
-  }));
-  check('floor sheet shows topo evidence or reserved figure',
-    /topo figure|Composed topo|reserved/i.test(floorSheet.figure) || /Floor Level Survey/.test(floorSheet.title),
+  // A floor sheet names itself, dates itself and says who it is for through
+  // the rail -- one block of sheet information, the same on every figure --
+  // and carries Figure N in its own corner. Until it is imported the drawing
+  // area says so rather than guessing at one.
+  const floorSheet = await page.evaluate(() => {
+    const sheet = document.querySelector('.rb-sheet');
+    const text = (sel) => sheet.querySelector(sel)?.textContent?.replace(/\s+/g, ' ').trim() || '';
+    return {
+      title: text('.rb-rail__title'),
+      figureNum: text('.rb-topo-page__figure-num'),
+      railFigure: text('.rb-rail__figure'),
+      date: text('.rb-rail__date'),
+      client: text('.rb-rail__client'),
+      empty: text('.rb-floor-empty'),
+      importOffered: !!document.querySelector('[data-rb-floor-import]'),
+      source: document.querySelector('[data-rb-source]')?.getAttribute('data-rb-source') || '',
+    };
+  });
+  check('floor sheet names itself in the rail and numbers itself on the sheet',
+    /Floor Level Survey/.test(floorSheet.title) && /Basement/.test(floorSheet.title) &&
+    /^Figure \d+$/.test(floorSheet.figureNum) && /^FIGURE \d+$/.test(floorSheet.railFigure),
     JSON.stringify(floorSheet));
-  check('floor sheet keeps the survey date', /2026-03-02|03\/02\/26|03\/02\/2026/.test(floorSheet.meta), floorSheet.meta);
-  check('floor sheet marks the Floor Survey link', floorSheet.current === true);
+  check('floor sheet keeps the survey date',
+    /March 2, 2026|2026-03-02|03\/02\/26|03\/02\/2026/.test(floorSheet.date), floorSheet.date);
+  check('an unimported floor sheet offers Import and the way back to Floor Survey',
+    /Import when ready/i.test(floorSheet.empty) && floorSheet.importOffered &&
+    floorSheet.source === 'floor',
+    JSON.stringify(floorSheet));
 }
 
+// Open Distress Survey belongs to a sheet that came from Distress Survey, so
+// the slide has to be open before the button is.
+await page.evaluate(() => {
+  const thumb = [...document.querySelectorAll('.rb-thumb')].find((node) =>
+    /Picture Locations · Basement/.test(node.querySelector('.rb-thumb__caption')?.textContent || ''));
+  if (thumb) thumb.click();
+});
+await page.waitForFunction(() => {
+  const btn = document.querySelector('[data-rb-source="distress"]');
+  return btn && btn.getBoundingClientRect().width > 0;
+}, { timeout: 15000 });
 await page.click('[data-rb-source="distress"]');
 await page.waitForFunction(() => location.hash.indexOf('/distress') !== -1, { timeout: 15000 });
 check('Open Distress Survey still leaves Report Builder', page.url().indexOf('/distress') !== -1, page.url());
@@ -382,7 +533,7 @@ await page.waitForFunction(() => {
   const label = document.querySelector('#rb-file-label')?.textContent || '';
   return document.querySelector('.rb-shell') && /Riley Chen/.test(label);
 }, { timeout: 15000 });
-await page.click('.rb-thumb[data-page-id="cover"]');
+await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id="cover"]').click());
 await page.waitForFunction(() => document.querySelector('.rb-sheet')?.getAttribute('data-page-type') === 'cover');
 await page.click('[data-rb-cover-lock="lock"]');
 await page.waitForFunction(() => document.querySelector('[data-rb-cover-lock="unlock"]'), { timeout: 10000 });
@@ -394,6 +545,33 @@ const locked = await page.evaluate(async () => {
   };
 });
 check('title Lock persists coverLayout', locked.btn === 'unlock' && locked.locked, JSON.stringify(locked));
+
+// Lock layout lives in the side rail, not on the paper. Tim, Oct 17: "yes,
+// side rail please." And it has to still be reachable once the layout IS
+// locked -- on the sheet it went away with the rest of the editor chrome,
+// so a locked title page could not be unlocked again.
+const lockWhere = await page.evaluate(() => {
+  const btn = document.querySelector('[data-rb-cover-lock]');
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+  const r = btn.getBoundingClientRect();
+  return {
+    onSheet: sheet.contains(btn),
+    inRail: !!btn.closest('.rb-panel'),
+    label: btn.textContent.trim(),
+    visible: getComputedStyle(btn).display !== 'none' && r.width > 0 && r.height > 0,
+  };
+});
+check('Lock layout sits in the side rail and is still there when locked',
+  !lockWhere.onSheet && lockWhere.inRail && lockWhere.visible &&
+  lockWhere.label === 'Unlock layout',
+  JSON.stringify(lockWhere));
+await page.click('[data-rb-cover-lock="unlock"]');
+await page.waitForFunction(() => document.querySelector('[data-rb-cover-lock="lock"]'), { timeout: 10000 });
+const unlocked = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('rb-skeleton');
+  return !!(record?.reportBuilder?.coverLayout || {}).locked;
+});
+check('and Unlock layout puts it back', unlocked === false, String(unlocked));
 
 const reportSaved = await page.evaluate(async () => {
   const record = await window.ToolboxDB.getCustomerFile('rb-skeleton');
@@ -409,7 +587,8 @@ check('opening Report Builder autosaves reportBuilder without evidence blobs',
   JSON.stringify(reportSaved));
 
 const desktopLayout = await page.evaluate(() => {
-  const rail = document.querySelector('.rb-rail').getBoundingClientRect();
+  // The rail of page stamps down the left, not the sheet's own information rail.
+  const rail = document.querySelector('aside[aria-label="Report pages"]').getBoundingClientRect();
   const sheet = document.querySelector('.rb-sheet').getBoundingClientRect();
   const panel = document.querySelector('.rb-panel').getBoundingClientRect();
   function hit(a, b) {
@@ -438,10 +617,14 @@ const ipad = await page.evaluate(() => {
   return {
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
     sheetVisible: sheet.width > 180 && sheet.height > 100,
-    links: document.querySelectorAll('[data-rb-source]').length,
+    // A reopened book comes back on its cover, which came from no
+    // application and so offers no way into one.
+    visibleLinks: [...document.querySelectorAll('[data-rb-source]')]
+      .filter((node) => node.getBoundingClientRect().width > 0).length,
   };
 });
-check('iPad sheet stays visible with source links', !ipad.overflow && ipad.sheetVisible && ipad.links === 3, JSON.stringify(ipad));
+check('iPad sheet stays visible and the cover offers no source link',
+  !ipad.overflow && ipad.sheetVisible && ipad.visibleLinks === 0, JSON.stringify(ipad));
 
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
 await page.reload({ waitUntil: 'networkidle0' });
@@ -449,28 +632,37 @@ await page.waitForFunction(() => {
   const label = document.querySelector('#rb-file-label')?.textContent || '';
   return document.querySelector('.rb-shell') && /Riley Chen/.test(label);
 }, { timeout: 15000 });
-await page.click('.rb-thumb[data-page-id="distress-canvas-b"]');
+// On a phone the rail of stamps scrolls sideways, so the thumb for a later
+// sheet sits outside the viewport and a synthetic tap lands on whatever is
+// in its place.
+await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id="distress-canvas-b"]').click());
 await page.waitForFunction(() => document.querySelector('.rb-sheet').getAttribute('data-page-id') === 'distress-canvas-b');
 await page.screenshot({ path: `${OUT}/report-builder-skeleton-phone.png`, fullPage: true });
+// The schedule is measured after the sheet first appears, so wait for a row
+// rather than for the page element.
+await page.waitForFunction(() => document.querySelectorAll('.rb-sheet .rb-penlog__pinnum').length > 0,
+  { timeout: 15000 });
 const phone = await page.evaluate(() => {
-  const sheet = document.querySelector('.rb-sheet').getBoundingClientRect();
+  const sheetEl = document.querySelector('.rb-sheet');
+  const sheet = sheetEl.getBoundingClientRect();
   const link = document.querySelector('[data-rb-source="distress"]').getBoundingClientRect();
   function hit(a, b) {
     return !(a.right <= b.left + 1 || a.left >= b.right - 1 || a.bottom <= b.top + 1 || a.top >= b.bottom - 1);
   }
-  const pen = document.querySelector('.rb-penlog');
+  const pen = sheetEl.querySelector('.rb-penlog');
   return {
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
     sheetVisible: sheet.width > 140 && sheet.height > 80,
     level: pen ? pen.getAttribute('data-level') : '',
-    heading: document.querySelector('.rb-penlog__heading')?.textContent || '',
-    schedulePins: document.querySelectorAll('.rb-penlog__pinnum').length,
+    // The sheet names itself through its rail, as every figure sheet does.
+    heading: sheetEl.querySelector('.rb-rail__title')?.textContent || '',
+    schedulePins: sheetEl.querySelectorAll('.rb-penlog__pinnum').length,
     linkReady: link.width > 40 && link.height > 20,
     overlap: hit(sheet, link),
   };
 });
 check('phone pen log shows the level and Picture/Damage Locations',
-  phone.level === 'Basement' && phone.heading === 'Picture/Damage Locations' && phone.schedulePins >= 1,
+  phone.level === 'Basement' && /Picture\/Damage Locations/.test(phone.heading) && phone.schedulePins >= 1,
   JSON.stringify(phone));
 check('phone layout keeps the sheet clear of the Distress link',
   !phone.overflow && phone.sheetVisible && phone.linkReady && !phone.overlap,

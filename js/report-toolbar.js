@@ -267,17 +267,24 @@
   // So the intent is written onto the blocks and the field is rebuilt from the
   // model, which is what produces <ul class="rb-rt__list"> with real markers.
   function isBulletBlock(block) {
-    return block.tagName === 'LI' || (block.classList && block.classList.contains('rb-rt__p--bullet'));
+    return block.classList && block.classList.contains('rb-rt__p--bullet');
   }
 
-  function toggleBullet(field) {
+  function isNumberBlock(block) {
+    return block.classList && block.classList.contains('rb-rt__p--number');
+  }
+
+  /** Bullets and Numbering, PowerPoint's two list buttons. */
+  function toggleList(field, kind) {
     restoreSelection();
     var api = window.ToolboxReportText;
     if (!field || !api) return;
     var blocks = blocksInSelection(field).filter(function (b) { return b !== field; });
     if (!blocks.length) return;
-    var turnOff = blocks.every(isBulletBlock);
-    blocks.forEach(function (b) { b.setAttribute('data-rb-bullet', turnOff ? '0' : '1'); });
+    var isOn = kind === 'number' ? isNumberBlock : isBulletBlock;
+    var turnOff = blocks.every(isOn);
+    var mark = turnOff ? '0' : (kind === 'number' ? 'n' : '1');
+    blocks.forEach(function (b) { b.setAttribute('data-rb-bullet', mark); });
     var keep = api.captureOffsets(field);
     field.innerHTML = api.toHtml(api.fromElement(field));
     api.restoreOffsets(field, keep);
@@ -291,18 +298,22 @@
   }
 
   function selectionState(field) {
-    var state = { bold: false, italic: false, underline: false, bullet: false, align: 'left', size: '', font: '' };
+    var state = { bold: false, italic: false, underline: false, strike: false,
+      bullet: false, number: false, align: 'left', size: '', font: '', color: '' };
     if (!field) return state;
     try {
       state.bold = document.queryCommandState('bold');
       state.italic = document.queryCommandState('italic');
       state.underline = document.queryCommandState('underline');
+      state.strike = document.queryCommandState('strikeThrough');
       // queryCommandState only recognises lists it built itself; the
       // Bullets button owns this markup, so the blocks are the truth.
       var bulletBlocks = blocksInSelection(field).filter(function (b) { return b !== field; });
       state.bullet = !!bulletBlocks.length && bulletBlocks.every(isBulletBlock);
+      state.number = !!bulletBlocks.length && bulletBlocks.every(isNumberBlock);
       if (document.queryCommandState('justifyCenter')) state.align = 'center';
       else if (document.queryCommandState('justifyRight')) state.align = 'right';
+      else if (document.queryCommandState('justifyFull')) state.align = 'justify';
     } catch (err) { /* selection outside a field */ }
     var sel = window.getSelection();
     if (sel && sel.rangeCount) {
@@ -401,9 +412,33 @@
     dir: svg('<path d="M4 20V8M4 8 7 11M4 8 1.2 11" />' +
       '<path d="M10.5 19.5 15 5l4.5 14.5M12 15.5h6"/>'),
 
-    // A text box is a box with an A in it.
-    text: svg('<rect x="2.5" y="4.5" width="19" height="15" rx="1.5"/>' +
-      letterA(7.5, 8.5, 9, 7)),
+    // Strikethrough: the ribbon's S with the rule straight through it.
+    strike: svg('<path d="M15.5 7.5a4 4 0 0 0-7 2c0 1.4 1.1 2.1 3 2.5"/>' +
+      '<path d="M8.5 16.5a4.2 4.2 0 0 0 7-2.2"/><path d="M3 12h18"/>'),
+
+    // Clear all formatting: the ribbon's A with an eraser beside it.
+    clearfmt: svg(letterA(1.5, 5, 11, 13) +
+      '<path d="M14.5 18.5h7"/><path d="m15.5 15.5 4-4 3 3-4 4z"/>'),
+
+    // Change case: the ribbon's big A beside a small one.
+    textcase: svg(letterA(1.5, 4, 10, 15) + letterA(13.5, 11, 8, 8)),
+
+    // Numbering: 1, 2, 3 against the same three lines the bullet icon uses.
+    number: svg('<path d="M9 6.5h12M9 12h12M9 17.5h12"/>' +
+      '<text x="1.4" y="8.6" font-size="7" font-family="Calibri, Arial, sans-serif"' +
+      ' fill="currentColor" stroke="none">1</text>' +
+      '<text x="1.4" y="14.1" font-size="7" font-family="Calibri, Arial, sans-serif"' +
+      ' fill="currentColor" stroke="none">2</text>' +
+      '<text x="1.4" y="19.6" font-size="7" font-family="Calibri, Arial, sans-serif"' +
+      ' fill="currentColor" stroke="none">3</text>'),
+
+    // A text box, read at a glance: a big A in a box with a text cursor
+    // beside it. The old one drew a small A inside a wide rectangle, which at
+    // 17 px was the picture icon with something in it -- and the picture icon
+    // is the next button along.
+    text: svg('<rect x="2.5" y="4.5" width="19" height="15" rx="1.5" stroke-dasharray="3 2"/>' +
+      letterA(5.5, 7, 10, 10) +
+      '<path d="M18 7.5v9M16.6 7.5h2.8M16.6 16.5h2.8"/>'),
     ellipse: svg('<circle cx="12" cy="12" r="8.5"/>'),
     arrow: svg('<path d="M5 19 18.5 5.5"/><path d="M11.5 5.5h7v7"/>'),
     // Pictures: a frame with a hill and a sun in it.
@@ -451,7 +486,7 @@
   function alignButton(which, label) {
     // Full and short lines alternating, the way the ribbon draws them, on the
     // same 24-unit grid and at the same size as every other icon here.
-    var widths = [18, 11, 18, 12];
+    var widths = which === 'justify' ? [18, 18, 18, 18] : [18, 11, 18, 12];
     var x = function (w) {
       if (which === 'center') return (12 - w / 2).toFixed(1);
       if (which === 'right') return (21 - w).toFixed(1);
@@ -464,6 +499,76 @@
       ' aria-label="' + label + '" title="' + label + '">' +
       '<svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true">' +
       bars + '</svg></button>';
+  }
+
+  /**
+   * Font colour, as PowerPoint's A-over-a-bar.
+   *
+   * The swatches further along this bar have always been the ANNOTATION
+   * colour -- the ink of a circle or an arrow -- so there was no way to make
+   * a word red. The button applies the colour showing under the A; the
+   * chevron opens the rest, and picking one both applies it and leaves it on
+   * the button, which is how the ribbon behaves.
+   */
+  var TEXT_COLORS = [
+    { value: '#17130e', label: 'Automatic' },
+    { value: '#c14a2b', label: 'Red' },
+    { value: '#8B5E3C', label: 'Copper' },
+    { value: '#1d4ed8', label: 'Blue' },
+    { value: '#16a34a', label: 'Green' },
+    { value: '#6b7280', label: 'Grey' },
+    { value: '#ffffff', label: 'White' },
+  ];
+  var textColor = TEXT_COLORS[0].value;
+
+  /**
+   * Paint the selection.
+   *
+   * styleWithCSS on, so the browser writes `style="color:…"` rather than a
+   * <font color> tag -- the model reads both, but an inline style is what
+   * everything else in this bar produces, and mixing the two makes the
+   * read-back harder than it needs to be.
+   */
+  function applyTextColor(field, color) {
+    if (!field) return;
+    restoreSelection();
+    exec('styleWithCSS', true);
+    exec('foreColor', color);
+    exec('styleWithCSS', false);
+    rememberSelection();
+  }
+
+  function setTextColor(color) {
+    textColor = color;
+    var bars = document.querySelectorAll('[data-rb-format-host] .rb-format');
+    for (var b = 0; b < bars.length; b += 1) {
+      var bar = bars[b].querySelector('[data-rb-textcolor-bar]');
+      if (bar) bar.style.background = color;
+    }
+  }
+
+  function textColorButton() {
+    var items = TEXT_COLORS.map(function (c) {
+      return '<button type="button" class="rb-format__item rb-format__item--color"' +
+        ' data-rb-pick="textcolor" data-rb-value="' + c.value + '">' +
+        '<span class="rb-format__chip" style="background:' + c.value + '"></span>' + c.label +
+        '</button>';
+    }).join('');
+    return (
+      '    <span class="rb-format__menu rb-format__menu--color" data-rb-menu="textcolor">' +
+      '      <button type="button" class="rb-format__btn rb-format__btn--icon rb-format__btn--textcolor"' +
+      '        data-rb-fmt="textcolor" aria-label="Font colour" title="Font colour">' +
+      '        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" fill="none"' +
+      '          stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+      '          <path d="M4.5 16 12 4l7.5 12M7.8 11.8h8.4"/></svg>' +
+      '        <span class="rb-format__underbar" data-rb-textcolor-bar style="background:' + textColor + '"></span>' +
+      '      </button>' +
+      '      <button type="button" class="rb-format__btn rb-format__btn--caret" data-rb-open="textcolor"' +
+      '        aria-haspopup="true" aria-expanded="false" aria-label="More font colours"' +
+      '        title="More font colours"><span class="rb-format__caret" aria-hidden="true">&#9662;</span></button>' +
+      '      <span class="rb-format__list rb-format__list--color" data-rb-list="textcolor" hidden>' + items + '</span>' +
+      '    </span>'
+    );
   }
 
   // Annotation colour. Three is enough to be legible on a plan, a photo or
@@ -515,9 +620,14 @@
       '    <button type="button" class="rb-format__btn rb-format__btn--b" data-rb-fmt="bold" aria-label="Bold" title="Bold">B</button>' +
       '    <button type="button" class="rb-format__btn rb-format__btn--i" data-rb-fmt="italic" aria-label="Italic" title="Italic">I</button>' +
       '    <button type="button" class="rb-format__btn rb-format__btn--u" data-rb-fmt="underline" aria-label="Underline" title="Underline">U</button>' +
+      iconBtn('data-rb-fmt', 'strike', 'Strikethrough') +
+      iconBtn('data-rb-fmt', 'textcase', 'Change case', 'Change case \u2014 UPPER, lower, Capitals') +
+      iconBtn('data-rb-fmt', 'clearfmt', 'Clear all formatting') +
+      textColorButton() +
       '  </span>' +
       '  <span class="rb-format__group">' +
       iconBtn('data-rb-fmt', 'bullet', 'Bullets') +
+      iconBtn('data-rb-fmt', 'number', 'Numbering') +
       iconBtn('data-rb-fmt', 'outdent', 'Decrease indent') +
       iconBtn('data-rb-fmt', 'indent', 'Increase indent') +
       '  </span>' +
@@ -525,6 +635,7 @@
       alignButton('left', 'Align left') +
       alignButton('center', 'Align center') +
       alignButton('right', 'Align right') +
+      alignButton('justify', 'Justify') +
       iconBtn('data-rb-fmt', 'dir', 'Text direction') +
       spacingMenu() +
       '  </span>' +
@@ -558,18 +669,62 @@
   // command would apply to nothing.
   function hold(event) { event.preventDefault(); }
 
+  /**
+   * Change case, the way the ribbon's Aa button does it.
+   *
+   * PowerPoint offers a menu; one button that steps through the three cases
+   * anybody uses -- UPPER, lower, Capitalise Each Word -- is the same job
+   * with one less decision, and pressing it again carries on round.
+   */
+  var CASES = [
+    function (t) { return t.toUpperCase(); },
+    function (t) { return t.toLowerCase(); },
+    function (t) {
+      return t.toLowerCase().replace(/(^|[\s(\[\u2014-])([a-z\u00e0-\u00ff])/g,
+        function (all, before, letter) { return before + letter.toUpperCase(); });
+    },
+  ];
+  var caseStep = 0;
+
+  function stepCase() {
+    var sel = window.getSelection();
+    if (!sel || sel.isCollapsed) return;
+    var text = String(sel.toString() || '');
+    if (!text.trim()) return;
+    for (var i = 0; i < CASES.length; i += 1) {
+      var candidate = CASES[(caseStep + i) % CASES.length](text);
+      if (candidate !== text) {
+        caseStep = (caseStep + i + 1) % CASES.length;
+        // insertText keeps the run's bold, colour and size; replacing the
+        // nodes by hand would not.
+        exec('insertText', candidate);
+        return;
+      }
+    }
+  }
+
   function run(command, field) {
     switch (command) {
       case 'bold': exec('bold'); break;
       case 'italic': exec('italic'); break;
       case 'underline': exec('underline'); break;
-      case 'bullet': toggleBullet(field); break;
+      case 'bullet': toggleList(field, 'bullet'); break;
+      case 'number': toggleList(field, 'number'); break;
       case 'left': exec('justifyLeft'); break;
       case 'center': exec('justifyCenter'); break;
       case 'right': exec('justifyRight'); break;
+      case 'justify': exec('justifyFull'); break;
+      case 'textcolor': applyTextColor(field, textColor); break;
       case 'indent': stepIndent(field, 1); break;
       case 'outdent': stepIndent(field, -1); break;
       case 'dir': toggleDirection(field); break;
+      case 'strike': exec('strikeThrough'); break;
+      // What the ribbon's Clear All Formatting clears: the character
+      // formatting on the selection. Bullets, numbering, indent and
+      // alignment belong to the paragraph and are left where they are, the
+      // same as PowerPoint leaves them.
+      case 'clearfmt': exec('removeFormat'); break;
+      case 'textcase': stepCase(); break;
       default: return false;
     }
     return true;
@@ -583,6 +738,9 @@
       for (var i = 0; i < btns.length; i += 1) {
         btns[i].classList.toggle('is-on', btns[i].getAttribute('data-rb-tool') === armedTool);
       }
+      // The text box arms like a drawing tool, so it lights up like one.
+      var textBtn = bars[b].querySelector('[data-rb-insert="text"]');
+      if (textBtn) textBtn.classList.toggle('is-on', armedTool === 'textbox');
     }
   }
 
@@ -663,11 +821,11 @@
       bar.classList.toggle('is-ready', !!field);
       if (hint) hint.textContent = field ? '' : 'Select text on the sheet to format it.';
       var state = selectionState(field);
-      ['bold', 'italic', 'underline', 'bullet'].forEach(function (k) {
+      ['bold', 'italic', 'underline', 'strike', 'bullet', 'number'].forEach(function (k) {
         var btn = bar.querySelector('[data-rb-fmt="' + k + '"]');
         if (btn) btn.classList.toggle('is-on', !!state[k]);
       });
-      ['left', 'center', 'right'].forEach(function (k) {
+      ['left', 'center', 'right', 'justify'].forEach(function (k) {
         var btn = bar.querySelector('[data-rb-fmt="' + k + '"]');
         if (btn) btn.classList.toggle('is-on', state.align === k);
       });
@@ -721,14 +879,19 @@
       var insert = event.target.closest('[data-rb-insert]');
       if (insert) {
         event.preventDefault();
-        // Placing a box is not drawing, so it puts the pen down.
-        if (armedTool) {
+        var what = insert.getAttribute('data-rb-insert');
+        // A text box is placed on the sheet like a drawn shape, so it arms a
+        // tool rather than putting the pen down. A picture is still dropped.
+        if (armedTool && what !== 'text') {
           setArmedTool(null);
           if (typeof options.onTool === 'function') options.onTool(null);
         }
-        if (typeof options.onInsert === 'function') {
-          options.onInsert(insert.getAttribute('data-rb-insert'));
+        if (what === 'text' && armedTool === 'textbox') {
+          setArmedTool(null);
+          if (typeof options.onTool === 'function') options.onTool(null);
+          return;
         }
+        if (typeof options.onInsert === 'function') options.onInsert(what);
         return;
       }
       var btn = event.target.closest('button[data-rb-fmt]');
@@ -783,15 +946,26 @@
       if (!field) return;
       if (which === 'size') setSize(field, parseFloat(value));
       else if (which === 'spacing') applySpacing(field, value);
+      else if (which === 'textcolor') { setTextColor(value); applyTextColor(field, value); }
       else setFont(field, value);
-      if (which !== 'spacing') setCurrent(which, value);
+      if (which !== 'spacing' && which !== 'textcolor') setCurrent(which, value);
       onChange(field);
       refresh();
     });
 
-    document.addEventListener('mousedown', function (event) {
+    // A click anywhere else shuts an open menu. It has to be listened for on
+    // the whole page, so it has to be taken off again when the ribbon goes --
+    // this one was not, and the listener is a live reference to everything it
+    // can see: this ribbon, the callback Report Builder handed it, and
+    // through that the entire Report Builder session, including the undo
+    // history with a full copy of the report in it. So every visit to Report
+    // Builder left one behind, holding one whole report. Measured at about a
+    // megabyte a visit on a job with twelve photographs, and it never came
+    // back. Tim: "I was getting a not enough memory reload."
+    function onOutsideMouseDown(event) {
       if (!event.target.closest || !event.target.closest('.rb-format__menu')) closeMenus();
-    });
+    }
+    document.addEventListener('mousedown', onOutsideMouseDown);
 
     function onSelectionChange() {
       rememberSelection();
@@ -818,7 +992,10 @@
         if (r) r.disabled = !canRedo;
       },
       noteField: function (field) { activeField = field || null; refresh(); },
-      destroy: function () { document.removeEventListener('selectionchange', onSelectionChange); },
+      destroy: function () {
+        document.removeEventListener('selectionchange', onSelectionChange);
+        document.removeEventListener('mousedown', onOutsideMouseDown);
+      },
     };
   }
 
