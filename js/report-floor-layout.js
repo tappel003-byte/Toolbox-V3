@@ -635,28 +635,25 @@
         : 'Loads topo, legend, and H/L/Δ onto this slide.';
       toolbar.appendChild(hint);
     }
-    // Lock layout stood here. It only ever reached an imported sheet, which
-    // returns above, so it was unreachable -- and it has been replaced by
-    // three locks in the rail, one for the plan, one for the colour scale and
-    // one for the readings, each over both place and size.
+    // Lock layout stood here and could never be pressed: it only drew on a
+    // sheet that had not been imported, and an imported sheet returns above.
+    // It lives in the rail now, as one button over the framing and both
+    // pieces.
     root.appendChild(toolbar);
 
-    var header = document.createElement('div');
-    header.className = 'rb-topo-page__header';
-    var left = document.createElement('div');
-    left.className = 'rb-topo-page__header-left';
-    var figureNum = document.createElement('p');
-    figureNum.className = 'rb-topo-page__figure-num';
-    figureNum.textContent = meta.figureNumber ? ('Figure ' + meta.figureNumber) : 'Figure';
-    left.appendChild(figureNum);
+    // Nothing in the drawing's upper left any more.
+    //
     // The drawing title, the survey date and the corrected-for note used to
-    // sit here too, and the residence, the address, the compass and the front
-    // door sat opposite. They are all in the rail now, which is the whole
-    // point of it: one place for everything that is not the drawing. Figure N
-    // stays, because that is what the eye looks for first on a sheet.
-    header.appendChild(left);
-
-    root.appendChild(header);
+    // sit there, and the residence, the address, the compass and the front
+    // door sat opposite. The rail took all of them, which is the whole point
+    // of it: one place for everything that is not the drawing. Figure N was
+    // the last thing left, kept on the reasoning that it is what the eye
+    // looks for first. Tim, Oct 21: it "does not need to be in the upper
+    // left-hand corner anymore now that we have the title block -- the title
+    // block solved lots of problems." The rail carries it, once.
+    //
+    // This only ever drew on a sheet that had not been imported; an imported
+    // sheet returns above. So it was a number on a placeholder.
 
     var body = document.createElement('div');
     body.className = 'rb-topo-page__body rb-floor-stage';

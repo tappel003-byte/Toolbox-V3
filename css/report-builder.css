@@ -710,28 +710,10 @@ body.report-builder-open .canvas {
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
 
-.rb-topo-page__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex: 0 0 auto;
-}
-
-.rb-topo-page__header-left {
-  min-width: 0;
-}
-
-.rb-topo-page__figure-num {
-  margin: 0;
-}
-
-.rb-topo-page__figure-num {
-  font-size: clamp(16px, 2.6cqb, 26px);
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  line-height: 1.1;
-}
+/* The drawing's upper-left header is gone. The rail carries the figure
+   number, the drawing title, the date and the identity -- Tim, Oct 21: the
+   figure number "does not need to be in the upper left-hand corner anymore
+   now that we have the title block." */
 
 .rb-topo-page__north {
   width: 28px;
