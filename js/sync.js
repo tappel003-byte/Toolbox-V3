@@ -1232,10 +1232,12 @@
       // case to protect here.
       const acquired = await acquireRemoteCheckout(id);
       let current = existingLocal;
+      let leftBehind = [];
       try {
         const remoteIndex = (acquired && acquired.index) || await getRemoteIndex(id);
         if (remoteIndex) {
-          await syncOneRecord(existingLocal, remoteIndex);
+          const exchanged = await syncOneRecord(existingLocal, remoteIndex);
+          leftBehind = (exchanged && exchanged.missingMedia) || [];
           current = (await window.ToolboxDB.getCustomerFile(id)) || existingLocal;
         }
       } catch (err) {
@@ -1256,6 +1258,7 @@
         idempotent: !!(acquired && acquired.idempotent),
         checkout: acquired && acquired.checkout,
         record: marked,
+        missingMedia: leftBehind,
       };
     }
 
@@ -1298,6 +1301,7 @@
         idempotent: !!(acquired && acquired.idempotent),
         checkout: acquired && acquired.checkout,
         record: saved,
+        missingMedia: (synced && synced.missingMedia) || [],
         sync: synced,
       };
     } catch (err) {
@@ -1352,7 +1356,47 @@
     if (missing) throw new SyncError('incomplete', failure);
   }
 
-  async function verifyRemoteCabinetCopy(record) {
+  /**
+   * The same question, asked about a picture the job can travel without.
+   *
+   * A report picture this device still holds and the Cabinet does not is a
+   * failed upload, and Check In clears this device's copy afterwards -- so
+   * that one stops Check In exactly as it did before, because there is
+   * something real left to lose. A report picture that is in neither place
+   * is already gone, and refusing to file the job will not bring it back;
+   * refusing only strands the job on one device, which is the failure this
+   * is here to prevent. That one is named, and the job goes.
+   */
+  async function verifyMediaOrSayWhatIsGone(ids, label, what, notes) {
+    const list = (Array.isArray(ids) ? ids : []).filter(Boolean);
+    if (!list.length) return;
+    emitProgress({ stage: 'check', component: 'verify', label: label, done: 0, total: list.length });
+    const gone = [];
+    let heldHereOnly = '';
+    const checkOne = async function (mediaId) {
+      if (heldHereOnly) return;
+      if (await remoteMediaExists(mediaId)) return;
+      const local = await getLocalMedia(mediaId, 'plan');
+      if (local != null && local !== '') {
+        heldHereOnly = mediaId;
+        return;
+      }
+      gone.push(mediaId);
+    };
+    checkOne.onDone = function (done, total) {
+      emitProgress({ stage: 'check', component: 'verify', label: label, done: done, total: total });
+    };
+    await runWithLimit(list, CHECKS_AT_ONCE, checkOne);
+    if (heldHereOnly) {
+      throw new SyncError('incomplete',
+        'Cabinet verification failed: a ' + what + ' on this device did not reach the Cabinet.');
+    }
+    if (Array.isArray(notes)) {
+      gone.forEach(function (mediaId) { notes.push({ label: what, mediaId: mediaId }); });
+    }
+  }
+
+  async function verifyRemoteCabinetCopy(record, notes) {
     if (!record || !record.id) {
       throw new SyncError('incomplete', 'Cannot verify Cabinet copy without a Customer File.');
     }
@@ -1367,13 +1411,14 @@
     await verifyMediaPresent(recoveryPdfIdsFromFloor(record.floorSurvey),
       'Checking Floor Survey recovery',
       'Cabinet verification failed: Floor Survey recovery PDF missing remotely.');
-    await verifyMediaPresent(diagnosticsFigureMediaIds(record), 'Checking Diagnostics figures',
-      'Cabinet verification failed: Diagnostics figure missing remotely.');
+    await verifyMediaOrSayWhatIsGone(diagnosticsFigureMediaIds(record),
+      'Checking Diagnostics figures', 'Diagnostics figure', notes);
     // Check In clears the working copy off this device, so the report's own
-    // pictures are checked with everything else first. Fail closed: a book
-    // whose cover photo did not reach the Cabinet stays on the phone.
-    await verifyMediaPresent(reportMediaIds(record), 'Checking report pictures',
-      'Cabinet verification failed: report picture missing remotely.');
+    // pictures are checked with everything else first. A cover photo this
+    // device still holds that did not reach the Cabinet keeps the job here.
+    // One that exists in neither place is already gone and does not.
+    await verifyMediaOrSayWhatIsGone(reportMediaIds(record),
+      'Checking report pictures', 'report picture', notes);
     return remote;
   }
 
@@ -1468,7 +1513,8 @@
     }
 
     // Proof before anything is given up or thrown away.
-    remote = await verifyRemoteCabinetCopy(record);
+    const leftBehind = [];
+    remote = await verifyRemoteCabinetCopy(record, leftBehind);
 
     // Putting work into the Cabinet takes the lease on it, so a first upload
     // arrives holding one. Filed means available, so it goes back.
@@ -1493,6 +1539,7 @@
       remote: remote,
       released: released,
       sync: synced,
+      missingMedia: ((synced && synced.missingMedia) || []).concat(leftBehind),
     };
   }
 
@@ -1788,39 +1835,135 @@
     await putLocalMedia(mediaId, dataUrl, kind);
   }
 
+  /**
+   * Which components' pictures the job cannot travel without.
+   *
+   * A plan image and a Distress photograph are the survey itself: a level
+   * with no plan picture, or a pin with no photograph, is not a job anybody
+   * can work, so one of those missing still stops the exchange dead.
+   *
+   * A report picture and a Diagnostics figure are desk-side composition
+   * material, and neither Report Builder nor Diagnostics is required to work
+   * offline at all. One report picture the Cabinet could not hand over used
+   * to end the whole Check Out: Tim checked one job out three times on an
+   * iPad mini and watched it stop at "report pictures 0 of 1" each time --
+   * no file on the device afterwards, and no sign it had ever been checked
+   * out, because a materialization that fails releases the lease behind it.
+   * Report Builder already holds the right position on this ("a missing
+   * picture is not a failed report"); the exchange did not. The job travels
+   * now, and the picture that did not travel with it is named instead of
+   * taking the job down with it.
+   */
+  const PICTURES_THE_JOB_CAN_TRAVEL_WITHOUT = { report: true, diagnostics: true };
+
+  /** One of them, by name, for a sentence about what did not arrive. */
+  const MEDIA_NOUNS = {
+    plans: 'plan image',
+    distress: 'Distress photograph',
+    floor: 'Floor Survey recovery file',
+    diagnostics: 'Diagnostics figure',
+    report: 'report picture',
+  };
+
+  /**
+   * Why a picture the job cannot travel without stopped the exchange.
+   *
+   * A Check Out that could not fetch a plan image said "Not found", and
+   * because a failed materialization lets go of the lease, the row went
+   * straight back to Check Out -- three identical attempts and nothing to go
+   * on. Offline and sign-in already say what they are and are left alone.
+   */
+  function requiredMediaFailure(err, name) {
+    const code = err && err.code;
+    if (code === 'offline' || code === 'auth' || code === 'network' || code === 'checkout') return err;
+    return new SyncError('incomplete',
+      'The File Cabinet could not hand over a ' + (MEDIA_NOUNS[name] || 'file') +
+      ' this job needs, so the job was not brought onto this device. ' +
+      'Nothing here was changed.');
+  }
+
+  function mediaOptional(component) {
+    return !!PICTURES_THE_JOB_CAN_TRAVEL_WITHOUT[component];
+  }
+
+  /**
+   * What the exchange could not move, in words, said at the time.
+   *
+   * An empty frame found three days later in front of a customer is the
+   * thing this is here to prevent.
+   */
+  function describeMissingMedia(list) {
+    const items = (Array.isArray(list) ? list : []).filter(Boolean);
+    if (!items.length) return '';
+    const counts = Object.create(null);
+    const order = [];
+    items.forEach(function (item) {
+      const noun = (item && item.label) || 'picture';
+      if (!(noun in counts)) {
+        counts[noun] = 0;
+        order.push(noun);
+      }
+      counts[noun] += 1;
+    });
+    const parts = order.map(function (noun) {
+      const n = counts[noun];
+      return n + ' ' + (n === 1 ? noun : noun + 's');
+    });
+    const joined = parts.length > 1
+      ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1]
+      : parts[0];
+    return joined + ' ' + (items.length === 1 ? 'is' : 'are') + ' not in the File Cabinet, so ' +
+      (items.length === 1 ? 'it' : 'they') + ' did not come with the job.';
+  }
+
   async function pushComponent(record, name) {
     const payload = extractComponent(record, name);
     const mediaIds = mediaIdsForComponent(record, name);
     const kind = name === 'distress' ? 'distress' : 'plans';
     const label = COMPONENT_LABELS[name] || name;
+    const optional = mediaOptional(name);
+    const missing = [];
     if (mediaIds.length) emitProgress({ stage: 'up', component: name, label: label, done: 0, total: mediaIds.length });
     const pushOne = async function (mediaId) {
-      await ensureRemoteMedia(mediaId, kind === 'distress' ? 'distress' : 'plan');
+      try {
+        await ensureRemoteMedia(mediaId, kind === 'distress' ? 'distress' : 'plan');
+      } catch (err) {
+        if (!optional) throw err;
+        missing.push({ component: name, label: MEDIA_NOUNS[name] || label, mediaId: mediaId, where: 'up' });
+      }
     };
     pushOne.onDone = function (done, total) {
       emitProgress({ stage: 'up', component: name, label: label, done: done, total: total });
     };
     await runWithLimit(mediaIds, MEDIA_AT_ONCE, pushOne);
     await putRemoteComponent(record.id, name, payload);
+    return { missingMedia: missing };
   }
 
   async function pullComponent(record, name) {
     const payload = await getRemoteComponent(record.id, name);
-    if (payload == null) return { pulled: false, mediaOk: true };
+    if (payload == null) return { pulled: false, mediaOk: true, missingMedia: [] };
     // Required media must be local before the component becomes authoritative.
     const mediaIds = mediaIdsFromPayload(payload, name);
     const kind = name === 'distress' ? 'distress' : 'plan';
     const label = COMPONENT_LABELS[name] || name;
+    const optional = mediaOptional(name);
+    const missing = [];
     if (mediaIds.length) emitProgress({ stage: 'down', component: name, label: label, done: 0, total: mediaIds.length });
     const pullOne = async function (mediaId) {
-      await ensureLocalMedia(mediaId, kind === 'distress' ? 'distress' : 'plan');
+      try {
+        await ensureLocalMedia(mediaId, kind === 'distress' ? 'distress' : 'plan');
+      } catch (err) {
+        if (!optional) throw requiredMediaFailure(err, name);
+        missing.push({ component: name, label: MEDIA_NOUNS[name] || label, mediaId: mediaId, where: 'down' });
+      }
     };
     pullOne.onDone = function (done, total) {
       emitProgress({ stage: 'down', component: name, label: label, done: done, total: total });
     };
     await runWithLimit(mediaIds, MEDIA_AT_ONCE, pullOne);
     applyComponent(record, name, payload);
-    return { pulled: true, mediaOk: true };
+    return { pulled: true, mediaOk: true, missingMedia: missing };
   }
 
   function indexRev(index, name) {
@@ -1877,6 +2020,10 @@
     const remote = remoteIndex || null;
     let changed = false;
     const componentResults = [];
+    // Pictures the exchange could not move and did not stop for. Carried out
+    // so the screen can name them rather than leave the investigator to find
+    // an empty frame later.
+    const missingMedia = [];
 
     // Ownership gate: once a Cabinet file has explicit checkout metadata,
     // only the owning user+device may push. Local data is preserved.
@@ -1955,11 +2102,13 @@
         continue;
       }
       if (decision === 'push') {
-        await pushComponent(record, name);
+        const pushed = await pushComponent(record, name);
+        ((pushed && pushed.missingMedia) || []).forEach(function (item) { missingMedia.push(item); });
         changed = true;
         componentResults.push({ name: name, action: 'push' });
       } else if (decision === 'pull') {
         const pulled = await pullComponent(record, name);
+        ((pulled && pulled.missingMedia) || []).forEach(function (item) { missingMedia.push(item); });
         if (pulled.pulled) changed = true;
         componentResults.push({ name: name, action: 'pull' });
       } else {
@@ -1980,6 +2129,7 @@
       changed: changed,
       components: componentResults,
       checkoutBlocked: checkoutBlocked,
+      missingMedia: missingMedia,
     };
   }
 
@@ -3194,6 +3344,7 @@
       return enqueueSyncWork(function () { return checkOutCustomerFile(id); });
     },
     onSyncProgress: onSyncProgress,
+    describeMissingMedia: describeMissingMedia,
     sendToFileCabinet: function (id) {
       return enqueueSyncWork(function () { return sendToFileCabinet(id); });
     },
