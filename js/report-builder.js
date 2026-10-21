@@ -3538,6 +3538,8 @@
     var railTitleEl = root.querySelector('[data-rb-rail-title]');
     var railTopEl = root.querySelector('[data-rb-rail-top]');
     var railBodyEl = root.querySelector('[data-rb-rail-body]');
+    /** Built by the floor rail, placed under its controls once they are mounted. */
+    var floorRailExtras = null;
     var railFootEl = root.querySelector('[data-rb-rail-foot]');
     var railControls = { el: null, key: '', api: null };
 
@@ -3575,6 +3577,13 @@
     function setRailFootSource(key) {
       if (!railFootEl) return;
       railFootEl.textContent = '';
+      // Everything the floor rail used to stack ABOVE its controls goes here
+      // instead, under them: the tab strip has to be the first thing in the
+      // panel or it names nothing.
+      if (typeof floorRailExtras === 'function') {
+        railFootEl.appendChild(floorRailExtras());
+        floorRailExtras = null;
+      }
       railFootEl.appendChild(railButton(
         key === 'floor' ? 'Open Floor Survey' : 'Open Distress Survey',
         'secondary', 'data-rb-source', key));
@@ -3586,6 +3595,7 @@
 
     function syncRail(page) {
       if (!railEl) return;
+      floorRailExtras = null;
       if (page && page.type === 'cover') {
         releaseRailControls();
         railEl.hidden = false;
@@ -3721,49 +3731,64 @@
         // view, which was only ever the plan's framing under a name that
         // sounded like everything, and Lock layout, which moved the scale and
         // the readings together and named neither.
-        var planLocked = !!(floorCamera && floorCamera.locked);
-        railTopEl.appendChild(
-          railButton(planLocked ? 'Unlock floor survey' : 'Lock floor survey',
-            planLocked ? 'secondary' : 'accent',
-            'data-rb-floor-view-lock', planLocked ? 'unlock' : 'lock'));
-        // No paragraph under it. These five buttons carried five explanations
-        // between them -- 218px of the 457 above the tabs -- which pushed the
-        // controls themselves off the bottom of the window. Tim, looking at
-        // the Contours tab: "No, there's nothing there." The labels say what
-        // the buttons do; the prose was mine, and it was in the way.
+        // Nothing above the controls.
+        //
+        // The tabs are the top of this panel. They were below five buttons and
+        // their explanations, which is halfway down the rail -- Tim: "Tabs
+        // occur at the top of a listing, not in the middle of it. Who in their
+        // right mind thinks a tab goes in the middle of the page?" He is
+        // right: a tab strip names what is under it, so anything above it is
+        // out of its reach and reads as belonging to nothing.
+        //
+        // So the Floor Survey controls mount first and the locks go below
+        // them, folded away, where they are reached when they are wanted --
+        // "all of this locking stuff needs to move... that may be an accordion
+        // dropdown."
+        floorRailExtras = function () {
+          var wrap = document.createDocumentFragment();
+          var planLocked = !!(floorCamera && floorCamera.locked);
+          var pieceApi = window.ToolboxReportFloorLayout;
+          var pieceLayout = pieceApi
+            ? pieceApi.normalizeLayout((page.meta && page.meta.layout) || floorLayout)
+            : ((page.meta && page.meta.layout) || floorLayout || {});
+          var legendOn = !!(pieceLayout.legendLock && pieceLayout.legendLock.locked);
+          var pillOn = !!(pieceLayout.pillLock && pieceLayout.pillLock.locked);
+          var anyLocked = planLocked || legendOn || pillOn;
 
-        var pieceApi = window.ToolboxReportFloorLayout;
-        var pieceLayout = pieceApi
-          ? pieceApi.normalizeLayout((page.meta && page.meta.layout) || floorLayout)
-          : ((page.meta && page.meta.layout) || floorLayout || {});
-        [
-          { key: 'legend', name: 'contour legend',
-            on: !!(pieceLayout.legendLock && pieceLayout.legendLock.locked) },
-          { key: 'pill', name: 'high/low/delta',
-            on: !!(pieceLayout.pillLock && pieceLayout.pillLock.locked) },
-        ].forEach(function (piece) {
-          var label = (piece.on ? 'Unlock ' : 'Lock ') + piece.name;
-          railTopEl.appendChild(railButton(label, piece.on ? 'secondary' : 'quiet',
-            'data-rb-floor-piece-lock', piece.key + ':' + (piece.on ? 'unlock' : 'lock')));
-        });
+          var fold = document.createElement('details');
+          fold.className = 'rb-fold';
+          // Open when something is locked, so a lock is never a hidden state.
+          fold.open = anyLocked;
+          var head = document.createElement('summary');
+          head.className = 'rb-fold__head';
+          head.textContent = anyLocked ? 'Locking — on' : 'Locking';
+          fold.appendChild(head);
 
-        railTopEl.appendChild(railButton(
-          'Use this as my default', 'quiet', 'data-rb-template', 'floor'));
-        var floorDefaultHint = document.createElement('p');
-        floorDefaultHint.className = 'rb-panel__lead';
-        floorDefaultHint.textContent = 'New reports start here.';
-        railTopEl.appendChild(floorDefaultHint);
+          fold.appendChild(
+            railButton(planLocked ? 'Unlock floor survey' : 'Lock floor survey',
+              planLocked ? 'secondary' : 'quiet',
+              'data-rb-floor-view-lock', planLocked ? 'unlock' : 'lock'));
+          [
+            { key: 'legend', name: 'contour legend', on: legendOn },
+            { key: 'pill', name: 'high/low/delta', on: pillOn },
+          ].forEach(function (piece) {
+            fold.appendChild(railButton(
+              (piece.on ? 'Unlock ' : 'Lock ') + piece.name,
+              piece.on ? 'secondary' : 'quiet',
+              'data-rb-floor-piece-lock', piece.key + ':' + (piece.on ? 'unlock' : 'lock')));
+          });
+          wrap.appendChild(fold);
 
-        var twoUp = floorSlots(page) > 1;
-        railTopEl.appendChild(railButton(
-          twoUp ? 'One view' : 'Two views',
-          'secondary', 'data-rb-floor-twoup', twoUp ? 'off' : 'on'));
-        var twoHint = document.createElement('p');
-        twoHint.className = 'rb-panel__lead';
-        twoHint.textContent = twoUp
-          ? 'Click a drawing to aim these controls at it.'
-          : 'The same level twice: contours on one, readings on the other.';
-        railTopEl.appendChild(twoHint);
+          // Not locking, so not in that fold: one puts the same level on the
+          // sheet twice, the other saves this framing for new reports.
+          var twoUp = floorSlots(page) > 1;
+          wrap.appendChild(railButton(
+            twoUp ? 'One view' : 'Two views',
+            'quiet', 'data-rb-floor-twoup', twoUp ? 'off' : 'on'));
+          wrap.appendChild(railButton(
+            'Use this as my default', 'quiet', 'data-rb-template', 'floor'));
+          return wrap;
+        };
       }
 
       // Middle: the real Floor Survey controls, for an imported slide.

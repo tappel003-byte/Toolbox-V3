@@ -3563,3 +3563,35 @@ body.report-builder-open .canvas {
 @media print {
   .rb-stackmenu { display: none !important; }
 }
+
+/* A folded section in the rail. Used for the locks, which are reached when
+   they are wanted rather than standing above the controls all day. */
+.rb-fold {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.rb-fold__head {
+  cursor: pointer;
+  list-style: none;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--navy);
+  padding: 2px 0;
+}
+
+.rb-fold__head::-webkit-details-marker { display: none; }
+
+.rb-fold__head::before {
+  content: '\25B8';
+  display: inline-block;
+  width: 1em;
+  color: var(--rb-copper, #8B5E3C);
+}
+
+.rb-fold[open] .rb-fold__head::before { content: '\25BE'; }
+
+.rb-fold .btn { width: 100%; margin-top: 6px; }
