@@ -78,6 +78,15 @@ const DIAGNOSTICS = JSON.stringify({
   figures: [{ mediaId: 'dxfig_1', canvasName: 'Ground' }],
 });
 
+// One report picture the Cabinet holds and one it does not: the fallback
+// route has to answer that question the same way the worker route does.
+const REPORT = JSON.stringify({
+  coverLayout: { overviewMediaId: 'report-cover-overview-cf-1' },
+  pages: [
+    { title: 'Pictures', meta: { overlays: [{ id: 'ov-1', kind: 'image', mediaId: 'rbimg_gone' }] } },
+  ],
+});
+
 const port = await freePort();
 const server = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], {
   cwd: new URL('..', import.meta.url).pathname,
@@ -157,13 +166,16 @@ try {
         if (name === 'diagnostics') {
           return new Response(fixture.diagnostics, { status: 200, headers: { 'content-type': 'application/json' } });
         }
+        if (name === 'report') {
+          return new Response(fixture.report, { status: 200, headers: { 'content-type': 'application/json' } });
+        }
         return new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain' } });
       }
       const existsMatch = /^media\/([^/]+)\/exists$/.exec(path);
       if (existsMatch) {
         const present = [
           'plan-1', 'ph_quick', 'ph_loose', 'ph_general', 'ph_file_general', 'ph_shared',
-          'fsrec_canvas-1', 'dxfig_1',
+          'fsrec_canvas-1', 'dxfig_1', 'report-cover-overview-cf-1',
         ].includes(decodeURIComponent(existsMatch[1]));
         return new Response(JSON.stringify({ exists: present }), {
           status: 200,
@@ -250,7 +262,7 @@ try {
       untypedRows: pictureRowsSeen,
       fetchLog,
     };
-  }, { files: FILES, plans: PLANS, distress: DISTRESS, floor: FLOOR, diagnostics: DIAGNOSTICS, customer: CUSTOMER });
+  }, { files: FILES, plans: PLANS, distress: DISTRESS, floor: FLOOR, diagnostics: DIAGNOSTICS, report: REPORT, customer: CUSTOMER });
 
   check('five stored Customer Files are listed from GET /files',
     FILES.every((file) => flow.rootText.includes(file.displayName) && flow.rootText.includes(file.propertyAddress)) &&

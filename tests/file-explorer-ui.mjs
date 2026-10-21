@@ -204,6 +204,8 @@ try {
       { key: 'media/ph_general_missing', missing: true, purpose: 'general-photo', label: 'General photo' },
       { key: 'media/fsrec_canvas-ground', size: fixture.pdf.length, contentType: 'application/pdf', purpose: 'floor-pdf', label: 'Floor Survey recovery PDF — Ground' },
       { key: 'media/dxfig_ground', size: fixture.png.length, contentType: 'image/png', purpose: 'diagnostics-figure', label: 'Diagnostics figure — Ground' },
+      { key: 'media/report-cover-overview-x', size: fixture.png.length, contentType: 'image/png', purpose: 'report-overview', label: 'Report cover overview' },
+      { key: 'media/rbimg_gone', missing: true, purpose: 'report-picture', label: 'Report picture — Pictures' },
       { key: 'media/ph_missing', missing: true, purpose: 'distress-photo', label: 'Distress Survey photograph' },
       { key: 'media/fsrec_missing', missing: true, purpose: 'floor-pdf', label: 'Floor Survey recovery PDF — Empty' },
     ];
@@ -227,6 +229,7 @@ try {
       },
       'media/fsrec_canvas-ground': { type: 'application/pdf', body: fixture.pdf },
       'media/dxfig_ground': { type: 'image/png', body: fixture.png },
+      'media/report-cover-overview-x': { type: 'image/png', body: fixture.png },
     };
 
     const realFetch = window.fetch.bind(window);
@@ -634,8 +637,8 @@ try {
     flow.detailLead.includes('10 Oak Street') &&
     flow.detailLead.includes('Mar 1, 2026') &&
     flow.detailRawKey.startsWith(`cf/${ID}/`) &&
-    flow.groups.join(',') === 'plans,distress,quick-capture,other-photos,floor,diagnostics,other' &&
-    flow.objectCount === 18 &&
+    flow.groups.join(',') === 'plans,distress,quick-capture,other-photos,floor,diagnostics,report,other' &&
+    flow.objectCount === 20 &&
     flow.otherPhotos.includes('Unassigned photo') &&
     flow.otherPhotos.includes('Exterior overview') &&
     flow.otherPhotos.includes('Not stored') &&
@@ -652,7 +655,7 @@ try {
     flow.quickText.includes('porch.jpg') &&
     !flow.detailText.includes('Distress or Quick Capture'));
   check('pictures are a contact sheet, not a list of identical cards',
-    flow.tileCount === 6 && flow.sheetCount === 5);
+    flow.tileCount === 7 && flow.sheetCount === 6);
   // What a stored item is FOR decides whether it is a picture, not what the
   // server calls it. The Cabinet does not always report a content type, and
   // when it did not, every photograph fell out of the sheet and into a card
@@ -886,6 +889,18 @@ try {
   }, PLAN_ID);
   await page.waitForSelector('.explorer-lightbox__img');
   await page.screenshot({ path: join(shotDir, 'file-explorer-desktop-preview.png'), fullPage: true });
+  // The Report Builder folder: a cover overview that is stored and a report
+  // picture that is not, which is the question a stalled Check Out asks.
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('.explorer-lightbox__img'));
+  await page.evaluate(() => {
+    const up = [...document.querySelectorAll('button')].find((b) => /^(Up|‹)/.test(b.textContent.trim()));
+    if (up) up.click();
+  });
+  await page.waitForFunction(() => document.querySelector('.explorer-folder[data-group="report"]'));
+  await page.click('.explorer-folder[data-group="report"] .explorer-folder__open');
+  await page.waitForFunction(() => document.querySelector('[data-key="media/rbimg_gone"]'));
+  await page.screenshot({ path: join(shotDir, 'file-explorer-report-folder.png'), fullPage: true });
 } finally {
   await browser.close();
   server.kill();

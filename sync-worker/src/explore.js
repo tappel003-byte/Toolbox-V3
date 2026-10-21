@@ -294,6 +294,61 @@ function mediaRefsFromDiagnostics(payload, notes) {
   return refs;
 }
 
+/**
+ * Pictures the report carries: the cover overview and anything placed on a
+ * sheet.
+ *
+ * These were the one kind of referenced media the listing never looked for,
+ * so the one question the back door exists to answer -- is this actually in
+ * the Cabinet? -- could not be asked about them. It is the question that was
+ * wanted when a Check Out of 4925 Edwards Drive kept stopping at one report
+ * picture and nobody could see whether the picture was there at all.
+ */
+function mediaRefsFromReport(payload, notes) {
+  const refs = [];
+  if (!payload || typeof payload !== 'object') return refs;
+  const cover = payload.coverLayout;
+  considerMedia(
+    refs,
+    notes,
+    'report.json',
+    cover && cover.overviewMediaId,
+    'report-overview',
+    'Report cover overview',
+    '',
+  );
+  const pages = Array.isArray(payload.pages) ? payload.pages : [];
+  pages.forEach(function (page) {
+    const meta = page && page.meta;
+    if (!meta || typeof meta !== 'object') return;
+    const pageCover = meta.coverLayout;
+    considerMedia(
+      refs,
+      notes,
+      'report.json',
+      pageCover && pageCover.overviewMediaId,
+      'report-overview',
+      'Report cover overview',
+      '',
+    );
+    const title = trimmed(page && page.title);
+    const overlays = Array.isArray(meta.overlays) ? meta.overlays : [];
+    overlays.forEach(function (overlay) {
+      if (!overlay || typeof overlay !== 'object') return;
+      considerMedia(
+        refs,
+        notes,
+        'report.json',
+        overlay.mediaId,
+        'report-picture',
+        title ? 'Report picture — ' + title : 'Report picture',
+        '',
+      );
+    });
+  });
+  return refs;
+}
+
 const PURPOSE_RANK = {
   'distress-photo': 1,
   'quick-capture': 2,
@@ -303,6 +358,8 @@ const PURPOSE_RANK = {
   'floor-pdf': 1,
   'floor-figure': 2,
   'diagnostics-figure': 1,
+  'report-overview': 2,
+  'report-picture': 3,
 };
 
 function mergeMediaRefs(refs) {
@@ -339,6 +396,10 @@ function mergeMediaRefs(refs) {
     }
   });
   return order.map(function (id) { return map[id]; });
+}
+
+export function mediaIdsFromReport(payload, notes) {
+  return mediaRefsFromReport(payload, notes).map(function (ref) { return ref.id; });
 }
 
 export function mediaIdsFromPlans(payload, notes) {
@@ -434,6 +495,7 @@ async function referencedMedia(cabinet, id, storedByKey, notes) {
   const distress = await readManifest(cabinet, id, 'distress', storedByKey, notes);
   const floor = await readManifest(cabinet, id, 'floor', storedByKey, notes);
   const diagnostics = await readManifest(cabinet, id, 'diagnostics', storedByKey, notes);
+  const report = await readManifest(cabinet, id, 'report', storedByKey, notes);
   const customer = await readManifest(cabinet, id, 'customer', storedByKey, notes);
   const names = canvasNameMap(plans);
   return mergeMediaRefs(
@@ -441,6 +503,7 @@ async function referencedMedia(cabinet, id, storedByKey, notes) {
       .concat(mediaRefsFromDistress(distress, notes))
       .concat(mediaRefsFromFloor(floor, notes, names))
       .concat(mediaRefsFromDiagnostics(diagnostics, notes))
+      .concat(mediaRefsFromReport(report, notes))
       .concat(mediaRefsFromCustomer(customer, notes)),
   );
 }
