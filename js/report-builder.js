@@ -945,10 +945,20 @@
 
   function picturesAcross(page) {
     var n = page && page.meta ? Number(page.meta.picturesAcross) : 0;
-    // A grid chosen before the three-row floor existed, or before photographs
-    // were added to the page, is not honoured if it now stacks too deep.
-    if (picturesGrids(picturesOnPage(page)).indexOf(n) >= 0) return n;
+    // The chosen shape is honoured as chosen. It used to be rejected when it
+    // stacked deeper than three rows, because a shape was only a way of
+    // arranging whatever had already been put on the page. A shape sets the
+    // page's CAPACITY now, so nothing can stack too deep: the pictures that
+    // do not fit are on the next sheet.
+    if (PICTURES_ACROSS.indexOf(n) >= 0) return n;
     return defaultPicturesAcross(picturesOnPage(page));
+  }
+
+  /** How many rows deep the chosen shape is. */
+  function picturesDown(page) {
+    var n = page && page.meta ? Number(page.meta.picturesDown) : 0;
+    if (n >= 1 && n <= MAX_PICTURE_ROWS) return n;
+    return Math.max(1, Math.ceil(picturesOnPage(page) / picturesAcross(page)));
   }
 
   /** The Stats pill size set in Labels & layers, kept per device. */
@@ -3796,19 +3806,27 @@
         var onPage = Math.max(1, picturesOnPage(page));
         var row = document.createElement('div');
         row.className = 'rb-ws__row rb-ws__row--wrap';
-        // Only the grids that keep the pictures worth printing: anything
-        // deeper than three rows made each one too small to read.
-        picturesGrids(onPage).forEach(function (n) {
-          var label = String(n) + ' \u00d7 ' + Math.ceil(onPage / n);
-          var btn = railButton(label,
-            n === acrossNow ? 'accent' : 'secondary', 'data-rb-pics-across', String(n));
-          row.appendChild(btn);
+        // Every shape, on every slide. A shape is a page capacity now, so
+        // the tight ones add sheets instead of crushing one.
+        var downNow = picturesDown(page);
+        // Two rows at the most, and a single column only on its own: Tim,
+        // Oct 20, "one row is acceptable. 5 by 1 ... 1 by 4, 1 by 3, 1 by 2,
+        // 1 by 1. The most rows are 2", and on a stacked single column,
+        // "1x2 NO."
+        PICTURES_ACROSS.forEach(function (cols) {
+          var deepest = cols === 1 ? 1 : 2;
+          for (var down = 1; down <= deepest; down += 1) {
+            var btn = railButton(String(cols) + ' \u00d7 ' + down,
+              (cols === acrossNow && down === downNow) ? 'accent' : 'secondary',
+              'data-rb-pics-across', cols + 'x' + down);
+            row.appendChild(btn);
+          }
         });
         railTopEl.appendChild(row);
         var picHint = document.createElement('p');
         picHint.className = 'rb-panel__lead';
-        picHint.textContent = 'Across \u00d7 down. Fewer across makes each picture bigger; ' +
-          'a page starts on the grid that fits what it holds.';
+        picHint.textContent = 'Across \u00d7 down sets how many a sheet holds. ' +
+          'Fewer makes each picture bigger and adds sheets; the pictures flow on.';
         railTopEl.appendChild(picHint);
         if (railBodyEl) railBodyEl.textContent = '';
         setRailFootSource('distress');
@@ -4040,14 +4058,21 @@
           event.preventDefault();
           var pic = activePage();
           if (!pic || pic.type !== 'pictures') return;
-          var want = Number(acrossBtn.getAttribute('data-rb-pics-across'));
-          if (PICTURES_ACROSS.indexOf(want) < 0) return;
-          pic.meta = pic.meta || {};
-          if (pic.meta.picturesAcross === want) return;
-          pic.meta.picturesAcross = want;
+          var parts = String(acrossBtn.getAttribute('data-rb-pics-across')).split('x');
+          var wantCols = Number(parts[0]);
+          var wantRows = Number(parts[1]);
+          if (PICTURES_ACROSS.indexOf(wantCols) < 0) return;
+          if (!(wantRows >= 1 && wantRows <= MAX_PICTURE_ROWS)) return;
+          if (picturesAcross(pic) === wantCols && picturesDown(pic) === wantRows) return;
+          if (!repaginatePictures(wantCols, wantRows)) return;
           markDirty();
           renderPages();
-          flushSave().catch(function () {});
+          // The sheets changed, so what is on them has to be read again.
+          attachEvidence(workingRecord, pages.slice()).then(function (enriched) {
+            pages = enriched;
+            renderPages();
+            flushSave().catch(function () {});
+          }).catch(function () { flushSave().catch(function () {}); });
           return;
         }
         var twoBtn = event.target.closest('[data-rb-floor-twoup]');
@@ -6625,6 +6650,61 @@
      * The slide that does hold the live view gets a still too: the deck is
      * built detached, and a live view mounted into nothing measures nothing.
      */
+    /**
+     * Re-cut the whole picture run to a chosen shape.
+     *
+     * A shape is a page capacity -- five across and two down holds ten -- and
+     * the photographs flow over as many sheets as that needs. Tim:
+     * "two-picture, one-row ... 100 pictures ... that's just 50 pages of two
+     * pictures each. It gets determined from that point forward."
+     *
+     * Captions travel with their photograph, not with the sheet it used to be
+     * on, or re-cutting would scatter the wording the investigator typed.
+     */
+    function repaginatePictures(cols, rows) {
+      var capacity = Math.max(1, (Number(cols) || 1) * (Number(rows) || 1));
+      var idx = [];
+      pages.forEach(function (item, i) { if (item && item.type === 'pictures') idx.push(i); });
+      if (!idx.length) return false;
+      // One contiguous block, or this cannot put it back where it was.
+      if (idx[idx.length - 1] - idx[0] + 1 !== idx.length) return false;
+      var keys = [];
+      var captions = {};
+      idx.forEach(function (i) {
+        var item = pages[i];
+        var pk = (item.meta && Array.isArray(item.meta.photoKeys)) ? item.meta.photoKeys : [];
+        pk.forEach(function (k) { if (k && keys.indexOf(k) < 0) keys.push(k); });
+        var c = (item.reportText && item.reportText.captions) || null;
+        if (!c) return;
+        Object.keys(c).forEach(function (k) {
+          if (typeof captions[k] !== 'string') captions[k] = c[k];
+        });
+      });
+      if (!keys.length) return false;
+      var wanted = Math.ceil(keys.length / capacity);
+      var existing = idx.map(function (i) { return pages[i]; });
+      var out = [];
+      for (var n = 0; n < wanted; n += 1) {
+        var chunk = keys.slice(n * capacity, (n + 1) * capacity);
+        var sheet = existing[n] || buildPicturesPage([], 0, nextPicturesPageId(pages.concat(out)));
+        sheet.meta = sheet.meta || {};
+        sheet.meta.photoKeys = chunk;
+        sheet.meta.picturesAcross = Number(cols);
+        sheet.meta.picturesDown = Number(rows);
+        var keep = {};
+        chunk.forEach(function (k) {
+          if (typeof captions[k] === 'string') keep[k] = captions[k];
+        });
+        sheet.reportText = sheet.reportText || {};
+        sheet.reportText.captions = keep;
+        sheet.railLabel = wanted > 1 ? ('Pictures \u00b7 ' + (n + 1)) : 'Pictures';
+        out.push(sheet);
+      }
+      pages = pages.slice(0, idx[0]).concat(out, pages.slice(idx[idx.length - 1] + 1));
+      pages = renumberFigures(pages);
+      return true;
+    }
+
     /**
      * The region of plan space a printed slide should paint.
      *
