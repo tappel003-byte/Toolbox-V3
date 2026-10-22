@@ -694,16 +694,22 @@ try {
       fits: layout[name] && layout[name].alphaActionsFit,
     }))),
   );
+  // Take Over is recovery for a device that cannot hand a job back, and it
+  // lives in File Explorer only (Tim, Oct 22, 2026: "take over should only
+  // work from explorer"). The Cabinet is where the ordinary run of work
+  // happens, and nothing here should let a job be pulled out from under the
+  // device holding it.
   check(
-    'a job held elsewhere offers Take Over, and nothing that would be refused',
+    'a job held elsewhere offers nothing here — recovery is in File Explorer',
     ['desktop', 'ipad', 'phone'].every((name) => {
       const shot = layout[name];
-      return shot && shot.betaTakeOver && !shot.betaTrash;
+      return shot && !shot.betaTakeOver && !shot.betaTrash && !shot.betaCheckOut;
     }),
-    JSON.stringify({
-      desktop: layout.desktop && layout.desktop.betaTakeOver,
-      phone: layout.phone && layout.phone.betaTakeOver,
-    }),
+    JSON.stringify(['desktop', 'ipad', 'phone'].map((name) => ({
+      at: name,
+      takeOver: layout[name] && layout[name].betaTakeOver,
+      trash: layout[name] && layout[name].betaTrash,
+    }))),
   );
   check(
     'phone address stays full width with Check Out beside the name and date',

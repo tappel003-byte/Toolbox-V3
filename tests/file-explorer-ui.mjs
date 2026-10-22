@@ -184,6 +184,9 @@ try {
       displayName: 'Fred Keulen',
       propertyAddress: '5 Pine Road',
       createdAt: '2024-11-02T00:00:00.000Z',
+      // Held by a device that is not this one, so this is the row that can
+      // be recovered from the back door.
+      checkout: { email: 'tim@example.com', deviceId: 'device-drowned', checkedOutAt: '2026-10-01T09:00:00.000Z' },
     }];
     const objects = [
       { key: `cf/${fixture.id}/index.json`, size: fixture.indexText.length, contentType: 'application/json', purpose: 'technical', label: 'Cabinet index' },
@@ -308,6 +311,45 @@ try {
     const columnHead = document.querySelector('.explorer-columns');
     const adaCard = document.querySelector(`[data-key="cf/${fixture.id}/index.json"]`);
     const rootRawKey = adaCard.querySelector('.explorer-row__technical code').textContent;
+    // Tim, Oct 22, 2026: "take over should only work from explorer" and
+    // "you do not get to decide whether or not I can delete something from
+    // Explorer ... this is my app."
+    const fredCard = document.querySelector(`[data-key="cf/${fixture.other}/index.json"]`);
+    const backDoor = {
+      adaDelete: !!(adaCard && adaCard.querySelector('.explorer-delete')),
+      fredDelete: !!(fredCard && fredCard.querySelector('.explorer-delete')),
+      adaTakeOver: !!(adaCard && adaCard.querySelector('.explorer-take-over')),
+      fredTakeOver: !!(fredCard && fredCard.querySelector('.explorer-take-over')),
+      deleteLabel: adaCard && adaCard.querySelector('.explorer-delete')
+        ? adaCard.querySelector('.explorer-delete').textContent.trim() : '',
+    };
+    // Pressing Delete must ask before it destroys anything, and must not act
+    // when the answer is no.
+    let destroyCalls = [];
+    const realDestroy = window.ToolboxSync.destroyCabinetCustomerFile;
+    window.ToolboxSync.destroyCabinetCustomerFile = function (id) {
+      destroyCalls.push(id);
+      return Promise.resolve({ ok: true, id });
+    };
+    adaCard.querySelector('.explorer-delete').click();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const confirmCard = document.querySelector('#toolbox-confirm');
+    backDoor.asksFirst = !!(confirmCard && !confirmCard.hidden &&
+      /cannot be undone/i.test(confirmCard.textContent || ''));
+    backDoor.notYet = destroyCalls.length === 0;
+    const cancelBtn = confirmCard && confirmCard.querySelector('#confirm-no');
+    if (cancelBtn) cancelBtn.click();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    backDoor.cancelDestroysNothing = destroyCalls.length === 0;
+
+    adaCard.querySelector('.explorer-delete').click();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const okBtn = document.querySelector('#toolbox-confirm #confirm-yes');
+    if (okBtn) okBtn.click();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    backDoor.deleted = destroyCalls.slice();
+    window.ToolboxSync.destroyCabinetCustomerFile = realDestroy;
+
     const search = document.getElementById('explorer-search');
     search.value = 'Keulen';
     search.dispatchEvent(new Event('input', { bubbles: true }));
@@ -561,6 +603,7 @@ try {
       hasExplorerButton: !!document.getElementById('app-explorer'),
       rootText,
       rootLead,
+      backDoor,
       rootRawKey,
       columnHead: !!columnHead,
       searched,
@@ -628,8 +671,17 @@ try {
     !flow.columnHead &&
     !/\bType\b/.test(flow.rootText) &&
     !/\bUploaded\b/.test(flow.rootText));
+  check('Explorer can delete a job, and asks before it does',
+    !!(flow.backDoor && flow.backDoor.adaDelete && flow.backDoor.fredDelete &&
+      flow.backDoor.deleteLabel === 'Delete' && flow.backDoor.asksFirst &&
+      flow.backDoor.notYet && flow.backDoor.cancelDestroysNothing &&
+      flow.backDoor.deleted.length === 1),
+    JSON.stringify(flow.backDoor));
+  check('Take Over is offered here, and only for a job another device holds',
+    !!(flow.backDoor && flow.backDoor.fredTakeOver && !flow.backDoor.adaTakeOver),
+    JSON.stringify({ held: flow.backDoor && flow.backDoor.fredTakeOver, free: flow.backDoor && flow.backDoor.adaTakeOver }));
   check('root copy is plain language',
-    flow.rootLead === 'Customer Files stored on the server. Open a file to view its stored surveys, photos, plans, and other data. This is a view only — deleting a job happens in the File Cabinet.');
+    flow.rootLead === 'Customer Files stored on the server. Open a file to view its stored surveys, photos, plans, and other data. Delete removes a job from the server for good.');
   check('search finds one Customer File by name',
     flow.searchedCount === 1 && flow.searched.includes('Fred Keulen') && !flow.searched.includes('Ada Mitchell'));
   check('detail groups every stored piece and keeps raw keys available',

@@ -446,6 +446,18 @@ function copyIdentity(target, value) {
   if (survey) target.fieldWorkDate = survey;
   if (created) target.createdAt = created;
   if (trimmed(value.deletedAt)) target.deletedAt = trimmed(value.deletedAt);
+  // Who holds the job, so the back door can offer Take Over without
+  // reaching past its own read-only route to find out.
+  const checkout = value.checkout;
+  if (checkout && typeof checkout === 'object') {
+    const deviceId = trimmed(checkout.deviceId);
+    const email = trimmed(checkout.email);
+    if (deviceId && email) {
+      target.checkout = { email: email.toLowerCase(), deviceId: deviceId };
+      const at = trimmed(checkout.checkedOutAt);
+      if (at) target.checkout.checkedOutAt = at;
+    }
+  }
 }
 
 export async function readCabinetIndexListing(cabinet) {

@@ -3414,6 +3414,32 @@
   }
 
   /**
+   * Destroy one cloud-only Customer File outright.
+   *
+   * Tim, on two dead jobs: "I want to delete I don't need them to go to a
+   * trashcan." The Cabinet's own rule is that Trash is the boundary -- the
+   * Worker refuses to purge a Customer File whose index is still live, and
+   * that refusal is deliberate, so a wrong tap cannot destroy a job and its
+   * photographs in one motion.
+   *
+   * So the guard is satisfied rather than removed: this walks the file
+   * through Trash and out the other side as one action, under one
+   * confirmation that says it cannot be undone. Both halves are verified,
+   * and a file that reaches Trash but cannot be purged stays in Trash,
+   * recoverable, rather than being reported as gone.
+   */
+  async function destroyCabinetCustomerFile(id) {
+    const moved = await trashCabinetCustomerFile(id);
+    const purged = await permanentlyDeleteCabinetCustomerFile(id);
+    const after = await getRemoteIndex(id);
+    if (after) {
+      throw new SyncError('incomplete',
+        'That Customer File is in File Cabinet Trash but was not destroyed. It can still be restored.');
+    }
+    return { ok: true, id: id, viaTrash: !(moved && moved.alreadyTrashed), purged: purged };
+  }
+
+  /**
    * Return one File Cabinet Trash item to the normal cabinet.
    * Does not Check Out and does not download the file.
    * A pending delete on this device is cancelled so Sync does not trash it again.
@@ -3575,6 +3601,7 @@
     exploreFetchObject: exploreFetchObject,
     exploreFetchArchive: exploreFetchArchive,
     trashCabinetCustomerFile: trashCabinetCustomerFile,
+    destroyCabinetCustomerFile: destroyCabinetCustomerFile,
     resolveWorkingFileDelete: function (id) {
       return enqueueSyncWork(function () { return resolveWorkingFileDelete(id); });
     },

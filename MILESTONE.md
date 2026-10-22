@@ -48,7 +48,7 @@ Each Customer File is one job container. Customer Information, Plans/Canvases, D
 **Sync Now** = the manual confidence/safety action after poor signal. **“Sync complete.”** when changes upload. **“Everything is already synced.”** when nothing changed. Failures must not be reported as success. Does **not** download every remote Cabinet entry. Does **not** require local inventory == cloud inventory.  
 **Check Out** = transfer exclusive editing authority to the receiving device. Other devices may keep complete local safety copies. Once they learn the file is checked out elsewhere, those copies are gray/read-only and cannot mutate or sync over it.  
 **Check In** on the editing device = sync, verify the Cabinet copy, and release exclusive authority. Never cloud-delete. The foundation in this repository also removes that device’s own working copy. That removal is not Trash and does not delete another device’s safety copy.  
-**File Explorer** = read-only server back door. Not an editor.
+**File Explorer** = the server back door. Not an editor of survey data. It is where Take Over and Delete live (CHANGED by Tim, Oct 22, 2026).
 
 Any device may create a Customer File locally with no network. First placement into the Cabinet still happens via Sync of that local file — there is no separate Place UI — and that Sync takes the lease on the file for the device that pushed it. Having a copy is not permission; holding the lease is. A job that is in the Cabinet always has exactly one working device.
 

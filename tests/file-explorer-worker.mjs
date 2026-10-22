@@ -316,7 +316,13 @@ check('useful dates come from the index and sync clocks are not substituted',
   mitchell && mitchell.fieldWorkDate === '2026-03-01' &&
   mitchell.createdAt === '2026-01-15T12:00:00.000Z' &&
   !('updatedAt' in mitchell));
-check('listing does not publish the checkout lease', mitchell && !('checkout' in mitchell));
+// Take Over lives in the back door now, so the listing has to say who holds
+// a job. It says that and no more: no sub, no token, nothing a lease is
+// carried by -- just the name, the device, and when.
+check('listing publishes only the part of the lease Take Over needs',
+  !!(mitchell && mitchell.checkout &&
+    Object.keys(mitchell.checkout).sort().join(',') === 'checkedOutAt,deviceId,email'),
+  JSON.stringify(mitchell && mitchell.checkout));
 check('index metadata is the stored type, size, and upload time',
   mitchell && mitchell.contentType === 'application/json' &&
   mitchell.size === new TextEncoder().encode(indexBody).byteLength &&
@@ -421,8 +427,11 @@ check('unknown stored file stays visible with its exact name',
 const planImage = (detail.objects || []).find((row) => row.key === `media/${PLAN_ID}`);
 check('plan image uses the canvas name',
   planImage && planImage.purpose === 'plan' && planImage.label === 'Floor plan — Ground');
-check('detail identity is the customer, not the checkout lease',
-  detail.displayName === 'Mitchell' && detail.fieldWorkDate === '2026-03-01' && !('checkout' in detail));
+check('detail identity is the customer, and any lease is only its bare facts',
+  detail.displayName === 'Mitchell' && detail.fieldWorkDate === '2026-03-01' &&
+  (!detail.checkout ||
+    Object.keys(detail.checkout).sort().join(',') === 'checkedOutAt,deviceId,email'),
+  JSON.stringify(detail.checkout));
 check('unreadable-id note is visible', (detail.referenceNotes || []).some((note) => /not a single storage key/.test(note)));
 check('detail does not list unreferenced, other-customer, or purge objects',
   !objectKeys.some((key) => key.includes('unreferenced') || key.includes('other-plan') || key.startsWith('purge/')));
@@ -581,6 +590,23 @@ check('a safe non-prefix recovery id stays visible as missing',
 check('unsafe recovery PDF ids are not fetched',
   !trashKeys.some((key) => key.includes('..')) &&
   (trashJson.referenceNotes || []).some((note) => /floor\.json/.test(note) && /not a single storage key/.test(note)));
+
+// The lease rides on the listing so the back door can offer Take Over
+// without reaching past its own read-only route to find out who holds a job.
+const leaseListing = await call('explore/files', cabinet);
+const leaseJson = await leaseListing.json();
+const leaseRow = (leaseJson.files || []).find((row) => row.id === ID);
+check('the listing says who holds a job',
+  !!(leaseRow && leaseRow.checkout && leaseRow.checkout.deviceId === 'device-a' &&
+    leaseRow.checkout.email === 'tim@example.com'),
+  JSON.stringify(leaseRow && leaseRow.checkout));
+check('and carries no more of the lease than that',
+  !!(leaseRow && leaseRow.checkout &&
+    Object.keys(leaseRow.checkout).sort().join(',') === 'checkedOutAt,deviceId,email'),
+  JSON.stringify(leaseRow && leaseRow.checkout));
+check('a job nobody holds says nothing about a lease',
+  (leaseJson.files || []).filter((row) => row.id !== ID).every((row) => !row.checkout),
+  JSON.stringify((leaseJson.files || []).map((row) => [row.id, !!row.checkout])));
 
 const posted = await call(`explore/files/${ID}`, cabinet, { method: 'POST' });
 check('explore does not accept writes', posted.status === 405, String(posted.status));

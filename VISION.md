@@ -257,7 +257,7 @@ When that device is online, the active working Customer File is **quietly mirror
 
 **Check Out** transfers exclusive editing authority to the receiving device. Other devices may retain their complete local safety copies. After a device learns the file is checked out elsewhere, that local copy is gray and read-only: it cannot be mutated, and it cannot sync over the checked-out file. Viewing stays available.
 
-**File Explorer** is a direct, read-only window onto server File Cabinet data. It is the back door for seeing what is actually stored. It is not a second Customer File editor. It does not check out a file and it does not materialize a working Customer File.
+**File Explorer** is a direct window onto server File Cabinet data. It is the back door for seeing what is actually stored, and for the two things that are done to a job rather than in it: **Take Over** a job whose holder cannot hand it back, and **Delete** a job from the server for good (CHANGED by Tim, Oct 22, 2026: "take over should only work from explorer"; "you do not get to decide whether or not I can delete something from Explorer ... this is my app"). It is still not a second Customer File editor: it does not edit survey data, and it does not materialize a working Customer File except as the Take Over it was asked for.
 
 Customer Information, plans/media, Distress, Floor Survey, Diagnostics, and Report Builder all obey this same lifecycle. They synchronize **independently**. Component-level last-write-wins remains defensive/recovery plumbing, not the intended normal multi-writer collaboration model. Exclusive checkout prevents normal concurrent editing of the same Customer File. Plans and Distress photos travel as actual media, not merely references.
 
