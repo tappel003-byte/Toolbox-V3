@@ -462,6 +462,18 @@ Authorized by Tim after the design was talked through: "It might be best to star
 
 ---
 
+## Check Out holds, and this device knows who it is
+
+Found by tracing Check In and Check Out end to end after a Check Out failed repeatedly in the field (Tim, Oct 22, 2026: "do another deep dive in check-in check out and make sure that it's working right, this is very key to this app obviously").
+
+- **A foreign Check Out was only as durable as localStorage.** The mark on the Customer File itself exists because "a lease that lives only in the Cabinet cannot be read from a crawlspace" — it survives a reload, cleared site data, and no network. The screen honoured that mark. The route gate and the database guard asked a different question: this device's lock map in localStorage, which is only written while listing the Cabinet and which Safari clears from a site left alone for a week. A phone whose storage had been cleared would open Distress Survey on a job its iPad was holding, draw on it, and keep the writes. The copies now put the map back, before the first screen is drawn and again whenever a copy is read, so every gate asks the same question.
+- **The map stays the live answer; a record handed to a save does not.** An in-memory copy can be a snapshot taken before the other device let go, and refusing on that would block work on a file nobody holds any more.
+- **Taking the lease ends "somebody else has this" here.** Browsing the Cabinet does not rewrite the lock map, so a device still carrying a stale foreign lock for a job it was checking out would acquire the lease and then have its own save refused by its own guard — failing the Check Out and handing the lease straight back, with nothing on the device and no sign it had been checked out. Exactly the shape of the field failure. The lock goes the moment the lease is ours.
+- **Writing the mark is the one save the lock must not refuse.** That save is the lock being applied, not work on a copy this device does not own.
+- **The device id outlives localStorage now.** It decides which device holds a Check Out and lived in localStorage alone. A device that lost it could no longer check its own files in OR out: the Cabinet still named an id nothing answered to, Check In told the investigator to go and use the device already in his hands, and Check Out answered "checked out by another user or device". The job was stuck for every device with nothing wrong with the job. The id is mirrored into the database, where the Customer Files live, and the two are reconciled on start. **This is not Take Over** — a device that is genuinely lost or broken still needs that, and it is still not built.
+
+---
+
 ## Connectivity, and what counts as proof of it
 
 - **`navigator.onLine` is not a connectivity test (FOUND in the field, Tim, Oct 9, 2026).** It reports whether a network interface is up, not whether anything is reachable. Tim, on an iPad mini tethered to his phone: "The screen got extremely slow and locked up... my iPad does not have Wi-Fi, I was using my cell phone as a hotspot. My phone lost signal but it never lost the link to the iPad." The link stayed up, so the app never went to offline mode.

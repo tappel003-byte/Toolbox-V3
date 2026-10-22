@@ -2689,6 +2689,12 @@
     const db = window.ToolboxDB;
     if (!db || db.__checkoutGuard) return;
     db.__checkoutGuard = true;
+    // This device's lock map is the live answer, and the stored copies keep
+    // it honest: reading one re-seeds the map from the mark it carries, so a
+    // phone whose storage was cleared still refuses. The record handed in
+    // here is deliberately NOT consulted -- it can be a snapshot taken
+    // before the other device let go, and refusing on that would block work
+    // on a file nobody holds any more.
     function lockedError(id) {
       if (!id || !window.ToolboxSync || typeof window.ToolboxSync.isCheckedOutElsewhere !== 'function') return null;
       if (!window.ToolboxSync.isCheckedOutElsewhere(id)) return null;
@@ -2709,6 +2715,18 @@
       }
       return null;
     }
+    // Reading a copy repairs what this device knows about it, so the route
+    // gate and every later write get the same answer the record gives.
+    const read = db.getCustomerFile.bind(db);
+    db.getCustomerFile = function (id) {
+      return read(id).then(function (record) {
+        if (record && record.heldByOtherDevice && window.ToolboxSync &&
+            typeof window.ToolboxSync.noteForeignMarks === 'function') {
+          window.ToolboxSync.noteForeignMarks(record);
+        }
+        return record;
+      });
+    };
     const save = db.saveCustomerFile.bind(db);
     db.saveCustomerFile = function (record) {
       const err = lockedError(record && record.id);
@@ -2748,6 +2766,12 @@
       if (err) return Promise.reject(err);
       return hardDelete(records);
     };
+    // Sync writes the "another device holds this" mark onto the copy itself.
+    // That write is the lock being applied and must not be refused by the
+    // guard that enforces it.
+    if (window.ToolboxSync && typeof window.ToolboxSync.useDirectSave === 'function') {
+      window.ToolboxSync.useDirectSave(save);
+    }
     const importRecovery = db.importCustomerFileRecovery.bind(db);
     db.importCustomerFileRecovery = function (record) {
       const err = lockedError(record && record.id);
@@ -2887,7 +2911,27 @@
   }
 
   window.addEventListener('hashchange', render);
-  window.addEventListener('DOMContentLoaded', render);
+  // What the local copies already know about foreign Check Outs goes back
+  // into this device's lock map before anything is drawn, so a deep link
+  // straight into a survey is answered correctly the first time.
+  window.addEventListener('DOMContentLoaded', function () {
+    const sync = window.ToolboxSync;
+    if (!sync) {
+      render();
+      return;
+    }
+    // This device's id first -- it decides which device holds a Check Out,
+    // and everything after this point asks for it.
+    const ready = typeof sync.restoreDeviceId === 'function'
+      ? sync.restoreDeviceId().catch(function () {})
+      : Promise.resolve();
+    ready.then(function () {
+      if (typeof sync.seedForeignLocksFromLocalCopies === 'function') {
+        return sync.seedForeignLocksFromLocalCopies();
+      }
+      return null;
+    }).then(render, render);
+  });
 
   // Shared helpers for other product-area modules (Customer File plans).
   window.ToolboxApp = {
