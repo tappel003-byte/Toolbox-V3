@@ -6943,6 +6943,7 @@
           // coming down in size printed at full size -- and what did not fit
           // the block printed missing.
           fitCaptions(printDeck);
+          fitStreetLine(printDeck);
           window.addEventListener('afterprint', clearPrintDeck, { once: true });
           // Every picture redrawn at the size it prints, before the dialog
           // opens: once it is open the deck is what it is.
@@ -7061,12 +7062,16 @@
      * Print what is on the screen.
      *
      * The flip chart IS the printed deck -- the same deck, settled the same
-     * way -- so there is nothing to build, compose or re-render here. It
-     * hands the deck it is already showing to the printer and goes back to
-     * the sheet it was on. Tim: "if I get to the last slide and I'm not
-     * happy with it I just push a button that says print ... it uses the
-     * presentation, just render the PDF. I think you're over complicating
-     * everything."
+     * way -- so there is nothing to compose or re-render here. It hands the
+     * deck it is already showing to the printer and goes back to the sheet
+     * it was on. Tim: "if I get to the last slide and I'm not happy with it
+     * I just push a button that says print ... it uses the presentation,
+     * just render the PDF. I think you're over complicating everything."
+     *
+     * Photographs still have to be cut down to print size first. The Print /
+     * PDF button does that; Present's Print used to skip it, so a flip-chart
+     * PDF walked out the door at phone resolution and either choked the mail
+     * client or rendered as mush.
      */
     function printWhatIsShowing() {
       if (!presentDeck) return;
@@ -7075,16 +7080,32 @@
       // printer still scaled to the window. It is taken off for the print
       // and put back after.
       var shown = presentDeck.querySelector('.rb-sheet.is-present-current');
+      var shownTransform = shown ? shown.style.transform : '';
       if (shown) shown.style.transform = '';
+      // --present hides every sheet but the current one. Shrink needs a real
+      // drawn width on every photograph, so drop the framing for the weigh
+      // (same layout the Print / PDF button uses) and put it back after.
+      var wasPresent = presentDeck.classList.contains('rb-print--present');
+      if (wasPresent) presentDeck.classList.remove('rb-print--present');
+      if (shown) shown.classList.remove('is-present-current');
       document.body.classList.add('is-printing');
       var back = function () {
         document.body.classList.remove('is-printing');
-        // Back on the sheet it was left on, at the size the window is now.
-        if (presentDeck) fitPresentSheet();
+        if (wasPresent && presentDeck) {
+          presentDeck.classList.add('rb-print--present');
+          if (shown) {
+            shown.classList.add('is-present-current');
+            shown.style.transform = shownTransform;
+          }
+          fitPresentSheet();
+        }
       };
       window.addEventListener('afterprint', back, { once: true });
-      window.requestAnimationFrame(function () {
-        window.requestAnimationFrame(function () { window.print(); });
+      shrinkPrintImages(presentDeck).then(function (weighed) {
+        window.__toolboxPrintWeight = weighed;
+        window.requestAnimationFrame(function () {
+          window.requestAnimationFrame(function () { window.print(); });
+        });
       });
     }
 
@@ -7105,7 +7126,6 @@
         return composeFloorStills();
       }).then(function () {
         presentDeck = buildPrintDeck();
-        presentDeck.classList.add('rb-print--present');
         presentDeck.removeAttribute('aria-hidden');
         // Nothing on a slide being shown to somebody is typeable. The deck is
         // built by the same renderer as the editing sheets, which leaves its
@@ -7113,53 +7133,70 @@
         [].slice.call(presentDeck.querySelectorAll('[contenteditable]')).forEach(function (el) {
           el.setAttribute('contenteditable', 'false');
         });
+        // Measure FIRST as a normal print deck (off-screen, every sheet in
+        // layout), THEN flip into presentation framing. Adding --present
+        // first hid every sheet with display:none, so CONTENTS fit, caption
+        // shrink, street fit and pin layout all measured against zero size.
+        // Present and the PDF printed from it then looked nothing like the
+        // editor Tim had just approved.
         document.body.appendChild(presentDeck);
-        document.body.classList.add('is-presenting');
-        // The same settling the printed deck gets. Without it the plans are
-        // laid out against a detached sheet and the captions never measured,
-        // and the preview would stop being a preview.
         relayoutPrintedPlans(presentDeck);
         fitCoverContents(presentDeck);
         fitCaptions(presentDeck);
+        fitStreetLine(presentDeck);
 
-        presentBar = buildPresentBar(presentSheets().length);
-        document.body.appendChild(presentBar);
+        // Plan images on Picture Locations load after the first layout. Wait
+        // for them and lay out again so pin size is published before the
+        // sheets are hidden for the flip chart -- otherwise Present/PDF keep
+        // the CSS fallback size.
+        return deckSettled(presentDeck).then(function () {
+          relayoutPrintedPlans(presentDeck);
+          fitCoverContents(presentDeck);
+          fitCaptions(presentDeck);
+          fitStreetLine(presentDeck);
 
-        listenWhilePresenting(window, 'resize', fitPresentSheet);
-        listenWhilePresenting(window, 'keydown', function (event) {
-          if (!presentDeck) return;
-          var key = event.key;
-          if (key === 'Escape') { event.preventDefault(); closePresentation(); return; }
-          if (key === 'ArrowRight' || key === 'ArrowDown' || key === 'PageDown' || key === ' ') {
-            event.preventDefault(); showPresentSheet(presentAt + 1); return;
-          }
-          if (key === 'ArrowLeft' || key === 'ArrowUp' || key === 'PageUp') {
-            event.preventDefault(); showPresentSheet(presentAt - 1); return;
-          }
-          if (key === 'Home') { event.preventDefault(); showPresentSheet(0); return; }
-          if (key === 'End') { event.preventDefault(); showPresentSheet(presentSheets().length - 1); }
+          presentDeck.classList.add('rb-print--present');
+          document.body.classList.add('is-presenting');
+
+          presentBar = buildPresentBar(presentSheets().length);
+          document.body.appendChild(presentBar);
+
+          listenWhilePresenting(window, 'resize', fitPresentSheet);
+          listenWhilePresenting(window, 'keydown', function (event) {
+            if (!presentDeck) return;
+            var key = event.key;
+            if (key === 'Escape') { event.preventDefault(); closePresentation(); return; }
+            if (key === 'ArrowRight' || key === 'ArrowDown' || key === 'PageDown' || key === ' ') {
+              event.preventDefault(); showPresentSheet(presentAt + 1); return;
+            }
+            if (key === 'ArrowLeft' || key === 'ArrowUp' || key === 'PageUp') {
+              event.preventDefault(); showPresentSheet(presentAt - 1); return;
+            }
+            if (key === 'Home') { event.preventDefault(); showPresentSheet(0); return; }
+            if (key === 'End') { event.preventDefault(); showPresentSheet(presentSheets().length - 1); }
+          });
+          // One notch of a wheel is one sheet. A trackpad sends a stream of
+          // small deltas rather than notches, so they are piled up to a
+          // threshold and the pile is dropped once the hand stops -- otherwise
+          // one flick runs the whole report past.
+          listenWhilePresenting(presentDeck, 'wheel', function (event) {
+            event.preventDefault();
+            var now = Date.now();
+            if (now - wheelRestAt > 220) wheelPile = 0;
+            wheelRestAt = now;
+            wheelPile += event.deltaY;
+            if (wheelPile >= 40) { wheelPile = 0; showPresentSheet(presentAt + 1); }
+            else if (wheelPile <= -40) { wheelPile = 0; showPresentSheet(presentAt - 1); }
+          }, { passive: false });
+          listenWhilePresenting(presentDeck, 'click', function (event) {
+            if (event.target.closest('.rb-present-bar')) return;
+            // The right half goes on, the left half goes back, the way a
+            // slideshow does.
+            showPresentSheet(event.clientX > window.innerWidth / 2 ? presentAt + 1 : presentAt - 1);
+          });
+
+          showPresentSheet(0);
         });
-        // One notch of a wheel is one sheet. A trackpad sends a stream of
-        // small deltas rather than notches, so they are piled up to a
-        // threshold and the pile is dropped once the hand stops -- otherwise
-        // one flick runs the whole report past.
-        listenWhilePresenting(presentDeck, 'wheel', function (event) {
-          event.preventDefault();
-          var now = Date.now();
-          if (now - wheelRestAt > 220) wheelPile = 0;
-          wheelRestAt = now;
-          wheelPile += event.deltaY;
-          if (wheelPile >= 40) { wheelPile = 0; showPresentSheet(presentAt + 1); }
-          else if (wheelPile <= -40) { wheelPile = 0; showPresentSheet(presentAt - 1); }
-        }, { passive: false });
-        listenWhilePresenting(presentDeck, 'click', function (event) {
-          if (event.target.closest('.rb-present-bar')) return;
-          // The right half goes on, the left half goes back, the way a
-          // slideshow does.
-          showPresentSheet(event.clientX > window.innerWidth / 2 ? presentAt + 1 : presentAt - 1);
-        });
-
-        showPresentSheet(0);
       }).catch(function (err) {
         console.warn('Presentation could not be opened', err);
         closePresentation();
