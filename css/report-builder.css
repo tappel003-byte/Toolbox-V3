@@ -843,6 +843,18 @@ body.report-builder-open .canvas {
   .rb-floor-box.is-active::after { content: none; }
 }
 
+/* The still picture a printed slide draws when the live view is on another
+   slide. It fills the frame the live view would have filled, so the slide
+   prints the way it looks. */
+.rb-topo-still {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  z-index: 1;
+}
+
 .rb-topo-live {
   position: absolute;
   inset: 0;

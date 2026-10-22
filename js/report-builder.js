@@ -2358,6 +2358,12 @@
           // single DOM node: handing it to a thumbnail moves it off the
           // sheet and into the stamp, taking the drawing with it.
           mountTopo: thumb ? null : (page._mountTopo || null),
+          // What a slide draws when the live view is on another slide. Only
+          // the printed deck has one, and only for the slides that need it.
+          stillTopo: thumb ? null : function (p, slot) {
+            var shots = p && p._printTopo;
+            return shots ? (shots[Number(slot) || 0] || '') : '';
+          },
           topoSlots: thumb ? 1 : floorSlotsForPage(page),
           topoActiveSlot: thumb ? 0 : floorActiveSlotForPage(page),
           // The cover's aerial view, carried onto this page automatically and
@@ -6521,6 +6527,83 @@
       });
     }
 
+    /**
+     * Paint a still picture of every floor slide's drawing, before printing.
+     *
+     * The live contour view is one element per slot for the whole page, so
+     * only the slide being looked at can hold it. On paper every slide is
+     * shown at once, so the rest need a picture of their own. This composes
+     * one per slide -- with that slide's own display settings, and one frame
+     * shared by the whole job so every level lands at the same scale in the
+     * same place, which is what Lock view means on screen.
+     *
+     * The slide that does hold the live view gets a still too: the deck is
+     * built detached, and a live view mounted into nothing measures nothing.
+     */
+    function composeFloorStills() {
+      var api = window.ToolboxFloorSurvey;
+      if (!api || typeof api.composeReportTopoFigureForPage !== 'function' || !workingRecord) {
+        return Promise.resolve(0);
+      }
+      var getMedia = window.ToolboxDB && window.ToolboxDB.getMedia
+        ? window.ToolboxDB.getMedia.bind(window.ToolboxDB)
+        : null;
+      var wanted = [];
+      pages.forEach(function (page) {
+        if (!page || page.type !== 'floor') return;
+        var meta = page.meta || {};
+        if (meta.reserved || !meta.canvasId) return;
+        var slots = floorSlotsForPage(page);
+        for (var slot = 0; slot < slots; slot += 1) wanted.push({ page: page, slot: slot });
+      });
+      if (!wanted.length) return Promise.resolve(0);
+
+      var first = wanted[0];
+      var firstMeta = first.page.meta || {};
+      var sharedExtent = null;
+      var frame = (typeof api.reportTopoExtentForPage === 'function')
+        ? api.reportTopoExtentForPage(workingRecord, {
+          canvasId: firstMeta.canvasId,
+          epochId: firstMeta.epochId,
+          areaId: firstMeta.areaId || null,
+          scope: firstMeta.scope || 'all',
+          settings: floorViewFor(first.page, first.slot) || null,
+        }).catch(function () { return null; })
+        : Promise.resolve(null);
+
+      return frame.then(function (extent) {
+        sharedExtent = extent || null;
+        var painted = 0;
+        return wanted.reduce(function (chain, job) {
+          return chain.then(function () {
+            var meta = job.page.meta || {};
+            return api.composeReportTopoFigureForPage(workingRecord, {
+              canvasId: meta.canvasId,
+              epochId: meta.epochId,
+              areaId: meta.areaId || null,
+              scope: meta.scope || 'all',
+              settings: floorViewFor(job.page, job.slot) || null,
+              extent: sharedExtent,
+            }, getMedia).then(function (composed) {
+              if (!composed || !composed.dataUrl) return;
+              job.page._printTopo = job.page._printTopo || {};
+              job.page._printTopo[job.slot] = composed.dataUrl;
+              painted += 1;
+            }).catch(function (err) {
+              // One slide that cannot be painted must not stop the print.
+              console.warn('Floor slide could not be painted for print', meta.canvasId, err);
+            });
+          });
+        }, Promise.resolve()).then(function () { return painted; });
+      });
+    }
+
+    function clearFloorStills() {
+      pages.forEach(function (page) {
+        if (page && page._printTopo) delete page._printTopo;
+      });
+    }
+
     function buildPrintDeck() {
       var deck = document.createElement('div');
       deck.className = 'rb-print';
@@ -6533,10 +6616,19 @@
         // fell back to the default placement -- the PDF showed the logo in the
         // bottom-left corner no matter where it had been put and locked.
         page._brandBox = currentBrandBox(page);
+        // The printed deck never borrows the live view, even for the slide
+        // that is holding it. Taking it would move it off the screen sheet,
+        // and the deck is built detached, where a live view measures nothing
+        // and draws itself into a corner. Every printed slide draws its own
+        // still, so they all print the same way.
+        var liveMount = page._mountTopo;
+        page._mountTopo = null;
         try {
           renderSheet(sheet, page, pages);
         } catch (err) {
           console.warn('Page could not be prepared for print', page && page.id, err);
+        } finally {
+          page._mountTopo = liveMount;
         }
       });
       return deck;
@@ -6570,6 +6662,7 @@
     function clearPrintDeck() {
       if (printDeck && printDeck.parentNode) printDeck.parentNode.removeChild(printDeck);
       printDeck = null;
+      clearFloorStills();
       document.body.classList.remove('is-printing');
       renderPages();
     }
@@ -6579,6 +6672,8 @@
       printBtn.addEventListener('click', function () {
         flushSave().catch(function () {}).then(function () {
           clearPrintDeck();
+          return composeFloorStills();
+        }).then(function () {
           printDeck = buildPrintDeck();
           document.body.appendChild(printDeck);
           document.body.classList.add('is-printing');

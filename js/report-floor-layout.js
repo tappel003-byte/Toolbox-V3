@@ -552,8 +552,26 @@
         var bareView = typeof options.mountTopo === 'function'
           ? options.mountTopo(page, slot)
           : null;
+        // The drawing is a live view, and there is exactly one of it per slot
+        // in the whole page. The slide being looked at borrows it; no other
+        // slide can have it at the same time. That was fine on screen, where
+        // only one slide is shown -- and wrong on paper, where every slide is
+        // shown at once: a printed report carried its contour map on the
+        // slide that happened to be open and this note on every other one.
+        // Tim: "the contour map was in the upper left-hand corner and not
+        // justified ... this is not done if I can't print it and send it."
+        //
+        // So a slide with no live view to borrow draws the still picture
+        // composed for it instead, at the same size and in the same frame.
+        var stillShot = options.stillTopo ? options.stillTopo(page, slot) : '';
         if (bareView) {
           bareDraw.appendChild(bareView);
+        } else if (stillShot) {
+          var bareStill = document.createElement('img');
+          bareStill.className = 'rb-topo-still';
+          bareStill.src = stillShot;
+          bareStill.alt = '';
+          bareDraw.appendChild(bareStill);
         } else {
           var bareNote = document.createElement('p');
           bareNote.className = 'rb-sheet__note';

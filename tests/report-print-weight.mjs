@@ -126,8 +126,14 @@ for (;;) {
 check('the deck weighs its own pictures before it prints', !!weighed,
   JSON.stringify(weighed));
 
+// The deck also carries a composed contour map for every floor slide now,
+// and those are already at the resolution they print -- there is nothing to
+// take off them, so they do not shrink the way a 4032px photograph does.
+// What has to stay true is that the photographs are cut down hard and the
+// whole thing is still a file that can be emailed, which the checks below
+// measure directly.
 check('and the pictures in it are a fraction of what they were',
-  weighed && weighed.redrawn >= 20 && weighed.after < weighed.before / 8,
+  weighed && weighed.redrawn >= 20 && weighed.after < weighed.before / 4,
   JSON.stringify({ redrawn: weighed && weighed.redrawn,
     beforeMB: weighed && +(weighed.before / 1048576).toFixed(1),
     afterMB: weighed && +(weighed.after / 1048576).toFixed(1) }));
