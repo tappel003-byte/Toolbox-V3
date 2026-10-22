@@ -909,7 +909,7 @@
    * every picture shorter -- and a picture is sized by whichever of its two
    * dimensions runs out first, so a short row makes a NARROW picture too,
    * however wide its column is. Ten photographs two across is five rows: on a
-   * 17 x 11 sheet that left each one about the size of a postage stamp,
+   * 11x17 sheet that left each one about the size of a postage stamp,
    * marooned in a cell many times its size.
    *
    * Tim, looking at exactly that: "These are worthless views. Remove these."
@@ -6130,7 +6130,7 @@
           startX: event.clientX,
           startY: event.clientY,
           // Inches, because the pen log's own model is in inches on a
-          // 17 x 11 sheet rather than in percentages of it.
+          // 11x17 sheet rather than in percentages of it.
           perInX: penStage.width / 17,
           perInY: penStage.height / 11,
           boxes: penLogBoxes(),

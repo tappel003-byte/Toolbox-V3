@@ -3,8 +3,8 @@
  *
  * Run: node tests/report-print-matches-editor.mjs   (static server on 8765)
  *
- * Printing used to build a SECOND deck at paper size -- 17in x 11in, i.e.
- * 11x17 landscape -- and everything that has to fit was worked out again at
+ * Printing used to build a SECOND deck at paper size -- 11x17 landscape --
+ * and everything that has to fit was worked out again at
  * that size: text re-wrapped, captions shrank by a different amount, photos
  * were measured against a different box, pin size came off a different plan
  * rect. The PDF therefore disagreed with the editor Tim had just approved:
