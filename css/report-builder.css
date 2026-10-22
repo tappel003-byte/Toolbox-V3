@@ -2222,6 +2222,11 @@ body.report-builder-open .canvas {
   .rb-penlog__pin.is-selected { box-shadow: none; }
 }
 
+/* The printed deck and the flip chart are both rendered on screen, where
+   @media print never fires. Which pin is being worked on is screen chrome:
+   it belongs on the editing sheet and nowhere else. */
+.rb-print .rb-penlog__pin.is-selected { box-shadow: none; }
+
 .rb-penlog__photo {
   margin: 0;
   padding: 0;

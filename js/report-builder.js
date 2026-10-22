@@ -750,15 +750,41 @@
     return n.toFixed(places);
   }
 
-  function renderNorthArrow() {
+  // The plan is drawn with the front of the building toward the bottom of the
+  // sheet, so the way the front door faces IS the page's downward direction,
+  // and north is whatever that leaves. A house facing south -- the common one
+  // -- puts north up, which is why an arrow that never rotated at all looked
+  // right until a job faced any other way.
+  var NORTH_ROTATION = { S: 0, W: 90, N: 180, E: 270 };
+
+  function northRotationFor(page) {
+    var meta = (page && page.meta) || {};
+    var ps = window.ToolboxPlanSetup;
+    if (!ps || typeof ps.canvasById !== 'function' || !workingRecord || !meta.canvasId) return 0;
+    var canvas = null;
+    try { canvas = ps.canvasById(workingRecord, meta.canvasId); } catch (err) { canvas = null; }
+    var facing = canvas && typeof canvas.frontDoorFacing === 'string'
+      ? canvas.frontDoorFacing.trim().toUpperCase().charAt(0)
+      : '';
+    return NORTH_ROTATION[facing] || 0;
+  }
+
+  function renderNorthArrow(rotateDeg) {
     var wrap = document.createElement('div');
     wrap.className = 'rb-topo-page__north';
     wrap.setAttribute('aria-hidden', 'true');
+    var deg = Number(rotateDeg);
+    if (!isFinite(deg)) deg = 0;
     wrap.innerHTML =
       '<svg viewBox="0 0 40 52" focusable="false">' +
+      '<g transform="rotate(' + deg + ' 20 26)">' +
       '<polygon points="20,2 28,22 20,18 12,22" fill="#111"/>' +
       '<polygon points="20,50 28,30 20,34 12,30" fill="#bbb"/>' +
-      '<text x="20" y="16" text-anchor="middle" font-size="9" font-weight="700" fill="#111">N</text>' +
+      // Turned back the other way so the letter rides the arrowhead and
+      // still reads upright on a plan that is not facing south.
+      '<text x="20" y="16" text-anchor="middle" font-size="9" font-weight="700" fill="#111"' +
+      ' transform="rotate(' + (-deg) + ' 20 13)">N</text>' +
+      '</g>' +
       '</svg>';
     return wrap;
   }
@@ -2352,7 +2378,7 @@
           imported: imported,
           layout: layout,
           formatSurveyDate: formatSurveyDate,
-          renderNorthArrow: renderNorthArrow,
+          renderNorthArrow: function () { return renderNorthArrow(northRotationFor(page)); },
           renderRelativeReadings: renderRelativeReadings,
           // Never in a preview. There is one live topo host and it is a
           // single DOM node: handing it to a thumbnail moves it off the
@@ -3436,6 +3462,16 @@
         // pill and the aerial view each back in a default corner, on top of
         // the drawing. Same fault the Discussion had, same cure.
         item._bookFloorLayout = floorLayout;
+        // Lock layout means the book's placement, on every slide. It was
+        // written onto the active slide alone, so the others kept whatever
+        // they had been saved with and the pill, the aerial and the frame
+        // drifted from slide to slide after the first one.
+        if (floorLayout && floorLayout.locked) {
+          item.meta = item.meta || {};
+          item.meta.layout = window.ToolboxReportFloorLayout
+            ? window.ToolboxReportFloorLayout.cloneLayout(floorLayout)
+            : floorLayout;
+        }
         // How big the colour scale is drawn on the page. It is the slide's
         // own Legend size -- the same control that sizes it on the Floor
         // Survey screen -- and renderSheet runs outside this closure, so it
