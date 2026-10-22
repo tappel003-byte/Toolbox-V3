@@ -3428,6 +3428,14 @@
       (pages || []).forEach(function (item) {
         if (!item || item.type !== 'floor') return;
         item._overviewUrl = coverOverviewUrl;
+        // The book's framing and chrome placement, on EVERY floor slide and
+        // not only the one being looked at. Without it renderSheet falls
+        // through to defaultLayout(), so the printed deck drew every slide
+        // the investigator was not sitting on at the default frame: the plan
+        // scaled up until it ran off the sheet, and the colour scale, the
+        // pill and the aerial view each back in a default corner, on top of
+        // the drawing. Same fault the Discussion had, same cure.
+        item._bookFloorLayout = floorLayout;
         // How big the colour scale is drawn on the page. It is the slide's
         // own Legend size -- the same control that sizes it on the Floor
         // Survey screen -- and renderSheet runs outside this closure, so it
