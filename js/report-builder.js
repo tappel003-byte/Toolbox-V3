@@ -6785,6 +6785,7 @@
         '<button type="button" data-present="back" aria-label="Previous sheet">‹</button>' +
         '<span class="rb-present-bar__count">1 of ' + total + '</span>' +
         '<button type="button" data-present="next" aria-label="Next sheet">›</button>' +
+        '<button type="button" data-present="print">Print</button>' +
         '<button type="button" data-present="close">Close</button>';
       bar.addEventListener('click', function (event) {
         var hit = event.target.closest('[data-present]');
@@ -6792,10 +6793,42 @@
         event.stopPropagation();
         var what = hit.getAttribute('data-present');
         if (what === 'close') closePresentation();
+        else if (what === 'print') printWhatIsShowing();
         else if (what === 'back') showPresentSheet(presentAt - 1);
         else if (what === 'next') showPresentSheet(presentAt + 1);
       });
       return bar;
+    }
+
+    /**
+     * Print what is on the screen.
+     *
+     * The flip chart IS the printed deck -- the same deck, settled the same
+     * way -- so there is nothing to build, compose or re-render here. It
+     * hands the deck it is already showing to the printer and goes back to
+     * the sheet it was on. Tim: "if I get to the last slide and I'm not
+     * happy with it I just push a button that says print ... it uses the
+     * presentation, just render the PDF. I think you're over complicating
+     * everything."
+     */
+    function printWhatIsShowing() {
+      if (!presentDeck) return;
+      // The shown sheet is placed and scaled by an inline transform, and an
+      // inline style beats any stylesheet -- it would have gone to the
+      // printer still scaled to the window. It is taken off for the print
+      // and put back after.
+      var shown = presentDeck.querySelector('.rb-sheet.is-present-current');
+      if (shown) shown.style.transform = '';
+      document.body.classList.add('is-printing');
+      var back = function () {
+        document.body.classList.remove('is-printing');
+        // Back on the sheet it was left on, at the size the window is now.
+        if (presentDeck) fitPresentSheet();
+      };
+      window.addEventListener('afterprint', back, { once: true });
+      window.requestAnimationFrame(function () {
+        window.requestAnimationFrame(function () { window.print(); });
+      });
     }
 
     function listenWhilePresenting(target, type, handler, options) {
@@ -6817,6 +6850,12 @@
         presentDeck = buildPrintDeck();
         presentDeck.classList.add('rb-print--present');
         presentDeck.removeAttribute('aria-hidden');
+        // Nothing on a slide being shown to somebody is typeable. The deck is
+        // built by the same renderer as the editing sheets, which leaves its
+        // text fields editable.
+        [].slice.call(presentDeck.querySelectorAll('[contenteditable]')).forEach(function (el) {
+          el.setAttribute('contenteditable', 'false');
+        });
         document.body.appendChild(presentDeck);
         document.body.classList.add('is-presenting');
         // The same settling the printed deck gets. Without it the plans are

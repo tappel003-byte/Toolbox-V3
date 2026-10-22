@@ -2965,6 +2965,32 @@ body.is-presenting { overflow: hidden; }
 
 @media print {
   .rb-present-bar { display: none !important; }
+
+  /* Printing from the flip chart prints the whole deck, not the one sheet
+     being shown. It is the same deck either way -- the presentation is the
+     printed deck -- so this only undoes the full-screen framing and lets
+     every sheet back out onto the paper. */
+  .rb-print--present {
+    position: static;
+    left: auto;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    background: #fff;
+  }
+
+  .rb-print--present .rb-sheet,
+  .rb-print--present .rb-sheet.is-present-current {
+    display: block;
+    position: relative;
+    left: auto;
+    top: auto;
+    transform: none;
+    box-shadow: none;
+  }
 }
 
 @media print {
