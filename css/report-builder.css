@@ -2913,11 +2913,45 @@ body.report-builder-open .canvas {
    in layout, and no amount of re-running the layout changes that.
    Pushed far off-screen instead: invisible, inert, and measurable. */
 .rb-print {
+  /* The printed deck is built and measured at THE SIZE THE EDITOR'S SHEET IS
+     RIGHT NOW, and each finished sheet is then scaled up to the paper inside
+     its own page box. Measuring at paper size is what made the PDF disagree
+     with the editor: text re-wrapped, captions shrank by a different amount,
+     photographs were measured against a different box and pin size came off
+     a different plan rect. Nothing is fitted for paper now -- the paper
+     shows the sheet the editor settled, enlarged.
+     The three numbers are written on the deck from script, because the
+     editing sheet is sized to whatever the stage gives it. 11x17 landscape
+     is 1632 x 1056 CSS pixels at 96dpi, so the scale is 1632 / sheet width
+     and the sheet's own 17:11 shape makes the height come out exact. */
+  --rb-print-sheet-w: 680px;
+  --rb-print-sheet-h: 440px;
+  --rb-print-scale-x: 2.4;
+  --rb-print-scale-y: 2.4;
   position: fixed;
   left: -20000px;
   top: 0;
-  width: 17in;
+  width: var(--rb-print-sheet-w);
   pointer-events: none;
+}
+
+/* One sheet of paper, holding one editor-sized sheet. Off-screen, where the
+   deck is measured, it is the sheet's own size; on paper it becomes the page
+   and the sheet inside it fills it. */
+.rb-print__page {
+  position: relative;
+  width: var(--rb-print-sheet-w);
+  height: var(--rb-print-sheet-h);
+}
+
+/* And the sheet inside it is that size WHILE IT IS BEING MEASURED, not only
+   once the paper rules come in. .rb-sheet's own 680px would otherwise be the
+   size every fit on the deck measured against -- a different size from the
+   editing sheet, which is the whole thing this is here to stop. */
+.rb-print .rb-sheet {
+  width: var(--rb-print-sheet-w);
+  height: var(--rb-print-sheet-h);
+  max-width: none;
 }
 
 /* Presentation: the printed deck, brought on screen one sheet at a time.
@@ -2943,6 +2977,10 @@ body.is-presenting { overflow: hidden; }
 
 .rb-print--present .rb-sheet { display: none; }
 
+/* The page boxes stand aside in the flip chart: the sheet being shown is
+   placed against the full-screen deck itself. */
+.rb-print--present .rb-print__page { display: contents; }
+
 /* Placed and scaled from script, from the top-left corner. Centring a sheet
    that is larger than the window cannot be left to the layout: inside a
    clipping box the browser pins an oversized centred item to the start, and
@@ -2952,11 +2990,13 @@ body.is-presenting { overflow: hidden; }
   position: absolute;
   left: 0;
   top: 0;
-  /* The paper's real size. .rb-sheet caps itself at max-width 100%, which
-     here is the window -- that quietly squashed the sheet to the window's
-     shape, so the preview was not the page shape the PDF uses. */
-  width: 17in;
-  height: 11in;
+  /* The editing sheet's own size, scaled to the window from script. The flip
+     chart shows the same geometry the editor does, which is the whole point
+     of it being the preview -- and the same geometry the paper gets.
+     max-width is lifted because .rb-sheet caps itself at 100%, which here is
+     the window, and that squashed the sheet to the window's shape. */
+  width: var(--rb-print-sheet-w);
+  height: var(--rb-print-sheet-h);
   max-width: none;
   min-width: 0;
   flex: none;
@@ -3036,13 +3076,18 @@ body.is-presenting { overflow: hidden; }
     background: #fff;
   }
 
+  .rb-print--present .rb-print__page { display: block; }
+
   .rb-print--present .rb-sheet,
   .rb-print--present .rb-sheet.is-present-current {
     display: block;
     position: relative;
     left: auto;
     top: auto;
-    transform: none;
+    /* Back to the paper scale. The flip chart's own fit-to-window transform
+       is cleared from script before printing, and this is what prints. */
+    transform: scale(var(--rb-print-scale-x), var(--rb-print-scale-y));
+    transform-origin: top left;
     box-shadow: none;
   }
 }
@@ -3054,6 +3099,7 @@ body.is-presenting { overflow: hidden; }
     width: auto;
   }
 
+  /* 11x17 paper, landscape: 17 inches across the page. */
   @page {
     size: 17in 11in;
     margin: 0;
@@ -3070,14 +3116,12 @@ body.is-presenting { overflow: hidden; }
 
   body.is-printing .rb-print { display: block; }
 
-  .rb-print .rb-sheet {
-    display: block;
+  /* The page box IS the sheet of paper, and it is what paginates. A scaled
+     sheet reserves only its unscaled space in flow, so the page break can
+     never be left to the sheet itself. */
+  .rb-print__page {
     width: 17in;
     height: 11in;
-    max-width: none;
-    margin: 0;
-    border: 0;
-    box-shadow: none;
     overflow: hidden;
     break-after: page;
     page-break-after: always;
@@ -3085,9 +3129,25 @@ body.is-presenting { overflow: hidden; }
     page-break-inside: avoid;
   }
 
-  .rb-print .rb-sheet:last-child {
+  .rb-print__page:last-child {
     break-after: auto;
     page-break-after: auto;
+  }
+
+  /* The finished editor sheet, enlarged to fill the paper. Everything in it
+     was laid out, wrapped and fitted at the editing sheet's own size, so the
+     paper shows what the editor showed. */
+  .rb-print .rb-sheet {
+    display: block;
+    width: var(--rb-print-sheet-w);
+    height: var(--rb-print-sheet-h);
+    max-width: none;
+    margin: 0;
+    border: 0;
+    box-shadow: none;
+    overflow: hidden;
+    transform: scale(var(--rb-print-scale-x), var(--rb-print-scale-y));
+    transform-origin: top left;
   }
 
   /* Editor chrome never prints, whether or not the layout happens to be

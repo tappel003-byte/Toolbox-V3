@@ -6653,6 +6653,46 @@
       });
     }
 
+    /**
+     * The report's own faces, loaded.
+     *
+     * Every fit on the deck is a measurement of text, and text measured
+     * before its face has loaded is measured in the fallback face -- wider
+     * or narrower letters, so a caption is shrunk by the wrong amount and a
+     * street line wraps when it would have fitted. The fits ran immediately
+     * on attach, which is before this resolves.
+     */
+    function fontsReady() {
+      if (!document.fonts || typeof document.fonts.ready !== 'object') return Promise.resolve();
+      return Promise.resolve(document.fonts.ready).catch(function () {});
+    }
+
+    /** Measurable and truthful: pictures decoded, faces loaded, frames past. */
+    function deckReady(deck) {
+      if (!deck) return Promise.resolve();
+      return Promise.all([deckSettled(deck), fontsReady()]).then(function () {});
+    }
+
+    /**
+     * Settle one deck: lay the plans out, then fit what has to fit.
+     *
+     * Every one of these is a measurement, and they all measure the sheet at
+     * the editor's 680 x 440 -- the same numbers the editor itself used --
+     * so they arrive at the same answers it did. The sheet is enlarged to the
+     * paper afterwards by a transform, which changes nothing that was
+     * measured.
+     */
+    function settlePrintDeck(deck) {
+      if (!deck) return;
+      relayoutPrintedPlans(deck);
+      // The printed cover is a fresh sheet, so its contents is measured and
+      // stepped down on its own.
+      fitCoverContents(deck);
+      // And so is every printed caption and street line.
+      fitCaptions(deck);
+      fitStreetLine(deck);
+    }
+
     function shrinkPrintImages(deck) {
       if (!deck) return Promise.resolve({ before: 0, after: 0, redrawn: 0 });
       return deckSettled(deck).then(function () { return shrinkSettledDeck(deck); });
@@ -6901,14 +6941,57 @@
       });
     }
 
+    /**
+     * The size the editing sheet is right now, and the scale onto the paper.
+     *
+     * fitSheet() gives the editing sheet whatever width the stage has, so the
+     * sheet is a different number of pixels on every window. Anything inside
+     * it styled in pixels rather than container units therefore takes up a
+     * different FRACTION of the sheet at every size -- the Pictures caption
+     * plate is one -- and every fit that measures text is measuring at that
+     * size. Building the printed deck at any other size is what made the PDF
+     * disagree with the editor. So the printed deck is built at the size the
+     * editor is, and scaled from there.
+     *
+     * 11x17 landscape is 1632 x 1056 CSS pixels at 96dpi. The sheet already
+     * holds the 17:11 shape, so scaling by 1632 / width lands the height on
+     * 1056 exactly.
+     */
+    var PAPER_W_PX = 1632;
+    var PAPER_H_PX = 1056;
+
+    function printSheetSize() {
+      var live = root.querySelector('.rb-stage .rb-sheet');
+      var w = live ? Math.round(live.getBoundingClientRect().width) : 0;
+      var h = live ? Math.round(live.getBoundingClientRect().height) : 0;
+      if (!(w > 40) || !(h > 40)) { w = 680; h = 440; }
+      // Each axis scaled to its own edge of the paper. The editing sheet's
+      // height is floored to a whole pixel, so one scale taken from the width
+      // leaves a hair of white along the bottom of every page. The two
+      // scales differ by well under a tenth of a percent.
+      return { w: w, h: h, sx: PAPER_W_PX / w, sy: PAPER_H_PX / h };
+    }
+
     function buildPrintDeck() {
       var deck = document.createElement('div');
       deck.className = 'rb-print';
       deck.setAttribute('aria-hidden', 'true');
+      var size = printSheetSize();
+      deck.style.setProperty('--rb-print-sheet-w', size.w + 'px');
+      deck.style.setProperty('--rb-print-sheet-h', size.h + 'px');
+      deck.style.setProperty('--rb-print-scale-x', String(size.sx));
+      deck.style.setProperty('--rb-print-scale-y', String(size.sy));
       pages.forEach(function (page) {
+        // The sheet is built at the EDITOR's size and the page box is what
+        // becomes the sheet of paper. A scaled element reserves only its
+        // unscaled space in flow, so the paper -- and the page break -- has
+        // to be the box around it, never the sheet itself.
+        var paper = document.createElement('div');
+        paper.className = 'rb-print__page';
         var sheet = document.createElement('article');
         sheet.className = 'rb-sheet rb-sheet--print';
-        deck.appendChild(sheet);
+        paper.appendChild(sheet);
+        deck.appendChild(paper);
         // Only the on-screen render loop stamped this, so the printed deck
         // fell back to the default placement -- the PDF showed the logo in the
         // bottom-left corner no matter where it had been put and locked.
@@ -6974,16 +7057,10 @@
           printDeck = buildPrintDeck();
           document.body.appendChild(printDeck);
           document.body.classList.add('is-printing');
-          relayoutPrintedPlans(printDeck);
-          // The printed cover is a different sheet from the one on screen, so
-          // its contents is measured and stepped down on its own.
-          fitCoverContents(printDeck);
-          // And so is every printed caption. The deck is built fresh and had
-          // never been measured, so a description that fitted on screen by
-          // coming down in size printed at full size -- and what did not fit
-          // the block printed missing.
-          fitCaptions(printDeck);
-          fitStreetLine(printDeck);
+          // Nothing is measured until the deck can be measured truthfully.
+          return deckReady(printDeck);
+        }).then(function () {
+          settlePrintDeck(printDeck);
           window.addEventListener('afterprint', clearPrintDeck, { once: true });
           // Every picture redrawn at the size it prints, before the dialog
           // opens: once it is open the deck is what it is.
@@ -7184,20 +7261,12 @@
         // Present and the PDF printed from it then looked nothing like the
         // editor Tim had just approved.
         document.body.appendChild(presentDeck);
-        relayoutPrintedPlans(presentDeck);
-        fitCoverContents(presentDeck);
-        fitCaptions(presentDeck);
-        fitStreetLine(presentDeck);
 
-        // Plan images on Picture Locations load after the first layout. Wait
-        // for them and lay out again so pin size is published before the
-        // sheets are hidden for the flip chart -- otherwise Present/PDF keep
-        // the CSS fallback size.
-        return deckSettled(presentDeck).then(function () {
-          relayoutPrintedPlans(presentDeck);
-          fitCoverContents(presentDeck);
-          fitCaptions(presentDeck);
-          fitStreetLine(presentDeck);
+        // Plan images on Picture Locations, and the report's own faces, are
+        // not there on attach. Everything here is a measurement, so nothing
+        // is measured until they are -- then once, not twice.
+        return deckReady(presentDeck).then(function () {
+          settlePrintDeck(presentDeck);
 
           presentDeck.classList.add('rb-print--present');
           document.body.classList.add('is-presenting');
