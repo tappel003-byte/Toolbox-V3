@@ -55,11 +55,19 @@
   function normalizeBox(raw, fallback) {
     var src = raw && typeof raw === 'object' ? raw : {};
     var fb = fallback || { x: 0, y: 0, w: 20, h: 12 };
+    var w = clamp(typeof src.w === 'number' ? src.w : fb.w, MIN_W, 100);
+    var h = clamp(typeof src.h === 'number' ? src.h : fb.h, MIN_H, 100);
+    // A box is kept ON the sheet. x and y were each clamped on their own and
+    // the size was never counted, so a piece dragged or grown near an edge
+    // could sit at 80% with a height of 30% and hang 10% of itself off the
+    // paper. On screen that overflow is easy to miss; printed, it crosses
+    // the sheet border -- which is what put the cover's aerial view over the
+    // bottom edge of page one.
     return {
-      x: clamp(typeof src.x === 'number' ? src.x : fb.x, 0, 92),
-      y: clamp(typeof src.y === 'number' ? src.y : fb.y, 0, 92),
-      w: clamp(typeof src.w === 'number' ? src.w : fb.w, MIN_W, 100),
-      h: clamp(typeof src.h === 'number' ? src.h : fb.h, MIN_H, 100),
+      x: clamp(typeof src.x === 'number' ? src.x : fb.x, 0, 100 - w),
+      y: clamp(typeof src.y === 'number' ? src.y : fb.y, 0, 100 - h),
+      w: w,
+      h: h,
     };
   }
 
