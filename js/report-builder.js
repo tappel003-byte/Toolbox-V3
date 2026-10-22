@@ -2883,7 +2883,10 @@
       var flApi = window.ToolboxReportFloorLayout;
       var raw = (page && page.meta && page.meta.layout) || floorLayout;
       var layout = flApi ? flApi.normalizeLayout(raw) : (raw || {});
-      return !!(floorCamera && floorCamera.locked) ||
+      // The layout's own flag counts too. It was the one thing this did not
+      // read, so the data could say unlocked while the button said locked.
+      return !!layout.locked ||
+        !!(floorCamera && floorCamera.locked) ||
         !!(layout.legendLock && layout.legendLock.locked) ||
         !!(layout.pillLock && layout.pillLock.locked);
     }
@@ -4177,6 +4180,35 @@
             floorLayout[lockKey] = { locked: false, scale: floorLayout[lockKey].scale };
           }
           });
+          // The picture ITSELF: the frame the drawing sits in, and the aerial
+          // view beside it. Locking spread the colour scale and the readings
+          // and stopped there, and it never set the layout's own locked flag
+          // -- so a slide that had never been given a placement of its own
+          // kept the factory one. That is why the Garage sheet put its aerial
+          // in the bottom-left corner while Main Level had it bottom-right,
+          // with the button reading "Unlock layout" on both. Tim: "What is
+          // the point of having a locked layout that doesn't lock the layout?"
+          var allApi = window.ToolboxReportFloorLayout;
+          if (allApi) {
+            var src = allApi.normalizeLayout((pCurrent.meta && pCurrent.meta.layout) || floorLayout);
+            floorLayout = allApi.normalizeLayout(floorLayout);
+            floorLayout.locked = wantLock;
+            if (wantLock) {
+              floorLayout.topo = JSON.parse(JSON.stringify(src.topo));
+              floorLayout.overview = JSON.parse(JSON.stringify(src.overview));
+            }
+            pages.forEach(function (fp) {
+              if (!fp || fp.type !== 'floor' || (fp.meta && fp.meta.reserved)) return;
+              fp.meta = fp.meta || {};
+              var own = allApi.normalizeLayout(fp.meta.layout || floorLayout);
+              own.locked = wantLock;
+              if (wantLock) {
+                own.topo = JSON.parse(JSON.stringify(src.topo));
+                own.overview = JSON.parse(JSON.stringify(src.overview));
+              }
+              fp.meta.layout = own;
+            });
+          }
           dirty = true;
           setSaveStatus('Saving…');
           renderPages();

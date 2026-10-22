@@ -97,6 +97,14 @@ await page.evaluate(async (id) => {
       areas: [{ id: 'a' + i, name: names[i], polygon: poly, createdAt: 1 }], boundary: poly };
   }
   rec.floorSurvey = { id: 'fs-locks', inspectionDate: '2026-10-09', byCanvasId: byCanvas };
+  // An aerial on the cover. Every Floor Survey sheet is handed it, and it is
+  // the piece that was not being held across slides -- without one here the
+  // fixture could not see the fault at all.
+  const aerialId = 'report-cover-overview-locks';
+  await window.ToolboxDB.putMedia(aerialId, plan);
+  rec.reportBuilder = rec.reportBuilder || {};
+  rec.reportBuilder.coverLayout = rec.reportBuilder.coverLayout || {};
+  rec.reportBuilder.coverLayout.overviewMediaId = aerialId;
   await window.ToolboxDB.saveCustomerFile(rec);
 }, FILE);
 
@@ -174,6 +182,49 @@ check('an unlocked colour scale still moves',
   Math.abs(afterDrag['legend-0'].x - before['legend-0'].x) > 2,
   JSON.stringify({ was: before['legend-0'], now: afterDrag['legend-0'] }));
 
+// Lock has to carry the PICTURE as well -- the frame the drawing sits in and
+// the aerial view beside it -- not only the colour scale and the readings.
+// Nothing here compared one slide against the next for those two, so locking
+// could spread half of itself and every test still passed. Tim, on one sheet
+// with the aerial bottom-right and the next with it bottom-left, both reading
+// "Unlock layout": "What is the point of having a locked layout that doesn't
+// lock the layout?"
+const boxes = () => page.evaluate(() => {
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+  const sr = sheet.getBoundingClientRect();
+  const out = {};
+  sheet.querySelectorAll('[data-rb-floor-box]').forEach((el) => {
+    const id = el.getAttribute('data-rb-floor-box');
+    if (!/^overview$|^topo$/.test(id)) return;
+    const r = el.getBoundingClientRect();
+    out[id] = {
+      x: +(((r.left - sr.left) / sr.width) * 100).toFixed(1),
+      y: +(((r.top - sr.top) / sr.height) * 100).toFixed(1),
+      w: +((r.width / sr.width) * 100).toFixed(1),
+      h: +((r.height / sr.height) * 100).toFixed(1),
+    };
+  });
+  return out;
+});
+
+// Put the aerial somewhere of this slide's own first, so the other slide
+// agreeing afterwards means something.
+const aerialAt = await page.evaluate(() => {
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+  const box = sheet.querySelector('[data-rb-floor-box="overview"]');
+  if (!box) return null;
+  const r = box.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+});
+if (aerialAt) {
+  await page.mouse.move(aerialAt.x, aerialAt.y);
+  await page.mouse.down();
+  await page.mouse.move(aerialAt.x + 300, aerialAt.y - 120, { steps: 12 });
+  await page.mouse.up();
+  await new Promise((r) => setTimeout(r, 1200));
+}
+const pictureHere = await boxes();
+
 await page.evaluate(() => {
   const btn = document.querySelector('[data-rb-floor-lock-all]');
   if (btn) btn.click();
@@ -198,6 +249,16 @@ check('and the readings are held by the same button',
 // The other level's sheet gets the same place and the same size.
 check('the Basement sheet opens', await openSheet('Floor · Basement'));
 const other = await pieces();
+const pictureThere = await boxes();
+check('and the frame and the aerial are held across slides too',
+  !!pictureHere.overview && !!pictureThere.overview &&
+  !!pictureHere.topo && !!pictureThere.topo &&
+  Math.abs(pictureThere.overview.x - pictureHere.overview.x) < 1 &&
+  Math.abs(pictureThere.overview.y - pictureHere.overview.y) < 1 &&
+  Math.abs(pictureThere.overview.w - pictureHere.overview.w) < 1 &&
+  Math.abs(pictureThere.topo.x - pictureHere.topo.x) < 1 &&
+  Math.abs(pictureThere.topo.w - pictureHere.topo.w) < 1,
+  JSON.stringify({ here: pictureHere, there: pictureThere }));
 check('every sheet now draws the colour scale in that one place, at that one size',
   Math.abs(other['legend-0'].x - lockedHere['legend-0'].x) < 0.6 &&
   Math.abs(other['legend-0'].y - lockedHere['legend-0'].y) < 0.6 &&
