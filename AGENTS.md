@@ -40,6 +40,12 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
 - One implementer modifies a given problem at a time.
 - Do not "helpfully" redesign a proven workflow that's outside the current milestone's scope, even if the redesign seems better.
 
+## Shipping is Tim's trigger, not the implementer's
+
+- **Push to the working branch. Do not merge to `main`.** Tim promotes. That is how shipping is triggered, and it is his call to make, not the implementer's.
+- This was drifted from once already. Work went to the branch alone from Oct 10 to Oct 20; then the implementer started merging every pull request to `main`, `main` builds deployed themselves, and the promote Tim had been doing quietly became a no-op — without him choosing that (Tim, Oct 22, 2026: "Go back to where I do the promotes do you understand").
+- A one-off instruction to merge a specific thing is not a standing change to this. If merging seems necessary, say so and stop; do not merge and report it afterwards.
+
 ## Proven behavior
 
 - Proven field behavior is presumed correct and carries a high burden of proof before it changes.
