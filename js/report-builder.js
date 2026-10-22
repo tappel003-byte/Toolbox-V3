@@ -757,12 +757,12 @@
   // right until a job faced any other way.
   var NORTH_ROTATION = { S: 0, W: 90, N: 180, E: 270 };
 
-  function northRotationFor(page) {
+  function northRotationFor(page, record) {
     var meta = (page && page.meta) || {};
     var ps = window.ToolboxPlanSetup;
-    if (!ps || typeof ps.canvasById !== 'function' || !workingRecord || !meta.canvasId) return 0;
+    if (!ps || typeof ps.canvasById !== 'function' || !record || !meta.canvasId) return 0;
     var canvas = null;
-    try { canvas = ps.canvasById(workingRecord, meta.canvasId); } catch (err) { canvas = null; }
+    try { canvas = ps.canvasById(record, meta.canvasId); } catch (err) { canvas = null; }
     var facing = canvas && typeof canvas.frontDoorFacing === 'string'
       ? canvas.frontDoorFacing.trim().toUpperCase().charAt(0)
       : '';
@@ -892,12 +892,16 @@
       // One column is one picture given the whole sheet, and nothing else:
       // two stacked down a single column is a strip. Tim, Oct 20: "1x2 NO."
       if (cols === 1) return n === 1;
-      // Every grid, on every slide. The row cap used to hide the tighter
-      // grids from a page carrying a lot of pictures, so the one page that
-      // most wanted bigger pictures was the one page that could not ask for
-      // them. Tim: "what I want is every single picture option that we have
-      // talked about available on every slide."
-      return true;
+      // The row cap stays until pages can SPLIT.
+      //
+      // Tim asked for every grid on every slide, and meant it with the
+      // pagination attached: "two-picture, one-row ... 100 pictures ...
+      // that's just 50 pages of two pictures each." Offering the tight grids
+      // without that only deepens the page it is already on, which is the
+      // postage-stamp view he had removed on Oct 20 -- "These are worthless
+      // views. Remove these." Opening the menu alone hands him back the
+      // thing he threw out, so it waits for the half that makes it safe.
+      return Math.ceil(n / cols) <= MAX_PICTURE_ROWS;
     });
     // A page carrying more than even the widest grid can hold in three rows
     // still has to offer something: the shallowest there is.
@@ -2411,7 +2415,7 @@
           imported: imported,
           layout: layout,
           formatSurveyDate: formatSurveyDate,
-          renderNorthArrow: function () { return renderNorthArrow(northRotationFor(page)); },
+          renderNorthArrow: function () { return renderNorthArrow(page._northRotation || 0); },
           renderRelativeReadings: renderRelativeReadings,
           // Never in a preview. There is one live topo host and it is a
           // single DOM node: handing it to a thumbnail moves it off the
@@ -3495,6 +3499,10 @@
         // pill and the aerial view each back in a default corner, on top of
         // the drawing. Same fault the Discussion had, same cure.
         item._bookFloorLayout = floorLayout;
+        // Which way north is on this level, worked out where the Customer
+        // File is in scope and handed over on the page -- renderSheet runs
+        // outside this closure.
+        item._northRotation = northRotationFor(item, workingRecord);
         // Lock layout means the book's placement, on every slide. It was
         // written onto the active slide alone, so the others kept whatever
         // they had been saved with and the pill, the aerial and the frame
