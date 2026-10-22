@@ -489,7 +489,9 @@
 
     lead.textContent = inside
       ? 'Stored surveys, photos, plans, and other data.'
-      : 'Customer Files stored on the server. Open a file to view its stored surveys, photos, plans, and other data.';
+      // File Explorer looks; it does not change anything. Saying where
+      // deleting happens stops the dead end of hunting for it here.
+      : 'Customer Files stored on the server. Open a file to view its stored surveys, photos, plans, and other data. This is a view only — deleting a job happens in the File Cabinet.';
     sub.textContent = inside ? 'Missing items are marked not stored.' : '';
     crumb.textContent = '';
 

@@ -645,7 +645,7 @@
       '    <div>' +
       '      <p class="eyebrow">Cloud file management</p>' +
       '      <h1>File Cabinet</h1>' +
-      '      <p>Browse cloud Customer Files. Check Out brings one onto this device, where Delete is inside that Customer File.</p>' +
+      '      <p>Browse cloud Customer Files. Check Out brings one onto this device. Move to Trash removes one you do not want, and Trash holds it until you restore or permanently delete it.</p>' +
       '      <p class="file-cabinet-cleanup" id="file-cabinet-cleanup" hidden>Deleted files are old enough to clean up.</p>' +
       '    </div>' +
       '    <button type="button" id="file-cabinet-trash" class="btn btn--secondary file-cabinet-trash">Trash</button>' +
@@ -839,6 +839,131 @@
       });
       actions.appendChild(openBtn);
     }
+
+    // Explicit recovery for a job whose holder cannot hand it back: a device
+    // lost, broken, or wiped still names itself in the Cabinet, and the job
+    // was stuck for everybody. Offered beside Open as well, because a device
+    // can be holding a read-only copy of the very job it needs back.
+    if (entry.availability === 'checked-out-elsewhere' &&
+        window.ToolboxSync && typeof window.ToolboxSync.takeOverCustomerFile === 'function') {
+      const takeBtn = document.createElement('button');
+      takeBtn.type = 'button';
+      takeBtn.className = 'btn btn--secondary cabinet-checkout-btn cabinet-takeover-btn';
+      takeBtn.textContent = 'Take Over';
+      takeBtn.addEventListener('click', function (event) {
+        event.stopPropagation();
+        const name = entry.displayName || 'Customer File';
+        const who = (entry.checkout && entry.checkout.email) ? entry.checkout.email : 'another device';
+        confirmAction({
+          title: 'Take over this Customer File?',
+          message: name + ' is checked out by ' + who + '. Taking it over moves the working copy to ' +
+            'this device. If that device holds work it never synced, the work stays on it but can no ' +
+            'longer be sent — its copy becomes read-only.',
+          cancelLabel: 'Cancel',
+          confirmLabel: 'Take Over',
+        }).then(function (confirmed) {
+          if (!confirmed) return;
+          takeBtn.disabled = true;
+          takeBtn.textContent = 'Taking over…';
+          const stop = watchSyncProgress(function (where) { takeBtn.textContent = where; });
+          return window.ToolboxSync.takeOverCustomerFile(entry.id).then(function (result) {
+            stop();
+            const leftBehind = typeof window.ToolboxSync.describeMissingMedia === 'function'
+              ? window.ToolboxSync.describeMissingMedia(result && result.missingMedia)
+              : '';
+            cabinetNotice = name + ' was taken over and is now on this device.' +
+              (leftBehind ? ' ' + leftBehind : '');
+            window.location.hash = '#/';
+          }).catch(function (err) {
+            stop();
+            console.warn('Take Over failed:', err);
+            cabinetNotice = (err && err.message) || 'Take Over failed.';
+            renderFileCabinet(app);
+            showFileCabinetNotice(app);
+          });
+        });
+      });
+      actions.appendChild(takeBtn);
+    }
+
+    // A cloud-only job had no way out of the Cabinet. The only route to
+    // Trash ran through a device's own working copy, so a job you did not
+    // want on the device -- an empty one, a mistake -- could not be deleted
+    // at all: Check Out first, then delete, and an empty job may not even
+    // check out. Tim, looking at two of them: "there's a couple jobs in
+    // Explorer right now but have nothing and I can't delete them."
+    //
+    // This is the Trash the Cabinet already has, not a permanent delete.
+    // Restore and Delete permanently both live in that Trash, and the
+    // 120-day retention stands. The button is drawn only where the move is
+    // actually allowed -- no copy on this device, no lease on it, not
+    // already trashed -- so it never offers something that will be refused.
+    const trashable = !entry.deletedAt &&
+      entry.presence !== 'local' &&
+      entry.availability === 'available' &&
+      window.ToolboxSync && typeof window.ToolboxSync.trashCabinetCustomerFile === 'function';
+    let rowMenu = null;
+    if (trashable) {
+      // Behind the row's own menu, not beside Check Out. Two buttons on one
+      // row squeezed the address and the date into wrapping on a phone, and
+      // the working surface comes before the chrome. This is the same menu
+      // the Customer Files rows already use, so the row keeps one action and
+      // the rarer one is a press away.
+      rowMenu = document.createElement('div');
+      // Inline, inside the row's actions. The plain cabinet-row-menu is
+      // absolutely positioned against the right edge of the shell, which is
+      // free on a Customer Files row but is exactly where this row's own
+      // button sits -- the two landed on top of each other.
+      rowMenu.className = 'cabinet-row-menu cabinet-row-menu--inline';
+
+      const menuToggle = document.createElement('button');
+      menuToggle.type = 'button';
+      menuToggle.className = 'cabinet-row-menu__toggle';
+      menuToggle.setAttribute('aria-label', 'More options for ' + (entry.displayName || 'Customer File'));
+      menuToggle.textContent = '•••';
+      menuToggle.addEventListener('click', function (event) {
+        event.stopPropagation();
+        const open = rowMenu.classList.contains('is-open');
+        document.querySelectorAll('.cabinet-row-menu.is-open').forEach(function (other) {
+          other.classList.remove('is-open');
+        });
+        rowMenu.classList.toggle('is-open', !open);
+      });
+
+      const trashBtn = document.createElement('button');
+      trashBtn.type = 'button';
+      trashBtn.className = 'cabinet-row-menu__action cabinet-trash-btn';
+      trashBtn.textContent = 'Move to Trash';
+      trashBtn.addEventListener('click', function (event) {
+        event.stopPropagation();
+        rowMenu.classList.remove('is-open');
+        const name = entry.displayName || 'Customer File';
+        confirmAction({
+          title: 'Move this Customer File to Trash?',
+          message: name + ' moves to File Cabinet Trash, including any plans and photographs. ' +
+            'It stays there until it is restored or permanently deleted.',
+          cancelLabel: 'Cancel',
+          confirmLabel: 'Move to Trash',
+        }).then(function (confirmed) {
+          if (!confirmed) return;
+          trashBtn.disabled = true;
+          trashBtn.textContent = 'Moving…';
+          return window.ToolboxSync.trashCabinetCustomerFile(entry.id).then(function () {
+            cabinetNotice = name + ' was moved to File Cabinet Trash.';
+            renderFileCabinet(app);
+            showFileCabinetNotice(app);
+          }).catch(function (err) {
+            console.warn('Cabinet Trash move failed:', err);
+            cabinetNotice = (err && err.message) || 'Could not move that Customer File to Trash.';
+            renderFileCabinet(app);
+            showFileCabinetNotice(app);
+          });
+        });
+      });
+      rowMenu.appendChild(menuToggle);
+      rowMenu.appendChild(trashBtn);
+    }
+    if (rowMenu) actions.appendChild(rowMenu);
     if (actions.childNodes.length) row.appendChild(actions);
 
     shell.appendChild(row);

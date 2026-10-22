@@ -121,6 +121,24 @@ function checkoutPayload(identity, deviceId, previous) {
   };
 }
 
+/**
+ * Who the job was taken from, kept on the lease that took it.
+ *
+ * A Take Over is the one way a lease changes hands without the holder
+ * agreeing, so it leaves a record of whose it was. Nothing reads this to
+ * make a decision -- the lease itself is the decision -- it is there so the
+ * Cabinet can say what happened.
+ */
+function takenOverFrom(previous) {
+  if (!previous) return null;
+  return {
+    email: normalizeEmail(previous.email),
+    deviceId: trimStr(previous.deviceId),
+    checkedOutAt: trimStr(previous.checkedOutAt),
+    takenAt: new Date().toISOString(),
+  };
+}
+
 /* ---- Access JWT verification (Web Crypto; no convenience headers) ---- */
 
 let cachedJwks = null;
@@ -518,7 +536,7 @@ async function deleteCustomerFilePrefix(env, id) {
  * R2 alone is sufficient: only one writer can satisfy the etag precondition.
  * Uses object.etag only (never httpEtag). Missing ETag → fail safe (no unconditional put).
  */
-async function acquireCheckout(env, id, identity, deviceId) {
+async function acquireCheckout(env, id, identity, deviceId, options) {
   const key = indexKey(id);
   const got = await env.CABINET.get(key);
   if (!got) return { status: 404 };
@@ -539,21 +557,32 @@ async function acquireCheckout(env, id, identity, deviceId) {
   }
   if (!index || index.id !== id) return { status: 500, message: 'Corrupt Customer File index' };
 
+  const takeOver = !!(options && options.takeOver);
   const existing = index.checkout || null;
-  if (existing && trimStr(existing.deviceId) && normalizeEmail(existing.email)) {
+  const heldByAnother = !!(existing && trimStr(existing.deviceId) && normalizeEmail(existing.email));
+  if (heldByAnother) {
     if (sameCheckoutOwner(existing, identity, deviceId)) {
       return { status: 200, index: index, idempotent: true };
     }
-    return {
-      status: 409,
-      message: 'Customer File is checked out by another user or device',
-      checkout: existing,
-    };
+    // A Take Over is the one acquire that does not stop here. The holder is
+    // not asked, because the reason for a Take Over is that the holder
+    // cannot answer -- a device lost, broken, or wiped. It is still one
+    // conditional write, so two devices cannot both win it.
+    if (!takeOver) {
+      return {
+        status: 409,
+        message: 'Customer File is checked out by another user or device',
+        checkout: existing,
+      };
+    }
   }
 
-  const next = Object.assign({}, index, {
-    checkout: checkoutPayload(identity, deviceId, null),
-  });
+  const taking = checkoutPayload(identity, deviceId, null);
+  if (takeOver && heldByAnother) {
+    const from = takenOverFrom(existing);
+    if (from) taking.takenOverFrom = from;
+  }
+  const next = Object.assign({}, index, { checkout: taking });
 
   const putOpts = conditionalPutOptions(etag, { contentType: 'application/json' });
   if (!putOpts) {
@@ -575,7 +604,9 @@ async function acquireCheckout(env, id, identity, deviceId) {
     }
     return {
       status: 409,
-      message: 'Customer File checkout changed during acquire',
+      message: takeOver
+        ? 'Customer File checkout changed during Take Over'
+        : 'Customer File checkout changed during acquire',
       checkout: latest && latest.checkout ? latest.checkout : null,
     };
   }
@@ -751,6 +782,52 @@ export default {
       if (result.status === 409) return conflict(request, result.message);
       if (result.status === 500) return text(request, result.message || 'Server error', 500);
       return json(request, { ok: true, deleted: result.deleted, purged: result.purged });
+    }
+
+    // Take Over is its own route, not a flag on the ordinary acquire, so
+    // nothing can slip past the refusal that protects a live lease by
+    // accident. The route exists because a lease can outlive the device
+    // holding it: a phone that is lost, broken, or wiped still names itself
+    // in the Cabinet, and without this the job was stuck for everybody.
+    match = /^files\/([^/]+)\/checkout\/takeover$/.exec(path);
+    if (match && request.method === 'POST') {
+      const id = decodeURIComponent(match[1]);
+      const identityResult = await requireIdentity(request, env);
+      if (identityResult.errorResponse) return identityResult.errorResponse;
+      let body;
+      try {
+        body = await request.json();
+      } catch (_) {
+        return badRequest(request, 'Invalid JSON');
+      }
+      const deviceId = trimStr(body && body.deviceId) || requestDeviceId(request);
+      if (!deviceId) return badRequest(request, 'deviceId is required');
+      const headerDevice = requestDeviceId(request);
+      if (headerDevice && headerDevice !== deviceId) {
+        return badRequest(request, 'deviceId header/body mismatch');
+      }
+
+      const tomb = await env.CABINET.head(purgeKey(id));
+      if (tomb) return conflict(request, 'Customer File permanently deleted');
+
+      const result = await acquireCheckout(env, id, identityResult, deviceId, { takeOver: true });
+      if (result.status === 404) return notFound(request);
+      if (result.status === 500) return text(request, result.message || 'Server error', 500);
+      if (result.status === 409) {
+        return json(request, {
+          ok: false,
+          code: 'checked_out',
+          message: result.message,
+          checkout: result.checkout || null,
+        }, 409);
+      }
+      return json(request, {
+        ok: true,
+        takeOver: true,
+        idempotent: !!result.idempotent,
+        index: result.index,
+        checkout: result.index && result.index.checkout,
+      });
     }
 
     match = /^files\/([^/]+)\/checkout$/.exec(path);
