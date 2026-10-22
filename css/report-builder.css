@@ -1418,10 +1418,27 @@ body.report-builder-open .canvas {
   background: transparent;
 }
 
+/* Neither the placeholder nor the buttons may take space away from the
+   picture. They sat in the same column as the image and were merely made
+   invisible -- and something invisible still occupies its place -- so the
+   aerial was shorter whenever that chrome was present and grew the moment
+   Lock took it out of the flow. Tim: "look at the blue button and the
+   picture size ... locking or unlocking the layout changes what this looks
+   like." Out of the flow entirely; the picture is one size either way. */
+.rb-cover__overview-empty,
+.rb-cover__overview-actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+.rb-cover__overview-empty { top: 0; bottom: 0; }
+.rb-cover__overview-actions { bottom: 0; }
+
 .rb-cover__overview-image {
   flex: 1 1 auto;
   min-height: 0;
   width: 100%;
+  height: 100%;
   object-fit: cover;
   border: 0.13cqh solid #333;
 }
@@ -2098,11 +2115,13 @@ body.report-builder-open .canvas {
   background: #6b7280;
 }
 
+/* Which pin is being worked on is not something the drawing says -- on the
+   sheet, in the PDF, on the wall, or on the editing screen. Scoping it to
+   print left it ringed in the editor, which is where Tim was looking: "pin 1
+   is still highlighted. I told you I didn't want that." The class stays for
+   the code that tracks selection; it just draws nothing. */
 .rb-penlog__pin.is-selected {
-  /* Keep the white ring; the dark outline sits outside it. */
-  box-shadow:
-    0 0 0 calc(var(--rb-pin-size, 2.15cqh) * 0.045) #fff,
-    0 0 0 calc(var(--rb-pin-size, 2.15cqh) * 0.045 + 1.5px) #1a1a1a;
+  box-shadow: none;
 }
 
 .rb-penlog__schedule {

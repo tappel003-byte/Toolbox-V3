@@ -750,13 +750,15 @@
     return n.toFixed(places);
   }
 
-  // The plan is drawn with the front of the building toward the bottom of the
-  // sheet, so the way the front door faces IS the page's downward direction,
-  // and north is whatever that leaves. A house facing south -- the common one
-  // -- puts north up, which is why an arrow that never rotated at all looked
-  // right until a job faced any other way.
-  var NORTH_ROTATION = { S: 0, W: 90, N: 180, E: 270 };
-
+  // Which way north is, from the way the front door faces.
+  //
+  // Toolbox already had this rule and I wrote my own instead: "front of
+  // building drawn at bottom of plan", rotation = 180 - bearing. The two
+  // agree on north and south and are exactly opposed on east and west, so a
+  // hand-rolled table looked right on half the jobs in the world and pointed
+  // backwards on the other half -- including this one, whose front door
+  // faces east. It also only knew four directions where the proven one knows
+  // eight. Use the proven one.
   function northRotationFor(page, record) {
     var meta = (page && page.meta) || {};
     var ps = window.ToolboxPlanSetup;
@@ -764,9 +766,11 @@
     var canvas = null;
     try { canvas = ps.canvasById(record, meta.canvasId); } catch (err) { canvas = null; }
     var facing = canvas && typeof canvas.frontDoorFacing === 'string'
-      ? canvas.frontDoorFacing.trim().toUpperCase().charAt(0)
+      ? canvas.frontDoorFacing.trim().toUpperCase()
       : '';
-    return NORTH_ROTATION[facing] || 0;
+    var bt = window.ToolboxBuildingTypes;
+    if (!bt || typeof bt.frontDoorToNorthRotation !== 'function') return 0;
+    return Number(bt.frontDoorToNorthRotation(facing)) || 0;
   }
 
   function renderNorthArrow(rotateDeg) {
