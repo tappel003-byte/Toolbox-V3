@@ -559,6 +559,13 @@
       if (page.type === 'section' && page.meta && page.meta.sectionId === 'property') return false;
       if (page.type === 'section' && page.meta && page.meta.sectionId === 'conclusions') return false;
       if (page.type === 'section' && page.meta && page.meta.sectionId === 'limitations') return false;
+      // A Diagnostics page is not composed into a report any more. Tim: "I
+      // never said to add the diagnostics page. Diagnostics isn't even close
+      // to being done." Nothing creates one now, but a report composed while
+      // they existed still carried its page -- in the rail, in CONTENTS, and
+      // in the print. Reconcile drops it so an older report comes back the
+      // way a new one would be built.
+      if (page.type === 'diagnostics') return false;
       return true;
     });
     var byId = {};
