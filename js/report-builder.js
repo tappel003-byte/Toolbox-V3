@@ -752,25 +752,63 @@
 
   // Which way north is, from the way the front door faces.
   //
-  // Toolbox already had this rule and I wrote my own instead: "front of
-  // building drawn at bottom of plan", rotation = 180 - bearing. The two
-  // agree on north and south and are exactly opposed on east and west, so a
-  // hand-rolled table looked right on half the jobs in the world and pointed
-  // backwards on the other half -- including this one, whose front door
-  // faces east. It also only knew four directions where the proven one knows
-  // eight. Use the proven one.
+  // Distress Survey already answers this: frontDoorToNorthRotation — front of
+  // building drawn at bottom of plan, rotation = 180 - bearing. Use that one.
+  // Floor pages carry the canvas on meta.canvasId; Picture Locations carry it
+  // on sourceRef.
   function northRotationFor(page, record) {
     var meta = (page && page.meta) || {};
+    var canvasId = meta.canvasId || (page && page.sourceRef) || null;
     var ps = window.ToolboxPlanSetup;
-    if (!ps || typeof ps.canvasById !== 'function' || !record || !meta.canvasId) return 0;
+    if (!ps || typeof ps.canvasById !== 'function' || !record || !canvasId) return 0;
     var canvas = null;
-    try { canvas = ps.canvasById(record, meta.canvasId); } catch (err) { canvas = null; }
+    try { canvas = ps.canvasById(record, canvasId); } catch (err) { canvas = null; }
     var facing = canvas && typeof canvas.frontDoorFacing === 'string'
       ? canvas.frontDoorFacing.trim().toUpperCase()
       : '';
     var bt = window.ToolboxBuildingTypes;
     if (!bt || typeof bt.frontDoorToNorthRotation !== 'function') return 0;
     return Number(bt.frontDoorToNorthRotation(facing)) || 0;
+  }
+
+  // Chrome's "Save as PDF" defaults the filename from document.title.
+  // Street underscore customer name — e.g. 15_Rabbitbrush_Janis_Fensterer.
+  function printFileBasename(record) {
+    function part(value) {
+      return String(value == null ? '' : value)
+        .trim()
+        .replace(/[^A-Za-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    }
+    var street = part(addressParts(fullAddress(record) || displayAddress(record) || '').street);
+    var name = part(displayCustomerName(record));
+    if (street && name) return street + '_' + name;
+    return street || name || 'Report';
+  }
+
+  function withPrintDocumentTitle(record, run) {
+    var previous = document.title;
+    var next = printFileBasename(record);
+    if (next) document.title = next;
+    var restore = function () { document.title = previous; };
+    try {
+      var result = typeof run === 'function' ? run() : null;
+      if (result && typeof result.then === 'function') {
+        return result.then(function (value) { return value; }, function (err) {
+          restore();
+          throw err;
+        }).then(function (value) {
+          // Title stays through the print dialog; afterprint puts it back.
+          window.addEventListener('afterprint', restore, { once: true });
+          return value;
+        });
+      }
+      window.addEventListener('afterprint', restore, { once: true });
+      return result;
+    } catch (err) {
+      restore();
+      throw err;
+    }
   }
 
   function renderNorthArrow(rotateDeg) {
@@ -2225,44 +2263,22 @@
   /**
    * Which way north points on this plan.
    *
-   * Distress Survey already answers this and answers it right, so the rule
-   * is read from there rather than invented: the front door's real-world
-   * facing is known, and the arrow turns so that facing lines up with the
-   * direction the front door lies in on the plan. Its rotation is
-   * (180 - bearing), because it assumes the front of the building is drawn
-   * at the bottom of the plan.
-   *
-   * That assumption is the part that does not hold. Tim: "I rarely place the
-   * floor plan where the FD is always one direction." But Plan Setup already
-   * records where the front door was tapped on the plan, so the direction
-   * from the middle of the building out to the front door can be measured
-   * instead of assumed. Where the plan IS drawn front-down that measurement
-   * comes out at 180 and this reduces to exactly Distress's rule; where it
-   * is not, this is right and the front-down assumption is not.
-   *
-   * Returns degrees clockwise from plan-up, or null when the facing was
-   * never set.
+   * Distress Survey already answers this: frontDoorToNorthRotation. Tim:
+   * "If you're unsure on what the code is supposed to do, it is correct in
+   * distress survey. What I want is already there." Returns degrees
+   * clockwise from plan-up, or null when the facing was never set.
    */
   var NORTH_BEARINGS = { N: 0, NE: 45, E: 90, SE: 135, S: 180, SW: 225, W: 270, NW: 315 };
 
   function northForCanvas(canvas) {
     if (!canvas) return null;
-    var beta = NORTH_BEARINGS[String(canvas.frontDoorFacing || '').toUpperCase()];
-    if (typeof beta !== 'number') return null;
-    // The front of the building at the bottom of the plan, until the placed
-    // marker says otherwise.
-    var planAngle = 180;
-    var fd = canvas.frontDoor;
-    if (fd && typeof fd.x === 'number' && typeof fd.y === 'number') {
-      var dx = fd.x - 0.5;
-      var dy = fd.y - 0.5;
-      // A marker dropped almost dead centre gives no direction worth
-      // trusting; the assumption is better than a number made of rounding.
-      if (Math.abs(dx) > 0.02 || Math.abs(dy) > 0.02) {
-        planAngle = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
-      }
+    var facing = String(canvas.frontDoorFacing || '').trim().toUpperCase();
+    if (typeof NORTH_BEARINGS[facing] !== 'number') return null;
+    var bt = window.ToolboxBuildingTypes;
+    if (bt && typeof bt.frontDoorToNorthRotation === 'function') {
+      return Number(bt.frontDoorToNorthRotation(facing)) || 0;
     }
-    return ((planAngle - beta) % 360 + 360) % 360;
+    return ((180 - NORTH_BEARINGS[facing]) % 360 + 360) % 360;
   }
 
   function canvasById(record, canvasId) {
@@ -2318,11 +2334,14 @@
       // A compass belongs on a drawing of the building. A sheet of
       // photographs, or of property details, is not oriented to anything.
       north: page.type === 'floor' || page.type === 'distress',
-      // Where the front door says north is, unless the investigator has
-      // turned the arrow by hand on this sheet.
+      // Hand turn on this sheet wins. Otherwise the Distress rule on the
+      // level (_northRotation / evidence), never a silent 0 that leaves the
+      // rose pointing plan-up on an east-facing door.
       northRotation: typeof meta.northRotation === 'number'
         ? meta.northRotation
-        : (typeof ev.northRotation === 'number' ? ev.northRotation : 0),
+        : (typeof page._northRotation === 'number'
+          ? page._northRotation
+          : (typeof ev.northRotation === 'number' ? ev.northRotation : 0)),
       residence: ev.residenceTitle || ev.customerName || '',
       address: ev.address || '',
       addressCity: ev.addressCity || '',
@@ -3508,7 +3527,14 @@
       // sheet, or the preview would disagree with the page it is a preview
       // of. Settled Oct 10, 2026.
       (pages || []).forEach(function (item) {
-        if (!item || item.type !== 'floor') return;
+        if (!item) return;
+        // Which way north is on this level — Distress's frontDoorToNorthRotation
+        // — on every drawing of the building (Floor and Picture Locations).
+        // renderSheet / the rail run outside this closure.
+        if (item.type === 'floor' || item.type === 'distress') {
+          item._northRotation = northRotationFor(item, workingRecord);
+        }
+        if (item.type !== 'floor') return;
         item._overviewUrl = coverOverviewUrl;
         // The book's framing and chrome placement, on EVERY floor slide and
         // not only the one being looked at. Without it renderSheet falls
@@ -3518,10 +3544,6 @@
         // pill and the aerial view each back in a default corner, on top of
         // the drawing. Same fault the Discussion had, same cure.
         item._bookFloorLayout = floorLayout;
-        // Which way north is on this level, worked out where the Customer
-        // File is in scope and handed over on the page -- renderSheet runs
-        // outside this closure.
-        item._northRotation = northRotationFor(item, workingRecord);
         // Lock layout means the book's placement, on every slide. It was
         // written onto the active slide alone, so the others kept whatever
         // they had been saved with and the pill, the aerial and the frame
@@ -5977,9 +5999,9 @@
     //
     // North is not always up: a plan comes in at whatever rotation it was
     // drawn at, and the mark has to agree with it. Dragging the rose turns
-    // it about its own centre; the N above stays upright, because that is a
-    // label on the sheet rather than part of the instrument. The angle is
-    // the page's, so each sheet can say something different.
+    // the whole instrument about its centre — N rides with the arrow, the
+    // same as Distress Survey. The angle is the page's, so each sheet can
+    // say something different; a hand turn pins that sheet.
     var northDrag = null;
 
     function northAngle(event) {
@@ -5988,6 +6010,22 @@
       var deg = northDrag.from + ((now - northDrag.start) * 180) / Math.PI;
       deg = Math.round(deg) % 360;
       return deg < 0 ? deg + 360 : deg;
+    }
+
+    function applyRoseRotation(rail, deg) {
+      if (!rail) return;
+      var g = rail.querySelector('.rb-rail__rose-rot');
+      if (g) g.setAttribute('transform', 'rotate(' + deg + ')');
+      rail.style.setProperty('--rb-north-rotation', deg + 'deg');
+    }
+
+    function currentNorthRotation(page) {
+      if (!page) return 0;
+      if (page.meta && typeof page.meta.northRotation === 'number') return page.meta.northRotation;
+      if (typeof page._northRotation === 'number') return page._northRotation;
+      var ev = page.evidence || {};
+      if (typeof ev.northRotation === 'number') return ev.northRotation;
+      return 0;
     }
 
     sheetEl.addEventListener('pointerdown', function (event) {
@@ -6004,7 +6042,7 @@
         cy: box.top + box.height / 2,
         start: Math.atan2(event.clientY - box.top - box.height / 2,
           event.clientX - box.left - box.width / 2),
-        from: Number(page.meta && page.meta.northRotation) || 0,
+        from: currentNorthRotation(page),
       };
       try { compass.setPointerCapture(event.pointerId); } catch (err) { /* not captured */ }
       event.preventDefault();
@@ -6013,8 +6051,7 @@
 
     onDocument('pointermove', function (event) {
       if (!northDrag) return;
-      var deg = northAngle(event);
-      if (northDrag.rail) northDrag.rail.style.setProperty('--rb-north-rotation', deg + 'deg');
+      applyRoseRotation(northDrag.rail, northAngle(event));
       event.preventDefault();
     });
 
@@ -6022,6 +6059,7 @@
       if (!northDrag) return;
       var deg = northAngle(event);
       var page = northDrag.page;
+      applyRoseRotation(northDrag.rail, deg);
       northDrag = null;
       page.meta = page.meta || {};
       if (page.meta.northRotation === deg) return;
@@ -6949,15 +6987,17 @@
           window.addEventListener('afterprint', clearPrintDeck, { once: true });
           // Every picture redrawn at the size it prints, before the dialog
           // opens: once it is open the deck is what it is.
-          shrinkPrintImages(printDeck).then(function (weighed) {
-            window.__toolboxPrintWeight = weighed;
-            if (weighed) {
-              console.info('Report print: ' + weighed.redrawn + ' pictures redrawn, ' +
-                (weighed.before / 1048576).toFixed(1) + ' MB to ' +
-                (weighed.after / 1048576).toFixed(1) + ' MB.');
-            }
-            window.requestAnimationFrame(function () {
-              window.requestAnimationFrame(function () { window.print(); });
+          return withPrintDocumentTitle(workingRecord, function () {
+            return shrinkPrintImages(printDeck).then(function (weighed) {
+              window.__toolboxPrintWeight = weighed;
+              if (weighed) {
+                console.info('Report print: ' + weighed.redrawn + ' pictures redrawn, ' +
+                  (weighed.before / 1048576).toFixed(1) + ' MB to ' +
+                  (weighed.after / 1048576).toFixed(1) + ' MB.');
+              }
+              window.requestAnimationFrame(function () {
+                window.requestAnimationFrame(function () { window.print(); });
+              });
             });
           });
         });
@@ -7103,10 +7143,12 @@
         }
       };
       window.addEventListener('afterprint', back, { once: true });
-      shrinkPrintImages(presentDeck).then(function (weighed) {
-        window.__toolboxPrintWeight = weighed;
-        window.requestAnimationFrame(function () {
-          window.requestAnimationFrame(function () { window.print(); });
+      withPrintDocumentTitle(workingRecord, function () {
+        return shrinkPrintImages(presentDeck).then(function (weighed) {
+          window.__toolboxPrintWeight = weighed;
+          window.requestAnimationFrame(function () {
+            window.requestAnimationFrame(function () { window.print(); });
+          });
         });
       });
     }

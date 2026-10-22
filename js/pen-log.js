@@ -226,6 +226,9 @@
     if (!root) return;
     var list = root.querySelectorAll('.rb-penlog__note');
     for (var i = 0; i < list.length; i += 1) {
+      // Print notes already run the room in as flowing text; first-line
+      // indent is the editor layout and would shove that line sideways.
+      if (list[i].classList && list[i].classList.contains('rb-penlog__note--print')) continue;
       indentForRoom(list[i]);
       autosizeNote(list[i]);
     }

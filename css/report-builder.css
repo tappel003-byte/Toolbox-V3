@@ -1614,16 +1614,15 @@ body.report-builder-open .canvas {
   cursor: grabbing;
 }
 
-/* The whole instrument turns, the N with it: the N labels the arrow's point,
-   not the sheet. */
+/* Size only. Rotation lives on .rb-rail__rose-rot as an SVG transform — the
+   same way Distress Survey turns #northWidgetRot — so Present / Print / PDF
+   always lay the mark out. A CSS rotate here was dropped by Chrome's print. */
 .rb-rail__rose {
   display: block;
   width: 5.8cqh;
   height: 5.8cqh;
   flex-shrink: 0;
   overflow: visible;
-  transform: rotate(var(--rb-north-rotation, 0deg));
-  transform-origin: center;
 }
 
 .rb-rail__client,
