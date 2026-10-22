@@ -6625,6 +6625,62 @@
      * The slide that does hold the live view gets a still too: the deck is
      * built detached, and a live view mounted into nothing measures nothing.
      */
+    /**
+     * The region of plan space a printed slide should paint.
+     *
+     * The still was painted from the DATA extent -- the smallest rectangle
+     * holding the readings -- and then letterboxed into the frame. That has
+     * no idea where the investigator panned or how far they zoomed, so the
+     * printed drawing came out centred and larger than the one on screen.
+     * Tim, on exactly that: "I need this to look like it does in the report
+     * builder."
+     *
+     * The book already stores the camera the live view reports. Turned back
+     * into a plan-space rectangle of the frame's own shape, it is the region
+     * the screen is showing -- so the still paints that, and the two agree.
+     * Anything missing falls back to the shared data extent, which is what
+     * printed before.
+     */
+    function cameraExtentFor(page, fallback) {
+      var cam = floorCamera;
+      if (!cam || !cam.rel || !(Number(cam.zoom) > 0)) return fallback;
+      var ps = window.ToolboxPlanSetup;
+      var meta = (page && page.meta) || {};
+      if (!ps || typeof ps.canvasById !== 'function' || !workingRecord || !meta.canvasId) return fallback;
+      var canvas = null;
+      try { canvas = ps.canvasById(workingRecord, meta.canvasId); } catch (err) { canvas = null; }
+      var plan = canvas && canvas.plan;
+      var planW = plan && Number(plan.width) > 0 ? Number(plan.width) : 0;
+      var planH = plan && Number(plan.height) > 0 ? Number(plan.height) : 0;
+      if (!planW || !planH) return fallback;
+      var layout = meta.layout || page._bookFloorLayout || null;
+      var topo = layout && layout.topo;
+      if (!topo || !(Number(topo.w) > 0) || !(Number(topo.h) > 0)) return fallback;
+      // The frame's shape on the paper in real inches, not in percent of it.
+      var frameAspect = (Number(topo.w) * 17) / (Number(topo.h) * 11);
+      var slots = floorSlotsForPage(page);
+      if (slots > 1) frameAspect /= slots;
+      if (!(frameAspect > 0)) return fallback;
+      // At fit, the frame shows the smallest rectangle of its own shape that
+      // holds the whole plan. Zoom divides it; the camera centres it.
+      var planAspect = planW / planH;
+      var regionW = planAspect > frameAspect ? planW : planH * frameAspect;
+      var regionH = planAspect > frameAspect ? planW / frameAspect : planH;
+      var zoom = Number(cam.zoom) || 1;
+      regionW /= zoom;
+      regionH /= zoom;
+      var cx = Number(cam.cx);
+      var cy = Number(cam.cy);
+      if (!isFinite(cx)) cx = 0.5;
+      if (!isFinite(cy)) cy = 0.5;
+      return {
+        x: cx * planW - regionW / 2,
+        y: cy * planH - regionH / 2,
+        w: regionW,
+        h: regionH,
+      };
+    }
+
     function composeFloorStills() {
       var api = window.ToolboxFloorSurvey;
       if (!api || typeof api.composeReportTopoFigureForPage !== 'function' || !workingRecord) {
@@ -6668,7 +6724,7 @@
               areaId: meta.areaId || null,
               scope: meta.scope || 'all',
               settings: floorViewFor(job.page, job.slot) || null,
-              extent: sharedExtent,
+              extent: cameraExtentFor(job.page, sharedExtent),
             }, getMedia).then(function (composed) {
               if (!composed || !composed.dataUrl) return;
               job.page._printTopo = job.page._printTopo || {};

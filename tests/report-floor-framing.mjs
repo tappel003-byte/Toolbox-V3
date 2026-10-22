@@ -272,12 +272,25 @@ const printedInk = await page.evaluate(() => {
       }
     }
   }
+  // The still is CROPPED to its drawing, and it is placed with object-fit:
+  // contain. So ink measured inside the PNG always fills the PNG, whatever
+  // the slide looks like -- which is what this used to report, and why it
+  // could never agree with the screen no matter how the page was framed.
+  //
+  // What has to match the screen is where the ink lands IN THE FRAME, so the
+  // PNG box is carried through the letterbox the way the browser draws it.
+  const box = still.getBoundingClientRect();
+  const fit = Math.min(box.width / w, box.height / h);
+  const drawnW = w * fit;
+  const drawnH = h * fit;
+  const padX = (box.width - drawnW) / 2;
+  const padY = (box.height - drawnH) / 2;
   return {
     sheetIn: +(sheet.getBoundingClientRect().width / 96).toFixed(2),
-    x: +(x0 / w).toFixed(3),
-    y: +(y0 / h).toFixed(3),
-    w: +((x1 - x0) / w).toFixed(3),
-    h: +((y1 - y0) / h).toFixed(3),
+    x: +((padX + x0 * fit) / box.width).toFixed(3),
+    y: +((padY + y0 * fit) / box.height).toFixed(3),
+    w: +(((x1 - x0) * fit) / box.width).toFixed(3),
+    h: +(((y1 - y0) * fit) / box.height).toFixed(3),
   };
 });
 check('and the printed sheet shows the same view, on 17 in of paper',
