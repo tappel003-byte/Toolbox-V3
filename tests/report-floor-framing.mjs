@@ -233,15 +233,30 @@ const screenInk = (await views())[0];
 await page.evaluate(() => { window.print = () => {}; });
 await page.emulateMediaType('print');
 await page.click('#rb-print');
+// The printed deck does not borrow the live drawing any more. There is one
+// of it per slot in the whole page, so only the slide being looked at could
+// hold it -- every other floor slide printed a note where its contour map
+// should have been. Each printed slide now carries a still painted for it,
+// and that still is what this measures.
 await page.waitForFunction(
   () => [...document.querySelectorAll('.rb-print .rb-sheet')]
-    .some((el) => el.querySelector('[data-rb-topo-live] canvas')), { timeout: 20000 });
+    .some((el) => {
+      const img = el.querySelector('.rb-topo-still');
+      return img && img.complete && img.naturalWidth > 0;
+    }), { timeout: 20000 });
 await new Promise((r) => setTimeout(r, 2500));
 const printedInk = await page.evaluate(() => {
   const sheet = [...document.querySelectorAll('.rb-print .rb-sheet')]
-    .find((el) => el.querySelector('[data-rb-topo-live] canvas'));
-  const canvas = sheet.querySelector('[data-rb-topo-live] canvas');
+    .find((el) => {
+      const img = el.querySelector('.rb-topo-still');
+      return img && img.complete && img.naturalWidth > 0;
+    });
+  const still = sheet.querySelector('.rb-topo-still');
+  const canvas = document.createElement('canvas');
+  canvas.width = still.naturalWidth;
+  canvas.height = still.naturalHeight;
   const ctx = canvas.getContext('2d');
+  ctx.drawImage(still, 0, 0);
   const w = canvas.width;
   const h = canvas.height;
   const data = ctx.getImageData(0, 0, w, h).data;
