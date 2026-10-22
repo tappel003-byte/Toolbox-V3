@@ -474,6 +474,21 @@ Found by tracing Check In and Check Out end to end after a Check Out failed repe
 
 ---
 
+## Take Over, and getting a job out of the Cabinet
+
+**AUTHORIZED Tim, Oct 22, 2026:** "I think we should definitely do a turn takeover" — and, on the Cabinet: "there's a couple jobs in Explorer right now but have nothing and I can't delete them."
+
+- **Take Over is explicit recovery, and it does not ask the holder.** The reason to use it is that the holder cannot answer: a device lost, broken, or wiped still names itself in the Cabinet, and the job was stuck for everybody, its owner included. It is offered on a File Cabinet row that reads "Checked out elsewhere", behind a confirmation that says plainly what it costs: work the other device never synced stays on that device and can no longer be sent.
+- **An ordinary Check Out still refuses.** Take Over is its own route on the Worker, not a flag on the acquire, so nothing can slip past the refusal that protects a live lease by accident. It is still one conditional write, so two devices cannot both win it, and the lease it writes records who it was taken from.
+- **Everything after the lease changes hands is an ordinary Check Out.** There is no second path through materialization to keep in step with the first. The old device, if it ever comes back, learns on its next Cabinet listing that the job is held elsewhere and goes read-only — behaviour that already existed.
+- **This supersedes "Take Over — not in this foundation slice"** in `MILESTONE.md`.
+- **A cloud-only job can be moved to Trash from the Cabinet.** The capability existed and had no way in: the only route to Trash ran through a device's own working copy, so a job you did not want on the device — an empty one, a mistake — could not be deleted at all. Check Out first, then delete, and an empty job may not even check out.
+- **It is the Trash the Cabinet already has, not a permanent delete.** Restore and Delete permanently both live in that Trash and the 120-day retention intent stands. The action is drawn only where the move is allowed — no copy on this device, no lease on it, not already trashed — so it never offers something that will be refused.
+- **It sits behind the row's own ••• menu, not beside Check Out.** Two buttons on one row wrapped the address and the date on a phone; the working surface comes before the chrome. Same menu the Customer Files rows already use.
+- **File Explorer stays read-only** and now says where deleting happens, so looking for it there is no longer a dead end.
+
+---
+
 ## Connectivity, and what counts as proof of it
 
 - **`navigator.onLine` is not a connectivity test (FOUND in the field, Tim, Oct 9, 2026).** It reports whether a network interface is up, not whether anything is reachable. Tim, on an iPad mini tethered to his phone: "The screen got extremely slow and locked up... my iPad does not have Wi-Fi, I was using my cell phone as a hotspot. My phone lost signal but it never lost the link to the iPad." The link stayed up, so the app never went to offline mode.

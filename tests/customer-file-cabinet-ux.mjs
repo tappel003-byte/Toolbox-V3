@@ -560,6 +560,41 @@ try {
         searchOverflows: searchBox ? searchBox.right > window.innerWidth + 1 : true,
         betaGray: !!(beta && beta.classList.contains('is-checked-out-elsewhere')),
         betaHasAction: !!(beta && beta.querySelector('.cabinet-checkout-btn')),
+        // Gray still means "you cannot simply take this". The only way in is
+        // the explicit Take Over, which says what it costs before it acts.
+        betaCheckOut: Array.from(beta ? beta.querySelectorAll('button') : [])
+          .some((button) => /check out/i.test(button.textContent || '')),
+        betaTakeOver: Array.from(beta ? beta.querySelectorAll('button') : [])
+          .some((button) => /^\s*Take Over\s*$/i.test(button.textContent || '')),
+        betaTrash: Array.from(beta ? beta.querySelectorAll('button') : [])
+          .some((button) => /move to trash/i.test(button.textContent || '')),
+        // A cloud-only row now carries two buttons. On a phone that is where
+        // a row starts to crowd, so the row is measured, not assumed.
+        alphaTrash: !!(alpha && alpha.querySelector('.cabinet-trash-btn')),
+        // The row keeps ONE button. Move to Trash sits behind the row's own
+        // menu, because two buttons on a phone row wrapped the address and
+        // the date, and the working surface comes before the chrome.
+        alphaActionsFit: (function () {
+          if (!alpha) return false;
+          const box = alpha.querySelector('.cabinet-row__actions');
+          // One action button on the row. The ••• toggle and the item it
+          // opens live in the menu and are not a second action on the row.
+          const buttons = box
+            ? Array.from(box.querySelectorAll('button'))
+              .filter((button) => !button.closest('.cabinet-row-menu'))
+            : [];
+          const addr = alpha.querySelector('.cabinet-index__address');
+          const addrRect = addr ? addr.getBoundingClientRect() : null;
+          const rect = box ? box.getBoundingClientRect() : null;
+          const toggle = alpha.querySelector('.cabinet-row-menu__toggle');
+          const t = toggle ? toggle.getBoundingClientRect() : null;
+          return {
+            oneAction: buttons.length === 1,
+            clearOfAddress: !(addrRect && rect && overlaps(addrRect, rect)),
+            inside: !!(rect && rect.right <= window.innerWidth + 1),
+            toggleVisible: !!(t && t.width > 0 && t.height > 0 && t.right <= window.innerWidth + 1),
+          };
+        })(),
         betaBackground: betaRow ? getComputedStyle(betaRow).backgroundColor : '',
         alphaButtonBelowAddress: !!(addrBox && alphaBtnBox && alphaBtnBox.top >= addrBox.bottom - 2),
         alphaButtonBesideMeta: !!(metaBox && alphaBtnBox && alphaBtnBox.top < metaBox.bottom && alphaBtnBox.bottom > metaBox.top),
@@ -619,6 +654,57 @@ try {
     }),
     JSON.stringify(layout),
   );
+  // The menu has to open where it can be pressed, or the action may as well
+  // not be there.
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
+  await page.evaluate(() => { window.location.hash = '#/cabinet'; });
+  await page.waitForFunction(() => document.querySelectorAll('.cabinet-row--index').length >= 4);
+  const menuOpen = await page.evaluate(() => {
+    const alpha = document.querySelector('.cabinet-row-shell--cloud[data-customer-file-id="cf-alpha"]');
+    const toggle = alpha && alpha.querySelector('.cabinet-row-menu__toggle');
+    if (!toggle) return null;
+    toggle.click();
+    const item = alpha.querySelector('.cabinet-trash-btn');
+    if (!item) return null;
+    const r = item.getBoundingClientRect();
+    return {
+      label: (item.textContent || '').trim(),
+      shown: getComputedStyle(item).display !== 'none',
+      onScreen: r.width > 0 && r.height > 0 && r.left >= -1 && r.right <= window.innerWidth + 1,
+      tall: Math.round(r.height),
+    };
+  });
+  check(
+    'the row menu opens where it can be pressed',
+    !!(menuOpen && menuOpen.shown && menuOpen.onScreen &&
+      /^Move to Trash$/.test(menuOpen.label) && menuOpen.tall >= 32),
+    JSON.stringify(menuOpen),
+  );
+  check(
+    'a cloud-only job can be moved to Trash, and the row still fits',
+    ['desktop', 'ipad', 'phone'].every((name) => {
+      const shot = layout[name];
+      const fit = shot && shot.alphaActionsFit;
+      return !!(shot && shot.alphaTrash && fit &&
+        fit.oneAction && fit.clearOfAddress && fit.inside && fit.toggleVisible);
+    }),
+    JSON.stringify(['desktop', 'ipad', 'phone'].map((name) => ({
+      at: name,
+      trash: layout[name] && layout[name].alphaTrash,
+      fits: layout[name] && layout[name].alphaActionsFit,
+    }))),
+  );
+  check(
+    'a job held elsewhere offers Take Over, and nothing that would be refused',
+    ['desktop', 'ipad', 'phone'].every((name) => {
+      const shot = layout[name];
+      return shot && shot.betaTakeOver && !shot.betaTrash;
+    }),
+    JSON.stringify({
+      desktop: layout.desktop && layout.desktop.betaTakeOver,
+      phone: layout.phone && layout.phone.betaTakeOver,
+    }),
+  );
   check(
     'phone address stays full width with Check Out beside the name and date',
     !!(layout.phone && layout.phone.alphaButtonBelowAddress && layout.phone.alphaButtonBesideMeta &&
@@ -630,7 +716,7 @@ try {
     'file checked out elsewhere is gray with no Check Out action',
     ['desktop', 'ipad', 'phone'].every((name) => {
       const shot = layout[name];
-      return shot && shot.betaGray && !shot.betaHasAction && /228,\s*225,\s*218/.test(shot.betaBackground);
+      return shot && shot.betaGray && !shot.betaCheckOut && /228,\s*225,\s*218/.test(shot.betaBackground);
     }),
     JSON.stringify(layout),
   );

@@ -85,7 +85,8 @@ Reading “Cloudflare is the authoritative File Cabinet” as “the cloud is th
 - Customer Files screen = on-device working area; File Cabinet is a dedicated `#/cabinet` browse/manage screen (closed card entry, search by name/address, Check Out returns to working area)
 - Check In / Send to File Cabinet from Customer Files ⋯ menu (sync/verify, release lease when checking in, remove that device’s own working copy — never cloud-delete). This does not delete another device’s local safety copy.
 - Remove From This Device / Keep Local Copy / Archive as Revision — later small slice, not this stage
-- Take Over (explicit recovery) — not in this foundation slice
+- Take Over (explicit recovery) — **AUTHORIZED and built (Tim, Oct 22, 2026)**. A device that is lost, broken, or wiped still names itself as the holder in the Cabinet, and the job was stuck for everybody. See `DECISIONS.md` "Take Over, and getting a job out of the Cabinet"
+- Move to Trash from a File Cabinet row for a cloud-only job — **built (Tim, Oct 22, 2026)**. The Cabinet's existing Trash, reachable without checking the job out first
 
 ### Stage F — Decided safety behavior (not “later polish”)
 

@@ -128,7 +128,48 @@ try {
         }), { status: 200, headers: { 'content-type': 'application/json' } });
       }
 
-      let match = /^files\/([^/]+)\/checkout$/.exec(path);
+      let match = /^files\/([^/]+)\/checkout\/takeover$/.exec(path);
+      if (match && method === 'POST') {
+        const id = decodeURIComponent(match[1]);
+        if (state.purged[id]) return new Response('Customer File permanently deleted', { status: 409 });
+        if (!state.indexes[id]) return new Response('Not found', { status: 404 });
+        const body = JSON.parse(opts.body || '{}');
+        const deviceId = body.deviceId || deviceFrom(opts);
+        const prevEtag = state.etags[id];
+        if (!prevEtag || typeof prevEtag !== 'string') {
+          return new Response('Missing object ETag; refusing unsafe checkout acquire', { status: 500 });
+        }
+        const existing = state.indexes[id].checkout || null;
+        if (existing && sameOwner(existing, state.identity.email, deviceId)) {
+          return new Response(JSON.stringify({
+            ok: true, takeOver: true, idempotent: true,
+            index: state.indexes[id], checkout: existing,
+          }), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+        const taking = {
+          email: normalizeEmail(state.identity.email),
+          sub: state.identity.sub,
+          deviceId: deviceId,
+          checkedOutAt: '2026-10-22T02:00:00.000Z',
+        };
+        if (existing && existing.deviceId && existing.email) {
+          taking.takenOverFrom = {
+            email: normalizeEmail(existing.email),
+            deviceId: existing.deviceId,
+            checkedOutAt: existing.checkedOutAt || '',
+            takenAt: '2026-10-22T02:00:00.000Z',
+          };
+        }
+        state.etags[id] = 'etag-' + (Number(String(prevEtag).replace(/\D/g, '') || 0) + 1);
+        state.lastConditionalTakeOver = { id: id, etagMatches: prevEtag };
+        state.indexes[id] = Object.assign({}, state.indexes[id], { checkout: taking });
+        return new Response(JSON.stringify({
+          ok: true, takeOver: true, idempotent: false,
+          index: state.indexes[id], checkout: taking,
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+
+      match = /^files\/([^/]+)\/checkout$/.exec(path);
       if (match && method === 'POST') {
         const id = decodeURIComponent(match[1]);
         if (state.purged[id]) return new Response('Customer File permanently deleted', { status: 409 });
@@ -718,6 +759,58 @@ try {
     report.V_filed = !vCheckIn && !state.indexes['cf-id-loss'].checkout &&
       !(await ToolboxDB.getCustomerFile('cf-id-loss'));
 
+    // W: Take Over -- explicit recovery when the holder cannot hand the job
+    //    back. Until this existed, a lost, broken or wiped device kept the
+    //    job from everybody, including the person who owned it.
+    const beforeTakeOver = await ToolboxDB.getAllCustomerFiles();
+    if (beforeTakeOver.length) await ToolboxDB.permanentlyDeleteCustomerFiles(beforeTakeOver);
+    localStorage.removeItem('toolboxForeignCheckouts');
+    seedRemote('cf-take-over');
+    // A device that is not this one holds it, and is never coming back.
+    state.indexes['cf-take-over'] = Object.assign({}, state.indexes['cf-take-over'], {
+      checkout: {
+        email: 'tim@example.com', sub: 'sub-tim', deviceId: 'device-drowned-ipad',
+        checkedOutAt: '2026-10-01T09:00:00.000Z',
+      },
+    });
+    localStorage.setItem('toolboxDeviceId', 'device-desk');
+    await ToolboxSync.restoreDeviceId();
+
+    // An ordinary Check Out must still refuse it.
+    let wPlainError = null;
+    try { await ToolboxSync.checkOutCustomerFile('cf-take-over'); }
+    catch (err) { wPlainError = (err && err.code) || 'error'; }
+    report.W_plainRefused = wPlainError === 'checkout';
+    report.W_stillTheirs = state.indexes['cf-take-over'].checkout.deviceId === 'device-drowned-ipad';
+
+    const wEtagBefore = state.etags['cf-take-over'];
+    let wError = null;
+    let wResult = null;
+    try { wResult = await ToolboxSync.takeOverCustomerFile('cf-take-over'); }
+    catch (err) { wError = (err && err.message) || String(err); }
+    report.W_error = wError;
+    report.W_ok = !wError && !!(wResult && wResult.ok && wResult.tookOver === true);
+    report.W_onDevice = !!(await ToolboxDB.getCustomerFile('cf-take-over'));
+    const wCheckout = state.indexes['cf-take-over'].checkout || {};
+    report.W_leaseMoved = wCheckout.deviceId === 'device-desk';
+    report.W_recordsWhoFrom = !!(wCheckout.takenOverFrom &&
+      wCheckout.takenOverFrom.deviceId === 'device-drowned-ipad');
+    // One conditional write, so two devices cannot both win a Take Over.
+    report.W_conditional = !!(state.lastConditionalTakeOver &&
+      state.lastConditionalTakeOver.id === 'cf-take-over' &&
+      state.lastConditionalTakeOver.etagMatches === wEtagBefore);
+    const wLocal = await ToolboxDB.getCustomerFile('cf-take-over');
+    report.W_markedHere = !!(wLocal && wLocal.checkedOutFromCabinet === true);
+    report.W_notMarkedForeign = !(wLocal && wLocal.heldByOtherDevice);
+    report.W_lockClear = !ToolboxSync.isCheckedOutElsewhere('cf-take-over');
+
+    // And this device can now check it in normally.
+    let wCheckIn = null;
+    try { await ToolboxSync.checkInCustomerFile('cf-take-over'); }
+    catch (err) { wCheckIn = (err && err.message) || String(err); }
+    report.W_checkInError = wCheckIn;
+    report.W_filed = !wCheckIn && !state.indexes['cf-take-over'].checkout;
+
     return report;
   });
 
@@ -752,6 +845,17 @@ check('and the copy is marked as checked out here', out.U_markedCheckedOutHere);
 check('a device that loses its stored id gets it back', out.V_restored && out.V_sameId);
 check('and can still check its own file in',
   out.V_heldFirst && !out.V_checkInError && out.V_filed, out.V_checkInError || '');
+check('an ordinary Check Out still refuses a job another device holds',
+  out.W_plainRefused && out.W_stillTheirs);
+check('Take Over brings it onto this device', out.W_ok && out.W_onDevice, out.W_error || '');
+check('the lease moves to this device', out.W_leaseMoved);
+check('and records who it was taken from', out.W_recordsWhoFrom);
+check('Take Over is one conditional write, so two devices cannot both win it',
+  out.W_conditional);
+check('the copy is marked checked out here, not held elsewhere',
+  out.W_markedHere && out.W_notMarkedForeign && out.W_lockClear);
+check('a taken-over job checks in normally',
+  out.W_filed, out.W_checkInError || '');
 check('photographs come down several at a time, counted as they land',
     out.S_ok && out.S_several && out.S_counted && out.S_named && out.S_rose,
     JSON.stringify({

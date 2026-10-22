@@ -2251,6 +2251,18 @@ button.local-trash-recovery[hidden] {
   transform: translateY(-50%);
 }
 
+/* A row that already carries its own button holds the menu beside it rather
+   than on top of it. The absolute placement above is for rows whose right
+   edge is free; on a File Cabinet row that is exactly where Check Out sits,
+   and the two landed on each other. */
+.cabinet-row-menu--inline {
+  position: relative;
+  top: auto;
+  right: auto;
+  flex: 0 0 auto;
+  transform: none;
+}
+
 .cabinet-row-menu__toggle {
   display: grid;
   width: 38px;

@@ -1299,9 +1299,11 @@
     });
   }
 
-  async function acquireRemoteCheckout(id) {
+  async function acquireRemoteCheckout(id, options) {
     const deviceId = getDeviceId();
-    const response = await apiFetch('/files/' + encodeURIComponent(id) + '/checkout', {
+    const takeOver = !!(options && options.takeOver);
+    const route = takeOver ? '/checkout/takeover' : '/checkout';
+    const response = await apiFetch('/files/' + encodeURIComponent(id) + route, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -1318,7 +1320,8 @@
       throw err;
     }
     if (!response.ok) {
-      throw new SyncError('sync', (data && data.message) || ('Check Out failed (' + response.status + ').'));
+      throw new SyncError('sync', (data && data.message) ||
+        ((takeOver ? 'Take Over failed (' : 'Check Out failed (') + response.status + ').'));
     }
     clearForeignLock(id);
     return data;
@@ -1349,8 +1352,9 @@
    * Durable local marker checkedOutFromCabinet survives restart/offline so the
    * Customer Files ⋯ menu can offer Check In without a live Cabinet lookup.
    */
-  async function checkOutCustomerFile(id) {
+  async function checkOutCustomerFile(id, options) {
     if (!id) throw new SyncError('sync', 'Customer File id required.');
+    const takeOver = !!(options && options.takeOver);
     const existingLocal = await window.ToolboxDB.getCustomerFile(id);
     if (existingLocal && !existingLocal.deletedAt) {
       // Already local: take the lease, then bring the copy current.
@@ -1370,7 +1374,7 @@
       // overwritten. Check Out is an online operation by definition -- the
       // lease was just acquired over the network -- so there is no offline
       // case to protect here.
-      const acquired = await acquireRemoteCheckout(id);
+      const acquired = await acquireRemoteCheckout(id, { takeOver: takeOver });
       let current = existingLocal;
       let leftBehind = [];
       try {
@@ -1399,10 +1403,11 @@
         checkout: acquired && acquired.checkout,
         record: marked,
         missingMedia: leftBehind,
+        tookOver: takeOver,
       };
     }
 
-    const acquired = await acquireRemoteCheckout(id);
+    const acquired = await acquireRemoteCheckout(id, { takeOver: takeOver });
     const remote = (acquired && acquired.index) || await getRemoteIndex(id);
     if (!remote) {
       try { await releaseRemoteCheckout(id); } catch (_) {}
@@ -1442,6 +1447,7 @@
         checkout: acquired && acquired.checkout,
         record: saved,
         missingMedia: (synced && synced.missingMedia) || [],
+        tookOver: takeOver,
         sync: synced,
       };
     } catch (err) {
@@ -3525,6 +3531,23 @@
     browseCabinet: browseCabinet,
     checkOutCustomerFile: function (id) {
       return enqueueSyncWork(function () { return checkOutCustomerFile(id); });
+    },
+    /**
+     * Explicit recovery: bring a job onto this device that another device
+     * still names itself the holder of.
+     *
+     * The holder is not asked, because the reason to do this is that it
+     * cannot answer -- lost, broken, or wiped. Everything after the lease
+     * changes hands is an ordinary Check Out, so there is no second path
+     * through materialization to keep in step with the first. The old
+     * device, if it ever comes back, learns on its next Cabinet listing
+     * that the job is held elsewhere and goes read-only, which is the
+     * behaviour that already exists.
+     */
+    takeOverCustomerFile: function (id) {
+      return enqueueSyncWork(function () {
+        return checkOutCustomerFile(id, { takeOver: true });
+      });
     },
     onSyncProgress: onSyncProgress,
     noteForeignMarks: noteForeignMarks,
