@@ -2323,6 +2323,15 @@ button.local-trash-recovery[hidden] {
   background: #edf2f4;
 }
 
+/* The one that cannot be undone reads like it. */
+.cabinet-row-menu__action--danger {
+  color: var(--danger, #9b2c1f);
+}
+
+.cabinet-row-menu__action--danger:hover {
+  background: #fbeeea;
+}
+
 /* Customer File Trash */
 .trash-view {
   width: 100%;

@@ -489,9 +489,7 @@
 
     lead.textContent = inside
       ? 'Stored surveys, photos, plans, and other data.'
-      // File Explorer looks; it does not change anything. Saying where
-      // deleting happens stops the dead end of hunting for it here.
-      : 'Customer Files stored on the server. Open a file to view its stored surveys, photos, plans, and other data. This is a view only — deleting a job happens in the File Cabinet.';
+      : 'Customer Files stored on the server. Open a file to view its stored surveys, photos, plans, and other data. Delete removes a job from the server for good.';
     sub.textContent = inside ? 'Missing items are marked not stored.' : '';
     crumb.textContent = '';
 
@@ -531,9 +529,27 @@
       loadRoot();
     }
 
+    /**
+     * Is this job held by some other device?
+     *
+     * The lease rides on the listing itself, so browsing the back door stays
+     * on the back door's own read-only route and asks the Cabinet nothing
+     * else. A lease this device holds is not "elsewhere" and needs no
+     * recovery.
+     */
+    function heldByAnotherDevice(row) {
+      const checkout = row && row.checkout;
+      if (!checkout || !checkout.deviceId || !checkout.email) return false;
+      const sync = window.ToolboxSync;
+      if (!sync || typeof sync.getDeviceId !== 'function') return true;
+      return String(checkout.deviceId) !== String(sync.getDeviceId());
+    }
+
     function loadRoot() {
       if (!requireSync()) return;
-      window.ToolboxSync.exploreListFiles().then(function (data) {
+      // The listing is drawn as soon as it arrives; who holds what follows
+      // and repaints, so a slow or failed lease read never holds up the list.
+      return window.ToolboxSync.exploreListFiles().then(function (data) {
         rootFiles = data && Array.isArray(data.files) ? data.files : [];
         paintRoot();
       }).catch(function (err) {
@@ -644,6 +660,80 @@
         if (row && row.id) window.location.hash = '#/explore/' + encodeURIComponent(row.id);
       });
       actions.appendChild(open);
+
+      const id = row && row.id;
+      const sync = window.ToolboxSync || {};
+      const confirmAction = (window.ToolboxApp && window.ToolboxApp.confirmAction) || null;
+      const name = (row && row.displayName) || (row && row.propertyAddress) || 'Customer File';
+
+      // Take Over lives here and nowhere else (Tim, Oct 22, 2026: "take over
+      // should only work from explorer"). It is the back-door recovery for a
+      // job whose holder cannot hand it back -- a device lost, broken, or
+      // wiped -- so it belongs with the other back-door tools, not beside
+      // Check Out where it could be pressed in the ordinary run of work.
+      if (id && heldByAnotherDevice(row) &&
+          typeof sync.takeOverCustomerFile === 'function' && confirmAction) {
+        const take = document.createElement('button');
+        take.type = 'button';
+        take.className = 'btn btn--secondary explorer-take-over';
+        take.textContent = 'Take Over';
+        take.addEventListener('click', function () {
+          const who = (row.checkout && row.checkout.email) ? row.checkout.email : 'another device';
+          confirmAction({
+            title: 'Take over this Customer File?',
+            message: name + ' is checked out by ' + who + '. Taking it over moves the working copy ' +
+              'to this device. If that device holds work it never synced, the work stays on it but ' +
+              'can no longer be sent — its copy becomes read-only.',
+            cancelLabel: 'Cancel',
+            confirmLabel: 'Take Over',
+          }).then(function (confirmed) {
+            if (!confirmed) return;
+            take.disabled = true;
+            take.textContent = 'Taking over…';
+            return sync.takeOverCustomerFile(id).then(function () {
+              showNotice(name + ' was taken over and is now on this device.');
+              return loadRoot();
+            }).catch(function (err) {
+              take.disabled = false;
+              take.textContent = 'Take Over';
+              showNotice((err && err.message) || 'Take Over failed.');
+            });
+          });
+        });
+        actions.appendChild(take);
+      }
+
+      // Delete, from here. Tim: "you do not get to decide whether or not I
+      // can delete something from Explorer ... this is my app."
+      if (id && typeof sync.destroyCabinetCustomerFile === 'function' && confirmAction) {
+        const kill = document.createElement('button');
+        kill.type = 'button';
+        kill.className = 'btn btn--danger explorer-delete';
+        kill.textContent = 'Delete';
+        kill.addEventListener('click', function () {
+          confirmAction({
+            title: 'Permanently delete this Customer File?',
+            message: name + ' will be destroyed on the server, including its plans and ' +
+              'photographs. This cannot be undone.',
+            cancelLabel: 'Cancel',
+            confirmLabel: 'Delete permanently',
+          }).then(function (confirmed) {
+            if (!confirmed) return;
+            kill.disabled = true;
+            kill.textContent = 'Deleting…';
+            return sync.destroyCabinetCustomerFile(id).then(function () {
+              showNotice(name + ' was permanently deleted.');
+              return loadRoot();
+            }).catch(function (err) {
+              kill.disabled = false;
+              kill.textContent = 'Delete';
+              showNotice((err && err.message) || 'Could not delete that Customer File.');
+            });
+          });
+        });
+        actions.appendChild(kill);
+      }
+
       article.appendChild(actions);
       return article;
     }

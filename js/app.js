@@ -840,52 +840,6 @@
       actions.appendChild(openBtn);
     }
 
-    // Explicit recovery for a job whose holder cannot hand it back: a device
-    // lost, broken, or wiped still names itself in the Cabinet, and the job
-    // was stuck for everybody. Offered beside Open as well, because a device
-    // can be holding a read-only copy of the very job it needs back.
-    if (entry.availability === 'checked-out-elsewhere' &&
-        window.ToolboxSync && typeof window.ToolboxSync.takeOverCustomerFile === 'function') {
-      const takeBtn = document.createElement('button');
-      takeBtn.type = 'button';
-      takeBtn.className = 'btn btn--secondary cabinet-checkout-btn cabinet-takeover-btn';
-      takeBtn.textContent = 'Take Over';
-      takeBtn.addEventListener('click', function (event) {
-        event.stopPropagation();
-        const name = entry.displayName || 'Customer File';
-        const who = (entry.checkout && entry.checkout.email) ? entry.checkout.email : 'another device';
-        confirmAction({
-          title: 'Take over this Customer File?',
-          message: name + ' is checked out by ' + who + '. Taking it over moves the working copy to ' +
-            'this device. If that device holds work it never synced, the work stays on it but can no ' +
-            'longer be sent — its copy becomes read-only.',
-          cancelLabel: 'Cancel',
-          confirmLabel: 'Take Over',
-        }).then(function (confirmed) {
-          if (!confirmed) return;
-          takeBtn.disabled = true;
-          takeBtn.textContent = 'Taking over…';
-          const stop = watchSyncProgress(function (where) { takeBtn.textContent = where; });
-          return window.ToolboxSync.takeOverCustomerFile(entry.id).then(function (result) {
-            stop();
-            const leftBehind = typeof window.ToolboxSync.describeMissingMedia === 'function'
-              ? window.ToolboxSync.describeMissingMedia(result && result.missingMedia)
-              : '';
-            cabinetNotice = name + ' was taken over and is now on this device.' +
-              (leftBehind ? ' ' + leftBehind : '');
-            window.location.hash = '#/';
-          }).catch(function (err) {
-            stop();
-            console.warn('Take Over failed:', err);
-            cabinetNotice = (err && err.message) || 'Take Over failed.';
-            renderFileCabinet(app);
-            showFileCabinetNotice(app);
-          });
-        });
-      });
-      actions.appendChild(takeBtn);
-    }
-
     // A cloud-only job had no way out of the Cabinet. The only route to
     // Trash ran through a device's own working copy, so a job you did not
     // want on the device -- an empty one, a mistake -- could not be deleted
@@ -960,8 +914,47 @@
           });
         });
       });
+      // And the way out for a job that is simply dead. Tim, on two of them:
+      // "I want to delete I don't need them to go to a trashcan." One press
+      // and one confirmation that says it cannot be undone.
+      const killBtn = document.createElement('button');
+      killBtn.type = 'button';
+      killBtn.className = 'cabinet-row-menu__action cabinet-row-menu__action--danger cabinet-destroy-btn';
+      killBtn.textContent = 'Delete permanently';
+      killBtn.addEventListener('click', function (event) {
+        event.stopPropagation();
+        rowMenu.classList.remove('is-open');
+        const name = entry.displayName || 'Customer File';
+        confirmAction({
+          title: 'Permanently delete this Customer File?',
+          message: name + ' will be destroyed in the File Cabinet, including its plans and ' +
+            'photographs. This cannot be undone.',
+          cancelLabel: 'Cancel',
+          confirmLabel: 'Delete permanently',
+        }).then(function (confirmed) {
+          if (!confirmed) return;
+          if (typeof window.ToolboxSync.destroyCabinetCustomerFile !== 'function') {
+            cabinetNotice = 'Permanent delete is unavailable.';
+            renderFileCabinet(app);
+            showFileCabinetNotice(app);
+            return;
+          }
+          return window.ToolboxSync.destroyCabinetCustomerFile(entry.id).then(function () {
+            cabinetNotice = name + ' was permanently deleted.';
+            renderFileCabinet(app);
+            showFileCabinetNotice(app);
+          }).catch(function (err) {
+            console.warn('Permanent delete failed:', err);
+            cabinetNotice = (err && err.message) || 'Could not delete that Customer File.';
+            renderFileCabinet(app);
+            showFileCabinetNotice(app);
+          });
+        });
+      });
+
       rowMenu.appendChild(menuToggle);
       rowMenu.appendChild(trashBtn);
+      rowMenu.appendChild(killBtn);
     }
     if (rowMenu) actions.appendChild(rowMenu);
     if (actions.childNodes.length) row.appendChild(actions);
@@ -3060,6 +3053,7 @@
 
   // Shared helpers for other product-area modules (Customer File plans).
   window.ToolboxApp = {
+    confirmAction: confirmAction,
     registerActiveFlush: registerActiveFlush,
     blankCustomerFile: blankCustomerFile,
     hasInvestigationData: hasInvestigationData,
