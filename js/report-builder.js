@@ -780,15 +780,17 @@
     var meta = (page && page.meta) || {};
     var canvasId = meta.canvasId || (page && page.sourceRef) || null;
     var ps = window.ToolboxPlanSetup;
-    if (!ps || typeof ps.canvasById !== 'function' || !record || !canvasId) return 0;
+    if (!ps || typeof ps.canvasById !== 'function' || !record || !canvasId) return null;
     var canvas = null;
     try { canvas = ps.canvasById(record, canvasId); } catch (err) { canvas = null; }
     var facing = canvas && typeof canvas.frontDoorFacing === 'string'
       ? canvas.frontDoorFacing.trim().toUpperCase()
       : '';
+    if (!facing) return null;
     var bt = window.ToolboxBuildingTypes;
-    if (!bt || typeof bt.frontDoorToNorthRotation !== 'function') return 0;
-    return Number(bt.frontDoorToNorthRotation(facing)) || 0;
+    if (!bt || typeof bt.frontDoorToNorthRotation !== 'function') return null;
+    var deg = Number(bt.frontDoorToNorthRotation(facing));
+    return isFinite(deg) ? deg : null;
   }
 
   // Chrome's "Save as PDF" defaults the filename from document.title.
@@ -2354,14 +2356,15 @@
       // A compass belongs on a drawing of the building. A sheet of
       // photographs, or of property details, is not oriented to anything.
       north: page.type === 'floor' || page.type === 'distress',
-      // Hand turn on this sheet wins. Otherwise the Distress rule on the
-      // level (_northRotation / evidence), never a silent 0 that leaves the
-      // rose pointing plan-up on an east-facing door.
-      northRotation: typeof meta.northRotation === 'number'
-        ? meta.northRotation
-        : (typeof page._northRotation === 'number'
-          ? page._northRotation
-          : (typeof ev.northRotation === 'number' ? ev.northRotation : 0)),
+      // _northRotation carries the report's own hand turn when there is one,
+      // and otherwise the Distress rule for this level. A turn used to be
+      // kept on the SHEET, so turning the rose on one drawing left every
+      // other drawing of the same building pointing somewhere else -- and
+      // the levels disagreed anyway, because each canvas keeps its own front
+      // door facing and only the one being worked on is ever set.
+      northRotation: typeof page._northRotation === 'number'
+        ? page._northRotation
+        : (typeof ev.northRotation === 'number' ? ev.northRotation : 0),
       residence: ev.residenceTitle || ev.customerName || '',
       address: ev.address || '',
       addressCity: ev.addressCity || '',
@@ -2644,7 +2647,7 @@
   }
 
   function persistableDocument(pages, activePageId, prior, floorLayout, coverLayout, brandBox,
-    floorCamera, floorView, floorFramed, discussionBox, penLogLayout) {
+    floorCamera, floorView, floorFramed, discussionBox, penLogLayout, northRotation) {
     var notes = collectPenLogNotes(pages);
     if ((!notes || !Object.keys(notes).length) && prior && prior.penLog && prior.penLog.notes) {
       notes = prior.penLog.notes;
@@ -2695,6 +2698,11 @@
     if (camera) doc.floorCamera = JSON.parse(JSON.stringify(camera));
     var view = floorView || (prior && prior.floorView);
     if (view) doc.floorView = JSON.parse(JSON.stringify(view));
+    if (typeof northRotation === 'number') {
+      doc.northRotation = northRotation;
+    } else if (prior && typeof prior.northRotation === 'number') {
+      doc.northRotation = prior.northRotation;
+    }
     if (floorFramed || (prior && prior.floorFramed)) doc.floorFramed = true;
     return doc;
   }
@@ -2822,6 +2830,9 @@
     var coverLayout = window.ToolboxReportCoverLayout
       ? window.ToolboxReportCoverLayout.defaultLayout()
       : { locked: false, boxes: {}, overviewMediaId: '' };
+    // Which way north points on every drawing in this report. Null until the
+    // first drawing is stamped, which seeds it from that level's front door.
+    var reportNorth = null;
     // One logo placement for the whole book. Null until the document says
     // otherwise, so a report saved before this still shows where its logo was
     // put (the per-sheet copy is adopted on open).
@@ -3102,7 +3113,8 @@
         floorView,
         floorFramed,
         discussionBox,
-        penLogBoxLayout
+        penLogBoxLayout,
+        reportNorth
       );
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;
@@ -3573,7 +3585,27 @@
         // — on every drawing of the building (Floor and Picture Locations).
         // renderSheet / the rail run outside this closure.
         if (item.type === 'floor' || item.type === 'distress') {
-          item._northRotation = northRotationFor(item, workingRecord);
+          if (typeof reportNorth === 'number') {
+            item._northRotation = reportNorth;
+          } else {
+            // The first drawing whose front door can actually be READ sets
+            // north for the book. One building has one front door; the
+            // per-canvas facing is Plan Setup's and only the level being
+            // worked on is ever set, which is why the arrow pointed four
+            // ways in one report.
+            //
+            // A rotation that could not be worked out must not latch. The
+            // first render runs before the Customer File is in hand, so a
+            // latched fallback pinned every drawing in the book at 0 -- due
+            // south -- however the door actually faced. That is the arrow
+            // being wrong on an east-facing house.
+            var seeded = northRotationFor(item, workingRecord);
+            if (typeof seeded === 'number') reportNorth = seeded;
+            item._northRotation = typeof seeded === 'number' ? seeded : 0;
+          }
+          if (item.meta && typeof item.meta.northRotation === 'number') {
+            delete item.meta.northRotation;
+          }
         }
         if (item.type !== 'floor') return;
         item._overviewUrl = coverOverviewUrl;
@@ -5937,8 +5969,8 @@
     }
 
     function currentNorthRotation(page) {
+      if (typeof reportNorth === 'number') return reportNorth;
       if (!page) return 0;
-      if (page.meta && typeof page.meta.northRotation === 'number') return page.meta.northRotation;
       if (typeof page._northRotation === 'number') return page._northRotation;
       var ev = page.evidence || {};
       if (typeof ev.northRotation === 'number') return ev.northRotation;
@@ -5978,10 +6010,10 @@
       var page = northDrag.page;
       applyRoseRotation(northDrag.rail, deg);
       northDrag = null;
-      page.meta = page.meta || {};
-      if (page.meta.northRotation === deg) return;
-      page.meta.northRotation = deg;
+      if (reportNorth === deg) return;
+      reportNorth = deg;
       markDirty();
+      renderPages();
       flushSave().catch(function () {});
     });
 
@@ -7327,6 +7359,19 @@
           if (lp && lp.type === 'floor' && !(lp.meta && lp.meta.reserved) &&
             lp.meta && lp.meta.layout) {
             legacyFloor = lp.meta.layout;
+            break;
+          }
+        }
+      }
+      // A report whose rose was turned before this kept the turn on the
+      // SHEET. Take it, or opening it would spin the arrow back.
+      if (savedDoc && typeof savedDoc.northRotation === 'number') {
+        reportNorth = savedDoc.northRotation;
+      } else if (savedDoc && Array.isArray(savedDoc.pages)) {
+        for (var ln = 0; ln < savedDoc.pages.length; ln += 1) {
+          var np = savedDoc.pages[ln];
+          if (np && np.meta && typeof np.meta.northRotation === 'number') {
+            reportNorth = np.meta.northRotation;
             break;
           }
         }
