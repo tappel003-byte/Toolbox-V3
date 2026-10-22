@@ -6704,6 +6704,182 @@
       });
     }
 
+    /**
+     * The flip chart: the report, one sheet at a time, full screen.
+     *
+     * It shows the PRINTED deck, not the editing sheets -- the same deck the
+     * printer is handed, composed contour maps and all -- so what is flipped
+     * through is what comes out of the PDF. A preview that showed something
+     * else would be worth nothing, which is the whole reason for it. Tim:
+     * "that allows me to see the report before I PDF it or anything else
+     * there is my chart view that I've been looking for."
+     *
+     * The wheel flips it, because that is how he asked to drive it: "I can
+     * just scroll my mouse back-and-forth to make sure they flip correctly."
+     */
+    var presentDeck = null;
+    var presentAt = 0;
+    var presentBar = null;
+    var presentOff = [];
+    var wheelPile = 0;
+    var wheelRestAt = 0;
+
+    function presentSheets() {
+      return presentDeck ? [].slice.call(presentDeck.querySelectorAll('.rb-sheet')) : [];
+    }
+
+    function fitPresentSheet() {
+      var sheets = presentSheets();
+      var sheet = sheets[presentAt];
+      if (!sheet) return;
+      var w = sheet.offsetWidth || 1;
+      var h = sheet.offsetHeight || 1;
+      // A little air around the paper so the edge of the sheet reads as an
+      // edge rather than running off the screen.
+      var scale = Math.min((window.innerWidth - 32) / w, (window.innerHeight - 32) / h);
+      if (!(scale > 0)) scale = 1;
+      var left = Math.max(0, (window.innerWidth - w * scale) / 2);
+      var top = Math.max(0, (window.innerHeight - h * scale) / 2);
+      sheet.style.transform =
+        'translate(' + Math.round(left) + 'px, ' + Math.round(top) + 'px) scale(' + scale + ')';
+    }
+
+    function showPresentSheet(next) {
+      var sheets = presentSheets();
+      if (!sheets.length) return;
+      presentAt = Math.max(0, Math.min(sheets.length - 1, next));
+      sheets.forEach(function (sheet, at) {
+        sheet.classList.toggle('is-present-current', at === presentAt);
+        if (at !== presentAt) sheet.style.transform = '';
+      });
+      fitPresentSheet();
+      if (presentBar) {
+        var count = presentBar.querySelector('.rb-present-bar__count');
+        var back = presentBar.querySelector('[data-present="back"]');
+        var on = presentBar.querySelector('[data-present="next"]');
+        if (count) count.textContent = (presentAt + 1) + ' of ' + sheets.length;
+        if (back) back.disabled = presentAt === 0;
+        if (on) on.disabled = presentAt === sheets.length - 1;
+      }
+    }
+
+    function closePresentation() {
+      presentOff.forEach(function (off) { try { off(); } catch (_) {} });
+      presentOff = [];
+      if (presentBar && presentBar.parentNode) presentBar.parentNode.removeChild(presentBar);
+      presentBar = null;
+      if (presentDeck && presentDeck.parentNode) presentDeck.parentNode.removeChild(presentDeck);
+      presentDeck = null;
+      document.body.classList.remove('is-presenting');
+      clearFloorStills();
+      renderPages();
+      fitSheet(root);
+    }
+
+    function buildPresentBar(total) {
+      var bar = document.createElement('div');
+      bar.className = 'rb-present-bar';
+      bar.setAttribute('role', 'group');
+      bar.setAttribute('aria-label', 'Presentation controls');
+      bar.innerHTML =
+        '<button type="button" data-present="back" aria-label="Previous sheet">‹</button>' +
+        '<span class="rb-present-bar__count">1 of ' + total + '</span>' +
+        '<button type="button" data-present="next" aria-label="Next sheet">›</button>' +
+        '<button type="button" data-present="close">Close</button>';
+      bar.addEventListener('click', function (event) {
+        var hit = event.target.closest('[data-present]');
+        if (!hit) return;
+        event.stopPropagation();
+        var what = hit.getAttribute('data-present');
+        if (what === 'close') closePresentation();
+        else if (what === 'back') showPresentSheet(presentAt - 1);
+        else if (what === 'next') showPresentSheet(presentAt + 1);
+      });
+      return bar;
+    }
+
+    function listenWhilePresenting(target, type, handler, options) {
+      target.addEventListener(type, handler, options);
+      presentOff.push(function () { target.removeEventListener(type, handler, options); });
+    }
+
+    function openPresentation() {
+      if (presentDeck) return Promise.resolve();
+      var presentBtn = root.querySelector('#rb-present');
+      var was = presentBtn ? presentBtn.textContent : '';
+      if (presentBtn) {
+        presentBtn.disabled = true;
+        presentBtn.textContent = 'Preparing…';
+      }
+      return flushSave().catch(function () {}).then(function () {
+        return composeFloorStills();
+      }).then(function () {
+        presentDeck = buildPrintDeck();
+        presentDeck.classList.add('rb-print--present');
+        presentDeck.removeAttribute('aria-hidden');
+        document.body.appendChild(presentDeck);
+        document.body.classList.add('is-presenting');
+        // The same settling the printed deck gets. Without it the plans are
+        // laid out against a detached sheet and the captions never measured,
+        // and the preview would stop being a preview.
+        relayoutPrintedPlans(presentDeck);
+        fitCoverContents(presentDeck);
+        fitCaptions(presentDeck);
+
+        presentBar = buildPresentBar(presentSheets().length);
+        document.body.appendChild(presentBar);
+
+        listenWhilePresenting(window, 'resize', fitPresentSheet);
+        listenWhilePresenting(window, 'keydown', function (event) {
+          if (!presentDeck) return;
+          var key = event.key;
+          if (key === 'Escape') { event.preventDefault(); closePresentation(); return; }
+          if (key === 'ArrowRight' || key === 'ArrowDown' || key === 'PageDown' || key === ' ') {
+            event.preventDefault(); showPresentSheet(presentAt + 1); return;
+          }
+          if (key === 'ArrowLeft' || key === 'ArrowUp' || key === 'PageUp') {
+            event.preventDefault(); showPresentSheet(presentAt - 1); return;
+          }
+          if (key === 'Home') { event.preventDefault(); showPresentSheet(0); return; }
+          if (key === 'End') { event.preventDefault(); showPresentSheet(presentSheets().length - 1); }
+        });
+        // One notch of a wheel is one sheet. A trackpad sends a stream of
+        // small deltas rather than notches, so they are piled up to a
+        // threshold and the pile is dropped once the hand stops -- otherwise
+        // one flick runs the whole report past.
+        listenWhilePresenting(presentDeck, 'wheel', function (event) {
+          event.preventDefault();
+          var now = Date.now();
+          if (now - wheelRestAt > 220) wheelPile = 0;
+          wheelRestAt = now;
+          wheelPile += event.deltaY;
+          if (wheelPile >= 40) { wheelPile = 0; showPresentSheet(presentAt + 1); }
+          else if (wheelPile <= -40) { wheelPile = 0; showPresentSheet(presentAt - 1); }
+        }, { passive: false });
+        listenWhilePresenting(presentDeck, 'click', function (event) {
+          if (event.target.closest('.rb-present-bar')) return;
+          // The right half goes on, the left half goes back, the way a
+          // slideshow does.
+          showPresentSheet(event.clientX > window.innerWidth / 2 ? presentAt + 1 : presentAt - 1);
+        });
+
+        showPresentSheet(0);
+      }).catch(function (err) {
+        console.warn('Presentation could not be opened', err);
+        closePresentation();
+      }).then(function () {
+        if (presentBtn) {
+          presentBtn.disabled = false;
+          presentBtn.textContent = was || 'Present';
+        }
+      });
+    }
+
+    var presentBtn = root.querySelector('#rb-present');
+    if (presentBtn) {
+      presentBtn.addEventListener('click', function () { openPresentation(); });
+    }
+
     var exportBtn = root.querySelector('#rb-export-ai');
     var exportStatus = root.querySelector('#rb-ai-status');
     exportBtn.addEventListener('click', function () {
@@ -6938,6 +7114,7 @@
       '  </div>' +
       '  <div class="rb-toolbar">' +
       '    <div class="rb-toolbar__format" data-rb-format-host></div>' +
+      '    <button type="button" id="rb-present" class="btn btn--secondary rb-present-btn">Present</button>' +
       '    <button type="button" id="rb-print" class="btn btn--secondary rb-print-btn">Print / PDF</button>' +
       '    <button type="button" id="rb-export-ai" class="btn btn--accent rb-export">Export for AI</button>' +
       '    <p class="rb-ai-status" id="rb-ai-status" aria-live="polite"></p>' +

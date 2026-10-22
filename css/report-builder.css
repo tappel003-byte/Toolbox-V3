@@ -2866,6 +2866,107 @@ body.report-builder-open .canvas {
   pointer-events: none;
 }
 
+/* Presentation: the printed deck, brought on screen one sheet at a time.
+   It is deliberately the same deck the printer is given -- composed contour
+   maps and all -- so what is flipped through is what comes out of the PDF.
+   Tim: "that allows me to see the report before I PDF it ... there is my
+   flip chart that I've been looking for." */
+body.is-presenting { overflow: hidden; }
+
+.rb-print--present {
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  padding: 0;
+  background: #0b1b27;
+  pointer-events: auto;
+  overflow: hidden;
+  z-index: 9000;
+}
+
+.rb-print--present .rb-sheet { display: none; }
+
+/* Placed and scaled from script, from the top-left corner. Centring a sheet
+   that is larger than the window cannot be left to the layout: inside a
+   clipping box the browser pins an oversized centred item to the start, and
+   the paper ran off the bottom-right corner. */
+.rb-print--present .rb-sheet.is-present-current {
+  display: block;
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* The paper's real size. .rb-sheet caps itself at max-width 100%, which
+     here is the window -- that quietly squashed the sheet to the window's
+     shape, so the preview was not the page shape the PDF uses. */
+  width: 17in;
+  height: 11in;
+  max-width: none;
+  min-width: 0;
+  flex: none;
+  margin: 0;
+  background: #fff;
+  transform-origin: top left;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+.rb-present-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(10, 26, 38, 0.82);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  z-index: 9001;
+  opacity: 0.25;
+  transition: opacity 140ms ease;
+}
+
+.rb-present-bar:hover,
+.rb-present-bar:focus-within { opacity: 1; }
+
+.rb-present-bar button {
+  min-width: 38px;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rb-present-bar button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.24); }
+.rb-present-bar button:disabled { opacity: 0.35; cursor: default; }
+
+.rb-present-bar__count {
+  min-width: 74px;
+  padding: 0 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rb-present-bar { transition: none; }
+}
+
+@media print {
+  .rb-present-bar { display: none !important; }
+}
+
 @media print {
   .rb-print {
     position: static;
