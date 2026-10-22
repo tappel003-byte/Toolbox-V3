@@ -2465,7 +2465,14 @@
       var fl = window.ToolboxReportFloorLayout;
       if (fl && typeof fl.renderPage === 'function') {
         var imported = !!(page.meta && page.meta.imported && page.evidence && page.evidence.figure);
-        var layout = (page.meta && page.meta.layout) || page._bookFloorLayout || fl.defaultLayout();
+        // ONE layout record for the whole report. The slide used to keep a
+        // copy of its own, with the book's behind it and a factory default
+        // behind that -- three places holding one answer, and whichever was
+        // found first won. A slide nobody had touched fell through to the
+        // default (the aerial at x 2.5, y 74) and disagreed with the slide
+        // that had been arranged. Tim: "If I put the contour map in one
+        // place, it needs to live in one place."
+        var layout = page._bookFloorLayout || fl.defaultLayout();
         var rendered = fl.renderPage(page, page.evidence || {}, {
           imported: imported,
           layout: layout,
@@ -2501,7 +2508,12 @@
           // own pill used before it came off the picture.
           pillPx: storedStatsPillPx(),
         });
-        if (page.meta && !thumb) page.meta.layout = rendered.layout;
+        // Back to the one record, not onto the slide. renderSheet runs
+        // outside the closure that holds it, so the way in is handed over on
+        // the page, like the aerial view and the view settings are.
+        if (!thumb && typeof page._putFloorLayout === 'function') {
+          page._putFloorLayout(rendered.layout);
+        }
         margin.appendChild(rendered.root);
       } else if (!renderEvidence(margin, page)) {
         addLine(margin, 'rb-sheet__note', 'Floor Survey page unavailable.');
@@ -2898,51 +2910,34 @@
       var flApi = window.ToolboxReportFloorLayout;
       if (!flApi || !isFinite(scale) || scale <= 0) return false;
       var key = which === 'pill' ? 'pillLock' : 'legendLock';
-      var touched = false;
-      pages.forEach(function (fp) {
-        if (!fp || fp.type !== 'floor' || (fp.meta && fp.meta.reserved)) return;
-        fp.meta = fp.meta || {};
-        var own = flApi.normalizeLayout(fp.meta.layout || floorLayout);
-        if (!own[key] || !own[key].locked) return;
-        own[key] = { locked: true, scale: scale };
-        fp.meta.layout = own;
-        touched = true;
-      });
-      if (touched) {
-        floorLayout = flApi.normalizeLayout(floorLayout);
-        floorLayout[key] = { locked: true, scale: scale };
-        markDirty();
-      }
-      return touched;
+      var next = flApi.normalizeLayout(floorLayout);
+      var was = next[key] && next[key].scale;
+      if (was === scale) return false;
+      // One size for this piece, held by the report. The field name still
+      // says lock because that is what saved reports carry; what it holds is
+      // the size. It used to be written onto each slide in turn, and only
+      // onto the slides whose own copy said locked.
+      next[key] = { locked: true, scale: scale };
+      putFloorLayout(next);
+      markDirty();
+      return true;
     }
 
     /**
-     * Is this slide's layout locked?
+     * The report's one floor layout, written.
      *
-     * One lock covers the framing and both pieces, so any of the three being
-     * set reads as locked and the button turns them all off together. A
-     * report saved while there were three separate locks opens showing the
-     * state it was left in rather than losing it.
+     * Where the legend sits, where the readings sit, where the aerial sits,
+     * how the plan is framed and how big each piece is drawn: one record,
+     * held by the report, read by every Floor Survey slide. Moving a piece on
+     * any slide moves it on all of them, because they are all drawing this.
      */
-    function layoutIsLocked(page) {
+    function putFloorLayout(next) {
+      if (!next) return;
       var flApi = window.ToolboxReportFloorLayout;
-      var raw = (page && page.meta && page.meta.layout) || floorLayout;
-      var layout = flApi ? flApi.normalizeLayout(raw) : (raw || {});
-      // The layout's own flag counts too. It was the one thing this did not
-      // read, so the data could say unlocked while the button said locked.
-      return !!layout.locked ||
-        !!(floorCamera && floorCamera.locked) ||
-        !!(layout.legendLock && layout.legendLock.locked) ||
-        !!(layout.pillLock && layout.pillLock.locked);
-    }
-
-    function floorPieceLocked(page, kind) {
-      var flApi = window.ToolboxReportFloorLayout;
-      var raw = (page && page.meta && page.meta.layout) || floorLayout;
-      var layout = flApi ? flApi.normalizeLayout(raw) : (raw || {});
-      if (kind === 'legend') return !!(layout.legendLock && layout.legendLock.locked);
-      if (kind === 'pill') return !!(layout.pillLock && layout.pillLock.locked);
-      return !!layout.locked;
+      floorLayout = flApi ? flApi.normalizeLayout(next) : next;
+      pages.forEach(function (fp) {
+        if (fp && fp.type === 'floor') fp._bookFloorLayout = floorLayout;
+      });
     }
 
     function floorViewFor(page, slot) {
@@ -3513,16 +3508,8 @@
 
       if (current && current.type === 'floor') {
         current._bookFloorLayout = floorLayout;
-        if (floorLayout && floorLayout.locked) {
-          current.meta = current.meta || {};
-          current.meta.layout = window.ToolboxReportFloorLayout
-            ? window.ToolboxReportFloorLayout.cloneLayout(floorLayout)
-            : floorLayout;
-        } else if (current.meta && !current.meta.layout && floorLayout) {
-          current.meta.layout = window.ToolboxReportFloorLayout
-            ? window.ToolboxReportFloorLayout.cloneLayout(floorLayout)
-            : floorLayout;
-        }
+        current._putFloorLayout = putFloorLayout;
+        if (current.meta && current.meta.layout) delete current.meta.layout;
       }
       // Stamped on every page that needs it, not only on the one being
       // looked at. The print deck renders the same page objects, and a value
@@ -3564,16 +3551,10 @@
         // pill and the aerial view each back in a default corner, on top of
         // the drawing. Same fault the Discussion had, same cure.
         item._bookFloorLayout = floorLayout;
-        // Lock layout means the book's placement, on every slide. It was
-        // written onto the active slide alone, so the others kept whatever
-        // they had been saved with and the pill, the aerial and the frame
-        // drifted from slide to slide after the first one.
-        if (floorLayout && floorLayout.locked) {
-          item.meta = item.meta || {};
-          item.meta.layout = window.ToolboxReportFloorLayout
-            ? window.ToolboxReportFloorLayout.cloneLayout(floorLayout)
-            : floorLayout;
-        }
+        item._putFloorLayout = putFloorLayout;
+        // Any copy a slide was saved with under the old model is dead weight
+        // now and would only be a second answer waiting to be read again.
+        if (item.meta && item.meta.layout) delete item.meta.layout;
         // How big the colour scale is drawn on the page. It is the slide's
         // own Legend size -- the same control that sizes it on the Floor
         // Survey screen -- and renderSheet runs outside this closure, so it
@@ -3652,14 +3633,13 @@
               if (!flApi || typeof flApi.frameForPlan !== 'function') return;
               var frame = flApi.frameForPlan(info.planWidth, info.planHeight);
               floorFramed = true;
-              pages.forEach(function (item) {
-                if (!item || item.type !== 'floor') return;
-                item.meta = item.meta || {};
-                var next = flApi.normalizeLayout(item.meta.layout || floorLayout);
-                next.topo = frame;
-                item.meta.layout = next;
-              });
-              floorLayout = flApi.normalizeLayout({ topo: frame });
+              // Into the one record, which every slide is already reading.
+              // It used to be written onto each slide as well, and the record
+              // was then thrown away and rebuilt from the frame alone, losing
+              // wherever the aerial and the chrome had been put.
+              var framed = flApi.normalizeLayout(floorLayout);
+              framed.topo = frame;
+              putFloorLayout(framed);
               markDirty();
               renderPages();
               flushSave().catch(function () {});
@@ -3932,8 +3912,8 @@
           var wrap = document.createDocumentFragment();
           var pieceApi = window.ToolboxReportFloorLayout;
           var pieceLayout = pieceApi
-            ? pieceApi.normalizeLayout((page.meta && page.meta.layout) || floorLayout)
-            : ((page.meta && page.meta.layout) || floorLayout || {});
+            ? pieceApi.normalizeLayout(floorLayout)
+            : (floorLayout || {});
           // One lock, as it was before three replaced it. Tim: "Lock layout is
           // better, one button vs three, let's go back to that."
           //
@@ -3946,16 +3926,12 @@
           // and where the colour scale and the readings sit and how big they
           // are -- is what this pins. Contours on or off, palette and mode
           // stay free per slide, which is the reason to lock first.
-          var locked = layoutIsLocked(page);
-          wrap.appendChild(railButton(
-            locked ? 'Unlock layout' : 'Lock layout',
-            locked ? 'secondary' : 'accent',
-            'data-rb-floor-lock-all', locked ? 'unlock' : 'lock'));
           var lockHint = document.createElement('p');
           lockHint.className = 'rb-panel__lead';
-          lockHint.textContent = locked
-            ? 'Framing and chrome held on every Floor Survey slide. Contours and palette stay per slide.'
-            : 'Place it, then lock so every slide is framed the same.';
+          lockHint.textContent =
+            'The plan, the colour scale, the readings and the aerial sit in one '
+            + 'place on every Floor Survey slide. Move one here and it moves on '
+            + 'all of them. Contours and palette stay per slide.';
           wrap.appendChild(lockHint);
 
           var twoUp = floorSlots(page) > 1;
@@ -4155,110 +4131,6 @@
           // both makes each one fit the frame it is actually in.
           releaseTopoHosts();
           markDirty();
-          renderPages();
-          flushSave().catch(function () {});
-          return;
-        }
-        // Lock contour legend / Lock high/low/delta.
-        //
-        // Locking takes this sheet's placement AND the size it is being drawn
-        // at right now, writes both into the report, and gives the same pair to
-        // every Floor Survey sheet. Tim: "they should all just come in exactly
-        // in the same place always, always in the same size... maybe it just
-        // needs to be the last location that I brought them in." This is that:
-        // the one in front of him when he locks it.
-        var pieceBtn = event.target.closest('[data-rb-floor-lock-all]');
-        if (pieceBtn) {
-          event.preventDefault();
-          var pCurrent = activePage();
-          if (!pCurrent || pCurrent.type !== 'floor') return;
-          var wantLock = pieceBtn.getAttribute('data-rb-floor-lock-all') !== 'unlock';
-          // The framing goes with it: one button, one idea. "Lock the picture,
-          // not the rendition" (Tim, Oct 8) -- so contours, palette and mode
-          // stay free per slide.
-          if (!floorCamera) floorCamera = { cx: 0.5, cy: 0.5, zoom: 1, rel: true, locked: false };
-          floorCamera.locked = wantLock;
-          ['legend', 'pill'].forEach(function (which) {
-          var pApi = window.ToolboxReportFloorLayout;
-          if (!pApi) return;
-          var pLayout = pApi.normalizeLayout((pCurrent.meta && pCurrent.meta.layout) || floorLayout);
-          var lockKey = which === 'legend' ? 'legendLock' : 'pillLock';
-          if (wantLock) {
-            // The size it is drawn at RIGHT NOW, always. It used to prefer a
-            // size this piece had been locked at before, so after unlocking,
-            // resizing and locking again the piece jumped back to that older
-            // size the moment it was locked. Tim: "lock contour vs unlock the
-            // legend changes size." A lock freezes what is on the sheet; it
-            // does not remember an earlier one.
-            pLayout[lockKey] = {
-              locked: true,
-              scale: which === 'legend' ? liveLegendScale() : livePillScale(),
-            };
-            // Every sheet takes this sheet's placement for that piece, so the
-            // locked piece is in one spot across the book.
-            var placed = {};
-            pLayout.overlays.forEach(function (o) {
-              if (o.kind === which) placed[o.statsIndex] = { x: o.x, y: o.y, z: o.z };
-            });
-            pages.forEach(function (fp) {
-              if (!fp || fp.type !== 'floor' || (fp.meta && fp.meta.reserved)) return;
-              fp.meta = fp.meta || {};
-              var own = pApi.normalizeLayout(fp.meta.layout || floorLayout);
-              own[lockKey] = { locked: true, scale: pLayout[lockKey].scale };
-              own.overlays.forEach(function (o) {
-                var spot = o.kind === which ? placed[o.statsIndex] : null;
-                if (!spot) return;
-                o.x = spot.x;
-                o.y = spot.y;
-                o.z = spot.z;
-              });
-              fp.meta.layout = own;
-            });
-            floorLayout = pApi.normalizeLayout(floorLayout);
-            floorLayout[lockKey] = { locked: true, scale: pLayout[lockKey].scale };
-          } else {
-            pages.forEach(function (fp) {
-              if (!fp || fp.type !== 'floor' || (fp.meta && fp.meta.reserved)) return;
-              fp.meta = fp.meta || {};
-              var own = pApi.normalizeLayout(fp.meta.layout || floorLayout);
-              own[lockKey] = { locked: false, scale: own[lockKey] ? own[lockKey].scale : null };
-              fp.meta.layout = own;
-            });
-            floorLayout = pApi.normalizeLayout(floorLayout);
-            floorLayout[lockKey] = { locked: false, scale: floorLayout[lockKey].scale };
-          }
-          });
-          // The picture ITSELF: the frame the drawing sits in, and the aerial
-          // view beside it. Locking spread the colour scale and the readings
-          // and stopped there, and it never set the layout's own locked flag
-          // -- so a slide that had never been given a placement of its own
-          // kept the factory one. That is why the Garage sheet put its aerial
-          // in the bottom-left corner while Main Level had it bottom-right,
-          // with the button reading "Unlock layout" on both. Tim: "What is
-          // the point of having a locked layout that doesn't lock the layout?"
-          var allApi = window.ToolboxReportFloorLayout;
-          if (allApi) {
-            var src = allApi.normalizeLayout((pCurrent.meta && pCurrent.meta.layout) || floorLayout);
-            floorLayout = allApi.normalizeLayout(floorLayout);
-            floorLayout.locked = wantLock;
-            if (wantLock) {
-              floorLayout.topo = JSON.parse(JSON.stringify(src.topo));
-              floorLayout.overview = JSON.parse(JSON.stringify(src.overview));
-            }
-            pages.forEach(function (fp) {
-              if (!fp || fp.type !== 'floor' || (fp.meta && fp.meta.reserved)) return;
-              fp.meta = fp.meta || {};
-              var own = allApi.normalizeLayout(fp.meta.layout || floorLayout);
-              own.locked = wantLock;
-              if (wantLock) {
-                own.topo = JSON.parse(JSON.stringify(src.topo));
-                own.overview = JSON.parse(JSON.stringify(src.overview));
-              }
-              fp.meta.layout = own;
-            });
-          }
-          dirty = true;
-          setSaveStatus('Saving…');
           renderPages();
           flushSave().catch(function () {});
           return;
@@ -5749,9 +5621,6 @@
         if (!meta.canvasId) return;
         if (!meta.compose && !meta.figureMediaId) return;
         page.meta = meta;
-        if (!meta.layout || (floorLayout && floorLayout.locked)) {
-          page.meta.layout = flApi ? flApi.cloneLayout(floorLayout) : floorLayout;
-        }
         // A garage arrives as readings, not contours. Tim, Oct 20: "I just
         // want data points in the garage. Period. I can always change them
         // later." Only ever seeded here, on the slide's first import, and
@@ -5791,16 +5660,6 @@
       if (!current || current.type !== 'floor' || (current.meta && current.meta.reserved)) return;
       if (!workingRecord) return;
       current.meta = current.meta || {};
-      if (!current.meta.layout) {
-        current.meta.layout = window.ToolboxReportFloorLayout
-          ? window.ToolboxReportFloorLayout.cloneLayout(floorLayout)
-          : floorLayout;
-      }
-      if (floorLayout && floorLayout.locked) {
-        current.meta.layout = window.ToolboxReportFloorLayout
-          ? window.ToolboxReportFloorLayout.cloneLayout(floorLayout)
-          : floorLayout;
-      }
       current.meta.imported = true;
       setSaveStatus('Importing…');
       attachEvidence(workingRecord, [current]).then(function (enriched) {
@@ -6202,11 +6061,10 @@
       var resize = event.target.closest('[data-rb-floor-resize]');
       var box = event.target.closest('[data-rb-floor-box]');
       if (!box) return;
-      // Each piece answers to its own lock. The colour scale and the readings
-      // have one each; the plan and the aerial follow whatever is left of the
-      // old single lock on this report.
+      // Every piece is movable on every slide. They are all drawing the
+      // report's one layout record, so moving one here moves it everywhere --
+      // which is what the locks were copying by hand.
       var dragKind = box.getAttribute('data-rb-floor-kind') || 'topo';
-      if (floorPieceLocked(current, dragKind)) return;
       // Inside the drawing the gestures are Floor Survey's: drag pans the plan,
       // the wheel zooms it, and it can be moved anywhere including off the
       // edge. Report Builder must not claim those -- the slide is meant to
@@ -6221,8 +6079,8 @@
       var id = box.getAttribute('data-rb-floor-box');
       var kind = box.getAttribute('data-rb-floor-kind') || 'topo';
       var layout = window.ToolboxReportFloorLayout
-        ? window.ToolboxReportFloorLayout.normalizeLayout((current.meta && current.meta.layout) || floorLayout)
-        : (current.meta && current.meta.layout) || floorLayout;
+        ? window.ToolboxReportFloorLayout.normalizeLayout(floorLayout)
+        : floorLayout;
       floorDrag = {
         id: id,
         kind: kind,
@@ -6379,10 +6237,12 @@
           overlay.y = (origin ? origin.y : 0) + dy;
         }
       }
+      // Straight into the report's one record, so every Floor Survey slide
+      // has already moved by the time the drag ends. It used to be written
+      // onto this slide, and onto the book only while nothing was locked --
+      // which is how two slides came to hold two different answers.
       layout = flApi ? flApi.normalizeLayout(layout) : layout;
-      current.meta = current.meta || {};
-      current.meta.layout = layout;
-      if (!floorLayout.locked) floorLayout = flApi ? flApi.cloneLayout(layout) : layout;
+      putFloorLayout(layout);
       var box = sheetEl.querySelector('[data-rb-floor-box="' + floorDrag.id + '"]');
       if (!box) return;
       if (floorDrag.id === 'overview') {
@@ -6486,8 +6346,7 @@
       var page = activePage();
       var flApi = window.ToolboxReportFloorLayout;
       if (!page || page.type !== 'floor' || !flApi) return;
-      var layout = flApi.normalizeLayout((page.meta && page.meta.layout) || floorLayout);
-      if (layout.locked) return;
+      var layout = flApi.normalizeLayout(floorLayout);
       var id = box.getAttribute('data-rb-floor-box') || '';
       var kind = box.getAttribute('data-rb-floor-kind') || 'topo';
       var stack = [layout.topo.z, layout.overview.z].concat(
@@ -6509,8 +6368,7 @@
         });
         if (!found) return;
       }
-      page.meta = page.meta || {};
-      page.meta.layout = layout;
+      putFloorLayout(layout);
       markDirty();
       renderPages();
       flushSave().catch(function () {});
@@ -6522,9 +6380,6 @@
       var page = activePage();
       var flApi = window.ToolboxReportFloorLayout;
       if (!page || page.type !== 'floor' || !flApi) return;
-      var layout = flApi.normalizeLayout((page.meta && page.meta.layout) || floorLayout);
-      // A locked page is shown, not arranged.
-      if (layout.locked) return;
       event.preventDefault();
       closeStackMenu();
       stackMenu = document.createElement('div');
@@ -6869,7 +6724,7 @@
       var planW = plan && Number(plan.width) > 0 ? Number(plan.width) : 0;
       var planH = plan && Number(plan.height) > 0 ? Number(plan.height) : 0;
       if (!planW || !planH) return fallback;
-      var layout = meta.layout || page._bookFloorLayout || null;
+      var layout = page._bookFloorLayout || null;
       var topo = layout && layout.topo;
       if (!topo || !(Number(topo.w) > 0) || !(Number(topo.h) > 0)) return fallback;
       // The frame's shape on the paper in real inches, not in percent of it.

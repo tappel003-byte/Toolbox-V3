@@ -370,6 +370,24 @@
    * the size and it is the one already in the panel. 1.5x is the scale's own
    * default there.
    */
+  /**
+   * The readings pill is drawn in CSS pixels off a device setting, and the
+   * page is now a fixed 1632 wide rather than whatever window it was being
+   * looked at in. Taken at face value it would come out a smaller share of
+   * the paper than the one that was placed and approved. 1220 is the width
+   * the sheet had on the desktop it was sized against, so this keeps it the
+   * share of the page it was given.
+   *
+   * The colour scale does NOT want this: it is painted by Floor Survey and
+   * already sized as a share of the sheet, so multiplying it here made it
+   * half as large again -- 27.4% of the page where it had been 20.5%.
+   *
+   * Either way it is only a starting size. The report stores whatever the
+   * piece is resized to, and from then on that is what every slide draws.
+   */
+  var CHROME_BASE_W = 1220;
+  var CHROME_SCALE = 1632 / CHROME_BASE_W;
+
   function legendScale(options) {
     var raw = options && options.settings && Number(options.settings.legendScale);
     var n = isFinite(raw) && raw > 0 ? raw : 1;
@@ -410,7 +428,7 @@
   function pillScale(options) {
     var raw = options && Number(options.pillPx);
     var n = isFinite(raw) && raw > 0 ? raw : 32;
-    return Math.max(MIN_SCALE, Math.min(MAX_SCALE, n / 32));
+    return Math.max(MIN_SCALE, Math.min(MAX_SCALE, (n / 32) * CHROME_SCALE));
   }
 
   /**
@@ -489,7 +507,13 @@
     var live = options && Array.isArray(options.stats) ? options.stats : null;
     var statsList = live && live.length ? live : (Array.isArray(ev.stats) ? ev.stats : []);
     var layout = layoutForStats(options && options.layout, statsList.length || 1, statsList);
-    var locked = !!layout.locked;
+    // There is no lock any more. The report holds ONE placement for the
+    // chrome and every Floor Survey slide draws it, so there is nothing to
+    // pin and nothing to release -- moving a piece on any slide moves it on
+    // all of them, which is what Lock layout was trying to arrange by
+    // copying. Tim: "Maybe we don't even need to lock things ... they come in
+    // if I move the first slide. Everything else follows it."
+    var locked = false;
     // The everything-at-once sheet carries no colour scale and no H/L/delta.
     //
     // Tim, Oct 20: "Whenever we bring in different levels with multiple
@@ -595,9 +619,9 @@
         if (readingsOnly && overlay.kind === 'legend') return;
         var stats = statsList[overlay.statsIndex];
         if (!stats) return;
-        var pieceLocked = overlay.kind === 'legend'
-          ? !!(layout.legendLock && layout.legendLock.locked)
-          : !!(layout.pillLock && layout.pillLock.locked);
+        // Movable on every slide, because every slide is showing the same
+        // one record. What it is moved to is the report's.
+        var pieceLocked = false;
         var piece = boxShell(overlay.kind, overlay.id, true);
         if (!pieceLocked) piece.classList.remove('is-locked');
         piece.classList.add('rb-floor-box--chrome');
@@ -617,13 +641,15 @@
           sameSpot(overlay.x, slotNow.x) && sameSpot(overlay.y, slotNow.pillY);
         piece.style.top = (liftPill ? slotNow.legendY : overlay.y) + '%';
         piece.style.zIndex = String(overlay.z);
-        // Locked: the size stored with the lock, so this piece is drawn
-        // identically on every sheet and on every machine. Unlocked: the
-        // rail's own control, which is how it has always been sized.
+        // The size the report holds for this piece, so it is drawn the same
+        // on every sheet and on every machine. The field names still say
+        // "lock" because that is what is in saved reports; what they hold now
+        // is simply the size. Nothing stored yet means the rail's own control,
+        // which is how it has always been sized until it is set.
         var lock = overlay.kind === 'legend' ? layout.legendLock : layout.pillLock;
         var live = overlay.kind === 'legend' ? legendScale(options) : pillScale(options);
         piece.style.transform = 'scale(' +
-          ((lock && lock.locked && lock.scale) ? lock.scale : live) + ')';
+          ((lock && lock.scale) ? lock.scale : live) + ')';
         piece.style.transformOrigin = 'top left';
         piece.insertBefore(
           overlay.kind === 'legend' ? renderLegendCard(options, overlay) : renderPill(stats),
