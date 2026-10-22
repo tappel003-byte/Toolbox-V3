@@ -388,33 +388,52 @@
       // It is not part of the note's text. The note is the investigator's to
       // write and is stored; the room belongs to the pin, and editing one
       // must not quietly rewrite the other.
-      if (pin.location) {
-        var room = document.createElement('span');
-        room.className = 'rb-penlog__room';
-        room.textContent = pin.location;
-        noteCell.appendChild(room);
-      }
-      var note = document.createElement('textarea');
-      note.className = 'rb-penlog__note';
-      note.rows = 1;
-      note.value = pin.note || '';
-      note.setAttribute('aria-label', 'Report note for pin ' + pin.number);
-      note.setAttribute('data-pin-id', pin.id || '');
-      note.setAttribute('data-source-note', pin.sourceNote || '');
-      if (measure) {
-        note.readOnly = true;
+      //
+      // Print / Present cannot use a <textarea>: Chrome's print path paints
+      // textarea text as overlapping mush (Janis PDF, Oct 22). The deliverable
+      // deck gets a static note with the room run in as ordinary bold text.
+      if (model && model.printable) {
+        var printNote = document.createElement('div');
+        printNote.className = 'rb-penlog__note rb-penlog__note--print';
+        printNote.setAttribute('data-pin-id', pin.id || '');
+        if (pin.location) {
+          var printRoom = document.createElement('strong');
+          printRoom.className = 'rb-penlog__room rb-penlog__room--inline';
+          printRoom.textContent = pin.location;
+          printNote.appendChild(printRoom);
+          printNote.appendChild(document.createTextNode('\u00a0\u2014\u00a0'));
+        }
+        if (pin.note) printNote.appendChild(document.createTextNode(pin.note));
+        noteCell.appendChild(printNote);
       } else {
-        note.addEventListener('focus', function () {
-          if (typeof model.onSelect === 'function') model.onSelect(pin.id);
-        });
-        note.addEventListener('input', function (event) {
-          autosizeNote(event.target);
-          if (typeof model.onNote === 'function') {
-            model.onNote(pin.id, event.target.value, pin.sourceNote || '');
-          }
-        });
+        if (pin.location) {
+          var room = document.createElement('span');
+          room.className = 'rb-penlog__room';
+          room.textContent = pin.location;
+          noteCell.appendChild(room);
+        }
+        var note = document.createElement('textarea');
+        note.className = 'rb-penlog__note';
+        note.rows = 1;
+        note.value = pin.note || '';
+        note.setAttribute('aria-label', 'Report note for pin ' + pin.number);
+        note.setAttribute('data-pin-id', pin.id || '');
+        note.setAttribute('data-source-note', pin.sourceNote || '');
+        if (measure) {
+          note.readOnly = true;
+        } else {
+          note.addEventListener('focus', function () {
+            if (typeof model.onSelect === 'function') model.onSelect(pin.id);
+          });
+          note.addEventListener('input', function (event) {
+            autosizeNote(event.target);
+            if (typeof model.onNote === 'function') {
+              model.onNote(pin.id, event.target.value, pin.sourceNote || '');
+            }
+          });
+        }
+        noteCell.appendChild(note);
       }
-      noteCell.appendChild(note);
       grid.appendChild(noteCell);
     });
 

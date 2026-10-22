@@ -1931,6 +1931,8 @@
       contour: penLogContour(page),
       layout: page._penLogLayout || null,
       locked: !!thumb,
+      // Present / Print deck: static notes, not textareas (Chrome print mush).
+      printable: !!(sheet && sheet.classList && sheet.classList.contains('rb-sheet--print')),
       pins: shown,
       // The map is the whole level on every sheet of it: a reader looking up
       // photograph 31 on the second sheet needs the same plan in front of

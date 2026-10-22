@@ -2300,6 +2300,25 @@ body.report-builder-open .canvas {
   line-height: 1.15;
 }
 
+/* Print / Present: room + note as ordinary flowing text. Absolute room +
+   textarea first-line indent is the editor layout; Chrome's print of that
+   combination painted overlapping / clipped characters on the Janis PDF. */
+.rb-penlog__room--inline {
+  position: static;
+  top: auto;
+  left: auto;
+  font-weight: 700;
+  white-space: normal;
+}
+
+.rb-penlog__room--inline::after { content: none; }
+
+.rb-penlog__note--print {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .rb-penlog-panel {
   display: flex;
   flex-direction: column;
