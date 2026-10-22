@@ -52,6 +52,56 @@
     return id;
   }
 
+  /**
+   * Make this installation's id outlive the storage that holds it.
+   *
+   * The id decides which device holds a Customer File's Check Out, and it
+   * lived in localStorage alone. Safari clears a site's localStorage after
+   * about a week unused, and a device that lost the id could no longer check
+   * its own files in or out: the Cabinet still named an id nothing answered
+   * to, Check In said to go and use the device that was already in hand, and
+   * Check Out came back "checked out by another user or device". The job was
+   * stuck for every device, with nothing wrong with the job.
+   *
+   * The id is mirrored into the database, which is where the Customer Files
+   * themselves live and is not cleared alongside localStorage. On start the
+   * two are reconciled: whichever still has it wins, and both end up holding
+   * it. This is not Take Over -- a device that is genuinely lost or broken
+   * still needs that, and it is not built -- it is the id staying put.
+   */
+  async function restoreDeviceId() {
+    const db = window.ToolboxDB;
+    if (!db || typeof db.getSetting !== 'function' || typeof db.putSetting !== 'function') {
+      return getDeviceId();
+    }
+    let stored = '';
+    try { stored = trimStr(await db.getSetting(DEVICE_ID_KEY)); } catch (_) { stored = ''; }
+
+    let local = '';
+    try {
+      local = trimStr(window.localStorage && window.localStorage.getItem(DEVICE_ID_KEY));
+    } catch (_) { local = ''; }
+
+    if (local) {
+      // The database is the copy that may be missing; localStorage is the one
+      // in use, so it is not disturbed.
+      if (stored !== local) {
+        try { await db.putSetting(DEVICE_ID_KEY, local); } catch (_) {}
+      }
+      return local;
+    }
+    if (stored) {
+      try {
+        if (window.localStorage) window.localStorage.setItem(DEVICE_ID_KEY, stored);
+      } catch (_) {}
+      return stored;
+    }
+    // Neither has one: mint it the usual way and put it in both places.
+    const minted = getDeviceId();
+    try { await db.putSetting(DEVICE_ID_KEY, minted); } catch (_) {}
+    return minted;
+  }
+
   function displayNameFromRecord(record) {
     if (!record) return 'New Customer File';
     const name = [trimStr(record.firstName), trimStr(record.lastName)].filter(Boolean).join(' ');
@@ -186,6 +236,95 @@
     return !!readForeignLocks()[id];
   }
 
+  /**
+   * Put back into this device's lock map what the copies themselves know.
+   *
+   * The map lives in localStorage and is only written while listing the
+   * Cabinet. iOS clears a site's storage after about a week unused, and a
+   * phone in a crawlspace has no way to rebuild it -- which is the whole
+   * reason the fact is written onto the Customer File as well, where it
+   * "survives a reload, cleared site data, and having no network at all".
+   *
+   * The screen read the mark. The route gate and the database guard read the
+   * map. So a phone whose storage had been cleared would open Distress
+   * Survey on a job its iPad was holding, draw on it, and keep the writes.
+   * The copies repair the map, so every one of those gates asks the same
+   * question again.
+   *
+   * It only ever adds. A lock the Cabinet put there is the fresher answer
+   * and is left alone, and clearing a lock stays the job of a Cabinet
+   * listing or of taking the lease here.
+   */
+  function noteForeignMarks(records) {
+    const list = Array.isArray(records) ? records : [records];
+    const map = readForeignLocks();
+    let changed = false;
+    list.forEach(function (record) {
+      const mark = record && record.heldByOtherDevice;
+      if (!record || !record.id || !mark) return;
+      if (map[record.id]) return;
+      map[record.id] = {
+        deviceId: trimStr(mark.deviceId),
+        email: '',
+        deviceLabel: trimStr(mark.deviceLabel),
+        checkedAt: trimStr(mark.at),
+      };
+      changed = true;
+    });
+    if (changed) writeForeignLocks(map);
+    return map;
+  }
+
+  /**
+   * Every local copy, asked at once. Run before the first screen is drawn so
+   * a deep link straight into a survey is answered correctly the first time,
+   * not a moment later.
+   */
+  async function seedForeignLocksFromLocalCopies() {
+    if (!window.ToolboxDB || typeof window.ToolboxDB.getAllCustomerFiles !== 'function') {
+      return readForeignLocks();
+    }
+    try {
+      return noteForeignMarks(await window.ToolboxDB.getAllCustomerFiles());
+    } catch (_) {
+      return readForeignLocks();
+    }
+  }
+
+  /**
+   * Taking the lease here ends "somebody else has this" here.
+   *
+   * The map is otherwise only rewritten by a Cabinet listing, and browsing
+   * the Cabinet does not rewrite it -- so a device that still had a stale
+   * foreign lock for a job it was now checking out would acquire the lease
+   * and then have its own save refused by its own guard, failing the Check
+   * Out and handing the lease straight back. The lock goes the moment the
+   * lease is ours.
+   */
+  function clearForeignLock(id) {
+    if (!id) return;
+    const map = readForeignLocks();
+    if (!map[id]) return;
+    delete map[id];
+    writeForeignLocks(map);
+  }
+
+  /**
+   * Writing the mark onto a copy is the one save the lock must not refuse:
+   * that save is the lock being applied, not work being done on a copy this
+   * device does not own. The guard hands its unguarded save down for it.
+   */
+  let directSave = null;
+
+  function useDirectSave(fn) {
+    if (typeof fn === 'function') directSave = fn;
+  }
+
+  function saveWithoutLockCheck(record) {
+    if (directSave) return directSave(record);
+    return window.ToolboxDB.saveCustomerFile(record);
+  }
+
   function foreignCheckoutLabel(id) {
     const lock = id ? readForeignLocks()[id] : null;
     if (!lock) return '';
@@ -256,7 +395,7 @@
       if (next) record.heldByOtherDevice = next;
       else delete record.heldByOtherDevice;
       try {
-        await window.ToolboxDB.saveCustomerFile(record);
+        await saveWithoutLockCheck(record);
       } catch (_) {
         // A mark that cannot be written is not worth failing a sync over;
         // the localStorage map still has it for this session.
@@ -1181,6 +1320,7 @@
     if (!response.ok) {
       throw new SyncError('sync', (data && data.message) || ('Check Out failed (' + response.status + ').'));
     }
+    clearForeignLock(id);
     return data;
   }
 
@@ -1322,8 +1462,11 @@
     const stale = !!record.heldByOtherDevice;
     if (record.checkedOutFromCabinet === true && !stale) return record;
     record.checkedOutFromCabinet = true;
-    if (stale) delete record.heldByOtherDevice;
-    await window.ToolboxDB.saveCustomerFile(record);
+    if (stale) {
+      delete record.heldByOtherDevice;
+      clearForeignLock(record.id);
+    }
+    await saveWithoutLockCheck(record);
     return record;
   }
 
@@ -3384,6 +3527,12 @@
       return enqueueSyncWork(function () { return checkOutCustomerFile(id); });
     },
     onSyncProgress: onSyncProgress,
+    noteForeignMarks: noteForeignMarks,
+    clearForeignLock: clearForeignLock,
+    restoreDeviceId: restoreDeviceId,
+    persistForeignCheckoutMarks: persistForeignCheckoutMarks,
+    useDirectSave: useDirectSave,
+    seedForeignLocksFromLocalCopies: seedForeignLocksFromLocalCopies,
     describeMissingMedia: describeMissingMedia,
     sendToFileCabinet: function (id) {
       return enqueueSyncWork(function () { return sendToFileCabinet(id); });

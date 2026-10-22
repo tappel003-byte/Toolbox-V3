@@ -114,6 +114,34 @@ function getMedia(id) {
   }));
 }
 
+/**
+ * Small durable values that are neither media nor a Customer File.
+ *
+ * Today that is one thing: this installation's device id. It decides which
+ * device holds a Customer File's Check Out, and it lived only in
+ * localStorage -- which Safari clears from a site left alone for a week.
+ * A device that lost it could no longer check its own files in OR out: the
+ * Cabinet still named an id nothing answered to, and the message told the
+ * investigator to go and use a device that was the one in his hands.
+ *
+ * They share the media store behind a reserved prefix rather than taking a
+ * store of their own, which costs no schema upgrade and no blocked-upgrade
+ * case on a device with Toolbox open in two tabs.
+ */
+const SETTING_PREFIX = 'setting:';
+
+function settingKey(key) {
+  return SETTING_PREFIX + String(key || '');
+}
+
+function getSetting(key) {
+  return getMedia(settingKey(key));
+}
+
+function putSetting(key, value) {
+  return putMedia(settingKey(key), value);
+}
+
 function deleteMedia(id) {
   return runTransaction(STORE_MEDIA, 'readwrite', (store) => {
     store.delete(id);
@@ -347,6 +375,8 @@ function commitCustomerFileRecoveryUpdate(record, expectedUpdatedAt, mediaIdsToD
 }
 
 window.ToolboxDB = {
+  getSetting: getSetting,
+  putSetting: putSetting,
   saveCustomerFile,
   noteCabinetMirror,
   getCustomerFile,

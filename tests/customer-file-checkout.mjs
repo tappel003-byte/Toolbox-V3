@@ -665,6 +665,59 @@ try {
     report.Q_leaseKept = !!(state.indexes['cf-release-no-etag'].checkout &&
       state.indexes['cf-release-no-etag'].checkout.deviceId === 'device-ipad');
 
+    // U: a stale "somebody else has this" lock on THIS device must not stop
+    //    it checking the job out. Taking the lease ends that lock here, and
+    //    the guard that enforces it had been refusing the very saves Check
+    //    Out makes -- so the Check Out failed and handed the lease back.
+    state.identity = { email: 'tim@example.com', sub: 'sub-tim' };
+    localStorage.setItem('toolboxDeviceId', 'device-ipad');
+    const beforeStaleCase = await ToolboxDB.getAllCustomerFiles();
+    if (beforeStaleCase.length) await ToolboxDB.permanentlyDeleteCustomerFiles(beforeStaleCase);
+    seedRemote('cf-stale-lock');
+    localStorage.setItem('toolboxForeignCheckouts', JSON.stringify({
+      'cf-stale-lock': {
+        deviceId: 'device-phone', email: 'tim@example.com',
+        deviceLabel: 'iPhone', checkedAt: '2026-09-20T10:00:00.000Z',
+      },
+    }));
+    report.U_lockedBefore = ToolboxSync.isCheckedOutElsewhere('cf-stale-lock');
+    let uError = null;
+    try { await ToolboxSync.checkOutCustomerFile('cf-stale-lock'); }
+    catch (err) { uError = (err && err.message) || String(err); }
+    report.U_error = uError;
+    report.U_onDevice = !!(await ToolboxDB.getCustomerFile('cf-stale-lock'));
+    report.U_lockCleared = !ToolboxSync.isCheckedOutElsewhere('cf-stale-lock');
+    report.U_leaseHeld = !!(state.indexes['cf-stale-lock'].checkout &&
+      state.indexes['cf-stale-lock'].checkout.deviceId === 'device-ipad');
+    const uLocal = await ToolboxDB.getCustomerFile('cf-stale-lock');
+    report.U_markedCheckedOutHere = !!(uLocal && uLocal.checkedOutFromCabinet === true);
+
+    // V: a device that loses its stored id must not lose its own files with
+    //    it. The id decides which device holds a Check Out and lived only in
+    //    localStorage, which Safari clears from a site left alone a week --
+    //    and the file was then stuck for every device: Check In told the
+    //    investigator to use the device already in his hands, and Check Out
+    //    answered "checked out by another user or device".
+    const beforeIdCase = await ToolboxDB.getAllCustomerFiles();
+    if (beforeIdCase.length) await ToolboxDB.permanentlyDeleteCustomerFiles(beforeIdCase);
+    localStorage.removeItem('toolboxForeignCheckouts');
+    seedRemote('cf-id-loss');
+    localStorage.setItem('toolboxDeviceId', 'device-ipad-original');
+    await ToolboxSync.restoreDeviceId();
+    await ToolboxSync.checkOutCustomerFile('cf-id-loss');
+    report.V_heldFirst = !!(state.indexes['cf-id-loss'].checkout);
+
+    localStorage.removeItem('toolboxDeviceId');
+    report.V_restored = (await ToolboxSync.restoreDeviceId()) === 'device-ipad-original';
+    report.V_sameId = ToolboxSync.getDeviceId() === 'device-ipad-original';
+
+    let vCheckIn = null;
+    try { await ToolboxSync.checkInCustomerFile('cf-id-loss'); }
+    catch (err) { vCheckIn = (err && err.message) || String(err); }
+    report.V_checkInError = vCheckIn;
+    report.V_filed = !vCheckIn && !state.indexes['cf-id-loss'].checkout &&
+      !(await ToolboxDB.getCustomerFile('cf-id-loss'));
+
     return report;
   });
 
@@ -690,7 +743,16 @@ try {
   check('Q: release fails safely when ETag unavailable', out.Q_releaseMissingEtagFail && out.Q_leaseKept, JSON.stringify(out));
   // Several photographs are fetched at once, and the operation says where it
   // is up to while it runs.
-  check('photographs come down several at a time, counted as they land',
+  check('a stale foreign lock on this device does not stop it checking out',
+  out.U_lockedBefore === true && !out.U_error,
+  out.U_error ? ('refused: ' + out.U_error) : '');
+check('the job lands and the lease is held', out.U_onDevice && out.U_leaseHeld);
+check('taking the lease clears this device\'s foreign lock', out.U_lockCleared);
+check('and the copy is marked as checked out here', out.U_markedCheckedOutHere);
+check('a device that loses its stored id gets it back', out.V_restored && out.V_sameId);
+check('and can still check its own file in',
+  out.V_heldFirst && !out.V_checkInError && out.V_filed, out.V_checkInError || '');
+check('photographs come down several at a time, counted as they land',
     out.S_ok && out.S_several && out.S_counted && out.S_named && out.S_rose,
     JSON.stringify({
       ok: out.S_ok, mostAtOnce: out.S_several, reachedTotal: out.S_counted,
