@@ -737,6 +737,10 @@
     layoutForStats: layoutForStats,
     frameForPlan: frameForPlan,
     renderPage: renderPage,
+    // What the renderer multiplies a pixel-sized piece by to keep its share
+    // of the now-fixed page. Anything that STORES a size has to use the same
+    // number, or the piece changes size the moment the size control is used.
+    CHROME_SCALE: CHROME_SCALE,
     MIN_SCALE: MIN_SCALE,
     MAX_SCALE: MAX_SCALE,
     MIN_TOPO_W: MIN_TOPO_W,

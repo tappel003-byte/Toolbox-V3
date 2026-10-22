@@ -2892,8 +2892,10 @@
     }
 
     function livePillScale() {
-      var n = storedStatsPillPx() / 32;
-      return isFinite(n) && n > 0 ? n : 1;
+      var flApi = window.ToolboxReportFloorLayout;
+      var page = (flApi && Number(flApi.CHROME_SCALE)) || 1;
+      var n = (storedStatsPillPx() / 32) * page;
+      return isFinite(n) && n > 0 ? n : page;
     }
 
     /**
@@ -2931,6 +2933,38 @@
      * held by the report, read by every Floor Survey slide. Moving a piece on
      * any slide moves it on all of them, because they are all drawing this.
      */
+    /**
+     * Pin the size of each chrome piece into the record, once.
+     *
+     * With nothing stored, the colour scale falls back to the slide's own
+     * Legend size setting and the readings to this device's Stats pill size.
+     * Two slides whose settings differ would then draw the same piece at two
+     * sizes -- the drift this change exists to end, by another road. So the
+     * first time a report is drawn the sizes are read once and written into
+     * the record, and from then on every slide draws those.
+     */
+    function seedPieceSizes(firstFloor) {
+      var flApi = window.ToolboxReportFloorLayout;
+      if (!flApi || !firstFloor) return;
+      var next = flApi.normalizeLayout(floorLayout);
+      var changed = false;
+      if (!next.legendLock || !(Number(next.legendLock.scale) > 0)) {
+        var view = floorViewFor(firstFloor);
+        var n = Number(view && view.legendScale);
+        next.legendLock = { locked: true, scale: (isFinite(n) && n > 0) ? n : 1 };
+        changed = true;
+      }
+      if (!next.pillLock || !(Number(next.pillLock.scale) > 0)) {
+        next.pillLock = { locked: true, scale: livePillScale() };
+        changed = true;
+      }
+      if (!changed) return;
+      putFloorLayout(next);
+      markDirty();
+    }
+
+    var seededPieces = false;
+
     function putFloorLayout(next) {
       if (!next) return;
       var flApi = window.ToolboxReportFloorLayout;
@@ -3550,6 +3584,10 @@
         // scaled up until it ran off the sheet, and the colour scale, the
         // pill and the aerial view each back in a default corner, on top of
         // the drawing. Same fault the Discussion had, same cure.
+        if (!seededPieces) {
+          seededPieces = true;
+          seedPieceSizes(item);
+        }
         item._bookFloorLayout = floorLayout;
         item._putFloorLayout = putFloorLayout;
         // Any copy a slide was saved with under the old model is dead weight
@@ -7276,7 +7314,24 @@
       // placed takes the template -- otherwise setting a new default would
       // reach back and move every book already written.
       var template = storedTemplate();
-      var floorSeed = (savedDoc && savedDoc.floorLayout) || template.floorLayout;
+      // A report arranged before there was one record kept its placement on
+      // the SLIDES, and the renderer read a slide's own copy BEFORE the
+      // book's -- so a slide copy is what was actually on screen. Take it, or
+      // opening an older report under one record would quietly throw the
+      // arrangement away and fall back to the book's stale copy. The first
+      // floor slide that carries one is the one that was being worked on.
+      var legacyFloor = null;
+      if (savedDoc && Array.isArray(savedDoc.pages)) {
+        for (var lf = 0; lf < savedDoc.pages.length; lf += 1) {
+          var lp = savedDoc.pages[lf];
+          if (lp && lp.type === 'floor' && !(lp.meta && lp.meta.reserved) &&
+            lp.meta && lp.meta.layout) {
+            legacyFloor = lp.meta.layout;
+            break;
+          }
+        }
+      }
+      var floorSeed = legacyFloor || (savedDoc && savedDoc.floorLayout) || template.floorLayout;
       if (floorSeed && window.ToolboxReportFloorLayout) {
         floorLayout = window.ToolboxReportFloorLayout.normalizeLayout(floorSeed);
       }
