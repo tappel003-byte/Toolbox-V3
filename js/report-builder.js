@@ -892,7 +892,12 @@
       // One column is one picture given the whole sheet, and nothing else:
       // two stacked down a single column is a strip. Tim, Oct 20: "1x2 NO."
       if (cols === 1) return n === 1;
-      return Math.ceil(n / cols) <= MAX_PICTURE_ROWS;
+      // Every grid, on every slide. The row cap used to hide the tighter
+      // grids from a page carrying a lot of pictures, so the one page that
+      // most wanted bigger pictures was the one page that could not ask for
+      // them. Tim: "what I want is every single picture option that we have
+      // talked about available on every slide."
+      return true;
     });
     // A page carrying more than even the widest grid can hold in three rows
     // still has to offer something: the shallowest there is.
@@ -1271,12 +1276,36 @@
     (Array.isArray(prior.contents) ? prior.contents : []).forEach(function (line) {
       if (line && line.pageId) priorLines[line.pageId] = stripFigurePrefix(line.text);
     });
-    var contents = entries.map(function (entry) {
+    // A run of sheets that all carry the same title is ONE line on the cover
+    // with a span of figures across it, not one row each. A fourteen-figure
+    // job listed Pictures ten times and every change of picture grid rewrote
+    // the whole list. Tim: "then we're not killing our contents and changing
+    // our cover sheet so crazily."
+    var runs = [];
+    entries.forEach(function (entry) {
+      var last = runs[runs.length - 1];
+      var n = typeof entry.figureNumber === 'number' ? entry.figureNumber : null;
+      if (last && n !== null && last.figureNumberEnd !== null &&
+          last.title === entry.title && n === last.figureNumberEnd + 1) {
+        last.figureNumberEnd = n;
+        return;
+      }
+      runs.push({
+        pageId: entry.pageId,
+        title: entry.title,
+        type: entry.type,
+        isDiscussion: entry.isDiscussion,
+        figureNumber: n,
+        figureNumberEnd: n,
+      });
+    });
+    var contents = runs.map(function (entry) {
       var fallback = defaultContentsLine(entry);
       return {
         pageId: entry.pageId,
         text: keepRich(priorLines[entry.pageId], fallback),
         figureNumber: entry.figureNumber || null,
+        figureNumberEnd: entry.figureNumberEnd || null,
         isDiscussion: !!(entry.isDiscussion || entry.type === 'section'),
       };
     });
@@ -1387,7 +1416,11 @@
       // Derived, not stored: reordering renumbers without touching the text.
       var num = document.createElement('span');
       num.className = 'rb-cover__contents-num';
-      num.textContent = line.figureNumber ? ('Figure ' + line.figureNumber) : '';
+      num.textContent = line.figureNumber
+        ? ((line.figureNumberEnd && line.figureNumberEnd !== line.figureNumber)
+          ? ('Figures ' + line.figureNumber + '\u2013' + line.figureNumberEnd)
+          : ('Figure ' + line.figureNumber))
+        : '';
       row.appendChild(num);
       var field = coverField('rb-cover__contents-field', 'contents:' + index, line.text, locked);
       field.setAttribute('data-rb-cover-page', line.pageId || '');
