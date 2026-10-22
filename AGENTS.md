@@ -124,3 +124,12 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
 - Live deployment is required for meaningful product review.
 - Product review happens at meaningful checkpoints, not for every minor implementation detail.
 - Any change to user-visible UI requires a visual/layout review checkpoint before merge, when practical. Before committing, the implementing agent must explicitly inspect the resulting placement, spacing, and responsive behavior (desktop/iPad/phone as relevant), and confirm the change does not crowd or overlap existing controls or branding. This is a review requirement on the implementer, not a new product-owner approval gate for minor implementation details.
+
+## Cursor Cloud specific instructions
+
+Toolbox has no root package manifest. The product you run locally is the static PWA at the repository root (`index.html`, `js/`, `css/`). Customer File capture writes to IndexedDB and does not need the sync Worker.
+
+- Dev server, from the repository root: `python3 -m http.server 8765 --bind 127.0.0.1`. Many browser tests expect `http://127.0.0.1:8765/index.html`.
+- Floor Survey host bundle: `cd floor-survey && npm ci && npm run build`. That writes `js/floor-survey/floor-survey.js` and `floor-survey.css`. The integrated app serves that bundle; it does not run a separate Floor Survey dev server.
+- Browser tests load `puppeteer-core` from `/tmp/node_modules` (the boot script links that to `/opt/toolbox-dev/node_modules`) and Chrome at `/usr/bin/google-chrome-stable`. With the server on port 8765, `node tests/customer-file-ux.mjs` is a representative UI check. `node tests/screen-size.mjs` and `node tests/r2-checkout-etag.mjs` do not need Chrome.
+- `sync-worker/` is the Cloudflare Worker. Leave it stopped for ordinary local capture. Creating Cloudflare infrastructure or deploying it needs explicit product-owner authorization.
