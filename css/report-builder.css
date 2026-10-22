@@ -265,6 +265,24 @@ body.report-builder-open .canvas {
   font-size: 12px;
 }
 
+/* The stage shows the paper zoomed to fit. The sheet keeps its own 1632 x
+   1056 and a transform does the zooming, so the box it visually fills has to
+   be a real box of its own -- a transformed element still reserves its full
+   unscaled size in layout, and the stage would centre THAT. */
+.rb-stage__paper {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #1a1a1a;
+  box-shadow: 0 14px 36px rgba(8, 32, 54, 0.16);
+  box-sizing: content-box;
+}
+
+.rb-stage__paper > .rb-sheet {
+  transform-origin: top left;
+}
+
 .rb-stage {
   display: flex;
   align-items: center;
@@ -283,14 +301,25 @@ body.report-builder-open .canvas {
   position: relative;
   flex: 0 0 auto;
   align-self: center;
-  width: 680px;
-  height: 440px;
-  max-width: 100%;
+  /* THE SHEET IS THE PAPER. 11x17 landscape is 1632 x 1056 CSS pixels at
+     96dpi, and the sheet is drawn at that size everywhere -- the editor, the
+     flip chart, the printer. Every view only ZOOMS it.
+     It used to be resized to fill whatever window it was in, so a style set
+     in pixels rather than in container units took up a different share of
+     the page on every screen, and the PDF could never agree with the editor.
+     A pixel here is now a real, fixed size on the paper: 96 to the inch. */
+  width: 1632px;
+  height: 1056px;
+  max-width: none;
   overflow: hidden;
   background: #fff;
   color: #111;
-  border: 1px solid #1a1a1a;
-  box-shadow: 0 14px 36px rgba(8, 32, 54, 0.16);
+  /* No edge of its own. A 1px border with box-sizing: border-box ate two
+     pixels of the page, so the content box was 1630 wide on screen and 1632
+     on paper -- a measurement taken at one size and used at another, which
+     is the whole class of bug this change exists to end. The paper's edge
+     and its shadow belong to the stage, which is where they are drawn. */
+  border: 0;
   box-sizing: border-box;
   container-type: size;
   /* The rail's layout assumes the sheet is its own stacking context. */
@@ -2924,8 +2953,8 @@ body.report-builder-open .canvas {
      editing sheet is sized to whatever the stage gives it. 11x17 landscape
      is 1632 x 1056 CSS pixels at 96dpi, so the scale is 1632 / sheet width
      and the sheet's own 17:11 shape makes the height come out exact. */
-  --rb-print-sheet-w: 680px;
-  --rb-print-sheet-h: 440px;
+  --rb-print-sheet-w: 1632px;
+  --rb-print-sheet-h: 1056px;
   --rb-print-scale-x: 2.4;
   --rb-print-scale-y: 2.4;
   position: fixed;

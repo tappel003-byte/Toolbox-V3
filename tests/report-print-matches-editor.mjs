@@ -109,10 +109,13 @@ const FINGERPRINT = `(sheet) => {
       h: +((r.height / h) * 100).toFixed(2),
     };
   };
-  // Font size relative to the sheet, so it survives the scale.
+  // Font size relative to the sheet's OWN height. Computed style is in the
+  // sheet's unzoomed pixels while the rects are zoomed, so the two must not
+  // be mixed -- the editor shows the paper zoomed to the window.
+  const ownH = sheet.clientHeight || h;
   const typeSize = (el) => {
     const px = parseFloat(window.getComputedStyle(el).fontSize);
-    return isFinite(px) ? +((px / h) * 100).toFixed(3) : 0;
+    return isFinite(px) ? +((px / ownH) * 100).toFixed(3) : 0;
   };
   const list = (sel, extra) => [...sheet.querySelectorAll(sel)].map((el) => {
     const out = { k: sel, ...frac(el) };
@@ -123,8 +126,9 @@ const FINGERPRINT = `(sheet) => {
     .filter((el) => el.scrollHeight > el.clientHeight + 1).length;
   return {
     type: sheet.getAttribute('data-page-type') || '',
-    sheetW: Math.round(box.width),
-    sheetH: Math.round(box.height),
+    sheetW: sheet.offsetWidth,
+    sheetH: sheet.offsetHeight,
+    shownW: Math.round(box.width),
     captions: list('[data-rb-caption]', (el) => ({ fs: typeSize(el) })),
     street: list('[data-rb-fit-line]', (el) => ({ fs: typeSize(el) })),
     coverBoxes: list('[data-rb-cover-box]'),
@@ -174,9 +178,13 @@ check('every printed sheet sits on its own sheet of paper',
   `${papers} paper boxes, ${printed.length} sheets, ${editor.length} editor pages`);
 
 const edSize = editor[0] ? `${editor[0].sheetW}x${editor[0].sheetH}` : '';
-check('every printed sheet is built at the size the editor sheet is',
-  printed.length > 0 && printed.every((s) => `${s.sheetW}x${s.sheetH}` === edSize),
+check('the sheet is the paper, in the editor and on paper alike',
+  edSize === '1632x1056' && printed.every((s) => `${s.sheetW}x${s.sheetH}` === '1632x1056'),
   `editor ${edSize}; printed ${[...new Set(printed.map((s) => `${s.sheetW}x${s.sheetH}`))].join(' ')}`);
+
+check('the editor shows that paper zoomed to the window, not resized',
+  editor.every((s) => s.shownW > 0 && s.shownW < 1632),
+  `shown ${editor[0] ? editor[0].shownW : 0}px wide`);
 
 // The comparison. Same geometry, same type size, page for page.
 const drift = [];
@@ -214,6 +222,48 @@ const clipped = printed.filter((s) => s.clipped > 0);
 check('no printed sheet is silently clipping its text',
   clipped.length === 0,
   clipped.map((s) => `${s.type}:${s.clipped}`).join(' ') || 'none');
+
+// And the same report printed from a different window prints the same.
+// This is the point of the sheet being the paper: Tim prints from whatever
+// screen he is at, and 11x17 has to come out 11x17 with everything on it in
+// the same place.
+await page.evaluate(() => {
+  const deck = document.querySelector('.rb-print');
+  if (deck && deck.parentNode) deck.parentNode.removeChild(deck);
+  document.body.classList.remove('is-printing');
+  window.__printed = false;
+});
+await page.setViewport({ width: 1100, height: 720, deviceScaleFactor: 1 });
+await new Promise((r) => setTimeout(r, 1500));
+await page.click('#rb-print');
+await page.waitForFunction(() => window.__printed === true, { timeout: 90000 });
+await new Promise((r) => setTimeout(r, 800));
+const smallWindow = await page.evaluate((fp) => {
+  const fn = (0, eval)(fp);
+  return [...document.querySelectorAll('.rb-print .rb-sheet')].map(fn);
+}, FINGERPRINT);
+
+const windowDrift = [];
+smallWindow.forEach((p, at) => {
+  const big = printed[at];
+  if (!big) { windowDrift.push(`page ${at + 1}: missing`); return; }
+  ['captions', 'street', 'coverBoxes', 'floorPieces', 'pictures'].forEach((key) => {
+    (big[key] || []).forEach((one, i) => {
+      const two = (p[key] || [])[i];
+      if (!two) { windowDrift.push(`page ${at + 1} ${key}[${i}] missing`); return; }
+      if (!near(one.x, two.x, 0.3) || !near(one.y, two.y, 0.3)
+        || !near(one.w, two.w, 0.3) || !near(one.h, two.h, 0.3)
+        || (one.fs !== undefined && !near(one.fs, two.fs, 0.03))) {
+        windowDrift.push(`page ${at + 1} ${key}[${i}] differs by window`);
+      }
+    });
+  });
+});
+check('the paper is the same whatever window it was printed from',
+  windowDrift.length === 0, windowDrift.slice(0, 5).join(' | ') || 'identical at 1700px and 1100px');
+
+await page.setViewport({ width: 1700, height: 1050, deviceScaleFactor: 1 });
+await new Promise((r) => setTimeout(r, 800));
 
 // A real PDF: the right number of pages, on 11x17 landscape.
 const pdf = await page.pdf({

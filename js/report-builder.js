@@ -13,6 +13,10 @@
   var SHEET_RATIO_LABEL = '11 × 17 landscape';
   var MAX_PAGES = 80;
   var SHEET_RATIO = 17 / 11;
+  // 11x17 landscape at 96 CSS pixels to the inch. The sheet is drawn at this
+  // size everywhere; every view only zooms it.
+  var PAPER_W = 1632;
+  var PAPER_H = 1056;
   var AUTOSAVE_DELAY_MS = 900;
   var PHOTOS_PER_PAGE = 10;
   var REPORT_SCHEMA = 'toolbox.report-builder';
@@ -66,24 +70,37 @@
   var fitOnResize = null;
   var pageSeq = 1;
 
+  /**
+   * Zoom the paper to the stage.
+   *
+   * The sheet is always PAPER_W x PAPER_H -- 11x17 landscape -- and this only
+   * scales it to whatever room the stage has. It used to resize the sheet
+   * instead, which meant the page was a different number of pixels on every
+   * window, and anything on it styled in pixels took up a different share of
+   * the paper on every screen. That is what stopped the PDF ever agreeing
+   * with the editor.
+   */
   function fitSheet(root) {
     var stage = root && root.querySelector('.rb-stage');
     var sheet = root && root.querySelector('.rb-sheet');
     if (!stage || !sheet) return;
+    var paper = sheet.parentNode && sheet.parentNode.classList
+      && sheet.parentNode.classList.contains('rb-stage__paper') ? sheet.parentNode : null;
     var styles = window.getComputedStyle(stage);
     var padX = (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0);
     var padY = (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0);
     var availW = Math.max(0, stage.clientWidth - padX);
     var availH = Math.max(0, stage.clientHeight - padY);
     if (availW < 40 || availH < 40) return;
-    var width = availW;
-    var height = width / SHEET_RATIO;
-    if (height > availH) {
-      height = availH;
-      width = height * SHEET_RATIO;
+    var scale = Math.min(availW / PAPER_W, availH / PAPER_H);
+    if (!(scale > 0)) return;
+    sheet.style.width = '';
+    sheet.style.height = '';
+    sheet.style.transform = 'scale(' + scale + ')';
+    if (paper) {
+      paper.style.width = Math.floor(PAPER_W * scale) + 'px';
+      paper.style.height = Math.floor(PAPER_H * scale) + 'px';
     }
-    sheet.style.width = Math.floor(width) + 'px';
-    sheet.style.height = Math.floor(height) + 'px';
     fitCoverContents(root);
   }
 
@@ -110,11 +127,14 @@
       var box = boxes[i];
       var sheet = box.closest ? box.closest('.rb-sheet') : null;
       if (!sheet) continue;
-      var sheetH = sheet.clientHeight;
-      if (!(sheetH > 40)) continue;
       box.style.setProperty('--rb-contents-fit', '1');
       var boxRect = box.getBoundingClientRect();
       var sheetRect = sheet.getBoundingClientRect();
+      // Both measurements off the same rects. clientHeight is the sheet's own
+      // unzoomed height, and the rects are zoomed: mixing them made the room
+      // left on the page come out wrong by exactly the zoom.
+      var sheetH = sheetRect.height;
+      if (!(sheetH > 40)) continue;
       var top = boxRect.top - sheetRect.top;
       // The same breathing room the deck leaves under the frame.
       var room = sheetH * 0.96 - top;
@@ -3365,7 +3385,7 @@
 
     // The preview is laid out at the sheet's own size and scaled to the box
     // it has to live in, so measure the box once it is on screen.
-    var THUMB_SHEET_W = 680;
+    var THUMB_SHEET_W = PAPER_W;
     function fitThumb(host, sheet) {
       var w = host.clientWidth;
       if (!w) return;
@@ -6957,19 +6977,12 @@
      * holds the 17:11 shape, so scaling by 1632 / width lands the height on
      * 1056 exactly.
      */
-    var PAPER_W_PX = 1632;
-    var PAPER_H_PX = 1056;
-
     function printSheetSize() {
-      var live = root.querySelector('.rb-stage .rb-sheet');
-      var w = live ? Math.round(live.getBoundingClientRect().width) : 0;
-      var h = live ? Math.round(live.getBoundingClientRect().height) : 0;
-      if (!(w > 40) || !(h > 40)) { w = 680; h = 440; }
-      // Each axis scaled to its own edge of the paper. The editing sheet's
-      // height is floored to a whole pixel, so one scale taken from the width
-      // leaves a hair of white along the bottom of every page. The two
-      // scales differ by well under a tenth of a percent.
-      return { w: w, h: h, sx: PAPER_W_PX / w, sy: PAPER_H_PX / h };
+      // The sheet is the paper, so the printed deck is built at the paper's
+      // own size and printed at 1:1. The scale is kept rather than deleted
+      // because it is what makes the deck independent of how a sheet happens
+      // to be sized: if the paper ever changes, this is the one place.
+      return { w: PAPER_W, h: PAPER_H, sx: 1, sy: 1 };
     }
 
     function buildPrintDeck() {
@@ -7582,8 +7595,10 @@
       '      </div>' +
       '    </aside>' +
       '    <div class="rb-stage">' +
-      '      <article class="rb-sheet" aria-label="' + SHEET_RATIO_LABEL + ' report sheet">' +
-      '      </article>' +
+      '      <div class="rb-stage__paper">' +
+      '        <article class="rb-sheet" aria-label="' + SHEET_RATIO_LABEL + ' report sheet">' +
+      '        </article>' +
+      '      </div>' +
       '    </div>' +
       '    <aside class="rb-panel" aria-label="Toolbox">' +
       // The rail is the workspace for whatever slide is open: Import at the

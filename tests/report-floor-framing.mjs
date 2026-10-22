@@ -171,12 +171,16 @@ const first = await views();
 check('the slide shows one live drawing of the level',
   first.length === 1 && !!first[0], JSON.stringify(first));
 
-// The frame is sized by the paper, and the paper is sized by the window.
+// The paper is 11x17 and stays 11x17. A smaller window zooms it down to fit;
+// it does not make the page smaller, so the frame keeps its own size and the
+// drawing keeps its framing. Before, the sheet was resized to the window,
+// which is what let a style set in pixels take up a different share of the
+// page on every screen.
 await page.setViewport({ width: 1400, height: 900, deviceScaleFactor: 1 });
 await new Promise((r) => setTimeout(r, 1500));
 const smaller = await views();
-check('a smaller sheet shows the same view, not the same pixels',
-  smaller[0].frame.w < first[0].frame.w && framedAlike(first[0], smaller[0]),
+check('a smaller window zooms the paper, it does not resize the page',
+  smaller[0].frame.w === first[0].frame.w && framedAlike(first[0], smaller[0]),
   JSON.stringify({ first: first[0], smaller: smaller[0] }));
 
 await page.setViewport({ width: 1700, height: 1050, deviceScaleFactor: 1 });
