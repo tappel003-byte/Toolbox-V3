@@ -1409,6 +1409,18 @@ body.report-builder-open .canvas {
 /* Never on the finished page. */
 .rb-cover.is-locked .rb-cover__contents-jump { display: none; }
 
+/* The readings pill hangs from its CENTRE, not its left edge.
+   Pinned by the left edge, "Main Level H 9.7 L 6.7 D 3.0" and "Garage H 9.0
+   L 5.3 D 3.7" are different widths, so the same stored spot put them in
+   visibly different places and the lock looked broken even when it was
+   holding the spot faithfully. The spot it holds is the middle now, so two
+   sheets line up whatever their level is called. Tim: "High-low delta
+   [pill] should be pinned to the center."
+   A report made before this shifts that pill left by half its width, once. */
+[data-rb-floor-kind="pill"] {
+  transform: translateX(-50%);
+}
+
 /* ---- Site overview ---- */
 
 .rb-cover-box--overview {
