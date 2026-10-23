@@ -667,6 +667,11 @@ async function releaseCheckout(env, id, identity, deviceId) {
 async function assertWritableCheckout(request, env, id) {
   const got = await env.CABINET.get(indexKey(id));
   if (!got) return { ok: true, exists: false };
+  // The version this answer is about. A caller that goes on to WRITE the
+  // index must carry this back as a precondition, or the lease it just read
+  // can be acquired by another device before the write lands and then
+  // overwritten by this stale copy of it.
+  const etag = requireObjectEtag(got);
   let index;
   try {
     index = await got.json();
@@ -675,7 +680,7 @@ async function assertWritableCheckout(request, env, id) {
   }
   const checkout = index && index.checkout;
   if (!checkout || !trimStr(checkout.deviceId) || !normalizeEmail(checkout.email)) {
-    return { ok: true, exists: true, index: index };
+    return { ok: true, exists: true, index: index, etag: etag };
   }
 
   const identityResult = await requireIdentity(request, env);
@@ -690,7 +695,14 @@ async function assertWritableCheckout(request, env, id) {
       response: forbidden(request, 'Customer File is checked out by another user or device'),
     };
   }
-  return { ok: true, exists: true, index: index, identity: identityResult };
+  return { ok: true, exists: true, index: index, etag: etag, identity: identityResult };
+}
+
+// The lease is the SERVER's, never the client's: an ordinary Sync write
+// carries back whatever the server holds and may not set, change or drop it.
+function applyServerLease(gate, body) {
+  if (gate && gate.index && gate.index.checkout) body.checkout = gate.index.checkout;
+  else delete body.checkout;
 }
 
 const PWA_ORIGIN = 'https://sandiageotoolbox.com';
@@ -909,20 +921,44 @@ export default {
         }
         if (!body || body.id !== id) return badRequest(request, 'Index id mismatch');
 
-        const writeGate = await assertWritableCheckout(request, env, id);
-        if (!writeGate.ok) return writeGate.response;
+        let gate = await assertWritableCheckout(request, env, id);
+        if (!gate.ok) return gate.response;
+        applyServerLease(gate, body);
 
-        // Preserve server checkout lease on ordinary Sync index writes.
-        if (writeGate.index && writeGate.index.checkout) {
-          body.checkout = writeGate.index.checkout;
-        } else {
-          delete body.checkout;
+        if (!gate.exists) {
+          // Nothing to condition on: this request creates the index. A lease
+          // cannot exist on an object that does not -- acquire returns 404
+          // before the first write -- so there is none to lose here.
+          await env.CABINET.put(indexKey(id), JSON.stringify(body), {
+            httpMetadata: { contentType: 'application/json' },
+          });
+          return json(request, { ok: true });
         }
 
-        await env.CABINET.put(indexKey(id), JSON.stringify(body), {
-          httpMetadata: { contentType: 'application/json' },
-        });
-        return json(request, { ok: true });
+        // Read-modify-write, so it needs the same compare-and-swap the
+        // checkout routes already use. Without it, a lease acquired between
+        // the read above and the write below was erased by this stale copy
+        // of the index -- both requests returning 200, the file left checked
+        // out to nobody. Audit finding 3.
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const putOpts = conditionalPutOptions(gate.etag, { contentType: 'application/json' });
+          if (!putOpts) {
+            return text(request, 'Missing object ETag; refusing unsafe index write', 500);
+          }
+          const putResult = await env.CABINET.put(indexKey(id), JSON.stringify(body), putOpts);
+          // Conditional put returns null when the precondition fails.
+          if (putResult !== null) return json(request, { ok: true });
+          if (attempt > 0) break;
+          // Something changed the index under us. Read it again and run the
+          // gate against what is there NOW: if a checkout was acquired or
+          // taken over in the gap, this device is no longer the writer and
+          // the retry is refused rather than allowed through.
+          gate = await assertWritableCheckout(request, env, id);
+          if (!gate.ok) return gate.response;
+          if (!gate.exists) return notFound(request);
+          applyServerLease(gate, body);
+        }
+        return conflict(request, 'Customer File index changed during write; sync again');
       }
     }
 
