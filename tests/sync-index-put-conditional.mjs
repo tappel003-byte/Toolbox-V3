@@ -103,8 +103,16 @@ function cabinet(seed) {
     async head(key) { return store.has(key) ? { key } : null; },
     async put(key, value, opts) {
       const row = store.get(key);
-      const want = opts && opts.onlyIf && opts.onlyIf.etagMatches;
-      if (want && (!row || row.etag !== want)) return null;   // precondition failed
+      const only = opts && opts.onlyIf;
+      // etagMatches: replace only this exact version.
+      const want = only && only.etagMatches;
+      if (want && (!row || row.etag !== want)) return null;
+      // If-None-Match: * -- create only if absent. R2 takes it as Headers and
+      // returns null without storing when the object already exists.
+      const noneMatch = only && typeof only.get === 'function'
+        ? only.get('If-None-Match')
+        : (only && only.etagDoesNotMatch);
+      if (noneMatch === '*' && row) return null;
       const saved = { body: String(value), etag: nextEtag() };
       store.set(key, saved);
       return { key, etag: saved.etag };
@@ -197,6 +205,67 @@ const leaseOf = async (bucket) => {
   check('the Take Over lease survives the stale write',
     !!(lease && lease.deviceId === 'device-b'), JSON.stringify(lease));
   check('and that write was refused too', staleRes.status !== 200, String(staleRes.status));
+}
+
+// ------------------- the create path: absence is not a lease-free guarantee
+// A observes that no index exists and is held there. B creates the index and
+// acquires a checkout on it. A resumes. "There is no index, so there is no
+// lease to lose" is true when A looks and false when A writes.
+{
+  const bucket = cabinet({});
+  bucket.holdNextGet(KEY);
+  const stale = call('files/' + ID + '/index', bucket, {
+    method: 'PUT', token: timToken,
+    headers: { 'x-toolbox-device-id': 'device-a', 'content-type': 'application/json' },
+    body: JSON.stringify(Object.assign(freshIndex(), { displayName: 'Stale create' })),
+  });
+  await new Promise((r) => setTimeout(r, 25));
+
+  const created = await call('files/' + ID + '/index', bucket, {
+    method: 'PUT', token: leeToken,
+    headers: { 'x-toolbox-device-id': 'device-b', 'content-type': 'application/json' },
+    body: JSON.stringify(Object.assign(freshIndex(), { displayName: 'B created it' })),
+  });
+  check('device B creates the index first', created.status === 200, String(created.status));
+
+  const acquire = await call('files/' + ID + '/checkout', bucket, {
+    method: 'POST', token: leeToken,
+    headers: { 'x-toolbox-device-id': 'device-b', 'content-type': 'application/json' },
+    body: JSON.stringify({ deviceId: 'device-b' }),
+  });
+  check('and acquires the checkout on it', acquire.status === 200, String(acquire.status));
+
+  bucket.let_go();
+  const staleRes = await stale;
+  const lease = await leaseOf(bucket);
+
+  check('the lease survives the write that began before the file existed',
+    !!(lease && lease.deviceId === 'device-b'), JSON.stringify(lease));
+  check('and that write did not return 200',
+    staleRes.status !== 200, `${staleRes.status} ${await staleRes.clone().text()}`);
+}
+
+// A create that genuinely is uncontended still has to work.
+{
+  const bucket = cabinet({});
+  const first = await call('files/' + ID + '/index', bucket, {
+    method: 'PUT', token: timToken,
+    headers: { 'x-toolbox-device-id': 'device-a', 'content-type': 'application/json' },
+    body: JSON.stringify(Object.assign(freshIndex(), { displayName: 'First ever' })),
+  });
+  check('an uncontended first write still creates the index',
+    first.status === 200 && bucket.store.has(KEY),
+    `${first.status} stored:${bucket.store.has(KEY)}`);
+  // ...and the same device writing again lands on the conditional update path.
+  const second = await call('files/' + ID + '/index', bucket, {
+    method: 'PUT', token: timToken,
+    headers: { 'x-toolbox-device-id': 'device-a', 'content-type': 'application/json' },
+    body: JSON.stringify(Object.assign(freshIndex(), { displayName: 'Second' })),
+  });
+  check('and a second write to it succeeds through the update path',
+    second.status === 200 &&
+    JSON.parse(bucket.store.get(KEY).body).displayName === 'Second',
+    String(second.status));
 }
 
 // ------------------------------------------------- the ordinary path still works

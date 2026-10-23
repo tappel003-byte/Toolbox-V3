@@ -8,7 +8,11 @@
  * Do not trust unverified convenience email headers.
  */
 
-import { requireObjectEtag, conditionalPutOptions } from './r2-conditional.js';
+import {
+  requireObjectEtag,
+  conditionalPutOptions,
+  createOnlyPutOptions,
+} from './r2-conditional.js';
 import { exploreResult, mediaRefsFromPlans } from './explore.js';
 
 /** PWA origin only — Access cookie sync uses credentials:include (no *). */
@@ -927,13 +931,32 @@ export default {
         applyServerLease(gate, body);
 
         if (!gate.exists) {
-          // Nothing to condition on: this request creates the index. A lease
-          // cannot exist on an object that does not -- acquire returns 404
-          // before the first write -- so there is none to lose here.
-          await env.CABINET.put(indexKey(id), JSON.stringify(body), {
-            httpMetadata: { contentType: 'application/json' },
-          });
-          return json(request, { ok: true });
+          // CREATE-ONCE, not an unconditional write.
+          //
+          // The comment that used to stand here said a lease cannot exist on
+          // an object that does not, so there was none to lose. That is true
+          // at the moment of the READ and false at the moment of the WRITE:
+          // another device can create the index in between and acquire a
+          // checkout on it, and this write would then erase that lease while
+          // returning 200 -- the same shape of fault the conditional update
+          // below was added to fix, left standing on the path beside it.
+          const created = await env.CABINET.put(
+            indexKey(id),
+            JSON.stringify(body),
+            createOnlyPutOptions({ contentType: 'application/json' }),
+          );
+          if (created !== null) return json(request, { ok: true });
+          // Lost the create. Something is there now, and it may be checked
+          // out. Run the gate again against what is actually there, which
+          // refuses this write outright if the file now belongs to another
+          // device, and otherwise carry ITS lease rather than the absence we
+          // read. Then fall into the conditional update below.
+          gate = await assertWritableCheckout(request, env, id);
+          if (!gate.ok) return gate.response;
+          if (!gate.exists) {
+            return text(request, 'Customer File index could not be created', 500);
+          }
+          applyServerLease(gate, body);
         }
 
         // Read-modify-write, so it needs the same compare-and-swap the
