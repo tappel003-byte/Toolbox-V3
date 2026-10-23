@@ -1,0 +1,773 @@
+<title>Explorer Drawers and Pin Map</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Layout: phone screens in a grid, then full desktop windows below. The page
+     chrome follows the viewer's theme; the screens inside the frames stay in
+     Toolbox's own light palette, because they are depicting the app. */
+  :root {
+    --page-bg: #e9e5dc;
+    --page-fg: #1c2b36;
+    --page-soft: #5d6b76;
+    --page-line: #cfc9bd;
+
+    /* Toolbox's real tokens, from css/styles.css */
+    --tb-bg: #f3f1ec;
+    --tb-panel: #ffffff;
+    --tb-warm: #fbf7ef;
+    --tb-ink: #082036;
+    --tb-soft: #66727d;
+    --tb-line: #dce1e4;
+    --tb-navy: #07283d;
+    --tb-navy-2: #103c54;
+    --tb-accent: #c65332;
+    --tb-success: #28765b;
+    --tb-success-soft: #e7f3ee;
+
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-note: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page-bg: #15202a; --page-fg: #e8eef3; --page-soft: #9aa8b4;
+      --page-line: #2c3b47; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --page-bg: #15202a; --page-fg: #e8eef3; --page-soft: #9aa8b4;
+    --page-line: #2c3b47; color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--page-bg); color: var(--page-fg);
+    font-family: var(--font-ui); -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1180px; margin: 0 auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 34px 60px;
+  }
+
+  header.lede { max-width: 62ch; }
+  .eyebrow {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--tb-accent); margin: 0 0 6px;
+  }
+  h1 {
+    font-size: clamp(26px, 5vw, 36px); line-height: 1.12; margin: 0 0 12px;
+    text-wrap: balance; letter-spacing: -0.015em;
+  }
+  .lede p { margin: 0 0 10px; color: var(--page-soft); font-size: 15px; line-height: 1.55; }
+
+  .band {
+    display: flex; align-items: baseline; gap: 12px;
+    margin: 46px 0 6px; padding-top: 22px; border-top: 1px solid var(--page-line);
+  }
+  .band h2 { font-size: 20px; margin: 0; letter-spacing: -0.015em; }
+  .band span { font-size: 13px; color: var(--page-soft); }
+
+  .screens { display: grid; gap: 40px 28px; margin-top: 26px; grid-template-columns: 1fr; }
+  @media (min-width: 860px) { .screens { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (min-width: 1160px) { .screens { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+  .screen { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+  .screen__num {
+    display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--page-soft);
+  }
+  .screen__cap h3 { font-size: 17px; margin: 2px 0 6px; letter-spacing: -0.01em; }
+  .screen__cap p { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--page-soft); }
+
+  /* ---- shared app chrome ---- */
+  .bar {
+    background: linear-gradient(180deg, var(--tb-navy-2), var(--tb-navy));
+    color: #fff; padding: 9px 10px; display: flex; align-items: center; gap: 7px;
+  }
+  .bar__logo {
+    width: 22px; height: 22px; border-radius: 6px; flex: 0 0 auto;
+    background: linear-gradient(180deg, #2b4a63 0%, #c65332 55%, #e0a06a 100%);
+    border: 1.5px solid #fff;
+  }
+  .bar__name { font-weight: 800; font-size: 14px; letter-spacing: -0.01em; margin-right: auto; }
+  .chip {
+    font-size: 10.5px; font-weight: 700; padding: 4px 8px; border-radius: 999px;
+    background: rgba(255,255,255,0.14); color: #fff; white-space: nowrap;
+  }
+  .kicker {
+    font-size: 9.5px; font-weight: 800; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--tb-accent);
+  }
+  .btn {
+    font-size: 11.5px; font-weight: 700; padding: 6px 11px; border-radius: 9px;
+    border: 1px solid var(--tb-line); background: #fff; color: var(--tb-ink); white-space: nowrap;
+  }
+  .btn--danger { background: #a53f32; border-color: #a53f32; color: #fff; }
+  .btn--ghost { background: transparent; border-color: transparent; color: var(--tb-soft); }
+  .tick {
+    font-size: 10px; font-weight: 800; color: var(--tb-success);
+    background: var(--tb-success-soft); padding: 3px 7px; border-radius: 999px; white-space: nowrap;
+  }
+
+  /* ---- the phone ---- */
+  .phone {
+    width: 100%; max-width: 390px; margin: 0 auto;
+    border: 1px solid var(--page-line); border-radius: 22px;
+    background: var(--tb-bg); overflow: hidden;
+    box-shadow: 0 14px 40px rgba(8, 32, 54, 0.18);
+    font-size: 13px; color: var(--tb-ink);
+  }
+  .subbar {
+    background: #fff; border-bottom: 1px solid var(--tb-line);
+    padding: 8px 10px; display: flex; align-items: center; gap: 8px;
+  }
+  .back {
+    background: var(--tb-navy); color: #fff; font-weight: 700; font-size: 11.5px;
+    padding: 6px 10px; border-radius: 9px; white-space: nowrap;
+  }
+  .subbar__title { font-weight: 800; font-size: 13px; }
+  .body { padding: 12px 11px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .title { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin: -4px 0 0; }
+
+  .drawers { display: flex; gap: 6px; border-bottom: 1px solid var(--tb-line); }
+  .drawer {
+    padding: 7px 11px 8px; font-size: 12.5px; font-weight: 700; color: var(--tb-soft);
+    border-bottom: 2.5px solid transparent; margin-bottom: -1px; white-space: nowrap;
+  }
+  .drawer.is-on { color: var(--tb-ink); border-bottom-color: var(--tb-accent); }
+  .drawer .n { font-weight: 800; color: var(--tb-soft); font-size: 11px; }
+
+  .search {
+    background: #fff; border: 1px solid var(--tb-line); border-radius: 11px;
+    padding: 9px 11px; color: #9aa4ad; font-size: 12.5px;
+  }
+  .toggle { display: flex; gap: 3px; background: #e7e3da; border-radius: 10px; padding: 3px; }
+  .toggle span {
+    flex: 1; text-align: center; font-size: 12px; font-weight: 700; padding: 6px 4px;
+    border-radius: 8px; color: var(--tb-soft);
+  }
+  .toggle span.is-on { background: #fff; color: var(--tb-ink); box-shadow: 0 1px 3px rgba(8,32,54,0.14); }
+
+  .year { display: flex; align-items: baseline; gap: 8px; padding: 10px 2px 2px; }
+  .year b { font-size: 15px; letter-spacing: -0.01em; }
+  .year span { font-size: 11px; color: var(--tb-soft); font-weight: 600; }
+  .year .rule { flex: 1; height: 1px; background: var(--tb-line); }
+  .month {
+    font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--tb-soft); padding: 8px 2px 3px;
+  }
+
+  .job {
+    background: var(--tb-panel); border: 1px solid var(--tb-line); border-radius: 12px;
+    padding: 10px 11px; display: flex; flex-direction: column; gap: 3px;
+  }
+  .job__top { display: flex; align-items: center; gap: 7px; }
+  .job__name { font-weight: 800; font-size: 13.5px; letter-spacing: -0.01em; min-width: 0; }
+  .job__top .tick { margin-left: auto; flex: 0 0 auto; }
+  .job__meta { font-size: 11.5px; color: var(--tb-soft); line-height: 1.4; }
+  .job__acts { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+
+  .mapwrap {
+    background: #fff; border: 1px solid var(--tb-line); border-radius: 12px;
+    padding: 8px; position: relative;
+  }
+  .mapwrap svg { display: block; width: 100%; height: auto; max-width: 100%; }
+  .years { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+  .yr {
+    font-size: 11px; font-weight: 700; padding: 5px 9px; border-radius: 999px;
+    border: 1px solid var(--tb-line); background: #fff; color: var(--tb-soft);
+  }
+  .yr.is-on { background: var(--tb-navy); border-color: var(--tb-navy); color: #fff; }
+  .pincard {
+    position: absolute; left: 10px; right: 10px; bottom: 10px;
+    background: #fff; border: 1px solid var(--tb-line); border-radius: 11px;
+    box-shadow: 0 10px 26px rgba(8,32,54,0.18); padding: 9px 11px;
+  }
+  .pincard b { font-size: 12.5px; display: block; }
+  .pincard span { font-size: 11px; color: var(--tb-soft); }
+
+  .folder {
+    background: var(--tb-panel); border: 1px solid var(--tb-line); border-radius: 12px;
+    padding: 10px 11px; display: flex; align-items: center; gap: 9px;
+  }
+  .ico {
+    width: 26px; height: 22px; border-radius: 4px 7px 7px 7px; flex: 0 0 auto;
+    background: #dfe6ea; border: 1px solid #c9d3da; position: relative;
+  }
+  .ico::before {
+    content: ""; position: absolute; top: -4px; left: 2px; width: 11px; height: 5px;
+    background: #dfe6ea; border: 1px solid #c9d3da; border-bottom: 0; border-radius: 3px 3px 0 0;
+  }
+  .ico--pdf { background: #f6dedb; border-color: #e3bdb6; border-radius: 4px; }
+  .ico--pdf::before { display: none; }
+  .ico--csv { background: #dff0e7; border-color: #b9dbca; border-radius: 4px; }
+  .ico--csv::before { display: none; }
+  .folder b { font-size: 13px; font-weight: 800; display: block; }
+  .folder span { font-size: 11px; color: var(--tb-soft); }
+  .folder .chev { margin-left: auto; color: var(--tb-soft); font-weight: 800; }
+
+  .sheet { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+  .sheet i { display: block; aspect-ratio: 1; border-radius: 5px; border: 1px solid var(--tb-line); }
+  .crumb { font-size: 11.5px; color: var(--tb-soft); }
+  .crumb b { color: var(--tb-ink); }
+
+  /* ---- the desktop window ---- */
+  .deskscroll { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 6px; }
+  .desk {
+    width: 1120px; border: 1px solid var(--page-line); border-radius: 14px;
+    overflow: hidden; background: var(--tb-bg); color: var(--tb-ink);
+    box-shadow: 0 16px 44px rgba(8, 32, 54, 0.2);
+  }
+  .desk__panes { display: grid; grid-template-columns: 248px minmax(0, 1fr) 286px; min-height: 496px; }
+  .desk__panes--two { grid-template-columns: 248px minmax(0, 1fr); }
+
+  .tree { background: var(--tb-warm); border-right: 1px solid var(--tb-line); padding: 12px 10px; }
+  .tree__head {
+    font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--tb-soft); padding: 0 6px 8px;
+  }
+  .tw { display: flex; align-items: center; gap: 6px; padding: 5px 7px; border-radius: 7px; font-size: 12.5px; }
+  .tw .car { width: 10px; color: var(--tb-soft); font-size: 9px; flex: 0 0 auto; }
+  .tw .n { margin-left: auto; font-size: 11px; color: var(--tb-soft); font-weight: 700; }
+  .tw.is-on { background: #e6edf1; font-weight: 800; }
+  .tw.l2 { padding-left: 18px; }
+  .tw.l3 { padding-left: 32px; }
+  .tw.l4 { padding-left: 46px; }
+
+  .pane { min-width: 0; display: flex; flex-direction: column; }
+  .pane__bar {
+    display: flex; align-items: center; gap: 9px; padding: 10px 14px;
+    border-bottom: 1px solid var(--tb-line); background: #fff;
+  }
+  .pane__crumb { font-size: 12px; color: var(--tb-soft); margin-right: auto; }
+  .pane__crumb b { color: var(--tb-ink); }
+  .dsearch {
+    width: 212px; background: var(--tb-bg); border: 1px solid var(--tb-line);
+    border-radius: 8px; padding: 6px 10px; font-size: 11.5px; color: #9aa4ad;
+  }
+  .dtoggle { display: flex; gap: 2px; background: #e7e3da; border-radius: 8px; padding: 2px; }
+  .dtoggle span {
+    font-size: 11.5px; font-weight: 700; padding: 5px 12px; border-radius: 6px; color: var(--tb-soft);
+  }
+  .dtoggle span.is-on { background: #fff; color: var(--tb-ink); box-shadow: 0 1px 3px rgba(8,32,54,0.14); }
+
+  table.files { width: 100%; border-collapse: collapse; font-size: 12.5px; background: #fff; }
+  table.files th {
+    text-align: left; font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--tb-soft); padding: 9px 14px;
+    border-bottom: 1px solid var(--tb-line); white-space: nowrap;
+  }
+  table.files td { padding: 9px 14px; border-bottom: 1px solid #eef1f3; vertical-align: middle; }
+  table.files tr.is-on td { background: #e9f0f4; }
+  table.files td.name { font-weight: 700; }
+  table.files td.soft { color: var(--tb-soft); }
+  .num { font-variant-numeric: tabular-nums; }
+  .grouprow td {
+    background: var(--tb-bg) !important; font-weight: 800; font-size: 11.5px;
+    letter-spacing: 0.04em; color: var(--tb-ink);
+  }
+  .grouprow td em { font-style: normal; color: var(--tb-soft); font-weight: 600; margin-left: 7px; }
+
+  .details { background: var(--tb-warm); border-left: 1px solid var(--tb-line); padding: 14px; }
+  .details__shot {
+    width: 100%; aspect-ratio: 4 / 3; border-radius: 9px; border: 1px solid var(--tb-line);
+    background: linear-gradient(140deg, #cbbfae, #8d7f6e); margin-bottom: 11px;
+  }
+  .details h4 { margin: 0 0 2px; font-size: 14.5px; letter-spacing: -0.01em; }
+  .details .addr { font-size: 12px; color: var(--tb-soft); margin: 0 0 11px; line-height: 1.4; }
+  .dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; font-size: 11.5px; margin-bottom: 12px; }
+  .dl dt { color: var(--tb-soft); white-space: nowrap; }
+  .dl dd { margin: 0; font-weight: 700; }
+  .details__acts { display: flex; flex-direction: column; gap: 6px; }
+  .details__acts .btn { text-align: center; }
+
+  .mappane { padding: 14px; background: #fff; display: flex; flex-direction: column; gap: 11px; min-width: 0; }
+  .mappane svg { width: 100%; height: auto; max-width: 100%; display: block; }
+  .mapframe {
+    border: 1px solid var(--tb-line); border-radius: 11px; background: #fbfcfd;
+    padding: 10px; position: relative; min-width: 0;
+  }
+
+  .note {
+    margin-top: 44px; border-top: 1px solid var(--page-line); padding-top: 22px; max-width: 68ch;
+  }
+  .note h3 { font-size: 15px; margin: 0 0 8px; }
+  .note p { margin: 0 0 10px; font-size: 14px; line-height: 1.58; color: var(--page-soft); }
+  .note ul { margin: 0 0 10px; padding-left: 18px; color: var(--page-soft); font-size: 14px; line-height: 1.6; }
+  .note li { margin-bottom: 5px; }
+  .note strong { color: var(--page-fg); }
+  .fine {
+    font-family: var(--font-note); font-size: 13px; color: var(--page-soft);
+    border-left: 2px solid var(--tb-accent); padding-left: 12px; line-height: 1.55;
+  }
+  .hint { font-size: 12px; color: var(--page-soft); margin: 8px 0 0; }
+</style>
+
+<div class="wrap">
+  <header class="lede">
+    <p class="eyebrow">Toolbox · mock-up, not built</p>
+    <h1>Explorer as the drawer of finished work</h1>
+    <p>Drawn to the decisions already written down: two drawers, filing by the floor survey date, a card catalogue behind search, and the pin map.</p>
+    <p>Customer names here are invented. The towns are real so the map reads true.</p>
+  </header>
+
+  <div class="band"><h2>On a phone</h2><span>Find it, look at it, hand it over.</span></div>
+
+  <div class="screens">
+
+    <!-- phone 1 -->
+    <section class="screen">
+      <div class="screen__cap">
+        <span class="screen__num">One</span>
+        <h3>Filed, by year and month</h3>
+        <p>Working and Filed are separate drawers. Finished jobs leave the working list and land here, filed by the floor survey date.</p>
+      </div>
+      <div class="phone">
+        <div class="bar">
+          <div class="bar__logo"></div><div class="bar__name">Toolbox</div>
+          <div class="chip">Sync Now</div><div class="chip">Refresh</div>
+        </div>
+        <div class="subbar"><div class="back">‹ Customer Files</div><div class="subbar__title">File Explorer</div></div>
+        <div class="body">
+          <div class="kicker">File Cabinet</div>
+          <div class="title">File Explorer</div>
+          <div class="drawers">
+            <div class="drawer">Working <span class="n">12</span></div>
+            <div class="drawer is-on">Filed <span class="n">187</span></div>
+          </div>
+          <div class="search">Search name, address or town</div>
+          <div class="toggle"><span class="is-on">List</span><span>Map</span></div>
+
+          <div class="year"><b>2026</b><span>41 jobs</span><div class="rule"></div></div>
+          <div class="month">October</div>
+          <div class="job">
+            <div class="job__top"><div class="job__name">Rhonda Sorenson</div><div class="tick">✓ Completed</div></div>
+            <div class="job__meta">4925 Edwards Dr NE, Albuquerque · Oct 7, 2026</div>
+            <div class="job__acts">
+              <span class="btn">Open</span><span class="btn">Download job</span><span class="btn btn--danger">Delete</span>
+            </div>
+          </div>
+          <div class="job">
+            <div class="job__top"><div class="job__name">Marcus Yazzie</div><div class="tick">✓ Completed</div></div>
+            <div class="job__meta">812 Hilltop Ave, Gallup · Oct 2, 2026</div>
+          </div>
+          <div class="month">September</div>
+          <div class="job">
+            <div class="job__top"><div class="job__name">Chalmers Ford</div><div class="tick">✓ Completed</div></div>
+            <div class="job__meta">3777 American Rd NW, Albuquerque · Sep 11, 2026</div>
+          </div>
+          <div class="year"><b>2025</b><span>52 jobs</span><div class="rule"></div></div>
+          <div class="job">
+            <div class="job__top"><div class="job__name">Delia Ortega</div><div class="tick">✓ Completed</div></div>
+            <div class="job__meta">19 Camino Alire, Santa Fe · Dec 18, 2025</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- phone 2 -->
+    <section class="screen">
+      <div class="screen__cap">
+        <span class="screen__num">Two</span>
+        <h3>The pin map</h3>
+        <p>Same drawer, shown on the map instead of in a list. Pins come from the base point's GPS, or the address, both already captured.</p>
+      </div>
+      <div class="phone">
+        <div class="bar">
+          <div class="bar__logo"></div><div class="bar__name">Toolbox</div>
+          <div class="chip">Sync Now</div><div class="chip">Refresh</div>
+        </div>
+        <div class="subbar"><div class="back">‹ Customer Files</div><div class="subbar__title">File Explorer</div></div>
+        <div class="body">
+          <div class="drawers">
+            <div class="drawer">Working <span class="n">12</span></div>
+            <div class="drawer is-on">Filed <span class="n">187</span></div>
+          </div>
+          <div class="toggle"><span>List</span><span class="is-on">Map</span></div>
+          <div class="years">
+            <span class="yr">All</span><span class="yr is-on">2024–2026</span>
+            <span class="yr">2022</span><span class="yr">2023</span>
+          </div>
+          <div class="mapwrap">
+            <svg viewBox="0 0 560 633" role="img" aria-label="Map of New Mexico with clustered job pins">
+              <path d="M0,0 L560,0 L560,558 L224,558 L222,583 L78,583 L78,633 L0,633 Z"
+                    fill="#eef2f4" stroke="#b9c6cf" stroke-width="2" stroke-linejoin="round"/>
+              <path d="M243,0 L236,96 L230,170 L224,214 L218,300 L212,420 L210,524 L222,583"
+                    fill="none" stroke="#c3d6e0" stroke-width="3" stroke-linecap="round"/>
+              <g font-family="-apple-system, Segoe UI, Roboto, sans-serif" font-size="17" fill="#66727d">
+                <text x="92" y="24">Farmington</text><text x="46" y="188">Gallup</text>
+                <text x="334" y="72">Taos</text><text x="306" y="128">Santa Fe</text>
+                <text x="100" y="232">Albuquerque</text><text x="431" y="409">Roswell</text>
+                <text x="128" y="530">Las Cruces</text>
+              </g>
+              <g stroke="#ffffff" stroke-width="3">
+                <circle cx="222" cy="214" r="34" fill="#c65332" opacity="0.92"/>
+                <circle cx="288" cy="146" r="26" fill="#c65332" opacity="0.92"/>
+                <circle cx="29"  cy="164" r="17" fill="#c65332" opacity="0.92"/>
+                <circle cx="419" cy="403" r="15" fill="#c65332" opacity="0.92"/>
+                <circle cx="322" cy="66"  r="14" fill="#c65332" opacity="0.92"/>
+                <circle cx="210" cy="524" r="13" fill="#c65332" opacity="0.92"/>
+                <circle cx="79"  cy="30"  r="12" fill="#c65332" opacity="0.92"/>
+              </g>
+              <g font-family="-apple-system, Segoe UI, Roboto, sans-serif" font-weight="800"
+                 font-size="20" fill="#ffffff" text-anchor="middle">
+                <text x="222" y="221">61</text><text x="288" y="153">34</text>
+                <text x="29" y="170" font-size="16">9</text><text x="419" y="409" font-size="15">7</text>
+                <text x="322" y="72" font-size="15">6</text><text x="210" y="530" font-size="14">5</text>
+                <text x="79" y="36" font-size="14">4</text>
+              </g>
+              <circle cx="29" cy="164" r="25" fill="none" stroke="#07283d" stroke-width="3"/>
+            </svg>
+            <div class="pincard">
+              <b>Gallup — 9 filed jobs</b><span>2024–2026 · tap to list them</span>
+            </div>
+          </div>
+          <div class="job">
+            <div class="job__top"><div class="job__name">Marcus Yazzie</div><div class="tick">✓ Completed</div></div>
+            <div class="job__meta">812 Hilltop Ave, Gallup · Oct 2, 2026</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- phone 3 -->
+    <section class="screen">
+      <div class="screen__cap">
+        <span class="screen__num">Three</span>
+        <h3>Inside a filed job</h3>
+        <p>What survives Toolbox disappearing: a PDF of each survey, the readings as a CSV, every photograph with a name a person can read.</p>
+      </div>
+      <div class="phone">
+        <div class="bar">
+          <div class="bar__logo"></div><div class="bar__name">Toolbox</div>
+          <div class="chip">Sync Now</div><div class="chip">Refresh</div>
+        </div>
+        <div class="subbar"><div class="back">‹ File Explorer</div><div class="subbar__title">Rhonda Sorenson</div></div>
+        <div class="body">
+          <div class="crumb">Filed · 2026 · October · <b>Rhonda Sorenson</b></div>
+          <div class="job__meta" style="margin-top:-4px">4925 Edwards Dr NE, Albuquerque · Oct 7, 2026</div>
+          <div class="job__acts" style="margin-top:0">
+            <span class="btn">Download job (ZIP)</span><span class="btn btn--ghost">Technical details</span>
+          </div>
+          <div class="folder">
+            <div class="ico ico--pdf"></div><div><b>Report.pdf</b><span>14 pages · 2.1 MB</span></div><div class="chev">›</div>
+          </div>
+          <div class="folder">
+            <div class="ico ico--pdf"></div><div><b>Floor Survey.pdf</b><span>Main Level, Basement, Garage</span></div><div class="chev">›</div>
+          </div>
+          <div class="folder">
+            <div class="ico ico--csv"></div><div><b>Floor Survey readings.csv</b><span>412 points · X, Y, Z</span></div><div class="chev">›</div>
+          </div>
+          <div class="folder">
+            <div class="ico ico--pdf"></div><div><b>Distress Survey.pdf</b><span>38 photographs, numbered</span></div><div class="chev">›</div>
+          </div>
+          <div class="folder">
+            <div class="ico"></div><div><b>Photographs</b><span>38 files · named by pin</span></div><div class="chev">›</div>
+          </div>
+          <div class="sheet">
+            <i style="background:linear-gradient(140deg,#b9a894,#8d7f6e)"></i>
+            <i style="background:linear-gradient(140deg,#9aa8b4,#6d7d8a)"></i>
+            <i style="background:linear-gradient(140deg,#c2b39c,#9b8a74)"></i>
+            <i style="background:linear-gradient(140deg,#a7b2a0,#78846f)"></i>
+            <i style="background:linear-gradient(140deg,#cbbfae,#a1937f)"></i>
+            <i style="background:linear-gradient(140deg,#93a1ab,#6a7781)"></i>
+            <i style="background:linear-gradient(140deg,#b5a494,#857667)"></i>
+            <i style="background:linear-gradient(140deg,#aab5a4,#7b8673)"></i>
+          </div>
+          <div class="folder">
+            <div class="ico"></div><div><b>Plans</b><span>3 level images</span></div><div class="chev">›</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="band"><h2>On a desktop</h2><span>The tree down the left, the way a real file explorer works.</span></div>
+  <p class="hint">Drawn at 1120px. On a phone these scroll sideways.</p>
+
+  <!-- desktop 1 -->
+  <section class="screen" style="margin-top:22px">
+    <div class="screen__cap">
+      <span class="screen__num">Four</span>
+      <h3>Filed jobs, with a details pane</h3>
+      <p>Drawers and years become the tree. The middle is a sortable list; the right pane carries the figures the survey already knows, so you can judge a job without opening it.</p>
+    </div>
+    <div class="deskscroll">
+      <div class="desk">
+        <div class="bar">
+          <div class="bar__logo"></div><div class="bar__name">Toolbox</div>
+          <div class="chip">Explorer</div><div class="chip">Sync Now</div><div class="chip">Refresh</div>
+        </div>
+        <div class="desk__panes">
+          <nav class="tree">
+            <div class="tree__head">File Cabinet</div>
+            <div class="tw"><span class="car">▸</span> Working <span class="n">12</span></div>
+            <div class="tw"><span class="car">▾</span> <b>Filed</b> <span class="n">187</span></div>
+            <div class="tw l2"><span class="car">▾</span> 2026 <span class="n">41</span></div>
+            <div class="tw l3 is-on">October <span class="n">6</span></div>
+            <div class="tw l3">September <span class="n">5</span></div>
+            <div class="tw l3">August <span class="n">4</span></div>
+            <div class="tw l2"><span class="car">▸</span> 2025 <span class="n">52</span></div>
+            <div class="tw l2"><span class="car">▸</span> 2024 <span class="n">44</span></div>
+            <div class="tw l2"><span class="car">▸</span> 2023 <span class="n">31</span></div>
+            <div class="tw l2"><span class="car">▸</span> 2022 <span class="n">19</span></div>
+          </nav>
+
+          <div class="pane">
+            <div class="pane__bar">
+              <div class="pane__crumb">Filed › 2026 › <b>October</b></div>
+              <div class="dsearch">Search name, address or town</div>
+              <div class="dtoggle"><span class="is-on">List</span><span>Map</span></div>
+            </div>
+            <table class="files">
+              <thead>
+                <tr><th>Name</th><th>Address</th><th>Town</th><th>Survey date</th><th>Status</th></tr>
+              </thead>
+              <tbody>
+                <tr class="is-on">
+                  <td class="name">Rhonda Sorenson</td><td class="soft">4925 Edwards Dr NE</td>
+                  <td class="soft">Albuquerque</td><td class="soft num">Oct 7, 2026</td><td><span class="tick">✓ Completed</span></td>
+                </tr>
+                <tr>
+                  <td class="name">Marcus Yazzie</td><td class="soft">812 Hilltop Ave</td>
+                  <td class="soft">Gallup</td><td class="soft num">Oct 2, 2026</td><td><span class="tick">✓ Completed</span></td>
+                </tr>
+                <tr>
+                  <td class="name">Priya Nandakumar</td><td class="soft">27 Cerro Vista</td>
+                  <td class="soft">Santa Fe</td><td class="soft num">Oct 1, 2026</td><td><span class="tick">✓ Completed</span></td>
+                </tr>
+                <tr class="grouprow"><td colspan="5">September <em>5 jobs</em></td></tr>
+                <tr>
+                  <td class="name">Chalmers Ford</td><td class="soft">3777 American Rd NW</td>
+                  <td class="soft">Albuquerque</td><td class="soft num">Sep 11, 2026</td><td><span class="tick">✓ Completed</span></td>
+                </tr>
+                <tr>
+                  <td class="name">Delia Ortega</td><td class="soft">19 Camino Alire</td>
+                  <td class="soft">Santa Fe</td><td class="soft num">Sep 4, 2026</td><td><span class="tick">✓ Completed</span></td>
+                </tr>
+                <tr>
+                  <td class="name">Walt Brennan</td><td class="soft">44 El Cielo Azul Cir</td>
+                  <td class="soft">Edgewood</td><td class="soft num">Aug 28, 2026</td><td><span class="tick">✓ Completed</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <aside class="details">
+            <div class="details__shot"></div>
+            <h4>Rhonda Sorenson</h4>
+            <p class="addr">4925 Edwards Drive Northeast<br>Albuquerque, NM 87111</p>
+            <dl class="dl">
+              <dt>Survey</dt><dd class="num">Oct 7, 2026</dd>
+              <dt>Filed</dt><dd class="num">Oct 19, 2026</dd>
+              <dt>Levels</dt><dd class="num">3</dd>
+              <dt>Readings</dt><dd class="num">412</dd>
+              <dt>Pins</dt><dd class="num">38</dd>
+              <dt>Max drop</dt><dd class="num">2.4 in over 31 ft</dd>
+            </dl>
+            <div class="details__acts">
+              <span class="btn">Open</span>
+              <span class="btn">Download job (ZIP)</span>
+              <span class="btn btn--danger">Delete</span>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- desktop 2 -->
+  <section class="screen" style="margin-top:40px">
+    <div class="screen__cap">
+      <span class="screen__num">Five</span>
+      <h3>The map, with room to use it</h3>
+      <p>The whole state at once, the year range along the top, and the selected cluster listed beside it. Zoom in and the clusters split into single pins.</p>
+    </div>
+    <div class="deskscroll">
+      <div class="desk">
+        <div class="bar">
+          <div class="bar__logo"></div><div class="bar__name">Toolbox</div>
+          <div class="chip">Explorer</div><div class="chip">Sync Now</div><div class="chip">Refresh</div>
+        </div>
+        <div class="desk__panes">
+          <nav class="tree">
+            <div class="tree__head">File Cabinet</div>
+            <div class="tw"><span class="car">▸</span> Working <span class="n">12</span></div>
+            <div class="tw is-on"><span class="car">▾</span> <b>Filed</b> <span class="n">187</span></div>
+            <div class="tw l2"><span class="car">▸</span> 2026 <span class="n">41</span></div>
+            <div class="tw l2"><span class="car">▸</span> 2025 <span class="n">52</span></div>
+            <div class="tw l2"><span class="car">▸</span> 2024 <span class="n">44</span></div>
+            <div class="tw l2"><span class="car">▸</span> 2023 <span class="n">31</span></div>
+            <div class="tw l2"><span class="car">▸</span> 2022 <span class="n">19</span></div>
+          </nav>
+
+          <div class="pane">
+            <div class="pane__bar">
+              <div class="pane__crumb"><b>Filed</b> · 187 jobs on the map</div>
+              <div class="dtoggle"><span>List</span><span class="is-on">Map</span></div>
+            </div>
+            <div class="mappane">
+              <div class="years">
+                <span class="yr">All years</span><span class="yr is-on">2024–2026</span>
+                <span class="yr">2023</span><span class="yr">2022</span>
+              </div>
+              <div class="mapframe">
+                <svg viewBox="0 0 560 450" role="img" aria-label="Map of New Mexico with clustered job pins">
+                  <g transform="translate(140,-30) scale(0.76)">
+                    <path d="M0,0 L560,0 L560,558 L224,558 L222,583 L78,583 L78,633 L0,633 Z"
+                          fill="#eef2f4" stroke="#b9c6cf" stroke-width="2.4" stroke-linejoin="round"/>
+                    <path d="M243,0 L236,96 L230,170 L224,214 L218,300 L212,420 L210,524 L222,583"
+                          fill="none" stroke="#c3d6e0" stroke-width="3.6" stroke-linecap="round"/>
+                    <g font-family="-apple-system, Segoe UI, Roboto, sans-serif" font-size="19" fill="#66727d">
+                      <text x="92" y="24">Farmington</text><text x="46" y="190">Gallup</text>
+                      <text x="334" y="72">Taos</text><text x="306" y="126">Santa Fe</text>
+                      <text x="96" y="234">Albuquerque</text><text x="431" y="409">Roswell</text>
+                      <text x="122" y="532">Las Cruces</text>
+                    </g>
+                    <g stroke="#ffffff" stroke-width="3.4">
+                      <circle cx="222" cy="214" r="36" fill="#c65332" opacity="0.92"/>
+                      <circle cx="288" cy="146" r="28" fill="#c65332" opacity="0.92"/>
+                      <circle cx="29"  cy="164" r="18" fill="#c65332" opacity="0.92"/>
+                      <circle cx="419" cy="403" r="16" fill="#c65332" opacity="0.92"/>
+                      <circle cx="322" cy="66"  r="15" fill="#c65332" opacity="0.92"/>
+                      <circle cx="210" cy="524" r="14" fill="#c65332" opacity="0.92"/>
+                      <circle cx="79"  cy="30"  r="13" fill="#c65332" opacity="0.92"/>
+                    </g>
+                    <g font-family="-apple-system, Segoe UI, Roboto, sans-serif" font-weight="800"
+                       font-size="21" fill="#ffffff" text-anchor="middle">
+                      <text x="222" y="222">61</text><text x="288" y="154">34</text>
+                      <text x="29" y="171" font-size="17">9</text><text x="419" y="410" font-size="16">7</text>
+                      <text x="322" y="73" font-size="16">6</text><text x="210" y="531" font-size="15">5</text>
+                      <text x="79" y="37" font-size="15">4</text>
+                    </g>
+                    <circle cx="29" cy="164" r="27" fill="none" stroke="#07283d" stroke-width="3.4"/>
+                  </g>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <aside class="details">
+            <div class="tree__head" style="padding-left:0">Gallup · 9 jobs</div>
+            <table class="files" style="background:transparent">
+              <tbody>
+                <tr><td class="name" style="padding:8px 0">Marcus Yazzie<br><span class="soft" style="font-weight:400">Oct 2, 2026</span></td></tr>
+                <tr><td class="name" style="padding:8px 0">Lorraine Becenti<br><span class="soft" style="font-weight:400">May 14, 2026</span></td></tr>
+                <tr><td class="name" style="padding:8px 0">Hector Ruiz<br><span class="soft" style="font-weight:400">Nov 30, 2025</span></td></tr>
+                <tr><td class="name" style="padding:8px 0">Anne Tsosie<br><span class="soft" style="font-weight:400">Jul 8, 2025</span></td></tr>
+                <tr><td class="name" style="padding:8px 0">Gary Pinto<br><span class="soft" style="font-weight:400">Feb 2, 2025</span></td></tr>
+                <tr><td class="soft" style="padding:8px 0">and 4 more</td></tr>
+              </tbody>
+            </table>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- desktop 3 -->
+  <section class="screen" style="margin-top:40px">
+    <div class="screen__cap">
+      <span class="screen__num">Six</span>
+      <h3>Inside a filed job, with a preview</h3>
+      <p>The job opens as folders in the tree. Pick a file and it previews on the right, so you can read a survey without downloading it.</p>
+    </div>
+    <div class="deskscroll">
+      <div class="desk">
+        <div class="bar">
+          <div class="bar__logo"></div><div class="bar__name">Toolbox</div>
+          <div class="chip">Explorer</div><div class="chip">Sync Now</div><div class="chip">Refresh</div>
+        </div>
+        <div class="desk__panes">
+          <nav class="tree">
+            <div class="tree__head">File Cabinet</div>
+            <div class="tw"><span class="car">▸</span> Working <span class="n">12</span></div>
+            <div class="tw"><span class="car">▾</span> <b>Filed</b> <span class="n">187</span></div>
+            <div class="tw l2"><span class="car">▾</span> 2026 <span class="n">41</span></div>
+            <div class="tw l3"><span class="car">▾</span> October <span class="n">6</span></div>
+            <div class="tw l4 is-on">Rhonda Sorenson</div>
+            <div class="tw l4">Marcus Yazzie</div>
+            <div class="tw l4">Priya Nandakumar</div>
+            <div class="tw l3"><span class="car">▸</span> September <span class="n">5</span></div>
+            <div class="tw l2"><span class="car">▸</span> 2025 <span class="n">52</span></div>
+          </nav>
+
+          <div class="pane">
+            <div class="pane__bar">
+              <div class="pane__crumb">Filed › 2026 › October › <b>Rhonda Sorenson</b></div>
+              <div class="btn">Download job (ZIP)</div>
+            </div>
+            <table class="files">
+              <thead><tr><th>Name</th><th>Kind</th><th>Size</th><th>Added</th></tr></thead>
+              <tbody>
+                <tr class="is-on">
+                  <td class="name">Report.pdf</td><td class="soft">PDF · 14 pages</td>
+                  <td class="soft num">2.1 MB</td><td class="soft num">Oct 19, 2026</td>
+                </tr>
+                <tr>
+                  <td class="name">Floor Survey.pdf</td><td class="soft">PDF · 3 levels</td>
+                  <td class="soft num">1.4 MB</td><td class="soft num">Oct 19, 2026</td>
+                </tr>
+                <tr>
+                  <td class="name">Floor Survey readings.csv</td><td class="soft">CSV · 412 rows</td>
+                  <td class="soft num">31 KB</td><td class="soft num">Oct 19, 2026</td>
+                </tr>
+                <tr>
+                  <td class="name">Distress Survey.pdf</td><td class="soft">PDF · 38 photographs</td>
+                  <td class="soft num">6.8 MB</td><td class="soft num">Oct 19, 2026</td>
+                </tr>
+                <tr>
+                  <td class="name">Photographs</td><td class="soft">Folder · 38 files</td>
+                  <td class="soft num">74 MB</td><td class="soft num">Oct 7, 2026</td>
+                </tr>
+                <tr>
+                  <td class="name">Plans</td><td class="soft">Folder · 3 images</td>
+                  <td class="soft num">4.2 MB</td><td class="soft num">Oct 5, 2026</td>
+                </tr>
+                <tr>
+                  <td class="name">Customer details.txt</td><td class="soft">Text</td>
+                  <td class="soft num">2 KB</td><td class="soft num">Oct 19, 2026</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <aside class="details">
+            <div class="details__shot" style="aspect-ratio:17/11;background:#fff;position:relative;overflow:hidden">
+              <div style="position:absolute;inset:7px;border:1px solid #dce1e4;border-radius:4px"></div>
+              <div style="position:absolute;left:14px;top:14px;width:46%;height:8px;background:#07283d;border-radius:2px"></div>
+              <div style="position:absolute;left:14px;top:28px;width:30%;height:5px;background:#c9d3da;border-radius:2px"></div>
+              <div style="position:absolute;left:14px;top:44px;right:14px;bottom:30px;background:linear-gradient(140deg,#e9eef1,#cfdae1);border-radius:3px"></div>
+              <div style="position:absolute;left:14px;bottom:14px;width:62%;height:5px;background:#dce1e4;border-radius:2px"></div>
+            </div>
+            <h4>Report.pdf</h4>
+            <p class="addr">Page 1 of 14 · built when the job was filed</p>
+            <dl class="dl">
+              <dt>Kind</dt><dd>PDF</dd>
+              <dt>Size</dt><dd class="num">2.1 MB</dd>
+              <dt>Pages</dt><dd class="num">14</dd>
+            </dl>
+            <div class="details__acts">
+              <span class="btn">Open</span>
+              <span class="btn">Download</span>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="note">
+    <h3>What these drawings assume</h3>
+    <ul>
+      <li><strong>Completed is marked at Check In.</strong> The checkmark is what moves a job out of the working drawer and up into Explorer.</li>
+      <li><strong>Filed by the floor survey date</strong> — distress survey date if there is no floor survey. No third fallback.</li>
+      <li><strong>Search reads the card catalogue</strong>, not the jobs, so it stays instant at five thousand jobs.</li>
+      <li><strong>The map is a view of that catalogue</strong> with a date filter on it, not a second store. The coordinates are already being captured.</li>
+      <li><strong>Delete lives here only.</strong> A job with work in it can be destroyed from Explorer and nowhere else.</li>
+      <li><strong>The figures in the details pane are computed, not typed</strong> — levels, readings, pins, the biggest drop and the span it crosses all come out of the survey when the job is filed.</li>
+    </ul>
+    <p class="fine">The one thing these drawings decide that the notes left open: the PDFs and the CSV are real files written when the job is filed, not something rendered when you look at them. That is what makes the ZIP worth anything if Toolbox is gone.</p>
+  </div>
+</div>

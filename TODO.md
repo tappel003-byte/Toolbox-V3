@@ -57,6 +57,18 @@ to use it."
 Decided with Tim, Oct 18, 2026, looking at an opened job on his phone. The
 contact sheet landed that morning; this is what is still on the list.
 
+**The rebuild drawings live in `docs/file-explorer-rebuild/`.** Seven screens,
+phone and desktop, with the premises they rest on written down beside them --
+Working and Filed as separate drawers, filing by the floor survey date, the
+pin map as a view of the card catalogue, and the PDFs and CSV written as real
+files when a job is filed rather than rendered on demand. Open
+`explorer-mockups.html` in a browser.
+
+They are in the repository because the conversation that produced them was
+compacted and they were nearly lost with it (Tim, Oct 23, 2026: "we almost
+lost the file explorer stuff yesterday"). They decide nothing on their own and
+none of it is approved to build.
+
 - ~~**A folder view.**~~ Built Oct 20. A job opens as a list of folders saying
   what is in each, one is open at a time, and the path across the top is the
   way back up. Pictures are a contact sheet inside a folder. What is still
