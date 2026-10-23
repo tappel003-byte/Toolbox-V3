@@ -7232,7 +7232,25 @@
         try {
           renderSheet(sheet, page, pages);
         } catch (err) {
+          // A sheet that could not be built says so ON the sheet.
+          //
+          // This used to warn to the console and hand the printer whatever
+          // had been assembled before the throw. On a Floor Survey slide the
+          // rail is built first, so the sheet went out with its title block,
+          // its figure number and its logo -- and no drawing, no colour
+          // scale, no readings, nothing to say anything was wrong. A report
+          // walked out of here with four blank figures in it and the only
+          // trace was a line in a console nobody had open.
+          //
+          // It still prints the rest of the report: one page that cannot be
+          // built is not a reason to refuse the other seventeen.
           console.warn('Page could not be prepared for print', page && page.id, err);
+          var failed = document.createElement('p');
+          failed.className = 'rb-sheet__failed';
+          failed.setAttribute('data-rb-sheet-failed', '1');
+          failed.textContent = 'This figure could not be prepared for printing. '
+            + 'Close the print dialog, open this slide in Report Builder, and print again.';
+          sheet.appendChild(failed);
         } finally {
           page._mountTopo = liveMount;
         }

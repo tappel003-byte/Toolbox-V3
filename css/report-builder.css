@@ -3889,6 +3889,26 @@ body.is-presenting { overflow: hidden; }
 /* The right-click menu in a writing area shares the stack menu's look. Its
    note appears only when the browser refused the clipboard, so it says what
    to press instead rather than leaving the menu looking broken. */
+/* Said on the sheet, not in a console. It has to survive the rules that
+   strip editor chrome from the printed deck -- it is the opposite of chrome:
+   the one thing on a failed sheet that must reach the paper. */
+.rb-sheet__failed {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 44%;
+  margin: 0;
+  padding: 2.2cqh 2.6cqh;
+  border: 0.22cqh solid #8c2f1d;
+  border-radius: 0.6cqh;
+  background: #fff;
+  color: #8c2f1d;
+  font-size: 2.1cqh;
+  line-height: 1.4;
+  text-align: center;
+  z-index: 9;
+}
+
 .rb-stackmenu__note {
   max-width: 24ch;
   margin: 4px 0 0;
