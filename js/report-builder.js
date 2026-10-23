@@ -5842,23 +5842,11 @@
       // detached document, read into the report's own model, and written
       // back out as the report's own markup -- so a paste carries structure
       // and styling, and carries nothing else in with it.
-      var html = '';
-      var pastedHtml = event.clipboardData.getData('text/html');
-      if (pastedHtml && typeof window.DOMParser === 'function') {
-        try {
-          var parsed = new window.DOMParser().parseFromString(pastedHtml, 'text/html');
-          var body = parsed && parsed.body;
-          if (body) {
-            var junk = body.querySelectorAll('script, style, meta, link, title');
-            for (var j = 0; j < junk.length; j += 1) junk[j].remove();
-            if (body.textContent.trim()) {
-              html = api.toHtml(api.compact(api.fromElement(body)));
-            }
-          }
-        } catch (err) {
-          html = '';
-        }
-      }
+      // One reader for the clipboard, shared with the right-click menu.
+      // This used to be a second copy of it, so the typeface normalization
+      // added to the other one did not happen on Ctrl+V -- a pasted span
+      // kept its own face while the same paste from the menu did not.
+      var html = richHtmlFromClipboardHtml(event.clipboardData.getData('text/html'));
       if (!html) {
         var text = event.clipboardData.getData('text/plain');
         if (!text || !api.looksLikeMarkdown(text)) return;
@@ -5893,6 +5881,33 @@
     }
 
     /** The report's own markup for a block of clipboard HTML. */
+    /**
+     * The one thing a paste does NOT bring: its typeface.
+     *
+     * Tim, Oct 23, 2026: "a pasted paragraph should keep it size and color but
+     * I should be able to change it." Size and colour are his to change from
+     * the bar, so they arrive and he changes what he does not want. A FACE is
+     * different -- one report is one typeface, settled the same day, and a
+     * narrative pasted out of a chat answer carries that chat's family on
+     * every block and every span. Left in, one report ends up set in four
+     * fonts and there is nothing on the page to say why.
+     *
+     * This runs on the CLIPBOARD, not in fromElement. fromElement is also the
+     * editor's own reader on every keystroke, so stripping there would strip
+     * the font Tim himself chose out of his own saved text.
+     */
+    function stripPastedTypeface(root) {
+      if (!root || typeof root.querySelectorAll !== 'function') return;
+      var all = root.querySelectorAll('*');
+      for (var i = 0; i < all.length; i += 1) {
+        var el = all[i];
+        if (el.style && el.style.fontFamily) el.style.fontFamily = '';
+        // Without styleWithCSS the browser writes <font face="..."> instead.
+        if (el.tagName === 'FONT' && el.hasAttribute('face')) el.removeAttribute('face');
+      }
+      if (root.style && root.style.fontFamily) root.style.fontFamily = '';
+    }
+
     function richHtmlFromClipboardHtml(pastedHtml) {
       var api = window.ToolboxReportText;
       if (!api || !pastedHtml || typeof window.DOMParser !== 'function') return '';
@@ -5903,6 +5918,7 @@
         var junk = body.querySelectorAll('script, style, meta, link, title');
         for (var j = 0; j < junk.length; j += 1) junk[j].remove();
         if (!body.textContent.trim()) return '';
+        stripPastedTypeface(body);
         return api.toHtml(api.compact(api.fromElement(body)));
       } catch (err) {
         return '';

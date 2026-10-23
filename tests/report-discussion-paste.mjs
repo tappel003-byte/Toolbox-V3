@@ -209,7 +209,12 @@ const stored = await page.evaluate(async (id) => {
     headings: paragraphs.filter((p) =>
       p.runs.length === 1 && p.runs[0].bold && /^Section \d+: Observations$/.test(p.runs[0].text)).length,
     bullets: paragraphs.filter((p) => p.bullet).length,
-    styled: runs.filter((r) => r.font || r.color || r.size).length,
+    // The TYPEFACE is the report's, always. Size and colour are Tim's to
+    // change from the bar, so a paste brings those and he changes what he
+    // does not want (Tim, Oct 23, 2026: "a pasted paragraph should keep it
+    // size and color but I should be able to change it").
+    faced: runs.filter((r) => r.font).length,
+    styled: runs.filter((r) => r.color || r.size).length,
   };
 }, FILE);
 check('every word of it is on the Customer File',
@@ -217,8 +222,10 @@ check('every word of it is on the Customer File',
 check('its headings stay headings and its bullets stay bullets',
   stored.headings === SECTIONS.length && stored.bullets === SECTIONS.length * 3,
   JSON.stringify({ headings: stored.headings, bullets: stored.bullets }));
-check('and it arrives in the report’s own type, not the chat’s',
-  stored.styled === 0, String(stored.styled));
+check('and it arrives in the report’s own TYPEFACE, not the chat’s',
+  stored.faced === 0, String(stored.faced));
+check('while the chat’s sizes and colours come through, to be changed here',
+  stored.styled > 0, String(stored.styled));
 
 // A narrative that arrives as plain prose is formatted here, so the bar has
 // to carry what the ribbon carries. Tim: "this is why we need full editing
