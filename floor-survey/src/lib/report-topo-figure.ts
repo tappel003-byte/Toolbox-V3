@@ -14,6 +14,8 @@ import {
   buildAreaTopos,
   paletteColor,
   renderTopo,
+  renderTopoBase,
+  renderTopoTop,
   resolveSettings,
   type AreaTopo,
 } from "@/components/tabs/TopoTab";
@@ -331,16 +333,35 @@ export async function composeReportTopoFigure(options: {
   // every routine below is unchanged and unaware of either.
   ctx.setTransform(scale, 0, 0, scale, -extent.x * scale, -extent.y * scale);
 
+  // The plan goes OVER the contours, the way the live canvas draws it.
+  //
+  // TopoTab mounts PlanCanvas with planOnTop set, so on screen the order is
+  // contour base, then the plan multiplied over it at full strength, then the
+  // readings. renderTopoBase even says so: "Meant to sit UNDER the wall plan."
+  // This composer drew the plan FIRST at planOpacity and then put the whole of
+  // renderTopo over it, so the contour fill buried the walls, the room names
+  // and anything else printed into the plan image. Same frame as the slide,
+  // different picture -- which is the whole of what makes a PDF not look like
+  // the editor.
+  //
+  // multiply keeps the dark linework and lets the colour beneath show through
+  // the white paper, which is exactly what the live canvas relies on.
+  let planImg: HTMLImageElement | null = null;
   if (settings.showPlan && floor.planDataUrl) {
     try {
-      const img = await loadImage(floor.planDataUrl);
-      ctx.globalAlpha = settings.planOpacity;
-      ctx.drawImage(img, 0, 0, planW, planH);
-      ctx.globalAlpha = 1;
+      planImg = await loadImage(floor.planDataUrl);
     } catch {
-      // Plan missing — still draw contours/readings.
+      planImg = null; // Plan missing -- still draw contours/readings.
     }
   }
+
+  const drawPlanOver = () => {
+    if (!planImg) return;
+    const prior = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = "multiply";
+    ctx.drawImage(planImg, 0, 0, planW, planH);
+    ctx.globalCompositeOperation = prior;
+  };
 
   // Reading labels and dots are sized for the SCREEN, not for plan pixels:
   // Floor Survey asks for 11 px and, when a big plan is fit into a window,
@@ -357,7 +378,10 @@ export async function composeReportTopoFigure(options: {
   // app's 2, so a composed figure drew every reading three times the size of
   // the same reading on the slide it was composed from.
   const pointStyle = readPointStyle(floor.projectId);
-  renderTopo(ctx, floor, points, settings, areaTopos, {
+  // The live canvas's three passes, in its order.
+  renderTopoBase(ctx, floor, settings, areaTopos);
+  drawPlanOver();
+  renderTopoTop(ctx, floor, points, settings, areaTopos, {
     viewScale: REPORT_REFERENCE_WIDTH / Math.max(1, extent.w),
     pointSize: pointStyle.pointSize,
     pointColor: pointStyle.pointColor,

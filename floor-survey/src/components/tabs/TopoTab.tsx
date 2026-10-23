@@ -2232,7 +2232,9 @@ export function renderTopo(
 }
 
 // Base pass: contour fills / lines / boundary. Meant to sit UNDER the wall plan.
-function renderTopoBase(
+// Exported so the report figure composer can draw the SAME three passes in the
+// same order the live canvas does. Nothing about the capture app changes.
+export function renderTopoBase(
   ctx: CanvasRenderingContext2D,
   floor: Floor,
   settings: RenderSettings,
@@ -2392,7 +2394,7 @@ function renderTopoBaseLayer(
 }
 
 // Top pass: points, point labels, high/low pins, legend. Meant to sit OVER the wall plan.
-function renderTopoTop(
+export function renderTopoTop(
   ctx: CanvasRenderingContext2D,
   floor: Floor,
   points: SurveyPoint[],
