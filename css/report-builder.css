@@ -292,19 +292,27 @@ body.report-builder-open .canvas {
 
 .rb-stage {
   display: flex;
-  align-items: center;
-  justify-content: center;
   min-width: 0;
   min-height: 0;
   padding: 16px;
   background:
     linear-gradient(180deg, rgba(8, 32, 54, 0.04), rgba(8, 32, 54, 0.02)),
     #e5e0d6;
-  overflow: hidden;
   box-sizing: border-box;
 }
 
 .rb-sheet {
+  /* ONE REPORT, ONE TYPEFACE. Declared on the paper so everything drawn on
+     it inherits, rather than on each block -- which is how the fault got in.
+     The cover and the discussion each declared this stack; the figure pages
+     declared a Segoe one; and the Picture Locations sheet declared nothing
+     at all, so it fell through to the app's own UI font and the distress
+     descriptions came out in a third face. Tim, Oct 23, 2026: "everything
+     should be in the discussion page cover font stream."
+     The drawing title rail is the one deliberate exception -- see
+     .rb-rail__rail, which is a serif title block on an engineering sheet. */
+  --rb-face: Calibri, Carlito, "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--rb-face);
   position: relative;
   flex: 0 0 auto;
   align-self: center;
@@ -772,7 +780,16 @@ body.report-builder-open .canvas {
   min-height: 0;
   gap: 0.5%;
   color: #17130e;
-  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  /* One report, one typeface. The figure pages were on a Segoe stack while
+     the cover and the discussion were on Calibri, so the distress
+     descriptions in the Picture Locations table -- which set no font of
+     their own and inherit this one -- came out in a different face from
+     everything Tim had written. Tim, Oct 23, 2026: "whatever font you use
+     in Report Builder on the main screen, it needs to apply to the distress
+     survey descriptions as well"; "everything should be in the discussion
+     page cover font stream." This is that stack, character for character.
+     The drawing title rail keeps Georgia on purpose -- see .rb-rail__rail. */
+  font-family: var(--rb-face);
 }
 
 /* The drawing's upper-left header is gone. The rail carries the figure
@@ -1182,7 +1199,7 @@ body.report-builder-open .canvas {
   height: 100%;
   background: #fff;
   color: var(--rb-ink);
-  font-family: Calibri, Carlito, "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--rb-face);
 }
 
 .rb-cover__stage {
@@ -2051,6 +2068,11 @@ body.report-builder-open .canvas {
 }
 
 .rb-penlog {
+  /* This sheet is not drawn inside .rb-topo-page, so it never inherited the
+     figure page's font -- it inherited the app shell's. Named here so the
+     Picture Locations table and the distress descriptions in it are on the
+     report's face and not the application's. */
+  font-family: var(--rb-face);
   position: absolute;
   inset: 0;
   overflow: hidden;
@@ -3361,7 +3383,7 @@ body.is-presenting { overflow: hidden; }
   height: 100%;
   background: #fff;
   color: #1a1a1a;
-  font-family: Calibri, Carlito, "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--rb-face);
 }
 
 /* The writing area as a placed box: where it sits and how big it is belong
@@ -4042,4 +4064,61 @@ body.is-presenting { overflow: hidden; }
 
 .rb-present-btn[aria-busy='true'] {
   opacity: 0.6;
+}
+
+/* Zoom. The page is 11x17 and the stage is whatever is left after the rail
+   and the panel, so on a laptop the sheet is drawn at about two-thirds and
+   the discussion type is small to work in. Zoom changes the magnification
+   only -- never the type on the page, which would change the printed
+   report. Tim, Oct 23, 2026: "I don't say font, zoom in, zoom out, so we
+   can read it easier." */
+.rb-zoom {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.rb-zoom__btn,
+.rb-zoom__level {
+  border: 0;
+  background: transparent;
+  color: var(--navy);
+  font: inherit;
+  cursor: pointer;
+  padding: 0 10px;
+  line-height: 1;
+}
+
+.rb-zoom__btn {
+  width: 32px;
+  padding: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.rb-zoom__level {
+  min-width: 54px;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rb-zoom__btn:hover,
+.rb-zoom__level:hover { background: #eef2f4; }
+
+/* Zoomed past fit, the page is bigger than the stage, so the stage has to
+   scroll. Centring a flex child with justify-content clips the top and left
+   of an oversized one -- the part you cannot scroll back to -- so the paper
+   centres with margin:auto instead, which does not. */
+.rb-stage {
+  overflow: auto;
+}
+
+.rb-stage__paper {
+  margin: auto;
 }

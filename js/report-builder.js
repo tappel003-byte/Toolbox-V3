@@ -80,6 +80,22 @@
    * the paper on every screen. That is what stopped the PDF ever agreeing
    * with the editor.
    */
+  /**
+   * How big the page is drawn on the stage.
+   *
+   * 0 means fit -- the whole sheet in the window, which is what it has
+   * always done. Anything else is a scale the investigator chose, and the
+   * stage scrolls to it.
+   *
+   * Tim, Oct 23, 2026: "if we can just kind of change the size of the font
+   * for report builder discussion page... I don't say font, zoom in, zoom
+   * out, so we can read it easier." The type on the page is not touched --
+   * that would change the printed report. Only the magnification is.
+   */
+  var sheetZoom = 0;
+  var ZOOM_STEPS = [0.5, 0.67, 0.75, 1, 1.25, 1.5, 2];
+  var lastFitScale = 0;
+
   function fitSheet(root) {
     var stage = root && root.querySelector('.rb-stage');
     var sheet = root && root.querySelector('.rb-sheet');
@@ -92,8 +108,10 @@
     var availW = Math.max(0, stage.clientWidth - padX);
     var availH = Math.max(0, stage.clientHeight - padY);
     if (availW < 40 || availH < 40) return;
-    var scale = Math.min(availW / PAPER_W, availH / PAPER_H);
-    if (!(scale > 0)) return;
+    var fit = Math.min(availW / PAPER_W, availH / PAPER_H);
+    if (!(fit > 0)) return;
+    lastFitScale = fit;
+    var scale = sheetZoom > 0 ? sheetZoom : fit;
     sheet.style.width = '';
     sheet.style.height = '';
     sheet.style.transform = 'scale(' + scale + ')';
@@ -101,7 +119,44 @@
       paper.style.width = Math.floor(PAPER_W * scale) + 'px';
       paper.style.height = Math.floor(PAPER_H * scale) + 'px';
     }
+    stage.classList.toggle('rb-stage--zoomed', sheetZoom > 0 && sheetZoom > fit);
+    paintZoomLevel(root);
     fitCoverContents(root);
+  }
+
+  // The readout says what the page is drawn at, and "Fit" when the window
+  // is choosing. A percentage with no word for the default would make the
+  // way back to it something to work out rather than something to read.
+  function paintZoomLevel(root) {
+    var out = root && root.querySelector('#rb-zoom-level');
+    if (!out) return;
+    var pct = Math.round((sheetZoom > 0 ? sheetZoom : lastFitScale) * 100);
+    out.textContent = sheetZoom > 0 ? pct + '%' : 'Fit';
+    out.setAttribute('title', sheetZoom > 0
+      ? 'Drawn at ' + pct + '% — click to fit the page to the window'
+      : 'Fit: the whole page in the window (' + pct + '%)');
+  }
+
+  function stepZoom(root, dir) {
+    var from = sheetZoom > 0 ? sheetZoom : lastFitScale;
+    var next = null;
+    if (dir > 0) {
+      for (var i = 0; i < ZOOM_STEPS.length; i += 1) {
+        if (ZOOM_STEPS[i] > from + 0.001) { next = ZOOM_STEPS[i]; break; }
+      }
+    } else {
+      for (var j = ZOOM_STEPS.length - 1; j >= 0; j -= 1) {
+        if (ZOOM_STEPS[j] < from - 0.001) { next = ZOOM_STEPS[j]; break; }
+      }
+    }
+    if (next === null) return;
+    sheetZoom = next;
+    fitSheet(root);
+  }
+
+  function resetZoom(root) {
+    sheetZoom = 0;
+    fitSheet(root);
   }
 
   /**
@@ -7707,6 +7762,13 @@
       });
     }
 
+    var zoomIn = root.querySelector('#rb-zoom-in');
+    var zoomOut = root.querySelector('#rb-zoom-out');
+    var zoomLevel = root.querySelector('#rb-zoom-level');
+    if (zoomIn) zoomIn.addEventListener('click', function () { stepZoom(root, 1); });
+    if (zoomOut) zoomOut.addEventListener('click', function () { stepZoom(root, -1); });
+    if (zoomLevel) zoomLevel.addEventListener('click', function () { resetZoom(root); });
+
     var draftBtn = root.querySelector('#rb-draft');
     function syncDraftButton() {
       if (!draftBtn) return;
@@ -8002,6 +8064,13 @@
       '  </div>' +
       '  <div class="rb-toolbar">' +
       '    <div class="rb-toolbar__format" data-rb-format-host></div>' +
+      '    <div class="rb-zoom" role="group" aria-label="Page size on screen">' +
+      '      <button type="button" id="rb-zoom-out" class="rb-zoom__btn"' +
+      ' title="Zoom out" aria-label="Zoom out">\u2212</button>' +
+      '      <button type="button" id="rb-zoom-level" class="rb-zoom__level">Fit</button>' +
+      '      <button type="button" id="rb-zoom-in" class="rb-zoom__btn"' +
+      ' title="Zoom in" aria-label="Zoom in">+</button>' +
+      '    </div>' +
       '    <button type="button" id="rb-draft" class="btn btn--quiet rb-draft-btn" aria-pressed="false">Draft stamp</button>' +
       // A screen, not a word. PowerPoint puts the views on glyphs and the
       // name belongs to the view, not the verb: this opens Presentation
