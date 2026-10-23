@@ -129,9 +129,9 @@ check('the deck weighs its own pictures before it prints', !!weighed,
 // The deck also carries a composed contour map for every floor slide now,
 // and those are already at the resolution they print -- there is nothing to
 // take off them, so they do not shrink the way a 4032px photograph does.
-// What has to stay true is that the photographs are cut down hard and the
-// whole thing is still a file that can be emailed, which the checks below
-// measure directly.
+// What has to stay true is that the photographs are cut down hard -- that is
+// the check with teeth, and it is the one below. The total size that follows
+// it is a budget, not a delivery guarantee.
 check('and the pictures in it are a fraction of what they were',
   weighed && weighed.redrawn >= 20 && weighed.after < weighed.before / 4,
   JSON.stringify({ redrawn: weighed && weighed.redrawn,
@@ -161,9 +161,28 @@ check('a plan, which prints large, keeps far more of itself than a photograph',
 const pdfPath = `${OUT}/report-print-weight.pdf`;
 await page.pdf({ path: pdfPath, width: '17in', height: '11in', printBackground: true });
 const size = await stat(pdfPath);
+/**
+ * The budget, and what it is NOT.
+ *
+ * This used to be `mb < 4`, a figure chosen here against this fixture's
+ * twenty photographs. Tim's shipped report carries sixty to a hundred, came
+ * out at 8.4 MB from about 25 MB before compression, and he emailed it. A
+ * healthy file was being reported as a defect.
+ *
+ * 22 MB is TIM'S CHOSEN BUDGET for a report PDF (Oct 23, 2026), not a proven
+ * delivery limit. Microsoft 365 has no single universal message ceiling --
+ * it varies with service, account and client, and base64 adds roughly a
+ * third on the way out -- so this says nothing about whether any particular
+ * mailbox will take it. It is a line past which a report has grown enough to
+ * look at, and nothing more.
+ *
+ * The check with teeth is the compression ratio above, not this. Compared in
+ * bytes against a named number rather than against a rounded display value.
+ */
+const PDF_BUDGET_BYTES = 22000000;
 const mb = +(size.size / 1048576).toFixed(1);
-check('and the whole deck is a file that can be sent in an email',
-  mb < 4, mb + ' MB');
+check('and the deck is within the report PDF size budget',
+  size.size < PDF_BUDGET_BYTES, `${mb} MB of ${PDF_BUDGET_BYTES / 1000000} MB`);
 
 // What the Customer File holds is untouched: the originals are the evidence.
 const stored = await page.evaluate(async () => {
