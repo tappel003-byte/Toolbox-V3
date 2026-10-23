@@ -6170,7 +6170,20 @@
         stageH: stage.height,
         layout: layout,
       };
-      try { box.setPointerCapture(event.pointerId); } catch (_) {}
+      // Captured by the element the pointer is ACTUALLY on -- the handle when
+      // one was grabbed, the box otherwise.
+      //
+      // Capturing on the box left the pointer free to wander onto the live
+      // drawing, whose own pointer handling then took it: mid-drag the canvas
+      // held the capture and the box did not, so every pointermove was
+      // retargeted there and this drag never saw one. The aerial's pulls were
+      // visible, were what the pointer found, and still did nothing.
+      // Tim: "I cannot resize the picture. Or the topo."
+      var grabbed = resize || box;
+      try { grabbed.setPointerCapture(event.pointerId); } catch (_) {}
+      floorDrag.grabbed = grabbed;
+      // And nothing downstream gets a say in this gesture.
+      event.stopPropagation();
     });
 
     sheetEl.addEventListener('pointermove', function (event) {
@@ -6802,13 +6815,51 @@
       var planW = plan && Number(plan.width) > 0 ? Number(plan.width) : 0;
       var planH = plan && Number(plan.height) > 0 ? Number(plan.height) : 0;
       if (!planW || !planH) return fallback;
-      var layout = page._bookFloorLayout || null;
-      var topo = layout && layout.topo;
-      if (!topo || !(Number(topo.w) > 0) || !(Number(topo.h) > 0)) return fallback;
-      // The frame's shape on the paper in real inches, not in percent of it.
-      var frameAspect = (Number(topo.w) * 17) / (Number(topo.h) * 11);
       var slots = floorSlotsForPage(page);
-      if (slots > 1) frameAspect /= slots;
+      var frameAspect = 0;
+      // The shape of the box the drawing is ACTUALLY in, on the paper.
+      //
+      // An imported slide draws FULL BLEED: report-floor-layout.js lays its
+      // frames out across the whole stage -- share% wide by 100% tall, with a
+      // 2% gutter between two -- and never reads layout.topo for that frame
+      // at all. Taking the shape from layout.topo therefore described a box
+      // that is not on the page. On Janis's report that stored box is narrow
+      // and tall, so the still was painted from a tall narrow slice of the
+      // plan while the live view showed a wide one: the left-hand rooms and
+      // their readings were cut off inside the image itself, with white space
+      // to spare on its right. The extracted figure measured 2616 x 3000 --
+      // portrait -- on a landscape sheet.
+      //
+      // Tim: "Still cropping the left-hand side on a screenshot of preview.
+      // As well as the PDF."
+      if (page && page.meta && page.meta.imported) {
+        // Measured, not assumed. The stage is the sheet LESS the rail down
+        // its side, and the rail's width is the stylesheet's business -- a
+        // number worked out here would be a second copy of it, wrong the day
+        // the rail changes. The editing sheet is showing this very box, so
+        // its proportion is the one to use; every floor slide is laid out
+        // from the same template, so one measurement serves them all.
+        var liveFrame = root.querySelector(
+          '.rb-stage .rb-sheet [data-rb-topo-frame], .rb-stage .rb-sheet [data-rb-topo-live]');
+        if (liveFrame) {
+          var fr = liveFrame.getBoundingClientRect();
+          if (fr.width > 8 && fr.height > 8) frameAspect = fr.width / fr.height;
+        }
+        if (!(frameAspect > 0)) {
+          // Nothing on screen to measure: fall back to the stage's share of
+          // the sheet, as the stylesheet currently has it.
+          var GUTTER = 2;
+          var share = (100 - (slots - 1) * GUTTER) / slots;
+          frameAspect = (17 * 0.8634 * (share / 100)) / 11;
+        }
+      } else {
+        var layout = page._bookFloorLayout || null;
+        var topo = layout && layout.topo;
+        if (!topo || !(Number(topo.w) > 0) || !(Number(topo.h) > 0)) return fallback;
+        // The frame's shape on the paper in real inches, not in percent of it.
+        frameAspect = (Number(topo.w) * 17) / (Number(topo.h) * 11);
+        if (slots > 1) frameAspect /= slots;
+      }
       if (!(frameAspect > 0)) return fallback;
       // At fit, the frame shows the smallest rectangle of its own shape that
       // holds the whole plan. Zoom divides it; the camera centres it.

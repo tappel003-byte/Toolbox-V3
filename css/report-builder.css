@@ -2634,14 +2634,20 @@ body.report-builder-open .canvas {
  * two of its four borders are drawn. */
 .rb-floor-box__resize {
   position: absolute;
-  /* Big enough to find and hit. 12px was a speck on a full-page frame. */
-  width: 16px;
-  height: 16px;
+  /* Big enough to find and hit. 12px was a speck on a full-page frame, and
+     16px was still hard to see on the aerial, which is a small box over a
+     busy photograph. Tim: "the corner poles ... need to be more prevalent."
+     The bracket is drawn thicker and carries a solid tip, so it reads as a
+     grab point rather than a hairline. */
+  width: 20px;
+  height: 20px;
   border: 0 solid #1e406e;
   background: transparent;
   /* A white companion line under the dark one, so the bracket reads against
      a dark contour as well as against white paper. */
   filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
+  border-width: 0;
+  border-color: #1e406e;
   /* Above the drawing it sits on. */
   z-index: 6;
 }
@@ -2665,23 +2671,23 @@ body.report-builder-open .canvas {
 }
 
 .rb-floor-box__resize--nw {
-  left: -8px; top: -8px; cursor: nwse-resize;
-  border-top-width: 2px; border-left-width: 2px;
+  left: -10px; top: -10px; cursor: nwse-resize;
+  border-top-width: 3px; border-left-width: 3px;
 }
 
 .rb-floor-box__resize--ne {
-  right: -8px; top: -8px; cursor: nesw-resize;
-  border-top-width: 2px; border-right-width: 2px;
+  right: -10px; top: -10px; cursor: nesw-resize;
+  border-top-width: 3px; border-right-width: 3px;
 }
 
 .rb-floor-box__resize--sw {
-  left: -8px; bottom: -8px; cursor: nesw-resize;
-  border-bottom-width: 2px; border-left-width: 2px;
+  left: -10px; bottom: -10px; cursor: nesw-resize;
+  border-bottom-width: 3px; border-left-width: 3px;
 }
 
 .rb-floor-box__resize--se {
-  right: -8px; bottom: -8px; cursor: nwse-resize;
-  border-bottom-width: 2px; border-right-width: 2px;
+  right: -10px; bottom: -10px; cursor: nwse-resize;
+  border-bottom-width: 3px; border-right-width: 3px;
 }
 
 .rb-topo-page--chrome-only .rb-topo-page__body {
