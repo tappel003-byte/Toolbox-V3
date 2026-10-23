@@ -4000,3 +4000,33 @@ body.is-presenting { overflow: hidden; }
 .rb-fold[open] .rb-fold__head::before { content: '\25BE'; }
 
 .rb-fold .btn { width: 100%; margin-top: 6px; }
+
+/* Presentation view is a glyph, not a word. "Present" was the verb; the
+   thing it opens is a view, and PowerPoint names its views on icons for the
+   same reason -- the row reads as a set of places to be rather than a row of
+   commands. The name is still on the button for a screen reader and on the
+   tooltip for everyone else, and the waiting state is aria-busy rather than
+   a word, which would have thrown the screen away. */
+.rb-present-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  padding-left: 0;
+  padding-right: 0;
+  line-height: 1;
+}
+
+.rb-present-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.rb-present-btn[aria-busy='true'] {
+  opacity: 0.6;
+}

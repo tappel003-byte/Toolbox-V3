@@ -7620,10 +7620,13 @@
     function openPresentation() {
       if (presentDeck) return Promise.resolve();
       var presentBtn = root.querySelector('#rb-present');
-      var was = presentBtn ? presentBtn.textContent : '';
+      // The button is a glyph now, so the waiting state cannot be a word in
+      // place of it -- that would throw the screen away and never put it
+      // back. It goes on the tooltip and on aria-busy instead.
       if (presentBtn) {
         presentBtn.disabled = true;
-        presentBtn.textContent = 'Preparing…';
+        presentBtn.setAttribute('aria-busy', 'true');
+        presentBtn.setAttribute('title', 'Preparing Presentation view…');
       }
       return flushSave().catch(function () {}).then(function () {
         return composeFloorStills();
@@ -7698,7 +7701,8 @@
       }).then(function () {
         if (presentBtn) {
           presentBtn.disabled = false;
-          presentBtn.textContent = was || 'Present';
+          presentBtn.removeAttribute('aria-busy');
+          presentBtn.setAttribute('title', 'Presentation view');
         }
       });
     }
@@ -7999,7 +8003,18 @@
       '  <div class="rb-toolbar">' +
       '    <div class="rb-toolbar__format" data-rb-format-host></div>' +
       '    <button type="button" id="rb-draft" class="btn btn--quiet rb-draft-btn" aria-pressed="false">Draft stamp</button>' +
-      '    <button type="button" id="rb-present" class="btn btn--secondary rb-present-btn">Present</button>' +
+      // A screen, not a word. PowerPoint puts the views on glyphs and the
+      // name belongs to the view, not the verb: this opens Presentation
+      // view. The name is on the button for anyone who cannot see the
+      // glyph, and on the tooltip for anyone who can.
+      '    <button type="button" id="rb-present" class="btn btn--secondary rb-present-btn"' +
+      ' title="Presentation view" aria-label="Presentation view">' +
+      '      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+      '        <rect x="2.6" y="4" width="18.8" height="12.4" rx="1.6"></rect>' +
+      '        <path d="M9 20.6h6"></path>' +
+      '        <path d="M12 16.4v4.2"></path>' +
+      '      </svg>' +
+      '    </button>' +
       '    <button type="button" id="rb-print" class="btn btn--secondary rb-print-btn">Print / PDF</button>' +
       '    <button type="button" id="rb-export-ai" class="btn btn--accent rb-export">Export for AI</button>' +
       '    <p class="rb-ai-status" id="rb-ai-status" aria-live="polite"></p>' +
