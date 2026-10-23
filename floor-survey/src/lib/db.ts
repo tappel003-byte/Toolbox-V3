@@ -287,6 +287,34 @@ export async function listFloors(projectId: string): Promise<Floor[]> {
   return floors;
 }
 
+/**
+ * Reset label positions: one write, not two racing each other.
+ *
+ * The reset clears the reading labels AND the High/Low pin offsets. Those
+ * were two unawaited whole-Customer-File writes -- the label batch and a
+ * saveFloor -- and the floor save loaded the record before the batch landed,
+ * so it wrote the OLD points back over it. The pins cleared, one label offset
+ * did not, and the button looked half broken.
+ *
+ * Reading values and transition metadata are untouched here by construction:
+ * only the two label offsets and the four pin offsets are assigned.
+ */
+export async function resetFloorPresentation(floor: Floor, pointIds: string[]) {
+  const cfId = floor.projectId || requireCfId();
+  const record = await loadRecord(cfId);
+  if (!window.ToolboxPlanSetup.canvasById(record, floor.id)) {
+    console.warn("Floor Survey: refusing to save unknown canvas", floor.id);
+    return;
+  }
+  const layer = ensureLayer(record, floor.id);
+  const ids = new Set(pointIds);
+  layer.points = layer.points.map((p: SurveyPoint) =>
+    (ids.has(p.id) ? { ...p, labelDx: undefined, labelDy: undefined } : p));
+  persistFloorFields(layer, floor);
+  layer.updatedAt = Date.now();
+  await saveRecord(record);
+}
+
 export async function saveFloor(f: Floor) {
   const record = await loadRecord(f.projectId || requireCfId());
   if (!window.ToolboxPlanSetup.canvasById(record, f.id)) {

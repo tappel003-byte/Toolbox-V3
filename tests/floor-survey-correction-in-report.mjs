@@ -165,6 +165,12 @@ const composed = (fid, canvasId) => p.evaluate(async (f, cid) => {
   return s ? { hi: s.hi, lo: s.lo, delta: Math.round(s.delta * 100) / 100 } : null;
 }, fid, canvasId);
 
+const storedPins = (fid, canvasId) => p.evaluate(async (f, cid) => {
+  const l = (await window.ToolboxDB.getCustomerFile(f)).floorSurvey.byCanvasId[cid];
+  return { highPinDx: l.highPinDx ?? null, highPinDy: l.highPinDy ?? null,
+    lowPinDx: l.lowPinDx ?? null, lowPinDy: l.lowPinDy ?? null };
+}, fid, canvasId);
+
 const storedValues = (fid, canvasId) => p.evaluate(async (f, cid) => {
   const rec = await window.ToolboxDB.getCustomerFile(f);
   const layer = rec.floorSurvey.byCanvasId[cid];
@@ -268,6 +274,11 @@ await p.evaluate(async (f, cid) => {
   layer.points.forEach((pt) => {
     if (pt.id === 'd2' || pt.id === 'd5') { pt.labelDx = 12; pt.labelDy = -8; }
   });
+  // High/Low pin offsets too. Reset clears BOTH, and it used to do that as
+  // two unawaited whole-record writes that raced -- the floor one read the
+  // record before the label one landed and put the old labels back.
+  layer.highPinDx = 33; layer.highPinDy = 22;
+  layer.lowPinDx = -11; layer.lowPinDy = 5;
   await window.ToolboxDB.saveCustomerFile(rec);
 }, 'corr-t1', canvasId);
 await p.reload({ waitUntil: 'networkidle0' });
@@ -317,6 +328,11 @@ check('resetting label positions leaves every stored reading RAW',
 check('and it clears the offsets it was supposed to clear',
   afterReset.filter((q) => q.labelDx !== null).length === 0,
   JSON.stringify(afterReset.filter((q) => q.labelDx !== null)));
+const pinsAfter = await storedPins('corr-t1', canvasId);
+check('and clears the High and Low pin offsets in the same operation',
+  pinsAfter.highPinDx === null && pinsAfter.highPinDy === null &&
+  pinsAfter.lowPinDx === null && pinsAfter.lowPinDy === null,
+  JSON.stringify(pinsAfter));
 check('and leaves the transition association alone',
   afterReset.filter((q) => q.transitionId === 't1').length === 6 &&
   afterReset.filter((q) => q.anchor).length === 1,
