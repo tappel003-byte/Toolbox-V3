@@ -185,14 +185,27 @@
       box.style.setProperty('--rb-contents-fit', '1');
       var boxRect = box.getBoundingClientRect();
       var sheetRect = sheet.getBoundingClientRect();
-      // Both measurements off the same rects. clientHeight is the sheet's own
-      // unzoomed height, and the rects are zoomed: mixing them made the room
-      // left on the page come out wrong by exactly the zoom.
-      var sheetH = sheetRect.height;
-      if (!(sheetH > 40)) continue;
-      var top = boxRect.top - sheetRect.top;
+      // ONE COORDINATE SYSTEM: the sheet's own pixels.
+      //
+      // A rect is in SCREEN pixels, so it carries whatever the stage is
+      // drawn at. scrollHeight is in the element's OWN pixels and carries
+      // nothing. Comparing the two meant the room left on the page was
+      // wrong by exactly the display scale -- the same arithmetic reported
+      // 1.130 at Fit and 1.837 at 100% for one unchanged box -- so a list
+      // shrank on screen and did not shrink in print. The comment that used
+      // to stand here claimed both came off the rects; scrollHeight never
+      // did. Audit finding 6.
+      //
+      // Everything below is divided back into the sheet's own pixels, where
+      // scrollHeight already lives, so the answer cannot depend on how big
+      // the page happens to be drawn.
+      var sheetOwnH = sheet.clientHeight;
+      if (!(sheetOwnH > 40) || !(sheetRect.height > 40)) continue;
+      var displayScale = sheetRect.height / sheetOwnH;
+      if (!(displayScale > 0)) continue;
+      var top = (boxRect.top - sheetRect.top) / displayScale;
       // The same breathing room the deck leaves under the frame.
-      var room = sheetH * 0.96 - top;
+      var room = sheetOwnH * 0.96 - top;
       var needs = box.scrollHeight;
       if (!(needs > 0) || !(room > 0) || needs <= room) continue;
       var fit = Math.max(CONTENTS_FIT_FLOOR, room / needs);

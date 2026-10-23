@@ -1444,6 +1444,9 @@ body.report-builder-open .canvas {
 /* Two columns: "Figure N" is derived from slide order and is not editable,
    so it can never be typed into the title and double-prefix the line. */
 .rb-cover__contents-item {
+  /* The jump chevron hangs off this, out of the flow -- see
+     .rb-cover__contents-jump. */
+  position: relative;
   display: flex;
   align-items: baseline;
   gap: 0;
@@ -1485,12 +1488,24 @@ body.report-builder-open .canvas {
    uses chevrons -- and a row of them down the contents is exactly what this
    looked like, because it was always showing. It appears on the line being
    pointed at, the way every other piece of chrome on a sheet now does. */
+/* Out of the flow, because it is editor chrome and the printed page does not
+   have it. In the flow it was 2.2cqh tall against a 1.6cqh line, so every
+   contents row was taller on screen than on paper: the box measured 815px in
+   the editor and 693px in the print deck, and the list then shrank to 0.776
+   on screen and 0.810 on paper. What is being fitted has to be the same thing
+   in both places or no arithmetic can make them agree. */
 .rb-cover__contents-jump {
   opacity: 0;
   transition: opacity 120ms ease;
-  flex: 0 0 auto;
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
   width: 2.2cqh;
   height: 2.2cqh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
   background: transparent;
   color: var(--rb-copper);
