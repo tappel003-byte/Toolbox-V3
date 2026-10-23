@@ -10,7 +10,18 @@
  * recently saved PDF but it's too big... The PDF rendered horribly." His file
  * was 53.9 MB.
  *
- * Measured here on thirty photographs: 22.1 MB of PDF became 0.8 MB.
+ * Measured here on TWENTY photographs, which is what this fixture makes.
+ * The numbers that matter are in the checks, not in this header: an earlier
+ * version of it quoted thirty photographs and 0.8 MB, neither of which
+ * describes the fixture any more.
+ *
+ * The compression check is on the PHOTOGRAPHS, measured here in the test.
+ * The deck also carries a composed contour map per floor slide, the Picture
+ * Locations plan and the logo, and those are already at the resolution they
+ * print, so the application deliberately leaves them alone. An assertion
+ * against the deck's TOTAL image bytes was therefore measuring photographs
+ * and non-photographs together and failing for a reason that was not a
+ * defect.
  *
  * Nothing in the Customer File changes -- the original photograph stays as
  * captured, and only the throwaway print deck carries the smaller copy.
@@ -132,11 +143,151 @@ check('the deck weighs its own pictures before it prints', !!weighed,
 // What has to stay true is that the photographs are cut down hard -- that is
 // the check with teeth, and it is the one below. The total size that follows
 // it is a budget, not a delivery guarantee.
-check('and the pictures in it are a fraction of what they were',
-  weighed && weighed.redrawn >= 20 && weighed.after < weighed.before / 4,
+// What the deck's own telemetry says, reported but NOT asserted on: it
+// counts every data: image, photographs and untouched plans together.
+check('the deck reports what it weighed', !!weighed && weighed.redrawn > 0,
   JSON.stringify({ redrawn: weighed && weighed.redrawn,
-    beforeMB: weighed && +(weighed.before / 1048576).toFixed(1),
-    afterMB: weighed && +(weighed.after / 1048576).toFixed(1) }));
+    beforeMB: weighed && +(weighed.before / 1000000).toFixed(1),
+    afterMB: weighed && +(weighed.after / 1000000).toFixed(1) }));
+
+/**
+ * The photographs, measured here.
+ *
+ * Encoded BYTES, decoded from the data URL -- a data URL's character count
+ * is about a third larger than the bytes it carries, and comparing one to
+ * the other would flatter or damn the result by that much.
+ */
+const photos = await page.evaluate(async (ids) => {
+  const bytesOf = (dataUrl) => {
+    const comma = dataUrl.indexOf(',');
+    if (comma < 0) return 0;
+    const b64 = dataUrl.slice(comma + 1);
+    const pad = (b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0);
+    return Math.max(0, Math.floor(b64.length * 3 / 4) - pad);
+  };
+  let originals = 0;
+  for (const id of ids) {
+    const v = await window.ToolboxDB.getMedia(id);
+    originals += v ? bytesOf(v) : 0;
+  }
+  const imgs = [...document.querySelectorAll('.rb-print .rb-pictures-page__image')];
+  const printed = imgs.map((im) => {
+    const cell = im.closest('[data-photo-key]');
+    return {
+      key: (cell && cell.getAttribute('data-photo-key')) || '',
+      src: im.getAttribute('src') || '',
+      loaded: im.complete && im.naturalWidth > 0,
+    };
+  });
+  return {
+    originals,
+    count: printed.length,
+    loaded: printed.filter((q) => q.loaded).length,
+    dataUrls: printed.filter((q) => q.src.indexOf('data:image/') === 0).length,
+    printedBytes: printed.reduce((n, q) => n + bytesOf(q.src), 0),
+    keys: printed.map((q) => q.key),
+  };
+}, Array.from({ length: 20 }, (_, i) => 'ph-w-' + (i + 1)));
+
+// A low byte total must not be able to hide missing photographs.
+check('all twenty photographs are on the Pictures sheets and loaded',
+  photos.count === 20 && photos.loaded === 20 && photos.dataUrls === 20,
+  JSON.stringify({ count: photos.count, loaded: photos.loaded,
+    dataUrls: photos.dataUrls }));
+check('and the twenty originals were read for comparison',
+  photos.originals > 0, `${(photos.originals / 1000000).toFixed(1)} MB`);
+
+/**
+ * One printed picture per original, each original once.
+ *
+ * The byte comparison divides a total by a total, so it only means something
+ * if the two totals cover the same twenty photographs. Nineteen printed, or
+ * one printed twice and another dropped, would make the ratio look BETTER
+ * while the deck was wrong -- so the pairing is asserted rather than assumed.
+ * The key on each cell is the media id the photograph was stored under.
+ */
+const wantedKeys = Array.from({ length: 20 }, (_, i) => 'ph-w-' + (i + 1));
+const keyCount = {};
+photos.keys.forEach((k) => { keyCount[k] = (keyCount[k] || 0) + 1; });
+const missingKeys = wantedKeys.filter((k) => keyCount[k] !== 1);
+const strayKeys = Object.keys(keyCount).filter((k) => wantedKeys.indexOf(k) < 0);
+check('each original appears on the sheets exactly once, and nothing else does',
+  missingKeys.length === 0 && strayKeys.length === 0,
+  JSON.stringify({ missing: missingKeys, stray: strayKeys }));
+
+const photoRatio = photos.printedBytes > 0
+  ? +(photos.originals / photos.printedBytes).toFixed(1) : 0;
+check('the photographs themselves are cut to a fraction of what they were',
+  photos.printedBytes > 0 && photos.printedBytes < photos.originals / 4,
+  `${(photos.originals / 1000000).toFixed(1)} MB → ` +
+  `${(photos.printedBytes / 1000000).toFixed(2)} MB, ${photoRatio}x`);
+
+/**
+ * The negative control: the same assertion, with the shrinking defeated.
+ *
+ * A check that passes is worth nothing until it has been seen to fail for
+ * the reason it names. So the whole thing runs a second time on a fresh page
+ * over the same Customer File, with one thing taken away: the canvas the
+ * shrinker redraws into refuses to hand back a smaller picture. The deck
+ * keeps the guard it already has -- it only swaps a picture in when the new
+ * copy is shorter than the old one -- so with that defeated the originals go
+ * to the printer at 4032 pixels, which is the defect this test exists for.
+ *
+ * Measured the same way, over the same twenty keys, on a page that is thrown
+ * away afterwards. Nothing in the application is patched.
+ */
+const control = await (async () => {
+  const cp = await browser.newPage();
+  try {
+    await cp.setViewport({ width: 1700, height: 1050, deviceScaleFactor: 1 });
+    await cp.goto(`${BASE}#/file/${FILE}/report`, { waitUntil: 'networkidle0' });
+    await cp.waitForFunction(() => !!document.querySelector('.rb-sheet'), { timeout: 60000 });
+    await new Promise((r) => setTimeout(r, 12000));
+    await cp.evaluate(() => {
+      window.print = () => {};
+      // Longer than any photograph this fixture makes, so the deck's own
+      // "only if it is smaller" guard never takes the redrawn copy.
+      const tooBig = 'data:image/jpeg;base64,' + 'A'.repeat(4000000);
+      HTMLCanvasElement.prototype.toDataURL = function () { return tooBig; };
+    });
+    await cp.emulateMediaType('print');
+    await cp.click('#rb-print');
+    await cp.waitForFunction(() => !!document.querySelector('.rb-print .rb-sheet'), { timeout: 40000 });
+    const until2 = Date.now() + 45000;
+    for (;;) {
+      const w = await cp.evaluate(() => window.__toolboxPrintWeight || null);
+      if (w) break;
+      if (Date.now() > until2) break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    return await cp.evaluate(() => {
+      const bytesOf = (dataUrl) => {
+        const comma = dataUrl.indexOf(',');
+        if (comma < 0) return 0;
+        const b64 = dataUrl.slice(comma + 1);
+        const pad = (b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0);
+        return Math.max(0, Math.floor(b64.length * 3 / 4) - pad);
+      };
+      const imgs = [...document.querySelectorAll('.rb-print .rb-pictures-page__image')];
+      return {
+        count: imgs.length,
+        printedBytes: imgs.reduce((n, im) => n + bytesOf(im.getAttribute('src') || ''), 0),
+        widest: imgs.reduce((n, im) => Math.max(n, im.naturalWidth), 0),
+      };
+    });
+  } finally {
+    await cp.close();
+  }
+})();
+
+// Same twenty photographs, same sheets, same measurement -- and the check
+// above would NOT have passed on them.
+const controlPasses = control.printedBytes > 0
+  && control.printedBytes < photos.originals / 4;
+check('and with the shrinking defeated the same assertion fails',
+  control.count === 20 && !controlPasses,
+  `${(control.printedBytes / 1000000).toFixed(1)} MB printed, widest ` +
+  `${control.widest}px — the assertion ${controlPasses ? 'PASSED' : 'failed'}`);
 
 const drawn = await page.evaluate(() => {
   const imgs = [...document.querySelectorAll('.rb-print .rb-pictures-page__image')];
@@ -180,7 +331,8 @@ const size = await stat(pdfPath);
  * bytes against a named number rather than against a rounded display value.
  */
 const PDF_BUDGET_BYTES = 22000000;
-const mb = +(size.size / 1048576).toFixed(1);
+// Decimal MB, because the budget beside it is a decimal number.
+const mb = +(size.size / 1000000).toFixed(1);
 check('and the deck is within the report PDF size budget',
   size.size < PDF_BUDGET_BYTES, `${mb} MB of ${PDF_BUDGET_BYTES / 1000000} MB`);
 
