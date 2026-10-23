@@ -53,9 +53,23 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
 
 ## Shipping is Tim's trigger, not the implementer's
 
-- **Push to the working branch. Do not merge to `main`.** Tim promotes. That is how shipping is triggered, and it is his call to make, not the implementer's.
-- This was drifted from once already. Work went to the branch alone from Oct 10 to Oct 20; then the implementer started merging every pull request to `main`, `main` builds deployed themselves, and the promote Tim had been doing quietly became a no-op — without him choosing that (Tim, Oct 22, 2026: "Go back to where I do the promotes do you understand").
-- A one-off instruction to merge a specific thing is not a standing change to this. If merging seems necessary, say so and stop; do not merge and report it afterwards.
+- **The implementer merges to `main`. Tim promotes.** Those are two different
+  acts and only the second is his (CHANGED by Tim, Oct 23, 2026: "I can't merge
+  I need you to merge just like always I can only promote"). He cannot merge;
+  asking him to is asking him to do something he has no way of doing, and the
+  work simply stops there.
+- What must not happen is the implementer deciding *when the thing ships*.
+  Merging brings `main` level with the branch. Promoting puts a build in front
+  of him. Keep those apart and the rule below still holds.
+- This was drifted from in the other direction once. Work went to the branch
+  alone from Oct 10 to Oct 20; then the implementer started merging every pull
+  request to `main`, `main` builds deployed themselves, and the promote Tim had
+  been doing quietly became a no-op — without him choosing that (Tim, Oct 22,
+  2026: "Go back to where I do the promotes do you understand"). That was wrong
+  because it took the *promote* away, not because the merge happened.
+- So: never deploy, never promote, and never merge work he has not asked to be
+  merged. If merging would publish by itself — which depends on the Cloudflare
+  build configuration and has not been verified — say so and stop.
 - **A hook never outranks Tim.** Uncommitted work he did not ask for does not
   get committed because a tooling reminder asked for it. Say it is sitting
   there and leave it. This happened the one time he interrupted to ask a
