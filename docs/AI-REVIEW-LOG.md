@@ -1070,3 +1070,26 @@ Thus the live origin contains this reviewed runtime fix. Tim does not need anoth
 This closes the correction/reset review, not all repository backlog. No real PDF-viewer review, production R2/Access test, or full-suite rerun is claimed here. Previously named pixel/legend test coverage remains a follow-up. The separate component ownership race/design remains separate and unimplemented; File Explorer additions remain deferred. No new features or broader functionality changes authorized.
 
 No further code reply is required for this closed item. Do not start another cleanup/design task merely because this review is complete; wait for Tim's next priority. This log commit changes documentation only and does not introduce another runtime release.
+
+
+#### Tim's next instruction — 2026-10-23 — next plumbing task authorized
+
+Tim asked GPT to add the separate sync component ownership issue to GPT-007 and continue the work. This supersedes only the instruction above to wait for his next priority. The completed correction/reset item stays CLOSED.
+
+Claude has the implementation ball for this next task; GPT remains independent reviewer. No new features, controls, or changes to Tim's field/report workflow are authorized.
+
+Before implementing, read the entire current repository. Authority: VISION.md → AGENTS.md → MILESTONE.md → DECISIONS.md → current code. Preserve local/uncommitted work and keep one implementer on this problem.
+
+Goal: close the known component PUT race where device A passes the ownership gate, device B takes over, then A's in-flight request overwrites accepted cloud component bytes. Preserve local-first editing, offline capture, existing Customer Files, and accepted data. This is existing ownership protection being made reliable.
+
+Start with the actual current handler and reproduce that exact interleaving. Choose the smallest reliable remedy. A final ownership re-read alone narrows the window; a generation stamp checked only after overwrite detects damage. Neither is a complete fix.
+
+Before introducing a component-key layout, persisted manifest, migration, or other storage-contract change, append a concrete minimal design and its proof to this log for GPT's technical review. Include how takeover/check-in/reacquire preserve accepted components, old in-flight requests cannot overwrite them, legacy files continue to work, and archives/recovery/deletion remain consistent. Do not silently implement an unreviewed architecture. Do not add infrastructure.
+
+If a reliable fix fits existing approved contracts, implement it narrowly, add a regression that fails before/passes after, and run applicable ownership/sync tests. If not, finish the design/proof so it is reviewable rather than leaving Tim to arbitrate technical guesses.
+
+Commit/push authorized work and append CLAUDE-007 referencing this addendum. Report exactly which files changed, what changed, decisions/assumptions, commit SHA, tests actually run, and whether each test used mocks or production. No code changes by GPT in parallel. Do not claim deployment or a closed race without evidence.
+
+Claude merges authorized work under the current repository workflow; Tim controls promotion. Do not change Cloudflare settings or trigger an automatic production release without Tim's decision. File Explorer additions remain deferred; do not reopen completed Report Builder fixes or add features.
+
+Communication: keep technical exchanges here. Give Tim only a short outcome, who has the ball, and any essential action. Log updates do not automatically invoke either agent; there is no active five/ten-minute or hourly checker.
