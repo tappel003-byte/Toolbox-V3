@@ -3648,9 +3648,17 @@
             customerFileId: customerFileId,
             camera: floorCamera,
             settings: floorViewFor(page, at),
-            locked: !!(floorCamera && floorCamera.locked),
+            // Never locked. The drawing is panned and zoomed like the
+            // workspace it came from, on every slide.
+            //
+            // A report saved while Lock layout existed still carries
+            // floorCamera.locked on it. That flag reaches PlanCanvas as
+            // frozen, which stops the pan AND takes away the corner handles.
+            // Removing the Lock button without clearing the flag left those
+            // reports with a drawing that could not be moved or resized and
+            // no control left to release it.
+            locked: false,
             onCameraChange: function (camera, from) {
-              var locked = !!(floorCamera && floorCamera.locked);
               // A view that has just been handed a camera reports it straight
               // back. Reading that as a fresh pan would save the report again
               // and bounce the camera between the two views, so a camera that
@@ -3667,7 +3675,7 @@
               // places.
               floorCamera = {
                 cx: camera.cx, cy: camera.cy, zoom: camera.zoom,
-                rel: !!camera.rel, locked: locked,
+                rel: !!camera.rel,
               };
               pushCameraToTopoHosts(floorCamera, from);
               markDirty();
@@ -7397,7 +7405,12 @@
         penLogBoxLayout = window.ToolboxPenLog.normalizeLayout(penSeed);
       }
       var cameraSeed = (savedDoc && savedDoc.floorCamera) || template.floorCamera;
-      if (cameraSeed) floorCamera = JSON.parse(JSON.stringify(cameraSeed));
+      if (cameraSeed) {
+        floorCamera = JSON.parse(JSON.stringify(cameraSeed));
+        // Dropped on the way in, so an old report's lock cannot outlive the
+        // button that set it.
+        delete floorCamera.locked;
+      }
       var viewSeed = (savedDoc && savedDoc.floorView) || template.floorView;
       if (viewSeed) floorView = reviveFloorView(viewSeed);
       if (savedDoc && Array.isArray(savedDoc.pages)) {
