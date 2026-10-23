@@ -417,6 +417,106 @@ check('and that ordering never touches the readings or the transitions',
   delayed.transitions === 1,
   JSON.stringify({ values: delayed.values, transitions: delayed.transitions }));
 
+// GPT-005's counterexample: a stored edit NEWER than the mounted controls.
+//
+// The reset writes only offsets, correctly. The host then persists on the
+// refresh -- and told the in-memory floor, it writes that copy's notes and
+// transitions back over anything stored since the controls mounted. A
+// manualDeltaOverride set after mounting vanished on a label reset.
+//
+// Content, not array length: the earlier assertion counted transitions and
+// passed while an override was being removed.
+await p.evaluate(async (f, cid) => {
+  const rec = await window.ToolboxDB.getCustomerFile(f);
+  const layer = rec.floorSurvey.byCanvasId[cid];
+  layer.points.forEach((pt) => {
+    if (pt.id === 'd2' || pt.id === 'd5') { pt.labelDx = 12; pt.labelDy = -8; }
+  });
+  layer.highPinDx = 33; layer.highPinDy = 22;
+  layer.lowPinDx = -11; layer.lowPinDy = 5;
+  await window.ToolboxDB.saveCustomerFile(rec);
+}, 'corr-t1', canvasId);
+await p.reload({ waitUntil: 'networkidle0' });
+await p.waitForFunction(() => !!document.querySelector('.rb-sheet'), { timeout: 40000 });
+await new Promise((r) => setTimeout(r, 9000));
+await p.evaluate(() => {
+  const t = [...document.querySelectorAll('.rb-thumb[data-page-id]')]
+    .find((x) => /floor|main level/i.test(x.getAttribute('aria-label') || ''));
+  if (t) t.click();
+});
+await new Promise((r) => setTimeout(r, 5000));
+
+// The intervening edit, made while the controls stay mounted.
+await p.evaluate(async (f, cid) => {
+  const rec = await window.ToolboxDB.getCustomerFile(f);
+  const layer = rec.floorSurvey.byCanvasId[cid];
+  layer.transitions[0].manualDeltaOverride = 0.5;
+  layer.notes = 'latest stored note';
+  await window.ToolboxDB.saveCustomerFile(rec);
+}, 'corr-t1', canvasId);
+
+const stale = await p.evaluate(async (f, cid) => {
+  document.querySelectorAll('details').forEach((d) => { d.open = true; });
+  [...document.querySelectorAll('button')]
+    .filter((b) => /^(labels?|points?|markers?)$/i.test((b.textContent || '').trim()))
+    .slice(0, 3).forEach((b) => { try { b.click(); } catch (_) { /* not a tab */ } });
+  document.querySelectorAll('details').forEach((d) => { d.open = true; });
+  await new Promise((r) => setTimeout(r, 400));
+  const btn = [...document.querySelectorAll('button')]
+    .find((b) => /reset label positions/i.test(b.textContent || ''));
+  if (!btn) return { none: true };
+  btn.click();
+  await new Promise((r) => setTimeout(r, 3000));
+  const layer = (await window.ToolboxDB.getCustomerFile(f)).floorSurvey.byCanvasId[cid];
+  return {
+    override: layer.transitions && layer.transitions[0]
+      ? (layer.transitions[0].manualDeltaOverride ?? null) : null,
+    notes: layer.notes ?? null,
+    offsets: layer.points.filter((pt) => pt.labelDx !== undefined).map((pt) => pt.id),
+    pins: [layer.highPinDx, layer.highPinDy, layer.lowPinDx, layer.lowPinDy]
+      .filter((v) => v !== undefined && v !== null).length,
+    values: layer.points.map((pt) => pt.value),
+  };
+}, 'corr-t1', canvasId);
+
+check('the stale-metadata fixture reached the reset control',
+  !stale.none, JSON.stringify(stale));
+check('a reset keeps a correction override stored after the controls mounted',
+  !stale.none && stale.override === 0.5, JSON.stringify(stale));
+check('and keeps the note stored with it',
+  !stale.none && stale.notes === 'latest stored note', JSON.stringify(stale));
+check('while still clearing the labels and the pins',
+  !stale.none && stale.offsets.length === 0 && stale.pins === 0,
+  JSON.stringify(stale));
+check('and leaving the readings alone',
+  !stale.none && JSON.stringify(stale.values) === JSON.stringify(wantRaw.vals),
+  JSON.stringify(stale.values));
+
+// Reopened, the same metadata is still there.
+await p.reload({ waitUntil: 'networkidle0' });
+await p.waitForFunction(() => !!document.querySelector('.rb-sheet'), { timeout: 40000 });
+await new Promise((r) => setTimeout(r, 8000));
+const afterReopenMeta = await p.evaluate(async (f, cid) => {
+  const layer = (await window.ToolboxDB.getCustomerFile(f)).floorSurvey.byCanvasId[cid];
+  return {
+    override: layer.transitions && layer.transitions[0]
+      ? (layer.transitions[0].manualDeltaOverride ?? null) : null,
+    notes: layer.notes ?? null,
+  };
+}, 'corr-t1', canvasId);
+check('and it survives a reopen',
+  afterReopenMeta.override === 0.5 && afterReopenMeta.notes === 'latest stored note',
+  JSON.stringify(afterReopenMeta));
+
+// Put the fixture back for the checks that follow.
+await p.evaluate(async (f, cid) => {
+  const rec = await window.ToolboxDB.getCustomerFile(f);
+  const t = rec.floorSurvey.byCanvasId[cid].transitions[0];
+  delete t.manualDeltaOverride;
+  delete rec.floorSurvey.byCanvasId[cid].notes;
+  await window.ToolboxDB.saveCustomerFile(rec);
+}, 'corr-t1', canvasId);
+
 // ------------------- reopen: corrected exactly once, never twice
 await p.reload({ waitUntil: 'networkidle0' });
 await p.waitForFunction(() => !!document.querySelector('.rb-sheet'), { timeout: 40000 });
