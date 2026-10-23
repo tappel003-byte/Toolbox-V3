@@ -70,6 +70,7 @@ const model = await p.evaluate((word, styled, plain) => {
   };
   return {
     word: read(word), styled: read(styled), plain: read(plain),
+    inline: read('<p><span style="font-size:20pt;color:#ff0000">Inline styled</span></p>'),
     md: api.fromMarkdown('1. First\n2. Second\n- A bullet').paragraphs.map((q) => ({
       text: q.runs.map((r) => r.text).join(''),
       bullet: !!q.bullet, numbered: !!q.numbered,
@@ -85,10 +86,19 @@ check('and no empty marker paragraph is left behind',
 check('and the nesting survives as indent',
   model.word[0].indent === 0 && model.word[1].indent === 1 && model.word[2].indent === 0,
   JSON.stringify(model.word.map((q) => [q.text, q.indent])));
-check('a paragraph styled bold, 20pt and red keeps all three',
-  model.styled.length === 1 && model.styled[0].bold &&
-  model.styled[0].size === 20 && model.styled[0].color === '#ff0000',
-  JSON.stringify(model.styled));
+check('a paragraph set bold keeps its bold',
+  model.styled.length === 1 && model.styled[0].bold, JSON.stringify(model.styled));
+// Deliberately NOT size and colour on a block. A narrative pasted out of a
+// chat answer carries the chat's theme on every block -- Inter, #374151,
+// 22px headings -- and the settled rule is that it arrives in the report's
+// own type, not the chat's (report-discussion-paste). The two cannot both
+// hold for the same paste; the proven one does, and the question is Tim's.
+check('but not a block size or colour, which is the chat theme in disguise',
+  model.styled[0].size === null && model.styled[0].color === null,
+  JSON.stringify(model.styled[0]));
+check('an INLINE size and colour are still read, as they always were',
+  model.inline.length === 1 && model.inline[0].size === 20 &&
+  model.inline[0].color === '#ff0000', JSON.stringify(model.inline));
 check('the plain <li>text</li> shape still reads as it always did',
   model.plain.length === 2 && model.plain[0].bullet && model.plain[1].bullet &&
   model.plain[1].indent === 1, JSON.stringify(model.plain));
@@ -177,9 +187,8 @@ check('the paste landed on the sheet as marked list rows',
 check('with the nested row indented',
   !!live && live.some((r) => r.text === 'Nested' && /%/.test(r.indentPct)),
   JSON.stringify((live || []).map((r) => [r.text, r.indentPct])));
-check('and the styled paragraph bold and red on the page',
-  !!live && live.some((r) => /Styled paragraph/.test(r.text) && r.bold &&
-    /255,\s*0,\s*0/.test(r.color)),
+check('and the styled paragraph is bold on the page, in the report\u2019s own type',
+  !!live && live.some((r) => /Styled paragraph/.test(r.text) && r.bold && !r.color),
   JSON.stringify((live || []).filter((r) => /Styled/.test(r.text))));
 
 // Save, leave, come back.

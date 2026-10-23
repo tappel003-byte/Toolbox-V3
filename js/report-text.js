@@ -315,21 +315,6 @@
     return hex;
   }
 
-  /**
-   * A font size written on a BLOCK, in the author's units.
-   *
-   * paragraphHtml writes its own strut onto every block as a cqh font-size,
-   * to hold an empty paragraph at the right height. Reading that back as a
-   * run size would push an explicit size onto runs that never had one, and
-   * every edit round-trips through fromElement, so it would stick. cqh is
-   * ours; pt and px are the author's.
-   */
-  function blockStyleSize(el) {
-    var raw = el && el.style && el.style.fontSize;
-    if (!raw || /cqh$/.test(raw)) return null;
-    return styleSize(el);
-  }
-
   function styleFont(el) {
     var raw = el.style && el.style.fontFamily;
     if (!raw) return null;
@@ -493,9 +478,27 @@
             else if (carry.bullet) { block.bullet = true; block.numbered = false; }
             if (carry.indent && !block.indent) block.indent = carry.indent;
           }
-          // A block can carry character styles of its own -- a pasted
-          // paragraph set bold, 20pt and red keeps none of it otherwise,
-          // because only INLINE elements were read into the run context.
+          // A block can carry character styles of its own, and only INLINE
+          // elements were being read into the run context, so a pasted
+          // paragraph set bold, italic, underlined or struck through kept
+          // none of it.
+          //
+          // SIZE, COLOUR AND FONT ARE DELIBERATELY NOT READ HERE, and that
+          // is a decision rather than an oversight. A narrative pasted out
+          // of a chat answer carries the chat's theme on every block --
+          // font-family:Inter, color:#374151, 22px headings -- and the
+          // settled rule is that it "arrives in the report's own type, not
+          // the chat's" (report-discussion-paste). Reading a block's size
+          // and colour would make every pasted narrative come in grey Inter
+          // instead of the report's face, which is the paste Tim actually
+          // uses. Reading a block's font-family would break the one
+          // typeface decided on Oct 23, 2026 outright.
+          //
+          // The audit asked for size and colour on paragraphs too. They
+          // cannot both be true for the same paste, so the proven behaviour
+          // holds and the question is Tim's. An INLINE size or colour is
+          // still read, as it always was: a span the author styled is
+          // emphasis, a theme on every block is not.
           walk(child, {
             bold: markState(ctx.bold, !!HEADING_TAGS[tag],
               child.style && child.style.fontWeight, 'bold'),
@@ -505,9 +508,9 @@
               (child.style && /underline/.test(child.style.textDecoration || '')),
             strike: ctx.strike ||
               (child.style && /line-through/.test(child.style.textDecoration || '')),
-            size: blockStyleSize(child) || ctx.size,
-            font: styleFont(child) || ctx.font,
-            color: styleColor(child) || ctx.color,
+            size: ctx.size,
+            font: ctx.font,
+            color: ctx.color,
           });
           continue;
         }
