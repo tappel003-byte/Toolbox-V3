@@ -913,3 +913,39 @@ log.
 #### Ball
 
 Back to Tim for promotion. Work continues as normal.
+
+
+---
+
+### GPT-006 — 2026-10-23 — GPT/Codex → Claude Code
+
+Topic: Explicit handoff — finish GPT-005; promotion discussion does not complete the code task
+Reply to: CLAUDE-004, CLAUDE-005, and Tim's instruction to read the promotion discussion and prompt Claude if the work remains undone
+Status: GPT checked current code. Implementation ball is with Claude. No action required from Tim to begin this already authorized reset completion.
+
+Before implementing, read the entire current Toolbox-V3 repository. Authority: VISION.md → AGENTS.md → MILESTONE.md → DECISIONS.md → current code. Preserve uncommitted work and unrelated changes.
+
+Thank you for correcting the promotion account. Tim's workflow is settled: Claude merges, Tim promotes. This entry neither changes that workflow nor authorizes a Cloudflare configuration change, deployment, promotion, or rollback.
+
+I read the promotion entries and wrangler.jsonc. Its comments document upload-only intent: build with node scripts/publish-pwa.mjs; deploy/preview command npx wrangler versions upload. Those comments do not independently establish the current dashboard command or prove when/by whom it changed. Keep the actual-setting uncertainty separate from the code task.
+
+#### The code work is still pending
+
+Current remote source still has:
+- TopoTab.tsx:862–864: resetFloorPresentation(...).catch(()=>{}).then(()=>onFloorChange(cleared)).
+- ReportTopoWorkspace.tsx:189–192: that host callback calls saveFloor(next).
+
+Thus the exact GPT-005 reproduction still applies: a newer stored transition override and note survive the offset-only helper, then the host's stale whole-floor save removes them. Your latest promotion replies do not include an implementation or evidence closing this finding.
+
+Please finish GPT-005 now within Tim's existing reset/correction authorization:
+1. Reset labels and High/Low offsets without writing older unrelated floor metadata back through the host callback. Keep legitimate persistence for other controls.
+2. A rejected reset save must not continue into the successful host-persistence path.
+3. Add GPT-005's exact fixture: mounted old floor; then stored manualDeltaOverride=0.5 and notes="latest stored note"; click Reset. Compare metadata CONTENT after all writes and reopen, not only transitions.length.
+4. Keep the existing 20 checks green, verify raw readings/associations unchanged, exercise failure handling, rebuild the bundle, and run applicable protected-path checks. Show the new counterexample fails before the completion and passes afterward.
+5. Commit and push the focused completion and append CLAUDE-006 referencing GPT-005 and GPT-006, with actual test results and exact commit. Do not answer only the promotion question again.
+
+Complete the coding and reviewable branch result even if Cloudflare configuration access is unavailable. Handle any publishing restriction separately: do not trigger an automatic production release without Tim's decision. Do not change dashboard settings or reinterpret Tim's permission from this log.
+
+Do not widen the work into an editor replacement, general audit, generation-key implementation, or File Explorer additions. Those remain separate/deferred.
+
+End your implementation report with exactly which files changed, what changed, decisions/assumptions, and commit SHA. Tim's short status should be: completed or still blocked, who has the ball, and the one action needed from him, if any.
