@@ -3001,6 +3001,53 @@ body.report-builder-open .canvas {
   max-width: none;
 }
 
+/* Editor chrome is never on a sheet the investigator is SHOWING somebody.
+ *
+ * Every rule that took it off the paper lived inside @media print, and the
+ * flip chart is that same deck on a SCREEN -- where print rules never fire.
+ * So Presentation carried the lot: the dashed outline round a text box, the
+ * corner pulls, the x on the aerial, the Paste overview button, the plan's
+ * own grips. Tim, looking at a preview sheet: "Look at the small white
+ * layout. That's our text box. I don't want it visible", and on the next
+ * sheet, "the white line exists in these photos too."
+ *
+ * Scoped to the deck rather than to the medium, so one rule serves the
+ * printer and the flip chart and the editing sheet keeps its chrome. */
+.rb-print [data-plan-resize],
+.rb-print .rb-penlog__move,
+.rb-print .rb-penlog__resize,
+.rb-print .rb-floor-overview__remove,
+.rb-print .rb-cover-box__move,
+.rb-print .rb-cover-box__resize,
+.rb-print .rb-floor-box__resize,
+.rb-print .rb-floor-toolbar,
+.rb-print .rb-cover__contents-jump,
+.rb-print .rb-cover__overview-actions,
+.rb-print .rb-cover__overview-empty,
+.rb-print .rb-floor-empty,
+.rb-print .rb-brand__resize,
+.rb-print .rb-discussion__move,
+.rb-print .rb-discussion__resize,
+.rb-print .rb-discussion__overflow,
+.rb-print .rb-ov__resize,
+.rb-print .rb-ov__remove,
+.rb-print .rb-ov__hint,
+.rb-print .rb-stackmenu {
+  display: none !important;
+}
+
+/* And the outlines those boxes carry, which are a placement aid and not
+   part of the drawing. */
+.rb-print .rb-cover-box,
+.rb-print .rb-floor-box,
+.rb-print .rb-discussion__box,
+.rb-print [data-rb-rich] {
+  outline: none !important;
+}
+
+.rb-print .rb-floor-box.is-active::before,
+.rb-print .rb-floor-box.is-active::after { content: none; }
+
 /* Presentation: the printed deck, brought on screen one sheet at a time.
    It is deliberately the same deck the printer is given -- composed contour
    maps and all -- so what is flipped through is what comes out of the PDF.
