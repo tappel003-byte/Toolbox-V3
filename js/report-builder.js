@@ -2908,6 +2908,23 @@
     var pages = sequence.pages.slice();
     var activeId = pages[0] ? pages[0].id : '';
     var dirty = false;
+    /**
+     * Which edit the document in hand is.
+     *
+     * A save snapshots the pages, then waits -- on an IndexedDB read of the
+     * borrowed components and then on the write itself. Anything typed in
+     * that window is NOT in the snapshot, and clearing `dirty` when the
+     * snapshot lands threw it away: the armed timer saw a clean document and
+     * returned, and the page said "Saved" over text that had never been
+     * written. Reproduced on HEAD -- typed "Second edit while saving.",
+     * stored "First edit.", one write, status "Saved".
+     *
+     * The counter moves on every edit. A save may only report itself done,
+     * and only clear `dirty`, if the counter has not moved since it took its
+     * snapshot. Otherwise the document is still ahead of the disk and must
+     * stay that way until the next save catches up.
+     */
+    var editSeq = 0;
     var workingRecord = null;
     var saveTimer = null;
     var lastSavedAt = '';
@@ -3204,9 +3221,16 @@
       if (saveStatusEl) saveStatusEl.textContent = text || '';
     }
 
+    // One place that says "something changed", so no edit can set `dirty`
+    // without also moving the counter a save is checked against.
+    function noteEdit() {
+      editSeq += 1;
+      dirty = true;
+    }
+
     function markDirty() {
       recordHistory();
-      dirty = true;
+      noteEdit();
       // The save itself is debounced; only the STATUS fired on every
       // keystroke, which made it look as though every character was being
       // written. Say "Edited" while typing and "Saving" when a save actually
@@ -3253,6 +3277,8 @@
       if (!window.ToolboxDB || typeof window.ToolboxDB.saveCustomerFile !== 'function') {
         return Promise.reject(new Error('Customer File save is not available.'));
       }
+      // The edit this save is carrying. Everything below is a snapshot of it.
+      var savedSeq = editSeq;
       var doc = persistableDocument(
         pages,
         activeId,
@@ -3286,6 +3312,22 @@
           return window.ToolboxDB.saveCustomerFile(workingRecord);
         })
         .then(function () {
+          if (editSeq !== savedSeq) {
+            // Typed while this was in flight. What went down is already
+            // behind the screen, so the document stays dirty and the status
+            // does not claim otherwise. markDirty armed a timer for the
+            // newer text; re-arm if some other path cleared it, so the
+            // latest edit is written whatever happens next.
+            lastSavedAt = doc.updatedAt;
+            setSaveStatus('Edited');
+            if (draftEl) draftEl.textContent = 'Edited';
+            if (!saveTimer) {
+              saveTimer = setTimeout(function () {
+                flushSave().catch(function () {});
+              }, AUTOSAVE_DELAY_MS);
+            }
+            return;
+          }
           dirty = false;
           lastSavedAt = doc.updatedAt;
           setSaveStatus(formatSavedAt(lastSavedAt));
@@ -3305,7 +3347,7 @@
     }
 
     function leaveAfterFlush(next) {
-      dirty = true;
+      noteEdit();
       setSaveStatus('Saving…');
       flushSave().then(function () {
         if (typeof next === 'function') next();
@@ -4344,7 +4386,7 @@
           var coverApi = window.ToolboxReportCoverLayout;
           coverLayout = coverApi ? coverApi.normalizeLayout(coverLayout) : coverLayout;
           coverLayout.locked = coverLock.getAttribute('data-rb-cover-lock') === 'lock';
-          dirty = true;
+          noteEdit();
           setSaveStatus('Saving…');
           renderPages();
           flushSave().catch(function () {});
@@ -4449,7 +4491,7 @@
         contourPage.meta = contourPage.meta || {};
         contourPage.meta.showContour =
           penContourBtn.getAttribute('data-rb-penlog-contour') === 'on';
-        dirty = true;
+        noteEdit();
         setSaveStatus('Saving…');
         renderPages();
         flushSave().catch(function () {});
@@ -6206,7 +6248,7 @@
         if (!overviewPage || overviewPage.type !== 'floor') return;
         overviewPage.meta = overviewPage.meta || {};
         overviewPage.meta.hideOverview = true;
-        dirty = true;
+        noteEdit();
         setSaveStatus('Saving…');
         renderPages();
         flushSave().catch(function () {});
