@@ -54,9 +54,15 @@ function store() {
   // Keys whose next write fails outright. A create that did not happen is not
   // the same as a create that lost a collision, and both must stop a publish.
   const failing = new Set();
+  // Runs once, immediately BEFORE the next write to a key -- the only way to
+  // express "this landed between the check and the compare-and-swap" in a
+  // model whose calls are synchronous. A time-of-check/time-of-use hole is
+  // invisible without it.
+  const hooks = new Map();
   return {
     objects,
     failNext(key) { failing.add(key); },
+    hookNext(key, fn) { hooks.set(key, fn); },
     get(key) {
       const body = objects.get(key);
       return body === undefined ? null : { body, etag: etagOf(body) };
@@ -64,6 +70,8 @@ function store() {
     /** onlyIf: { etagMatches } or { createOnly: true }. null means refused. */
     put(key, body, onlyIf) {
       if (failing.has(key)) { failing.delete(key); return null; }
+      const hook = hooks.get(key);
+      if (hook) { hooks.delete(key); hook(); }
       const existing = objects.get(key);
       if (onlyIf && onlyIf.createOnly && existing !== undefined) return null;
       if (onlyIf && onlyIf.etagMatches !== undefined) {
@@ -87,6 +95,37 @@ function store() {
  * atomically with the reference, from the bytes being accepted.
  */
 const revField = (name) => `${name}UpdatedAt`;
+
+/**
+ * A revision is a TIME, not a string, and the client already treats it so.
+ *
+ * js/sync.js iso() runs Date.parse and re-emits new Date(t).toISOString() on
+ * BOTH sides of its comparison -- indexRev() on the advertised field and
+ * componentRevision() on the component's own updatedAt -- and newerIso()
+ * compares the parsed milliseconds. So "2026-10-23T10:00:00Z",
+ * "2026-10-23T10:00:00.000Z" and "2026-10-23T04:00:00-06:00" are one instant
+ * to the client, and a server comparing them as STRINGS would order them by
+ * punctuation. That is how an older edit could have beaten a newer one.
+ *
+ * Parsed to milliseconds for the comparison, and stored in the canonical form
+ * iso() itself produces, so the advertised field is byte-identical to what the
+ * client computes rather than merely parse-equal to it.
+ */
+/**
+ * Date.parse ALONE is not the test. `Date.parse(1)` coerces to the string
+ * "1" and hands back 2001-01-01, so an integer revision -- the shape this
+ * model's own seed used to carry -- would have been read as a date twenty-five
+ * years old rather than refused. componentRevision() only ever produces an
+ * empty string or a full ISO instant, so that is what is required: a string
+ * of that shape, which Date.parse then has to accept as well.
+ */
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+function revMs(value) {
+  if (typeof value !== 'string' || !ISO_INSTANT.test(value)) return null;
+  const t = Date.parse(value);
+  return Number.isFinite(t) ? t : null;
+}
+const canonicalRev = (ms) => new Date(ms).toISOString();
 
 const indexKey = (id) => `cf/${id}/index.json`;
 const legacyKey = (id, name) => `cf/${id}/${name}.json`;
@@ -138,9 +177,35 @@ function authorityOf(doc) {
 function gate(db, id, deviceId) {
   const read = readIndex(db, id);
   if (!read) return { ok: false, status: 404 };
+  // A file on its way out authorizes nothing at all, not even a start.
+  if (read.doc.purged) return { ok: false, status: 410 };
   const owner = ownerOf(read.doc);
   if (owner && owner !== deviceId) return { ok: false, status: 403 };
   return { ok: true, doc: read.doc, etag: read.etag, authority: authorityOf(read.doc) };
+}
+
+/**
+ * A PERMANENT DELETE, ordered through the same boundary as acceptance.
+ *
+ * GPT-010 reproduced the hole: with the deletion state in a separate object,
+ * a publication could read "not deleted", the delete could land, and the
+ * compare-and-swap on the index would still succeed -- 200, accepted bytes on
+ * a destroyed file. Nothing in the index had changed, so nothing invalidated
+ * the swap.
+ *
+ * So the deletion is recorded IN THE INDEX, by a compare-and-swap of its own.
+ * A delete is now an index version, exactly like a takeover: a publication
+ * that read an earlier version cannot swap against it. The tombstone object
+ * is still written -- it is what survives the index being removed, and what
+ * retention reads -- but it is no longer what a publication consults.
+ */
+function purge(db, id, reason) {
+  db.put(purgeKey(id), JSON.stringify({ id, reason: reason || 'permanent-delete' }));
+  const read = readIndex(db, id);
+  if (!read) return { status: 200, indexGone: true };
+  const next = { ...read.doc, purged: { reason: reason || 'permanent-delete' } };
+  const put = writeIndex(db, id, next, read.etag);
+  return { status: put === null ? 409 : 200 };
 }
 
 /**
@@ -174,6 +239,28 @@ function takeover(db, id, deviceId) {
 function startComponentPut(db, id, name, deviceId, body, token, revision) {
   const g = gate(db, id, deviceId);
   if (!g.ok) return { authorized: false, status: g.status, finish: () => ({ status: g.status }) };
+  /**
+   * NO REVISION, NO PUBLICATION.
+   *
+   * GPT-010 reproduced this one too: the ordering check read
+   * `revision && acceptedRev && revision < acceptedRev`, so a request that
+   * named no revision skipped the comparison entirely and published over
+   * newer accepted content with a 200. Worse, it then left the advertised
+   * field describing the bytes it had just replaced, so no other device
+   * would ever fetch the ones now current.
+   *
+   * GPT-010 was asked whether revisionless publication should be tolerated
+   * during rollout and said no. It is refused here, before a candidate is
+   * written -- there is no point storing bytes that can never be accepted.
+   * Every component the client can push already carries an updatedAt;
+   * componentRevision() reads exactly that field for exactly this purpose.
+   */
+  const ms = revMs(revision);
+  if (ms === null) {
+    return { authorized: true, wroteCandidate: false, candidate: null,
+      finish: () => ({ status: 400, published: false, reason: 'no usable revision' }) };
+  }
+  const rev = canonicalRev(ms);
   const key = candidateKey(id, name, token);
   const bytes = JSON.stringify(body);
   const wrote = db.put(key, bytes, { createOnly: true });
@@ -198,28 +285,65 @@ function startComponentPut(db, id, name, deviceId, body, token, revision) {
       let doc = g.doc;
       const authority = g.authority;
       for (let i = 0; i < attempts; i += 1) {
-        // A file on its way out must not gain accepted bytes.
-        if (db.get(purgeKey(id))) {
+        // A file on its way out must not gain accepted bytes. Read from the
+        // index version this iteration is about to swap against, NOT from a
+        // separate object -- a delete that lands after this line changes the
+        // index, so the swap below fails and the next iteration sees it.
+        if (doc.purged) {
           return { status: 409, published: false, reason: 'permanently deleted' };
         }
         const accepted = (doc.components || {})[name];
-        const acceptedRev = doc[revField(name)] || '';
+        const acceptedMs = revMs(doc[revField(name)]);
         // ORDER BY THE SOURCE REVISION, not by who finished last. Two uploads
         // from one owner can complete out of order; the older edit must not
         // become current merely because its network call landed second.
-        if (revision && acceptedRev && revision < acceptedRev) {
-          return { status: 409, published: false, reason: 'superseded', acceptedRev };
+        // Compared as instants: see revMs.
+        if (acceptedMs !== null && ms < acceptedMs) {
+          return { status: 409, published: false, reason: 'superseded',
+            acceptedRev: canonicalRev(acceptedMs) };
+        }
+        /**
+         * THE SAME INSTANT, DIFFERENT BYTES.
+         *
+         * The client cannot tell these apart: indexRev() and
+         * componentRevision() are the same instant, so newerIso() returns 0
+         * and chooseSide() says 'skip'. Accepting the new bytes would
+         * therefore change the component into something no other device would
+         * ever fetch -- a silent divergence, which is the whole bug class this
+         * protocol exists to close.
+         *
+         * So it is refused and the owner is told to re-stamp. The one
+         * exception is a genuine retry: identical bytes already accepted at
+         * this instant is a no-op, and answering it 409 would make an owner
+         * chase a write that already landed. A reference pointing at nothing
+         * is also allowed through -- publishing repairs it, where refusing
+         * would leave the component unreadable at that revision for good.
+         */
+        if (acceptedMs !== null && ms === acceptedMs && accepted) {
+          const there = db.get(accepted.key);
+          if (there && there.body === bytes) {
+            return { status: 200, published: true, accepted, reason: 'already accepted' };
+          }
+          if (there) {
+            return { status: 409, published: false, reason: 'same revision, different bytes',
+              acceptedRev: canonicalRev(acceptedMs) };
+          }
         }
         const components = { ...(doc.components || {}) };
-        components[name] = { key, revision: revision || acceptedRev || '' };
+        components[name] = { key, revision: rev };
         const next = { ...doc, components };
         // The reference and the field the client orders by move TOGETHER, in
         // one compare-and-swap, so they can never describe different bytes.
-        if (revision) next[revField(name)] = revision;
+        next[revField(name)] = rev;
         const put = writeIndex(db, id, next, etag);
         if (put !== null) return { status: 200, published: true, accepted: accepted };
         const again = gate(db, id, deviceId);
-        if (!again.ok) return { status: again.status, published: false };
+        if (!again.ok) {
+          // A delete that landed inside this window arrives here, which is
+          // the point of ordering it through the index.
+          return { status: again.status, published: false,
+            reason: again.status === 410 ? 'permanently deleted' : 'not authorized' };
+        }
         // Same AUTHORITY, not merely the same device.
         if (again.authority !== authority) {
           return { status: 403, published: false, reason: 'authority changed' };
@@ -257,9 +381,15 @@ function seed(opts = {}) {
   const db = store();
   const id = 'cf1';
   const doc = { id, seq: 0, checkout: { deviceId: 'A', leaseSeq: 0 } };
+  // The baseline is what a publication would have left behind: a reference
+  // and the field the client orders by, agreeing with each other. The old
+  // seed set an integer revision and no advertised field at all, so every
+  // test below ran against an index no publication could have produced.
+  const BASELINE = '2026-10-23T08:00:00.000Z';
   if (opts.accepted) {
     db.put(candidateKey(id, 'floor', 'seed'), JSON.stringify(opts.accepted), { createOnly: true });
-    doc.components = { floor: { key: candidateKey(id, 'floor', 'seed'), revision: 1 } };
+    doc.components = { floor: { key: candidateKey(id, 'floor', 'seed'), revision: BASELINE } };
+    doc[revField('floor')] = BASELINE;
   }
   if (opts.legacy) db.put(legacyKey(id, 'floor'), JSON.stringify(opts.legacy));
   db.put(indexKey(id), JSON.stringify(doc));
@@ -269,7 +399,7 @@ function seed(opts = {}) {
 // ---------------------------------------------------------- the defect
 {
   const { db, id } = seed({ accepted: { note: 'A work' } });
-  const a = startComponentPut(db, id, 'floor', 'A', { note: 'A stale work' }, 'a1');
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'A stale work' }, 'a1', '2026-10-23T09:00:00Z');
   check('A is authorized while it holds the file', a.authorized);
   const took = takeover(db, id, 'B');
   check('B takes the file over', took.status === 200, String(took.status));
@@ -293,7 +423,7 @@ function seed(opts = {}) {
 // re-authorizing on the device alone is not enough -- the lease must match.
 {
   const { db, id } = seed({ accepted: { note: 'A work' } });
-  const a = startComponentPut(db, id, 'floor', 'A', { note: 'A stale' }, 'a2');
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'A stale' }, 'a2', '2026-10-23T09:00:00Z');
   takeover(db, id, 'B');
   grantLease(db, id, null);          // B checks in
   grantLease(db, id, 'A');           // A takes it back
@@ -314,7 +444,7 @@ function seed(opts = {}) {
 // implementation has to carry.
 {
   const { db, id } = seed({ accepted: { note: 'A work' } });
-  const a = startComponentPut(db, id, 'floor', 'A', { note: 'A stale' }, 'a2b');
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'A stale' }, 'a2b', '2026-10-23T09:00:00Z');
   const original = db.get(indexKey(id)).body;
   takeover(db, id, 'B');
   grantLease(db, id, 'A');
@@ -332,7 +462,7 @@ function seed(opts = {}) {
 // not exist has no version to invalidate.
 {
   const { db, id } = seed({});
-  const a = startComponentPut(db, id, 'floor', 'A', { note: 'A stale' }, 'a3');
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'A stale' }, 'a3', '2026-10-23T09:00:00Z');
   takeover(db, id, 'B');
   const done = a.finish();
   const now = acceptedBytes(db, id, 'floor');
@@ -344,9 +474,10 @@ function seed(opts = {}) {
 // ------------------------------------ B accepts first, then A resumes
 {
   const { db, id } = seed({ accepted: { note: 'old' } });
-  const a = startComponentPut(db, id, 'floor', 'A', { note: 'A stale' }, 'a4');
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'A stale' }, 'a4', '2026-10-23T09:00:00Z');
   takeover(db, id, 'B');
-  const b = startComponentPut(db, id, 'floor', 'B', { note: 'B accepted' }, 'b1');
+  const b = startComponentPut(db, id, 'floor', 'B', { note: 'B accepted' }, 'b1',
+    '2026-10-23T10:00:00Z');
   const bDone = b.finish();
   const aDone = a.finish();
   const now = acceptedBytes(db, id, 'floor');
@@ -367,14 +498,14 @@ function seed(opts = {}) {
   check('both same-owner uploads succeed', r1.status === 200 && r2.status === 200,
     JSON.stringify({ r1, r2 }));
   check('the newer EDIT is accepted and advertised',
-    now.body.note === 'second' && now.advertised === '2026-10-23T11:00:00Z',
+    now.body.note === 'second' && now.advertised === '2026-10-23T11:00:00.000Z',
     JSON.stringify(now));
 }
 
 // ---------------------------------------- check in, then re-acquire
 {
   const { db, id } = seed({ accepted: { note: 'A work' } });
-  const a = startComponentPut(db, id, 'floor', 'A', { note: 'A stale' }, 'a7');
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'A stale' }, 'a7', '2026-10-23T09:00:00Z');
   grantLease(db, id, null);          // check in
   grantLease(db, id, 'B');           // B acquires
   const done = a.finish();
@@ -391,7 +522,7 @@ function seed(opts = {}) {
   check('with no reference, a reader falls back to the legacy object',
     before.from === 'legacy' && before.body.note === 'legacy bytes',
     JSON.stringify(before));
-  const a = startComponentPut(db, id, 'floor', 'A', { note: 'first accepted' }, 'a8');
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'first accepted' }, 'a8', '2026-10-23T09:00:00Z');
   const done = a.finish();
   const after = acceptedBytes(db, id, 'floor');
   check('the first publication takes over from the legacy object',
@@ -404,7 +535,7 @@ function seed(opts = {}) {
 // ------------------------------------- an interrupted upload is inert
 {
   const { db, id } = seed({ accepted: { note: 'A work' } });
-  const a = startComponentPut(db, id, 'floor', 'A', { note: 'never published' }, 'a9');
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'never published' }, 'a9', '2026-10-23T09:00:00Z');
   // the device dies here: candidate written, publication never attempted
   const now = acceptedBytes(db, id, 'floor');
   check('an unpublished candidate changes nothing',
@@ -447,7 +578,7 @@ function seed(opts = {}) {
   writeIndex(db, id, serverKept, read.etag);
   const now = acceptedBytes(db, id, 'floor');
   check('an ordinary index write preserves the accepted reference',
-    now.body.note === 'accepted' && now.advertised === '2026-10-23T12:00:00Z',
+    now.body.note === 'accepted' && now.advertised === '2026-10-23T12:00:00.000Z',
     JSON.stringify(now));
   check('and still carries the client’s own change',
     JSON.parse(db.get(indexKey(id)).body).displayName === 'renamed', 'renamed');
@@ -534,7 +665,7 @@ function seed(opts = {}) {
     rOld.published === false && rOld.reason === 'superseded',
     JSON.stringify(rOld));
   check('so the current component is the newer edit either way',
-    now.body.note === 'newer edit' && now.advertised === '2026-10-23T11:00:00Z',
+    now.body.note === 'newer edit' && now.advertised === '2026-10-23T11:00:00.000Z',
     JSON.stringify(now));
 }
 
@@ -547,7 +678,7 @@ function seed(opts = {}) {
   const now = acceptedBytes(db, id, 'floor');
   check('publication moves the reference and the advertised revision together',
     now.body.note === 'accepted bytes' &&
-    now.advertised === '2026-10-23T10:00:00Z' &&
+    now.advertised === '2026-10-23T10:00:00.000Z' &&
     now.revision === now.advertised, JSON.stringify(now));
 }
 
@@ -556,7 +687,7 @@ function seed(opts = {}) {
   const { db, id } = seed({ accepted: { note: 'old' } });
   const a = startComponentPut(db, id, 'floor', 'A', { note: 'after the purge' }, 'd1',
     '2026-10-23T10:00:00Z');
-  db.put(purgeKey(id), JSON.stringify({ id, reason: 'permanent-delete' }));
+  purge(db, id, 'permanent-delete');
   const done = a.finish();
   check('a publication after a permanent delete is refused',
     done.published === false && done.reason === 'permanently deleted',
@@ -578,6 +709,143 @@ function seed(opts = {}) {
     took.status === 200 && done.status === 403, JSON.stringify(done));
   check('the legacy bytes are still what a reader sees',
     acceptedBytes(db, id, 'floor').from === 'legacy', 'legacy');
+}
+
+// ========================== GPT-010's counterexamples =====================
+
+// 1. A PUBLICATION THAT NAMES NO REVISION.
+//    GPT-010 published {"note":"old client stale"} over newer accepted
+//    content with a 200, because the ordering check was written
+//    `revision && acceptedRev && ...` and a missing revision skipped it.
+{
+  const { db, id } = seed({ accepted: { note: 'old' } });
+  const newer = startComponentPut(db, id, 'floor', 'A', { note: 'newer work' }, 'g1',
+    '2026-10-23T12:00:00Z');
+  check('the newer edit is accepted', newer.finish().status === 200);
+  const stale = startComponentPut(db, id, 'floor', 'A', { note: 'old client stale' }, 'g2');
+  const done = stale.finish();
+  const now = acceptedBytes(db, id, 'floor');
+  check('a publication naming no revision is refused, not ordered around',
+    done.status === 400 && done.published === false &&
+    done.reason === 'no usable revision', JSON.stringify(done));
+  check('and the newer accepted bytes are untouched',
+    now.body.note === 'newer work' &&
+    now.advertised === '2026-10-23T12:00:00.000Z', JSON.stringify(now));
+  check('no candidate is stored for a request that can never be accepted',
+    stale.candidate === null && stale.wroteCandidate === false,
+    String(stale.candidate));
+}
+
+// 1b. The same for a revision that is not a time at all.
+{
+  const { db, id } = seed({ accepted: { note: 'old' } });
+  const junk = startComponentPut(db, id, 'floor', 'A', { note: 'junk rev' }, 'g3', 'yesterday');
+  const done = junk.finish();
+  check('an unparseable revision is refused the same way',
+    done.status === 400 && done.reason === 'no usable revision', JSON.stringify(done));
+  check('and so is an integer revision from the old seed shape',
+    startComponentPut(db, id, 'floor', 'A', { note: 'int rev' }, 'g4', 1)
+      .finish().status === 400, 'integer refused');
+}
+
+// 2. THE DELETE THAT LANDS INSIDE THE WINDOW.
+//    GPT-010: the purge check was a time-of-check/time-of-use hole. The
+//    tombstone was a separate object, so a delete arriving after the check
+//    changed nothing the compare-and-swap was guarding, and the publication
+//    returned 200 on a destroyed file.
+{
+  const { db, id } = seed({ accepted: { note: 'old' } });
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'after the delete' }, 'g5',
+    '2026-10-23T10:00:00Z');
+  // The delete lands between the check and the swap, which is the only moment
+  // that was ever dangerous.
+  db.hookNext(indexKey(id), () => { purge(db, id, 'permanent-delete'); });
+  const done = a.finish();
+  const now = acceptedBytes(db, id, 'floor');
+  check('a delete landing between the check and the swap still refuses the publication',
+    done.published === false && done.reason === 'permanently deleted',
+    JSON.stringify(done));
+  check('and the destroyed file gained no accepted bytes',
+    now.body.note === 'old', JSON.stringify(now));
+}
+
+// 2b. And a request that starts after the delete never gets going.
+{
+  const { db, id } = seed({ accepted: { note: 'old' } });
+  purge(db, id, 'permanent-delete');
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'too late' }, 'g6',
+    '2026-10-23T10:00:00Z');
+  check('a publication started after the delete is not authorized at all',
+    a.authorized === false && a.status === 410, JSON.stringify({ a: a.status }));
+}
+
+// 3. THE SAME INSTANT, DIFFERENT BYTES.
+//    Undetectable to the client: indexRev() and componentRevision() agree, so
+//    chooseSide() says 'skip' and no device ever fetches the new bytes.
+{
+  const { db, id } = seed({ accepted: { note: 'old' } });
+  const first = startComponentPut(db, id, 'floor', 'A', { note: 'first bytes' }, 'g7',
+    '2026-10-23T10:00:00Z');
+  check('the first publication at that instant is accepted', first.finish().status === 200);
+  const second = startComponentPut(db, id, 'floor', 'A', { note: 'other bytes' }, 'g8',
+    '2026-10-23T10:00:00Z');
+  const done = second.finish();
+  const now = acceptedBytes(db, id, 'floor');
+  check('different bytes at the SAME revision are refused, not silently accepted',
+    done.published === false && done.reason === 'same revision, different bytes',
+    JSON.stringify(done));
+  check('so the advertised revision never describes bytes other than these',
+    now.body.note === 'first bytes' &&
+    now.advertised === '2026-10-23T10:00:00.000Z', JSON.stringify(now));
+}
+
+// 3b. The honest retry at that instant is a no-op success, not a 409.
+{
+  const { db, id } = seed({ accepted: { note: 'old' } });
+  startComponentPut(db, id, 'floor', 'A', { note: 'same bytes' }, 'g9',
+    '2026-10-23T10:00:00Z').finish();
+  const again = startComponentPut(db, id, 'floor', 'A', { note: 'same bytes' }, 'g10',
+    '2026-10-23T10:00:00Z');
+  const done = again.finish();
+  check('identical bytes at the same revision answer 200, so a retry stops retrying',
+    done.status === 200 && done.reason === 'already accepted', JSON.stringify(done));
+  check('and the accepted reference is left where it was',
+    acceptedBytes(db, id, 'floor').body.note === 'same bytes', 'unmoved');
+}
+
+// 4. A REVISION IN ANOTHER OFFSET, where string order and time order disagree.
+//    '2026-10-23T19:00:00+02:00' is 17:00Z -- OLDER than 18:00Z -- but as a
+//    string it sorts AFTER it. A server comparing strings would accept it and
+//    roll the component back an hour.
+{
+  const { db, id } = seed({ accepted: { note: 'old' } });
+  startComponentPut(db, id, 'floor', 'A', { note: 'six in the evening' }, 'g11',
+    '2026-10-23T18:00:00Z').finish();
+  const older = startComponentPut(db, id, 'floor', 'A', { note: 'five in the evening' }, 'g12',
+    '2026-10-23T19:00:00+02:00');
+  const done = older.finish();
+  const now = acceptedBytes(db, id, 'floor');
+  check('an older instant written in another offset is refused, not sorted as a string',
+    '2026-10-23T19:00:00+02:00' > '2026-10-23T18:00:00.000Z' &&
+    done.published === false && done.reason === 'superseded', JSON.stringify(done));
+  check('and the component is not rolled back an hour',
+    now.body.note === 'six in the evening' &&
+    now.advertised === '2026-10-23T18:00:00.000Z', JSON.stringify(now));
+}
+
+// 4b. The same instant spelled three ways is ONE revision, and the stored
+//     form is the one js/sync.js iso() produces on both sides.
+{
+  const { db, id } = seed({ accepted: { note: 'old' } });
+  startComponentPut(db, id, 'floor', 'A', { note: 'noon' }, 'g13',
+    '2026-10-23T12:00:00Z').finish();
+  const sameInstant = startComponentPut(db, id, 'floor', 'A', { note: 'noon, elsewhere' },
+    'g14', '2026-10-23T06:00:00-06:00');
+  check('a differently spelled SAME instant is treated as the same revision',
+    sameInstant.finish().reason === 'same revision, different bytes', 'same instant');
+  check('and the advertised field is stored in the canonical form',
+    acceptedBytes(db, id, 'floor').advertised === '2026-10-23T12:00:00.000Z',
+    acceptedBytes(db, id, 'floor').advertised);
 }
 
 const failed = results.filter((r) => !r.ok);
