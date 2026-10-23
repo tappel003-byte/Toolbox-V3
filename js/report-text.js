@@ -351,6 +351,17 @@
           var inOl = source.parentNode && source.parentNode.tagName === 'OL';
           if (inOl) current.numbered = true;
           else current.bullet = true;
+          // How deep the list is nested IS the indent. Only the item's own
+          // parent was read before, so a sub-bullet and a sub-sub-bullet came
+          // in level with the top one -- every level of a pasted list
+          // flattened into a single row of markers.
+          var depth = 0;
+          var up = source.parentNode;
+          while (up && up !== root && depth < MAX_INDENT) {
+            if (up.tagName === 'UL' || up.tagName === 'OL') depth += 1;
+            up = up.parentNode;
+          }
+          if (depth > 1) current.indent = Math.min(MAX_INDENT, depth - 1);
         }
         // The Bullets button writes its intent onto the block rather
         // than building list markup itself, so the <ul> wrapping and the

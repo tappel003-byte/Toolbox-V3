@@ -5565,12 +5565,45 @@
       var api = window.ToolboxReportText;
       if (!api || !event.clipboardData) return;
       if (clipboardImage(event)) return; // handled as the site overview
-      var text = event.clipboardData.getData('text/plain');
-      if (!text || !api.looksLikeMarkdown(text)) return;
+      // The clipboard's HTML flavour first, because that is the one that
+      // carries the formatting.
+      //
+      // Only text/plain was read before. A list copied out of a browser
+      // flattens in that flavour: the marker and its text arrive on separate
+      // lines and the nesting is gone before Toolbox sees any of it. That is
+      // what put every bullet's text on the line below its marker and
+      // levelled three indent levels into one. Tim: "what I'm looking for is
+      // a right-click paste as formatted."
+      //
+      // Nothing from the clipboard is inserted as markup. It is parsed in a
+      // detached document, read into the report's own model, and written
+      // back out as the report's own markup -- so a paste carries structure
+      // and styling, and carries nothing else in with it.
+      var html = '';
+      var pastedHtml = event.clipboardData.getData('text/html');
+      if (pastedHtml && typeof window.DOMParser === 'function') {
+        try {
+          var parsed = new window.DOMParser().parseFromString(pastedHtml, 'text/html');
+          var body = parsed && parsed.body;
+          if (body) {
+            var junk = body.querySelectorAll('script, style, meta, link, title');
+            for (var j = 0; j < junk.length; j += 1) junk[j].remove();
+            if (body.textContent.trim()) {
+              html = api.toHtml(api.compact(api.fromElement(body)));
+            }
+          }
+        } catch (err) {
+          html = '';
+        }
+      }
+      if (!html) {
+        var text = event.clipboardData.getData('text/plain');
+        if (!text || !api.looksLikeMarkdown(text)) return;
+        // No base size: headings come in bold at the field's own size, as the
+        // shipped reports set them, rather than stepping up a scale.
+        html = api.toHtml(api.fromMarkdown(text, 0));
+      }
       event.preventDefault();
-      // No base size: headings come in bold at the field's own size, as the
-      // shipped reports set them, rather than stepping up a scale.
-      var html = api.toHtml(api.fromMarkdown(text, 0));
       if (!document.execCommand('insertHTML', false, html)) return;
       // insertHTML nests the whole paste inside whatever block the caret was
       // in, which produced one paragraph the height of the column. Rebuilding
