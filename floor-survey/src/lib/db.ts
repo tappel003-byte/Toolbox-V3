@@ -307,12 +307,15 @@ export async function listFloors(projectId: string): Promise<Floor[]> {
  *
  * Six fields, named one at a time, on the freshly loaded record.
  */
-export async function resetFloorPresentation(floor: Floor, pointIds: string[]) {
+export async function resetFloorPresentation(
+  floor: Floor,
+  pointIds: string[],
+): Promise<Floor | null> {
   const cfId = floor.projectId || requireCfId();
   const record = await loadRecord(cfId);
   if (!window.ToolboxPlanSetup.canvasById(record, floor.id)) {
     console.warn("Floor Survey: refusing to save unknown canvas", floor.id);
-    return;
+    return null;
   }
   const layer = ensureLayer(record, floor.id);
   const ids = new Set(pointIds);
@@ -324,6 +327,14 @@ export async function resetFloorPresentation(floor: Floor, pointIds: string[]) {
   layer.lowPinDy = undefined;
   layer.updatedAt = Date.now();
   await saveRecord(record);
+  // Hand back the level as it NOW stands, so a host that persists on the
+  // refresh writes what is already on disk rather than the copy it has been
+  // holding. A host told `cleared` -- the in-memory floor with the offsets
+  // taken off -- would write its own stale notes and transitions back over a
+  // newer stored edit, which is how a manualDeltaOverride set after the
+  // controls mounted disappeared on a label reset.
+  const canvas = window.ToolboxPlanSetup.canvasById(record, floor.id);
+  return layerToFloor(record, canvas, layer, floor.planDataUrl, floor.order ?? 0);
 }
 
 export async function saveFloor(f: Floor) {

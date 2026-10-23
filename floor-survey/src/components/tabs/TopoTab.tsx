@@ -860,8 +860,17 @@ export function TopoTab({
     // ACTION one save. Telling the host after the write means whatever it
     // persists is already the cleared record.
     resetFloorPresentation(cleared, updates.map((u) => u.id))
-      .catch(() => {})
-      .then(() => { if (pinsSet) onFloorChange(cleared); });
+      .then((fresh) => {
+        // The host is told with the level as STORAGE now has it, not with the
+        // copy this component has been holding. A host that persists on the
+        // refresh then writes back what is already there; told `cleared`, it
+        // wrote its own stale notes and transitions over a newer stored edit.
+        if (fresh) onFloorChange(fresh);
+      })
+      // A reset that did not land must not run the path that follows a reset
+      // that did. .catch before .then let a failed save go on to tell the
+      // host the reset had happened.
+      .catch(() => {});
     setLastMove(null);
   }
 
