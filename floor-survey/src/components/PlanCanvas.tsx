@@ -469,12 +469,48 @@ export function PlanCanvas({
   const singleStart = useRef<{ x: number; y: number; t0: number; moved: boolean } | null>(null);
   const customPointer = useRef<number | null>(null);
 
+  /**
+   * This element's OWN pixels per screen pixel.
+   *
+   * A pointer event arrives in screen coordinates. Everything in this
+   * component's transform -- tx, ty, and the image coordinates they map to --
+   * is in the element's own coordinates. In the field those are the same
+   * thing, because nothing scales the host, and `hostScale` is exactly 1.
+   *
+   * On a Report Builder sheet they are not: the sheet is a fixed 1632 x 1056
+   * drawn at whatever fits the window, or at whatever the investigator zoomed
+   * to. Screen deltas were being added to the transform unconverted, so a
+   * 100 px drag moved the plan 100 of ITS pixels, which showed up as 74.75 px
+   * on screen -- the plan lagging the pointer. Above 100% zoom it runs ahead
+   * of it instead. Audit finding 5.
+   *
+   * Derived here rather than passed in by the host: a number the host supplies
+   * is a second source of truth and a way to be handed a wrong one. Measured,
+   * it cannot be wrong, and it reduces to today's arithmetic wherever nothing
+   * scales the element.
+   */
+  function hostScale() {
+    const el = wrapRef.current;
+    if (!el) return 1;
+    const rect = el.getBoundingClientRect();
+    const own = el.offsetWidth;
+    if (!(own > 0) || !(rect.width > 0)) return 1;
+    const s = rect.width / own;
+    return s > 0 && isFinite(s) ? s : 1;
+  }
+
+  /** A screen point, in this element's own pixels. */
+  function toLocal(clientX: number, clientY: number) {
+    const el = wrapRef.current!;
+    const rect = el.getBoundingClientRect();
+    const s = hostScale();
+    return { x: (clientX - rect.left) / s, y: (clientY - rect.top) / s };
+  }
+
   function toImage(clientX: number, clientY: number) {
-    const rect = wrapRef.current!.getBoundingClientRect();
-    const localX = clientX - rect.left;
-    const localY = clientY - rect.top;
+    const local = toLocal(clientX, clientY);
     const t = transformRef.current;
-    return { x: (localX - t.tx) / t.scale, y: (localY - t.ty) / t.scale };
+    return { x: (local.x - t.tx) / t.scale, y: (local.y - t.ty) / t.scale };
   }
 
   function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
@@ -529,11 +565,12 @@ export function PlanCanvas({
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
       const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
       const g = gestureStart.current;
-      const rect = wrapRef.current!.getBoundingClientRect();
+      // dist / g.dist is a ratio of two screen distances, so it carries no
+      // units and needs no conversion. The midpoints do.
       const scale = g.transform.scale * (dist / g.dist);
       // keep the pinch midpoint stationary
-      const originalMidLocal = { x: g.mid.x - rect.left, y: g.mid.y - rect.top };
-      const newMidLocal = { x: mid.x - rect.left, y: mid.y - rect.top };
+      const originalMidLocal = toLocal(g.mid.x, g.mid.y);
+      const newMidLocal = toLocal(mid.x, mid.y);
       const imgX = (originalMidLocal.x - g.transform.tx) / g.transform.scale;
       const imgY = (originalMidLocal.y - g.transform.ty) / g.transform.scale;
       const tx = newMidLocal.x - imgX * scale;
@@ -541,8 +578,11 @@ export function PlanCanvas({
       const t = { scale: Math.max(0.05, Math.min(20, scale)), tx, ty };
       applyTransform(t);
     } else if (pointers.current.size === 1 && singleStart.current) {
-      const dx = e.clientX - prev.x;
-      const dy = e.clientY - prev.y;
+      const hs = hostScale();
+      const dx = (e.clientX - prev.x) / hs;
+      const dy = (e.clientY - prev.y) / hs;
+      // The 6 px that separates a tap from a drag stays in SCREEN pixels: it
+      // is about the hand, not about the drawing.
       const total = Math.hypot(
         e.clientX - singleStart.current.x,
         e.clientY - singleStart.current.y,
@@ -572,13 +612,8 @@ export function PlanCanvas({
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) gestureStart.current = null;
     if (wasSingle && singleStart.current && !singleStart.current.moved && onTap) {
-      const rect = wrapRef.current!.getBoundingClientRect();
-      const localX = e.clientX - rect.left;
-      const localY = e.clientY - rect.top;
-      const t = transformRef.current;
-      const x = (localX - t.tx) / t.scale;
-      const y = (localY - t.ty) / t.scale;
-      onTap(x, y);
+      const img = toImage(e.clientX, e.clientY);
+      onTap(img.x, img.y);
     }
     singleStart.current = null;
   }
@@ -618,7 +653,6 @@ export function PlanCanvas({
     if (!wrap) return;
     e.preventDefault();
     e.stopPropagation();
-    const rect = wrap.getBoundingClientRect();
     const t = transformRef.current;
     // The grips belong to the PLAN, so the corner that stays still is the
     // plan's opposite corner -- not the opposite corner of the canvas. Anchored
@@ -628,7 +662,11 @@ export function PlanCanvas({
     const imgY = corner === "nw" || corner === "ne" ? imgH : 0;
     const anchorX = t.tx + imgX * t.scale;
     const anchorY = t.ty + imgY * t.scale;
-    const dist = Math.hypot(e.clientX - (rect.left + anchorX), e.clientY - (rect.top + anchorY));
+    // The anchor is in the element's own pixels, so the pointer has to be
+    // too. Mixing them made the start distance wrong, and the start distance
+    // is the denominator of the whole resize.
+    const grab = toLocal(e.clientX, e.clientY);
+    const dist = Math.hypot(grab.x - anchorX, grab.y - anchorY);
     cornerDrag.current = {
       pointerId: e.pointerId,
       corner,
@@ -651,11 +689,8 @@ export function PlanCanvas({
     const wrap = wrapRef.current;
     if (!d || !wrap || d.pointerId !== e.pointerId) return;
     e.preventDefault();
-    const rect = wrap.getBoundingClientRect();
-    const dist = Math.hypot(
-      e.clientX - (rect.left + d.anchorX),
-      e.clientY - (rect.top + d.anchorY),
-    );
+    const held = toLocal(e.clientX, e.clientY);
+    const dist = Math.hypot(held.x - d.anchorX, held.y - d.anchorY);
     const next = Math.max(0.05, Math.min(20, d.startScale * (dist / d.startDist)));
     applyTransform({
       scale: next,
@@ -673,9 +708,9 @@ export function PlanCanvas({
   // wheel zoom for desktop
   function onWheel(e: React.WheelEvent<HTMLDivElement>) {
     e.preventDefault();
-    const rect = wrapRef.current!.getBoundingClientRect();
-    const localX = e.clientX - rect.left;
-    const localY = e.clientY - rect.top;
+    const atPointer = toLocal(e.clientX, e.clientY);
+    const localX = atPointer.x;
+    const localY = atPointer.y;
     const factor = Math.exp(-e.deltaY * 0.0015);
     const t = transformRef.current;
     const newScale = Math.max(0.05, Math.min(20, t.scale * factor));
