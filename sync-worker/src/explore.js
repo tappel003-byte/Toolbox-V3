@@ -4,10 +4,18 @@
  * Storage is not a folder of photos and plans. Each Customer File is
  * cf/{id}/*.json. Plan images and distress photos are flat media/{id}
  * objects. This module lists those keys and only the media ids cited by
- * the stored plans.json, distress.json, floor.json, and diagnostics.json
- * manifests. It does not invent folders, names, or bytes, and it never
- * writes the bucket. A media id is included only when a manifest cites it.
+ * the plans, distress, floor and diagnostics manifests. It does not invent
+ * folders, names, or bytes, and it never writes the bucket. A media id is
+ * included only when a manifest cites it.
+ *
+ * WHICH manifest is not a matter of its key. A component's current bytes are
+ * whichever candidate the index names -- see resolveAcceptedComponent in
+ * components.js. Reading cf/{id}/plans.json directly would have shown this
+ * back door a version the owner had already replaced, and cited the
+ * photographs of that older version while the real ones went unnamed.
  */
+
+import { resolveAcceptedComponent, legacyIsStale } from './components.js';
 
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -443,17 +451,57 @@ const STORED_FILE = {
   'trash.json': { purpose: 'technical', label: 'Trash record' },
 };
 
-function annotateStoredFile(row, id) {
+const COMPONENT_LABEL = {
+  customer: 'Customer information',
+  plans: 'Plans and canvases',
+  distress: 'Distress Survey',
+  floor: 'Floor Survey',
+  diagnostics: 'Diagnostics',
+  report: 'Report Builder',
+  trash: 'Trash record',
+};
+
+/**
+ * `index` is the parsed Customer File index, or null. It is what tells a
+ * candidate object apart from the one the index actually names -- without it
+ * every version of every component would be listed as "Stored file", and the
+ * back door would show a dozen indistinguishable files where there is one
+ * current survey.
+ */
+function annotateStoredFile(row, id, index) {
   const prefix = 'cf/' + id + '/';
   const filename = row.key.indexOf(prefix) === 0 ? row.key.slice(prefix.length) : '';
   const known = STORED_FILE[filename];
   if (known) {
     row.purpose = known.purpose;
     row.label = known.label;
-  } else {
-    row.purpose = 'other';
-    row.label = filename || 'Stored file';
+    // A legacy component key that the index no longer names is history, not
+    // the current survey, and saying so is the difference between a recovery
+    // file and the file itself.
+    const name = filename.slice(0, -'.json'.length);
+    if (COMPONENT_LABEL[name] && index) {
+      const resolved = resolveAcceptedComponent(index, id, name);
+      if (resolved.from === 'accepted' && resolved.key !== row.key) {
+        row.label = known.label + ' (superseded)';
+        row.superseded = true;
+      }
+    }
+    return row;
   }
+  const candidate = /^c\/([^/]+)\/[^/]+\.json$/.exec(filename);
+  if (candidate && COMPONENT_LABEL[candidate[1]]) {
+    const name = candidate[1];
+    const resolved = index ? resolveAcceptedComponent(index, id, name) : null;
+    const current = !!resolved && resolved.key === row.key;
+    row.purpose = current ? name : 'other';
+    row.label = current
+      ? COMPONENT_LABEL[name]
+      : COMPONENT_LABEL[name] + ' (superseded)';
+    if (!current) row.superseded = true;
+    return row;
+  }
+  row.purpose = 'other';
+  row.label = filename || 'Stored file';
   return row;
 }
 
@@ -513,24 +561,39 @@ export async function readCabinetIndexListing(cabinet) {
   return { files: files };
 }
 
-async function readManifest(cabinet, id, name, storedByKey, notes) {
-  const key = 'cf/' + id + '/' + name + '.json';
-  if (!storedByKey[key]) return null;
+async function readManifest(cabinet, id, name, storedByKey, notes, index) {
+  const resolved = resolveAcceptedComponent(index, id, name);
+  const key = resolved.key;
+  if (!storedByKey[key]) {
+    // A reference naming an object that is not stored is a fault worth saying
+    // out loud: the component's photographs cannot be enumerated, so they
+    // would silently go unlisted. Falling back to the legacy key would be
+    // worse -- it would list the media of a version already replaced.
+    if (resolved.from === 'accepted') {
+      notes.push(key + ' is named by the index but is not stored; its media references are not listed.');
+    }
+    return null;
+  }
   const parsed = await readJson(await cabinet.get(key));
   if (!parsed.ok) {
     notes.push(key + ' could not be read; its media references are not listed.');
     return null;
   }
+  // The back door says so rather than quietly listing the media of a version
+  // the index does not vouch for. See legacyIsStale.
+  if (resolved.from === 'legacy' && legacyIsStale(index, name, parsed.value)) {
+    notes.push(key + ' is older than the revision the index advertises; its media references may be incomplete.');
+  }
   return parsed.value;
 }
 
-async function referencedMedia(cabinet, id, storedByKey, notes) {
-  const plans = await readManifest(cabinet, id, 'plans', storedByKey, notes);
-  const distress = await readManifest(cabinet, id, 'distress', storedByKey, notes);
-  const floor = await readManifest(cabinet, id, 'floor', storedByKey, notes);
-  const diagnostics = await readManifest(cabinet, id, 'diagnostics', storedByKey, notes);
-  const report = await readManifest(cabinet, id, 'report', storedByKey, notes);
-  const customer = await readManifest(cabinet, id, 'customer', storedByKey, notes);
+async function referencedMedia(cabinet, id, storedByKey, notes, index) {
+  const plans = await readManifest(cabinet, id, 'plans', storedByKey, notes, index);
+  const distress = await readManifest(cabinet, id, 'distress', storedByKey, notes, index);
+  const floor = await readManifest(cabinet, id, 'floor', storedByKey, notes, index);
+  const diagnostics = await readManifest(cabinet, id, 'diagnostics', storedByKey, notes, index);
+  const report = await readManifest(cabinet, id, 'report', storedByKey, notes, index);
+  const customer = await readManifest(cabinet, id, 'customer', storedByKey, notes, index);
   const names = canvasNameMap(plans);
   return mergeMediaRefs(
     mediaRefsFromPlans(plans, notes)
@@ -549,21 +612,27 @@ export async function readCustomerFileListing(cabinet, id) {
   const prefix = 'cf/' + id + '/';
   const indexKey = prefix + 'index.json';
   const listed = await listPrefix(cabinet, prefix, true);
-  const stored = [];
   const storedByKey = Object.create(null);
+  const rows = [];
   listed.forEach(function (obj) {
     if (!obj || typeof obj.key !== 'string') return;
     if (!obj.key.startsWith(prefix) || obj.key.indexOf('..') !== -1) return;
     storedByKey[obj.key] = obj;
-    stored.push(annotateStoredFile(objectMeta(obj.key, obj), id));
+    rows.push(obj);
   });
   if (!storedByKey[indexKey]) return { status: 404, text: 'Not found' };
 
   const notes = [];
   const identity = {};
+  // Read first: which bytes are current is a property of the index, so
+  // nothing below can be labelled or cited without it.
   const indexParsed = await readJson(await cabinet.get(indexKey));
-  if (indexParsed.ok) copyIdentity(identity, indexParsed.value);
-  const mediaRefs = await referencedMedia(cabinet, id, storedByKey, notes);
+  const index = indexParsed.ok ? indexParsed.value : null;
+  if (indexParsed.ok) copyIdentity(identity, index);
+  const stored = rows.map(function (obj) {
+    return annotateStoredFile(objectMeta(obj.key, obj), id, index);
+  });
+  const mediaRefs = await referencedMedia(cabinet, id, storedByKey, notes, index);
   const objects = stored.slice();
   for (let i = 0; i < mediaRefs.length; i++) {
     const ref = mediaRefs[i];

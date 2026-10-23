@@ -14,6 +14,21 @@ import {
   createOnlyPutOptions,
 } from './r2-conditional.js';
 import { exploreResult, mediaRefsFromPlans } from './explore.js';
+import {
+  revField,
+  revMs,
+  canonicalRev,
+  bodyRevisionMs,
+  legacyComponentKey,
+  candidateComponentKey,
+  newCandidateToken,
+  resolveAcceptedComponent,
+  legacyIsStale,
+  applyServerOwnedIndexFields,
+  nextSeq,
+  stampAuthority,
+  authorityOf,
+} from './components.js';
 
 /** PWA origin only — Access cookie sync uses credentials:include (no *). */
 const ALLOWED_ORIGINS = {
@@ -77,8 +92,11 @@ function indexKey(id) {
   return 'cf/' + id + '/index.json';
 }
 
+// The LEGACY key: where a component lived before acceptance references
+// existed, and what resolveAcceptedComponent falls back to when an index
+// carries no reference. Never written again by the component route.
 function componentKey(id, name) {
-  return 'cf/' + id + '/' + name + '.json';
+  return legacyComponentKey(id, name);
 }
 
 function mediaKey(mediaId) {
@@ -424,22 +442,42 @@ async function readStoredJson(object) {
  * Stops before any delete when a present component cannot be read.
  */
 async function referencedMediaIds(env, id) {
-  const plansRead = await readStoredJson(await env.CABINET.get(componentKey(id, 'plans')));
-  if (plansRead.corrupt) {
-    return { error: 'Plans component is unreadable; refusing permanent delete' };
+  // Through the SAME resolution a component GET uses. A purge that read the
+  // legacy key while the index named a candidate would have looked for
+  // photographs in a version the owner had already replaced -- and left the
+  // real ones behind as orphans no listing names.
+  const indexRead = await readStoredJson(await env.CABINET.get(indexKey(id)));
+  if (indexRead.corrupt) {
+    return { error: 'Corrupt Customer File index; refusing permanent delete' };
   }
-  const distressRead = await readStoredJson(await env.CABINET.get(componentKey(id, 'distress')));
-  if (distressRead.corrupt) {
-    return { error: 'Distress component is unreadable; refusing permanent delete' };
-  }
-  const floorRead = await readStoredJson(await env.CABINET.get(componentKey(id, 'floor')));
-  if (floorRead.corrupt) {
-    return { error: 'Floor Survey component is unreadable; refusing permanent delete' };
-  }
-  const diagnosticsRead = await readStoredJson(await env.CABINET.get(componentKey(id, 'diagnostics')));
-  if (diagnosticsRead.corrupt) {
-    return { error: 'Diagnostics component is unreadable; refusing permanent delete' };
-  }
+  const readComponent = async function (name, label) {
+    const resolved = resolveAcceptedComponent(indexRead.body, id, name);
+    const read = await readStoredJson(await env.CABINET.get(resolved.key));
+    if (read.corrupt) {
+      return { error: label + ' component is unreadable; refusing permanent delete' };
+    }
+    // A reference naming an object that is not there means the component's
+    // media cannot be enumerated. Deleting on top of that would strand the
+    // photographs it referenced, so it stops instead.
+    if (read.missing && resolved.from === 'accepted') {
+      return { error: label + ' component is missing from storage; refusing permanent delete' };
+    }
+    // Deleting against a component the index does not vouch for would delete
+    // the wrong photographs and strand the right ones.
+    if (!read.missing && resolved.from === 'legacy' &&
+        legacyIsStale(indexRead.body, name, read.body)) {
+      return { error: 'Stored ' + label + ' is older than the revision the index advertises; refusing permanent delete' };
+    }
+    return read;
+  };
+  const plansRead = await readComponent('plans', 'Plans');
+  if (plansRead.error) return { error: plansRead.error };
+  const distressRead = await readComponent('distress', 'Distress');
+  if (distressRead.error) return { error: distressRead.error };
+  const floorRead = await readComponent('floor', 'Floor Survey');
+  if (floorRead.error) return { error: floorRead.error };
+  const diagnosticsRead = await readComponent('diagnostics', 'Diagnostics');
+  if (diagnosticsRead.error) return { error: diagnosticsRead.error };
   const tombRead = await readStoredJson(await env.CABINET.get(purgeKey(id)));
   const prior = tombRead.body && Array.isArray(tombRead.body.mediaIds) ? tombRead.body.mediaIds : [];
   return {
@@ -515,12 +553,65 @@ async function purgeCustomerFile(env, id) {
   const media = await referencedMediaIds(env, id);
   if (media.error) return { status: 500, message: media.error };
 
+  // MARK THE INDEX FIRST, by compare-and-swap.
+  //
+  // The tombstone alone was a time-of-check/time-of-use hole: a component
+  // publication read "not deleted", the delete landed, and the publication's
+  // own swap still succeeded, because nothing in the index had changed. It
+  // answered 200 and left accepted bytes on a destroyed file.
+  //
+  // Recording the deletion in the index makes it an index VERSION, exactly
+  // like a takeover: a publication that read an earlier version cannot swap
+  // against it, and one that starts afterwards is refused at the gate. The
+  // tombstone below is still written -- it outlives the index and the retry
+  // path reads it -- but it is no longer what a publication consults.
+  if (index) {
+    const marked = await markIndexPurged(env, id);
+    if (marked.error) return { status: marked.status || 500, message: marked.error };
+  }
+
   const tombstone = await writePurgeTombstone(env, id, media.ids, media.tomb);
   for (let i = 0; i < tombstone.mediaIds.length; i++) {
     await env.CABINET.delete(mediaKey(tombstone.mediaIds[i]));
   }
   await deleteCustomerFilePrefix(env, id);
   return { status: 200, deleted: id, purged: tombstone };
+}
+
+/**
+ * Record the deletion in the index, so acceptance orders against it.
+ *
+ * Conditional, and re-read once: if an ordinary write or a component
+ * publication lands in between, this takes the version it left and marks
+ * that. It does not need to win a race against a publication -- whichever
+ * goes second sees the other, and both outcomes are safe: the publication is
+ * refused, or it is accepted on a file that is then destroyed anyway.
+ */
+async function markIndexPurged(env, id) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const got = await env.CABINET.get(indexKey(id));
+    if (!got) return { ok: true, gone: true };
+    const etag = requireObjectEtag(got);
+    if (!etag) return { error: 'Missing object ETag; refusing unsafe delete marker' };
+    let index;
+    try { index = await got.json(); } catch (_) {
+      return { error: 'Corrupt Customer File index; refusing permanent delete' };
+    }
+    if (index && index.purged) return { ok: true, already: true };
+    const next = Object.assign({}, index, {
+      purged: { reason: 'permanent-delete', at: new Date().toISOString() },
+    });
+    const bumped = nextSeq(index);
+    if (bumped.error) {
+      return { error: 'Customer File index sequence exhausted; refusing write' };
+    }
+    next.seq = bumped.seq;
+    const putOpts = conditionalPutOptions(etag, { contentType: 'application/json' });
+    if (!putOpts) return { error: 'Missing object ETag; refusing unsafe delete marker' };
+    const put = await env.CABINET.put(indexKey(id), JSON.stringify(next), putOpts);
+    if (put !== null) return { ok: true };
+  }
+  return { status: 409, error: 'Customer File changed during permanent delete; try again' };
 }
 
 async function deleteCustomerFilePrefix(env, id) {
@@ -588,6 +679,15 @@ async function acquireCheckout(env, id, identity, deviceId, options) {
     if (from) taking.takenOverFrom = from;
   }
   const next = Object.assign({}, index, { checkout: taking });
+  // EVERY ownership change gets a new epoch, stamped from a sequence that
+  // never repeats. Without it an index body could be written back byte for
+  // byte -- same content-addressed ETag -- and a dead lease would read as
+  // live again, which is exactly what defeats the "touch the component"
+  // design this protocol replaced.
+  const stamped = stampAuthority(index, next);
+  if (stamped.error) {
+    return { status: 500, message: 'Customer File index sequence exhausted; refusing write' };
+  }
 
   const putOpts = conditionalPutOptions(etag, { contentType: 'application/json' });
   if (!putOpts) {
@@ -653,6 +753,14 @@ async function releaseCheckout(env, id, identity, deviceId) {
 
   const next = Object.assign({}, index);
   delete next.checkout;
+  // A release is an ownership change. Stamping it is what stops a write
+  // authorized in one unleased moment from landing in the next one -- the
+  // epoch was the device name alone once, so every unleased moment was
+  // called "none" and they were indistinguishable.
+  const stamped = stampAuthority(index, next);
+  if (stamped.error) {
+    return { status: 500, message: 'Customer File index sequence exhausted; refusing write' };
+  }
 
   const putOpts = conditionalPutOptions(etag, { contentType: 'application/json' });
   if (!putOpts) {
@@ -683,9 +791,16 @@ async function assertWritableCheckout(request, env, id) {
   } catch (_) {
     return { ok: false, response: text(request, 'Corrupt Customer File index', 500) };
   }
+  // A file on its way out authorizes nothing, not even a start. Read from the
+  // index, which is the same object acceptance swaps against: a delete
+  // recorded here cannot be missed by a publication the way a separate
+  // tombstone object could.
+  if (index && index.purged) {
+    return { ok: false, response: text(request, 'Customer File permanently deleted', 409) };
+  }
   const checkout = index && index.checkout;
   if (!checkout || !trimStr(checkout.deviceId) || !normalizeEmail(checkout.email)) {
-    return { ok: true, exists: true, index: index, etag: etag };
+    return { ok: true, exists: true, index: index, etag: etag, authority: authorityOf(index) };
   }
 
   const identityResult = await requireIdentity(request, env);
@@ -700,14 +815,184 @@ async function assertWritableCheckout(request, env, id) {
       response: forbidden(request, 'Customer File is checked out by another user or device'),
     };
   }
-  return { ok: true, exists: true, index: index, etag: etag, identity: identityResult };
+  return { ok: true, exists: true, index: index, etag: etag, identity: identityResult,
+    authority: authorityOf(index) };
 }
 
-// The lease is the SERVER's, never the client's: an ordinary Sync write
-// carries back whatever the server holds and may not set, change or drop it.
+/**
+ * The lease is the SERVER's, never the client's: an ordinary Sync write
+ * carries back whatever the server holds and may not set, change or drop it.
+ *
+ * The same now goes for the acceptance references, the revisions they
+ * advertise, the sequence, the authority epoch and the deletion state. The
+ * client used to write the <name>UpdatedAt fields itself; with the server
+ * owning the reference, letting it keep writing them would let it announce a
+ * revision that does not describe the accepted bytes -- and that is the field
+ * js/sync.js compares to decide which side is newer.
+ */
 function applyServerLease(gate, body) {
-  if (gate && gate.index && gate.index.checkout) body.checkout = gate.index.checkout;
-  else delete body.checkout;
+  applyServerOwnedIndexFields(gate && gate.index, body);
+}
+
+/**
+ * PUBLISH A COMPONENT. The protocol, against the real store.
+ *
+ * Two writes, in this order, and only the second one decides anything:
+ *   1. An immutable candidate at a unique key, create-only. Accepted bytes
+ *      are never overwritten, so a stale writer cannot destroy current work
+ *      even if everything after this point goes wrong.
+ *   2. One compare-and-swap on the index that moves the reference and the
+ *      advertised revision together. A takeover, a release or any other
+ *      index write in between loses this device the swap.
+ *
+ * What it refuses, and why each one was reachable:
+ *   - no usable revision: the ordering check would be skipped entirely and
+ *     an old client could publish over newer content with a 200, leaving the
+ *     advertised field describing the bytes it had just replaced.
+ *   - an older instant: two uploads from one owner can complete out of order.
+ *   - the same instant with different bytes: the client's own comparison
+ *     cannot tell them apart, so chooseSide() says 'skip' and nothing would
+ *     ever fetch the new bytes. Silent divergence.
+ *   - a deleted file, read from the index inside the swap boundary.
+ *   - a candidate this request did not write.
+ */
+async function publishComponent(request, env, id, name) {
+  const tomb = await env.CABINET.head(purgeKey(id));
+  if (tomb) return text(request, 'Customer File permanently deleted', 409);
+
+  let gate = await assertWritableCheckout(request, env, id);
+  if (!gate.ok) return gate.response;
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (_) {
+    return badRequest(request, 'Invalid JSON');
+  }
+
+  // The revision comes out of the component's OWN body, from the same field
+  // js/sync.js componentRevision() reads. No new header, no client change,
+  // and the server cannot end up advertising a revision the component does
+  // not carry.
+  const ms = bodyRevisionMs(name, body);
+  if (ms === null) {
+    return badRequest(request, 'Component carries no usable ' + name + ' revision');
+  }
+  const revision = canonicalRev(ms);
+
+  // Written BEFORE the candidate: a request that cannot be accepted should
+  // not leave bytes behind.
+  const bytes = JSON.stringify(body);
+  const key = candidateComponentKey(id, name, newCandidateToken());
+  const wrote = await env.CABINET.put(key, bytes, createOnlyPutOptions({
+    contentType: 'application/json',
+  }));
+  if (wrote === null) {
+    // A fresh token cannot collide, so this is a store fault rather than a
+    // race. Either way a create that did not happen is not a licence to
+    // publish -- the only way on would be proving this exact object already
+    // holds exactly these bytes, which a fresh token makes impossible.
+    return text(request, 'Component candidate could not be stored', 500);
+  }
+
+  /**
+   * A FIRST SYNC arrives components-first.
+   *
+   * js/sync.js syncOneRecord pushes every changed component and only then
+   * writes the index, so on a Customer File the Cabinet has never seen the
+   * index does not exist yet when the first component lands. The old handler
+   * did not care -- it wrote the component unconditionally. Acceptance needs
+   * an index to swap against, so one is created here, create-only, and the
+   * client's own index write moments later falls into the ordinary
+   * conditional path and fills in the rest.
+   *
+   * Create-only, so two devices racing a first sync cannot both win it: the
+   * loser re-reads and goes through the gate against what is actually there.
+   *
+   * Honest about the gap: between this create and the client's index write,
+   * a Cabinet listing shows the file with no customer name on it, because
+   * the name lives in the index the client has not sent yet. It is one round
+   * trip wide, and the alternative -- refusing the component -- would mean a
+   * new Customer File could never reach the Cabinet at all.
+   */
+  if (!gate.exists) {
+    const opening = { id: id, seq: 1, authoritySeq: 1, components: {} };
+    opening.components[name] = { key: key, revision: revision };
+    opening[revField(name)] = revision;
+    const created = await env.CABINET.put(indexKey(id), JSON.stringify(opening),
+      createOnlyPutOptions({ contentType: 'application/json' }));
+    if (created !== null) return json(request, { ok: true, revision: revision, created: true });
+    // Lost the create. Run the gate again against what is there now, which
+    // refuses outright if the file already belongs to another device.
+    gate = await assertWritableCheckout(request, env, id);
+    if (!gate.ok) return gate.response;
+    if (!gate.exists) {
+      return text(request, 'Customer File index could not be created', 500);
+    }
+  }
+
+  const authority = gate.authority;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const stored = gate.index;
+    // Read from the version this attempt is about to swap against. A delete
+    // landing after this line changes the index, so the swap fails and the
+    // next attempt sees it.
+    if (stored && stored.purged) {
+      return text(request, 'Customer File permanently deleted', 409);
+    }
+    const acceptedMs = revMs(stored && stored[revField(name)]);
+    if (acceptedMs !== null && ms < acceptedMs) {
+      return conflict(request, 'A newer ' + name + ' is already stored; sync again');
+    }
+    if (acceptedMs !== null && ms === acceptedMs) {
+      const current = resolveAcceptedComponent(stored, id, name);
+      const there = await env.CABINET.get(current.key);
+      if (there) {
+        const already = await there.text();
+        if (already === bytes) {
+          // An honest retry of a write that already landed. Answering 409
+          // here would send the owner chasing it.
+          return json(request, { ok: true, revision: revision, unchanged: true });
+        }
+        return conflict(request,
+          'A different ' + name + ' is stored at the same revision; save again');
+      }
+      // The reference points at nothing. Publishing repairs it; refusing
+      // would leave the component unreadable at this revision for good.
+    }
+
+    const components = Object.assign({}, (stored && stored.components) || {});
+    components[name] = { key: key, revision: revision };
+    const next = Object.assign({}, stored, { components: components });
+    // The reference and the field the client orders by move TOGETHER, so they
+    // can never describe different bytes.
+    next[revField(name)] = revision;
+    const bumped = nextSeq(stored);
+    if (bumped.error) {
+      return text(request, 'Customer File index sequence exhausted; refusing write', 500);
+    }
+    next.seq = bumped.seq;
+
+    const putOpts = conditionalPutOptions(gate.etag, { contentType: 'application/json' });
+    if (!putOpts) {
+      return text(request, 'Missing object ETag; refusing unsafe component publish', 500);
+    }
+    const put = await env.CABINET.put(indexKey(id), JSON.stringify(next), putOpts);
+    if (put !== null) return json(request, { ok: true, revision: revision });
+
+    // Something changed the index under us. RE-AUTHORIZE rather than retry
+    // blind -- and against the authority EPOCH, not merely the device. A
+    // device can lose the file and get it back, and this payload was composed
+    // before whatever the other device did in between; republishing it would
+    // discard that work silently.
+    gate = await assertWritableCheckout(request, env, id);
+    if (!gate.ok) return gate.response;
+    if (!gate.exists) return notFound(request);
+    if (gate.authority !== authority) {
+      return forbidden(request, 'Customer File ownership changed during save; sync again');
+    }
+  }
+  return conflict(request, 'Customer File index changed during save; sync again');
 }
 
 const PWA_ORIGIN = 'https://sandiageotoolbox.com';
@@ -940,6 +1225,10 @@ export default {
           // checkout on it, and this write would then erase that lease while
           // returning 200 -- the same shape of fault the conditional update
           // below was added to fix, left standing on the path beside it.
+          // The first version of an index starts the sequence, so even a
+          // brand-new file's authority epoch is stamped from a real number.
+          body.seq = 1;
+          if (typeof body.authoritySeq !== 'number') body.authoritySeq = 1;
           const created = await env.CABINET.put(
             indexKey(id),
             JSON.stringify(body),
@@ -969,6 +1258,13 @@ export default {
           if (!putOpts) {
             return text(request, 'Missing object ETag; refusing unsafe index write', 500);
           }
+          // Every index version is a new number, so no index body can repeat
+          // and no content-addressed ETag can come back around.
+          const bumped = nextSeq(gate.index);
+          if (bumped.error) {
+            return text(request, 'Customer File index sequence exhausted; refusing write', 500);
+          }
+          body.seq = bumped.seq;
           const putResult = await env.CABINET.put(indexKey(id), JSON.stringify(body), putOpts);
           // Conditional put returns null when the precondition fails.
           if (putResult !== null) return json(request, { ok: true });
@@ -992,25 +1288,32 @@ export default {
       const name = decodeURIComponent(match[2]);
       if (!COMPONENT_NAMES[name]) return badRequest(request, 'Unknown component');
       if (request.method === 'GET') {
-        const got = await env.CABINET.get(componentKey(id, name));
-        if (!got) return notFound(request);
-        return json(request, await got.json());
+        // Through the SAME resolution every other reader uses, so a GET can
+        // never answer with a different version than the archive, the listing
+        // or the purge would find.
+        const indexRead = await readStoredJson(await env.CABINET.get(indexKey(id)));
+        if (indexRead.corrupt) return text(request, 'Corrupt Customer File index', 500);
+        const resolved = resolveAcceptedComponent(indexRead.body, id, name);
+        const got = await env.CABINET.get(resolved.key);
+        if (!got) {
+          // A reference pointing at nothing is a FAULT, not a cue to fall
+          // back. Falling back would serve bytes the owner already replaced,
+          // and the client would take them as current.
+          if (resolved.from === 'accepted') {
+            return text(request, 'Accepted component object is missing', 500);
+          }
+          return notFound(request);
+        }
+        const payload = await got.json();
+        // The fallback is checked, not trusted. See legacyIsStale.
+        if (resolved.from === 'legacy' && legacyIsStale(indexRead.body, name, payload)) {
+          return text(request,
+            'Stored ' + name + ' is older than the revision the index advertises', 500);
+        }
+        return json(request, payload);
       }
       if (request.method === 'PUT') {
-        const tomb = await env.CABINET.head(purgeKey(id));
-        if (tomb) return text(request, 'Customer File permanently deleted', 409);
-        const writeGate = await assertWritableCheckout(request, env, id);
-        if (!writeGate.ok) return writeGate.response;
-        let body;
-        try {
-          body = await request.json();
-        } catch (_) {
-          return badRequest(request, 'Invalid JSON');
-        }
-        await env.CABINET.put(componentKey(id, name), JSON.stringify(body), {
-          httpMetadata: { contentType: 'application/json' },
-        });
-        return json(request, { ok: true });
+        return publishComponent(request, env, id, name);
       }
     }
 
