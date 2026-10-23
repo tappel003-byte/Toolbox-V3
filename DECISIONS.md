@@ -21,6 +21,7 @@ Durable decisions already established in `VISION.md`, recorded here for quick re
 - A page does **not** keep a layout of its own. The old model had three places holding one answer — the page's copy, the book's copy, and a factory default — and whichever was found first won, so a page nobody had touched showed the factory position while the arranged page showed another.
 - There is **no Lock layout** control. Nothing to pin and nothing to release.
 - What stays per page: the readings themselves, the contour/palette/mode view settings, and whether the aerial is shown.
+- **One page may be placed on its own** (CHANGED by Tim, Oct 23, 2026). A Combined figure carries no contour legend and no H/L/Δ pill — those go in the rail — so its left column is free and the plan may want the middle of it. The control sits in the Floor Survey rail: *Place this slide on its own* / *Use the shared placement*. It is never automatic, the page says so while it is on its own, and it is reversible. A page on its own falls back to the **shared record**, never to the factory default — that default is what put an aerial in the corner of a page nobody had touched.
 
 ## The sheet is the paper (Oct 22, 2026)
 

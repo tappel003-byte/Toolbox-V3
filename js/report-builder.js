@@ -2981,8 +2981,70 @@
       var flApi = window.ToolboxReportFloorLayout;
       floorLayout = flApi ? flApi.normalizeLayout(next) : next;
       pages.forEach(function (fp) {
-        if (fp && fp.type === 'floor') fp._bookFloorLayout = floorLayout;
+        if (!fp || fp.type !== 'floor') return;
+        // A slide placed on its own is not following the shared record any
+        // more, so it is not restamped from it.
+        if (fp.meta && fp.meta.ownLayout) return;
+        fp._bookFloorLayout = floorLayout;
       });
+    }
+
+    /** Is this slide placed on its own, rather than following the report? */
+    function floorSlideOnItsOwn(page) {
+      return !!(page && page.meta && page.meta.ownLayout);
+    }
+
+    /**
+     * The way a slide's placement is written, which depends on whose it is.
+     *
+     * One record is the rule, and a Combined figure is the reason there is an
+     * exception: it carries no colour scale and no readings pill -- that was
+     * settled, they go in the rail -- so its whole left column is free and the
+     * plan wants to sit in the middle of it rather than clear of chrome that
+     * is not on the page. Tim: "on the combined view, I would probably put it
+     * more towards the middle ... I don't have contours or pills to show."
+     *
+     * It is never automatic. A slide goes on its own because it was put
+     * there, it says so while it is, and it can be put back. And when it IS
+     * on its own it falls back to the shared record, never to the factory
+     * default -- that default is what put an aerial in the corner of a slide
+     * nobody had touched.
+     */
+    function putFloorLayoutFor(page) {
+      return function (next) {
+        if (!next) return;
+        var flApi = window.ToolboxReportFloorLayout;
+        if (!floorSlideOnItsOwn(page)) {
+          putFloorLayout(next);
+          return;
+        }
+        page.meta.ownLayout = flApi ? flApi.normalizeLayout(next) : next;
+        page._bookFloorLayout = page.meta.ownLayout;
+      };
+    }
+
+    /** Take this slide off the shared placement, or put it back on it. */
+    function setFloorSlideOnItsOwn(page, onItsOwn) {
+      if (!page || page.type !== 'floor') return;
+      var flApi = window.ToolboxReportFloorLayout;
+      page.meta = page.meta || {};
+      if (onItsOwn) {
+        if (page.meta.ownLayout) return;
+        // Seeded from what the slide is showing RIGHT NOW, so nothing moves
+        // at the moment it is taken off.
+        page.meta.ownLayout = flApi
+          ? flApi.cloneLayout(page._bookFloorLayout || floorLayout)
+          : (page._bookFloorLayout || floorLayout);
+        page._bookFloorLayout = page.meta.ownLayout;
+      } else {
+        if (!page.meta.ownLayout) return;
+        delete page.meta.ownLayout;
+        page._bookFloorLayout = floorLayout;
+      }
+      page._putFloorLayout = putFloorLayoutFor(page);
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
     }
 
     function floorViewFor(page, slot) {
@@ -3553,8 +3615,13 @@
       });
 
       if (current && current.type === 'floor') {
-        current._bookFloorLayout = floorLayout;
-        current._putFloorLayout = putFloorLayout;
+        var curOwn = current.meta && current.meta.ownLayout;
+        current._bookFloorLayout = curOwn
+          ? (window.ToolboxReportFloorLayout
+            ? window.ToolboxReportFloorLayout.normalizeLayout(curOwn)
+            : curOwn)
+          : floorLayout;
+        current._putFloorLayout = putFloorLayoutFor(current);
         if (current.meta && current.meta.layout) delete current.meta.layout;
       }
       // Stamped on every page that needs it, not only on the one being
@@ -3620,10 +3687,18 @@
           seededPieces = true;
           seedPieceSizes(item);
         }
-        item._bookFloorLayout = floorLayout;
-        item._putFloorLayout = putFloorLayout;
-        // Any copy a slide was saved with under the old model is dead weight
+        // The report's placement, unless this slide was deliberately taken
+        // off it. ownLayout is only ever there because somebody put it there.
+        var ownLayout = item.meta && item.meta.ownLayout;
+        item._bookFloorLayout = ownLayout
+          ? (window.ToolboxReportFloorLayout
+            ? window.ToolboxReportFloorLayout.normalizeLayout(ownLayout)
+            : ownLayout)
+          : floorLayout;
+        item._putFloorLayout = putFloorLayoutFor(item);
+        // Any copy a slide was saved with under the OLD model is dead weight
         // now and would only be a second answer waiting to be read again.
+        // ownLayout is not that: it is a placement asked for by hand.
         if (item.meta && item.meta.layout) delete item.meta.layout;
         // How big the colour scale is drawn on the page. It is the slide's
         // own Legend size -- the same control that sizes it on the Floor
@@ -4004,13 +4079,24 @@
           // and where the colour scale and the readings sit and how big they
           // are -- is what this pins. Contours on or off, palette and mode
           // stay free per slide, which is the reason to lock first.
+          var onItsOwn = floorSlideOnItsOwn(page);
           var lockHint = document.createElement('p');
           lockHint.className = 'rb-panel__lead';
-          lockHint.textContent =
-            'The plan, the colour scale, the readings and the aerial sit in one '
-            + 'place on every Floor Survey slide. Move one here and it moves on '
-            + 'all of them. Contours and palette stay per slide.';
+          lockHint.textContent = onItsOwn
+            ? 'This slide is placed on its own. Moving the plan, the colour '
+              + 'scale, the readings or the aerial here changes this slide only.'
+            : 'The plan, the colour scale, the readings and the aerial sit in one '
+              + 'place on every Floor Survey slide. Move one here and it moves on '
+              + 'all of them. Contours and palette stay per slide.';
           wrap.appendChild(lockHint);
+          // A Combined figure carries no colour scale and no readings pill --
+          // they go in the rail -- so its left column is free and the plan
+          // may want the middle of it. Tim: "on the combined view, I would
+          // probably put it more towards the middle."
+          wrap.appendChild(railButton(
+            onItsOwn ? 'Use the shared placement' : 'Place this slide on its own',
+            onItsOwn ? 'secondary' : 'quiet',
+            'data-rb-floor-own', onItsOwn ? 'share' : 'own'));
 
           var twoUp = floorSlots(page) > 1;
           wrap.appendChild(railButton(
@@ -4094,6 +4180,14 @@
     // delegation rather than by listeners attached once at mount.
     if (railEl) {
       railEl.addEventListener('click', function (event) {
+        var ownBtn = event.target.closest('[data-rb-floor-own]');
+        if (ownBtn) {
+          event.preventDefault();
+          var ownPage = activePage();
+          if (!ownPage || ownPage.type !== 'floor') return;
+          setFloorSlideOnItsOwn(ownPage, ownBtn.getAttribute('data-rb-floor-own') === 'own');
+          return;
+        }
         var templateBtn = event.target.closest('[data-rb-template]');
         if (templateBtn) {
           event.preventDefault();
@@ -6412,12 +6506,16 @@
           overlay.y = (origin ? origin.y : 0) + dy;
         }
       }
-      // Straight into the report's one record, so every Floor Survey slide
-      // has already moved by the time the drag ends. It used to be written
-      // onto this slide, and onto the book only while nothing was locked --
-      // which is how two slides came to hold two different answers.
+      // Written through the slide, not straight at the report.
+      //
+      // For a slide following the shared placement this IS the report's one
+      // record, so every Floor Survey slide has moved by the time the drag
+      // ends -- that is the rule. For a slide that was deliberately placed on
+      // its own, it is that slide's. Writing the record directly here made
+      // the drag ignore which of the two it was, so moving a piece on a slide
+      // placed on its own moved every other slide with it.
       layout = flApi ? flApi.normalizeLayout(layout) : layout;
-      putFloorLayout(layout);
+      (current._putFloorLayout || putFloorLayout)(layout);
       var box = sheetEl.querySelector('[data-rb-floor-box="' + floorDrag.id + '"]');
       if (!box) return;
       if (floorDrag.id === 'overview') {
@@ -6688,7 +6786,9 @@
         });
         if (!found) return;
       }
-      putFloorLayout(layout);
+      // Through the slide as well: bringing a piece forward on a slide placed
+      // on its own is that slide's business.
+      (page._putFloorLayout || putFloorLayout)(layout);
       markDirty();
       renderPages();
       flushSave().catch(function () {});
