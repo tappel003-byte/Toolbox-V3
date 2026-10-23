@@ -9,7 +9,7 @@
  */
 
 import { requireObjectEtag, conditionalPutOptions } from './r2-conditional.js';
-import { exploreResult } from './explore.js';
+import { exploreResult, mediaRefsFromPlans } from './explore.js';
 
 /** PWA origin only — Access cookie sync uses credentials:include (no *). */
 const ALLOWED_ORIGINS = {
@@ -346,14 +346,15 @@ function safeMediaId(id) {
     id.indexOf('..') === -1;
 }
 
+// The same collector File Explorer lists and archives with, so a permanent
+// delete removes exactly what an archive would have contained -- the floor
+// plan AND the contour layer drawn from the readings. Reading only the plan
+// here left the contour bytes orphaned in the bucket on every permanent
+// delete. Audit finding 7.
 function mediaIdsFromPlansComponent(plans) {
-  const canvases = plans && Array.isArray(plans.canvases) ? plans.canvases : [];
-  const ids = [];
-  canvases.forEach(function (canvas) {
-    const id = canvas && canvas.plan && canvas.plan.id;
-    if (safeMediaId(id)) ids.push(id);
-  });
-  return ids;
+  return mediaRefsFromPlans(plans, [])
+    .map(function (ref) { return ref && ref.id; })
+    .filter(function (id) { return safeMediaId(id); });
 }
 
 function mediaIdsFromDiagnosticsComponent(diagnostics) {
