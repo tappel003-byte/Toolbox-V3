@@ -4018,6 +4018,17 @@
             'quiet', 'data-rb-floor-twoup', twoUp ? 'off' : 'on'));
           wrap.appendChild(railButton(
             'Use this as my default', 'quiet', 'data-rb-template', 'floor'));
+          // The cover's copy of this button carries a line saying what it
+          // does; this one did not, so it read as though it might change
+          // something about THIS report. It does not: inside a report the
+          // arrangement is the arrangement, on every floor slide, and this
+          // only decides where the pieces start in the next one.
+          var floorDefaultHint = document.createElement('p');
+          floorDefaultHint.className = 'rb-panel__lead';
+          floorDefaultHint.textContent =
+            'New reports start with the plan, the colour scale, the readings '
+            + 'and the aerial where they are here.';
+          wrap.appendChild(floorDefaultHint);
           return wrap;
         };
       }
