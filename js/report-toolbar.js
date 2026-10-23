@@ -80,15 +80,29 @@
   // nothing to single-line paragraphs. The gap between separate paragraphs is
   // space after. Someone trying to close up an address block needs the second
   // one, and "No space after" did not say so.
+  // Line spacing is the gap between the lines INSIDE a paragraph. The gap
+  // between paragraphs is made by pressing return, not by a setting.
+  //
+  // This was Word's menu copied across: five line heights, then two verbs --
+  // "Remove Space After Paragraph" and "Add Space After Paragraph" -- which
+  // are one setting written as two commands, with nothing to say which of
+  // them is currently in force. And the word "Remove" reads as though it
+  // takes away returns, which it never did; it closed a 9 pt gap the
+  // stylesheet was adding underneath every paragraph.
+  //
+  // Tim: "I don't understand it always ... that always jacks up my spacing.
+  // It's the bane of my existence. I don't like that setting in Word."
+  //
+  // So the paragraph gap is gone from the page entirely and the menu is the
+  // three line heights anyone actually reaches for. The last entry is there
+  // for a paragraph that was given a gap of its own by an older build, so a
+  // report already carrying one is not stranded with it.
   var LINE_SPACING = [
     { value: 'lh:1', label: 'Single' },
-    { value: 'lh:1.15', label: '1.15' },
-    { value: 'lh:1.25', label: '1.25' },
     { value: 'lh:1.5', label: '1.5' },
     { value: 'lh:2', label: 'Double' },
     { value: 'sep', label: '' },
-    { value: 'sa:0', label: 'Remove Space After Paragraph' },
-    { value: 'sa:9', label: 'Add Space After Paragraph' },
+    { value: 'sa:0', label: 'Close the gap under this paragraph' },
   ];
 
   var activeField = null;

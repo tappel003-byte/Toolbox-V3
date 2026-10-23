@@ -3417,16 +3417,30 @@ body.is-presenting { overflow: hidden; }
 
 
 
-.rb-discussion__body .rb-rt__p { margin: 0 0 0.75em; }
-.rb-discussion__body .rb-rt__p:last-child { margin-bottom: 0; }
+/* The returns are the spacing.
+ *
+ * Every paragraph carried an automatic three-quarter-line gap, so one return
+ * already opened a space and two returns opened two of them plus an empty
+ * line -- and the only way to close any of it was a menu whose labels did not
+ * say what they did. Tim: "that always jacks up my spacing. It's the bane of
+ * my existence ... basically every time you hit return, or hit return twice,
+ * it adds one line space in it, I'm fine with that."
+ *
+ * So nothing is added behind the typing. One return starts a new line; two
+ * returns leave a blank one, because an empty paragraph is written as a <br>
+ * and stands a line high. What is on the page is what was typed.
+ *
+ * A paragraph that was given a gap of its own, by this report or an older
+ * one, still carries it: that is an inline style and it wins over this. */
+.rb-discussion__body .rb-rt__p { margin: 0; }
 
 .rb-discussion__body .rb-rt__list {
-  margin: 0 0 0.75em;
+  margin: 0;
   padding-left: 1.6em;
 }
 
 .rb-discussion__body .rb-rt__p--bullet,
-.rb-discussion__body .rb-rt__p--number { margin: 0 0 0.3em; }
+.rb-discussion__body .rb-rt__p--number { margin: 0; }
 
 /* ------------------------------------------------------------------ *
  * The logo — one placement, every page
