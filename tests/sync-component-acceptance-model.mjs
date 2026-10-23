@@ -51,14 +51,19 @@ import { createHash } from 'crypto';
 function store() {
   const objects = new Map();
   const etagOf = (body) => createHash('md5').update(String(body)).digest('hex');
+  // Keys whose next write fails outright. A create that did not happen is not
+  // the same as a create that lost a collision, and both must stop a publish.
+  const failing = new Set();
   return {
     objects,
+    failNext(key) { failing.add(key); },
     get(key) {
       const body = objects.get(key);
       return body === undefined ? null : { body, etag: etagOf(body) };
     },
     /** onlyIf: { etagMatches } or { createOnly: true }. null means refused. */
     put(key, body, onlyIf) {
+      if (failing.has(key)) { failing.delete(key); return null; }
       const existing = objects.get(key);
       if (onlyIf && onlyIf.createOnly && existing !== undefined) return null;
       if (onlyIf && onlyIf.etagMatches !== undefined) {
@@ -71,9 +76,22 @@ function store() {
   };
 }
 
+/**
+ * The field the CLIENT actually orders by.
+ *
+ * js/sync.js indexRev() reads customerUpdatedAt / plansUpdatedAt /
+ * distressUpdatedAt / floorUpdatedAt / diagnosticsUpdatedAt /
+ * reportUpdatedAt / trashUpdatedAt from the index, and compares them with the
+ * component's own updatedAt. An invented integer counter beside those would
+ * be a second revision nobody reads. Publication therefore sets THIS field,
+ * atomically with the reference, from the bytes being accepted.
+ */
+const revField = (name) => `${name}UpdatedAt`;
+
 const indexKey = (id) => `cf/${id}/index.json`;
 const legacyKey = (id, name) => `cf/${id}/${name}.json`;
 const candidateKey = (id, name, token) => `cf/${id}/c/${name}/${token}.json`;
+const purgeKey = (id) => `purge/${id}.json`;
 
 function readIndex(db, id) {
   const got = db.get(indexKey(id));
@@ -104,9 +122,16 @@ function ownerOf(doc) {
  * seq never repeats, so a lease epoch never repeats either -- which is also
  * what defeats an index body that repeats byte for byte.
  */
-function leaseOf(doc) {
+function authorityOf(doc) {
   const c = doc && doc.checkout;
-  return c && c.deviceId ? `${c.deviceId}@${c.leaseSeq}` : 'none';
+  // The epoch is WHO may write and WHEN that was decided. Keying it on the
+  // device alone gave every unleased moment the same name -- "none" -- so a
+  // request authorized before a handoff was still authorized after one that
+  // ended unleased. authoritySeq is stamped from the index sequence on every
+  // authority change, including a release, so it never repeats.
+  const who = c && c.deviceId ? c.deviceId : 'none';
+  const when = doc && typeof doc.authoritySeq === 'number' ? doc.authoritySeq : 0;
+  return `${who}@${when}`;
 }
 
 /** The gate: who may write, and the index version that authorized it. */
@@ -115,7 +140,7 @@ function gate(db, id, deviceId) {
   if (!read) return { ok: false, status: 404 };
   const owner = ownerOf(read.doc);
   if (owner && owner !== deviceId) return { ok: false, status: 403 };
-  return { ok: true, doc: read.doc, etag: read.etag, lease: leaseOf(read.doc) };
+  return { ok: true, doc: read.doc, etag: read.etag, authority: authorityOf(read.doc) };
 }
 
 /**
@@ -129,7 +154,9 @@ function grantLease(db, id, deviceId) {
   const read = readIndex(db, id);
   if (!read) return { status: 404 };
   const next = { ...read.doc,
-    checkout: deviceId ? { deviceId, leaseSeq: (read.doc.seq || 0) + 1 } : null };
+    checkout: deviceId ? { deviceId } : null,
+    // Stamped on EVERY authority change, a release included.
+    authoritySeq: (read.doc.seq || 0) + 1 };
   const put = writeIndex(db, id, next, read.etag);
   return { status: put === null ? 409 : 200 };
 }
@@ -144,42 +171,63 @@ function takeover(db, id, deviceId) {
  * The component upload. `pause` lets a test hold a device between the gate
  * and the publication, which is the whole window the defect lives in.
  */
-function startComponentPut(db, id, name, deviceId, body, token) {
+function startComponentPut(db, id, name, deviceId, body, token, revision) {
   const g = gate(db, id, deviceId);
   if (!g.ok) return { authorized: false, status: g.status, finish: () => ({ status: g.status }) };
-  // The candidate is written immediately and can never collide: unique key,
-  // create-only. Accepted bytes are not reachable from here.
-  const wrote = db.put(candidateKey(id, name, token), JSON.stringify(body), { createOnly: true });
+  const key = candidateKey(id, name, token);
+  const bytes = JSON.stringify(body);
+  const wrote = db.put(key, bytes, { createOnly: true });
+  let candidateOk = wrote !== null;
+  if (!candidateOk) {
+    // A create that did not happen is NOT a licence to publish. The only way
+    // on from here is proving this exact object already holds exactly these
+    // bytes -- an idempotent retry of our own write. Anything else, including
+    // an indeterminate failure, stops.
+    const there = db.get(key);
+    candidateOk = !!there && there.body === bytes;
+  }
   return {
     authorized: true,
-    candidate: candidateKey(id, name, token),
-    wroteCandidate: wrote !== null,
-    /** Publication, attempted against the index version the gate read. */
+    candidate: key,
+    wroteCandidate: candidateOk,
     finish: (attempts = 2) => {
-      let authorizedEtag = g.etag;
-      let authorizedDoc = g.doc;
-      const authorizedLease = g.lease;
+      if (!candidateOk) {
+        return { status: 409, published: false, reason: 'candidate not written' };
+      }
+      let etag = g.etag;
+      let doc = g.doc;
+      const authority = g.authority;
       for (let i = 0; i < attempts; i += 1) {
-        const components = { ...(authorizedDoc.components || {}) };
-        const prev = components[name];
-        components[name] = {
-          key: candidateKey(id, name, token),
-          revision: (prev && prev.revision ? prev.revision : 0) + 1,
-        };
-        const put = writeIndex(db, id,
-          { ...authorizedDoc, components }, authorizedEtag);
-        if (put !== null) return { status: 200, published: true };
-        // Lost the CAS. RE-AUTHORIZE -- never retry blind -- and require the
-        // SAME LEASE, not merely the same device. A device that lost the file
-        // and got it back is holding a payload composed before whatever
-        // happened in between; republishing it would discard that work.
+        // A file on its way out must not gain accepted bytes.
+        if (db.get(purgeKey(id))) {
+          return { status: 409, published: false, reason: 'permanently deleted' };
+        }
+        const accepted = (doc.components || {})[name];
+        const acceptedRev = doc[revField(name)] || '';
+        // ORDER BY THE SOURCE REVISION, not by who finished last. Two uploads
+        // from one owner can complete out of order; the older edit must not
+        // become current merely because its network call landed second.
+        if (revision && acceptedRev && revision < acceptedRev) {
+          return { status: 409, published: false, reason: 'superseded', acceptedRev };
+        }
+        const components = { ...(doc.components || {}) };
+        components[name] = { key, revision: revision || acceptedRev || '' };
+        const next = { ...doc, components };
+        // The reference and the field the client orders by move TOGETHER, in
+        // one compare-and-swap, so they can never describe different bytes.
+        if (revision) next[revField(name)] = revision;
+        const put = writeIndex(db, id, next, etag);
+        if (put !== null) return { status: 200, published: true, accepted: accepted };
         const again = gate(db, id, deviceId);
         if (!again.ok) return { status: again.status, published: false };
-        if (again.lease !== authorizedLease) return { status: 403, published: false };
-        authorizedEtag = again.etag;
-        authorizedDoc = again.doc;
+        // Same AUTHORITY, not merely the same device.
+        if (again.authority !== authority) {
+          return { status: 403, published: false, reason: 'authority changed' };
+        }
+        etag = again.etag;
+        doc = again.doc;
       }
-      return { status: 409, published: false };
+      return { status: 409, published: false, reason: 'contended' };
     },
   };
 }
@@ -198,7 +246,11 @@ function acceptedBytes(db, id, name) {
   // A reference pointing at nothing is an ERROR. Never fall back silently:
   // falling back would serve bytes an owner had already replaced.
   if (!got) return { error: 'accepted object missing' };
-  return { from: 'accepted', body: JSON.parse(got.body), revision: ref.revision };
+  return {
+    from: 'accepted', body: JSON.parse(got.body), revision: ref.revision,
+    // What js/sync.js would actually read for its ordering decision.
+    advertised: read.doc[revField(name)] || '',
+  };
 }
 
 function seed(opts = {}) {
@@ -250,8 +302,8 @@ function seed(opts = {}) {
   check('a payload from a previous lease is refused even back in A\u2019s hands',
     done.status === 403 && now.body.note === 'A work',
     JSON.stringify({ done, now }));
-  check('because every lease is stamped with a sequence that never repeats',
-    JSON.parse(db.get(indexKey(id)).body).checkout.leaseSeq > 0 &&
+  check('because every authority change is stamped with a sequence that never repeats',
+    JSON.parse(db.get(indexKey(id)).body).authoritySeq > 0 &&
     JSON.parse(db.get(indexKey(id)).body).seq > 2,
     db.get(indexKey(id)).body);
 }
@@ -267,9 +319,9 @@ function seed(opts = {}) {
   takeover(db, id, 'B');
   grantLease(db, id, 'A');
   const replayed = db.get(indexKey(id)).body;
-  check('a lease value can never be replayed, so the epoch cannot repeat',
-    JSON.parse(original).checkout.leaseSeq !== JSON.parse(replayed).checkout.leaseSeq,
-    `${JSON.parse(original).checkout.leaseSeq} vs ${JSON.parse(replayed).checkout.leaseSeq}`);
+  check('an authority epoch can never be replayed',
+    authorityOf(JSON.parse(original)) !== authorityOf(JSON.parse(replayed)),
+    `${authorityOf(JSON.parse(original))} vs ${authorityOf(JSON.parse(replayed))}`);
   const done = a.finish();
   check('and the stale publication stays refused',
     done.status === 403, JSON.stringify(done));
@@ -307,15 +359,16 @@ function seed(opts = {}) {
 // ------------------------------- two uploads from the SAME owner overlap
 {
   const { db, id } = seed({ accepted: { note: 'old' } });
-  const one = startComponentPut(db, id, 'floor', 'A', { note: 'first' }, 'a5');
-  const two = startComponentPut(db, id, 'floor', 'A', { note: 'second' }, 'a6');
+  const one = startComponentPut(db, id, 'floor', 'A', { note: 'first' }, 'a5', '2026-10-23T10:00:00Z');
+  const two = startComponentPut(db, id, 'floor', 'A', { note: 'second' }, 'a6', '2026-10-23T11:00:00Z');
   const r1 = one.finish();
   const r2 = two.finish();
   const now = acceptedBytes(db, id, 'floor');
   check('both same-owner uploads succeed', r1.status === 200 && r2.status === 200,
     JSON.stringify({ r1, r2 }));
-  check('the later one is accepted, and the revision moved twice',
-    now.body.note === 'second' && now.revision === 3, JSON.stringify(now));
+  check('the newer EDIT is accepted and advertised',
+    now.body.note === 'second' && now.advertised === '2026-10-23T11:00:00Z',
+    JSON.stringify(now));
 }
 
 // ---------------------------------------- check in, then re-acquire
@@ -372,7 +425,8 @@ function seed(opts = {}) {
 // ----------------------- an ordinary index PUT must not roll acceptance back
 {
   const { db, id } = seed({ accepted: { note: 'old' } });
-  const a = startComponentPut(db, id, 'floor', 'A', { note: 'accepted' }, 'b2');
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'accepted' }, 'b2',
+    '2026-10-23T12:00:00Z');
   a.finish();
   const read = readIndex(db, id);
   // A client sends an index body with no components map at all, exactly as a
@@ -382,14 +436,148 @@ function seed(opts = {}) {
     ...clientBody,
     seq: read.doc.seq,
     checkout: read.doc.checkout,
-    components: read.doc.components,     // server-owned, preserved like checkout
+    authoritySeq: read.doc.authoritySeq,
+    components: read.doc.components,          // server-owned, like checkout
+    // The advertised revision is server-owned TOO. Preserving the reference
+    // while letting a client set this field would let it announce a version
+    // that does not describe the accepted bytes -- and this is the field
+    // js/sync.js actually compares.
+    [revField('floor')]: read.doc[revField('floor')],
   };
   writeIndex(db, id, serverKept, read.etag);
   const now = acceptedBytes(db, id, 'floor');
   check('an ordinary index write preserves the accepted reference',
-    now.body.note === 'accepted' && now.revision === 2, JSON.stringify(now));
+    now.body.note === 'accepted' && now.advertised === '2026-10-23T12:00:00Z',
+    JSON.stringify(now));
   check('and still carries the client’s own change',
     JSON.parse(db.get(indexKey(id)).body).displayName === 'renamed', 'renamed');
+}
+
+// ============================ GPT-009's counterexamples ====================
+
+// 1. A handoff that passes through NO checkout at all.
+//    The old epoch was the device name, so every unleased moment was called
+//    "none" and a request authorized before the handoff was still authorized
+//    after it. assertWritableCheckout permits unleased writes, so this is
+//    reachable under the existing contract, not a fabricated state.
+{
+  const { db, id } = seed({ accepted: { note: 'old' } });
+  grantLease(db, id, null);                       // released: unleased
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'pre-handoff stale' },
+    'u1', '2026-10-23T09:00:00Z');
+  check('a write is authorized while the file is unleased', a.authorized);
+  grantLease(db, id, 'B');
+  const b = startComponentPut(db, id, 'floor', 'B', { note: 'B accepted' }, 'u2',
+    '2026-10-23T10:00:00Z');
+  check('B acquires and is accepted', b.finish().status === 200);
+  grantLease(db, id, null);                       // B checks in: unleased again
+  const done = a.finish();
+  const now = acceptedBytes(db, id, 'floor');
+  check('a write from the PREVIOUS unleased moment cannot land in the next one',
+    done.status === 403 && now.body.note === 'B accepted',
+    JSON.stringify({ done, now }));
+}
+
+// 2. The candidate create FAILED. Publishing anyway accepted bytes this
+//    request never wrote.
+{
+  const { db, id } = seed({ accepted: { note: 'old' } });
+  db.put(candidateKey(id, 'floor', 'x1'), JSON.stringify({ note: 'unrelated bytes' }),
+    { createOnly: true });
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'intended bytes' }, 'x1',
+    '2026-10-23T10:00:00Z');
+  const done = a.finish();
+  const now = acceptedBytes(db, id, 'floor');
+  check('a lost create-only write refuses to publish',
+    a.wroteCandidate === false && done.published === false,
+    JSON.stringify({ wrote: a.wroteCandidate, done }));
+  check('and never accepts bytes this request did not write',
+    now.body.note === 'old', JSON.stringify(now));
+}
+
+// 2b. The same, by outright failure rather than collision.
+{
+  const { db, id } = seed({ accepted: { note: 'old' } });
+  db.failNext(candidateKey(id, 'floor', 'x2'));
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'intended' }, 'x2',
+    '2026-10-23T10:00:00Z');
+  const done = a.finish();
+  check('an outright failed candidate write refuses to publish too',
+    done.published === false && acceptedBytes(db, id, 'floor').body.note === 'old',
+    JSON.stringify(done));
+}
+
+// 2c. A genuine idempotent retry -- our own bytes already there -- may go on.
+{
+  const { db, id } = seed({ accepted: { note: 'old' } });
+  db.put(candidateKey(id, 'floor', 'x3'), JSON.stringify({ note: 'mine' }),
+    { createOnly: true });
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'mine' }, 'x3',
+    '2026-10-23T10:00:00Z');
+  check('a retry whose candidate already holds exactly these bytes may publish',
+    a.wroteCandidate === true && a.finish().status === 200 &&
+    acceptedBytes(db, id, 'floor').body.note === 'mine', 'idempotent');
+}
+
+// 3. REVERSE COMPLETION. The older edit's network call finishes last.
+{
+  const { db, id } = seed({ accepted: { note: 'old' } });
+  const older = startComponentPut(db, id, 'floor', 'A', { note: 'older edit' }, 'r1',
+    '2026-10-23T10:00:00Z');
+  const newer = startComponentPut(db, id, 'floor', 'A', { note: 'newer edit' }, 'r2',
+    '2026-10-23T11:00:00Z');
+  const rNew = newer.finish();
+  const rOld = older.finish();
+  const now = acceptedBytes(db, id, 'floor');
+  check('the newer edit is accepted', rNew.status === 200, JSON.stringify(rNew));
+  check('and the older edit finishing LAST is refused, not accepted',
+    rOld.published === false && rOld.reason === 'superseded',
+    JSON.stringify(rOld));
+  check('so the current component is the newer edit either way',
+    now.body.note === 'newer edit' && now.advertised === '2026-10-23T11:00:00Z',
+    JSON.stringify(now));
+}
+
+// 4. The advertised revision and the accepted bytes cannot disagree.
+{
+  const { db, id } = seed({ accepted: { note: 'old' } });
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'accepted bytes' }, 'v1',
+    '2026-10-23T10:00:00Z');
+  a.finish();
+  const now = acceptedBytes(db, id, 'floor');
+  check('publication moves the reference and the advertised revision together',
+    now.body.note === 'accepted bytes' &&
+    now.advertised === '2026-10-23T10:00:00Z' &&
+    now.revision === now.advertised, JSON.stringify(now));
+}
+
+// 5. A file on its way out does not gain accepted bytes.
+{
+  const { db, id } = seed({ accepted: { note: 'old' } });
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'after the purge' }, 'd1',
+    '2026-10-23T10:00:00Z');
+  db.put(purgeKey(id), JSON.stringify({ id, reason: 'permanent-delete' }));
+  const done = a.finish();
+  check('a publication after a permanent delete is refused',
+    done.published === false && done.reason === 'permanently deleted',
+    JSON.stringify(done));
+}
+
+// 6. A legacy index with no authoritySeq at all.
+{
+  const db = store();
+  const id = 'cf1';
+  db.put(legacyKey(id, 'floor'), JSON.stringify({ note: 'legacy bytes' }));
+  db.put(indexKey(id), JSON.stringify({ id, seq: 0, checkout: { deviceId: 'A' } }));
+  const a = startComponentPut(db, id, 'floor', 'A', { note: 'first accepted' }, 'L1',
+    '2026-10-23T10:00:00Z');
+  check('a legacy index without an authority stamp still authorizes', a.authorized);
+  const took = takeover(db, id, 'B');
+  const done = a.finish();
+  check('and the first handoff after it still kills the stale write',
+    took.status === 200 && done.status === 403, JSON.stringify(done));
+  check('the legacy bytes are still what a reader sees',
+    acceptedBytes(db, id, 'floor').from === 'legacy', 'legacy');
 }
 
 const failed = results.filter((r) => !r.ok);
