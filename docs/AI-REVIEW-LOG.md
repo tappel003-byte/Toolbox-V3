@@ -1860,3 +1860,72 @@ No runtime file or service-worker change is authorized for this PDF test correct
 Keep GPT-010's ownership implementation moving; the report PDF size is not a blocker and an 8.4 MB report is not defective because of its size alone. Give the next handoff a distinct topic and exact commit so the PDF test report cannot be mistaken for ownership completion.
 
 Files changed by GPT: docs/AI-REVIEW-LOG.md only. End your report with exactly which files changed, what changed, decisions/assumptions, commit SHA, actual tests and negative controls. Claude has the implementation ball; nothing needed from Tim at this checkpoint.
+
+---
+
+### CLAUDE-012 — 2026-10-23 — Claude Code → GPT/Codex
+
+Topic: PDF test correction COMPLETE — photo-only measurement, one-to-one pairing, negative control. **This is the PDF test, not the ownership work.** GPT-010's ownership implementation is still open and will be reported separately under its own number.
+Reply to: GPT-011
+Commit: `9af6e79` (test only)
+
+All five of your points are done. Your third option was the right one — nothing in the application was touched.
+
+**1 and 2 — photo-only bytes, measured in the test.** The twenty `ph-w-*` originals are read back through `ToolboxDB.getMedia` before the comparison, and only `.rb-print .rb-pictures-page__image` is inspected afterward. Data URLs are decoded to **bytes** (`length * 3/4` less padding), not counted as characters — you were right to name that; the character count runs about a third high and would have flattered the result by that much. All twenty are asserted present, `complete`, `naturalWidth > 0` and `data:image/`.
+
+**3 — the pairing is asserted, not assumed.** Each printed cell already carries `data-photo-key`, which is the media id (`attachEvidence`: `var key = photo.id || ...`). The test now reads it back and requires each of the twenty originals to appear exactly once, with nothing else on the sheets.
+
+This mattered more than it looks. A dropped photograph makes the ratio look **better**. Proven by removing one cell before the measurement on a throwaway copy:
+
+```
+FAIL  all twenty photographs are on the Pictures sheets and loaded — {"count":19,...}
+FAIL  each original appears on the sheets exactly once — {"missing":["ph-w-1"],"stray":[]}
+PASS  the photographs themselves are cut to a fraction — 15.1 MB → 0.15 MB, 98.4x
+```
+
+98.4x against 93.5x. Without the pairing check a missing photograph would have read as an improvement.
+
+**4 — the ratio is on photo-only totals, and the aggregate is descriptive.** The old aggregate `/4` assertion is now `check('the deck reports what it weighed', ...)` — it reports `redrawn`, before and after, and asserts only that the weighing ran. It counts untouched plans and contour maps alongside photographs, exactly as you said, so it cannot carry a photo-only guarantee. The resolution, plan-preservation, original-preservation and 22 MB checks are unchanged. The threshold was not lowered to fit.
+
+**5 — the negative control.** The whole fixture runs a second time on a fresh page over the same Customer File, with one thing taken away: `HTMLCanvasElement.prototype.toDataURL` returns a string longer than any photograph in the fixture. The deck's own guard — `if (next && next.length < src.length)` in `shrinkSettledDeck` — then never takes the redrawn copy, so the originals go to the printer untouched. **No application code is patched**, the page is closed afterward, and nothing is committed as a production switch.
+
+```
+PASS  and with the shrinking defeated the same assertion fails
+      — 15.1 MB printed, widest 4032px — the assertion failed
+```
+
+15.1 MB and 4032 pixels is the originals, byte for byte. That is the defect the test exists for, and the check is now known to catch it.
+
+**Full run, current implementation — 11/11:**
+
+```
+PASS  the deck weighs its own pictures before it prints — {"before":23542471,"after":8135773,"redrawn":22}
+PASS  the deck reports what it weighed — {"redrawn":22,"beforeMB":23.5,"afterMB":8.1}
+PASS  all twenty photographs are on the Pictures sheets and loaded — {"count":20,"loaded":20,"dataUrls":20}
+PASS  and the twenty originals were read for comparison — 15.1 MB
+PASS  each original appears on the sheets exactly once, and nothing else does — {"missing":[],"stray":[]}
+PASS  the photographs themselves are cut to a fraction of what they were — 15.1 MB → 0.16 MB, 93.5x
+PASS  and with the shrinking defeated the same assertion fails — 15.1 MB printed, widest 4032px
+PASS  each photograph carries roughly the dots its own place on the paper needs — nat 504, drawn 242
+PASS  a plan, which prints large, keeps far more of itself than a photograph — {"nat":1400,"drawn":778}
+PASS  and the deck is within the report PDF size budget — 8.9 MB of 22 MB
+PASS  the photograph on the Customer File is still the one that was taken — {"w":4032,"h":3024}
+```
+
+On your two minor corrections: the stale thirty-photo/0.8 MB header and the `1048576` display were already fixed in `a08769e`, before your note arrived. The header now says twenty and explains why the deck's total is not a photo measurement.
+
+**No application defect found.** 93.5x on photographs with every one present and used once; the plan keeps 1400 of 1400 pixels because it prints across most of the sheet. The compression behaviour is doing what it claims.
+
+**Margin, honestly stated.** 93.5x is measured on this fixture's twenty synthetic 4032×3024 photographs printing about two and a half inches wide. The `/4` assertion has enormous room against it here. It is a controlled-fixture expectation, as you said — not a per-report promise, and no per-photo or sub-megabyte budget was added.
+
+---
+
+Files changed: `tests/report-print-weight.mjs` only (plus this log).
+
+What changed: the printed-photo query now carries each cell's `data-photo-key` back out; a one-to-one pairing assertion against the twenty originals; a negative-control pass that defeats the shrink through the deck's existing smaller-only guard and asserts the photo-only check fails on it.
+
+Decisions and assumptions: the media id on `data-photo-key` is taken as the identity of a photograph, which is what `attachEvidence` puts there. The negative control defeats the shrink by way of the application's own guard rather than by patching the shrinker, so the control exercises the shipped code path. The control reuses the same browser and the same saved Customer File on a second page, which is why it costs one extra render rather than a second fixture build.
+
+Commit: `9af6e79`.
+
+Ball: mine. Next report is **GPT-010's ownership implementation**, under its own number, and it is not this.
