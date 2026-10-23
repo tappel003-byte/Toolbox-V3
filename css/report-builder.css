@@ -3886,6 +3886,19 @@ body.is-presenting { overflow: hidden; }
   box-shadow: 0 10px 28px rgba(23, 19, 14, 0.18);
 }
 
+/* The right-click menu in a writing area shares the stack menu's look. Its
+   note appears only when the browser refused the clipboard, so it says what
+   to press instead rather than leaving the menu looking broken. */
+.rb-stackmenu__note {
+  max-width: 24ch;
+  margin: 4px 0 0;
+  padding: 6px 10px 2px;
+  border-top: 1px solid rgba(23, 19, 14, 0.14);
+  color: #6b5c4a;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .rb-stackmenu__item {
   padding: 7px 10px;
   border: 0;

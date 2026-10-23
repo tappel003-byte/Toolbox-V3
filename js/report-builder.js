@@ -5615,11 +5615,21 @@
         html = api.toHtml(api.fromMarkdown(text, 0));
       }
       event.preventDefault();
-      if (!document.execCommand('insertHTML', false, html)) return;
-      // insertHTML nests the whole paste inside whatever block the caret was
-      // in, which produced one paragraph the height of the column. Rebuilding
-      // the field from the model flattens it back into real sibling
-      // paragraphs so the text can flow between columns.
+      insertRichHtml(field, html);
+    });
+
+    /**
+     * Put prepared markup in at the caret and settle the field.
+     *
+     * insertHTML nests the whole paste inside whatever block the caret was
+     * in, which produced one paragraph the height of the column. Rebuilding
+     * the field from the model flattens it back into real sibling paragraphs
+     * so the text can flow between columns.
+     */
+    function insertRichHtml(field, html) {
+      var api = window.ToolboxReportText;
+      if (!field || !api || !html) return false;
+      if (!document.execCommand('insertHTML', false, html)) return false;
       var normalized = api.compact(api.fromElement(field));
       field.innerHTML = api.toHtml(normalized);
       commitRichField(field);
@@ -5627,7 +5637,37 @@
         renderPages();
         flushSave().catch(function () {});
       }
-    });
+      return true;
+    }
+
+    /** The report's own markup for a block of clipboard HTML. */
+    function richHtmlFromClipboardHtml(pastedHtml) {
+      var api = window.ToolboxReportText;
+      if (!api || !pastedHtml || typeof window.DOMParser !== 'function') return '';
+      try {
+        var parsed = new window.DOMParser().parseFromString(pastedHtml, 'text/html');
+        var body = parsed && parsed.body;
+        if (!body) return '';
+        var junk = body.querySelectorAll('script, style, meta, link, title');
+        for (var j = 0; j < junk.length; j += 1) junk[j].remove();
+        if (!body.textContent.trim()) return '';
+        return api.toHtml(api.compact(api.fromElement(body)));
+      } catch (err) {
+        return '';
+      }
+    }
+
+    /** The report's own markup for a block of plain text, styling nothing. */
+    function richHtmlFromPlainText(text) {
+      var api = window.ToolboxReportText;
+      if (!api || !text) return '';
+      var model = { paragraphs: String(text).replace(/\r\n?/g, '\n').split('\n')
+        .map(function (line) {
+          return { align: 'left', bullet: false, numbered: false, indent: 0,
+            dir: 'ltr', runs: line ? [{ text: line }] : [] };
+        }) };
+      return api.toHtml(api.compact(model));
+    }
 
     sheetEl.addEventListener('focusin', function (event) {
       var field = event.target.closest && event.target.closest('[data-rb-rich]');
@@ -6446,6 +6486,151 @@
     }
     sheetEl.addEventListener('pointerup', endLayoutDrag);
     sheetEl.addEventListener('pointercancel', endLayoutDrag);
+
+    /**
+     * Right-click in a writing area: Paste as formatted, Paste unformatted.
+     *
+     * Ctrl+V already pastes formatted and Ctrl+Shift+V already pastes plain,
+     * but Tim does not want to hold a shortcut in his head: "I want to be
+     * able to right-click and click paste as formatted, or right-click paste
+     * unformatted."
+     *
+     * A page cannot open the system menu, so this is the report's own, and
+     * reading the clipboard from script is something Chrome asks about the
+     * first time. That prompt is the browser's, not ours; if it is refused,
+     * the menu says so and names the keys that always work rather than
+     * failing quietly.
+     */
+    var pasteMenu = null;
+    var pasteMenuField = null;
+
+    function closePasteMenu() {
+      if (pasteMenu && pasteMenu.parentNode) pasteMenu.parentNode.removeChild(pasteMenu);
+      pasteMenu = null;
+      pasteMenuField = null;
+      document.removeEventListener('pointerdown', pasteMenuAway, true);
+      document.removeEventListener('keydown', pasteMenuKey, true);
+    }
+
+    function pasteMenuAway(event) {
+      if (event.target.closest && event.target.closest('[data-rb-pastemenu]')) return;
+      closePasteMenu();
+    }
+
+    function pasteMenuKey(event) {
+      if (event.key === 'Escape') closePasteMenu();
+    }
+
+    function pasteMenuSay(message) {
+      if (!pasteMenu) return;
+      var note = pasteMenu.querySelector('.rb-stackmenu__note');
+      if (!note) {
+        note = document.createElement('p');
+        note.className = 'rb-stackmenu__note';
+        pasteMenu.appendChild(note);
+      }
+      note.textContent = message;
+    }
+
+    function pasteFromClipboard(formatted) {
+      var field = pasteMenuField;
+      if (!field) return;
+      var nav = window.navigator;
+      var clip = nav && nav.clipboard;
+      if (!clip) {
+        pasteMenuSay('This browser will not let a page read the clipboard. Ctrl+V pastes formatted, Ctrl+Shift+V pastes plain.');
+        return;
+      }
+      var done = function (html) {
+        closePasteMenu();
+        field.focus();
+        restorePasteCaretInto(field);
+        insertRichHtml(field, html);
+      };
+      var failed = function () {
+        pasteMenuSay('Toolbox was not allowed to read the clipboard. Ctrl+V pastes formatted, Ctrl+Shift+V pastes plain.');
+      };
+      if (!formatted) {
+        if (typeof clip.readText !== 'function') { failed(); return; }
+        clip.readText().then(function (text) {
+          var html = richHtmlFromPlainText(text);
+          if (html) done(html); else closePasteMenu();
+        }).catch(failed);
+        return;
+      }
+      if (typeof clip.read !== 'function') {
+        // Older Chrome: text is all that can be had, so say what is being
+        // given rather than pretending the formatting came through.
+        if (typeof clip.readText !== 'function') { failed(); return; }
+        clip.readText().then(function (text) {
+          var html = richHtmlFromPlainText(text);
+          if (html) done(html); else closePasteMenu();
+        }).catch(failed);
+        return;
+      }
+      clip.read().then(function (items) {
+        var list = items || [];
+        var pick = null;
+        for (var i = 0; i < list.length && !pick; i += 1) {
+          var types = (list[i] && list[i].types) || [];
+          if (types.indexOf('text/html') >= 0) pick = list[i];
+        }
+        if (pick) {
+          return pick.getType('text/html').then(function (blob) {
+            return blob.text();
+          }).then(function (raw) {
+            var html = richHtmlFromClipboardHtml(raw);
+            if (html) done(html); else closePasteMenu();
+          });
+        }
+        return clip.readText().then(function (text) {
+          var html = richHtmlFromPlainText(text);
+          if (html) done(html); else closePasteMenu();
+        });
+      }).catch(failed);
+    }
+
+    // The caret has to be put back AFTER the menu goes, because removing the
+    // menu is itself a DOM change and the range kept from the right-click is
+    // the only record of where the investigator was pointing.
+    var pendingCaret = null;
+    function restorePasteCaretInto(field) {
+      if (!pendingCaret || !field) return;
+      var sel = window.getSelection();
+      if (sel) { sel.removeAllRanges(); sel.addRange(pendingCaret); }
+      pendingCaret = null;
+    }
+
+    sheetEl.addEventListener('contextmenu', function (event) {
+      var field = event.target.closest && event.target.closest('[data-rb-rich]');
+      if (!field || field.getAttribute('contenteditable') !== 'true') return;
+      event.preventDefault();
+      closePasteMenu();
+      closeStackMenu();
+      var sel = window.getSelection();
+      pendingCaret = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+      pasteMenuField = field;
+      pasteMenu = document.createElement('div');
+      pasteMenu.className = 'rb-stackmenu';
+      pasteMenu.setAttribute('data-rb-pastemenu', '1');
+      [['Paste as formatted', '1'], ['Paste unformatted', '0']].forEach(function (choice) {
+        var item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'rb-stackmenu__item';
+        item.setAttribute('data-rb-paste-as', choice[1]);
+        item.textContent = choice[0];
+        item.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          pasteFromClipboard(choice[1] === '1');
+        });
+        pasteMenu.appendChild(item);
+      });
+      pasteMenu.style.left = Math.round(event.clientX) + 'px';
+      pasteMenu.style.top = Math.round(event.clientY) + 'px';
+      document.body.appendChild(pasteMenu);
+      document.addEventListener('pointerdown', pasteMenuAway, true);
+      document.addEventListener('keydown', pasteMenuKey, true);
+    });
 
     /**
      * Right-click a piece of a Floor Survey page to move it behind or in
