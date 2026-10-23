@@ -7,6 +7,7 @@
  */
 import { readPointStyle } from "./point-style";
 import { closedAreas, pointsInArea } from "@/lib/areas";
+import { withCorrectedValues } from "@/lib/transitions";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { contourThresholds, type Grid } from "@/lib/topo";
@@ -665,7 +666,25 @@ export async function composeReportTopoFigureForPage(
   }
 
   const floor = layerToFloorForReport(record, canvas, layer, planDataUrl, Math.max(0, canvasIndex));
-  const points = Array.isArray(layer.points) ? layer.points : [];
+  // The flooring correction, the same one the live drawing applies.
+  //
+  // ReportTopoWorkspace hands TopoTab withCorrectedValues(points, ...) and
+  // draws THAT. This path read the layer's stored points straight off the
+  // Customer File and drew them raw, so a job with a doorway between two
+  // floor coverings printed a different survey from the one on screen: on a
+  // tile-to-carpet step of 1.5 in, the slide read High 10.3 / Difference 3.3
+  // while the composed figure read 9.0 / 2.0. Every contour was drawn from
+  // the uncorrected numbers too, and the rail beside it still showed the
+  // corrected ones -- so the sheet contradicted itself.
+  //
+  // It belongs HERE rather than in composeReportTopoFigure, because that is
+  // shared with composeContourLayer, which is handed points that TopoTab has
+  // already corrected. Correcting there would apply the step twice.
+  const points = withCorrectedValues(
+    Array.isArray(layer.points) ? layer.points : [],
+    floor.transitions,
+    floor.transitionGroupAverages,
+  );
   const areaId = spec.scope === "all" ? null : spec.areaId || null;
   return composeReportTopoFigure({
     floor,
