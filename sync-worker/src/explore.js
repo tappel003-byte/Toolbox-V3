@@ -129,7 +129,20 @@ function canvasNameMap(plans) {
   return names;
 }
 
-function mediaRefsFromPlans(payload, notes) {
+/**
+ * Every media id a plans component refers to.
+ *
+ * A canvas carries TWO pictures: its floor plan, and -- once Floor Survey has
+ * sent one -- a contour layer drawn from the readings. js/sync.js uploads
+ * both and js/db.js cleans up both; this collector read only the plan, so a
+ * File Explorer archive came out quietly missing the contour images and
+ * permanent delete left their bytes behind in the bucket forever.
+ *
+ * Exported and shared with the Worker's own delete-side collector, because
+ * four collectors that have to agree by hand is exactly how they came to
+ * disagree. Audit finding 7.
+ */
+export function mediaRefsFromPlans(payload, notes) {
   const refs = [];
   if (!payload || typeof payload !== 'object') return refs;
   const canvases = Array.isArray(payload.canvases) ? payload.canvases : [];
@@ -142,6 +155,15 @@ function mediaRefsFromPlans(payload, notes) {
       canvas && canvas.plan && canvas.plan.id,
       'plan',
       name ? 'Floor plan — ' + name : 'Floor plan image',
+      '',
+    );
+    considerMedia(
+      refs,
+      notes,
+      'plans.json',
+      canvas && canvas.contourLayer && canvas.contourLayer.id,
+      'contour',
+      name ? 'Contour layer — ' + name : 'Contour layer image',
       '',
     );
   });

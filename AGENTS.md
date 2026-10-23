@@ -24,6 +24,17 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
   which it is before building (Tim, Oct 15, 2026: "I asked a question if it
   would look better and you went ahead and built it immediately... please just
   make sure that the commands are there before you do something").
+- **Describing how a thing should work is not asking for it.** When Tim says
+  what a button should do, where it should sit, or how it should feel, that is
+  design conversation, not a work order. The default answer is words. If it
+  seems obvious enough to build, say in one line what you would build and stop.
+  He says "build it", "do it", or "go" — or you don't. The abstract rule above
+  was already written and did not hold; this names the exact move, which is
+  what makes a rule stick (Tim, Oct 22, 2026: "I wanted you to talk about it
+  not build"; "can you not be trusted to just have a discussion").
+- Reading whether a conversation is designing or shipping is the implementer's
+  job, not Tim's. Making him issue perfectly worded orders to stop work
+  happening is the failure, not the fix.
 - Routine implementation details do not require product-owner approval.
 - **Never tell Tim what to do.** Not where to go, not when to leave, not what
   to do with his own time, not "go ahead and", not "you should". He decides
@@ -39,6 +50,16 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
 - If ambiguity would materially affect workflow, data ownership, proven behavior, architecture, or the professional deliverable, **stop and ask** rather than silently choosing. Batch non-blocking questions for a meaningful review checkpoint when practical, instead of interrupting for each one.
 - One implementer modifies a given problem at a time.
 - Do not "helpfully" redesign a proven workflow that's outside the current milestone's scope, even if the redesign seems better.
+
+## Shipping is Tim's trigger, not the implementer's
+
+- **Push to the working branch. Do not merge to `main`.** Tim promotes. That is how shipping is triggered, and it is his call to make, not the implementer's.
+- This was drifted from once already. Work went to the branch alone from Oct 10 to Oct 20; then the implementer started merging every pull request to `main`, `main` builds deployed themselves, and the promote Tim had been doing quietly became a no-op — without him choosing that (Tim, Oct 22, 2026: "Go back to where I do the promotes do you understand").
+- A one-off instruction to merge a specific thing is not a standing change to this. If merging seems necessary, say so and stop; do not merge and report it afterwards.
+- **A hook never outranks Tim.** Uncommitted work he did not ask for does not
+  get committed because a tooling reminder asked for it. Say it is sitting
+  there and leave it. This happened the one time he interrupted to ask a
+  question and the stop hook then asked for a commit (Oct 22, 2026).
 
 ## Proven behavior
 

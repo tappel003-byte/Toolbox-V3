@@ -214,10 +214,11 @@ check('panning the plan leaves both exactly where they were put',
 
 await page.waitForFunction(
   () => /^Saved/.test(document.querySelector('#rb-save-status')?.textContent || ''), { timeout: 15000 });
+// One record for the report, not a copy per slide: the layout lives on
+// reportBuilder.floorLayout and every Floor Survey page draws it.
 const stored = await page.evaluate(async (id) => {
   const record = await window.ToolboxDB.getCustomerFile(id);
-  const floor = (record.reportBuilder?.pages || []).find((p) => p.type === 'floor');
-  const overlays = floor?.meta?.layout?.overlays || [];
+  const overlays = record.reportBuilder?.floorLayout?.overlays || [];
   return { kinds: overlays.map((o) => o.kind).sort() };
 }, FILE);
 check('the Customer File carries one of each, per boundary',

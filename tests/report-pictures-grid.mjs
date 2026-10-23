@@ -142,8 +142,11 @@ check('a full page is still five across and two down',
 // "These are worthless views. Remove these." And Oct 17, settling the same
 // point: "Too small of a picture just does not work -- some of that one by 10
 // that you had, or 10 by one, it just did not work."
-check('a full page is offered only the grid that keeps the pictures readable',
-  full.buttons.join(' | ') === '5 × 2', full.buttons.join(' | '));
+// A shape is a page capacity now, so a tight one adds sheets instead of
+// crushing the one it is on -- which is what made the deep grids worthless
+// before. Every shape is therefore safe to offer, on every slide.
+check('every shape is offered on a full page too',
+  full.buttons.join(' | ') === '1 × 1 | 2 × 1 | 2 × 2 | 3 × 1 | 3 × 2 | 4 × 1 | 4 × 2 | 5 × 1 | 5 × 2', full.buttons.join(' | '));
 
 const last = await picturesSheet(1);
 // A page carrying one photograph gives it the sheet. The rule against a
@@ -154,15 +157,15 @@ check('a page holding one photograph gives it the whole width',
 // back -- which is what keeps "two big pictures" available, and one big one.
 // Tim, Oct 20: "one row is acceptable. 5 by 1... 1 by 4, 1 by 3, 1 by 2, 1 by
 // 1. The most rows are 2."
-check('and every grid is offered on a short page, however few it holds',
-  last.buttons.join(' | ') === '1 × 1 | 2 × 1 | 3 × 1 | 4 × 1 | 5 × 1',
+check('and every shape is offered on a short page, however few it holds',
+  last.buttons.join(' | ') === '1 × 1 | 2 × 1 | 2 × 2 | 3 × 1 | 3 × 2 | 4 × 1 | 4 × 2 | 5 × 1 | 5 × 2',
   last.buttons.join(' | '));
 
 // A grid chosen by hand is the grid that is kept. Tried on the short page,
 // because a full page of ten is offered only one grid that keeps its
 // pictures readable and so has nothing to choose between.
 await picturesSheet(1);
-await page.evaluate(() => document.querySelector('[data-rb-pics-across="3"]').click());
+await page.evaluate(() => document.querySelector('[data-rb-pics-across="3x1"]').click());
 await page.waitForFunction(
   () => Number(document.querySelector('.rb-sheet:not(.rb-sheet--thumb) .rb-pictures-page__grid')
     .style.getPropertyValue('--rb-pics-cols')) === 3, { timeout: 15000 });
@@ -200,8 +203,14 @@ const caption = await page.evaluate(() => {
     overflow: sheet.scrollHeight - Math.round(sr.height),
   };
 });
-check('a long description is shown whole, not cut off at four lines',
-  caption.cut <= 1 && caption.lines > 4, JSON.stringify(caption));
+// What this was written for is a caption box that stopped at a little under
+// four lines and scrolled, so wording that read complete on screen printed
+// with its end missing. `cut` is that fault exactly: anything the box is
+// hiding. The old "more than four lines" was a stand-in for it, and it was
+// tied to the narrow cell of a ten-up page -- a wider cell fits the same
+// sentence in fewer lines without hiding a word of it.
+check('a long description is shown whole, however wide the cell',
+  caption.cut <= 1 && caption.lines > 1, JSON.stringify(caption));
 check('and nothing it pushed runs off the paper',
   caption.past === 0 && caption.overflow <= 1, JSON.stringify(caption));
 

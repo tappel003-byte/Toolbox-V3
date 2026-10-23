@@ -13,6 +13,10 @@
   var SHEET_RATIO_LABEL = '11 × 17 landscape';
   var MAX_PAGES = 80;
   var SHEET_RATIO = 17 / 11;
+  // 11x17 landscape at 96 CSS pixels to the inch. The sheet is drawn at this
+  // size everywhere; every view only zooms it.
+  var PAPER_W = 1632;
+  var PAPER_H = 1056;
   var AUTOSAVE_DELAY_MS = 900;
   var PHOTOS_PER_PAGE = 10;
   var REPORT_SCHEMA = 'toolbox.report-builder';
@@ -66,25 +70,93 @@
   var fitOnResize = null;
   var pageSeq = 1;
 
+  /**
+   * Zoom the paper to the stage.
+   *
+   * The sheet is always PAPER_W x PAPER_H -- 11x17 landscape -- and this only
+   * scales it to whatever room the stage has. It used to resize the sheet
+   * instead, which meant the page was a different number of pixels on every
+   * window, and anything on it styled in pixels took up a different share of
+   * the paper on every screen. That is what stopped the PDF ever agreeing
+   * with the editor.
+   */
+  /**
+   * How big the page is drawn on the stage.
+   *
+   * 0 means fit -- the whole sheet in the window, which is what it has
+   * always done. Anything else is a scale the investigator chose, and the
+   * stage scrolls to it.
+   *
+   * Tim, Oct 23, 2026: "if we can just kind of change the size of the font
+   * for report builder discussion page... I don't say font, zoom in, zoom
+   * out, so we can read it easier." The type on the page is not touched --
+   * that would change the printed report. Only the magnification is.
+   */
+  var sheetZoom = 0;
+  var ZOOM_STEPS = [0.5, 0.67, 0.75, 1, 1.25, 1.5, 2];
+  var lastFitScale = 0;
+
   function fitSheet(root) {
     var stage = root && root.querySelector('.rb-stage');
     var sheet = root && root.querySelector('.rb-sheet');
     if (!stage || !sheet) return;
+    var paper = sheet.parentNode && sheet.parentNode.classList
+      && sheet.parentNode.classList.contains('rb-stage__paper') ? sheet.parentNode : null;
     var styles = window.getComputedStyle(stage);
     var padX = (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0);
     var padY = (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0);
     var availW = Math.max(0, stage.clientWidth - padX);
     var availH = Math.max(0, stage.clientHeight - padY);
     if (availW < 40 || availH < 40) return;
-    var width = availW;
-    var height = width / SHEET_RATIO;
-    if (height > availH) {
-      height = availH;
-      width = height * SHEET_RATIO;
+    var fit = Math.min(availW / PAPER_W, availH / PAPER_H);
+    if (!(fit > 0)) return;
+    lastFitScale = fit;
+    var scale = sheetZoom > 0 ? sheetZoom : fit;
+    sheet.style.width = '';
+    sheet.style.height = '';
+    sheet.style.transform = 'scale(' + scale + ')';
+    if (paper) {
+      paper.style.width = Math.floor(PAPER_W * scale) + 'px';
+      paper.style.height = Math.floor(PAPER_H * scale) + 'px';
     }
-    sheet.style.width = Math.floor(width) + 'px';
-    sheet.style.height = Math.floor(height) + 'px';
+    stage.classList.toggle('rb-stage--zoomed', sheetZoom > 0 && sheetZoom > fit);
+    paintZoomLevel(root);
     fitCoverContents(root);
+  }
+
+  // The readout says what the page is drawn at, and "Fit" when the window
+  // is choosing. A percentage with no word for the default would make the
+  // way back to it something to work out rather than something to read.
+  function paintZoomLevel(root) {
+    var out = root && root.querySelector('#rb-zoom-level');
+    if (!out) return;
+    var pct = Math.round((sheetZoom > 0 ? sheetZoom : lastFitScale) * 100);
+    out.textContent = sheetZoom > 0 ? pct + '%' : 'Fit';
+    out.setAttribute('title', sheetZoom > 0
+      ? 'Drawn at ' + pct + '% — click to fit the page to the window'
+      : 'Fit: the whole page in the window (' + pct + '%)');
+  }
+
+  function stepZoom(root, dir) {
+    var from = sheetZoom > 0 ? sheetZoom : lastFitScale;
+    var next = null;
+    if (dir > 0) {
+      for (var i = 0; i < ZOOM_STEPS.length; i += 1) {
+        if (ZOOM_STEPS[i] > from + 0.001) { next = ZOOM_STEPS[i]; break; }
+      }
+    } else {
+      for (var j = ZOOM_STEPS.length - 1; j >= 0; j -= 1) {
+        if (ZOOM_STEPS[j] < from - 0.001) { next = ZOOM_STEPS[j]; break; }
+      }
+    }
+    if (next === null) return;
+    sheetZoom = next;
+    fitSheet(root);
+  }
+
+  function resetZoom(root) {
+    sheetZoom = 0;
+    fitSheet(root);
   }
 
   /**
@@ -110,14 +182,30 @@
       var box = boxes[i];
       var sheet = box.closest ? box.closest('.rb-sheet') : null;
       if (!sheet) continue;
-      var sheetH = sheet.clientHeight;
-      if (!(sheetH > 40)) continue;
       box.style.setProperty('--rb-contents-fit', '1');
       var boxRect = box.getBoundingClientRect();
       var sheetRect = sheet.getBoundingClientRect();
-      var top = boxRect.top - sheetRect.top;
+      // ONE COORDINATE SYSTEM: the sheet's own pixels.
+      //
+      // A rect is in SCREEN pixels, so it carries whatever the stage is
+      // drawn at. scrollHeight is in the element's OWN pixels and carries
+      // nothing. Comparing the two meant the room left on the page was
+      // wrong by exactly the display scale -- the same arithmetic reported
+      // 1.130 at Fit and 1.837 at 100% for one unchanged box -- so a list
+      // shrank on screen and did not shrink in print. The comment that used
+      // to stand here claimed both came off the rects; scrollHeight never
+      // did. Audit finding 6.
+      //
+      // Everything below is divided back into the sheet's own pixels, where
+      // scrollHeight already lives, so the answer cannot depend on how big
+      // the page happens to be drawn.
+      var sheetOwnH = sheet.clientHeight;
+      if (!(sheetOwnH > 40) || !(sheetRect.height > 40)) continue;
+      var displayScale = sheetRect.height / sheetOwnH;
+      if (!(displayScale > 0)) continue;
+      var top = (boxRect.top - sheetRect.top) / displayScale;
       // The same breathing room the deck leaves under the frame.
-      var room = sheetH * 0.96 - top;
+      var room = sheetOwnH * 0.96 - top;
       var needs = box.scrollHeight;
       if (!(needs > 0) || !(room > 0) || needs <= room) continue;
       var fit = Math.max(CONTENTS_FIT_FLOOR, room / needs);
@@ -293,6 +381,37 @@
   // the one the four shipped decks agree on to the hundredth of a percent.
   var SHEET_FRAME = { x: 0.98, y: 1.52, w: 98.04, h: 97.73 };
 
+  /**
+   * The drawing stage's share of the sheet's WIDTH, measured.
+   *
+   * An imported floor slide draws full bleed across the sheet except for the
+   * title rail down its side; the rail's width is the stylesheet's business.
+   * Measured at 86.336% on a rendered slide. Used only when there is no slide
+   * on screen to measure -- composing from the cover or the discussion.
+   */
+  var STAGE_SHARE_OF_SHEET = 0.86336;
+
+  /**
+   * The DRAFT watermark, across the sheet.
+   *
+   * Hung off renderSheetFrame because that is the one call every page type
+   * already makes -- cover, discussion, figure, pen log, pictures -- so no
+   * sheet can be forgotten and none needs its own code.
+   *
+   * It is deliberately NOT editor chrome: a draft stamp that does not print
+   * is worse than none at all. It is marked aria-hidden and takes no pointer
+   * events, so it is neither read out nor in the way of the work.
+   */
+  function renderDraftStamp(sheet, on) {
+    if (!on) return;
+    var stamp = document.createElement('div');
+    stamp.className = 'rb-sheet__draft';
+    stamp.setAttribute('data-rb-draft', '1');
+    stamp.setAttribute('aria-hidden', 'true');
+    stamp.textContent = 'DRAFT';
+    sheet.appendChild(stamp);
+  }
+
   function renderSheetFrame(sheet) {
     var frame = document.createElement('div');
     frame.className = 'rb-sheet__frame';
@@ -343,6 +462,13 @@
   function floorActiveSlotForPage(page) {
     var n = Number(page && page._floorSlot) || 0;
     return Math.max(0, Math.min(floorSlotsForPage(page) - 1, n));
+  }
+
+  // The one page in the deck that is written rather than drawn. Named here
+  // because the DRAFT stamp and the rail both ask the question.
+  function isDiscussionPage(page) {
+    return !!(page && page.type === 'section' && page.meta &&
+      page.meta.sectionId === 'discussion');
   }
 
   function pageTakesRail(page) {
@@ -559,6 +685,13 @@
       if (page.type === 'section' && page.meta && page.meta.sectionId === 'property') return false;
       if (page.type === 'section' && page.meta && page.meta.sectionId === 'conclusions') return false;
       if (page.type === 'section' && page.meta && page.meta.sectionId === 'limitations') return false;
+      // A Diagnostics page is not composed into a report any more. Tim: "I
+      // never said to add the diagnostics page. Diagnostics isn't even close
+      // to being done." Nothing creates one now, but a report composed while
+      // they existed still carried its page -- in the rail, in CONTENTS, and
+      // in the print. Reconcile drops it so an older report comes back the
+      // way a new one would be built.
+      if (page.type === 'diagnostics') return false;
       return true;
     });
     var byId = {};
@@ -743,15 +876,85 @@
     return n.toFixed(places);
   }
 
-  function renderNorthArrow() {
+  // Which way north is, from the way the front door faces.
+  //
+  // Distress Survey already answers this: frontDoorToNorthRotation — front of
+  // building drawn at bottom of plan, rotation = 180 - bearing. Use that one.
+  // Floor pages carry the canvas on meta.canvasId; Picture Locations carry it
+  // on sourceRef.
+  function northRotationFor(page, record) {
+    var meta = (page && page.meta) || {};
+    var canvasId = meta.canvasId || (page && page.sourceRef) || null;
+    var ps = window.ToolboxPlanSetup;
+    if (!ps || typeof ps.canvasById !== 'function' || !record || !canvasId) return null;
+    var canvas = null;
+    try { canvas = ps.canvasById(record, canvasId); } catch (err) { canvas = null; }
+    var facing = canvas && typeof canvas.frontDoorFacing === 'string'
+      ? canvas.frontDoorFacing.trim().toUpperCase()
+      : '';
+    if (!facing) return null;
+    var bt = window.ToolboxBuildingTypes;
+    if (!bt || typeof bt.frontDoorToNorthRotation !== 'function') return null;
+    var deg = Number(bt.frontDoorToNorthRotation(facing));
+    return isFinite(deg) ? deg : null;
+  }
+
+  // Chrome's "Save as PDF" defaults the filename from document.title.
+  // Street underscore customer name — e.g. 15_Rabbitbrush_Janis_Fensterer.
+  function printFileBasename(record) {
+    function part(value) {
+      return String(value == null ? '' : value)
+        .trim()
+        .replace(/[^A-Za-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    }
+    var street = part(addressParts(fullAddress(record) || displayAddress(record) || '').street);
+    var name = part(displayCustomerName(record));
+    if (street && name) return street + '_' + name;
+    return street || name || 'Report';
+  }
+
+  function withPrintDocumentTitle(record, run) {
+    var previous = document.title;
+    var next = printFileBasename(record);
+    if (next) document.title = next;
+    var restore = function () { document.title = previous; };
+    try {
+      var result = typeof run === 'function' ? run() : null;
+      if (result && typeof result.then === 'function') {
+        return result.then(function (value) { return value; }, function (err) {
+          restore();
+          throw err;
+        }).then(function (value) {
+          // Title stays through the print dialog; afterprint puts it back.
+          window.addEventListener('afterprint', restore, { once: true });
+          return value;
+        });
+      }
+      window.addEventListener('afterprint', restore, { once: true });
+      return result;
+    } catch (err) {
+      restore();
+      throw err;
+    }
+  }
+
+  function renderNorthArrow(rotateDeg) {
     var wrap = document.createElement('div');
     wrap.className = 'rb-topo-page__north';
     wrap.setAttribute('aria-hidden', 'true');
+    var deg = Number(rotateDeg);
+    if (!isFinite(deg)) deg = 0;
     wrap.innerHTML =
       '<svg viewBox="0 0 40 52" focusable="false">' +
+      '<g transform="rotate(' + deg + ' 20 26)">' +
       '<polygon points="20,2 28,22 20,18 12,22" fill="#111"/>' +
       '<polygon points="20,50 28,30 20,34 12,30" fill="#bbb"/>' +
-      '<text x="20" y="16" text-anchor="middle" font-size="9" font-weight="700" fill="#111">N</text>' +
+      // Turned back the other way so the letter rides the arrowhead and
+      // still reads upright on a plan that is not facing south.
+      '<text x="20" y="16" text-anchor="middle" font-size="9" font-weight="700" fill="#111"' +
+      ' transform="rotate(' + (-deg) + ' 20 13)">N</text>' +
+      '</g>' +
       '</svg>';
     return wrap;
   }
@@ -834,7 +1037,7 @@
    * every picture shorter -- and a picture is sized by whichever of its two
    * dimensions runs out first, so a short row makes a NARROW picture too,
    * however wide its column is. Ten photographs two across is five rows: on a
-   * 17 x 11 sheet that left each one about the size of a postage stamp,
+   * 11x17 sheet that left each one about the size of a postage stamp,
    * marooned in a cell many times its size.
    *
    * Tim, looking at exactly that: "These are worthless views. Remove these."
@@ -859,6 +1062,15 @@
       // One column is one picture given the whole sheet, and nothing else:
       // two stacked down a single column is a strip. Tim, Oct 20: "1x2 NO."
       if (cols === 1) return n === 1;
+      // The row cap stays until pages can SPLIT.
+      //
+      // Tim asked for every grid on every slide, and meant it with the
+      // pagination attached: "two-picture, one-row ... 100 pictures ...
+      // that's just 50 pages of two pictures each." Offering the tight grids
+      // without that only deepens the page it is already on, which is the
+      // postage-stamp view he had removed on Oct 20 -- "These are worthless
+      // views. Remove these." Opening the menu alone hands him back the
+      // thing he threw out, so it waits for the half that makes it safe.
       return Math.ceil(n / cols) <= MAX_PICTURE_ROWS;
     });
     // A page carrying more than even the widest grid can hold in three rows
@@ -903,10 +1115,20 @@
 
   function picturesAcross(page) {
     var n = page && page.meta ? Number(page.meta.picturesAcross) : 0;
-    // A grid chosen before the three-row floor existed, or before photographs
-    // were added to the page, is not honoured if it now stacks too deep.
-    if (picturesGrids(picturesOnPage(page)).indexOf(n) >= 0) return n;
+    // The chosen shape is honoured as chosen. It used to be rejected when it
+    // stacked deeper than three rows, because a shape was only a way of
+    // arranging whatever had already been put on the page. A shape sets the
+    // page's CAPACITY now, so nothing can stack too deep: the pictures that
+    // do not fit are on the next sheet.
+    if (PICTURES_ACROSS.indexOf(n) >= 0) return n;
     return defaultPicturesAcross(picturesOnPage(page));
+  }
+
+  /** How many rows deep the chosen shape is. */
+  function picturesDown(page) {
+    var n = page && page.meta ? Number(page.meta.picturesDown) : 0;
+    if (n >= 1 && n <= MAX_PICTURE_ROWS) return n;
+    return Math.max(1, Math.ceil(picturesOnPage(page) / picturesAcross(page)));
   }
 
   /** The Stats pill size set in Labels & layers, kept per device. */
@@ -1238,12 +1460,36 @@
     (Array.isArray(prior.contents) ? prior.contents : []).forEach(function (line) {
       if (line && line.pageId) priorLines[line.pageId] = stripFigurePrefix(line.text);
     });
-    var contents = entries.map(function (entry) {
+    // A run of sheets that all carry the same title is ONE line on the cover
+    // with a span of figures across it, not one row each. A fourteen-figure
+    // job listed Pictures ten times and every change of picture grid rewrote
+    // the whole list. Tim: "then we're not killing our contents and changing
+    // our cover sheet so crazily."
+    var runs = [];
+    entries.forEach(function (entry) {
+      var last = runs[runs.length - 1];
+      var n = typeof entry.figureNumber === 'number' ? entry.figureNumber : null;
+      if (last && n !== null && last.figureNumberEnd !== null &&
+          last.title === entry.title && n === last.figureNumberEnd + 1) {
+        last.figureNumberEnd = n;
+        return;
+      }
+      runs.push({
+        pageId: entry.pageId,
+        title: entry.title,
+        type: entry.type,
+        isDiscussion: entry.isDiscussion,
+        figureNumber: n,
+        figureNumberEnd: n,
+      });
+    });
+    var contents = runs.map(function (entry) {
       var fallback = defaultContentsLine(entry);
       return {
         pageId: entry.pageId,
         text: keepRich(priorLines[entry.pageId], fallback),
         figureNumber: entry.figureNumber || null,
+        figureNumberEnd: entry.figureNumberEnd || null,
         isDiscussion: !!(entry.isDiscussion || entry.type === 'section'),
       };
     });
@@ -1354,7 +1600,11 @@
       // Derived, not stored: reordering renumbers without touching the text.
       var num = document.createElement('span');
       num.className = 'rb-cover__contents-num';
-      num.textContent = line.figureNumber ? ('Figure ' + line.figureNumber) : '';
+      num.textContent = line.figureNumber
+        ? ((line.figureNumberEnd && line.figureNumberEnd !== line.figureNumber)
+          ? ('Figures ' + line.figureNumber + '\u2013' + line.figureNumberEnd)
+          : ('Figure ' + line.figureNumber))
+        : '';
       row.appendChild(num);
       var field = coverField('rb-cover__contents-field', 'contents:' + index, line.text, locked);
       field.setAttribute('data-rb-cover-page', line.pageId || '');
@@ -1847,6 +2097,8 @@
       contour: penLogContour(page),
       layout: page._penLogLayout || null,
       locked: !!thumb,
+      // Present / Print deck: static notes, not textareas (Chrome print mush).
+      printable: !!(sheet && sheet.classList && sheet.classList.contains('rb-sheet--print')),
       pins: shown,
       // The map is the whole level on every sheet of it: a reader looking up
       // photograph 31 on the second sheet needs the same plan in front of
@@ -2139,44 +2391,22 @@
   /**
    * Which way north points on this plan.
    *
-   * Distress Survey already answers this and answers it right, so the rule
-   * is read from there rather than invented: the front door's real-world
-   * facing is known, and the arrow turns so that facing lines up with the
-   * direction the front door lies in on the plan. Its rotation is
-   * (180 - bearing), because it assumes the front of the building is drawn
-   * at the bottom of the plan.
-   *
-   * That assumption is the part that does not hold. Tim: "I rarely place the
-   * floor plan where the FD is always one direction." But Plan Setup already
-   * records where the front door was tapped on the plan, so the direction
-   * from the middle of the building out to the front door can be measured
-   * instead of assumed. Where the plan IS drawn front-down that measurement
-   * comes out at 180 and this reduces to exactly Distress's rule; where it
-   * is not, this is right and the front-down assumption is not.
-   *
-   * Returns degrees clockwise from plan-up, or null when the facing was
-   * never set.
+   * Distress Survey already answers this: frontDoorToNorthRotation. Tim:
+   * "If you're unsure on what the code is supposed to do, it is correct in
+   * distress survey. What I want is already there." Returns degrees
+   * clockwise from plan-up, or null when the facing was never set.
    */
   var NORTH_BEARINGS = { N: 0, NE: 45, E: 90, SE: 135, S: 180, SW: 225, W: 270, NW: 315 };
 
   function northForCanvas(canvas) {
     if (!canvas) return null;
-    var beta = NORTH_BEARINGS[String(canvas.frontDoorFacing || '').toUpperCase()];
-    if (typeof beta !== 'number') return null;
-    // The front of the building at the bottom of the plan, until the placed
-    // marker says otherwise.
-    var planAngle = 180;
-    var fd = canvas.frontDoor;
-    if (fd && typeof fd.x === 'number' && typeof fd.y === 'number') {
-      var dx = fd.x - 0.5;
-      var dy = fd.y - 0.5;
-      // A marker dropped almost dead centre gives no direction worth
-      // trusting; the assumption is better than a number made of rounding.
-      if (Math.abs(dx) > 0.02 || Math.abs(dy) > 0.02) {
-        planAngle = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
-      }
+    var facing = String(canvas.frontDoorFacing || '').trim().toUpperCase();
+    if (typeof NORTH_BEARINGS[facing] !== 'number') return null;
+    var bt = window.ToolboxBuildingTypes;
+    if (bt && typeof bt.frontDoorToNorthRotation === 'function') {
+      return Number(bt.frontDoorToNorthRotation(facing)) || 0;
     }
-    return ((planAngle - beta) % 360 + 360) % 360;
+    return ((180 - NORTH_BEARINGS[facing]) % 360 + 360) % 360;
   }
 
   function canvasById(record, canvasId) {
@@ -2232,10 +2462,14 @@
       // A compass belongs on a drawing of the building. A sheet of
       // photographs, or of property details, is not oriented to anything.
       north: page.type === 'floor' || page.type === 'distress',
-      // Where the front door says north is, unless the investigator has
-      // turned the arrow by hand on this sheet.
-      northRotation: typeof meta.northRotation === 'number'
-        ? meta.northRotation
+      // _northRotation carries the report's own hand turn when there is one,
+      // and otherwise the Distress rule for this level. A turn used to be
+      // kept on the SHEET, so turning the rose on one drawing left every
+      // other drawing of the same building pointing somewhere else -- and
+      // the levels disagreed anyway, because each canvas keeps its own front
+      // door facing and only the one being worked on is ever set.
+      northRotation: typeof page._northRotation === 'number'
+        ? page._northRotation
         : (typeof ev.northRotation === 'number' ? ev.northRotation : 0),
       residence: ev.residenceTitle || ev.customerName || '',
       address: ev.address || '',
@@ -2272,6 +2506,7 @@
     if (isPenLogPage(page)) {
       renderPenLogSheet(sheet, page, pages, thumb);
       renderSheetFrame(sheet);
+      renderDraftStamp(sheet, !!page._draftStamp);
       renderBrandLayer(sheet, page, page._brandBox || (page.meta && page.meta.brandBox));
       return;
     }
@@ -2340,17 +2575,30 @@
       var fl = window.ToolboxReportFloorLayout;
       if (fl && typeof fl.renderPage === 'function') {
         var imported = !!(page.meta && page.meta.imported && page.evidence && page.evidence.figure);
-        var layout = (page.meta && page.meta.layout) || page._bookFloorLayout || fl.defaultLayout();
+        // ONE layout record for the whole report. The slide used to keep a
+        // copy of its own, with the book's behind it and a factory default
+        // behind that -- three places holding one answer, and whichever was
+        // found first won. A slide nobody had touched fell through to the
+        // default (the aerial at x 2.5, y 74) and disagreed with the slide
+        // that had been arranged. Tim: "If I put the contour map in one
+        // place, it needs to live in one place."
+        var layout = page._bookFloorLayout || fl.defaultLayout();
         var rendered = fl.renderPage(page, page.evidence || {}, {
           imported: imported,
           layout: layout,
           formatSurveyDate: formatSurveyDate,
-          renderNorthArrow: renderNorthArrow,
+          renderNorthArrow: function () { return renderNorthArrow(page._northRotation || 0); },
           renderRelativeReadings: renderRelativeReadings,
           // Never in a preview. There is one live topo host and it is a
           // single DOM node: handing it to a thumbnail moves it off the
           // sheet and into the stamp, taking the drawing with it.
           mountTopo: thumb ? null : (page._mountTopo || null),
+          // What a slide draws when the live view is on another slide. Only
+          // the printed deck has one, and only for the slides that need it.
+          stillTopo: thumb ? null : function (p, slot) {
+            var shots = p && p._printTopo;
+            return shots ? (shots[Number(slot) || 0] || '') : '';
+          },
           topoSlots: thumb ? 1 : floorSlotsForPage(page),
           topoActiveSlot: thumb ? 0 : floorActiveSlotForPage(page),
           // The cover's aerial view, carried onto this page automatically and
@@ -2370,7 +2618,12 @@
           // own pill used before it came off the picture.
           pillPx: storedStatsPillPx(),
         });
-        if (page.meta && !thumb) page.meta.layout = rendered.layout;
+        // Back to the one record, not onto the slide. renderSheet runs
+        // outside the closure that holds it, so the way in is handed over on
+        // the page, like the aerial view and the view settings are.
+        if (!thumb && typeof page._putFloorLayout === 'function') {
+          page._putFloorLayout(rendered.layout);
+        }
         margin.appendChild(rendered.root);
       } else if (!renderEvidence(margin, page)) {
         addLine(margin, 'rb-sheet__note', 'Floor Survey page unavailable.');
@@ -2426,6 +2679,7 @@
     }
     sheet.appendChild(margin);
     renderSheetFrame(sheet);
+    renderDraftStamp(sheet, !!page._draftStamp);
     renderBrandLayer(sheet, page, page._brandBox || (page.meta && page.meta.brandBox));
   }
 
@@ -2501,7 +2755,7 @@
   }
 
   function persistableDocument(pages, activePageId, prior, floorLayout, coverLayout, brandBox,
-    floorCamera, floorView, floorFramed, discussionBox, penLogLayout) {
+    floorCamera, floorView, floorFramed, discussionBox, penLogLayout, northRotation, draft) {
     var notes = collectPenLogNotes(pages);
     if ((!notes || !Object.keys(notes).length) && prior && prior.penLog && prior.penLog.notes) {
       notes = prior.penLog.notes;
@@ -2552,6 +2806,13 @@
     if (camera) doc.floorCamera = JSON.parse(JSON.stringify(camera));
     var view = floorView || (prior && prior.floorView);
     if (view) doc.floorView = JSON.parse(JSON.stringify(view));
+    if (draft === true || draft === false) doc.draftStamp = !!draft;
+    else if (prior && typeof prior.draftStamp === 'boolean') doc.draftStamp = prior.draftStamp;
+    if (typeof northRotation === 'number') {
+      doc.northRotation = northRotation;
+    } else if (prior && typeof prior.northRotation === 'number') {
+      doc.northRotation = prior.northRotation;
+    }
     if (floorFramed || (prior && prior.floorFramed)) doc.floorFramed = true;
     return doc;
   }
@@ -2670,6 +2931,23 @@
     var pages = sequence.pages.slice();
     var activeId = pages[0] ? pages[0].id : '';
     var dirty = false;
+    /**
+     * Which edit the document in hand is.
+     *
+     * A save snapshots the pages, then waits -- on an IndexedDB read of the
+     * borrowed components and then on the write itself. Anything typed in
+     * that window is NOT in the snapshot, and clearing `dirty` when the
+     * snapshot lands threw it away: the armed timer saw a clean document and
+     * returned, and the page said "Saved" over text that had never been
+     * written. Reproduced on HEAD -- typed "Second edit while saving.",
+     * stored "First edit.", one write, status "Saved".
+     *
+     * The counter moves on every edit. A save may only report itself done,
+     * and only clear `dirty`, if the counter has not moved since it took its
+     * snapshot. Otherwise the document is still ahead of the disk and must
+     * stay that way until the next save catches up.
+     */
+    var editSeq = 0;
     var workingRecord = null;
     var saveTimer = null;
     var lastSavedAt = '';
@@ -2679,6 +2957,11 @@
     var coverLayout = window.ToolboxReportCoverLayout
       ? window.ToolboxReportCoverLayout.defaultLayout()
       : { locked: false, boxes: {}, overviewMediaId: '' };
+    // Which way north points on every drawing in this report. Null until the
+    // first drawing is stamped, which seeds it from that level's front door.
+    var reportNorth = null;
+    // A DRAFT watermark across every sheet. Off unless it was turned on.
+    var draftStamp = false;
     // One logo placement for the whole book. Null until the document says
     // otherwise, so a report saved before this still shows where its logo was
     // put (the per-sheet copy is adopted on open).
@@ -2749,8 +3032,10 @@
     }
 
     function livePillScale() {
-      var n = storedStatsPillPx() / 32;
-      return isFinite(n) && n > 0 ? n : 1;
+      var flApi = window.ToolboxReportFloorLayout;
+      var page = (flApi && Number(flApi.CHROME_SCALE)) || 1;
+      var n = (storedStatsPillPx() / 32) * page;
+      return isFinite(n) && n > 0 ? n : page;
     }
 
     /**
@@ -2767,48 +3052,128 @@
       var flApi = window.ToolboxReportFloorLayout;
       if (!flApi || !isFinite(scale) || scale <= 0) return false;
       var key = which === 'pill' ? 'pillLock' : 'legendLock';
-      var touched = false;
-      pages.forEach(function (fp) {
-        if (!fp || fp.type !== 'floor' || (fp.meta && fp.meta.reserved)) return;
-        fp.meta = fp.meta || {};
-        var own = flApi.normalizeLayout(fp.meta.layout || floorLayout);
-        if (!own[key] || !own[key].locked) return;
-        own[key] = { locked: true, scale: scale };
-        fp.meta.layout = own;
-        touched = true;
-      });
-      if (touched) {
-        floorLayout = flApi.normalizeLayout(floorLayout);
-        floorLayout[key] = { locked: true, scale: scale };
-        markDirty();
-      }
-      return touched;
+      var next = flApi.normalizeLayout(floorLayout);
+      var was = next[key] && next[key].scale;
+      if (was === scale) return false;
+      // One size for this piece, held by the report. The field name still
+      // says lock because that is what saved reports carry; what it holds is
+      // the size. It used to be written onto each slide in turn, and only
+      // onto the slides whose own copy said locked.
+      next[key] = { locked: true, scale: scale };
+      putFloorLayout(next);
+      markDirty();
+      return true;
     }
 
     /**
-     * Is this slide's layout locked?
+     * The report's one floor layout, written.
      *
-     * One lock covers the framing and both pieces, so any of the three being
-     * set reads as locked and the button turns them all off together. A
-     * report saved while there were three separate locks opens showing the
-     * state it was left in rather than losing it.
+     * Where the legend sits, where the readings sit, where the aerial sits,
+     * how the plan is framed and how big each piece is drawn: one record,
+     * held by the report, read by every Floor Survey slide. Moving a piece on
+     * any slide moves it on all of them, because they are all drawing this.
      */
-    function layoutIsLocked(page) {
+    /**
+     * Pin the size of each chrome piece into the record, once.
+     *
+     * With nothing stored, the colour scale falls back to the slide's own
+     * Legend size setting and the readings to this device's Stats pill size.
+     * Two slides whose settings differ would then draw the same piece at two
+     * sizes -- the drift this change exists to end, by another road. So the
+     * first time a report is drawn the sizes are read once and written into
+     * the record, and from then on every slide draws those.
+     */
+    function seedPieceSizes(firstFloor) {
       var flApi = window.ToolboxReportFloorLayout;
-      var raw = (page && page.meta && page.meta.layout) || floorLayout;
-      var layout = flApi ? flApi.normalizeLayout(raw) : (raw || {});
-      return !!(floorCamera && floorCamera.locked) ||
-        !!(layout.legendLock && layout.legendLock.locked) ||
-        !!(layout.pillLock && layout.pillLock.locked);
+      if (!flApi || !firstFloor) return;
+      var next = flApi.normalizeLayout(floorLayout);
+      var changed = false;
+      if (!next.legendLock || !(Number(next.legendLock.scale) > 0)) {
+        var view = floorViewFor(firstFloor);
+        var n = Number(view && view.legendScale);
+        next.legendLock = { locked: true, scale: (isFinite(n) && n > 0) ? n : 1 };
+        changed = true;
+      }
+      if (!next.pillLock || !(Number(next.pillLock.scale) > 0)) {
+        next.pillLock = { locked: true, scale: livePillScale() };
+        changed = true;
+      }
+      if (!changed) return;
+      putFloorLayout(next);
+      markDirty();
     }
 
-    function floorPieceLocked(page, kind) {
+    var seededPieces = false;
+
+    function putFloorLayout(next) {
+      if (!next) return;
       var flApi = window.ToolboxReportFloorLayout;
-      var raw = (page && page.meta && page.meta.layout) || floorLayout;
-      var layout = flApi ? flApi.normalizeLayout(raw) : (raw || {});
-      if (kind === 'legend') return !!(layout.legendLock && layout.legendLock.locked);
-      if (kind === 'pill') return !!(layout.pillLock && layout.pillLock.locked);
-      return !!layout.locked;
+      floorLayout = flApi ? flApi.normalizeLayout(next) : next;
+      pages.forEach(function (fp) {
+        if (!fp || fp.type !== 'floor') return;
+        // A slide placed on its own is not following the shared record any
+        // more, so it is not restamped from it.
+        if (fp.meta && fp.meta.ownLayout) return;
+        fp._bookFloorLayout = floorLayout;
+      });
+    }
+
+    /** Is this slide placed on its own, rather than following the report? */
+    function floorSlideOnItsOwn(page) {
+      return !!(page && page.meta && page.meta.ownLayout);
+    }
+
+    /**
+     * The way a slide's placement is written, which depends on whose it is.
+     *
+     * One record is the rule, and a Combined figure is the reason there is an
+     * exception: it carries no colour scale and no readings pill -- that was
+     * settled, they go in the rail -- so its whole left column is free and the
+     * plan wants to sit in the middle of it rather than clear of chrome that
+     * is not on the page. Tim: "on the combined view, I would probably put it
+     * more towards the middle ... I don't have contours or pills to show."
+     *
+     * It is never automatic. A slide goes on its own because it was put
+     * there, it says so while it is, and it can be put back. And when it IS
+     * on its own it falls back to the shared record, never to the factory
+     * default -- that default is what put an aerial in the corner of a slide
+     * nobody had touched.
+     */
+    function putFloorLayoutFor(page) {
+      return function (next) {
+        if (!next) return;
+        var flApi = window.ToolboxReportFloorLayout;
+        if (!floorSlideOnItsOwn(page)) {
+          putFloorLayout(next);
+          return;
+        }
+        page.meta.ownLayout = flApi ? flApi.normalizeLayout(next) : next;
+        page._bookFloorLayout = page.meta.ownLayout;
+      };
+    }
+
+    /** Take this slide off the shared placement, or put it back on it. */
+    function setFloorSlideOnItsOwn(page, onItsOwn) {
+      if (!page || page.type !== 'floor') return;
+      var flApi = window.ToolboxReportFloorLayout;
+      page.meta = page.meta || {};
+      if (onItsOwn) {
+        if (page.meta.ownLayout) return;
+        // Seeded from what the slide is showing RIGHT NOW, so nothing moves
+        // at the moment it is taken off.
+        page.meta.ownLayout = flApi
+          ? flApi.cloneLayout(page._bookFloorLayout || floorLayout)
+          : (page._bookFloorLayout || floorLayout);
+        page._bookFloorLayout = page.meta.ownLayout;
+      } else {
+        if (!page.meta.ownLayout) return;
+        delete page.meta.ownLayout;
+        page._bookFloorLayout = floorLayout;
+      }
+      page._putFloorLayout = putFloorLayoutFor(page);
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
     }
 
     function floorViewFor(page, slot) {
@@ -2879,9 +3244,16 @@
       if (saveStatusEl) saveStatusEl.textContent = text || '';
     }
 
+    // One place that says "something changed", so no edit can set `dirty`
+    // without also moving the counter a save is checked against.
+    function noteEdit() {
+      editSeq += 1;
+      dirty = true;
+    }
+
     function markDirty() {
       recordHistory();
-      dirty = true;
+      noteEdit();
       // The save itself is debounced; only the STATUS fired on every
       // keystroke, which made it look as though every character was being
       // written. Say "Edited" while typing and "Saving" when a save actually
@@ -2928,6 +3300,8 @@
       if (!window.ToolboxDB || typeof window.ToolboxDB.saveCustomerFile !== 'function') {
         return Promise.reject(new Error('Customer File save is not available.'));
       }
+      // The edit this save is carrying. Everything below is a snapshot of it.
+      var savedSeq = editSeq;
       var doc = persistableDocument(
         pages,
         activeId,
@@ -2939,7 +3313,9 @@
         floorView,
         floorFramed,
         discussionBox,
-        penLogBoxLayout
+        penLogBoxLayout,
+        reportNorth,
+        draftStamp
       );
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;
@@ -2959,6 +3335,22 @@
           return window.ToolboxDB.saveCustomerFile(workingRecord);
         })
         .then(function () {
+          if (editSeq !== savedSeq) {
+            // Typed while this was in flight. What went down is already
+            // behind the screen, so the document stays dirty and the status
+            // does not claim otherwise. markDirty armed a timer for the
+            // newer text; re-arm if some other path cleared it, so the
+            // latest edit is written whatever happens next.
+            lastSavedAt = doc.updatedAt;
+            setSaveStatus('Edited');
+            if (draftEl) draftEl.textContent = 'Edited';
+            if (!saveTimer) {
+              saveTimer = setTimeout(function () {
+                flushSave().catch(function () {});
+              }, AUTOSAVE_DELAY_MS);
+            }
+            return;
+          }
           dirty = false;
           lastSavedAt = doc.updatedAt;
           setSaveStatus(formatSavedAt(lastSavedAt));
@@ -2978,7 +3370,7 @@
     }
 
     function leaveAfterFlush(next) {
-      dirty = true;
+      noteEdit();
       setSaveStatus('Saving…');
       flushSave().then(function () {
         if (typeof next === 'function') next();
@@ -3251,7 +3643,7 @@
 
     // The preview is laid out at the sheet's own size and scaled to the box
     // it has to live in, so measure the box once it is on screen.
-    var THUMB_SHEET_W = 680;
+    var THUMB_SHEET_W = PAPER_W;
     function fitThumb(host, sheet) {
       var w = host.clientWidth;
       if (!w) return;
@@ -3378,17 +3770,14 @@
       });
 
       if (current && current.type === 'floor') {
-        current._bookFloorLayout = floorLayout;
-        if (floorLayout && floorLayout.locked) {
-          current.meta = current.meta || {};
-          current.meta.layout = window.ToolboxReportFloorLayout
-            ? window.ToolboxReportFloorLayout.cloneLayout(floorLayout)
-            : floorLayout;
-        } else if (current.meta && !current.meta.layout && floorLayout) {
-          current.meta.layout = window.ToolboxReportFloorLayout
-            ? window.ToolboxReportFloorLayout.cloneLayout(floorLayout)
-            : floorLayout;
-        }
+        var curOwn = current.meta && current.meta.ownLayout;
+        current._bookFloorLayout = curOwn
+          ? (window.ToolboxReportFloorLayout
+            ? window.ToolboxReportFloorLayout.normalizeLayout(curOwn)
+            : curOwn)
+          : floorLayout;
+        current._putFloorLayout = putFloorLayoutFor(current);
+        if (current.meta && current.meta.layout) delete current.meta.layout;
       }
       // Stamped on every page that needs it, not only on the one being
       // looked at. The print deck renders the same page objects, and a value
@@ -3413,8 +3802,62 @@
       // sheet, or the preview would disagree with the page it is a preview
       // of. Settled Oct 10, 2026.
       (pages || []).forEach(function (item) {
-        if (!item || item.type !== 'floor') return;
+        if (!item) return;
+        // Tim, Oct 23, 2026: "more on the discussion page as opposed to
+        // every page." One switch, and it lands where the writing is.
+        item._draftStamp = draftStamp && isDiscussionPage(item);
+        // Which way north is on this level — Distress's frontDoorToNorthRotation
+        // — on every drawing of the building (Floor and Picture Locations).
+        // renderSheet / the rail run outside this closure.
+        if (item.type === 'floor' || item.type === 'distress') {
+          if (typeof reportNorth === 'number') {
+            item._northRotation = reportNorth;
+          } else {
+            // The first drawing whose front door can actually be READ sets
+            // north for the book. One building has one front door; the
+            // per-canvas facing is Plan Setup's and only the level being
+            // worked on is ever set, which is why the arrow pointed four
+            // ways in one report.
+            //
+            // A rotation that could not be worked out must not latch. The
+            // first render runs before the Customer File is in hand, so a
+            // latched fallback pinned every drawing in the book at 0 -- due
+            // south -- however the door actually faced. That is the arrow
+            // being wrong on an east-facing house.
+            var seeded = northRotationFor(item, workingRecord);
+            if (typeof seeded === 'number') reportNorth = seeded;
+            item._northRotation = typeof seeded === 'number' ? seeded : 0;
+          }
+          if (item.meta && typeof item.meta.northRotation === 'number') {
+            delete item.meta.northRotation;
+          }
+        }
+        if (item.type !== 'floor') return;
         item._overviewUrl = coverOverviewUrl;
+        // The book's framing and chrome placement, on EVERY floor slide and
+        // not only the one being looked at. Without it renderSheet falls
+        // through to defaultLayout(), so the printed deck drew every slide
+        // the investigator was not sitting on at the default frame: the plan
+        // scaled up until it ran off the sheet, and the colour scale, the
+        // pill and the aerial view each back in a default corner, on top of
+        // the drawing. Same fault the Discussion had, same cure.
+        if (!seededPieces) {
+          seededPieces = true;
+          seedPieceSizes(item);
+        }
+        // The report's placement, unless this slide was deliberately taken
+        // off it. ownLayout is only ever there because somebody put it there.
+        var ownLayout = item.meta && item.meta.ownLayout;
+        item._bookFloorLayout = ownLayout
+          ? (window.ToolboxReportFloorLayout
+            ? window.ToolboxReportFloorLayout.normalizeLayout(ownLayout)
+            : ownLayout)
+          : floorLayout;
+        item._putFloorLayout = putFloorLayoutFor(item);
+        // Any copy a slide was saved with under the OLD model is dead weight
+        // now and would only be a second answer waiting to be read again.
+        // ownLayout is not that: it is a placement asked for by hand.
+        if (item.meta && item.meta.layout) delete item.meta.layout;
         // How big the colour scale is drawn on the page. It is the slide's
         // own Legend size -- the same control that sizes it on the Floor
         // Survey screen -- and renderSheet runs outside this closure, so it
@@ -3438,9 +3881,17 @@
             customerFileId: customerFileId,
             camera: floorCamera,
             settings: floorViewFor(page, at),
-            locked: !!(floorCamera && floorCamera.locked),
+            // Never locked. The drawing is panned and zoomed like the
+            // workspace it came from, on every slide.
+            //
+            // A report saved while Lock layout existed still carries
+            // floorCamera.locked on it. That flag reaches PlanCanvas as
+            // frozen, which stops the pan AND takes away the corner handles.
+            // Removing the Lock button without clearing the flag left those
+            // reports with a drawing that could not be moved or resized and
+            // no control left to release it.
+            locked: false,
             onCameraChange: function (camera, from) {
-              var locked = !!(floorCamera && floorCamera.locked);
               // A view that has just been handed a camera reports it straight
               // back. Reading that as a fresh pan would save the report again
               // and bounce the camera between the two views, so a camera that
@@ -3457,7 +3908,7 @@
               // places.
               floorCamera = {
                 cx: camera.cx, cy: camera.cy, zoom: camera.zoom,
-                rel: !!camera.rel, locked: locked,
+                rel: !!camera.rel,
               };
               pushCameraToTopoHosts(floorCamera, from);
               markDirty();
@@ -3493,14 +3944,13 @@
               if (!flApi || typeof flApi.frameForPlan !== 'function') return;
               var frame = flApi.frameForPlan(info.planWidth, info.planHeight);
               floorFramed = true;
-              pages.forEach(function (item) {
-                if (!item || item.type !== 'floor') return;
-                item.meta = item.meta || {};
-                var next = flApi.normalizeLayout(item.meta.layout || floorLayout);
-                next.topo = frame;
-                item.meta.layout = next;
-              });
-              floorLayout = flApi.normalizeLayout({ topo: frame });
+              // Into the one record, which every slide is already reading.
+              // It used to be written onto each slide as well, and the record
+              // was then thrown away and rebuilt from the frame alone, losing
+              // wherever the aerial and the chrome had been put.
+              var framed = flApi.normalizeLayout(floorLayout);
+              framed.topo = frame;
+              putFloorLayout(framed);
               markDirty();
               renderPages();
               flushSave().catch(function () {});
@@ -3698,19 +4148,27 @@
         var onPage = Math.max(1, picturesOnPage(page));
         var row = document.createElement('div');
         row.className = 'rb-ws__row rb-ws__row--wrap';
-        // Only the grids that keep the pictures worth printing: anything
-        // deeper than three rows made each one too small to read.
-        picturesGrids(onPage).forEach(function (n) {
-          var label = String(n) + ' \u00d7 ' + Math.ceil(onPage / n);
-          var btn = railButton(label,
-            n === acrossNow ? 'accent' : 'secondary', 'data-rb-pics-across', String(n));
-          row.appendChild(btn);
+        // Every shape, on every slide. A shape is a page capacity now, so
+        // the tight ones add sheets instead of crushing one.
+        var downNow = picturesDown(page);
+        // Two rows at the most, and a single column only on its own: Tim,
+        // Oct 20, "one row is acceptable. 5 by 1 ... 1 by 4, 1 by 3, 1 by 2,
+        // 1 by 1. The most rows are 2", and on a stacked single column,
+        // "1x2 NO."
+        PICTURES_ACROSS.forEach(function (cols) {
+          var deepest = cols === 1 ? 1 : 2;
+          for (var down = 1; down <= deepest; down += 1) {
+            var btn = railButton(String(cols) + ' \u00d7 ' + down,
+              (cols === acrossNow && down === downNow) ? 'accent' : 'secondary',
+              'data-rb-pics-across', cols + 'x' + down);
+            row.appendChild(btn);
+          }
         });
         railTopEl.appendChild(row);
         var picHint = document.createElement('p');
         picHint.className = 'rb-panel__lead';
-        picHint.textContent = 'Across \u00d7 down. Fewer across makes each picture bigger; ' +
-          'a page starts on the grid that fits what it holds.';
+        picHint.textContent = 'Across \u00d7 down sets how many a sheet holds. ' +
+          'Fewer makes each picture bigger and adds sheets; the pictures flow on.';
         railTopEl.appendChild(picHint);
         if (railBodyEl) railBodyEl.textContent = '';
         setRailFootSource('distress');
@@ -3765,8 +4223,8 @@
           var wrap = document.createDocumentFragment();
           var pieceApi = window.ToolboxReportFloorLayout;
           var pieceLayout = pieceApi
-            ? pieceApi.normalizeLayout((page.meta && page.meta.layout) || floorLayout)
-            : ((page.meta && page.meta.layout) || floorLayout || {});
+            ? pieceApi.normalizeLayout(floorLayout)
+            : (floorLayout || {});
           // One lock, as it was before three replaced it. Tim: "Lock layout is
           // better, one button vs three, let's go back to that."
           //
@@ -3779,17 +4237,24 @@
           // and where the colour scale and the readings sit and how big they
           // are -- is what this pins. Contours on or off, palette and mode
           // stay free per slide, which is the reason to lock first.
-          var locked = layoutIsLocked(page);
-          wrap.appendChild(railButton(
-            locked ? 'Unlock layout' : 'Lock layout',
-            locked ? 'secondary' : 'accent',
-            'data-rb-floor-lock-all', locked ? 'unlock' : 'lock'));
+          var onItsOwn = floorSlideOnItsOwn(page);
           var lockHint = document.createElement('p');
           lockHint.className = 'rb-panel__lead';
-          lockHint.textContent = locked
-            ? 'Framing and chrome held on every Floor Survey slide. Contours and palette stay per slide.'
-            : 'Place it, then lock so every slide is framed the same.';
+          lockHint.textContent = onItsOwn
+            ? 'This slide is placed on its own. Moving the plan, the colour '
+              + 'scale, the readings or the aerial here changes this slide only.'
+            : 'The plan, the colour scale, the readings and the aerial sit in one '
+              + 'place on every Floor Survey slide. Move one here and it moves on '
+              + 'all of them. Contours and palette stay per slide.';
           wrap.appendChild(lockHint);
+          // A Combined figure carries no colour scale and no readings pill --
+          // they go in the rail -- so its left column is free and the plan
+          // may want the middle of it. Tim: "on the combined view, I would
+          // probably put it more towards the middle."
+          wrap.appendChild(railButton(
+            onItsOwn ? 'Use the shared placement' : 'Place this slide on its own',
+            onItsOwn ? 'secondary' : 'quiet',
+            'data-rb-floor-own', onItsOwn ? 'share' : 'own'));
 
           var twoUp = floorSlots(page) > 1;
           wrap.appendChild(railButton(
@@ -3797,6 +4262,17 @@
             'quiet', 'data-rb-floor-twoup', twoUp ? 'off' : 'on'));
           wrap.appendChild(railButton(
             'Use this as my default', 'quiet', 'data-rb-template', 'floor'));
+          // The cover's copy of this button carries a line saying what it
+          // does; this one did not, so it read as though it might change
+          // something about THIS report. It does not: inside a report the
+          // arrangement is the arrangement, on every floor slide, and this
+          // only decides where the pieces start in the next one.
+          var floorDefaultHint = document.createElement('p');
+          floorDefaultHint.className = 'rb-panel__lead';
+          floorDefaultHint.textContent =
+            'New reports start with the plan, the colour scale, the readings '
+            + 'and the aerial where they are here.';
+          wrap.appendChild(floorDefaultHint);
           return wrap;
         };
       }
@@ -3862,6 +4338,14 @@
     // delegation rather than by listeners attached once at mount.
     if (railEl) {
       railEl.addEventListener('click', function (event) {
+        var ownBtn = event.target.closest('[data-rb-floor-own]');
+        if (ownBtn) {
+          event.preventDefault();
+          var ownPage = activePage();
+          if (!ownPage || ownPage.type !== 'floor') return;
+          setFloorSlideOnItsOwn(ownPage, ownBtn.getAttribute('data-rb-floor-own') === 'own');
+          return;
+        }
         var templateBtn = event.target.closest('[data-rb-template]');
         if (templateBtn) {
           event.preventDefault();
@@ -3925,7 +4409,7 @@
           var coverApi = window.ToolboxReportCoverLayout;
           coverLayout = coverApi ? coverApi.normalizeLayout(coverLayout) : coverLayout;
           coverLayout.locked = coverLock.getAttribute('data-rb-cover-lock') === 'lock';
-          dirty = true;
+          noteEdit();
           setSaveStatus('Saving…');
           renderPages();
           flushSave().catch(function () {});
@@ -3942,14 +4426,21 @@
           event.preventDefault();
           var pic = activePage();
           if (!pic || pic.type !== 'pictures') return;
-          var want = Number(acrossBtn.getAttribute('data-rb-pics-across'));
-          if (PICTURES_ACROSS.indexOf(want) < 0) return;
-          pic.meta = pic.meta || {};
-          if (pic.meta.picturesAcross === want) return;
-          pic.meta.picturesAcross = want;
+          var parts = String(acrossBtn.getAttribute('data-rb-pics-across')).split('x');
+          var wantCols = Number(parts[0]);
+          var wantRows = Number(parts[1]);
+          if (PICTURES_ACROSS.indexOf(wantCols) < 0) return;
+          if (!(wantRows >= 1 && wantRows <= MAX_PICTURE_ROWS)) return;
+          if (picturesAcross(pic) === wantCols && picturesDown(pic) === wantRows) return;
+          if (!repaginatePictures(wantCols, wantRows)) return;
           markDirty();
           renderPages();
-          flushSave().catch(function () {});
+          // The sheets changed, so what is on them has to be read again.
+          attachEvidence(workingRecord, pages.slice()).then(function (enriched) {
+            pages = enriched;
+            renderPages();
+            flushSave().catch(function () {});
+          }).catch(function () { flushSave().catch(function () {}); });
           return;
         }
         var twoBtn = event.target.closest('[data-rb-floor-twoup]');
@@ -3981,81 +4472,6 @@
           // both makes each one fit the frame it is actually in.
           releaseTopoHosts();
           markDirty();
-          renderPages();
-          flushSave().catch(function () {});
-          return;
-        }
-        // Lock contour legend / Lock high/low/delta.
-        //
-        // Locking takes this sheet's placement AND the size it is being drawn
-        // at right now, writes both into the report, and gives the same pair to
-        // every Floor Survey sheet. Tim: "they should all just come in exactly
-        // in the same place always, always in the same size... maybe it just
-        // needs to be the last location that I brought them in." This is that:
-        // the one in front of him when he locks it.
-        var pieceBtn = event.target.closest('[data-rb-floor-lock-all]');
-        if (pieceBtn) {
-          event.preventDefault();
-          var pCurrent = activePage();
-          if (!pCurrent || pCurrent.type !== 'floor') return;
-          var wantLock = pieceBtn.getAttribute('data-rb-floor-lock-all') !== 'unlock';
-          // The framing goes with it: one button, one idea. "Lock the picture,
-          // not the rendition" (Tim, Oct 8) -- so contours, palette and mode
-          // stay free per slide.
-          if (!floorCamera) floorCamera = { cx: 0.5, cy: 0.5, zoom: 1, rel: true, locked: false };
-          floorCamera.locked = wantLock;
-          ['legend', 'pill'].forEach(function (which) {
-          var pApi = window.ToolboxReportFloorLayout;
-          if (!pApi) return;
-          var pLayout = pApi.normalizeLayout((pCurrent.meta && pCurrent.meta.layout) || floorLayout);
-          var lockKey = which === 'legend' ? 'legendLock' : 'pillLock';
-          if (wantLock) {
-            // The size it is drawn at RIGHT NOW, always. It used to prefer a
-            // size this piece had been locked at before, so after unlocking,
-            // resizing and locking again the piece jumped back to that older
-            // size the moment it was locked. Tim: "lock contour vs unlock the
-            // legend changes size." A lock freezes what is on the sheet; it
-            // does not remember an earlier one.
-            pLayout[lockKey] = {
-              locked: true,
-              scale: which === 'legend' ? liveLegendScale() : livePillScale(),
-            };
-            // Every sheet takes this sheet's placement for that piece, so the
-            // locked piece is in one spot across the book.
-            var placed = {};
-            pLayout.overlays.forEach(function (o) {
-              if (o.kind === which) placed[o.statsIndex] = { x: o.x, y: o.y, z: o.z };
-            });
-            pages.forEach(function (fp) {
-              if (!fp || fp.type !== 'floor' || (fp.meta && fp.meta.reserved)) return;
-              fp.meta = fp.meta || {};
-              var own = pApi.normalizeLayout(fp.meta.layout || floorLayout);
-              own[lockKey] = { locked: true, scale: pLayout[lockKey].scale };
-              own.overlays.forEach(function (o) {
-                var spot = o.kind === which ? placed[o.statsIndex] : null;
-                if (!spot) return;
-                o.x = spot.x;
-                o.y = spot.y;
-                o.z = spot.z;
-              });
-              fp.meta.layout = own;
-            });
-            floorLayout = pApi.normalizeLayout(floorLayout);
-            floorLayout[lockKey] = { locked: true, scale: pLayout[lockKey].scale };
-          } else {
-            pages.forEach(function (fp) {
-              if (!fp || fp.type !== 'floor' || (fp.meta && fp.meta.reserved)) return;
-              fp.meta = fp.meta || {};
-              var own = pApi.normalizeLayout(fp.meta.layout || floorLayout);
-              own[lockKey] = { locked: false, scale: own[lockKey] ? own[lockKey].scale : null };
-              fp.meta.layout = own;
-            });
-            floorLayout = pApi.normalizeLayout(floorLayout);
-            floorLayout[lockKey] = { locked: false, scale: floorLayout[lockKey].scale };
-          }
-          });
-          dirty = true;
-          setSaveStatus('Saving…');
           renderPages();
           flushSave().catch(function () {});
           return;
@@ -4098,7 +4514,7 @@
         contourPage.meta = contourPage.meta || {};
         contourPage.meta.showContour =
           penContourBtn.getAttribute('data-rb-penlog-contour') === 'on';
-        dirty = true;
+        noteEdit();
         setSaveStatus('Saving…');
         renderPages();
         flushSave().catch(function () {});
@@ -5412,17 +5828,60 @@
       var api = window.ToolboxReportText;
       if (!api || !event.clipboardData) return;
       if (clipboardImage(event)) return; // handled as the site overview
-      var text = event.clipboardData.getData('text/plain');
-      if (!text || !api.looksLikeMarkdown(text)) return;
+      // The clipboard's HTML flavour first, because that is the one that
+      // carries the formatting.
+      //
+      // Only text/plain was read before. A list copied out of a browser
+      // flattens in that flavour: the marker and its text arrive on separate
+      // lines and the nesting is gone before Toolbox sees any of it. That is
+      // what put every bullet's text on the line below its marker and
+      // levelled three indent levels into one. Tim: "what I'm looking for is
+      // a right-click paste as formatted."
+      //
+      // Nothing from the clipboard is inserted as markup. It is parsed in a
+      // detached document, read into the report's own model, and written
+      // back out as the report's own markup -- so a paste carries structure
+      // and styling, and carries nothing else in with it.
+      var html = '';
+      var pastedHtml = event.clipboardData.getData('text/html');
+      if (pastedHtml && typeof window.DOMParser === 'function') {
+        try {
+          var parsed = new window.DOMParser().parseFromString(pastedHtml, 'text/html');
+          var body = parsed && parsed.body;
+          if (body) {
+            var junk = body.querySelectorAll('script, style, meta, link, title');
+            for (var j = 0; j < junk.length; j += 1) junk[j].remove();
+            if (body.textContent.trim()) {
+              html = api.toHtml(api.compact(api.fromElement(body)));
+            }
+          }
+        } catch (err) {
+          html = '';
+        }
+      }
+      if (!html) {
+        var text = event.clipboardData.getData('text/plain');
+        if (!text || !api.looksLikeMarkdown(text)) return;
+        // No base size: headings come in bold at the field's own size, as the
+        // shipped reports set them, rather than stepping up a scale.
+        html = api.toHtml(api.fromMarkdown(text, 0));
+      }
       event.preventDefault();
-      // No base size: headings come in bold at the field's own size, as the
-      // shipped reports set them, rather than stepping up a scale.
-      var html = api.toHtml(api.fromMarkdown(text, 0));
-      if (!document.execCommand('insertHTML', false, html)) return;
-      // insertHTML nests the whole paste inside whatever block the caret was
-      // in, which produced one paragraph the height of the column. Rebuilding
-      // the field from the model flattens it back into real sibling
-      // paragraphs so the text can flow between columns.
+      insertRichHtml(field, html);
+    });
+
+    /**
+     * Put prepared markup in at the caret and settle the field.
+     *
+     * insertHTML nests the whole paste inside whatever block the caret was
+     * in, which produced one paragraph the height of the column. Rebuilding
+     * the field from the model flattens it back into real sibling paragraphs
+     * so the text can flow between columns.
+     */
+    function insertRichHtml(field, html) {
+      var api = window.ToolboxReportText;
+      if (!field || !api || !html) return false;
+      if (!document.execCommand('insertHTML', false, html)) return false;
       var normalized = api.compact(api.fromElement(field));
       field.innerHTML = api.toHtml(normalized);
       commitRichField(field);
@@ -5430,7 +5889,37 @@
         renderPages();
         flushSave().catch(function () {});
       }
-    });
+      return true;
+    }
+
+    /** The report's own markup for a block of clipboard HTML. */
+    function richHtmlFromClipboardHtml(pastedHtml) {
+      var api = window.ToolboxReportText;
+      if (!api || !pastedHtml || typeof window.DOMParser !== 'function') return '';
+      try {
+        var parsed = new window.DOMParser().parseFromString(pastedHtml, 'text/html');
+        var body = parsed && parsed.body;
+        if (!body) return '';
+        var junk = body.querySelectorAll('script, style, meta, link, title');
+        for (var j = 0; j < junk.length; j += 1) junk[j].remove();
+        if (!body.textContent.trim()) return '';
+        return api.toHtml(api.compact(api.fromElement(body)));
+      } catch (err) {
+        return '';
+      }
+    }
+
+    /** The report's own markup for a block of plain text, styling nothing. */
+    function richHtmlFromPlainText(text) {
+      var api = window.ToolboxReportText;
+      if (!api || !text) return '';
+      var model = { paragraphs: String(text).replace(/\r\n?/g, '\n').split('\n')
+        .map(function (line) {
+          return { align: 'left', bullet: false, numbered: false, indent: 0,
+            dir: 'ltr', runs: line ? [{ text: line }] : [] };
+        }) };
+      return api.toHtml(api.compact(model));
+    }
 
     sheetEl.addEventListener('focusin', function (event) {
       var field = event.target.closest && event.target.closest('[data-rb-rich]');
@@ -5546,9 +6035,6 @@
         if (!meta.canvasId) return;
         if (!meta.compose && !meta.figureMediaId) return;
         page.meta = meta;
-        if (!meta.layout || (floorLayout && floorLayout.locked)) {
-          page.meta.layout = flApi ? flApi.cloneLayout(floorLayout) : floorLayout;
-        }
         // A garage arrives as readings, not contours. Tim, Oct 20: "I just
         // want data points in the garage. Period. I can always change them
         // later." Only ever seeded here, on the slide's first import, and
@@ -5588,16 +6074,6 @@
       if (!current || current.type !== 'floor' || (current.meta && current.meta.reserved)) return;
       if (!workingRecord) return;
       current.meta = current.meta || {};
-      if (!current.meta.layout) {
-        current.meta.layout = window.ToolboxReportFloorLayout
-          ? window.ToolboxReportFloorLayout.cloneLayout(floorLayout)
-          : floorLayout;
-      }
-      if (floorLayout && floorLayout.locked) {
-        current.meta.layout = window.ToolboxReportFloorLayout
-          ? window.ToolboxReportFloorLayout.cloneLayout(floorLayout)
-          : floorLayout;
-      }
       current.meta.imported = true;
       setSaveStatus('Importing…');
       attachEvidence(workingRecord, [current]).then(function (enriched) {
@@ -5795,7 +6271,7 @@
         if (!overviewPage || overviewPage.type !== 'floor') return;
         overviewPage.meta = overviewPage.meta || {};
         overviewPage.meta.hideOverview = true;
-        dirty = true;
+        noteEdit();
         setSaveStatus('Saving…');
         renderPages();
         flushSave().catch(function () {});
@@ -5816,9 +6292,9 @@
     //
     // North is not always up: a plan comes in at whatever rotation it was
     // drawn at, and the mark has to agree with it. Dragging the rose turns
-    // it about its own centre; the N above stays upright, because that is a
-    // label on the sheet rather than part of the instrument. The angle is
-    // the page's, so each sheet can say something different.
+    // the whole instrument about its centre — N rides with the arrow, the
+    // same as Distress Survey. The angle is the page's, so each sheet can
+    // say something different; a hand turn pins that sheet.
     var northDrag = null;
 
     function northAngle(event) {
@@ -5827,6 +6303,22 @@
       var deg = northDrag.from + ((now - northDrag.start) * 180) / Math.PI;
       deg = Math.round(deg) % 360;
       return deg < 0 ? deg + 360 : deg;
+    }
+
+    function applyRoseRotation(rail, deg) {
+      if (!rail) return;
+      var g = rail.querySelector('.rb-rail__rose-rot');
+      if (g) g.setAttribute('transform', 'rotate(' + deg + ')');
+      rail.style.setProperty('--rb-north-rotation', deg + 'deg');
+    }
+
+    function currentNorthRotation(page) {
+      if (typeof reportNorth === 'number') return reportNorth;
+      if (!page) return 0;
+      if (typeof page._northRotation === 'number') return page._northRotation;
+      var ev = page.evidence || {};
+      if (typeof ev.northRotation === 'number') return ev.northRotation;
+      return 0;
     }
 
     sheetEl.addEventListener('pointerdown', function (event) {
@@ -5843,7 +6335,7 @@
         cy: box.top + box.height / 2,
         start: Math.atan2(event.clientY - box.top - box.height / 2,
           event.clientX - box.left - box.width / 2),
-        from: Number(page.meta && page.meta.northRotation) || 0,
+        from: currentNorthRotation(page),
       };
       try { compass.setPointerCapture(event.pointerId); } catch (err) { /* not captured */ }
       event.preventDefault();
@@ -5852,8 +6344,7 @@
 
     onDocument('pointermove', function (event) {
       if (!northDrag) return;
-      var deg = northAngle(event);
-      if (northDrag.rail) northDrag.rail.style.setProperty('--rb-north-rotation', deg + 'deg');
+      applyRoseRotation(northDrag.rail, northAngle(event));
       event.preventDefault();
     });
 
@@ -5861,11 +6352,12 @@
       if (!northDrag) return;
       var deg = northAngle(event);
       var page = northDrag.page;
+      applyRoseRotation(northDrag.rail, deg);
       northDrag = null;
-      page.meta = page.meta || {};
-      if (page.meta.northRotation === deg) return;
-      page.meta.northRotation = deg;
+      if (reportNorth === deg) return;
+      reportNorth = deg;
       markDirty();
+      renderPages();
       flushSave().catch(function () {});
     });
 
@@ -5931,7 +6423,7 @@
           startX: event.clientX,
           startY: event.clientY,
           // Inches, because the pen log's own model is in inches on a
-          // 17 x 11 sheet rather than in percentages of it.
+          // 11x17 sheet rather than in percentages of it.
           perInX: penStage.width / 17,
           perInY: penStage.height / 11,
           boxes: penLogBoxes(),
@@ -5983,11 +6475,10 @@
       var resize = event.target.closest('[data-rb-floor-resize]');
       var box = event.target.closest('[data-rb-floor-box]');
       if (!box) return;
-      // Each piece answers to its own lock. The colour scale and the readings
-      // have one each; the plan and the aerial follow whatever is left of the
-      // old single lock on this report.
+      // Every piece is movable on every slide. They are all drawing the
+      // report's one layout record, so moving one here moves it everywhere --
+      // which is what the locks were copying by hand.
       var dragKind = box.getAttribute('data-rb-floor-kind') || 'topo';
-      if (floorPieceLocked(current, dragKind)) return;
       // Inside the drawing the gestures are Floor Survey's: drag pans the plan,
       // the wheel zooms it, and it can be moved anywhere including off the
       // edge. Report Builder must not claim those -- the slide is meant to
@@ -6002,8 +6493,8 @@
       var id = box.getAttribute('data-rb-floor-box');
       var kind = box.getAttribute('data-rb-floor-kind') || 'topo';
       var layout = window.ToolboxReportFloorLayout
-        ? window.ToolboxReportFloorLayout.normalizeLayout((current.meta && current.meta.layout) || floorLayout)
-        : (current.meta && current.meta.layout) || floorLayout;
+        ? window.ToolboxReportFloorLayout.normalizeLayout(floorLayout)
+        : floorLayout;
       floorDrag = {
         id: id,
         kind: kind,
@@ -6015,7 +6506,20 @@
         stageH: stage.height,
         layout: layout,
       };
-      try { box.setPointerCapture(event.pointerId); } catch (_) {}
+      // Captured by the element the pointer is ACTUALLY on -- the handle when
+      // one was grabbed, the box otherwise.
+      //
+      // Capturing on the box left the pointer free to wander onto the live
+      // drawing, whose own pointer handling then took it: mid-drag the canvas
+      // held the capture and the box did not, so every pointermove was
+      // retargeted there and this drag never saw one. The aerial's pulls were
+      // visible, were what the pointer found, and still did nothing.
+      // Tim: "I cannot resize the picture. Or the topo."
+      var grabbed = resize || box;
+      try { grabbed.setPointerCapture(event.pointerId); } catch (_) {}
+      floorDrag.grabbed = grabbed;
+      // And nothing downstream gets a say in this gesture.
+      event.stopPropagation();
     });
 
     sheetEl.addEventListener('pointermove', function (event) {
@@ -6160,10 +6664,16 @@
           overlay.y = (origin ? origin.y : 0) + dy;
         }
       }
+      // Written through the slide, not straight at the report.
+      //
+      // For a slide following the shared placement this IS the report's one
+      // record, so every Floor Survey slide has moved by the time the drag
+      // ends -- that is the rule. For a slide that was deliberately placed on
+      // its own, it is that slide's. Writing the record directly here made
+      // the drag ignore which of the two it was, so moving a piece on a slide
+      // placed on its own moved every other slide with it.
       layout = flApi ? flApi.normalizeLayout(layout) : layout;
-      current.meta = current.meta || {};
-      current.meta.layout = layout;
-      if (!floorLayout.locked) floorLayout = flApi ? flApi.cloneLayout(layout) : layout;
+      (current._putFloorLayout || putFloorLayout)(layout);
       var box = sheetEl.querySelector('[data-rb-floor-box="' + floorDrag.id + '"]');
       if (!box) return;
       if (floorDrag.id === 'overview') {
@@ -6234,6 +6744,151 @@
     sheetEl.addEventListener('pointercancel', endLayoutDrag);
 
     /**
+     * Right-click in a writing area: Paste as formatted, Paste unformatted.
+     *
+     * Ctrl+V already pastes formatted and Ctrl+Shift+V already pastes plain,
+     * but Tim does not want to hold a shortcut in his head: "I want to be
+     * able to right-click and click paste as formatted, or right-click paste
+     * unformatted."
+     *
+     * A page cannot open the system menu, so this is the report's own, and
+     * reading the clipboard from script is something Chrome asks about the
+     * first time. That prompt is the browser's, not ours; if it is refused,
+     * the menu says so and names the keys that always work rather than
+     * failing quietly.
+     */
+    var pasteMenu = null;
+    var pasteMenuField = null;
+
+    function closePasteMenu() {
+      if (pasteMenu && pasteMenu.parentNode) pasteMenu.parentNode.removeChild(pasteMenu);
+      pasteMenu = null;
+      pasteMenuField = null;
+      document.removeEventListener('pointerdown', pasteMenuAway, true);
+      document.removeEventListener('keydown', pasteMenuKey, true);
+    }
+
+    function pasteMenuAway(event) {
+      if (event.target.closest && event.target.closest('[data-rb-pastemenu]')) return;
+      closePasteMenu();
+    }
+
+    function pasteMenuKey(event) {
+      if (event.key === 'Escape') closePasteMenu();
+    }
+
+    function pasteMenuSay(message) {
+      if (!pasteMenu) return;
+      var note = pasteMenu.querySelector('.rb-stackmenu__note');
+      if (!note) {
+        note = document.createElement('p');
+        note.className = 'rb-stackmenu__note';
+        pasteMenu.appendChild(note);
+      }
+      note.textContent = message;
+    }
+
+    function pasteFromClipboard(formatted) {
+      var field = pasteMenuField;
+      if (!field) return;
+      var nav = window.navigator;
+      var clip = nav && nav.clipboard;
+      if (!clip) {
+        pasteMenuSay('This browser will not let a page read the clipboard. Ctrl+V pastes formatted, Ctrl+Shift+V pastes plain.');
+        return;
+      }
+      var done = function (html) {
+        closePasteMenu();
+        field.focus();
+        restorePasteCaretInto(field);
+        insertRichHtml(field, html);
+      };
+      var failed = function () {
+        pasteMenuSay('Toolbox was not allowed to read the clipboard. Ctrl+V pastes formatted, Ctrl+Shift+V pastes plain.');
+      };
+      if (!formatted) {
+        if (typeof clip.readText !== 'function') { failed(); return; }
+        clip.readText().then(function (text) {
+          var html = richHtmlFromPlainText(text);
+          if (html) done(html); else closePasteMenu();
+        }).catch(failed);
+        return;
+      }
+      if (typeof clip.read !== 'function') {
+        // Older Chrome: text is all that can be had, so say what is being
+        // given rather than pretending the formatting came through.
+        if (typeof clip.readText !== 'function') { failed(); return; }
+        clip.readText().then(function (text) {
+          var html = richHtmlFromPlainText(text);
+          if (html) done(html); else closePasteMenu();
+        }).catch(failed);
+        return;
+      }
+      clip.read().then(function (items) {
+        var list = items || [];
+        var pick = null;
+        for (var i = 0; i < list.length && !pick; i += 1) {
+          var types = (list[i] && list[i].types) || [];
+          if (types.indexOf('text/html') >= 0) pick = list[i];
+        }
+        if (pick) {
+          return pick.getType('text/html').then(function (blob) {
+            return blob.text();
+          }).then(function (raw) {
+            var html = richHtmlFromClipboardHtml(raw);
+            if (html) done(html); else closePasteMenu();
+          });
+        }
+        return clip.readText().then(function (text) {
+          var html = richHtmlFromPlainText(text);
+          if (html) done(html); else closePasteMenu();
+        });
+      }).catch(failed);
+    }
+
+    // The caret has to be put back AFTER the menu goes, because removing the
+    // menu is itself a DOM change and the range kept from the right-click is
+    // the only record of where the investigator was pointing.
+    var pendingCaret = null;
+    function restorePasteCaretInto(field) {
+      if (!pendingCaret || !field) return;
+      var sel = window.getSelection();
+      if (sel) { sel.removeAllRanges(); sel.addRange(pendingCaret); }
+      pendingCaret = null;
+    }
+
+    sheetEl.addEventListener('contextmenu', function (event) {
+      var field = event.target.closest && event.target.closest('[data-rb-rich]');
+      if (!field || field.getAttribute('contenteditable') !== 'true') return;
+      event.preventDefault();
+      closePasteMenu();
+      closeStackMenu();
+      var sel = window.getSelection();
+      pendingCaret = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+      pasteMenuField = field;
+      pasteMenu = document.createElement('div');
+      pasteMenu.className = 'rb-stackmenu';
+      pasteMenu.setAttribute('data-rb-pastemenu', '1');
+      [['Paste as formatted', '1'], ['Paste unformatted', '0']].forEach(function (choice) {
+        var item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'rb-stackmenu__item';
+        item.setAttribute('data-rb-paste-as', choice[1]);
+        item.textContent = choice[0];
+        item.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          pasteFromClipboard(choice[1] === '1');
+        });
+        pasteMenu.appendChild(item);
+      });
+      pasteMenu.style.left = Math.round(event.clientX) + 'px';
+      pasteMenu.style.top = Math.round(event.clientY) + 'px';
+      document.body.appendChild(pasteMenu);
+      document.addEventListener('pointerdown', pasteMenuAway, true);
+      document.addEventListener('keydown', pasteMenuKey, true);
+    });
+
+    /**
      * Right-click a piece of a Floor Survey page to move it behind or in
      * front of the others.
      *
@@ -6267,8 +6922,7 @@
       var page = activePage();
       var flApi = window.ToolboxReportFloorLayout;
       if (!page || page.type !== 'floor' || !flApi) return;
-      var layout = flApi.normalizeLayout((page.meta && page.meta.layout) || floorLayout);
-      if (layout.locked) return;
+      var layout = flApi.normalizeLayout(floorLayout);
       var id = box.getAttribute('data-rb-floor-box') || '';
       var kind = box.getAttribute('data-rb-floor-kind') || 'topo';
       var stack = [layout.topo.z, layout.overview.z].concat(
@@ -6290,8 +6944,9 @@
         });
         if (!found) return;
       }
-      page.meta = page.meta || {};
-      page.meta.layout = layout;
+      // Through the slide as well: bringing a piece forward on a slide placed
+      // on its own is that slide's business.
+      (page._putFloorLayout || putFloorLayout)(layout);
       markDirty();
       renderPages();
       flushSave().catch(function () {});
@@ -6303,9 +6958,6 @@
       var page = activePage();
       var flApi = window.ToolboxReportFloorLayout;
       if (!page || page.type !== 'floor' || !flApi) return;
-      var layout = flApi.normalizeLayout((page.meta && page.meta.layout) || floorLayout);
-      // A locked page is shown, not arranged.
-      if (layout.locked) return;
       event.preventDefault();
       closeStackMenu();
       stackMenu = document.createElement('div');
@@ -6454,6 +7106,46 @@
       });
     }
 
+    /**
+     * The report's own faces, loaded.
+     *
+     * Every fit on the deck is a measurement of text, and text measured
+     * before its face has loaded is measured in the fallback face -- wider
+     * or narrower letters, so a caption is shrunk by the wrong amount and a
+     * street line wraps when it would have fitted. The fits ran immediately
+     * on attach, which is before this resolves.
+     */
+    function fontsReady() {
+      if (!document.fonts || typeof document.fonts.ready !== 'object') return Promise.resolve();
+      return Promise.resolve(document.fonts.ready).catch(function () {});
+    }
+
+    /** Measurable and truthful: pictures decoded, faces loaded, frames past. */
+    function deckReady(deck) {
+      if (!deck) return Promise.resolve();
+      return Promise.all([deckSettled(deck), fontsReady()]).then(function () {});
+    }
+
+    /**
+     * Settle one deck: lay the plans out, then fit what has to fit.
+     *
+     * Every one of these is a measurement, and they all measure the sheet at
+     * the editor's 680 x 440 -- the same numbers the editor itself used --
+     * so they arrive at the same answers it did. The sheet is enlarged to the
+     * paper afterwards by a transform, which changes nothing that was
+     * measured.
+     */
+    function settlePrintDeck(deck) {
+      if (!deck) return;
+      relayoutPrintedPlans(deck);
+      // The printed cover is a fresh sheet, so its contents is measured and
+      // stepped down on its own.
+      fitCoverContents(deck);
+      // And so is every printed caption and street line.
+      fitCaptions(deck);
+      fitStreetLine(deck);
+    }
+
     function shrinkPrintImages(deck) {
       if (!deck) return Promise.resolve({ before: 0, after: 0, redrawn: 0 });
       return deckSettled(deck).then(function () { return shrinkSettledDeck(deck); });
@@ -6514,22 +7206,326 @@
       });
     }
 
+    /**
+     * Paint a still picture of every floor slide's drawing, before printing.
+     *
+     * The live contour view is one element per slot for the whole page, so
+     * only the slide being looked at can hold it. On paper every slide is
+     * shown at once, so the rest need a picture of their own. This composes
+     * one per slide -- with that slide's own display settings, and one frame
+     * shared by the whole job so every level lands at the same scale in the
+     * same place, which is what Lock view means on screen.
+     *
+     * The slide that does hold the live view gets a still too: the deck is
+     * built detached, and a live view mounted into nothing measures nothing.
+     */
+    /**
+     * Re-cut the whole picture run to a chosen shape.
+     *
+     * A shape is a page capacity -- five across and two down holds ten -- and
+     * the photographs flow over as many sheets as that needs. Tim:
+     * "two-picture, one-row ... 100 pictures ... that's just 50 pages of two
+     * pictures each. It gets determined from that point forward."
+     *
+     * Captions travel with their photograph, not with the sheet it used to be
+     * on, or re-cutting would scatter the wording the investigator typed.
+     */
+    function repaginatePictures(cols, rows) {
+      var capacity = Math.max(1, (Number(cols) || 1) * (Number(rows) || 1));
+      var idx = [];
+      pages.forEach(function (item, i) { if (item && item.type === 'pictures') idx.push(i); });
+      if (!idx.length) return false;
+      // One contiguous block, or this cannot put it back where it was.
+      if (idx[idx.length - 1] - idx[0] + 1 !== idx.length) return false;
+      var keys = [];
+      var captions = {};
+      idx.forEach(function (i) {
+        var item = pages[i];
+        var pk = (item.meta && Array.isArray(item.meta.photoKeys)) ? item.meta.photoKeys : [];
+        pk.forEach(function (k) { if (k && keys.indexOf(k) < 0) keys.push(k); });
+        var c = (item.reportText && item.reportText.captions) || null;
+        if (!c) return;
+        Object.keys(c).forEach(function (k) {
+          if (typeof captions[k] !== 'string') captions[k] = c[k];
+        });
+      });
+      if (!keys.length) return false;
+      var wanted = Math.ceil(keys.length / capacity);
+      var existing = idx.map(function (i) { return pages[i]; });
+      var out = [];
+      for (var n = 0; n < wanted; n += 1) {
+        var chunk = keys.slice(n * capacity, (n + 1) * capacity);
+        var sheet = existing[n] || buildPicturesPage([], 0, nextPicturesPageId(pages.concat(out)));
+        sheet.meta = sheet.meta || {};
+        sheet.meta.photoKeys = chunk;
+        sheet.meta.picturesAcross = Number(cols);
+        sheet.meta.picturesDown = Number(rows);
+        var keep = {};
+        chunk.forEach(function (k) {
+          if (typeof captions[k] === 'string') keep[k] = captions[k];
+        });
+        sheet.reportText = sheet.reportText || {};
+        sheet.reportText.captions = keep;
+        sheet.railLabel = wanted > 1 ? ('Pictures \u00b7 ' + (n + 1)) : 'Pictures';
+        out.push(sheet);
+      }
+      pages = pages.slice(0, idx[0]).concat(out, pages.slice(idx[idx.length - 1] + 1));
+      pages = renumberFigures(pages);
+      return true;
+    }
+
+    /**
+     * The region of plan space a printed slide should paint.
+     *
+     * The still was painted from the DATA extent -- the smallest rectangle
+     * holding the readings -- and then letterboxed into the frame. That has
+     * no idea where the investigator panned or how far they zoomed, so the
+     * printed drawing came out centred and larger than the one on screen.
+     * Tim, on exactly that: "I need this to look like it does in the report
+     * builder."
+     *
+     * The book already stores the camera the live view reports. Turned back
+     * into a plan-space rectangle of the frame's own shape, it is the region
+     * the screen is showing -- so the still paints that, and the two agree.
+     * Anything missing falls back to the shared data extent, which is what
+     * printed before.
+     */
+    function cameraExtentFor(page, fallback) {
+      var cam = floorCamera;
+      if (!cam || !cam.rel || !(Number(cam.zoom) > 0)) return fallback;
+      var ps = window.ToolboxPlanSetup;
+      var meta = (page && page.meta) || {};
+      if (!ps || typeof ps.canvasById !== 'function' || !workingRecord || !meta.canvasId) return fallback;
+      var canvas = null;
+      try { canvas = ps.canvasById(workingRecord, meta.canvasId); } catch (err) { canvas = null; }
+      var plan = canvas && canvas.plan;
+      var planW = plan && Number(plan.width) > 0 ? Number(plan.width) : 0;
+      var planH = plan && Number(plan.height) > 0 ? Number(plan.height) : 0;
+      if (!planW || !planH) return fallback;
+      var slots = floorSlotsForPage(page);
+      var frameAspect = 0;
+      // The shape of the box the drawing is ACTUALLY in, on the paper.
+      //
+      // An imported slide draws FULL BLEED: report-floor-layout.js lays its
+      // frames out across the whole stage -- share% wide by 100% tall, with a
+      // 2% gutter between two -- and never reads layout.topo for that frame
+      // at all. Taking the shape from layout.topo therefore described a box
+      // that is not on the page. On Janis's report that stored box is narrow
+      // and tall, so the still was painted from a tall narrow slice of the
+      // plan while the live view showed a wide one: the left-hand rooms and
+      // their readings were cut off inside the image itself, with white space
+      // to spare on its right. The extracted figure measured 2616 x 3000 --
+      // portrait -- on a landscape sheet.
+      //
+      // Tim: "Still cropping the left-hand side on a screenshot of preview.
+      // As well as the PDF."
+      if (page && page.meta && page.meta.imported) {
+        // Measure the STAGE, not a frame.
+        //
+        // Measuring a frame took the shape of whatever slide happened to be
+        // open and gave it to the slide being composed. On a book holding
+        // both a one-view page and a two-view page those are different
+        // shapes, so the same target page composed differently depending on
+        // which slide Print was started from -- 889.5 x 666.7 from one,
+        // 888.9 x 1359.6 from the other. Audit finding 2.
+        //
+        // The stage is the sheet less the rail down its side, and it is the
+        // same on every imported slide whatever its slot count, so one
+        // measurement genuinely does serve them all. The target page's own
+        // share of it is then applied -- through the same frameShare() that
+        // LAYS the frames out, so two views are half of what is left after
+        // the gutter rather than a naive half.
+        var stageAspect = 0;
+        var stageEl = root.querySelector('.rb-stage .rb-sheet [data-rb-floor-stage]');
+        if (stageEl) {
+          var sr = stageEl.getBoundingClientRect();
+          if (sr.width > 8 && sr.height > 8) stageAspect = sr.width / sr.height;
+        }
+        if (!(stageAspect > 0)) {
+          // Nothing on screen to measure -- Print started from the cover or
+          // the discussion. STAGE_SHARE_OF_SHEET is that same stage measured:
+          // 86.336% of the sheet's width by the whole of its height, which is
+          // what the stylesheet's rail leaves. Within a rounding of the live
+          // measurement, so the two routes agree.
+          stageAspect = (17 * STAGE_SHARE_OF_SHEET) / 11;
+        }
+        var flApi = window.ToolboxReportFloorLayout;
+        var sharePct = (flApi && typeof flApi.frameShare === 'function')
+          ? flApi.frameShare(slots)
+          : (100 - (slots - 1) * 2) / slots;
+        frameAspect = stageAspect * (sharePct / 100);
+      } else {
+        var layout = page._bookFloorLayout || null;
+        var topo = layout && layout.topo;
+        if (!topo || !(Number(topo.w) > 0) || !(Number(topo.h) > 0)) return fallback;
+        // The frame's shape on the paper in real inches, not in percent of it.
+        frameAspect = (Number(topo.w) * 17) / (Number(topo.h) * 11);
+        if (slots > 1) frameAspect /= slots;
+      }
+      if (!(frameAspect > 0)) return fallback;
+      // At fit, the frame shows the smallest rectangle of its own shape that
+      // holds the whole plan. Zoom divides it; the camera centres it.
+      var planAspect = planW / planH;
+      var regionW = planAspect > frameAspect ? planW : planH * frameAspect;
+      var regionH = planAspect > frameAspect ? planW / frameAspect : planH;
+      var zoom = Number(cam.zoom) || 1;
+      regionW /= zoom;
+      regionH /= zoom;
+      var cx = Number(cam.cx);
+      var cy = Number(cam.cy);
+      if (!isFinite(cx)) cx = 0.5;
+      if (!isFinite(cy)) cy = 0.5;
+      return {
+        x: cx * planW - regionW / 2,
+        y: cy * planH - regionH / 2,
+        w: regionW,
+        h: regionH,
+      };
+    }
+
+    function composeFloorStills() {
+      var api = window.ToolboxFloorSurvey;
+      if (!api || typeof api.composeReportTopoFigureForPage !== 'function' || !workingRecord) {
+        return Promise.resolve(0);
+      }
+      var getMedia = window.ToolboxDB && window.ToolboxDB.getMedia
+        ? window.ToolboxDB.getMedia.bind(window.ToolboxDB)
+        : null;
+      var wanted = [];
+      pages.forEach(function (page) {
+        if (!page || page.type !== 'floor') return;
+        var meta = page.meta || {};
+        if (meta.reserved || !meta.canvasId) return;
+        var slots = floorSlotsForPage(page);
+        for (var slot = 0; slot < slots; slot += 1) wanted.push({ page: page, slot: slot });
+      });
+      if (!wanted.length) return Promise.resolve(0);
+
+      var first = wanted[0];
+      var firstMeta = first.page.meta || {};
+      var sharedExtent = null;
+      var frame = (typeof api.reportTopoExtentForPage === 'function')
+        ? api.reportTopoExtentForPage(workingRecord, {
+          canvasId: firstMeta.canvasId,
+          epochId: firstMeta.epochId,
+          areaId: firstMeta.areaId || null,
+          scope: firstMeta.scope || 'all',
+          settings: floorViewFor(first.page, first.slot) || null,
+        }).catch(function () { return null; })
+        : Promise.resolve(null);
+
+      return frame.then(function (extent) {
+        sharedExtent = extent || null;
+        var painted = 0;
+        return wanted.reduce(function (chain, job) {
+          return chain.then(function () {
+            var meta = job.page.meta || {};
+            return api.composeReportTopoFigureForPage(workingRecord, {
+              canvasId: meta.canvasId,
+              epochId: meta.epochId,
+              areaId: meta.areaId || null,
+              scope: meta.scope || 'all',
+              settings: floorViewFor(job.page, job.slot) || null,
+              extent: cameraExtentFor(job.page, sharedExtent),
+            }, getMedia).then(function (composed) {
+              if (!composed || !composed.dataUrl) return;
+              job.page._printTopo = job.page._printTopo || {};
+              job.page._printTopo[job.slot] = composed.dataUrl;
+              painted += 1;
+            }).catch(function (err) {
+              // One slide that cannot be painted must not stop the print.
+              console.warn('Floor slide could not be painted for print', meta.canvasId, err);
+            });
+          });
+        }, Promise.resolve()).then(function () { return painted; });
+      });
+    }
+
+    function clearFloorStills() {
+      pages.forEach(function (page) {
+        if (page && page._printTopo) delete page._printTopo;
+      });
+    }
+
+    /**
+     * The size the editing sheet is right now, and the scale onto the paper.
+     *
+     * fitSheet() gives the editing sheet whatever width the stage has, so the
+     * sheet is a different number of pixels on every window. Anything inside
+     * it styled in pixels rather than container units therefore takes up a
+     * different FRACTION of the sheet at every size -- the Pictures caption
+     * plate is one -- and every fit that measures text is measuring at that
+     * size. Building the printed deck at any other size is what made the PDF
+     * disagree with the editor. So the printed deck is built at the size the
+     * editor is, and scaled from there.
+     *
+     * 11x17 landscape is 1632 x 1056 CSS pixels at 96dpi. The sheet already
+     * holds the 17:11 shape, so scaling by 1632 / width lands the height on
+     * 1056 exactly.
+     */
+    function printSheetSize() {
+      // The sheet is the paper, so the printed deck is built at the paper's
+      // own size and printed at 1:1. The scale is kept rather than deleted
+      // because it is what makes the deck independent of how a sheet happens
+      // to be sized: if the paper ever changes, this is the one place.
+      return { w: PAPER_W, h: PAPER_H, sx: 1, sy: 1 };
+    }
+
     function buildPrintDeck() {
       var deck = document.createElement('div');
       deck.className = 'rb-print';
       deck.setAttribute('aria-hidden', 'true');
+      var size = printSheetSize();
+      deck.style.setProperty('--rb-print-sheet-w', size.w + 'px');
+      deck.style.setProperty('--rb-print-sheet-h', size.h + 'px');
+      deck.style.setProperty('--rb-print-scale-x', String(size.sx));
+      deck.style.setProperty('--rb-print-scale-y', String(size.sy));
       pages.forEach(function (page) {
+        // The sheet is built at the EDITOR's size and the page box is what
+        // becomes the sheet of paper. A scaled element reserves only its
+        // unscaled space in flow, so the paper -- and the page break -- has
+        // to be the box around it, never the sheet itself.
+        var paper = document.createElement('div');
+        paper.className = 'rb-print__page';
         var sheet = document.createElement('article');
         sheet.className = 'rb-sheet rb-sheet--print';
-        deck.appendChild(sheet);
+        paper.appendChild(sheet);
+        deck.appendChild(paper);
         // Only the on-screen render loop stamped this, so the printed deck
         // fell back to the default placement -- the PDF showed the logo in the
         // bottom-left corner no matter where it had been put and locked.
         page._brandBox = currentBrandBox(page);
+        // The printed deck never borrows the live view, even for the slide
+        // that is holding it. Taking it would move it off the screen sheet,
+        // and the deck is built detached, where a live view measures nothing
+        // and draws itself into a corner. Every printed slide draws its own
+        // still, so they all print the same way.
+        var liveMount = page._mountTopo;
+        page._mountTopo = null;
         try {
           renderSheet(sheet, page, pages);
         } catch (err) {
+          // A sheet that could not be built says so ON the sheet.
+          //
+          // This used to warn to the console and hand the printer whatever
+          // had been assembled before the throw. On a Floor Survey slide the
+          // rail is built first, so the sheet went out with its title block,
+          // its figure number and its logo -- and no drawing, no colour
+          // scale, no readings, nothing to say anything was wrong. A report
+          // walked out of here with four blank figures in it and the only
+          // trace was a line in a console nobody had open.
+          //
+          // It still prints the rest of the report: one page that cannot be
+          // built is not a reason to refuse the other seventeen.
           console.warn('Page could not be prepared for print', page && page.id, err);
+          var failed = document.createElement('p');
+          failed.className = 'rb-sheet__failed';
+          failed.setAttribute('data-rb-sheet-failed', '1');
+          failed.textContent = 'This figure could not be prepared for printing. '
+            + 'Close the print dialog, open this slide in Report Builder, and print again.';
+          sheet.appendChild(failed);
+        } finally {
+          page._mountTopo = liveMount;
         }
       });
       return deck;
@@ -6563,6 +7559,7 @@
     function clearPrintDeck() {
       if (printDeck && printDeck.parentNode) printDeck.parentNode.removeChild(printDeck);
       printDeck = null;
+      clearFloorStills();
       document.body.classList.remove('is-printing');
       renderPages();
     }
@@ -6572,34 +7569,306 @@
       printBtn.addEventListener('click', function () {
         flushSave().catch(function () {}).then(function () {
           clearPrintDeck();
+          return composeFloorStills();
+        }).then(function () {
           printDeck = buildPrintDeck();
           document.body.appendChild(printDeck);
           document.body.classList.add('is-printing');
-          relayoutPrintedPlans(printDeck);
-          // The printed cover is a different sheet from the one on screen, so
-          // its contents is measured and stepped down on its own.
-          fitCoverContents(printDeck);
-          // And so is every printed caption. The deck is built fresh and had
-          // never been measured, so a description that fitted on screen by
-          // coming down in size printed at full size -- and what did not fit
-          // the block printed missing.
-          fitCaptions(printDeck);
+          // Nothing is measured until the deck can be measured truthfully.
+          return deckReady(printDeck);
+        }).then(function () {
+          settlePrintDeck(printDeck);
           window.addEventListener('afterprint', clearPrintDeck, { once: true });
           // Every picture redrawn at the size it prints, before the dialog
           // opens: once it is open the deck is what it is.
-          shrinkPrintImages(printDeck).then(function (weighed) {
-            window.__toolboxPrintWeight = weighed;
-            if (weighed) {
-              console.info('Report print: ' + weighed.redrawn + ' pictures redrawn, ' +
-                (weighed.before / 1048576).toFixed(1) + ' MB to ' +
-                (weighed.after / 1048576).toFixed(1) + ' MB.');
-            }
-            window.requestAnimationFrame(function () {
-              window.requestAnimationFrame(function () { window.print(); });
+          return withPrintDocumentTitle(workingRecord, function () {
+            return shrinkPrintImages(printDeck).then(function (weighed) {
+              window.__toolboxPrintWeight = weighed;
+              if (weighed) {
+                console.info('Report print: ' + weighed.redrawn + ' pictures redrawn, ' +
+                  (weighed.before / 1048576).toFixed(1) + ' MB to ' +
+                  (weighed.after / 1048576).toFixed(1) + ' MB.');
+              }
+              window.requestAnimationFrame(function () {
+                window.requestAnimationFrame(function () { window.print(); });
+              });
             });
           });
         });
       });
+    }
+
+    /**
+     * The flip chart: the report, one sheet at a time, full screen.
+     *
+     * It shows the PRINTED deck, not the editing sheets -- the same deck the
+     * printer is handed, composed contour maps and all -- so what is flipped
+     * through is what comes out of the PDF. A preview that showed something
+     * else would be worth nothing, which is the whole reason for it. Tim:
+     * "that allows me to see the report before I PDF it or anything else
+     * there is my chart view that I've been looking for."
+     *
+     * The wheel flips it, because that is how he asked to drive it: "I can
+     * just scroll my mouse back-and-forth to make sure they flip correctly."
+     */
+    var presentDeck = null;
+    var presentAt = 0;
+    var presentBar = null;
+    var presentOff = [];
+    var wheelPile = 0;
+    var wheelRestAt = 0;
+
+    function presentSheets() {
+      return presentDeck ? [].slice.call(presentDeck.querySelectorAll('.rb-sheet')) : [];
+    }
+
+    function fitPresentSheet() {
+      var sheets = presentSheets();
+      var sheet = sheets[presentAt];
+      if (!sheet) return;
+      var w = sheet.offsetWidth || 1;
+      var h = sheet.offsetHeight || 1;
+      // A little air around the paper so the edge of the sheet reads as an
+      // edge rather than running off the screen.
+      var scale = Math.min((window.innerWidth - 32) / w, (window.innerHeight - 32) / h);
+      if (!(scale > 0)) scale = 1;
+      var left = Math.max(0, (window.innerWidth - w * scale) / 2);
+      var top = Math.max(0, (window.innerHeight - h * scale) / 2);
+      sheet.style.transform =
+        'translate(' + Math.round(left) + 'px, ' + Math.round(top) + 'px) scale(' + scale + ')';
+    }
+
+    function showPresentSheet(next) {
+      var sheets = presentSheets();
+      if (!sheets.length) return;
+      presentAt = Math.max(0, Math.min(sheets.length - 1, next));
+      sheets.forEach(function (sheet, at) {
+        sheet.classList.toggle('is-present-current', at === presentAt);
+        if (at !== presentAt) sheet.style.transform = '';
+      });
+      fitPresentSheet();
+      if (presentBar) {
+        var count = presentBar.querySelector('.rb-present-bar__count');
+        var back = presentBar.querySelector('[data-present="back"]');
+        var on = presentBar.querySelector('[data-present="next"]');
+        if (count) count.textContent = (presentAt + 1) + ' of ' + sheets.length;
+        if (back) back.disabled = presentAt === 0;
+        if (on) on.disabled = presentAt === sheets.length - 1;
+      }
+    }
+
+    function closePresentation() {
+      presentOff.forEach(function (off) { try { off(); } catch (_) {} });
+      presentOff = [];
+      if (presentBar && presentBar.parentNode) presentBar.parentNode.removeChild(presentBar);
+      presentBar = null;
+      if (presentDeck && presentDeck.parentNode) presentDeck.parentNode.removeChild(presentDeck);
+      presentDeck = null;
+      document.body.classList.remove('is-presenting');
+      clearFloorStills();
+      renderPages();
+      fitSheet(root);
+    }
+
+    function buildPresentBar(total) {
+      var bar = document.createElement('div');
+      bar.className = 'rb-present-bar';
+      bar.setAttribute('role', 'group');
+      bar.setAttribute('aria-label', 'Presentation controls');
+      bar.innerHTML =
+        '<button type="button" data-present="back" aria-label="Previous sheet">‹</button>' +
+        '<span class="rb-present-bar__count">1 of ' + total + '</span>' +
+        '<button type="button" data-present="next" aria-label="Next sheet">›</button>' +
+        '<button type="button" data-present="print">Print</button>' +
+        '<button type="button" data-present="close">Close</button>';
+      bar.addEventListener('click', function (event) {
+        var hit = event.target.closest('[data-present]');
+        if (!hit) return;
+        event.stopPropagation();
+        var what = hit.getAttribute('data-present');
+        if (what === 'close') closePresentation();
+        else if (what === 'print') printWhatIsShowing();
+        else if (what === 'back') showPresentSheet(presentAt - 1);
+        else if (what === 'next') showPresentSheet(presentAt + 1);
+      });
+      return bar;
+    }
+
+    /**
+     * Print what is on the screen.
+     *
+     * The flip chart IS the printed deck -- the same deck, settled the same
+     * way -- so there is nothing to compose or re-render here. It hands the
+     * deck it is already showing to the printer and goes back to the sheet
+     * it was on. Tim: "if I get to the last slide and I'm not happy with it
+     * I just push a button that says print ... it uses the presentation,
+     * just render the PDF. I think you're over complicating everything."
+     *
+     * Photographs still have to be cut down to print size first. The Print /
+     * PDF button does that; Present's Print used to skip it, so a flip-chart
+     * PDF walked out the door at phone resolution and either choked the mail
+     * client or rendered as mush.
+     */
+    function printWhatIsShowing() {
+      if (!presentDeck) return;
+      // The shown sheet is placed and scaled by an inline transform, and an
+      // inline style beats any stylesheet -- it would have gone to the
+      // printer still scaled to the window. It is taken off for the print
+      // and put back after.
+      var shown = presentDeck.querySelector('.rb-sheet.is-present-current');
+      var shownTransform = shown ? shown.style.transform : '';
+      if (shown) shown.style.transform = '';
+      // --present hides every sheet but the current one. Shrink needs a real
+      // drawn width on every photograph, so drop the framing for the weigh
+      // (same layout the Print / PDF button uses) and put it back after.
+      var wasPresent = presentDeck.classList.contains('rb-print--present');
+      if (wasPresent) presentDeck.classList.remove('rb-print--present');
+      if (shown) shown.classList.remove('is-present-current');
+      document.body.classList.add('is-printing');
+      var back = function () {
+        document.body.classList.remove('is-printing');
+        if (wasPresent && presentDeck) {
+          presentDeck.classList.add('rb-print--present');
+          if (shown) {
+            shown.classList.add('is-present-current');
+            shown.style.transform = shownTransform;
+          }
+          fitPresentSheet();
+        }
+      };
+      window.addEventListener('afterprint', back, { once: true });
+      withPrintDocumentTitle(workingRecord, function () {
+        return shrinkPrintImages(presentDeck).then(function (weighed) {
+          window.__toolboxPrintWeight = weighed;
+          window.requestAnimationFrame(function () {
+            window.requestAnimationFrame(function () { window.print(); });
+          });
+        });
+      });
+    }
+
+    function listenWhilePresenting(target, type, handler, options) {
+      target.addEventListener(type, handler, options);
+      presentOff.push(function () { target.removeEventListener(type, handler, options); });
+    }
+
+    function openPresentation() {
+      if (presentDeck) return Promise.resolve();
+      var presentBtn = root.querySelector('#rb-present');
+      // The button is a glyph now, so the waiting state cannot be a word in
+      // place of it -- that would throw the screen away and never put it
+      // back. It goes on the tooltip and on aria-busy instead.
+      if (presentBtn) {
+        presentBtn.disabled = true;
+        presentBtn.setAttribute('aria-busy', 'true');
+        presentBtn.setAttribute('title', 'Preparing Presentation view…');
+      }
+      return flushSave().catch(function () {}).then(function () {
+        return composeFloorStills();
+      }).then(function () {
+        presentDeck = buildPrintDeck();
+        presentDeck.removeAttribute('aria-hidden');
+        // Nothing on a slide being shown to somebody is typeable. The deck is
+        // built by the same renderer as the editing sheets, which leaves its
+        // text fields editable.
+        [].slice.call(presentDeck.querySelectorAll('[contenteditable]')).forEach(function (el) {
+          el.setAttribute('contenteditable', 'false');
+        });
+        // Measure FIRST as a normal print deck (off-screen, every sheet in
+        // layout), THEN flip into presentation framing. Adding --present
+        // first hid every sheet with display:none, so CONTENTS fit, caption
+        // shrink, street fit and pin layout all measured against zero size.
+        // Present and the PDF printed from it then looked nothing like the
+        // editor Tim had just approved.
+        document.body.appendChild(presentDeck);
+
+        // Plan images on Picture Locations, and the report's own faces, are
+        // not there on attach. Everything here is a measurement, so nothing
+        // is measured until they are -- then once, not twice.
+        return deckReady(presentDeck).then(function () {
+          settlePrintDeck(presentDeck);
+
+          presentDeck.classList.add('rb-print--present');
+          document.body.classList.add('is-presenting');
+
+          presentBar = buildPresentBar(presentSheets().length);
+          document.body.appendChild(presentBar);
+
+          listenWhilePresenting(window, 'resize', fitPresentSheet);
+          listenWhilePresenting(window, 'keydown', function (event) {
+            if (!presentDeck) return;
+            var key = event.key;
+            if (key === 'Escape') { event.preventDefault(); closePresentation(); return; }
+            if (key === 'ArrowRight' || key === 'ArrowDown' || key === 'PageDown' || key === ' ') {
+              event.preventDefault(); showPresentSheet(presentAt + 1); return;
+            }
+            if (key === 'ArrowLeft' || key === 'ArrowUp' || key === 'PageUp') {
+              event.preventDefault(); showPresentSheet(presentAt - 1); return;
+            }
+            if (key === 'Home') { event.preventDefault(); showPresentSheet(0); return; }
+            if (key === 'End') { event.preventDefault(); showPresentSheet(presentSheets().length - 1); }
+          });
+          // One notch of a wheel is one sheet. A trackpad sends a stream of
+          // small deltas rather than notches, so they are piled up to a
+          // threshold and the pile is dropped once the hand stops -- otherwise
+          // one flick runs the whole report past.
+          listenWhilePresenting(presentDeck, 'wheel', function (event) {
+            event.preventDefault();
+            var now = Date.now();
+            if (now - wheelRestAt > 220) wheelPile = 0;
+            wheelRestAt = now;
+            wheelPile += event.deltaY;
+            if (wheelPile >= 40) { wheelPile = 0; showPresentSheet(presentAt + 1); }
+            else if (wheelPile <= -40) { wheelPile = 0; showPresentSheet(presentAt - 1); }
+          }, { passive: false });
+          listenWhilePresenting(presentDeck, 'click', function (event) {
+            if (event.target.closest('.rb-present-bar')) return;
+            // The right half goes on, the left half goes back, the way a
+            // slideshow does.
+            showPresentSheet(event.clientX > window.innerWidth / 2 ? presentAt + 1 : presentAt - 1);
+          });
+
+          showPresentSheet(0);
+        });
+      }).catch(function (err) {
+        console.warn('Presentation could not be opened', err);
+        closePresentation();
+      }).then(function () {
+        if (presentBtn) {
+          presentBtn.disabled = false;
+          presentBtn.removeAttribute('aria-busy');
+          presentBtn.setAttribute('title', 'Presentation view');
+        }
+      });
+    }
+
+    var zoomIn = root.querySelector('#rb-zoom-in');
+    var zoomOut = root.querySelector('#rb-zoom-out');
+    var zoomLevel = root.querySelector('#rb-zoom-level');
+    if (zoomIn) zoomIn.addEventListener('click', function () { stepZoom(root, 1); });
+    if (zoomOut) zoomOut.addEventListener('click', function () { stepZoom(root, -1); });
+    if (zoomLevel) zoomLevel.addEventListener('click', function () { resetZoom(root); });
+
+    var draftBtn = root.querySelector('#rb-draft');
+    function syncDraftButton() {
+      if (!draftBtn) return;
+      draftBtn.setAttribute('aria-pressed', draftStamp ? 'true' : 'false');
+      draftBtn.classList.toggle('is-on', draftStamp);
+      draftBtn.textContent = draftStamp ? 'Draft stamp: on' : 'Draft stamp';
+    }
+    syncDraftButton();
+    if (draftBtn) {
+      draftBtn.addEventListener('click', function () {
+        draftStamp = !draftStamp;
+        syncDraftButton();
+        markDirty();
+        renderPages();
+      });
+    }
+
+    var presentBtn = root.querySelector('#rb-present');
+    if (presentBtn) {
+      presentBtn.addEventListener('click', function () { openPresentation(); });
     }
 
     var exportBtn = root.querySelector('#rb-export-ai');
@@ -6684,7 +7953,41 @@
       // placed takes the template -- otherwise setting a new default would
       // reach back and move every book already written.
       var template = storedTemplate();
-      var floorSeed = (savedDoc && savedDoc.floorLayout) || template.floorLayout;
+      // A report arranged before there was one record kept its placement on
+      // the SLIDES, and the renderer read a slide's own copy BEFORE the
+      // book's -- so a slide copy is what was actually on screen. Take it, or
+      // opening an older report under one record would quietly throw the
+      // arrangement away and fall back to the book's stale copy. The first
+      // floor slide that carries one is the one that was being worked on.
+      var legacyFloor = null;
+      if (savedDoc && Array.isArray(savedDoc.pages)) {
+        for (var lf = 0; lf < savedDoc.pages.length; lf += 1) {
+          var lp = savedDoc.pages[lf];
+          if (lp && lp.type === 'floor' && !(lp.meta && lp.meta.reserved) &&
+            lp.meta && lp.meta.layout) {
+            legacyFloor = lp.meta.layout;
+            break;
+          }
+        }
+      }
+      // A report whose rose was turned before this kept the turn on the
+      // SHEET. Take it, or opening it would spin the arrow back.
+      if (savedDoc && typeof savedDoc.northRotation === 'number') {
+        reportNorth = savedDoc.northRotation;
+      } else if (savedDoc && Array.isArray(savedDoc.pages)) {
+        for (var ln = 0; ln < savedDoc.pages.length; ln += 1) {
+          var np = savedDoc.pages[ln];
+          if (np && np.meta && typeof np.meta.northRotation === 'number') {
+            reportNorth = np.meta.northRotation;
+            break;
+          }
+        }
+      }
+      if (savedDoc && typeof savedDoc.draftStamp === 'boolean') {
+        draftStamp = savedDoc.draftStamp;
+        syncDraftButton();
+      }
+      var floorSeed = legacyFloor || (savedDoc && savedDoc.floorLayout) || template.floorLayout;
       if (floorSeed && window.ToolboxReportFloorLayout) {
         floorLayout = window.ToolboxReportFloorLayout.normalizeLayout(floorSeed);
       }
@@ -6705,7 +8008,12 @@
         penLogBoxLayout = window.ToolboxPenLog.normalizeLayout(penSeed);
       }
       var cameraSeed = (savedDoc && savedDoc.floorCamera) || template.floorCamera;
-      if (cameraSeed) floorCamera = JSON.parse(JSON.stringify(cameraSeed));
+      if (cameraSeed) {
+        floorCamera = JSON.parse(JSON.stringify(cameraSeed));
+        // Dropped on the way in, so an old report's lock cannot outlive the
+        // button that set it.
+        delete floorCamera.locked;
+      }
       var viewSeed = (savedDoc && savedDoc.floorView) || template.floorView;
       if (viewSeed) floorView = reviveFloorView(viewSeed);
       if (savedDoc && Array.isArray(savedDoc.pages)) {
@@ -6836,6 +8144,26 @@
       '  </div>' +
       '  <div class="rb-toolbar">' +
       '    <div class="rb-toolbar__format" data-rb-format-host></div>' +
+      '    <div class="rb-zoom" role="group" aria-label="Page size on screen">' +
+      '      <button type="button" id="rb-zoom-out" class="rb-zoom__btn"' +
+      ' title="Zoom out" aria-label="Zoom out">\u2212</button>' +
+      '      <button type="button" id="rb-zoom-level" class="rb-zoom__level">Fit</button>' +
+      '      <button type="button" id="rb-zoom-in" class="rb-zoom__btn"' +
+      ' title="Zoom in" aria-label="Zoom in">+</button>' +
+      '    </div>' +
+      '    <button type="button" id="rb-draft" class="btn btn--quiet rb-draft-btn" aria-pressed="false">Draft stamp</button>' +
+      // A screen, not a word. PowerPoint puts the views on glyphs and the
+      // name belongs to the view, not the verb: this opens Presentation
+      // view. The name is on the button for anyone who cannot see the
+      // glyph, and on the tooltip for anyone who can.
+      '    <button type="button" id="rb-present" class="btn btn--secondary rb-present-btn"' +
+      ' title="Presentation view" aria-label="Presentation view">' +
+      '      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+      '        <rect x="2.6" y="4" width="18.8" height="12.4" rx="1.6"></rect>' +
+      '        <path d="M9 20.6h6"></path>' +
+      '        <path d="M12 16.4v4.2"></path>' +
+      '      </svg>' +
+      '    </button>' +
       '    <button type="button" id="rb-print" class="btn btn--secondary rb-print-btn">Print / PDF</button>' +
       '    <button type="button" id="rb-export-ai" class="btn btn--accent rb-export">Export for AI</button>' +
       '    <p class="rb-ai-status" id="rb-ai-status" aria-live="polite"></p>' +
@@ -6857,8 +8185,10 @@
       '      </div>' +
       '    </aside>' +
       '    <div class="rb-stage">' +
-      '      <article class="rb-sheet" aria-label="' + SHEET_RATIO_LABEL + ' report sheet">' +
-      '      </article>' +
+      '      <div class="rb-stage__paper">' +
+      '        <article class="rb-sheet" aria-label="' + SHEET_RATIO_LABEL + ' report sheet">' +
+      '        </article>' +
+      '      </div>' +
       '    </div>' +
       '    <aside class="rb-panel" aria-label="Toolbox">' +
       // The rail is the workspace for whatever slide is open: Import at the

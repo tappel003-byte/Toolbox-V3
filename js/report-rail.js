@@ -150,13 +150,16 @@
    *
    * It used to sit on the drawing beside the front-door note. Tim moved it
    * here: it is reference matter like the rest of the rail, and taking it off
-   * the plan clears the last floating object from the drawing. Only the rose
-   * turns — the N is a label on the sheet, not part of the instrument —
-   * because north is not always up.
+   * the plan clears the last floating object from the drawing.
+   *
+   * Rotation is an SVG transform on the group, the same way Distress Survey's
+   * `#northWidgetRot` does it — not a CSS transform. Chrome's print path has
+   * dropped CSS rotation on this mark; the SVG attribute always lays out.
    */
-  function compass() {
+  function compass(rotateDeg) {
     var wrap = el('div', 'rb-rail__compass');
     wrap.setAttribute('aria-label', 'North orientation');
+    var deg = typeof rotateDeg === 'number' && isFinite(rotateDeg) ? rotateDeg : 0;
     // Distress Survey's arrow, geometry and colours as they are there. Tim:
     // "I like the north arrow that is already in Distress Survey better than
     // what we have. I liked the little colour in it too." The red is the same
@@ -165,18 +168,18 @@
     //
     // The whole instrument turns, the N with it, exactly as the widget in
     // Distress does: there the N sits at the foot of the dial inside the
-    // rotating group. The one this replaces kept an upright N floating above
-    // a rotating rose, which read as a compass that had come loose from its
-    // own label.
+    // rotating group.
     wrap.insertAdjacentHTML('beforeend',
       '<svg class="rb-rail__rose" viewBox="-30 -30 60 60" aria-hidden="true"' +
       ' focusable="false">' +
+      '<g class="rb-rail__rose-rot" transform="rotate(' + deg + ')">' +
       '<circle cx="0" cy="0" r="26" fill="#fffaf0" stroke="#1a1a1a"' +
       ' stroke-width="1.5"/>' +
       '<path d="M 0 -22 L 11 14 L 0 5 L -11 14 Z" fill="#c14a2b"/>' +
       '<text x="0" y="20" fill="#1a1a1a" font-size="11" font-weight="700"' +
       ' text-anchor="middle" dominant-baseline="central"' +
       ' font-family="Georgia, \'Times New Roman\', serif">N</text>' +
+      '</g>' +
       '</svg>');
     return wrap;
   }
@@ -196,10 +199,11 @@
     var deg = typeof o.northRotation === 'number' && isFinite(o.northRotation)
       ? o.northRotation
       : 0;
+    // Kept for live drag preview; print reads the SVG transform on the group.
     root.style.setProperty('--rb-north-rotation', deg + 'deg');
 
     var body = el('div', 'rb-rail__body');
-    if (o.north !== false) body.appendChild(compass());
+    if (o.north !== false) body.appendChild(compass(deg));
 
     var head = document.createElement('header');
     var client = block('h2', 'rb-rail__client', clientLines(o.residence), o, 'client',

@@ -7,6 +7,7 @@
  */
 import { readPointStyle } from "./point-style";
 import { closedAreas, pointsInArea } from "@/lib/areas";
+import { withCorrectedValues } from "@/lib/transitions";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { contourThresholds, type Grid } from "@/lib/topo";
@@ -14,6 +15,8 @@ import {
   buildAreaTopos,
   paletteColor,
   renderTopo,
+  renderTopoBase,
+  renderTopoTop,
   resolveSettings,
   type AreaTopo,
 } from "@/components/tabs/TopoTab";
@@ -331,16 +334,35 @@ export async function composeReportTopoFigure(options: {
   // every routine below is unchanged and unaware of either.
   ctx.setTransform(scale, 0, 0, scale, -extent.x * scale, -extent.y * scale);
 
+  // The plan goes OVER the contours, the way the live canvas draws it.
+  //
+  // TopoTab mounts PlanCanvas with planOnTop set, so on screen the order is
+  // contour base, then the plan multiplied over it at full strength, then the
+  // readings. renderTopoBase even says so: "Meant to sit UNDER the wall plan."
+  // This composer drew the plan FIRST at planOpacity and then put the whole of
+  // renderTopo over it, so the contour fill buried the walls, the room names
+  // and anything else printed into the plan image. Same frame as the slide,
+  // different picture -- which is the whole of what makes a PDF not look like
+  // the editor.
+  //
+  // multiply keeps the dark linework and lets the colour beneath show through
+  // the white paper, which is exactly what the live canvas relies on.
+  let planImg: HTMLImageElement | null = null;
   if (settings.showPlan && floor.planDataUrl) {
     try {
-      const img = await loadImage(floor.planDataUrl);
-      ctx.globalAlpha = settings.planOpacity;
-      ctx.drawImage(img, 0, 0, planW, planH);
-      ctx.globalAlpha = 1;
+      planImg = await loadImage(floor.planDataUrl);
     } catch {
-      // Plan missing — still draw contours/readings.
+      planImg = null; // Plan missing -- still draw contours/readings.
     }
   }
+
+  const drawPlanOver = () => {
+    if (!planImg) return;
+    const prior = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = "multiply";
+    ctx.drawImage(planImg, 0, 0, planW, planH);
+    ctx.globalCompositeOperation = prior;
+  };
 
   // Reading labels and dots are sized for the SCREEN, not for plan pixels:
   // Floor Survey asks for 11 px and, when a big plan is fit into a window,
@@ -357,7 +379,10 @@ export async function composeReportTopoFigure(options: {
   // app's 2, so a composed figure drew every reading three times the size of
   // the same reading on the slide it was composed from.
   const pointStyle = readPointStyle(floor.projectId);
-  renderTopo(ctx, floor, points, settings, areaTopos, {
+  // The live canvas's three passes, in its order.
+  renderTopoBase(ctx, floor, settings, areaTopos);
+  drawPlanOver();
+  renderTopoTop(ctx, floor, points, settings, areaTopos, {
     viewScale: REPORT_REFERENCE_WIDTH / Math.max(1, extent.w),
     pointSize: pointStyle.pointSize,
     pointColor: pointStyle.pointColor,
@@ -566,6 +591,27 @@ export function listReportTopoPageSpecs(record: any): ReportTopoPageSpec[] {
   return specs;
 }
 
+/**
+ * The readings a report draws: normalized, exactly as the live topo shows them.
+ *
+ * Stored readings are RAW and the correction lives beside them, as transitions
+ * and transitionGroupAverages -- that separation is deliberate and is not
+ * changed here. The TOPO is the corrected picture. ReportTopoWorkspace already
+ * hands TopoTab withCorrectedValues(...) so the live slide is right; this read
+ * path did not, so Print composed every floor slide from raw readings. On a
+ * house with a flooring transition the screen and the PDF disagreed, under a
+ * cover that says "Corrected for Flooring Differences".
+ *
+ * It belongs HERE and not in composeReportTopoFigure. That composer has a
+ * second caller -- composeContourLayer, reached from inside TopoTab -- which
+ * is already handed corrected points, so correcting there would correct them
+ * twice.
+ */
+function reportPointsFor(layer: any) {
+  const raw = Array.isArray(layer?.points) ? layer.points : [];
+  return withCorrectedValues(raw, layer?.transitions, layer?.transitionGroupAverages);
+}
+
 function layerToFloorForReport(
   record: any,
   canvas: any,
@@ -665,7 +711,7 @@ export async function composeReportTopoFigureForPage(
   }
 
   const floor = layerToFloorForReport(record, canvas, layer, planDataUrl, Math.max(0, canvasIndex));
-  const points = Array.isArray(layer.points) ? layer.points : [];
+  const points = reportPointsFor(layer);
   const areaId = spec.scope === "all" ? null : spec.areaId || null;
   return composeReportTopoFigure({
     floor,

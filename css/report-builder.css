@@ -70,7 +70,7 @@ body.report-builder-open .canvas {
 .rb-workspace {
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: 168px minmax(0, 1fr) 280px;
+  grid-template-columns: 184px minmax(0, 1fr) 280px;
   grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
@@ -172,8 +172,15 @@ body.report-builder-open .canvas {
   position: absolute;
   left: 0;
   top: 0;
-  width: 680px;
-  height: 440px;
+  /* The paper's own size -- PAPER_W x PAPER_H in report-builder.js, which is
+     11x17 at 96dpi. fitThumb divides the box width by PAPER_W to get the
+     scale, so these two numbers have to BE that size. They were 680 x 440,
+     the stage's old size, and when the sheet became the paper this was left
+     behind: every preview was then drawn at 680/1632 of its box -- a page
+     crammed into the top-left corner of the stamp with white to the right of
+     it and below it. Tim, Oct 23, 2026: "The slides don't show fully." */
+  width: 1632px;
+  height: 1056px;
   margin: 0;
   border: 0;
   overflow: hidden;
@@ -265,32 +272,69 @@ body.report-builder-open .canvas {
   font-size: 12px;
 }
 
+/* The stage shows the paper zoomed to fit. The sheet keeps its own 1632 x
+   1056 and a transform does the zooming, so the box it visually fills has to
+   be a real box of its own -- a transformed element still reserves its full
+   unscaled size in layout, and the stage would centre THAT. */
+.rb-stage__paper {
+  position: relative;
+  flex: 0 0 auto;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #1a1a1a;
+  box-shadow: 0 14px 36px rgba(8, 32, 54, 0.16);
+  box-sizing: content-box;
+}
+
+.rb-stage__paper > .rb-sheet {
+  transform-origin: top left;
+}
+
 .rb-stage {
   display: flex;
-  align-items: center;
-  justify-content: center;
   min-width: 0;
   min-height: 0;
   padding: 16px;
   background:
     linear-gradient(180deg, rgba(8, 32, 54, 0.04), rgba(8, 32, 54, 0.02)),
     #e5e0d6;
-  overflow: hidden;
   box-sizing: border-box;
 }
 
 .rb-sheet {
+  /* ONE REPORT, ONE TYPEFACE. Declared on the paper so everything drawn on
+     it inherits, rather than on each block -- which is how the fault got in.
+     The cover and the discussion each declared this stack; the figure pages
+     declared a Segoe one; and the Picture Locations sheet declared nothing
+     at all, so it fell through to the app's own UI font and the distress
+     descriptions came out in a third face. Tim, Oct 23, 2026: "everything
+     should be in the discussion page cover font stream."
+     The drawing title rail is the one deliberate exception -- see
+     .rb-rail__rail, which is a serif title block on an engineering sheet. */
+  --rb-face: Calibri, Carlito, "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--rb-face);
   position: relative;
   flex: 0 0 auto;
   align-self: center;
-  width: 680px;
-  height: 440px;
-  max-width: 100%;
+  /* THE SHEET IS THE PAPER. 11x17 landscape is 1632 x 1056 CSS pixels at
+     96dpi, and the sheet is drawn at that size everywhere -- the editor, the
+     flip chart, the printer. Every view only ZOOMS it.
+     It used to be resized to fill whatever window it was in, so a style set
+     in pixels rather than in container units took up a different share of
+     the page on every screen, and the PDF could never agree with the editor.
+     A pixel here is now a real, fixed size on the paper: 96 to the inch. */
+  width: 1632px;
+  height: 1056px;
+  max-width: none;
   overflow: hidden;
   background: #fff;
   color: #111;
-  border: 1px solid #1a1a1a;
-  box-shadow: 0 14px 36px rgba(8, 32, 54, 0.16);
+  /* No edge of its own. A 1px border with box-sizing: border-box ate two
+     pixels of the page, so the content box was 1630 wide on screen and 1632
+     on paper -- a measurement taken at one size and used at another, which
+     is the whole class of bug this change exists to end. The paper's edge
+     and its shadow belong to the stage, which is where they are drawn. */
+  border: 0;
   box-sizing: border-box;
   container-type: size;
   /* The rail's layout assumes the sheet is its own stacking context. */
@@ -309,6 +353,35 @@ body.report-builder-open .canvas {
      the border -- white canvas on top of a black line, so the page border
      vanished on exactly that slide. */
   z-index: 4;
+}
+
+/* DRAFT, across the sheet. Sized in cqh like everything else on the page so
+   the thumbnail, the stage, Presentation and the printer all show the same
+   stamp at their own scale. It sits ABOVE the content, not behind it: on a
+   Floor Survey figure the drawing goes full bleed, so a stamp underneath
+   would simply be invisible. Low alpha is what makes it read as a watermark.
+   print-color-adjust keeps the printer from dropping it as background. */
+.rb-sheet__draft {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 5;
+  font-family: 'Oswald', 'Arial Narrow', Arial, sans-serif;
+  font-size: 26cqh;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  white-space: nowrap;
+  color: rgba(176, 32, 32, 0.16);
+  transform: rotate(-24deg);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }
 
 .rb-sheet__margin {
@@ -707,7 +780,16 @@ body.report-builder-open .canvas {
   min-height: 0;
   gap: 0.5%;
   color: #17130e;
-  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  /* One report, one typeface. The figure pages were on a Segoe stack while
+     the cover and the discussion were on Calibri, so the distress
+     descriptions in the Picture Locations table -- which set no font of
+     their own and inherit this one -- came out in a different face from
+     everything Tim had written. Tim, Oct 23, 2026: "whatever font you use
+     in Report Builder on the main screen, it needs to apply to the distress
+     survey descriptions as well"; "everything should be in the discussion
+     page cover font stream." This is that stack, character for character.
+     The drawing title rail keeps Georgia on purpose -- see .rb-rail__rail. */
+  font-family: var(--rb-face);
 }
 
 /* The drawing's upper-left header is gone. The rail carries the figure
@@ -766,6 +848,12 @@ body.report-builder-open .canvas {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  /* The rail had no padding of its own -- the padding was written against a
+     .rb-rail class this element has not carried for some time -- so every
+     label and every button in it sat flush against the window edge and the
+     wider ones were cut off there: "AGES", "eport sheets", a Remove button
+     with no R. */
+  padding: 2px 8px 8px;
 }
 .rb-ws__title { margin: 0; font-size: 18px; }
 .rb-ws__top,
@@ -841,6 +929,18 @@ body.report-builder-open .canvas {
 @media print {
   .rb-floor-box.is-active::before,
   .rb-floor-box.is-active::after { content: none; }
+}
+
+/* The still picture a printed slide draws when the live view is on another
+   slide. It fills the frame the live view would have filled, so the slide
+   prints the way it looks. */
+.rb-topo-still {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  z-index: 1;
 }
 
 .rb-topo-live {
@@ -1099,7 +1199,7 @@ body.report-builder-open .canvas {
   height: 100%;
   background: #fff;
   color: var(--rb-ink);
-  font-family: Calibri, Carlito, "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--rb-face);
 }
 
 .rb-cover__stage {
@@ -1154,6 +1254,11 @@ body.report-builder-open .canvas {
   border-right: 2px solid var(--rb-copper);
   border-bottom: 2px solid var(--rb-copper);
   cursor: nwse-resize;
+  /* Above whatever the box carries. The aerial's button bar was taken out of
+     the flow so it could not change the picture's size, and absolute at
+     bottom 0 it then lay over this corner: the pull was visible and could not
+     be grabbed, because the bar was what the pointer found. */
+  z-index: 4;
 }
 
 /* Highlighted, never merely hovered. Tim: the pulls "only show up when the
@@ -1339,6 +1444,9 @@ body.report-builder-open .canvas {
 /* Two columns: "Figure N" is derived from slide order and is not editable,
    so it can never be typed into the title and double-prefix the line. */
 .rb-cover__contents-item {
+  /* The jump chevron hangs off this, out of the flow -- see
+     .rb-cover__contents-jump. */
+  position: relative;
   display: flex;
   align-items: baseline;
   gap: 0;
@@ -1380,12 +1488,24 @@ body.report-builder-open .canvas {
    uses chevrons -- and a row of them down the contents is exactly what this
    looked like, because it was always showing. It appears on the line being
    pointed at, the way every other piece of chrome on a sheet now does. */
+/* Out of the flow, because it is editor chrome and the printed page does not
+   have it. In the flow it was 2.2cqh tall against a 1.6cqh line, so every
+   contents row was taller on screen than on paper: the box measured 815px in
+   the editor and 693px in the print deck, and the list then shrank to 0.776
+   on screen and 0.810 on paper. What is being fitted has to be the same thing
+   in both places or no arithmetic can make them agree. */
 .rb-cover__contents-jump {
   opacity: 0;
   transition: opacity 120ms ease;
-  flex: 0 0 auto;
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
   width: 2.2cqh;
   height: 2.2cqh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
   background: transparent;
   color: var(--rb-copper);
@@ -1397,6 +1517,18 @@ body.report-builder-open .canvas {
 /* Never on the finished page. */
 .rb-cover.is-locked .rb-cover__contents-jump { display: none; }
 
+/* The readings pill hangs from its CENTRE, not its left edge.
+   Pinned by the left edge, "Main Level H 9.7 L 6.7 D 3.0" and "Garage H 9.0
+   L 5.3 D 3.7" are different widths, so the same stored spot put them in
+   visibly different places and the lock looked broken even when it was
+   holding the spot faithfully. The spot it holds is the middle now, so two
+   sheets line up whatever their level is called. Tim: "High-low delta
+   [pill] should be pinned to the center."
+   A report made before this shifts that pill left by half its width, once. */
+[data-rb-floor-kind="pill"] {
+  transform: translateX(-50%);
+}
+
 /* ---- Site overview ---- */
 
 .rb-cover-box--overview {
@@ -1406,10 +1538,34 @@ body.report-builder-open .canvas {
   background: transparent;
 }
 
+/* The bar is a place for its buttons to sit, not a surface. Stretched across
+   the foot of the box it swallowed every press along the bottom edge --
+   including the resize pull in the corner. Only its own controls take the
+   pointer. */
+.rb-cover__overview-actions { pointer-events: none; }
+.rb-cover__overview-actions > * { pointer-events: auto; }
+
+/* Neither the placeholder nor the buttons may take space away from the
+   picture. They sat in the same column as the image and were merely made
+   invisible -- and something invisible still occupies its place -- so the
+   aerial was shorter whenever that chrome was present and grew the moment
+   Lock took it out of the flow. Tim: "look at the blue button and the
+   picture size ... locking or unlocking the layout changes what this looks
+   like." Out of the flow entirely; the picture is one size either way. */
+.rb-cover__overview-empty,
+.rb-cover__overview-actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+.rb-cover__overview-empty { top: 0; bottom: 0; }
+.rb-cover__overview-actions { bottom: 0; }
+
 .rb-cover__overview-image {
   flex: 1 1 auto;
   min-height: 0;
   width: 100%;
+  height: 100%;
   object-fit: cover;
   border: 0.13cqh solid #333;
 }
@@ -1573,16 +1729,15 @@ body.report-builder-open .canvas {
   cursor: grabbing;
 }
 
-/* The whole instrument turns, the N with it: the N labels the arrow's point,
-   not the sheet. */
+/* Size only. Rotation lives on .rb-rail__rose-rot as an SVG transform — the
+   same way Distress Survey turns #northWidgetRot — so Present / Print / PDF
+   always lay the mark out. A CSS rotate here was dropped by Chrome's print. */
 .rb-rail__rose {
   display: block;
   width: 5.8cqh;
   height: 5.8cqh;
   flex-shrink: 0;
   overflow: visible;
-  transform: rotate(var(--rb-north-rotation, 0deg));
-  transform-origin: center;
 }
 
 .rb-rail__client,
@@ -1928,6 +2083,11 @@ body.report-builder-open .canvas {
 }
 
 .rb-penlog {
+  /* This sheet is not drawn inside .rb-topo-page, so it never inherited the
+     figure page's font -- it inherited the app shell's. Named here so the
+     Picture Locations table and the distress descriptions in it are on the
+     report's face and not the application's. */
+  font-family: var(--rb-face);
   position: absolute;
   inset: 0;
   overflow: hidden;
@@ -2086,11 +2246,13 @@ body.report-builder-open .canvas {
   background: #6b7280;
 }
 
+/* Which pin is being worked on is not something the drawing says -- on the
+   sheet, in the PDF, on the wall, or on the editing screen. Scoping it to
+   print left it ringed in the editor, which is where Tim was looking: "pin 1
+   is still highlighted. I told you I didn't want that." The class stays for
+   the code that tracks selection; it just draws nothing. */
 .rb-penlog__pin.is-selected {
-  /* Keep the white ring; the dark outline sits outside it. */
-  box-shadow:
-    0 0 0 calc(var(--rb-pin-size, 2.15cqh) * 0.045) #fff,
-    0 0 0 calc(var(--rb-pin-size, 2.15cqh) * 0.045 + 1.5px) #1a1a1a;
+  box-shadow: none;
 }
 
 .rb-penlog__schedule {
@@ -2210,6 +2372,11 @@ body.report-builder-open .canvas {
   .rb-penlog__pin.is-selected { box-shadow: none; }
 }
 
+/* The printed deck and the flip chart are both rendered on screen, where
+   @media print never fires. Which pin is being worked on is screen chrome:
+   it belongs on the editing sheet and nowhere else. */
+.rb-print .rb-penlog__pin.is-selected { box-shadow: none; }
+
 .rb-penlog__photo {
   margin: 0;
   padding: 0;
@@ -2250,6 +2417,25 @@ body.report-builder-open .canvas {
   color: inherit;
   font: inherit;
   line-height: 1.15;
+}
+
+/* Print / Present: room + note as ordinary flowing text. Absolute room +
+   textarea first-line indent is the editor layout; Chrome's print of that
+   combination painted overlapping / clipped characters on the Janis PDF. */
+.rb-penlog__room--inline {
+  position: static;
+  top: auto;
+  left: auto;
+  font-weight: 700;
+  white-space: normal;
+}
+
+.rb-penlog__room--inline::after { content: none; }
+
+.rb-penlog__note--print {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .rb-penlog-panel {
@@ -2527,14 +2713,20 @@ body.report-builder-open .canvas {
  * two of its four borders are drawn. */
 .rb-floor-box__resize {
   position: absolute;
-  /* Big enough to find and hit. 12px was a speck on a full-page frame. */
-  width: 16px;
-  height: 16px;
+  /* Big enough to find and hit. 12px was a speck on a full-page frame, and
+     16px was still hard to see on the aerial, which is a small box over a
+     busy photograph. Tim: "the corner poles ... need to be more prevalent."
+     The bracket is drawn thicker and carries a solid tip, so it reads as a
+     grab point rather than a hairline. */
+  width: 20px;
+  height: 20px;
   border: 0 solid #1e406e;
   background: transparent;
   /* A white companion line under the dark one, so the bracket reads against
      a dark contour as well as against white paper. */
   filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
+  border-width: 0;
+  border-color: #1e406e;
   /* Above the drawing it sits on. */
   z-index: 6;
 }
@@ -2558,23 +2750,23 @@ body.report-builder-open .canvas {
 }
 
 .rb-floor-box__resize--nw {
-  left: -8px; top: -8px; cursor: nwse-resize;
-  border-top-width: 2px; border-left-width: 2px;
+  left: -10px; top: -10px; cursor: nwse-resize;
+  border-top-width: 3px; border-left-width: 3px;
 }
 
 .rb-floor-box__resize--ne {
-  right: -8px; top: -8px; cursor: nesw-resize;
-  border-top-width: 2px; border-right-width: 2px;
+  right: -10px; top: -10px; cursor: nesw-resize;
+  border-top-width: 3px; border-right-width: 3px;
 }
 
 .rb-floor-box__resize--sw {
-  left: -8px; bottom: -8px; cursor: nesw-resize;
-  border-bottom-width: 2px; border-left-width: 2px;
+  left: -10px; bottom: -10px; cursor: nesw-resize;
+  border-bottom-width: 3px; border-left-width: 3px;
 }
 
 .rb-floor-box__resize--se {
-  right: -8px; bottom: -8px; cursor: nwse-resize;
-  border-bottom-width: 2px; border-right-width: 2px;
+  right: -10px; bottom: -10px; cursor: nwse-resize;
+  border-bottom-width: 3px; border-right-width: 3px;
 }
 
 .rb-topo-page--chrome-only .rb-topo-page__body {
@@ -2847,11 +3039,230 @@ body.report-builder-open .canvas {
    in layout, and no amount of re-running the layout changes that.
    Pushed far off-screen instead: invisible, inert, and measurable. */
 .rb-print {
+  /* The printed deck is built and measured at THE SIZE THE EDITOR'S SHEET IS
+     RIGHT NOW, and each finished sheet is then scaled up to the paper inside
+     its own page box. Measuring at paper size is what made the PDF disagree
+     with the editor: text re-wrapped, captions shrank by a different amount,
+     photographs were measured against a different box and pin size came off
+     a different plan rect. Nothing is fitted for paper now -- the paper
+     shows the sheet the editor settled, enlarged.
+     The three numbers are written on the deck from script, because the
+     editing sheet is sized to whatever the stage gives it. 11x17 landscape
+     is 1632 x 1056 CSS pixels at 96dpi, so the scale is 1632 / sheet width
+     and the sheet's own 17:11 shape makes the height come out exact. */
+  --rb-print-sheet-w: 1632px;
+  --rb-print-sheet-h: 1056px;
+  --rb-print-scale-x: 2.4;
+  --rb-print-scale-y: 2.4;
   position: fixed;
   left: -20000px;
   top: 0;
-  width: 17in;
+  width: var(--rb-print-sheet-w);
   pointer-events: none;
+}
+
+/* One sheet of paper, holding one editor-sized sheet. Off-screen, where the
+   deck is measured, it is the sheet's own size; on paper it becomes the page
+   and the sheet inside it fills it. */
+.rb-print__page {
+  position: relative;
+  width: var(--rb-print-sheet-w);
+  height: var(--rb-print-sheet-h);
+}
+
+/* And the sheet inside it is that size WHILE IT IS BEING MEASURED, not only
+   once the paper rules come in. .rb-sheet's own 680px would otherwise be the
+   size every fit on the deck measured against -- a different size from the
+   editing sheet, which is the whole thing this is here to stop. */
+.rb-print .rb-sheet {
+  width: var(--rb-print-sheet-w);
+  height: var(--rb-print-sheet-h);
+  max-width: none;
+}
+
+/* Editor chrome is never on a sheet the investigator is SHOWING somebody.
+ *
+ * Every rule that took it off the paper lived inside @media print, and the
+ * flip chart is that same deck on a SCREEN -- where print rules never fire.
+ * So Presentation carried the lot: the dashed outline round a text box, the
+ * corner pulls, the x on the aerial, the Paste overview button, the plan's
+ * own grips. Tim, looking at a preview sheet: "Look at the small white
+ * layout. That's our text box. I don't want it visible", and on the next
+ * sheet, "the white line exists in these photos too."
+ *
+ * Scoped to the deck rather than to the medium, so one rule serves the
+ * printer and the flip chart and the editing sheet keeps its chrome. */
+.rb-print [data-plan-resize],
+.rb-print .rb-penlog__move,
+.rb-print .rb-penlog__resize,
+.rb-print .rb-floor-overview__remove,
+.rb-print .rb-cover-box__move,
+.rb-print .rb-cover-box__resize,
+.rb-print .rb-floor-box__resize,
+.rb-print .rb-floor-toolbar,
+.rb-print .rb-cover__contents-jump,
+.rb-print .rb-cover__overview-actions,
+.rb-print .rb-cover__overview-empty,
+.rb-print .rb-floor-empty,
+.rb-print .rb-brand__resize,
+.rb-print .rb-discussion__move,
+.rb-print .rb-discussion__resize,
+.rb-print .rb-discussion__overflow,
+.rb-print .rb-ov__resize,
+.rb-print .rb-ov__remove,
+.rb-print .rb-ov__hint,
+.rb-print .rb-stackmenu {
+  display: none !important;
+}
+
+/* And the outlines those boxes carry, which are a placement aid and not
+   part of the drawing. */
+.rb-print .rb-cover-box,
+.rb-print .rb-floor-box,
+.rb-print .rb-discussion__box,
+.rb-print [data-rb-rich] {
+  outline: none !important;
+}
+
+.rb-print .rb-floor-box.is-active::before,
+.rb-print .rb-floor-box.is-active::after { content: none; }
+
+/* Presentation: the printed deck, brought on screen one sheet at a time.
+   It is deliberately the same deck the printer is given -- composed contour
+   maps and all -- so what is flipped through is what comes out of the PDF.
+   Tim: "that allows me to see the report before I PDF it ... there is my
+   flip chart that I've been looking for." */
+body.is-presenting { overflow: hidden; }
+
+.rb-print--present {
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  padding: 0;
+  background: #0b1b27;
+  pointer-events: auto;
+  overflow: hidden;
+  z-index: 9000;
+}
+
+.rb-print--present .rb-sheet { display: none; }
+
+/* The page boxes stand aside in the flip chart: the sheet being shown is
+   placed against the full-screen deck itself. */
+.rb-print--present .rb-print__page { display: contents; }
+
+/* Placed and scaled from script, from the top-left corner. Centring a sheet
+   that is larger than the window cannot be left to the layout: inside a
+   clipping box the browser pins an oversized centred item to the start, and
+   the paper ran off the bottom-right corner. */
+.rb-print--present .rb-sheet.is-present-current {
+  display: block;
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* The editing sheet's own size, scaled to the window from script. The flip
+     chart shows the same geometry the editor does, which is the whole point
+     of it being the preview -- and the same geometry the paper gets.
+     max-width is lifted because .rb-sheet caps itself at 100%, which here is
+     the window, and that squashed the sheet to the window's shape. */
+  width: var(--rb-print-sheet-w);
+  height: var(--rb-print-sheet-h);
+  max-width: none;
+  min-width: 0;
+  flex: none;
+  margin: 0;
+  background: #fff;
+  transform-origin: top left;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+.rb-present-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(10, 26, 38, 0.82);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  z-index: 9001;
+  opacity: 0.25;
+  transition: opacity 140ms ease;
+}
+
+.rb-present-bar:hover,
+.rb-present-bar:focus-within { opacity: 1; }
+
+.rb-present-bar button {
+  min-width: 38px;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rb-present-bar button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.24); }
+.rb-present-bar button:disabled { opacity: 0.35; cursor: default; }
+
+.rb-present-bar__count {
+  min-width: 74px;
+  padding: 0 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rb-present-bar { transition: none; }
+}
+
+@media print {
+  .rb-present-bar { display: none !important; }
+
+  /* Printing from the flip chart prints the whole deck, not the one sheet
+     being shown. It is the same deck either way -- the presentation is the
+     printed deck -- so this only undoes the full-screen framing and lets
+     every sheet back out onto the paper. */
+  .rb-print--present {
+    position: static;
+    left: auto;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    background: #fff;
+  }
+
+  .rb-print--present .rb-print__page { display: block; }
+
+  .rb-print--present .rb-sheet,
+  .rb-print--present .rb-sheet.is-present-current {
+    display: block;
+    position: relative;
+    left: auto;
+    top: auto;
+    /* Back to the paper scale. The flip chart's own fit-to-window transform
+       is cleared from script before printing, and this is what prints. */
+    transform: scale(var(--rb-print-scale-x), var(--rb-print-scale-y));
+    transform-origin: top left;
+    box-shadow: none;
+  }
 }
 
 @media print {
@@ -2861,6 +3272,7 @@ body.report-builder-open .canvas {
     width: auto;
   }
 
+  /* 11x17 paper, landscape: 17 inches across the page. */
   @page {
     size: 17in 11in;
     margin: 0;
@@ -2877,14 +3289,12 @@ body.report-builder-open .canvas {
 
   body.is-printing .rb-print { display: block; }
 
-  .rb-print .rb-sheet {
-    display: block;
+  /* The page box IS the sheet of paper, and it is what paginates. A scaled
+     sheet reserves only its unscaled space in flow, so the page break can
+     never be left to the sheet itself. */
+  .rb-print__page {
     width: 17in;
     height: 11in;
-    max-width: none;
-    margin: 0;
-    border: 0;
-    box-shadow: none;
     overflow: hidden;
     break-after: page;
     page-break-after: always;
@@ -2892,9 +3302,25 @@ body.report-builder-open .canvas {
     page-break-inside: avoid;
   }
 
-  .rb-print .rb-sheet:last-child {
+  .rb-print__page:last-child {
     break-after: auto;
     page-break-after: auto;
+  }
+
+  /* The finished editor sheet, enlarged to fill the paper. Everything in it
+     was laid out, wrapped and fitted at the editing sheet's own size, so the
+     paper shows what the editor showed. */
+  .rb-print .rb-sheet {
+    display: block;
+    width: var(--rb-print-sheet-w);
+    height: var(--rb-print-sheet-h);
+    max-width: none;
+    margin: 0;
+    border: 0;
+    box-shadow: none;
+    overflow: hidden;
+    transform: scale(var(--rb-print-scale-x), var(--rb-print-scale-y));
+    transform-origin: top left;
   }
 
   /* Editor chrome never prints, whether or not the layout happens to be
@@ -2972,7 +3398,7 @@ body.report-builder-open .canvas {
   height: 100%;
   background: #fff;
   color: #1a1a1a;
-  font-family: Calibri, Carlito, "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--rb-face);
 }
 
 /* The writing area as a placed box: where it sits and how big it is belong
@@ -3070,16 +3496,30 @@ body.report-builder-open .canvas {
 
 
 
-.rb-discussion__body .rb-rt__p { margin: 0 0 0.75em; }
-.rb-discussion__body .rb-rt__p:last-child { margin-bottom: 0; }
+/* The returns are the spacing.
+ *
+ * Every paragraph carried an automatic three-quarter-line gap, so one return
+ * already opened a space and two returns opened two of them plus an empty
+ * line -- and the only way to close any of it was a menu whose labels did not
+ * say what they did. Tim: "that always jacks up my spacing. It's the bane of
+ * my existence ... basically every time you hit return, or hit return twice,
+ * it adds one line space in it, I'm fine with that."
+ *
+ * So nothing is added behind the typing. One return starts a new line; two
+ * returns leave a blank one, because an empty paragraph is written as a <br>
+ * and stands a line high. What is on the page is what was typed.
+ *
+ * A paragraph that was given a gap of its own, by this report or an older
+ * one, still carries it: that is an inline style and it wins over this. */
+.rb-discussion__body .rb-rt__p { margin: 0; }
 
 .rb-discussion__body .rb-rt__list {
-  margin: 0 0 0.75em;
+  margin: 0;
   padding-left: 1.6em;
 }
 
 .rb-discussion__body .rb-rt__p--bullet,
-.rb-discussion__body .rb-rt__p--number { margin: 0 0 0.3em; }
+.rb-discussion__body .rb-rt__p--number { margin: 0; }
 
 /* ------------------------------------------------------------------ *
  * The logo — one placement, every page
@@ -3525,6 +3965,39 @@ body.report-builder-open .canvas {
   box-shadow: 0 10px 28px rgba(23, 19, 14, 0.18);
 }
 
+/* The right-click menu in a writing area shares the stack menu's look. Its
+   note appears only when the browser refused the clipboard, so it says what
+   to press instead rather than leaving the menu looking broken. */
+/* Said on the sheet, not in a console. It has to survive the rules that
+   strip editor chrome from the printed deck -- it is the opposite of chrome:
+   the one thing on a failed sheet that must reach the paper. */
+.rb-sheet__failed {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 44%;
+  margin: 0;
+  padding: 2.2cqh 2.6cqh;
+  border: 0.22cqh solid #8c2f1d;
+  border-radius: 0.6cqh;
+  background: #fff;
+  color: #8c2f1d;
+  font-size: 2.1cqh;
+  line-height: 1.4;
+  text-align: center;
+  z-index: 9;
+}
+
+.rb-stackmenu__note {
+  max-width: 24ch;
+  margin: 4px 0 0;
+  padding: 6px 10px 2px;
+  border-top: 1px solid rgba(23, 19, 14, 0.14);
+  color: #6b5c4a;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .rb-stackmenu__item {
   padding: 7px 10px;
   border: 0;
@@ -3577,3 +4050,90 @@ body.report-builder-open .canvas {
 .rb-fold[open] .rb-fold__head::before { content: '\25BE'; }
 
 .rb-fold .btn { width: 100%; margin-top: 6px; }
+
+/* Presentation view is a glyph, not a word. "Present" was the verb; the
+   thing it opens is a view, and PowerPoint names its views on icons for the
+   same reason -- the row reads as a set of places to be rather than a row of
+   commands. The name is still on the button for a screen reader and on the
+   tooltip for everyone else, and the waiting state is aria-busy rather than
+   a word, which would have thrown the screen away. */
+.rb-present-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  padding-left: 0;
+  padding-right: 0;
+  line-height: 1;
+}
+
+.rb-present-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.rb-present-btn[aria-busy='true'] {
+  opacity: 0.6;
+}
+
+/* Zoom. The page is 11x17 and the stage is whatever is left after the rail
+   and the panel, so on a laptop the sheet is drawn at about two-thirds and
+   the discussion type is small to work in. Zoom changes the magnification
+   only -- never the type on the page, which would change the printed
+   report. Tim, Oct 23, 2026: "I don't say font, zoom in, zoom out, so we
+   can read it easier." */
+.rb-zoom {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.rb-zoom__btn,
+.rb-zoom__level {
+  border: 0;
+  background: transparent;
+  color: var(--navy);
+  font: inherit;
+  cursor: pointer;
+  padding: 0 10px;
+  line-height: 1;
+}
+
+.rb-zoom__btn {
+  width: 32px;
+  padding: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.rb-zoom__level {
+  min-width: 54px;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rb-zoom__btn:hover,
+.rb-zoom__level:hover { background: #eef2f4; }
+
+/* Zoomed past fit, the page is bigger than the stage, so the stage has to
+   scroll. Centring a flex child with justify-content clips the top and left
+   of an oversized one -- the part you cannot scroll back to -- so the paper
+   centres with margin:auto instead, which does not. */
+.rb-stage {
+  overflow: auto;
+}
+
+.rb-stage__paper {
+  margin: auto;
+}

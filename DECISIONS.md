@@ -15,6 +15,20 @@ Durable decisions already established in `VISION.md`, recorded here for quick re
 - The standalone repositories (`field-reporter-pro`, `floorplan-topo-maker`) remain untouched, permanent field fallbacks — not just historical reference.
 
 
+## One layout record (CHANGED by Tim, Oct 22, 2026)
+
+- A report holds **one** floor layout on `reportBuilder.floorLayout`: the topo frame, the contour legend, the H/L/Δ pill, the aerial, and the size each is drawn at. **Every** Floor Survey page draws that record. Moving a piece on any page moves it on all of them.
+- A page does **not** keep a layout of its own. The old model had three places holding one answer — the page's copy, the book's copy, and a factory default — and whichever was found first won, so a page nobody had touched showed the factory position while the arranged page showed another.
+- There is **no Lock layout** control. Nothing to pin and nothing to release.
+- What stays per page: the readings themselves, the contour/palette/mode view settings, and whether the aerial is shown.
+- **One page may be placed on its own** (CHANGED by Tim, Oct 23, 2026). A Combined figure carries no contour legend and no H/L/Δ pill — those go in the rail — so its left column is free and the plan may want the middle of it. The control sits in the Floor Survey rail: *Place this slide on its own* / *Use the shared placement*. It is never automatic, the page says so while it is on its own, and it is reversible. A page on its own falls back to the **shared record**, never to the factory default — that default is what put an aerial in the corner of a page nobody had touched.
+
+## The sheet is the paper (Oct 22, 2026)
+
+- The report sheet is **11x17 landscape**, 1632 x 1056 CSS pixels at 96dpi, and is drawn at that size everywhere. The editor, the thumbnails, the flip chart and the printer only **zoom** it.
+- It used to be resized to fill the window, so any style set in pixels took up a different share of the page on every screen, and the PDF could not agree with the editor. A pixel on the page is now a fixed size: 96 to the inch.
+- Printing builds its deck at that same size and prints 1:1. Nothing is re-measured for paper.
+
 ## Customer File
 
 - **Contact information + plan(s)/canvas(es) = Customer File.**
@@ -102,7 +116,7 @@ Concrete Customer File record ownership for later app plug-in. Architecture is c
 - **Floor Survey figure pages — Import, place, Lock (DECIDED Tim, Oct 2, 2026).** This supersedes “burn legend + H/L/Δ into forever-fixed Mitchell coordinates on every auto-composed topo page” as the ongoing model. Slice 1’s fixed-slot compose remains shipped history; new Floor Survey report work follows this rule.
   1. Page opens with **Customer File / report chrome only** (figure # / title, date, corrected line, name/address, north / Front Door, brand, etc.) in typical places.
   2. **Import** (report page and/or Floor Survey add-to-report) brings in topo view (plan + contours + readings as one unit), contour legend, and H/L/Δ pill — not a field screenshot paste.
-  3. Import uses **typical default positions**; investigator may move/resize those boxes (readable bounds), then **Lock layout**.
+  3. Import uses **typical default positions**; investigator may move/resize those boxes (readable bounds). There is no Lock layout — see "One layout record" below.
   4. Locked layout + view framing **inherits** on following Floor Survey pages so level-on-level flip charts stay registered. Unlock only when changing the book layout.
   5. Cover, discussion slots, TOC from finished slide order, and other stable pieces stay template-friendly. Fuzzy PDF/JPEG paste of topo is not the path.
 - **Build guardrails:** do not separate plan from its contours/readings; do not require a blank scatter of boxes after Import; do not turn Distress into a second permanent report-caption editor; do not build CRDT/live multi-user layout editing.
@@ -131,7 +145,7 @@ Concrete Customer File record ownership for later app plug-in. Architecture is c
   **Out of that slice:** Picture Locations page, Pen Log / drawing toolbar, epoch divider banners, side-by-side epoch pages, mark-complete + date, Report Builder startup questionnaire.
 - **Report Builder Picture Locations / Pen Log (authorized Tim, Oct 1, 2026):** Finish the native Pen Log page that was drafted in PR #91 and integrate it with current Report Builder on main. One page per Distress level with pins: plan, numbered pins, Photo / # / Location / Notes schedule, title “Figure N” + “Picture/Damage Locations”. Report notes persist on the report component (`reportBuilder.penLog.notes` and page `reportText.notes`) and do not write back to Distress. Drawing toolbar remains out of scope.
 - **Third implementation slice — AUTHORIZED (Tim, Oct 2, 2026).** Build and ship the decided staging / Floor Survey model:
-  1. **Floor Survey pages:** Customer File chrome first; **Import** loads topo view + contour legend + H/L/Δ as separate boxes at typical defaults; move/resize (readable bounds); **Lock layout** persists on `reportBuilder.floorLayout` and inherits on other Floor Survey pages. Unlock to edit again. No field pinch-zoom. Plan+contours+readings stay one topo unit.
+  1. **Floor Survey pages:** Customer File chrome first; **Import** loads topo view + contour legend + H/L/Δ as separate boxes at typical defaults; move/resize (readable bounds). Placement lives in one record on `reportBuilder.floorLayout` that every Floor Survey page reads — see "One layout record" below. No field pinch-zoom. Plan+contours+readings stay one topo unit.
   2. **Distress Put on report (Pictures):** From Distress (host), stage photographs onto Pictures slides (10 per page, multi-level aware via existing numbering) into `reportBuilder`, then open Report Builder (jump-return session). Deliverable caption edits stay on the report pages.
   **Out of this slice:** Full field Topo tool parity in Report Builder; Picture Locations staging button (Pen Log pages may already exist from prior auth); free-form distortion; CRDT/live collaboration.
 - **Formatting rebuild — AUTHORIZED (Tim, Oct 2, 2026).** Keep plumbing; remove fake composition toolbar; rebuild sheet layouts from real report screenshots via talk-through placement. Do not reintroduce placeholder drawing tools. Page-type visual rebuilds are authorized when Tim supplies the screenshot for that page.

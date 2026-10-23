@@ -351,6 +351,17 @@
           var inOl = source.parentNode && source.parentNode.tagName === 'OL';
           if (inOl) current.numbered = true;
           else current.bullet = true;
+          // How deep the list is nested IS the indent. Only the item's own
+          // parent was read before, so a sub-bullet and a sub-sub-bullet came
+          // in level with the top one -- every level of a pasted list
+          // flattened into a single row of markers.
+          var depth = 0;
+          var up = source.parentNode;
+          while (up && up !== root && depth < MAX_INDENT) {
+            if (up.tagName === 'UL' || up.tagName === 'OL') depth += 1;
+            up = up.parentNode;
+          }
+          if (depth > 1) current.indent = Math.min(MAX_INDENT, depth - 1);
         }
         // The Bullets button writes its intent onto the block rather
         // than building list markup itself, so the <ul> wrapping and the
@@ -443,8 +454,64 @@
           continue;
         }
         if (BLOCK_TAGS[tag]) {
-          startParagraph(child);
-          walk(child, HEADING_TAGS[tag] ? assignBold(ctx) : ctx);
+          // A list item that CONTAINS blocks. Google Docs and Word both copy
+          // as <li><p>text</p></li>, and <li> and <p> are both blocks here:
+          // the <li> started a paragraph and wrote its marker and indent onto
+          // it, and the <p> immediately replaced that paragraph with a fresh
+          // one carrying neither. A pasted list came in as an empty bullet
+          // above unmarked text, one pair per item, with the nesting gone
+          // too. The <li>'s marker is handed to the first block inside it
+          // instead. Audit finding 4.
+          var carry = null;
+          if (current && !current.runs.length &&
+              (current.bullet || current.numbered) &&
+              model.paragraphs[model.paragraphs.length - 1] === current) {
+            carry = current;
+            model.paragraphs.pop();
+          }
+          var block = startParagraph(child);
+          // A block that states its own list intent keeps it; only a block
+          // that says nothing inherits the item's.
+          var stated = child.getAttribute && child.getAttribute('data-rb-bullet');
+          if (carry && !stated) {
+            if (carry.numbered) { block.numbered = true; block.bullet = false; }
+            else if (carry.bullet) { block.bullet = true; block.numbered = false; }
+            if (carry.indent && !block.indent) block.indent = carry.indent;
+          }
+          // A block can carry character styles of its own, and only INLINE
+          // elements were being read into the run context, so a pasted
+          // paragraph set bold, italic, underlined or struck through kept
+          // none of it.
+          //
+          // SIZE, COLOUR AND FONT ARE DELIBERATELY NOT READ HERE, and that
+          // is a decision rather than an oversight. A narrative pasted out
+          // of a chat answer carries the chat's theme on every block --
+          // font-family:Inter, color:#374151, 22px headings -- and the
+          // settled rule is that it "arrives in the report's own type, not
+          // the chat's" (report-discussion-paste). Reading a block's size
+          // and colour would make every pasted narrative come in grey Inter
+          // instead of the report's face, which is the paste Tim actually
+          // uses. Reading a block's font-family would break the one
+          // typeface decided on Oct 23, 2026 outright.
+          //
+          // The audit asked for size and colour on paragraphs too. They
+          // cannot both be true for the same paste, so the proven behaviour
+          // holds and the question is Tim's. An INLINE size or colour is
+          // still read, as it always was: a span the author styled is
+          // emphasis, a theme on every block is not.
+          walk(child, {
+            bold: markState(ctx.bold, !!HEADING_TAGS[tag],
+              child.style && child.style.fontWeight, 'bold'),
+            italic: markState(ctx.italic, false,
+              child.style && child.style.fontStyle, 'italic'),
+            underline: ctx.underline ||
+              (child.style && /underline/.test(child.style.textDecoration || '')),
+            strike: ctx.strike ||
+              (child.style && /line-through/.test(child.style.textDecoration || '')),
+            size: ctx.size,
+            font: ctx.font,
+            color: ctx.color,
+          });
           continue;
         }
         var next = {
@@ -520,7 +587,11 @@
       var para = blankParagraph();
       var body = line;
       var heading = body.match(/^\s{0,3}(#{1,6})\s+(.*)$/);
-      var bullet = body.match(/^\s*([-*+]|\d+\.)\s+(.*)$/);
+      var bullet = body.match(/^\s*([-*+])\s+(.*)$/);
+      // "1." was matched in the same alternation as "-" and then marked as a
+      // bullet, so a numbered list pasted as markdown lost its numbers. The
+      // model has carried `numbered` all along.
+      var numbered = body.match(/^\s*\d+\.\s+(.*)$/);
       var runBase = {};
       if (heading) {
         body = heading[2];
@@ -532,9 +603,10 @@
           var factor = heading[1].length === 1 ? 1.5 : heading[1].length === 2 ? 1.25 : 1.1;
           runBase.size = Math.round(base * factor * 10) / 10;
         }
-      } else if (bullet) {
-        body = bullet[2];
-        para.bullet = true;
+      } else if (bullet || numbered) {
+        body = bullet ? bullet[2] : numbered[1];
+        if (bullet) para.bullet = true;
+        else para.numbered = true;
         var lead = line.match(/^(\s*)/)[1].length;
         para.indent = Math.min(MAX_INDENT, Math.floor(lead / 2));
       }

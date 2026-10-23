@@ -8,8 +8,12 @@
  * Do not trust unverified convenience email headers.
  */
 
-import { requireObjectEtag, conditionalPutOptions } from './r2-conditional.js';
-import { exploreResult } from './explore.js';
+import {
+  requireObjectEtag,
+  conditionalPutOptions,
+  createOnlyPutOptions,
+} from './r2-conditional.js';
+import { exploreResult, mediaRefsFromPlans } from './explore.js';
 
 /** PWA origin only — Access cookie sync uses credentials:include (no *). */
 const ALLOWED_ORIGINS = {
@@ -346,14 +350,15 @@ function safeMediaId(id) {
     id.indexOf('..') === -1;
 }
 
+// The same collector File Explorer lists and archives with, so a permanent
+// delete removes exactly what an archive would have contained -- the floor
+// plan AND the contour layer drawn from the readings. Reading only the plan
+// here left the contour bytes orphaned in the bucket on every permanent
+// delete. Audit finding 7.
 function mediaIdsFromPlansComponent(plans) {
-  const canvases = plans && Array.isArray(plans.canvases) ? plans.canvases : [];
-  const ids = [];
-  canvases.forEach(function (canvas) {
-    const id = canvas && canvas.plan && canvas.plan.id;
-    if (safeMediaId(id)) ids.push(id);
-  });
-  return ids;
+  return mediaRefsFromPlans(plans, [])
+    .map(function (ref) { return ref && ref.id; })
+    .filter(function (id) { return safeMediaId(id); });
 }
 
 function mediaIdsFromDiagnosticsComponent(diagnostics) {
@@ -667,6 +672,11 @@ async function releaseCheckout(env, id, identity, deviceId) {
 async function assertWritableCheckout(request, env, id) {
   const got = await env.CABINET.get(indexKey(id));
   if (!got) return { ok: true, exists: false };
+  // The version this answer is about. A caller that goes on to WRITE the
+  // index must carry this back as a precondition, or the lease it just read
+  // can be acquired by another device before the write lands and then
+  // overwritten by this stale copy of it.
+  const etag = requireObjectEtag(got);
   let index;
   try {
     index = await got.json();
@@ -675,7 +685,7 @@ async function assertWritableCheckout(request, env, id) {
   }
   const checkout = index && index.checkout;
   if (!checkout || !trimStr(checkout.deviceId) || !normalizeEmail(checkout.email)) {
-    return { ok: true, exists: true, index: index };
+    return { ok: true, exists: true, index: index, etag: etag };
   }
 
   const identityResult = await requireIdentity(request, env);
@@ -690,7 +700,14 @@ async function assertWritableCheckout(request, env, id) {
       response: forbidden(request, 'Customer File is checked out by another user or device'),
     };
   }
-  return { ok: true, exists: true, index: index, identity: identityResult };
+  return { ok: true, exists: true, index: index, etag: etag, identity: identityResult };
+}
+
+// The lease is the SERVER's, never the client's: an ordinary Sync write
+// carries back whatever the server holds and may not set, change or drop it.
+function applyServerLease(gate, body) {
+  if (gate && gate.index && gate.index.checkout) body.checkout = gate.index.checkout;
+  else delete body.checkout;
 }
 
 const PWA_ORIGIN = 'https://sandiageotoolbox.com';
@@ -909,20 +926,63 @@ export default {
         }
         if (!body || body.id !== id) return badRequest(request, 'Index id mismatch');
 
-        const writeGate = await assertWritableCheckout(request, env, id);
-        if (!writeGate.ok) return writeGate.response;
+        let gate = await assertWritableCheckout(request, env, id);
+        if (!gate.ok) return gate.response;
+        applyServerLease(gate, body);
 
-        // Preserve server checkout lease on ordinary Sync index writes.
-        if (writeGate.index && writeGate.index.checkout) {
-          body.checkout = writeGate.index.checkout;
-        } else {
-          delete body.checkout;
+        if (!gate.exists) {
+          // CREATE-ONCE, not an unconditional write.
+          //
+          // The comment that used to stand here said a lease cannot exist on
+          // an object that does not, so there was none to lose. That is true
+          // at the moment of the READ and false at the moment of the WRITE:
+          // another device can create the index in between and acquire a
+          // checkout on it, and this write would then erase that lease while
+          // returning 200 -- the same shape of fault the conditional update
+          // below was added to fix, left standing on the path beside it.
+          const created = await env.CABINET.put(
+            indexKey(id),
+            JSON.stringify(body),
+            createOnlyPutOptions({ contentType: 'application/json' }),
+          );
+          if (created !== null) return json(request, { ok: true });
+          // Lost the create. Something is there now, and it may be checked
+          // out. Run the gate again against what is actually there, which
+          // refuses this write outright if the file now belongs to another
+          // device, and otherwise carry ITS lease rather than the absence we
+          // read. Then fall into the conditional update below.
+          gate = await assertWritableCheckout(request, env, id);
+          if (!gate.ok) return gate.response;
+          if (!gate.exists) {
+            return text(request, 'Customer File index could not be created', 500);
+          }
+          applyServerLease(gate, body);
         }
 
-        await env.CABINET.put(indexKey(id), JSON.stringify(body), {
-          httpMetadata: { contentType: 'application/json' },
-        });
-        return json(request, { ok: true });
+        // Read-modify-write, so it needs the same compare-and-swap the
+        // checkout routes already use. Without it, a lease acquired between
+        // the read above and the write below was erased by this stale copy
+        // of the index -- both requests returning 200, the file left checked
+        // out to nobody. Audit finding 3.
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const putOpts = conditionalPutOptions(gate.etag, { contentType: 'application/json' });
+          if (!putOpts) {
+            return text(request, 'Missing object ETag; refusing unsafe index write', 500);
+          }
+          const putResult = await env.CABINET.put(indexKey(id), JSON.stringify(body), putOpts);
+          // Conditional put returns null when the precondition fails.
+          if (putResult !== null) return json(request, { ok: true });
+          if (attempt > 0) break;
+          // Something changed the index under us. Read it again and run the
+          // gate against what is there NOW: if a checkout was acquired or
+          // taken over in the gap, this device is no longer the writer and
+          // the retry is refused rather than allowed through.
+          gate = await assertWritableCheckout(request, env, id);
+          if (!gate.ok) return gate.response;
+          if (!gate.exists) return notFound(request);
+          applyServerLease(gate, body);
+        }
+        return conflict(request, 'Customer File index changed during write; sync again');
       }
     }
 

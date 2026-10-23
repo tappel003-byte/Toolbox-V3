@@ -14,6 +14,26 @@ export function requireObjectEtag(r2Object) {
 }
 
 /**
+ * Build put options that create the object ONLY if it does not exist.
+ *
+ * R2 documents If-None-Match: * as atomic create-once: two requests racing to
+ * create the same absent key cannot both succeed. The Workers binding takes it
+ * as a Headers object, and a failed conditional put returns null WITHOUT
+ * storing anything -- it does not throw, and it is not the S3 API's HTTP 412.
+ *
+ * https://developers.cloudflare.com/r2/reference/consistency/
+ * https://developers.cloudflare.com/r2/api/workers/workers-api-reference/
+ *
+ * @param {object} [httpMetadata]
+ */
+export function createOnlyPutOptions(httpMetadata) {
+  return {
+    httpMetadata: httpMetadata || { contentType: 'application/json' },
+    onlyIf: new Headers({ 'If-None-Match': '*' }),
+  };
+}
+
+/**
  * Build put options that always include an ETag precondition.
  * Returns null when etag is missing — callers must refuse the write.
  *

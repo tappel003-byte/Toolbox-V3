@@ -2334,6 +2334,12 @@
     let record = null;
     let saveTimer = null;
     let dirty = false;
+    // Which edit the record in hand is. A save takes its copy of the form,
+    // then waits on IndexedDB; anything typed in that window is not in that
+    // copy, and clearing `dirty` on completion threw it away while the
+    // status said "Saved". Same shape as Report Builder's, same cure: a save
+    // may only report itself done if this has not moved since it collected.
+    let editSeq = 0;
     let pendingCustomerBump = false;
     let pendingPlansBump = false;
     let isNewFile = false;
@@ -2610,8 +2616,15 @@
       });
     }
 
-    function scheduleSave() {
+    // One place that says "something changed", so nothing can set `dirty`
+    // without also moving the counter a save is checked against.
+    function noteEdit() {
+      editSeq += 1;
       dirty = true;
+    }
+
+    function scheduleSave() {
+      noteEdit();
       setStatus('Unsaved changes…');
       refreshEditorProgress();
       if (saveTimer) clearTimeout(saveTimer);
@@ -2628,6 +2641,10 @@
       if (!dirty || !record) return Promise.resolve();
       if (plansApi) plansApi.commitPending();
       collectFormIntoRecord();
+      // Taken AFTER the form is read, because reading it is this save's
+      // snapshot: an edit made before here is in the record, one made after
+      // is not.
+      const savedSeq = editSeq;
       if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
       const now = new Date().toISOString();
       record.updatedAt = now;
@@ -2640,11 +2657,23 @@
       pendingCustomerBump = false;
       pendingPlansBump = false;
       return window.ToolboxDB.saveCustomerFile(record).then(function () {
-        dirty = false;
         isNewFile = false;
-        setStatus('Saved ' + formatUpdated(record.updatedAt));
         updateIdentityBar();
         backBtn.textContent = '‹ Customer File';
+        if (editSeq !== savedSeq) {
+          // Edited while this was in flight. The record on disk is already
+          // behind the form, so it stays dirty and the status does not say
+          // otherwise. Re-arm if nothing else did, so the newer edit lands.
+          setStatus('Unsaved changes…');
+          if (!saveTimer) {
+            saveTimer = setTimeout(function () {
+              flushSave().catch(function () {});
+            }, AUTOSAVE_DELAY_MS);
+          }
+          return;
+        }
+        dirty = false;
+        setStatus('Saved ' + formatUpdated(record.updatedAt));
       }).catch(function (err) {
         console.error('Failed to save Customer File:', err);
         if (err && err.code === 'checkout') {
@@ -2658,7 +2687,7 @@
     }
 
     function leaveEdit() {
-      dirty = true;
+      noteEdit();
       setStatus('Finishing…');
       const idle = plansApi && plansApi.whenIdle ? plansApi.whenIdle() : Promise.resolve();
       idle.then(function () {
@@ -2670,7 +2699,7 @@
 
     backBtn.addEventListener('click', function () {
       if (isNewFile) {
-        dirty = true;
+        noteEdit();
         flushSave().then(function () {
           window.location.hash = '#/';
         }).catch(function () {});
@@ -2680,7 +2709,7 @@
     });
 
     saveBtn.addEventListener('click', function () {
-      dirty = true;
+      noteEdit();
       flushSave().catch(function () {});
     });
 
@@ -2707,7 +2736,7 @@
     plansApi = window.ToolboxPlanSetup.mountPlansPanel(plansPanel, {
       getRecord: function () { return record; },
       setDirty: function (v) {
-        dirty = !!v;
+        if (v) noteEdit(); else dirty = false;
         refreshEditorProgress();
       },
       scheduleSave: function () {
@@ -2737,7 +2766,7 @@
       isNewFile = !existing;
       record = existing || blankCustomerFile(id);
       if (window.ToolboxPlanSetup && window.ToolboxPlanSetup.ensurePlanSetup(record) && existing) {
-        dirty = true;
+        noteEdit();
       } else if (!existing && window.ToolboxPlanSetup) {
         window.ToolboxPlanSetup.ensurePlanSetup(record);
       }
@@ -2747,7 +2776,7 @@
       backBtn.textContent = isNewFile ? '‹ Cabinet' : '‹ Customer File';
       return plansApi.syncFromRecord().then(function () {
         refreshEditorProgress();
-        if (!existing) dirty = true;
+        if (!existing) noteEdit();
         if (dirty) return flushSave();
         setStatus('Saved ' + formatUpdated(record.updatedAt));
       });

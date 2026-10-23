@@ -171,12 +171,16 @@ const first = await views();
 check('the slide shows one live drawing of the level',
   first.length === 1 && !!first[0], JSON.stringify(first));
 
-// The frame is sized by the paper, and the paper is sized by the window.
+// The paper is 11x17 and stays 11x17. A smaller window zooms it down to fit;
+// it does not make the page smaller, so the frame keeps its own size and the
+// drawing keeps its framing. Before, the sheet was resized to the window,
+// which is what let a style set in pixels take up a different share of the
+// page on every screen.
 await page.setViewport({ width: 1400, height: 900, deviceScaleFactor: 1 });
 await new Promise((r) => setTimeout(r, 1500));
 const smaller = await views();
-check('a smaller sheet shows the same view, not the same pixels',
-  smaller[0].frame.w < first[0].frame.w && framedAlike(first[0], smaller[0]),
+check('a smaller window zooms the paper, it does not resize the page',
+  smaller[0].frame.w === first[0].frame.w && framedAlike(first[0], smaller[0]),
   JSON.stringify({ first: first[0], smaller: smaller[0] }));
 
 await page.setViewport({ width: 1700, height: 1050, deviceScaleFactor: 1 });
@@ -233,15 +237,30 @@ const screenInk = (await views())[0];
 await page.evaluate(() => { window.print = () => {}; });
 await page.emulateMediaType('print');
 await page.click('#rb-print');
+// The printed deck does not borrow the live drawing any more. There is one
+// of it per slot in the whole page, so only the slide being looked at could
+// hold it -- every other floor slide printed a note where its contour map
+// should have been. Each printed slide now carries a still painted for it,
+// and that still is what this measures.
 await page.waitForFunction(
   () => [...document.querySelectorAll('.rb-print .rb-sheet')]
-    .some((el) => el.querySelector('[data-rb-topo-live] canvas')), { timeout: 20000 });
+    .some((el) => {
+      const img = el.querySelector('.rb-topo-still');
+      return img && img.complete && img.naturalWidth > 0;
+    }), { timeout: 20000 });
 await new Promise((r) => setTimeout(r, 2500));
 const printedInk = await page.evaluate(() => {
   const sheet = [...document.querySelectorAll('.rb-print .rb-sheet')]
-    .find((el) => el.querySelector('[data-rb-topo-live] canvas'));
-  const canvas = sheet.querySelector('[data-rb-topo-live] canvas');
+    .find((el) => {
+      const img = el.querySelector('.rb-topo-still');
+      return img && img.complete && img.naturalWidth > 0;
+    });
+  const still = sheet.querySelector('.rb-topo-still');
+  const canvas = document.createElement('canvas');
+  canvas.width = still.naturalWidth;
+  canvas.height = still.naturalHeight;
   const ctx = canvas.getContext('2d');
+  ctx.drawImage(still, 0, 0);
   const w = canvas.width;
   const h = canvas.height;
   const data = ctx.getImageData(0, 0, w, h).data;
@@ -257,12 +276,25 @@ const printedInk = await page.evaluate(() => {
       }
     }
   }
+  // The still is CROPPED to its drawing, and it is placed with object-fit:
+  // contain. So ink measured inside the PNG always fills the PNG, whatever
+  // the slide looks like -- which is what this used to report, and why it
+  // could never agree with the screen no matter how the page was framed.
+  //
+  // What has to match the screen is where the ink lands IN THE FRAME, so the
+  // PNG box is carried through the letterbox the way the browser draws it.
+  const box = still.getBoundingClientRect();
+  const fit = Math.min(box.width / w, box.height / h);
+  const drawnW = w * fit;
+  const drawnH = h * fit;
+  const padX = (box.width - drawnW) / 2;
+  const padY = (box.height - drawnH) / 2;
   return {
     sheetIn: +(sheet.getBoundingClientRect().width / 96).toFixed(2),
-    x: +(x0 / w).toFixed(3),
-    y: +(y0 / h).toFixed(3),
-    w: +((x1 - x0) / w).toFixed(3),
-    h: +((y1 - y0) / h).toFixed(3),
+    x: +((padX + x0 * fit) / box.width).toFixed(3),
+    y: +((padY + y0 * fit) / box.height).toFixed(3),
+    w: +(((x1 - x0) * fit) / box.width).toFixed(3),
+    h: +(((y1 - y0) * fit) / box.height).toFixed(3),
   };
 });
 check('and the printed sheet shows the same view, on 17 in of paper',
