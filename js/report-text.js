@@ -315,6 +315,21 @@
     return hex;
   }
 
+  /**
+   * A font size written on a BLOCK, in the author's units.
+   *
+   * paragraphHtml writes its own strut onto every block as a cqh font-size,
+   * to hold an empty paragraph at the right height. Reading that back as a
+   * run size would push an explicit size onto runs that never had one, and
+   * every edit round-trips through fromElement, so it would stick. cqh is
+   * ours; pt and px are the author's.
+   */
+  function blockStyleSize(el) {
+    var raw = el && el.style && el.style.fontSize;
+    if (!raw || /cqh$/.test(raw)) return null;
+    return styleSize(el);
+  }
+
   function styleFont(el) {
     var raw = el.style && el.style.fontFamily;
     if (!raw) return null;
@@ -454,8 +469,46 @@
           continue;
         }
         if (BLOCK_TAGS[tag]) {
-          startParagraph(child);
-          walk(child, HEADING_TAGS[tag] ? assignBold(ctx) : ctx);
+          // A list item that CONTAINS blocks. Google Docs and Word both copy
+          // as <li><p>text</p></li>, and <li> and <p> are both blocks here:
+          // the <li> started a paragraph and wrote its marker and indent onto
+          // it, and the <p> immediately replaced that paragraph with a fresh
+          // one carrying neither. A pasted list came in as an empty bullet
+          // above unmarked text, one pair per item, with the nesting gone
+          // too. The <li>'s marker is handed to the first block inside it
+          // instead. Audit finding 4.
+          var carry = null;
+          if (current && !current.runs.length &&
+              (current.bullet || current.numbered) &&
+              model.paragraphs[model.paragraphs.length - 1] === current) {
+            carry = current;
+            model.paragraphs.pop();
+          }
+          var block = startParagraph(child);
+          // A block that states its own list intent keeps it; only a block
+          // that says nothing inherits the item's.
+          var stated = child.getAttribute && child.getAttribute('data-rb-bullet');
+          if (carry && !stated) {
+            if (carry.numbered) { block.numbered = true; block.bullet = false; }
+            else if (carry.bullet) { block.bullet = true; block.numbered = false; }
+            if (carry.indent && !block.indent) block.indent = carry.indent;
+          }
+          // A block can carry character styles of its own -- a pasted
+          // paragraph set bold, 20pt and red keeps none of it otherwise,
+          // because only INLINE elements were read into the run context.
+          walk(child, {
+            bold: markState(ctx.bold, !!HEADING_TAGS[tag],
+              child.style && child.style.fontWeight, 'bold'),
+            italic: markState(ctx.italic, false,
+              child.style && child.style.fontStyle, 'italic'),
+            underline: ctx.underline ||
+              (child.style && /underline/.test(child.style.textDecoration || '')),
+            strike: ctx.strike ||
+              (child.style && /line-through/.test(child.style.textDecoration || '')),
+            size: blockStyleSize(child) || ctx.size,
+            font: styleFont(child) || ctx.font,
+            color: styleColor(child) || ctx.color,
+          });
           continue;
         }
         var next = {
@@ -531,7 +584,11 @@
       var para = blankParagraph();
       var body = line;
       var heading = body.match(/^\s{0,3}(#{1,6})\s+(.*)$/);
-      var bullet = body.match(/^\s*([-*+]|\d+\.)\s+(.*)$/);
+      var bullet = body.match(/^\s*([-*+])\s+(.*)$/);
+      // "1." was matched in the same alternation as "-" and then marked as a
+      // bullet, so a numbered list pasted as markdown lost its numbers. The
+      // model has carried `numbered` all along.
+      var numbered = body.match(/^\s*\d+\.\s+(.*)$/);
       var runBase = {};
       if (heading) {
         body = heading[2];
@@ -543,9 +600,10 @@
           var factor = heading[1].length === 1 ? 1.5 : heading[1].length === 2 ? 1.25 : 1.1;
           runBase.size = Math.round(base * factor * 10) / 10;
         }
-      } else if (bullet) {
-        body = bullet[2];
-        para.bullet = true;
+      } else if (bullet || numbered) {
+        body = bullet ? bullet[2] : numbered[1];
+        if (bullet) para.bullet = true;
+        else para.numbered = true;
         var lead = line.match(/^(\s*)/)[1].length;
         para.indent = Math.min(MAX_INDENT, Math.floor(lead / 2));
       }
