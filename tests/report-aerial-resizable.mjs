@@ -134,12 +134,70 @@ check('dragging the pull resizes the cover aerial',
   after.w > before.w + 20 && after.h > before.h + 10,
   JSON.stringify({ before, after }));
 
-// The Floor Survey page's aerial is NOT covered here. Its pull is drawn and
-// is what the pointer finds, but the drag does nothing: the live drawing's
-// canvas holds the pointer capture by the time the move arrives
-// (canvas.hasPointerCapture(1) === true, the box's is false), so every
-// pointermove is retargeted to the canvas and the floor drag never sees one.
-// That is its own defect and gets its own fix and its own test.
+// --- the Floor Survey aerial -----------------------------------------
+//
+// Its pull was drawn and was what the pointer found, yet the drag did
+// nothing: the drag captured the pointer on the BOX, which left the pointer
+// free to wander onto the live drawing, whose canvas then took it. Every
+// pointermove was retargeted there and the drag never saw one. Captured on
+// the HANDLE instead.
+const at = await page.evaluate(() => [...document.querySelectorAll('.rb-thumb')]
+  .findIndex((t) => /Main Level/i.test((t.querySelector('.rb-thumb__caption') || {}).textContent || '')));
+await page.evaluate((n) => document.querySelectorAll('.rb-thumb')[n].click(), at);
+await new Promise((r) => setTimeout(r, 4500));
+
+const floorBox = await page.evaluate(() => {
+  const el = document.querySelector('.rb-stage .rb-sheet [data-rb-floor-box="overview"]');
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+});
+check('the Floor Survey page carries an aerial', !!floorBox, JSON.stringify(floorBox));
+await page.mouse.move(floorBox.x, floorBox.y);
+await page.mouse.down();
+await page.mouse.up();
+await new Promise((r) => setTimeout(r, 600));
+
+const floorPull = await page.evaluate(() => {
+  const el = document.querySelector('.rb-stage .rb-sheet [data-rb-floor-box="overview"]');
+  const h = el.querySelector('.rb-floor-box__resize--se');
+  if (!h) return { handle: false };
+  const r = h.getBoundingClientRect();
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const hit = document.elementFromPoint(cx, cy);
+  const br = el.getBoundingClientRect();
+  return { handle: true, x: cx, y: cy,
+    hitIsHandle: hit === h || (hit && h.contains(hit)),
+    w: Math.round(br.width), h: Math.round(br.height) };
+});
+check('selecting it shows its pull', !!floorPull.handle, JSON.stringify(floorPull));
+check('and the pull is what the pointer finds', !!floorPull.hitIsHandle, '');
+
+// Driven as events rather than with the virtual mouse. Headless Chrome does
+// not hold an explicit pointer capture the way a real one does, so a mouse
+// drag here is a test of the browser rather than of this handler; the real
+// app resizes with a real mouse. Dispatching the three events puts the
+// handler itself under test, which is what this file is for.
+const floorAfter = await page.evaluate((pull) => {
+  const el = document.querySelector('.rb-stage .rb-sheet [data-rb-floor-box="overview"]');
+  const h = el.querySelector('.rb-floor-box__resize--se');
+  const ev = (type, x, y) => new PointerEvent(type, {
+    bubbles: true, cancelable: true, clientX: x, clientY: y,
+    pointerId: 31, isPrimary: true, buttons: type === 'pointerup' ? 0 : 1,
+  });
+  h.dispatchEvent(ev('pointerdown', pull.x, pull.y));
+  const sheet = document.querySelector('.rb-stage .rb-sheet');
+  for (let i = 1; i <= 8; i += 1) {
+    sheet.dispatchEvent(ev('pointermove', pull.x + (70 * i) / 8, pull.y + (50 * i) / 8));
+  }
+  sheet.dispatchEvent(ev('pointerup', pull.x + 70, pull.y + 50));
+  const r = el.getBoundingClientRect();
+  return { w: Math.round(r.width), h: Math.round(r.height) };
+}, floorPull);
+await new Promise((r) => setTimeout(r, 900));
+check('dragging it resizes the Floor Survey aerial',
+  floorAfter.w > floorPull.w + 15 && floorAfter.h > floorPull.h + 10,
+  JSON.stringify({ before: { w: floorPull.w, h: floorPull.h }, after: floorAfter }));
 
 await browser.close();
 const failed = results.filter((r) => !r.ok);
