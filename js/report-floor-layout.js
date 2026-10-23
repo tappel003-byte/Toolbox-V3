@@ -496,6 +496,21 @@
    * options: { layout, imported }
    * evidence: chrome fields + optional figure/stats when imported
    */
+  /**
+   * How wide one drawing frame is, as a percent of the stage it sits on.
+   *
+   * Two views of a level sit side by side with a gutter between them, so two
+   * frames are NOT half the stage each -- they are half of what is left after
+   * the gutter. Anything that needs the shape of a frame has to ask here,
+   * because working it out a second time somewhere else is how the printed
+   * figure came to disagree with the frame it was printed into.
+   */
+  var FRAME_GUTTER = 2; // percent of the stage's width, between the two
+  function frameShare(slots) {
+    var n = Math.max(1, Math.min(2, Number(slots) || 1));
+    return (100 - (n - 1) * FRAME_GUTTER) / n;
+  }
+
   function renderPage(page, evidence, options) {
     var meta = page && page.meta || {};
     var ev = evidence || {};
@@ -560,13 +575,12 @@
       // not using.
       var slots = Math.max(1, Math.min(2, Number(options.topoSlots) || 1));
       var activeSlot = Math.max(0, Math.min(slots - 1, Number(options.topoActiveSlot) || 0));
-      var GUTTER = 2; // percent of the stage's width, between the two
-      var share = (100 - (slots - 1) * GUTTER) / slots;
+      var share = frameShare(slots);
       for (var slot = 0; slot < slots; slot += 1) {
         var bare = boxShell('topo', slots > 1 ? ('topo-' + slot) : 'topo', true);
         bare.setAttribute('data-rb-topo-frame', String(slot));
         if (slots > 1 && slot === activeSlot) bare.classList.add('is-active');
-        bare.style.left = (slot * (share + GUTTER)) + '%';
+        bare.style.left = (slot * (share + FRAME_GUTTER)) + '%';
         bare.style.top = '0%';
         bare.style.width = share + '%';
         bare.style.height = '100%';
@@ -731,6 +745,8 @@
   }
 
   window.ToolboxReportFloorLayout = {
+    frameShare: frameShare,
+    FRAME_GUTTER: FRAME_GUTTER,
     defaultLayout: defaultLayout,
     cloneLayout: cloneLayout,
     normalizeLayout: normalizeLayout,

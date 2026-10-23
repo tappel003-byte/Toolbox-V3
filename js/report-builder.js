@@ -369,6 +369,16 @@
   var SHEET_FRAME = { x: 0.98, y: 1.52, w: 98.04, h: 97.73 };
 
   /**
+   * The drawing stage's share of the sheet's WIDTH, measured.
+   *
+   * An imported floor slide draws full bleed across the sheet except for the
+   * title rail down its side; the rail's width is the stylesheet's business.
+   * Measured at 86.336% on a rendered slide. Used only when there is no slide
+   * on screen to measure -- composing from the cover or the discussion.
+   */
+  var STAGE_SHARE_OF_SHEET = 0.86336;
+
+  /**
    * The DRAFT watermark, across the sheet.
    *
    * Hung off renderSheetFrame because that is the one call every page type
@@ -7297,25 +7307,40 @@
       // Tim: "Still cropping the left-hand side on a screenshot of preview.
       // As well as the PDF."
       if (page && page.meta && page.meta.imported) {
-        // Measured, not assumed. The stage is the sheet LESS the rail down
-        // its side, and the rail's width is the stylesheet's business -- a
-        // number worked out here would be a second copy of it, wrong the day
-        // the rail changes. The editing sheet is showing this very box, so
-        // its proportion is the one to use; every floor slide is laid out
-        // from the same template, so one measurement serves them all.
-        var liveFrame = root.querySelector(
-          '.rb-stage .rb-sheet [data-rb-topo-frame], .rb-stage .rb-sheet [data-rb-topo-live]');
-        if (liveFrame) {
-          var fr = liveFrame.getBoundingClientRect();
-          if (fr.width > 8 && fr.height > 8) frameAspect = fr.width / fr.height;
+        // Measure the STAGE, not a frame.
+        //
+        // Measuring a frame took the shape of whatever slide happened to be
+        // open and gave it to the slide being composed. On a book holding
+        // both a one-view page and a two-view page those are different
+        // shapes, so the same target page composed differently depending on
+        // which slide Print was started from -- 889.5 x 666.7 from one,
+        // 888.9 x 1359.6 from the other. Audit finding 2.
+        //
+        // The stage is the sheet less the rail down its side, and it is the
+        // same on every imported slide whatever its slot count, so one
+        // measurement genuinely does serve them all. The target page's own
+        // share of it is then applied -- through the same frameShare() that
+        // LAYS the frames out, so two views are half of what is left after
+        // the gutter rather than a naive half.
+        var stageAspect = 0;
+        var stageEl = root.querySelector('.rb-stage .rb-sheet [data-rb-floor-stage]');
+        if (stageEl) {
+          var sr = stageEl.getBoundingClientRect();
+          if (sr.width > 8 && sr.height > 8) stageAspect = sr.width / sr.height;
         }
-        if (!(frameAspect > 0)) {
-          // Nothing on screen to measure: fall back to the stage's share of
-          // the sheet, as the stylesheet currently has it.
-          var GUTTER = 2;
-          var share = (100 - (slots - 1) * GUTTER) / slots;
-          frameAspect = (17 * 0.8634 * (share / 100)) / 11;
+        if (!(stageAspect > 0)) {
+          // Nothing on screen to measure -- Print started from the cover or
+          // the discussion. STAGE_SHARE_OF_SHEET is that same stage measured:
+          // 86.336% of the sheet's width by the whole of its height, which is
+          // what the stylesheet's rail leaves. Within a rounding of the live
+          // measurement, so the two routes agree.
+          stageAspect = (17 * STAGE_SHARE_OF_SHEET) / 11;
         }
+        var flApi = window.ToolboxReportFloorLayout;
+        var sharePct = (flApi && typeof flApi.frameShare === 'function')
+          ? flApi.frameShare(slots)
+          : (100 - (slots - 1) * 2) / slots;
+        frameAspect = stageAspect * (sharePct / 100);
       } else {
         var layout = page._bookFloorLayout || null;
         var topo = layout && layout.topo;
