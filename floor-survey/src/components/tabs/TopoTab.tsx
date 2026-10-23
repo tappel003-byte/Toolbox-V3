@@ -28,7 +28,12 @@ import {
   contourThresholds,
   type Grid,
 } from "@/lib/topo";
-import { savePoint, savePointLabelOffset, savePointLabelOffsets, saveFloor } from "@/lib/db";
+import {
+  savePoint,
+  savePointLabelOffset,
+  resetFloorPresentation,
+  saveFloor,
+} from "@/lib/db";
 import { pointsOutsideExclusions } from "@/lib/exclusions";
 import {
   areaCentroid,
@@ -825,33 +830,32 @@ export function TopoTab({
     const updates = points
       .filter((p) => p.labelDx !== undefined || p.labelDy !== undefined)
       .map((p) => ({ ...p, labelDx: undefined, labelDy: undefined }));
-    if (updates.length) {
-      const map = new Map(updates.map((u) => [u.id, u]));
-      onPointsChange(points.map((p) => map.get(p.id) ?? p));
-      // One write for the whole reset. One call per reading raced itself and
-      // left most of the offsets in place.
-      savePointLabelOffsets(
-        updates[0].floorId,
-        updates.map((u) => ({ id: u.id, labelDx: undefined, labelDy: undefined })),
-      ).catch(() => {});
-    }
-    // Also clear pin offsets on this floor.
-    if (
+    const pinsSet =
       floor.highPinDx !== undefined ||
       floor.highPinDy !== undefined ||
       floor.lowPinDx !== undefined ||
-      floor.lowPinDy !== undefined
-    ) {
-      const cleared: Floor = {
-        ...floor,
-        highPinDx: undefined,
-        highPinDy: undefined,
-        lowPinDx: undefined,
-        lowPinDy: undefined,
-      };
-      onFloorChange(cleared);
-      saveFloor(cleared).catch(() => {});
+      floor.lowPinDy !== undefined;
+    if (!updates.length && !pinsSet) {
+      setLastMove(null);
+      return;
     }
+    const cleared: Floor = {
+      ...floor,
+      highPinDx: undefined,
+      highPinDy: undefined,
+      lowPinDx: undefined,
+      lowPinDy: undefined,
+    };
+    if (updates.length) {
+      const map = new Map(updates.map((u) => [u.id, u]));
+      onPointsChange(points.map((p) => map.get(p.id) ?? p));
+    }
+    if (pinsSet) onFloorChange(cleared);
+    // ONE write. The labels and the pins used to be two unawaited whole-record
+    // saves, and the floor one read the record before the label one landed, so
+    // it put the old labels straight back: the pins cleared and a label offset
+    // did not.
+    resetFloorPresentation(cleared, updates.map((u) => u.id)).catch(() => {});
     setLastMove(null);
   }
 

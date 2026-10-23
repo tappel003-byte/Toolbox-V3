@@ -42,6 +42,11 @@ const WORD_LIST = '<ul><li><p>First</p><ul><li><p>Nested</p></li></ul></li>'
   + '<li><p>Second</p></li></ul>';
 const STYLED = '<p style="font-weight:bold;font-size:20pt;color:#ff0000">'
   + 'Styled paragraph</p>';
+// A face on a block AND on a span, which is how a chat answer arrives. The
+// span one is the case that mattered: a block's font-family was never read by
+// the model, an inline span's always was.
+const FACED = '<p style="font-family:Inter;font-size:22pt;color:#374151">Block face</p>'
+  + '<p><span style="font-family:Georgia;font-size:18pt;color:#0000ff">Span face</span></p>';
 const PLAIN_LIST = '<ul><li>Plain one<ul><li>Plain nested</li></ul></li></ul>';
 
 const browser = await puppeteer.launch({
@@ -86,19 +91,23 @@ check('and no empty marker paragraph is left behind',
 check('and the nesting survives as indent',
   model.word[0].indent === 0 && model.word[1].indent === 1 && model.word[2].indent === 0,
   JSON.stringify(model.word.map((q) => [q.text, q.indent])));
-check('a paragraph set bold keeps its bold',
-  model.styled.length === 1 && model.styled[0].bold, JSON.stringify(model.styled));
-// Deliberately NOT size and colour on a block. A narrative pasted out of a
-// chat answer carries the chat's theme on every block -- Inter, #374151,
-// 22px headings -- and the settled rule is that it arrives in the report's
-// own type, not the chat's (report-discussion-paste). The two cannot both
-// hold for the same paste; the proven one does, and the question is Tim's.
-check('but not a block size or colour, which is the chat theme in disguise',
-  model.styled[0].size === null && model.styled[0].color === null,
-  JSON.stringify(model.styled[0]));
-check('an INLINE size and colour are still read, as they always were',
+// Tim, Oct 23, 2026: "a pasted paragraph should keep it size and color but I
+// should be able to change it." The bar carries size and colour, so they
+// arrive and he changes what he does not want.
+check('a paragraph set bold, 20pt and red keeps all three',
+  model.styled.length === 1 && model.styled[0].bold &&
+  model.styled[0].size === 20 && model.styled[0].color === '#ff0000',
+  JSON.stringify(model.styled));
+check('an inline size and colour are read too, as they always were',
   model.inline.length === 1 && model.inline[0].size === 20 &&
   model.inline[0].color === '#ff0000', JSON.stringify(model.inline));
+
+// The one thing a paste does NOT bring. A block's font-family was never read
+// by the model, but an INLINE span's always was, so a narrative pasted out of
+// a chat answer arrived wearing the chat's face. It is stripped on the
+// clipboard, before the model ever sees it -- not in fromElement, which is
+// also the editor's own reader and would strip the font Tim chose himself.
+
 check('the plain <li>text</li> shape still reads as it always did',
   model.plain.length === 2 && model.plain[0].bullet && model.plain[1].bullet &&
   model.plain[1].indent === 1, JSON.stringify(model.plain));
@@ -161,7 +170,7 @@ const pasted = await p.evaluate((html) => {
     bubbles: true, cancelable: true, clipboardData: dt,
   }));
   return { fired: true };
-}, WORD_LIST + STYLED);
+}, WORD_LIST + STYLED + FACED);
 await new Promise((r) => setTimeout(r, 2000));
 
 const readSheet = (scope) => p.evaluate((sel) => {
@@ -187,8 +196,30 @@ check('the paste landed on the sheet as marked list rows',
 check('with the nested row indented',
   !!live && live.some((r) => r.text === 'Nested' && /%/.test(r.indentPct)),
   JSON.stringify((live || []).map((r) => [r.text, r.indentPct])));
-check('and the styled paragraph is bold on the page, in the report\u2019s own type',
-  !!live && live.some((r) => /Styled paragraph/.test(r.text) && r.bold && !r.color),
+const faces = await p.evaluate(() => {
+  const field = document.querySelector('.rb-stage .rb-discussion__body [data-rb-rich]')
+    || document.querySelector('.rb-stage [data-rb-rich]');
+  if (!field) return null;
+  const rows = [...field.querySelectorAll('.rb-rt__p')]
+    .filter((el) => /face/i.test(el.textContent || ''));
+  const styled = rows.flatMap((el) => [...el.querySelectorAll('span[style]')]);
+  return {
+    rows: rows.map((el) => (el.textContent || '').trim()),
+    fonts: styled.map((el) => el.style.fontFamily).filter(Boolean),
+    sizes: styled.map((el) => el.style.fontSize).filter(Boolean),
+    colors: styled.map((el) => el.style.color).filter(Boolean),
+  };
+});
+check('a pasted typeface is dropped, from a block and from a span',
+  !!faces && faces.rows.length === 2 && faces.fonts.length === 0,
+  JSON.stringify(faces));
+check('while that same paste keeps its size and its colour',
+  !!faces && faces.sizes.length > 0 && faces.colors.length > 0,
+  JSON.stringify(faces));
+
+check('and the styled paragraph is bold and red on the page',
+  !!live && live.some((r) => /Styled paragraph/.test(r.text) && r.bold &&
+    /255,\s*0,\s*0/.test(r.color)),
   JSON.stringify((live || []).filter((r) => /Styled/.test(r.text))));
 
 // Save, leave, come back.
