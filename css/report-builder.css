@@ -70,7 +70,7 @@ body.report-builder-open .canvas {
 .rb-workspace {
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: 168px minmax(0, 1fr) 280px;
+  grid-template-columns: 184px minmax(0, 1fr) 280px;
   grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
@@ -172,8 +172,15 @@ body.report-builder-open .canvas {
   position: absolute;
   left: 0;
   top: 0;
-  width: 680px;
-  height: 440px;
+  /* The paper's own size -- PAPER_W x PAPER_H in report-builder.js, which is
+     11x17 at 96dpi. fitThumb divides the box width by PAPER_W to get the
+     scale, so these two numbers have to BE that size. They were 680 x 440,
+     the stage's old size, and when the sheet became the paper this was left
+     behind: every preview was then drawn at 680/1632 of its box -- a page
+     crammed into the top-left corner of the stamp with white to the right of
+     it and below it. Tim, Oct 23, 2026: "The slides don't show fully." */
+  width: 1632px;
+  height: 1056px;
   margin: 0;
   border: 0;
   overflow: hidden;
@@ -824,6 +831,12 @@ body.report-builder-open .canvas {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  /* The rail had no padding of its own -- the padding was written against a
+     .rb-rail class this element has not carried for some time -- so every
+     label and every button in it sat flush against the window edge and the
+     wider ones were cut off there: "AGES", "eport sheets", a Remove button
+     with no R. */
+  padding: 2px 8px 8px;
 }
 .rb-ws__title { margin: 0; font-size: 18px; }
 .rb-ws__top,
