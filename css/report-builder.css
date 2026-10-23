@@ -1195,6 +1195,11 @@ body.report-builder-open .canvas {
   border-right: 2px solid var(--rb-copper);
   border-bottom: 2px solid var(--rb-copper);
   cursor: nwse-resize;
+  /* Above whatever the box carries. The aerial's button bar was taken out of
+     the flow so it could not change the picture's size, and absolute at
+     bottom 0 it then lay over this corner: the pull was visible and could not
+     be grabbed, because the bar was what the pointer found. */
+  z-index: 4;
 }
 
 /* Highlighted, never merely hovered. Tim: the pulls "only show up when the
@@ -1458,6 +1463,13 @@ body.report-builder-open .canvas {
   gap: 0.6cqh;
   background: transparent;
 }
+
+/* The bar is a place for its buttons to sit, not a surface. Stretched across
+   the foot of the box it swallowed every press along the bottom edge --
+   including the resize pull in the corner. Only its own controls take the
+   pointer. */
+.rb-cover__overview-actions { pointer-events: none; }
+.rb-cover__overview-actions > * { pointer-events: auto; }
 
 /* Neither the placeholder nor the buttons may take space away from the
    picture. They sat in the same column as the image and were merely made
