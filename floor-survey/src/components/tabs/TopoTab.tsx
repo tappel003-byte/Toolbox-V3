@@ -850,12 +850,18 @@ export function TopoTab({
       const map = new Map(updates.map((u) => [u.id, u]));
       onPointsChange(points.map((p) => map.get(p.id) ?? p));
     }
-    if (pinsSet) onFloorChange(cleared);
-    // ONE write. The labels and the pins used to be two unawaited whole-record
-    // saves, and the floor one read the record before the label one landed, so
-    // it put the old labels straight back: the pins cleared and a label offset
-    // did not.
-    resetFloorPresentation(cleared, updates.map((u) => u.id)).catch(() => {});
+    // The reset writes FIRST, and the host is told afterwards.
+    //
+    // onFloorChange is how a host refreshes, and the report host also
+    // persists on it (ReportTopoWorkspace's handleFloor calls saveFloor).
+    // That is a second whole-record write, and when it got there first it
+    // loaded a record that still had the label offsets on it and wrote them
+    // straight back. Consolidating the reset into one save did not make the
+    // ACTION one save. Telling the host after the write means whatever it
+    // persists is already the cleared record.
+    resetFloorPresentation(cleared, updates.map((u) => u.id))
+      .catch(() => {})
+      .then(() => { if (pinsSet) onFloorChange(cleared); });
     setLastMove(null);
   }
 

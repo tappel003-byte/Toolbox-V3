@@ -288,16 +288,24 @@ export async function listFloors(projectId: string): Promise<Floor[]> {
 }
 
 /**
- * Reset label positions: one write, not two racing each other.
+ * Reset label positions: the labels and the pins, in one write, and NOTHING
+ * else.
  *
- * The reset clears the reading labels AND the High/Low pin offsets. Those
- * were two unawaited whole-Customer-File writes -- the label batch and a
- * saveFloor -- and the floor save loaded the record before the batch landed,
- * so it wrote the OLD points back over it. The pins cleared, one label offset
- * did not, and the button looked half broken.
+ * The reset clears the reading labels AND the High/Low pin offsets. Those were
+ * two unawaited whole-Customer-File writes -- the label batch and a saveFloor
+ * -- and the floor save loaded the record before the batch landed, so it wrote
+ * the OLD points back over it.
  *
- * Reading values and transition metadata are untouched here by construction:
- * only the two label offsets and the four pin offsets are assigned.
+ * It must not go through persistFloorFields. That copies boundary, areas,
+ * scale, notes, transitions, transitionGroupAverages, exclusions,
+ * planTransform and bp1Gps off the in-memory floor, which is right when the
+ * field app has just edited one of them and wrong for a button that only moves
+ * chrome: a stale in-memory copy would be written over the stored transitions,
+ * which are the correction data. An earlier version of this comment claimed
+ * only the offsets were assigned while the code called persistFloorFields.
+ * It did not, and the claim is the dangerous half.
+ *
+ * Six fields, named one at a time, on the freshly loaded record.
  */
 export async function resetFloorPresentation(floor: Floor, pointIds: string[]) {
   const cfId = floor.projectId || requireCfId();
@@ -310,7 +318,10 @@ export async function resetFloorPresentation(floor: Floor, pointIds: string[]) {
   const ids = new Set(pointIds);
   layer.points = layer.points.map((p: SurveyPoint) =>
     (ids.has(p.id) ? { ...p, labelDx: undefined, labelDy: undefined } : p));
-  persistFloorFields(layer, floor);
+  layer.highPinDx = undefined;
+  layer.highPinDy = undefined;
+  layer.lowPinDx = undefined;
+  layer.lowPinDy = undefined;
   layer.updatedAt = Date.now();
   await saveRecord(record);
 }

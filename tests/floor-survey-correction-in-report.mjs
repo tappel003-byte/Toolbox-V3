@@ -338,6 +338,85 @@ check('and leaves the transition association alone',
   afterReset.filter((q) => q.anchor).length === 1,
   JSON.stringify(afterReset.filter((q) => q.transitionId).map((q) => q.id)));
 
+// GPT-004's delayed-host-save counterexample.
+//
+// The host persists on onFloorChange -- ReportTopoWorkspace's handleFloor
+// calls saveFloor -- so the reset is TWO whole-record writes unless the host
+// is told after the reset has landed. Under ordinary timing the order hides
+// it. Holding the first write and releasing it last is what exposes it.
+//
+// The offsets are seeded and the page RELOADED first, because the component
+// decides whether to touch the pins from the floor it has in memory: seeding
+// storage mid-session leaves pinsSet false and the second write never starts.
+await p.evaluate(async (f, cid) => {
+  const rec = await window.ToolboxDB.getCustomerFile(f);
+  const layer = rec.floorSurvey.byCanvasId[cid];
+  layer.points.forEach((pt) => {
+    if (pt.id === 'd2' || pt.id === 'd5') { pt.labelDx = 12; pt.labelDy = -8; }
+  });
+  layer.highPinDx = 33; layer.highPinDy = 22;
+  layer.lowPinDx = -11; layer.lowPinDy = 5;
+  await window.ToolboxDB.saveCustomerFile(rec);
+}, 'corr-t1', canvasId);
+await p.reload({ waitUntil: 'networkidle0' });
+await p.waitForFunction(() => !!document.querySelector('.rb-sheet'), { timeout: 40000 });
+await new Promise((r) => setTimeout(r, 9000));
+await p.evaluate(() => {
+  const t = [...document.querySelectorAll('.rb-thumb[data-page-id]')]
+    .find((x) => /floor|main level/i.test(x.getAttribute('aria-label') || ''));
+  if (t) t.click();
+});
+await new Promise((r) => setTimeout(r, 5000));
+
+const delayed = await p.evaluate(async (f, cid) => {
+  const db = window.ToolboxDB;
+  const real = db.saveCustomerFile.bind(db);
+  let held = null;
+  let writes = 0;
+  db.saveCustomerFile = function (rec) {
+    writes += 1;
+    if (writes === 1) {
+      return new Promise((resolve) => { held = () => real(rec).then(resolve); });
+    }
+    return real(rec);
+  };
+  document.querySelectorAll('details').forEach((d) => { d.open = true; });
+  [...document.querySelectorAll('button')]
+    .filter((b) => /^(labels?|points?|markers?)$/i.test((b.textContent || '').trim()))
+    .slice(0, 3).forEach((b) => { try { b.click(); } catch (_) { /* not a tab */ } });
+  document.querySelectorAll('details').forEach((d) => { d.open = true; });
+  await new Promise((r) => setTimeout(r, 400));
+  const btn = [...document.querySelectorAll('button')]
+    .find((b) => /reset label positions/i.test(b.textContent || ''));
+  if (!btn) { db.saveCustomerFile = real; return { none: true }; }
+  btn.click();
+  await new Promise((r) => setTimeout(r, 1500));
+  if (held) await held();                  // release the FIRST write last
+  await new Promise((r) => setTimeout(r, 1500));
+  db.saveCustomerFile = real;
+  const after = await db.getCustomerFile(f);
+  const layer = after.floorSurvey.byCanvasId[cid];
+  return {
+    writes,
+    offsets: layer.points.filter((pt) => pt.labelDx !== undefined).map((pt) => pt.id),
+    pins: [layer.highPinDx, layer.highPinDy, layer.lowPinDx, layer.lowPinDy]
+      .filter((v) => v !== undefined && v !== null).length,
+    values: layer.points.map((pt) => pt.value),
+    transitions: (layer.transitions || []).length,
+  };
+}, 'corr-t1', canvasId);
+
+check('the delayed-write fixture reached the reset control',
+  !delayed.none, JSON.stringify(delayed));
+check('reset holds up when a write started before it finishes last',
+  !delayed.none && delayed.offsets.length === 0 && delayed.pins === 0,
+  JSON.stringify(delayed));
+check('and that ordering never touches the readings or the transitions',
+  !delayed.none &&
+  JSON.stringify(delayed.values) === JSON.stringify(wantRaw.vals) &&
+  delayed.transitions === 1,
+  JSON.stringify({ values: delayed.values, transitions: delayed.transitions }));
+
 // ------------------- reopen: corrected exactly once, never twice
 await p.reload({ waitUntil: 'networkidle0' });
 await p.waitForFunction(() => !!document.querySelector('.rb-sheet'), { timeout: 40000 });
