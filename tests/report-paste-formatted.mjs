@@ -118,6 +118,31 @@ check('every item keeps its text beside its marker, not below it',
 check('the nesting survived: more than one indent level',
   pasted.indents.length > 1, JSON.stringify(pasted.indents));
 
+// Paste as plain text: Chrome's Ctrl+Shift+V puts only text/plain on the
+// event. Nothing should arrive styled, and nothing should be lost.
+// What is under test is the CONTRACT: for ordinary prose the handler steps
+// aside and lets the browser do the insertion, so Ctrl+Shift+V behaves as it
+// does everywhere else. A synthetic event carries no real clipboard, so the
+// insertion itself cannot be driven here -- defaultPrevented is the honest
+// signal, and it is the thing that would break.
+const plain = await page.evaluate(async () => {
+  const field = document.querySelector('.rb-stage .rb-sheet [data-rb-rich][contenteditable="true"]');
+  field.innerHTML = '';
+  field.focus();
+  const dt = new DataTransfer();
+  dt.setData('text/plain', 'A plain sentence with no markup at all.');
+  const ev = new ClipboardEvent('paste', {
+    bubbles: true, cancelable: true, clipboardData: dt,
+  });
+  field.dispatchEvent(ev);
+  await new Promise((r) => setTimeout(r, 300));
+  return { prevented: ev.defaultPrevented,
+    styled: !!field.querySelector('b, strong, i, em, u, s') };
+});
+check('plain prose is left to the browser to insert', !plain.prevented,
+  JSON.stringify(plain));
+check('and nothing styled is invented for it', !plain.styled, JSON.stringify(plain));
+
 await browser.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
