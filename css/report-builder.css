@@ -340,6 +340,35 @@ body.report-builder-open .canvas {
   z-index: 4;
 }
 
+/* DRAFT, across the sheet. Sized in cqh like everything else on the page so
+   the thumbnail, the stage, Presentation and the printer all show the same
+   stamp at their own scale. It sits ABOVE the content, not behind it: on a
+   Floor Survey figure the drawing goes full bleed, so a stamp underneath
+   would simply be invisible. Low alpha is what makes it read as a watermark.
+   print-color-adjust keeps the printer from dropping it as background. */
+.rb-sheet__draft {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 5;
+  font-family: 'Oswald', 'Arial Narrow', Arial, sans-serif;
+  font-size: 26cqh;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  white-space: nowrap;
+  color: rgba(176, 32, 32, 0.16);
+  transform: rotate(-24deg);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
 .rb-sheet__margin {
   display: flex;
   flex-direction: column;

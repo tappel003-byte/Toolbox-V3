@@ -313,6 +313,27 @@
   // the one the four shipped decks agree on to the hundredth of a percent.
   var SHEET_FRAME = { x: 0.98, y: 1.52, w: 98.04, h: 97.73 };
 
+  /**
+   * The DRAFT watermark, across the sheet.
+   *
+   * Hung off renderSheetFrame because that is the one call every page type
+   * already makes -- cover, discussion, figure, pen log, pictures -- so no
+   * sheet can be forgotten and none needs its own code.
+   *
+   * It is deliberately NOT editor chrome: a draft stamp that does not print
+   * is worse than none at all. It is marked aria-hidden and takes no pointer
+   * events, so it is neither read out nor in the way of the work.
+   */
+  function renderDraftStamp(sheet, on) {
+    if (!on) return;
+    var stamp = document.createElement('div');
+    stamp.className = 'rb-sheet__draft';
+    stamp.setAttribute('data-rb-draft', '1');
+    stamp.setAttribute('aria-hidden', 'true');
+    stamp.textContent = 'DRAFT';
+    sheet.appendChild(stamp);
+  }
+
   function renderSheetFrame(sheet) {
     var frame = document.createElement('div');
     frame.className = 'rb-sheet__frame';
@@ -363,6 +384,13 @@
   function floorActiveSlotForPage(page) {
     var n = Number(page && page._floorSlot) || 0;
     return Math.max(0, Math.min(floorSlotsForPage(page) - 1, n));
+  }
+
+  // The one page in the deck that is written rather than drawn. Named here
+  // because the DRAFT stamp and the rail both ask the question.
+  function isDiscussionPage(page) {
+    return !!(page && page.type === 'section' && page.meta &&
+      page.meta.sectionId === 'discussion');
   }
 
   function pageTakesRail(page) {
@@ -2400,6 +2428,7 @@
     if (isPenLogPage(page)) {
       renderPenLogSheet(sheet, page, pages, thumb);
       renderSheetFrame(sheet);
+      renderDraftStamp(sheet, !!page._draftStamp);
       renderBrandLayer(sheet, page, page._brandBox || (page.meta && page.meta.brandBox));
       return;
     }
@@ -2572,6 +2601,7 @@
     }
     sheet.appendChild(margin);
     renderSheetFrame(sheet);
+    renderDraftStamp(sheet, !!page._draftStamp);
     renderBrandLayer(sheet, page, page._brandBox || (page.meta && page.meta.brandBox));
   }
 
@@ -2647,7 +2677,7 @@
   }
 
   function persistableDocument(pages, activePageId, prior, floorLayout, coverLayout, brandBox,
-    floorCamera, floorView, floorFramed, discussionBox, penLogLayout, northRotation) {
+    floorCamera, floorView, floorFramed, discussionBox, penLogLayout, northRotation, draft) {
     var notes = collectPenLogNotes(pages);
     if ((!notes || !Object.keys(notes).length) && prior && prior.penLog && prior.penLog.notes) {
       notes = prior.penLog.notes;
@@ -2698,6 +2728,8 @@
     if (camera) doc.floorCamera = JSON.parse(JSON.stringify(camera));
     var view = floorView || (prior && prior.floorView);
     if (view) doc.floorView = JSON.parse(JSON.stringify(view));
+    if (draft === true || draft === false) doc.draftStamp = !!draft;
+    else if (prior && typeof prior.draftStamp === 'boolean') doc.draftStamp = prior.draftStamp;
     if (typeof northRotation === 'number') {
       doc.northRotation = northRotation;
     } else if (prior && typeof prior.northRotation === 'number') {
@@ -2833,6 +2865,8 @@
     // Which way north points on every drawing in this report. Null until the
     // first drawing is stamped, which seeds it from that level's front door.
     var reportNorth = null;
+    // A DRAFT watermark across every sheet. Off unless it was turned on.
+    var draftStamp = false;
     // One logo placement for the whole book. Null until the document says
     // otherwise, so a report saved before this still shows where its logo was
     // put (the per-sheet copy is adopted on open).
@@ -3176,7 +3210,8 @@
         floorFramed,
         discussionBox,
         penLogBoxLayout,
-        reportNorth
+        reportNorth,
+        draftStamp
       );
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;
@@ -3648,6 +3683,9 @@
       // of. Settled Oct 10, 2026.
       (pages || []).forEach(function (item) {
         if (!item) return;
+        // Tim, Oct 23, 2026: "more on the discussion page as opposed to
+        // every page." One switch, and it lands where the writing is.
+        item._draftStamp = draftStamp && isDiscussionPage(item);
         // Which way north is on this level — Distress's frontDoorToNorthRotation
         // — on every drawing of the building (Floor and Picture Locations).
         // renderSheet / the rail run outside this closure.
@@ -7665,6 +7703,23 @@
       });
     }
 
+    var draftBtn = root.querySelector('#rb-draft');
+    function syncDraftButton() {
+      if (!draftBtn) return;
+      draftBtn.setAttribute('aria-pressed', draftStamp ? 'true' : 'false');
+      draftBtn.classList.toggle('is-on', draftStamp);
+      draftBtn.textContent = draftStamp ? 'Draft stamp: on' : 'Draft stamp';
+    }
+    syncDraftButton();
+    if (draftBtn) {
+      draftBtn.addEventListener('click', function () {
+        draftStamp = !draftStamp;
+        syncDraftButton();
+        markDirty();
+        renderPages();
+      });
+    }
+
     var presentBtn = root.querySelector('#rb-present');
     if (presentBtn) {
       presentBtn.addEventListener('click', function () { openPresentation(); });
@@ -7781,6 +7836,10 @@
             break;
           }
         }
+      }
+      if (savedDoc && typeof savedDoc.draftStamp === 'boolean') {
+        draftStamp = savedDoc.draftStamp;
+        syncDraftButton();
       }
       var floorSeed = legacyFloor || (savedDoc && savedDoc.floorLayout) || template.floorLayout;
       if (floorSeed && window.ToolboxReportFloorLayout) {
@@ -7939,6 +7998,7 @@
       '  </div>' +
       '  <div class="rb-toolbar">' +
       '    <div class="rb-toolbar__format" data-rb-format-host></div>' +
+      '    <button type="button" id="rb-draft" class="btn btn--quiet rb-draft-btn" aria-pressed="false">Draft stamp</button>' +
       '    <button type="button" id="rb-present" class="btn btn--secondary rb-present-btn">Present</button>' +
       '    <button type="button" id="rb-print" class="btn btn--secondary rb-print-btn">Print / PDF</button>' +
       '    <button type="button" id="rb-export-ai" class="btn btn--accent rb-export">Export for AI</button>' +
