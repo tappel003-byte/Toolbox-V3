@@ -313,6 +313,67 @@ export async function listPoints(floorId: string): Promise<SurveyPoint[]> {
   return (layer.points || []).slice().sort((a, b) => a.index - b.index);
 }
 
+/**
+ * Move a reading's LABEL. Never its reading.
+ *
+ * savePoint replaces the whole stored point, which is right when the Data tab
+ * edits a measurement and wrong for anything that only moves chrome around.
+ * The Topo tab is handed CORRECTED points -- that is what the topo shows --
+ * so when its label handlers took a point out of the array they were given
+ * and sent the whole thing to savePoint, the normalized value was written
+ * back into storage as though it had been measured. Moving one label turned
+ * a 8.7 inch reading into 10.0.
+ *
+ * Stored readings are raw. Only the two offsets are written here, straight
+ * onto whatever is on disk, so the value and the transition association on
+ * the stored point are the ones that come back.
+ */
+export async function savePointLabelOffset(
+  floorId: string,
+  id: string,
+  labelDx: number | undefined,
+  labelDy: number | undefined,
+) {
+  const cfId = requireCfId();
+  const record = await loadRecord(cfId);
+  const layer = ensureLayer(record, floorId);
+  const idx = layer.points.findIndex((x: SurveyPoint) => x.id === id);
+  if (idx < 0) return;
+  const stored = layer.points[idx];
+  layer.points[idx] = { ...stored, labelDx, labelDy };
+  layer.updatedAt = Date.now();
+  await saveRecord(record);
+}
+
+/**
+ * The same, for several readings at once.
+ *
+ * Reset label positions clears every offset on the level. Called one reading
+ * at a time, each call loads the whole Customer File, changes its own point
+ * and writes the file back -- so the writes race each other and the last one
+ * wins, leaving most of the offsets exactly where they were. One load, one
+ * save.
+ */
+export async function savePointLabelOffsets(
+  floorId: string,
+  updates: { id: string; labelDx: number | undefined; labelDy: number | undefined }[],
+) {
+  if (!updates.length) return;
+  const cfId = requireCfId();
+  const record = await loadRecord(cfId);
+  const layer = ensureLayer(record, floorId);
+  let touched = false;
+  updates.forEach((u) => {
+    const idx = layer.points.findIndex((x: SurveyPoint) => x.id === u.id);
+    if (idx < 0) return;
+    layer.points[idx] = { ...layer.points[idx], labelDx: u.labelDx, labelDy: u.labelDy };
+    touched = true;
+  });
+  if (!touched) return;
+  layer.updatedAt = Date.now();
+  await saveRecord(record);
+}
+
 export async function savePoint(p: SurveyPoint) {
   const cfId = requireCfId();
   const record = await loadRecord(cfId);

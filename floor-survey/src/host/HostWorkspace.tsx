@@ -549,7 +549,21 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
           <TopoTab
             floor={activeFloor}
             points={correctedPoints}
-            onPointsChange={setPoints}
+            onPointsChange={(next) => {
+              // TopoTab is handed CORRECTED points, so the array it hands
+              // back carries normalized values. Only its label offsets are
+              // news; the readings here are the raw ones this component
+              // holds. Adopting the array wholesale would feed corrected
+              // values into the next withCorrectedValues pass and correct
+              // them twice.
+              const by = new Map(next.map((q) => [q.id, q]));
+              setPoints((prev) =>
+                prev.map((q) => {
+                  const n = by.get(q.id);
+                  return n ? { ...q, labelDx: n.labelDx, labelDy: n.labelDy } : q;
+                }),
+              );
+            }}
             onFloorChange={(f) => setFloors((prev) => prev.map((p) => (p.id === f.id ? f : p)))}
             settings={settings}
             onSettingsChange={setSettings}

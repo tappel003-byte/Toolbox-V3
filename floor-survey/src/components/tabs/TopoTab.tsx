@@ -28,7 +28,7 @@ import {
   contourThresholds,
   type Grid,
 } from "@/lib/topo";
-import { savePoint, saveFloor } from "@/lib/db";
+import { savePoint, savePointLabelOffset, savePointLabelOffsets, saveFloor } from "@/lib/db";
 import { pointsOutsideExclusions } from "@/lib/exclusions";
 import {
   areaCentroid,
@@ -752,7 +752,10 @@ export function TopoTab({
     setLastMove({ kind: "label", id, prevDx: p.labelDx, prevDy: p.labelDy });
     const updated: SurveyPoint = { ...p, labelDx: dx, labelDy: dy };
     onPointsChange(points.map((pt) => (pt.id === id ? updated : pt)));
-    savePoint(updated).catch(() => {});
+    // Only where the label SITS. `points` may be the corrected array -- it is
+    // on every topo -- so sending the whole point would write a normalized
+    // reading into raw storage.
+    savePointLabelOffset(p.floorId, p.id, dx, dy).catch(() => {});
   }
 
   function commitPinMove(kind: "pin-high" | "pin-low", dx: number, dy: number) {
@@ -804,7 +807,7 @@ export function TopoTab({
       }
       const updated: SurveyPoint = { ...p, labelDx: lastMove.prevDx, labelDy: lastMove.prevDy };
       onPointsChange(points.map((pt) => (pt.id === lastMove.id ? updated : pt)));
-      savePoint(updated).catch(() => {});
+      savePointLabelOffset(p.floorId, p.id, lastMove.prevDx, lastMove.prevDy).catch(() => {});
     } else if (lastMove.kind === "pill") {
       applyPillOffset(lastMove.id, lastMove.prevDx, lastMove.prevDy);
     } else {
@@ -825,7 +828,12 @@ export function TopoTab({
     if (updates.length) {
       const map = new Map(updates.map((u) => [u.id, u]));
       onPointsChange(points.map((p) => map.get(p.id) ?? p));
-      updates.forEach((u) => savePoint(u).catch(() => {}));
+      // One write for the whole reset. One call per reading raced itself and
+      // left most of the offsets in place.
+      savePointLabelOffsets(
+        updates[0].floorId,
+        updates.map((u) => ({ id: u.id, labelDx: undefined, labelDy: undefined })),
+      ).catch(() => {});
     }
     // Also clear pin offsets on this floor.
     if (

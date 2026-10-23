@@ -7,6 +7,7 @@
  */
 import { readPointStyle } from "./point-style";
 import { closedAreas, pointsInArea } from "@/lib/areas";
+import { withCorrectedValues } from "@/lib/transitions";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { contourThresholds, type Grid } from "@/lib/topo";
@@ -590,6 +591,27 @@ export function listReportTopoPageSpecs(record: any): ReportTopoPageSpec[] {
   return specs;
 }
 
+/**
+ * The readings a report draws: normalized, exactly as the live topo shows them.
+ *
+ * Stored readings are RAW and the correction lives beside them, as transitions
+ * and transitionGroupAverages -- that separation is deliberate and is not
+ * changed here. The TOPO is the corrected picture. ReportTopoWorkspace already
+ * hands TopoTab withCorrectedValues(...) so the live slide is right; this read
+ * path did not, so Print composed every floor slide from raw readings. On a
+ * house with a flooring transition the screen and the PDF disagreed, under a
+ * cover that says "Corrected for Flooring Differences".
+ *
+ * It belongs HERE and not in composeReportTopoFigure. That composer has a
+ * second caller -- composeContourLayer, reached from inside TopoTab -- which
+ * is already handed corrected points, so correcting there would correct them
+ * twice.
+ */
+function reportPointsFor(layer: any) {
+  const raw = Array.isArray(layer?.points) ? layer.points : [];
+  return withCorrectedValues(raw, layer?.transitions, layer?.transitionGroupAverages);
+}
+
 function layerToFloorForReport(
   record: any,
   canvas: any,
@@ -689,7 +711,7 @@ export async function composeReportTopoFigureForPage(
   }
 
   const floor = layerToFloorForReport(record, canvas, layer, planDataUrl, Math.max(0, canvasIndex));
-  const points = Array.isArray(layer.points) ? layer.points : [];
+  const points = reportPointsFor(layer);
   const areaId = spec.scope === "all" ? null : spec.areaId || null;
   return composeReportTopoFigure({
     floor,
