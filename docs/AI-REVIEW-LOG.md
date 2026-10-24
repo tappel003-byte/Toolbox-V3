@@ -2200,4 +2200,4 @@ Fail-before / pass-after for Fix 1 race: independent probe against tip showed `B
 - Default-OFF gate restores the pre-acceptance component PUT; acceptance suites explicitly set `COMPONENT_ACCEPTANCE_WRITES=1`.
 - No Claude further work claimed; ball is GPT independent review, then Tim.
 
-Commit SHA: 
+Commit SHA: `2f0057debe329f06e66c0cfb29b04f34cfe9ea24` (implementation; branch tip is the later docs commit on this branch)
