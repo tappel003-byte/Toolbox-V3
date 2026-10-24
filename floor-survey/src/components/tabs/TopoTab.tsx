@@ -445,7 +445,13 @@ export function TopoTab({
   resizeCorners = false,
   allowContourLayer = false,
 }: Props) {
-  const [openCorner, setOpenCorner] = useState<null | "contours" | "palette" | "labels">(null);
+  // "hub" is a trial second path: the upper-right control opens a chooser
+  // (Contours / Layers / Legend) that then opens the same corner panels the
+  // existing icons already open. Direct Contours (UL) and Labels (BR) icons
+  // stay as they are — nothing is removed for this try.
+  const [openCorner, setOpenCorner] = useState<
+    null | "hub" | "contours" | "palette" | "labels"
+  >(null);
   /** Which tab the rail shows. Report Builder only; the field screen opens one corner panel at a time. */
   const [ctrlTab, setCtrlTab] = useState<"contours" | "labels" | "layers">("contours");
   const [warningDismissed, setWarningDismissed] = useState(false);
@@ -964,12 +970,17 @@ export function TopoTab({
           <Waves className="h-4 w-4" />
         </CornerIcon>
       )}
-      {openCorner !== "palette" && !chromeless && !controlsOnly && (
+      {openCorner !== "hub" &&
+        openCorner !== "palette" &&
+        openCorner !== "contours" &&
+        openCorner !== "labels" &&
+        !chromeless &&
+        !controlsOnly && (
         <CornerIcon
           pos="top-2 right-2 landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:translate-x-[0.25rem] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
           active={false}
-          onClick={() => setOpenCorner("palette")}
-          label="Palette"
+          onClick={() => setOpenCorner("hub")}
+          label="Topo controls"
         >
           <Palette className="h-4 w-4" />
         </CornerIcon>
@@ -1222,6 +1233,13 @@ export function TopoTab({
         {/* Contours popover — upper left */}
         {(openCorner === "contours" && !controlsOnly) && (
           <CornerPanel inline={controlsOnly} pos="top-12 left-2 landscape-short:top-2 landscape-short:left-auto landscape-short:right-2" onClose={() => setOpenCorner(null)} title="Contours">
+            <button
+              type="button"
+              onClick={() => setOpenCorner("hub")}
+              className="mb-1 text-[10px] text-muted-foreground underline-offset-2 hover:underline"
+            >
+              ← Topo controls
+            </button>
             {gridAndContours?.grid && (
               <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
                 Range {readingText(gridAndContours.grid.minValue)}"–
@@ -1394,14 +1412,55 @@ export function TopoTab({
           </CornerPanel>
         )}
 
-        {/* Palette popover — upper right */}
+        {/* Trial hub — upper right. Chooser only; same panels as the corner icons. */}
+        {(openCorner === "hub" && !controlsOnly) && (
+          <CornerPanel
+            inline={controlsOnly}
+            pos="top-12 right-2 w-60 landscape-short:top-2"
+            onClose={() => setOpenCorner(null)}
+            title="Topo controls"
+          >
+            <p className="text-[10px] text-muted-foreground -mt-1 mb-1">
+              Trial menu — Contours, Layers, and Legend still open the same
+              controls as before.
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {(
+                [
+                  ["contours", "Contours", "Mode, step, thickness, on/off"],
+                  ["labels", "Layers", "Plan, points, labels, sizes"],
+                  ["palette", "Legend", "Colour scale and reverse"],
+                ] as const
+              ).map(([key, name, hint]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setOpenCorner(key)}
+                  className="flex flex-col items-start gap-0.5 rounded-md border bg-background px-3 py-2 text-left hover:bg-muted/60"
+                >
+                  <span className="text-sm font-medium">{name}</span>
+                  <span className="text-[10px] text-muted-foreground">{hint}</span>
+                </button>
+              ))}
+            </div>
+          </CornerPanel>
+        )}
+
+        {/* Palette / legend colours — upper right (also via hub → Legend) */}
         {(openCorner === "palette" && !controlsOnly) && (
           <CornerPanel
             inline={controlsOnly}
             pos="top-12 right-2 w-60 landscape-short:top-2"
             onClose={() => setOpenCorner(null)}
-            title="Palette"
+            title="Legend"
           >
+            <button
+              type="button"
+              onClick={() => setOpenCorner("hub")}
+              className="mb-1 text-[10px] text-muted-foreground underline-offset-2 hover:underline"
+            >
+              ← Topo controls
+            </button>
             <div className="flex items-center justify-between">
               <Label className="text-xs">Reverse</Label>
               <Switch
@@ -1424,6 +1483,13 @@ export function TopoTab({
             onClose={() => setOpenCorner(null)}
             title="Labels & layers"
           >
+            <button
+              type="button"
+              onClick={() => setOpenCorner("hub")}
+              className="mb-1 text-[10px] text-muted-foreground underline-offset-2 hover:underline"
+            >
+              ← Topo controls
+            </button>
             <div className="grid grid-cols-2 gap-2">
               <SwitchRow
                 label="Labels"
