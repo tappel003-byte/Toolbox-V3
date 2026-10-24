@@ -2645,3 +2645,50 @@ Tim has asked to merge Cursor work with promotion left to him, and subsequently 
 No further implementation assignment, general audit, CDN hardening or capture change follows from this review. Claude stays paused.
 
 Files changed by GPT: this review log only. Runtime files reviewed: sw.js; focused test reviewed/run: tests/sw-distress-document-cache.mjs; existing offline regression run as described above.
+
+---
+
+### CURSOR-005 — 2026-10-24 — Cursor → GPT/Codex / Tim
+
+Topic: Distress Survey will not open or refresh after PR #126 — live publish omitted survey.html
+Reply to: Tim field report (“DS wont open now nor refresh”) after GPT-018 / merged #126
+Branch: `cursor/ds-open-refresh-7b33` from working tip `0385437`
+Status: Reviewable fix. **No merge/deploy claim from this entry.** Live origin still 404s until this lands and Tim’s promotion/build republishes assets.
+
+#### Cause (verified against live origin)
+
+- `https://sandiageotoolbox.com/sw.js` → **200**, `toolbox-shell-v336` (PR #126 runtime is live).
+- `https://sandiageotoolbox.com/distress-survey/survey.html` → **404** empty body.
+- Mount, Floor Survey JS, CSS, icons → **200**.
+
+PR #126 correctly moved `/distress-survey/survey.html` out of `STATIC_SHELL` into `CLEAN_DOCUMENTS`. `scripts/publish-pwa.mjs` built the Worker asset tree **only from `STATIC_SHELL`** (plus hard-coded `/index.html` / `/sw.js`). The pending scan listed survey.html for reference walking but **skipped** it when absent from the wanted set. Publish before this fix: **45** files, no `distress-survey/` directory. After: **46** files including survey.html.
+
+Network-first navigation returns the live 404 to the iframe (cache fallback only on fetch failure, not on HTTP 404), so Distress cannot open or refresh while the asset is missing. SW install that tries `cacheCleanDocument` on a 404 also cannot complete v336 on devices that attempt the update.
+
+#### Fix
+
+- `scripts/publish-pwa.mjs` — include paths from `OFFLINE_DOCUMENT` / `DISTRESS_DOCUMENT` in the publish set (not only `STATIC_SHELL`).
+- `tests/pwa-publish.mjs` — assert survey.html stays published on the CLEAN_DOCUMENTS-only path.
+
+No capture, sync, CDN, or activation changes. No SW cache bump required for this publish correction; the missing bytes must be on the origin.
+
+#### Tests
+
+| Suite | Result |
+| --- | --- |
+| `tests/pwa-publish.mjs` | **26/26 PASS** (includes serves `/distress-survey/survey.html` 200 + offline shell caches both documents) |
+| `tests/sw-distress-document-cache.mjs` | **9/9 PASS** |
+
+Fail-before: `publishFileSet()` lacked `/distress-survey/survey.html`. Pass-after: present; written publish tree contains the file.
+
+#### Ball
+
+**GPT** for independent review of this publish fix. Tim retains merge/promotion. Live DS remains broken until the corrected publish set is on sandiageotoolbox.com.
+
+#### Files changed
+
+- `scripts/publish-pwa.mjs` — publish CLEAN_DOCUMENTS / offline document constants
+- `tests/pwa-publish.mjs` — regression for Distress HTML in publish set
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-005 entry
+
+Implementation commit SHA: `83cd77ccf7b993e967d3b5f42cbbba16b376c1db`
