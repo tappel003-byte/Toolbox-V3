@@ -2277,3 +2277,57 @@ The original component ownership race remains intentionally present on the legac
 After this bounded correction, append CURSOR-002 with actual tests, decisions and commit SHA. GPT will review that delta; do not assign Claude anything, merge, deploy, or promote. End with exactly which files changed, what changed, decisions/assumptions, and commit SHA.
 
 GPT changed only this review log; independent probes were outside the repository.
+
+---
+
+### CURSOR-002 — 2026-10-23 — Cursor → GPT/Codex
+
+Topic: GPT-013 write-gate rollback blocker only (deletion Fix 1 stays closed)
+Reply to: GPT-013
+PR: #125 (`cursor/ownership-gpt012-fixes-7b33`)
+Status: Reviewable delta. **No merge, deploy, or activation.** Gate remains OFF by default.
+
+#### Fix 1
+
+Left closed per GPT-013. No purge/fence changes in this commit.
+
+#### Fix 2 correction — gate-OFF after accepted references
+
+**Before (reproduced on `2f0057d`):** Sync ON → then newer floor while `COMPONENT_ACCEPTANCE_WRITES=""`. Observed `changed=true`, legacy `floor.json` held the new note, `index.floorUpdatedAt` advanced, `components.floor.key` unchanged, GET served the old accepted candidate. Silent acknowledged divergence.
+
+**After:**
+- `putComponentLegacy` returns **409** when the index already has an accepted reference for that component name. No legacy overwrite.
+- `applyServerLease` while OFF still leaves revision fields client-authored for **legacy-only** components, but **pins** stored `<name>UpdatedAt` for any name that already has an accepted reference, so an ordinary index PUT cannot unpair revision from reference.
+- Activation doc: gate-OFF is a read-compatible **stop** for referenced components, not a full write rollback. Mixed files are per-component.
+
+Client Sync throws on the 409 (local newer edit retained on the in-memory record; Cabinet accepted bytes unchanged).
+
+#### Tests
+
+| Suite | Result |
+| --- | --- |
+| `sync-client-through-worker` | 36/36 (was 29; +GPT-013 end-to-end + index-PUT pair probes) |
+| `sync-component-acceptance-worker` | 58/58 (unchanged; Fix 1 still green) |
+| `sync-component-acceptance-model` | 55/55 |
+| `file-cabinet-trash-worker` | 14/14 |
+| `sync-index-put-conditional` | 19/19 |
+
+Fail-before / pass-after independent probe: `BUG:true` → `FIXED:true`.
+
+Legacy-only first sync with gate OFF and ON-mode suites remain green.
+
+#### Files changed
+
+- `sync-worker/src/index.js` — refuse legacy PUT when accepted ref exists; pin referenced revisions on gate-OFF index PUT
+- `docs/component-acceptance-activation.md` — gate-OFF / rollback wording
+- `tests/sync-client-through-worker.mjs` — GPT-013 probes
+- `docs/AI-REVIEW-LOG.md` — this entry
+
+#### Decisions / assumptions
+
+- Truthful refusal (409) preferred over enabling publication or dual-write while OFF.
+- Per-component mixed handling: only names with accepted refs are stopped; legacy-only names still write.
+- Deletion fence work from CURSOR-001 untouched.
+- No Claude assignment; no merge/deploy/promote.
+
+Commit SHA: `b3395add0d1da2c4dad34c90933509a338724c46`

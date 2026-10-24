@@ -843,6 +843,16 @@ async function assertWritableCheckout(request, env, id) {
 }
 
 /**
+ * True when the index already names an accepted candidate for this component.
+ * Gate-OFF must not treat that component as legacy-writable (GPT-013).
+ */
+function hasAcceptedReference(index, name) {
+  const refs = index && index.components;
+  const ref = refs && typeof refs === 'object' ? refs[name] : null;
+  return !!(ref && typeof ref === 'object' && typeof ref.key === 'string' && ref.key);
+}
+
+/**
  * The lease is the SERVER's, never the client's: an ordinary Sync write
  * carries back whatever the server holds and may not set, change or drop it.
  *
@@ -854,10 +864,24 @@ async function assertWritableCheckout(request, env, id) {
  * js/sync.js compares to decide which side is newer.
  */
 function applyServerLease(gate, body, env) {
-  // While acceptance writes are OFF, leave <name>UpdatedAt as client-authored
-  // so a gated-off deploy does not strip the timestamps ordinary Sync writes.
+  const writesOn = acceptanceWritesEnabled(env);
+  // While writes are OFF, legacy-only components keep client-authored
+  // <name>UpdatedAt so ordinary Sync still works. Components that already
+  // have accepted references keep their stored revision pinned to that
+  // reference — an ordinary index PUT must not advertise a new clock for
+  // unchanged accepted bytes (GPT-013).
   applyServerOwnedIndexFields(gate && gate.index, body, {
-    includeRevisionFields: acceptanceWritesEnabled(env),
+    includeRevisionFields: writesOn,
+  });
+  if (writesOn) return;
+  const stored = gate && gate.index;
+  if (!stored) return;
+  Object.keys(COMPONENT_NAMES).forEach(function (name) {
+    if (!hasAcceptedReference(stored, name)) return;
+    const field = revField(name);
+    const value = stored[field];
+    if (value === undefined || value === null) delete body[field];
+    else body[field] = value;
   });
 }
 
@@ -867,11 +891,13 @@ function applyServerLease(gate, body, env) {
  * and check stale legacy fallbacks; that preparatory read path is always on.
  * The document alone is not a gate — this env flag is.
  *
- * Default OFF preserves the legacy component PUT (direct write to
- * cf/{id}/{name}.json) so ordinary Sync continues to work. Flipping it on
- * without a deployment drain that stops old Worker handlers from
- * acknowledging writes across the conversion boundary is not authorized from
- * repository code alone; see docs/component-acceptance-activation.md.
+ * Default OFF preserves the legacy component PUT for files that have never
+ * published accepted references. It is a read-compatible stop for components
+ * that already have references — not a write rollback that can acknowledge
+ * ignored legacy bytes. Flipping the flag on without a deployment drain that
+ * stops old Worker handlers from acknowledging writes across the conversion
+ * boundary is not authorized from repository code alone; see
+ * docs/component-acceptance-activation.md.
  */
 function acceptanceWritesEnabled(env) {
   const flag = env && env.COMPONENT_ACCEPTANCE_WRITES;
@@ -879,14 +905,21 @@ function acceptanceWritesEnabled(env) {
 }
 
 /**
- * Legacy component PUT: unconditional write to the fixed key. Used while
- * accepted-reference writes are gated OFF so normal Sync is not rejected.
+ * Legacy component PUT: write to the fixed key while acceptance writes are
+ * gated OFF. Refuses when an accepted reference already exists for this
+ * component — acknowledging a legacy overwrite would leave readers on the
+ * old candidate while the index (or a later equal-clock skip) pretends the
+ * new work landed (GPT-013).
  */
 async function putComponentLegacy(request, env, id, name) {
   const tomb = await env.CABINET.head(purgeKey(id));
   if (tomb) return text(request, 'Customer File permanently deleted', 409);
   const writeGate = await assertWritableCheckout(request, env, id);
   if (!writeGate.ok) return writeGate.response;
+  if (writeGate.exists && hasAcceptedReference(writeGate.index, name)) {
+    return conflict(request,
+      'Accepted ' + name + ' is already stored; COMPONENT_ACCEPTANCE_WRITES must be on to publish');
+  }
   let body;
   try {
     body = await request.json();

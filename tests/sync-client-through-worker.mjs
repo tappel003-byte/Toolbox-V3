@@ -472,6 +472,101 @@ const readIndex = (bucket) => {
     JSON.stringify(index && { name: index.displayName, floor: index.floorUpdatedAt }));
 }
 
+// ========== GPT-013: gate OFF after accepted refs must not silently diverge
+//
+// Sync with writes ON, then a newer floor while writes are OFF. Before the
+// fix: legacy PUT + index revision advanced, GET still served the old
+// candidate. After: truthful refusal; accepted bytes/revision unchanged;
+// local newer edit retained on the client object.
+{
+  const bucket = cabinet({});
+  const first = loadClient(bucket, 'device-a');
+  await first.Sync._test.syncOneRecord(record(), null, {});
+  const previousIndex = readIndex(bucket);
+  const floorKey = previousIndex.components.floor.key;
+  const floorRev = previousIndex.floorUpdatedAt;
+
+  const newer = record();
+  newer.floorSurvey.updatedAt = '2026-10-23T14:00:00.000Z';
+  newer.floorSurvey.note = 'new work after flag off';
+
+  const off = loadClient(bucket, 'device-a', { COMPONENT_ACCEPTANCE_WRITES: '' });
+  let threw = null;
+  try {
+    await off.Sync._test.syncOneRecord(newer, previousIndex, {});
+  } catch (err) {
+    threw = err;
+  }
+  const floorPuts = off.sandbox.requests.filter((r) =>
+    r.method === 'PUT' && r.path.indexOf('/components/floor') > 0);
+  const getRes = await off.sandbox.fetch(
+    'https://sync.example/files/' + ID + '/components/floor');
+  const served = await getRes.json();
+  const after = readIndex(bucket);
+
+  check('gate-OFF sync after accepted refs refuses rather than acknowledging ignored bytes',
+    !!threw && floorPuts.some((r) => r.status === 409),
+    JSON.stringify({ threw: threw && String(threw.message || threw), floorPuts }));
+  check('GET still serves the accepted candidate, not a legacy overwrite',
+    getRes.status === 200 && served.updatedAt === '2026-10-23T09:30:00.000Z' &&
+    served.note !== 'new work after flag off',
+    JSON.stringify(served));
+  check('accepted floor key and advertised revision are unchanged',
+    after.components.floor.key === floorKey && after.floorUpdatedAt === floorRev,
+    JSON.stringify({ key: after.components.floor.key, rev: after.floorUpdatedAt }));
+  check('local newer floor edit is retained on the client record',
+    newer.floorSurvey.note === 'new work after flag off' &&
+    newer.floorSurvey.updatedAt === '2026-10-23T14:00:00.000Z',
+    JSON.stringify(newer.floorSurvey));
+  check('no legacy floor.json was written over the ignored path with the new note',
+    !bucket.store.has('cf/' + ID + '/floor.json') ||
+    JSON.parse(bucket.store.get('cf/' + ID + '/floor.json').body).note !==
+      'new work after flag off',
+    bucket.store.has('cf/' + ID + '/floor.json')
+      ? JSON.parse(bucket.store.get('cf/' + ID + '/floor.json').body).note
+      : 'absent');
+}
+
+// ========== GPT-013: ordinary index PUT while OFF cannot unpair revision/ref
+{
+  const bucket = cabinet({});
+  const first = loadClient(bucket, 'device-a');
+  await first.Sync._test.syncOneRecord(record(), null, {});
+  const before = readIndex(bucket);
+  const floorKey = before.components.floor.key;
+  const floorRev = before.floorUpdatedAt;
+
+  const tamper = Object.assign({}, before, {
+    displayName: 'tampered browse name',
+    floorUpdatedAt: '2026-10-23T14:00:00.000Z',
+  });
+  const putRes = await worker.fetch(new Request(
+    'https://sync.example/files/' + ID + '/index',
+    {
+      method: 'PUT',
+      headers: new Headers({
+        'Cf-Access-Jwt-Assertion': timToken,
+        'x-toolbox-device-id': 'device-a',
+        'content-type': 'application/json',
+      }),
+      body: JSON.stringify(tamper),
+    },
+  ), Object.assign({ CABINET: bucket }, accessEnv, {
+    COMPONENT_ACCEPTANCE_WRITES: '',
+  }));
+  const after = readIndex(bucket);
+  check('gate-OFF index PUT is accepted for browse fields',
+    putRes.status === 200 && after.displayName === 'tampered browse name',
+    `${putRes.status} ${after.displayName}`);
+  check('but a referenced component revision stays paired with its accepted key',
+    after.floorUpdatedAt === floorRev &&
+    after.components.floor.key === floorKey,
+    JSON.stringify({
+      rev: after.floorUpdatedAt, key: after.components.floor.key,
+      wantedRev: floorRev, wantedKey: floorKey,
+    }));
+}
+
 globalThis.fetch = realFetch;
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);

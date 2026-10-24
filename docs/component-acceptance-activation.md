@@ -99,13 +99,28 @@ These paths do **not** require `COMPONENT_ACCEPTANCE_WRITES`:
 So a Cabinet that already has some accepted references can be **read** safely
 while writes remain on the legacy path.
 
-### Gated OFF (default) — ordinary Sync preserved
+### Gated OFF (default) — legacy-only writes; not a full write rollback
 
-With the flag unset, component PUT writes `cf/{id}/{name}.json` exactly as
-before acceptance. It does not reject normal saves, strip legacy timestamps,
-or invent acceptance references. Client Sync continues to work.
+With the flag unset:
 
-Executable proof: `tests/sync-client-through-worker.mjs` gate-OFF block.
+- **Legacy-only components** (no accepted reference yet) still PUT
+  `cf/{id}/{name}.json` and keep client-authored `<name>UpdatedAt`. Ordinary
+  Sync of never-activated files continues to work.
+- **Components that already have an accepted reference** are a read-compatible
+  **stop**, not a write rollback. Gate-OFF refuses a legacy PUT for those
+  names (409) and an ordinary index PUT cannot advance their advertised
+  revision while the reference stays put. Acknowledging a write to the ignored
+  legacy key would silently diverge: readers keep serving the old candidate
+  while the index advertises newer work (GPT-013). Local edits stay on the
+  device; Sync fails rather than lying.
+- Mixed files are handled per component: referenced names refuse; legacy-only
+  names still write.
+
+Executable proof: `tests/sync-client-through-worker.mjs` gate-OFF legacy-only
+block, plus the GPT-013 gate-OFF-after-accepted-refs probe.
+
+Do **not** describe turning the flag off as a safe way to “roll back writes”
+on a Cabinet that already holds accepted references.
 
 ### Gated ON — accepted-reference writes
 
@@ -183,9 +198,11 @@ acceptance. Old readers open `cf/{id}/{name}.json`, which may be far older than
 what the index advertises, and they lack `legacyIsStale`.
 
 Forward / read-compatible rollback must **preserve accepted bytes** (keep
-serving through `resolveAcceptedComponent`). Turning writes back OFF while
-leaving readers on the shared resolver is the safe direction if a write
-rollback is required.
+serving through `resolveAcceptedComponent`). Turning writes back OFF is a
+**read-compatible stop** for referenced components: legacy PUT and mismatched
+revision advertisements are refused or pinned, not a path that acknowledges
+new work on an ignored key. It is not a fully working write rollback for
+those components.
 
 Do **not** add dual-write legacy mirroring as an unreviewed shortcut. Mirroring
 accepted bytes onto the legacy key would make that key a second writer of
