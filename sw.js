@@ -15,7 +15,7 @@
 // sw.js file's own bytes change; a precached static asset edited without
 // bumping this stays served from the stale cache indefinitely on already
 // installed devices, invisibly, no matter how many times it's redeployed.
-const CACHE_NAME = 'toolbox-shell-v337';
+const CACHE_NAME = 'toolbox-shell-v338';
 const OFFLINE_DOCUMENT = '/index.html';
 const DISTRESS_DOCUMENT = '/distress-survey/survey.html';
 
@@ -23,6 +23,10 @@ const DISTRESS_DOCUMENT = '/distress-survey/survey.html';
 // Kept out of STATIC_SHELL so cache.addAll cannot race and overwrite them
 // with a redirected copy WebKit would refuse for offline navigation.
 const CLEAN_DOCUMENTS = [OFFLINE_DOCUMENT, DISTRESS_DOCUMENT];
+
+const NAVIGATE_TIMEOUT_MS = 3000;
+const ASSET_TIMEOUT_MS = 8000;
+const UNCACHED_TIMEOUT_MS = 30000;
 
 const STATIC_SHELL = [
   '/css/styles.css',
@@ -70,14 +74,29 @@ const STATIC_SHELL = [
   '/brand/sandia-geo.png',
 ];
 
+/** fetch with a deadline, so a dead link fails instead of waiting. */
+function fetchWithin(request, ms, init) {
+  const opts = init ? Object.assign({}, init) : {};
+  if (typeof AbortController !== 'function') return fetch(request, opts);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  opts.signal = controller.signal;
+  return fetch(request, opts).finally(() => clearTimeout(timer));
+}
+
 /**
  * Cache an HTML document under its canonical path as a fresh Response that
  * is not marked redirected. WebKit refuses redirected Responses for offline
  * navigations; Distress opens in an iframe navigate, so it needs the same
  * treatment as the Toolbox index shell.
+ *
+ * deadlineMs bounds the network read (install uses a long budget; warm
+ * background refresh uses the short asset budget so a dead hotspot cannot
+ * leave the service worker's waitUntil pending).
  */
-async function cacheCleanDocument(cache, urlPath) {
-  const response = await fetch(urlPath, { cache: 'no-store' });
+async function cacheCleanDocument(cache, urlPath, deadlineMs) {
+  const ms = deadlineMs == null ? UNCACHED_TIMEOUT_MS : deadlineMs;
+  const response = await fetchWithin(urlPath, ms, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error('Unable to cache ' + urlPath + ': ' + response.status);
   }
@@ -97,7 +116,7 @@ async function cacheCleanDocument(cache, urlPath) {
 
 async function cacheOfflineDocuments(cache) {
   for (let i = 0; i < CLEAN_DOCUMENTS.length; i += 1) {
-    await cacheCleanDocument(cache, CLEAN_DOCUMENTS[i]);
+    await cacheCleanDocument(cache, CLEAN_DOCUMENTS[i], UNCACHED_TIMEOUT_MS);
   }
 }
 
@@ -123,19 +142,6 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-const NAVIGATE_TIMEOUT_MS = 3000;
-const ASSET_TIMEOUT_MS = 8000;
-const UNCACHED_TIMEOUT_MS = 30000;
-
-/** fetch with a deadline, so a dead link fails instead of waiting. */
-function fetchWithin(request, ms) {
-  if (typeof AbortController !== 'function') return fetch(request);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
-  return fetch(request, { signal: controller.signal })
-    .finally(() => clearTimeout(timer));
-}
-
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -158,9 +164,11 @@ self.addEventListener('fetch', (event) => {
       event.respondWith((async () => {
         const cached = await caches.match(DISTRESS_DOCUMENT);
         if (cached) {
+          // Background refresh is bounded: same AbortController discipline as
+          // other shell fetches. Abort/failure leaves the good cached document.
           event.waitUntil(
             caches.open(CACHE_NAME)
-              .then((cache) => cacheCleanDocument(cache, DISTRESS_DOCUMENT))
+              .then((cache) => cacheCleanDocument(cache, DISTRESS_DOCUMENT, ASSET_TIMEOUT_MS))
               .catch(() => {})
           );
           return cached;

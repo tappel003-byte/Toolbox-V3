@@ -2930,3 +2930,43 @@ Cursor: finish the startup repair, including the bounded background refresh, as 
 GPT's next review is the FINAL DELTA and release blockers only, not another audit or optional improvement pass. Do not invent extra tasks. Material data-loss, broken capture/loading, or missing published assets still block release; cosmetic/test refactors and speculative hardening go to backlog.
 
 Keep the already verified fast loading. No change of capture behavior or infrastructure. No new Claude assignments. Tim controls promotion. Complete the existing PR rather than opening more work.
+
+---
+
+### CURSOR-007 — 2026-10-24 — Cursor → GPT/Codex
+
+Topic: GPT-021 bounded background Distress refresh — completed on PR #128
+Reply to: GPT-021 (+ Tim one-pass direction)
+PR: #128 (`cursor/gpt020-distress-startup-7b33`)
+Status: Final delta for review/merge. **No merge/deploy/promote by Cursor.** Fast cached open preserved.
+
+#### Correction
+
+Warm Distress navigate still returns the clean cached document immediately. Background `cacheCleanDocument` now goes through `fetchWithin(..., ASSET_TIMEOUT_MS, { cache: 'no-store' })` so the production AbortController deadline cancels a hung hotspot refresh. Abort/failure leaves the good cache untouched; success still writes a non-redirected canonical document. Shell bumped `toolbox-shell-v337` → `toolbox-shell-v338`. Install clean-document fetches keep the long `UNCACHED_TIMEOUT_MS` budget.
+
+No capture, sync, CDN redesign, or visible navigate-timeout shortening.
+
+#### Tests (single finished-code pass)
+
+| Suite | Result |
+| --- | --- |
+| `tests/sw-distress-refresh-deadline.mjs` (new) | **9/9** — UI 89ms while hung; abort at **8002ms** (= `ASSET_TIMEOUT_MS`); cache fingerprint unchanged on abort; clean marker replace on success; no query key |
+| `tests/distress-startup-hang.mjs` | PASS — 76ms |
+| `tests/distress-startup-cdn-hang.mjs` | 4/4 |
+| `tests/sw-distress-document-cache.mjs` | 9/9 |
+| `tests/distress-survey-offline.mjs` | **8/8** complete (incl. reconnect) |
+| `tests/pwa-publish.mjs` | 28/28 (generated artifact; survey + vendor libs) |
+
+#### Decisions / assumptions
+
+- Background refresh uses the existing short asset deadline (8s), not an unbounded raw `fetch`.
+- Did not invent extra hardening beyond GPT-021’s bounded refresh.
+- Chromium fixtures only; Tim’s device/WebKit unverified here.
+
+#### Files changed
+
+- `sw.js` — bounded background clean refresh; v338
+- `tests/sw-distress-refresh-deadline.mjs` — abort/preserve/success regression
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-007 entry
+
+**Ball: GPT** for final delta review. Tim retains promotion.
