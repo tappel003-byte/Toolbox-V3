@@ -1249,11 +1249,6 @@ export function TopoTab({
         {/* Contours popover — upper left */}
         {(openCorner === "contours" && !controlsOnly) && (
           <CornerPanel inline={controlsOnly} pos="top-12 right-2 w-64 landscape-short:top-2" onClose={() => setOpenCorner(null)} title="Contours">
-            <TrialDoorNav
-              door="contours"
-              onBack={() => setOpenCorner("hub")}
-              onNext={(key) => setOpenCorner(key)}
-            />
             {gridAndContours?.grid && (
               <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
                 Range {readingText(gridAndContours.grid.minValue)}"–
@@ -1425,6 +1420,11 @@ export function TopoTab({
                 onCheckedChange={(v) => update({ showContours: v })}
               />
             </div>
+            <TrialDoorNav
+              door="contours"
+              onBack={() => setOpenCorner("hub")}
+              onNext={(key) => setOpenCorner(key)}
+            />
           </CornerPanel>
         )}
 
@@ -1463,11 +1463,6 @@ export function TopoTab({
             onClose={() => setOpenCorner(null)}
             title="Colors"
           >
-            <TrialDoorNav
-              door="colors"
-              onBack={() => setOpenCorner("hub")}
-              onNext={(key) => setOpenCorner(key)}
-            />
             <div className="flex items-center justify-between">
               <Label className="text-xs">Reverse</Label>
               <Switch
@@ -1479,6 +1474,11 @@ export function TopoTab({
               value={resolved.palette}
               onChange={(p) => update({ palette: p })}
             />
+            <TrialDoorNav
+              door="colors"
+              onBack={() => setOpenCorner("hub")}
+              onNext={(key) => setOpenCorner(key)}
+            />
           </CornerPanel>
         )}
 
@@ -1489,11 +1489,6 @@ export function TopoTab({
             onClose={() => setOpenCorner(null)}
             title="Text"
           >
-            <TrialDoorNav
-              door="text"
-              onBack={() => setOpenCorner("hub")}
-              onNext={(key) => setOpenCorner(key)}
-            />
             <p className="text-[10px] font-medium text-muted-foreground">Numbers</p>
             <div className="grid grid-cols-2 gap-2">
               <SwitchRow
@@ -1597,6 +1592,11 @@ export function TopoTab({
             >
               Reset label & H/L positions
             </Button>
+            <TrialDoorNav
+              door="text"
+              onBack={() => setOpenCorner("hub")}
+              onNext={(key) => setOpenCorner(key)}
+            />
           </CornerPanel>
         )}
 
@@ -1607,11 +1607,6 @@ export function TopoTab({
             onClose={() => setOpenCorner(null)}
             title="Legend"
           >
-            <TrialDoorNav
-              door="legend"
-              onBack={() => setOpenCorner("hub")}
-              onNext={(key) => setOpenCorner(key)}
-            />
             <p className="text-[10px] text-muted-foreground mb-1">
               Color scale on the plan — show it and size it. Drag to place.
             </p>
@@ -1631,6 +1626,11 @@ export function TopoTab({
                 update({ legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)) })
               }
             />
+            <TrialDoorNav
+              door="legend"
+              onBack={() => setOpenCorner("hub")}
+              onNext={(key) => setOpenCorner(key)}
+            />
           </CornerPanel>
         )}
 
@@ -1641,11 +1641,6 @@ export function TopoTab({
             onClose={() => setOpenCorner(null)}
             title="High / Low"
           >
-            <TrialDoorNav
-              door="highlow"
-              onBack={() => setOpenCorner("hub")}
-              onNext={(key) => setOpenCorner(key)}
-            />
             <p className="text-[10px] text-muted-foreground mb-1">
               High and Low markers and the H/L/Δ pill. Drag markers and pill on
               the plan.
@@ -1680,6 +1675,11 @@ export function TopoTab({
                 }}
               />
             </div>
+            <TrialDoorNav
+              door="highlow"
+              onBack={() => setOpenCorner("hub")}
+              onNext={(key) => setOpenCorner(key)}
+            />
           </CornerPanel>
         )}
 
@@ -1690,11 +1690,6 @@ export function TopoTab({
             onClose={() => setOpenCorner(null)}
             title="Plan & Points"
           >
-            <TrialDoorNav
-              door="plan"
-              onBack={() => setOpenCorner("hub")}
-              onNext={(key) => setOpenCorner(key)}
-            />
             <p className="text-[10px] text-muted-foreground mb-1">
               What sits under the topo. Dot size and color stay on Data.
             </p>
@@ -1710,6 +1705,11 @@ export function TopoTab({
                 onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
               />
             </div>
+            <TrialDoorNav
+              door="plan"
+              onBack={() => setOpenCorner("hub")}
+              onNext={(key) => setOpenCorner(key)}
+            />
           </CornerPanel>
         )}
 
@@ -2390,11 +2390,11 @@ function TrialDoorNav({
   const idx = TRIAL_DOORS.findIndex((d) => d.key === door);
   const next = idx >= 0 && idx < TRIAL_DOORS.length - 1 ? TRIAL_DOORS[idx + 1] : null;
   return (
-    <div className="flex items-center gap-2 -mt-0.5 mb-0.5">
+    <div className="flex items-center gap-2 border-t pt-2 mt-1">
       <button
         type="button"
         onClick={onBack}
-        className="h-8 shrink-0 rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-muted/60"
+        className="h-9 shrink-0 rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-muted/60"
       >
         ← Back
       </button>
@@ -2402,7 +2402,7 @@ function TrialDoorNav({
         <button
           type="button"
           onClick={() => onNext(next.key)}
-          className="h-8 min-w-0 flex-1 truncate rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-muted/60 text-right"
+          className="h-9 min-w-0 flex-1 truncate rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-muted/60 text-right"
         >
           Next: {next.name} →
         </button>
