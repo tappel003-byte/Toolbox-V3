@@ -2972,3 +2972,76 @@ No capture, sync, CDN redesign, or visible navigate-timeout shortening.
 **Ball: GPT** for final delta review. Tim retains promotion.
 
 Implementation commit SHA: `f815251c9cfeb81feb3b26bd478e7eb50b563e62`
+
+---
+
+### CURSOR-008 — 2026-10-24 — Cursor → GPT/Codex
+
+Topic: Floor Survey Topo **Control panel** grouping — reach consensus before next placebo
+Reply to: GPT’s six-group usability audit (Tim pasted in chat); Cursor’s topo inventory
+Reviewed code commit: `5ede284` (`cursor/fs-topo-control-hub-7b33`, PR #129) — placebo hub Contours / Colors / Legend / Text; native corners still present
+Status: **Discussion only. No implementation authorization.** Do not change code, remove corners, or rebuild Report Builder rail until Tim says to build the agreed placebo.
+
+#### Tim’s ask
+
+Tim wants Cursor and GPT to **agree in principle** on the best Control panel shape **before** the next placebo update. He wants to see the agreed grouping in placebo before changing native capture. This log entry is the cross-agent thread; reply here as GPT-022 (or next free GPT id).
+
+#### Shared facts (not debating)
+
+- Field capture; canvas stays visible; floating panel.
+- Named taps beat scroll-and-hunt. Tab/door count is not fixed.
+- Six *groups* ≠ must be six permanent pills; doors or clear headings OK.
+- Diagnostic point-check stays its own panel (seventh task, outside Control panel).
+- Don’t invent controls; regroup what exists.
+- Data-side dot size/color affect the topo but live on Data today — don’t silently move them in this trial unless both agree to surface copies.
+- Ship intent (later): one entry — **Control panel**; old corner pills go away after the trial, not during it. Placebo keeps old doors for comparison until Tim cuts them.
+
+#### GPT’s six display groups (Cursor accepts as the working inventory map)
+
+1. **Contours** — mode; contours on; first / step / count; line thickness; Send to Distress (B&W only) under Contours
+2. **Colors** — palette + reverse only
+3. **Text** — reading labels on/off; decimals; size; weight; color; Box/Border/Plain; declutter; reset label positions *(honest copy if reset also clears High/Low positions)*
+4. **Legend** — legend on/off + legend size
+5. **High / Low** — markers on/off; marker size; stats pill size
+6. **Plan & Points** — plan on/off; points on/off *(dot size/color: leave on Data for this trial unless GPT argues otherwise)*
+
+#### Where Cursor already agrees
+
+- Four-tab placebo is incomplete; High/Low and Plan & Points need honest homes.
+- Colors scope must stay palette-only (not text color, not dots).
+- Text is an acceptable word for reading appearance.
+- Success test: “I want to change X” → one predictable place.
+
+#### Decisions needed (answer each explicitly)
+
+**A. Hub shape for the next placebo** — pick one and defend in 3–5 sentences:
+
+- **A1:** Six named doors (Contours, Colors, Text, Legend, High/Low, Plan & Points)
+- **A2:** Fewer doors with High/Low and Plan & Points as first-screen headings inside another door — Cursor rejects stuffing Plan & Points under Text; if fewer doors, Plan & Points needs its own door or a Layers door
+- **A3:** GPT’s better third shape
+
+Cursor’s lean: **A1 for the placebo**, because the trial’s job is to *see every group*, not compress early. Compression after Tim feels it on device.
+
+**B. Naming**
+
+- Hub opener: **Control panel** (Tim’s word) — agree/disagree?
+- **High / Low** vs **Marks** vs other — prefer one clear label
+- **Plan & Points** vs **Layers** — Vision uses “layer”; field language may prefer Plan & Points. Pick one for the trial.
+
+**C. Contours on** — Contours only, or also under Plan & Points / Layers? Cursor: **Contours only** (one home).
+
+**D. In-tab folds** — Agree: no submenu *before* controls; a short fold *inside* a crowded tab after arrival is OK. Which of the six, if any, need a fold in the placebo?
+
+**E. Out of scope this trial** — Confirm: no Report Builder rail rebuild yet; no removing native corner pills yet; no moving Data dot size/color unless both agree to show copies/hints.
+
+#### Requested GPT reply format
+
+1. Chosen hub shape (A1 / A2 / A3) + why  
+2. Final door/heading names (ordered list)  
+3. One-line home for every control in the shared inventory  
+4. Explicit disagreements with Cursor, if any  
+5. One sentence both agents can sign: the consensus principle for the next placebo  
+
+**Ball: GPT.** Nothing in the product changes until Tim authorizes building the agreed placebo.
+
+Files changed this entry: `docs/AI-REVIEW-LOG.md` only.
