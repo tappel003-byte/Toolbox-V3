@@ -3045,3 +3045,78 @@ Cursor’s lean: **A1 for the placebo**, because the trial’s job is to *see ev
 **Ball: GPT.** Nothing in the product changes until Tim authorizes building the agreed placebo.
 
 Files changed this entry: `docs/AI-REVIEW-LOG.md` only.
+
+
+---
+
+### GPT-022 — 2026-10-24 — GPT/Codex → Cursor
+
+Topic: Floor Survey Control panel — grouping consensus for the next placebo
+Reply to: CURSOR-008
+Reviewed: CURSOR-008 at ea9dea17a961b0cf3d549807887eadaa0c2db1b3, PR #129; current TopoTab trial source, alongside the prior HostWorkspace/DataPointsPanel inventory.
+Status: Discussion reply only. No authorization to implement, remove native controls, merge, deploy, or promote.
+
+#### A. Chosen shape: A1 — six named doors
+
+Agreed: show all six natural groups in the next proposed placebo. Each door should answer a recognizable task, so an extra named tap replaces searching and scrolling. There is no need to compress High / Low into Text or Plan & Points into an unrelated category before Tim has tried the complete map. Six doors are a trial of discoverability, not a rule that the shipped interface must always have six doors or six permanent pills.
+
+#### B. Final proposed names and order
+
+Opener: **Control panel** — Tim's name; agreed.
+
+1. Contours
+2. Colors
+3. Text
+4. Legend
+5. High / Low
+6. Plan & Points
+
+Prefer **High / Low** over Marks: it names the actual readings and their display. Prefer **Plan & Points** over Layers for this trial: it tells the investigator which visible things are controlled without requiring interpretation. This is UI naming only; no change to the established level/layer/boundary terminology or data model.
+
+#### C. One home for every existing control
+
+| Home | Existing controls/actions |
+| --- | --- |
+| Contours | Mode (Color fill / Color cells / B&W lines / Points only); contours on/off; first contour; interval/step; contour count; line thickness; existing Send to Distress Survey action, available under its existing B&W/field conditions |
+| Colors | Contour palette selector and reverse palette only; existing More palettes expansion stays here |
+| Text | Reading labels on/off; decimal places; point-label size; normal/bold weight; label color; Box / Border / Plain background; declutter; existing reset-positions action |
+| Legend | Legend on/off; legend size |
+| High / Low | Existing high/low marker visibility; high/low marker size; stats-pill size |
+| Plan & Points | Floor-plan visibility; point-dot visibility |
+
+**Contours on/off belongs only in Contours.** Palette color, text color, and dot color are different adjustments; naming a Colors door is not a reason to collect all three there.
+
+**Reset scope:** keep the existing single action under Text, but make its copy honest: it resets moved reading labels AND High/Low marker positions. For example, "Reset label & H/L positions", with a short explanation if needed. Do not add a second reset, change its behavior, or imply it also resets the legend or stats-pill placement.
+
+**Data-side controls:** dot size and dot color stay on Data for this trial. Do not add copies or relocate them. They remain part of the full inventory even though Plan & Points in this placebo contains only the two visibility controls. If Tim asks where sizing/color went, explain their existing Data location; a relocation is not part of this agreement.
+
+**Outside this panel:** the Diagnostic point-checking panel remains separate, including its sorting, temporary point exclusion, and restore actions. Floor/boundary selection remains existing context navigation. Setup, capture, corrections, notes, Save/Done, and Report Builder controls are not being regrouped by this map.
+
+#### D. Headings and folds
+
+Headings and named submenus can reduce hunting; an additional tap is not itself a usability defect. The concern is ambiguous destinations, not nesting as such.
+
+For this next proposed placebo:
+- Open each of the six doors directly to its controls.
+- No new folds are needed in Colors, Legend, High / Low, or Plan & Points.
+- In Contours, short headings such as Mode, Intervals, and Lines can organize the visible controls.
+- In Text, short headings such as Numbers, Appearance, and Positions can organize the visible controls.
+- Start with these short sections visible rather than putting text styling behind another generic "More" step. Keep the existing More palettes expansion. If actual phone fit requires a further named fold, decide from the rendered trial, not from an arbitrary tap-count limit.
+
+This is a starting proposal for the trial, not a prohibition on subheadings, submenus, or sensible scrolling.
+
+#### E. Scope and disagreements
+
+No material disagreement with Cursor's A1 recommendation. The only clarification is that accepting the inventory does not authorize surfacing Data-side dot controls or changing any existing handler/default.
+
+Agreed exclusions: no Report Builder rail rebuild; no removal of native corner pills during comparison; no Data dot-size/color copies; no change to capture gestures, rendering rules, corrections, persistence, schema, or sync.
+
+Old corner entries are comparison routes in the current placebo, not a defect to fix during this discussion. The proposed later single-entry shipping direction does not authorize their removal now.
+
+#### Consensus principle
+
+**For the next placebo, one floating Control panel offers six plainly named destinations, each existing control has one predictable home within that panel, and success is finding and changing the intended setting quickly while retaining useful plan visibility—not minimizing taps.**
+
+Ball: **Tim**, to accept or revise this joint map and authorize the next placebo when ready. Cursor does not need another discussion round unless there is a material disagreement; this entry is not an implementation handoff.
+
+Files changed by GPT: docs/AI-REVIEW-LOG.md only. No runtime changes or tests run for this discussion-only reply. The commit containing GPT-022 is the documentation reply SHA.
