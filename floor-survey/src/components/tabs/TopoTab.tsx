@@ -445,13 +445,12 @@ export function TopoTab({
   resizeCorners = false,
   allowContourLayer = false,
 }: Props) {
-  // TRIAL LAYOUT ONLY (easy delete): hub + slim "layers" / "legend" panels
-  // rearrange chrome; they call the same update() paths as the real panels.
-  // "labels" remains the full Labels & layers panel behind the tag button.
-  // Report controlsOnly is untouched. Remove openCorner hub|layers|legend
-  // blocks and restore palette → setOpenCorner("palette") to revert.
+  // TRIAL LAYOUT ONLY (easy delete): hub + Contours / Colors / Legend / Text.
+  // Same update() handlers; chrome only. Tag button still opens full
+  // Labels & layers. Report controlsOnly untouched. Delete hub|colors|legend|text
+  // blocks and restore palette click → setOpenCorner("palette") to revert.
   const [openCorner, setOpenCorner] = useState<
-    null | "hub" | "contours" | "palette" | "labels" | "layers" | "legend"
+    null | "hub" | "contours" | "palette" | "labels" | "colors" | "legend" | "text"
   >(null);
   /** Which tab the rail shows. Report Builder only; the field screen opens one corner panel at a time. */
   const [ctrlTab, setCtrlTab] = useState<"contours" | "labels" | "layers">("contours");
@@ -977,8 +976,9 @@ export function TopoTab({
         openCorner !== "contours" &&
         openCorner !== "palette" &&
         openCorner !== "labels" &&
-        openCorner !== "layers" &&
-        openCorner !== "legend" && (
+        openCorner !== "colors" &&
+        openCorner !== "legend" &&
+        openCorner !== "text" && (
         <CornerIcon
           pos="top-2 right-2 landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:translate-x-[0.25rem] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
           active={false}
@@ -1415,7 +1415,7 @@ export function TopoTab({
           </CornerPanel>
         )}
 
-        {/* === TRIAL LAYOUT (placebo chrome — same handlers, easy delete) === */}
+        {/* === TRIAL LAYOUT (placebo — Contours / Colors / Legend / Text) === */}
         {(openCorner === "hub" && !controlsOnly) && (
           <CornerPanel
             inline={controlsOnly}
@@ -1424,15 +1424,16 @@ export function TopoTab({
             title="Topo controls"
           >
             <p className="text-[10px] text-muted-foreground -mt-1 mb-1">
-              Layout try only — tag button still opens the full Labels &amp;
-              layers panel.
+              Layout try — four one-word doors. Tag still opens the old full
+              panel.
             </p>
             <div className="flex flex-col gap-1.5">
               {(
                 [
                   ["contours", "Contours", "How the topo is drawn"],
-                  ["layers", "Layers", "What is on or off"],
-                  ["legend", "Legend", "Colour and piece sizes"],
+                  ["colors", "Colors", "Palette and reverse"],
+                  ["legend", "Legend", "Scale piece and pill size"],
+                  ["text", "Text", "Numbers, bold, label size"],
                 ] as const
               ).map(([key, name, hint]) => (
                 <button
@@ -1449,12 +1450,12 @@ export function TopoTab({
           </CornerPanel>
         )}
 
-        {(openCorner === "layers" && !controlsOnly) && (
+        {(openCorner === "colors" && !controlsOnly) && (
           <CornerPanel
             inline={controlsOnly}
             pos="top-12 right-2 w-60 landscape-short:top-2"
             onClose={() => setOpenCorner(null)}
-            title="Layers"
+            title="Colors"
           >
             <button
               type="button"
@@ -1463,42 +1464,17 @@ export function TopoTab({
             >
               ← Topo controls
             </button>
-            <p className="text-[10px] text-muted-foreground mb-1">
-              Turn pieces on or off. Drag legend and H/L on the plan to place
-              them.
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <SwitchRow
-                label="Floor plan"
-                checked={resolved.showPlan}
-                onChange={(v) => update({ showPlan: v })}
-              />
-              <SwitchRow
-                label="Points"
-                checked={resolved.showPoints}
-                onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
-              />
-              <SwitchRow
-                label="Labels"
-                checked={resolved.showLabels}
-                onChange={(v) => update({ showLabels: v })}
-              />
-              <SwitchRow
-                label="Legend"
-                checked={resolved.showLegend}
-                onChange={(v) => update({ showLegend: v })}
-              />
-              <SwitchRow
-                label="High / low"
-                checked={resolved.showHighLow}
-                onChange={(v) => update({ showHighLow: v })}
-              />
-              <SwitchRow
-                label="Declutter"
-                checked={resolved.declutterLabels !== false}
-                onChange={(v) => update({ declutterLabels: v })}
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Reverse</Label>
+              <Switch
+                checked={resolved.reversePalette}
+                onCheckedChange={(v) => update({ reversePalette: v })}
               />
             </div>
+            <PalettePicker
+              value={resolved.palette}
+              onChange={(p) => update({ palette: p })}
+            />
           </CornerPanel>
         )}
 
@@ -1517,19 +1493,21 @@ export function TopoTab({
               ← Topo controls
             </button>
             <p className="text-[10px] text-muted-foreground mb-1">
-              Colour of the scale. Sizes for the legend and the readings pill.
+              The scale and readings on the plan — show them and size them.
+              Drag to place.
             </p>
-            <div className="flex items-center justify-between">
-              <Label className="text-xs">Reverse</Label>
-              <Switch
-                checked={resolved.reversePalette}
-                onCheckedChange={(v) => update({ reversePalette: v })}
+            <div className="grid grid-cols-2 gap-2">
+              <SwitchRow
+                label="Legend"
+                checked={resolved.showLegend}
+                onChange={(v) => update({ showLegend: v })}
+              />
+              <SwitchRow
+                label="High / low"
+                checked={resolved.showHighLow}
+                onChange={(v) => update({ showHighLow: v })}
               />
             </div>
-            <PalettePicker
-              value={resolved.palette}
-              onChange={(p) => update({ palette: p })}
-            />
             <div className="border-t pt-2 space-y-2">
               <StepperControl
                 label="Legend size"
@@ -1559,7 +1537,141 @@ export function TopoTab({
           </CornerPanel>
         )}
 
-        {/* Original palette panel — kept for revert / direct openCorner("palette") */}
+        {(openCorner === "text" && !controlsOnly) && (
+          <CornerPanel
+            inline={controlsOnly}
+            pos="top-12 right-2 w-64 landscape-short:top-2"
+            onClose={() => setOpenCorner(null)}
+            title="Text"
+          >
+            <button
+              type="button"
+              onClick={() => setOpenCorner("hub")}
+              className="mb-1 text-[10px] text-muted-foreground underline-offset-2 hover:underline"
+            >
+              ← Topo controls
+            </button>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              Reading numbers and marks — size, weight, color.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <SwitchRow
+                label="Labels"
+                checked={resolved.showLabels}
+                onChange={(v) => update({ showLabels: v })}
+              />
+              <SwitchRow
+                label="Declutter"
+                checked={resolved.declutterLabels !== false}
+                onChange={(v) => update({ declutterLabels: v })}
+              />
+              <SwitchRow
+                label="Floor plan"
+                checked={resolved.showPlan}
+                onChange={(v) => update({ showPlan: v })}
+              />
+              <SwitchRow
+                label="Points"
+                checked={resolved.showPoints}
+                onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
+              />
+              <NumberControl
+                label="Decimals"
+                value={resolved.decimalPlaces}
+                min={0}
+                max={3}
+                step={1}
+                onChange={(v) =>
+                  update({
+                    decimalPlaces: Math.max(
+                      0,
+                      Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
+                    ),
+                  })
+                }
+              />
+              <div className="col-span-2 flex items-center justify-between gap-2">
+                <Label className="text-xs">Label bg</Label>
+                <div className="inline-flex rounded-md border overflow-hidden">
+                  {(["white", "transparent", "plain"] as const).map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      className={`px-2 py-1 text-xs ${
+                        resolved.pointLabelBackground === opt
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-background"
+                      }`}
+                      onClick={() => update({ pointLabelBackground: opt })}
+                    >
+                      {opt === "white" ? "Box" : opt === "transparent" ? "Border" : "Plain"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <StepperControl
+                label="Point label size"
+                value={resolved.pointLabelFontSize}
+                min={6}
+                max={28}
+                step={1}
+                onChange={(v) =>
+                  update({ pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))) })
+                }
+              />
+              <StepperControl
+                label="High / low size"
+                value={resolved.highLowPinSize}
+                min={7}
+                max={28}
+                step={1}
+                onChange={(v) =>
+                  update({ highLowPinSize: Math.max(7, Math.min(28, Math.round(v))) })
+                }
+              />
+              <div>
+                <Label className="text-xs">Weight</Label>
+                <select
+                  value={resolved.pointLabelWeight}
+                  onChange={(e) =>
+                    update({ pointLabelWeight: e.target.value as "normal" | "bold" })
+                  }
+                  className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
+                >
+                  <option value="normal">Normal</option>
+                  <option value="bold">Bold</option>
+                </select>
+              </div>
+              <div className="col-span-2">
+                <Label className="text-xs">Color</Label>
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={resolved.pointLabelColor}
+                    onChange={(e) => update({ pointLabelColor: e.target.value })}
+                    className="h-9 w-12 rounded-md border bg-background p-1 cursor-pointer"
+                  />
+                  <Input
+                    enterKeyHint="done"
+                    value={resolved.pointLabelColor}
+                    onChange={(e) => update({ pointLabelColor: e.target.value })}
+                    className="h-9 flex-1 font-mono text-base"
+                  />
+                </div>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={resetAllLabelPositions}
+              className="mt-2 w-full h-8"
+            >
+              Reset label positions
+            </Button>
+          </CornerPanel>
+        )}
+
+        {/* Original palette panel — kept for revert */}
         {(openCorner === "palette" && !controlsOnly) && (
           <CornerPanel
             inline={controlsOnly}
