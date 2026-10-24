@@ -3120,3 +3120,34 @@ Old corner entries are comparison routes in the current placebo, not a defect to
 Ball: **Tim**, to accept or revise this joint map and authorize the next placebo when ready. Cursor does not need another discussion round unless there is a material disagreement; this entry is not an implementation handoff.
 
 Files changed by GPT: docs/AI-REVIEW-LOG.md only. No runtime changes or tests run for this discussion-only reply. The commit containing GPT-022 is the documentation reply SHA.
+
+---
+
+### CURSOR-009 — 2026-10-24 — Cursor → Tim / GPT
+
+Topic: Next placebo built — Control panel with six GPT-022 doors
+Reply to: GPT-022 (+ Tim “yes I want to try that out”)
+PR: #129 (`cursor/fs-topo-control-hub-7b33`)
+Status: Placebo UI only. Native Contours + Labels & layers corners kept for comparison. No Report Builder rail change. No schema/capture/sync change. No merge/deploy/promote by Cursor.
+
+#### Built
+
+Upper-right opener is **Control panel** (sliders icon). Hub lists six doors in agreed order:
+
+1. Contours — Mode / Intervals / Lines headings; existing Send to Distress under B&W; Contours on only here  
+2. Colors — palette + reverse only  
+3. Text — Numbers / Appearance / Positions; reset copy: **Reset label & H/L positions** (behavior unchanged)  
+4. Legend — legend on/off + legend size only  
+5. High / Low — markers on/off, marker size, stats pill size  
+6. Plan & Points — floor plan + points visibility; note that dot size/color stay on Data  
+
+Same `update()` handlers. Diagnostic panel unchanged. Shell cache `toolbox-shell-v342`.
+
+#### Files changed
+
+- `floor-survey/src/components/tabs/TopoTab.tsx` — six-door placebo  
+- `js/floor-survey/floor-survey.js` (+ css) — rebuild  
+- `sw.js` — v342  
+- `docs/AI-REVIEW-LOG.md` — this entry  
+
+**Ball: Tim** for device try. GPT may note agreement/disagreement on the rendered map; no further Cursor work until Tim asks.

@@ -16,7 +16,7 @@ import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/l
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import { Undo2, X, Waves, Palette, Tag, SlidersHorizontal, Minus, Plus } from "lucide-react";
+import { Undo2, X, Waves, Tag, SlidersHorizontal, Minus, Plus } from "lucide-react";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { TopoDiagnosticPanel } from "../TopoDiagnosticPanel";
@@ -445,12 +445,23 @@ export function TopoTab({
   resizeCorners = false,
   allowContourLayer = false,
 }: Props) {
-  // TRIAL LAYOUT ONLY (easy delete): hub + Contours / Colors / Legend / Text.
-  // Same update() handlers; chrome only. Tag button still opens full
-  // Labels & layers. Report controlsOnly untouched. Delete hub|colors|legend|text
+  // TRIAL LAYOUT ONLY (easy delete): Control panel hub + six doors from
+  // CURSOR-008 / GPT-022 consensus — Contours, Colors, Text, Legend,
+  // High / Low, Plan & Points. Same update() handlers; chrome only. Native
+  // Contours / Palette / Labels & layers corners stay for comparison.
+  // Report controlsOnly untouched. Delete hub|colors|legend|text|highlow|plan
   // blocks and restore palette click → setOpenCorner("palette") to revert.
   const [openCorner, setOpenCorner] = useState<
-    null | "hub" | "contours" | "palette" | "labels" | "colors" | "legend" | "text"
+    | null
+    | "hub"
+    | "contours"
+    | "palette"
+    | "labels"
+    | "colors"
+    | "legend"
+    | "text"
+    | "highlow"
+    | "plan"
   >(null);
   /** Which tab the rail shows. Report Builder only; the field screen opens one corner panel at a time. */
   const [ctrlTab, setCtrlTab] = useState<"contours" | "labels" | "layers">("contours");
@@ -978,14 +989,16 @@ export function TopoTab({
         openCorner !== "labels" &&
         openCorner !== "colors" &&
         openCorner !== "legend" &&
-        openCorner !== "text" && (
+        openCorner !== "text" &&
+        openCorner !== "highlow" &&
+        openCorner !== "plan" && (
         <CornerIcon
           pos="top-2 right-2 landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:translate-x-[0.25rem] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
           active={false}
           onClick={() => setOpenCorner("hub")}
-          label="Topo controls"
+          label="Control panel"
         >
-          <Palette className="h-4 w-4" />
+          <SlidersHorizontal className="h-4 w-4" />
         </CornerIcon>
       )}
       {openCorner !== "labels" && !chromeless && !controlsOnly && (
@@ -1241,7 +1254,7 @@ export function TopoTab({
               onClick={() => setOpenCorner("hub")}
               className="mb-1 text-[10px] text-muted-foreground underline-offset-2 hover:underline"
             >
-              ← Topo controls
+              ← Control panel
             </button>
             {gridAndContours?.grid && (
               <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
@@ -1249,12 +1262,12 @@ export function TopoTab({
                 {readingText(gridAndContours.grid.maxValue)}"
               </p>
             )}
+            <p className="text-[10px] font-medium text-muted-foreground">Mode</p>
             <div>
-              <Label className="text-xs">Mode</Label>
               <select
                 value={resolved.mode}
                 onChange={(e) => update({ mode: e.target.value as RenderSettings["mode"] })}
-                className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
+                className="h-9 w-full rounded-md border bg-background px-2 text-xs"
               >
                 <option value="contour-fill">Color fill</option>
                 <option value="contour-cells">Color cells</option>
@@ -1344,6 +1357,7 @@ export function TopoTab({
                 )}
               </div>
             )}
+            <p className="text-[10px] font-medium text-muted-foreground border-t pt-2">Intervals</p>
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <Label className="text-xs">First</Label>
@@ -1389,6 +1403,7 @@ export function TopoTab({
                 />
               </div>
             </div>
+            <p className="text-[10px] font-medium text-muted-foreground border-t pt-2">Lines</p>
             <div>
               <div className="flex items-center justify-between">
                 <Label className="text-xs">Line thickness</Label>
@@ -1415,25 +1430,27 @@ export function TopoTab({
           </CornerPanel>
         )}
 
-        {/* === TRIAL LAYOUT (placebo — Contours / Colors / Legend / Text) === */}
+        {/* === TRIAL LAYOUT (placebo — GPT-022 six doors) === */}
         {(openCorner === "hub" && !controlsOnly) && (
           <CornerPanel
             inline={controlsOnly}
             pos="top-12 right-2 w-60 landscape-short:top-2"
             onClose={() => setOpenCorner(null)}
-            title="Topo controls"
+            title="Control panel"
           >
             <p className="text-[10px] text-muted-foreground -mt-1 mb-1">
-              Layout try — four one-word doors. Tag still opens the old full
-              panel.
+              Layout try — six doors. Old corner pills still work for
+              comparison.
             </p>
             <div className="flex flex-col gap-1.5">
               {(
                 [
                   ["contours", "Contours", "How the topo is drawn"],
                   ["colors", "Colors", "Palette and reverse"],
-                  ["legend", "Legend", "Scale piece and pill size"],
-                  ["text", "Text", "Numbers, bold, label size"],
+                  ["text", "Text", "Reading numbers and style"],
+                  ["legend", "Legend", "Color scale piece"],
+                  ["highlow", "High / Low", "Markers and stats pill"],
+                  ["plan", "Plan & Points", "Floor plan and dots"],
                 ] as const
               ).map(([key, name, hint]) => (
                 <button
@@ -1462,7 +1479,7 @@ export function TopoTab({
               onClick={() => setOpenCorner("hub")}
               className="mb-1 text-[10px] text-muted-foreground underline-offset-2 hover:underline"
             >
-              ← Topo controls
+              ← Control panel
             </button>
             <div className="flex items-center justify-between">
               <Label className="text-xs">Reverse</Label>
@@ -1478,65 +1495,6 @@ export function TopoTab({
           </CornerPanel>
         )}
 
-        {(openCorner === "legend" && !controlsOnly) && (
-          <CornerPanel
-            inline={controlsOnly}
-            pos="top-12 right-2 w-64 landscape-short:top-2"
-            onClose={() => setOpenCorner(null)}
-            title="Legend"
-          >
-            <button
-              type="button"
-              onClick={() => setOpenCorner("hub")}
-              className="mb-1 text-[10px] text-muted-foreground underline-offset-2 hover:underline"
-            >
-              ← Topo controls
-            </button>
-            <p className="text-[10px] text-muted-foreground mb-1">
-              The scale and readings on the plan — show them and size them.
-              Drag to place.
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <SwitchRow
-                label="Legend"
-                checked={resolved.showLegend}
-                onChange={(v) => update({ showLegend: v })}
-              />
-              <SwitchRow
-                label="High / low"
-                checked={resolved.showHighLow}
-                onChange={(v) => update({ showHighLow: v })}
-              />
-            </div>
-            <div className="border-t pt-2 space-y-2">
-              <StepperControl
-                label="Legend size"
-                value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
-                min={0.4}
-                max={4}
-                step={0.1}
-                format={(v) => `${v.toFixed(1)}×`}
-                onChange={(v) =>
-                  update({ legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)) })
-                }
-              />
-              <StepperControl
-                label="Stats pill size"
-                value={statsChipSize}
-                min={STATS_CHIP_MIN}
-                max={STATS_CHIP_MAX}
-                step={2}
-                format={(v) => `${Math.round(v)}px`}
-                onChange={(v) => {
-                  const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(v)));
-                  setStatsChipLocked(n);
-                  setStatsChipSize(n);
-                }}
-              />
-            </div>
-          </CornerPanel>
-        )}
-
         {(openCorner === "text" && !controlsOnly) && (
           <CornerPanel
             inline={controlsOnly}
@@ -1549,31 +1507,14 @@ export function TopoTab({
               onClick={() => setOpenCorner("hub")}
               className="mb-1 text-[10px] text-muted-foreground underline-offset-2 hover:underline"
             >
-              ← Topo controls
+              ← Control panel
             </button>
-            <p className="text-[10px] text-muted-foreground mb-1">
-              Reading numbers and marks — size, weight, color.
-            </p>
+            <p className="text-[10px] font-medium text-muted-foreground">Numbers</p>
             <div className="grid grid-cols-2 gap-2">
               <SwitchRow
                 label="Labels"
                 checked={resolved.showLabels}
                 onChange={(v) => update({ showLabels: v })}
-              />
-              <SwitchRow
-                label="Declutter"
-                checked={resolved.declutterLabels !== false}
-                onChange={(v) => update({ declutterLabels: v })}
-              />
-              <SwitchRow
-                label="Floor plan"
-                checked={resolved.showPlan}
-                onChange={(v) => update({ showPlan: v })}
-              />
-              <SwitchRow
-                label="Points"
-                checked={resolved.showPoints}
-                onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
               />
               <NumberControl
                 label="Decimals"
@@ -1590,6 +1531,14 @@ export function TopoTab({
                   })
                 }
               />
+              <SwitchRow
+                label="Declutter"
+                checked={resolved.declutterLabels !== false}
+                onChange={(v) => update({ declutterLabels: v })}
+              />
+            </div>
+            <p className="text-[10px] font-medium text-muted-foreground border-t pt-2">Appearance</p>
+            <div className="grid grid-cols-2 gap-2">
               <div className="col-span-2 flex items-center justify-between gap-2">
                 <Label className="text-xs">Label bg</Label>
                 <div className="inline-flex rounded-md border overflow-hidden">
@@ -1617,16 +1566,6 @@ export function TopoTab({
                 step={1}
                 onChange={(v) =>
                   update({ pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))) })
-                }
-              />
-              <StepperControl
-                label="High / low size"
-                value={resolved.highLowPinSize}
-                min={7}
-                max={28}
-                step={1}
-                onChange={(v) =>
-                  update({ highLowPinSize: Math.max(7, Math.min(28, Math.round(v))) })
                 }
               />
               <div>
@@ -1660,18 +1599,142 @@ export function TopoTab({
                 </div>
               </div>
             </div>
+            <p className="text-[10px] font-medium text-muted-foreground border-t pt-2">Positions</p>
+            <p className="text-[10px] text-muted-foreground -mt-1">
+              Clears moved reading labels and High/Low marker positions. Does
+              not move the legend or stats pill.
+            </p>
             <Button
               size="sm"
               variant="outline"
               onClick={resetAllLabelPositions}
-              className="mt-2 w-full h-8"
+              className="w-full h-8"
             >
-              Reset label positions
+              Reset label & H/L positions
             </Button>
           </CornerPanel>
         )}
 
-        {/* Original palette panel — kept for revert */}
+        {(openCorner === "legend" && !controlsOnly) && (
+          <CornerPanel
+            inline={controlsOnly}
+            pos="top-12 right-2 w-64 landscape-short:top-2"
+            onClose={() => setOpenCorner(null)}
+            title="Legend"
+          >
+            <button
+              type="button"
+              onClick={() => setOpenCorner("hub")}
+              className="mb-1 text-[10px] text-muted-foreground underline-offset-2 hover:underline"
+            >
+              ← Control panel
+            </button>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              Color scale on the plan — show it and size it. Drag to place.
+            </p>
+            <SwitchRow
+              label="Legend"
+              checked={resolved.showLegend}
+              onChange={(v) => update({ showLegend: v })}
+            />
+            <StepperControl
+              label="Legend size"
+              value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+              min={0.4}
+              max={4}
+              step={0.1}
+              format={(v) => `${v.toFixed(1)}×`}
+              onChange={(v) =>
+                update({ legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)) })
+              }
+            />
+          </CornerPanel>
+        )}
+
+        {(openCorner === "highlow" && !controlsOnly) && (
+          <CornerPanel
+            inline={controlsOnly}
+            pos="top-12 right-2 w-64 landscape-short:top-2"
+            onClose={() => setOpenCorner(null)}
+            title="High / Low"
+          >
+            <button
+              type="button"
+              onClick={() => setOpenCorner("hub")}
+              className="mb-1 text-[10px] text-muted-foreground underline-offset-2 hover:underline"
+            >
+              ← Control panel
+            </button>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              High and Low markers and the H/L/Δ pill. Drag markers and pill on
+              the plan.
+            </p>
+            <SwitchRow
+              label="High / low"
+              checked={resolved.showHighLow}
+              onChange={(v) => update({ showHighLow: v })}
+            />
+            <div className="border-t pt-2 space-y-2">
+              <StepperControl
+                label="Marker size"
+                value={resolved.highLowPinSize}
+                min={7}
+                max={28}
+                step={1}
+                onChange={(v) =>
+                  update({ highLowPinSize: Math.max(7, Math.min(28, Math.round(v))) })
+                }
+              />
+              <StepperControl
+                label="Stats pill size"
+                value={statsChipSize}
+                min={STATS_CHIP_MIN}
+                max={STATS_CHIP_MAX}
+                step={2}
+                format={(v) => `${Math.round(v)}px`}
+                onChange={(v) => {
+                  const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(v)));
+                  setStatsChipLocked(n);
+                  setStatsChipSize(n);
+                }}
+              />
+            </div>
+          </CornerPanel>
+        )}
+
+        {(openCorner === "plan" && !controlsOnly) && (
+          <CornerPanel
+            inline={controlsOnly}
+            pos="top-12 right-2 w-60 landscape-short:top-2"
+            onClose={() => setOpenCorner(null)}
+            title="Plan & Points"
+          >
+            <button
+              type="button"
+              onClick={() => setOpenCorner("hub")}
+              className="mb-1 text-[10px] text-muted-foreground underline-offset-2 hover:underline"
+            >
+              ← Control panel
+            </button>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              What sits under the topo. Dot size and color stay on Data.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <SwitchRow
+                label="Floor plan"
+                checked={resolved.showPlan}
+                onChange={(v) => update({ showPlan: v })}
+              />
+              <SwitchRow
+                label="Points"
+                checked={resolved.showPoints}
+                onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
+              />
+            </div>
+          </CornerPanel>
+        )}
+
+        {/* Original palette panel — kept for revert / comparison */}
         {(openCorner === "palette" && !controlsOnly) && (
           <CornerPanel
             inline={controlsOnly}
@@ -1707,7 +1770,7 @@ export function TopoTab({
               onClick={() => setOpenCorner("hub")}
               className="mb-1 text-[10px] text-muted-foreground underline-offset-2 hover:underline"
             >
-              ← Topo controls
+              ← Control panel
             </button>
             <div className="grid grid-cols-2 gap-2">
               <SwitchRow
