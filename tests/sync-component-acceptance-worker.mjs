@@ -69,6 +69,9 @@ globalThis.fetch = async (url, init) => {
 const accessEnv = {
   CF_ACCESS_TEAM_DOMAIN: 'toolbox-test.cloudflareaccess.com',
   CF_ACCESS_AUD: 'aud-accept-test',
+  // Acceptance-write suites exercise the gated protocol. Production keeps
+  // COMPONENT_ACCEPTANCE_WRITES unset (OFF) until Tim authorizes activation.
+  COMPONENT_ACCEPTANCE_WRITES: '1',
 };
 const timToken = await signJwt('tim@example.com', 'sub-tim');
 const leeToken = await signJwt('lee@example.com', 'sub-lee');
@@ -525,11 +528,11 @@ const seedIndex = (extra) => Object.assign({
     res.status === 500 && /older than the revision/.test(await res.clone().text()),
     `${res.status} ${await res.clone().text()}`);
 
-  // And the owner's next Sync repairs it, because publishing restores the
-  // reference the old write dropped.
+  // A NEWER publication restores the reference. Equal-revision Sync does not
+  // — see the client-through-Worker equal-revision probe (GPT-012 Fix 2).
   const again = await putFloor(bucket, 'device-a', floorAt('2026-10-23T11:00:00Z', 'repaired'));
   const after = await call('files/' + ID + '/components/floor', bucket, asDevice('device-a'));
-  check('and the next publication repairs it without anyone intervening',
+  check('and a newer publication restores the reference the old write dropped',
     again.status === 200 && after.status === 200 &&
     (await after.clone().json()).note === 'repaired', String(after.status));
 }
@@ -585,6 +588,125 @@ const seedIndex = (extra) => Object.assign({
   check('a device that does not hold the file cannot publish to it',
     res.status === 403, `${res.status} ${await res.clone().text()}`);
   check('and wrote nothing', !readIndex(bucket).components, 'no reference');
+}
+
+// ========== GPT-012 Fix 1: checkout acquired while delete was mid-flight
+//
+// Before the fix, purge checked eligibility, then enumerated media, THEN
+// marked purged without rechecking. A checkout during media discovery won
+// the lease and the delete still destroyed the file.
+{
+  const bucket = cabinet({
+    [IKEY]: seedIndex({
+      checkout: null,
+      deletedAt: '2026-10-23T02:00:00.000Z',
+      purgeAfter: '2027-02-20T02:00:00.000Z',
+    }),
+    [LEGACY('plans')]: {
+      updatedAt: '2026-10-23T01:00:00.000Z',
+      canvases: [{ id: 'cv1', plan: { id: 'plan-race' } }],
+    },
+    [LEGACY('distress')]: { updatedAt: '2026-10-23T01:00:00.000Z', pins: [] },
+    [LEGACY('floor')]: { updatedAt: '2026-10-23T01:00:00.000Z', byCanvasId: {} },
+    [LEGACY('diagnostics')]: { updatedAt: '2026-10-23T01:00:00.000Z', figures: [] },
+    'media/plan-race': 'plan-bytes',
+  });
+  // Hold the fence's first index read so checkout can land before eligibility
+  // is decided on the CAS that marks purged.
+  bucket.holdNextGet(IKEY);
+  const deleting = call('files/' + ID, bucket,
+    Object.assign({ method: 'DELETE' }, asDevice('device-a')));
+  await new Promise((r) => setTimeout(r, 25));
+  const checkout = await call('files/' + ID + '/checkout', bucket,
+    Object.assign({ method: 'POST', body: JSON.stringify({ deviceId: 'device-b' }) },
+      asDevice('device-b', leeToken)));
+  bucket.letGo();
+  const deleted = await deleting;
+  const index = readIndex(bucket);
+  check('a checkout that lands before the deleting fence is accepted',
+    checkout.status === 200, `${checkout.status} ${await checkout.clone().text()}`);
+  check('and permanent delete refuses rather than erasing the newly leased file',
+    deleted.status === 403 && /checked out/i.test(await deleted.clone().text()),
+    `${deleted.status} ${await deleted.clone().text()}`);
+  check('the index, checkout lease, and plan media all remain',
+    !!index && index.checkout && index.checkout.deviceId === 'device-b' &&
+    !index.purged && bucket.store.has('media/plan-race'),
+    JSON.stringify({ checkout: index && index.checkout, purged: index && index.purged }));
+}
+
+// ========== GPT-012 Fix 1: restore (clear deletedAt) before the fence
+{
+  const bucket = cabinet({
+    [IKEY]: seedIndex({
+      checkout: null,
+      deletedAt: '2026-10-23T02:00:00.000Z',
+      purgeAfter: '2027-02-20T02:00:00.000Z',
+    }),
+    [LEGACY('plans')]: { updatedAt: '2026-10-23T01:00:00.000Z', canvases: [] },
+    [LEGACY('distress')]: { updatedAt: '2026-10-23T01:00:00.000Z', pins: [] },
+    [LEGACY('floor')]: { updatedAt: '2026-10-23T01:00:00.000Z', byCanvasId: {} },
+    [LEGACY('diagnostics')]: { updatedAt: '2026-10-23T01:00:00.000Z', figures: [] },
+  });
+  bucket.holdNextGet(IKEY);
+  const deleting = call('files/' + ID, bucket,
+    Object.assign({ method: 'DELETE' }, asDevice('device-a')));
+  await new Promise((r) => setTimeout(r, 25));
+  // Restore: clear Trash before the fence CAS. Direct store write matches an
+  // index PUT that removed deletedAt between eligibility and the marker.
+  const live = seedIndex({ checkout: null, deletedAt: null, purgeAfter: null, seq: 2 });
+  bucket.store.set(IKEY, { body: JSON.stringify(live) });
+  bucket.letGo();
+  const deleted = await deleting;
+  check('a restore before the deleting fence refuses permanent delete',
+    deleted.status === 409 && /not in File Cabinet Trash/i.test(await deleted.clone().text()),
+    `${deleted.status} ${await deleted.clone().text()}`);
+  check('and the restored file was not destroyed',
+    !!readIndex(bucket) && !readIndex(bucket).purged && !readIndex(bucket).deletedAt,
+    JSON.stringify(readIndex(bucket)));
+}
+
+// ========== GPT-012 Fix 1: accepted plans/media update before the fence
+//
+// A publication lands while delete is held. Fence CAS fails, revalidates
+// (still Trash, no checkout), fences the NEW version, and media discovery
+// follows that fenced accepted-reference snapshot.
+{
+  const bucket = cabinet({
+    [IKEY]: seedIndex({
+      checkout: null,
+      deletedAt: '2026-10-23T02:00:00.000Z',
+      purgeAfter: '2027-02-20T02:00:00.000Z',
+    }),
+    [LEGACY('plans')]: {
+      updatedAt: '2026-10-23T01:00:00.000Z',
+      canvases: [{ id: 'cv1', plan: { id: 'plan-old' } }],
+    },
+    [LEGACY('distress')]: { updatedAt: '2026-10-23T01:00:00.000Z', pins: [] },
+    [LEGACY('floor')]: { updatedAt: '2026-10-23T01:00:00.000Z', byCanvasId: {} },
+    [LEGACY('diagnostics')]: { updatedAt: '2026-10-23T01:00:00.000Z', figures: [] },
+    'media/plan-old': 'old-bytes',
+    'media/plan-new': 'new-bytes',
+  });
+  bucket.holdNextGet(IKEY);
+  const deleting = call('files/' + ID, bucket,
+    Object.assign({ method: 'DELETE' }, asDevice('device-b')));
+  await new Promise((r) => setTimeout(r, 25));
+  const published = await call('files/' + ID + '/components/plans', bucket,
+    Object.assign({ method: 'PUT', body: JSON.stringify({
+      updatedAt: '2026-10-23T10:00:00Z',
+      canvases: [{ id: 'cv1', plan: { id: 'plan-new' } }],
+    }) }, asDevice('device-a')));
+  check('plans publish before the fence is accepted',
+    published.status === 200, `${published.status} ${await published.clone().text()}`);
+  bucket.letGo();
+  const deleted = await deleting;
+  const tomb = bucket.store.get('purge/' + ID + '.json');
+  const tombIds = tomb ? JSON.parse(tomb.body).mediaIds : [];
+  check('delete still succeeds after fencing the updated index',
+    deleted.status === 200, `${deleted.status} ${await deleted.clone().text()}`);
+  check('and media discovery followed the fenced accepted plans, not the old legacy key',
+    tombIds.includes('plan-new') && !bucket.store.has('media/plan-new'),
+    JSON.stringify(tombIds));
 }
 
 globalThis.fetch = realFetch;

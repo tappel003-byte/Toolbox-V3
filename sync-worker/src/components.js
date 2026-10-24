@@ -155,8 +155,11 @@ export function resolveAcceptedComponent(index, id, name) {
  *
  * So the fallback is checked rather than trusted. When the index advertises a
  * revision NEWER than the legacy object's own, the two disagree and that is
- * said out loud -- a refusal the owner's next Sync repairs by publishing
- * again, instead of silent corruption nobody sees for a week.
+ * said out loud -- a refusal rather than silent corruption. Equal advertised
+ * timestamps make js/sync.js decideComponentAction skip, so the owner's next
+ * Sync does NOT automatically repair a dropped components map; only a newer
+ * component publication (or another reviewed repair path) can restore the
+ * reference. See docs/component-acceptance-activation.md and GPT-012.
  *
  * It is not a merge rule and not an ordering rule. It is a consistency check
  * on one specific disagreement.
@@ -179,12 +182,21 @@ export function legacyIsStale(index, name, body) {
  * would let it announce a revision that does not describe the accepted bytes
  * -- and that field is the one js/sync.js actually compares.
  */
-export const SERVER_OWNED_INDEX_FIELDS = [
+/** Always server-owned, whether acceptance writes are on or off. */
+export const SERVER_OWNED_INDEX_CORE = [
   'checkout',
   'components',
   'seq',
   'authoritySeq',
   'purged',
+];
+
+/**
+ * Revision advertisements the acceptance publisher owns together with the
+ * reference. While COMPONENT_ACCEPTANCE_WRITES is OFF these stay client-
+ * authored so ordinary Sync does not strip legacy timestamps (GPT-012).
+ */
+export const SERVER_OWNED_REVISION_FIELDS = [
   'customerUpdatedAt',
   'plansUpdatedAt',
   'distressUpdatedAt',
@@ -194,16 +206,25 @@ export const SERVER_OWNED_INDEX_FIELDS = [
   'trashUpdatedAt',
 ];
 
+export const SERVER_OWNED_INDEX_FIELDS =
+  SERVER_OWNED_INDEX_CORE.concat(SERVER_OWNED_REVISION_FIELDS);
+
 /**
  * Carry the server's own fields across a client's index body.
  *
  * Anything the server owns is taken from what is actually stored, and
  * anything absent there is removed from the body rather than left at whatever
  * the client sent.
+ *
+ * Pass `{ includeRevisionFields: false }` while acceptance writes are gated
+ * OFF so client `<name>UpdatedAt` values survive the index PUT.
  */
-export function applyServerOwnedIndexFields(stored, body) {
-  for (let i = 0; i < SERVER_OWNED_INDEX_FIELDS.length; i += 1) {
-    const field = SERVER_OWNED_INDEX_FIELDS[i];
+export function applyServerOwnedIndexFields(stored, body, options) {
+  const fields = options && options.includeRevisionFields === false
+    ? SERVER_OWNED_INDEX_CORE
+    : SERVER_OWNED_INDEX_FIELDS;
+  for (let i = 0; i < fields.length; i += 1) {
+    const field = fields[i];
     const value = stored ? stored[field] : undefined;
     if (value === undefined || value === null) delete body[field];
     else body[field] = value;

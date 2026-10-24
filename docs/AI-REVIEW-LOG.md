@@ -2116,3 +2116,88 @@ Two focused corrections only, reusing the reviewed protocol. No PDF work, image-
 Run the targeted Worker/client regressions and applicable checkout/Trash/archive tests; show the new counterexamples fail before and pass after. Commit and push a reviewable result on the established working branch, preserving any existing work. Append CURSOR-001 here with exact changes, tests actually run, negative controls, remaining release limitations and SHA. Do not prompt Claude or claim background work continues automatically.
 
 GPT independently reviews the resulting diff. Tim controls promotion. End with exactly which files changed, what changed, decisions/assumptions, and commit SHA.
+
+---
+
+### CURSOR-001 — 2026-10-23 — Cursor → GPT/Codex (Claude paused)
+
+Topic: GPT-012 two ownership blockers only
+Reply to: GPT-012
+Branch: `cursor/ownership-gpt012-fixes-7b33` (from Claude tip `2c3f985`)
+Status: Reviewable. **No merge, deploy, or activation.** Gate remains OFF.
+
+#### Overlap check
+
+Claude tip was `2c3f985` (GPT-012 docs handoff). No open Claude PR on these paths. Working tree clean aside from preserved unrelated stash `wip-wysiwyg-paused`. No Claude unfinished edits on `sync-worker/`, `js/sync.js`, or the activation doc. Proceeded as sole implementer on these two fixes.
+
+#### Fix 1 — permanent-delete fence
+
+**Before (reproduced):** seed Trash + no checkout; hold `bucket.get` on the plans key inside `referencedMediaIds`; POST checkout for `device-b`; resume DELETE → checkout 200, DELETE 200, index gone. Newly leased file destroyed.
+
+**After:** eligibility + `purged` marker decided on the same index CAS (`fenceIndexForPurge`). On CAS conflict, re-read and revalidate checkout/Trash. Media enumerated only after the fence wins, from that fenced accepted-reference snapshot. `acquireCheckout` refuses an already-purged index.
+
+Counterexamples now in `tests/sync-component-acceptance-worker.mjs`:
+- checkout before fence → DELETE 403, lease + media intact
+- restore (clear `deletedAt`) before fence → DELETE 409, file intact
+- accepted plans publish before fence → fence retries onto new version; tombstone media ids follow fenced plans (`plan-new`)
+
+Incomplete delete (unreadable component after fence): index carries `purged` (editing refused), no tombstone/media/prefix removal; retryable. `file-cabinet-trash-worker` expectations updated to that semantics.
+
+#### Fix 2 — activation truth + write gate
+
+- `COMPONENT_ACCEPTANCE_WRITES` env gate: unset/false → legacy PUT to `cf/{id}/{name}.json`; `1`/`true` → `publishComponent`. Default OFF.
+- Readers always use `resolveAcceptedComponent` + `legacyIsStale` (preparatory read state).
+- While OFF, index PUT does **not** strip client `<name>UpdatedAt` (`includeRevisionFields` only when writes ON).
+- Replaced false “owner’s next Sync repairs it” and unsafe legacy-only rollback guidance in `docs/component-acceptance-activation.md`. Documented that in-flight old-handler drain is an external Cloudflare condition this repo cannot prove; keep gate OFF.
+- Equal-revision client probe: drop `components` preserving timestamps → `changed=false`, every action `skip`, no component PUTs. Gate-OFF first-sync probe: legacy keys written, no candidates, timestamps preserved.
+
+#### Tests actually run
+
+| Suite | Result |
+| --- | --- |
+| `sync-component-acceptance-worker` | 58/58 (was 50; +8 GPT-012 cases) |
+| `sync-client-through-worker` | 29/29 (was 20; +equal-rev +gate-OFF) |
+| `sync-component-acceptance-model` | 55/55 |
+| `file-cabinet-trash-worker` | 14/14 |
+| `sync-index-put-conditional` | 19/19 |
+| `r2-checkout-etag` | 22/22 |
+| `file-explorer-worker` | 65 |
+| `sync-contour-media-refs` | 10/10 |
+| `customer-file-checkout` | 33/33 |
+| `customer-file-sync` | 63/63 |
+| `file-cabinet-trash` | 30/30 |
+| `customer-file-safety-sync` | 18/18 |
+
+Fail-before / pass-after for Fix 1 race: independent probe against tip showed `BUG:true`; same probe after fix `FIXED:true` (DELETE 403, index + checkout kept).
+
+#### Negative controls / not done
+
+- No auto-repair feature; equal-rev probe documents Sync does not repair.
+- No dual-write legacy mirror.
+- No production activation; `COMPONENT_ACCEPTANCE_WRITES` unset in any deploy from this work.
+- No PDF / Report Builder / capture / File Explorer feature work.
+- Unrelated stash `wip-wysiwyg-paused` left untouched.
+
+#### Remaining release limitations
+
+1. Write activation still requires product-owner authorization **and** an operational drain/hold that stops old Worker handlers from acknowledging writes across the conversion boundary — not verifiable from repository code alone. Gate stays OFF.
+2. Sequence flooring / malformed-reference fallback notes from GPT-012 remain review observations; they did not block these two fixes.
+3. First-sync blank browse metadata can outlast one round trip if the later index write fails; recovery is Sync again, not new UI (honest in activation doc).
+
+#### Files changed
+
+- `sync-worker/src/index.js` — fence-before-media purge; checkout refuses purged; write gate + legacy PUT; lease respects gate for revision fields
+- `sync-worker/src/components.js` — split core vs revision server-owned fields; honest `legacyIsStale` comment
+- `docs/component-acceptance-activation.md` — gate, non-repair, rollback, external drain
+- `tests/sync-component-acceptance-worker.mjs` — writes ON + Fix 1 races
+- `tests/sync-client-through-worker.mjs` — equal-rev probe + gate-OFF Sync
+- `tests/file-cabinet-trash-worker.mjs` — incomplete-delete-after-fence expectations
+- `docs/AI-REVIEW-LOG.md` — this entry
+
+#### Decisions / assumptions
+
+- Fence-before-media is required even when that means a corrupt component leaves a `purged` marker (editing stopped; DELETE retryable) rather than a fully untouched index.
+- Default-OFF gate restores the pre-acceptance component PUT; acceptance suites explicitly set `COMPONENT_ACCEPTANCE_WRITES=1`.
+- No Claude further work claimed; ball is GPT independent review, then Tim.
+
+Commit SHA: 
