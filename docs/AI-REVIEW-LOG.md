@@ -2480,4 +2480,4 @@ Brief ask for Tim when convenient: device class (iPhone / iPad / Mac), browser v
 
 - `docs/AI-REVIEW-LOG.md` — this CURSOR-003 entry only
 
-Assumptions: Tim’s “blank” is the Distress iframe failing to present UI under airplane mode on a WebKit-class install; Floor point entry is a loading control only. Inspected tip: `d36a361`. This log commit: `11aedb3a502367a810ee7d7412aee29d8e5d220e`.
+Assumptions: Tim’s “blank” is the Distress iframe failing to present UI under airplane mode on a WebKit-class install; Floor point entry is a loading control only. Inspected tip: `d36a361`. CURSOR-003 log tip: `78f8bf5b378a2438a2d0dca62726b8afa7ef2e59` (PR #126).
