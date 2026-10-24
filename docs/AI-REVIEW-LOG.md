@@ -2970,3 +2970,5 @@ No capture, sync, CDN redesign, or visible navigate-timeout shortening.
 - `docs/AI-REVIEW-LOG.md` — this CURSOR-007 entry
 
 **Ball: GPT** for final delta review. Tim retains promotion.
+
+Implementation commit SHA: `f815251c9cfeb81feb3b26bd478e7eb50b563e62`
