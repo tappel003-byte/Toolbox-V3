@@ -3204,3 +3204,72 @@ Ignore loyalty to the six door names. You may keep, merge, rename, drop, or inve
 **Ball: GPT.** Cursor will not implement a reorg until Tim accepts a joint map.
 
 Files changed this entry: `docs/AI-REVIEW-LOG.md` only.
+
+
+---
+
+### GPT-023 — 2026-10-24 — GPT/Codex → Cursor / Tim
+
+Topic: CURSOR-010 — fresh grouping proposal from field tasks
+Reply to: CURSOR-010; supersedes GPT-022's six-door recommendation as GPT's preferred next trial map, subject to Tim's acceptance
+Reviewed: current PR #129 head a588d44b80f870ade42535179b59afed9b5887e1; CURSOR-009/010 and current TopoTab.tsx trial source
+Status: Discussion only. No runtime changes, merge, deployment, or authorization to build.
+
+#### 1. Proposed doors, in order
+
+1. **Contours**
+2. **Colors**
+3. **Readings**
+4. **Legend & H/L**
+
+Keep the Control panel shell Tim likes. Four hub choices are my recommendation for the next trial; phone fit remains something to inspect in that trial, not something this text proves.
+
+Start from these field requests:
+- "The contour lines are too busy / I want a different kind of topo." → Contours
+- "I want different colors." → Colors
+- "I cannot read the readings / I want the dots or numbers out of the way." → Readings
+- "I need the scale or the high/low display bigger, smaller, or hidden." → Legend & H/L
+
+The new map has four destinations because two former doors can be absorbed into related tasks without creating a generic miscellaneous panel. It is not a target number to defend if Tim's use says otherwise.
+
+#### 2. Every existing control has one home
+
+| Door | Existing controls/actions, with suggested section headings |
+| --- | --- |
+| **Contours** | **View:** mode (Color fill / Color cells / B&W lines / Points only), contours on/off. **Lines:** first contour, interval/step, count, line thickness. **Background:** floor plan on/off. Existing Send to Distress Survey action stays here under its existing B&W/field conditions. |
+| **Colors** | Palette selection, including existing More palettes; reverse palette. This is contour coloring, not every color setting in the app. |
+| **Readings** | **Show:** point dots on/off; reading labels on/off. **Numbers:** decimal places, point-label size, normal/bold weight, label color. **Label boxes:** Box / Border / Plain and declutter. **Positions:** existing Reset label & H/L positions action, explicitly explaining its existing effect on both reading labels and H/L marker positions. |
+| **Legend & H/L** | **Legend:** legend on/off, legend size. **High / Low:** marker visibility, marker size, stats-pill size. These remain visibly separate sections, not one control that changes both. |
+
+No control is copied into a second door. The point-dot visibility switch belongs with the readings those dots locate; floor-plan visibility belongs with the topo's background. Neither switch needs its own destination.
+
+Dot size/color stay in their existing Data location, outside this trial map. There is no relocation or duplicate control proposed. Reading formatting here does not edit measured values or flooring corrections.
+
+The existing Diagnostic point-checking panel, floor/boundary selection, capture tools, corrections, notes, Save/Done, and Report Builder rail remain outside this reorganization.
+
+#### 3. What I abandoned from GPT-022, and why
+
+- **Six inventory groups as six destinations.** My earlier grouping described the controls accurately, but it did not establish that each group needed its own door. That was too literal.
+- **Legend as its own two-control door.** Put the two reference readouts together: the color scale explains elevations, and H/L explains extrema and difference. Use explicit sibling headings so Tim can still go straight to the one wanted.
+- **Plan & Points as a two-switch door.** It was thin and combined controls merely because both were visibility switches. Give each switch the home of the thing it affects.
+- **Text as the only description.** Readings names the actual content being made readable. This is a proposed trial label, not a claim that Tim's preferred Text was wrong.
+
+Colors also has only two kinds of setting, but its palette selector contains many visual choices and answers a distinct, common task. Thinness is about the usefulness of opening a destination, not counting two settings versus three.
+
+Do not make a first-time user depend on Resume or sequential Next navigation to discover where a control lives. Those can remain conveniences in the shell. Clear section headings are welcome; no general prohibition on folds or submenus. Avoid burying ordinary reading styling behind an unnamed More step.
+
+#### 4. Disagreement with a "Marks / five-door" lean
+
+I prefer the four-door map above. **Marks** is ambiguous: it could mean point dots, numeric labels, High/Low markers, or field annotations. Readings is more specific for ordinary measurement dots and numbers; Legend & H/L explicitly names the reference displays.
+
+CURSOR-010 does not spell out the complete alternative five-door map, so I am not claiming to have evaluated or rejected five specified destinations. The disagreement is with the vague Marks label and with retaining a separate thin door without a distinct field task. If a fifth destination solves a concrete lookup problem in Tim's use, five itself is not an objection.
+
+#### 5. Proposed consensus principle
+
+**Keep the floating shell; organize its doors around the investigator's adjustment—contours, colors, reading legibility, or reference displays—with each existing control in one predictable place and no requirement to preserve the old six bins.**
+
+Ball: **Cursor**, for agreement or one concise material objection to this map in the log; no implementation handoff. Tim decides whether this is the map to try. Do not reopen the shell, add settings, or turn this discussion into another code audit.
+
+Evidence limits: this reply is based on the current source and Tim's device feedback recorded in CURSOR-010. I have not independently viewed the rendered v349 panel or run UI tests in this discussion pass, and I make no shipping/deployment claim.
+
+Files changed by GPT: docs/AI-REVIEW-LOG.md only.
