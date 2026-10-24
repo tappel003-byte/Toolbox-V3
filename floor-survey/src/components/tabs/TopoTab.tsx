@@ -16,7 +16,7 @@ import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/l
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import { Undo2, X, Waves, Tag, SlidersHorizontal, Minus, Plus } from "lucide-react";
+import { Undo2, X, Waves, Tag, SlidersHorizontal, Minus, Plus, ChevronRight } from "lucide-react";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { TopoDiagnosticPanel } from "../TopoDiagnosticPanel";
@@ -1248,7 +1248,18 @@ export function TopoTab({
 
         {/* Contours popover — upper left */}
         {(openCorner === "contours" && !controlsOnly) && (
-          <CornerPanel inline={controlsOnly} pos="top-12 right-2 w-64 landscape-short:top-2" onClose={() => setOpenCorner(null)} title="Contours">
+          <TrialPanel
+            title="Contours"
+            stepLabel={trialStepLabel("contours")}
+            onClose={() => setOpenCorner(null)}
+            footer={
+              <TrialDoorNav
+                door="contours"
+                onBack={() => setOpenCorner("hub")}
+                onNext={(key) => setOpenCorner(key)}
+              />
+            }
+          >
             {gridAndContours?.grid && (
               <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
                 Range {readingText(gridAndContours.grid.minValue)}"–
@@ -1420,48 +1431,51 @@ export function TopoTab({
                 onCheckedChange={(v) => update({ showContours: v })}
               />
             </div>
-            <TrialDoorNav
-              door="contours"
-              onBack={() => setOpenCorner("hub")}
-              onNext={(key) => setOpenCorner(key)}
-            />
-          </CornerPanel>
+          </TrialPanel>
         )}
 
-        {/* === TRIAL LAYOUT (placebo — GPT-022 six doors) === */}
+        {/* === TRIAL LAYOUT (placebo — GPT-022 six doors, FS/DS chrome) === */}
         {(openCorner === "hub" && !controlsOnly) && (
-          <CornerPanel
-            inline={controlsOnly}
-            pos="top-12 right-2 w-64 landscape-short:top-2"
-            onClose={() => setOpenCorner(null)}
-            title="Control panel"
-          >
-            <p className="text-[10px] text-muted-foreground -mt-1 mb-1">
-              Layout try — six doors. Old corner pills still work for
-              comparison.
+          <TrialPanel title="Control panel" onClose={() => setOpenCorner(null)}>
+            <p className="text-[10px] text-muted-foreground -mt-1">
+              Pick what to change. The plan stays on screen.
             </p>
-            <div className="flex flex-col gap-1.5">
-              {TRIAL_DOORS.map(({ key, name, hint }) => (
+            <div className="flex flex-col gap-1">
+              {TRIAL_DOORS.map(({ key, name }, i) => (
                 <button
                   key={key}
                   type="button"
                   onClick={() => setOpenCorner(key)}
-                  className="flex flex-col items-start gap-0.5 rounded-md border bg-background px-3 py-2 text-left hover:bg-muted/60"
+                  className="flex items-center gap-2 rounded-md border bg-background px-2 py-2 text-left hover:bg-muted/60"
                 >
-                  <span className="text-sm font-medium">{name}</span>
-                  <span className="text-[10px] text-muted-foreground">{hint}</span>
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-semibold tabular-nums text-muted-foreground">
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium leading-tight">{name}</span>
+                    <span className="block truncate text-[10px] text-muted-foreground">
+                      {trialDoorStatus(key, resolved, statsChipSize)}
+                    </span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </button>
               ))}
             </div>
-          </CornerPanel>
+          </TrialPanel>
         )}
 
         {(openCorner === "colors" && !controlsOnly) && (
-          <CornerPanel
-            inline={controlsOnly}
-            pos="top-12 right-2 w-64 landscape-short:top-2"
-            onClose={() => setOpenCorner(null)}
+          <TrialPanel
             title="Colors"
+            stepLabel={trialStepLabel("colors")}
+            onClose={() => setOpenCorner(null)}
+            footer={
+              <TrialDoorNav
+                door="colors"
+                onBack={() => setOpenCorner("hub")}
+                onNext={(key) => setOpenCorner(key)}
+              />
+            }
           >
             <div className="flex items-center justify-between">
               <Label className="text-xs">Reverse</Label>
@@ -1474,20 +1488,21 @@ export function TopoTab({
               value={resolved.palette}
               onChange={(p) => update({ palette: p })}
             />
-            <TrialDoorNav
-              door="colors"
-              onBack={() => setOpenCorner("hub")}
-              onNext={(key) => setOpenCorner(key)}
-            />
-          </CornerPanel>
+          </TrialPanel>
         )}
 
         {(openCorner === "text" && !controlsOnly) && (
-          <CornerPanel
-            inline={controlsOnly}
-            pos="top-12 right-2 w-64 landscape-short:top-2"
-            onClose={() => setOpenCorner(null)}
+          <TrialPanel
             title="Text"
+            stepLabel={trialStepLabel("text")}
+            onClose={() => setOpenCorner(null)}
+            footer={
+              <TrialDoorNav
+                door="text"
+                onBack={() => setOpenCorner("hub")}
+                onNext={(key) => setOpenCorner(key)}
+              />
+            }
           >
             <p className="text-[10px] font-medium text-muted-foreground">Numbers</p>
             <div className="grid grid-cols-2 gap-2">
@@ -1592,20 +1607,21 @@ export function TopoTab({
             >
               Reset label & H/L positions
             </Button>
-            <TrialDoorNav
-              door="text"
-              onBack={() => setOpenCorner("hub")}
-              onNext={(key) => setOpenCorner(key)}
-            />
-          </CornerPanel>
+          </TrialPanel>
         )}
 
         {(openCorner === "legend" && !controlsOnly) && (
-          <CornerPanel
-            inline={controlsOnly}
-            pos="top-12 right-2 w-64 landscape-short:top-2"
-            onClose={() => setOpenCorner(null)}
+          <TrialPanel
             title="Legend"
+            stepLabel={trialStepLabel("legend")}
+            onClose={() => setOpenCorner(null)}
+            footer={
+              <TrialDoorNav
+                door="legend"
+                onBack={() => setOpenCorner("hub")}
+                onNext={(key) => setOpenCorner(key)}
+              />
+            }
           >
             <p className="text-[10px] text-muted-foreground mb-1">
               Color scale on the plan — show it and size it. Drag to place.
@@ -1626,20 +1642,21 @@ export function TopoTab({
                 update({ legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)) })
               }
             />
-            <TrialDoorNav
-              door="legend"
-              onBack={() => setOpenCorner("hub")}
-              onNext={(key) => setOpenCorner(key)}
-            />
-          </CornerPanel>
+          </TrialPanel>
         )}
 
         {(openCorner === "highlow" && !controlsOnly) && (
-          <CornerPanel
-            inline={controlsOnly}
-            pos="top-12 right-2 w-64 landscape-short:top-2"
-            onClose={() => setOpenCorner(null)}
+          <TrialPanel
             title="High / Low"
+            stepLabel={trialStepLabel("highlow")}
+            onClose={() => setOpenCorner(null)}
+            footer={
+              <TrialDoorNav
+                door="highlow"
+                onBack={() => setOpenCorner("hub")}
+                onNext={(key) => setOpenCorner(key)}
+              />
+            }
           >
             <p className="text-[10px] text-muted-foreground mb-1">
               High and Low markers and the H/L/Δ pill. Drag markers and pill on
@@ -1675,20 +1692,21 @@ export function TopoTab({
                 }}
               />
             </div>
-            <TrialDoorNav
-              door="highlow"
-              onBack={() => setOpenCorner("hub")}
-              onNext={(key) => setOpenCorner(key)}
-            />
-          </CornerPanel>
+          </TrialPanel>
         )}
 
         {(openCorner === "plan" && !controlsOnly) && (
-          <CornerPanel
-            inline={controlsOnly}
-            pos="top-12 right-2 w-64 landscape-short:top-2"
-            onClose={() => setOpenCorner(null)}
+          <TrialPanel
             title="Plan & Points"
+            stepLabel={trialStepLabel("plan")}
+            onClose={() => setOpenCorner(null)}
+            footer={
+              <TrialDoorNav
+                door="plan"
+                onBack={() => setOpenCorner("hub")}
+                onNext={(key) => setOpenCorner(key)}
+              />
+            }
           >
             <p className="text-[10px] text-muted-foreground mb-1">
               What sits under the topo. Dot size and color stay on Data.
@@ -1705,12 +1723,7 @@ export function TopoTab({
                 onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
               />
             </div>
-            <TrialDoorNav
-              door="plan"
-              onBack={() => setOpenCorner("hub")}
-              onNext={(key) => setOpenCorner(key)}
-            />
-          </CornerPanel>
+          </TrialPanel>
         )}
 
         {/* Original palette panel — kept for revert / comparison */}
@@ -2377,7 +2390,98 @@ const TRIAL_DOORS = [
 
 type TrialDoorKey = (typeof TRIAL_DOORS)[number]["key"];
 
-/** Back → Control panel pills. Next: {Name} → following door (hidden on last). */
+const TRIAL_MODE_SHORT: Record<RenderSettings["mode"], string> = {
+  "contour-fill": "Color fill",
+  "contour-cells": "Color cells",
+  "contour-bw": "B&W lines",
+  "points-only": "Points only",
+};
+
+/** One-line status on the hub so you open the door that needs changing. */
+function trialDoorStatus(
+  key: TrialDoorKey,
+  settings: RenderSettings,
+  statsChipSize: number,
+): string {
+  switch (key) {
+    case "contours":
+      return [
+        TRIAL_MODE_SHORT[settings.mode],
+        settings.showContours ? `step ${settings.contourStep}` : "off",
+      ].join(" · ");
+    case "colors":
+      return [
+        PALETTE_LABELS[settings.palette] ?? settings.palette,
+        settings.reversePalette ? "reversed" : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    case "text":
+      return [
+        settings.showLabels ? "labels on" : "labels off",
+        `${settings.decimalPlaces} dec`,
+        settings.pointLabelWeight === "bold" ? "bold" : "normal",
+      ].join(" · ");
+    case "legend":
+      return settings.showLegend
+        ? `on · ${Math.round((settings.legendScale ?? 1) * 10) / 10}×`
+        : "off";
+    case "highlow":
+      return settings.showHighLow
+        ? `on · mark ${settings.highLowPinSize} · pill ${Math.round(statsChipSize)}`
+        : "off";
+    case "plan":
+      return [
+        settings.showPlan ? "plan on" : "plan off",
+        settings.showPoints ? "points on" : "points off",
+      ].join(" · ");
+  }
+}
+
+/**
+ * Placebo shell in FS/DS vocabulary (rounded-xl card/95, primary CTA) with
+ * clearer hierarchy: step label, scroll body, sticky thumb nav.
+ */
+function TrialPanel({
+  title,
+  stepLabel,
+  onClose,
+  children,
+  footer,
+}: {
+  title: string;
+  stepLabel?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
+  return (
+    <div className="absolute z-30 top-12 right-2 flex w-64 max-h-[calc(100%-4rem)] flex-col overflow-hidden rounded-xl border bg-card/95 shadow-2xl backdrop-blur landscape-short:top-2">
+      <div className="flex shrink-0 items-start justify-between gap-2 border-b px-3 pb-2 pt-2.5">
+        <div className="min-w-0">
+          {stepLabel ? (
+            <p className="text-[10px] font-medium text-muted-foreground">{stepLabel}</p>
+          ) : null}
+          <h2 className="text-sm font-semibold leading-tight text-foreground">{title}</h2>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 space-y-3 overflow-auto px-3 py-2.5 text-sm">{children}</div>
+      {footer ? (
+        <div className="shrink-0 border-t bg-card/95 px-3 py-2 backdrop-blur">{footer}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Back → hub. Next uses primary (FS CTA). Dots show place in the walk. */
 function TrialDoorNav({
   door,
   onBack,
@@ -2390,25 +2494,51 @@ function TrialDoorNav({
   const idx = TRIAL_DOORS.findIndex((d) => d.key === door);
   const next = idx >= 0 && idx < TRIAL_DOORS.length - 1 ? TRIAL_DOORS[idx + 1] : null;
   return (
-    <div className="flex items-center gap-2 border-t pt-2 mt-1">
-      <button
-        type="button"
-        onClick={onBack}
-        className="h-9 shrink-0 rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-muted/60"
-      >
-        ← Back
-      </button>
-      {next && (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-center gap-1" aria-hidden>
+        {TRIAL_DOORS.map((d, i) => (
+          <span
+            key={d.key}
+            className={
+              "h-1 rounded-full " +
+              (i === idx ? "w-3 bg-primary" : "w-1 bg-muted-foreground/30")
+            }
+          />
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={() => onNext(next.key)}
-          className="h-9 min-w-0 flex-1 truncate rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-muted/60 text-right"
+          onClick={onBack}
+          className="h-9 shrink-0 rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-muted/60"
         >
-          Next: {next.name} →
+          ← Back
         </button>
-      )}
+        {next ? (
+          <button
+            type="button"
+            onClick={() => onNext(next.key)}
+            className="h-9 min-w-0 flex-1 truncate rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Next: {next.name} →
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onBack}
+            className="h-9 min-w-0 flex-1 truncate rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Done
+          </button>
+        )}
+      </div>
     </div>
   );
+}
+
+function trialStepLabel(door: TrialDoorKey) {
+  const idx = TRIAL_DOORS.findIndex((d) => d.key === door);
+  return `${idx + 1} of ${TRIAL_DOORS.length}`;
 }
 
 function CornerPanel({
