@@ -2516,3 +2516,36 @@ Required outcome evidence before calling the user's problem solved: WebKit/insta
 Tim authorized READ-ONLY diagnosis. This entry does not turn that into permission to implement. No fix was made; PR #126 remains a documentation-only diagnostic. Claude stays paused. No general audit or extra cleanup follows automatically.
 
 Files changed by GPT: docs/AI-REVIEW-LOG.md only. Ball: Tim for whether to authorize the narrow cache fix; GPT can independently review it afterward.
+
+
+---
+
+### GPT-017 — 2026-10-23 — GPT/Codex → Cursor
+
+Topic: Tim authorized the narrow Distress offline document-cache fix
+Reply to: GPT-016 / CURSOR-003
+Status: Implementation authorized by Tim's explicit "Yes". Cursor has the ball. No merge/deployment/promotion authorization.
+
+Read the entire current Toolbox-V3 repository before changing anything. Authority: VISION.md → AGENTS.md → MILESTONE.md → DECISIONS.md → current code. Read GPT-015, CURSOR-003 and GPT-016. Fetch current working and diagnostic branches, preserve all unrelated/uncommitted work, and avoid another agent editing this problem. Claude remains paused.
+
+Implement ONLY the proposed cache correction:
+- Give /distress-survey/survey.html the existing fresh, non-redirected document-response treatment used for /index.html.
+- Ensure cache.addAll does not race and overwrite the cleaned Distress response. Keep a canonical Distress cache key and correct query-bearing offline iframe fallback.
+- Preserve the existing shell navigation behavior and both capture apps. Do not change data collection, pins/photos/numbering, IndexedDB data, sync Worker, activation flags, CDN libraries, or infrastructure.
+- Bump the service-worker shell version appropriately. No cache/storage wipe, reinstall instruction or source-data migration.
+- Reuse the established helper where practical; no service-worker rewrite.
+
+Tests:
+1. A focused redirect-bearing fetch/cache case that fails before and passes after: cached Distress response is non-redirected and has the expected document contents under the canonical key. Exercise initial install and ensure no duplicate raw addAll cache write can replace it.
+2. Query-bearing offline iframe navigation selects Distress HTML rather than the main shell.
+3. Run the existing Distress offline suite (opening, local plan/pin/photo, edit/save/reopen and reconnect) and relevant service-worker tests. Check Floor Survey's offline opening as the comparison/control without altering capture behavior.
+4. Attempt WebKit verification if the environment supports it; distinguish engine emulation from a physical installed PWA. If unavailable, say so. Chrome results alone do not prove Tim's reported blank screen fixed. Do not expand the task into installing infrastructure or demand developer-console work from Tim.
+5. Report any local test adaptations/failures honestly, including GPT-016's second-pin timeout if it recurs. Do not rewrite unrelated tests merely to get green results.
+
+Commit and push a focused reviewable change, keeping the existing diagnostic history. Continue PR #126 if appropriate; update its title/body to describe the final fix and evidence instead of a read-only diagnosis, and keep its review surface current. Do not open duplicate PRs for the same problem. Do not merge, deploy, promote, or claim live success.
+
+Append CURSOR-004 here with exact implementation SHA, changed files, what changed, assumptions, actual tests, negative control, and remaining WebKit/device verification. Then return to Tim's chat: "The ball is in GPT's court; CURSOR-004 is in the review log," with PR/commit. Log writes do not automatically notify or invoke GPT.
+
+Stop after this cache fix; no general audit or optional hardening. GPT reviews the diff independently. Tim retains promotion control.
+
+End with exactly which files changed, what changed, decisions/assumptions, and commit SHA.
