@@ -15,9 +15,14 @@
 // sw.js file's own bytes change; a precached static asset edited without
 // bumping this stays served from the stale cache indefinitely on already
 // installed devices, invisibly, no matter how many times it's redeployed.
-const CACHE_NAME = 'toolbox-shell-v335';
+const CACHE_NAME = 'toolbox-shell-v336';
 const OFFLINE_DOCUMENT = '/index.html';
 const DISTRESS_DOCUMENT = '/distress-survey/survey.html';
+
+// HTML navigations that must be stored as fresh, non-redirected Responses.
+// Kept out of STATIC_SHELL so cache.addAll cannot race and overwrite them
+// with a redirected copy WebKit would refuse for offline navigation.
+const CLEAN_DOCUMENTS = [OFFLINE_DOCUMENT, DISTRESS_DOCUMENT];
 
 const STATIC_SHELL = [
   '/css/styles.css',
@@ -35,7 +40,6 @@ const STATIC_SHELL = [
   '/js/customer-file-import.js',
   '/js/recovered-photos.js',
   '/js/distress-survey/mount.js',
-  '/distress-survey/survey.html',
   '/js/floor-survey/floor-survey.js',
   '/js/floor-survey/floor-survey.css',
   '/js/diagnostics.js',
@@ -65,10 +69,16 @@ const STATIC_SHELL = [
   '/brand/sandia-geo.png',
 ];
 
-async function cacheOfflineDocument(cache) {
-  const response = await fetch(OFFLINE_DOCUMENT, { cache: 'no-store' });
+/**
+ * Cache an HTML document under its canonical path as a fresh Response that
+ * is not marked redirected. WebKit refuses redirected Responses for offline
+ * navigations; Distress opens in an iframe navigate, so it needs the same
+ * treatment as the Toolbox index shell.
+ */
+async function cacheCleanDocument(cache, urlPath) {
+  const response = await fetch(urlPath, { cache: 'no-store' });
   if (!response.ok) {
-    throw new Error(`Unable to cache Toolbox shell: ${response.status}`);
+    throw new Error('Unable to cache ' + urlPath + ': ' + response.status);
   }
 
   const body = await response.blob();
@@ -81,16 +91,23 @@ async function cacheOfflineDocument(cache) {
     headers,
   });
 
-  await cache.put(OFFLINE_DOCUMENT, cleanResponse);
+  await cache.put(urlPath, cleanResponse);
+}
+
+async function cacheOfflineDocuments(cache) {
+  for (let i = 0; i < CLEAN_DOCUMENTS.length; i += 1) {
+    await cacheCleanDocument(cache, CLEAN_DOCUMENTS[i]);
+  }
 }
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await Promise.all([
-      cacheOfflineDocument(cache),
-      cache.addAll(STATIC_SHELL),
-    ]);
+    // Clean HTML documents first, then the rest of the shell. Distress is
+    // intentionally absent from STATIC_SHELL so addAll cannot replace the
+    // cleaned survey.html with a redirected copy.
+    await cacheOfflineDocuments(cache);
+    await cache.addAll(STATIC_SHELL);
     await self.skipWaiting();
   })());
 });
