@@ -1248,7 +1248,7 @@ export function TopoTab({
 
         {/* Contours popover — upper left */}
         {(openCorner === "contours" && !controlsOnly) && (
-          <CornerPanel inline={controlsOnly} pos="top-12 left-2 landscape-short:top-2 landscape-short:left-auto landscape-short:right-2" onClose={() => setOpenCorner(null)} title="Contours">
+          <CornerPanel inline={controlsOnly} pos="top-12 right-2 w-64 landscape-short:top-2" onClose={() => setOpenCorner(null)} title="Contours">
             <TrialDoorNav
               door="contours"
               onBack={() => setOpenCorner("hub")}
@@ -1432,7 +1432,7 @@ export function TopoTab({
         {(openCorner === "hub" && !controlsOnly) && (
           <CornerPanel
             inline={controlsOnly}
-            pos="top-12 right-2 w-60 landscape-short:top-2"
+            pos="top-12 right-2 w-64 landscape-short:top-2"
             onClose={() => setOpenCorner(null)}
             title="Control panel"
           >
@@ -1459,7 +1459,7 @@ export function TopoTab({
         {(openCorner === "colors" && !controlsOnly) && (
           <CornerPanel
             inline={controlsOnly}
-            pos="top-12 right-2 w-60 landscape-short:top-2"
+            pos="top-12 right-2 w-64 landscape-short:top-2"
             onClose={() => setOpenCorner(null)}
             title="Colors"
           >
@@ -1686,7 +1686,7 @@ export function TopoTab({
         {(openCorner === "plan" && !controlsOnly) && (
           <CornerPanel
             inline={controlsOnly}
-            pos="top-12 right-2 w-60 landscape-short:top-2"
+            pos="top-12 right-2 w-64 landscape-short:top-2"
             onClose={() => setOpenCorner(null)}
             title="Plan & Points"
           >
@@ -1717,7 +1717,7 @@ export function TopoTab({
         {(openCorner === "palette" && !controlsOnly) && (
           <CornerPanel
             inline={controlsOnly}
-            pos="top-12 right-2 w-60 landscape-short:top-2"
+            pos="top-12 right-2 w-64 landscape-short:top-2"
             onClose={() => setOpenCorner(null)}
             title="Palette"
           >
