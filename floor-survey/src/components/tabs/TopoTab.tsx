@@ -463,6 +463,12 @@ export function TopoTab({
     | "highlow"
     | "plan"
   >(null);
+  /** Placebo: last Control panel door visited — Resume on the hub. */
+  const [lastTrialDoor, setLastTrialDoor] = useState<TrialDoorKey | null>(null);
+  const openTrialDoor = useCallback((key: TrialDoorKey) => {
+    setLastTrialDoor(key);
+    setOpenCorner(key);
+  }, []);
   /** Which tab the rail shows. Report Builder only; the field screen opens one corner panel at a time. */
   const [ctrlTab, setCtrlTab] = useState<"contours" | "labels" | "layers">("contours");
   const [warningDismissed, setWarningDismissed] = useState(false);
@@ -975,7 +981,7 @@ export function TopoTab({
         <CornerIcon
           pos="top-2 left-2 landscape-short:top-auto landscape-short:left-1/2 landscape-short:-translate-x-[calc(100%+0.25rem)] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
           active={false}
-          onClick={() => setOpenCorner("contours")}
+          onClick={() => openTrialDoor("contours")}
           label="Contours"
         >
           <Waves className="h-4 w-4" />
@@ -1251,12 +1257,15 @@ export function TopoTab({
           <TrialPanel
             title="Contours"
             stepLabel={trialStepLabel("contours")}
+            status={trialDoorStatus("contours", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
             footer={
               <TrialDoorNav
                 door="contours"
+                dirty={trialDoorDirty("contours", resolved, statsChipSize)}
                 onBack={() => setOpenCorner("hub")}
-                onNext={(key) => setOpenCorner(key)}
+                onNext={openTrialDoor}
+                onReset={() => update(trialDoorPatch("contours"))}
               />
             }
           >
@@ -1440,26 +1449,45 @@ export function TopoTab({
             <p className="text-[10px] text-muted-foreground -mt-1">
               Pick what to change. The plan stays on screen.
             </p>
+            {lastTrialDoor ? (
+              <button
+                type="button"
+                onClick={() => openTrialDoor(lastTrialDoor)}
+                className="flex w-full items-center justify-between rounded-md bg-primary px-3 py-2 text-left text-xs font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                <span>
+                  Resume{" "}
+                  {TRIAL_DOORS.find((d) => d.key === lastTrialDoor)?.name ?? "door"}
+                </span>
+                <span aria-hidden>→</span>
+              </button>
+            ) : null}
             <div className="flex flex-col gap-1">
-              {TRIAL_DOORS.map(({ key, name }, i) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setOpenCorner(key)}
-                  className="flex items-center gap-2 rounded-md border bg-background px-2 py-2 text-left hover:bg-muted/60"
-                >
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-semibold tabular-nums text-muted-foreground">
-                    {i + 1}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium leading-tight">{name}</span>
-                    <span className="block truncate text-[10px] text-muted-foreground">
-                      {trialDoorStatus(key, resolved, statsChipSize)}
+              {TRIAL_DOORS.map(({ key, name }, i) => {
+                const dirty = trialDoorDirty(key, resolved, statsChipSize);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => openTrialDoor(key)}
+                    className="flex items-center gap-2 rounded-md border bg-background px-2 py-2 text-left hover:bg-muted/60"
+                  >
+                    <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-semibold tabular-nums text-muted-foreground">
+                      {i + 1}
+                      {dirty ? (
+                        <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-primary" />
+                      ) : null}
                     </span>
-                  </span>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                </button>
-              ))}
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium leading-tight">{name}</span>
+                      <span className="block truncate text-[10px] text-muted-foreground">
+                        {trialDoorStatus(key, resolved, statsChipSize)}
+                      </span>
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  </button>
+                );
+              })}
             </div>
           </TrialPanel>
         )}
@@ -1468,12 +1496,15 @@ export function TopoTab({
           <TrialPanel
             title="Colors"
             stepLabel={trialStepLabel("colors")}
+            status={trialDoorStatus("colors", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
             footer={
               <TrialDoorNav
                 door="colors"
+                dirty={trialDoorDirty("colors", resolved, statsChipSize)}
                 onBack={() => setOpenCorner("hub")}
-                onNext={(key) => setOpenCorner(key)}
+                onNext={openTrialDoor}
+                onReset={() => update(trialDoorPatch("colors"))}
               />
             }
           >
@@ -1495,12 +1526,15 @@ export function TopoTab({
           <TrialPanel
             title="Text"
             stepLabel={trialStepLabel("text")}
+            status={trialDoorStatus("text", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
             footer={
               <TrialDoorNav
                 door="text"
+                dirty={trialDoorDirty("text", resolved, statsChipSize)}
                 onBack={() => setOpenCorner("hub")}
-                onNext={(key) => setOpenCorner(key)}
+                onNext={openTrialDoor}
+                onReset={() => update(trialDoorPatch("text"))}
               />
             }
           >
@@ -1614,12 +1648,15 @@ export function TopoTab({
           <TrialPanel
             title="Legend"
             stepLabel={trialStepLabel("legend")}
+            status={trialDoorStatus("legend", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
             footer={
               <TrialDoorNav
                 door="legend"
+                dirty={trialDoorDirty("legend", resolved, statsChipSize)}
                 onBack={() => setOpenCorner("hub")}
-                onNext={(key) => setOpenCorner(key)}
+                onNext={openTrialDoor}
+                onReset={() => update(trialDoorPatch("legend"))}
               />
             }
           >
@@ -1649,12 +1686,19 @@ export function TopoTab({
           <TrialPanel
             title="High / Low"
             stepLabel={trialStepLabel("highlow")}
+            status={trialDoorStatus("highlow", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
             footer={
               <TrialDoorNav
                 door="highlow"
+                dirty={trialDoorDirty("highlow", resolved, statsChipSize)}
                 onBack={() => setOpenCorner("hub")}
-                onNext={(key) => setOpenCorner(key)}
+                onNext={openTrialDoor}
+                onReset={() => {
+                  update(trialDoorPatch("highlow"));
+                  setStatsChipLocked(DEFAULT_STATS_CHIP_SIZE);
+                  setStatsChipSize(DEFAULT_STATS_CHIP_SIZE);
+                }}
               />
             }
           >
@@ -1699,12 +1743,15 @@ export function TopoTab({
           <TrialPanel
             title="Plan & Points"
             stepLabel={trialStepLabel("plan")}
+            status={trialDoorStatus("plan", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
             footer={
               <TrialDoorNav
                 door="plan"
+                dirty={trialDoorDirty("plan", resolved, statsChipSize)}
                 onBack={() => setOpenCorner("hub")}
-                onNext={(key) => setOpenCorner(key)}
+                onNext={openTrialDoor}
+                onReset={() => update(trialDoorPatch("plan"))}
               />
             }
           >
@@ -2438,31 +2485,112 @@ function trialDoorStatus(
   }
 }
 
+/** Defaults for one Control panel door only (placebo Reset this door). */
+function trialDoorPatch(key: TrialDoorKey): Partial<RenderSettings> {
+  const d = defaultRenderSettings;
+  switch (key) {
+    case "contours":
+      return {
+        mode: d.mode,
+        firstContour: d.firstContour,
+        contourStep: d.contourStep,
+        interval: d.contourStep,
+        contourCount: d.contourCount,
+        lineThickness: d.lineThickness,
+        showContours: d.showContours,
+      };
+    case "colors":
+      return { palette: d.palette, reversePalette: d.reversePalette };
+    case "text":
+      return {
+        showLabels: d.showLabels,
+        declutterLabels: d.declutterLabels,
+        decimalPlaces: d.decimalPlaces,
+        pointLabelBackground: d.pointLabelBackground,
+        pointLabelFontSize: d.pointLabelFontSize,
+        pointLabelWeight: d.pointLabelWeight,
+        pointLabelColor: d.pointLabelColor,
+      };
+    case "legend":
+      return { showLegend: d.showLegend, legendScale: d.legendScale };
+    case "highlow":
+      return { showHighLow: d.showHighLow, highLowPinSize: d.highLowPinSize };
+    case "plan":
+      return { showPlan: d.showPlan, showPoints: d.showPoints, pointsOpacity: 1 };
+  }
+}
+
+function trialDoorDirty(
+  key: TrialDoorKey,
+  settings: RenderSettings,
+  statsChipSize: number,
+): boolean {
+  const d = defaultRenderSettings;
+  switch (key) {
+    case "contours":
+      return (
+        settings.mode !== d.mode ||
+        settings.firstContour !== d.firstContour ||
+        settings.contourStep !== d.contourStep ||
+        settings.contourCount !== d.contourCount ||
+        settings.lineThickness !== d.lineThickness ||
+        settings.showContours !== d.showContours
+      );
+    case "colors":
+      return settings.palette !== d.palette || settings.reversePalette !== d.reversePalette;
+    case "text":
+      return (
+        settings.showLabels !== d.showLabels ||
+        settings.declutterLabels !== d.declutterLabels ||
+        settings.decimalPlaces !== d.decimalPlaces ||
+        settings.pointLabelBackground !== d.pointLabelBackground ||
+        settings.pointLabelFontSize !== d.pointLabelFontSize ||
+        settings.pointLabelWeight !== d.pointLabelWeight ||
+        settings.pointLabelColor !== d.pointLabelColor
+      );
+    case "legend":
+      return settings.showLegend !== d.showLegend || (settings.legendScale ?? 1) !== d.legendScale;
+    case "highlow":
+      return (
+        settings.showHighLow !== d.showHighLow ||
+        settings.highLowPinSize !== d.highLowPinSize ||
+        Math.round(statsChipSize) !== DEFAULT_STATS_CHIP_SIZE
+      );
+    case "plan":
+      return settings.showPlan !== d.showPlan || settings.showPoints !== d.showPoints;
+  }
+}
+
 /**
- * Placebo shell in FS/DS vocabulary (rounded-xl card/95, primary CTA) with
- * clearer hierarchy: step label, scroll body, sticky thumb nav.
+ * Placebo shell — fixed height so Back/forward stay under the thumb; status
+ * under the title; FS/DS card chrome.
  */
 function TrialPanel({
   title,
   stepLabel,
+  status,
   onClose,
   children,
   footer,
 }: {
   title: string;
   stepLabel?: string;
+  status?: string;
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
   return (
-    <div className="absolute z-30 top-12 right-2 flex w-64 max-h-[calc(100%-4rem)] flex-col overflow-hidden rounded-xl border bg-card/95 shadow-2xl backdrop-blur landscape-short:top-2">
+    <div className="absolute z-30 top-12 right-2 flex h-[min(26rem,calc(100%-4.5rem))] w-64 flex-col overflow-hidden rounded-xl border bg-card/95 shadow-2xl backdrop-blur landscape-short:top-2">
       <div className="flex shrink-0 items-start justify-between gap-2 border-b px-3 pb-2 pt-2.5">
         <div className="min-w-0">
           {stepLabel ? (
             <p className="text-[10px] font-medium text-muted-foreground">{stepLabel}</p>
           ) : null}
           <h2 className="text-sm font-semibold leading-tight text-foreground">{title}</h2>
+          {status ? (
+            <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{status}</p>
+          ) : null}
         </div>
         <button
           type="button"
@@ -2481,15 +2609,19 @@ function TrialPanel({
   );
 }
 
-/** Back → hub. Next uses primary (FS CTA). Dots show place in the walk. */
+/** Back → hub. Destination name on a clear blue peer button. Reset this door. */
 function TrialDoorNav({
   door,
+  dirty,
   onBack,
   onNext,
+  onReset,
 }: {
   door: TrialDoorKey;
+  dirty?: boolean;
   onBack: () => void;
   onNext: (key: TrialDoorKey) => void;
+  onReset?: () => void;
 }) {
   const idx = TRIAL_DOORS.findIndex((d) => d.key === door);
   const next = idx >= 0 && idx < TRIAL_DOORS.length - 1 ? TRIAL_DOORS[idx + 1] : null;
@@ -2518,7 +2650,7 @@ function TrialDoorNav({
           <button
             type="button"
             onClick={() => onNext(next.key)}
-            className="h-9 flex-1 truncate rounded-md border border-primary/25 bg-primary/15 px-2.5 text-xs font-medium text-primary hover:bg-primary/25"
+            className="h-9 flex-1 truncate rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
           >
             {next.name} →
           </button>
@@ -2526,12 +2658,22 @@ function TrialDoorNav({
           <button
             type="button"
             onClick={onBack}
-            className="h-9 flex-1 truncate rounded-md border border-primary/25 bg-primary/15 px-2.5 text-xs font-medium text-primary hover:bg-primary/25"
+            className="h-9 flex-1 truncate rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
           >
             Done
           </button>
         )}
       </div>
+      {onReset ? (
+        <button
+          type="button"
+          onClick={onReset}
+          disabled={!dirty}
+          className="w-full text-center text-[10px] text-muted-foreground underline-offset-2 hover:underline disabled:opacity-40 disabled:no-underline"
+        >
+          Reset this door
+        </button>
+      ) : null}
     </div>
   );
 }
