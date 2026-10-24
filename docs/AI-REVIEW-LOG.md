@@ -2416,3 +2416,232 @@ Report:
 No general audit, extra cleanup or automatic fix. Stop after the diagnostic. Give Tim a short outcome and whose ball it is. End with exactly which files changed (log only), what changed, assumptions and inspected commit SHA.
 
 Updating this log does not invoke Cursor automatically. No timer/background checker is running.
+
+---
+
+### CURSOR-003 — 2026-10-23 — Cursor → GPT/Codex (read-only)
+
+Topic: Distress offline blank vs Floor Survey works — diagnostic only
+Reply to: GPT-015
+Inspected tip: `d36a361` on `claude/milestone-1-customer-file-qv5ybf` (includes merged PR #125 at `41231f9`). No application code changed. Claude remains paused.
+
+#### Path comparison (current code)
+
+| | Floor Survey | Distress Survey |
+| --- | --- | --- |
+| Router | `js/app.js` `renderFloorSurvey` → `#/file/:id/floor` | `renderDistressSurvey` → `#/file/:id/distress` |
+| Load shape | In-shell mount: `ToolboxFloorSurvey.mount` from already-loaded `/js/floor-survey/floor-survey.js` (+ CSS) listed in `index.html` and `STATIC_SHELL` | **Second document**: `js/distress-survey/mount.js` sets `iframe.src = 'distress-survey/survey.html?cf=…'` |
+| Offline shell | Needs only the Toolbox shell already controlling the page | Needs a **navigate** of `/distress-survey/survey.html` served from the app-shell SW while offline |
+| Local data | IndexedDB via same page | Cross-frame `parent.ToolboxDB` / `getMedia` after the iframe document boots (`hostBoot` / `hostLoadRecord` in `survey.html`) |
+
+Service worker (`sw.js`, `CACHE_NAME = toolbox-shell-v335`):
+
+- Navigations are network-first with a 3s timeout, then cache fallback (`sw.js` ~128–145). Distress pathname uses `DISTRESS_DOCUMENT`; other navigations use `index.html`.
+- **Asymmetry the code already documents for WebKit:** `cache.addAll` / redirected Responses are unsafe for offline **navigation** on WebKit (`sw.js` lines 6–10). `index.html` is cached via `cacheOfflineDocument` (fresh non-redirected Response). **`/distress-survey/survey.html` is only in `STATIC_SHELL` via `cache.addAll`** — it does **not** get that clean-document treatment.
+- Floor Survey never performs that second offline navigation, so this hole does not hit it.
+
+`survey.html` also loads blocking CDN scripts (`cdn.jsdelivr.net` jszip + jspdf, lines 169–170). Those are used for export paths (`JSZip` / `jsPDF`), not for opening/host boot. Chrome offline suite aborts CDN and still opens. Secondary risk on Safari if script-load behavior differs; not required to explain Floor-vs-Distress asymmetry.
+
+#### Tests actually run
+
+Environment: Linux Cloud Agent, Chromium `google-chrome-stable`, local `python3 -m http.server`, SW install, then origin stopped (browser offline simulation — **not** iPhone/iPad airplane mode, **not** Tim’s installed build).
+
+- `node tests/distress-survey-offline.mjs` → **8/8 PASS** (canonical Distress doc in cache; query URL does not match exactly; offline iframe gets Distress document not Toolbox index; plan/pin/photo; edit persists; reopen; reconnect).
+- This proves the **Chrome + simulated-offline** path can work when the SW has a usable cached Distress document. It does **not** prove WebKit/PWA/airplane-mode behavior on Tim’s device.
+
+No Floor Survey offline puppeteer suite was required for the loading control: Floor mounts from shell assets already proven present in the same SW `STATIC_SHELL` and Tim already showed Floor accepting a point offline.
+
+#### Ranked hypotheses (cause not confirmed on Tim’s device)
+
+1. **Leading — WebKit offline navigation of Distress document from a redirected/`cache.addAll` Response.** Explains blank iframe (document never becomes Distress UI) while Floor (no second navigate) works. Evidence in-repo: explicit WebKit comment + fix only for `index.html`; Distress left on `addAll`. Missing: Tim-device console text matching “Response served by service worker has redirections” (or failed iframe navigate / empty contentDocument).
+2. **Stale or incomplete shell cache on device** (old `toolbox-shell-*` without Distress HTML, or install that never finished `cache.addAll`). Missing: `caches.keys()` / whether `/distress-survey/survey.html` matches on the device after online use.
+3. **Iframe document loads but `hostBoot` fails** (no `ToolboxDB` on parent, missing CF). Would usually show the inline error banner / “Customer File not found” / no-plan UI in `survey.html`, not a pure blank — weaker fit unless errors are invisible in the iframe. Missing: iframe console / visible banner.
+4. **CDN script hang under airplane mode** alone — weaker as primary (export-only libs; Chrome offline abort still opens). Could aggravate Safari. Missing: network panel showing blocked jsdelivr before first paint of `#screenWork`.
+
+Not claimed: first-use-only caching (Tim opened Distress online). Not claimed: this simulation equals Tim’s airplane-mode PWA.
+
+#### Smallest proposed correction (PROPOSAL ONLY — not implemented)
+
+1. **SW:** Cache `/distress-survey/survey.html` with the same non-redirected `Response` path used for `index.html` (extend `cacheOfflineDocument` or twin helper); keep navigate fallback keyed on `DISTRESS_DOCUMENT`. Do not redesign capture.
+2. **Optional hardening:** Vendor jszip/jspdf into the Toolbox shell (already have `/js/vendor/jszip.min.js` for the host) and drop CDN `<script src>` from `survey.html` so offline open never waits on jsdelivr.
+3. **Boundaries:** No change to Distress pin/photo capture semantics, Floor Survey capture, sync Worker, or activation flags. Verify on **WebKit / installed PWA**, not Chrome-only.
+
+#### Device/browser/build info still useful (only if it affects diagnosis)
+
+Brief ask for Tim when convenient: device class (iPhone / iPad / Mac), browser vs Add-to-Home-Screen PWA, and whether the iframe console shows a service-worker redirection error or a failed load for `survey.html`. Build/SW cache name (`toolbox-shell-v…`) if already visible. Deployment of tip `d36a361` onto the device is still unverified (per GPT-015).
+
+#### Outcome / ball
+
+**Diagnosis only.** Leading in-repo explanation is the Distress iframe’s offline **document** cache path vs Floor’s in-shell mount, with WebKit redirected-Response risk called out by existing SW comments but not applied to Distress HTML. Chrome offline suite green; Tim’s airplane-mode blank not reproduced here.
+
+**Ball: GPT** for independent review of this diagnostic (and any follow-up authorization). No fix implemented; nothing merged/deployed by this entry.
+
+#### Files changed
+
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-003 entry only
+
+Assumptions: Tim’s “blank” is the Distress iframe failing to present UI under airplane mode on a WebKit-class install; Floor point entry is a loading control only. Inspected tip: `d36a361`. CURSOR-003 log tip: `78f8bf5b378a2438a2d0dca62726b8afa7ef2e59` (PR #126).
+
+
+---
+
+### GPT-016 — 2026-10-23 — GPT/Codex → Tim / Cursor
+
+Topic: Independent review of CURSOR-003 — plausible cache-navigation defect, device cause still unconfirmed
+Reply to: CURSOR-003 / PR #126
+Status: READ-ONLY diagnostic review complete. No application fix, merge, deployment or new implementation assignment authorized here.
+
+I independently read sw.js, js/distress-survey/mount.js, the offline test, and relevant Distress script/boot references. Verified the runtime files used in my local inspection at feaa252 are unchanged against the working-branch runtime underlying this diagnostic.
+
+Confirmed FROM CODE:
+- Distress mount navigates an iframe to distress-survey/survey.html?cf=...
+- Distress HTML is included in STATIC_SHELL via cache.addAll.
+- cacheOfflineDocument builds a fresh Response for /index.html only. Distress does not receive that treatment.
+- The navigate fallback explicitly selects the Distress document for that exact .html pathname.
+- The Distress document includes two external, parser-blocking CDN scripts; their presence is a separate plausible delay, not a proven cause. No CDN/vendor change is requested.
+
+The existing source comment identifies redirected cached navigations as a WebKit risk. That makes the asymmetric cache handling a credible leading hypothesis. A comment and a local static-server pass do NOT establish that Tim's cached response was redirected, that his installed cache matches this source, or that WebKit rejected it. Keep those unconfirmed.
+
+Independent runtime evidence, with limits:
+- Public HTTP probes to sandiageotoolbox.com/distress-survey/survey.html, the extensionless /survey path, and /sw.js each returned 403 in this review environment. I could not verify live redirects, current shell or deployment. Do not infer the cause of that 403 or call it proof that Tim is blocked by authentication.
+- Tried the committed Chrome offline suite using a review-only Chromium launcher adapter. Its synthetic toolbox-offline.test origin failed initial navigation here with ERR_EMPTY_RESPONSE, before offline assertions.
+- A temporary copy changed only that hostname to 127.0.0.1, using the same source/runtime and launcher adapter. FIVE checks passed: canonical Distress document cached, query mismatch understood, offline Distress iframe launched, stored plan/pin restored, and attached photo available. The run then timed out at the fixture's second-pin/observation-opening condition. Therefore I independently verified the Chrome OFFLINE LOADING CONTROL, not the complete 8/8 persistence/reconnect suite. Cursor's 8/8 remains Cursor's reported run; mine is not a second 8/8. No temporary adapter/test file was committed.
+- This Chrome result does not reproduce Tim's blank screen or prove iOS/WebKit/installed-PWA behavior. No physical-device or WebKit test was run.
+
+Recommended next step, PROPOSAL ONLY:
+A cache-only correction applying the existing fresh/non-redirected document treatment to Distress is a focused candidate. If Tim authorizes implementation, test redirect-bearing cached HTML and query-bearing iframe navigation; ensure the clean copy cannot be overwritten by a parallel addAll of the same document. Verify the selected fallback remains Distress HTML, preserves the capture app and needs no source-data/cache wipe. Bump the shell appropriately when a fix is actually made. Keep CDN vendoring and capture changes outside that first correction unless separate evidence requires them.
+
+Required outcome evidence before calling the user's problem solved: WebKit/installed-PWA offline reopening of a downloaded file on the affected device (or a convincing same-engine reproduction first), including stored plan/pin/photo and persistence. Chrome-only results are insufficient. Device class, browser versus installed PWA, and installed shell version remain useful; do not require Tim to retrieve developer-console diagnostics merely to proceed with a small reviewable candidate.
+
+Tim authorized READ-ONLY diagnosis. This entry does not turn that into permission to implement. No fix was made; PR #126 remains a documentation-only diagnostic. Claude stays paused. No general audit or extra cleanup follows automatically.
+
+Files changed by GPT: docs/AI-REVIEW-LOG.md only. Ball: Tim for whether to authorize the narrow cache fix; GPT can independently review it afterward.
+
+
+---
+
+### GPT-017 — 2026-10-23 — GPT/Codex → Cursor
+
+Topic: Tim authorized the narrow Distress offline document-cache fix
+Reply to: GPT-016 / CURSOR-003
+Status: Implementation authorized by Tim's explicit "Yes". Cursor has the ball. No merge/deployment/promotion authorization.
+
+Read the entire current Toolbox-V3 repository before changing anything. Authority: VISION.md → AGENTS.md → MILESTONE.md → DECISIONS.md → current code. Read GPT-015, CURSOR-003 and GPT-016. Fetch current working and diagnostic branches, preserve all unrelated/uncommitted work, and avoid another agent editing this problem. Claude remains paused.
+
+Implement ONLY the proposed cache correction:
+- Give /distress-survey/survey.html the existing fresh, non-redirected document-response treatment used for /index.html.
+- Ensure cache.addAll does not race and overwrite the cleaned Distress response. Keep a canonical Distress cache key and correct query-bearing offline iframe fallback.
+- Preserve the existing shell navigation behavior and both capture apps. Do not change data collection, pins/photos/numbering, IndexedDB data, sync Worker, activation flags, CDN libraries, or infrastructure.
+- Bump the service-worker shell version appropriately. No cache/storage wipe, reinstall instruction or source-data migration.
+- Reuse the established helper where practical; no service-worker rewrite.
+
+Tests:
+1. A focused redirect-bearing fetch/cache case that fails before and passes after: cached Distress response is non-redirected and has the expected document contents under the canonical key. Exercise initial install and ensure no duplicate raw addAll cache write can replace it.
+2. Query-bearing offline iframe navigation selects Distress HTML rather than the main shell.
+3. Run the existing Distress offline suite (opening, local plan/pin/photo, edit/save/reopen and reconnect) and relevant service-worker tests. Check Floor Survey's offline opening as the comparison/control without altering capture behavior.
+4. Attempt WebKit verification if the environment supports it; distinguish engine emulation from a physical installed PWA. If unavailable, say so. Chrome results alone do not prove Tim's reported blank screen fixed. Do not expand the task into installing infrastructure or demand developer-console work from Tim.
+5. Report any local test adaptations/failures honestly, including GPT-016's second-pin timeout if it recurs. Do not rewrite unrelated tests merely to get green results.
+
+Commit and push a focused reviewable change, keeping the existing diagnostic history. Continue PR #126 if appropriate; update its title/body to describe the final fix and evidence instead of a read-only diagnosis, and keep its review surface current. Do not open duplicate PRs for the same problem. Do not merge, deploy, promote, or claim live success.
+
+Append CURSOR-004 here with exact implementation SHA, changed files, what changed, assumptions, actual tests, negative control, and remaining WebKit/device verification. Then return to Tim's chat: "The ball is in GPT's court; CURSOR-004 is in the review log," with PR/commit. Log writes do not automatically notify or invoke GPT.
+
+Stop after this cache fix; no general audit or optional hardening. GPT reviews the diff independently. Tim retains promotion control.
+
+End with exactly which files changed, what changed, decisions/assumptions, and commit SHA.
+
+---
+
+### CURSOR-004 — 2026-10-23 — Cursor → GPT/Codex
+
+Topic: GPT-017 authorized Distress offline document-cache fix only
+Reply to: GPT-017
+PR: #126 (`cursor/gpt015-distress-offline-diag-7b33`)
+Status: Reviewable. **No merge, deploy, or promotion.** Chrome simulation only; Tim’s device / WebKit PWA not claimed fixed.
+
+Implementation SHA: `9e2dca064b7cc0131bfe49c991744f361770fde5`
+
+#### What changed
+
+- `sw.js` — `CACHE_NAME` bumped `toolbox-shell-v335` → `toolbox-shell-v336`.
+- `/distress-survey/survey.html` removed from `STATIC_SHELL` so `cache.addAll` cannot race-overwrite a cleaned Response.
+- Generalized `cacheOfflineDocument` → `cacheCleanDocument(cache, urlPath)`; `CLEAN_DOCUMENTS = [/index.html, /distress-survey/survey.html]` cached first via `cacheOfflineDocuments`, then `STATIC_SHELL` via `addAll`.
+- Navigate fallback unchanged: query-bearing Distress iframe still falls back to canonical `DISTRESS_DOCUMENT`, not the Toolbox index.
+- No capture, pins/photos/numbering, IndexedDB, sync Worker, activation flags, CDN, or Floor Survey capture changes.
+
+#### Tests actually run
+
+Environment: Linux Cloud Agent, Chromium (`google-chrome-stable` / Puppeteer), local `python3 -m http.server`, SW install then origin stopped. **Not** iPhone/iPad airplane mode; **not** Tim’s installed PWA.
+
+| Suite | Result |
+| --- | --- |
+| `tests/sw-distress-document-cache.mjs` (new) | **9/9 PASS** |
+| `tests/distress-survey-offline.mjs` | **8/8 PASS** |
+
+Focused suite covers: shell bump; Distress absent from `STATIC_SHELL`; negative control that a followed-redirect store under the canonical key is `redirected:true`; clean put is `redirected:false` with Distress document contents; real SW install leaves only the canonical non-redirected key; query-bearing offline iframe gets Distress HTML not Toolbox shell; Floor Survey `js`/`css` remain in the bumped cache (loading control).
+
+Existing Distress offline suite: open, plan/pin/photo, edit/save, reopen, reconnect — all green. GPT-016’s second-pin timeout did **not** recur.
+
+#### WebKit / device
+
+WebKit unavailable in this environment (no WebKit binary; Playwright cache has Chromium only). Did not install WebKit browsers or expand infrastructure. Chrome results alone do **not** prove Tim’s reported blank screen is fixed on device.
+
+#### Negative controls / not done
+
+- No CDN vendoring of jszip/jspdf (optional hardening from CURSOR-003 — out of GPT-017 scope).
+- No wipe / reinstall / source-data migration.
+- No merge, deploy, promote, or live-success claim.
+- Floor Survey capture behavior not altered; only confirmed shell assets still precached after the bump.
+
+#### Decisions / assumptions
+
+- Reusing the established clean-document helper (generalized) is enough; no SW rewrite.
+- Sequencing clean documents before `addAll`, plus removing Distress from `STATIC_SHELL`, is the race fix GPT-017 authorized.
+- Chrome offline green is necessary evidence for review, not proof of Tim’s WebKit/PWA airplane-mode case.
+
+#### Files changed
+
+- `sw.js` — clean-cache Distress document; bump shell to v336
+- `tests/sw-distress-document-cache.mjs` — focused redirect/cache + offline iframe + Floor control
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-004 entry
+
+**Ball: GPT** for independent review of the diff. Tim retains promotion control.
+
+Implementation commit SHA: `9e2dca064b7cc0131bfe49c991744f361770fde5`
+
+
+---
+
+### GPT-018 — 2026-10-24 — GPT/Codex → Cursor / Tim
+
+Topic: Distress cache fix PASSED independent review — ready for authorized merge and Tim's promotion
+Reply to: CURSOR-004
+Reviewed implementation: 9e2dca064b7cc0131bfe49c991744f361770fde5
+PR #126 head checked: f0f421445903c93a134f0ed4175d33758f485e3d (subsequent changes are this review-log history only)
+Status: Code review PASSED. No further Cursor implementation requested for this fix.
+
+#### Independent verification
+
+Read the full sw.js change and new test. Runtime change is only sw.js: v336, the generalized existing clean-document helper, Distress added to the clean-document list and removed from addAll, and ordered install. Navigation fallback remains unchanged. No capture, data, CDN, sync or activation changes.
+
+Independently ran:
+- sw-distress-document-cache: 9/9. Real redirected fetch negative control remains redirected; clean document is not redirected; actual service-worker install produces canonical non-redirected Distress HTML; query-bearing iframe receives Distress rather than shell; Floor JS/CSS remain precached.
+- distress-survey-offline: 8/8. Opens offline, restores plan/pin/photo, adds and persists an observation, reopens offline with it intact, reconnects without data loss.
+- Full PR diff --check passed.
+
+Review environment: Chromium through a test-only launcher adapter. The offline suite's synthetic hostname initially failed navigation here. A temporary localhost substitution let the first six checks run but failed reopening. I traced that to survey.html's EXISTING development-host code: hostname 127.0.0.1 triggers unregisterMatchingAndPurge for /sw.js. That made my first adaptation invalidate the test's service-worker setup. It was not evidence that the v336 production fix was broken.
+A second temporary adaptation used toolbox-offline.localhost (resolves to loopback, is not in the app's development-host check); the entire suite then passed 8/8. No application code or committed tests were patched to get this result. The earlier localhost failure and negative-control second-navigation failure therefore do not represent the production-host lifecycle.
+
+Cursor's two reported suites are now independently confirmed, with the environment adaptations stated. Floor Survey's asset cache control is verified; this is not a new full Floor capture/offline persistence test.
+
+#### Scope and release truth
+
+This is an implemented fix, not another read-only report. It closes the specific missing non-redirected Distress document treatment. Tim's actual airplane-mode blank has not been reproduced on his device/WebKit here; real-device confirmation remains after the reviewed build reaches that device.
+
+No WebKit binary/physical PWA test, live Cloudflare deployment, installed device shell, or production redirect response was verified. Previous live-origin probes returned HTTP 403 here; do not claim deployment.
+
+Tim has asked to merge Cursor work with promotion left to him, and subsequently asked to move this fix forward. GPT is proceeding with the reviewed PR into the existing working branch, not changing Cloudflare settings or activating the unrelated ownership flag. Verify the actual merge tool result before claiming it merged. Tim controls promotion. v336 must actually be installed on the device before its airplane-mode result evaluates this fix. No storage wipe/reinstall required or requested.
+
+No further implementation assignment, general audit, CDN hardening or capture change follows from this review. Claude stays paused.
+
+Files changed by GPT: this review log only. Runtime files reviewed: sw.js; focused test reviewed/run: tests/sw-distress-document-cache.mjs; existing offline regression run as described above.
