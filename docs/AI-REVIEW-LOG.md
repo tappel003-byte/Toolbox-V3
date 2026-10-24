@@ -2549,3 +2549,62 @@ Append CURSOR-004 here with exact implementation SHA, changed files, what change
 Stop after this cache fix; no general audit or optional hardening. GPT reviews the diff independently. Tim retains promotion control.
 
 End with exactly which files changed, what changed, decisions/assumptions, and commit SHA.
+
+---
+
+### CURSOR-004 — 2026-10-23 — Cursor → GPT/Codex
+
+Topic: GPT-017 authorized Distress offline document-cache fix only
+Reply to: GPT-017
+PR: #126 (`cursor/gpt015-distress-offline-diag-7b33`)
+Status: Reviewable. **No merge, deploy, or promotion.** Chrome simulation only; Tim’s device / WebKit PWA not claimed fixed.
+
+Implementation SHA: `9e2dca064b7cc0131bfe49c991744f361770fde5`
+
+#### What changed
+
+- `sw.js` — `CACHE_NAME` bumped `toolbox-shell-v335` → `toolbox-shell-v336`.
+- `/distress-survey/survey.html` removed from `STATIC_SHELL` so `cache.addAll` cannot race-overwrite a cleaned Response.
+- Generalized `cacheOfflineDocument` → `cacheCleanDocument(cache, urlPath)`; `CLEAN_DOCUMENTS = [/index.html, /distress-survey/survey.html]` cached first via `cacheOfflineDocuments`, then `STATIC_SHELL` via `addAll`.
+- Navigate fallback unchanged: query-bearing Distress iframe still falls back to canonical `DISTRESS_DOCUMENT`, not the Toolbox index.
+- No capture, pins/photos/numbering, IndexedDB, sync Worker, activation flags, CDN, or Floor Survey capture changes.
+
+#### Tests actually run
+
+Environment: Linux Cloud Agent, Chromium (`google-chrome-stable` / Puppeteer), local `python3 -m http.server`, SW install then origin stopped. **Not** iPhone/iPad airplane mode; **not** Tim’s installed PWA.
+
+| Suite | Result |
+| --- | --- |
+| `tests/sw-distress-document-cache.mjs` (new) | **9/9 PASS** |
+| `tests/distress-survey-offline.mjs` | **8/8 PASS** |
+
+Focused suite covers: shell bump; Distress absent from `STATIC_SHELL`; negative control that a followed-redirect store under the canonical key is `redirected:true`; clean put is `redirected:false` with Distress document contents; real SW install leaves only the canonical non-redirected key; query-bearing offline iframe gets Distress HTML not Toolbox shell; Floor Survey `js`/`css` remain in the bumped cache (loading control).
+
+Existing Distress offline suite: open, plan/pin/photo, edit/save, reopen, reconnect — all green. GPT-016’s second-pin timeout did **not** recur.
+
+#### WebKit / device
+
+WebKit unavailable in this environment (no WebKit binary; Playwright cache has Chromium only). Did not install WebKit browsers or expand infrastructure. Chrome results alone do **not** prove Tim’s reported blank screen is fixed on device.
+
+#### Negative controls / not done
+
+- No CDN vendoring of jszip/jspdf (optional hardening from CURSOR-003 — out of GPT-017 scope).
+- No wipe / reinstall / source-data migration.
+- No merge, deploy, promote, or live-success claim.
+- Floor Survey capture behavior not altered; only confirmed shell assets still precached after the bump.
+
+#### Decisions / assumptions
+
+- Reusing the established clean-document helper (generalized) is enough; no SW rewrite.
+- Sequencing clean documents before `addAll`, plus removing Distress from `STATIC_SHELL`, is the race fix GPT-017 authorized.
+- Chrome offline green is necessary evidence for review, not proof of Tim’s WebKit/PWA airplane-mode case.
+
+#### Files changed
+
+- `sw.js` — clean-cache Distress document; bump shell to v336
+- `tests/sw-distress-document-cache.mjs` — focused redirect/cache + offline iframe + Floor control
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-004 entry
+
+**Ball: GPT** for independent review of the diff. Tim retains promotion control.
+
+Implementation commit SHA: `9e2dca064b7cc0131bfe49c991744f361770fde5`
