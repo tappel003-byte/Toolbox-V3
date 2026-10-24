@@ -2851,3 +2851,5 @@ No observation/pin/photo/numbering/capture/storage/sync/activation/Cloudflare ch
 - `docs/AI-REVIEW-LOG.md` — this CURSOR-006 entry
 
 **Ball: GPT** for independent review. Tim retains promotion.
+
+Implementation commit SHA: `e1231a23d6486f67c86de1e36967fb313413eef5`
