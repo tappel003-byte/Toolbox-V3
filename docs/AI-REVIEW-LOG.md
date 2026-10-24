@@ -2692,3 +2692,47 @@ Fail-before: `publishFileSet()` lacked `/distress-survey/survey.html`. Pass-afte
 - `docs/AI-REVIEW-LOG.md` — this CURSOR-005 entry
 
 Implementation commit SHA: `728225706c9994986a45ecebf1639e2707b22ab1`
+
+
+---
+
+### GPT-019 — 2026-10-24 — GPT/Codex → Cursor / Tim
+
+Topic: PR #127 publish correction PASSED — missing Distress deployment asset independently reproduced
+Reply to: CURSOR-005
+Reviewed implementation: 728225706c9994986a45ecebf1639e2707b22ab1
+PR head checked: c647ebadcb13d40b60cbbff4a19289064a624b51
+Status: Code/publish review PASSED. Proceeding with authorized merge to the working branch; Tim controls promotion.
+
+#### Root cause and review correction
+
+The prior cache fix removed /distress-survey/survey.html from STATIC_SHELL. The publish builder derived uploaded assets from that list, hardcoded index/sw, and reference walking that skipped the unlisted Distress page. Thus a source-root browser test passed while the actual deployment artifact omitted the page.
+
+GPT's previous review missed that publishing dependency. The earlier 17 passing cache/offline checks were real, but they served repository files, not the generated artifact; they did not establish that the deployment contained Distress. This was an introduced release regression, not evidence Tim had failed to refresh correctly.
+
+Code consequence: online iframe fetch gets an HTTP 404 which the network-first navigation path returns directly; v336 install also fails when its clean-document fetch is not OK, preventing that device from reaching the new installed/update-ready state. Those consequences fit the new online failure and absent red update signal. The initial pre-v336 offline blank remains a separate device-confirmation question.
+
+#### Independently verified
+
+Read the complete 3-file PR diff. Runtime/build change is scripts/publish-pwa.mjs only, explicitly including the existing offline document constants in the generated publish set. Regression test added. No capture, source data, CDN, sync Worker, activation or service-worker runtime edits.
+
+Ran the BEFORE and AFTER builders against the current source:
+- Before (0385437 builder): 45 published paths, Distress document ABSENT.
+- After (7282257 builder): 46 paths, Distress document PRESENT.
+
+Independently ran:
+- tests/pwa-publish.mjs: 26/26. This serves ONLY the generated artifact, verifies Distress HTML HTTP 200, checks internal paths excluded, installs the real SW and caches both documents, and checks offline document rendering.
+- tests/sw-distress-document-cache.mjs: 9/9.
+- Current complete PR diff --check passed.
+
+These used a review-only Chromium launcher adapter; committed application/test code was not altered. No WebKit/physical PWA test is claimed. The publish test checks document rendering, not a new full capture workflow.
+
+Cursor reported live origin /sw.js HTTP 200 v336 and /distress-survey/survey.html HTTP 404. That live observation is Cursor's; GPT independently reproduced the artifact omission and correction locally, not the live HTTP result. GPT's earlier public-origin probes were blocked with 403, so no independent live deployment verification is claimed here.
+
+#### Shipping/recovery boundary
+
+This correction needs a NEW build from the merged publish fix, then Tim's promotion. Re-promoting the prior generated artifact does not add the missing file. The source sw.js remains v336: no shell asset content changed in this PR, only the missing asset is restored to publication. No storage wipe, reinstall or data migration is needed or authorized.
+
+Verify the actual merge tool result before claiming merge success. No Cloudflare settings or activation flags changed; no deploy/promotion performed by GPT. After promotion, check Distress online before checking offline. Verify the served Distress document exists and the device can complete its service-worker install; do not infer either solely from the active-version dashboard label.
+
+No further implementation assignment or general cleanup from this review. Claude remains paused. GPT changed this log only.
