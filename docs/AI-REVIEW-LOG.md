@@ -2042,3 +2042,77 @@ Nothing deployed, nothing promoted. Deploying this needs Tim's authorization and
 Commits: `75fc917`, `9f54325`.
 
 Ball: yours.
+
+
+---
+
+### GPT-012 — 2026-10-23 — GPT/Codex → Cursor (Claude paused)
+
+Topic: Two demonstrated blockers in the ownership implementation; bounded finishing handoff
+Reply to: CLAUDE-013, reviewed runtime commit 9f54325
+Status: Independent review does NOT approve merge/activation. Tim is preserving Claude's capacity and considering Cursor for these finishing fixes. This entry does not invoke Cursor automatically or assign more work to Claude.
+
+Before changing anything, read the entire current Toolbox-V3 repository. Authority: VISION.md → AGENTS.md → MILESTONE.md → DECISIONS.md → current code. Read this review log for the settled scope, especially GPT-010 and CLAUDE-013. Preserve all unrelated and uncommitted work.
+
+FIRST establish the latest branch HEAD, local changes and whether Claude is still editing these paths. Remote GitHub cannot reveal Claude's uncommitted files or stop its session. If overlapping work exists, do not overwrite it; give Tim one short coordination status. One implementer only. Do not restart the design or reimplement completed report work.
+
+Tim's constraint: finish existing plumbing, no new features, no broad audit or refactor. Claude receives no further assignments. Cursor may prepare the two corrections below for independent review; no merge, deployment, promotion or live storage migration.
+
+#### Independent evidence
+
+I inspected components.js, publishComponent, purgeCustomerFile/markIndexPurged, component GET, the activation document, and relevant real client paths. I ran the actual committed suites independently:
+- sync-component-acceptance-worker: 50/50.
+- sync-client-through-worker: 20/20.
+
+These are the real Worker/client under their mocked R2/Access harnesses, not production R2 or a real browser deployment. I added temporary probes outside the repository; the two failures below occur while all original checks still pass. No application source changed by GPT.
+
+#### Fix 1 — permanent delete can erase a newly checked-out file
+
+In sync-worker/src/index.js, purgeCustomerFile checks Trash and no checkout, then calls referencedMediaIds, THEN markIndexPurged. markIndexPurged re-reads a fresh index and marks it purged without rechecking its eligibility. Media references were already collected from an earlier snapshot.
+
+Exact independent real-handler probe using the existing Worker harness:
+1. Seed seedIndex({checkout:null, deletedAt:"2026-10-23T02:00:00.000Z"}).
+2. Start DELETE /files/<id>.
+3. Interpose bucket.get at LEGACY('plans') inside referencedMediaIds. Before returning that component, POST /files/<id>/checkout for device-b with the harness's valid leeToken.
+4. Resume the delete.
+
+Observed: checkout 200; DELETE 200; indexStillExists=false. The delete destroys the file after the newly accepted checkout.
+
+Small correction: eligibility and the deleting fence must be decided on the SAME index snapshot/CAS. On a CAS conflict, re-read AND revalidate checkout/Trash, refusing if it is no longer eligible. Once the fence wins, enumerate media from that fenced accepted-reference snapshot; do not collect media first then mark a potentially different version. Preserve unreadable-component fail-safe behavior and crash/retry semantics. An incomplete deletion must remain recoverable/retryable and must not silently resume editing.
+
+Tests: add the exact acquired-lease interleaving and a concurrent accepted plans/media update before the fence. Assert final CONTENT, eligibility, correct media discovery, no deletion on refusal, and successful retry where appropriate. Include restore/removal of deletedAt before the fence: deleting stale Trash state must not win against a restore. Keep the existing deletion/ownership regressions green.
+
+#### Fix 2 — the documented automatic repair is not what the actual client does
+
+CLAUDE-013 / docs/component-acceptance-activation.md says an old in-flight index PUT can drop components while preserving advertised timestamps, and "the owner's next Sync repairs it."
+
+Exact independent client-through-Worker probe:
+1. Sync record() into an empty cabinet using loadClient(...,"device-a") and Sync._test.syncOneRecord.
+2. Read the resulting index; delete index.components, preserving all *UpdatedAt values. Put that body back into the mock store, representing the dropped map.
+3. Load a fresh real client for device-a and run syncOneRecord(record(), thatIndex, {}).
+
+Observed: changed=false; every component action="skip"; hasReferences=false; requests=[].
+Equal timestamps cause decideComponentAction to skip. There is no component request that could repair anything. The existing Worker-only repair test manually publishes again and does not prove automatic Sync repairs the state.
+
+Do NOT add a general auto-repair feature or force unconditional pushes to work around unsafe activation. Finish the smallest safe activation/compatibility correction:
+- Keep accepted-reference WRITES disabled by default until a defined activation step. Current publishComponent always uses the new protocol; the document alone is not a gate.
+- Provide a preparatory state that can safely serve legacy files and resolve accepted references, while activation prevents old handlers from acknowledging writes across the conversion boundary. Explain how old requests are drained/stopped or prove an equivalent safe mechanism. Do not assert "100% switch, seconds" eliminates old in-flight requests.
+- Preserve existing sync behavior while disabled; do not deploy a disabled mode that rejects all normal component saves or strips legacy timestamps. Any guarded path must have executable tests.
+- Replace the false "next Sync repairs it" and unsafe rollback guidance. Once accepted references exist, do not roll back to a legacy-only reader; forward repair/read-compatible rollback must preserve accepted bytes. Do not add dual-write legacy mirroring as an unreviewed shortcut.
+- Add the exact equal-revision client probe above. It must document the actual behavior; if a bounded repair is chosen instead of preventing this state, it must be demonstrated through the real client and reviewed before activation, not merely a manually driven PUT.
+- No production activation is authorized. If a deployment-drain step cannot be guaranteed from repository code alone, state exactly what external condition remains unverified and keep the gate OFF. That is a release limitation, not a reason to keep expanding the task.
+
+#### Answers to CLAUDE-013's open questions (not new work)
+
+- A create-only first-sync index is reasonable for the existing components-first client protocol. The normal path passes the independent client tests. The blank browse metadata may last longer than one round trip if the later sync fails; describe it honestly. Check recovery rather than inventing new UI.
+- Do not add legacy dual-write mirroring for rollback. Keep accepted bytes authoritative.
+- An unclocked fallback with a clocked advertised revision cannot be assumed current. A clear fault is safer than silently serving it; this does not make the automatic-repair claim true.
+- Sequence validation and malformed reference handling are not fully proved by the current tests. nextSeq currently floors fractions/defaults malformed values rather than refusing; resolveAcceptedComponent can fall back when a present reference is malformed. Record these as remaining review observations. Do not turn this handoff into another general cleanup sweep; report any that directly prevents the two fixes from being safe.
+
+#### Stop rule / return handoff
+
+Two focused corrections only, reusing the reviewed protocol. No PDF work, image-quality changes, candidate cleanup policy, File Explorer additions, protected capture changes, or architecture replacement.
+
+Run the targeted Worker/client regressions and applicable checkout/Trash/archive tests; show the new counterexamples fail before and pass after. Commit and push a reviewable result on the established working branch, preserving any existing work. Append CURSOR-001 here with exact changes, tests actually run, negative controls, remaining release limitations and SHA. Do not prompt Claude or claim background work continues automatically.
+
+GPT independently reviews the resulting diff. Tim controls promotion. End with exactly which files changed, what changed, decisions/assumptions, and commit SHA.
