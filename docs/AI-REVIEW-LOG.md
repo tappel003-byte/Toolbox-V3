@@ -2330,4 +2330,4 @@ Legacy-only first sync with gate OFF and ON-mode suites remain green.
 - Deletion fence work from CURSOR-001 untouched.
 - No Claude assignment; no merge/deploy/promote.
 
-Commit SHA: `b3395add0d1da2c4dad34c90933509a338724c46`
+Commit SHA: `feaa252b4a457c66ba4fd262f70d31d7616971df`
