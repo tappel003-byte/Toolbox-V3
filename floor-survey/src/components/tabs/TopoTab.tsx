@@ -1259,12 +1259,16 @@ export function TopoTab({
             stepLabel={trialStepLabel("contours")}
             status={trialDoorStatus("contours", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
-            footer={
+            nav={
               <TrialDoorNav
                 door="contours"
-                dirty={trialDoorDirty("contours", resolved, statsChipSize)}
                 onBack={() => setOpenCorner("hub")}
                 onNext={openTrialDoor}
+              />
+            }
+            footer={
+              <TrialDoorReset
+                dirty={trialDoorDirty("contours", resolved, statsChipSize)}
                 onReset={() => update(trialDoorPatch("contours"))}
               />
             }
@@ -1498,12 +1502,16 @@ export function TopoTab({
             stepLabel={trialStepLabel("colors")}
             status={trialDoorStatus("colors", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
-            footer={
+            nav={
               <TrialDoorNav
                 door="colors"
-                dirty={trialDoorDirty("colors", resolved, statsChipSize)}
                 onBack={() => setOpenCorner("hub")}
                 onNext={openTrialDoor}
+              />
+            }
+            footer={
+              <TrialDoorReset
+                dirty={trialDoorDirty("colors", resolved, statsChipSize)}
                 onReset={() => update(trialDoorPatch("colors"))}
               />
             }
@@ -1528,12 +1536,16 @@ export function TopoTab({
             stepLabel={trialStepLabel("text")}
             status={trialDoorStatus("text", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
-            footer={
+            nav={
               <TrialDoorNav
                 door="text"
-                dirty={trialDoorDirty("text", resolved, statsChipSize)}
                 onBack={() => setOpenCorner("hub")}
                 onNext={openTrialDoor}
+              />
+            }
+            footer={
+              <TrialDoorReset
+                dirty={trialDoorDirty("text", resolved, statsChipSize)}
                 onReset={() => update(trialDoorPatch("text"))}
               />
             }
@@ -1650,12 +1662,16 @@ export function TopoTab({
             stepLabel={trialStepLabel("legend")}
             status={trialDoorStatus("legend", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
-            footer={
+            nav={
               <TrialDoorNav
                 door="legend"
-                dirty={trialDoorDirty("legend", resolved, statsChipSize)}
                 onBack={() => setOpenCorner("hub")}
                 onNext={openTrialDoor}
+              />
+            }
+            footer={
+              <TrialDoorReset
+                dirty={trialDoorDirty("legend", resolved, statsChipSize)}
                 onReset={() => update(trialDoorPatch("legend"))}
               />
             }
@@ -1688,12 +1704,16 @@ export function TopoTab({
             stepLabel={trialStepLabel("highlow")}
             status={trialDoorStatus("highlow", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
-            footer={
+            nav={
               <TrialDoorNav
                 door="highlow"
-                dirty={trialDoorDirty("highlow", resolved, statsChipSize)}
                 onBack={() => setOpenCorner("hub")}
                 onNext={openTrialDoor}
+              />
+            }
+            footer={
+              <TrialDoorReset
+                dirty={trialDoorDirty("highlow", resolved, statsChipSize)}
                 onReset={() => {
                   update(trialDoorPatch("highlow"));
                   setStatsChipLocked(DEFAULT_STATS_CHIP_SIZE);
@@ -1745,12 +1765,16 @@ export function TopoTab({
             stepLabel={trialStepLabel("plan")}
             status={trialDoorStatus("plan", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
-            footer={
+            nav={
               <TrialDoorNav
                 door="plan"
-                dirty={trialDoorDirty("plan", resolved, statsChipSize)}
                 onBack={() => setOpenCorner("hub")}
                 onNext={openTrialDoor}
+              />
+            }
+            footer={
+              <TrialDoorReset
+                dirty={trialDoorDirty("plan", resolved, statsChipSize)}
                 onReset={() => update(trialDoorPatch("plan"))}
               />
             }
@@ -2562,14 +2586,16 @@ function trialDoorDirty(
 }
 
 /**
- * Placebo shell — fixed height so Back/forward stay under the thumb; status
- * under the title; FS/DS card chrome.
+ * Creative pick (hybrid): one tall shared frame for every door so the shell
+ * (and Reset) stay put; Back / {Name} → live under the title so you never
+ * scroll to find nav. Body may scroll only if Contours/Text still overflow.
  */
 function TrialPanel({
   title,
   stepLabel,
   status,
   onClose,
+  nav,
   children,
   footer,
 }: {
@@ -2577,12 +2603,13 @@ function TrialPanel({
   stepLabel?: string;
   status?: string;
   onClose: () => void;
+  nav?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
   return (
-    <div className="absolute z-30 top-12 right-2 flex h-[min(26rem,calc(100%-4.5rem))] w-64 flex-col overflow-hidden rounded-xl border bg-card/95 shadow-2xl backdrop-blur landscape-short:top-2">
-      <div className="flex shrink-0 items-start justify-between gap-2 border-b px-3 pb-2 pt-2.5">
+    <div className="absolute z-30 top-12 right-2 bottom-[calc(env(safe-area-inset-bottom)+3.75rem)] flex w-64 flex-col overflow-hidden rounded-xl border bg-card/95 shadow-2xl backdrop-blur landscape-short:top-2 landscape-short:bottom-[calc(env(safe-area-inset-bottom)+3.25rem)]">
+      <div className="flex shrink-0 items-start justify-between gap-2 px-3 pb-1.5 pt-2.5">
         <div className="min-w-0">
           {stepLabel ? (
             <p className="text-[10px] font-medium text-muted-foreground">{stepLabel}</p>
@@ -2601,27 +2628,30 @@ function TrialPanel({
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      <div className="min-h-0 flex-1 space-y-3 overflow-auto px-3 py-2.5 text-sm">{children}</div>
+      {nav ? (
+        <div className="shrink-0 border-b px-3 pb-2.5 pt-1">{nav}</div>
+      ) : (
+        <div className="shrink-0 border-b" />
+      )}
+      <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain px-3 py-2.5 text-sm">
+        {children}
+      </div>
       {footer ? (
-        <div className="shrink-0 border-t bg-card/95 px-3 py-2 backdrop-blur">{footer}</div>
+        <div className="shrink-0 border-t bg-card/95 px-3 py-1.5 backdrop-blur">{footer}</div>
       ) : null}
     </div>
   );
 }
 
-/** Back → hub. Destination name on a clear blue peer button. Reset this door. */
+/** Top-of-panel walk: dots + Back + destination name (clear primary). */
 function TrialDoorNav({
   door,
-  dirty,
   onBack,
   onNext,
-  onReset,
 }: {
   door: TrialDoorKey;
-  dirty?: boolean;
   onBack: () => void;
   onNext: (key: TrialDoorKey) => void;
-  onReset?: () => void;
 }) {
   const idx = TRIAL_DOORS.findIndex((d) => d.key === door);
   const next = idx >= 0 && idx < TRIAL_DOORS.length - 1 ? TRIAL_DOORS[idx + 1] : null;
@@ -2664,17 +2694,26 @@ function TrialDoorNav({
           </button>
         )}
       </div>
-      {onReset ? (
-        <button
-          type="button"
-          onClick={onReset}
-          disabled={!dirty}
-          className="w-full text-center text-[10px] text-muted-foreground underline-offset-2 hover:underline disabled:opacity-40 disabled:no-underline"
-        >
-          Reset this door
-        </button>
-      ) : null}
     </div>
+  );
+}
+
+function TrialDoorReset({
+  dirty,
+  onReset,
+}: {
+  dirty: boolean;
+  onReset: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onReset}
+      disabled={!dirty}
+      className="w-full py-0.5 text-center text-[10px] text-muted-foreground underline-offset-2 hover:underline disabled:opacity-40 disabled:no-underline"
+    >
+      Reset this door
+    </button>
   );
 }
 
