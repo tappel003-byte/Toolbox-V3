@@ -166,8 +166,10 @@
   }
 })();
 </script>
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<!-- Export-only libraries: deferred + local so capture open does not wait on
+     cdn.jsdelivr.net (parser-blocking CDN hangs block #screenWork entirely). -->
+<script defer src="/js/vendor/jszip.min.js"></script>
+<script defer src="/js/vendor/jspdf.umd.min.js"></script>
 <style>
   :root{
     --bg:#f4f0e8; --paper:#fffaf0; --ink:#1a1a1a; --muted:#7a7468;
