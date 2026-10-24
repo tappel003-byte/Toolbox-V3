@@ -2736,3 +2736,54 @@ This correction needs a NEW build from the merged publish fix, then Tim's promot
 Verify the actual merge tool result before claiming merge success. No Cloudflare settings or activation flags changed; no deploy/promotion performed by GPT. After promotion, check Distress online before checking offline. Verify the served Distress document exists and the device can complete its service-worker install; do not infer either solely from the active-version dashboard label.
 
 No further implementation assignment or general cleanup from this review. Claude remains paused. GPT changed this log only.
+
+
+---
+
+### GPT-020 — 2026-10-24 — GPT/Codex → Cursor
+
+Topic: Distress opens again but takes 3–4 seconds ONLINE and OFFLINE — remove the measured startup delay
+Reply to: Tim's field confirmation after PR #127, then "Online delay not acceptable"
+Status: Focused implementation handoff. Cursor has the ball; Claude stays paused.
+
+Read the entire current Toolbox-V3 repository before changing anything. Authority: VISION.md → AGENTS.md → MILESTONE.md → DECISIONS.md → current code. Fetch current working branch, preserve unrelated/uncommitted work, and ensure one implementer on this issue.
+
+#### Current verified owner report
+
+After the publish correction (PR #127 merged at 93cc83855a7554ff7f9f5d2e5270896f0f467e35), Tim reports Distress opens again. It takes about THREE TO FOUR SECONDS to open, both ONLINE and in AIRPLANE MODE, while the other workspaces appear immediately.
+
+Do not reduce this to an offline-only problem. GPT initially suggested the three-second service-worker navigation timeout; that is a hypothesis, not a demonstrated explanation for both modes. The original physical-device blank is no longer the current reported behavior. Preserve the working offline path.
+
+#### One bounded task
+
+Measure the actual Distress startup path, identify the blocking stage and implement the smallest loading-only correction. Do not start another broad audit or rewrite. No changes to observations, pin/photo numbering, capture gestures, survey storage, sync Worker, ownership flags, or Cloudflare configuration.
+
+Use temporary instrumentation/test evidence to distinguish:
+- click → iframe request → response headers/body/DOMContentLoaded;
+- parser-blocking external scripts (jszip/jspdf), script evaluation and hostBoot;
+- local Customer File/plan/media reads → work surface ready for interaction;
+- cold/repeated navigation and genuinely offline vs a slow or dead network that still reports online.
+
+Use a real local Customer File and a controlled network. Compare with Floor Survey opening as a control. Observe request timing and UI readiness, not just title presence or a screenshot/skeleton. Do not label missing plan/pin/photo or an unready canvas as “loaded.”
+
+Likely candidates to inspect, not preselected diagnoses:
+- Distress iframe's network-first HTML navigation.
+- External parser-blocking export libraries, even though capture itself should not need them.
+- A startup timeout or awaited network probe before the local survey is shown.
+
+Fix ONLY a demonstrated loading dependency. If a warm cached document is used immediately, preserve a safe update path so changes do not remain stale indefinitely. If export-library loading causes the delay, remove it from the capture critical path with locally packaged/deferred loading as appropriate, preserving exports and licensing; do not remove working functionality. This is authorized ONLY if evidence links it to startup. No new infrastructure or dependencies merely for experimentation.
+
+Offline false from navigator.onLine can select a fast path; true is not proof of connectivity. Preserve bounded behavior on a phone hotspot whose link is up but internet is gone. Do not simply reduce a timeout until one fixture looks fast.
+
+#### Verification / publish safety
+
+- Show timing before and after under online, offline and deliberately slow/unreachable request conditions. Identify what previously consumed the 3–4 seconds. Avoid a brittle universal sub-second CI assertion; prove local startup does not await a deliberately blocked unrelated network dependency.
+- Keep plan/pin/photo availability, editing, save/reopen and numbering behavior correct. Run existing Distress offline/integration and relevant cache tests; check Floor loading unaffected.
+- Run tests/pwa-publish.mjs against the GENERATED publish artifact and check all changed/added runtime assets are actually included. Our previous source-root-only review missed a deployment omission; do not repeat that.
+- Bump the shell appropriately for runtime changes. No cache/data wipe, reinstall, or migration.
+- State WebKit/physical-device limitations. No claims that a Chromium simulation proves Tim's iPhone startup fixed.
+- Return a focused commit/PR for review; no merge, deploy, promote or activation. Keep completed publish and ownership fixes closed.
+
+Append CURSOR-006 to this log with before/after timing evidence, exact changed files, actual tests/negative controls, decisions/assumptions and implementation SHA. Then tell Tim: "The ball is in GPT's court; CURSOR-006 is in the review log," with PR/commit.
+
+Stop after this startup correction. No unrelated cleanup or feature work. End with exactly which files changed, what changed, decisions/assumptions, and commit SHA.
