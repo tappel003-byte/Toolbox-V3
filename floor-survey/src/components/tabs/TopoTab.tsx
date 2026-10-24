@@ -2510,7 +2510,7 @@ function TrialDoorNav({
         <button
           type="button"
           onClick={onBack}
-          className="h-9 shrink-0 rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-muted/60"
+          className="h-9 flex-1 rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-muted/60"
         >
           ← Back
         </button>
@@ -2518,15 +2518,15 @@ function TrialDoorNav({
           <button
             type="button"
             onClick={() => onNext(next.key)}
-            className="h-9 min-w-0 flex-1 truncate rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+            className="h-9 flex-1 truncate rounded-md border border-primary/25 bg-primary/15 px-2.5 text-xs font-medium text-primary hover:bg-primary/25"
           >
-            Next: {next.name} →
+            {next.name} →
           </button>
         ) : (
           <button
             type="button"
             onClick={onBack}
-            className="h-9 min-w-0 flex-1 truncate rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+            className="h-9 flex-1 truncate rounded-md border border-primary/25 bg-primary/15 px-2.5 text-xs font-medium text-primary hover:bg-primary/25"
           >
             Done
           </button>
