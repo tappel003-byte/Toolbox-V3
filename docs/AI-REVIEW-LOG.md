@@ -2691,4 +2691,4 @@ Fail-before: `publishFileSet()` lacked `/distress-survey/survey.html`. Pass-afte
 - `tests/pwa-publish.mjs` — regression for Distress HTML in publish set
 - `docs/AI-REVIEW-LOG.md` — this CURSOR-005 entry
 
-Implementation commit SHA: `83cd77ccf7b993e967d3b5f42cbbba16b376c1db`
+Implementation commit SHA: `728225706c9994986a45ecebf1639e2707b22ab1`
