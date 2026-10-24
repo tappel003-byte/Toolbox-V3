@@ -2371,3 +2371,48 @@ The preparatory default remains OFF. The original delayed-component ownership ra
 Sequence/malformed-reference observations and the requested offline service-worker/capture verification remain separate, unstarted follow-ups, not blockers added to this closed review. No new Cursor or Claude assignments here. Claude remains paused to preserve capacity.
 
 GPT changed only this log. Short owner outcome: code review passed, no further coding for this item, nothing merged/deployed/activated.
+
+
+---
+
+### GPT-015 — 2026-10-23 — GPT/Codex → Cursor
+
+Topic: Distress Survey fails offline while Floor Survey works — READ-ONLY diagnostic
+Status: Tim explicitly authorized diagnosis only. No implementation authorized. Reply as CURSOR-003 in this log.
+
+Read the entire current Toolbox-V3 repository before doing anything. Authority: VISION.md → AGENTS.md → MILESTONE.md → DECISIONS.md → current code. Fetch the established working branch claude/milestone-1-customer-file-qv5ybf and inspect its current merged state, preserving unrelated and uncommitted work. PR #125 was subsequently merged into this branch at 41231f95ea70dee0bc90e604492f64991cf4f3b9. That merge is verified; deployment/promotion and the build installed on Tim's device are NOT verified.
+
+#### Observed comparison — keep this account exact
+
+On the SAME device and under the SAME offline conditions, Tim:
+1. Downloaded a Customer File while online.
+2. Disabled Wi-Fi and enabled airplane mode.
+3. Opened Distress Survey: it would not open / showed a blank screen.
+4. Opened Floor Survey: it opened and accepted a measurement point.
+
+Tim clarified that Distress HAS been opened online. Do not assume a first-use caching problem or claim it has never been used offline. Floor Survey accepting one point does not prove its save/reopen path; it is the working loading control for this diagnostic. Device/browser/build and the timing of any earlier online Distress visit remain unverified.
+
+#### Scope
+
+READ ONLY. Do not edit application code, implement a fix, merge, deploy, enable flags, alter infrastructure, clear Tim's caches/storage, or change either protected capture workflow. Only append diagnostic findings to this shared log. Claude remains paused; do not contact or assign it.
+
+Compare the actual Distress and Floor entry/loading paths:
+- Router entry and dynamically loaded JS/CSS/assets.
+- Offline SERVICE WORKER precache, runtime cache, cache installation/update and navigation fallbacks. This is distinct from the sync API Worker reviewed in the previous task.
+- Initialization, local Customer File/media access, and any network/authentication dependency before rendering.
+
+Attempt a controlled reproduction: establish a downloaded/local Customer File online, inspect service-worker control and readiness, then navigate/reload both apps offline. Cover prior online Distress use rather than assuming first use. Capture console errors, failed requests, cache availability and the exact initialization boundary. Distinguish missing app assets, initialization failure and missing customer media. Use temporary diagnostic scripts outside tracked application files if useful.
+
+If behavior differs between simulated browser-offline and airplane mode on the actual device, state the limit. Do not claim a local simulation proves iPhone/iPad PWA behavior. Do not erase evidence or create an artificial fresh-cache-only scenario and present that as Tim's reproduced cause.
+
+#### Return CURSOR-003 here
+
+Report:
+1. Confirmed cause with exact file/line evidence; if unconfirmed, a short ranked hypothesis list and what evidence is missing.
+2. Tests actually run, environment and results; compare both app paths.
+3. Smallest proposed correction and capture boundaries — PROPOSAL ONLY.
+4. Essential device/browser/build information still needed, bundled briefly for Tim only if it affects diagnosis.
+
+No general audit, extra cleanup or automatic fix. Stop after the diagnostic. Give Tim a short outcome and whose ball it is. End with exactly which files changed (log only), what changed, assumptions and inspected commit SHA.
+
+Updating this log does not invoke Cursor automatically. No timer/background checker is running.
