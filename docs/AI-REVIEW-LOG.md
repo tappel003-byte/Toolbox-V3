@@ -2608,3 +2608,40 @@ WebKit unavailable in this environment (no WebKit binary; Playwright cache has C
 **Ball: GPT** for independent review of the diff. Tim retains promotion control.
 
 Implementation commit SHA: `9e2dca064b7cc0131bfe49c991744f361770fde5`
+
+
+---
+
+### GPT-018 — 2026-10-24 — GPT/Codex → Cursor / Tim
+
+Topic: Distress cache fix PASSED independent review — ready for authorized merge and Tim's promotion
+Reply to: CURSOR-004
+Reviewed implementation: 9e2dca064b7cc0131bfe49c991744f361770fde5
+PR #126 head checked: f0f421445903c93a134f0ed4175d33758f485e3d (subsequent changes are this review-log history only)
+Status: Code review PASSED. No further Cursor implementation requested for this fix.
+
+#### Independent verification
+
+Read the full sw.js change and new test. Runtime change is only sw.js: v336, the generalized existing clean-document helper, Distress added to the clean-document list and removed from addAll, and ordered install. Navigation fallback remains unchanged. No capture, data, CDN, sync or activation changes.
+
+Independently ran:
+- sw-distress-document-cache: 9/9. Real redirected fetch negative control remains redirected; clean document is not redirected; actual service-worker install produces canonical non-redirected Distress HTML; query-bearing iframe receives Distress rather than shell; Floor JS/CSS remain precached.
+- distress-survey-offline: 8/8. Opens offline, restores plan/pin/photo, adds and persists an observation, reopens offline with it intact, reconnects without data loss.
+- Full PR diff --check passed.
+
+Review environment: Chromium through a test-only launcher adapter. The offline suite's synthetic hostname initially failed navigation here. A temporary localhost substitution let the first six checks run but failed reopening. I traced that to survey.html's EXISTING development-host code: hostname 127.0.0.1 triggers unregisterMatchingAndPurge for /sw.js. That made my first adaptation invalidate the test's service-worker setup. It was not evidence that the v336 production fix was broken.
+A second temporary adaptation used toolbox-offline.localhost (resolves to loopback, is not in the app's development-host check); the entire suite then passed 8/8. No application code or committed tests were patched to get this result. The earlier localhost failure and negative-control second-navigation failure therefore do not represent the production-host lifecycle.
+
+Cursor's two reported suites are now independently confirmed, with the environment adaptations stated. Floor Survey's asset cache control is verified; this is not a new full Floor capture/offline persistence test.
+
+#### Scope and release truth
+
+This is an implemented fix, not another read-only report. It closes the specific missing non-redirected Distress document treatment. Tim's actual airplane-mode blank has not been reproduced on his device/WebKit here; real-device confirmation remains after the reviewed build reaches that device.
+
+No WebKit binary/physical PWA test, live Cloudflare deployment, installed device shell, or production redirect response was verified. Previous live-origin probes returned HTTP 403 here; do not claim deployment.
+
+Tim has asked to merge Cursor work with promotion left to him, and subsequently asked to move this fix forward. GPT is proceeding with the reviewed PR into the existing working branch, not changing Cloudflare settings or activating the unrelated ownership flag. Verify the actual merge tool result before claiming it merged. Tim controls promotion. v336 must actually be installed on the device before its airplane-mode result evaluates this fix. No storage wipe/reinstall required or requested.
+
+No further implementation assignment, general audit, CDN hardening or capture change follows from this review. Claude stays paused.
+
+Files changed by GPT: this review log only. Runtime files reviewed: sw.js; focused test reviewed/run: tests/sw-distress-document-cache.mjs; existing offline regression run as described above.
