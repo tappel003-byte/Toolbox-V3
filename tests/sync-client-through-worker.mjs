@@ -67,6 +67,9 @@ globalThis.fetch = async (url, init) => {
 const accessEnv = {
   CF_ACCESS_TEAM_DOMAIN: 'toolbox-test.cloudflareaccess.com',
   CF_ACCESS_AUD: 'aud-client-worker',
+  // Existing cases below prove the acceptance protocol with writes ON.
+  // Gate-OFF and equal-revision probes are separate blocks that override this.
+  COMPONENT_ACCEPTANCE_WRITES: '1',
 };
 const timToken = await signJwt('tim@example.com', 'sub-tim');
 
@@ -126,11 +129,12 @@ function cabinet(seed) {
  * this call is about. Nothing between them reimplements a route, a status
  * code or a conditional write.
  */
-function loadClient(bucket, deviceId) {
+function loadClient(bucket, deviceId, envOverrides) {
   const code = readFileSync(new URL('../js/sync.js', import.meta.url), 'utf8');
   const localStore = new Map([['toolbox.deviceId', deviceId]]);
   const files = new Map();
   const media = new Map();
+  const workerEnv = Object.assign({}, accessEnv, envOverrides || {});
   const sandbox = {
     console,
     atob: (s) => Buffer.from(s, 'base64').toString('binary'),
@@ -167,7 +171,7 @@ function loadClient(bucket, deviceId) {
       headers,
       body: init && init.body,
     });
-    const res = await worker.fetch(request, Object.assign({ CABINET: bucket }, accessEnv));
+    const res = await worker.fetch(request, Object.assign({ CABINET: bucket }, workerEnv));
     sandbox.requests.push({ method: request.method, path, status: res.status });
     return res;
   };
@@ -406,6 +410,161 @@ const readIndex = (bucket) => {
     sandbox.requests.every((r) => r.status < 400) &&
     result.components.every((c) => c.action === 'skip'),
     JSON.stringify(sandbox.requests));
+}
+
+// ========== GPT-012 Fix 2: equal-revision Sync does NOT repair a dropped map
+//
+// An old-handler index PUT can drop `components` while preserving every
+// <name>UpdatedAt. CLAUDE-013 claimed the owner's next Sync repairs it.
+// Equal timestamps make decideComponentAction skip; nothing is pushed.
+{
+  const bucket = cabinet({});
+  const first = loadClient(bucket, 'device-a');
+  await first.Sync._test.syncOneRecord(record(), null, {});
+  const wiped = readIndex(bucket);
+  check('precondition: acceptance wrote a components map',
+    !!wiped && !!wiped.components && !!wiped.components.floor, 'has refs');
+  delete wiped.components;
+  bucket.store.set(IKEY, { body: JSON.stringify(wiped) });
+
+  const again = loadClient(bucket, 'device-a');
+  const remote = JSON.parse(bucket.store.get(IKEY).body);
+  again.sandbox.requests.length = 0;
+  const result = await again.Sync._test.syncOneRecord(record(), remote, {});
+  const componentPuts = again.sandbox.requests.filter((r) =>
+    r.method === 'PUT' && r.path.indexOf('/components/') > 0);
+  check('equal-revision Sync after a dropped components map changes nothing',
+    result.changed === false, JSON.stringify({ changed: result.changed }));
+  check('every component action is skip — there is no automatic repair push',
+    result.components.every((c) => c.action === 'skip'),
+    JSON.stringify(result.components));
+  check('and the client issued no component PUT that could restore references',
+    componentPuts.length === 0, JSON.stringify(componentPuts));
+  check('so the index still has no components map',
+    !readIndex(bucket).components, JSON.stringify(readIndex(bucket).components || null));
+}
+
+// ========== GPT-012 Fix 2: with writes gated OFF, ordinary Sync still works
+//
+// Default COMPONENT_ACCEPTANCE_WRITES is unset. Legacy PUTs write the fixed
+// key; the client still exchanges components and index timestamps. Acceptance
+// references are not created — that is the gated protocol, not everyday sync.
+{
+  const bucket = cabinet({});
+  const gateOff = { COMPONENT_ACCEPTANCE_WRITES: '' };
+  const { Sync, sandbox } = loadClient(bucket, 'device-a', gateOff);
+  const result = await Sync._test.syncOneRecord(record(), null, {});
+  const index = readIndex(bucket);
+  const refused = sandbox.requests.filter((r) => r.status >= 400);
+  check('with acceptance writes OFF, a first sync is not refused',
+    refused.length === 0 && result.changed === true,
+    JSON.stringify({ refused, changed: result.changed, components: result.components }));
+  check('legacy component objects were written at the fixed keys',
+    bucket.store.has('cf/' + ID + '/floor.json') &&
+    bucket.store.has('cf/' + ID + '/customer.json'),
+    [...bucket.store.keys()].filter((k) => k.indexOf('/c/') < 0).join(','));
+  check('and no acceptance candidate objects were created while gated off',
+    [...bucket.store.keys()].every((k) => k.indexOf('/c/') < 0),
+    [...bucket.store.keys()].filter((k) => k.indexOf('/c/') >= 0).join(','));
+  check('the index carries client browse fields and advertised revisions',
+    !!index && index.displayName === 'Janis Fensterer' &&
+    index.floorUpdatedAt === '2026-10-23T09:30:00.000Z',
+    JSON.stringify(index && { name: index.displayName, floor: index.floorUpdatedAt }));
+}
+
+// ========== GPT-013: gate OFF after accepted refs must not silently diverge
+//
+// Sync with writes ON, then a newer floor while writes are OFF. Before the
+// fix: legacy PUT + index revision advanced, GET still served the old
+// candidate. After: truthful refusal; accepted bytes/revision unchanged;
+// local newer edit retained on the client object.
+{
+  const bucket = cabinet({});
+  const first = loadClient(bucket, 'device-a');
+  await first.Sync._test.syncOneRecord(record(), null, {});
+  const previousIndex = readIndex(bucket);
+  const floorKey = previousIndex.components.floor.key;
+  const floorRev = previousIndex.floorUpdatedAt;
+
+  const newer = record();
+  newer.floorSurvey.updatedAt = '2026-10-23T14:00:00.000Z';
+  newer.floorSurvey.note = 'new work after flag off';
+
+  const off = loadClient(bucket, 'device-a', { COMPONENT_ACCEPTANCE_WRITES: '' });
+  let threw = null;
+  try {
+    await off.Sync._test.syncOneRecord(newer, previousIndex, {});
+  } catch (err) {
+    threw = err;
+  }
+  const floorPuts = off.sandbox.requests.filter((r) =>
+    r.method === 'PUT' && r.path.indexOf('/components/floor') > 0);
+  const getRes = await off.sandbox.fetch(
+    'https://sync.example/files/' + ID + '/components/floor');
+  const served = await getRes.json();
+  const after = readIndex(bucket);
+
+  check('gate-OFF sync after accepted refs refuses rather than acknowledging ignored bytes',
+    !!threw && floorPuts.some((r) => r.status === 409),
+    JSON.stringify({ threw: threw && String(threw.message || threw), floorPuts }));
+  check('GET still serves the accepted candidate, not a legacy overwrite',
+    getRes.status === 200 && served.updatedAt === '2026-10-23T09:30:00.000Z' &&
+    served.note !== 'new work after flag off',
+    JSON.stringify(served));
+  check('accepted floor key and advertised revision are unchanged',
+    after.components.floor.key === floorKey && after.floorUpdatedAt === floorRev,
+    JSON.stringify({ key: after.components.floor.key, rev: after.floorUpdatedAt }));
+  check('local newer floor edit is retained on the client record',
+    newer.floorSurvey.note === 'new work after flag off' &&
+    newer.floorSurvey.updatedAt === '2026-10-23T14:00:00.000Z',
+    JSON.stringify(newer.floorSurvey));
+  check('no legacy floor.json was written over the ignored path with the new note',
+    !bucket.store.has('cf/' + ID + '/floor.json') ||
+    JSON.parse(bucket.store.get('cf/' + ID + '/floor.json').body).note !==
+      'new work after flag off',
+    bucket.store.has('cf/' + ID + '/floor.json')
+      ? JSON.parse(bucket.store.get('cf/' + ID + '/floor.json').body).note
+      : 'absent');
+}
+
+// ========== GPT-013: ordinary index PUT while OFF cannot unpair revision/ref
+{
+  const bucket = cabinet({});
+  const first = loadClient(bucket, 'device-a');
+  await first.Sync._test.syncOneRecord(record(), null, {});
+  const before = readIndex(bucket);
+  const floorKey = before.components.floor.key;
+  const floorRev = before.floorUpdatedAt;
+
+  const tamper = Object.assign({}, before, {
+    displayName: 'tampered browse name',
+    floorUpdatedAt: '2026-10-23T14:00:00.000Z',
+  });
+  const putRes = await worker.fetch(new Request(
+    'https://sync.example/files/' + ID + '/index',
+    {
+      method: 'PUT',
+      headers: new Headers({
+        'Cf-Access-Jwt-Assertion': timToken,
+        'x-toolbox-device-id': 'device-a',
+        'content-type': 'application/json',
+      }),
+      body: JSON.stringify(tamper),
+    },
+  ), Object.assign({ CABINET: bucket }, accessEnv, {
+    COMPONENT_ACCEPTANCE_WRITES: '',
+  }));
+  const after = readIndex(bucket);
+  check('gate-OFF index PUT is accepted for browse fields',
+    putRes.status === 200 && after.displayName === 'tampered browse name',
+    `${putRes.status} ${after.displayName}`);
+  check('but a referenced component revision stays paired with its accepted key',
+    after.floorUpdatedAt === floorRev &&
+    after.components.floor.key === floorKey,
+    JSON.stringify({
+      rev: after.floorUpdatedAt, key: after.components.floor.key,
+      wantedRev: floorRev, wantedKey: floorKey,
+    }));
 }
 
 globalThis.fetch = realFetch;
