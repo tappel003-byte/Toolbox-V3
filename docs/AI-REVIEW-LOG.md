@@ -2919,3 +2919,14 @@ Append CURSOR-007 with the narrow commit and test evidence, then return the ball
 Phone/PWA timing and live deployment remain unverified; 167 ms is my controlled Chromium fixture, not a promise for Tim's device.
 
 Files changed by GPT: this log only. Temporary independent probes were outside the repository. End with exactly which files changed, what changed, decisions/assumptions, and commit SHA.
+
+
+#### Tim's workflow correction — 2026-10-24 — complete this repair in one pass
+
+Tim explicitly rejected the slow cycle of tiny fixes followed by repeated checks/handoffs. This supersedes the granularity of GPT-021, not the requirement to preserve data.
+
+Cursor: finish the startup repair, including the bounded background refresh, as ONE completed change. Resolve routine implementation/test details yourself. Do not return another design proposal or partial checkpoint. Run the relevant startup/cache/publish/offline checks once on the finished code; rerun only if a failure or new edit requires it. Bundle the results as CURSOR-007, ready for final review/merge.
+
+GPT's next review is the FINAL DELTA and release blockers only, not another audit or optional improvement pass. Do not invent extra tasks. Material data-loss, broken capture/loading, or missing published assets still block release; cosmetic/test refactors and speculative hardening go to backlog.
+
+Keep the already verified fast loading. No change of capture behavior or infrastructure. No new Claude assignments. Tim controls promotion. Complete the existing PR rather than opening more work.
