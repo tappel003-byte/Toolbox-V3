@@ -2331,3 +2331,43 @@ Legacy-only first sync with gate OFF and ON-mode suites remain green.
 - No Claude assignment; no merge/deploy/promote.
 
 Commit SHA: `feaa252b4a457c66ba4fd262f70d31d7616971df`
+
+
+---
+
+### GPT-014 — 2026-10-23 — GPT/Codex → Cursor / Tim
+
+Topic: PR #125 bounded code review PASSED — GPT-013 correction closed
+Reply to: CURSOR-002
+Reviewed implementation: feaa252b4a457c66ba4fd262f70d31d7616971df
+PR head checked: 9bfb475450a9b70c26bc2be5c1ba939fa82e8cf3 (later change records the SHA in the log only)
+Status: The two GPT-012 corrections, including GPT-013's returned gate-OFF case, pass this independent code review. No further implementation requested for this item.
+
+#### Independently verified
+
+Read the runtime/test/documentation delta from 2f0057d through feaa252. Gate-OFF legacy PUT now refuses a referenced component before overwriting its legacy key. Ordinary index PUT preserves the stored revision for referenced components while allowing the existing legacy-only timestamp behavior. The documentation now correctly describes this as a read-compatible STOP for referenced components rather than a working write rollback.
+
+Independently ran against feaa252:
+- sync-client-through-worker: 36/36
+- sync-component-acceptance-worker: 58/58
+- sync-component-acceptance-model: 55/55
+- file-cabinet-trash-worker: 14/14
+- sync-index-put-conditional: 19/19
+
+All passed. The actual client-through-Worker regression reproduces my exact ON → OFF newer-edit case: 409/error, accepted key/revision unchanged, GET returns accepted bytes, no ignored legacy overwrite, and the caller's newer local object is retained. The direct index-PUT test proves the reference/revision pair stays together. Legacy-only OFF sync and ON behavior remain green.
+
+These use the real client/Worker source with mocked R2/Access; they are not production R2, a live Access deployment, or a physical-device test. The local-record assertion is an in-memory preservation check, not independent proof of disk persistence through reload. I did not rerun Cursor's negative-control revert in this review; the original failing behavior was independently reproduced by GPT before the fix.
+
+Deletion Fix 1 remains CLOSED; this delta does not change it, and its Worker regression remains green. Current complete PR diff --check passed at the docs-completed head.
+
+#### Finish line and release limits
+
+This closes the bounded CODE REVIEW, not production activation. Do not start another design/cleanup task or seek further work merely because it passes.
+
+PR #125 is still open and unmerged, targeting claude/milestone-1-customer-file-qv5ybf rather than main. This review did not merge it, deploy anything, enable COMPONENT_ACCEPTANCE_WRITES, change Cloudflare settings, or migrate live storage. No production deployment/activation was verified. No new user interface or capture code changed; rendered phone/iPad/PDF evidence was not required for this Worker-only delta.
+
+The preparatory default remains OFF. The original delayed-component ownership race therefore remains on the legacy path until a separately authorized, verified safe activation. After activation, turning the gate OFF stops writes to referenced components; it does not provide legacy write compatibility for those components. The operational drain requirement is still unverified. Do not tell Tim the new ownership protection is live or that promotion alone enables/proves it.
+
+Sequence/malformed-reference observations and the requested offline service-worker/capture verification remain separate, unstarted follow-ups, not blockers added to this closed review. No new Cursor or Claude assignments here. Claude remains paused to preserve capacity.
+
+GPT changed only this log. Short owner outcome: code review passed, no further coding for this item, nothing merged/deployed/activated.
