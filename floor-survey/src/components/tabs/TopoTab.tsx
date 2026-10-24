@@ -445,12 +445,13 @@ export function TopoTab({
   resizeCorners = false,
   allowContourLayer = false,
 }: Props) {
-  // "hub" is a trial second path: the upper-right control opens a chooser
-  // (Contours / Layers / Legend) that then opens the same corner panels the
-  // existing icons already open. Direct Contours (UL) and Labels (BR) icons
-  // stay as they are — nothing is removed for this try.
+  // TRIAL LAYOUT ONLY (easy delete): hub + slim "layers" / "legend" panels
+  // rearrange chrome; they call the same update() paths as the real panels.
+  // "labels" remains the full Labels & layers panel behind the tag button.
+  // Report controlsOnly is untouched. Remove openCorner hub|layers|legend
+  // blocks and restore palette → setOpenCorner("palette") to revert.
   const [openCorner, setOpenCorner] = useState<
-    null | "hub" | "contours" | "palette" | "labels"
+    null | "hub" | "contours" | "palette" | "labels" | "layers" | "legend"
   >(null);
   /** Which tab the rail shows. Report Builder only; the field screen opens one corner panel at a time. */
   const [ctrlTab, setCtrlTab] = useState<"contours" | "labels" | "layers">("contours");
@@ -970,12 +971,14 @@ export function TopoTab({
           <Waves className="h-4 w-4" />
         </CornerIcon>
       )}
-      {openCorner !== "hub" &&
-        openCorner !== "palette" &&
+      {!chromeless &&
+        !controlsOnly &&
+        openCorner !== "hub" &&
         openCorner !== "contours" &&
+        openCorner !== "palette" &&
         openCorner !== "labels" &&
-        !chromeless &&
-        !controlsOnly && (
+        openCorner !== "layers" &&
+        openCorner !== "legend" && (
         <CornerIcon
           pos="top-2 right-2 landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:translate-x-[0.25rem] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
           active={false}
@@ -1412,7 +1415,7 @@ export function TopoTab({
           </CornerPanel>
         )}
 
-        {/* Trial hub — upper right. Chooser only; same panels as the corner icons. */}
+        {/* === TRIAL LAYOUT (placebo chrome — same handlers, easy delete) === */}
         {(openCorner === "hub" && !controlsOnly) && (
           <CornerPanel
             inline={controlsOnly}
@@ -1421,15 +1424,15 @@ export function TopoTab({
             title="Topo controls"
           >
             <p className="text-[10px] text-muted-foreground -mt-1 mb-1">
-              Trial menu — Contours, Layers, and Legend still open the same
-              controls as before.
+              Layout try only — tag button still opens the full Labels &amp;
+              layers panel.
             </p>
             <div className="flex flex-col gap-1.5">
               {(
                 [
-                  ["contours", "Contours", "Mode, step, thickness, on/off"],
-                  ["labels", "Layers", "Plan, points, labels, sizes"],
-                  ["palette", "Legend", "Colour scale and reverse"],
+                  ["contours", "Contours", "How the topo is drawn"],
+                  ["layers", "Layers", "What is on or off"],
+                  ["legend", "Legend", "Colour and piece sizes"],
                 ] as const
               ).map(([key, name, hint]) => (
                 <button
@@ -1446,11 +1449,63 @@ export function TopoTab({
           </CornerPanel>
         )}
 
-        {/* Palette / legend colours — upper right (also via hub → Legend) */}
-        {(openCorner === "palette" && !controlsOnly) && (
+        {(openCorner === "layers" && !controlsOnly) && (
           <CornerPanel
             inline={controlsOnly}
             pos="top-12 right-2 w-60 landscape-short:top-2"
+            onClose={() => setOpenCorner(null)}
+            title="Layers"
+          >
+            <button
+              type="button"
+              onClick={() => setOpenCorner("hub")}
+              className="mb-1 text-[10px] text-muted-foreground underline-offset-2 hover:underline"
+            >
+              ← Topo controls
+            </button>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              Turn pieces on or off. Drag legend and H/L on the plan to place
+              them.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <SwitchRow
+                label="Floor plan"
+                checked={resolved.showPlan}
+                onChange={(v) => update({ showPlan: v })}
+              />
+              <SwitchRow
+                label="Points"
+                checked={resolved.showPoints}
+                onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
+              />
+              <SwitchRow
+                label="Labels"
+                checked={resolved.showLabels}
+                onChange={(v) => update({ showLabels: v })}
+              />
+              <SwitchRow
+                label="Legend"
+                checked={resolved.showLegend}
+                onChange={(v) => update({ showLegend: v })}
+              />
+              <SwitchRow
+                label="High / low"
+                checked={resolved.showHighLow}
+                onChange={(v) => update({ showHighLow: v })}
+              />
+              <SwitchRow
+                label="Declutter"
+                checked={resolved.declutterLabels !== false}
+                onChange={(v) => update({ declutterLabels: v })}
+              />
+            </div>
+          </CornerPanel>
+        )}
+
+        {(openCorner === "legend" && !controlsOnly) && (
+          <CornerPanel
+            inline={controlsOnly}
+            pos="top-12 right-2 w-64 landscape-short:top-2"
             onClose={() => setOpenCorner(null)}
             title="Legend"
           >
@@ -1461,6 +1516,57 @@ export function TopoTab({
             >
               ← Topo controls
             </button>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              Colour of the scale. Sizes for the legend and the readings pill.
+            </p>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Reverse</Label>
+              <Switch
+                checked={resolved.reversePalette}
+                onCheckedChange={(v) => update({ reversePalette: v })}
+              />
+            </div>
+            <PalettePicker
+              value={resolved.palette}
+              onChange={(p) => update({ palette: p })}
+            />
+            <div className="border-t pt-2 space-y-2">
+              <StepperControl
+                label="Legend size"
+                value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+                min={0.4}
+                max={4}
+                step={0.1}
+                format={(v) => `${v.toFixed(1)}×`}
+                onChange={(v) =>
+                  update({ legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)) })
+                }
+              />
+              <StepperControl
+                label="Stats pill size"
+                value={statsChipSize}
+                min={STATS_CHIP_MIN}
+                max={STATS_CHIP_MAX}
+                step={2}
+                format={(v) => `${Math.round(v)}px`}
+                onChange={(v) => {
+                  const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(v)));
+                  setStatsChipLocked(n);
+                  setStatsChipSize(n);
+                }}
+              />
+            </div>
+          </CornerPanel>
+        )}
+
+        {/* Original palette panel — kept for revert / direct openCorner("palette") */}
+        {(openCorner === "palette" && !controlsOnly) && (
+          <CornerPanel
+            inline={controlsOnly}
+            pos="top-12 right-2 w-60 landscape-short:top-2"
+            onClose={() => setOpenCorner(null)}
+            title="Palette"
+          >
             <div className="flex items-center justify-between">
               <Label className="text-xs">Reverse</Label>
               <Switch
@@ -1474,6 +1580,7 @@ export function TopoTab({
             />
           </CornerPanel>
         )}
+        {/* === end TRIAL LAYOUT === */}
 
         {/* Labels & layers popover — lower right */}
         {(openCorner === "labels" && !controlsOnly) && (
