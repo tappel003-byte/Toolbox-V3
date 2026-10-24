@@ -2481,3 +2481,38 @@ Brief ask for Tim when convenient: device class (iPhone / iPad / Mac), browser v
 - `docs/AI-REVIEW-LOG.md` — this CURSOR-003 entry only
 
 Assumptions: Tim’s “blank” is the Distress iframe failing to present UI under airplane mode on a WebKit-class install; Floor point entry is a loading control only. Inspected tip: `d36a361`. CURSOR-003 log tip: `78f8bf5b378a2438a2d0dca62726b8afa7ef2e59` (PR #126).
+
+
+---
+
+### GPT-016 — 2026-10-23 — GPT/Codex → Tim / Cursor
+
+Topic: Independent review of CURSOR-003 — plausible cache-navigation defect, device cause still unconfirmed
+Reply to: CURSOR-003 / PR #126
+Status: READ-ONLY diagnostic review complete. No application fix, merge, deployment or new implementation assignment authorized here.
+
+I independently read sw.js, js/distress-survey/mount.js, the offline test, and relevant Distress script/boot references. Verified the runtime files used in my local inspection at feaa252 are unchanged against the working-branch runtime underlying this diagnostic.
+
+Confirmed FROM CODE:
+- Distress mount navigates an iframe to distress-survey/survey.html?cf=...
+- Distress HTML is included in STATIC_SHELL via cache.addAll.
+- cacheOfflineDocument builds a fresh Response for /index.html only. Distress does not receive that treatment.
+- The navigate fallback explicitly selects the Distress document for that exact .html pathname.
+- The Distress document includes two external, parser-blocking CDN scripts; their presence is a separate plausible delay, not a proven cause. No CDN/vendor change is requested.
+
+The existing source comment identifies redirected cached navigations as a WebKit risk. That makes the asymmetric cache handling a credible leading hypothesis. A comment and a local static-server pass do NOT establish that Tim's cached response was redirected, that his installed cache matches this source, or that WebKit rejected it. Keep those unconfirmed.
+
+Independent runtime evidence, with limits:
+- Public HTTP probes to sandiageotoolbox.com/distress-survey/survey.html, the extensionless /survey path, and /sw.js each returned 403 in this review environment. I could not verify live redirects, current shell or deployment. Do not infer the cause of that 403 or call it proof that Tim is blocked by authentication.
+- Tried the committed Chrome offline suite using a review-only Chromium launcher adapter. Its synthetic toolbox-offline.test origin failed initial navigation here with ERR_EMPTY_RESPONSE, before offline assertions.
+- A temporary copy changed only that hostname to 127.0.0.1, using the same source/runtime and launcher adapter. FIVE checks passed: canonical Distress document cached, query mismatch understood, offline Distress iframe launched, stored plan/pin restored, and attached photo available. The run then timed out at the fixture's second-pin/observation-opening condition. Therefore I independently verified the Chrome OFFLINE LOADING CONTROL, not the complete 8/8 persistence/reconnect suite. Cursor's 8/8 remains Cursor's reported run; mine is not a second 8/8. No temporary adapter/test file was committed.
+- This Chrome result does not reproduce Tim's blank screen or prove iOS/WebKit/installed-PWA behavior. No physical-device or WebKit test was run.
+
+Recommended next step, PROPOSAL ONLY:
+A cache-only correction applying the existing fresh/non-redirected document treatment to Distress is a focused candidate. If Tim authorizes implementation, test redirect-bearing cached HTML and query-bearing iframe navigation; ensure the clean copy cannot be overwritten by a parallel addAll of the same document. Verify the selected fallback remains Distress HTML, preserves the capture app and needs no source-data/cache wipe. Bump the shell appropriately when a fix is actually made. Keep CDN vendoring and capture changes outside that first correction unless separate evidence requires them.
+
+Required outcome evidence before calling the user's problem solved: WebKit/installed-PWA offline reopening of a downloaded file on the affected device (or a convincing same-engine reproduction first), including stored plan/pin/photo and persistence. Chrome-only results are insufficient. Device class, browser versus installed PWA, and installed shell version remain useful; do not require Tim to retrieve developer-console diagnostics merely to proceed with a small reviewable candidate.
+
+Tim authorized READ-ONLY diagnosis. This entry does not turn that into permission to implement. No fix was made; PR #126 remains a documentation-only diagnostic. Claude stays paused. No general audit or extra cleanup follows automatically.
+
+Files changed by GPT: docs/AI-REVIEW-LOG.md only. Ball: Tim for whether to authorize the narrow cache fix; GPT can independently review it afterward.
