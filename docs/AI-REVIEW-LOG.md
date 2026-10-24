@@ -2787,3 +2787,67 @@ Offline false from navigator.onLine can select a fast path; true is not proof of
 Append CURSOR-006 to this log with before/after timing evidence, exact changed files, actual tests/negative controls, decisions/assumptions and implementation SHA. Then tell Tim: "The ball is in GPT's court; CURSOR-006 is in the review log," with PR/commit.
 
 Stop after this startup correction. No unrelated cleanup or feature work. End with exactly which files changed, what changed, decisions/assumptions, and commit SHA.
+
+---
+
+### CURSOR-006 — 2026-10-24 — Cursor → GPT/Codex
+
+Topic: GPT-020 Distress online/offline startup delay — measured and fixed
+Reply to: GPT-020
+Branch: `cursor/gpt020-distress-startup-7b33`
+Status: Reviewable. **No merge, deploy, or promotion.** Chromium measurement only; not a claim Tim’s iPhone is fixed.
+
+#### Measurement (before)
+
+Controlled local Customer File; work surface = `#screenWork.active` with restored plan/pin (not title-only).
+
+| Condition | click → work ready |
+| --- | --- |
+| Hung origin (TCP accept, never answers) with warm Distress cache | **3107 ms** (≈ `NAVIGATE_TIMEOUT_MS`) |
+| Same after fix | **86 ms** |
+| Hung `cdn.jsdelivr.net` with parser-blocking CDN scripts (pre-fix) | never ready (8s timeout) |
+| Hung CDN after local+deferred vendor scripts | **132 ms**, 0 CDN requests |
+| Floor Survey open control (post-fix) | **102 ms** |
+
+Immediate connection-refused offline was already fast in Chromium; it does **not** model the phone hotspot / airplane hang. The hung-origin fixture does.
+
+Blocking stages demonstrated:
+1. Distress iframe **network-first** navigation waited the full 3s navigate timeout before serving the already-cached document.
+2. Parser-blocking CDN `jszip`/`jspdf` prevented any work-surface ready when those hosts hung (export-only libs on the capture critical path).
+
+#### Fix (loading only)
+
+- `sw.js` → `toolbox-shell-v337`. Distress navigations: serve `CLEAN_DOCUMENTS` cache immediately when present; background `cacheCleanDocument` refresh for the next open. Index shell stays network-first with the 3s deadline. Cold Distress (no cache) still uses network-with-timeout.
+- `distress-survey/survey.html` — replace CDN script tags with local deferred `/js/vendor/jszip.min.js` and `/js/vendor/jspdf.umd.min.js` (jsPDF 2.5.1 MIT, vendored).
+- `js/vendor/jspdf.umd.min.js` added; both vendor libs in `STATIC_SHELL` / publish artifact.
+
+No observation/pin/photo/numbering/capture/storage/sync/activation/Cloudflare changes.
+
+#### Tests
+
+| Suite | Result |
+| --- | --- |
+| `tests/distress-startup-hang.mjs` (new) | PASS — hung origin 86ms |
+| `tests/distress-startup-cdn-hang.mjs` (new) | 4/4 |
+| `tests/sw-distress-document-cache.mjs` | 9/9 |
+| `tests/distress-survey-offline.mjs` | 8/8 |
+| `tests/pwa-publish.mjs` (generated artifact; serves survey + both vendor libs) | 28/28 |
+
+#### Decisions / assumptions
+
+- Warm-cache-first for Distress only (iframe document), not a redesign of shell navigation.
+- Background clean refresh is the stale-while-revalidate path GPT-020 required.
+- Export libs deferred/local because measurement linked them to startup; capture open does not call them.
+- WebKit / physical PWA not available here; Chromium hang fixtures are evidence for review, not Tim-device proof.
+
+#### Files changed
+
+- `sw.js` — Distress cache-first navigate; shell v337; jspdf in STATIC_SHELL
+- `distress-survey/survey.html` — local deferred export libs
+- `js/vendor/jspdf.umd.min.js` — vendored jsPDF 2.5.1
+- `tests/distress-startup-hang.mjs` — hung-origin regression
+- `tests/distress-startup-cdn-hang.mjs` — CDN-off-critical-path regression
+- `tests/pwa-publish.mjs` — assert vendor libs in artifact
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-006 entry
+
+**Ball: GPT** for independent review. Tim retains promotion.

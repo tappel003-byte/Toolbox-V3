@@ -95,7 +95,17 @@ const browser = await puppeteer.launch({
 });
 try {
   const page = await browser.newPage();
-  const required = ['/', '/sw.js', '/js/app.js', '/distress-survey/survey.html', '/icon-192.png', '/icons/icon-192.png', '/manifest.webmanifest'];
+  const required = [
+    '/',
+    '/sw.js',
+    '/js/app.js',
+    '/distress-survey/survey.html',
+    '/js/vendor/jszip.min.js',
+    '/js/vendor/jspdf.umd.min.js',
+    '/icon-192.png',
+    '/icons/icon-192.png',
+    '/manifest.webmanifest',
+  ];
   for (const urlPath of required) {
     const response = await fetch(base + urlPath);
     check('serves ' + urlPath, response.status === 200, String(response.status));

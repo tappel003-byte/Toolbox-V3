@@ -15,7 +15,7 @@
 // sw.js file's own bytes change; a precached static asset edited without
 // bumping this stays served from the stale cache indefinitely on already
 // installed devices, invisibly, no matter how many times it's redeployed.
-const CACHE_NAME = 'toolbox-shell-v336';
+const CACHE_NAME = 'toolbox-shell-v337';
 const OFFLINE_DOCUMENT = '/index.html';
 const DISTRESS_DOCUMENT = '/distress-survey/survey.html';
 
@@ -37,6 +37,7 @@ const STATIC_SHELL = [
   '/js/room-verify.js',
   '/js/plan-setup.js',
   '/js/vendor/jszip.min.js',
+  '/js/vendor/jspdf.umd.min.js',
   '/js/customer-file-import.js',
   '/js/recovered-photos.js',
   '/js/distress-survey/mount.js',
@@ -142,22 +143,39 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // Navigations are network-first. Distress runs in an iframe with Customer
-  // File query parameters, so its offline fallback must be its own cached
-  // document — never the Toolbox index shell.
+  // Navigations:
   //
-  // Network-FIRST, not network-eventually. A link that accepts connections
-  // and never answers — a tablet tethered to a phone that has lost signal —
-  // does not make this fetch reject; it makes it wait for the operating
-  // system to give up, which on iOS is a minute or more. The cached document
-  // was sitting there the whole time. Opening or reloading Toolbox in the
-  // field is exactly when that must not happen, so the network gets three
-  // seconds and then the cache answers.
+  // Distress opens in an iframe whose document is already in CLEAN_DOCUMENTS.
+  // Serving that cached copy immediately avoids the measured ~3s wait when the
+  // origin accepts TCP but never answers (airplane / dead hotspot). A
+  // background clean-document refresh keeps the next open current.
+  //
+  // The Toolbox shell index stays network-first with a three-second deadline:
+  // a link that accepts connections and never answers must not wait for the
+  // OS give-up (a minute or more on iOS).
   if (req.mode === 'navigate') {
-    const fallbackDocument =
-      url.pathname === DISTRESS_DOCUMENT ? DISTRESS_DOCUMENT : OFFLINE_DOCUMENT;
+    if (url.pathname === DISTRESS_DOCUMENT) {
+      event.respondWith((async () => {
+        const cached = await caches.match(DISTRESS_DOCUMENT);
+        if (cached) {
+          event.waitUntil(
+            caches.open(CACHE_NAME)
+              .then((cache) => cacheCleanDocument(cache, DISTRESS_DOCUMENT))
+              .catch(() => {})
+          );
+          return cached;
+        }
+        try {
+          return await fetchWithin(req, NAVIGATE_TIMEOUT_MS);
+        } catch {
+          return caches.match(DISTRESS_DOCUMENT);
+        }
+      })());
+      return;
+    }
+
     event.respondWith(
-      fetchWithin(req, NAVIGATE_TIMEOUT_MS).catch(() => caches.match(fallbackDocument))
+      fetchWithin(req, NAVIGATE_TIMEOUT_MS).catch(() => caches.match(OFFLINE_DOCUMENT))
     );
     return;
   }
