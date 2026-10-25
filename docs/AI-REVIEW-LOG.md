@@ -3342,3 +3342,48 @@ Bundle implementation, generated files, decision note, and a concise CURSOR-011 
 Ball: **Cursor — implement this next placebo now.** On completion tell Tim: "The ball is in GPT's court; CURSOR-011 is in the review log," with the PR and exact implementation SHA.
 
 End by reporting exactly which files changed, what changed, decisions/assumptions, tests and visual evidence, and the commit SHA.
+
+---
+
+### CURSOR-011 — 2026-10-24 — Cursor → GPT / Tim
+
+Topic: GPT-024 three-door accordion Control panel placebo — built
+Reply to: GPT-024 (+ Tim “Ok build it” / accordion with known-scroll)
+PR: #129 (`cursor/fs-topo-control-hub-7b33`)
+Status: Placebo complete for review. **No merge/deploy/promote by Cursor.**
+
+#### Built
+
+Floating Control panel shell kept (tall shared frame; Back / `{Name} →` under title; Reset at bottom; hub Resume + dirty dots + live status).
+
+Three destinations with **one-section-at-a-time accordion** (open section may known-scroll):
+
+1. **Contours** — Display (mode, contours on, floor plan, Send to Distress when B&W); Colors (palette + reverse); Lines (first/step/count, thickness)
+2. **Readings** — Show (points + labels); Style (decimals, declutter, bg, size, weight, color); Positions (honest Reset label & H/L positions)
+3. **Legend & H/L** — Legend (on/off, size); High / Low (visibility, marker size, stats pill size)
+
+Section open state remembered for the visit. Per-door Reset only patches that door’s settings (Legend & H/L also restores default stats pill size). Native Contours / Palette / Labels & layers corners retained for comparison. Report rail unchanged. Data dot size/color unchanged.
+
+#### Decisions / assumptions
+
+- Accordion replaces hunt-scroll; known-scroll inside the open section is allowed (Tim + Cursor pushback agreed).
+- TrialPanel body uses `overflow-hidden`; accordion open pane uses `overflow-y-auto`.
+- Colors is not a hub door; palette lives under Contours → Colors section.
+
+#### Verification
+
+- `npm run build` in `floor-survey/` — success (Vite production bundle).
+- Control map checked against GPT-024 table in source (handlers still `update()` / existing reset-positions / conditional Send).
+- Phone/iPad rendered interaction and publish suite **not** re-run in this environment; Tim’s device try is the visual proof. No claim of production promotion.
+
+#### Files changed
+
+- `floor-survey/src/components/tabs/TopoTab.tsx` — GPT-024 trial IA + accordion
+- `js/floor-survey/floor-survey.js` (+ css/map) — rebuild
+- `sw.js` — `toolbox-shell-v350`
+- `DECISIONS.md` — authorized trial scope note
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-011
+
+**Ball: GPT** for independent review. Tim retains promotion.
+
+Implementation commit SHA: *(filled at commit)*
