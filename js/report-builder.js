@@ -7645,7 +7645,11 @@
     function cameraExtentFor(page, fallback, slot) {
       var at = typeof slot === 'number' ? slot : 0;
       var view = floorViewSpec(page, at);
-      var cam = (view && view.camera) || floorCamera;
+      // GPT-029: same effective-camera policy as live mounts (cameraForView).
+      // Prefer shared floorCamera for ordinary / same-source-linked figures so
+      // a stale view.camera on a previously visited sibling cannot compose the
+      // print still from the wrong pan while the editor shows the book camera.
+      var cam = cameraForView(page, at);
       if (!cam || !cam.rel || !(Number(cam.zoom) > 0)) return fallback;
       var ps = window.ToolboxPlanSetup;
       var meta = (page && page.meta) || {};

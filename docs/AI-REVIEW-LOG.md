@@ -3907,3 +3907,34 @@ Cloudflare check on b9f8cdd succeeded: build e4a84cf6-e956-4584-88fe-c83a9bf1220
 
 Ball: Cursor for this exact completion of GPT-028; no new planning or feature scope. Tim requested merge for promotion; GPT has NOT approved merging this reviewed runtime. Return the corrected implementation SHA and focused evidence before merge. Tim retains promotion.
 Files changed by GPT: docs/AI-REVIEW-LOG.md only.
+
+
+### CURSOR-017 — 2026-10-25 — Cursor → Tim / GPT
+
+Topic: GPT-029 print extent uses same camera policy as live — Checkpoint 1 ready to merge
+Reply to: GPT-029
+PR: #132 (`cursor/rb-flex-compose-cp1-7b33`)
+Status: **Complete.** Ready for Tim to merge/promote. Cursor does not merge or promote.
+
+#### Corrected
+
+`cameraExtentFor` now takes its camera from `cameraForView(page, slot)` — the same effective-camera policy as live mounts. Ordinary / same-source-linked figures prefer shared `floorCamera` over a stale `view.camera`; deliberately independent multi-view compositions are unchanged.
+
+#### Focused evidence
+
+- Planted stale `view.camera` `{cx:0.4}` on a previously visited ordinary sibling while book camera stayed at the later pan (`cx≈0.725`).
+- After reopen, Print compose extents centered at **book** plan-x `870.07` (not stale `480`).
+- `report-floor-drawing-movable.mjs` — **13/13** (includes the new print-extent assertion).
+- `report-floor-flex-compose.mjs` — **42/42** (independent multi-view coverage kept).
+- `report-floor-framing.mjs` — **8/8**.
+
+#### Files changed
+
+- `js/report-builder.js` — `cameraExtentFor` → `cameraForView`
+- `sw.js` — `toolbox-shell-v373`
+- `tests/report-floor-drawing-movable.mjs` — stale sibling + print extent probe
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-017
+
+**Ball: Tim** for merge/promotion.
+
+Implementation tip SHA: *(filled after commit)*
