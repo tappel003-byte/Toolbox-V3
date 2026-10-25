@@ -307,6 +307,30 @@ require the investigator to understand slots, cameras, or internal layout fields
 - Presentation and the saved PDF must preserve the arrangement and displayed
   information. The deliverable remains **11x17 landscape**.
 
+### Flexibility clarification — Tim, Oct 25, 2026
+
+Tim: "I'm not looking for 100% repeatability I am also looking for flexibility."
+
+- Independent views/compositions are part of the target, not a failure to follow
+  a template. Shared placement and linked resizing help when wanted; they must
+  not force every view or every report sheet into the same arrangement.
+- A reference/comparison sheet may bring together the garage, different levels,
+  or other chosen survey views on one sheet. Tim can arrange the drawings
+  together without contour legends or High/Low/Delta pills when those are not
+  useful to that composition. Hidden reference elements must not require
+  reserving their otherwise empty positions.
+- Support both matched, linked side-by-side views and deliberately independent
+  arrangements. Do not turn the earlier alignment examples into a mandatory
+  link between every view. The exact link/unlink interaction remains to be
+  designed simply.
+- The code's existing "Combined" means boundaries within one level. That is
+  not the same capability as Tim's proposed composition of multiple levels or
+  selected views on one sheet. Preserve this distinction in implementation
+  discussions.
+- Tim has now explicitly named independent views as a need. The remaining
+  detail is what independence includes in each case (position, size, and/or
+  pan/zoom), not whether composition flexibility is required.
+
 ### Shared placement and the rail
 
 - Shared arrangement across related floor slides remains the normal workflow.
@@ -357,9 +381,10 @@ Open backlog, to scope individually before implementation:
   interchangeable; source images can have different sizes and margins.
 - How linked groups and independent placement interact with shared placement
   across report slides when slides contain different combinations of views.
-- Whether any views need independent pan/zoom. It is **not** automatically a
-  requirement: Tim emphasized coordinated geometry, and the audit's mention
-  of independent cameras must not turn into an added feature by assumption.
+- Which aspects of a view can be independent or linked (placement, size,
+  pan/zoom), and how the investigator chooses that without adding confusing
+  modes. Independent compositions are explicitly wanted; independent pan/zoom
+  for every view is not automatically implied.
 - Exact snapping targets/grid spacing and behavior for differently shaped
   plans; the final names/placement of Add/Copy and This slide only controls.
 
