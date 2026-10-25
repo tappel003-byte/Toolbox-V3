@@ -1606,26 +1606,32 @@ export function TopoTab({
                           ))}
                         </div>
                       </div>
-                      <NumberControl
-                        label="Decimals"
-                        value={resolved.decimalPlaces}
-                        min={0}
-                        max={3}
-                        step={1}
-                        onChange={(v) =>
-                          update({
-                            decimalPlaces: Math.max(
-                              0,
-                              Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
-                            ),
-                          })
-                        }
-                      />
-                      <SwitchRow
-                        label="Declutter"
-                        checked={resolved.declutterLabels !== false}
-                        onChange={(v) => update({ declutterLabels: v })}
-                      />
+                      {/* Decimals is 0–3 — compact box, Declutter rides the freed row. */}
+                      <div className="flex items-end gap-3">
+                        <NumberControl
+                          compact
+                          label="Decimals"
+                          value={resolved.decimalPlaces}
+                          min={0}
+                          max={3}
+                          step={1}
+                          onChange={(v) =>
+                            update({
+                              decimalPlaces: Math.max(
+                                0,
+                                Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
+                              ),
+                            })
+                          }
+                        />
+                        <div className="min-w-0 flex-1">
+                          <SwitchRow
+                            label="Declutter"
+                            checked={resolved.declutterLabels !== false}
+                            onChange={(v) => update({ declutterLabels: v })}
+                          />
+                        </div>
+                      </div>
                     </div>
                   ),
                 },
@@ -1986,6 +1992,7 @@ export function TopoTab({
                                     onChange={(v) => update({ showLabels: v })}
                                   />
                     <NumberControl
+                                    compact
                                     label="Decimals"
                                     value={resolved.decimalPlaces}
                                     min={0}
@@ -2472,6 +2479,8 @@ function NumberControl({
   min,
   max,
   step = 0.1,
+  /** Short values (e.g. Decimals 0–3): ~3-char box, not full panel width. */
+  compact,
   onChange,
 }: {
   label: string;
@@ -2480,6 +2489,7 @@ function NumberControl({
   min?: number;
   max?: number;
   step?: number;
+  compact?: boolean;
   onChange: (v: number | null) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
@@ -2501,7 +2511,7 @@ function NumberControl({
     onChange(clamped);
   };
   return (
-    <div>
+    <div className={compact ? "shrink-0" : undefined}>
       <Label className="text-xs">{label}</Label>
       <Input
         type="number"
@@ -2515,7 +2525,11 @@ function NumberControl({
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
-        className="mt-1 h-10 w-full text-base"
+        className={
+          compact
+            ? "mt-1 h-10 w-14 px-1 text-center text-base tabular-nums"
+            : "mt-1 h-10 w-full text-base"
+        }
       />
     </div>
   );
