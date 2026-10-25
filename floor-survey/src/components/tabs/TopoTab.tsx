@@ -1236,7 +1236,6 @@ export function TopoTab({
           <TrialPanel
             title="Contours"
             stepLabel={trialStepLabel("contours")}
-            status={trialDoorStatus("contours", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
             footer={
               <TrialDoorNav
@@ -1268,7 +1267,7 @@ export function TopoTab({
                           onChange={(e) =>
                             update({ mode: e.target.value as RenderSettings["mode"] })
                           }
-                          className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
+                          className="mt-1 h-10 w-full rounded-md border bg-background px-2 text-xs"
                         >
                           <option value="contour-fill">Color fill</option>
                           <option value="contour-cells">Color cells</option>
@@ -1276,13 +1275,11 @@ export function TopoTab({
                           <option value="points-only">Points only</option>
                         </select>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs">Contours on</Label>
-                        <Switch
-                          checked={resolved.showContours}
-                          onCheckedChange={(v) => update({ showContours: v })}
-                        />
-                      </div>
+                      <SwitchRow
+                        label="Contours on"
+                        checked={resolved.showContours}
+                        onChange={(v) => update({ showContours: v })}
+                      />
                       <SwitchRow
                         label="Floor plan"
                         checked={resolved.showPlan}
@@ -1293,7 +1290,7 @@ export function TopoTab({
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-9 w-full text-xs"
+                            className="h-10 w-full text-xs"
                             disabled={layerState === "working"}
                             onClick={async () => {
                               setLayerState("working");
@@ -1360,13 +1357,11 @@ export function TopoTab({
                   title: "Colors",
                   body: (
                     <>
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs">Reverse</Label>
-                        <Switch
-                          checked={resolved.reversePalette}
-                          onCheckedChange={(v) => update({ reversePalette: v })}
-                        />
-                      </div>
+                      <SwitchRow
+                        label="Reverse"
+                        checked={resolved.reversePalette}
+                        onChange={(v) => update({ reversePalette: v })}
+                      />
                       <PalettePicker
                         value={resolved.palette}
                         onChange={(p) => update({ palette: p })}
@@ -1380,7 +1375,7 @@ export function TopoTab({
                   body: (
                     <>
                       <div className="grid grid-cols-3 gap-2">
-                        <div>
+                        <div className="min-w-0">
                           <Label className="text-xs">First</Label>
                           <Input
                             type="number"
@@ -1394,17 +1389,17 @@ export function TopoTab({
                                   e.target.value === "" ? null : parseFloat(e.target.value),
                               })
                             }
-                            className="mt-1 h-9 text-base"
+                            className="mt-1 h-10 w-full text-base"
                           />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <Label className="text-xs">Step</Label>
                           <StepInput
                             value={resolved.contourStep}
                             onCommit={(step) => update({ contourStep: step, interval: step })}
                           />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <Label className="text-xs">Count</Label>
                           <Input
                             type="text"
@@ -1423,7 +1418,7 @@ export function TopoTab({
                                 });
                               }
                             }}
-                            className="mt-1 h-9 text-base"
+                            className="mt-1 h-10 w-full text-base"
                           />
                         </div>
                       </div>
@@ -1502,7 +1497,6 @@ export function TopoTab({
           <TrialPanel
             title="Readings"
             stepLabel={trialStepLabel("readings")}
-            status={trialDoorStatus("readings", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
             footer={
               <TrialDoorNav
@@ -1538,7 +1532,7 @@ export function TopoTab({
                   id: "style",
                   title: "Style",
                   body: (
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2.5">
                       <NumberControl
                         label="Decimals"
                         value={resolved.decimalPlaces}
@@ -1559,14 +1553,14 @@ export function TopoTab({
                         checked={resolved.declutterLabels !== false}
                         onChange={(v) => update({ declutterLabels: v })}
                       />
-                      <div className="col-span-2 flex items-center justify-between gap-2">
-                        <Label className="text-xs">Label bg</Label>
-                        <div className="inline-flex overflow-hidden rounded-md border">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="text-xs shrink-0">Label bg</Label>
+                        <div className="inline-flex h-10 min-w-0 flex-1 overflow-hidden rounded-md border">
                           {(["white", "transparent", "plain"] as const).map((opt) => (
                             <button
                               key={opt}
                               type="button"
-                              className={`px-2 py-1 text-xs ${
+                              className={`min-w-0 flex-1 px-2 text-xs font-medium ${
                                 resolved.pointLabelBackground === opt
                                   ? "bg-primary text-primary-foreground"
                                   : "bg-background"
@@ -1599,26 +1593,26 @@ export function TopoTab({
                               pointLabelWeight: e.target.value as "normal" | "bold",
                             })
                           }
-                          className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
+                          className="mt-1 h-10 w-full rounded-md border bg-background px-2 text-xs"
                         >
                           <option value="normal">Normal</option>
                           <option value="bold">Bold</option>
                         </select>
                       </div>
-                      <div className="col-span-2">
+                      <div>
                         <Label className="text-xs">Color</Label>
                         <div className="mt-1 flex items-center gap-2">
                           <input
                             type="color"
                             value={resolved.pointLabelColor}
                             onChange={(e) => update({ pointLabelColor: e.target.value })}
-                            className="h-9 w-12 cursor-pointer rounded-md border bg-background p-1"
+                            className="h-10 w-12 shrink-0 cursor-pointer rounded-md border bg-background p-1"
                           />
                           <Input
                             enterKeyHint="done"
                             value={resolved.pointLabelColor}
                             onChange={(e) => update({ pointLabelColor: e.target.value })}
-                            className="h-9 flex-1 font-mono text-base"
+                            className="h-10 flex-1 font-mono text-base"
                           />
                         </div>
                       </div>
@@ -1638,7 +1632,7 @@ export function TopoTab({
                         size="sm"
                         variant="outline"
                         onClick={resetAllLabelPositions}
-                        className="h-8 w-full"
+                        className="h-10 w-full text-xs"
                       >
                         Reset label & H/L positions
                       </Button>
@@ -1654,7 +1648,6 @@ export function TopoTab({
           <TrialPanel
             title="Legend & H/L"
             stepLabel={trialStepLabel("legendhl")}
-            status={trialDoorStatus("legendhl", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
             footer={
               <TrialDoorNav
@@ -2199,42 +2192,6 @@ const TRIAL_DOORS = [
 
 type TrialDoorKey = (typeof TRIAL_DOORS)[number]["key"];
 
-const TRIAL_MODE_SHORT: Record<RenderSettings["mode"], string> = {
-  "contour-fill": "Color fill",
-  "contour-cells": "Color cells",
-  "contour-bw": "B&W lines",
-  "points-only": "Points only",
-};
-
-/** One-line status on the hub so you open the door that needs changing. */
-function trialDoorStatus(
-  key: TrialDoorKey,
-  settings: RenderSettings,
-  statsChipSize: number,
-): string {
-  switch (key) {
-    case "contours":
-      return [
-        TRIAL_MODE_SHORT[settings.mode],
-        PALETTE_LABELS[settings.palette] ?? settings.palette,
-        settings.showContours ? `step ${settings.contourStep}` : "contours off",
-      ].join(" · ");
-    case "readings":
-      return [
-        settings.showPoints ? "dots on" : "dots off",
-        settings.showLabels ? "labels on" : "labels off",
-        `${settings.decimalPlaces} dec`,
-      ].join(" · ");
-    case "legendhl":
-      return [
-        settings.showLegend
-          ? `legend ${Math.round((settings.legendScale ?? 1) * 10) / 10}×`
-          : "legend off",
-        settings.showHighLow ? `H/L · pill ${Math.round(statsChipSize)}` : "H/L off",
-      ].join(" · ");
-  }
-}
-
 /**
  * Compact card (not full-height). Accordion in the body; Back / destination
  * in the footer. Known-scroll only inside an open section.
@@ -2488,7 +2445,7 @@ function SwitchRow({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-2">
+    <div className="flex min-h-10 items-center justify-between gap-2">
       <Label className="text-xs">{label}</Label>
       <Switch checked={checked} onCheckedChange={onChange} />
     </div>
@@ -2500,10 +2457,9 @@ function SwitchRow({
 function StepInput({ value, onCommit }: { value: number; onCommit: (v: number) => void }) {
   const [text, setText] = useState(String(value));
   const lastValueRef = useRef(value);
-  // Sync external changes (e.g. Reset) into the text field
+  // Sync external changes into the text field
   if (value !== lastValueRef.current && String(value) !== text) {
     lastValueRef.current = value;
-    // schedule via microtask isn't safe here — set directly
     setText(String(value));
   }
   return (
@@ -2527,7 +2483,7 @@ function StepInput({ value, onCommit }: { value: number; onCommit: (v: number) =
           setText(String(n));
         }
       }}
-      className="w-20 h-10 text-base"
+      className="mt-1 h-10 w-full text-base"
     />
   );
 }
@@ -2582,7 +2538,7 @@ function NumberControl({
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
-        className="mt-1 h-9"
+        className="mt-1 h-10 w-full text-base"
       />
     </div>
   );
@@ -2609,19 +2565,19 @@ function StepperControl({
   return (
     <div>
       <Label className="text-xs">{label}</Label>
-      <div className="mt-1 flex items-center gap-1">
+      <div className="mt-1 flex items-center gap-1.5">
         <button
           type="button"
           onClick={() => onChange(Math.max(min, value - step))}
           disabled={value <= min}
           aria-label={`Decrease ${label}`}
-          className="h-6 w-6 rounded border flex items-center justify-center hover:bg-muted disabled:opacity-40 shrink-0"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border hover:bg-muted disabled:opacity-40"
         >
-          <Minus className="h-3 w-3" />
+          <Minus className="h-4 w-4" />
         </button>
         <output
           aria-label={`${label}: ${display}`}
-          className="flex h-6 flex-1 min-w-0 select-none items-center justify-center rounded-md border border-input bg-background px-1 text-center font-mono text-[10px] leading-none tabular-nums text-foreground"
+          className="flex h-10 min-w-0 flex-1 select-none items-center justify-center rounded-md border border-input bg-background px-2 text-center font-mono text-xs leading-none tabular-nums text-foreground"
         >
           {display}
         </output>
@@ -2630,9 +2586,9 @@ function StepperControl({
           onClick={() => onChange(Math.min(max, value + step))}
           disabled={value >= max}
           aria-label={`Increase ${label}`}
-          className="h-6 w-6 rounded border flex items-center justify-center hover:bg-muted disabled:opacity-40 shrink-0"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border hover:bg-muted disabled:opacity-40"
         >
-          <Plus className="h-3 w-3" />
+          <Plus className="h-4 w-4" />
         </button>
       </div>
     </div>
