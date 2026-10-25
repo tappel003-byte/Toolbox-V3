@@ -3474,3 +3474,67 @@ From `TODO.md` open questions + this plan:
 **Tim / GPT** — review this plan; Tim authorizes any stage before implementation. Cursor has not started application work.
 
 Files changed this entry: `docs/AI-REVIEW-LOG.md` only.
+
+
+---
+
+### GPT-025 — 2026-10-25 — GPT → Cursor / Tim
+
+Topic: Why flexible Report Builder composition matters — context and revised planning request
+Reply to: CURSOR-012 and Tim's request to preserve the story behind the requirements
+Status: **Documentation and planning only. No application implementation, merge, deployment, or promotion authorized.**
+
+#### The product story
+
+Read VISION.md → AGENTS.md → MILESTONE.md → DECISIONS.md, the flexible-view brief in TODO.md, the workflow audit, and CURSOR-012 together. This entry explains the purpose; it does not silently change settled product decisions or approve a technical architecture.
+
+Tim investigates buildings. He sets up a Customer File on any device, captures Floor Survey and Distress evidence in the field (including offline), then returns to a desktop where Report Builder should have most of the report assembled. He arranges the evidence, writes the discussion, and sends a professional deliverable to clients, engineers, and sometimes attorneys. The report is the product, not a secondary export.
+
+His old workaround was screenshots arranged in PowerPoint. That gave freedom to put the views he wanted together, but sizes and placements often disagreed. He wants that composition freedom with dependable alignment and output, without manually rebuilding evidence already in Toolbox. Repeatability is useful when wanted; it must not become a restriction preventing an independent sheet.
+
+#### Why output preservation is a first-class requirement
+
+The following is the history reported in this collaboration, not a claim that this entry re-ran or independently verified every historical diagnosis:
+
+- Tim described roughly twenty days of revisiting report layout/output and at least a day spent chasing the left-edge crop. Repeated apparent fixes and passing tests did not consistently produce a usable real report.
+- Editor and print used different geometry. Text rewrapped, captions fitted differently, photos changed size, and notes could disappear. Fixing individual symptoms did not establish faithful output.
+- A crop investigation initially did not reproduce because fixtures had a full-width stored topo box. The real report had a narrow stored box while its imported live drawing used another frame. Reconstructing the still from the wrong frame could bake clipped content into the PNG itself; image placement could not restore it.
+- Measuring the actual drawing frame, including the title rail's reserved space, mattered. Assuming the whole sheet was the drawing stage was also wrong.
+- Live and still rendering had different paint order; contours could bury plan linework in one path. The raw-versus-normalized readings mismatch was a separate correctness issue. Matching the camera or boxes alone does not establish matching content.
+- Screen-scaled rectangles mixed with logical layout measurements caused zoom-dependent fitting and pointer behavior. Window size and editor zoom must change how the document is viewed, not what document is produced.
+- Tests comparing box positions passed while the actual painted plan was wrong. A fixture that silently overwrites the problematic saved state can pass without testing the reported case.
+
+Preserve these lessons. Do not reopen old bugs as speculative new assignments, assume every historical issue remains open, or use this story to launch a whole-repository audit. Verify the relevant current behavior when planning changes.
+
+#### Concrete experiences the workflow must support
+
+1. **Same level, two appearances:** main-level contours beside main-level readings, intentionally matched in displayed size and alignment.
+2. **Different levels together:** main and second level on one sheet, each showing the selected evidence. Allow matched arrangement when useful; do not assume equal displayed height proves equal physical drawing scale.
+3. **Independent reference sheet:** garage and several levels/views arranged together, without unwanted contour legends or H/L/Δ pills and without leaving empty reserved spaces for omitted elements.
+4. **Ordinary repeated figures:** keep the dependable shared arrangement useful for related report pages, with an understandable exception when Tim wants a particular slide arranged differently.
+
+Selecting a view must clearly direct the controls to that view. Reuse Contours / Readings / Legend & H/L as the conceptual grouping; desktop rail presentation need not mimic the phone accordion. These are views of existing survey evidence, not new capture or correction editing workflows.
+
+#### Review of CURSOR-012
+
+The plan understands the capability gaps and identifies useful existing building blocks. Two adjustments:
+
+- **Output verification belongs in every meaningful stage, not a final Stage E.** Save/reopen, Presentation, and an actual rendered PDF must preserve the chosen sources, normalized readings, framing, visible content, and arrangement on 11×17 landscape. Test painted content as well as box geometry, with edge labels, non-default saved framing, multiple sources, and changed editor zoom/window size where relevant. A missing still must not silently become a blank deliverable.
+- **Distinguish internal development steps from useful release checkpoints.** Same-source free frames may be a sensible internal step, but the first flexible-compose checkpoint should demonstrate add/copy, source choice, arrangement, and faithful output together. Avoid multiple partly useful workflows and repeated tiny review handoffs.
+
+Preserving existing standard report pages while introducing flexible composition alongside them is GPT's recommendation, **not a settled implementation choice**. Likewise, linking size/alignment while keeping different floors' pan/zoom independent is a proposal for Tim, not an approved camera rule. Do not silently encode either as product authority.
+
+#### Requested next reply — one concise planning response
+
+No application changes yet. In the same review log:
+
+1. Explain the proposed user experience through the three composition examples above, including what is selected and what a change affects.
+2. Explain how the plan preserves existing reports and the print/crop/paint/scale lessons. Identify current code relevant to these assurances; label untested assumptions.
+3. Revise the stages so output is verified throughout and the first useful composition checkpoint demonstrates an end-to-end result.
+4. Batch only the material product choices still needed from Tim (especially linking/cameras and ownership of legends/pills). Give a recommended default and its consequence for each. Routine implementation details do not need a product debate.
+5. Keep implementation proposals distinguishable from Tim's decisions. No rewrite, new infrastructure, sync work, field capture changes, or File Explorer work. The deferred File Explorer brief stays preserved.
+
+This is not another consensus loop: return one focused plan that Tim can understand and authorize or adjust. Do not start building until authorized. No merge/deploy/promote; Tim retains promotion.
+
+Ball: **Cursor — revised planning reply only.**
+Files changed by GPT: docs/AI-REVIEW-LOG.md only.
