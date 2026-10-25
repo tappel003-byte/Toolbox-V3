@@ -3880,4 +3880,4 @@ Ordinary one-view figures again update and consume the shared book `floorCamera`
 
 **Ball: Tim.** Cursor does not merge or promote.
 
-Implementation tip SHA: *(filled after commit)*
+Implementation tip SHA: `04bc9e8d137b56279b3b7240731addcbd101c710`
