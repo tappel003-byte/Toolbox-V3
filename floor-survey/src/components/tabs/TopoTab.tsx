@@ -2577,6 +2577,11 @@ function trialDoorDirty(
  * Compact card (not full-height). Accordion in the body; Back / destination
  * and Reset live in the footer. Known-scroll only inside an open section.
  */
+/** Toolbox shell cream — same tokens as css/styles.css (:root --bg / --panel / --line). */
+const TRIAL_CREAM_BG = "#f4f0e8";
+const TRIAL_CREAM_PANEL = "#fffaf0";
+const TRIAL_CREAM_LINE = "#d9d2c2";
+
 function TrialPanel({
   title,
   stepLabel,
@@ -2593,8 +2598,14 @@ function TrialPanel({
   footer?: React.ReactNode;
 }) {
   return (
-    <div className="absolute z-30 top-12 right-2 flex w-64 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-card/95 shadow-2xl backdrop-blur landscape-short:top-2">
-      <div className="flex shrink-0 items-start justify-between gap-2 border-b px-3 pb-2 pt-2.5">
+    <div
+      className="absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border shadow-2xl backdrop-blur landscape-short:top-2"
+      style={{ backgroundColor: `${TRIAL_CREAM_PANEL}f2`, borderColor: TRIAL_CREAM_LINE }}
+    >
+      <div
+        className="flex shrink-0 items-start justify-between gap-2 border-b px-3 pb-2 pt-2.5"
+        style={{ borderColor: TRIAL_CREAM_LINE }}
+      >
         <div className="min-w-0">
           {stepLabel ? (
             <p className="text-[10px] font-medium text-muted-foreground">{stepLabel}</p>
@@ -2608,22 +2619,27 @@ function TrialPanel({
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-black/5 hover:text-foreground"
         >
-          <X className="h-3.5 w-3.5" />
+          <X className="h-4 w-4" />
         </button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden px-3 py-2.5 text-sm">
         {children}
       </div>
       {footer ? (
-        <div className="shrink-0 border-t bg-muted/30 px-3 py-2 backdrop-blur">{footer}</div>
+        <div
+          className="shrink-0 border-t px-3 py-2 backdrop-blur"
+          style={{ borderColor: TRIAL_CREAM_LINE, backgroundColor: `${TRIAL_CREAM_BG}cc` }}
+        >
+          {footer}
+        </div>
       ) : null}
     </div>
   );
 }
 
-/** One section open at a time; shaded rows so they read as controls. */
+/** One section open at a time; cream rows, chevron leading the title. */
 function TrialAccordion({
   openId,
   onChange,
@@ -2642,29 +2658,33 @@ function TrialAccordion({
             key={item.id}
             className={
               open
-                ? "flex max-h-[18rem] min-h-0 flex-col overflow-hidden rounded-lg border border-primary/35 bg-primary/10 shadow-sm"
-                : "shrink-0 rounded-lg border border-border/80 bg-muted/55 shadow-sm"
+                ? "flex max-h-[18rem] min-h-0 flex-col overflow-hidden rounded-lg border border-primary/40 bg-primary/10 shadow-sm"
+                : "shrink-0 rounded-lg border shadow-sm"
             }
+            style={open ? undefined : { borderColor: TRIAL_CREAM_LINE, backgroundColor: TRIAL_CREAM_BG }}
           >
             <button
               type="button"
               onClick={() => onChange(open ? null : item.id)}
               aria-expanded={open}
               className={
-                "flex h-10 shrink-0 items-center justify-between gap-2 px-2.5 text-left text-xs font-semibold " +
-                (open ? "text-primary" : "text-foreground hover:bg-muted/80")
+                "flex min-h-11 shrink-0 items-center gap-2.5 px-2.5 text-left text-xs font-semibold " +
+                (open ? "text-primary" : "text-foreground hover:bg-black/[0.04]")
               }
             >
-              <span>{item.title}</span>
               <ChevronDown
                 className={
-                  "h-4 w-4 shrink-0 transition-transform " +
-                  (open ? "rotate-180 text-primary" : "text-muted-foreground")
+                  "h-5 w-5 shrink-0 transition-transform " +
+                  (open ? "rotate-0 text-primary" : "-rotate-90 text-muted-foreground")
                 }
               />
+              <span className="min-w-0 flex-1">{item.title}</span>
             </button>
             {open ? (
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain border-t border-primary/20 bg-card/90 px-2.5 py-2">
+              <div
+                className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain border-t border-primary/20 px-2.5 py-2"
+                style={{ backgroundColor: `${TRIAL_CREAM_PANEL}e6` }}
+              >
                 {item.body}
               </div>
             ) : null}
@@ -2704,7 +2724,8 @@ function TrialDoorNav({
         <button
           type="button"
           onClick={onBack}
-          className="h-9 flex-1 rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-muted/60"
+          className="h-11 flex-1 rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-muted/60"
+          style={{ borderColor: TRIAL_CREAM_LINE }}
         >
           ← Back
         </button>
@@ -2712,7 +2733,7 @@ function TrialDoorNav({
           <button
             type="button"
             onClick={() => onNext(next.key)}
-            className="h-9 flex-1 truncate rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+            className="h-11 flex-1 truncate rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
           >
             {next.name} →
           </button>
@@ -2720,7 +2741,7 @@ function TrialDoorNav({
           <button
             type="button"
             onClick={onBack}
-            className="h-9 flex-1 truncate rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+            className="h-11 flex-1 truncate rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
           >
             Done
           </button>
