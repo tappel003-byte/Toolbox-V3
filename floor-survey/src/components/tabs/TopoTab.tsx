@@ -1453,7 +1453,7 @@ export function TopoTab({
 
         {/* Control panel hub + doors */}
         {(openCorner === "hub" && !controlsOnly) && (
-          <TrialPanel title="Control panel" onClose={() => setOpenCorner(null)}>
+          <TrialPanel title="Control panel" titleAccent="rust" onClose={() => setOpenCorner(null)}>
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
               <p className="text-[10px] text-muted-foreground">
                 Pick what to change. The plan stays on screen.
@@ -1473,7 +1473,7 @@ export function TopoTab({
                 </button>
               ) : null}
               <div className="flex flex-col gap-1.5">
-                {TRIAL_DOORS.map(({ key, name }, i) => (
+                {TRIAL_DOORS.map(({ key, name }) => (
                   <button
                     key={key}
                     type="button"
@@ -1484,7 +1484,7 @@ export function TopoTab({
                       borderColor: TRIAL_LINE_STRONG,
                     }}
                   >
-                    <span className="min-w-0 text-right">
+                    <span className="min-w-0 flex-1 text-right">
                       <span
                         className="block text-sm font-medium leading-tight"
                         style={{ color: TRIAL_NAVY }}
@@ -1494,12 +1494,6 @@ export function TopoTab({
                       <span className="block truncate text-[10px] text-muted-foreground">
                         {trialDoorStatus(key, resolved, statsChipSize)}
                       </span>
-                    </span>
-                    <span
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold tabular-nums"
-                      style={{ backgroundColor: TRIAL_RUST_SOFT, color: TRIAL_RUST }}
-                    >
-                      {i + 1}
                     </span>
                     <ChevronRight className="h-4 w-4 shrink-0" style={{ color: TRIAL_NAVY }} />
                   </button>
@@ -2253,13 +2247,13 @@ function trialDoorStatus(
 /** Customer File visual system — css/styles.css (:root --navy / --accent / --line). */
 const TRIAL_NAVY = "#07283d";
 const TRIAL_RUST = "#c14a2b";
-const TRIAL_RUST_SOFT = "#f3d8ce";
 const TRIAL_COOL_GRAY = "#eef1f3";
 const TRIAL_LINE = "#c9d0d5";
 const TRIAL_LINE_STRONG = "#a8b0b8";
 
 function TrialPanel({
   title,
+  titleAccent,
   stepLabel,
   status,
   onClose,
@@ -2267,12 +2261,15 @@ function TrialPanel({
   footer,
 }: {
   title: string;
+  /** Hub only: rust title so the Control panel name carries the accent. */
+  titleAccent?: "rust";
   stepLabel?: string;
   status?: string;
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
+  const rustTitle = titleAccent === "rust";
   return (
     <div
       className="absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg backdrop-blur landscape-short:top-2"
@@ -2286,7 +2283,14 @@ function TrialPanel({
           {stepLabel ? (
             <p className="text-[10px] font-medium text-muted-foreground">{stepLabel}</p>
           ) : null}
-          <h2 className="text-sm font-semibold leading-tight" style={{ color: TRIAL_NAVY }}>
+          <h2
+            className={
+              rustTitle
+                ? "text-base font-bold leading-tight"
+                : "text-sm font-semibold leading-tight"
+            }
+            style={{ color: rustTitle ? TRIAL_RUST : TRIAL_NAVY }}
+          >
             {title}
           </h2>
           {status ? (
