@@ -267,3 +267,137 @@ completed." Things land here until Report Builder is finished.
   disagrees with anything else. Nothing repairs an existing gap, deliberately:
   renumbering would change what "point 4" means in a note already written. If
   it turns up again with a known cause, this is where it was last looked at.
+
+
+## Report Builder — flexible survey views on a sheet
+
+**Design target recorded with Tim, Oct 25, 2026. Implementation is not authorized by this entry.**
+Keep this entry with the [read-only code audit](REPORT-BUILDER-VIEWS-WORKFLOW-AUDIT.md).
+That audit inspected `b6aea91f151adf3e187f532afbfaa0e6415329eb`; it read code/test
+sources and did not run tests. The audit describes the existing implementation;
+this entry preserves the intended experience. Do not confuse the two.
+
+### What it should look and feel like
+
+Tim previously took screenshots of the survey programs and arranged them in
+PowerPoint. That gave him composition freedom but often caused inconsistent
+sizes and alignment. Report Builder should provide that freedom using views
+of the Customer File's survey data, with reliable alignment and output.
+
+**Add a view, select it, adjust it, line it up.** The interface should not
+require the investigator to understand slots, cameras, or internal layout fields.
+
+- A sheet can contain the survey views the investigator needs, rather than
+  being limited to one level shown once or twice. Examples: Main Level color
+  contours beside Main Level readings; Main Level beside Second Floor.
+- Add or copy an individual view. Choose which existing level and survey
+  presentation it shows. Copying a view is different from duplicating a whole
+  report sheet. More than two views must be possible; no numerical maximum
+  was chosen in this discussion.
+- Selecting a view directs its appearance controls to that view. One can show
+  contours and another readings without changing the other.
+- Move and resize views as composed objects. Side-by-side views should look
+  intentionally matched: equal intended displayed heights and aligned top and
+  bottom edges. Resizing a linked view resizes its companions; alignment/grid
+  snapping supports moving them without small accidental offsets.
+- Frames should fit the drawings closely enough that unnecessary white space
+  does not dictate the composition. Account for image margins, framing, and
+  frame shape separately. Preserve plan content and labels; removing evidence
+  is not a white-space solution.
+- Presentation and the saved PDF must preserve the arrangement and displayed
+  information. The deliverable remains **11x17 landscape**.
+
+### Flexibility clarification — Tim, Oct 25, 2026
+
+Tim: "I'm not looking for 100% repeatability I am also looking for flexibility."
+
+- Independent views/compositions are part of the target, not a failure to follow
+  a template. Shared placement and linked resizing help when wanted; they must
+  not force every view or every report sheet into the same arrangement.
+- A reference/comparison sheet may bring together the garage, different levels,
+  or other chosen survey views on one sheet. Tim can arrange the drawings
+  together without contour legends or High/Low/Delta pills when those are not
+  useful to that composition. Hidden reference elements must not require
+  reserving their otherwise empty positions.
+- Support both matched, linked side-by-side views and deliberately independent
+  arrangements. Do not turn the earlier alignment examples into a mandatory
+  link between every view. The exact link/unlink interaction remains to be
+  designed simply.
+- The code's existing "Combined" means boundaries within one level. That is
+  not the same capability as Tim's proposed composition of multiple levels or
+  selected views on one sheet. Preserve this distinction in implementation
+  discussions.
+- Tim has now explicitly named independent views as a need. The remaining
+  detail is what independence includes in each case (position, size, and/or
+  pan/zoom), not whether composition flexibility is required.
+
+### Shared placement and the rail
+
+- Shared arrangement across related floor slides remains the normal workflow.
+  A simple **This slide only** on/off control is the proposed way to choose
+  separate placement and return to shared placement. Tim suggested a floating
+  pill near a canvas corner, outside the drawing area.
+- Tim does not find **Use this as my default** useful for different jobs whose
+  plans rarely have the same shape. Removing that decision from the ordinary
+  rail is the proposed simplification; do not delete existing saved defaults
+  or migrate reports as an unrequested side effect.
+- No separate Lock action should be required merely to make sibling slides
+  share an arrangement. Do not revive the old confusing lock controls.
+- Reuse the conceptual organization of the new FS Control panel in the Report
+  Builder rail: **Contours, Readings, Legend & H/L**. Contour colors belong under
+  Contours; reading font size, bold, color and number formatting belong under
+  Readings. Report Builder has different space and does not have to reproduce
+  the field accordion presentation.
+- **Data capture controls are outside this work.** Tim explicitly parked that
+  discussion. Do not regroup the Data screen or change field capture,
+  measurement storage, or correction behavior as part of report composition.
+
+### What is already there, and what remains
+
+The audit finds a same-level two-view feature, per-view appearance and
+selection, a shared report camera, whole-page duplication, shared placement
+and a per-slide placement exception, and a still-composition print path.
+These are reusable capabilities, not proof that arbitrary compose is built.
+
+Open backlog, to scope individually before implementation:
+
+- [ ] Individual view selection/source/copy: choose the floor and rendition
+  for each view, mix floors on a sheet, and add beyond the current two slots.
+- [ ] Placement and sizing: move/resize individual view frames with linked
+  sizing and reliable top/bottom alignment.
+- [ ] Snapping and whitespace: define and demonstrate alignment behavior and
+  useful frame fit without clipping evidence.
+- [ ] Shared placement UX: simplify to the normal shared arrangement and an
+  explicit This slide only exception; simplify default/lock wording.
+- [ ] Report rail: present the agreed three control groups and clearly show
+  which selected view they control.
+- [ ] Persistence/output: prove view sources, settings, geometry and linked
+  behavior survive save/reopen and agree in Presentation and the PDF.
+
+### Questions still open — do not invent answers
+
+- Whether matching different floors means equal displayed drawing heights,
+  the same physical drawing scale, or a choice between them. Those are not
+  interchangeable; source images can have different sizes and margins.
+- How linked groups and independent placement interact with shared placement
+  across report slides when slides contain different combinations of views.
+- Which aspects of a view can be independent or linked (placement, size,
+  pan/zoom), and how the investigator chooses that without adding confusing
+  modes. Independent compositions are explicitly wanted; independent pan/zoom
+  for every view is not automatically implied.
+- Exact snapping targets/grid spacing and behavior for differently shaped
+  plans; the final names/placement of Add/Copy and This slide only controls.
+
+### Keeping this backlog useful
+
+Keep active entries short enough to find and link detailed evidence or mockups
+where they exist. Work is not complete just because code was written: record
+relevant verification and Tim's acceptance where visual behavior is involved.
+Then remove the completed item from the active checklist and cite its
+implementation/verification in the completion record; Git history retains the
+original discussion. Do not erase the preserved design or old evidence.
+
+The File Explorer redesign is already retained in
+[docs/file-explorer-rebuild/](docs/file-explorer-rebuild/README.md), including
+`explorer-mockups.html`. It remains deferred, not lost or authorized by this
+Report Builder discussion.
