@@ -456,12 +456,26 @@
   // floor page -- how many views it carries and which one is being driven --
   // are read through these rather than captured.
   function floorSlotsForPage(page) {
+    var api = window.ToolboxReportFloorViews;
+    if (api && typeof api.viewCount === 'function') return Math.max(1, api.viewCount(page));
     return page && page.meta && page.meta.floorTwoUp ? 2 : 1;
   }
 
   function floorActiveSlotForPage(page) {
     var n = Number(page && page._floorSlot) || 0;
     return Math.max(0, Math.min(floorSlotsForPage(page) - 1, n));
+  }
+
+  function floorViewsForPage(page) {
+    var api = window.ToolboxReportFloorViews;
+    if (api && typeof api.viewsFor === 'function') return api.viewsFor(page);
+    return [];
+  }
+
+  function floorViewSpec(page, slot) {
+    var api = window.ToolboxReportFloorViews;
+    if (api && typeof api.viewAt === 'function') return api.viewAt(page, slot);
+    return null;
   }
 
   // The one page in the deck that is written rather than drawn. Named here
@@ -2177,6 +2191,11 @@
   var topoHosts = Object.create(null);
 
   function topoHostKey(page, slot) {
+    var view = floorViewSpec(page, slot);
+    if (view) {
+      return [page && page.id, slot, view.id, view.canvasId, view.epochId,
+        view.areaId || '', view.scope || ''].join('|');
+    }
     var meta = (page && page.meta) || {};
     return [page && page.id, slot, meta.canvasId, meta.epochId,
       meta.areaId || '', meta.scope || ''].join('|');
@@ -2322,13 +2341,17 @@
     host = { el: el, key: key, api: null, hooks: hooks };
     topoHosts[n] = host;
     var meta = page.meta || {};
+    var view = floorViewSpec(page, n);
+    var canvasId = (view && view.canvasId) || meta.canvasId || '';
+    var scope = (view && view.scope) || meta.scope || 'all';
+    var areaId = scope === 'all' ? null : ((view && view.areaId) || meta.areaId || null);
     // The hooks are read through the host so a later re-render can swap them
     // without remounting the view.
     host.api = api.mount(el, {
       customerFileId: (hooks && hooks.customerFileId) || '',
       workspace: 'report-topo',
-      canvasId: meta.canvasId || '',
-      areaId: meta.scope === 'all' ? null : (meta.areaId || null),
+      canvasId: canvasId,
+      areaId: areaId,
       camera: (hooks && hooks.camera) || null,
       settings: (hooks && hooks.settings) || null,
       locked: !!(hooks && hooks.locked),
@@ -2601,6 +2624,8 @@
           },
           topoSlots: thumb ? 1 : floorSlotsForPage(page),
           topoActiveSlot: thumb ? 0 : floorActiveSlotForPage(page),
+          views: thumb ? null : floorViewsForPage(page),
+          viewStats: thumb ? null : (page._viewStats || null),
           // The cover's aerial view, carried onto this page automatically and
           // taken off it with the x. Settled Oct 10, 2026.
           overviewUrl: page._overviewUrl || '',
@@ -3006,7 +3031,7 @@
     // two named fields rather than an array, because nothing has to be
     // migrated and a report written before today reads unchanged.
     function floorSlots(page) {
-      return page && page.meta && page.meta.floorTwoUp ? 2 : 1;
+      return floorSlotsForPage(page);
     }
     /** Which of them the rail's controls are driving. Not saved: it is where
      *  the investigator is looking, not part of the report. */
@@ -3178,6 +3203,8 @@
 
     function floorViewFor(page, slot) {
       var at = typeof slot === 'number' ? slot : floorSlot(page);
+      var view = floorViewSpec(page, at);
+      if (view && view.settings) return view.settings;
       var meta = (page && page.meta) || {};
       if (at === 1) return meta.floorView2 || meta.floorView || floorView;
       if (meta.floorView) return meta.floorView;
@@ -3190,6 +3217,17 @@
       }
       page.meta = page.meta || {};
       var at = typeof slot === 'number' ? slot : floorSlot(page);
+      var viewsApi = window.ToolboxReportFloorViews;
+      if (viewsApi) {
+        var list = viewsApi.ensurePageViews(page);
+        if (list[at]) {
+          list[at].settings = next;
+          // Keep legacy fields in sync for older readers / migration safety.
+          if (at === 0) page.meta.floorView = next;
+          if (at === 1) page.meta.floorView2 = next;
+          return;
+        }
+      }
       if (at === 1) {
         page.meta.floorView2 = next;
         return;
@@ -3200,6 +3238,22 @@
       // one slide's change into it would carry straight through to every
       // other slide -- which is the behaviour being fixed. The default stays
       // the baseline a slide opens at.
+    }
+
+    function cameraForView(page, slot) {
+      var view = floorViewSpec(page, slot);
+      var viewsApi = window.ToolboxReportFloorViews;
+      var active = floorViewSpec(page, floorSlot(page));
+      // Same-source linked companions share the book camera (today's two-up).
+      // Different sources keep an independent camera on the view (CURSOR-013 proposal Tim authorized via proceed).
+      if (view && view.camera) return view.camera;
+      if (view && active && viewsApi && viewsApi.sameSource(view, active) && view.linkGroup) {
+        return floorCamera;
+      }
+      if (view && (!viewsApi || !active || viewsApi.sameSource(view, active))) {
+        return floorCamera;
+      }
+      return view && view.camera ? view.camera : floorCamera;
     }
     // Whether the frame has been given the plan's proportion yet. Once it has,
     // the frame is whatever it has been dragged to and is never re-fitted.
@@ -3874,12 +3928,16 @@
       // same way, and a change to it is stored for the book rather than the
       // slide.
       if (current && current.type === 'floor' && current.meta && current.meta.imported &&
-          current.meta.canvasId && window.ToolboxFloorSurvey) {
+          window.ToolboxFloorSurvey) {
+        // Ensure views[] exists (migrates legacy two-up) before mounting hosts.
+        floorViewsForPage(current);
         current._mountTopo = function (page, slot) {
           var at = Number(slot) || 0;
+          var view = floorViewSpec(page, at);
+          if (!(view && view.canvasId) && !(page.meta && page.meta.canvasId)) return null;
           return mountTopoHost(page, at, {
             customerFileId: customerFileId,
-            camera: floorCamera,
+            camera: cameraForView(page, at),
             settings: floorViewFor(page, at),
             // Never locked. The drawing is panned and zoomed like the
             // workspace it came from, on every slide.
@@ -3892,24 +3950,42 @@
             // no control left to release it.
             locked: false,
             onCameraChange: function (camera, from) {
-              // A view that has just been handed a camera reports it straight
-              // back. Reading that as a fresh pan would save the report again
-              // and bounce the camera between the two views, so a camera that
-              // is the one already held is not news.
-              var same = !!floorCamera &&
-                Math.abs((floorCamera.cx || 0) - (camera.cx || 0)) < 1e-4 &&
-                Math.abs((floorCamera.cy || 0) - (camera.cy || 0)) < 1e-4 &&
-                Math.abs((floorCamera.zoom || 0) - (camera.zoom || 0)) < 1e-4;
-              if (same) return;
-              // rel marks a camera whose centre is a fraction of the plan
-              // rather than image pixels. Dropping it here would make every
-              // stored view read as the old pixel form, which is exactly the
-              // thing that made two levels of one building land in different
-              // places.
-              floorCamera = {
+              var fromView = floorViewSpec(page, from);
+              var viewsApi = window.ToolboxReportFloorViews;
+              var cam = {
                 cx: camera.cx, cy: camera.cy, zoom: camera.zoom,
                 rel: !!camera.rel,
               };
+              // Independent camera when this view's source differs from linked same-source companions.
+              var shareBook = true;
+              if (fromView && viewsApi) {
+                var list = viewsApi.viewsFor(page);
+                for (var i = 0; i < list.length; i += 1) {
+                  if (i === Number(from)) continue;
+                  if (!list[i]) continue;
+                  if (!viewsApi.sameSource(fromView, list[i])) {
+                    shareBook = false;
+                    break;
+                  }
+                }
+              }
+              if (!shareBook && fromView) {
+                var prev = fromView.camera;
+                var sameV = !!prev &&
+                  Math.abs((prev.cx || 0) - (cam.cx || 0)) < 1e-4 &&
+                  Math.abs((prev.cy || 0) - (cam.cy || 0)) < 1e-4 &&
+                  Math.abs((prev.zoom || 0) - (cam.zoom || 0)) < 1e-4;
+                if (sameV) return;
+                fromView.camera = cam;
+                markDirty();
+                return;
+              }
+              var same = !!floorCamera &&
+                Math.abs((floorCamera.cx || 0) - (cam.cx || 0)) < 1e-4 &&
+                Math.abs((floorCamera.cy || 0) - (cam.cy || 0)) < 1e-4 &&
+                Math.abs((floorCamera.zoom || 0) - (cam.zoom || 0)) < 1e-4;
+              if (same) return;
+              floorCamera = cam;
               pushCameraToTopoHosts(floorCamera, from);
               markDirty();
             },
@@ -3922,11 +3998,11 @@
             // is drawing right now. Read from evidence stored at import, the
             // rail said 9.40 / 8.10 beside a pill reading 9.80 / 8.20.
             onStats: function (stats, from) {
-              // Both views draw the same level, so both report the same
-              // numbers; the rail takes them from the one its controls are
-              // driving so there is never a question of which it is quoting.
-              if ((Number(from) || 0) !== floorSlot(page)) return;
               var live = Array.isArray(stats) ? stats : [];
+              page._viewStats = page._viewStats || {};
+              page._viewStats[Number(from) || 0] = live;
+              // Rail quotes the selected view.
+              if ((Number(from) || 0) !== floorSlot(page)) return;
               var before = JSON.stringify(page._liveStats || null);
               if (before === JSON.stringify(live)) return;
               page._liveStats = live;
@@ -4256,17 +4332,71 @@
             onItsOwn ? 'secondary' : 'quiet',
             'data-rb-floor-own', onItsOwn ? 'share' : 'own'));
 
-          var twoUp = floorSlots(page) > 1;
-          wrap.appendChild(railButton(
-            twoUp ? 'One view' : 'Two views',
-            'quiet', 'data-rb-floor-twoup', twoUp ? 'off' : 'on'));
+          var viewsNow = floorViewsForPage(page);
+          var activeView = floorViewSpec(page, floorSlot(page));
+          var viewLead = document.createElement('p');
+          viewLead.className = 'rb-panel__lead';
+          viewLead.textContent = viewsNow.length > 1
+            ? ('View ' + (floorSlot(page) + 1) + ' of ' + viewsNow.length
+              + ' selected — controls below apply to it.')
+            : 'One view on this sheet. Add another to compose side by side.';
+          wrap.appendChild(viewLead);
+          wrap.appendChild(railButton('Add view', 'quiet', 'data-rb-floor-view', 'add'));
+          wrap.appendChild(railButton('Copy view', 'quiet', 'data-rb-floor-view', 'copy'));
+          if (viewsNow.length > 1) {
+            wrap.appendChild(railButton('Remove view', 'quiet', 'data-rb-floor-view', 'remove'));
+            var linked = !!(activeView && activeView.linkGroup);
+            wrap.appendChild(railButton(
+              linked ? 'Unlink size' : 'Link size',
+              'quiet', 'data-rb-floor-view-link', linked ? 'off' : 'on'));
+          }
+
+          // Source picker — levels/boundaries from the working Customer File.
+          var srcLabel = document.createElement('label');
+          srcLabel.className = 'rb-panel__lead';
+          srcLabel.textContent = 'View source';
+          wrap.appendChild(srcLabel);
+          var srcSelect = document.createElement('select');
+          srcSelect.className = 'rb-rail__select';
+          srcSelect.setAttribute('data-rb-floor-view-source', '1');
+          // Sources = Floor Survey pages already in this report (levels/boundaries).
+          var seenSrc = Object.create(null);
+          var outline = [];
+          pages.forEach(function (fp) {
+            if (!fp || fp.type !== 'floor' || !fp.meta || fp.meta.reserved) return;
+            var m = fp.meta;
+            var key = [m.canvasId || '', m.epochId || '', m.areaId || '', m.scope || 'all'].join('|');
+            if (!m.canvasId || seenSrc[key]) return;
+            seenSrc[key] = 1;
+            outline.push(fp);
+          });
+          if (!outline.length && page.meta) outline = [page];
+          outline.forEach(function (fp) {
+            var m = (fp && fp.meta) || {};
+            var opt = document.createElement('option');
+            opt.value = [m.canvasId || '', m.epochId || '', m.areaId || '', m.scope || 'all'].join('|');
+            opt.textContent = (fp && (fp.railLabel || fp.title)) || m.scopeTitle || m.levelName || 'Level';
+            if (activeView &&
+                String(activeView.canvasId || '') === String(m.canvasId || '') &&
+                String(activeView.areaId || '') === String(m.areaId || '') &&
+                String(activeView.scope || 'all') === String(m.scope || 'all')) {
+              opt.selected = true;
+            }
+            srcSelect.appendChild(opt);
+          });
+          wrap.appendChild(srcSelect);
+
+          if (viewsNow.length > 1 && activeView) {
+            wrap.appendChild(railButton(
+              activeView.showLegend ? 'Hide legend' : 'Show legend',
+              'quiet', 'data-rb-floor-view-chrome', activeView.showLegend ? 'legend-off' : 'legend-on'));
+            wrap.appendChild(railButton(
+              activeView.showPill ? 'Hide H/L/Δ' : 'Show H/L/Δ',
+              'quiet', 'data-rb-floor-view-chrome', activeView.showPill ? 'pill-off' : 'pill-on'));
+          }
+
           wrap.appendChild(railButton(
             'Use this as my default', 'quiet', 'data-rb-template', 'floor'));
-          // The cover's copy of this button carries a line saying what it
-          // does; this one did not, so it read as though it might change
-          // something about THIS report. It does not: inside a report the
-          // arrangement is the arrangement, on every floor slide, and this
-          // only decides where the pieces start in the next one.
           var floorDefaultHint = document.createElement('p');
           floorDefaultHint.className = 'rb-panel__lead';
           floorDefaultHint.textContent =
@@ -4280,9 +4410,13 @@
       // Middle: the real Floor Survey controls, for an imported slide.
       var api = window.ToolboxFloorSurvey;
       var meta = page.meta || {};
-      var key = [page.id, meta.canvasId, meta.areaId || '', meta.scope || '',
-        floorSlot(page)].join('|');
-      if (!imported || !api || typeof api.mount !== 'function') {
+      var activeSpec = floorViewSpec(page, floorSlot(page));
+      var ctrlCanvas = (activeSpec && activeSpec.canvasId) || meta.canvasId || '';
+      var ctrlScope = (activeSpec && activeSpec.scope) || meta.scope || 'all';
+      var ctrlArea = ctrlScope === 'all' ? null : ((activeSpec && activeSpec.areaId) || meta.areaId || null);
+      var key = [page.id, ctrlCanvas, ctrlArea || '', ctrlScope,
+        floorSlot(page), activeSpec && activeSpec.id].join('|');
+      if (!imported || !api || typeof api.mount !== 'function' || !ctrlCanvas) {
         releaseRailControls();
       } else if (railControls.el && railControls.key === key) {
         if (railControls.api && typeof railControls.api.update === 'function') {
@@ -4299,32 +4433,19 @@
         railControls.api = api.mount(host, {
           customerFileId: customerFileId,
           workspace: 'report-topo-controls',
-          canvasId: meta.canvasId || '',
-          areaId: meta.scope === 'all' ? null : (meta.areaId || null),
+          canvasId: ctrlCanvas,
+          areaId: ctrlArea,
           settings: floorViewFor(page),
           onBack: function () {},
           onSettingsChange: function (next) {
             var live = activePage();
             setFloorViewFor(live, next);
             markDirty();
-            // Legend size is one of these settings, so a locked colour scale
-            // takes the new size rather than ignoring the control.
             pushPieceScale('legend', liveLegendScale());
-            // The drawing is a second root looking at the same settings, and
-            // it has to be told. This named `topoHost`, a single mount that
-            // stopped existing when a sheet gained the option of two
-            // drawings -- so every control in this panel threw, and the
-            // colour scale, the pill, the labels and the palette all read as
-            // doing nothing at all. The setting was stored; the drawing was
-            // never informed.
             var host = topoHosts[floorSlot(live)] || topoHosts[0];
             if (host && host.api && typeof host.api.update === 'function') {
               host.api.update({ settings: next });
             }
-            // The sheet draws the colour scale and the readings itself now,
-            // and Legend size is what sizes them, so the page is redrawn too
-            // -- the live view is re-appended rather than rebuilt, so the
-            // drawing does not flicker or lose its place.
             renderPages();
             flushSave().catch(function () {});
           },
@@ -4443,33 +4564,77 @@
           }).catch(function () { flushSave().catch(function () {}); });
           return;
         }
-        var twoBtn = event.target.closest('[data-rb-floor-twoup]');
-        if (twoBtn) {
+        var viewBtn = event.target.closest('[data-rb-floor-view]');
+        if (viewBtn) {
           event.preventDefault();
           var fp = activePage();
           if (!fp || fp.type !== 'floor') return;
-          fp.meta = fp.meta || {};
-          var on = twoBtn.getAttribute('data-rb-floor-twoup') === 'on';
-          fp.meta.floorTwoUp = on;
-          if (on && !fp.meta.floorView2) {
-            // The second view opens as a copy of the first, and nothing else.
-            // Floor Survey already has the control that makes one of them
-            // readings-only -- Colour fill / Cells / B&W lines / Points only
-            // -- and it is already in this rail. Tim: "I don't want you to
-            // reinvent something, it's already in the code, it's already in
-            // the rail functions." Seeding a second view with hand-picked
-            // flags sets things the investigator did not choose and leaves
-            // the two drawings framed differently.
-            var base = floorViewFor(fp, 0);
-            fp.meta.floorView2 = base ? JSON.parse(JSON.stringify(base)) : null;
+          var viewsApi = window.ToolboxReportFloorViews;
+          if (!viewsApi) return;
+          var action = viewBtn.getAttribute('data-rb-floor-view');
+          viewsApi.ensurePageViews(fp);
+          if (action === 'add' || action === 'copy') {
+            viewsApi.addView(fp, floorSlot(fp));
+            fp._floorSlot = floorSlots(fp) - 1;
+          } else if (action === 'remove') {
+            viewsApi.removeView(fp, floorSlot(fp));
+            fp._floorSlot = Math.min(floorSlot(fp), floorSlots(fp) - 1);
           }
-          if (!on) fp._floorSlot = 0;
-          // Both frames change width when the sheet goes from one view to two
-          // and back, and a mounted view does not re-fit when its frame
-          // resizes -- it keeps the scale it was fitted at and shows a crop.
-          // That is why the pair came out at two different scales: the first
-          // was still fitted to the full-width frame it was born in. Dropping
-          // both makes each one fit the frame it is actually in.
+          fp.meta.floorTwoUp = floorSlots(fp) > 1;
+          releaseTopoHosts();
+          markDirty();
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
+        var linkBtn = event.target.closest('[data-rb-floor-view-link]');
+        if (linkBtn) {
+          event.preventDefault();
+          var lp = activePage();
+          if (!lp || lp.type !== 'floor') return;
+          var lApi = window.ToolboxReportFloorViews;
+          if (!lApi) return;
+          lApi.setViewLink(lp, floorSlot(lp), linkBtn.getAttribute('data-rb-floor-view-link') === 'on');
+          markDirty();
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
+        var chromeBtn = event.target.closest('[data-rb-floor-view-chrome]');
+        if (chromeBtn) {
+          event.preventDefault();
+          var cp = activePage();
+          if (!cp || cp.type !== 'floor') return;
+          var cv = floorViewSpec(cp, floorSlot(cp));
+          if (!cv) return;
+          var chromeAct = chromeBtn.getAttribute('data-rb-floor-view-chrome');
+          if (chromeAct === 'legend-on') cv.showLegend = true;
+          if (chromeAct === 'legend-off') cv.showLegend = false;
+          if (chromeAct === 'pill-on') cv.showPill = true;
+          if (chromeAct === 'pill-off') cv.showPill = false;
+          markDirty();
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
+        // Legacy two-up control (tests / old UI) — maps onto Add/Remove view.
+        var twoBtn = event.target.closest('[data-rb-floor-twoup]');
+        if (twoBtn) {
+          event.preventDefault();
+          var tp = activePage();
+          if (!tp || tp.type !== 'floor') return;
+          var tApi = window.ToolboxReportFloorViews;
+          if (!tApi) return;
+          tApi.ensurePageViews(tp);
+          var on = twoBtn.getAttribute('data-rb-floor-twoup') === 'on';
+          if (on && floorSlots(tp) < 2) {
+            tApi.addView(tp, 0);
+            tp._floorSlot = 1;
+          } else if (!on && floorSlots(tp) > 1) {
+            while (floorSlots(tp) > 1) tApi.removeView(tp, floorSlots(tp) - 1);
+            tp._floorSlot = 0;
+          }
+          tp.meta.floorTwoUp = floorSlots(tp) > 1;
           releaseTopoHosts();
           markDirty();
           renderPages();
@@ -4491,6 +4656,37 @@
             if (typeof onOpenSource === 'function') onOpenSource(key);
           });
         }
+      });
+
+      railEl.addEventListener('change', function (event) {
+        var srcSel = event.target && event.target.closest
+          ? event.target.closest('[data-rb-floor-view-source]')
+          : null;
+        if (!srcSel) return;
+        var sp = activePage();
+        if (!sp || sp.type !== 'floor') return;
+        var sv = floorViewSpec(sp, floorSlot(sp));
+        if (!sv) return;
+        var parts = String(srcSel.value || '').split('|');
+        sv.canvasId = parts[0] || '';
+        sv.epochId = parts[1] || null;
+        sv.areaId = parts[2] || null;
+        sv.scope = parts[3] || 'all';
+        // Changing source drops a shared link that only makes sense same-source.
+        var sApi = window.ToolboxReportFloorViews;
+        if (sApi) {
+          var others = sApi.viewsFor(sp);
+          others.forEach(function (o) {
+            if (!o || o === sv) return;
+            if (sv.linkGroup && o.linkGroup === sv.linkGroup && !sApi.sameSource(sv, o)) {
+              sv.linkGroup = null;
+            }
+          });
+        }
+        releaseTopoHosts();
+        markDirty();
+        renderPages();
+        flushSave().catch(function () {});
       });
     }
 
@@ -6511,9 +6707,24 @@
       var layout = window.ToolboxReportFloorLayout
         ? window.ToolboxReportFloorLayout.normalizeLayout(floorLayout)
         : floorLayout;
+      var viewId = (id && id.indexOf('topo-view:') === 0) ? id.slice(10) : null;
+      var viewIndex = -1;
+      var viewFrame = null;
+      if (viewId && current.meta) {
+        var vList = floorViewsForPage(current);
+        for (var vi = 0; vi < vList.length; vi += 1) {
+          if (vList[vi] && vList[vi].id === viewId) {
+            viewIndex = vi;
+            viewFrame = JSON.parse(JSON.stringify(vList[vi].frame));
+            break;
+          }
+        }
+      }
       floorDrag = {
         id: id,
         kind: kind,
+        viewId: viewId,
+        viewIndex: viewIndex,
         resize: !!resize,
         corner: resize ? (resize.getAttribute('data-rb-floor-corner') || 'se') : null,
         startX: event.clientX,
@@ -6521,6 +6732,7 @@
         stageW: stage.width,
         stageH: stage.height,
         layout: layout,
+        viewFrame: viewFrame,
       };
       // Captured by the element the pointer is ACTUALLY on -- the handle when
       // one was grabbed, the box otherwise.
@@ -6622,6 +6834,48 @@
         ? window.ToolboxReportFloorLayout.cloneLayout(floorDrag.layout)
         : JSON.parse(JSON.stringify(floorDrag.layout));
       var flApi = window.ToolboxReportFloorLayout;
+      var viewsApi = window.ToolboxReportFloorViews;
+      if (floorDrag.viewId && floorDrag.viewFrame && viewsApi && current) {
+        var minW = viewsApi.MIN_FRAME_W || 18;
+        var minH = viewsApi.MIN_FRAME_H || 25;
+        var o = floorDrag.viewFrame;
+        var nextFrame;
+        if (floorDrag.resize) {
+          var west = floorDrag.corner === 'nw' || floorDrag.corner === 'sw';
+          var north = floorDrag.corner === 'nw' || floorDrag.corner === 'ne';
+          var nextW = Math.max(minW, west ? o.w - dx : o.w + dx);
+          var nextH = Math.max(minH, north ? o.h - dy : o.h + dy);
+          nextFrame = {
+            x: west ? o.x + (o.w - nextW) : o.x,
+            y: north ? o.y + (o.h - nextH) : o.y,
+            w: nextW,
+            h: nextH,
+            z: o.z,
+          };
+        } else {
+          nextFrame = { x: o.x + dx, y: o.y + dy, w: o.w, h: o.h, z: o.z };
+        }
+        nextFrame = viewsApi.normalizeFrame(nextFrame);
+        var list = viewsApi.viewsFor(current);
+        if (list[floorDrag.viewIndex]) {
+          if (list[floorDrag.viewIndex].linkGroup) {
+            viewsApi.applyLinkedGeometry(list, floorDrag.viewIndex, nextFrame);
+          } else {
+            list[floorDrag.viewIndex].frame = nextFrame;
+          }
+        }
+        // Live update all view frames on the sheet.
+        list.forEach(function (v) {
+          if (!v) return;
+          var el = sheetEl.querySelector('[data-rb-floor-box="topo-view:' + v.id + '"]');
+          if (!el) return;
+          el.style.left = v.frame.x + '%';
+          el.style.top = v.frame.y + '%';
+          el.style.width = v.frame.w + '%';
+          el.style.height = v.frame.h + '%';
+        });
+        return;
+      }
       if (floorDrag.id === 'overview') {
         var ov = floorDrag.layout.overview;
         if (floorDrag.resize) {
@@ -6753,6 +7007,21 @@
         return;
       }
       if (!floorDrag) return;
+      if (floorDrag.viewId && current && window.ToolboxReportFloorViews) {
+        var vApi = window.ToolboxReportFloorViews;
+        var vList = vApi.viewsFor(current);
+        var ix = floorDrag.viewIndex;
+        if (vList[ix]) {
+          var snapped = vApi.snapFrame(vList[ix].frame, vList, ix);
+          if (vList[ix].linkGroup) vApi.applyLinkedGeometry(vList, ix, snapped);
+          else vList[ix].frame = snapped;
+        }
+        floorDrag = null;
+        markDirty();
+        renderPages();
+        flushSave().catch(function () {});
+        return;
+      }
       floorDrag = null;
       markDirty();
     }
@@ -7306,51 +7575,23 @@
      * Anything missing falls back to the shared data extent, which is what
      * printed before.
      */
-    function cameraExtentFor(page, fallback) {
-      var cam = floorCamera;
+    function cameraExtentFor(page, fallback, slot) {
+      var at = typeof slot === 'number' ? slot : 0;
+      var view = floorViewSpec(page, at);
+      var cam = (view && view.camera) || floorCamera;
       if (!cam || !cam.rel || !(Number(cam.zoom) > 0)) return fallback;
       var ps = window.ToolboxPlanSetup;
       var meta = (page && page.meta) || {};
-      if (!ps || typeof ps.canvasById !== 'function' || !workingRecord || !meta.canvasId) return fallback;
+      var canvasId = (view && view.canvasId) || meta.canvasId;
+      if (!ps || typeof ps.canvasById !== 'function' || !workingRecord || !canvasId) return fallback;
       var canvas = null;
-      try { canvas = ps.canvasById(workingRecord, meta.canvasId); } catch (err) { canvas = null; }
+      try { canvas = ps.canvasById(workingRecord, canvasId); } catch (err) { canvas = null; }
       var plan = canvas && canvas.plan;
       var planW = plan && Number(plan.width) > 0 ? Number(plan.width) : 0;
       var planH = plan && Number(plan.height) > 0 ? Number(plan.height) : 0;
       if (!planW || !planH) return fallback;
-      var slots = floorSlotsForPage(page);
       var frameAspect = 0;
-      // The shape of the box the drawing is ACTUALLY in, on the paper.
-      //
-      // An imported slide draws FULL BLEED: report-floor-layout.js lays its
-      // frames out across the whole stage -- share% wide by 100% tall, with a
-      // 2% gutter between two -- and never reads layout.topo for that frame
-      // at all. Taking the shape from layout.topo therefore described a box
-      // that is not on the page. On Janis's report that stored box is narrow
-      // and tall, so the still was painted from a tall narrow slice of the
-      // plan while the live view showed a wide one: the left-hand rooms and
-      // their readings were cut off inside the image itself, with white space
-      // to spare on its right. The extracted figure measured 2616 x 3000 --
-      // portrait -- on a landscape sheet.
-      //
-      // Tim: "Still cropping the left-hand side on a screenshot of preview.
-      // As well as the PDF."
       if (page && page.meta && page.meta.imported) {
-        // Measure the STAGE, not a frame.
-        //
-        // Measuring a frame took the shape of whatever slide happened to be
-        // open and gave it to the slide being composed. On a book holding
-        // both a one-view page and a two-view page those are different
-        // shapes, so the same target page composed differently depending on
-        // which slide Print was started from -- 889.5 x 666.7 from one,
-        // 888.9 x 1359.6 from the other. Audit finding 2.
-        //
-        // The stage is the sheet less the rail down its side, and it is the
-        // same on every imported slide whatever its slot count, so one
-        // measurement genuinely does serve them all. The target page's own
-        // share of it is then applied -- through the same frameShare() that
-        // LAYS the frames out, so two views are half of what is left after
-        // the gutter rather than a naive half.
         var stageAspect = 0;
         var stageEl = root.querySelector('.rb-stage .rb-sheet [data-rb-floor-stage]');
         if (stageEl) {
@@ -7358,29 +7599,28 @@
           if (sr.width > 8 && sr.height > 8) stageAspect = sr.width / sr.height;
         }
         if (!(stageAspect > 0)) {
-          // Nothing on screen to measure -- Print started from the cover or
-          // the discussion. STAGE_SHARE_OF_SHEET is that same stage measured:
-          // 86.336% of the sheet's width by the whole of its height, which is
-          // what the stylesheet's rail leaves. Within a rounding of the live
-          // measurement, so the two routes agree.
           stageAspect = (17 * STAGE_SHARE_OF_SHEET) / 11;
         }
-        var flApi = window.ToolboxReportFloorLayout;
-        var sharePct = (flApi && typeof flApi.frameShare === 'function')
-          ? flApi.frameShare(slots)
-          : (100 - (slots - 1) * 2) / slots;
-        frameAspect = stageAspect * (sharePct / 100);
+        // Prefer the stored free-frame geometry for this view (Checkpoint 1).
+        var fr = view && view.frame;
+        var sharePct = fr && Number(fr.w) > 0 ? Number(fr.w) : null;
+        var heightPct = fr && Number(fr.h) > 0 ? Number(fr.h) : 100;
+        if (!(sharePct > 0)) {
+          var slots = floorSlotsForPage(page);
+          var flApi = window.ToolboxReportFloorLayout;
+          sharePct = (flApi && typeof flApi.frameShare === 'function')
+            ? flApi.frameShare(slots)
+            : (100 - (slots - 1) * 2) / slots;
+        }
+        // Frame aspect on paper = (share of stage width × stage aspect) / (share of stage height).
+        frameAspect = stageAspect * (sharePct / 100) / (heightPct / 100);
       } else {
         var layout = page._bookFloorLayout || null;
         var topo = layout && layout.topo;
         if (!topo || !(Number(topo.w) > 0) || !(Number(topo.h) > 0)) return fallback;
-        // The frame's shape on the paper in real inches, not in percent of it.
         frameAspect = (Number(topo.w) * 17) / (Number(topo.h) * 11);
-        if (slots > 1) frameAspect /= slots;
       }
       if (!(frameAspect > 0)) return fallback;
-      // At fit, the frame shows the smallest rectangle of its own shape that
-      // holds the whole plan. Zoom divides it; the camera centres it.
       var planAspect = planW / planH;
       var regionW = planAspect > frameAspect ? planW : planH * frameAspect;
       var regionH = planAspect > frameAspect ? planW / frameAspect : planH;
@@ -7411,50 +7651,62 @@
       pages.forEach(function (page) {
         if (!page || page.type !== 'floor') return;
         var meta = page.meta || {};
-        if (meta.reserved || !meta.canvasId) return;
+        if (meta.reserved) return;
+        floorViewsForPage(page);
         var slots = floorSlotsForPage(page);
-        for (var slot = 0; slot < slots; slot += 1) wanted.push({ page: page, slot: slot });
+        var anySource = false;
+        for (var slot = 0; slot < slots; slot += 1) {
+          var vs = floorViewSpec(page, slot);
+          if ((vs && vs.canvasId) || meta.canvasId) {
+            anySource = true;
+            wanted.push({ page: page, slot: slot, view: vs });
+          }
+        }
+        if (!anySource && meta.canvasId) wanted.push({ page: page, slot: 0, view: null });
       });
       if (!wanted.length) return Promise.resolve(0);
 
-      var first = wanted[0];
-      var firstMeta = first.page.meta || {};
-      var sharedExtent = null;
-      var frame = (typeof api.reportTopoExtentForPage === 'function')
-        ? api.reportTopoExtentForPage(workingRecord, {
-          canvasId: firstMeta.canvasId,
-          epochId: firstMeta.epochId,
-          areaId: firstMeta.areaId || null,
-          scope: firstMeta.scope || 'all',
-          settings: floorViewFor(first.page, first.slot) || null,
-        }).catch(function () { return null; })
-        : Promise.resolve(null);
-
-      return frame.then(function (extent) {
-        sharedExtent = extent || null;
-        var painted = 0;
-        return wanted.reduce(function (chain, job) {
-          return chain.then(function () {
-            var meta = job.page.meta || {};
-            return api.composeReportTopoFigureForPage(workingRecord, {
-              canvasId: meta.canvasId,
-              epochId: meta.epochId,
-              areaId: meta.areaId || null,
-              scope: meta.scope || 'all',
+      var painted = 0;
+      return wanted.reduce(function (chain, job) {
+        return chain.then(function () {
+          var meta = job.page.meta || {};
+          var view = job.view;
+          var canvasId = (view && view.canvasId) || meta.canvasId;
+          var epochId = (view && view.epochId) || meta.epochId;
+          var areaId = view
+            ? (view.scope === 'all' ? null : (view.areaId || null))
+            : (meta.scope === 'all' ? null : (meta.areaId || null));
+          var scope = (view && view.scope) || meta.scope || 'all';
+          var fallbackExtent = null;
+          var extentPromise = (typeof api.reportTopoExtentForPage === 'function')
+            ? api.reportTopoExtentForPage(workingRecord, {
+              canvasId: canvasId,
+              epochId: epochId,
+              areaId: areaId,
+              scope: scope,
               settings: floorViewFor(job.page, job.slot) || null,
-              extent: cameraExtentFor(job.page, sharedExtent),
+            }).catch(function () { return null; })
+            : Promise.resolve(null);
+          return extentPromise.then(function (extent) {
+            fallbackExtent = extent || null;
+            return api.composeReportTopoFigureForPage(workingRecord, {
+              canvasId: canvasId,
+              epochId: epochId,
+              areaId: areaId,
+              scope: scope,
+              settings: floorViewFor(job.page, job.slot) || null,
+              extent: cameraExtentFor(job.page, fallbackExtent, job.slot),
             }, getMedia).then(function (composed) {
               if (!composed || !composed.dataUrl) return;
               job.page._printTopo = job.page._printTopo || {};
               job.page._printTopo[job.slot] = composed.dataUrl;
               painted += 1;
             }).catch(function (err) {
-              // One slide that cannot be painted must not stop the print.
-              console.warn('Floor slide could not be painted for print', meta.canvasId, err);
+              console.warn('Floor slide could not be painted for print', canvasId, err);
             });
           });
-        }, Promise.resolve()).then(function () { return painted; });
-      });
+        });
+      }, Promise.resolve()).then(function () { return painted; });
     }
 
     function clearFloorStills() {
@@ -8034,8 +8286,25 @@
       if (viewSeed) floorView = reviveFloorView(viewSeed);
       if (savedDoc && Array.isArray(savedDoc.pages)) {
         savedDoc.pages.forEach(function (page) {
-          if (page && page.meta && page.meta.floorView) {
+          if (!page || !page.meta || page.type !== 'floor') return;
+          // Checkpoint 1: migrate legacy two-up into views[] and revive every
+          // view's settings (fixes the old floorView2 revive gap).
+          if (window.ToolboxReportFloorViews) {
+            window.ToolboxReportFloorViews.ensurePageViews(page);
+            (page.meta.views || []).forEach(function (v) {
+              if (v && v.settings) v.settings = reviveFloorView(v.settings);
+            });
+            if (page.meta.views && page.meta.views[0] && page.meta.views[0].settings) {
+              page.meta.floorView = page.meta.views[0].settings;
+            }
+            if (page.meta.views && page.meta.views[1] && page.meta.views[1].settings) {
+              page.meta.floorView2 = page.meta.views[1].settings;
+            }
+          } else if (page.meta.floorView) {
             page.meta.floorView = reviveFloorView(page.meta.floorView);
+          }
+          if (page.meta.floorView2) {
+            page.meta.floorView2 = reviveFloorView(page.meta.floorView2);
           }
         });
       }
