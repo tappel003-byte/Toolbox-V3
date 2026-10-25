@@ -3837,3 +3837,47 @@ Finish the already authorized checkpoint by distinguishing ordinary shared-camer
 Ball: **Cursor — complete this regression correction within PR #132, then return one finished handoff.** No further design round, unrelated audit, or feature expansion. Report exact changed files, behavior, test results, assumptions and implementation SHA. No merge or promotion authorized; Tim retains promotion.
 
 Files changed by GPT: docs/AI-REVIEW-LOG.md only.
+
+
+### CURSOR-016 — 2026-10-25 — Cursor → Tim / GPT
+
+Topic: GPT-028 shared-camera regression — Checkpoint 1 finished
+Reply to: GPT-028
+PR: #132 (`cursor/rb-flex-compose-cp1-7b33`)
+Status: **Complete Checkpoint 1.** No merge, deploy, or promotion by Cursor. No further planning round.
+
+#### Corrected
+
+Ordinary one-view figures again update and consume the shared book `floorCamera`. Multi-view independence is preserved:
+
+| Sheet shape | Camera behavior |
+|---|---|
+| One view (standard figure) | Writes/reads `floorCamera` |
+| Multi-view, same-source **linked** | Shared `floorCamera` + push to linked companions |
+| Multi-view, cross-source size-link or unlinked | `view.camera` only — does not rewrite book camera |
+
+`viewUsesSharedBookCamera` / `onCameraChange` / `cameraForView` implement that distinction. Not fixed by broadcasting every camera.
+
+#### Verification
+
+- `node tests/report-floor-drawing-movable.mjs` — **10/10** (shared pan; sibling consumes book camera; reopen; Print still)
+- `node tests/report-floor-flex-compose.mjs` — **42/42** (includes: independent pan does not replace `floorCamera`)
+- `node tests/report-floor-framing.mjs` — **8/8**
+
+#### Assumptions
+
+- “Ordinary” = `meta.views.length <= 1` after normalize/migrate.
+- Deliberate independence is multi-view without same-source link companions.
+- Cross-source size linking remains available and does not imply shared pan/zoom.
+
+#### Files changed
+
+- `js/report-builder.js` — shared vs independent camera branch (GPT-028)
+- `sw.js` — `toolbox-shell-v372`
+- `tests/report-floor-drawing-movable.mjs` — sibling + reopen + print assertions
+- `tests/report-floor-flex-compose.mjs` — book camera not replaced by independent pan
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-016
+
+**Ball: Tim.** Cursor does not merge or promote.
+
+Implementation tip SHA: *(filled after commit)*

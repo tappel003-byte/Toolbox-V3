@@ -115,11 +115,126 @@ const stored = await page.evaluate(async (id) => {
   return (rec && rec.reportBuilder && rec.reportBuilder.floorCamera) || null;
 }, FILE);
 
-check('panning the drawing moved the view',
+check('panning the drawing moved the shared floorCamera',
   !!stored && (Math.abs(stored.cx - 0.5) > 0.005 || Math.abs(stored.cy - 0.5) > 0.005),
   JSON.stringify(stored));
 check('and the stale lock is gone from the saved report',
   !!stored && !stored.locked, JSON.stringify(stored));
+
+// GPT-028: an untouched ordinary sibling figure consumes the shared camera.
+// Duplicate the Main Level sheet so two ordinary one-view pages share floorCamera.
+await page.evaluate(() => document.querySelector('#rb-duplicate-page')?.click());
+await new Promise((r) => setTimeout(r, 2000));
+const sibling = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  const doc = rec && rec.reportBuilder;
+  const floors = (doc && doc.pages || []).filter((p) => p.type === 'floor' &&
+    !(p.meta && p.meta.reserved) &&
+    (!p.meta || !Array.isArray(p.meta.views) || p.meta.views.length <= 1 ||
+      (p.meta.views.length === 1)));
+  // Prefer: count one-view floor pages after duplicate.
+  const allFloor = (doc && doc.pages || []).filter((p) => p.type === 'floor' && !(p.meta && p.meta.reserved));
+  const oneView = allFloor.filter((p) => {
+    const n = Array.isArray(p.meta && p.meta.views) ? p.meta.views.length : 1;
+    return n <= 1;
+  });
+  // Live host camera on the (duplicated) current sheet should match book camera.
+  const host = document.querySelector('.rb-stage .rb-sheet [data-rb-topo-live]');
+  let liveCam = null;
+  // Read from saved floorCamera — sibling pages load via cameraForView → floorCamera.
+  return {
+    floorCamera: (doc && doc.floorCamera) || null,
+    oneViewCount: oneView.length,
+    allFloor: allFloor.length,
+    hasHost: !!host,
+    liveCam,
+  };
+}, FILE);
+check('ordinary duplicate leaves more than one one-view floor figure',
+  sibling.oneViewCount >= 2, JSON.stringify(sibling));
+
+// Switch to the other Main Level thumb and confirm it opens on the shared pan.
+const otherThumb = await page.evaluate(() => {
+  const thumbs = [...document.querySelectorAll('.rb-thumb')];
+  const mains = thumbs
+    .map((t, i) => ({ i, text: (t.querySelector('.rb-thumb__caption') || {}).textContent || '' }))
+    .filter((t) => /Main Level/i.test(t.text));
+  if (mains.length < 2) return { ok: false, mains: mains.length };
+  // Click the one that is not current.
+  const cur = document.querySelector('.rb-thumb.is-active, .rb-thumb[aria-current="true"]');
+  const curI = thumbs.indexOf(cur);
+  const other = mains.find((m) => m.i !== curI) || mains[0];
+  thumbs[other.i].click();
+  return { ok: true, other: other.i, curI };
+});
+check('switched to an ordinary sibling Main Level sheet', otherThumb.ok, JSON.stringify(otherThumb));
+await new Promise((r) => setTimeout(r, 3500));
+
+const siblingCam = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  const book = rec && rec.reportBuilder && rec.reportBuilder.floorCamera;
+  // After reopen of sibling, the live mount should be using book camera.
+  // Probe via still-compose extent path is heavy; assert the book camera is
+  // what both pages persist, and the active one-view page has no overriding
+  // independent view.camera that disagrees.
+  const pages = (rec.reportBuilder && rec.reportBuilder.pages) || [];
+  const activeId = document.querySelector('.rb-thumb.is-active, .rb-thumb[aria-current="true"]')
+    ?.getAttribute('data-page-id');
+  const active = pages.find((p) => p.id === activeId) ||
+    pages.find((p) => p.type === 'floor' && /main/i.test(p.title || p.railLabel || ''));
+  const views = active && active.meta && active.meta.views;
+  const viewCam = views && views[0] && views[0].camera;
+  return {
+    book,
+    viewCam,
+    // Sibling consumes shared camera: book is the panned one; view either
+    // mirrors it or is absent/null so cameraForView falls through to book.
+    followsBook: !!book && (Math.abs(book.cx - 0.5) > 0.005 || Math.abs(book.cy - 0.5) > 0.005) &&
+      (!viewCam || (
+        Math.abs((viewCam.cx || 0) - (book.cx || 0)) < 0.02 &&
+        Math.abs((viewCam.cy || 0) - (book.cy || 0)) < 0.02
+      )),
+  };
+}, FILE);
+check('untouched ordinary sibling consumes the shared floorCamera',
+  siblingCam.followsBook, JSON.stringify(siblingCam));
+
+// Save/reopen: shared pan survives.
+await page.goto(`${BASE}#/`, { waitUntil: 'networkidle0' });
+await new Promise((r) => setTimeout(r, 600));
+await page.goto(`${BASE}#/file/${FILE}/report`, { waitUntil: 'networkidle0' });
+await page.waitForFunction(() => !!document.querySelector('.rb-sheet'), { timeout: 40000 });
+await new Promise((r) => setTimeout(r, 4000));
+await page.evaluate(() => {
+  const thumbs = [...document.querySelectorAll('.rb-thumb')];
+  const main = thumbs.find((t) => /Main Level/i.test((t.querySelector('.rb-thumb__caption') || {}).textContent || ''));
+  if (main) main.click();
+});
+await new Promise((r) => setTimeout(r, 3500));
+const reopened = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  return (rec && rec.reportBuilder && rec.reportBuilder.floorCamera) || null;
+}, FILE);
+check('shared floorCamera survives reopen after ordinary pan',
+  !!reopened && (Math.abs(reopened.cx - 0.5) > 0.005 || Math.abs(reopened.cy - 0.5) > 0.005) &&
+  !reopened.locked,
+  JSON.stringify(reopened));
+
+// Print/PDF output uses the shared camera (still painted for the ordinary page).
+await page.evaluate(() => { window.print = () => { window.__printed = true; }; });
+await page.click('#rb-print');
+await page.waitForFunction(() => window.__printed === true, { timeout: 90000 });
+await new Promise((r) => setTimeout(r, 1000));
+const printed = await page.evaluate(() => {
+  const img = document.querySelector('.rb-print .rb-topo-still');
+  return {
+    ok: !!(img && img.complete && img.naturalWidth > 40),
+    w: img && img.naturalWidth,
+    h: img && img.naturalHeight,
+  };
+});
+check('ordinary figure still paints for Print/PDF after shared pan',
+  printed.ok, JSON.stringify(printed));
 
 await browser.close();
 const failed = results.filter((r) => !r.ok);

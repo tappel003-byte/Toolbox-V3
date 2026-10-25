@@ -422,6 +422,19 @@ check('size-linked different floors do not force identical cameras',
     panSaved[0].cam.cx === panSaved[1].cam.cx && panSaved[0].cam.cy === panSaved[1].cam.cy &&
     panSaved[0].cam.z === panSaved[1].cam.z),
   JSON.stringify(panSaved));
+// GPT-028: independent composition must not rewrite the shared book camera.
+const bookAfterIndependent = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  return (rec && rec.reportBuilder && rec.reportBuilder.floorCamera) || null;
+}, FILE);
+const independentCam = panSaved.find((v) => v.cam && (Math.abs(v.cam.cx - 0.5) > 0.01 || Math.abs(v.cam.cy - 0.5) > 0.01));
+check('independent multi-view pan does not replace shared floorCamera',
+  !independentCam || !bookAfterIndependent ||
+  Math.abs((bookAfterIndependent.cx || 0) - independentCam.cam.cx) > 0.01 ||
+  Math.abs((bookAfterIndependent.cy || 0) - independentCam.cam.cy) > 0.01 ||
+  // Book may be null/default while view holds the pan — also OK.
+  (bookAfterIndependent.cx === 0.5 && bookAfterIndependent.cy === 0.5),
+  JSON.stringify({ book: bookAfterIndependent, independent: independentCam }));
 void pan;
 
 // Enable per-view H/L/Δ (and legend) — GPT-027 #2.

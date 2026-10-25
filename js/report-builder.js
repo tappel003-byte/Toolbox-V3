@@ -3284,18 +3284,24 @@
       // the baseline a slide opens at.
     }
 
+    /**
+     * Ordinary one-view figures share the book camera (GPT-028).
+     * Multi-view: same-source LINKED companions share it; size-linked
+     * different floors and unlinked same-source stay on view.camera (GPT-027).
+     */
+    function viewUsesSharedBookCamera(page, slot) {
+      var viewsApi = window.ToolboxReportFloorViews;
+      var list = viewsApi ? viewsApi.viewsFor(page) : floorViewsForPage(page);
+      if (!list || list.length <= 1) return true;
+      if (!viewsApi || typeof viewsApi.linkedSameSourceIndexes !== 'function') return false;
+      return viewsApi.linkedSameSourceIndexes(list, Number(slot) || 0).length > 0;
+    }
+
     function cameraForView(page, slot) {
       var view = floorViewSpec(page, slot);
       if (!view) return floorCamera;
-      var viewsApi = window.ToolboxReportFloorViews;
-      // Share the book camera only with same-source LINKED companions (GPT-027).
-      // Size-link alone (different floors) or unlinked same-source → view.camera.
-      if (view.linkGroup && viewsApi) {
-        var list = viewsApi.viewsFor(page);
-        var linkedSame = (typeof viewsApi.linkedSameSourceIndexes === 'function'
-          ? viewsApi.linkedSameSourceIndexes(list, Number(slot) || 0)
-          : []).length > 0;
-        if (linkedSame) return floorCamera || view.camera || null;
+      if (viewUsesSharedBookCamera(page, slot)) {
+        return floorCamera || view.camera || null;
       }
       return view.camera || floorCamera;
     }
@@ -4001,7 +4007,7 @@
                 cx: camera.cx, cy: camera.cy, zoom: camera.zoom,
                 rel: !!camera.rel,
               };
-              // Persist onto the live view object first (stable identity after GPT-027).
+              // Persist onto the live view object (stable identity after GPT-027).
               function writeViewCamera(target) {
                 if (!target) return;
                 if (!target.camera || typeof target.camera !== 'object') target.camera = {};
@@ -4014,7 +4020,11 @@
                 typeof viewsApi.linkedSameSourceIndexes === 'function')
                 ? viewsApi.linkedSameSourceIndexes(list, Number(from) || 0)
                 : [];
-              if (linkedSame.length) {
+              // GPT-028: ordinary one-view figures update the shared book camera.
+              // Multi-view shares it only with same-source linked companions.
+              // Cross-source size-link / unlinked same-source stay independent.
+              var shareBook = (list.length <= 1) || linkedSame.length > 0;
+              if (shareBook) {
                 var same = !!floorCamera &&
                   Math.abs((floorCamera.cx || 0) - (cam.cx || 0)) < 1e-4 &&
                   Math.abs((floorCamera.cy || 0) - (cam.cy || 0)) < 1e-4 &&
@@ -4023,11 +4033,13 @@
                 floorCamera = cam;
                 writeViewCamera(fromView);
                 linkedSame.forEach(function (si) { writeViewCamera(list[si]); });
-                pushCameraToTopoHosts(floorCamera, from, linkedSame);
+                if (linkedSame.length) {
+                  pushCameraToTopoHosts(floorCamera, from, linkedSame);
+                }
                 markDirty();
                 return;
               }
-              // Independent pan/zoom — obey link state, not merely source match.
+              // Deliberately independent composition — do not touch floorCamera.
               var prev = fromView && fromView.camera;
               var sameV = !!prev &&
                 Math.abs((prev.cx || 0) - (cam.cx || 0)) < 1e-4 &&
