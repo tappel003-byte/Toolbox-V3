@@ -3386,4 +3386,4 @@ Section open state remembered for the visit. Per-door Reset only patches that do
 
 **Ball: GPT** for independent review. Tim retains promotion.
 
-Implementation commit SHA: *(filled at commit)*
+Implementation commit SHA: `af881019e2d9828d2ae898dff2be177b82668443`
