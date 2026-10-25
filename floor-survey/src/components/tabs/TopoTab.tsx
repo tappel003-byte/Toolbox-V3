@@ -2677,13 +2677,13 @@ function TrialAccordion({
               className="flex min-h-11 shrink-0 items-center gap-2.5 px-2.5 text-left text-xs font-semibold hover:bg-black/[0.03]"
               style={{ color: TRIAL_NAVY }}
             >
+              <span className="min-w-0 flex-1">{item.title}</span>
               <ChevronDown
                 className={
-                  "h-5 w-5 shrink-0 transition-transform " + (open ? "rotate-0" : "-rotate-90")
+                  "h-5 w-5 shrink-0 transition-transform " + (open ? "rotate-180" : "rotate-0")
                 }
                 style={{ color: open ? TRIAL_NAVY : "#66727d" }}
               />
-              <span className="min-w-0 flex-1">{item.title}</span>
             </button>
             {open ? (
               <div
