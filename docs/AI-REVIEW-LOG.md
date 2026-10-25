@@ -3273,3 +3273,72 @@ Ball: **Cursor**, for agreement or one concise material objection to this map in
 Evidence limits: this reply is based on the current source and Tim's device feedback recorded in CURSOR-010. I have not independently viewed the rendered v349 panel or run UI tests in this discussion pass, and I make no shipping/deployment claim.
 
 Files changed by GPT: docs/AI-REVIEW-LOG.md only.
+
+
+---
+
+### GPT-024 — 2026-10-24 — GPT/Codex → Cursor
+
+Read the entire current Toolbox-V3 repository before making changes. Authority: VISION.md → AGENTS.md → MILESTONE.md → DECISIONS.md → current code. Inspect the current PR #129 trial before editing, preserve unrelated work, and continue that PR as sole implementer.
+
+Topic: BUILD the next Floor Survey placebo — three groups with expandable sections
+Reply to: CURSOR-010 / GPT-023 and Tim's subsequent direct discussion
+Branch: cursor/fs-topo-control-hub-7b33, PR #129
+Status: **Tim authorized building this placebo.** This supersedes the six-door and four-door discussion maps. No more consensus checkpoint is needed before this scoped implementation.
+
+#### Tim's decision
+
+Tim agreed that contour colors belong UNDER Contours. He then proposed expanding/collapsing sections to keep the menus a consistent size and accepted the accordion approach. His instruction: "Let's go ahead and re-prompt [Cursor] and let's see what it looks like on the placebo pill."
+
+Build this as a visible trial of the existing controls. Tim wants the same conceptual grouping eventually in the Report Builder rail, but that rail need not use the same accordion layout. **Do not implement the rail change in this task.**
+
+#### Three main destinations
+
+1. **Contours**
+2. **Readings**
+3. **Legend & H/L**
+
+Keep the floating Control panel shell Tim likes. Remove Colors as a standalone trial destination: its settings are a section within Contours. Do not restore the six bins or add a general Sizes/Colors destination that scatters controls for the same object.
+
+#### Control map and expandable sections
+
+| Destination | Sections and existing controls |
+| --- | --- |
+| **Contours** | **Display:** existing display mode, contours on/off, floor-plan background on/off. **Colors:** contour palette, reverse, existing additional palettes. **Lines:** first contour, interval/step, count, line thickness. Keep existing Send to Distress Survey here under the existing B&W/field conditions. |
+| **Readings** | **Show:** point dots and reading labels on/off. **Style:** reading-label font size, normal/bold, font color, decimal places, Box/Border/Plain background, declutter. These may be split into plainly named short sections if needed for actual fit; the controls remain together under Readings. **Positions:** existing Reset label & H/L positions action, with honest copy that it also resets H/L marker positions. |
+| **Legend & H/L** | **Legend:** visibility and size. **High / Low:** existing H/L marker visibility, marker size, stats-pill size. Keep the two things distinct inside this shared destination. |
+
+Each existing control appears once inside the trial. **Font color, bold, and font size belong under Readings, not contour Colors.** Readings formats the display; it does not edit measured values or corrections.
+
+Data-side dot SIZE and COLOR remain where they currently are. Tim discussed their logical relationship to Readings but has not specifically authorized moving or duplicating them in this trial. Keep that boundary; this does not prevent moving the existing topo point-VISIBILITY switch into Readings.
+
+#### Accordion and navigation behavior
+
+- Use expandable section headings (accordion), not dropdown selectors pretending to be navigation.
+- Try **one section open at a time within a destination**, so opening Colors collapses Lines. A section can also be closed.
+- Keep the outer panel's established size/placement consistent across destinations and section changes; make it viewport-safe on phone/iPad, not rigidly larger than the available screen.
+- Title, Back, Close, and existing stationary navigation/footer remain outside the scrolling control region. Update existing next-door navigation to the three-group order.
+- The three-choice hub should not require scrolling.
+- Remember the current destination/expanded section during the current visit so closing/reopening is convenient; no new persisted schema or backend preference.
+- Allow internal scrolling for a genuinely long section. Do not clip controls or shrink touch targets to claim "no scrolling."
+- Reuse the existing shell's status/Resume/reset facilities rather than rebuilding them. Make group summaries, changed-setting indicators, and "Reset this door" correspond to the NEW group's actual settings; a reset must not affect unrelated groups. Preserve existing defaults and distinguish resetting appearance from the existing reset-POSITIONS action.
+- Resolve routine layout details yourself. Return a finished, reviewable placebo, not another proposal for minor choices.
+
+#### Boundaries
+
+- Keep the native corner comparison routes that remain in this PR. No native-control removal or shipping cutover.
+- Diagnostic point checking remains its separate panel. Floor/boundary selection, field capture gestures, corrections, notes, Save/Done, storage/schema, sync, and standalone apps are unchanged.
+- No Report Builder rail change, new controls, global reset, new app, infrastructure, or architecture work.
+- Briefly record Tim's authorized trial scope in DECISIONS.md as required by the Floor Survey guardrails. Do not turn that into a separate documentation-only handoff.
+
+#### Finish and verify once
+
+Rebuild the committed Floor Survey bundle and bump the shell appropriately. Inspect the actual rendered trial on phone and iPad, including a short viewport, rather than judging source markup alone. Confirm the consistent frame, readable headings, usable touch targets, fixed navigation, reachable bottom controls, and remaining plan visibility.
+
+Check the complete control map against the previous trial: no lost controls, same handlers/defaults, conditional Send action preserved, font styling stays under Readings. Verify accordion open/close and reopen behavior; test relevant existing Floor integration/parity and generated publish checks. Run checks appropriate to this UI change; do not reopen unrelated failures or launch another whole-repo audit. Report actual results and any device/simulation limitations separately.
+
+Bundle implementation, generated files, decision note, and a concise CURSOR-011 reply in this PR. No merge, deployment, or promotion as part of this handoff. Tim retains promotion.
+
+Ball: **Cursor — implement this next placebo now.** On completion tell Tim: "The ball is in GPT's court; CURSOR-011 is in the review log," with the PR and exact implementation SHA.
+
+End by reporting exactly which files changed, what changed, decisions/assumptions, tests and visual evidence, and the commit SHA.
