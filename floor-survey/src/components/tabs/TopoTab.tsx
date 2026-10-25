@@ -1261,18 +1261,18 @@ export function TopoTab({
             stepLabel={trialStepLabel("contours")}
             status={trialDoorStatus("contours", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
-            nav={
-              <TrialDoorNav
-                door="contours"
-                onBack={() => setOpenCorner("hub")}
-                onNext={openTrialDoor}
-              />
-            }
             footer={
-              <TrialDoorReset
-                dirty={trialDoorDirty("contours", resolved, statsChipSize)}
-                onReset={() => update(trialDoorPatch("contours"))}
-              />
+              <div className="space-y-1.5">
+                <TrialDoorNav
+                  door="contours"
+                  onBack={() => setOpenCorner("hub")}
+                  onNext={openTrialDoor}
+                />
+                <TrialDoorReset
+                  dirty={trialDoorDirty("contours", resolved, statsChipSize)}
+                  onReset={() => update(trialDoorPatch("contours"))}
+                />
+              </div>
             }
           >
             {gridAndContours?.grid && (
@@ -1537,18 +1537,18 @@ export function TopoTab({
             stepLabel={trialStepLabel("readings")}
             status={trialDoorStatus("readings", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
-            nav={
-              <TrialDoorNav
-                door="readings"
-                onBack={() => setOpenCorner("hub")}
-                onNext={openTrialDoor}
-              />
-            }
             footer={
-              <TrialDoorReset
-                dirty={trialDoorDirty("readings", resolved, statsChipSize)}
-                onReset={() => update(trialDoorPatch("readings"))}
-              />
+              <div className="space-y-1.5">
+                <TrialDoorNav
+                  door="readings"
+                  onBack={() => setOpenCorner("hub")}
+                  onNext={openTrialDoor}
+                />
+                <TrialDoorReset
+                  dirty={trialDoorDirty("readings", resolved, statsChipSize)}
+                  onReset={() => update(trialDoorPatch("readings"))}
+                />
+              </div>
             }
           >
             <TrialAccordion
@@ -1695,22 +1695,22 @@ export function TopoTab({
             stepLabel={trialStepLabel("legendhl")}
             status={trialDoorStatus("legendhl", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
-            nav={
-              <TrialDoorNav
-                door="legendhl"
-                onBack={() => setOpenCorner("hub")}
-                onNext={openTrialDoor}
-              />
-            }
             footer={
-              <TrialDoorReset
-                dirty={trialDoorDirty("legendhl", resolved, statsChipSize)}
-                onReset={() => {
-                  update(trialDoorPatch("legendhl"));
-                  setStatsChipLocked(DEFAULT_STATS_CHIP_SIZE);
-                  setStatsChipSize(DEFAULT_STATS_CHIP_SIZE);
-                }}
-              />
+              <div className="space-y-1.5">
+                <TrialDoorNav
+                  door="legendhl"
+                  onBack={() => setOpenCorner("hub")}
+                  onNext={openTrialDoor}
+                />
+                <TrialDoorReset
+                  dirty={trialDoorDirty("legendhl", resolved, statsChipSize)}
+                  onReset={() => {
+                    update(trialDoorPatch("legendhl"));
+                    setStatsChipLocked(DEFAULT_STATS_CHIP_SIZE);
+                    setStatsChipSize(DEFAULT_STATS_CHIP_SIZE);
+                  }}
+                />
+              </div>
             }
           >
             <TrialAccordion
@@ -2574,15 +2574,14 @@ function trialDoorDirty(
 }
 
 /**
- * Tall shared frame; Back / {Name} → under the title. Body hosts accordion —
- * known-scroll only inside the open section.
+ * Compact card (not full-height). Accordion in the body; Back / destination
+ * and Reset live in the footer. Known-scroll only inside an open section.
  */
 function TrialPanel({
   title,
   stepLabel,
   status,
   onClose,
-  nav,
   children,
   footer,
 }: {
@@ -2590,13 +2589,12 @@ function TrialPanel({
   stepLabel?: string;
   status?: string;
   onClose: () => void;
-  nav?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
   return (
-    <div className="absolute z-30 top-12 right-2 bottom-[calc(env(safe-area-inset-bottom)+3.75rem)] flex w-64 flex-col overflow-hidden rounded-xl border bg-card/95 shadow-2xl backdrop-blur landscape-short:top-2 landscape-short:bottom-[calc(env(safe-area-inset-bottom)+3.25rem)]">
-      <div className="flex shrink-0 items-start justify-between gap-2 px-3 pb-1.5 pt-2.5">
+    <div className="absolute z-30 top-12 right-2 flex w-64 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-card/95 shadow-2xl backdrop-blur landscape-short:top-2">
+      <div className="flex shrink-0 items-start justify-between gap-2 border-b px-3 pb-2 pt-2.5">
         <div className="min-w-0">
           {stepLabel ? (
             <p className="text-[10px] font-medium text-muted-foreground">{stepLabel}</p>
@@ -2615,20 +2613,17 @@ function TrialPanel({
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      {nav ? (
-        <div className="shrink-0 border-b px-3 pb-2.5 pt-1">{nav}</div>
-      ) : (
-        <div className="shrink-0 border-b" />
-      )}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-2 text-sm">{children}</div>
+      <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden px-3 py-2.5 text-sm">
+        {children}
+      </div>
       {footer ? (
-        <div className="shrink-0 border-t bg-card/95 px-3 py-1.5 backdrop-blur">{footer}</div>
+        <div className="shrink-0 border-t bg-muted/30 px-3 py-2 backdrop-blur">{footer}</div>
       ) : null}
     </div>
   );
 }
 
-/** One section open at a time; open section may known-scroll. */
+/** One section open at a time; shaded rows so they read as controls. */
 function TrialAccordion({
   openId,
   onChange,
@@ -2639,7 +2634,7 @@ function TrialAccordion({
   items: { id: string; title: string; body: React.ReactNode }[];
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-1">
+    <div className="flex min-h-0 flex-col gap-1.5">
       {items.map((item) => {
         const open = openId === item.id;
         return (
@@ -2647,26 +2642,29 @@ function TrialAccordion({
             key={item.id}
             className={
               open
-                ? "flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-background"
-                : "shrink-0 rounded-md border bg-background"
+                ? "flex max-h-[14rem] min-h-0 flex-col overflow-hidden rounded-lg border border-primary/35 bg-primary/10 shadow-sm"
+                : "shrink-0 rounded-lg border border-border/80 bg-muted/55 shadow-sm"
             }
           >
             <button
               type="button"
               onClick={() => onChange(open ? null : item.id)}
               aria-expanded={open}
-              className="flex h-9 shrink-0 items-center justify-between gap-2 px-2.5 text-left text-xs font-semibold hover:bg-muted/60"
+              className={
+                "flex h-10 shrink-0 items-center justify-between gap-2 px-2.5 text-left text-xs font-semibold " +
+                (open ? "text-primary" : "text-foreground hover:bg-muted/80")
+              }
             >
               <span>{item.title}</span>
               <ChevronDown
                 className={
-                  "h-4 w-4 shrink-0 text-muted-foreground transition-transform " +
-                  (open ? "rotate-180" : "")
+                  "h-4 w-4 shrink-0 transition-transform " +
+                  (open ? "rotate-180 text-primary" : "text-muted-foreground")
                 }
               />
             </button>
             {open ? (
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain border-t px-2.5 py-2">
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain border-t border-primary/20 bg-card/90 px-2.5 py-2">
                 {item.body}
               </div>
             ) : null}
@@ -2677,7 +2675,7 @@ function TrialAccordion({
   );
 }
 
-/** Top-of-panel walk: dots + Back + destination name (clear primary). */
+/** Bottom walk: dots + Back + destination name. */
 function TrialDoorNav({
   door,
   onBack,
