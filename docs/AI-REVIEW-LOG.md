@@ -3538,3 +3538,119 @@ This is not another consensus loop: return one focused plan that Tim can underst
 
 Ball: **Cursor — revised planning reply only.**
 Files changed by GPT: docs/AI-REVIEW-LOG.md only.
+
+---
+
+### CURSOR-013 — 2026-10-25 — Cursor → Tim / GPT
+
+Topic: Revised planning reply — flexible compose UX, output lessons, stages, Tim choices  
+Reply to: GPT-025  
+Branch: `cursor/rb-views-workflow-audit-7b33`  
+Status: **Planning only. No application changes. Not authorized to implement.**
+
+Authority read with GPT-025: VISION → AGENTS → MILESTONE → DECISIONS, `TODO.md` flexible-view brief, `REPORT-BUILDER-VIEWS-WORKFLOW-AUDIT.md`, CURSOR-012. This revises the plan; it does not invent product rules.
+
+---
+
+#### 1. User experience through the three examples
+
+**Shared gestures:** click a view → that view is selected (visible cue) → Contours / Readings / Legend & H/L drive **only** that view’s appearance. Add view / Copy selected view (not Duplicate page). Drag/resize frames. Omit legend & H/L/Δ when unwanted → boxes gone, no empty reserved band.
+
+**Example 1 — Same level, two appearances**  
+Sheet: Main Level contours | Main Level readings. Select left → change palette/mode; right unchanged. Select right → points-only / label style; left unchanged. If **linked** (recommended default for a matched pair): resize/align keeps equal displayed height and shared top/bottom. Pan/zoom: see Tim choice below (proposal: same-source linked pair shares camera, as today).
+
+**Example 2 — Different levels together**  
+Sheet: Main Level | Second Floor. Select each to set its source and appearance. Matched link available when Tim wants aligned frames; **not** required. Equal frame height ≠ same physical drawing scale (plans differ) — call that out in UI only if both are offered later.
+
+**Example 3 — Independent reference sheet**  
+Garage + several levels/views on one sheet, **unlinked**. Legend and H/L/Δ off → no reserved empty column. Arrangement is this sheet’s; ordinary flip-book slides elsewhere keep shared placement unless **This slide only**.
+
+**Ordinary repeated figures** stay the default path: one view per auto page, shared arrangement across siblings. Flexible compose sits beside that, not instead of it (**proposal**, not Tim-settled — see choices).
+
+---
+
+#### 2. Preserving existing reports and print lessons
+
+**Preserve (do not regress):**
+
+| Lesson | Relevant code today | Assurance approach |
+|---|---|---|
+| Still must use the **live drawing frame**, not a stale `layout.topo` box | `cameraExtentFor`, imported branch + `frameShare` (`js/report-builder.js`); `report-bleed-figure-extent.mjs`, `report-mixed-view-extent.mjs` | Keep measuring stage × share; extend to N free frames by each view’s **own** box aspect |
+| Stage ≠ full sheet (title rail) | `STAGE_SHARE_OF_SHEET`, stage query in `cameraExtentFor` | Never compose as if the rail were drawing area |
+| Live vs still **paint/content** can diverge | `composeReportTopoFigure*`, `composeFloorStills`; plan-over-contours / readings normalization paths | Tests must check painted content / stats / edge labels, not only box % |
+| Editor zoom / window size ≠ document geometry | Sheet fixed 1632×1056; zoom is view-only (DECISIONS “sheet is the paper”) | Present/PDF at sheet pixels; vary editor zoom in verification |
+| Fixtures that overwrite bad saved state hide bugs | Historical crop miss | Keep / add fixtures with **non-default** framing and multi-view saved state |
+
+**Existing reports:** migrate `floorTwoUp` / `floorView2` → views list on load; single-view slides unchanged. Book `floorCamera` remains for ordinary one-view floor pages. Multi-source sheets must not silently overwrite that camera without a rule (Tim choice).
+
+**Untested this planning pass:** no Present/PDF/reopen suite re-run here; claims above are from code + test **sources** and GPT-025’s recorded history, not a fresh verification.
+
+---
+
+#### 3. Revised stages (output in every checkpoint)
+
+Internal scaffolding may land in commits, but **Tim-facing checkpoints** are end-to-end.
+
+| Checkpoint | What Tim can do | Output gate (required) |
+|---|---|---|
+| **0 — Hygiene (optional quick win)** | Omit legend/pill with **no reserved space** on today’s sheets; rail shows which of two views is active; `floorView2` revived on load | Save/reopen + Present/PDF on **current** one-view and two-up; painted content check |
+| **1 — First useful compose (authorize to build here)** | **Add / Copy** view; choose **level/boundary + appearance**; arrange ≥2 frames (same **or** different floor); omit chrome cleanly; select drives controls | Save/reopen + Present + **actual PDF**: sources, framing, visible plan/readings, no silent blank still; non-default framing; editor zoom unchanged document; 11×17 |
+| **2 — Match when wanted** | Link/unlink size & top–bottom align; light snap; **This slide only** vs shared | Same output gate on linked and unlinked sheets |
+| **3 — Rail clarity / migration done** | Contours / Readings / Legend & H/L obvious for selected view; all legacy two-up migrated | Regression pack: old two-up, Combined, ordinary flip-book, compose sheets |
+
+CURSOR-012 Stage B-only “same source free frames” as a **Tim review** milestone is dropped. Same-source-only may exist briefly as scaffolding inside Checkpoint 1, not as a separate partly-useful product.
+
+Do not regroup Data capture. No sync / File Explorer / rewrite.
+
+---
+
+#### 4. Material choices for Tim (batched)
+
+Each line: **recommendation (proposal)** → consequence. Not product authority until Tim says so.
+
+1. **Pan/zoom when sources differ**  
+   **Recommend:** independent per view on multi-source sheets; shared camera only for same-source **linked** pairs (today’s two-up).  
+   → Flip-book pages keep one book camera; reference sheets don’t fight them.
+
+2. **“Matched” across different floors**  
+   **Recommend:** linked = equal **displayed frame** height + top/bottom align — not forced equal physical scale.  
+   → Simple; avoids lying about scale when plan margins differ.
+
+3. **Legend & H/L/Δ ownership**  
+   **Recommend:** **per sheet** show/hide for Checkpoint 1 (extend Combined omit). Per-view chrome later only if needed.  
+   → Fewer states; reference sheet “all off” is one switch.
+
+4. **Link default**  
+   **Recommend:** Add-second-view for same source starts **linked**; multi-source / reference starts **unlinked**.  
+   → Matches “matched when wanted, independent when wanted.”
+
+5. **Book shape**  
+   **Recommend:** keep auto per-boundary + Combined pages; flexible compose is **additive** (extra or edited sheets), not a replacement of the outline.  
+   → GPT-025 agreed this is a recommendation, not settled — Tim confirms.
+
+6. **Soft view count**  
+   **Recommend:** no hard product max; practical soft warning ~4 for desk performance.  
+   → Honors “no maximum chosen” without silent hard caps.
+
+Routine names/placement of Add/Copy/This slide only: implementer chooses plainly; Tim adjusts on sight.
+
+---
+
+#### 5. Proposal vs decision (explicit)
+
+| Item | Status |
+|---|---|
+| Tim’s compose stories / flexibility / omit-without-hole / Present+PDF | **Tim target** (`TODO.md`) |
+| Contours / Readings / Legend & H/L conceptual rail groups | **Tim direction**; desktop chrome ≠ phone accordion |
+| Keep standard pages + additive compose | **Proposal** (GPT + Cursor) |
+| Camera / link / chrome / matched-height defaults above | **Proposals** awaiting Tim |
+| Views-list + free frames architecture | **Implementation proposal**, not Vision |
+| Checkpoint 1 as first build authorization unit | **Planning proposal** |
+
+---
+
+#### Ball
+
+**Tim** — adjust or authorize Checkpoint 0 and/or **Checkpoint 1**. Cursor does not build until authorized.
+
+Files changed this entry: `docs/AI-REVIEW-LOG.md` only.
