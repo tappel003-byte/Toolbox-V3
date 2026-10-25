@@ -1478,14 +1478,17 @@ export function TopoTab({
                   <span aria-hidden>→</span>
                 </button>
               ) : null}
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-1.5">
                 {TRIAL_DOORS.map(({ key, name }, i) => (
                   <button
                     key={key}
                     type="button"
                     onClick={() => openTrialDoor(key)}
-                    className="flex items-center justify-end gap-2 rounded-md border bg-white px-2 py-2 hover:bg-black/[0.03]"
-                    style={{ borderColor: TRIAL_LINE }}
+                    className="flex items-center justify-end gap-2 rounded-md border px-2.5 py-2.5 hover:brightness-[0.98]"
+                    style={{
+                      backgroundColor: TRIAL_COOL_GRAY,
+                      borderColor: TRIAL_LINE_STRONG,
+                    }}
                   >
                     <span className="min-w-0 text-right">
                       <span
@@ -1500,11 +1503,11 @@ export function TopoTab({
                     </span>
                     <span
                       className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold tabular-nums"
-                      style={{ backgroundColor: TRIAL_COOL_GRAY, color: TRIAL_NAVY }}
+                      style={{ backgroundColor: TRIAL_RUST_SOFT, color: TRIAL_RUST }}
                     >
                       {i + 1}
                     </span>
-                    <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "#66727d" }} />
+                    <ChevronRight className="h-4 w-4 shrink-0" style={{ color: TRIAL_NAVY }} />
                   </button>
                 ))}
               </div>
@@ -2220,7 +2223,7 @@ function CornerIcon({
   );
 }
 
-/** Placebo Control panel doors (GPT-024). Accordion sections inside each. */
+/** Control panel doors (GPT-024). Accordion sections inside each. */
 const TRIAL_DOORS = [
   { key: "contours", name: "Contours", hint: "Topo draw, colors, lines" },
   { key: "readings", name: "Readings", hint: "Dots, numbers, style" },
@@ -2349,10 +2352,13 @@ function trialDoorDirty(
  * Compact card (not full-height). Accordion in the body; Back / destination
  * and Reset live in the footer. Known-scroll only inside an open section.
  */
-/** Customer File visual system — css/styles.css (:root --navy / --line / --line-strong). */
+/** Customer File visual system — css/styles.css (:root --navy / --accent / --line). */
 const TRIAL_NAVY = "#07283d";
+const TRIAL_RUST = "#c14a2b";
+const TRIAL_RUST_SOFT = "#f3d8ce";
 const TRIAL_COOL_GRAY = "#eef1f3";
 const TRIAL_LINE = "#c9d0d5";
+const TRIAL_LINE_STRONG = "#a8b0b8";
 
 function TrialPanel({
   title,
