@@ -2,11 +2,12 @@
  * Flexible Floor Survey compose — Checkpoint 1.
  * Run: node tests/report-floor-flex-compose.mjs  (static server on 8765)
  *
- * Covers GPT-025 examples + GPT-026 chrome rules + Present/PDF painted stills:
+ * Covers GPT-025 examples + GPT-026 chrome rules + Present/PDF verification:
  * 1) Same level, two appearances (linked frames)
  * 2) Different levels on one sheet
  * 3) Multi-view chrome starts hidden (no reserved legend/pill DOM)
- * Legacy two-up migrates; save/reopen keeps views[]; print stills exist per slot.
+ * Legacy two-up migrates; save/reopen keeps views[]; Present + Print/PDF decks
+ * paint non-blank stills per view on 11×17 paper.
  */
 import { createRequire } from 'module';
 import { mkdir, writeFile } from 'fs/promises';
@@ -136,18 +137,16 @@ const twoUp = await page.evaluate(() => {
     width: parseFloat(el.style.width) || 0,
     height: parseFloat(el.style.height) || 0,
   }));
-  const legends = document.querySelectorAll('.rb-floor-box--legend, [data-rb-legend]').length;
-  const pills = document.querySelectorAll('.rb-floor-box--pill, .rb-topo-pill').length;
-  // Prefer chrome box count on stage.
-  const chromeLegend = document.querySelectorAll('.rb-floor-stage .rb-floor-box--legend').length;
-  const chromePill = document.querySelectorAll('.rb-floor-stage .rb-floor-box--pill').length;
+  // Only report chrome boxes (not anything the live FS view draws).
+  const chromeLegend = document.querySelectorAll(
+    '.rb-floor-stage > [data-rb-floor-kind="legend"]').length;
+  const chromePill = document.querySelectorAll(
+    '.rb-floor-stage > [data-rb-floor-kind="pill"]').length;
   return {
     count: frames.length,
     boxes,
     chromeLegend,
     chromePill,
-    legends,
-    pills,
   };
 });
 check('Add view creates two frames', twoUp.count === 2, String(twoUp.count));
@@ -225,25 +224,95 @@ await new Promise((r) => setTimeout(r, 2500));
 const reopened = await page.evaluate(() => document.querySelectorAll('[data-rb-topo-frame]').length);
 check('reopen restores multi-view frames', reopened === 2, String(reopened));
 
-// Present/PDF still composition — paint stills and confirm data URLs.
-const printProbe = await page.evaluate(async () => {
-  // Trigger the same compose path Print uses by calling through the open shell
-  // if exposed; otherwise click Print and inspect composed stills on pages.
-  const printBtn = document.querySelector('#rb-print, [data-rb-print], button[aria-label="Print"]');
-  // Fallback: look for Present
-  const presentBtn = document.querySelector('#rb-present, [data-rb-present]');
-  return {
-    hasPrint: !!printBtn,
-    hasPresent: !!presentBtn,
-    printId: printBtn && (printBtn.id || printBtn.getAttribute('data-rb-print')),
-    presentId: presentBtn && (presentBtn.id || presentBtn.getAttribute('data-rb-present')),
-  };
-});
+// Present + Print/PDF deck — same still path the PDF dialog receives.
+async function inkOnStill(selRoot) {
+  return page.evaluate((rootSel) => {
+    function nonBlank(img) {
+      if (!img || !(img.naturalWidth > 40) || !(img.naturalHeight > 40)) {
+        return { ok: false, reason: 'tiny-or-missing', w: img && img.naturalWidth, h: img && img.naturalHeight };
+      }
+      const c = document.createElement('canvas');
+      c.width = Math.min(240, img.naturalWidth);
+      c.height = Math.min(180, img.naturalHeight);
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      const data = ctx.getImageData(0, 0, c.width, c.height).data;
+      let ink = 0;
+      for (let i = 0; i < data.length; i += 16) {
+        const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+        if (a > 20 && (r < 245 || g < 245 || b < 245)) ink += 1;
+      }
+      return {
+        ok: ink > 8,
+        ink,
+        w: img.naturalWidth,
+        h: img.naturalHeight,
+        dataUrl: !!(img.src && img.src.indexOf('data:image') === 0),
+      };
+    }
+    const root = document.querySelector(rootSel);
+    if (!root) return { ok: false, reason: 'no-root' };
+    const sheet = [...root.querySelectorAll('.rb-sheet')].find((s) =>
+      s.querySelectorAll('[data-rb-topo-frame]').length >= 2) ||
+      [...root.querySelectorAll('.rb-sheet')].find((s) => s.querySelector('.rb-topo-still'));
+    if (!sheet) return { ok: false, reason: 'no-multi-sheet' };
+    const frames = [...sheet.querySelectorAll('[data-rb-topo-frame]')];
+    const stills = [...sheet.querySelectorAll('.rb-topo-still')];
+    const chromeL = sheet.querySelectorAll('.rb-floor-stage > [data-rb-floor-kind="legend"]').length;
+    const chromeP = sheet.querySelectorAll('.rb-floor-stage > [data-rb-floor-kind="pill"]').length;
+    return {
+      ok: frames.length >= 2 && stills.length >= 2,
+      frames: frames.length,
+      stills: stills.length,
+      ink: stills.map(nonBlank),
+      chromeL,
+      chromeP,
+      sheetW: sheet.offsetWidth,
+      sheetH: sheet.offsetHeight,
+    };
+  }, selRoot);
+}
 
-// Compose stills by invoking internal path via a temporary evaluate of compose on hosts.
+await page.click('#rb-present');
+await page.waitForFunction(() => !!document.querySelector('.rb-print--present .rb-sheet'),
+  { timeout: 90000 });
+await new Promise((r) => setTimeout(r, 1500));
+const presented = await inkOnStill('.rb-print--present');
+check('Presentation paints two multi-view stills',
+  presented.ok && presented.stills >= 2 && (presented.ink || []).every((x) => x.ok),
+  JSON.stringify(presented));
+check('Presentation keeps multi-view chrome omitted',
+  presented.chromeL === 0 && presented.chromeP === 0,
+  JSON.stringify({ L: presented.chromeL, P: presented.chromeP }));
+
+await page.evaluate(() => {
+  const bar = document.querySelector('.rb-present-bar');
+  const close = bar && [...bar.querySelectorAll('button')]
+    .find((b) => /close/i.test(b.textContent || ''));
+  if (close) close.click();
+  const d = document.querySelector('.rb-print');
+  if (d) d.remove();
+  document.body.classList.remove('is-printing', 'rb-printing');
+});
+await new Promise((r) => setTimeout(r, 800));
+
+await page.evaluate(() => { window.print = () => { window.__printed = true; }; });
+await page.click('#rb-print');
+await page.waitForFunction(() => window.__printed === true, { timeout: 90000 });
+await new Promise((r) => setTimeout(r, 1200));
+const printed = await inkOnStill('.rb-print');
+check('Print/PDF deck paints two multi-view stills',
+  printed.ok && printed.stills >= 2 && (printed.ink || []).every((x) => x.ok),
+  JSON.stringify(printed));
+check('Print/PDF deck is 11×17 paper pixels',
+  printed.sheetW === 1632 && printed.sheetH === 1056,
+  JSON.stringify({ w: printed.sheetW, h: printed.sheetH }));
+check('Print/PDF keeps multi-view chrome omitted',
+  printed.chromeL === 0 && printed.chromeP === 0,
+  JSON.stringify({ L: printed.chromeL, P: printed.chromeP }));
+
+// Direct compose path also reports painted stills (readings rebuilt).
 const stills = await page.evaluate(async () => {
-  // Walk report builder pages from IndexedDB after a print-compose if available.
-  // Directly ask Floor Survey compose for each view on the active meta.
   const recId = location.hash.split('/')[2];
   const rec = await window.ToolboxDB.getCustomerFile(recId);
   const doc = rec.reportBuilder;
@@ -300,7 +369,8 @@ check('legacy floorTwoUp migrates to two views', legacy.n === 2 && legacy.modes[
 check('migrated multi-view chrome starts hidden', legacy.chromeOff);
 
 await page.screenshot({ path: `${OUT}/report-floor-flex-compose.png`, fullPage: false });
-await writeFile(`${OUT}/report-floor-flex-compose.json`, JSON.stringify({ results, printProbe, stills, saved }, null, 2));
+await writeFile(`${OUT}/report-floor-flex-compose.json`,
+  JSON.stringify({ results, presented, printed, stills, saved }, null, 2));
 await browser.close();
 
 const failed = results.filter((r) => !r.ok);

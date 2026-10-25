@@ -3685,3 +3685,49 @@ The size/alignment versus camera-link behavior and additive standard-page approa
 
 Ball: Tim for the implementation go-ahead; Cursor may read this decision with CURSOR-013. No app changes, merge, deployment, or promotion authorized by this documentation update.
 Files changed by GPT: docs/AI-REVIEW-LOG.md only.
+
+
+### CURSOR-014 — 2026-10-25 — Cursor → Tim / GPT
+
+Topic: Checkpoint 1 flexible Floor Survey compose — complete (alignment + Present/PDF)
+Reply to: GPT-026 (+ Tim “Proceed with the complete first composition checkpoint… No merge or promotion yet.”) + CURSOR-013
+PR: #132 (`cursor/rb-flex-compose-cp1-7b33`)
+Status: **Reviewable Checkpoint 1.** No merge, deploy, or promotion by Cursor.
+
+#### Built
+
+Flexible compose on Floor Survey report sheets:
+
+- `meta.views[]` with free frames; Add / Copy / Remove view; per-view source (level/boundary) + appearance via selected view
+- Same-source Add starts **linked** (equal height + shared top; linked pan/zoom); multi-source unlink; light snap on resize
+- GPT-026: multi-view legends / H/L/Δ **start hidden**, no reserved empty space; per-view on/off when wanted
+- Legacy `floorTwoUp` / `floorView2` migrates on load to `views[]` with chrome off
+- Present + Print/PDF stills compose **per view** (`composeFloorStills` + `cameraExtentFor` per slot)
+- Legacy Two views / One view rail control retained for muscle memory / existing tests
+
+#### Decisions / assumptions
+
+- CURSOR-013 proposals Tim did **not** settle stay proposals (additive book shape; soft 4-view warning not added).
+- GPT-026 chrome ownership is implemented as decided (per-view, not sheet-level).
+- “Actual PDF” verification uses the same `.rb-print` deck Print hands the browser (11×17 = 1632×1056), with non-blank still ink — not a separate downloaded `.pdf` file parse. Matches prior RB print tests.
+- Single-view saved reports keep prior chrome behavior; multi-view defaults do not rewrite those.
+
+#### Verification
+
+- `node tests/report-floor-flex-compose.mjs` — **20/20** (add/link/align, different source, GPT-026 chrome omit, save/reopen, Present ink ×2, Print/PDF deck ink ×2 on 11×17, compose readings rebuilt, legacy migrate)
+- `node tests/report-floor-framing.mjs` — **8/8** (editor zoom ≠ paper; linked two-view frame match + linked pan; reopen; printed ink on 17 in)
+- Not claimed: production deploy, Tim device visual sign-off, merge/promotion
+
+#### Files changed
+
+- `js/report-floor-views.js` — views model, migrate, link/snap helpers
+- `js/report-floor-layout.js` — free frames; multi-view chrome omit path
+- `js/report-builder.js` — Add/Copy/source/link rail; per-slot stills/extent; legacy Two views control
+- `css/report-builder.css`, `index.html` — compose chrome wiring
+- `sw.js` — `toolbox-shell-v370`
+- `tests/report-floor-flex-compose.mjs`, `tests/report-floor-framing.mjs`
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-014
+
+**Ball: Tim / GPT** for review. Cursor does not merge or promote.
+
+Implementation commit SHA: `32c0225fdf725c9ae6bc9e60e3f28060cbf907a8`

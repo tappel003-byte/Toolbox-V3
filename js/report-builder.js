@@ -4343,6 +4343,12 @@
           wrap.appendChild(viewLead);
           wrap.appendChild(railButton('Add view', 'quiet', 'data-rb-floor-view', 'add'));
           wrap.appendChild(railButton('Copy view', 'quiet', 'data-rb-floor-view', 'copy'));
+          // Legacy Two views / One view control (existing tests + muscle memory).
+          wrap.appendChild(railButton(
+            viewsNow.length > 1 ? 'One view' : 'Two views',
+            'quiet',
+            'data-rb-floor-twoup',
+            viewsNow.length > 1 ? 'off' : 'on'));
           if (viewsNow.length > 1) {
             wrap.appendChild(railButton('Remove view', 'quiet', 'data-rb-floor-view', 'remove'));
             var linked = !!(activeView && activeView.linkGroup);

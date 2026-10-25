@@ -567,9 +567,11 @@
       bareStage.setAttribute('data-rb-floor-stage', '1');
       // Flexible compose (Checkpoint 1): one or more view frames on the stage.
       // Legacy two-up equal shares become stored frames via ToolboxReportFloorViews.
-      var viewList = Array.isArray(options.views) && options.views.length
-        ? options.views
-        : null;
+      var viewList = Array.isArray(options.views) ? options.views.slice() : null;
+      if ((!viewList || !viewList.length) && page && window.ToolboxReportFloorViews) {
+        viewList = window.ToolboxReportFloorViews.ensurePageViews(page);
+      }
+      if (viewList && !viewList.length) viewList = null;
       var slots = viewList
         ? viewList.length
         : Math.max(1, Math.min(2, Number(options.topoSlots) || 1));
@@ -651,14 +653,15 @@
         bareStage.appendChild(piece);
       }
 
-      if (multiView && viewList) {
+      if (viewList && viewList.length > 1) {
+        // GPT-026: multi-view legends/pills start hidden; only place when a
+        // view explicitly enables them. Never fall through to layout.overlays
+        // (that path reserved empty columns for Combined-era slots).
         viewList.forEach(function (vs, vi) {
           if (!vs) return;
           var vStats = (options.viewStats && options.viewStats[vi]) || statsList[0] || null;
-          var slotPos = scaleSlot(vi);
-          // Prefer a nest beside the view frame so association is clear.
-          var chromeX = Math.min(92, (vs.frame.x || 0) + 2);
-          var chromeY = Math.max(2, (vs.frame.y || 0) + 2);
+          var chromeX = Math.min(92, ((vs.frame && vs.frame.x) || 0) + 2);
+          var chromeY = Math.max(2, ((vs.frame && vs.frame.y) || 0) + 2);
           if (vs.showLegend && vStats) {
             placeChrome('legend', 'legend-' + vs.id, chromeX, chromeY, 3, vStats, {
               legendUrls: options.legendUrls,
@@ -677,9 +680,8 @@
               options,
             );
           }
-          void slotPos;
         });
-      } else {
+      } else if (!multiView) {
         layout.overlays.forEach(function (overlay) {
           if (overlay.kind !== 'legend' && overlay.kind !== 'pill') return;
           if (combinedSheet) return;
