@@ -3730,4 +3730,4 @@ Flexible compose on Floor Survey report sheets:
 
 **Ball: Tim / GPT** for review. Cursor does not merge or promote.
 
-Implementation commit SHA: `32c0225fdf725c9ae6bc9e60e3f28060cbf907a8`
+Implementation tip SHA: `25d9fc2b1eaf8724209223a10bd363fbfe35943c`
