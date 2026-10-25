@@ -1468,7 +1468,7 @@ export function TopoTab({
                 </button>
               ) : null}
               <div className="flex flex-col gap-1.5">
-                {TRIAL_DOORS.map(({ key, name }) => (
+                {TRIAL_DOORS.map(({ key, name, hint }) => (
                   <button
                     key={key}
                     type="button"
@@ -1479,11 +1479,16 @@ export function TopoTab({
                       borderColor: TRIAL_LINE_STRONG,
                     }}
                   >
-                    <span
-                      className="min-w-0 flex-1 text-right text-sm font-medium leading-tight"
-                      style={{ color: TRIAL_NAVY }}
-                    >
-                      {name}
+                    <span className="min-w-0 flex-1 text-right">
+                      <span
+                        className="block text-sm font-medium leading-tight"
+                        style={{ color: TRIAL_NAVY }}
+                      >
+                        {name}
+                      </span>
+                      <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
+                        {hint}
+                      </span>
                     </span>
                     <ChevronRight className="h-4 w-4 shrink-0" style={{ color: TRIAL_NAVY }} />
                   </button>
@@ -1529,8 +1534,8 @@ export function TopoTab({
                   ),
                 },
                 {
-                  id: "style",
-                  title: "Style",
+                  id: "labels",
+                  title: "Labels",
                   body: (
                     <div className="space-y-2.5">
                       <StepperControl
@@ -2185,9 +2190,9 @@ function CornerIcon({
 
 /** Control panel doors (GPT-024). Accordion sections inside each. */
 const TRIAL_DOORS = [
-  { key: "contours", name: "Contours", hint: "Topo draw, colors, lines" },
-  { key: "readings", name: "Readings", hint: "Dots, numbers, style" },
-  { key: "legendhl", name: "Legend & H/L", hint: "Scale and high/low" },
+  { key: "contours", name: "Contours", hint: "Mode, colors, contour lines" },
+  { key: "readings", name: "Readings", hint: "Dots · label size, bold, color" },
+  { key: "legendhl", name: "Legend & H/L", hint: "Legend size · high/low markers" },
 ] as const;
 
 type TrialDoorKey = (typeof TRIAL_DOORS)[number]["key"];
