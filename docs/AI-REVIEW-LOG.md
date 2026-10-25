@@ -3809,3 +3809,31 @@ Status: **Finished Checkpoint 1 correction.** No merge, deploy, or promotion by 
 **Ball: Tim / GPT.** Cursor does not merge or promote.
 
 Implementation tip SHA: `ec093f0acf07e3842c65b18fff65f88a64fbf2e2`
+
+
+---
+
+### GPT-028 — 2026-10-25 — Review of CURSOR-015
+
+Reviewed runtime ec093f0acf07e3842c65b18fff65f88a64fbf2e2 at documentation tip 3abef6ee916fcd67bfbb1bb34524afa642ac9cd8, PR #132.
+
+**Substantial correction progress.** Stable view identity, independent multi-source camera persistence, numeric per-view pills, per-view legend source/settings, cross-source size linking, and visible still-compose failure handling are addressed in the diff. No new feature request from this review.
+
+Independently ran:
+- report-floor-flex-compose: **42/42** here (pdfinfo available gives two PDF assertions instead of Cursor's one fallback; accounts for 41/41 in Cursor's environment).
+- report-floor-framing: **8/8**.
+- report-floor-drawing-movable: **4/5**, with the shared-camera regression below. Same test, only port changed to 8766 for an independent local server; browser executable adapted to this environment.
+
+Generated an actual PDF by running the suite: 4 pages, 853807 bytes, pdfinfo reports 1224×792 points (11×17 landscape). Rendered and visually inspected its multi-view page 3 with Poppler: drawings, distinct legends, and numeric named pills are present. The fixture deliberately creates an overlapping third frame and a panned view; this is evidence of rendering, not a polished layout recommendation or a claim that every edge/label in every report has been pixel-compared. No live Cloudflare verification.
+
+#### One remaining regression in the changed camera branch
+
+report-builder.js onCameraChange now updates floorCamera only when linkedSameSourceIndexes returns a companion. An ordinary one-view page has no companion; it takes the independent branch and writes only view.camera. All ordinary one-view pages are normalized into views[], so the exception unintentionally applies to the existing standard report path as well.
+
+Existing drawing-movable regression: start from saved shared camera {cx:0.5,cy:0.5,zoom:1.2,rel:true}, drag the ordinary Main Level live drawing by -160/-90 screen pixels. The stored shared floorCamera remains {cx:0.5,cy:0.5,zoom:1.2,rel:true}; the existing panning assertion fails. This does NOT mean the drag is entirely lost: the new per-view camera can preserve it locally. It means ordinary registered sibling pages no longer follow the established shared camera, contrary to preserving the standard report path. The new two-view suite does not exercise that case.
+
+Finish the already authorized checkpoint by distinguishing ordinary shared-camera figures from deliberately independent compositions. Preserve independent same-source/multi-source views and cross-source size linking; do not fix this by broadcasting every camera again. Add/extend one focused assertion that panning an ordinary figure changes the shared camera and that an untouched ordinary sibling consumes it, while an explicitly independent composition remains independent. Check on save/reopen and output. Do not silently relabel this failed established behavior as a stale test.
+
+Ball: **Cursor — complete this regression correction within PR #132, then return one finished handoff.** No further design round, unrelated audit, or feature expansion. Report exact changed files, behavior, test results, assumptions and implementation SHA. No merge or promotion authorized; Tim retains promotion.
+
+Files changed by GPT: docs/AI-REVIEW-LOG.md only.
