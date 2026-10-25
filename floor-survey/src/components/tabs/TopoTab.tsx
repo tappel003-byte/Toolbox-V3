@@ -16,7 +16,7 @@ import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/l
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import { Undo2, X, Waves, Palette, Tag, SlidersHorizontal, Minus, Plus } from "lucide-react";
+import { Undo2, X, Waves, Tag, SlidersHorizontal, Minus, Plus, ChevronRight, ChevronDown } from "lucide-react";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { TopoDiagnosticPanel } from "../TopoDiagnosticPanel";
@@ -445,7 +445,35 @@ export function TopoTab({
   resizeCorners = false,
   allowContourLayer = false,
 }: Props) {
-  const [openCorner, setOpenCorner] = useState<null | "contours" | "palette" | "labels">(null);
+  // TRIAL LAYOUT ONLY (easy delete): GPT-024 Control panel — Contours /
+  // Readings / Legend & H/L with accordion sections. Same update() handlers.
+  // Native Contours / Palette / Labels & layers corners stay for comparison.
+  // Report controlsOnly untouched.
+  const [openCorner, setOpenCorner] = useState<
+    null | "hub" | "contours" | "readings" | "legendhl" | "palette" | "labels"
+  >(null);
+  /** Placebo: last Control panel door — Resume on the hub. */
+  const [lastTrialDoor, setLastTrialDoor] = useState<TrialDoorKey | null>(null);
+  /** Placebo: which accordion section is open per door (visit memory only). */
+  const [trialSectionByDoor, setTrialSectionByDoor] = useState<
+    Partial<Record<TrialDoorKey, string>>
+  >({
+    contours: "display",
+    readings: "show",
+    legendhl: "legend",
+  });
+  const openTrialDoor = useCallback((key: TrialDoorKey) => {
+    setLastTrialDoor(key);
+    setOpenCorner(key);
+  }, []);
+  const setTrialSection = useCallback((door: TrialDoorKey, id: string | null) => {
+    setTrialSectionByDoor((prev) => {
+      const next = { ...prev };
+      if (id == null) delete next[door];
+      else next[door] = id;
+      return next;
+    });
+  }, []);
   /** Which tab the rail shows. Report Builder only; the field screen opens one corner panel at a time. */
   const [ctrlTab, setCtrlTab] = useState<"contours" | "labels" | "layers">("contours");
   const [warningDismissed, setWarningDismissed] = useState(false);
@@ -958,20 +986,27 @@ export function TopoTab({
         <CornerIcon
           pos="top-2 left-2 landscape-short:top-auto landscape-short:left-1/2 landscape-short:-translate-x-[calc(100%+0.25rem)] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
           active={false}
-          onClick={() => setOpenCorner("contours")}
+          onClick={() => openTrialDoor("contours")}
           label="Contours"
         >
           <Waves className="h-4 w-4" />
         </CornerIcon>
       )}
-      {openCorner !== "palette" && !chromeless && !controlsOnly && (
+      {!chromeless &&
+        !controlsOnly &&
+        openCorner !== "hub" &&
+        openCorner !== "contours" &&
+        openCorner !== "readings" &&
+        openCorner !== "legendhl" &&
+        openCorner !== "palette" &&
+        openCorner !== "labels" && (
         <CornerIcon
           pos="top-2 right-2 landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:translate-x-[0.25rem] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
           active={false}
-          onClick={() => setOpenCorner("palette")}
-          label="Palette"
+          onClick={() => setOpenCorner("hub")}
+          label="Control panel"
         >
-          <Palette className="h-4 w-4" />
+          <SlidersHorizontal className="h-4 w-4" />
         </CornerIcon>
       )}
       {openCorner !== "labels" && !chromeless && !controlsOnly && (
@@ -1219,186 +1254,552 @@ export function TopoTab({
         />
         )}
 
-        {/* Contours popover — upper left */}
+        {/* Contours — GPT-024 destination 1 (also native Contours corner) */}
         {(openCorner === "contours" && !controlsOnly) && (
-          <CornerPanel inline={controlsOnly} pos="top-12 left-2 landscape-short:top-2 landscape-short:left-auto landscape-short:right-2" onClose={() => setOpenCorner(null)} title="Contours">
+          <TrialPanel
+            title="Contours"
+            stepLabel={trialStepLabel("contours")}
+            status={trialDoorStatus("contours", resolved, statsChipSize)}
+            onClose={() => setOpenCorner(null)}
+            footer={
+              <div className="space-y-1.5">
+                <TrialDoorNav
+                  door="contours"
+                  onBack={() => setOpenCorner("hub")}
+                  onNext={openTrialDoor}
+                />
+                <TrialDoorReset
+                  dirty={trialDoorDirty("contours", resolved, statsChipSize)}
+                  onReset={() => update(trialDoorPatch("contours"))}
+                />
+              </div>
+            }
+          >
             {gridAndContours?.grid && (
-              <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
+              <p className="mb-1 shrink-0 text-[10px] tabular-nums text-muted-foreground">
                 Range {readingText(gridAndContours.grid.minValue)}"–
                 {readingText(gridAndContours.grid.maxValue)}"
               </p>
             )}
-            <div>
-              <Label className="text-xs">Mode</Label>
-              <select
-                value={resolved.mode}
-                onChange={(e) => update({ mode: e.target.value as RenderSettings["mode"] })}
-                className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
-              >
-                <option value="contour-fill">Color fill</option>
-                <option value="contour-cells">Color cells</option>
-                <option value="contour-bw">B&W lines</option>
-                <option value="points-only">Points only</option>
-              </select>
-            </div>
-            {/*
-              Send to Distress Survey.
-
-              Only on B&W lines, and only in the field app. Tim: "I wonder if
-              the button only triggers when we do black-and-white contours."
-              It does, which makes it what you see is what you send -- there is
-              no mode for the writer to override, so the picture that lands
-              under the damage pins is the one on this screen. The one thing it
-              drops is the reading labels, because the pins go where those
-              would be.
-            */}
-            {allowContourLayer && resolved.mode === "contour-bw" && (
-              <div className="border-t pt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 w-full text-xs"
-                  disabled={layerState === "working"}
-                  onClick={async () => {
-                    setLayerState("working");
-                    setLayerMessage("");
-                    try {
-                      // Imported here rather than at the top: the composer
-                      // reads renderTopo out of this module, so a static
-                      // import would close a cycle through it.
-                      const [{ composeContourLayer }, { persistContourLayer }] = await Promise.all([
-                        import("@/lib/contour-layer"),
-                        import("@/lib/db"),
-                      ]);
-                      const drawn = await composeContourLayer({
-                        floor,
-                        points,
-                        settings: resolved,
-                        // The boundary on screen, not every boundary. A
-                        // garage is sloped to drain and swamps the house.
-                        areaId: selectedAreaId,
-                      });
-                      if (!drawn) {
-                        setLayerState("failed");
-                        setLayerMessage("No contours to send yet — this level needs a closed boundary with readings inside it.");
-                        return;
-                      }
-                      await persistContourLayer(floor.id, drawn.dataUrl, {
-                        areaName: drawn.areaName,
-                        // The plan extent the layer covers, not the picture's
-                        // own pixels. The picture is drawn well above plan
-                        // resolution so it holds up on paper, and it is
-                        // stretched back into this box wherever it is shown --
-                        // so this is the number that says the two layers line
-                        // up, in the same units as the plan's own.
-                        width: drawn.extent.w,
-                        height: drawn.extent.h,
-                        pointCount: drawn.pointCount,
-                      });
-                      setLayerState("done");
-                      // Name what went, because sending the wrong boundary
-                      // looks exactly like sending nothing.
-                      setLayerMessage(
-                        `Sent ${drawn.areaName}. Distress Survey can show the pins on it.`,
-                      );
-                    } catch (err) {
-                      setLayerState("failed");
-                      setLayerMessage(
-                        (err as Error)?.message || "Could not send the contour to Distress Survey.",
-                      );
-                    }
-                  }}
-                >
-                  {layerState === "working" ? "Sending…" : "Send to Distress Survey"}
-                </Button>
-                {layerMessage && (
-                  <p
-                    className={
-                      "mt-1 text-[10px] leading-tight " +
-                      (layerState === "failed" ? "text-destructive" : "text-muted-foreground")
-                    }
-                  >
-                    {layerMessage}
-                  </p>
-                )}
-              </div>
-            )}
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <Label className="text-xs">First</Label>
-                <Input
-                  type="number"
-                  step="0.05"
-                  enterKeyHint="done"
-                  value={resolved.firstContour ?? ""}
-                  placeholder="auto"
-                  onChange={(e) =>
-                    update({
-                      firstContour: e.target.value === "" ? null : parseFloat(e.target.value),
-                    })
-                  }
-                  className="mt-1 h-9 text-base"
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Step</Label>
-                <StepInput
-                  value={resolved.contourStep}
-                  onCommit={(step) => update({ contourStep: step, interval: step })}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Count</Label>
-                <Input
-                  type="text"
-                  inputMode="numeric"
-                  enterKeyHint="done"
-                  value={resolved.contourCount ?? ""}
-                  placeholder="auto"
-                  onChange={(e) => {
-                    const raw = e.target.value.trim();
-                    if (raw === "" || raw.toLowerCase() === "auto") {
-                      update({ contourCount: null });
-                    } else {
-                      const n = parseInt(raw, 10);
-                      update({ contourCount: isFinite(n) ? Math.max(2, n) : null });
-                    }
-                  }}
-                  className="mt-1 h-9 text-base"
-                />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Line thickness</Label>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {resolved.lineThickness.toFixed(1)}
-                </span>
-              </div>
-              <Slider
-                min={0.5}
-                max={4}
-                step={0.1}
-                value={[resolved.lineThickness]}
-                onValueChange={(v) => update({ lineThickness: v[0] })}
-                className="mt-2"
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <Label className="text-xs">Contours on</Label>
-              <Switch
-                checked={resolved.showContours}
-                onCheckedChange={(v) => update({ showContours: v })}
-              />
-            </div>
-          </CornerPanel>
+            <TrialAccordion
+              openId={trialSectionByDoor.contours ?? null}
+              onChange={(id) => setTrialSection("contours", id)}
+              items={[
+                {
+                  id: "display",
+                  title: "Display",
+                  body: (
+                    <>
+                      <div>
+                        <Label className="text-xs">Mode</Label>
+                        <select
+                          value={resolved.mode}
+                          onChange={(e) =>
+                            update({ mode: e.target.value as RenderSettings["mode"] })
+                          }
+                          className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
+                        >
+                          <option value="contour-fill">Color fill</option>
+                          <option value="contour-cells">Color cells</option>
+                          <option value="contour-bw">B&W lines</option>
+                          <option value="points-only">Points only</option>
+                        </select>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Contours on</Label>
+                        <Switch
+                          checked={resolved.showContours}
+                          onCheckedChange={(v) => update({ showContours: v })}
+                        />
+                      </div>
+                      <SwitchRow
+                        label="Floor plan"
+                        checked={resolved.showPlan}
+                        onChange={(v) => update({ showPlan: v })}
+                      />
+                      {allowContourLayer && resolved.mode === "contour-bw" && (
+                        <div className="border-t pt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-9 w-full text-xs"
+                            disabled={layerState === "working"}
+                            onClick={async () => {
+                              setLayerState("working");
+                              setLayerMessage("");
+                              try {
+                                const [{ composeContourLayer }, { persistContourLayer }] =
+                                  await Promise.all([
+                                    import("@/lib/contour-layer"),
+                                    import("@/lib/db"),
+                                  ]);
+                                const drawn = await composeContourLayer({
+                                  floor,
+                                  points,
+                                  settings: resolved,
+                                  areaId: selectedAreaId,
+                                });
+                                if (!drawn) {
+                                  setLayerState("failed");
+                                  setLayerMessage(
+                                    "No contours to send yet — this level needs a closed boundary with readings inside it.",
+                                  );
+                                  return;
+                                }
+                                await persistContourLayer(floor.id, drawn.dataUrl, {
+                                  areaName: drawn.areaName,
+                                  width: drawn.extent.w,
+                                  height: drawn.extent.h,
+                                  pointCount: drawn.pointCount,
+                                });
+                                setLayerState("done");
+                                setLayerMessage(
+                                  `Sent ${drawn.areaName}. Distress Survey can show the pins on it.`,
+                                );
+                              } catch (err) {
+                                setLayerState("failed");
+                                setLayerMessage(
+                                  (err as Error)?.message ||
+                                    "Could not send the contour to Distress Survey.",
+                                );
+                              }
+                            }}
+                          >
+                            {layerState === "working" ? "Sending…" : "Send to Distress Survey"}
+                          </Button>
+                          {layerMessage && (
+                            <p
+                              className={
+                                "mt-1 text-[10px] leading-tight " +
+                                (layerState === "failed"
+                                  ? "text-destructive"
+                                  : "text-muted-foreground")
+                              }
+                            >
+                              {layerMessage}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  ),
+                },
+                {
+                  id: "colors",
+                  title: "Colors",
+                  body: (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Reverse</Label>
+                        <Switch
+                          checked={resolved.reversePalette}
+                          onCheckedChange={(v) => update({ reversePalette: v })}
+                        />
+                      </div>
+                      <PalettePicker
+                        value={resolved.palette}
+                        onChange={(p) => update({ palette: p })}
+                      />
+                    </>
+                  ),
+                },
+                {
+                  id: "lines",
+                  title: "Lines",
+                  body: (
+                    <>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <Label className="text-xs">First</Label>
+                          <Input
+                            type="number"
+                            step="0.05"
+                            enterKeyHint="done"
+                            value={resolved.firstContour ?? ""}
+                            placeholder="auto"
+                            onChange={(e) =>
+                              update({
+                                firstContour:
+                                  e.target.value === "" ? null : parseFloat(e.target.value),
+                              })
+                            }
+                            className="mt-1 h-9 text-base"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Step</Label>
+                          <StepInput
+                            value={resolved.contourStep}
+                            onCommit={(step) => update({ contourStep: step, interval: step })}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Count</Label>
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            enterKeyHint="done"
+                            value={resolved.contourCount ?? ""}
+                            placeholder="auto"
+                            onChange={(e) => {
+                              const raw = e.target.value.trim();
+                              if (raw === "" || raw.toLowerCase() === "auto") {
+                                update({ contourCount: null });
+                              } else {
+                                const n = parseInt(raw, 10);
+                                update({
+                                  contourCount: isFinite(n) ? Math.max(2, n) : null,
+                                });
+                              }
+                            }}
+                            className="mt-1 h-9 text-base"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs">Line thickness</Label>
+                          <span className="text-xs tabular-nums text-muted-foreground">
+                            {resolved.lineThickness.toFixed(1)}
+                          </span>
+                        </div>
+                        <Slider
+                          min={0.5}
+                          max={4}
+                          step={0.1}
+                          value={[resolved.lineThickness]}
+                          onValueChange={(v) => update({ lineThickness: v[0] })}
+                          className="mt-2"
+                        />
+                      </div>
+                    </>
+                  ),
+                },
+              ]}
+            />
+          </TrialPanel>
         )}
 
-        {/* Palette popover — upper right */}
+        {/* === TRIAL LAYOUT (placebo — GPT-024 three doors + accordion) === */}
+        {(openCorner === "hub" && !controlsOnly) && (
+          <TrialPanel title="Control panel" onClose={() => setOpenCorner(null)}>
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
+              <p className="text-[10px] text-muted-foreground">
+                Pick what to change. The plan stays on screen.
+              </p>
+              {lastTrialDoor ? (
+                <button
+                  type="button"
+                  onClick={() => openTrialDoor(lastTrialDoor)}
+                  className="flex w-full items-center justify-between rounded-md bg-primary px-3 py-2 text-left text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  <span>
+                    Resume{" "}
+                    {TRIAL_DOORS.find((d) => d.key === lastTrialDoor)?.name ?? "door"}
+                  </span>
+                  <span aria-hidden>→</span>
+                </button>
+              ) : null}
+              <div className="flex flex-col gap-1">
+                {TRIAL_DOORS.map(({ key, name }, i) => {
+                  const dirty = trialDoorDirty(key, resolved, statsChipSize);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => openTrialDoor(key)}
+                      className="flex items-center gap-2 rounded-md border bg-background px-2 py-2 text-left hover:bg-muted/60"
+                    >
+                      <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-semibold tabular-nums text-muted-foreground">
+                        {i + 1}
+                        {dirty ? (
+                          <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-primary" />
+                        ) : null}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium leading-tight">{name}</span>
+                        <span className="block truncate text-[10px] text-muted-foreground">
+                          {trialDoorStatus(key, resolved, statsChipSize)}
+                        </span>
+                      </span>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </TrialPanel>
+        )}
+
+        {(openCorner === "readings" && !controlsOnly) && (
+          <TrialPanel
+            title="Readings"
+            stepLabel={trialStepLabel("readings")}
+            status={trialDoorStatus("readings", resolved, statsChipSize)}
+            onClose={() => setOpenCorner(null)}
+            footer={
+              <div className="space-y-1.5">
+                <TrialDoorNav
+                  door="readings"
+                  onBack={() => setOpenCorner("hub")}
+                  onNext={openTrialDoor}
+                />
+                <TrialDoorReset
+                  dirty={trialDoorDirty("readings", resolved, statsChipSize)}
+                  onReset={() => update(trialDoorPatch("readings"))}
+                />
+              </div>
+            }
+          >
+            <TrialAccordion
+              openId={trialSectionByDoor.readings ?? null}
+              onChange={(id) => setTrialSection("readings", id)}
+              items={[
+                {
+                  id: "show",
+                  title: "Show",
+                  body: (
+                    <div className="grid grid-cols-2 gap-2">
+                      <SwitchRow
+                        label="Points"
+                        checked={resolved.showPoints}
+                        onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
+                      />
+                      <SwitchRow
+                        label="Labels"
+                        checked={resolved.showLabels}
+                        onChange={(v) => update({ showLabels: v })}
+                      />
+                    </div>
+                  ),
+                },
+                {
+                  id: "style",
+                  title: "Style",
+                  body: (
+                    <div className="grid grid-cols-2 gap-2">
+                      <NumberControl
+                        label="Decimals"
+                        value={resolved.decimalPlaces}
+                        min={0}
+                        max={3}
+                        step={1}
+                        onChange={(v) =>
+                          update({
+                            decimalPlaces: Math.max(
+                              0,
+                              Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
+                            ),
+                          })
+                        }
+                      />
+                      <SwitchRow
+                        label="Declutter"
+                        checked={resolved.declutterLabels !== false}
+                        onChange={(v) => update({ declutterLabels: v })}
+                      />
+                      <div className="col-span-2 flex items-center justify-between gap-2">
+                        <Label className="text-xs">Label bg</Label>
+                        <div className="inline-flex overflow-hidden rounded-md border">
+                          {(["white", "transparent", "plain"] as const).map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              className={`px-2 py-1 text-xs ${
+                                resolved.pointLabelBackground === opt
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-background"
+                              }`}
+                              onClick={() => update({ pointLabelBackground: opt })}
+                            >
+                              {opt === "white" ? "Box" : opt === "transparent" ? "Border" : "Plain"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <StepperControl
+                        label="Point label size"
+                        value={resolved.pointLabelFontSize}
+                        min={6}
+                        max={28}
+                        step={1}
+                        onChange={(v) =>
+                          update({
+                            pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))),
+                          })
+                        }
+                      />
+                      <div>
+                        <Label className="text-xs">Weight</Label>
+                        <select
+                          value={resolved.pointLabelWeight}
+                          onChange={(e) =>
+                            update({
+                              pointLabelWeight: e.target.value as "normal" | "bold",
+                            })
+                          }
+                          className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
+                        >
+                          <option value="normal">Normal</option>
+                          <option value="bold">Bold</option>
+                        </select>
+                      </div>
+                      <div className="col-span-2">
+                        <Label className="text-xs">Color</Label>
+                        <div className="mt-1 flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={resolved.pointLabelColor}
+                            onChange={(e) => update({ pointLabelColor: e.target.value })}
+                            className="h-9 w-12 cursor-pointer rounded-md border bg-background p-1"
+                          />
+                          <Input
+                            enterKeyHint="done"
+                            value={resolved.pointLabelColor}
+                            onChange={(e) => update({ pointLabelColor: e.target.value })}
+                            className="h-9 flex-1 font-mono text-base"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ),
+                },
+                {
+                  id: "positions",
+                  title: "Positions",
+                  body: (
+                    <>
+                      <p className="text-[10px] text-muted-foreground">
+                        Clears moved reading labels and High/Low marker positions. Does not
+                        move the legend or stats pill.
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={resetAllLabelPositions}
+                        className="h-8 w-full"
+                      >
+                        Reset label & H/L positions
+                      </Button>
+                    </>
+                  ),
+                },
+              ]}
+            />
+          </TrialPanel>
+        )}
+
+        {(openCorner === "legendhl" && !controlsOnly) && (
+          <TrialPanel
+            title="Legend & H/L"
+            stepLabel={trialStepLabel("legendhl")}
+            status={trialDoorStatus("legendhl", resolved, statsChipSize)}
+            onClose={() => setOpenCorner(null)}
+            footer={
+              <div className="space-y-1.5">
+                <TrialDoorNav
+                  door="legendhl"
+                  onBack={() => setOpenCorner("hub")}
+                  onNext={openTrialDoor}
+                />
+                <TrialDoorReset
+                  dirty={trialDoorDirty("legendhl", resolved, statsChipSize)}
+                  onReset={() => {
+                    update(trialDoorPatch("legendhl"));
+                    setStatsChipLocked(DEFAULT_STATS_CHIP_SIZE);
+                    setStatsChipSize(DEFAULT_STATS_CHIP_SIZE);
+                  }}
+                />
+              </div>
+            }
+          >
+            <TrialAccordion
+              openId={trialSectionByDoor.legendhl ?? null}
+              onChange={(id) => setTrialSection("legendhl", id)}
+              items={[
+                {
+                  id: "legend",
+                  title: "Legend",
+                  body: (
+                    <>
+                      <p className="text-[10px] text-muted-foreground">
+                        Color scale on the plan — show it and size it. Drag to place.
+                      </p>
+                      <SwitchRow
+                        label="Legend"
+                        checked={resolved.showLegend}
+                        onChange={(v) => update({ showLegend: v })}
+                      />
+                      <StepperControl
+                        label="Legend size"
+                        value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+                        min={0.4}
+                        max={4}
+                        step={0.1}
+                        format={(v) => `${v.toFixed(1)}×`}
+                        onChange={(v) =>
+                          update({
+                            legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)),
+                          })
+                        }
+                      />
+                    </>
+                  ),
+                },
+                {
+                  id: "highlow",
+                  title: "High / Low",
+                  body: (
+                    <>
+                      <p className="text-[10px] text-muted-foreground">
+                        High and Low markers and the H/L/Δ pill. Drag on the plan.
+                      </p>
+                      <SwitchRow
+                        label="High / low"
+                        checked={resolved.showHighLow}
+                        onChange={(v) => update({ showHighLow: v })}
+                      />
+                      <StepperControl
+                        label="Marker size"
+                        value={resolved.highLowPinSize}
+                        min={7}
+                        max={28}
+                        step={1}
+                        onChange={(v) =>
+                          update({
+                            highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
+                          })
+                        }
+                      />
+                      <StepperControl
+                        label="Stats pill size"
+                        value={statsChipSize}
+                        min={STATS_CHIP_MIN}
+                        max={STATS_CHIP_MAX}
+                        step={2}
+                        format={(v) => `${Math.round(v)}px`}
+                        onChange={(v) => {
+                          const n = Math.max(
+                            STATS_CHIP_MIN,
+                            Math.min(STATS_CHIP_MAX, Math.round(v)),
+                          );
+                          setStatsChipLocked(n);
+                          setStatsChipSize(n);
+                        }}
+                      />
+                    </>
+                  ),
+                },
+              ]}
+            />
+          </TrialPanel>
+        )}
+
+        {/* Original palette panel — kept for revert / comparison */}
         {(openCorner === "palette" && !controlsOnly) && (
           <CornerPanel
             inline={controlsOnly}
-            pos="top-12 right-2 w-60 landscape-short:top-2"
+            pos="top-12 right-2 w-64 landscape-short:top-2"
             onClose={() => setOpenCorner(null)}
             title="Palette"
           >
@@ -1415,6 +1816,8 @@ export function TopoTab({
             />
           </CornerPanel>
         )}
+        {/* === end TRIAL LAYOUT === */}
+        {/* === end TRIAL LAYOUT === */}
 
         {/* Labels & layers popover — lower right */}
         {(openCorner === "labels" && !controlsOnly) && (
@@ -1424,6 +1827,13 @@ export function TopoTab({
             onClose={() => setOpenCorner(null)}
             title="Labels & layers"
           >
+            <button
+              type="button"
+              onClick={() => setOpenCorner("hub")}
+              className="mb-1 h-8 rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-muted/60"
+            >
+              ← Back
+            </button>
             <div className="grid grid-cols-2 gap-2">
               <SwitchRow
                 label="Labels"
@@ -2036,6 +2446,312 @@ function CornerIcon({
       {children}
     </button>
   );
+}
+
+/** Placebo Control panel doors (GPT-024). Accordion sections inside each. */
+const TRIAL_DOORS = [
+  { key: "contours", name: "Contours", hint: "Topo draw, colors, lines" },
+  { key: "readings", name: "Readings", hint: "Dots, numbers, style" },
+  { key: "legendhl", name: "Legend & H/L", hint: "Scale and high/low" },
+] as const;
+
+type TrialDoorKey = (typeof TRIAL_DOORS)[number]["key"];
+
+const TRIAL_MODE_SHORT: Record<RenderSettings["mode"], string> = {
+  "contour-fill": "Color fill",
+  "contour-cells": "Color cells",
+  "contour-bw": "B&W lines",
+  "points-only": "Points only",
+};
+
+/** One-line status on the hub so you open the door that needs changing. */
+function trialDoorStatus(
+  key: TrialDoorKey,
+  settings: RenderSettings,
+  statsChipSize: number,
+): string {
+  switch (key) {
+    case "contours":
+      return [
+        TRIAL_MODE_SHORT[settings.mode],
+        PALETTE_LABELS[settings.palette] ?? settings.palette,
+        settings.showContours ? `step ${settings.contourStep}` : "contours off",
+      ].join(" · ");
+    case "readings":
+      return [
+        settings.showPoints ? "dots on" : "dots off",
+        settings.showLabels ? "labels on" : "labels off",
+        `${settings.decimalPlaces} dec`,
+      ].join(" · ");
+    case "legendhl":
+      return [
+        settings.showLegend
+          ? `legend ${Math.round((settings.legendScale ?? 1) * 10) / 10}×`
+          : "legend off",
+        settings.showHighLow ? `H/L · pill ${Math.round(statsChipSize)}` : "H/L off",
+      ].join(" · ");
+  }
+}
+
+/** Defaults for one Control panel door only (placebo Reset this door). */
+function trialDoorPatch(key: TrialDoorKey): Partial<RenderSettings> {
+  const d = defaultRenderSettings;
+  switch (key) {
+    case "contours":
+      return {
+        mode: d.mode,
+        firstContour: d.firstContour,
+        contourStep: d.contourStep,
+        interval: d.contourStep,
+        contourCount: d.contourCount,
+        lineThickness: d.lineThickness,
+        showContours: d.showContours,
+        showPlan: d.showPlan,
+        palette: d.palette,
+        reversePalette: d.reversePalette,
+      };
+    case "readings":
+      return {
+        showPoints: d.showPoints,
+        pointsOpacity: 1,
+        showLabels: d.showLabels,
+        declutterLabels: d.declutterLabels,
+        decimalPlaces: d.decimalPlaces,
+        pointLabelBackground: d.pointLabelBackground,
+        pointLabelFontSize: d.pointLabelFontSize,
+        pointLabelWeight: d.pointLabelWeight,
+        pointLabelColor: d.pointLabelColor,
+      };
+    case "legendhl":
+      return {
+        showLegend: d.showLegend,
+        legendScale: d.legendScale,
+        showHighLow: d.showHighLow,
+        highLowPinSize: d.highLowPinSize,
+      };
+  }
+}
+
+function trialDoorDirty(
+  key: TrialDoorKey,
+  settings: RenderSettings,
+  statsChipSize: number,
+): boolean {
+  const d = defaultRenderSettings;
+  switch (key) {
+    case "contours":
+      return (
+        settings.mode !== d.mode ||
+        settings.firstContour !== d.firstContour ||
+        settings.contourStep !== d.contourStep ||
+        settings.contourCount !== d.contourCount ||
+        settings.lineThickness !== d.lineThickness ||
+        settings.showContours !== d.showContours ||
+        settings.showPlan !== d.showPlan ||
+        settings.palette !== d.palette ||
+        settings.reversePalette !== d.reversePalette
+      );
+    case "readings":
+      return (
+        settings.showPoints !== d.showPoints ||
+        settings.showLabels !== d.showLabels ||
+        settings.declutterLabels !== d.declutterLabels ||
+        settings.decimalPlaces !== d.decimalPlaces ||
+        settings.pointLabelBackground !== d.pointLabelBackground ||
+        settings.pointLabelFontSize !== d.pointLabelFontSize ||
+        settings.pointLabelWeight !== d.pointLabelWeight ||
+        settings.pointLabelColor !== d.pointLabelColor
+      );
+    case "legendhl":
+      return (
+        settings.showLegend !== d.showLegend ||
+        (settings.legendScale ?? 1) !== d.legendScale ||
+        settings.showHighLow !== d.showHighLow ||
+        settings.highLowPinSize !== d.highLowPinSize ||
+        Math.round(statsChipSize) !== DEFAULT_STATS_CHIP_SIZE
+      );
+  }
+}
+
+/**
+ * Compact card (not full-height). Accordion in the body; Back / destination
+ * and Reset live in the footer. Known-scroll only inside an open section.
+ */
+function TrialPanel({
+  title,
+  stepLabel,
+  status,
+  onClose,
+  children,
+  footer,
+}: {
+  title: string;
+  stepLabel?: string;
+  status?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
+  return (
+    <div className="absolute z-30 top-12 right-2 flex w-64 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-card/95 shadow-2xl backdrop-blur landscape-short:top-2">
+      <div className="flex shrink-0 items-start justify-between gap-2 border-b px-3 pb-2 pt-2.5">
+        <div className="min-w-0">
+          {stepLabel ? (
+            <p className="text-[10px] font-medium text-muted-foreground">{stepLabel}</p>
+          ) : null}
+          <h2 className="text-sm font-semibold leading-tight text-foreground">{title}</h2>
+          {status ? (
+            <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{status}</p>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden px-3 py-2.5 text-sm">
+        {children}
+      </div>
+      {footer ? (
+        <div className="shrink-0 border-t bg-muted/30 px-3 py-2 backdrop-blur">{footer}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/** One section open at a time; shaded rows so they read as controls. */
+function TrialAccordion({
+  openId,
+  onChange,
+  items,
+}: {
+  openId: string | null;
+  onChange: (id: string | null) => void;
+  items: { id: string; title: string; body: React.ReactNode }[];
+}) {
+  return (
+    <div className="flex min-h-0 flex-col gap-1.5">
+      {items.map((item) => {
+        const open = openId === item.id;
+        return (
+          <div
+            key={item.id}
+            className={
+              open
+                ? "flex max-h-[14rem] min-h-0 flex-col overflow-hidden rounded-lg border border-primary/35 bg-primary/10 shadow-sm"
+                : "shrink-0 rounded-lg border border-border/80 bg-muted/55 shadow-sm"
+            }
+          >
+            <button
+              type="button"
+              onClick={() => onChange(open ? null : item.id)}
+              aria-expanded={open}
+              className={
+                "flex h-10 shrink-0 items-center justify-between gap-2 px-2.5 text-left text-xs font-semibold " +
+                (open ? "text-primary" : "text-foreground hover:bg-muted/80")
+              }
+            >
+              <span>{item.title}</span>
+              <ChevronDown
+                className={
+                  "h-4 w-4 shrink-0 transition-transform " +
+                  (open ? "rotate-180 text-primary" : "text-muted-foreground")
+                }
+              />
+            </button>
+            {open ? (
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain border-t border-primary/20 bg-card/90 px-2.5 py-2">
+                {item.body}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Bottom walk: dots + Back + destination name. */
+function TrialDoorNav({
+  door,
+  onBack,
+  onNext,
+}: {
+  door: TrialDoorKey;
+  onBack: () => void;
+  onNext: (key: TrialDoorKey) => void;
+}) {
+  const idx = TRIAL_DOORS.findIndex((d) => d.key === door);
+  const next = idx >= 0 && idx < TRIAL_DOORS.length - 1 ? TRIAL_DOORS[idx + 1] : null;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-center gap-1" aria-hidden>
+        {TRIAL_DOORS.map((d, i) => (
+          <span
+            key={d.key}
+            className={
+              "h-1 rounded-full " +
+              (i === idx ? "w-3 bg-primary" : "w-1 bg-muted-foreground/30")
+            }
+          />
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onBack}
+          className="h-9 flex-1 rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-muted/60"
+        >
+          ← Back
+        </button>
+        {next ? (
+          <button
+            type="button"
+            onClick={() => onNext(next.key)}
+            className="h-9 flex-1 truncate rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            {next.name} →
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onBack}
+            className="h-9 flex-1 truncate rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Done
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TrialDoorReset({
+  dirty,
+  onReset,
+}: {
+  dirty: boolean;
+  onReset: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onReset}
+      disabled={!dirty}
+      className="w-full py-0.5 text-center text-[10px] text-muted-foreground underline-offset-2 hover:underline disabled:opacity-40 disabled:no-underline"
+    >
+      Reset this door
+    </button>
+  );
+}
+
+function trialStepLabel(door: TrialDoorKey) {
+  const idx = TRIAL_DOORS.findIndex((d) => d.key === door);
+  return `${idx + 1} of ${TRIAL_DOORS.length}`;
 }
 
 function CornerPanel({
