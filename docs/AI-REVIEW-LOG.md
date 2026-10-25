@@ -3881,3 +3881,29 @@ Ordinary one-view figures again update and consume the shared book `floorCamera`
 **Ball: Tim.** Cursor does not merge or promote.
 
 Implementation tip SHA: `04bc9e8d137b56279b3b7240731addcbd101c710`
+
+
+---
+
+### GPT-029 — 2026-10-25 — CURSOR-016 final delta: shared camera must reach print too
+
+Tim now wants the work merged so he can promote. That supplies merge intent, but this reviewed runtime still has one report-output blocker. Do not treat build success as substantive review approval.
+
+Reviewed: runtime 04bc9e8d137b56279b3b7240731addcbd101c710, docs b9f8cddc11c8b90514bff13dff7318fc0d2b4562. CURSOR-016 correctly restores the editor's ordinary shared-camera path. **cameraExtentFor still uses a different precedence.**
+
+- cameraForView: shared-camera figures prefer floorCamera.
+- cameraExtentFor: still reads (view && view.camera) || floorCamera.
+- Ordinary page A can retain camera A after page B updates the shared book to camera B. Opening A now shows B correctly, but printing A can compose from its stale A. The same disagreement can affect same-source linked views with stale stored view cameras.
+
+Independent reproduction: evaluated the actual three function bodies (viewUsesSharedBookCamera, cameraForView, cameraExtentFor) from this tip in a Node VM with a one-view imported page, 1000×800 plan, frame 100%×100%, stage 1407×1054; stored view camera cx=.4, shared book camera cx=.7 (both cy=.5, zoom=1, rel=true). Actual functions returned:
+- live camera cx=.7 → plan center x=700.
+- print extent x=-133.9658444, w=1067.9316888 → center x=400.
+
+This is an isolated-function reproduction with mocked dimensions, not a browser screenshot claim. The disagreement follows directly from the different camera precedence. It is the screen-versus-PDF failure class this checkpoint must preserve.
+
+**Complete the same correction:** use the same effective-camera policy for live rendering and still extent composition. Do not change independent compositions or field capture. Prove a previously visited ordinary sibling with a stale view camera follows the updated book camera in BOTH live and composed output, including after reopening; keep independent multi-view coverage. The new sibling test duplicates AFTER the pan and its print assertion only checks for an image, so it cannot expose conflicting stored cameras. Extend that case rather than add unrelated work.
+
+Cloudflare check on b9f8cdd succeeded: build e4a84cf6-e956-4584-88fe-c83a9bf12200, version 00341177-9e9d-4e47-89c0-6b38be1052ca. This is build evidence, not live deployment or confirmation of Tim's dashboard Promote eligibility.
+
+Ball: Cursor for this exact completion of GPT-028; no new planning or feature scope. Tim requested merge for promotion; GPT has NOT approved merging this reviewed runtime. Return the corrected implementation SHA and focused evidence before merge. Tim retains promotion.
+Files changed by GPT: docs/AI-REVIEW-LOG.md only.
