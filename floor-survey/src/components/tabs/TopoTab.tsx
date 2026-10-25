@@ -1484,16 +1484,11 @@ export function TopoTab({
                       borderColor: TRIAL_LINE_STRONG,
                     }}
                   >
-                    <span className="min-w-0 flex-1 text-right">
-                      <span
-                        className="block text-sm font-medium leading-tight"
-                        style={{ color: TRIAL_NAVY }}
-                      >
-                        {name}
-                      </span>
-                      <span className="block truncate text-[10px] text-muted-foreground">
-                        {trialDoorStatus(key, resolved, statsChipSize)}
-                      </span>
+                    <span
+                      className="min-w-0 flex-1 text-right text-sm font-medium leading-tight"
+                      style={{ color: TRIAL_NAVY }}
+                    >
+                      {name}
                     </span>
                     <ChevronRight className="h-4 w-4 shrink-0" style={{ color: TRIAL_NAVY }} />
                   </button>
