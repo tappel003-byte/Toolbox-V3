@@ -1533,45 +1533,6 @@ export function TopoTab({
                   title: "Style",
                   body: (
                     <div className="space-y-2.5">
-                      <NumberControl
-                        label="Decimals"
-                        value={resolved.decimalPlaces}
-                        min={0}
-                        max={3}
-                        step={1}
-                        onChange={(v) =>
-                          update({
-                            decimalPlaces: Math.max(
-                              0,
-                              Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
-                            ),
-                          })
-                        }
-                      />
-                      <SwitchRow
-                        label="Declutter"
-                        checked={resolved.declutterLabels !== false}
-                        onChange={(v) => update({ declutterLabels: v })}
-                      />
-                      <div className="flex items-center justify-between gap-2">
-                        <Label className="text-xs shrink-0">Label bg</Label>
-                        <div className="inline-flex h-10 min-w-0 flex-1 overflow-hidden rounded-md border">
-                          {(["white", "transparent", "plain"] as const).map((opt) => (
-                            <button
-                              key={opt}
-                              type="button"
-                              className={`min-w-0 flex-1 px-2 text-xs font-medium ${
-                                resolved.pointLabelBackground === opt
-                                  ? "bg-primary text-primary-foreground"
-                                  : "bg-background"
-                              }`}
-                              onClick={() => update({ pointLabelBackground: opt })}
-                            >
-                              {opt === "white" ? "Box" : opt === "transparent" ? "Border" : "Plain"}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
                       <StepperControl
                         label="Point label size"
                         value={resolved.pointLabelFontSize}
@@ -1616,6 +1577,45 @@ export function TopoTab({
                           />
                         </div>
                       </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="shrink-0 text-xs">Label bg</Label>
+                        <div className="inline-flex h-10 min-w-0 flex-1 overflow-hidden rounded-md border">
+                          {(["white", "transparent", "plain"] as const).map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              className={`min-w-0 flex-1 px-2 text-xs font-medium ${
+                                resolved.pointLabelBackground === opt
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-background"
+                              }`}
+                              onClick={() => update({ pointLabelBackground: opt })}
+                            >
+                              {opt === "white" ? "Box" : opt === "transparent" ? "Border" : "Plain"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <NumberControl
+                        label="Decimals"
+                        value={resolved.decimalPlaces}
+                        min={0}
+                        max={3}
+                        step={1}
+                        onChange={(v) =>
+                          update({
+                            decimalPlaces: Math.max(
+                              0,
+                              Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
+                            ),
+                          })
+                        }
+                      />
+                      <SwitchRow
+                        label="Declutter"
+                        checked={resolved.declutterLabels !== false}
+                        onChange={(v) => update({ declutterLabels: v })}
+                      />
                     </div>
                   ),
                 },
@@ -2292,7 +2292,7 @@ function TrialAccordion({
             key={item.id}
             className={
               open
-                ? "flex max-h-[18rem] min-h-0 flex-col overflow-hidden rounded-lg border shadow-sm"
+                ? "flex max-h-[min(28rem,calc(100dvh-14rem))] min-h-0 flex-col overflow-hidden rounded-lg border shadow-sm"
                 : "shrink-0 rounded-lg border shadow-sm"
             }
             style={{ borderColor: TRIAL_LINE, backgroundColor: open ? "#fff" : TRIAL_COOL_GRAY }}
