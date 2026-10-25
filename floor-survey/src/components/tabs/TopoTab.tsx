@@ -2642,7 +2642,7 @@ function TrialAccordion({
             key={item.id}
             className={
               open
-                ? "flex max-h-[14rem] min-h-0 flex-col overflow-hidden rounded-lg border border-primary/35 bg-primary/10 shadow-sm"
+                ? "flex max-h-[18rem] min-h-0 flex-col overflow-hidden rounded-lg border border-primary/35 bg-primary/10 shadow-sm"
                 : "shrink-0 rounded-lg border border-border/80 bg-muted/55 shadow-sm"
             }
           >
@@ -3548,6 +3548,15 @@ function PalettePicker({
 }) {
   const activeInExtras = EXTRA_PALETTES.includes(value);
   const [expanded, setExpanded] = useState(activeInExtras);
+  const extrasRef = useRef<HTMLDivElement>(null);
+
+  // Inside the short Control-panel accordion the extras open below the fold;
+  // bring them into the scrollport so the toggle is not a no-op on the phone.
+  useEffect(() => {
+    if (!expanded) return;
+    extrasRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [expanded]);
+
   return (
     <div className="space-y-2">
       <Label className="text-xs">Palette</Label>
@@ -3558,18 +3567,29 @@ function PalettePicker({
       </div>
       <button
         type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full text-left text-xs text-muted-foreground hover:text-foreground py-1"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setExpanded((v) => !v);
+        }}
+        aria-expanded={expanded}
+        className="flex min-h-11 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs font-medium text-muted-foreground hover:bg-muted/80 hover:text-foreground"
       >
-        {expanded ? "▾" : "▸"} More palettes
+        <ChevronDown
+          className={
+            "h-4 w-4 shrink-0 transition-transform " +
+            (expanded ? "rotate-0" : "-rotate-90")
+          }
+        />
+        More palettes
       </button>
-      {expanded && (
-        <div className="space-y-1.5">
+      {expanded ? (
+        <div ref={extrasRef} className="space-y-1.5 pb-1">
           {EXTRA_PALETTES.map((p) => (
             <PaletteRow key={p} palette={p} active={value === p} onClick={() => onChange(p)} />
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
