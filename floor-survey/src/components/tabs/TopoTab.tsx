@@ -16,7 +16,7 @@ import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/l
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import { Undo2, X, Waves, Tag, SlidersHorizontal, Minus, Plus, ChevronRight, ChevronDown } from "lucide-react";
+import { Undo2, X, SlidersHorizontal, Minus, Plus, ChevronRight, ChevronDown } from "lucide-react";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { TopoDiagnosticPanel } from "../TopoDiagnosticPanel";
@@ -445,16 +445,15 @@ export function TopoTab({
   resizeCorners = false,
   allowContourLayer = false,
 }: Props) {
-  // TRIAL LAYOUT ONLY (easy delete): GPT-024 Control panel — Contours /
-  // Readings / Legend & H/L with accordion sections. Same update() handlers.
-  // Native Contours / Palette / Labels & layers corners stay for comparison.
-  // Report controlsOnly untouched.
+  // Field Control panel (GPT-024 cut over Tim Oct 24, 2026): Contours /
+  // Readings / Legend & H/L with accordion. Same update() handlers.
+  // Report controlsOnly untouched. Diagnostic corner undecided — left alone.
   const [openCorner, setOpenCorner] = useState<
-    null | "hub" | "contours" | "readings" | "legendhl" | "palette" | "labels"
+    null | "hub" | "contours" | "readings" | "legendhl"
   >(null);
-  /** Placebo: last Control panel door — Resume on the hub. */
+  /** Last Control panel door — Resume on the hub. */
   const [lastTrialDoor, setLastTrialDoor] = useState<TrialDoorKey | null>(null);
-  /** Placebo: which accordion section is open per door (visit memory only). */
+  /** Which accordion section is open per door (visit memory only). */
   const [trialSectionByDoor, setTrialSectionByDoor] = useState<
     Partial<Record<TrialDoorKey, string>>
   >({
@@ -981,25 +980,13 @@ export function TopoTab({
           </div>
         </div>
       )}
-      {/* Corner icons — closed by default, tap to open. Hidden while their own panel is open. */}
-      {openCorner !== "contours" && !chromeless && !controlsOnly && (
-        <CornerIcon
-          pos="top-2 left-2 landscape-short:top-auto landscape-short:left-1/2 landscape-short:-translate-x-[calc(100%+0.25rem)] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
-          active={false}
-          onClick={() => openTrialDoor("contours")}
-          label="Contours"
-        >
-          <Waves className="h-4 w-4" />
-        </CornerIcon>
-      )}
+      {/* Control panel — field topo settings. Hidden while a Control panel surface is open. */}
       {!chromeless &&
         !controlsOnly &&
         openCorner !== "hub" &&
         openCorner !== "contours" &&
         openCorner !== "readings" &&
-        openCorner !== "legendhl" &&
-        openCorner !== "palette" &&
-        openCorner !== "labels" && (
+        openCorner !== "legendhl" && (
         <CornerIcon
           pos="top-2 right-2 landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:translate-x-[0.25rem] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
           active={false}
@@ -1009,24 +996,14 @@ export function TopoTab({
           <SlidersHorizontal className="h-4 w-4" />
         </CornerIcon>
       )}
-      {openCorner !== "labels" && !chromeless && !controlsOnly && (
-        <button
-          type="button"
-          onClick={() => setOpenCorner("labels")}
-          aria-label="Labels & layers"
-          className="fixed z-30 h-9 w-9 rounded-full bg-white/95 backdrop-blur border border-gray-300 shadow-md flex items-center justify-center text-gray-700 hover:bg-gray-50 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] right-[calc(env(safe-area-inset-right)+0.75rem)]"
-        >
-          <Tag className="h-4 w-4" />
-        </button>
-      )}
-      {/* Diagnostic panel toggle — Topo-only. Excludes points from contour math without touching stored data. */}
+      {/* Diagnostic panel toggle — Topo-only. Excludes points from contour math without touching stored data. Undecided; left in place. */}
       {!chromeless && (
       <button
         type="button"
         onClick={() => setDiagOpen((v) => !v)}
         aria-label="Diagnostic points panel"
         className={
-          "fixed z-30 h-9 min-w-9 px-2 rounded-full backdrop-blur border shadow-md flex items-center justify-center gap-1 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] right-[calc(env(safe-area-inset-right)+3.5rem)] " +
+          "fixed z-30 h-9 min-w-9 px-2 rounded-full backdrop-blur border shadow-md flex items-center justify-center gap-1 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] right-[calc(env(safe-area-inset-right)+0.75rem)] " +
           (diagOpen || excludedIds.size > 0
             ? "bg-amber-100 border-amber-300 text-amber-900"
             : "bg-white/95 border-gray-300 text-gray-700 hover:bg-gray-50")
@@ -1254,7 +1231,7 @@ export function TopoTab({
         />
         )}
 
-        {/* Contours — GPT-024 destination 1 (also native Contours corner) */}
+        {/* Contours — Control panel destination 1 */}
         {(openCorner === "contours" && !controlsOnly) && (
           <TrialPanel
             title="Contours"
@@ -1480,7 +1457,7 @@ export function TopoTab({
           </TrialPanel>
         )}
 
-        {/* === TRIAL LAYOUT (placebo — GPT-024 three doors + accordion) === */}
+        {/* Control panel hub + doors */}
         {(openCorner === "hub" && !controlsOnly) && (
           <TrialPanel title="Control panel" onClose={() => setOpenCorner(null)}>
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
@@ -1799,215 +1776,6 @@ export function TopoTab({
           </TrialPanel>
         )}
 
-        {/* Original palette panel — kept for revert / comparison */}
-        {(openCorner === "palette" && !controlsOnly) && (
-          <CornerPanel
-            inline={controlsOnly}
-            pos="top-12 right-2 w-64 landscape-short:top-2"
-            onClose={() => setOpenCorner(null)}
-            title="Palette"
-          >
-            <div className="flex items-center justify-between">
-              <Label className="text-xs">Reverse</Label>
-              <Switch
-                checked={resolved.reversePalette}
-                onCheckedChange={(v) => update({ reversePalette: v })}
-              />
-            </div>
-            <PalettePicker
-              value={resolved.palette}
-              onChange={(p) => update({ palette: p })}
-            />
-          </CornerPanel>
-        )}
-        {/* === end TRIAL LAYOUT === */}
-        {/* === end TRIAL LAYOUT === */}
-
-        {/* Labels & layers popover — lower right */}
-        {(openCorner === "labels" && !controlsOnly) && (
-          <CornerPanel
-            inline={controlsOnly}
-            pos="bottom-14 right-3"
-            onClose={() => setOpenCorner(null)}
-            title="Labels & layers"
-          >
-            <button
-              type="button"
-              onClick={() => setOpenCorner("hub")}
-              className="mb-1 h-8 rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-muted/60"
-            >
-              ← Back
-            </button>
-            <div className="grid grid-cols-2 gap-2">
-              <SwitchRow
-                label="Labels"
-                checked={resolved.showLabels}
-                onChange={(v) => update({ showLabels: v })}
-              />
-              <NumberControl
-                label="Decimals"
-                value={resolved.decimalPlaces}
-                min={0}
-                max={3}
-                step={1}
-                onChange={(v) =>
-                  update({
-                    decimalPlaces: Math.max(
-                      0,
-                      Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
-                    ),
-                  })
-                }
-              />
-              <SwitchRow
-                label="Floor plan"
-                checked={resolved.showPlan}
-                onChange={(v) => update({ showPlan: v })}
-              />
-              <SwitchRow
-                label="Points"
-                checked={resolved.showPoints}
-                onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
-              />
-              <SwitchRow
-                label="Legend"
-                checked={resolved.showLegend}
-                onChange={(v) => update({ showLegend: v })}
-              />
-              <SwitchRow
-                label="High / low"
-                checked={resolved.showHighLow}
-                onChange={(v) => update({ showHighLow: v })}
-              />
-              <SwitchRow
-                label="Declutter"
-                checked={resolved.declutterLabels !== false}
-                onChange={(v) => update({ declutterLabels: v })}
-              />
-              <StepperControl
-                label="Legend size"
-                value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
-                min={0.4}
-                max={4}
-                step={0.1}
-                format={(v) => `${v.toFixed(1)}×`}
-                onChange={(v) =>
-                  update({ legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)) })
-                }
-              />
-              {/* Set once, and it stays. Tim: "I don't think I'll ever use that
-                  setting because it's always wrong -- you just adjust it to
-                  the size that you want and it stays that size." There used to
-                  be a "Use Auto size for this screen" link under this, back
-                  when Auto read the window width and picked 24, 32 or 40. That
-                  was taken out so a job did not render at three sizes
-                  depending on what opened it, which left the link clearing the
-                  size to a fixed 32 under a label promising something about
-                  this screen. The size is simply the last one set, kept on
-                  this device and used by every job on it. */}
-              <div className="col-span-2">
-                <StepperControl
-                  label="Stats pill size"
-                  value={statsChipSize}
-                  min={STATS_CHIP_MIN}
-                  max={STATS_CHIP_MAX}
-                  step={2}
-                  format={(v) => `${Math.round(v)}px`}
-                  onChange={(v) => {
-                    const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(v)));
-                    setStatsChipLocked(n);
-                    setStatsChipSize(n);
-                  }}
-                />
-              </div>
-              <div className="col-span-2 flex items-center justify-between gap-2">
-                <Label className="text-xs">Label bg</Label>
-                <div className="inline-flex rounded-md border overflow-hidden">
-                  {(["white", "transparent", "plain"] as const).map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      className={`px-2 py-1 text-xs ${
-                        resolved.pointLabelBackground === opt
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-background"
-                      }`}
-                      onClick={() => update({ pointLabelBackground: opt })}
-                    >
-                      {opt === "white" ? "Box" : opt === "transparent" ? "Border" : "Plain"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <details className="border-t pt-2">
-              <summary className="text-xs text-muted-foreground cursor-pointer select-none">
-                Label style
-              </summary>
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                <StepperControl
-                  label="Point label size"
-                  value={resolved.pointLabelFontSize}
-                  min={6}
-                  max={28}
-                  step={1}
-                  onChange={(v) =>
-                    update({ pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))) })
-                  }
-                />
-                <StepperControl
-                  label="High / low size"
-                  value={resolved.highLowPinSize}
-                  min={7}
-                  max={28}
-                  step={1}
-                  onChange={(v) =>
-                    update({ highLowPinSize: Math.max(7, Math.min(28, Math.round(v))) })
-                  }
-                />
-                <div>
-                  <Label className="text-xs">Weight</Label>
-                  <select
-                    value={resolved.pointLabelWeight}
-                    onChange={(e) =>
-                      update({ pointLabelWeight: e.target.value as "normal" | "bold" })
-                    }
-                    className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
-                  >
-                    <option value="normal">Normal</option>
-                    <option value="bold">Bold</option>
-                  </select>
-                </div>
-                <div className="col-span-2">
-                  <Label className="text-xs">Color</Label>
-                  <div className="mt-1 flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={resolved.pointLabelColor}
-                      onChange={(e) => update({ pointLabelColor: e.target.value })}
-                      className="h-9 w-12 rounded-md border bg-background p-1 cursor-pointer"
-                    />
-                    <Input
-                      enterKeyHint="done"
-                      value={resolved.pointLabelColor}
-                      onChange={(e) => update({ pointLabelColor: e.target.value })}
-                      className="h-9 flex-1 font-mono text-base"
-                    />
-                  </div>
-                </div>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={resetAllLabelPositions}
-                className="mt-2 w-full h-8"
-              >
-                Reset label positions
-              </Button>
-            </details>
-          </CornerPanel>
-        )}
-
         {/*
           Three tabs, for the copy of this panel that Report Builder mounts.
 
@@ -2023,8 +1791,8 @@ export function TopoTab({
           Stats pill size under High / low -- so a piece and its size are
           never in two different places.
 
-          The field screen is untouched: it still opens these as three corner
-          panels, one at a time.
+          Field screen uses the Control panel hub (cut over Oct 24, 2026).
+          This tab strip is Report Builder only.
         */}
         {controlsOnly && (
           <div className="flex flex-col gap-2">
@@ -2497,7 +2265,7 @@ function trialDoorStatus(
   }
 }
 
-/** Defaults for one Control panel door only (placebo Reset this door). */
+/** Defaults for one Control panel door only (Reset this door). */
 function trialDoorPatch(key: TrialDoorKey): Partial<RenderSettings> {
   const d = defaultRenderSettings;
   switch (key) {
