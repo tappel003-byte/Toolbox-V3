@@ -1491,9 +1491,10 @@ export function TopoTab({
                 <button
                   type="button"
                   onClick={() => openTrialDoor(lastTrialDoor)}
-                  className="flex w-full items-center justify-between rounded-md bg-primary px-3 py-2 text-left text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                  className="flex w-full items-center justify-end gap-2 rounded-md px-3 py-2 text-xs font-medium text-white hover:opacity-95"
+                  style={{ backgroundColor: TRIAL_NAVY }}
                 >
-                  <span>
+                  <span className="text-right">
                     Resume{" "}
                     {TRIAL_DOORS.find((d) => d.key === lastTrialDoor)?.name ?? "door"}
                   </span>
@@ -1501,31 +1502,34 @@ export function TopoTab({
                 </button>
               ) : null}
               <div className="flex flex-col gap-1">
-                {TRIAL_DOORS.map(({ key, name }, i) => {
-                  const dirty = trialDoorDirty(key, resolved, statsChipSize);
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => openTrialDoor(key)}
-                      className="flex items-center gap-2 rounded-md border bg-background px-2 py-2 text-left hover:bg-muted/60"
+                {TRIAL_DOORS.map(({ key, name }, i) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => openTrialDoor(key)}
+                    className="flex items-center justify-end gap-2 rounded-md border bg-white px-2 py-2 hover:bg-black/[0.03]"
+                    style={{ borderColor: TRIAL_LINE }}
+                  >
+                    <span className="min-w-0 text-right">
+                      <span
+                        className="block text-sm font-medium leading-tight"
+                        style={{ color: TRIAL_NAVY }}
+                      >
+                        {name}
+                      </span>
+                      <span className="block truncate text-[10px] text-muted-foreground">
+                        {trialDoorStatus(key, resolved, statsChipSize)}
+                      </span>
+                    </span>
+                    <span
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold tabular-nums"
+                      style={{ backgroundColor: TRIAL_COOL_GRAY, color: TRIAL_NAVY }}
                     >
-                      <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-semibold tabular-nums text-muted-foreground">
-                        {i + 1}
-                        {dirty ? (
-                          <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-primary" />
-                        ) : null}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium leading-tight">{name}</span>
-                        <span className="block truncate text-[10px] text-muted-foreground">
-                          {trialDoorStatus(key, resolved, statsChipSize)}
-                        </span>
-                      </span>
-                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    </button>
-                  );
-                })}
+                      {i + 1}
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "#66727d" }} />
+                  </button>
+                ))}
               </div>
             </div>
           </TrialPanel>
@@ -2577,11 +2581,10 @@ function trialDoorDirty(
  * Compact card (not full-height). Accordion in the body; Back / destination
  * and Reset live in the footer. Known-scroll only inside an open section.
  */
-/** Customer File visual system — css/styles.css (:root --navy / --bg / --panel-warm / --line). */
+/** Customer File visual system — css/styles.css (:root --navy / --line / --line-strong). */
 const TRIAL_NAVY = "#07283d";
-const TRIAL_LIGHT_BLUE = "#e8eef2";
-const TRIAL_CREAM = "#fbf7ef";
-const TRIAL_LINE = "#dce1e4";
+const TRIAL_COOL_GRAY = "#eef1f3";
+const TRIAL_LINE = "#c9d0d5";
 
 function TrialPanel({
   title,
@@ -2642,7 +2645,7 @@ function TrialPanel({
   );
 }
 
-/** Light-blue headings (right-aligned + chevron), cream open body; white menu. */
+/** Navy open heading / cool-gray closed; white body; right-aligned titles. */
 function TrialAccordion({
   openId,
   onChange,
@@ -2664,30 +2667,31 @@ function TrialAccordion({
                 ? "flex max-h-[18rem] min-h-0 flex-col overflow-hidden rounded-lg border shadow-sm"
                 : "shrink-0 rounded-lg border shadow-sm"
             }
-            style={{
-              borderColor: open ? TRIAL_NAVY : TRIAL_LINE,
-              backgroundColor: TRIAL_LIGHT_BLUE,
-            }}
+            style={{ borderColor: TRIAL_LINE, backgroundColor: open ? "#fff" : TRIAL_COOL_GRAY }}
           >
             <button
               type="button"
               onClick={() => onChange(open ? null : item.id)}
               aria-expanded={open}
-              className="flex min-h-11 w-full shrink-0 items-center justify-end gap-2 px-2.5 text-xs font-semibold hover:bg-black/[0.03]"
-              style={{ color: TRIAL_NAVY, backgroundColor: TRIAL_LIGHT_BLUE }}
+              className="flex min-h-11 w-full shrink-0 items-center justify-end gap-2 px-2.5 text-xs font-semibold"
+              style={
+                open
+                  ? { backgroundColor: TRIAL_NAVY, color: "#fff" }
+                  : { backgroundColor: TRIAL_COOL_GRAY, color: TRIAL_NAVY }
+              }
             >
               <span className="min-w-0 truncate text-right">{item.title}</span>
               <ChevronDown
                 className={
                   "h-5 w-5 shrink-0 transition-transform " + (open ? "rotate-180" : "rotate-0")
                 }
-                style={{ color: open ? TRIAL_NAVY : "#66727d" }}
+                style={{ color: open ? "#fff" : "#66727d" }}
               />
             </button>
             {open ? (
               <div
-                className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain border-t px-2.5 py-2 text-left"
-                style={{ borderColor: "rgba(7, 40, 61, 0.15)", backgroundColor: TRIAL_CREAM }}
+                className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain border-t bg-white px-2.5 py-2 text-left"
+                style={{ borderColor: TRIAL_LINE }}
               >
                 {item.body}
               </div>
