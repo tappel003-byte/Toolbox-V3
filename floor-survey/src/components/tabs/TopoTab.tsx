@@ -2600,7 +2600,7 @@ function TrialPanel({
 }) {
   return (
     <div
-      className="absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-2xl backdrop-blur landscape-short:top-2"
+      className="absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg backdrop-blur landscape-short:top-2"
       style={{ borderColor: TRIAL_LINE }}
     >
       <div
@@ -2642,7 +2642,7 @@ function TrialPanel({
   );
 }
 
-/** Cream closed / light-blue open on the white menu; chevron leading the title. */
+/** Light-blue headings (right-aligned + chevron), cream open body; white menu. */
 function TrialAccordion({
   openId,
   onChange,
@@ -2664,20 +2664,19 @@ function TrialAccordion({
                 ? "flex max-h-[18rem] min-h-0 flex-col overflow-hidden rounded-lg border shadow-sm"
                 : "shrink-0 rounded-lg border shadow-sm"
             }
-            style={
-              open
-                ? { borderColor: TRIAL_NAVY, backgroundColor: TRIAL_LIGHT_BLUE }
-                : { borderColor: TRIAL_LINE, backgroundColor: TRIAL_CREAM }
-            }
+            style={{
+              borderColor: open ? TRIAL_NAVY : TRIAL_LINE,
+              backgroundColor: TRIAL_LIGHT_BLUE,
+            }}
           >
             <button
               type="button"
               onClick={() => onChange(open ? null : item.id)}
               aria-expanded={open}
-              className="flex min-h-11 shrink-0 items-center gap-2.5 px-2.5 text-left text-xs font-semibold hover:bg-black/[0.03]"
-              style={{ color: TRIAL_NAVY }}
+              className="flex min-h-11 w-full shrink-0 items-center justify-end gap-2 px-2.5 text-xs font-semibold hover:bg-black/[0.03]"
+              style={{ color: TRIAL_NAVY, backgroundColor: TRIAL_LIGHT_BLUE }}
             >
-              <span className="min-w-0 flex-1">{item.title}</span>
+              <span className="min-w-0 truncate text-right">{item.title}</span>
               <ChevronDown
                 className={
                   "h-5 w-5 shrink-0 transition-transform " + (open ? "rotate-180" : "rotate-0")
@@ -2687,7 +2686,7 @@ function TrialAccordion({
             </button>
             {open ? (
               <div
-                className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain border-t px-2.5 py-2"
+                className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain border-t px-2.5 py-2 text-left"
                 style={{ borderColor: "rgba(7, 40, 61, 0.15)", backgroundColor: TRIAL_CREAM }}
               >
                 {item.body}
