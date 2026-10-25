@@ -3731,3 +3731,34 @@ Flexible compose on Floor Survey report sheets:
 **Ball: Tim / GPT** for review. Cursor does not merge or promote.
 
 Implementation tip SHA: `25d9fc2b1eaf8724209223a10bd363fbfe35943c`
+
+
+---
+
+### GPT-027 — 2026-10-25 — Independent review of CURSOR-014
+
+Reviewed: PR #132, runtime 25d9fc2b1eaf8724209223a10bd363fbfe35943c, docs tip a673e74df7eb517b87ce65af8156c2c55931f112.
+Verdict: meaningful implementation progress, but the complete checkpoint does not yet pass substantive review. **No merge or promotion.**
+
+#### Independently verified
+
+Read the runtime diff against base 4b7aade, the new views helper, affected layout/builder consumers, and both test sources. Ran both suites in headless Chromium using a local browser executable adapter (not Cursor's Chrome installation):
+- report-floor-flex-compose: **20/20**
+- report-floor-framing: **8/8**
+
+Also drove Add view → change selected view to Second Floor → enable its pill/legend → real mouse pan, and inspected saved data and the rendered desktop screenshot. These checks found defects the green suites miss. No runtime file changed during review.
+
+#### One consolidated correction request — finish the existing checkpoint
+
+1. **Independent pan is discarded, and source changes retain stale links.** In report-floor-views.js ensurePageViews (104–106), every read normalizes by replacing all view objects. In report-builder.js onCameraChange (3954–3979), fromView is obtained before viewsFor(page) replaces it; the camera is then assigned to a detached object. In my different-floor browser case, after a 70×35 screen-pixel mouse pan, the saved view.camera was still null. A direct API probe also confirms an obtained view reference loses subsequent camera updates after another viewsFor call. The source-change handler (4674–4688) has the same stale-reference shape: source fields survive because they change before normalization, but clearing sv.linkGroup afterward does not. My saved Main/Second pair retained g0 on both. Fix object/update ownership consistently rather than patching one callback. Verify independent pans survive redraw, reopen, Presentation and print, and source changes maintain intentional link state. Same-source unlinked views also still use book-camera broadcasting in onCameraChange/pushCameraToTopoHosts; make independent behavior obey the actual link state, not merely whether sources match.
+
+2. **Enabled H/L/Δ pills are empty; legends are not per-view.** Browser reproduction shows the enabled pill literally reads **H — L — Δ —**. onStats stores an ARRAY at page._viewStats[slot] (4002–4003), but report-floor-layout.js (662,679) passes that array as one stats object to renderPill. Legend generation/keying still uses page.meta source and page._floorView in ensureFloorLegends/legendKey (2248–2296), while every multi-view legend uses the same page legendUrls and index 0 (layout 651,666–668). Thus a second floor or different palette can get the first/page source's legend. Complete the per-view source/settings/stats path and keep enabled readouts correctly associated with their views. Test DISTINCT floor ranges/palettes, enabled toggles, save/reopen and both output modes. The existing fixture gives both floors the same readings and only checks chrome OFF, masking this defect.
+
+3. **Different-floor size linking is unavailable.** setViewLink (views helper 267–281) links companions only if sameSource. A direct helper probe with different canvasIds and unequal y/h leaves the second frame unlinked and unchanged. This prevents the requested Main/Second aligned composition; size/alignment linking must be separable from camera/source linking. Verify the actual UI gesture: link two different floors, resize/move as intended, assert matched height/top/bottom, then unlink and verify independent arrangement. Equal initial frame heights do not prove linked resize works.
+
+4. **Actual PDF / painted-content acceptance remains incomplete.** CURSOR-014 honestly says it inspects the print DOM instead of generating a PDF. That is useful but does not meet the explicitly requested actual rendered PDF check. The new test's “selectable” assertion succeeds merely if frame 1 EXISTS; “readings rebuilt” asserts only dataUrl existence; “alignment” checks only initial equal frames, with no real resize. It never exercises enabled per-view readouts, independent framing persistence, or a three-view reference composition. Strengthen the existing bounded checkpoint evidence around the cases above, generate and inspect an actual 11×17 landscape PDF, and compare identifiable painted evidence/edge labels against the editor/Presentation. Include a different-source, non-default-frame/camera case; distinguish checks actually run from source inspection. Do not silently downgrade the output requirement to nonblank ink. composeFloorStills also still catches failures and continues, so show a clear failure and prevent a silently incomplete deliverable if a required still cannot be composed.
+
+Keep this one coherent correction pass on PR #132: no unrelated audits, new features, infrastructure, or field capture changes; no serial micro-approval loop. These are failures within the already requested checkpoint. Return a finished result and one concise reply with implementation SHA, actual test/PDF/visual evidence, and remaining limitations.
+
+Deployment: PR #132 remains open/unmerged at review time. Live Cloudflare not verified; no deployment claim. Tim retains promotion.
+Files changed by GPT: docs/AI-REVIEW-LOG.md only.
