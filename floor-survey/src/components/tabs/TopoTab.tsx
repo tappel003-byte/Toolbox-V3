@@ -980,21 +980,26 @@ export function TopoTab({
           </div>
         </div>
       )}
-      {/* Control panel — field topo settings. Hidden while a Control panel surface is open. */}
+      {/* Control panel — labeled pill ~Data/Topo size (Tim Oct 24–25, 2026). Hidden while open. */}
       {!chromeless &&
         !controlsOnly &&
         openCorner !== "hub" &&
         openCorner !== "contours" &&
         openCorner !== "readings" &&
         openCorner !== "legendhl" && (
-        <CornerIcon
-          pos="top-2 right-2 landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:translate-x-[0.25rem] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
-          active={false}
+        <button
+          type="button"
           onClick={() => setOpenCorner("hub")}
-          label="Control panel"
+          aria-label="Control panel"
+          className={
+            "absolute z-30 top-2 right-2 landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:translate-x-[0.25rem] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] " +
+            "h-9 px-3 flex items-center gap-1.5 rounded-full bg-white/95 backdrop-blur shadow-md border border-gray-300 " +
+            "text-xs font-medium text-gray-700 hover:bg-gray-50"
+          }
         >
-          <SlidersHorizontal className="h-4 w-4" />
-        </CornerIcon>
+          <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
+          <span>Control panel</span>
+        </button>
       )}
       {/* Diagnostic panel toggle — Topo-only. Excludes points from contour math without touching stored data. Undecided; left in place. */}
       {!chromeless && (
@@ -2152,39 +2157,6 @@ export function TopoTab({
         )}
       </div>
     </div>
-  );
-}
-
-function CornerIcon({
-  pos,
-  active,
-  onClick,
-  label,
-  children,
-}: {
-  pos: string;
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      aria-pressed={active}
-      className={
-        "absolute z-30 h-9 w-9 rounded-full backdrop-blur border shadow-sm flex items-center justify-center " +
-        pos +
-        " " +
-        (active
-          ? "bg-primary text-primary-foreground border-primary"
-          : "bg-background/90 hover:bg-background")
-      }
-    >
-      {children}
-    </button>
   );
 }
 
