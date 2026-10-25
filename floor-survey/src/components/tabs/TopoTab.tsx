@@ -1239,17 +1239,11 @@ export function TopoTab({
             status={trialDoorStatus("contours", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
             footer={
-              <div className="space-y-1.5">
-                <TrialDoorNav
-                  door="contours"
-                  onBack={() => setOpenCorner("hub")}
-                  onNext={openTrialDoor}
-                />
-                <TrialDoorReset
-                  dirty={trialDoorDirty("contours", resolved, statsChipSize)}
-                  onReset={() => update(trialDoorPatch("contours"))}
-                />
-              </div>
+              <TrialDoorNav
+                door="contours"
+                onBack={() => setOpenCorner("hub")}
+                onNext={openTrialDoor}
+              />
             }
           >
             {gridAndContours?.grid && (
@@ -1522,17 +1516,11 @@ export function TopoTab({
             status={trialDoorStatus("readings", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
             footer={
-              <div className="space-y-1.5">
-                <TrialDoorNav
-                  door="readings"
-                  onBack={() => setOpenCorner("hub")}
-                  onNext={openTrialDoor}
-                />
-                <TrialDoorReset
-                  dirty={trialDoorDirty("readings", resolved, statsChipSize)}
-                  onReset={() => update(trialDoorPatch("readings"))}
-                />
-              </div>
+              <TrialDoorNav
+                door="readings"
+                onBack={() => setOpenCorner("hub")}
+                onNext={openTrialDoor}
+              />
             }
           >
             <TrialAccordion
@@ -1680,21 +1668,11 @@ export function TopoTab({
             status={trialDoorStatus("legendhl", resolved, statsChipSize)}
             onClose={() => setOpenCorner(null)}
             footer={
-              <div className="space-y-1.5">
-                <TrialDoorNav
-                  door="legendhl"
-                  onBack={() => setOpenCorner("hub")}
-                  onNext={openTrialDoor}
-                />
-                <TrialDoorReset
-                  dirty={trialDoorDirty("legendhl", resolved, statsChipSize)}
-                  onReset={() => {
-                    update(trialDoorPatch("legendhl"));
-                    setStatsChipLocked(DEFAULT_STATS_CHIP_SIZE);
-                    setStatsChipSize(DEFAULT_STATS_CHIP_SIZE);
-                  }}
-                />
-              </div>
+              <TrialDoorNav
+                door="legendhl"
+                onBack={() => setOpenCorner("hub")}
+                onNext={openTrialDoor}
+              />
             }
           >
             <TrialAccordion
@@ -2268,89 +2246,9 @@ function trialDoorStatus(
   }
 }
 
-/** Defaults for one Control panel door only (Reset this door). */
-function trialDoorPatch(key: TrialDoorKey): Partial<RenderSettings> {
-  const d = defaultRenderSettings;
-  switch (key) {
-    case "contours":
-      return {
-        mode: d.mode,
-        firstContour: d.firstContour,
-        contourStep: d.contourStep,
-        interval: d.contourStep,
-        contourCount: d.contourCount,
-        lineThickness: d.lineThickness,
-        showContours: d.showContours,
-        showPlan: d.showPlan,
-        palette: d.palette,
-        reversePalette: d.reversePalette,
-      };
-    case "readings":
-      return {
-        showPoints: d.showPoints,
-        pointsOpacity: 1,
-        showLabels: d.showLabels,
-        declutterLabels: d.declutterLabels,
-        decimalPlaces: d.decimalPlaces,
-        pointLabelBackground: d.pointLabelBackground,
-        pointLabelFontSize: d.pointLabelFontSize,
-        pointLabelWeight: d.pointLabelWeight,
-        pointLabelColor: d.pointLabelColor,
-      };
-    case "legendhl":
-      return {
-        showLegend: d.showLegend,
-        legendScale: d.legendScale,
-        showHighLow: d.showHighLow,
-        highLowPinSize: d.highLowPinSize,
-      };
-  }
-}
-
-function trialDoorDirty(
-  key: TrialDoorKey,
-  settings: RenderSettings,
-  statsChipSize: number,
-): boolean {
-  const d = defaultRenderSettings;
-  switch (key) {
-    case "contours":
-      return (
-        settings.mode !== d.mode ||
-        settings.firstContour !== d.firstContour ||
-        settings.contourStep !== d.contourStep ||
-        settings.contourCount !== d.contourCount ||
-        settings.lineThickness !== d.lineThickness ||
-        settings.showContours !== d.showContours ||
-        settings.showPlan !== d.showPlan ||
-        settings.palette !== d.palette ||
-        settings.reversePalette !== d.reversePalette
-      );
-    case "readings":
-      return (
-        settings.showPoints !== d.showPoints ||
-        settings.showLabels !== d.showLabels ||
-        settings.declutterLabels !== d.declutterLabels ||
-        settings.decimalPlaces !== d.decimalPlaces ||
-        settings.pointLabelBackground !== d.pointLabelBackground ||
-        settings.pointLabelFontSize !== d.pointLabelFontSize ||
-        settings.pointLabelWeight !== d.pointLabelWeight ||
-        settings.pointLabelColor !== d.pointLabelColor
-      );
-    case "legendhl":
-      return (
-        settings.showLegend !== d.showLegend ||
-        (settings.legendScale ?? 1) !== d.legendScale ||
-        settings.showHighLow !== d.showHighLow ||
-        settings.highLowPinSize !== d.highLowPinSize ||
-        Math.round(statsChipSize) !== DEFAULT_STATS_CHIP_SIZE
-      );
-  }
-}
-
 /**
  * Compact card (not full-height). Accordion in the body; Back / destination
- * and Reset live in the footer. Known-scroll only inside an open section.
+ * in the footer. Known-scroll only inside an open section.
  */
 /** Customer File visual system — css/styles.css (:root --navy / --accent / --line). */
 const TRIAL_NAVY = "#07283d";
@@ -2530,25 +2428,6 @@ function TrialDoorNav({
         )}
       </div>
     </div>
-  );
-}
-
-function TrialDoorReset({
-  dirty,
-  onReset,
-}: {
-  dirty: boolean;
-  onReset: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onReset}
-      disabled={!dirty}
-      className="w-full py-0.5 text-center text-[10px] text-muted-foreground underline-offset-2 hover:underline disabled:opacity-40 disabled:no-underline"
-    >
-      Reset this door
-    </button>
   );
 }
 
