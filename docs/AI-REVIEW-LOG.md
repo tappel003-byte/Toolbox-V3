@@ -3387,3 +3387,90 @@ Section open state remembered for the visit. Per-door Reset only patches that do
 **Ball: GPT** for independent review. Tim retains promotion.
 
 Implementation commit SHA: `af881019e2d9828d2ae898dff2be177b82668443`
+
+---
+
+### CURSOR-012 — 2026-10-25 — Cursor → Tim / GPT
+
+Topic: Planning only — smallest path to flexible Report Builder survey-view composition  
+Reply to: Tim’s Oct 25 compose brief in `TODO.md` + `REPORT-BUILDER-VIEWS-WORKFLOW-AUDIT.md`  
+Branch: `cursor/rb-views-workflow-audit-7b33`  
+Status: **Plan only. No application changes. Not authorized to implement.**
+
+Sources read this turn: `TODO.md` § “Report Builder — flexible survey views on a sheet” (incl. flexibility clarification), `REPORT-BUILDER-VIEWS-WORKFLOW-AUDIT.md`, `DECISIONS.md` one-layout / ownLayout notes, and current `js/report-builder.js` + `js/report-floor-layout.js` two-up / camera / chrome paths. Code tip for reuse claims: this branch’s merge-base Floor Survey report code (audit tip was `b6aea91…`).
+
+#### Target (from Tim’s brief — not reinvented)
+
+Add/copy views → pick floor + appearance → select applies controls → move/resize; link match when wanted, independent when wanted → omit legend/H/L/Δ without reserved empty space → save/reopen/Present/PDF keep the sheet. Combined-within-one-level ≠ multi-level compose.
+
+#### What the investigator would do (once built)
+
+1. On a Floor Survey sheet, **Add view** or **Copy** the selected view (not Duplicate page).
+2. Choose **level / boundary** and set appearance (rail groups Contours / Readings / Legend & H/L → selected view).
+3. Drag/resize frames. Optionally **link** companions for matched height/top–bottom; unlink for independent arrangement.
+4. Turn legend / H/L/Δ off when unused; space collapses (no empty reserved column).
+5. Shared placement stays the default across related slides; **This slide only** (proposed) for an exception. Present/PDF show the same arrangement.
+
+Exact control names/placement remain open (see decisions below).
+
+#### Reuse (already in code)
+
+| Capability | Where |
+|---|---|
+| Select view → rail drives it | `_floorSlot`, `floorViewFor` / `setFloorViewFor` |
+| Per-view appearance (same level, ≤2) | `meta.floorView` / `floorView2`, two-up toggle |
+| Shared camera + linked pan (same level) | `floorCamera`, `pushCameraToTopoHosts` |
+| Shared chrome placement + slide exception | `floorLayout`, `meta.ownLayout` |
+| Omit legend on Combined / points-only | `combinedSheet` / `readingsOnly` skips in `renderPage` |
+| Hide aerial without keeping a hole | `meta.hideOverview` |
+| Live host + print stills | `mountTopoHost`, `composeFloorStills`, `cameraExtentFor`, `ReportTopoWorkspace` |
+| Duplicate whole page | `clonePage` (meta clone) |
+
+These are building blocks, not the target workflow.
+
+#### Must change
+
+1. **View model:** replace `floorTwoUp` + `floorView2` with a **views list** (id, source `canvasId`/`areaId`/`scope`, settings, frame box, optional link group). Hard cap of 2 and same-source-only go away.
+2. **Frames:** leave fixed `frameShare` full-bleed slots; views become **movable/resizable page boxes** (like overview/chrome boxes today).
+3. **Camera:** book-wide single camera cannot cover different floors on one sheet. Need a decided rule for when cameras are shared vs per-view (open product question).
+4. **Chrome omit:** sheet-level (or per-view) show/hide for legend & pill that **removes boxes**, not only paints them off while slots remain — extend Combined/readingsOnly skip pattern.
+5. **Persistence / print:** still path must compose **N** frames from possibly **different** sources; migrate existing two-up reports on load.
+6. **Rail:** show Contours / Readings / Legend & H/L against the **selected** view; which view is selected must be obvious.
+
+#### Main risks to existing reports
+
+- Two-up (`floorTwoUp` / `floorView2`) must **migrate** or old side-by-side sheets reopen as one view.
+- Book `floorCamera` flip-book registration across boundary pages can break if multi-source sheets start writing competing cameras without a rule.
+- Shared `floorLayout` chrome positions may look wrong when a slide’s view mix no longer matches siblings.
+- Print/Present regressions (wrong extent / gutter) if stills still assume 1–2 equal stage shares — covered today by `report-mixed-view-extent.mjs` / `report-bleed-figure-extent.mjs` assumptions.
+- Confusing “Combined” (one level, all boundaries) with multi-level compose sheets.
+
+#### Smallest useful stages (each shippable alone)
+
+| Stage | Delivers | Notes |
+|---|---|---|
+| **A — Omit chrome cleanly + two-up hygiene** | Hide legend/pill (and keep hide aerial) with **no reserved empty space**; revive `floorView2` on load like `floorView`; rail labels which of two views is active | Useful on today’s sheets; no new compose model |
+| **B — Free frames, same source only** | Move/resize 1–N frames of the **same** level/boundary; optional link-pair matched size/align (extend current equal-share behavior); Add/Copy view (clone settings) | Replaces fixed `frameShare`; still one `canvasId` |
+| **C — Per-view source** | Each view picks level/boundary → **different floors on one sheet** | Needs camera independence rule from Tim |
+| **D — Snap + shared-placement UX** | Light snap/align; rename/simplify to shared vs **This slide only**; drop ordinary “use as default” pressure without deleting saved data | After free frames exist |
+| **E — Prove output** | Save/reopen + Present + PDF agreement tests for multi-view / multi-source sheets | Gate before calling the workflow done |
+
+Do **not** start C before A/B without Tim’s camera/link answers. Do **not** regroup Data capture as part of this (parked in the brief).
+
+#### Unresolved product decisions (do not invent)
+
+From `TODO.md` open questions + this plan:
+
+1. Matching different floors: equal **displayed height**, same **physical scale**, or investigator choice?
+2. Which independence is in/out per view: position, size, **pan/zoom**?
+3. How link-groups interact with **shared placement across slides** when view mixes differ?
+4. Snap targets / grid; final Add/Copy / This slide only names and placement?
+5. Soft cap on views per sheet for performance (brief: no maximum chosen)?
+6. Are legend/H/L/Δ **per view** or **per sheet** when several floors share a page?
+7. Do auto-generated per-boundary + Combined pages stay the default book, with compose sheets as extras/overrides?
+
+#### Ball
+
+**Tim / GPT** — review this plan; Tim authorizes any stage before implementation. Cursor has not started application work.
+
+Files changed this entry: `docs/AI-REVIEW-LOG.md` only.
