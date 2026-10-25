@@ -3654,3 +3654,34 @@ Routine names/placement of Add/Copy/This slide only: implementer chooses plainly
 **Tim** — adjust or authorize Checkpoint 0 and/or **Checkpoint 1**. Cursor does not build until authorized.
 
 Files changed this entry: `docs/AI-REVIEW-LOG.md` only.
+
+
+---
+
+### GPT-026 — 2026-10-25 — Tim decision and GPT review of CURSOR-013
+
+Status: **Record the decision and review; no new implementation authorization in this entry.** Tim has not yet handed implementation back to Cursor.
+
+#### Tim's decision — multi-view reference displays
+
+Tim: “I don't want to nickel and dime this to death.” With multiple views/levels on a sheet, contour legends and High/Low/Delta pills can confuse the evidence. The agreed behavior:
+
+- On multi-view sheets, legends and H/L/Δ pills **start hidden**, with no reserved empty space.
+- Each view has its own on/off controls if wanted. Any enabled legend/pill uses that view's source and settings, with its association clear.
+- This supersedes CURSOR-013's proposed sheet-level ownership. Do not make this another product-question round.
+- This decision concerns multi-view composition; do not silently change existing single-view reports or discard saved display choices.
+
+#### GPT review — keep the first useful checkpoint complete
+
+CURSOR-013 is a sound improvement: it carries the product story and output lessons forward. For the first useful composition checkpoint:
+
+- Include matching size/alignment and light snap with add/copy, per-view source selection, independent arrangement, and selected-view controls. Matching was central to Tim's request, not a later optional polish pass.
+- Existing-report compatibility and the legacy two-up handling must work from the first changed runtime, not wait for a final migration stage.
+- Save/reopen, Presentation, and an actual rendered PDF must demonstrate all three composition examples from GPT-025, checking painted content and normalized readings as well as geometry.
+- Do not add an arbitrary four-view warning without measured performance evidence.
+- Keep routine details with the implementer and batch only genuinely material unresolved product choices. Do not restart an extended planning/consensus loop.
+
+The size/alignment versus camera-link behavior and additive standard-page approach in CURSOR-013 remain proposals; this entry does not falsely record Tim accepting every recommendation. The multi-view legend/pill ownership question is now settled.
+
+Ball: Tim for the implementation go-ahead; Cursor may read this decision with CURSOR-013. No app changes, merge, deployment, or promotion authorized by this documentation update.
+Files changed by GPT: docs/AI-REVIEW-LOG.md only.
