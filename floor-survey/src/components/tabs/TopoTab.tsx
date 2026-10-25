@@ -2577,10 +2577,11 @@ function trialDoorDirty(
  * Compact card (not full-height). Accordion in the body; Back / destination
  * and Reset live in the footer. Known-scroll only inside an open section.
  */
-/** Toolbox shell cream — same tokens as css/styles.css (:root --bg / --panel / --line). */
-const TRIAL_CREAM_BG = "#f4f0e8";
-const TRIAL_CREAM_PANEL = "#fffaf0";
-const TRIAL_CREAM_LINE = "#d9d2c2";
+/** Customer File visual system — css/styles.css (:root --navy / --bg / --panel-warm / --line). */
+const TRIAL_NAVY = "#07283d";
+const TRIAL_LIGHT_BLUE = "#e8eef2";
+const TRIAL_CREAM = "#fbf7ef";
+const TRIAL_LINE = "#dce1e4";
 
 function TrialPanel({
   title,
@@ -2599,18 +2600,20 @@ function TrialPanel({
 }) {
   return (
     <div
-      className="absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border shadow-2xl backdrop-blur landscape-short:top-2"
-      style={{ backgroundColor: `${TRIAL_CREAM_PANEL}f2`, borderColor: TRIAL_CREAM_LINE }}
+      className="absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-2xl backdrop-blur landscape-short:top-2"
+      style={{ borderColor: TRIAL_LINE }}
     >
       <div
-        className="flex shrink-0 items-start justify-between gap-2 border-b px-3 pb-2 pt-2.5"
-        style={{ borderColor: TRIAL_CREAM_LINE }}
+        className="flex shrink-0 items-start justify-between gap-2 border-b bg-white px-3 pb-2 pt-2.5"
+        style={{ borderColor: TRIAL_LINE }}
       >
         <div className="min-w-0">
           {stepLabel ? (
             <p className="text-[10px] font-medium text-muted-foreground">{stepLabel}</p>
           ) : null}
-          <h2 className="text-sm font-semibold leading-tight text-foreground">{title}</h2>
+          <h2 className="text-sm font-semibold leading-tight" style={{ color: TRIAL_NAVY }}>
+            {title}
+          </h2>
           {status ? (
             <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{status}</p>
           ) : null}
@@ -2624,13 +2627,13 @@ function TrialPanel({
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden px-3 py-2.5 text-sm">
+      <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden bg-white px-3 py-2.5 text-sm">
         {children}
       </div>
       {footer ? (
         <div
-          className="shrink-0 border-t px-3 py-2 backdrop-blur"
-          style={{ borderColor: TRIAL_CREAM_LINE, backgroundColor: `${TRIAL_CREAM_BG}cc` }}
+          className="shrink-0 border-t bg-white px-3 py-2"
+          style={{ borderColor: TRIAL_LINE }}
         >
           {footer}
         </div>
@@ -2639,7 +2642,7 @@ function TrialPanel({
   );
 }
 
-/** One section open at a time; cream rows, chevron leading the title. */
+/** Cream closed / light-blue open on the white menu; chevron leading the title. */
 function TrialAccordion({
   openId,
   onChange,
@@ -2658,32 +2661,34 @@ function TrialAccordion({
             key={item.id}
             className={
               open
-                ? "flex max-h-[18rem] min-h-0 flex-col overflow-hidden rounded-lg border border-primary/40 bg-primary/10 shadow-sm"
+                ? "flex max-h-[18rem] min-h-0 flex-col overflow-hidden rounded-lg border shadow-sm"
                 : "shrink-0 rounded-lg border shadow-sm"
             }
-            style={open ? undefined : { borderColor: TRIAL_CREAM_LINE, backgroundColor: TRIAL_CREAM_BG }}
+            style={
+              open
+                ? { borderColor: TRIAL_NAVY, backgroundColor: TRIAL_LIGHT_BLUE }
+                : { borderColor: TRIAL_LINE, backgroundColor: TRIAL_CREAM }
+            }
           >
             <button
               type="button"
               onClick={() => onChange(open ? null : item.id)}
               aria-expanded={open}
-              className={
-                "flex min-h-11 shrink-0 items-center gap-2.5 px-2.5 text-left text-xs font-semibold " +
-                (open ? "text-primary" : "text-foreground hover:bg-black/[0.04]")
-              }
+              className="flex min-h-11 shrink-0 items-center gap-2.5 px-2.5 text-left text-xs font-semibold hover:bg-black/[0.03]"
+              style={{ color: TRIAL_NAVY }}
             >
               <ChevronDown
                 className={
-                  "h-5 w-5 shrink-0 transition-transform " +
-                  (open ? "rotate-0 text-primary" : "-rotate-90 text-muted-foreground")
+                  "h-5 w-5 shrink-0 transition-transform " + (open ? "rotate-0" : "-rotate-90")
                 }
+                style={{ color: open ? TRIAL_NAVY : "#66727d" }}
               />
               <span className="min-w-0 flex-1">{item.title}</span>
             </button>
             {open ? (
               <div
-                className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain border-t border-primary/20 px-2.5 py-2"
-                style={{ backgroundColor: `${TRIAL_CREAM_PANEL}e6` }}
+                className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain border-t px-2.5 py-2"
+                style={{ borderColor: "rgba(7, 40, 61, 0.15)", backgroundColor: TRIAL_CREAM }}
               >
                 {item.body}
               </div>
@@ -2724,8 +2729,8 @@ function TrialDoorNav({
         <button
           type="button"
           onClick={onBack}
-          className="h-11 flex-1 rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-muted/60"
-          style={{ borderColor: TRIAL_CREAM_LINE }}
+          className="h-11 flex-1 rounded-md border bg-white px-2.5 text-xs font-medium hover:bg-black/[0.03]"
+          style={{ borderColor: TRIAL_LINE, color: TRIAL_NAVY }}
         >
           ← Back
         </button>
