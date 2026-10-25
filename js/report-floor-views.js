@@ -71,23 +71,53 @@
     };
   }
 
-  function normalizeView(raw, meta, index, count, multi) {
+  /**
+   * Write normalized fields onto an existing view object (or a fresh one).
+   * Stable object identity is required: callers hold view refs across
+   * viewsFor/ensurePageViews, and replacing the object dropped camera/link writes (GPT-027).
+   */
+  function writeNormalized(target, raw, meta, index, count, multi) {
     var src = raw && typeof raw === 'object' ? raw : {};
     var fromMeta = sourceFromMeta(meta);
     var showDefault = !multi;
-    return {
-      id: typeof src.id === 'string' && src.id ? src.id : ('v' + index),
-      canvasId: src.canvasId != null && src.canvasId !== '' ? src.canvasId : fromMeta.canvasId,
-      epochId: src.epochId != null ? src.epochId : fromMeta.epochId,
-      areaId: src.areaId != null ? src.areaId : fromMeta.areaId,
-      scope: src.scope || fromMeta.scope || 'all',
-      settings: src.settings != null ? src.settings : null,
-      frame: normalizeFrame(src.frame || defaultFrame(index, count)),
-      linkGroup: src.linkGroup == null || src.linkGroup === '' ? null : String(src.linkGroup),
-      showLegend: typeof src.showLegend === 'boolean' ? src.showLegend : showDefault,
-      showPill: typeof src.showPill === 'boolean' ? src.showPill : showDefault,
-      camera: src.camera && typeof src.camera === 'object' ? clone(src.camera) : null,
-    };
+    var out = target && typeof target === 'object' ? target : {};
+    out.id = typeof src.id === 'string' && src.id ? src.id : ('v' + index);
+    out.canvasId = src.canvasId != null && src.canvasId !== '' ? src.canvasId : fromMeta.canvasId;
+    out.epochId = src.epochId != null ? src.epochId : fromMeta.epochId;
+    out.areaId = src.areaId != null ? src.areaId : fromMeta.areaId;
+    out.scope = src.scope || fromMeta.scope || 'all';
+    out.settings = src.settings != null ? src.settings : null;
+    // Keep frame object identity when present so live drag state is not orphaned mid-gesture.
+    var nextFrame = normalizeFrame(src.frame || defaultFrame(index, count));
+    if (out.frame && typeof out.frame === 'object') {
+      out.frame.x = nextFrame.x;
+      out.frame.y = nextFrame.y;
+      out.frame.w = nextFrame.w;
+      out.frame.h = nextFrame.h;
+      out.frame.z = nextFrame.z;
+    } else {
+      out.frame = nextFrame;
+    }
+    out.linkGroup = src.linkGroup == null || src.linkGroup === '' ? null : String(src.linkGroup);
+    out.showLegend = typeof src.showLegend === 'boolean' ? src.showLegend : showDefault;
+    out.showPill = typeof src.showPill === 'boolean' ? src.showPill : showDefault;
+    if (src.camera && typeof src.camera === 'object') {
+      if (out.camera && typeof out.camera === 'object') {
+        out.camera.cx = src.camera.cx;
+        out.camera.cy = src.camera.cy;
+        out.camera.zoom = src.camera.zoom;
+        out.camera.rel = !!src.camera.rel;
+      } else {
+        out.camera = clone(src.camera);
+      }
+    } else {
+      out.camera = null;
+    }
+    return out;
+  }
+
+  function normalizeView(raw, meta, index, count, multi) {
+    return writeNormalized({}, raw, meta, index, count, multi);
   }
 
   /**
@@ -101,26 +131,32 @@
     var meta = page.meta;
     if (Array.isArray(meta.views) && meta.views.length) {
       var multiExisting = meta.views.length > 1;
-      meta.views = meta.views.map(function (v, i) {
-        return normalizeView(v, meta, i, meta.views.length, multiExisting);
-      });
+      var n = meta.views.length;
+      for (var i = 0; i < n; i += 1) {
+        var existing = meta.views[i];
+        if (!existing || typeof existing !== 'object') {
+          meta.views[i] = writeNormalized({}, {}, meta, i, n, multiExisting);
+        } else {
+          writeNormalized(existing, existing, meta, i, n, multiExisting);
+        }
+      }
       return meta.views;
     }
     var multi = !!meta.floorTwoUp;
     var count = multi ? 2 : 1;
     var views = [];
-    for (var i = 0; i < count; i += 1) {
+    for (var j = 0; j < count; j += 1) {
       var settings = null;
-      if (i === 1) settings = meta.floorView2 || meta.floorView || null;
+      if (j === 1) settings = meta.floorView2 || meta.floorView || null;
       else settings = meta.floorView || null;
-      views.push(normalizeView({
-        id: 'v' + i,
+      views.push(writeNormalized({}, {
+        id: 'v' + j,
         settings: settings ? clone(settings) : null,
-        frame: defaultFrame(i, count),
+        frame: defaultFrame(j, count),
         linkGroup: multi ? 'g0' : null,
         showLegend: !multi,
         showPill: !multi,
-      }, meta, i, count, multi));
+      }, meta, j, count, multi));
     }
     meta.views = views;
     return views;
@@ -156,6 +192,19 @@
       String(a.scope || 'all') === String(b.scope || 'all');
   }
 
+  /** Same-source companions that share this view's size/camera link group. */
+  function linkedSameSourceIndexes(views, sourceIndex) {
+    var list = views || [];
+    var src = list[sourceIndex];
+    var out = [];
+    if (!src || !src.linkGroup) return out;
+    list.forEach(function (v, i) {
+      if (i === sourceIndex || !v) return;
+      if (v.linkGroup === src.linkGroup && sameSource(src, v)) out.push(i);
+    });
+    return out;
+  }
+
   function applyLinkedGeometry(views, sourceIndex, frame) {
     var list = views || [];
     var src = list[sourceIndex];
@@ -164,15 +213,29 @@
     list.forEach(function (v, i) {
       if (i === sourceIndex) return;
       if (!v || v.linkGroup !== src.linkGroup) return;
-      v.frame = normalizeFrame({
-        x: v.frame.x,
-        y: next.y,
-        w: v.frame.w,
-        h: next.h,
-        z: v.frame.z,
-      });
+      // Size/align link is source-agnostic (GPT-027): matched height + top/bottom.
+      if (v.frame && typeof v.frame === 'object') {
+        v.frame.y = next.y;
+        v.frame.h = next.h;
+      } else {
+        v.frame = normalizeFrame({
+          x: 0,
+          y: next.y,
+          w: MIN_FRAME_W,
+          h: next.h,
+          z: 1,
+        });
+      }
     });
-    src.frame = next;
+    if (src.frame && typeof src.frame === 'object') {
+      src.frame.x = next.x;
+      src.frame.y = next.y;
+      src.frame.w = next.w;
+      src.frame.h = next.h;
+      src.frame.z = next.z;
+    } else {
+      src.frame = next;
+    }
   }
 
   function snapFrame(frame, views, selfIndex) {
@@ -205,7 +268,7 @@
     var list = viewsFor(page);
     var base = list[Math.max(0, Math.min(list.length - 1, Number(fromIndex) || 0))] || list[0];
     var multiWas = list.length > 1;
-    var copy = normalizeView({
+    var copy = writeNormalized({}, {
       id: newViewId(list),
       canvasId: base.canvasId,
       epochId: base.epochId,
@@ -213,7 +276,7 @@
       scope: base.scope,
       settings: base.settings ? clone(base.settings) : null,
       frame: defaultFrame(list.length, list.length + 1),
-      linkGroup: sameSource(base, base) && list.length === 1 ? 'g0' : null,
+      linkGroup: list.length === 1 ? 'g0' : null,
       showLegend: false,
       showPill: false,
       camera: base.camera ? clone(base.camera) : null,
@@ -264,9 +327,14 @@
     return list[Math.max(0, Math.min(list.length - 1, i))] || list[0];
   }
 
+  /**
+   * Size/align link — source-agnostic (GPT-027).
+   * Camera sharing stays separate: only same-source linked companions share pan/zoom.
+   */
   function setViewLink(page, index, linked) {
     var list = viewsFor(page);
-    var v = list[Math.max(0, Math.min(list.length - 1, Number(index) || 0))];
+    var at = Math.max(0, Math.min(list.length - 1, Number(index) || 0));
+    var v = list[at];
     if (!v) return;
     if (!linked) {
       v.linkGroup = null;
@@ -276,9 +344,9 @@
     v.linkGroup = group;
     list.forEach(function (other) {
       if (!other || other === v) return;
-      if (sameSource(v, other)) other.linkGroup = group;
+      other.linkGroup = group;
     });
-    applyLinkedGeometry(list, list.indexOf(v), v.frame);
+    applyLinkedGeometry(list, at, v.frame);
   }
 
   window.ToolboxReportFloorViews = {
@@ -294,6 +362,7 @@
     viewAt: viewAt,
     viewIndexById: viewIndexById,
     sameSource: sameSource,
+    linkedSameSourceIndexes: linkedSameSourceIndexes,
     applyLinkedGeometry: applyLinkedGeometry,
     snapFrame: snapFrame,
     addView: addView,

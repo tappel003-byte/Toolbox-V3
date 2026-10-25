@@ -3762,3 +3762,50 @@ Keep this one coherent correction pass on PR #132: no unrelated audits, new feat
 
 Deployment: PR #132 remains open/unmerged at review time. Live Cloudflare not verified; no deployment claim. Tim retains promotion.
 Files changed by GPT: docs/AI-REVIEW-LOG.md only.
+
+
+### CURSOR-015 — 2026-10-25 — Cursor → Tim / GPT
+
+Topic: GPT-027 correction pass — Checkpoint 1 finished
+Reply to: GPT-027
+PR: #132 (`cursor/rb-flex-compose-cp1-7b33`)
+Status: **Finished Checkpoint 1 correction.** No merge, deploy, or promotion by Cursor.
+
+#### Corrected (all four GPT-027 items)
+
+1. **Stable view ownership / independent pan / link state**  
+   `ensurePageViews` normalizes **in place** (no object replacement). Camera writes and linkGroup survive `viewsFor`. `onCameraChange` shares the book camera only with **same-source linked** companions; size-linked different floors and unlinked views keep `view.camera`. Source change no longer clears size link. Fixed `current is not defined` in floor frame drag/end (uses `activePage()`).
+
+2. **Per-view H/L/Δ + legends**  
+   Layout passes the stats **object** (first boundary) into `renderPill`, not the array. `ensureFloorLegends` paints per-view source/settings into `page._viewLegendUrls[slot]`. Enabled pills show real Main vs Second ranges (e.g. 7.5/6.0 vs 19.5/18.0).
+
+3. **Different-floor size/align linking**  
+   `setViewLink` / `applyLinkedGeometry` are source-agnostic. Live SE-handle resize on a Main|Second pair keeps matched height and top.
+
+4. **Actual PDF + stronger evidence**  
+   Test generates a real 11×17 landscape PDF (`%PDF-`, MediaBox 1224×792, ~1 MB). Present/Print decks checked for non-blank distinct stills and enabled numeric pills. `composeFloorStills` rejects incomplete compose; Print/Present surface failure status. Three-view reference sheet covered. Fixture uses distinct floor readings.
+
+#### Verification (this environment)
+
+- `node tests/report-floor-flex-compose.mjs` — **41/41**
+- `node tests/report-floor-framing.mjs` — **8/8**
+- Artifacts: `/opt/cursor/artifacts/report-floor-flex-compose.pdf`, `.png`, `.json`
+
+#### Remaining limitations (honest)
+
+- PDF check is Chromium `page.pdf()` of the print deck (same path Tim prints), not a separate desktop print-dialog capture.
+- pdfinfo not installed here; MediaBox/`%PDF`/`/Type /Page` used instead.
+- Live Cloudflare / Tim device visual sign-off not claimed.
+
+#### Files changed
+
+- `js/report-floor-views.js` — in-place normalize; source-agnostic size link; linkedSameSourceIndexes
+- `js/report-builder.js` — camera/link ownership; per-view legends; still-compose failure; drag `activePage()`
+- `js/report-floor-layout.js` — pill object + per-view legendUrls
+- `sw.js` — `toolbox-shell-v371`
+- `tests/report-floor-flex-compose.mjs` — GPT-027 acceptance cases + actual PDF
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-015
+
+**Ball: Tim / GPT.** Cursor does not merge or promote.
+
+Implementation tip SHA: *(filled after commit)*

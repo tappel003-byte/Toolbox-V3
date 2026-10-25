@@ -657,17 +657,25 @@
         // GPT-026: multi-view legends/pills start hidden; only place when a
         // view explicitly enables them. Never fall through to layout.overlays
         // (that path reserved empty columns for Combined-era slots).
+        // GPT-027: pill needs a stats OBJECT (hi/lo/delta), not the boundary array;
+        // legend URLs and settings come from that view's source.
         viewList.forEach(function (vs, vi) {
           if (!vs) return;
-          var vStats = (options.viewStats && options.viewStats[vi]) || statsList[0] || null;
+          var rawStats = options.viewStats && options.viewStats[vi];
+          var vStatsList = Array.isArray(rawStats) ? rawStats
+            : (rawStats ? [rawStats] : null);
+          var vStats = (vStatsList && vStatsList[0]) || statsList[0] || null;
           var chromeX = Math.min(92, ((vs.frame && vs.frame.x) || 0) + 2);
           var chromeY = Math.max(2, ((vs.frame && vs.frame.y) || 0) + 2);
+          var viewLegendUrls = (options.viewLegendUrls && options.viewLegendUrls[vi])
+            || options.legendUrls;
+          var viewChromeOpts = {
+            legendUrls: viewLegendUrls,
+            settings: vs.settings || options.settings,
+            pillPx: options.pillPx,
+          };
           if (vs.showLegend && vStats) {
-            placeChrome('legend', 'legend-' + vs.id, chromeX, chromeY, 3, vStats, {
-              legendUrls: options.legendUrls,
-              settings: vs.settings || options.settings,
-              pillPx: options.pillPx,
-            });
+            placeChrome('legend', 'legend-' + vs.id, chromeX, chromeY, 3, vStats, viewChromeOpts);
           }
           if (vs.showPill && vStats) {
             placeChrome(
@@ -677,7 +685,7 @@
               vs.showLegend ? chromeY + PILL_DROP : chromeY,
               3,
               vStats,
-              options,
+              viewChromeOpts,
             );
           }
         });

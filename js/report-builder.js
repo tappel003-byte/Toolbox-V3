@@ -2212,19 +2212,20 @@
   }
 
   /**
-   * Hand a camera to the views a slide is hosting, except the one it came from.
+   * Hand a camera to linked same-source companions on this slide.
    *
-   * Two views on a sheet are two windows on one level, so they are two windows
-   * on one camera. Tim: "I need them to be side by side exactly. not one
-   * higher one lower." A pan used to be told only to the book, and the book
-   * does not re-mount a view that is already showing the right level -- so
-   * dragging either drawing left the other where it was, and the pair sat at
-   * different heights until the report was closed and opened again.
+   * Same-source linked pairs share pan/zoom (Tim: side by side exactly).
+   * Size-linked different floors and unlinked same-source views keep their
+   * own cameras (GPT-027) — do not broadcast the book camera to every host.
    */
-  function pushCameraToTopoHosts(camera, except) {
+  function pushCameraToTopoHosts(camera, except, onlySlots) {
     if (!camera) return;
+    var allow = onlySlots && onlySlots.length
+      ? onlySlots.reduce(function (m, s) { m[Number(s)] = true; return m; }, Object.create(null))
+      : null;
     Object.keys(topoHosts).forEach(function (slot) {
       if (Number(slot) === Number(except)) return;
+      if (allow && !allow[Number(slot)]) return;
       var host = topoHosts[slot];
       if (!host || !host.api || typeof host.api.update !== 'function') return;
       host.api.update({ camera: camera });
@@ -2245,15 +2246,23 @@
   var legendPainting = Object.create(null);
 
   /** What a painted scale depends on. A change to any of it is a new scale. */
-  function legendKey(page, statsIndex, settings) {
-    var meta = (page && page.meta) || {};
+  function legendKey(canvasId, areaId, scope, statsIndex, settings) {
     var view = settings || {};
     return [
-      meta.canvasId || '', meta.scope === 'all' ? '' : (meta.areaId || ''), statsIndex,
+      canvasId || '', scope === 'all' ? '' : (areaId || ''), statsIndex,
       view.palette || '', view.reversePalette ? 'r' : '',
       view.firstContour, view.contourStep, view.contourCount,
       view.minClamp, view.maxClamp, view.decimalPlaces,
     ].join('|');
+  }
+
+  function legendSourceForView(page, view) {
+    var meta = (page && page.meta) || {};
+    var canvasId = (view && view.canvasId) || meta.canvasId || '';
+    var scope = (view && view.scope) || meta.scope || 'all';
+    var areaId = scope === 'all' ? null : ((view && view.areaId) || meta.areaId || null);
+    var settings = (view && view.settings) || (page && page._floorView) || null;
+    return { canvasId: canvasId, scope: scope, areaId: areaId, settings: settings };
   }
 
   /**
@@ -2262,6 +2271,8 @@
    * Called from renderPages, and it draws the pages again once pictures have
    * arrived. The cache is what stops that from going round for ever: the
    * second pass finds every scale already painted and asks for nothing.
+   *
+   * Multi-view sheets paint one legend set per view source/settings (GPT-027).
    */
   function ensureFloorLegends(fileId, pages, redraw) {
     var api = window.ToolboxFloorSurvey;
@@ -2271,29 +2282,61 @@
       if (!page || page.type !== 'floor') return;
       var meta = page.meta || {};
       if (!meta.imported || !meta.canvasId) return;
-      var stats = page._liveStats ||
+      var views = floorViewsForPage(page);
+      page._viewLegendUrls = page._viewLegendUrls || {};
+      if (views.length > 1) {
+        views.forEach(function (vs, vi) {
+          var src = legendSourceForView(page, vs);
+          var slotStats = page._viewStats && page._viewStats[vi];
+          var stats = Array.isArray(slotStats) ? slotStats
+            : (page._liveStats ||
+              ((page.evidence && Array.isArray(page.evidence.stats)) ? page.evidence.stats : []));
+          var count = Math.max(1, Array.isArray(stats) ? stats.length : 1);
+          var urls = [];
+          for (var i = 0; i < count; i += 1) {
+            var key = legendKey(src.canvasId, src.areaId, src.scope, i, src.settings);
+            urls.push(legendImages[key] || '');
+            if (!legendImages[key] && !legendPainting[key]) {
+              wanted.push({
+                page: page, index: i, key: key, slot: vi,
+                canvasId: src.canvasId, areaId: src.areaId, settings: src.settings,
+              });
+            }
+          }
+          page._viewLegendUrls[vi] = urls;
+        });
+        // Keep page._legendUrls as the active view's set for single-slot readers.
+        var active = floorActiveSlotForPage(page);
+        page._legendUrls = page._viewLegendUrls[active] || page._viewLegendUrls[0] || [];
+        return;
+      }
+      var statsOne = page._liveStats ||
         ((page.evidence && Array.isArray(page.evidence.stats)) ? page.evidence.stats : []);
-      var count = Math.max(1, stats.length);
-      var urls = [];
-      for (var i = 0; i < count; i += 1) {
-        var key = legendKey(page, i, page._floorView);
-        urls.push(legendImages[key] || '');
-        if (!legendImages[key] && !legendPainting[key]) {
-          wanted.push({ page: page, index: i, key: key });
+      var countOne = Math.max(1, statsOne.length);
+      var urlsOne = [];
+      var srcOne = legendSourceForView(page, views[0] || null);
+      for (var j = 0; j < countOne; j += 1) {
+        var keyOne = legendKey(srcOne.canvasId, srcOne.areaId, srcOne.scope, j, srcOne.settings);
+        urlsOne.push(legendImages[keyOne] || '');
+        if (!legendImages[keyOne] && !legendPainting[keyOne]) {
+          wanted.push({
+            page: page, index: j, key: keyOne, slot: 0,
+            canvasId: srcOne.canvasId, areaId: srcOne.areaId, settings: srcOne.settings,
+          });
         }
       }
-      page._legendUrls = urls;
+      page._legendUrls = urlsOne;
+      page._viewLegendUrls[0] = urlsOne;
     });
     if (!wanted.length) return;
     wanted.forEach(function (job) { legendPainting[job.key] = true; });
     Promise.all(wanted.map(function (job) {
-      var meta = job.page.meta || {};
       return api.renderTopoLegendImage({
         customerFileId: fileId,
-        canvasId: meta.canvasId || '',
-        areaId: meta.scope === 'all' ? null : (meta.areaId || null),
+        canvasId: job.canvasId || '',
+        areaId: job.areaId || null,
         statsIndex: job.index,
-        settings: job.page._floorView || null,
+        settings: job.settings || null,
       }).then(function (painted) {
         delete legendPainting[job.key];
         if (painted && painted.dataUrl) legendImages[job.key] = painted.dataUrl;
@@ -2626,6 +2669,7 @@
           topoActiveSlot: thumb ? 0 : floorActiveSlotForPage(page),
           views: thumb ? null : floorViewsForPage(page),
           viewStats: thumb ? null : (page._viewStats || null),
+          viewLegendUrls: thumb ? null : (page._viewLegendUrls || null),
           // The cover's aerial view, carried onto this page automatically and
           // taken off it with the x. Settled Oct 10, 2026.
           overviewUrl: page._overviewUrl || '',
@@ -3242,18 +3286,18 @@
 
     function cameraForView(page, slot) {
       var view = floorViewSpec(page, slot);
+      if (!view) return floorCamera;
       var viewsApi = window.ToolboxReportFloorViews;
-      var active = floorViewSpec(page, floorSlot(page));
-      // Same-source linked companions share the book camera (today's two-up).
-      // Different sources keep an independent camera on the view (CURSOR-013 proposal Tim authorized via proceed).
-      if (view && view.camera) return view.camera;
-      if (view && active && viewsApi && viewsApi.sameSource(view, active) && view.linkGroup) {
-        return floorCamera;
+      // Share the book camera only with same-source LINKED companions (GPT-027).
+      // Size-link alone (different floors) or unlinked same-source → view.camera.
+      if (view.linkGroup && viewsApi) {
+        var list = viewsApi.viewsFor(page);
+        var linkedSame = (typeof viewsApi.linkedSameSourceIndexes === 'function'
+          ? viewsApi.linkedSameSourceIndexes(list, Number(slot) || 0)
+          : []).length > 0;
+        if (linkedSame) return floorCamera || view.camera || null;
       }
-      if (view && (!viewsApi || !active || viewsApi.sameSource(view, active))) {
-        return floorCamera;
-      }
-      return view && view.camera ? view.camera : floorCamera;
+      return view.camera || floorCamera;
     }
     // Whether the frame has been given the plan's proportion yet. Once it has,
     // the frame is whatever it has been dragged to and is never re-fitted.
@@ -3950,43 +3994,47 @@
             // no control left to release it.
             locked: false,
             onCameraChange: function (camera, from) {
-              var fromView = floorViewSpec(page, from);
               var viewsApi = window.ToolboxReportFloorViews;
+              var list = viewsApi ? viewsApi.viewsFor(page) : [];
+              var fromView = list[Number(from) || 0] || null;
               var cam = {
                 cx: camera.cx, cy: camera.cy, zoom: camera.zoom,
                 rel: !!camera.rel,
               };
-              // Independent camera when this view's source differs from linked same-source companions.
-              var shareBook = true;
-              if (fromView && viewsApi) {
-                var list = viewsApi.viewsFor(page);
-                for (var i = 0; i < list.length; i += 1) {
-                  if (i === Number(from)) continue;
-                  if (!list[i]) continue;
-                  if (!viewsApi.sameSource(fromView, list[i])) {
-                    shareBook = false;
-                    break;
-                  }
-                }
+              // Persist onto the live view object first (stable identity after GPT-027).
+              function writeViewCamera(target) {
+                if (!target) return;
+                if (!target.camera || typeof target.camera !== 'object') target.camera = {};
+                target.camera.cx = cam.cx;
+                target.camera.cy = cam.cy;
+                target.camera.zoom = cam.zoom;
+                target.camera.rel = !!cam.rel;
               }
-              if (!shareBook && fromView) {
-                var prev = fromView.camera;
-                var sameV = !!prev &&
-                  Math.abs((prev.cx || 0) - (cam.cx || 0)) < 1e-4 &&
-                  Math.abs((prev.cy || 0) - (cam.cy || 0)) < 1e-4 &&
-                  Math.abs((prev.zoom || 0) - (cam.zoom || 0)) < 1e-4;
-                if (sameV) return;
-                fromView.camera = cam;
+              var linkedSame = (fromView && viewsApi &&
+                typeof viewsApi.linkedSameSourceIndexes === 'function')
+                ? viewsApi.linkedSameSourceIndexes(list, Number(from) || 0)
+                : [];
+              if (linkedSame.length) {
+                var same = !!floorCamera &&
+                  Math.abs((floorCamera.cx || 0) - (cam.cx || 0)) < 1e-4 &&
+                  Math.abs((floorCamera.cy || 0) - (cam.cy || 0)) < 1e-4 &&
+                  Math.abs((floorCamera.zoom || 0) - (cam.zoom || 0)) < 1e-4;
+                if (same) return;
+                floorCamera = cam;
+                writeViewCamera(fromView);
+                linkedSame.forEach(function (si) { writeViewCamera(list[si]); });
+                pushCameraToTopoHosts(floorCamera, from, linkedSame);
                 markDirty();
                 return;
               }
-              var same = !!floorCamera &&
-                Math.abs((floorCamera.cx || 0) - (cam.cx || 0)) < 1e-4 &&
-                Math.abs((floorCamera.cy || 0) - (cam.cy || 0)) < 1e-4 &&
-                Math.abs((floorCamera.zoom || 0) - (cam.zoom || 0)) < 1e-4;
-              if (same) return;
-              floorCamera = cam;
-              pushCameraToTopoHosts(floorCamera, from);
+              // Independent pan/zoom — obey link state, not merely source match.
+              var prev = fromView && fromView.camera;
+              var sameV = !!prev &&
+                Math.abs((prev.cx || 0) - (cam.cx || 0)) < 1e-4 &&
+                Math.abs((prev.cy || 0) - (cam.cy || 0)) < 1e-4 &&
+                Math.abs((prev.zoom || 0) - (cam.zoom || 0)) < 1e-4;
+              if (sameV) return;
+              writeViewCamera(fromView);
               markDirty();
             },
               onSettingsChange: function (next, from) {
@@ -4000,6 +4048,7 @@
             onStats: function (stats, from) {
               var live = Array.isArray(stats) ? stats : [];
               page._viewStats = page._viewStats || {};
+              // Keep the boundary array; layout picks the stats object for the pill.
               page._viewStats[Number(from) || 0] = live;
               // Rail quotes the selected view.
               if ((Number(from) || 0) !== floorSlot(page)) return;
@@ -4671,24 +4720,22 @@
         if (!srcSel) return;
         var sp = activePage();
         if (!sp || sp.type !== 'floor') return;
-        var sv = floorViewSpec(sp, floorSlot(sp));
+        var sApi = window.ToolboxReportFloorViews;
+        var slotNow = floorSlot(sp);
+        // Mutate the live list entry (stable identity). Do not clear size/align
+        // linkGroup on source change — size linking is source-agnostic (GPT-027);
+        // camera sharing already keys off sameSource + linkGroup.
+        var listNow = sApi ? sApi.viewsFor(sp) : [];
+        var sv = listNow[slotNow];
         if (!sv) return;
         var parts = String(srcSel.value || '').split('|');
         sv.canvasId = parts[0] || '';
         sv.epochId = parts[1] || null;
         sv.areaId = parts[2] || null;
         sv.scope = parts[3] || 'all';
-        // Changing source drops a shared link that only makes sense same-source.
-        var sApi = window.ToolboxReportFloorViews;
-        if (sApi) {
-          var others = sApi.viewsFor(sp);
-          others.forEach(function (o) {
-            if (!o || o === sv) return;
-            if (sv.linkGroup && o.linkGroup === sv.linkGroup && !sApi.sameSource(sv, o)) {
-              sv.linkGroup = null;
-            }
-          });
-        }
+        // Drop a stale independent camera so the new level opens framed, not
+        // at the previous floor's pan. Linked same-source broadcast is N/A here.
+        sv.camera = null;
         releaseTopoHosts();
         markDirty();
         renderPages();
@@ -6841,7 +6888,8 @@
         : JSON.parse(JSON.stringify(floorDrag.layout));
       var flApi = window.ToolboxReportFloorLayout;
       var viewsApi = window.ToolboxReportFloorViews;
-      if (floorDrag.viewId && floorDrag.viewFrame && viewsApi && current) {
+      var dragPage = activePage();
+      if (floorDrag.viewId && floorDrag.viewFrame && viewsApi && dragPage) {
         var minW = viewsApi.MIN_FRAME_W || 18;
         var minH = viewsApi.MIN_FRAME_H || 25;
         var o = floorDrag.viewFrame;
@@ -6862,7 +6910,7 @@
           nextFrame = { x: o.x + dx, y: o.y + dy, w: o.w, h: o.h, z: o.z };
         }
         nextFrame = viewsApi.normalizeFrame(nextFrame);
-        var list = viewsApi.viewsFor(current);
+        var list = viewsApi.viewsFor(dragPage);
         if (list[floorDrag.viewIndex]) {
           if (list[floorDrag.viewIndex].linkGroup) {
             viewsApi.applyLinkedGeometry(list, floorDrag.viewIndex, nextFrame);
@@ -7013,9 +7061,10 @@
         return;
       }
       if (!floorDrag) return;
-      if (floorDrag.viewId && current && window.ToolboxReportFloorViews) {
+      var endPage = activePage();
+      if (floorDrag.viewId && endPage && window.ToolboxReportFloorViews) {
         var vApi = window.ToolboxReportFloorViews;
-        var vList = vApi.viewsFor(current);
+        var vList = vApi.viewsFor(endPage);
         var ix = floorDrag.viewIndex;
         if (vList[ix]) {
           var snapped = vApi.snapFrame(vList[ix].frame, vList, ix);
@@ -7703,16 +7752,24 @@
               settings: floorViewFor(job.page, job.slot) || null,
               extent: cameraExtentFor(job.page, fallbackExtent, job.slot),
             }, getMedia).then(function (composed) {
-              if (!composed || !composed.dataUrl) return;
+              if (!composed || !composed.dataUrl) {
+                throw new Error('Floor still compose returned no image for slot ' + job.slot);
+              }
               job.page._printTopo = job.page._printTopo || {};
               job.page._printTopo[job.slot] = composed.dataUrl;
               painted += 1;
             }).catch(function (err) {
-              console.warn('Floor slide could not be painted for print', canvasId, err);
+              console.error('Floor slide could not be painted for print', canvasId, err);
+              throw err;
             });
           });
         });
-      }, Promise.resolve()).then(function () { return painted; });
+      }, Promise.resolve()).then(function () {
+        if (painted < wanted.length) {
+          throw new Error('Floor still compose incomplete: ' + painted + '/' + wanted.length);
+        }
+        return painted;
+      });
     }
 
     function clearFloorStills() {
@@ -7868,6 +7925,11 @@
               });
             });
           });
+        }).catch(function (err) {
+          // GPT-027: do not hand a silently incomplete PDF when a still fails.
+          console.error('Print/PDF could not compose floor stills', err);
+          clearPrintDeck();
+          setSaveStatus('Print failed — a floor figure could not be composed');
         });
       });
     }
@@ -8105,7 +8167,9 @@
           showPresentSheet(0);
         });
       }).catch(function (err) {
-        console.warn('Presentation could not be opened', err);
+        // GPT-027: surface incomplete still compose instead of a blank Present deck.
+        console.error('Presentation could not be opened', err);
+        setSaveStatus('Presentation failed — a floor figure could not be composed');
         closePresentation();
       }).then(function () {
         if (presentBtn) {
