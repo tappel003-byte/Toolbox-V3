@@ -2619,15 +2619,11 @@
     // One place that says "something changed", so nothing can set `dirty`
     // without also moving the counter a save is checked against.
     function noteEdit() {
-      // GPT-035: Refresh finish lock — do not accept new edits after the
-      // investigator asked to reload; drain writes what was already dirty.
-      if (document.documentElement.classList.contains('tb-refresh-locked')) return;
       editSeq += 1;
       dirty = true;
     }
 
     function scheduleSave() {
-      if (document.documentElement.classList.contains('tb-refresh-locked')) return;
       noteEdit();
       setStatus('Unsaved changes…');
       refreshEditorProgress();
@@ -2819,12 +2815,27 @@
   // so a refresh never discards an in-progress edit.
   const refreshBtn = document.getElementById('app-refresh');
   if (refreshBtn) {
+    // GPT-035: inert on the editing surface blocks focus + keyboard, not just
+    // pointer-events. Do not silently ignore edits in a still-editable control.
+    function setRefreshFinishLock(on) {
+      document.documentElement.classList.toggle('tb-refresh-locked', !!on);
+      const surface = document.getElementById('app-view');
+      if (!surface) return;
+      if (on) {
+        surface.inert = true;
+        const ae = document.activeElement;
+        if (ae && surface.contains(ae) && typeof ae.blur === 'function') ae.blur();
+      } else {
+        surface.inert = false;
+      }
+    }
+
     function paintRefreshIdle() {
       const ready = window.ToolboxUpdate
         && typeof window.ToolboxUpdate.isAvailable === 'function'
         && window.ToolboxUpdate.isAvailable();
       refreshBtn.disabled = false;
-      document.documentElement.classList.remove('tb-refresh-locked');
+      setRefreshFinishLock(false);
       if (ready) {
         refreshBtn.classList.add('is-update-ready');
         // GPT-035: shorter phone label so the red control fits the app bar.
@@ -2850,7 +2861,7 @@
       if (refreshBtn.disabled) return;
       refreshBtn.disabled = true;
       refreshBtn.textContent = 'Updating…';
-      document.documentElement.classList.add('tb-refresh-locked');
+      setRefreshFinishLock(true);
       Promise.resolve(activeFileFlush ? activeFileFlush({ drain: true }) : null).then(function () {
         if (window.ToolboxUpdate && typeof window.ToolboxUpdate.refresh === 'function') {
           return window.ToolboxUpdate.refresh();

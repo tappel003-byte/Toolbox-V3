@@ -4485,8 +4485,8 @@ button.cf-home__delete[hidden] {
   font-weight: 700;
 }
 
-/* GPT-035: while Refresh drains the active save, block canvas edits so a
-   keystroke cannot land after the finish snapshot and before reload. */
+/* GPT-035: finish lock uses #app-view[inert] (focus + keyboard). Keep
+   pointer-events as a belt for older WebViews that lag on inert. */
 html.tb-refresh-locked .canvas {
   pointer-events: none;
 }

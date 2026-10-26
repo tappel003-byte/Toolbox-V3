@@ -3390,7 +3390,6 @@
     // One place that says "something changed", so no edit can set `dirty`
     // without also moving the counter a save is checked against.
     function noteEdit() {
-      if (document.documentElement.classList.contains('tb-refresh-locked')) return;
       editSeq += 1;
       dirty = true;
     }

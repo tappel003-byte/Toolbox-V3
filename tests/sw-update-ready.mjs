@@ -20,7 +20,7 @@ catch { puppeteer = require('/tmp/node_modules/puppeteer-core'); }
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = '/opt/cursor/artifacts';
-const SHELL = 'toolbox-shell-v378';
+const SHELL = 'toolbox-shell-v379';
 const results = [];
 function check(name, ok, detail = '') {
   results.push({ name, ok: !!ok, detail });
@@ -270,9 +270,9 @@ await mkdir(OUT, { recursive: true });
   const port = 8791;
   let serveB = false;
   const swA = (await readFile(path.join(ROOT, 'sw.js'), 'utf8'))
-    .replace(new RegExp(SHELL, 'g'), 'toolbox-shell-v377-testA');
+    .replace(new RegExp(SHELL, 'g'), 'toolbox-shell-v378-testA');
   const swB = (await readFile(path.join(ROOT, 'sw.js'), 'utf8'))
-    .replace(new RegExp(SHELL, 'g'), 'toolbox-shell-v378-testB');
+    .replace(new RegExp(SHELL, 'g'), 'toolbox-shell-v379-testB');
 
   const server = createServer(async (req, res) => {
     try {
@@ -415,8 +415,8 @@ await mkdir(OUT, { recursive: true });
       ready: !!(window.ToolboxUpdate && window.ToolboxUpdate.isAvailable && window.ToolboxUpdate.isAvailable()),
       text: btn ? btn.textContent.trim() : null,
       keys,
-      hasB: keys.some((k) => /v378-testB/.test(k)),
-      hasA: keys.some((k) => /v377-testA/.test(k)),
+      hasB: keys.some((k) => /v379-testB/.test(k)),
+      hasA: keys.some((k) => /v378-testA/.test(k)),
     };
   });
   check('Refresh loads shell B and clears ready on new document',
@@ -449,7 +449,7 @@ await mkdir(OUT, { recursive: true });
         ready: window.ToolboxUpdate.isAvailable(),
         text: btn.textContent.trim(),
         updating: /Updating/i.test(btn.textContent || ''),
-        hasB: keys.some((k) => /v378-testB/.test(k)),
+        hasB: keys.some((k) => /v379-testB/.test(k)),
       };
     });
     check('Refresh while not red still reloads once into current shell',
@@ -457,35 +457,8 @@ await mkdir(OUT, { recursive: true });
       JSON.stringify(afterNotRed));
   }
 
-  // GPT-035: actual #app-refresh click — rejected flush never calls refresh.
-  {
-    await page.goto(`${origin}/index.html#/`, { waitUntil: 'networkidle0' });
-    await page.waitForFunction(() => !!window.ToolboxApp, { timeout: 30000 });
-    const rejected = await page.evaluate(async () => {
-      let refreshCalls = 0;
-      const tu = window.ToolboxUpdate;
-      const origRefresh = tu.refresh.bind(tu);
-      tu.refresh = function () {
-        refreshCalls += 1;
-        return Promise.resolve(); // do not unload
-      };
-      window.ToolboxApp.registerActiveFlush(() => Promise.reject(new Error('save failed')));
-      const btn = document.getElementById('app-refresh');
-      btn.disabled = false;
-      btn.click();
-      await new Promise((r) => setTimeout(r, 80));
-      const restored = !btn.disabled && !/Updating/i.test(btn.textContent || '');
-      const locked = document.documentElement.classList.contains('tb-refresh-locked');
-      tu.refresh = origRefresh;
-      window.ToolboxApp.registerActiveFlush(null);
-      return { refreshCalls, restored, locked, text: btn.textContent.trim() };
-    });
-    check('actual click: rejected save never calls ToolboxUpdate.refresh',
-      rejected.refreshCalls === 0 && rejected.restored && !rejected.locked,
-      JSON.stringify(rejected));
-  }
-
-  // GPT-035: held save + type-during — latest durable bytes before refresh.
+  // GPT-035 acceptance: real keyboard while finish-locked must not edit;
+  // durable bytes match visible; rejected save unlocks for further typing.
   {
     await page.goto(`${origin}/index.html#/`, { waitUntil: 'networkidle0' });
     await page.waitForFunction(() => !!(window.ToolboxDB && window.ToolboxApp), { timeout: 30000 });
@@ -501,88 +474,168 @@ await mkdir(OUT, { recursive: true });
     await page.waitForSelector('#field-firstName', { timeout: 30000 });
     await new Promise((r) => setTimeout(r, 800));
 
-    const probe = await page.evaluate(async () => {
+    // Arm held save + spy refresh (no unload).
+    await page.evaluate(() => {
       const db = window.ToolboxDB;
-      const realSave = db.saveCustomerFile.bind(db);
-      const held = [];
-      const writes = [];
+      window.__realSave = db.saveCustomerFile.bind(db);
+      window.__held = [];
+      window.__writes = [];
       db.saveCustomerFile = function (rec) {
-        writes.push(rec && rec.firstName);
+        window.__writes.push(rec && rec.firstName);
         return new Promise((resolve, reject) => {
-          held.push(() => realSave(rec).then(resolve, reject));
+          window.__held.push(() => window.__realSave(rec).then(resolve, reject));
         });
       };
-
-      let refreshCalls = 0;
-      let storedAtRefresh = null;
-      let visibleAtRefresh = null;
+      window.__refreshCalls = 0;
+      window.__storedAtRefresh = null;
+      window.__visibleAtRefresh = null;
       const tu = window.ToolboxUpdate;
-      const origRefresh = tu.refresh.bind(tu);
+      window.__origRefresh = tu.refresh.bind(tu);
       tu.refresh = async function () {
-        refreshCalls += 1;
+        window.__refreshCalls += 1;
         const rec = await db.getCustomerFile('refresh-probe');
-        storedAtRefresh = rec && rec.firstName;
+        window.__storedAtRefresh = rec && rec.firstName;
         const el = document.getElementById('field-firstName');
-        visibleAtRefresh = el ? el.value : null;
+        window.__visibleAtRefresh = el ? el.value : null;
         return Promise.resolve();
-      };
-
-      const field = document.getElementById('field-firstName');
-      field.focus();
-      field.value = 'Before click';
-      field.dispatchEvent(new Event('input', { bubbles: true }));
-
-      // Let autosave arm, then click Refresh (starts flush → held save).
-      await new Promise((r) => setTimeout(r, 1000));
-      const btn = document.getElementById('app-refresh');
-      btn.click();
-      await new Promise((r) => setTimeout(r, 100));
-
-      const locked = document.documentElement.classList.contains('tb-refresh-locked');
-      // Attempt mid-refresh typing (must not land while locked).
-      field.value = 'Typed while saving';
-      field.dispatchEvent(new Event('input', { bubbles: true }));
-      const visibleWhileLocked = field.value;
-
-      // Release held saves (drain may issue more than one).
-      for (let i = 0; i < 6 && held.length; i += 1) {
-        const fn = held.shift();
-        if (fn) await fn();
-        await new Promise((r) => setTimeout(r, 30));
-      }
-      await new Promise((r) => setTimeout(r, 200));
-
-      // If drain still pending more holds, release again.
-      while (held.length) {
-        const fn = held.shift();
-        if (fn) await fn();
-      }
-      await new Promise((r) => setTimeout(r, 200));
-
-      const finalRec = await db.getCustomerFile('refresh-probe');
-      tu.refresh = origRefresh;
-      db.saveCustomerFile = realSave;
-
-      return {
-        refreshCalls,
-        storedAtRefresh,
-        visibleAtRefresh,
-        locked,
-        visibleWhileLocked,
-        finalStored: finalRec && finalRec.firstName,
-        writes,
       };
     });
 
-    // Lock prevents "Typed while saving" from becoming an edit; durable text
-    // at refresh must be the pre-click snapshot (or drained latest), never lost.
-    const durableOk = probe.refreshCalls === 1
-      && probe.locked === true
-      && probe.storedAtRefresh === 'Before click'
-      && probe.finalStored === 'Before click';
-    check('actual click: held save drains before refresh; lock blocks mid-refresh edit',
-      durableOk,
-      JSON.stringify(probe));
+    await page.focus('#field-firstName');
+    await page.evaluate(() => {
+      const f = document.getElementById('field-firstName');
+      f.value = '';
+      f.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.type('#field-firstName', 'Before click');
+    await new Promise((r) => setTimeout(r, 1000));
+
+    await page.click('#app-refresh');
+    await new Promise((r) => setTimeout(r, 120));
+
+    const lockedState = await page.evaluate(() => {
+      const surface = document.getElementById('app-view');
+      const field = document.getElementById('field-firstName');
+      const ae = document.activeElement;
+      return {
+        htmlLocked: document.documentElement.classList.contains('tb-refresh-locked'),
+        inert: !!(surface && surface.inert),
+        activeId: ae && ae.id,
+        activeInSurface: !!(surface && ae && surface.contains(ae)),
+        fieldValue: field ? field.value : null,
+      };
+    });
+    check('finish lock sets inert on editing surface and blurs field',
+      lockedState.htmlLocked && lockedState.inert && !lockedState.activeInSurface
+        && lockedState.fieldValue === 'Before click',
+      JSON.stringify(lockedState));
+
+    // Reproduced failure path: Tab back toward the field, then keyboard type Z.
+    for (let i = 0; i < 4; i += 1) await page.keyboard.press('Tab');
+    await page.keyboard.type('Z');
+    await new Promise((r) => setTimeout(r, 80));
+
+    const afterKeyboard = await page.evaluate(() => {
+      const field = document.getElementById('field-firstName');
+      const surface = document.getElementById('app-view');
+      return {
+        fieldValue: field ? field.value : null,
+        activeId: document.activeElement && document.activeElement.id,
+        inert: !!(surface && surface.inert),
+        activeInSurface: !!(surface && document.activeElement && surface.contains(document.activeElement)),
+      };
+    });
+    check('keyboard Tab+Z during finish lock does not change firstName',
+      afterKeyboard.fieldValue === 'Before click' && afterKeyboard.inert && !afterKeyboard.activeInSurface,
+      JSON.stringify(afterKeyboard));
+
+    // Release held saves so drain/refresh can finish.
+    await page.evaluate(async () => {
+      while (window.__held && window.__held.length) {
+        const fn = window.__held.shift();
+        if (fn) await fn();
+      }
+      await new Promise((r) => setTimeout(r, 200));
+      while (window.__held && window.__held.length) {
+        const fn = window.__held.shift();
+        if (fn) await fn();
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    });
+
+    const afterRelease = await page.evaluate(async () => {
+      const rec = await window.ToolboxDB.getCustomerFile('refresh-probe');
+      return {
+        refreshCalls: window.__refreshCalls,
+        storedAtRefresh: window.__storedAtRefresh,
+        visibleAtRefresh: window.__visibleAtRefresh,
+        finalStored: rec && rec.firstName,
+        writes: window.__writes && window.__writes.slice(),
+      };
+    });
+    check('held save + keyboard lock: refresh sees durable Before click (not Z)',
+      afterRelease.refreshCalls === 1
+        && afterRelease.storedAtRefresh === 'Before click'
+        && afterRelease.visibleAtRefresh === 'Before click'
+        && afterRelease.finalStored === 'Before click',
+      JSON.stringify(afterRelease));
+
+    // Restore real save/refresh for unlock probe.
+    await page.evaluate(() => {
+      if (window.__realSave) window.ToolboxDB.saveCustomerFile = window.__realSave;
+      if (window.__origRefresh) window.ToolboxUpdate.refresh = window.__origRefresh;
+    });
+  }
+
+  // Rejected save: unlock inert and allow real keyboard editing again.
+  {
+    await page.goto(`${origin}/index.html#/file/refresh-probe/edit/customer`, { waitUntil: 'networkidle0' });
+    await page.waitForSelector('#field-firstName', { timeout: 30000 });
+    await new Promise((r) => setTimeout(r, 500));
+
+    const rejected = await page.evaluate(async () => {
+      let refreshCalls = 0;
+      const tu = window.ToolboxUpdate;
+      const origRefresh = tu.refresh.bind(tu);
+      tu.refresh = function () {
+        refreshCalls += 1;
+        return Promise.resolve();
+      };
+      window.ToolboxApp.registerActiveFlush(() => Promise.reject(new Error('save failed')));
+      const btn = document.getElementById('app-refresh');
+      btn.disabled = false;
+      btn.click();
+      await new Promise((r) => setTimeout(r, 100));
+      const surface = document.getElementById('app-view');
+      const restored = !btn.disabled && !/Updating/i.test(btn.textContent || '');
+      const unlocked = !document.documentElement.classList.contains('tb-refresh-locked')
+        && !(surface && surface.inert);
+      tu.refresh = origRefresh;
+      window.ToolboxApp.registerActiveFlush(null);
+      return { refreshCalls, restored, unlocked, text: btn.textContent.trim() };
+    });
+    check('rejected save unlocks finish lock and never calls refresh',
+      rejected.refreshCalls === 0 && rejected.restored && rejected.unlocked,
+      JSON.stringify(rejected));
+
+    await page.focus('#field-firstName');
+    await page.evaluate(() => {
+      const f = document.getElementById('field-firstName');
+      f.value = '';
+      f.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.type('#field-firstName', 'AfterUnlock');
+    const afterUnlockType = await page.evaluate(() => {
+      const field = document.getElementById('field-firstName');
+      const surface = document.getElementById('app-view');
+      return {
+        value: field ? field.value : null,
+        inert: !!(surface && surface.inert),
+      };
+    });
+    check('after rejected-save unlock, keyboard can edit firstName again',
+      afterUnlockType.value === 'AfterUnlock' && afterUnlockType.inert === false,
+      JSON.stringify(afterUnlockType));
   }
 
   await page.setViewport({ width: 1280, height: 820, deviceScaleFactor: 1 });
