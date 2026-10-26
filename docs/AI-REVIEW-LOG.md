@@ -4528,4 +4528,4 @@ Evidence: `/opt/cursor/artifacts/sw-update-ready.json`, `sw-update-ready-phone.p
 
 #### Exact tip
 
- on  / PR #134.
+Implementation (runtime): `59f0f9c46cb7434c4a8149f4eb40e4b304ffbc30` on `cursor/sw-refresh-ready-7b33` / PR #134.
