@@ -881,33 +881,66 @@ body.report-builder-open .canvas {
 .rb-ws__controls .floor-survey-host,
 .rb-ws__controls .rtw-root--controls { display: block; height: auto; }
 
-/* GPT-036: Sheet Layout | Topo peer tabs at the top of the Floor Survey rail. */
+/* GPT-036: Sheet Layout | Topo as folder tabs on the rail's top edge.
+   Rounded tops, flat bottoms, no capsule. The active tab is the white
+   panel; the baseline continues under the inactive tab. */
+.rb-ws__top:has(.rb-ws__task-tabs) {
+  gap: 0;
+  margin-bottom: -10px;
+  padding-bottom: 0;
+  background: #fff;
+}
+.rb-ws__top:has(.rb-ws__task-tabs) + .rb-ws__body {
+  padding-top: 10px;
+  background: #fff;
+}
 .rb-ws__task-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid var(--line, #d9d2c2);
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.04);
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line, #dce1e4);
+  border-radius: 0;
+  background: transparent;
 }
 .rb-ws__task-tab {
   appearance: none;
-  border: 0;
-  border-radius: 7px;
+  position: relative;
+  flex: 0 0 auto;
+  margin: 0 0 -1px;
+  border: 1px solid var(--line, #dce1e4);
+  border-bottom-color: var(--line, #dce1e4);
+  border-radius: 6px 6px 0 0;
+  box-shadow: none;
   min-height: 36px;
-  padding: 6px 8px;
+  padding: 6px 12px;
   font: inherit;
   font-size: 13px;
   font-weight: 650;
-  color: var(--ink-soft, #7a7468);
-  background: transparent;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--navy, #07283d);
+  background: #e5ebee;
   cursor: pointer;
 }
+.rb-ws__task-tab:hover:not(.is-active) {
+  background: #d9e4e9;
+}
+.rb-ws__task-tab:focus {
+  outline: none;
+}
+.rb-ws__task-tab:focus-visible {
+  outline: 2px solid var(--navy, #07283d);
+  outline-offset: -3px;
+}
 .rb-ws__task-tab.is-active {
+  z-index: 1;
   background: #fff;
-  color: var(--ink, #1a1a1a);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  color: var(--navy, #07283d);
+  border-bottom-color: #fff;
+  box-shadow: none;
 }
 .rb-ws__section-label {
   margin: 4px 0 0;
