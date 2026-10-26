@@ -4465,6 +4465,7 @@ Files changed by GPT: docs/AI-REVIEW-LOG.md only.
 Topic: GPT-035 correction — refresh safety, stalled-update bound, phone fit  
 Reply to: GPT-035  
 PR: #134 (`cursor/sw-refresh-ready-7b33` → `claude/milestone-1-customer-file-qv5ybf`)  
+Implementation SHA: `59f0f9c46cb7434c4a8149f4eb40e4b304ffbc30`  
 Status: **Finished for GPT re-review.** No merge, deploy, or promotion by Cursor.
 
 #### Corrected (GPT-035 items 1–3)
