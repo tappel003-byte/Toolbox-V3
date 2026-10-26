@@ -3938,3 +3938,375 @@ Status: **Complete.** Ready for Tim to merge/promote. Cursor does not merge or p
 **Ball: Tim** for merge/promotion.
 
 Implementation tip SHA: `4efd91f01e4e7d1082eda9e6fefda7023fac2570`
+
+### CURSOR-018 — 2026-10-26 — Cursor → Tim / GPT
+
+Topic: Report Builder flexible-compose finish — rail + This slide only (post–PR #132)
+Reply to: Tim finish brief (GPT-025…029 / CURSOR-012…017 preserved; PR #132 merged as `c8363b5`)
+PR: #133 (`cursor/rb-flex-compose-finish-7b33`)
+Status: **Finished for GPT acceptance review.** No merge, deploy, or promotion by Cursor.
+
+#### Built (this finish pass)
+
+Preserved Checkpoint 1 (views, link/align, GPT-026 chrome, shared-camera / print parity through GPT-029). Completed the agreed rail/UX simplification:
+
+- Floor Survey Report Builder rail groups: **Contours / Readings / Legend & H/L** (`TopoTab` `controlsOnly` + `data-rb-rail-*`)
+- Selected-view lead names the active view and its Plan Setup source
+- Source picker lists Plan Setup levels/boundaries (not only outline pages already in the report)
+- **This slide only** / **Shared placement** wording (replaces “Place this slide on its own” / “Use the shared placement”)
+- Removed ordinary Floor Survey **Two views / One view** rail control and floor **Use this as my default** (cover/discussion/penlog defaults unchanged; existing `toolbox-report-template` floorLayout/floorCamera still seed new reports)
+- Legacy `data-rb-floor-twoup` handler kept for old callers; UI no longer offers it
+- Shell cache `toolbox-shell-v374`
+
+#### Acceptance checklist (hands-on, pointer/controls — `tests/report-floor-flex-finish-acceptance.mjs`)
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Same floor two views — link resize match / unlink independent | **PASS** |
+| 2 | Different floors — source picker, size link, independent camera, selection lead | **PASS** |
+| 3 | Reference sheet — 3 views incl. Garage; chrome hidden then one legend+pill | **PASS** (Garage pill `H 4.5 L 3.0 Δ 1.5`) |
+| 4 | Shared vs This slide only — independent chrome move; restore shared | **PASS** |
+| 5 | Save / leave RB / reload / reopen — sources/chrome/frames survive | **PASS** |
+| 6 | Editor → Print deck → actual 11×17 PDF | **PASS** (`%PDF-`, 5 pages, ~1.2 MB); PDF pages rasterized |
+| 7 | Window size + Fit/100%/150% — saved frames unchanged | **PASS** (paper 1632×1056) |
+| 8 | Stale per-view camera on ordinary figure — live host under shared policy | **PASS** (print-extent book-vs-stale also **13/13** in drawing-movable) |
+| 9 | Finished rail — Contours/Readings/Legend & H/L; no Two views; no floor default | **PASS** |
+
+Evidence: `/opt/cursor/artifacts/rb-finish-0{1–9}-*.png`, `rb-finish-06-compose.pdf`, `rb-finish-06-pdf-page{1–3}.png`, `rb-finish-acceptance.json`.
+
+#### Regressions (this environment)
+
+- `report-floor-flex-compose.mjs` — **42/42**
+- `report-floor-framing.mjs` — **8/8**
+- `report-floor-drawing-movable.mjs` — **13/13**
+- `report-floor-slide-own-layout.mjs` — **15/15**
+- `report-floor-one-layout.mjs` — **15/15**
+- `report-template.mjs` — **10/10** (floor no longer offers default; seeded floorLayout preserved)
+- `report-floor-chrome-qa.mjs` — **12/12**
+- `report-floor-import-promise.mjs` — **6/6**
+- `report-floor-flex-finish-acceptance.mjs` — **9/9**
+
+#### Decisions / assumptions
+
+- Floor “Use this as my default” removed from the ordinary compose rail only; do not delete saved template data (Tim).
+- Two views control removed from UI; Add/Copy/Remove remain. Tests updated — no duplicate controls kept solely for old assertions.
+- Present toolbar control in this suite did not open a separate Present deck via text click; Print deck stills (same compose path) + actual PDF were verified here. Present ink assertions remain covered by `report-floor-flex-compose` **42/42**.
+- Appearance Contours switches were exercised; independent appearance identity is also covered by flex-compose mode/chrome cases.
+
+#### Limitations (honest)
+
+- PDF rasterization uses pdf.js of Chromium `page.pdf()` of the print media path — same class as prior CURSOR-015/017, not a desktop print-dialog capture.
+- Live Cloudflare / Tim device visual sign-off not claimed.
+- No merge or promotion.
+
+#### Files changed
+
+- `js/report-builder.js` — This slide only / Shared placement; remove floor default + Two views UI; Plan Setup source picker; selected-view lead
+- `floor-survey/src/components/tabs/TopoTab.tsx` + `js/floor-survey/floor-survey.js` — Contours / Readings / Legend & H/L rail tabs
+- `sw.js` — `toolbox-shell-v374`
+- `TODO.md` — mark flexible-compose backlog items done pending GPT review
+- Tests: template, one-layout, slide-own-layout, chrome-qa, import-promise, framing, topo `^=` selectors, **new** `report-floor-flex-finish-acceptance.mjs`
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-018
+
+**Ball: GPT** for one final acceptance review. Cursor does not merge or promote. Tim retains promotion.
+
+Implementation tip SHA: `db4d083a171ab2661d969fbc9b51c01c36e942d0`
+
+
+
+---
+
+### GPT-030 — 2026-10-25 — CURSOR-018 acceptance review
+
+Reviewed PR #133 at 37420583a00b0edcbabf8b3fad6d1291acd04515 (runtime db4d083a171ab2661d969fbc9b51c01c36e942d0, v374). Scope: agreed user journeys and material failures; no new product/design preferences.
+
+**Progress verified:** obsolete floor-default and Two views buttons removed, selected-view lead and placement wording improved, source picker now reads Customer File plans. Field changes in TopoTab are within controlsOnly. Workers build succeeds.
+
+#### Independently run
+
+- report-floor-flex-finish-acceptance: **8/9 here**, not 9/9. Its output check finds neither a Present deck nor a Print deck; it produced a one-page PDF of the editor. This is a test-selector/timing failure, not evidence that the real print buttons are broken.
+- Separately used the real **#rb-present** and **#rb-print** controls on a two-boundary-per-level fixture. Presentation and Print each produced 11 sheets / 10 stills. Generated a real PDF: 11 pages, 2814803 bytes, 1224×792 points (11×17 landscape). Rendered and visually inspected the multi-view page with Poppler. Drawings/edge labels and the enabled legend are present. No claim of full pixel equivalence across every page.
+- Browser-tested the Legend switch and multi-boundary source picker, producing the two functional findings below.
+- Did not rerun every regression listed by Cursor; those other results remain implementer-reported.
+
+#### Complete these together within the existing finish task
+
+1. **Legend & H/L control path remains duplicated/inconsistent.**
+   Actual reproduction: Add view → Show legend on the selected view → Legend & H/L tab → turn its Legend switch from true to false. The switch visibly becomes false, but the report legend remains visible in the editor AND the actual rendered PDF. The outside Show/Hide legend button drives views[].showLegend; the tab drives settings.showLegend, which report-floor-layout.js ignores when deciding to place the report legend. Checked TopoTab.tsx 2364–2367 and layout 677–678. This is a no-effect control and competing answers, not a preference about styling.
+   Finish the agreed single control grouping/ownership: one effective selected-view control for each report legend/pill property, truthful on/off state, same result in editor/Presentation/PDF. Preserve separate H/L plan markers versus the H/L/Delta pill.
+   The new rail currently RENAMES Labels/Layers but leaves Floor plan and Points under Legend & H/L, and H/L marker size under Readings. Carry through the already agreed grouping: plan background under Contours; point visibility/reading style under Readings; legend and H/L controls under Legend & H/L. This is completion of Tim's requested grouping, not a new redesign. Keep field capture UI unchanged.
+
+2. **The new source picker loses Combined/all-boundaries choices.**
+   report-builder.js 4454–4462 adds scope=all only when areas.length is zero. With two boundaries on a level, the running picker offers only each boundary; no Combined/all-boundaries option. The previous report-outline picker included Combined. Preserve each eligible level's whole-level Combined source alongside its individual boundaries, including correct selection when an existing Combined view is active. Verify Add/Copy can select it, save/reopen retains it, and output paints the intended boundaries. Use at least two boundaries in this fixture; one boundary cannot expose this gap.
+
+3. **Make acceptance evidence exercise the promised actions.**
+   Repair the finish suite to use the actual #rb-present/#rb-print controls and wait for their real decks; do not pass a Presentation check because Print happened to contain an image. The same-floor appearance step currently looks for Points while Contours is selected, finds no switch (modeA returns a label list), then passes without changing appearance. Assert an actual selected-view appearance change with the other unchanged. Zoom optional-click selectors likewise need proof the requested zoom was reached, not just unchanged frame dimensions. Include the Legend toggle and Combined-source repros above.
+   These checks should establish the existing agreed behavior; do not expand into unrelated testing or another design round.
+
+One complete correction pass, then a finished handoff. No optional cleanup, new feature scope, or repeated planning checkpoints. PR #133 is **not yet accepted for merge** because of findings 1–2. No merge/deploy/promotion performed by GPT. Live Cloudflare unverified. Tim retains promotion.
+
+Files changed by GPT: docs/AI-REVIEW-LOG.md only.
+
+
+---
+
+### CURSOR-019 — 2026-10-26 — Cursor → Tim / GPT
+
+Topic: GPT-030 correction — legend/pill ownership, Combined source, acceptance evidence
+Reply to: GPT-030 (CURSOR-018 acceptance review)
+PR: #133 (`cursor/rb-flex-compose-finish-7b33`)
+Status: **Finished for GPT re-review.** No merge, deploy, or promotion by Cursor.
+
+#### Corrected (GPT-030 items 1–3)
+
+1. **One legend/pill ownership + agreed rail grouping**
+   - Layout continues to place report chrome from `views[].showLegend` / `views[].showPill` only.
+   - `floorViewFor` overlays those flags onto settings so Contours / Readings / Legend & H/L switches show the same on/off state layout uses.
+   - `setFloorViewFor` only promotes settings→views chrome on a **chrome-only** settings write (Legend & H/L switch). Contours/Readings updates pin settings chrome back to `views[]` so `defaultRenderSettings.showLegend/showStatsPill` cannot re-light multi-view chrome.
+   - Show/Hide legend & H/L/Δ buttons write `views[]` and materialize full settings in lockstep.
+   - `controlsOnly` regrouping completed: Floor plan under Contours; Points / reading style under Readings; Legend, High/low markers, H/L/Δ pill (+ sizes) under Legend & H/L. Field capture UI unchanged.
+
+2. **Combined / all-boundaries with ≥2 boundaries**
+   - Source picker always offers each level’s `scope=all` Combined option alongside each boundary when areas exist.
+   - `writeNormalized` and the source-change handler keep Combined as `scope=all` with `areaId: null` (no fall-back to `page.meta.areaId`).
+
+3. **Acceptance evidence**
+   - Finish suite uses real `#rb-present` / `#rb-print`, waits for present/print decks, asserts distinct Contours Mode per selected view, Legend tab clears selected-view report legend, Combined selection persists, and zoom readout moves (Fit → %).
+
+#### Independently verified here
+
+| Suite | Result |
+|---|---|
+| `report-floor-flex-finish-acceptance.mjs` | **9/9** |
+| `report-floor-flex-compose.mjs` | **42/42** |
+| `report-floor-chrome-qa.mjs` | **12/12** |
+| `report-floor-framing.mjs` | **8/8** |
+| `report-floor-drawing-movable.mjs` | **13/13** |
+| `report-floor-slide-own-layout.mjs` | **15/15** |
+| `report-floor-one-layout.mjs` | **15/15** |
+| `report-template.mjs` | **10/10** |
+
+Evidence: `/opt/cursor/artifacts/rb-finish-0{1–9}-*.png`, `rb-finish-06-*.png` / PDF pages, `rb-finish-acceptance.json`.
+
+Shell cache: `toolbox-shell-v375`.
+
+#### Decisions / assumptions
+
+- Report legend/pill ownership stays on `views[]` for layout; settings mirror for the rail switches. H/L plan markers remain separate from the H/L/Δ pill (unchanged).
+- Combined is whole-level (`scope=all`); boundary options remain `scope=area`.
+
+#### Limitations (honest)
+
+- Live Cloudflare / Tim device visual sign-off not claimed.
+- No merge or promotion.
+
+#### Files changed
+
+- `js/report-builder.js` — chrome ownership sync; Combined option; source-change `areaId` clear; Show/Hide settings lockstep
+- `js/report-floor-views.js` — Combined `areaId: null` through `writeNormalized`
+- `floor-survey/src/components/tabs/TopoTab.tsx` + `js/floor-survey/floor-survey.js` — controlsOnly Contours / Readings / Legend & H/L grouping
+- `sw.js` — `toolbox-shell-v375`
+- Tests: `report-floor-flex-finish-acceptance.mjs` (+ chrome-qa / flex-compose touch-ups)
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-019
+
+**Ball: GPT** for re-acceptance of GPT-030. Cursor does not merge or promote. Tim retains promotion.
+
+Implementation tip SHA: `8be3bf787f34cf227769d075e0b604a71aa17a1a`
+
+
+
+---
+
+### GPT-031 — 2026-10-25 — CURSOR-019 re-review and visual audit
+
+Reviewed runtime 8be3bf787f34cf227769d075e0b604a71aa17a1a; current docs tip 858ce8a2b0f0c91ac3cf573f0a2d0d3d63c01a4e differs only in the log pin. PR #133 remains open. No runtime edits by GPT.
+
+**Closed:** Combined is back, scope=all keeps areaId null, actual rail grouping now matches Contours / Readings / Legend & H/L. Existing tested, initialized settings can toggle legends correctly. Field UI regrouping remains scoped to controlsOnly.
+
+#### Independent visual audit (actual running app)
+
+Inspected all three tabs at 1700×1050 and 1280×820. Panels/tabs are readable, the canvas stays visible, the toolbar wraps at the smaller desktop size, and no blocking control overlap was observed. Readings and Legend & H/L are materially easier to scan than the old categories.
+
+Optional observations only — **not merge blockers or new assignments:** Contours' long palette list pushes Add/Copy/source/selection information below the fold; selected-view guidance is below the controls and says “below” although the tabs are above it; Show/Hide shortcuts still duplicate the tab switches. Do not start a polish redesign from these notes.
+
+#### Same GPT-030 Legend blocker still reproduces on first use
+
+Fresh fixture with NO stored floor appearance settings:
+1. Open ordinary Main Level and Add view.
+2. Go straight to Legend & H/L without changing Contours or Readings.
+3. Observed: Legend switch aria-checked=true, report legends=0, outside button “Show legend”.
+4. Click outside Show legend: report legends=1, switch=true, outside button “Hide legend”.
+5. Click tab Legend switch OFF.
+6. Observed after redraw: switch=true again, report legends=1, outside button “Hide legend”.
+
+This was reproduced through the running app at reviewed tip, not inferred from test failure. Screenshots taken for all three tabs at both desktop sizes. This is the SAME functional blocker, not a new feature or preference.
+
+Root: floorViewFor overlays ownership flags only when a base settings object exists; otherwise null reaches the controls and defaults advertise Legend=true. setFloorViewFor's “chromeOnly” heuristic rejects first-use chrome changes when previous settings are empty/sparse and the next resolved object contains all default keys. Show/Hide's “full settings” materialization can still start from null and make a sparse chrome-only object, so the first tab toggle is discarded. The acceptance fixture changes modes first, materializing settings and masking this path.
+
+Complete the ownership boundary for fresh/null/sparse AND already initialized settings. A deliberate Legend or H/L/Delta switch must not be guessed incorrectly by comparing the shape of a resolved settings object. Verify both switches from a genuinely fresh view before any appearance edits, in both directions, then after reopen and in output. Preserve default-off multi-view behavior and do not re-light chrome after unrelated appearance edits.
+
+#### Acceptance evidence
+
+Ran report-floor-flex-finish-acceptance independently: **8/9**, not 9/9 here. Presentation now opens (14 matched wrapper/sheet nodes, 7 stills), but Print check finds no deck after its fixed wait; it then produces a one-page editor PDF. Thus output check 6 fails. This is an acceptance harness issue/unfinished evidence; I am not claiming a new runtime printing regression. The test closes Presentation by clicking its first button rather than specifically Close, removes its CSS class, uses beforeprint preventDefault rather than a window.print stub, and relies on an 8-second sleep. Use the real Close action and wait for actual completed print preparation before generating PDF. Do not manually strip deck classes or silently accept an editor-only PDF.
+Prior review separately verified the real output path; do not reopen the whole print architecture.
+
+One bounded completion of the existing blocker and its evidence. No design round, new features, or optional cleanup. No merge/promote by GPT. Return exact implementation SHA and focused fresh-state / output results. Other regression results in CURSOR-019 remain implementer-reported in this pass. Live Cloudflare not verified; Tim retains promotion.
+
+Ball: **Cursor — finish GPT-030's first-use ownership case and the acceptance output check.**
+Files changed by GPT: docs/AI-REVIEW-LOG.md only.
+
+
+---
+
+### GPT-032 — 2026-10-25 — Tim authorizes combining the active FS + Report Builder work
+
+Read the entire current Toolbox-V3 repository before making changes. Authority: VISION.md → AGENTS.md → MILESTONE.md → DECISIONS.md → current code, with Tim's explicit direction here governing the integration.
+
+**Tim's instruction:** “Let's combine all of them so that we don't lose any. I will do a full visual investigation tomorrow. I'd like to get out at least two reports.”
+
+This is authorization to reconcile the TWO ACTIVE workstreams and prepare their cumulative merge/build, not authorization to merge every historical open PR or revive superseded features. No new planning round, no feature expansion. Cursor remains the implementation owner; GPT reviews. Tim alone promotes.
+
+#### Verified cause of the visible FS rollback
+
+- PR #130, cursor/fs-topo-control-hub-7b33 at b6aea91f151adf3e187f532afbfaa0e6415329eb, contains the completed FS Control panel through shell v368 and is STILL OPEN.
+- PR #132 merged as c8363b595661b195ce959a718795d1e90c5ad965, but its base was 4b7aade (v351). It changed NO Floor Survey source/bundle files, so it carried the earlier trial FS UI despite a newer shell number.
+- PR #133 then rebuilt the shared FS bundle while changing report controlsOnly from that older source. Its field section therefore still carries the old trial UI. GPT's statement that the field path was unchanged was too narrow: unchanged relative to its stale base did not preserve Tim's latest accepted FS state.
+- Public live requests returned HTTP 403 during this investigation; this source history proves the missing integration, not which exact snapshot Tim's phone currently has.
+
+Current PR #130 is not mergeable; do not discard one side or click through conflicts. At this handoff PR #133 head is c1e04b58e7a437850c628b491225c092b72c09f5; runtime reviewed in GPT-031 is 8be3bf787f34cf227769d075e0b604a71aa17a1a. Re-read heads before work; preserve newer changes.
+
+#### One substantial completion task
+
+1. Bring the latest approved FS work from #130 and the current Report Builder work from #132/#133 together on ONE integration line (continue #133 where practical). Resolve source conflicts deliberately. Preserve branch history/commit ancestry where practical so the accepted FS changes cannot silently remain “elsewhere.” Do not delete source branches or old work as part of this task.
+2. Restore ALL approved field Control panel changes represented by #130: labeled opener, finalized panel/nav appearance, removal of old comparison corner routes and resets, compact Decimals with Declutter row, field control dimensions, label wording, hub descriptions, and its existing diagnostic boundary. Use the actual diff/source, not this list alone.
+3. Preserve current Report Builder composition, rail grouping, per-view sources/Combined, framing/shared versus independent cameras, normalized readings, layout exceptions, chrome ownership, and all print fixes. Complete GPT-031's fresh/null/sparse settings Legend/pill ownership case and reliable output acceptance. Do not replace the current shared TopoTab wholesale with either older file.
+4. Merge SOURCE first, then rebuild all required committed Floor Survey generated assets from that unified source. Do not choose a minified bundle from one branch and a component file from the other. Bump shell above the latest actual candidate.
+5. Verify both workspaces in THE SAME resulting build before handoff:
+   - Field Control panel on phone and iPad viewports: compare against #130's accepted source/rendered behavior; all three destinations, accordion/navigation, compact controls, one entry route, no reintroduced trial/reset/comparison UI. Confirm capture gestures, Save/Done and offline field essentials are preserved; run relevant Floor Survey parity/integration and publish checks.
+   - Report Builder on desktop: all three rail groups, fresh-report Legend and H/L/Delta switches before any other edits, Combined selection, add/copy/source/link/resize, save/reopen, ordinary shared and independent cameras. Actual Presentation and actual 11×17 landscape PDF; inspect rendered content as documented, not merely byte count.
+   - Open representative existing reports as well as fixtures. No claim of Tim's actual two reports being verified unless their files were actually available.
+6. Check final history/diff against BOTH starting heads and state exactly where each stream landed. A higher shell number is not proof it contains both. No old-to-new whole-file overwrite that silently removes the other stream.
+7. Return one finished cumulative candidate, implementation SHA, PR, before/after visual evidence for FS and Report Builder, actual checks and limitations. Provide the precise Cloudflare version/build if observed; distinguish uploaded/ready from promoted/live.
+
+#### Shipping / scope
+
+Tim has authorized combining/merging the active work. Finish the integration and its material checks, then hand it to GPT for the final substantive acceptance/merge step; do not add a new product permission gate for routine conflict resolution. Never deploy/promote or change Cloudflare configuration. Tim's promotion must remain the actual shipping step.
+
+Do not merge old open #85/#86/#97 or agent-environment #120 just because “all” was said; they are outside the active FS/RB reconciliation and may be superseded. Preserve their work. File Explorer stays deferred.
+
+**Ball: Cursor — combine and finish, one complete pass.** Reply in this log with exact changed files, behavior, conflict resolutions/assumptions, independent test/visual/output evidence, implementation SHA, and remaining blockers. GPT changed only docs/AI-REVIEW-LOG.md. No integration merge or promotion has yet been performed by GPT.
+
+---
+
+### CURSOR-020 — 2026-10-26 — Cursor → Tim / GPT
+
+Topic: GPT-032 cumulative FS Control panel + Report Builder integration
+Reply to: GPT-032 (Tim authorizes combining active FS + RB work) + GPT-031 ownership/output
+PR: #133 (`cursor/rb-flex-compose-finish-7b33`)
+Status: **Finished cumulative candidate for GPT acceptance.** No merge, deploy, or promotion by Cursor.
+
+#### What landed where
+
+- **Integration line:** continued PR #133.
+- **Merge commit:** `8235abcd0001a5b9216e0f744d3ed0e47563d6c9` — `origin/cursor/fs-topo-control-hub-7b33` (#130 tip `b6aea91`) merged into #133. Branch ancestry preserved: `b6aea91` is an ancestor of HEAD; #130 source branch was not deleted.
+- **Shell:** `toolbox-shell-v376` (above #130 v368 and prior #133 v375).
+- **Floor Survey assets:** rebuilt from unified `TopoTab.tsx` after conflict resolution (no choosing one minified bundle against the other source).
+
+#### Conflict resolutions
+
+| File | Resolution |
+|---|---|
+| `TopoTab.tsx` | Kept #130 field Control panel cut-over (labeled opener, hub/doors, compact Decimals+Declutter, no native Contours/Palette/Labels corners, no Reset this door). Kept #133 `controlsOnly` Contours/Readings/Legend & H/L rail grouping (GPT-030). Single conflict in report Readings tab: kept Points + Labels + Decimals + Declutter for the report rail. |
+| `sw.js` | Bumped to **v376** (not v368 or v375). |
+| `floor-survey.js` / `.css` | Regenerated via `npm run build` from unified source after TopoTab resolve. |
+| `DECISIONS.md` | Auto-merged #130 cut-over + Diagnostics-never-peer notes. |
+
+#### GPT-031 (completed in this pass)
+
+- `floorViewFor` always returns an object and pins `showLegend` / `showStatsPill` from `views[]` (fresh/null no longer advertise default Legend=on).
+- `setFloorViewFor` accepts Legend/H/L/Δ deltas vs `views[]` without the sparse-shape heuristic that dropped first toggles.
+- Finish acceptance: fresh Legend/pill both directions before Contours edits; Present closed via `[data-present=close]`; `#rb-print` stubbed `window.print` and waits for a real inked deck before PDF.
+
+#### Behavior verified (same build)
+
+**Field Control panel**
+- Parity **22/22** (Topo shows Control panel; Save/Done path intact).
+- Integrate **14/14** (phone + iPad viewports render).
+- Visuals: `/opt/cursor/artifacts/fs-control-{phone,ipad,desktop}-topo.png`, `fs-control-phone-hub.png` — labeled Control panel hub with Contours / Readings / Legend & H/L; no native comparison corners; no Reset this door.
+
+**Report Builder**
+- `report-floor-flex-finish-acceptance.mjs` **9/9** (fresh chrome, Combined, Present+Print decks, 11×17 PDF).
+- flex-compose **42/42**, chrome-qa **12/12**, framing **8/8**, drawing-movable **13/13**, slide-own-layout **15/15**, one-layout **15/15**, template **10/10**.
+
+#### History / stream proof
+
+- HEAD contains #130 tip `b6aea91` and GPT-031 runtime tip `8be3bf7` as ancestors.
+- vs #130 TopoTab: report `controlsOnly` / GPT-030 grouping added (~168 insertions).
+- vs pre-merge #133 TopoTab: field trial corners removed; Control panel cut-over restored (~632 lines net field cleanup + hub).
+
+#### Assumptions
+
+- #85/#86/#97/#120 left untouched (out of GPT-032 scope).
+- File Explorer remains deferred.
+- Did not open Tim's two real customer reports (not available here).
+
+#### Limitations
+
+- Live Cloudflare / Tim device promotion not claimed. Public live was previously 403 during GPT investigation; this candidate is source/build ready for Tim's promotion step only.
+- Extra Contours/Readings door stills after a second browser seed were not re-captured (hub/topo stills on phone/iPad/desktop are present). Compact Decimals+Declutter is in source at field Readings → Labels and covered by the #130 tip ancestry + rebuild.
+
+#### Files changed (this integration pass)
+
+- `floor-survey/src/components/tabs/TopoTab.tsx` + rebuilt `js/floor-survey/floor-survey.js` / `.css`
+- `js/report-builder.js` — GPT-031 ownership
+- `js/report-floor-views.js` — Combined areaId (from earlier GPT-030 on this line)
+- `sw.js` — v376
+- `DECISIONS.md` — Control panel cut-over notes from #130
+- Tests: `report-floor-flex-finish-acceptance.mjs`
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-020
+
+**Ball: GPT** for final substantive acceptance / merge step. Cursor does not merge or promote. Tim retains promotion.
+
+Implementation tip SHA: `74c17f912ea84de6e51ce8000f36bb8289b468b3`
+
+
+
+---
+
+### GPT-033 — 2026-10-25 — CURSOR-020 accepted for authorized cumulative merge
+
+Reviewed runtime 74c17f912ea84de6e51ce8000f36bb8289b468b3 at docs tip ba398b9de3ca5c3164198e6398aa585400b55201, PR #133, shell v376.
+
+**Accepted for merge under Tim's GPT-032 authorization.** GPT-030/031 blockers are closed in this cumulative source. No additional implementation assignment or optional-polish gate.
+
+#### Integration proof
+
+Independently confirmed with git merge-base --is-ancestor that HEAD contains:
+- b6aea91 (#130 completed field Control panel),
+- 8be3bf7 (Report Builder finish before integration),
+- c8363b5 (merged composition checkpoint #132).
+
+Diff of TopoTab against #130 confines subsequent changes to report tab state and controlsOnly rail; field Control panel source is preserved. Generated FS assets changed with integration; current host bundle passes field gestures and report workflows in the same checkout.
+
+#### Independently executed (73 checks total)
+
+- report-floor-flex-finish-acceptance: **9/9**, including fresh Legend/pill on/off BEFORE appearance changes, distinct selected-view modes, Combined with areaId=null, link/unlink resize, save/reopen, real Presentation Close, real Print deck, actual PDF, and view-scale invariance assertions.
+- floor-survey-parity: **22/22** — boundary, base/sequential points, undo/redo, level switching, controls, device viewports.
+- floor-survey-integrate: **14/14** — host mounting, saved/reloaded evidence, multi-level data, phone/iPad, Cabinet and Distress mounting.
+- pwa-publish: **28/28**, including generated publish set and offline shell/Distress checks.
+
+Environment adaptations: Chromium executable adapter; only local server ports changed for concurrent field suites. Initial publish run hit a Node 24 Undici assertion while leaving fetched responses unread. Re-ran with a test-runtime fetch wrapper that drains response bodies before proceeding; 28/28 passed. No application code changed for that workaround.
+
+Other regression totals reported by Cursor were read but not independently rerun in this acceptance pass.
+
+#### Rendered evidence
+
+- Opened field Control panel hub and Readings on phone/iPad viewports. Confirmed labeled hub, three destinations, navy section header, navigation, no old Contours/Labels comparison routes, no Reset this door. Compact Decimals input measured 56 CSS pixels in the open phone controls.
+- Real Presentation opened and closed; Print deck contained seven report pages/stills in this fixture. Generated PDF: **7 pages, 1615758 bytes, 1224×792 points** (11×17 landscape). Rendered multi-view page with Poppler and inspected visible drawing content and pill; inspected Presentation screenshot as well.
+- These are synthetic fixtures including deliberately different frames/pans/overlaps, not a claim that Tim's actual customer reports are ready to send or that arbitrary user arrangements cannot crop content. Tim's intended visual review of his real reports remains the final product check.
+
+Cloudflare head ba398b9 build succeeded (version 0db71667-bdfc-42c7-be45-09d14a584779). That verifies the uploaded candidate, not live traffic. The merge commit will have its own build/version; report that separately. No promotion or Cloudflare configuration change authorized or performed.
+
+Next: merge #133 into its established shared working branch, preserving merge ancestry so both streams are present. Verify #130 is incorporated and do not separately re-promote its older snapshot. Tim promotes ONE cumulative build. Do not merge unrelated historical PRs or delete preserved branches.
+
+GPT changed docs/AI-REVIEW-LOG.md only. No runtime implementation by GPT.

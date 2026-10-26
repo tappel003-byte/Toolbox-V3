@@ -185,8 +185,8 @@ const near = (a, b, slack = 0.8) => Math.abs(a - b) <= slack;
 const samePlace = (a, b) => !!a && !!b && near(a.x, b.x) && near(a.y, b.y);
 
 check('Main Level opens', await openSheet('Floor · Main Level'));
-check('the rail offers to place this slide on its own',
-  (await railLabels()).some((l) => /place this slide on its own/i.test(l)),
+check('the rail offers This slide only',
+  (await railLabels()).some((l) => /^This slide only$/i.test(l)),
   (await railLabels()).join(' | '));
 
 // Arrange the shared placement first, from Main Level.
@@ -202,16 +202,16 @@ check('it is following the shared placement to start with',
 
 await page.evaluate(() => {
   [...document.querySelectorAll('.rb-panel .btn')]
-    .find((b) => /place this slide on its own/i.test(b.textContent || '')).click();
+    .find((b) => /^This slide only$/i.test(b.textContent || '')).click();
 });
 await new Promise((r) => setTimeout(r, 2000));
 
 check('the slide says it is on its own',
   await page.evaluate(() => [...document.querySelectorAll('.rb-panel .rb-panel__lead')]
-    .some((p) => /placed on its own/i.test(p.textContent || ''))),
+    .some((p) => /This slide only/i.test(p.textContent || ''))),
   '');
 check('and offers to put it back',
-  (await railLabels()).some((l) => /use the shared placement/i.test(l)),
+  (await railLabels()).some((l) => /^Shared placement$/i.test(l)),
   (await railLabels()).join(' | '));
 
 const atHandover = await pieces();
@@ -243,7 +243,7 @@ check('and the slide on its own ignored the shared move',
 // Put it back.
 await page.evaluate(() => {
   [...document.querySelectorAll('.rb-panel .btn')]
-    .find((b) => /use the shared placement/i.test(b.textContent || '')).click();
+    .find((b) => /^Shared placement$/i.test(b.textContent || '')).click();
 });
 await new Promise((r) => setTimeout(r, 2000));
 const restored = await pieces();

@@ -84,8 +84,17 @@
     out.id = typeof src.id === 'string' && src.id ? src.id : ('v' + index);
     out.canvasId = src.canvasId != null && src.canvasId !== '' ? src.canvasId : fromMeta.canvasId;
     out.epochId = src.epochId != null ? src.epochId : fromMeta.epochId;
-    out.areaId = src.areaId != null ? src.areaId : fromMeta.areaId;
     out.scope = src.scope || fromMeta.scope || 'all';
+    // Combined (scope=all) must keep areaId null. `!= null` treated intentional
+    // null as missing and fell back to page.meta.areaId, so Combined never stuck
+    // (GPT-030).
+    if (out.scope === 'all') {
+      out.areaId = null;
+    } else if (src.areaId != null && src.areaId !== '') {
+      out.areaId = src.areaId;
+    } else {
+      out.areaId = fromMeta.areaId;
+    }
     out.settings = src.settings != null ? src.settings : null;
     // Keep frame object identity when present so live drag state is not orphaned mid-gesture.
     var nextFrame = normalizeFrame(src.frame || defaultFrame(index, count));

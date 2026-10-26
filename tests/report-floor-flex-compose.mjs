@@ -438,6 +438,8 @@ check('independent multi-view pan does not replace shared floorCamera',
 void pan;
 
 // Enable per-view H/L/Δ (and legend) — GPT-027 #2.
+// GPT-030: chrome buttons and Legend & H/L tab share one ownership (views[] +
+// settings stay in lockstep). Prefer the rail chrome buttons here.
 await page.evaluate(() => {
   document.querySelector('[data-rb-topo-frame="0"]')
     ?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));

@@ -3248,11 +3248,24 @@
     function floorViewFor(page, slot) {
       var at = typeof slot === 'number' ? slot : floorSlot(page);
       var view = floorViewSpec(page, at);
-      if (view && view.settings) return view.settings;
-      var meta = (page && page.meta) || {};
-      if (at === 1) return meta.floorView2 || meta.floorView || floorView;
-      if (meta.floorView) return meta.floorView;
-      return floorView;
+      var base = null;
+      if (view && view.settings && typeof view.settings === 'object') {
+        base = view.settings;
+      } else {
+        var meta = (page && page.meta) || {};
+        if (at === 1) base = meta.floorView2 || meta.floorView || floorView;
+        else if (meta.floorView) base = meta.floorView;
+        else base = floorView;
+      }
+      // GPT-030/031: never hand the rail a null settings object (defaults would
+      // advertise Legend=true while multi-view views[] chrome is off). Always
+      // return an object, and pin showLegend / showStatsPill to views[].
+      var synced = Object.assign({}, (base && typeof base === 'object') ? base : {});
+      if (view) {
+        if (typeof view.showLegend === 'boolean') synced.showLegend = view.showLegend;
+        if (typeof view.showPill === 'boolean') synced.showStatsPill = view.showPill;
+      }
+      return synced;
     }
     function setFloorViewFor(page, next, slot) {
       if (!page) {
@@ -3265,10 +3278,36 @@
       if (viewsApi) {
         var list = viewsApi.ensurePageViews(page);
         if (list[at]) {
-          list[at].settings = next;
+          var stored = next;
+          // GPT-030/031: views[] owns report legend/pill. TopoTab update() sends
+          // one intentional patch at a time on top of resolved settings that
+          // already mirror views[] via floorViewFor — so a showLegend /
+          // showStatsPill delta vs views[] is a deliberate switch, even on a
+          // fresh/null/sparse settings object. Contours/Readings patches keep
+          // the same chrome in resolved, so they do not move views[].
+          if (next && typeof next === 'object') {
+            stored = Object.assign({}, next);
+            if (typeof next.showLegend === 'boolean'
+                && typeof list[at].showLegend === 'boolean'
+                && next.showLegend !== list[at].showLegend) {
+              list[at].showLegend = next.showLegend;
+            }
+            if (typeof next.showStatsPill === 'boolean'
+                && typeof list[at].showPill === 'boolean'
+                && next.showStatsPill !== list[at].showPill) {
+              list[at].showPill = next.showStatsPill;
+            }
+            if (typeof list[at].showLegend === 'boolean') {
+              stored.showLegend = list[at].showLegend;
+            }
+            if (typeof list[at].showPill === 'boolean') {
+              stored.showStatsPill = list[at].showPill;
+            }
+          }
+          list[at].settings = stored;
           // Keep legacy fields in sync for older readers / migration safety.
-          if (at === 0) page.meta.floorView = next;
-          if (at === 1) page.meta.floorView2 = next;
+          if (at === 0) page.meta.floorView = stored;
+          if (at === 1) page.meta.floorView2 = stored;
           return;
         }
       }
@@ -4377,19 +4416,16 @@
           var onItsOwn = floorSlideOnItsOwn(page);
           var lockHint = document.createElement('p');
           lockHint.className = 'rb-panel__lead';
+          lockHint.setAttribute('data-rb-floor-own-hint', onItsOwn ? 'own' : 'share');
           lockHint.textContent = onItsOwn
-            ? 'This slide is placed on its own. Moving the plan, the colour '
-              + 'scale, the readings or the aerial here changes this slide only.'
-            : 'The plan, the colour scale, the readings and the aerial sit in one '
-              + 'place on every Floor Survey slide. Move one here and it moves on '
-              + 'all of them. Contours and palette stay per slide.';
+            ? 'This slide only — moving the plan, colour scale, readings or aerial '
+              + 'here changes this slide alone.'
+            : 'Shared placement — the plan, colour scale, readings and aerial sit in '
+              + 'one place on every Floor Survey slide. Contours and palette stay per slide.';
           wrap.appendChild(lockHint);
-          // A Combined figure carries no colour scale and no readings pill --
-          // they go in the rail -- so its left column is free and the plan
-          // may want the middle of it. Tim: "on the combined view, I would
-          // probably put it more towards the middle."
+          // Tim finish brief: simple This slide only on/off (not "Use this as my default").
           wrap.appendChild(railButton(
-            onItsOwn ? 'Use the shared placement' : 'Place this slide on its own',
+            onItsOwn ? 'Shared placement' : 'This slide only',
             onItsOwn ? 'secondary' : 'quiet',
             'data-rb-floor-own', onItsOwn ? 'share' : 'own'));
 
@@ -4397,19 +4433,23 @@
           var activeView = floorViewSpec(page, floorSlot(page));
           var viewLead = document.createElement('p');
           viewLead.className = 'rb-panel__lead';
+          viewLead.setAttribute('data-rb-floor-view-lead', '1');
+          var srcName = '';
+          if (activeView && workingRecord && window.ToolboxPlanSetup) {
+            try {
+              var cv = window.ToolboxPlanSetup.canvasById(workingRecord, activeView.canvasId);
+              srcName = (cv && cv.name) || '';
+            } catch (err) { srcName = ''; }
+          }
+          if (!srcName && page) srcName = page.railLabel || page.title || '';
           viewLead.textContent = viewsNow.length > 1
-            ? ('View ' + (floorSlot(page) + 1) + ' of ' + viewsNow.length
-              + ' selected — controls below apply to it.')
-            : 'One view on this sheet. Add another to compose side by side.';
+            ? ('Selected: View ' + (floorSlot(page) + 1) + ' of ' + viewsNow.length
+              + (srcName ? (' — ' + srcName) : '')
+              + '. Contours / Readings / Legend & H/L below apply to it.')
+            : 'One view on this sheet. Add or copy a view to compose.';
           wrap.appendChild(viewLead);
           wrap.appendChild(railButton('Add view', 'quiet', 'data-rb-floor-view', 'add'));
           wrap.appendChild(railButton('Copy view', 'quiet', 'data-rb-floor-view', 'copy'));
-          // Legacy Two views / One view control (existing tests + muscle memory).
-          wrap.appendChild(railButton(
-            viewsNow.length > 1 ? 'One view' : 'Two views',
-            'quiet',
-            'data-rb-floor-twoup',
-            viewsNow.length > 1 ? 'off' : 'on'));
           if (viewsNow.length > 1) {
             wrap.appendChild(railButton('Remove view', 'quiet', 'data-rb-floor-view', 'remove'));
             var linked = !!(activeView && activeView.linkGroup);
@@ -4418,7 +4458,8 @@
               'quiet', 'data-rb-floor-view-link', linked ? 'off' : 'on'));
           }
 
-          // Source picker — levels/boundaries from the working Customer File.
+          // Source picker — levels/boundaries from Plan Setup + Floor Survey
+          // (not only pages already in the report outline).
           var srcLabel = document.createElement('label');
           srcLabel.className = 'rb-panel__lead';
           srcLabel.textContent = 'View source';
@@ -4426,33 +4467,58 @@
           var srcSelect = document.createElement('select');
           srcSelect.className = 'rb-rail__select';
           srcSelect.setAttribute('data-rb-floor-view-source', '1');
-          // Sources = Floor Survey pages already in this report (levels/boundaries).
           var seenSrc = Object.create(null);
-          var outline = [];
-          pages.forEach(function (fp) {
-            if (!fp || fp.type !== 'floor' || !fp.meta || fp.meta.reserved) return;
-            var m = fp.meta;
-            var key = [m.canvasId || '', m.epochId || '', m.areaId || '', m.scope || 'all'].join('|');
-            if (!m.canvasId || seenSrc[key]) return;
+          function addSourceOption(canvasId, epochId, areaId, scope, label) {
+            var key = [canvasId || '', epochId || '', areaId || '', scope || 'all'].join('|');
+            if (!canvasId || seenSrc[key]) return;
             seenSrc[key] = 1;
-            outline.push(fp);
-          });
-          if (!outline.length && page.meta) outline = [page];
-          outline.forEach(function (fp) {
-            var m = (fp && fp.meta) || {};
             var opt = document.createElement('option');
-            opt.value = [m.canvasId || '', m.epochId || '', m.areaId || '', m.scope || 'all'].join('|');
-            opt.textContent = (fp && (fp.railLabel || fp.title)) || m.scopeTitle || m.levelName || 'Level';
+            opt.value = key;
+            opt.textContent = label || 'Level';
             if (activeView &&
-                String(activeView.canvasId || '') === String(m.canvasId || '') &&
-                String(activeView.areaId || '') === String(m.areaId || '') &&
-                String(activeView.scope || 'all') === String(m.scope || 'all')) {
+                String(activeView.canvasId || '') === String(canvasId || '') &&
+                String(activeView.areaId || '') === String(areaId || '') &&
+                String(activeView.scope || 'all') === String(scope || 'all')) {
               opt.selected = true;
             }
             srcSelect.appendChild(opt);
+          }
+          var fs = workingRecord && workingRecord.floorSurvey;
+          var byCanvas = (fs && fs.byCanvasId) || {};
+          var canvases = (workingRecord && workingRecord.planSetup && workingRecord.planSetup.canvases) || [];
+          canvases.forEach(function (cv) {
+            if (!cv || !cv.id) return;
+            var layer = byCanvas[cv.id] || null;
+            var areas = (layer && Array.isArray(layer.areas)) ? layer.areas : [];
+            if (areas.length) {
+              // GPT-030: keep whole-level Combined alongside each boundary.
+              // With two+ boundaries, scope=all is the Combined figure; do not
+              // drop it just because area options exist.
+              addSourceOption(cv.id, fs && fs.id, null, 'all',
+                (cv.name || 'Level') + ' — Combined');
+              areas.forEach(function (area) {
+                if (!area || !area.id) return;
+                addSourceOption(cv.id, fs && fs.id, area.id, 'area',
+                  (cv.name || 'Level') + ' — ' + (area.name || 'Boundary'));
+              });
+            } else {
+              addSourceOption(cv.id, fs && fs.id, null, 'all', cv.name || 'Level');
+            }
           });
+          // Fall back to report outline pages if Plan Setup is empty.
+          if (!srcSelect.options.length) {
+            pages.forEach(function (fp) {
+              if (!fp || fp.type !== 'floor' || !fp.meta || fp.meta.reserved) return;
+              var m = fp.meta;
+              addSourceOption(m.canvasId, m.epochId, m.areaId, m.scope || 'all',
+                fp.railLabel || fp.title || m.levelName || 'Level');
+            });
+          }
           wrap.appendChild(srcSelect);
 
+          // GPT-030: Legend & H/L tab owns chrome via settings sync, but keep
+          // explicit Show/Hide as the same selected-view controls (they write
+          // views[] and settings together). Truthful on/off from views[].
           if (viewsNow.length > 1 && activeView) {
             wrap.appendChild(railButton(
               activeView.showLegend ? 'Hide legend' : 'Show legend',
@@ -4461,15 +4527,6 @@
               activeView.showPill ? 'Hide H/L/Δ' : 'Show H/L/Δ',
               'quiet', 'data-rb-floor-view-chrome', activeView.showPill ? 'pill-off' : 'pill-on'));
           }
-
-          wrap.appendChild(railButton(
-            'Use this as my default', 'quiet', 'data-rb-template', 'floor'));
-          var floorDefaultHint = document.createElement('p');
-          floorDefaultHint.className = 'rb-panel__lead';
-          floorDefaultHint.textContent =
-            'New reports start with the plan, the colour scale, the readings '
-            + 'and the aerial where they are here.';
-          wrap.appendChild(floorDefaultHint);
           return wrap;
         };
       }
@@ -4679,6 +4736,12 @@
           if (chromeAct === 'legend-off') cv.showLegend = false;
           if (chromeAct === 'pill-on') cv.showPill = true;
           if (chromeAct === 'pill-off') cv.showPill = false;
+          // Keep settings in lockstep with views[] chrome (GPT-030). Use the
+          // full floorViewFor object so a later Legend & H/L switch is a
+          // chrome-only delta, not a sparse {showLegend} vs full resolved miss.
+          cv.settings = Object.assign({}, floorViewFor(cp) || {}, cv.settings || {});
+          cv.settings.showLegend = !!cv.showLegend;
+          cv.settings.showStatsPill = !!cv.showPill;
           markDirty();
           renderPages();
           flushSave().catch(function () {});
@@ -4743,8 +4806,9 @@
         var parts = String(srcSel.value || '').split('|');
         sv.canvasId = parts[0] || '';
         sv.epochId = parts[1] || null;
-        sv.areaId = parts[2] || null;
         sv.scope = parts[3] || 'all';
+        // Combined = whole level; never keep a leftover boundary id (GPT-030).
+        sv.areaId = sv.scope === 'all' ? null : (parts[2] || null);
         // Drop a stale independent camera so the new level opens framed, not
         // at the previous floor's pan. Linked same-source broadcast is N/A here.
         sv.camera = null;

@@ -118,11 +118,11 @@ async function openFloorSheet() {
   await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]').click());
   await page.waitForFunction(
     () => document.querySelector('[data-rb-floor-import]') ||
-      document.querySelector('[data-rb-floor-box="topo"]'),
+      document.querySelector('[data-rb-floor-box^="topo"]'),
     { timeout: 20000 });
   if (await page.$('[data-rb-floor-import]')) {
     await page.click('[data-rb-floor-import]');
-    await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box="topo"]'), { timeout: 25000 });
+    await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box^="topo"]'), { timeout: 25000 });
   }
 }
 

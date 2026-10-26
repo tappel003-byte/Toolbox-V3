@@ -106,12 +106,12 @@ await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="floor
 // per level. Tim: "Toolbox knows we have three levels, they can bring the
 // three levels in... I don't know why it needs to be hit." It does it itself
 // now, so the page opens with its drawing and there is no button to press.
-await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box="topo"]'), {
+await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box^="topo"]'), {
   timeout: 20000,
 });
 const onOpen = await page.evaluate(() => ({
   hasImport: !!document.querySelector('[data-rb-floor-import]'),
-  hasTopoBox: !!document.querySelector('[data-rb-floor-box="topo"]'),
+  hasTopoBox: !!document.querySelector('[data-rb-floor-box^="topo"]'),
   empty: !!document.querySelector('.rb-floor-empty'),
 }));
 check('Floor page opens with its drawing, nothing to import',
@@ -128,7 +128,7 @@ check('Floor page opens with its drawing, nothing to import',
 // separately... the high/low/delta pill, the contour legend, those are all
 // movable." The figure block and the readings box stay off the sheet.
 const afterImport = await page.evaluate(() => ({
-  imported: !!document.querySelector('[data-rb-floor-box="topo"]'),
+  imported: !!document.querySelector('[data-rb-floor-box^="topo"]'),
   viewLock: document.querySelector('[data-rb-floor-lock-all]')?.getAttribute('data-rb-floor-lock-all') || '',
   legend: !!document.querySelector('.rb-floor-box--legend'),
   pill: !!document.querySelector('.rb-floor-box--pill'),
