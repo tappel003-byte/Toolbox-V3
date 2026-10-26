@@ -145,3 +145,6 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
 - Further correction passes require a demonstrated defect or unmet requirement. Optional cleanup does not block acceptance.
 - Keep handoffs concise; do not create standalone acknowledgment or documentation-pin commits. Record results alongside implementation where practical.
 - Once required checks pass, complete the authorized merge into the PR's agreed integration branch. Tim retains promotion; never imply a merge or successful build proves live deployment.
+
+- Continue already-authorized work through implementation, necessary verification, review and authorized merge without waiting for repeated “keep moving” prompts. Resolve routine implementation and documentation details independently; this does not authorize new features, scope changes, deployment or promotion.
+- Do not end a turn with an avoidable minor question or an unperformed promised action. State concrete completion or the actual blocker. Never imply work continues in the background after the turn ends unless an actual running task supports that statement.
