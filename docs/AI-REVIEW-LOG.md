@@ -4569,3 +4569,61 @@ Deliver the complete first usable version in one focused PR against the shared w
 GPT performs one substantive review and handles authorized merge after acceptance; Tim alone promotes. Do not deploy or promote. Do not claim a successful build is live verification.
 
 End by reporting exactly which files changed, what changed, decisions/assumptions, tests actually run, and commit SHA.
+
+---
+
+### CURSOR-023 — 2026-10-26 — Cursor → Tim / GPT
+
+Topic: GPT-036 — Sheet Layout | Topo task tabs in the Floor Survey Report Builder sidebar  
+Reply to: GPT-036  
+PR: (opened against `claude/milestone-1-customer-file-qv5ybf` on `cursor/rb-fs-task-tabs-7b33`)  
+Implementation SHA: tip of `cursor/rb-fs-task-tabs-7b33` (recorded on the PR)  
+Status: **Finished for GPT review.** No merge, deploy, or promotion by Cursor.
+
+#### Built
+
+- Floor Survey report rail: peer tabs **Sheet Layout** | **Topo** at the top of the existing sidebar width. One group visible at a time. Switching tabs changes tools only — not sheet geometry, selection, camera, or saved layout (session-only `floorTaskTab`).
+- **Sheet Layout:** existing composition controls — Add/Copy/Remove view, view source (including Combined), link/unlink size, Shared placement / This slide only — labeled sheet-wide vs selected-view. Foot keeps **Open Floor Survey** only.
+- **Topo:** selected-view identity lead; Contours / Readings / Legend & H/L as one-open-at-a-time accordions via shared `TopoTab` `controlsOnly` (same update handlers as field; field Control panel hub unchanged). Honest empty state when no topo view.
+- Sticky task-tab row while the control body scrolls. Shell bumped to **`toolbox-shell-v380`**. FS host bundle rebuilt from unified TopoTab source.
+
+#### Suites run this pass (independent)
+
+| Suite | Result |
+|---|---|
+| `report-floor-task-tabs.mjs` (new) | **6/6** |
+| `report-floor-flex-compose.mjs` | **42/42** |
+| `report-floor-flex-finish-acceptance.mjs` | **9/9** |
+| `report-floor-chrome-qa.mjs` | **13/13** |
+| `floor-survey-parity.mjs` | **22/22** (field Control panel) |
+| `pwa-publish.mjs` | **28/28** (`toolbox-shell-v380`) |
+
+Evidence: `/opt/cursor/artifacts/rb-task-tabs.json`, `rb-task-tabs-topo-1440.png`, `rb-task-tabs-topo-1920.png`, `rb-task-tabs-layout-1920.png`.
+
+#### Files changed
+
+- `js/report-builder.js` — Sheet Layout | Topo peer tabs; layout vs topo bodies
+- `css/report-builder.css` — sticky task-tab chrome
+- `floor-survey/src/components/tabs/TopoTab.tsx` — report `controlsOnly` Contours/Readings/Legend & H/L accordions
+- `js/floor-survey/floor-survey.js` / `.css` — rebuilt host bundle
+- `sw.js` — `toolbox-shell-v380`
+- `tests/report-floor-task-tabs.mjs` — new sidebar interaction checks
+- `tests/report-floor-flex-compose.mjs`, `report-floor-flex-finish-acceptance.mjs`, `report-floor-chrome-qa.mjs` — open Sheet Layout before Add/source; Topo before Contours/chrome
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-023
+
+#### Decisions / assumptions
+
+- Top tabs only for v1; no tab-position preference.
+- One Topo accordion open at a time; no nested doors inside accordions.
+- Reused live hosts/handlers — no parallel control copies.
+- Did not invent alignment/snapping/reset; did not touch global text/drawing toolbar, other page types, or field Control panel UX.
+
+#### Remaining limitations
+
+- Live Cloudflare / Tim-device promotion unverified (not claimed).
+- Other report page types do not adopt task tabs yet (out of scope).
+- No merge/promote by Cursor; GPT reviews then handles authorized merge; Tim alone promotes.
+
+#### Exact tip
+
+Implementation: tip of `cursor/rb-fs-task-tabs-7b33` (exact SHA on the PR; no docs-pin follow-up).

@@ -147,19 +147,36 @@ function clickRailText(re) {
   }, re);
 }
 
+/** GPT-036: Sheet Layout | Topo peer tabs; Contours/Readings/Legend are accordions under Topo. */
+async function openFloorTask(which) {
+  await page.evaluate((want) => {
+    document.querySelector(`[data-rb-floor-task="${want}"]`)?.click();
+  }, which);
+  if (which === 'layout') {
+    await page.waitForFunction(
+      () => !!document.querySelector('[data-rb-floor-view="add"], [data-rb-floor-own]'),
+      { timeout: 10000 }).catch(() => {});
+  } else {
+    await page.waitForFunction(
+      () => !!document.querySelector('.rb-ws__controls, [data-rb-floor-topo-empty], [data-rb-rail-tab]'),
+      { timeout: 10000 }).catch(() => {});
+  }
+  await new Promise((r) => setTimeout(r, 200));
+}
+
 async function openLegendHlTab() {
+  await openFloorTask('topo');
   await page.evaluate(() => {
-    [...document.querySelectorAll('[role=tab]')]
-      .find((t) => /Legend & H\/L/i.test(t.textContent || ''))?.click();
+    document.querySelector('[data-rb-rail-tab="legendhl"]')?.click();
   });
   await new Promise((r) => setTimeout(r, 400));
 }
 
 /** Contours Mode <select> inside the rail host — not the View source picker. */
 async function setContoursMode(mode) {
+  await openFloorTask('topo');
   await page.evaluate(() => {
-    [...document.querySelectorAll('[role=tab]')]
-      .find((t) => /Contours/i.test(t.textContent || ''))?.click();
+    document.querySelector('[data-rb-rail-tab="contours"]')?.click();
   });
   await new Promise((r) => setTimeout(r, 400));
   return page.evaluate((want) => {
@@ -254,15 +271,13 @@ await page.waitForFunction(
   { timeout: 30000 });
 await openFloorThumb('main');
 
-// ========== 9. Finished rail ==========
-const rail = await page.evaluate(() => {
-  const tabs = [...document.querySelectorAll('.rb-panel [role=tab], [data-rb-rail-tab]')]
-    .map((t) => (t.getAttribute('data-rb-rail-tab') || t.textContent || '').trim());
-  // Prefer visible tab labels
-  const tabLabels = [...document.querySelectorAll('.rb-ws__controls [role=tab], .rb-panel [role=tab]')]
+// ========== 9. Finished rail (GPT-036 Sheet Layout | Topo) ==========
+await openFloorTask('layout');
+const railLayout = await page.evaluate(() => {
+  const taskTabs = [...document.querySelectorAll('[data-rb-floor-task]')]
     .map((t) => t.textContent.trim());
   return {
-    tabs: tabLabels.length ? tabLabels : tabs,
+    taskTabs,
     floorDefault: !!document.querySelector('.rb-panel [data-rb-template="floor"]'),
     twoup: !!document.querySelector('[data-rb-floor-twoup]'),
     hasAdd: !!document.querySelector('[data-rb-floor-view="add"]'),
@@ -275,15 +290,25 @@ const rail = await page.evaluate(() => {
       .map((p) => p.textContent.trim()).slice(0, 4),
   };
 });
-accept(9, 'Finished rail — Contours/Readings/Legend & H/L; Combined source; no floor default',
-  rail.tabs.join('|') === 'Contours|Readings|Legend & H/L' &&
-  !rail.floorDefault && !rail.twoup &&
-  rail.hasAdd && rail.hasCopy && rail.thisSlide &&
-  rail.srcOpts.some((s) => /Combined/i.test(s)) &&
-  rail.srcOpts.some((s) => /Main/i.test(s)) &&
-  rail.srcOpts.some((s) => /Second|Garage/i.test(s)),
-  JSON.stringify(rail).slice(0, 600));
+await openFloorTask('topo');
+const railTopo = await page.evaluate(() => ({
+  accordions: [...document.querySelectorAll('[data-rb-rail-tab]')]
+    .map((t) => (t.textContent || '').trim()),
+  hasControls: !!document.querySelector('.rb-ws__controls'),
+  layoutHidden: !document.querySelector('[data-rb-floor-view="add"]'),
+}));
+accept(9, 'Finished rail — Sheet Layout | Topo; Combined source; no floor default',
+  railLayout.taskTabs.join('|') === 'Sheet Layout|Topo' &&
+  !railLayout.floorDefault && !railLayout.twoup &&
+  railLayout.hasAdd && railLayout.hasCopy && railLayout.thisSlide &&
+  railLayout.srcOpts.some((s) => /Combined/i.test(s)) &&
+  railLayout.srcOpts.some((s) => /Main/i.test(s)) &&
+  railLayout.srcOpts.some((s) => /Second|Garage/i.test(s)) &&
+  railTopo.accordions.join('|') === 'Contours|Readings|Legend & H/L' &&
+  railTopo.hasControls && railTopo.layoutHidden,
+  JSON.stringify({ railLayout, railTopo }).slice(0, 700));
 await page.screenshot({ path: `${OUT}/rb-finish-09-rail.png`, fullPage: false });
+await openFloorTask('layout');
 
 // ========== 1. Same floor, two appearances ==========
 await page.evaluate(() => document.querySelector('[data-rb-floor-view="add"]')?.click());
@@ -396,10 +421,12 @@ const appearanceProbe = await page.evaluate(async (id) => {
   const modes = (floor?.meta?.views || []).map((v) => (v.settings && v.settings.mode) || null);
   return { modes, distinct: modes.length >= 2 && !!modes[0] && !!modes[1] && modes[0] !== modes[1] };
 }, FILE);
+await openFloorTask('topo');
 const selLead = await page.evaluate(() =>
   [...document.querySelectorAll('.rb-panel .rb-panel__lead')]
     .map((p) => p.textContent.trim()).find((t) => /Selected: View|View \d/i.test(t)) || '');
 // Ensure linked (Add view same-source starts linked; do not click Unlink by accident).
+await openFloorTask('layout');
 const linkClicked = await page.evaluate(() => {
   const unlink = document.querySelector('[data-rb-floor-view-link="off"]');
   const link = document.querySelector('[data-rb-floor-view-link="on"]');
@@ -453,6 +480,7 @@ const linkedMatch = linkedPct.length >= 2 &&
   Math.abs(linkedPct[0].top - linkedPct[1].top) < 0.6 &&
   linkedPct[0].height < (handleNow.beforeH || 100) - 1;
 
+await openFloorTask('layout');
 await page.evaluate(() => document.querySelector('[data-rb-floor-view-link="off"]')?.click());
 await new Promise((r) => setTimeout(r, 600));
 const handle2 = await page.evaluate(() => {
@@ -500,6 +528,7 @@ await page.evaluate(() => {
   document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame]')[1]?.click();
 });
 await new Promise((r) => setTimeout(r, 400));
+await openFloorTask('layout');
 const src2 = await page.evaluate(() => {
   const sel = document.querySelector('[data-rb-floor-view-source]');
   if (!sel) return { ok: false };
@@ -510,6 +539,7 @@ const src2 = await page.evaluate(() => {
   return { ok: true, label: opt.textContent.trim() };
 });
 await new Promise((r) => setTimeout(r, 2200));
+await openFloorTask('layout');
 await page.evaluate(() => {
   const link = document.querySelector('[data-rb-floor-view-link="on"]');
   if (link) link.click();
@@ -537,6 +567,7 @@ await page.evaluate(() => {
   document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame]')[0]?.click();
 });
 await new Promise((r) => setTimeout(r, 500));
+await openFloorTask('layout');
 const leadAfterSel = await page.evaluate(() =>
   [...document.querySelectorAll('.rb-panel .rb-panel__lead')]
     .map((p) => p.textContent.trim()).find((t) => /Selected|View/i.test(t)) || '');
@@ -546,6 +577,7 @@ accept(2, 'Different floors — source change, size link, independent framing, s
   JSON.stringify({ src2, views: afterDiff.views, leadAfterSel }).slice(0, 700));
 
 // ========== 3. Reference sheet ==========
+await openFloorTask('layout');
 await page.evaluate(() => document.querySelector('[data-rb-floor-view="add"]')?.click());
 await page.waitForFunction(
   () => document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame]').length >= 3,
@@ -555,6 +587,7 @@ await page.evaluate(() => {
   document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame]')[2]?.click();
 });
 await new Promise((r) => setTimeout(r, 400));
+await openFloorTask('layout');
 const garage = await page.evaluate(() => {
   const sel = document.querySelector('[data-rb-floor-view-source]');
   // Prefer the Garage level, not "Garage Bay" on Main.
@@ -570,6 +603,7 @@ const chrome0 = await page.evaluate(() => ({
   pills: document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="pill"]').length,
 }));
 // Enable chrome on the selected (garage) view only.
+await openFloorTask('topo');
 await page.evaluate(() => document.querySelector('[data-rb-floor-view-chrome="legend-on"]')?.click());
 await page.evaluate(() => document.querySelector('[data-rb-floor-view-chrome="pill-on"]')?.click());
 await new Promise((r) => setTimeout(r, 2200));
@@ -607,6 +641,7 @@ await page.evaluate(() => {
     ?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
 });
 await new Promise((r) => setTimeout(r, 800));
+await openFloorTask('layout');
 const combined = await page.evaluate(() => {
   const sel = document.querySelector('[data-rb-floor-view-source]');
   const opts = [...(sel?.options || [])].map((o) => o.textContent.trim());
@@ -645,6 +680,7 @@ accept(3, 'Reference sheet — chrome on; Legend tab clears it; Combined source'
 
 // ========== 4. Shared vs This slide only ==========
 await openFloorThumb('second');
+await openFloorTask('layout');
 const secondChromeBefore = await page.evaluate(() => {
   const el = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box="overview"], .rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="legend"]');
   if (!el) return null;
@@ -688,6 +724,7 @@ const mainChrome = await page.evaluate(() => {
   return { x: +r.x.toFixed(1), y: +r.y.toFixed(1) };
 });
 await openFloorThumb('second');
+await openFloorTask('layout');
 await page.evaluate(() => document.querySelector('[data-rb-floor-own="share"]')?.click());
 await new Promise((r) => setTimeout(r, 1600));
 await page.waitForFunction(

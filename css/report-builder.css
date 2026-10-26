@@ -848,21 +848,75 @@ body.report-builder-open .canvas {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  /* The rail had no padding of its own -- the padding was written against a
-     .rb-rail class this element has not carried for some time -- so every
-     label and every button in it sat flush against the window edge and the
-     wider ones were cut off there: "AGES", "eport sheets", a Remove button
-     with no R. */
   padding: 2px 8px 8px;
 }
-.rb-ws__title { margin: 0; font-size: 18px; }
+.rb-ws__title {
+  margin: 0;
+  font-size: 18px;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: rgba(255, 255, 255, 0.96);
+  padding-bottom: 4px;
+}
 .rb-ws__top,
 .rb-ws__foot { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
-.rb-ws__body { flex: 0 0 auto; min-height: 0; overflow: visible; }
+.rb-ws__top {
+  position: sticky;
+  top: 28px;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.96);
+  padding-bottom: 6px;
+}
+.rb-ws__body {
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .rb-ws__btn { width: 100%; }
 .rb-ws__controls { display: block; }
 .rb-ws__controls .floor-survey-host,
 .rb-ws__controls .rtw-root--controls { display: block; height: auto; }
+
+/* GPT-036: Sheet Layout | Topo peer tabs at the top of the Floor Survey rail. */
+.rb-ws__task-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line, #d9d2c2);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.04);
+}
+.rb-ws__task-tab {
+  appearance: none;
+  border: 0;
+  border-radius: 7px;
+  min-height: 36px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink-soft, #7a7468);
+  background: transparent;
+  cursor: pointer;
+}
+.rb-ws__task-tab.is-active {
+  background: #fff;
+  color: var(--ink, #1a1a1a);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.rb-ws__section-label {
+  margin: 4px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft, #7a7468);
+}
 .rb-panel__idle h2 { margin: 0 0 6px; font-size: 18px; }
 
 /* The stage a stripped Floor Survey slide positions its frame against. */

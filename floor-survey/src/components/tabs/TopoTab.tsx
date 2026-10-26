@@ -1775,395 +1775,343 @@ export function TopoTab({
           This tab strip is Report Builder only.
         */}
         {controlsOnly && (
-          <div className="flex flex-col gap-2" data-rb-rail-groups="1">
-            <div role="tablist" className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/40 p-1">
-              {([
-                ["contours", "Contours"],
-                ["readings", "Readings"],
-                ["legendhl", "Legend & H/L"],
-              ] as const).map(([key, name]) => (
-                <button
+          <div className="flex flex-col gap-1.5" data-rb-rail-groups="1">
+            {/*
+              GPT-036: Contours / Readings / Legend & H/L as one-open-at-a-time
+              accordions under the Sheet Layout | Topo peer tabs. Same controls
+              as before — no nested doors.
+            */}
+            {([
+              ["contours", "Contours"],
+              ["readings", "Readings"],
+              ["legendhl", "Legend & H/L"],
+            ] as const).map(([key, name]) => {
+              const open = ctrlTab === key;
+              return (
+                <div
                   key={key}
-                  type="button"
-                  role="tab"
-                  aria-selected={ctrlTab === key}
-                  data-rb-rail-tab={key}
-                  onClick={() => setCtrlTab(key)}
                   className={
-                    "h-8 rounded-md px-1 text-[11px] font-medium transition-colors " +
-                    (ctrlTab === key
-                      ? "bg-background shadow-sm text-foreground"
-                      : "text-muted-foreground hover:text-foreground")
+                    open
+                      ? "flex flex-col overflow-hidden rounded-lg border border-[#c9d0d5] bg-white shadow-sm"
+                      : "shrink-0 rounded-lg border border-[#c9d0d5] bg-[#eef1f3] shadow-sm"
                   }
                 >
-                  {name}
-                </button>
-              ))}
-            </div>
-            <div className="rounded-xl border bg-card p-3 w-full overflow-visible space-y-3 text-sm">
-              {ctrlTab === "contours" && (
-                <>
-                  {gridAndContours?.grid && (
-                    <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
-                      Range {readingText(gridAndContours.grid.minValue)}"–
-                      {readingText(gridAndContours.grid.maxValue)}"
-                    </p>
-                  )}
-                  <div>
-                    <Label className="text-xs">Mode</Label>
-                    <select
-                      value={resolved.mode}
-                      onChange={(e) => update({ mode: e.target.value as RenderSettings["mode"] })}
-                      className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
-                    >
-                      <option value="contour-fill">Color fill</option>
-                      <option value="contour-cells">Color cells</option>
-                      <option value="contour-bw">B&W lines</option>
-                      <option value="points-only">Points only</option>
-                    </select>
-                  </div>
-                  {/*
-                    Send to Distress Survey.
-
-                    Only on B&W lines, and only in the field app. Tim: "I wonder if
-                    the button only triggers when we do black-and-white contours."
-                    It does, which makes it what you see is what you send -- there is
-                    no mode for the writer to override, so the picture that lands
-                    under the damage pins is the one on this screen. The one thing it
-                    drops is the reading labels, because the pins go where those
-                    would be.
-                  */}
-                  {allowContourLayer && resolved.mode === "contour-bw" && (
-                    <div className="border-t pt-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-9 w-full text-xs"
-                        disabled={layerState === "working"}
-                        onClick={async () => {
-                          setLayerState("working");
-                          setLayerMessage("");
-                          try {
-                            // Imported here rather than at the top: the composer
-                            // reads renderTopo out of this module, so a static
-                            // import would close a cycle through it.
-                            const [{ composeContourLayer }, { persistContourLayer }] = await Promise.all([
-                              import("@/lib/contour-layer"),
-                              import("@/lib/db"),
-                            ]);
-                            const drawn = await composeContourLayer({
-                              floor,
-                              points,
-                              settings: resolved,
-                              // The boundary on screen, not every boundary. A
-                              // garage is sloped to drain and swamps the house.
-                              areaId: selectedAreaId,
-                            });
-                            if (!drawn) {
-                              setLayerState("failed");
-                              setLayerMessage("No contours to send yet — this level needs a closed boundary with readings inside it.");
-                              return;
+                  <button
+                    type="button"
+                    data-rb-rail-tab={key}
+                    aria-expanded={open}
+                    onClick={() => setCtrlTab(key)}
+                    className={
+                      "flex min-h-10 w-full items-center justify-between gap-2 px-2.5 text-xs font-semibold " +
+                      (open ? "bg-[#07283d] text-white" : "bg-[#eef1f3] text-[#07283d]")
+                    }
+                  >
+                    <span>{name}</span>
+                    <ChevronDown
+                      className={
+                        "h-4 w-4 shrink-0 transition-transform " + (open ? "rotate-180" : "")
+                      }
+                    />
+                  </button>
+                  {open && (
+                    <div className="space-y-3 p-3 text-sm">
+                      {key === "contours" && (
+                        <>
+                          {gridAndContours?.grid && (
+                            <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
+                              Range {readingText(gridAndContours.grid.minValue)}"–
+                              {readingText(gridAndContours.grid.maxValue)}"
+                            </p>
+                          )}
+                          <div>
+                            <Label className="text-xs">Mode</Label>
+                            <select
+                              value={resolved.mode}
+                              onChange={(e) =>
+                                update({ mode: e.target.value as RenderSettings["mode"] })
+                              }
+                              className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
+                            >
+                              <option value="contour-fill">Color fill</option>
+                              <option value="contour-cells">Color cells</option>
+                              <option value="contour-bw">B&W lines</option>
+                              <option value="points-only">Points only</option>
+                            </select>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <Label className="text-xs">First</Label>
+                              <Input
+                                type="number"
+                                step="0.05"
+                                enterKeyHint="done"
+                                value={resolved.firstContour ?? ""}
+                                placeholder="auto"
+                                onChange={(e) =>
+                                  update({
+                                    firstContour:
+                                      e.target.value === "" ? null : parseFloat(e.target.value),
+                                  })
+                                }
+                                className="mt-1 h-9 text-base"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Step</Label>
+                              <StepInput
+                                value={resolved.contourStep}
+                                onCommit={(step) => update({ contourStep: step, interval: step })}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Count</Label>
+                              <Input
+                                type="text"
+                                inputMode="numeric"
+                                enterKeyHint="done"
+                                value={resolved.contourCount ?? ""}
+                                placeholder="auto"
+                                onChange={(e) => {
+                                  const raw = e.target.value.trim();
+                                  if (raw === "" || raw.toLowerCase() === "auto") {
+                                    update({ contourCount: null });
+                                  } else {
+                                    const n = parseInt(raw, 10);
+                                    update({
+                                      contourCount: isFinite(n) ? Math.max(2, n) : null,
+                                    });
+                                  }
+                                }}
+                                className="mt-1 h-9 text-base"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex items-center justify-between">
+                              <Label className="text-xs">Line thickness</Label>
+                              <span className="text-xs tabular-nums text-muted-foreground">
+                                {resolved.lineThickness.toFixed(1)}
+                              </span>
+                            </div>
+                            <Slider
+                              min={0.5}
+                              max={4}
+                              step={0.1}
+                              value={[resolved.lineThickness]}
+                              onValueChange={(v) => update({ lineThickness: v[0] })}
+                              className="mt-2"
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs">Contours on</Label>
+                            <Switch
+                              checked={resolved.showContours}
+                              onCheckedChange={(v) => update({ showContours: v })}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs">Reverse</Label>
+                            <Switch
+                              checked={resolved.reversePalette}
+                              onCheckedChange={(v) => update({ reversePalette: v })}
+                            />
+                          </div>
+                          <PalettePicker
+                            value={resolved.palette}
+                            onChange={(p) => update({ palette: p })}
+                          />
+                          <SwitchRow
+                            label="Floor plan"
+                            checked={resolved.showPlan}
+                            onChange={(v) => update({ showPlan: v })}
+                          />
+                        </>
+                      )}
+                      {key === "readings" && (
+                        <>
+                          <div className="grid grid-cols-2 gap-2">
+                            <SwitchRow
+                              label="Points"
+                              checked={resolved.showPoints}
+                              onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
+                            />
+                            <SwitchRow
+                              label="Labels"
+                              checked={resolved.showLabels}
+                              onChange={(v) => update({ showLabels: v })}
+                            />
+                            <NumberControl
+                              label="Decimals"
+                              value={resolved.decimalPlaces}
+                              min={0}
+                              max={3}
+                              step={1}
+                              onChange={(v) =>
+                                update({
+                                  decimalPlaces: Math.max(
+                                    0,
+                                    Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
+                                  ),
+                                })
+                              }
+                            />
+                            <SwitchRow
+                              label="Declutter"
+                              checked={resolved.declutterLabels !== false}
+                              onChange={(v) => update({ declutterLabels: v })}
+                            />
+                            <div className="col-span-2 flex items-center justify-between gap-2">
+                              <Label className="text-xs">Label bg</Label>
+                              <div className="inline-flex rounded-md border overflow-hidden">
+                                {(["white", "transparent", "plain"] as const).map((opt) => (
+                                  <button
+                                    key={opt}
+                                    type="button"
+                                    className={`px-2 py-1 text-xs ${
+                                      resolved.pointLabelBackground === opt
+                                        ? "bg-primary text-primary-foreground"
+                                        : "bg-background"
+                                    }`}
+                                    onClick={() => update({ pointLabelBackground: opt })}
+                                  >
+                                    {opt === "white"
+                                      ? "Box"
+                                      : opt === "transparent"
+                                        ? "Border"
+                                        : "Plain"}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          <details className="border-t pt-2">
+                            <summary className="text-xs text-muted-foreground cursor-pointer select-none">
+                              Label style
+                            </summary>
+                            <div className="grid grid-cols-2 gap-2 mt-2">
+                              <StepperControl
+                                label="Point label size"
+                                value={resolved.pointLabelFontSize}
+                                min={6}
+                                max={28}
+                                step={1}
+                                onChange={(v) =>
+                                  update({
+                                    pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))),
+                                  })
+                                }
+                              />
+                              <div>
+                                <Label className="text-xs">Weight</Label>
+                                <select
+                                  value={resolved.pointLabelWeight}
+                                  onChange={(e) =>
+                                    update({
+                                      pointLabelWeight: e.target.value as "normal" | "bold",
+                                    })
+                                  }
+                                  className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
+                                >
+                                  <option value="normal">Normal</option>
+                                  <option value="bold">Bold</option>
+                                </select>
+                              </div>
+                              <div className="col-span-2">
+                                <Label className="text-xs">Color</Label>
+                                <div className="mt-1 flex items-center gap-2">
+                                  <input
+                                    type="color"
+                                    value={resolved.pointLabelColor}
+                                    onChange={(e) => update({ pointLabelColor: e.target.value })}
+                                    className="h-9 w-12 rounded-md border bg-background p-1 cursor-pointer"
+                                  />
+                                  <Input
+                                    enterKeyHint="done"
+                                    value={resolved.pointLabelColor}
+                                    onChange={(e) => update({ pointLabelColor: e.target.value })}
+                                    className="h-9 flex-1 font-mono text-base"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={resetAllLabelPositions}
+                              className="mt-2 w-full h-8"
+                            >
+                              Reset label positions
+                            </Button>
+                          </details>
+                        </>
+                      )}
+                      {key === "legendhl" && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <SwitchRow
+                            label="Legend"
+                            checked={resolved.showLegend}
+                            onChange={(v) => update({ showLegend: v })}
+                          />
+                          <StepperControl
+                            label="Legend size"
+                            value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+                            min={0.4}
+                            max={4}
+                            step={0.1}
+                            format={(v) => `${v.toFixed(1)}×`}
+                            onChange={(v) =>
+                              update({
+                                legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)),
+                              })
                             }
-                            await persistContourLayer(floor.id, drawn.dataUrl, {
-                              areaName: drawn.areaName,
-                              // The plan extent the layer covers, not the picture's
-                              // own pixels. The picture is drawn well above plan
-                              // resolution so it holds up on paper, and it is
-                              // stretched back into this box wherever it is shown --
-                              // so this is the number that says the two layers line
-                              // up, in the same units as the plan's own.
-                              width: drawn.extent.w,
-                              height: drawn.extent.h,
-                              pointCount: drawn.pointCount,
-                            });
-                            setLayerState("done");
-                            // Name what went, because sending the wrong boundary
-                            // looks exactly like sending nothing.
-                            setLayerMessage(
-                              `Sent ${drawn.areaName}. Distress Survey can show the pins on it.`,
-                            );
-                          } catch (err) {
-                            setLayerState("failed");
-                            setLayerMessage(
-                              (err as Error)?.message || "Could not send the contour to Distress Survey.",
-                            );
-                          }
-                        }}
-                      >
-                        {layerState === "working" ? "Sending…" : "Send to Distress Survey"}
-                      </Button>
-                      {layerMessage && (
-                        <p
-                          className={
-                            "mt-1 text-[10px] leading-tight " +
-                            (layerState === "failed" ? "text-destructive" : "text-muted-foreground")
-                          }
-                        >
-                          {layerMessage}
-                        </p>
+                          />
+                          <SwitchRow
+                            label="High / low"
+                            checked={resolved.showHighLow}
+                            onChange={(v) => update({ showHighLow: v })}
+                          />
+                          <StepperControl
+                            label="Marker size"
+                            value={resolved.highLowPinSize}
+                            min={7}
+                            max={28}
+                            step={1}
+                            onChange={(v) =>
+                              update({
+                                highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
+                              })
+                            }
+                          />
+                          <SwitchRow
+                            label="H/L/Δ pill"
+                            checked={resolved.showStatsPill !== false}
+                            onChange={(v) => update({ showStatsPill: v })}
+                          />
+                          <div className="col-span-2">
+                            <StepperControl
+                              label="Stats pill size"
+                              value={statsChipSize}
+                              min={STATS_CHIP_MIN}
+                              max={STATS_CHIP_MAX}
+                              step={2}
+                              format={(v) => `${Math.round(v)}px`}
+                              onChange={(v) => {
+                                const n = Math.max(
+                                  STATS_CHIP_MIN,
+                                  Math.min(STATS_CHIP_MAX, Math.round(v)),
+                                );
+                                setStatsChipLocked(n);
+                                setStatsChipSize(n);
+                              }}
+                            />
+                          </div>
+                        </div>
                       )}
                     </div>
                   )}
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <Label className="text-xs">First</Label>
-                      <Input
-                        type="number"
-                        step="0.05"
-                        enterKeyHint="done"
-                        value={resolved.firstContour ?? ""}
-                        placeholder="auto"
-                        onChange={(e) =>
-                          update({
-                            firstContour: e.target.value === "" ? null : parseFloat(e.target.value),
-                          })
-                        }
-                        className="mt-1 h-9 text-base"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Step</Label>
-                      <StepInput
-                        value={resolved.contourStep}
-                        onCommit={(step) => update({ contourStep: step, interval: step })}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Count</Label>
-                      <Input
-                        type="text"
-                        inputMode="numeric"
-                        enterKeyHint="done"
-                        value={resolved.contourCount ?? ""}
-                        placeholder="auto"
-                        onChange={(e) => {
-                          const raw = e.target.value.trim();
-                          if (raw === "" || raw.toLowerCase() === "auto") {
-                            update({ contourCount: null });
-                          } else {
-                            const n = parseInt(raw, 10);
-                            update({ contourCount: isFinite(n) ? Math.max(2, n) : null });
-                          }
-                        }}
-                        className="mt-1 h-9 text-base"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs">Line thickness</Label>
-                      <span className="text-xs tabular-nums text-muted-foreground">
-                        {resolved.lineThickness.toFixed(1)}
-                      </span>
-                    </div>
-                    <Slider
-                      min={0.5}
-                      max={4}
-                      step={0.1}
-                      value={[resolved.lineThickness]}
-                      onValueChange={(v) => update({ lineThickness: v[0] })}
-                      className="mt-2"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">Contours on</Label>
-                    <Switch
-                      checked={resolved.showContours}
-                      onCheckedChange={(v) => update({ showContours: v })}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">Reverse</Label>
-                    <Switch
-                      checked={resolved.reversePalette}
-                      onCheckedChange={(v) => update({ reversePalette: v })}
-                    />
-                  </div>
-                  <PalettePicker
-                    value={resolved.palette}
-                    onChange={(p) => update({ palette: p })}
-                  />
-                  {/* GPT-030: plan background under Contours. */}
-                  <SwitchRow
-                    label="Floor plan"
-                    checked={resolved.showPlan}
-                    onChange={(v) => update({ showPlan: v })}
-                  />
-                </>
-              )}
-              {ctrlTab === "readings" && (
-                <>
-                  {/* GPT-030: point visibility + reading style under Readings. */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <SwitchRow
-                      label="Points"
-                      checked={resolved.showPoints}
-                      onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
-                    />
-                    <SwitchRow
-                      label="Labels"
-                      checked={resolved.showLabels}
-                      onChange={(v) => update({ showLabels: v })}
-                    />
-                    <NumberControl
-                      label="Decimals"
-                      value={resolved.decimalPlaces}
-                      min={0}
-                      max={3}
-                      step={1}
-                      onChange={(v) =>
-                        update({
-                          decimalPlaces: Math.max(
-                            0,
-                            Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
-                          ),
-                        })
-                      }
-                    />
-                    <SwitchRow
-                      label="Declutter"
-                      checked={resolved.declutterLabels !== false}
-                      onChange={(v) => update({ declutterLabels: v })}
-                    />
-                    <div className="col-span-2 flex items-center justify-between gap-2">
-                      <Label className="text-xs">Label bg</Label>
-                      <div className="inline-flex rounded-md border overflow-hidden">
-                        {(["white", "transparent", "plain"] as const).map((opt) => (
-                          <button
-                            key={opt}
-                            type="button"
-                            className={`px-2 py-1 text-xs ${
-                              resolved.pointLabelBackground === opt
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-background"
-                            }`}
-                            onClick={() => update({ pointLabelBackground: opt })}
-                          >
-                            {opt === "white" ? "Box" : opt === "transparent" ? "Border" : "Plain"}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <details className="border-t pt-2">
-                    <summary className="text-xs text-muted-foreground cursor-pointer select-none">
-                      Label style
-                    </summary>
-                    <div className="grid grid-cols-2 gap-2 mt-2">
-                      <StepperControl
-                        label="Point label size"
-                        value={resolved.pointLabelFontSize}
-                        min={6}
-                        max={28}
-                        step={1}
-                        onChange={(v) =>
-                          update({ pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))) })
-                        }
-                      />
-                      <div>
-                        <Label className="text-xs">Weight</Label>
-                        <select
-                          value={resolved.pointLabelWeight}
-                          onChange={(e) =>
-                            update({ pointLabelWeight: e.target.value as "normal" | "bold" })
-                          }
-                          className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
-                        >
-                          <option value="normal">Normal</option>
-                          <option value="bold">Bold</option>
-                        </select>
-                      </div>
-                      <div className="col-span-2">
-                        <Label className="text-xs">Color</Label>
-                        <div className="mt-1 flex items-center gap-2">
-                          <input
-                            type="color"
-                            value={resolved.pointLabelColor}
-                            onChange={(e) => update({ pointLabelColor: e.target.value })}
-                            className="h-9 w-12 rounded-md border bg-background p-1 cursor-pointer"
-                          />
-                          <Input
-                            enterKeyHint="done"
-                            value={resolved.pointLabelColor}
-                            onChange={(e) => update({ pointLabelColor: e.target.value })}
-                            className="h-9 flex-1 font-mono text-base"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={resetAllLabelPositions}
-                      className="mt-2 w-full h-8"
-                    >
-                      Reset label positions
-                    </Button>
-                  </details>
-                </>
-              )}
-              {ctrlTab === "legendhl" && (
-                <div className="grid grid-cols-2 gap-2">
-                  {/*
-                    GPT-030: legend + H/L under Legend & H/L. Report chrome
-                    (colour scale / H/LΔ pill) and plan markers stay separate.
-                    Legend / Stats pill switches sync to views[].showLegend /
-                    showPill via Report Builder onSettingsChange.
-                  */}
-                  <SwitchRow
-                    label="Legend"
-                    checked={resolved.showLegend}
-                    onChange={(v) => update({ showLegend: v })}
-                  />
-                  <StepperControl
-                    label="Legend size"
-                    value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
-                    min={0.4}
-                    max={4}
-                    step={0.1}
-                    format={(v) => `${v.toFixed(1)}×`}
-                    onChange={(v) =>
-                      update({ legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)) })
-                    }
-                  />
-                  <SwitchRow
-                    label="High / low"
-                    checked={resolved.showHighLow}
-                    onChange={(v) => update({ showHighLow: v })}
-                  />
-                  <StepperControl
-                    label="Marker size"
-                    value={resolved.highLowPinSize}
-                    min={7}
-                    max={28}
-                    step={1}
-                    onChange={(v) =>
-                      update({ highLowPinSize: Math.max(7, Math.min(28, Math.round(v))) })
-                    }
-                  />
-                  <SwitchRow
-                    label="H/L/Δ pill"
-                    checked={resolved.showStatsPill !== false}
-                    onChange={(v) => update({ showStatsPill: v })}
-                  />
-                  <div className="col-span-2">
-                    <StepperControl
-                      label="Stats pill size"
-                      value={statsChipSize}
-                      min={STATS_CHIP_MIN}
-                      max={STATS_CHIP_MAX}
-                      step={2}
-                      format={(v) => `${Math.round(v)}px`}
-                      onChange={(v) => {
-                        const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(v)));
-                        setStatsChipLocked(n);
-                        setStatsChipSize(n);
-                      }}
-                    />
-                  </div>
                 </div>
-              )}
-            </div>
+              );
+            })}
           </div>
         )}
       </div>

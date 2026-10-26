@@ -440,6 +440,9 @@ void pan;
 // Enable per-view H/L/Δ (and legend) — GPT-027 #2.
 // GPT-030: chrome buttons and Legend & H/L tab share one ownership (views[] +
 // settings stay in lockstep). Prefer the rail chrome buttons here.
+// GPT-036: chrome buttons live under the Topo task tab.
+await page.evaluate(() => document.querySelector('[data-rb-floor-task="topo"]')?.click());
+await new Promise((r) => setTimeout(r, 400));
 await page.evaluate(() => {
   document.querySelector('[data-rb-topo-frame="0"]')
     ?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
@@ -486,11 +489,17 @@ check('enabled per-view legends paint images',
   JSON.stringify(chromeOn.legends));
 
 // Three-view reference sheet.
+await page.evaluate(() => document.querySelector('[data-rb-floor-task="layout"]')?.click());
+await page.waitForFunction(
+  () => !!document.querySelector('[data-rb-floor-view="add"]'),
+  { timeout: 10000 });
 await page.evaluate(() => document.querySelector('[data-rb-floor-view="add"]')?.click());
 await page.waitForFunction(
-  () => document.querySelectorAll('[data-rb-topo-frame]').length >= 3, { timeout: 15000 });
+  () => document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame]').length >= 3,
+  { timeout: 20000 });
 await new Promise((r) => setTimeout(r, 1000));
-const three = await page.evaluate(() => document.querySelectorAll('[data-rb-topo-frame]').length);
+const three = await page.evaluate(() =>
+  document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame]').length);
 check('Add view reaches a three-view reference sheet', three === 3, String(three));
 
 // Save/reopen with chrome + cameras + three views.
