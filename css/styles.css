@@ -870,6 +870,23 @@ body {
   background: var(--bg);
 }
 
+/* Remove level — only shown when another level remains (Tim, Oct 26, 2026). */
+.plan-remove-level {
+  flex: 0 0 auto;
+  height: 40px;
+  padding: 0 12px;
+  font-size: 13px;
+  white-space: nowrap;
+  color: #8a2f2f;
+  border-color: #e0c8c8;
+}
+
+.plan-remove-level:hover {
+  color: #6e1f1f;
+  background: #faf2f2;
+  border-color: #d4a8a8;
+}
+
 .field-hint {
   margin: 6px 0 0;
   font-size: 12px;
