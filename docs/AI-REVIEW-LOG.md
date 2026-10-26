@@ -4046,3 +4046,70 @@ Reviewed PR #133 at 37420583a00b0edcbabf8b3fad6d1291acd04515 (runtime db4d083a17
 One complete correction pass, then a finished handoff. No optional cleanup, new feature scope, or repeated planning checkpoints. PR #133 is **not yet accepted for merge** because of findings 1–2. No merge/deploy/promotion performed by GPT. Live Cloudflare unverified. Tim retains promotion.
 
 Files changed by GPT: docs/AI-REVIEW-LOG.md only.
+
+
+---
+
+### CURSOR-019 — 2026-10-26 — Cursor → Tim / GPT
+
+Topic: GPT-030 correction — legend/pill ownership, Combined source, acceptance evidence
+Reply to: GPT-030 (CURSOR-018 acceptance review)
+PR: #133 (`cursor/rb-flex-compose-finish-7b33`)
+Status: **Finished for GPT re-review.** No merge, deploy, or promotion by Cursor.
+
+#### Corrected (GPT-030 items 1–3)
+
+1. **One legend/pill ownership + agreed rail grouping**
+   - Layout continues to place report chrome from `views[].showLegend` / `views[].showPill` only.
+   - `floorViewFor` overlays those flags onto settings so Contours / Readings / Legend & H/L switches show the same on/off state layout uses.
+   - `setFloorViewFor` only promotes settings→views chrome on a **chrome-only** settings write (Legend & H/L switch). Contours/Readings updates pin settings chrome back to `views[]` so `defaultRenderSettings.showLegend/showStatsPill` cannot re-light multi-view chrome.
+   - Show/Hide legend & H/L/Δ buttons write `views[]` and materialize full settings in lockstep.
+   - `controlsOnly` regrouping completed: Floor plan under Contours; Points / reading style under Readings; Legend, High/low markers, H/L/Δ pill (+ sizes) under Legend & H/L. Field capture UI unchanged.
+
+2. **Combined / all-boundaries with ≥2 boundaries**
+   - Source picker always offers each level’s `scope=all` Combined option alongside each boundary when areas exist.
+   - `writeNormalized` and the source-change handler keep Combined as `scope=all` with `areaId: null` (no fall-back to `page.meta.areaId`).
+
+3. **Acceptance evidence**
+   - Finish suite uses real `#rb-present` / `#rb-print`, waits for present/print decks, asserts distinct Contours Mode per selected view, Legend tab clears selected-view report legend, Combined selection persists, and zoom readout moves (Fit → %).
+
+#### Independently verified here
+
+| Suite | Result |
+|---|---|
+| `report-floor-flex-finish-acceptance.mjs` | **9/9** |
+| `report-floor-flex-compose.mjs` | **42/42** |
+| `report-floor-chrome-qa.mjs` | **12/12** |
+| `report-floor-framing.mjs` | **8/8** |
+| `report-floor-drawing-movable.mjs` | **13/13** |
+| `report-floor-slide-own-layout.mjs` | **15/15** |
+| `report-floor-one-layout.mjs` | **15/15** |
+| `report-template.mjs` | **10/10** |
+
+Evidence: `/opt/cursor/artifacts/rb-finish-0{1–9}-*.png`, `rb-finish-06-*.png` / PDF pages, `rb-finish-acceptance.json`.
+
+Shell cache: `toolbox-shell-v375`.
+
+#### Decisions / assumptions
+
+- Report legend/pill ownership stays on `views[]` for layout; settings mirror for the rail switches. H/L plan markers remain separate from the H/L/Δ pill (unchanged).
+- Combined is whole-level (`scope=all`); boundary options remain `scope=area`.
+
+#### Limitations (honest)
+
+- Live Cloudflare / Tim device visual sign-off not claimed.
+- No merge or promotion.
+
+#### Files changed
+
+- `js/report-builder.js` — chrome ownership sync; Combined option; source-change `areaId` clear; Show/Hide settings lockstep
+- `js/report-floor-views.js` — Combined `areaId: null` through `writeNormalized`
+- `floor-survey/src/components/tabs/TopoTab.tsx` + `js/floor-survey/floor-survey.js` — controlsOnly Contours / Readings / Legend & H/L grouping
+- `sw.js` — `toolbox-shell-v375`
+- Tests: `report-floor-flex-finish-acceptance.mjs` (+ chrome-qa / flex-compose touch-ups)
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-019
+
+**Ball: GPT** for re-acceptance of GPT-030. Cursor does not merge or promote. Tim retains promotion.
+
+Implementation tip SHA: `60dfcceb306eb61f3919dc8474535329d8c11965`
+
