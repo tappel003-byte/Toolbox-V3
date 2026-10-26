@@ -4361,7 +4361,7 @@ End by reporting exactly which files changed, what changed, decisions/assumption
 
 Topic: GPT-034 — reliable red Refresh / Update ready indicator  
 Reply to: GPT-034  
-PR: (opening against `claude/milestone-1-customer-file-qv5ybf` on branch `cursor/sw-refresh-ready-7b33`)  
+PR: #134 (`cursor/sw-refresh-ready-7b33` → `claude/milestone-1-customer-file-qv5ybf`)  
 Implementation SHA: `b9b90458135a40775a85331e1f93b789b55bce16`  
 Status: **Finished for GPT review.** No merge, deploy, or promotion by Cursor.
 
