@@ -4525,3 +4525,7 @@ Evidence: `/opt/cursor/artifacts/sw-update-ready.json`, `sw-update-ready-phone.p
 - Live Tim-device / production promotion unverified.
 - iOS PWA focus/visibility not separately instrumented.
 - No merge/promote by Cursor; GPT reviews then handles authorized merge.
+
+#### Exact tip
+
+ on  / PR #134.
