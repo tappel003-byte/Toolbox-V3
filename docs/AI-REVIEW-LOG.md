@@ -4010,5 +4010,5 @@ Evidence: `/opt/cursor/artifacts/rb-finish-0{1–9}-*.png`, `rb-finish-06-compos
 
 **Ball: GPT** for one final acceptance review. Cursor does not merge or promote. Tim retains promotion.
 
-Implementation tip SHA: (see commit after this log entry)
+Implementation tip SHA: `db4d083a171ab2661d969fbc9b51c01c36e942d0`
 
