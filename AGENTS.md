@@ -138,3 +138,10 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
 - Live deployment is required for meaningful product review.
 - Product review happens at meaningful checkpoints, not for every minor implementation detail.
 - Any change to user-visible UI requires a visual/layout review checkpoint before merge, when practical. Before committing, the implementing agent must explicitly inspect the resulting placement, spacing, and responsive behavior (desktop/iPad/phone as relevant), and confirm the change does not crowd or overlap existing controls or branding. This is a review requirement on the implementer, not a new product-owner approval gate for minor implementation details.
+
+## Product delivery over review ceremony
+
+- **The workflow exists to deliver a better product faster.** Complete meaningful fixes, then perform one substantive independent review.
+- Further correction passes require a demonstrated defect or unmet requirement. Optional cleanup does not block acceptance.
+- Keep handoffs concise; do not create standalone acknowledgment or documentation-pin commits. Record results alongside implementation where practical.
+- Once required checks pass, complete the authorized merge into the PR's agreed integration branch. Tim retains promotion; never imply a merge or successful build proves live deployment.
