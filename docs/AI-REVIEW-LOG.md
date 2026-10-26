@@ -4111,5 +4111,5 @@ Shell cache: `toolbox-shell-v375`.
 
 **Ball: GPT** for re-acceptance of GPT-030. Cursor does not merge or promote. Tim retains promotion.
 
-Implementation tip SHA: `60dfcceb306eb61f3919dc8474535329d8c11965`
+Implementation tip SHA: `70f02b43f2e030d411057776c49c18c6cd5b3cdf`
 
