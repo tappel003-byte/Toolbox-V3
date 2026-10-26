@@ -2805,19 +2805,41 @@
   // so a refresh never discards an in-progress edit.
   const refreshBtn = document.getElementById('app-refresh');
   if (refreshBtn) {
+    function paintRefreshIdle() {
+      const ready = window.ToolboxUpdate
+        && typeof window.ToolboxUpdate.isAvailable === 'function'
+        && window.ToolboxUpdate.isAvailable();
+      refreshBtn.disabled = false;
+      if (ready) {
+        refreshBtn.classList.add('is-update-ready');
+        refreshBtn.textContent = '↻ Update ready';
+        refreshBtn.title = 'A new version of Toolbox is ready. Click to load it.';
+      } else {
+        refreshBtn.classList.remove('is-update-ready');
+        refreshBtn.textContent = '↻ Refresh';
+        refreshBtn.title = '';
+      }
+    }
+
     // A plain reload fetches a fresh document that then loads the OLD scripts
     // and styles from the installed shell, so the app comes back on the
     // previous version. Refresh asks the service worker to take the new one
-    // first, then reloads.
+    // first, then reloads. GPT-034: wait for the active save to settle; a
+    // failed flush keeps the page and does not claim a safe update.
     refreshBtn.addEventListener('click', function () {
-      flushActiveFile();
+      if (refreshBtn.disabled) return;
       refreshBtn.disabled = true;
       refreshBtn.textContent = 'Updating…';
-      if (window.ToolboxUpdate && typeof window.ToolboxUpdate.refresh === 'function') {
-        window.ToolboxUpdate.refresh();
-      } else {
+      Promise.resolve(activeFileFlush ? activeFileFlush() : null).then(function () {
+        if (window.ToolboxUpdate && typeof window.ToolboxUpdate.refresh === 'function') {
+          return window.ToolboxUpdate.refresh();
+        }
         window.location.reload();
-      }
+        return null;
+      }).catch(function () {
+        // Status already set by the active view's flushSave.
+        paintRefreshIdle();
+      });
     });
 
     // Say so when a deploy lands while the app is open, rather than leaving
@@ -2825,9 +2847,7 @@
     if (window.ToolboxUpdate && typeof window.ToolboxUpdate.onAvailable === 'function') {
       window.ToolboxUpdate.onAvailable(function () {
         if (refreshBtn.disabled) return;
-        refreshBtn.classList.add('is-update-ready');
-        refreshBtn.textContent = '↻ Update ready';
-        refreshBtn.title = 'A new version of Toolbox is ready. Click to load it.';
+        paintRefreshIdle();
       });
     }
   }
