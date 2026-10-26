@@ -4748,14 +4748,12 @@
           if (chromeAct === 'legend-off') cv.showLegend = false;
           if (chromeAct === 'pill-on') cv.showPill = true;
           if (chromeAct === 'pill-off') cv.showPill = false;
-          // Keep settings in lockstep with views[] chrome (GPT-030).
-          cv.settings = Object.assign({}, cv.settings || {});
-          if (chromeAct === 'legend-on' || chromeAct === 'legend-off') {
-            cv.settings.showLegend = !!cv.showLegend;
-          }
-          if (chromeAct === 'pill-on' || chromeAct === 'pill-off') {
-            cv.settings.showStatsPill = !!cv.showPill;
-          }
+          // Keep settings in lockstep with views[] chrome (GPT-030). Use the
+          // full floorViewFor object so a later Legend & H/L switch is a
+          // chrome-only delta, not a sparse {showLegend} vs full resolved miss.
+          cv.settings = Object.assign({}, floorViewFor(cp) || {}, cv.settings || {});
+          cv.settings.showLegend = !!cv.showLegend;
+          cv.settings.showStatsPill = !!cv.showPill;
           markDirty();
           renderPages();
           flushSave().catch(function () {});
