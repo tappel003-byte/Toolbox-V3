@@ -101,9 +101,11 @@ await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="floor
 // The slide brings its own drawing in now -- Tim: "I don't know why it needs
 // to be hit" -- so what used to be the button's promise is what the page
 // simply arrives carrying. The promise is unchanged; nobody has to ask for it.
-await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box="topo"]'), { timeout: 25000 });
+await page.waitForFunction(
+  () => !!document.querySelector('[data-rb-floor-box^="topo"]'),
+  { timeout: 25000 });
 const unasked = await page.evaluate(() => ({
-  topo: !!document.querySelector('[data-rb-floor-box="topo"]'),
+  topo: !!document.querySelector('[data-rb-floor-box^="topo"]'),
   button: !!document.querySelector('[data-rb-floor-import]'),
 }));
 check('the slide arrives carrying the topo, with nothing to press',

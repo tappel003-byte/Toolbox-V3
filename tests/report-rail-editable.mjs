@@ -153,7 +153,7 @@ check('the blocks start on the generated lines',
 // A reading is text on the rail like any other, and is keyed by its boundary
 // so a surface renamed in Floor Survey keeps the words written about it.
 await page.evaluate(() => document.querySelector('[data-rb-floor-import]')?.click());
-await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box="topo"]'), { timeout: 20000 });
+await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box^="topo"]'), { timeout: 20000 });
 await page.waitForFunction(
   () => document.querySelectorAll('.rb-sheet .rb-rail__reading').length >= 3, { timeout: 20000 });
 const readingKeys = await page.evaluate(() => [...document.querySelectorAll('.rb-sheet [data-rb-rail-field]')]

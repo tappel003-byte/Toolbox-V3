@@ -3938,3 +3938,77 @@ Status: **Complete.** Ready for Tim to merge/promote. Cursor does not merge or p
 **Ball: Tim** for merge/promotion.
 
 Implementation tip SHA: `4efd91f01e4e7d1082eda9e6fefda7023fac2570`
+
+### CURSOR-018 — 2026-10-26 — Cursor → Tim / GPT
+
+Topic: Report Builder flexible-compose finish — rail + This slide only (post–PR #132)
+Reply to: Tim finish brief (GPT-025…029 / CURSOR-012…017 preserved; PR #132 merged as `c8363b5`)
+PR: #133 (`cursor/rb-flex-compose-finish-7b33`)
+Status: **Finished for GPT acceptance review.** No merge, deploy, or promotion by Cursor.
+
+#### Built (this finish pass)
+
+Preserved Checkpoint 1 (views, link/align, GPT-026 chrome, shared-camera / print parity through GPT-029). Completed the agreed rail/UX simplification:
+
+- Floor Survey Report Builder rail groups: **Contours / Readings / Legend & H/L** (`TopoTab` `controlsOnly` + `data-rb-rail-*`)
+- Selected-view lead names the active view and its Plan Setup source
+- Source picker lists Plan Setup levels/boundaries (not only outline pages already in the report)
+- **This slide only** / **Shared placement** wording (replaces “Place this slide on its own” / “Use the shared placement”)
+- Removed ordinary Floor Survey **Two views / One view** rail control and floor **Use this as my default** (cover/discussion/penlog defaults unchanged; existing `toolbox-report-template` floorLayout/floorCamera still seed new reports)
+- Legacy `data-rb-floor-twoup` handler kept for old callers; UI no longer offers it
+- Shell cache `toolbox-shell-v374`
+
+#### Acceptance checklist (hands-on, pointer/controls — `tests/report-floor-flex-finish-acceptance.mjs`)
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Same floor two views — link resize match / unlink independent | **PASS** |
+| 2 | Different floors — source picker, size link, independent camera, selection lead | **PASS** |
+| 3 | Reference sheet — 3 views incl. Garage; chrome hidden then one legend+pill | **PASS** (Garage pill `H 4.5 L 3.0 Δ 1.5`) |
+| 4 | Shared vs This slide only — independent chrome move; restore shared | **PASS** |
+| 5 | Save / leave RB / reload / reopen — sources/chrome/frames survive | **PASS** |
+| 6 | Editor → Print deck → actual 11×17 PDF | **PASS** (`%PDF-`, 5 pages, ~1.2 MB); PDF pages rasterized |
+| 7 | Window size + Fit/100%/150% — saved frames unchanged | **PASS** (paper 1632×1056) |
+| 8 | Stale per-view camera on ordinary figure — live host under shared policy | **PASS** (print-extent book-vs-stale also **13/13** in drawing-movable) |
+| 9 | Finished rail — Contours/Readings/Legend & H/L; no Two views; no floor default | **PASS** |
+
+Evidence: `/opt/cursor/artifacts/rb-finish-0{1–9}-*.png`, `rb-finish-06-compose.pdf`, `rb-finish-06-pdf-page{1–3}.png`, `rb-finish-acceptance.json`.
+
+#### Regressions (this environment)
+
+- `report-floor-flex-compose.mjs` — **42/42**
+- `report-floor-framing.mjs` — **8/8**
+- `report-floor-drawing-movable.mjs` — **13/13**
+- `report-floor-slide-own-layout.mjs` — **15/15**
+- `report-floor-one-layout.mjs` — **15/15**
+- `report-template.mjs` — **10/10** (floor no longer offers default; seeded floorLayout preserved)
+- `report-floor-chrome-qa.mjs` — **12/12**
+- `report-floor-import-promise.mjs` — **6/6**
+- `report-floor-flex-finish-acceptance.mjs` — **9/9**
+
+#### Decisions / assumptions
+
+- Floor “Use this as my default” removed from the ordinary compose rail only; do not delete saved template data (Tim).
+- Two views control removed from UI; Add/Copy/Remove remain. Tests updated — no duplicate controls kept solely for old assertions.
+- Present toolbar control in this suite did not open a separate Present deck via text click; Print deck stills (same compose path) + actual PDF were verified here. Present ink assertions remain covered by `report-floor-flex-compose` **42/42**.
+- Appearance Contours switches were exercised; independent appearance identity is also covered by flex-compose mode/chrome cases.
+
+#### Limitations (honest)
+
+- PDF rasterization uses pdf.js of Chromium `page.pdf()` of the print media path — same class as prior CURSOR-015/017, not a desktop print-dialog capture.
+- Live Cloudflare / Tim device visual sign-off not claimed.
+- No merge or promotion.
+
+#### Files changed
+
+- `js/report-builder.js` — This slide only / Shared placement; remove floor default + Two views UI; Plan Setup source picker; selected-view lead
+- `floor-survey/src/components/tabs/TopoTab.tsx` + `js/floor-survey/floor-survey.js` — Contours / Readings / Legend & H/L rail tabs
+- `sw.js` — `toolbox-shell-v374`
+- `TODO.md` — mark flexible-compose backlog items done pending GPT review
+- Tests: template, one-layout, slide-own-layout, chrome-qa, import-promise, framing, topo `^=` selectors, **new** `report-floor-flex-finish-acceptance.mjs`
+- `docs/AI-REVIEW-LOG.md` — this CURSOR-018
+
+**Ball: GPT** for one final acceptance review. Cursor does not merge or promote. Tim retains promotion.
+
+Implementation tip SHA: (see commit after this log entry)
+

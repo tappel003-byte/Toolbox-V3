@@ -144,15 +144,28 @@ const pieces = () => page.evaluate(() => {
 });
 
 // The plan frame and the aerial, as a share of the sheet.
+// After views[] normalize, the drawing box id is topo-view:<id> (or topo / topo-N).
 const boxes = () => page.evaluate(() => {
   const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
   const sr = sheet.getBoundingClientRect();
   const out = {};
   sheet.querySelectorAll('[data-rb-floor-box]').forEach((el) => {
-    const id = el.getAttribute('data-rb-floor-box');
-    if (!/^overview$|^topo$/.test(id)) return;
+    const id = el.getAttribute('data-rb-floor-box') || '';
+    if (id === 'overview') {
+      const r = el.getBoundingClientRect();
+      out.overview = {
+        x: +(((r.left - sr.left) / sr.width) * 100).toFixed(1),
+        y: +(((r.top - sr.top) / sr.height) * 100).toFixed(1),
+        w: +((r.width / sr.width) * 100).toFixed(1),
+        h: +((r.height / sr.height) * 100).toFixed(1),
+      };
+      return;
+    }
+    if (!/^topo($|-|\/|view:)/.test(id) && !id.startsWith('topo-view:')) return;
+    // First drawing frame only (ordinary one-view sheets).
+    if (out.topo) return;
     const r = el.getBoundingClientRect();
-    out[id] = {
+    out.topo = {
       x: +(((r.left - sr.left) / sr.width) * 100).toFixed(1),
       y: +(((r.top - sr.top) / sr.height) * 100).toFixed(1),
       w: +((r.width / sr.width) * 100).toFixed(1),
