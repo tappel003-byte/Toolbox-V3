@@ -178,16 +178,20 @@ check('and the rail offers no Lock layout button, because there is nothing to lo
   !(await railLabels()).some((l) => /lock/i.test(l)),
   (await railLabels()).join(' | '));
 
-// "Use this as my default" sets the starting placement for the NEXT report.
-// Inside this one the arrangement is simply the arrangement. The cover's
-// copy of the button says so; this one said nothing, so it read as though
-// it might do something to the report in front of you.
-const floorHints = await page.evaluate(() =>
-  [...document.querySelectorAll('.rb-panel .rb-panel__lead')]
-    .map((p) => (p.textContent || '').trim()));
-check('the default button says what it does',
-  floorHints.some((t) => /new reports start/i.test(t)),
-  floorHints.join(' | ').slice(0, 160));
+// Floor Survey rail: Shared placement is ordinary; This slide only is the
+// exception. "Use this as my default" is not part of this workflow (Tim).
+const floorHints = await page.evaluate(() => ({
+  leads: [...document.querySelectorAll('.rb-panel .rb-panel__lead')]
+    .map((p) => (p.textContent || '').trim()),
+  buttons: [...document.querySelectorAll('.rb-panel .btn')]
+    .map((b) => (b.textContent || '').trim()),
+  floorDefault: !!document.querySelector('.rb-panel [data-rb-template="floor"]'),
+}));
+check('the rail names Shared placement, not a floor default',
+  !floorHints.floorDefault &&
+  floorHints.leads.some((t) => /Shared placement/i.test(t)) &&
+  floorHints.buttons.some((t) => /^This slide only$/i.test(t)),
+  JSON.stringify(floorHints).slice(0, 220));
 
 async function dragBox(id, dx, dy) {
   const at = await page.evaluate((box) => {

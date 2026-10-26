@@ -145,11 +145,11 @@ check('the Floor Survey controls keep their full height on a short screen',
 const tabNames = await page.evaluate(() =>
   [...document.querySelectorAll('[role=tab]')].map((b) => b.textContent.trim()));
 check('the rail is three tabs, named in the app\'s own words',
-  tabNames.join(' | ') === 'Contours | Labels | Layers', JSON.stringify(tabNames));
+  tabNames.join(' | ') === 'Contours | Readings | Legend & H/L', JSON.stringify(tabNames));
 
 // Each size sits beside the thing it sizes, on one tab, rather than buried in
 // a pile of switches.
-await openTab('Layers');
+await openTab('Legend & H/L');
 const named = await page.evaluate(() => {
   const panel = document.querySelector('.rb-panel');
   const names = [...panel.querySelectorAll('label')].map((n) => (n.textContent || '').trim());
@@ -167,11 +167,8 @@ await new Promise((r) => setTimeout(r, 2000));
 /**
  * Open one of the rail's tabs.
  *
- * The Floor Survey controls are three tabs in Report Builder now -- Contours,
- * Labels, Layers -- rather than a thousand pixels of panel stacked open at
- * once. So a control is reached by naming its tab first, which is the point:
- * "the contour rail has always been very cluttered... the most common used
- * controls are hidden deeper."
+ * Report Builder rail groups: Contours, Readings, Legend & H/L (Tim finish
+ * brief). A control is reached by naming its tab first.
  */
 async function openTab(name) {
   const found = await page.evaluate((n) => {
@@ -200,7 +197,7 @@ async function bump(label, times) {
   return true;
 }
 
-await openTab('Layers');
+await openTab('Legend & H/L');
 const legendWas = await box('legend-0');
 check('Legend size is a control that can be pressed', await bump('Legend size', 3));
 const legendNow = await box('legend-0');
@@ -208,7 +205,7 @@ check('and pressing it makes the colour scale on the sheet bigger',
   legendNow.w > legendWas.w + 5 && legendNow.h > legendWas.h + 5,
   JSON.stringify({ was: legendWas, now: legendNow }));
 
-await openTab('Layers');
+await openTab('Legend & H/L');
 const pillWas = await box('pill-0');
 check('Stats pill size is a control that can be pressed', await bump('Stats pill size', 3));
 const pillNow = await box('pill-0');
@@ -254,7 +251,7 @@ async function toggle() {
 await toggle();            // locked, at whatever size it is
 const lockedFirst = await box('legend-0');
 await toggle();            // unlocked again
-await openTab('Layers');
+await openTab('Legend & H/L');
 await bump('Legend size', 2);              // and made bigger
 const biggerUnlocked = await box('legend-0');
 await toggle();            // locked at the NEW size
@@ -272,7 +269,7 @@ await page.evaluate(() => {
   if (b) b.click();
 });
 await new Promise((r) => setTimeout(r, 2200));
-await openTab('Layers');
+await openTab('Legend & H/L');
 const lockedWas = await box('pill-0');
 await bump('Stats pill size', 3);
 const lockedNow = await box('pill-0');

@@ -475,7 +475,8 @@ export function TopoTab({
     });
   }, []);
   /** Which tab the rail shows. Report Builder only; the field screen opens one corner panel at a time. */
-  const [ctrlTab, setCtrlTab] = useState<"contours" | "labels" | "layers">("contours");
+  // Report Builder rail: Contours / Readings / Legend & H/L (Tim finish brief).
+  const [ctrlTab, setCtrlTab] = useState<"contours" | "readings" | "legendhl">("contours");
   const [warningDismissed, setWarningDismissed] = useState(false);
   // "Send to Distress Survey" — idle while nothing has been asked for.
   const [layerState, setLayerState] = useState<"idle" | "working" | "done" | "failed">("idle");
@@ -2023,21 +2024,22 @@ export function TopoTab({
           panels, one at a time.
         */}
         {controlsOnly && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2" data-rb-rail-groups="1">
             <div role="tablist" className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/40 p-1">
               {([
                 ["contours", "Contours"],
-                ["labels", "Labels"],
-                ["layers", "Layers"],
+                ["readings", "Readings"],
+                ["legendhl", "Legend & H/L"],
               ] as const).map(([key, name]) => (
                 <button
                   key={key}
                   type="button"
                   role="tab"
                   aria-selected={ctrlTab === key}
+                  data-rb-rail-tab={key}
                   onClick={() => setCtrlTab(key)}
                   className={
-                    "h-8 rounded-md text-xs font-medium transition-colors " +
+                    "h-8 rounded-md px-1 text-[11px] font-medium transition-colors " +
                     (ctrlTab === key
                       ? "bg-background shadow-sm text-foreground"
                       : "text-muted-foreground hover:text-foreground")
@@ -2232,7 +2234,7 @@ export function TopoTab({
                   />
                 </>
               )}
-              {ctrlTab === "labels" && (
+              {ctrlTab === "readings" && (
                 <>
                   <div className="grid grid-cols-2 gap-2">
                     <SwitchRow
@@ -2347,7 +2349,7 @@ export function TopoTab({
                               </details>
                 </>
               )}
-              {ctrlTab === "layers" && (
+              {ctrlTab === "legendhl" && (
                 <div className="grid grid-cols-2 gap-2">
                   <SwitchRow
                                   label="Floor plan"

@@ -4377,19 +4377,16 @@
           var onItsOwn = floorSlideOnItsOwn(page);
           var lockHint = document.createElement('p');
           lockHint.className = 'rb-panel__lead';
+          lockHint.setAttribute('data-rb-floor-own-hint', onItsOwn ? 'own' : 'share');
           lockHint.textContent = onItsOwn
-            ? 'This slide is placed on its own. Moving the plan, the colour '
-              + 'scale, the readings or the aerial here changes this slide only.'
-            : 'The plan, the colour scale, the readings and the aerial sit in one '
-              + 'place on every Floor Survey slide. Move one here and it moves on '
-              + 'all of them. Contours and palette stay per slide.';
+            ? 'This slide only — moving the plan, colour scale, readings or aerial '
+              + 'here changes this slide alone.'
+            : 'Shared placement — the plan, colour scale, readings and aerial sit in '
+              + 'one place on every Floor Survey slide. Contours and palette stay per slide.';
           wrap.appendChild(lockHint);
-          // A Combined figure carries no colour scale and no readings pill --
-          // they go in the rail -- so its left column is free and the plan
-          // may want the middle of it. Tim: "on the combined view, I would
-          // probably put it more towards the middle."
+          // Tim finish brief: simple This slide only on/off (not "Use this as my default").
           wrap.appendChild(railButton(
-            onItsOwn ? 'Use the shared placement' : 'Place this slide on its own',
+            onItsOwn ? 'Shared placement' : 'This slide only',
             onItsOwn ? 'secondary' : 'quiet',
             'data-rb-floor-own', onItsOwn ? 'share' : 'own'));
 
@@ -4397,19 +4394,23 @@
           var activeView = floorViewSpec(page, floorSlot(page));
           var viewLead = document.createElement('p');
           viewLead.className = 'rb-panel__lead';
+          viewLead.setAttribute('data-rb-floor-view-lead', '1');
+          var srcName = '';
+          if (activeView && workingRecord && window.ToolboxPlanSetup) {
+            try {
+              var cv = window.ToolboxPlanSetup.canvasById(workingRecord, activeView.canvasId);
+              srcName = (cv && cv.name) || '';
+            } catch (err) { srcName = ''; }
+          }
+          if (!srcName && page) srcName = page.railLabel || page.title || '';
           viewLead.textContent = viewsNow.length > 1
-            ? ('View ' + (floorSlot(page) + 1) + ' of ' + viewsNow.length
-              + ' selected — controls below apply to it.')
-            : 'One view on this sheet. Add another to compose side by side.';
+            ? ('Selected: View ' + (floorSlot(page) + 1) + ' of ' + viewsNow.length
+              + (srcName ? (' — ' + srcName) : '')
+              + '. Contours / Readings / Legend & H/L below apply to it.')
+            : 'One view on this sheet. Add or copy a view to compose.';
           wrap.appendChild(viewLead);
           wrap.appendChild(railButton('Add view', 'quiet', 'data-rb-floor-view', 'add'));
           wrap.appendChild(railButton('Copy view', 'quiet', 'data-rb-floor-view', 'copy'));
-          // Legacy Two views / One view control (existing tests + muscle memory).
-          wrap.appendChild(railButton(
-            viewsNow.length > 1 ? 'One view' : 'Two views',
-            'quiet',
-            'data-rb-floor-twoup',
-            viewsNow.length > 1 ? 'off' : 'on'));
           if (viewsNow.length > 1) {
             wrap.appendChild(railButton('Remove view', 'quiet', 'data-rb-floor-view', 'remove'));
             var linked = !!(activeView && activeView.linkGroup);
@@ -4418,7 +4419,8 @@
               'quiet', 'data-rb-floor-view-link', linked ? 'off' : 'on'));
           }
 
-          // Source picker — levels/boundaries from the working Customer File.
+          // Source picker — levels/boundaries from Plan Setup + Floor Survey
+          // (not only pages already in the report outline).
           var srcLabel = document.createElement('label');
           srcLabel.className = 'rb-panel__lead';
           srcLabel.textContent = 'View source';
@@ -4426,31 +4428,48 @@
           var srcSelect = document.createElement('select');
           srcSelect.className = 'rb-rail__select';
           srcSelect.setAttribute('data-rb-floor-view-source', '1');
-          // Sources = Floor Survey pages already in this report (levels/boundaries).
           var seenSrc = Object.create(null);
-          var outline = [];
-          pages.forEach(function (fp) {
-            if (!fp || fp.type !== 'floor' || !fp.meta || fp.meta.reserved) return;
-            var m = fp.meta;
-            var key = [m.canvasId || '', m.epochId || '', m.areaId || '', m.scope || 'all'].join('|');
-            if (!m.canvasId || seenSrc[key]) return;
+          function addSourceOption(canvasId, epochId, areaId, scope, label) {
+            var key = [canvasId || '', epochId || '', areaId || '', scope || 'all'].join('|');
+            if (!canvasId || seenSrc[key]) return;
             seenSrc[key] = 1;
-            outline.push(fp);
-          });
-          if (!outline.length && page.meta) outline = [page];
-          outline.forEach(function (fp) {
-            var m = (fp && fp.meta) || {};
             var opt = document.createElement('option');
-            opt.value = [m.canvasId || '', m.epochId || '', m.areaId || '', m.scope || 'all'].join('|');
-            opt.textContent = (fp && (fp.railLabel || fp.title)) || m.scopeTitle || m.levelName || 'Level';
+            opt.value = key;
+            opt.textContent = label || 'Level';
             if (activeView &&
-                String(activeView.canvasId || '') === String(m.canvasId || '') &&
-                String(activeView.areaId || '') === String(m.areaId || '') &&
-                String(activeView.scope || 'all') === String(m.scope || 'all')) {
+                String(activeView.canvasId || '') === String(canvasId || '') &&
+                String(activeView.areaId || '') === String(areaId || '') &&
+                String(activeView.scope || 'all') === String(scope || 'all')) {
               opt.selected = true;
             }
             srcSelect.appendChild(opt);
+          }
+          var fs = workingRecord && workingRecord.floorSurvey;
+          var byCanvas = (fs && fs.byCanvasId) || {};
+          var canvases = (workingRecord && workingRecord.planSetup && workingRecord.planSetup.canvases) || [];
+          canvases.forEach(function (cv) {
+            if (!cv || !cv.id) return;
+            var layer = byCanvas[cv.id] || null;
+            var areas = (layer && Array.isArray(layer.areas)) ? layer.areas : [];
+            if (areas.length) {
+              areas.forEach(function (area) {
+                if (!area || !area.id) return;
+                addSourceOption(cv.id, fs && fs.id, area.id, 'area',
+                  (cv.name || 'Level') + ' — ' + (area.name || 'Boundary'));
+              });
+            } else {
+              addSourceOption(cv.id, fs && fs.id, null, 'all', cv.name || 'Level');
+            }
           });
+          // Fall back to report outline pages if Plan Setup is empty.
+          if (!srcSelect.options.length) {
+            pages.forEach(function (fp) {
+              if (!fp || fp.type !== 'floor' || !fp.meta || fp.meta.reserved) return;
+              var m = fp.meta;
+              addSourceOption(m.canvasId, m.epochId, m.areaId, m.scope || 'all',
+                fp.railLabel || fp.title || m.levelName || 'Level');
+            });
+          }
           wrap.appendChild(srcSelect);
 
           if (viewsNow.length > 1 && activeView) {
@@ -4461,15 +4480,6 @@
               activeView.showPill ? 'Hide H/L/Δ' : 'Show H/L/Δ',
               'quiet', 'data-rb-floor-view-chrome', activeView.showPill ? 'pill-off' : 'pill-on'));
           }
-
-          wrap.appendChild(railButton(
-            'Use this as my default', 'quiet', 'data-rb-template', 'floor'));
-          var floorDefaultHint = document.createElement('p');
-          floorDefaultHint.className = 'rb-panel__lead';
-          floorDefaultHint.textContent =
-            'New reports start with the plan, the colour scale, the readings '
-            + 'and the aerial where they are here.';
-          wrap.appendChild(floorDefaultHint);
           return wrap;
         };
       }

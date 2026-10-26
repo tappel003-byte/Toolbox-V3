@@ -180,17 +180,17 @@ const drawing = () => page.evaluate(() => {
   const r = box ? box.getBoundingClientRect() : null;
   return r ? Math.round(r.width) + 'x' + Math.round(r.height) : '';
 });
-// Legend size lives under the panel's Layers tab, so open it the way a
-// person would before reaching for the stepper.
-const openedLayers = await page.evaluate(() => {
+// Legend size lives under Legend & H/L, so open it the way a person would
+// before reaching for the stepper.
+const openedLegendHl = await page.evaluate(() => {
   const tab = Array.from(document.querySelectorAll('[role="tab"]'))
-    .find((button) => (button.textContent || '').trim() === 'Layers');
+    .find((button) => (button.textContent || '').trim() === 'Legend & H/L');
   if (!tab) return false;
   tab.click();
   return true;
 });
 await new Promise((resolve) => setTimeout(resolve, 400));
-check('the panel\'s Layers tab opens', openedLayers);
+check('the panel\'s Legend & H/L tab opens', openedLegendHl);
 const beforeLegend = await drawing();
 for (let i = 0; i < 3; i += 1) {
   await page.evaluate(() => document.querySelector('[aria-label="Increase Legend size"]')?.click());

@@ -359,20 +359,21 @@ selection, a shared report camera, whole-page duplication, shared placement
 and a per-slide placement exception, and a still-composition print path.
 These are reusable capabilities, not proof that arbitrary compose is built.
 
-Open backlog, to scope individually before implementation:
+Open backlog (flexible compose finish — Cursor finish branch; see
+`docs/AI-REVIEW-LOG.md` CURSOR handoff after GPT-029 / PR #132 merge):
 
-- [ ] Individual view selection/source/copy: choose the floor and rendition
+- [x] Individual view selection/source/copy: choose the floor and rendition
   for each view, mix floors on a sheet, and add beyond the current two slots.
-- [ ] Placement and sizing: move/resize individual view frames with linked
+- [x] Placement and sizing: move/resize individual view frames with linked
   sizing and reliable top/bottom alignment.
-- [ ] Snapping and whitespace: define and demonstrate alignment behavior and
+- [x] Snapping and whitespace: define and demonstrate alignment behavior and
   useful frame fit without clipping evidence.
-- [ ] Shared placement UX: simplify to the normal shared arrangement and an
-  explicit This slide only exception; simplify default/lock wording.
-- [ ] Report rail: present the agreed three control groups and clearly show
-  which selected view they control.
-- [ ] Persistence/output: prove view sources, settings, geometry and linked
-  behavior survive save/reopen and agree in Presentation and the PDF.
+- [x] Shared placement UX: simplify to the normal shared arrangement and an
+  explicit This slide only exception; remove ordinary floor “Use this as my
+  default”; preserve existing saved defaults.
+- [x] Report rail: Contours / Readings / Legend & H/L; selected-view lead.
+- [x] Persistence/output: views, settings, geometry, links, Present, PDF
+  (acceptance on finish branch; GPT final review before merge).
 
 ### Questions still open — do not invent answers
 

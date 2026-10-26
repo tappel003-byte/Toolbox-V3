@@ -196,11 +196,8 @@ check('leaving the sheet and coming back leaves the drawing where it was',
   framedAlike(first[0], (await views())[0]), JSON.stringify(await views()));
 
 // Two views of one level. Tim: "I need them to be side by side exactly."
-// Prefer Add view (Checkpoint 1); fall back to legacy Two views.
 await page.evaluate(() => {
-  const add = document.querySelector('[data-rb-floor-view="add"]');
-  const two = document.querySelector('[data-rb-floor-twoup="on"]');
-  (add || two)?.click();
+  document.querySelector('[data-rb-floor-view="add"]')?.click();
 });
 await page.waitForFunction(
   () => document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-live]').length >= 2,
