@@ -151,6 +151,32 @@ async function openLegendHlTab() {
   await new Promise((r) => setTimeout(r, 400));
 }
 
+/** Contours Mode <select> inside the rail host — not the View source picker. */
+async function setContoursMode(mode) {
+  await page.evaluate(() => {
+    [...document.querySelectorAll('[role=tab]')]
+      .find((t) => /Contours/i.test(t.textContent || ''))?.click();
+  });
+  await new Promise((r) => setTimeout(r, 400));
+  return page.evaluate((want) => {
+    const sel = [...document.querySelectorAll('.rb-ws__controls select')]
+      .find((s) => [...s.options].some((o) => o.value === 'points-only'));
+    if (!sel) {
+      return {
+        ok: false,
+        reason: 'no-mode-select',
+        selects: [...document.querySelectorAll('select')].map((s) => ({
+          cls: s.className,
+          vals: [...s.options].map((o) => o.value).slice(0, 6),
+        })),
+      };
+    }
+    sel.value = want;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    return { ok: true, mode: sel.value };
+  }, mode);
+}
+
 async function setLegendHlSwitch(label, wantOn) {
   await openLegendHlTab();
   const box = await page.evaluate((lab) => {
@@ -262,41 +288,25 @@ await page.waitForFunction(
   { timeout: 20000 });
 await new Promise((r) => setTimeout(r, 1500));
 
-// Select view 0 — Contours Mode → Color fill (appearance A)
+// Select view 0 — Contours Mode → B&W lines (appearance A)
 await page.evaluate(() => {
-  document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame]')[0]?.click();
+  document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame="0"]')
+    ?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
 });
-await new Promise((r) => setTimeout(r, 400));
-await page.evaluate(() => {
-  [...document.querySelectorAll('[role=tab]')].find((t) => /Contours/i.test(t.textContent || ''))?.click();
-});
-await new Promise((r) => setTimeout(r, 400));
-const modeA = await page.evaluate(() => {
-  const sel = document.querySelector('.rb-ws__controls select, .rb-panel select');
-  if (!sel) return { ok: false };
-  sel.value = 'contour-bw';
-  sel.dispatchEvent(new Event('change', { bubbles: true }));
-  return { ok: true, mode: sel.value };
-});
+await new Promise((r) => setTimeout(r, 600));
+const modeA = await setContoursMode('contour-bw');
 await new Promise((r) => setTimeout(r, 1200));
+await page.waitForFunction(
+  () => /^Saved/.test(document.querySelector('#rb-save-status')?.textContent || ''),
+  { timeout: 15000 }).catch(() => {});
 
 // Select view 1 — Contours Mode → Points only (appearance B); leave view 0 unchanged
 await page.evaluate(() => {
-  const frame = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame="1"]');
-  frame?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+  document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame="1"]')
+    ?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
 });
 await new Promise((r) => setTimeout(r, 800));
-await page.evaluate(() => {
-  [...document.querySelectorAll('[role=tab]')].find((t) => /Contours/i.test(t.textContent || ''))?.click();
-});
-await new Promise((r) => setTimeout(r, 400));
-const modeB = await page.evaluate(() => {
-  const sel = document.querySelector('.rb-ws__controls select, .rb-panel select');
-  if (!sel) return { ok: false };
-  sel.value = 'points-only';
-  sel.dispatchEvent(new Event('change', { bubbles: true }));
-  return { ok: true, mode: sel.value };
-});
+const modeB = await setContoursMode('points-only');
 await new Promise((r) => setTimeout(r, 1200));
 await page.waitForFunction(
   () => /^Saved/.test(document.querySelector('#rb-save-status')?.textContent || ''),

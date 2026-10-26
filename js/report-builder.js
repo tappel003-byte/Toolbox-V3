@@ -3277,24 +3277,42 @@
         var list = viewsApi.ensurePageViews(page);
         if (list[at]) {
           var prevSettings = list[at].settings || {};
-          list[at].settings = next;
-          // GPT-030: one ownership for report legend/pill. Sync views[] chrome
-          // only when the investigator actually toggled those flags — not on
-          // every Contours/Readings update (that would re-light multi-view
-          // chrome from defaultRenderSettings.showLegend).
+          var stored = next;
+          // GPT-030: views[] owns report legend/pill for layout. Contours /
+          // Readings updates arrive with defaultRenderSettings chrome=true;
+          // only accept a settings→views chrome write when the tab was already
+          // truthful to views[] and the investigator changed the flag.
+          // Otherwise pin settings back to views[] (do not re-light multi-view).
           if (next && typeof next === 'object') {
-            if (typeof next.showLegend === 'boolean'
-                && next.showLegend !== prevSettings.showLegend) {
-              list[at].showLegend = next.showLegend;
+            stored = Object.assign({}, next);
+            var viewLeg = list[at].showLegend;
+            // Missing settings chrome ≡ views[] (floorViewFor overlay on mount).
+            var prevLeg = typeof prevSettings.showLegend === 'boolean'
+              ? prevSettings.showLegend : viewLeg;
+            if (typeof next.showLegend === 'boolean' && typeof viewLeg === 'boolean') {
+              if (prevLeg === viewLeg && next.showLegend !== viewLeg) {
+                list[at].showLegend = next.showLegend;
+                stored.showLegend = next.showLegend;
+              } else {
+                stored.showLegend = list[at].showLegend;
+              }
             }
-            if (typeof next.showStatsPill === 'boolean'
-                && next.showStatsPill !== prevSettings.showStatsPill) {
-              list[at].showPill = next.showStatsPill;
+            var viewPill = list[at].showPill;
+            var prevPill = typeof prevSettings.showStatsPill === 'boolean'
+              ? prevSettings.showStatsPill : viewPill;
+            if (typeof next.showStatsPill === 'boolean' && typeof viewPill === 'boolean') {
+              if (prevPill === viewPill && next.showStatsPill !== viewPill) {
+                list[at].showPill = next.showStatsPill;
+                stored.showStatsPill = next.showStatsPill;
+              } else {
+                stored.showStatsPill = list[at].showPill;
+              }
             }
           }
+          list[at].settings = stored;
           // Keep legacy fields in sync for older readers / migration safety.
-          if (at === 0) page.meta.floorView = next;
-          if (at === 1) page.meta.floorView2 = next;
+          if (at === 0) page.meta.floorView = stored;
+          if (at === 1) page.meta.floorView2 = stored;
           return;
         }
       }
