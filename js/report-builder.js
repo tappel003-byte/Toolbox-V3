@@ -7098,11 +7098,31 @@
           layout.topo.y = floorDrag.layout.topo.y + dy;
         }
       } else {
+        // Legend / H/L/Δ (and any other overlay). Multi-view chrome ids are
+        // legend-<viewId> / pill-<viewId>; seed the overlay if a older layout
+        // never wrote that id so the drag cannot die silently.
         var overlay = null;
         for (var i = 0; i < layout.overlays.length; i += 1) {
           if (layout.overlays[i].id === floorDrag.id) overlay = layout.overlays[i];
         }
-        if (!overlay) return;
+        if (!overlay) {
+          var seedBox = sheetEl.querySelector('[data-rb-floor-box="' + floorDrag.id + '"]');
+          var seedX = seedBox ? (parseFloat(seedBox.style.left) || 0) : 0;
+          var seedY = seedBox ? (parseFloat(seedBox.style.top) || 0) : 0;
+          overlay = {
+            id: floorDrag.id,
+            kind: floorDrag.kind || 'legend',
+            statsIndex: 0,
+            x: seedX,
+            y: seedY,
+            z: 3,
+            scale: 1,
+          };
+          layout.overlays.push(overlay);
+          if (floorDrag.layout && Array.isArray(floorDrag.layout.overlays)) {
+            floorDrag.layout.overlays.push(JSON.parse(JSON.stringify(overlay)));
+          }
+        }
         if (floorDrag.resize) {
           var base = 0;
           for (var j = 0; j < floorDrag.layout.overlays.length; j += 1) {
@@ -7114,8 +7134,8 @@
           for (var k = 0; k < floorDrag.layout.overlays.length; k += 1) {
             if (floorDrag.layout.overlays[k].id === floorDrag.id) origin = floorDrag.layout.overlays[k];
           }
-          overlay.x = (origin ? origin.x : 0) + dx;
-          overlay.y = (origin ? origin.y : 0) + dy;
+          overlay.x = (origin ? origin.x : overlay.x) + dx;
+          overlay.y = (origin ? origin.y : overlay.y) + dy;
         }
       }
       // Written through the slide, not straight at the report.
@@ -7207,8 +7227,11 @@
         flushSave().catch(function () {});
         return;
       }
+      // Legend / pill / overview moves update floorLayout during pointermove;
+      // flush so a reload cannot silently discard the drop (same as view frames).
       floorDrag = null;
       markDirty();
+      flushSave().catch(function () {});
     }
     sheetEl.addEventListener('pointerup', endLayoutDrag);
     sheetEl.addEventListener('pointercancel', endLayoutDrag);

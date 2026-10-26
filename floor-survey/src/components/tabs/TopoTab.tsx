@@ -1107,14 +1107,20 @@ export function TopoTab({
               }
             }
             // Boundary H/L/Δ pills drag immediately (same as the legend).
-            // Point labels and High/Low pins still need a long-press.
+            // On a report slide the High/Low pins do too — long-press is a
+            // field/phone gesture; on paper the investigator just grabs them
+            // (Tim, Oct 26, 2026). Point labels still need a long-press so a
+            // casual pan does not pick one up.
             const hit = hitDraggable(x, y);
             if (hit) {
               const startDx =
                 hit.kind === "label" ? (hit.point.labelDx ?? DEFAULT_LABEL_DX) : hit.dx;
               const startDy =
                 hit.kind === "label" ? (hit.point.labelDy ?? DEFAULT_LABEL_DY) : hit.dy;
-              const immediate = hit.kind === "pill";
+              const immediate =
+                hit.kind === "pill" ||
+                ((hit.kind === "pin-high" || hit.kind === "pin-low") &&
+                  (chromeOnPage || presentation));
               setDrag({
                 kind: hit.kind,
                 id:

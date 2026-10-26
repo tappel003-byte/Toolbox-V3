@@ -632,7 +632,43 @@
       // Single-view: prior Combined / readingsOnly rules (unchanged for saved reports).
       // Multi-view (GPT-026): per-view showLegend / showPill; start hidden; no DOM
       // when off — no reserved empty space.
+      /**
+       * Place a movable legend or H/L/Δ pill on the stage.
+       *
+       * Position lives in layout.overlays under this id. Multi-view used to
+       * paint `legend-<viewId>` / `pill-<viewId>` without writing those ids
+       * into overlays, so the drag handler looked them up, found nothing, and
+       * the piece never moved (Tim, Oct 26, 2026: need to move legend and
+       * pill on single-, multi-, or combined sheets alike). Ensure the
+       * overlay exists; reuse a saved spot when one is there.
+       */
       function placeChrome(kind, id, x, y, z, stats, legendOpts) {
+        var existing = null;
+        for (var oi = 0; oi < layout.overlays.length; oi += 1) {
+          if (layout.overlays[oi] && layout.overlays[oi].id === id) {
+            existing = layout.overlays[oi];
+            break;
+          }
+        }
+        var px = existing && isFinite(Number(existing.x)) ? Number(existing.x) : x;
+        var py = existing && isFinite(Number(existing.y)) ? Number(existing.y) : y;
+        var pz = existing && existing.z != null ? existing.z : z;
+        if (!existing) {
+          layout.overlays.push({
+            id: id,
+            kind: kind,
+            statsIndex: 0,
+            x: px,
+            y: py,
+            z: pz != null ? pz : 3,
+            scale: 1,
+          });
+        } else {
+          existing.kind = kind;
+          existing.x = px;
+          existing.y = py;
+          if (pz != null) existing.z = pz;
+        }
         var piece = boxShell(kind, id, true);
         piece.classList.remove('is-locked');
         piece.classList.add('rb-floor-box--chrome');
@@ -640,9 +676,9 @@
         piece.setAttribute('role', 'button');
         piece.setAttribute('aria-label',
           kind === 'legend' ? 'Move the colour scale' : 'Move the readings');
-        piece.style.left = x + '%';
-        piece.style.top = y + '%';
-        piece.style.zIndex = String(z != null ? z : 3);
+        piece.style.left = px + '%';
+        piece.style.top = py + '%';
+        piece.style.zIndex = String(pz != null ? pz : 3);
         var lock = kind === 'legend' ? layout.legendLock : layout.pillLock;
         var live = kind === 'legend' ? legendScale(legendOpts || options) : pillScale(legendOpts || options);
         piece.style.transform = 'scale(' + ((lock && lock.scale) ? lock.scale : live) + ')';
@@ -656,9 +692,11 @@
       if (viewList && viewList.length > 1) {
         // GPT-026: multi-view legends/pills start hidden; only place when a
         // view explicitly enables them. Never fall through to layout.overlays
-        // (that path reserved empty columns for Combined-era slots).
+        // alone (that path reserved empty columns for Combined-era slots).
         // GPT-027: pill needs a stats OBJECT (hi/lo/delta), not the boundary array;
         // legend URLs and settings come from that view's source.
+        // Positions still go through layout.overlays (same drag path as
+        // single-view) under legend-<viewId> / pill-<viewId>.
         viewList.forEach(function (vs, vi) {
           if (!vs) return;
           var rawStats = options.viewStats && options.viewStats[vi];
