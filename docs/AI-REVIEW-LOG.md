@@ -4354,3 +4354,70 @@ Use deterministic conditions/event fixtures instead of sleeps to prove races. Di
 Continue from the current shared branch in one focused PR. Rebuild only if affected generated sources require it; bump shell for changed cached assets. Reply as CURSOR-021 (or next unused Cursor number) in this log with results, exact implementation SHA, PR, evidence, and remaining limitations. GPT reviews before merge. Never promote/deploy; Tim retains promotion.
 
 End by reporting exactly which files changed, what changed, decisions/assumptions, tests actually run, and commit SHA.
+
+---
+
+### CURSOR-021 — 2026-10-26 — Cursor → Tim / GPT
+
+Topic: GPT-034 — reliable red Refresh / Update ready indicator  
+Reply to: GPT-034  
+PR: (opening against `claude/milestone-1-customer-file-qv5ybf` on branch `cursor/sw-refresh-ready-7b33`)  
+Implementation SHA: `b9b90458135a40775a85331e1f93b789b55bce16`  
+Status: **Finished for GPT review.** No merge, deploy, or promotion by Cursor.
+
+#### Required behavior delivered
+
+- **Foreground / reconnect checks:** `visibilitychange` (visible), `focus`, `pageshow`, and `online` call `ToolboxUpdate.check` with an 8s coalesce so overlapping wake events do not hammer `registration.update()`. Load and the five-minute timer still force a check.
+- **Sticky readiness:** once a newer shell is discovered while this document still runs older app code, `updateReady` stays true through skipWaiting / `controllerchange` until the user Refresh-reloads. Fresh load of the current shell does not show red; first install with no controller is not Update ready.
+- **Late listeners / already installing|waiting:** `onAvailable` immediately invokes if already ready; load path `syncFromRegistration` watches installing/waiting without waiting for the next `updatefound`.
+- **Manual Refresh:** always updates; preserves hash/route via normal reload after new shell controls; no auto-reload on mere detection. GPT-034: Refresh **awaits** the active file flush; a rejected save restores the idle/red paint and does not call `refresh()` / claim Updating succeeded.
+- **Offline / failed check:** keeps known readiness; does not clear the red solely because a later check fails.
+- **Scope:** existing `.app-bar__refresh.is-update-ready` chrome only; no cache purge, IDB wipe, sync redesign, or field UI change. Shell bumped to **`toolbox-shell-v377`** because `js/sw-register.js` and `js/app.js` are in `STATIC_SHELL`.
+
+#### Acceptance evidence
+
+| Case | Result |
+|---|---|
+| A→B shell, red appears, old page stays until Refresh | **PASS** (Chromium local origin) |
+| Foreground visibility after coalesce invokes update check | **PASS** (mocked) |
+| Late onAvailable / already-waiting / sticky after auto-activate / no false initial install | **PASS** |
+| Refresh → shell B, route kept (`#/cabinet`), ready cleared on new document | **PASS** |
+| Rejected save blocks refresh chain | **PASS** |
+| Offline/failed check keeps readiness | **PASS** |
+| Phone + desktop red indicator visual | Inspected — orange-red **↻ Update ready** in app bar; no overlap with brand/Sync |
+
+Suite: `node tests/sw-update-ready.mjs` → **15/15**  
+Evidence: `/opt/cursor/artifacts/sw-update-ready.json`, `sw-update-ready-phone.png`, `sw-update-ready-desktop.png`, `sw-update-ready-desktop-after.png`, `sw-update-ready-run3.log`
+
+#### Regressions on same checkout (FS + RB preserved)
+
+| Suite | Result |
+|---|---|
+| `pwa-publish.mjs` | **28/28** (shell `toolbox-shell-v377`) |
+| `autosave-latest-edit.mjs` | **7/7** |
+| `floor-survey-parity.mjs` | **22/22** (Topo shows **Control panel**) |
+| `report-floor-flex-finish-acceptance.mjs` | **9/9** (Contours/Readings/Legend & H/L; Combined) |
+
+#### Files changed
+
+- `js/sw-register.js` — sticky ready, foreground checks + coalesce, late onAvailable, sync installing/waiting on attach
+- `js/app.js` — await flush before Refresh; restore idle/ready paint on flush failure
+- `sw.js` — `toolbox-shell-v377`
+- `tests/sw-update-ready.mjs` — mocked lifecycle + Chromium A→B acceptance
+
+#### Decisions / assumptions
+
+- Coalesce window **8s** for non-forced checks (focus/visibility/online); forced on load and periodic timer.
+- Auto-activation does **not** clear the red and does **not** reload; only deliberate Refresh reloads this document.
+- Mocked visibility test waits past coalesce after load’s forced check (product behavior, not a bug).
+- Real-browser background-while-hidden publish is covered by the A→B path + mocked visibility; full iOS Safari suspend/resume not claimed here.
+
+#### Remaining limitations
+
+- No live Tim-device or production promotion verification (out of scope; Tim promotes).
+- iOS PWA focus/visibility quirks not separately instrumented beyond Chromium fixtures.
+- GPT reviews before merge; Cursor does not merge or promote.
+
+#### Exact tip
+
+`b9b90458135a40775a85331e1f93b789b55bce16` on `cursor/sw-refresh-ready-7b33`.
