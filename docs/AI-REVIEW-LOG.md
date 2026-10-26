@@ -4113,3 +4113,44 @@ Shell cache: `toolbox-shell-v375`.
 
 Implementation tip SHA: `8be3bf787f34cf227769d075e0b604a71aa17a1a`
 
+
+
+---
+
+### GPT-031 — 2026-10-25 — CURSOR-019 re-review and visual audit
+
+Reviewed runtime 8be3bf787f34cf227769d075e0b604a71aa17a1a; current docs tip 858ce8a2b0f0c91ac3cf573f0a2d0d3d63c01a4e differs only in the log pin. PR #133 remains open. No runtime edits by GPT.
+
+**Closed:** Combined is back, scope=all keeps areaId null, actual rail grouping now matches Contours / Readings / Legend & H/L. Existing tested, initialized settings can toggle legends correctly. Field UI regrouping remains scoped to controlsOnly.
+
+#### Independent visual audit (actual running app)
+
+Inspected all three tabs at 1700×1050 and 1280×820. Panels/tabs are readable, the canvas stays visible, the toolbar wraps at the smaller desktop size, and no blocking control overlap was observed. Readings and Legend & H/L are materially easier to scan than the old categories.
+
+Optional observations only — **not merge blockers or new assignments:** Contours' long palette list pushes Add/Copy/source/selection information below the fold; selected-view guidance is below the controls and says “below” although the tabs are above it; Show/Hide shortcuts still duplicate the tab switches. Do not start a polish redesign from these notes.
+
+#### Same GPT-030 Legend blocker still reproduces on first use
+
+Fresh fixture with NO stored floor appearance settings:
+1. Open ordinary Main Level and Add view.
+2. Go straight to Legend & H/L without changing Contours or Readings.
+3. Observed: Legend switch aria-checked=true, report legends=0, outside button “Show legend”.
+4. Click outside Show legend: report legends=1, switch=true, outside button “Hide legend”.
+5. Click tab Legend switch OFF.
+6. Observed after redraw: switch=true again, report legends=1, outside button “Hide legend”.
+
+This was reproduced through the running app at reviewed tip, not inferred from test failure. Screenshots taken for all three tabs at both desktop sizes. This is the SAME functional blocker, not a new feature or preference.
+
+Root: floorViewFor overlays ownership flags only when a base settings object exists; otherwise null reaches the controls and defaults advertise Legend=true. setFloorViewFor's “chromeOnly” heuristic rejects first-use chrome changes when previous settings are empty/sparse and the next resolved object contains all default keys. Show/Hide's “full settings” materialization can still start from null and make a sparse chrome-only object, so the first tab toggle is discarded. The acceptance fixture changes modes first, materializing settings and masking this path.
+
+Complete the ownership boundary for fresh/null/sparse AND already initialized settings. A deliberate Legend or H/L/Delta switch must not be guessed incorrectly by comparing the shape of a resolved settings object. Verify both switches from a genuinely fresh view before any appearance edits, in both directions, then after reopen and in output. Preserve default-off multi-view behavior and do not re-light chrome after unrelated appearance edits.
+
+#### Acceptance evidence
+
+Ran report-floor-flex-finish-acceptance independently: **8/9**, not 9/9 here. Presentation now opens (14 matched wrapper/sheet nodes, 7 stills), but Print check finds no deck after its fixed wait; it then produces a one-page editor PDF. Thus output check 6 fails. This is an acceptance harness issue/unfinished evidence; I am not claiming a new runtime printing regression. The test closes Presentation by clicking its first button rather than specifically Close, removes its CSS class, uses beforeprint preventDefault rather than a window.print stub, and relies on an 8-second sleep. Use the real Close action and wait for actual completed print preparation before generating PDF. Do not manually strip deck classes or silently accept an editor-only PDF.
+Prior review separately verified the real output path; do not reopen the whole print architecture.
+
+One bounded completion of the existing blocker and its evidence. No design round, new features, or optional cleanup. No merge/promote by GPT. Return exact implementation SHA and focused fresh-state / output results. Other regression results in CURSOR-019 remain implementer-reported in this pass. Live Cloudflare not verified; Tim retains promotion.
+
+Ball: **Cursor — finish GPT-030's first-use ownership case and the acceptance output check.**
+Files changed by GPT: docs/AI-REVIEW-LOG.md only.
