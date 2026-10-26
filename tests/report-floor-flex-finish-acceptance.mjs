@@ -288,6 +288,80 @@ await page.waitForFunction(
   { timeout: 20000 });
 await new Promise((r) => setTimeout(r, 1500));
 
+// GPT-031: fresh/null settings — Legend & H/L/Δ before any Contours/Readings edits.
+await page.evaluate(() => {
+  document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame="0"]')
+    ?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+});
+await new Promise((r) => setTimeout(r, 600));
+await openLegendHlTab();
+const freshChrome = await page.evaluate(async (id) => {
+  function switchState(lab) {
+    const labEl = [...document.querySelectorAll('.rb-ws__controls label')]
+      .find((l) => (l.textContent || '').trim() === lab);
+    const sw = labEl?.closest('div.flex')?.querySelector('[role=switch]');
+    if (!sw) return null;
+    return sw.getAttribute('data-state') || sw.getAttribute('aria-checked');
+  }
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  const floor = (rec.reportBuilder.pages || []).find((p) =>
+    p && p.type === 'floor' && Array.isArray(p.meta?.views) && p.meta.views.length >= 2);
+  const views = (floor?.meta?.views || []).map((v) => ({
+    L: !!v.showLegend, P: !!v.showPill, hasSettings: !!(v.settings && typeof v.settings === 'object'),
+    sL: v.settings ? !!v.settings.showLegend : null,
+  }));
+  return {
+    legendSwitch: switchState('Legend'),
+    pillSwitch: switchState('H/L/Δ pill'),
+    legends: document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="legend"]').length,
+    pills: document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="pill"]').length,
+    showBtn: !!document.querySelector('[data-rb-floor-view-chrome="legend-on"]'),
+    views,
+  };
+}, FILE);
+const freshLegendOn = await setLegendHlSwitch('Legend', true);
+await new Promise((r) => setTimeout(r, 1500));
+const afterFreshOn = await page.evaluate(() => ({
+  legends: document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="legend"]').length,
+  switchState: (() => {
+    const lab = [...document.querySelectorAll('.rb-ws__controls label')]
+      .find((l) => (l.textContent || '').trim() === 'Legend');
+    const sw = lab?.closest('div.flex')?.querySelector('[role=switch]');
+    return sw ? (sw.getAttribute('data-state') || sw.getAttribute('aria-checked')) : null;
+  })(),
+}));
+const freshLegendOff = await setLegendHlSwitch('Legend', false);
+await new Promise((r) => setTimeout(r, 1500));
+const afterFreshOff = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  const floor = (rec.reportBuilder.pages || []).find((p) =>
+    p && p.type === 'floor' && Array.isArray(p.meta?.views) && p.meta.views.length >= 2);
+  return {
+    legends: document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="legend"]').length,
+    switchState: (() => {
+      const lab = [...document.querySelectorAll('.rb-ws__controls label')]
+        .find((l) => (l.textContent || '').trim() === 'Legend');
+      const sw = lab?.closest('div.flex')?.querySelector('[role=switch]');
+      return sw ? (sw.getAttribute('data-state') || sw.getAttribute('aria-checked')) : null;
+    })(),
+    views: (floor?.meta?.views || []).map((v) => ({
+      L: !!v.showLegend, sL: !!(v.settings && v.settings.showLegend),
+    })),
+  };
+}, FILE);
+const freshPillOn = await setLegendHlSwitch('H/L/Δ pill', true);
+await new Promise((r) => setTimeout(r, 1200));
+const freshPillOff = await setLegendHlSwitch('H/L/Δ pill', false);
+await new Promise((r) => setTimeout(r, 1200));
+const freshOk = freshChrome.legends === 0 && freshChrome.pills === 0
+  && freshChrome.showBtn
+  && !/checked|true/i.test(String(freshChrome.legendSwitch || ''))
+  && freshLegendOn.ok && afterFreshOn.legends >= 1 && /checked|true/i.test(String(afterFreshOn.switchState || ''))
+  && freshLegendOff.ok && afterFreshOff.legends === 0
+  && !/checked|true/i.test(String(afterFreshOff.switchState || ''))
+  && afterFreshOff.views.every((v) => v.L === false && v.sL === false)
+  && freshPillOn.ok && freshPillOff.ok;
+
 // Select view 0 — Contours Mode → B&W lines (appearance A)
 await page.evaluate(() => {
   document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame="0"]')
@@ -408,13 +482,14 @@ const unlinkedPct = await page.evaluate(() =>
 const independent = unlinkedPct.length >= 2 &&
   Math.abs(unlinkedPct[0].height - unlinkedPct[1].height) > 2;
 await page.screenshot({ path: `${OUT}/rb-finish-01-same-floor.png` });
-accept(1, 'Same floor two views — distinct appearance + link/resize/unlink',
-  handleNow.ok && linkedMatch && independent && /View/i.test(selLead) &&
+accept(1, 'Same floor two views — fresh Legend/pill + distinct appearance + link/resize/unlink',
+  freshOk && handleNow.ok && linkedMatch && independent && /View/i.test(selLead) &&
   modeA.ok && modeB.ok && appearanceProbe.distinct,
   JSON.stringify({
+    freshChrome, freshLegendOn, afterFreshOn, freshLegendOff, afterFreshOff, freshPillOn, freshPillOff, freshOk,
     modeA, modeB, appearanceProbe, selLead, linkClicked, handleNow, linkedPct, handle2,
     unlinkedPct, linkedMatch, independent,
-  }).slice(0, 800));
+  }).slice(0, 1200));
 
 // ========== 2. Different floors ==========
 await page.evaluate(() => {
@@ -681,66 +756,88 @@ const present = await page.evaluate(() => {
   };
 });
 await page.screenshot({ path: `${OUT}/rb-finish-06-present.png` });
-await page.keyboard.press('Escape');
-await new Promise((r) => setTimeout(r, 800));
-// Leave present if Escape was not enough
-await page.evaluate(() => {
-  document.querySelector('.rb-present-bar button, [data-rb-present-close]')?.click();
-  document.querySelector('.rb-print--present')?.classList.remove('rb-print--present');
+// GPT-031: close Present with the real Close control; do not strip deck classes.
+const presentClosed = await page.evaluate(() => {
+  const close = document.querySelector('.rb-present-bar [data-present="close"]');
+  if (!close) return { ok: false };
+  close.click();
+  return { ok: true };
 });
+await page.waitForFunction(
+  () => !document.querySelector('.rb-print.rb-print--present, .rb-print--present'),
+  { timeout: 15000 }).catch(() => {});
 await new Promise((r) => setTimeout(r, 500));
 
-const printDeck = await page.evaluate(async () => {
-  const blocker = (e) => { e.preventDefault(); };
-  window.addEventListener('beforeprint', blocker, true);
+// Stub window.print so #rb-print builds the real deck and settles without a dialog.
+await page.evaluate(() => {
+  window.__rbPrintStubCalls = 0;
+  window.print = () => { window.__rbPrintStubCalls += 1; };
+});
+const printClicked = await page.evaluate(() => {
   const b = document.querySelector('#rb-print');
-  b?.click();
-  await new Promise((r) => setTimeout(r, 8000));
-  window.removeEventListener('beforeprint', blocker, true);
-  const deck = document.querySelector('.rb-print');
+  if (!b) return false;
+  b.click();
+  return true;
+});
+await page.waitForFunction(
+  () => {
+    const deck = document.querySelector('body.is-printing .rb-print, body .rb-print:not(.rb-print--present)');
+    if (!deck) return false;
+    const stills = deck.querySelectorAll('img.rb-topo-still');
+    return stills.length > 0 && [...stills].some((img) => img.naturalWidth > 50);
+  },
+  { timeout: 60000 }).catch(() => {});
+// Wait until print preparation finished (stub invoked) or deck is fully inked.
+await page.waitForFunction(
+  () => (window.__rbPrintStubCalls || 0) >= 1
+    || (document.querySelectorAll('body.is-printing .rb-print img.rb-topo-still').length >= 1),
+  { timeout: 30000 }).catch(() => {});
+await new Promise((r) => setTimeout(r, 1500));
+const printDeck = await page.evaluate(() => {
+  const deck = document.querySelector('body.is-printing .rb-print')
+    || document.querySelector('.rb-print:not(.rb-print--present)');
   const sheets = deck ? deck.querySelectorAll('.rb-print__page, .rb-sheet') : [];
-  const stills = [...document.querySelectorAll('.rb-print img.rb-topo-still')];
+  const stills = deck ? [...deck.querySelectorAll('img.rb-topo-still')] : [];
   return {
-    clicked: !!b,
+    clicked: true,
+    presentClosed: true,
     deck: !!deck,
+    printing: document.body.classList.contains('is-printing'),
     sheets: sheets.length,
     stills: stills.length,
     sizes: stills.slice(0, 4).map((img) => ({ w: img.naturalWidth, h: img.naturalHeight })),
+    printCalls: window.__rbPrintStubCalls || 0,
   };
 });
 const pdfPath = `${OUT}/rb-finish-06-compose.pdf`;
-// Prefer printing the real print deck when present
-const pdfTarget = await page.$('.rb-print');
-if (pdfTarget) {
-  await page.emulateMediaType('print');
-  await page.pdf({ path: pdfPath, width: '17in', height: '11in', printBackground: true });
-  await page.emulateMediaType('screen');
-} else {
-  await page.emulateMediaType('print');
-  await page.pdf({ path: pdfPath, width: '17in', height: '11in', printBackground: true });
-  await page.emulateMediaType('screen');
-}
 let pdfMeta = { ok: false };
-try {
-  const buf = await readFile(pdfPath);
-  pdfMeta = {
-    ok: buf.slice(0, 5).toString() === '%PDF-',
-    bytes: buf.length,
-    pages: (buf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length,
-  };
+if (printClicked && printDeck.deck && printDeck.stills >= 1) {
+  await page.emulateMediaType('print');
+  await page.pdf({ path: pdfPath, width: '17in', height: '11in', printBackground: true });
+  await page.emulateMediaType('screen');
   try {
-    pdfMeta.info = execFileSync('pdfinfo', [pdfPath], { encoding: 'utf8' })
-      .split('\n').filter((l) => /^(Pages|Page size|File size)/.test(l)).join(' | ');
-  } catch (_) { /* optional */ }
-} catch (err) {
-  pdfMeta.error = String(err.message || err);
+    const buf = await readFile(pdfPath);
+    pdfMeta = {
+      ok: buf.slice(0, 5).toString() === '%PDF-',
+      bytes: buf.length,
+      pages: (buf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length,
+    };
+    try {
+      pdfMeta.info = execFileSync('pdfinfo', [pdfPath], { encoding: 'utf8' })
+        .split('\n').filter((l) => /^(Pages|Page size|File size)/.test(l)).join(' | ');
+    } catch (_) { /* optional */ }
+  } catch (err) {
+    pdfMeta.error = String(err.message || err);
+  }
+} else {
+  pdfMeta = { ok: false, reason: 'no-print-deck', printClicked, printDeck };
 }
 await page.screenshot({ path: `${OUT}/rb-finish-06-editor.png` });
 accept(6, 'Actual output — #rb-present and #rb-print decks + 11×17 PDF',
   presentClicked && present.open && present.inked >= 1 &&
-  printDeck.clicked && printDeck.stills >= 1 &&
+  presentClosed.ok && printClicked && printDeck.deck && printDeck.stills >= 1 &&
   pdfMeta.ok && pdfMeta.bytes > 40000 && pdfMeta.pages >= 2,
-  JSON.stringify({ presentClicked, present, printDeck, pdfMeta }).slice(0, 700));
+  JSON.stringify({ presentClicked, present, presentClosed, printClicked, printDeck, pdfMeta }).slice(0, 800));
 
 // ========== 7. Window size / editor zoom ==========
 const paperA = await page.evaluate(() => {

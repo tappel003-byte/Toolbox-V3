@@ -3249,21 +3249,23 @@
       var at = typeof slot === 'number' ? slot : floorSlot(page);
       var view = floorViewSpec(page, at);
       var base = null;
-      if (view && view.settings) base = view.settings;
-      else {
+      if (view && view.settings && typeof view.settings === 'object') {
+        base = view.settings;
+      } else {
         var meta = (page && page.meta) || {};
         if (at === 1) base = meta.floorView2 || meta.floorView || floorView;
         else if (meta.floorView) base = meta.floorView;
         else base = floorView;
       }
-      // GPT-030: rail switches must show the same legend/pill state layout uses.
-      if (view && base && typeof base === 'object') {
-        var synced = Object.assign({}, base);
+      // GPT-030/031: never hand the rail a null settings object (defaults would
+      // advertise Legend=true while multi-view views[] chrome is off). Always
+      // return an object, and pin showLegend / showStatsPill to views[].
+      var synced = Object.assign({}, (base && typeof base === 'object') ? base : {});
+      if (view) {
         if (typeof view.showLegend === 'boolean') synced.showLegend = view.showLegend;
         if (typeof view.showPill === 'boolean') synced.showStatsPill = view.showPill;
-        return synced;
       }
-      return base;
+      return synced;
     }
     function setFloorViewFor(page, next, slot) {
       if (!page) {
@@ -3276,38 +3278,24 @@
       if (viewsApi) {
         var list = viewsApi.ensurePageViews(page);
         if (list[at]) {
-          var prevSettings = list[at].settings && typeof list[at].settings === 'object'
-            ? list[at].settings : {};
           var stored = next;
-          // GPT-030: views[] owns report legend/pill. Contours/Readings writes
-          // arrive with defaultRenderSettings chrome=true — never promote those
-          // into views[]. Only a chrome-only settings write (Legend & H/L
-          // switch) may change views[].showLegend / showPill; otherwise pin
-          // settings chrome back to views[] so layout and the tab stay truthful.
+          // GPT-030/031: views[] owns report legend/pill. TopoTab update() sends
+          // one intentional patch at a time on top of resolved settings that
+          // already mirror views[] via floorViewFor — so a showLegend /
+          // showStatsPill delta vs views[] is a deliberate switch, even on a
+          // fresh/null/sparse settings object. Contours/Readings patches keep
+          // the same chrome in resolved, so they do not move views[].
           if (next && typeof next === 'object') {
             stored = Object.assign({}, next);
-            var prevKeys = Object.keys(prevSettings);
-            var chromeOnly = prevKeys.length > 0;
-            if (chromeOnly) {
-              var seen = Object.create(null);
-              prevKeys.forEach(function (k) { seen[k] = 1; });
-              Object.keys(next).forEach(function (k) { seen[k] = 1; });
-              Object.keys(seen).forEach(function (k) {
-                if (k === 'showLegend' || k === 'showStatsPill') return;
-                if (JSON.stringify(prevSettings[k]) !== JSON.stringify(next[k])) {
-                  chromeOnly = false;
-                }
-              });
+            if (typeof next.showLegend === 'boolean'
+                && typeof list[at].showLegend === 'boolean'
+                && next.showLegend !== list[at].showLegend) {
+              list[at].showLegend = next.showLegend;
             }
-            if (chromeOnly) {
-              if (typeof next.showLegend === 'boolean'
-                  && next.showLegend !== list[at].showLegend) {
-                list[at].showLegend = next.showLegend;
-              }
-              if (typeof next.showStatsPill === 'boolean'
-                  && next.showStatsPill !== list[at].showPill) {
-                list[at].showPill = next.showStatsPill;
-              }
+            if (typeof next.showStatsPill === 'boolean'
+                && typeof list[at].showPill === 'boolean'
+                && next.showStatsPill !== list[at].showPill) {
+              list[at].showPill = next.showStatsPill;
             }
             if (typeof list[at].showLegend === 'boolean') {
               stored.showLegend = list[at].showLegend;
