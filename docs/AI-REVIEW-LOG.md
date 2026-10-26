@@ -4269,3 +4269,44 @@ Status: **Finished cumulative candidate for GPT acceptance.** No merge, deploy, 
 
 Implementation tip SHA: `74c17f912ea84de6e51ce8000f36bb8289b468b3`
 
+
+
+---
+
+### GPT-033 — 2026-10-25 — CURSOR-020 accepted for authorized cumulative merge
+
+Reviewed runtime 74c17f912ea84de6e51ce8000f36bb8289b468b3 at docs tip ba398b9de3ca5c3164198e6398aa585400b55201, PR #133, shell v376.
+
+**Accepted for merge under Tim's GPT-032 authorization.** GPT-030/031 blockers are closed in this cumulative source. No additional implementation assignment or optional-polish gate.
+
+#### Integration proof
+
+Independently confirmed with git merge-base --is-ancestor that HEAD contains:
+- b6aea91 (#130 completed field Control panel),
+- 8be3bf7 (Report Builder finish before integration),
+- c8363b5 (merged composition checkpoint #132).
+
+Diff of TopoTab against #130 confines subsequent changes to report tab state and controlsOnly rail; field Control panel source is preserved. Generated FS assets changed with integration; current host bundle passes field gestures and report workflows in the same checkout.
+
+#### Independently executed (73 checks total)
+
+- report-floor-flex-finish-acceptance: **9/9**, including fresh Legend/pill on/off BEFORE appearance changes, distinct selected-view modes, Combined with areaId=null, link/unlink resize, save/reopen, real Presentation Close, real Print deck, actual PDF, and view-scale invariance assertions.
+- floor-survey-parity: **22/22** — boundary, base/sequential points, undo/redo, level switching, controls, device viewports.
+- floor-survey-integrate: **14/14** — host mounting, saved/reloaded evidence, multi-level data, phone/iPad, Cabinet and Distress mounting.
+- pwa-publish: **28/28**, including generated publish set and offline shell/Distress checks.
+
+Environment adaptations: Chromium executable adapter; only local server ports changed for concurrent field suites. Initial publish run hit a Node 24 Undici assertion while leaving fetched responses unread. Re-ran with a test-runtime fetch wrapper that drains response bodies before proceeding; 28/28 passed. No application code changed for that workaround.
+
+Other regression totals reported by Cursor were read but not independently rerun in this acceptance pass.
+
+#### Rendered evidence
+
+- Opened field Control panel hub and Readings on phone/iPad viewports. Confirmed labeled hub, three destinations, navy section header, navigation, no old Contours/Labels comparison routes, no Reset this door. Compact Decimals input measured 56 CSS pixels in the open phone controls.
+- Real Presentation opened and closed; Print deck contained seven report pages/stills in this fixture. Generated PDF: **7 pages, 1615758 bytes, 1224×792 points** (11×17 landscape). Rendered multi-view page with Poppler and inspected visible drawing content and pill; inspected Presentation screenshot as well.
+- These are synthetic fixtures including deliberately different frames/pans/overlaps, not a claim that Tim's actual customer reports are ready to send or that arbitrary user arrangements cannot crop content. Tim's intended visual review of his real reports remains the final product check.
+
+Cloudflare head ba398b9 build succeeded (version 0db71667-bdfc-42c7-be45-09d14a584779). That verifies the uploaded candidate, not live traffic. The merge commit will have its own build/version; report that separately. No promotion or Cloudflare configuration change authorized or performed.
+
+Next: merge #133 into its established shared working branch, preserving merge ancestry so both streams are present. Verify #130 is incorporated and do not separately re-promote its older snapshot. Tim promotes ONE cumulative build. Do not merge unrelated historical PRs or delete preserved branches.
+
+GPT changed docs/AI-REVIEW-LOG.md only. No runtime implementation by GPT.
