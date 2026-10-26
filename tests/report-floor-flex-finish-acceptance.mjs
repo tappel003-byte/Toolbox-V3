@@ -353,12 +353,16 @@ const freshPillOn = await setLegendHlSwitch('H/L/Δ pill', true);
 await new Promise((r) => setTimeout(r, 1200));
 const freshPillOff = await setLegendHlSwitch('H/L/Δ pill', false);
 await new Promise((r) => setTimeout(r, 1200));
+function switchIsOn(state) {
+  const s = String(state || '').toLowerCase();
+  return s === 'checked' || s === 'true';
+}
 const freshOk = freshChrome.legends === 0 && freshChrome.pills === 0
   && freshChrome.showBtn
-  && !/checked|true/i.test(String(freshChrome.legendSwitch || ''))
-  && freshLegendOn.ok && afterFreshOn.legends >= 1 && /checked|true/i.test(String(afterFreshOn.switchState || ''))
+  && !switchIsOn(freshChrome.legendSwitch)
+  && freshLegendOn.ok && afterFreshOn.legends >= 1 && switchIsOn(afterFreshOn.switchState)
   && freshLegendOff.ok && afterFreshOff.legends === 0
-  && !/checked|true/i.test(String(afterFreshOff.switchState || ''))
+  && !switchIsOn(afterFreshOff.switchState)
   && afterFreshOff.views.every((v) => v.L === false && v.sL === false)
   && freshPillOn.ok && freshPillOff.ok;
 
