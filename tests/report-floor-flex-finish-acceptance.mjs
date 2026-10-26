@@ -27,6 +27,10 @@ function accept(id, title, ok, detail = '', notes = '') {
   checklist.push({ id, title, ok: !!ok, detail, notes });
   check(`[${id}] ${title}`, ok, detail);
 }
+function switchIsOn(state) {
+  const s = String(state || '').toLowerCase();
+  return s === 'checked' || s === 'true';
+}
 
 await mkdir(OUT, { recursive: true });
 const browser = await puppeteer.launch({
@@ -353,10 +357,6 @@ const freshPillOn = await setLegendHlSwitch('H/L/Δ pill', true);
 await new Promise((r) => setTimeout(r, 1200));
 const freshPillOff = await setLegendHlSwitch('H/L/Δ pill', false);
 await new Promise((r) => setTimeout(r, 1200));
-function switchIsOn(state) {
-  const s = String(state || '').toLowerCase();
-  return s === 'checked' || s === 'true';
-}
 const freshOk = freshChrome.legends === 0 && freshChrome.pills === 0
   && freshChrome.showBtn
   && !switchIsOn(freshChrome.legendSwitch)
@@ -633,7 +633,7 @@ accept(3, 'Reference sheet — chrome on; Legend tab clears it; Combined source'
   garage.ok && chrome0.legends === 0 && chrome0.pills === 0 &&
   chrome1.legends >= 1 && chrome1.pills.length >= 1 &&
   chrome1.pills.some((t) => /\d/.test(t)) &&
-  /checked|true/i.test(String(switchOn || '')) &&
+  switchIsOn(switchOn) &&
   legendOff.ok &&
   // Selected garage view's legend cleared; may still have pill.
   legendOffSaved.some((v) => v.L === false && v.sL === false && v.P === true) &&
