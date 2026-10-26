@@ -4154,3 +4154,44 @@ One bounded completion of the existing blocker and its evidence. No design round
 
 Ball: **Cursor — finish GPT-030's first-use ownership case and the acceptance output check.**
 Files changed by GPT: docs/AI-REVIEW-LOG.md only.
+
+
+---
+
+### GPT-032 — 2026-10-25 — Tim authorizes combining the active FS + Report Builder work
+
+Read the entire current Toolbox-V3 repository before making changes. Authority: VISION.md → AGENTS.md → MILESTONE.md → DECISIONS.md → current code, with Tim's explicit direction here governing the integration.
+
+**Tim's instruction:** “Let's combine all of them so that we don't lose any. I will do a full visual investigation tomorrow. I'd like to get out at least two reports.”
+
+This is authorization to reconcile the TWO ACTIVE workstreams and prepare their cumulative merge/build, not authorization to merge every historical open PR or revive superseded features. No new planning round, no feature expansion. Cursor remains the implementation owner; GPT reviews. Tim alone promotes.
+
+#### Verified cause of the visible FS rollback
+
+- PR #130, cursor/fs-topo-control-hub-7b33 at b6aea91f151adf3e187f532afbfaa0e6415329eb, contains the completed FS Control panel through shell v368 and is STILL OPEN.
+- PR #132 merged as c8363b595661b195ce959a718795d1e90c5ad965, but its base was 4b7aade (v351). It changed NO Floor Survey source/bundle files, so it carried the earlier trial FS UI despite a newer shell number.
+- PR #133 then rebuilt the shared FS bundle while changing report controlsOnly from that older source. Its field section therefore still carries the old trial UI. GPT's statement that the field path was unchanged was too narrow: unchanged relative to its stale base did not preserve Tim's latest accepted FS state.
+- Public live requests returned HTTP 403 during this investigation; this source history proves the missing integration, not which exact snapshot Tim's phone currently has.
+
+Current PR #130 is not mergeable; do not discard one side or click through conflicts. At this handoff PR #133 head is c1e04b58e7a437850c628b491225c092b72c09f5; runtime reviewed in GPT-031 is 8be3bf787f34cf227769d075e0b604a71aa17a1a. Re-read heads before work; preserve newer changes.
+
+#### One substantial completion task
+
+1. Bring the latest approved FS work from #130 and the current Report Builder work from #132/#133 together on ONE integration line (continue #133 where practical). Resolve source conflicts deliberately. Preserve branch history/commit ancestry where practical so the accepted FS changes cannot silently remain “elsewhere.” Do not delete source branches or old work as part of this task.
+2. Restore ALL approved field Control panel changes represented by #130: labeled opener, finalized panel/nav appearance, removal of old comparison corner routes and resets, compact Decimals with Declutter row, field control dimensions, label wording, hub descriptions, and its existing diagnostic boundary. Use the actual diff/source, not this list alone.
+3. Preserve current Report Builder composition, rail grouping, per-view sources/Combined, framing/shared versus independent cameras, normalized readings, layout exceptions, chrome ownership, and all print fixes. Complete GPT-031's fresh/null/sparse settings Legend/pill ownership case and reliable output acceptance. Do not replace the current shared TopoTab wholesale with either older file.
+4. Merge SOURCE first, then rebuild all required committed Floor Survey generated assets from that unified source. Do not choose a minified bundle from one branch and a component file from the other. Bump shell above the latest actual candidate.
+5. Verify both workspaces in THE SAME resulting build before handoff:
+   - Field Control panel on phone and iPad viewports: compare against #130's accepted source/rendered behavior; all three destinations, accordion/navigation, compact controls, one entry route, no reintroduced trial/reset/comparison UI. Confirm capture gestures, Save/Done and offline field essentials are preserved; run relevant Floor Survey parity/integration and publish checks.
+   - Report Builder on desktop: all three rail groups, fresh-report Legend and H/L/Delta switches before any other edits, Combined selection, add/copy/source/link/resize, save/reopen, ordinary shared and independent cameras. Actual Presentation and actual 11×17 landscape PDF; inspect rendered content as documented, not merely byte count.
+   - Open representative existing reports as well as fixtures. No claim of Tim's actual two reports being verified unless their files were actually available.
+6. Check final history/diff against BOTH starting heads and state exactly where each stream landed. A higher shell number is not proof it contains both. No old-to-new whole-file overwrite that silently removes the other stream.
+7. Return one finished cumulative candidate, implementation SHA, PR, before/after visual evidence for FS and Report Builder, actual checks and limitations. Provide the precise Cloudflare version/build if observed; distinguish uploaded/ready from promoted/live.
+
+#### Shipping / scope
+
+Tim has authorized combining/merging the active work. Finish the integration and its material checks, then hand it to GPT for the final substantive acceptance/merge step; do not add a new product permission gate for routine conflict resolution. Never deploy/promote or change Cloudflare configuration. Tim's promotion must remain the actual shipping step.
+
+Do not merge old open #85/#86/#97 or agent-environment #120 just because “all” was said; they are outside the active FS/RB reconciliation and may be superseded. Preserve their work. File Explorer stays deferred.
+
+**Ball: Cursor — combine and finish, one complete pass.** Reply in this log with exact changed files, behavior, conflict resolutions/assumptions, independent test/visual/output evidence, implementation SHA, and remaining blockers. GPT changed only docs/AI-REVIEW-LOG.md. No integration merge or promotion has yet been performed by GPT.
