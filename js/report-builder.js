@@ -4190,8 +4190,6 @@
     var railTitleEl = root.querySelector('[data-rb-rail-title]');
     var railTopEl = root.querySelector('[data-rb-rail-top]');
     var railBodyEl = root.querySelector('[data-rb-rail-body]');
-    /** Built by the floor rail, placed under its controls once they are mounted. */
-    var floorRailExtras = null;
     var railFootEl = root.querySelector('[data-rb-rail-foot]');
     var railControls = { el: null, key: '', api: null };
 
@@ -4229,13 +4227,8 @@
     function setRailFootSource(key) {
       if (!railFootEl) return;
       railFootEl.textContent = '';
-      // Everything the floor rail used to stack ABOVE its controls goes here
-      // instead, under them: the tab strip has to be the first thing in the
-      // panel or it names nothing.
-      if (typeof floorRailExtras === 'function') {
-        railFootEl.appendChild(floorRailExtras());
-        floorRailExtras = null;
-      }
+      // GPT-036: composition controls live under Sheet Layout in the body,
+      // not jammed into the foot under Topo. Foot keeps the way back only.
       railFootEl.appendChild(railButton(
         key === 'floor' ? 'Open Floor Survey' : 'Open Distress Survey',
         'secondary', 'data-rb-source', key));
@@ -4245,9 +4238,179 @@
       railFootEl.appendChild(footHint);
     }
 
+    // GPT-036: peer task tabs for Floor Survey sheets. Session-only; switching
+    // tools must not clear selection, camera, or saved layout.
+    var floorTaskTab = 'layout';
+
+    function buildFloorTaskTabs() {
+      var row = document.createElement('div');
+      row.className = 'rb-ws__task-tabs';
+      row.setAttribute('role', 'tablist');
+      row.setAttribute('aria-label', 'Floor Survey sidebar');
+      [
+        ['layout', 'Sheet Layout'],
+        ['topo', 'Topo'],
+      ].forEach(function (pair) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'rb-ws__task-tab' + (floorTaskTab === pair[0] ? ' is-active' : '');
+        btn.setAttribute('role', 'tab');
+        btn.setAttribute('data-rb-floor-task', pair[0]);
+        btn.setAttribute('aria-selected', floorTaskTab === pair[0] ? 'true' : 'false');
+        btn.textContent = pair[1];
+        row.appendChild(btn);
+      });
+      return row;
+    }
+
+    function floorSourceLabel(view, page) {
+      var srcName = '';
+      if (view && workingRecord && window.ToolboxPlanSetup) {
+        try {
+          var cv = window.ToolboxPlanSetup.canvasById(workingRecord, view.canvasId);
+          srcName = (cv && cv.name) || '';
+        } catch (err) { srcName = ''; }
+      }
+      if (!srcName && page) srcName = page.railLabel || page.title || '';
+      return srcName;
+    }
+
+    function appendFloorSourcePicker(wrap, page, activeView) {
+      var srcLabel = document.createElement('label');
+      srcLabel.className = 'rb-panel__lead';
+      srcLabel.textContent = 'View source (selected view)';
+      wrap.appendChild(srcLabel);
+      var srcSelect = document.createElement('select');
+      srcSelect.className = 'rb-rail__select';
+      srcSelect.setAttribute('data-rb-floor-view-source', '1');
+      var seenSrc = Object.create(null);
+      function addSourceOption(canvasId, epochId, areaId, scope, label) {
+        var key = [canvasId || '', epochId || '', areaId || '', scope || 'all'].join('|');
+        if (!canvasId || seenSrc[key]) return;
+        seenSrc[key] = 1;
+        var opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = label || 'Level';
+        if (activeView &&
+            String(activeView.canvasId || '') === String(canvasId || '') &&
+            String(activeView.areaId || '') === String(areaId || '') &&
+            String(activeView.scope || 'all') === String(scope || 'all')) {
+          opt.selected = true;
+        }
+        srcSelect.appendChild(opt);
+      }
+      var fs = workingRecord && workingRecord.floorSurvey;
+      var byCanvas = (fs && fs.byCanvasId) || {};
+      var canvases = (workingRecord && workingRecord.planSetup && workingRecord.planSetup.canvases) || [];
+      canvases.forEach(function (cv) {
+        if (!cv || !cv.id) return;
+        var layer = byCanvas[cv.id] || null;
+        var areas = (layer && Array.isArray(layer.areas)) ? layer.areas : [];
+        if (areas.length) {
+          addSourceOption(cv.id, fs && fs.id, null, 'all',
+            (cv.name || 'Level') + ' — Combined');
+          areas.forEach(function (area) {
+            if (!area || !area.id) return;
+            addSourceOption(cv.id, fs && fs.id, area.id, 'area',
+              (cv.name || 'Level') + ' — ' + (area.name || 'Boundary'));
+          });
+        } else {
+          addSourceOption(cv.id, fs && fs.id, null, 'all', cv.name || 'Level');
+        }
+      });
+      if (!srcSelect.options.length) {
+        pages.forEach(function (fp) {
+          if (!fp || fp.type !== 'floor' || !fp.meta || fp.meta.reserved) return;
+          var m = fp.meta;
+          addSourceOption(m.canvasId, m.epochId, m.areaId, m.scope || 'all',
+            fp.railLabel || fp.title || m.levelName || 'Level');
+        });
+      }
+      wrap.appendChild(srcSelect);
+    }
+
+    function buildFloorLayoutBody(page) {
+      var wrap = document.createDocumentFragment();
+      var onItsOwn = floorSlideOnItsOwn(page);
+      var sheetHead = document.createElement('p');
+      sheetHead.className = 'rb-ws__section-label';
+      sheetHead.textContent = 'Sheet-wide';
+      wrap.appendChild(sheetHead);
+      var lockHint = document.createElement('p');
+      lockHint.className = 'rb-panel__lead';
+      lockHint.setAttribute('data-rb-floor-own-hint', onItsOwn ? 'own' : 'share');
+      lockHint.textContent = onItsOwn
+        ? 'This slide only — moving the plan, colour scale, readings or aerial '
+          + 'here changes this slide alone.'
+        : 'Shared placement — the plan, colour scale, readings and aerial sit in '
+          + 'one place on every Floor Survey slide. Contours and palette stay per slide.';
+      wrap.appendChild(lockHint);
+      wrap.appendChild(railButton(
+        onItsOwn ? 'Shared placement' : 'This slide only',
+        onItsOwn ? 'secondary' : 'quiet',
+        'data-rb-floor-own', onItsOwn ? 'share' : 'own'));
+
+      var viewsNow = floorViewsForPage(page);
+      var activeView = floorViewSpec(page, floorSlot(page));
+      var viewHead = document.createElement('p');
+      viewHead.className = 'rb-ws__section-label';
+      viewHead.textContent = 'Selected view';
+      wrap.appendChild(viewHead);
+      var viewLead = document.createElement('p');
+      viewLead.className = 'rb-panel__lead';
+      viewLead.setAttribute('data-rb-floor-view-lead', '1');
+      var srcName = floorSourceLabel(activeView, page);
+      viewLead.textContent = viewsNow.length > 1
+        ? ('View ' + (floorSlot(page) + 1) + ' of ' + viewsNow.length
+          + (srcName ? (' — ' + srcName) : '')
+          + '. Source, size link and Remove apply to it.')
+        : 'One view on this sheet. Add or copy a view to compose.';
+      wrap.appendChild(viewLead);
+      wrap.appendChild(railButton('Add view', 'quiet', 'data-rb-floor-view', 'add'));
+      wrap.appendChild(railButton('Copy view', 'quiet', 'data-rb-floor-view', 'copy'));
+      if (viewsNow.length > 1) {
+        wrap.appendChild(railButton('Remove view', 'quiet', 'data-rb-floor-view', 'remove'));
+        var linked = !!(activeView && activeView.linkGroup);
+        wrap.appendChild(railButton(
+          linked ? 'Unlink size' : 'Link size',
+          'quiet', 'data-rb-floor-view-link', linked ? 'off' : 'on'));
+      }
+      appendFloorSourcePicker(wrap, page, activeView);
+      return wrap;
+    }
+
+    function buildFloorTopoIdentity(page) {
+      var wrap = document.createDocumentFragment();
+      var viewsNow = floorViewsForPage(page);
+      var activeView = floorViewSpec(page, floorSlot(page));
+      var srcName = floorSourceLabel(activeView, page);
+      var lead = document.createElement('p');
+      lead.className = 'rb-panel__lead';
+      lead.setAttribute('data-rb-floor-topo-lead', '1');
+      if (!activeView) {
+        lead.textContent = 'No topo view on this sheet.';
+      } else if (viewsNow.length > 1) {
+        lead.textContent = 'Selected: View ' + (floorSlot(page) + 1) + ' of ' + viewsNow.length
+          + (srcName ? (' — ' + srcName) : '')
+          + '. Contours / Readings / Legend & H/L apply to it.';
+      } else {
+        lead.textContent = (srcName ? (srcName + ' — ') : '')
+          + 'Contours / Readings / Legend & H/L for this view.';
+      }
+      wrap.appendChild(lead);
+      if (viewsNow.length > 1 && activeView) {
+        wrap.appendChild(railButton(
+          activeView.showLegend ? 'Hide legend' : 'Show legend',
+          'quiet', 'data-rb-floor-view-chrome', activeView.showLegend ? 'legend-off' : 'legend-on'));
+        wrap.appendChild(railButton(
+          activeView.showPill ? 'Hide H/L/Δ' : 'Show H/L/Δ',
+          'quiet', 'data-rb-floor-view-chrome', activeView.showPill ? 'pill-off' : 'pill-on'));
+      }
+      return wrap;
+    }
+
     function syncRail(page) {
       if (!railEl) return;
-      floorRailExtras = null;
       if (page && page.type === 'cover') {
         releaseRailControls();
         railEl.hidden = false;
@@ -4376,171 +4539,22 @@
       var imported = !!(page.meta && page.meta.imported);
       railTopEl.textContent = '';
       if (!imported) {
+        releaseRailControls();
+        if (railBodyEl) railBodyEl.textContent = '';
         railTopEl.appendChild(
           railButton('Import Floor Survey', 'accent', 'data-rb-floor-import', page.id || ''));
         var hint = document.createElement('p');
         hint.className = 'rb-panel__lead';
         hint.textContent = 'Brings this level onto the slide.';
         railTopEl.appendChild(hint);
-      } else {
-        // Three locks, each over one thing, each over where it sits AND how
-        // big it is drawn. Tim: "lock view doesn't really tell us what we're
-        // supposed to do... I might want to lock floor survey, I might want
-        // to lock a legend contour and then I might want to lock the high/low
-        // delta pin, and all of those can be separate." They replace Lock
-        // view, which was only ever the plan's framing under a name that
-        // sounded like everything, and Lock layout, which moved the scale and
-        // the readings together and named neither.
-        // Nothing above the controls.
-        //
-        // The tabs are the top of this panel. They were below five buttons and
-        // their explanations, which is halfway down the rail -- Tim: "Tabs
-        // occur at the top of a listing, not in the middle of it. Who in their
-        // right mind thinks a tab goes in the middle of the page?" He is
-        // right: a tab strip names what is under it, so anything above it is
-        // out of its reach and reads as belonging to nothing.
-        //
-        // So the Floor Survey controls mount first and the locks go below
-        // them, folded away, where they are reached when they are wanted --
-        // "all of this locking stuff needs to move... that may be an accordion
-        // dropdown."
-        floorRailExtras = function () {
-          var wrap = document.createDocumentFragment();
-          var pieceApi = window.ToolboxReportFloorLayout;
-          var pieceLayout = pieceApi
-            ? pieceApi.normalizeLayout(floorLayout)
-            : (floorLayout || {});
-          // One lock, as it was before three replaced it. Tim: "Lock layout is
-          // better, one button vs three, let's go back to that."
-          //
-          // What was broken was never the idea: Lock layout drew its button
-          // only on a sheet that had not been imported, and an imported sheet
-          // returns before that code runs -- so the button existed and could
-          // not be pressed. Splitting it in three solved a missing button with
-          // two extra states. His Oct 8 line already drew the right boundary:
-          // "Lock the picture, not the rendition." The picture -- the framing,
-          // and where the colour scale and the readings sit and how big they
-          // are -- is what this pins. Contours on or off, palette and mode
-          // stay free per slide, which is the reason to lock first.
-          var onItsOwn = floorSlideOnItsOwn(page);
-          var lockHint = document.createElement('p');
-          lockHint.className = 'rb-panel__lead';
-          lockHint.setAttribute('data-rb-floor-own-hint', onItsOwn ? 'own' : 'share');
-          lockHint.textContent = onItsOwn
-            ? 'This slide only — moving the plan, colour scale, readings or aerial '
-              + 'here changes this slide alone.'
-            : 'Shared placement — the plan, colour scale, readings and aerial sit in '
-              + 'one place on every Floor Survey slide. Contours and palette stay per slide.';
-          wrap.appendChild(lockHint);
-          // Tim finish brief: simple This slide only on/off (not "Use this as my default").
-          wrap.appendChild(railButton(
-            onItsOwn ? 'Shared placement' : 'This slide only',
-            onItsOwn ? 'secondary' : 'quiet',
-            'data-rb-floor-own', onItsOwn ? 'share' : 'own'));
-
-          var viewsNow = floorViewsForPage(page);
-          var activeView = floorViewSpec(page, floorSlot(page));
-          var viewLead = document.createElement('p');
-          viewLead.className = 'rb-panel__lead';
-          viewLead.setAttribute('data-rb-floor-view-lead', '1');
-          var srcName = '';
-          if (activeView && workingRecord && window.ToolboxPlanSetup) {
-            try {
-              var cv = window.ToolboxPlanSetup.canvasById(workingRecord, activeView.canvasId);
-              srcName = (cv && cv.name) || '';
-            } catch (err) { srcName = ''; }
-          }
-          if (!srcName && page) srcName = page.railLabel || page.title || '';
-          viewLead.textContent = viewsNow.length > 1
-            ? ('Selected: View ' + (floorSlot(page) + 1) + ' of ' + viewsNow.length
-              + (srcName ? (' — ' + srcName) : '')
-              + '. Contours / Readings / Legend & H/L below apply to it.')
-            : 'One view on this sheet. Add or copy a view to compose.';
-          wrap.appendChild(viewLead);
-          wrap.appendChild(railButton('Add view', 'quiet', 'data-rb-floor-view', 'add'));
-          wrap.appendChild(railButton('Copy view', 'quiet', 'data-rb-floor-view', 'copy'));
-          if (viewsNow.length > 1) {
-            wrap.appendChild(railButton('Remove view', 'quiet', 'data-rb-floor-view', 'remove'));
-            var linked = !!(activeView && activeView.linkGroup);
-            wrap.appendChild(railButton(
-              linked ? 'Unlink size' : 'Link size',
-              'quiet', 'data-rb-floor-view-link', linked ? 'off' : 'on'));
-          }
-
-          // Source picker — levels/boundaries from Plan Setup + Floor Survey
-          // (not only pages already in the report outline).
-          var srcLabel = document.createElement('label');
-          srcLabel.className = 'rb-panel__lead';
-          srcLabel.textContent = 'View source';
-          wrap.appendChild(srcLabel);
-          var srcSelect = document.createElement('select');
-          srcSelect.className = 'rb-rail__select';
-          srcSelect.setAttribute('data-rb-floor-view-source', '1');
-          var seenSrc = Object.create(null);
-          function addSourceOption(canvasId, epochId, areaId, scope, label) {
-            var key = [canvasId || '', epochId || '', areaId || '', scope || 'all'].join('|');
-            if (!canvasId || seenSrc[key]) return;
-            seenSrc[key] = 1;
-            var opt = document.createElement('option');
-            opt.value = key;
-            opt.textContent = label || 'Level';
-            if (activeView &&
-                String(activeView.canvasId || '') === String(canvasId || '') &&
-                String(activeView.areaId || '') === String(areaId || '') &&
-                String(activeView.scope || 'all') === String(scope || 'all')) {
-              opt.selected = true;
-            }
-            srcSelect.appendChild(opt);
-          }
-          var fs = workingRecord && workingRecord.floorSurvey;
-          var byCanvas = (fs && fs.byCanvasId) || {};
-          var canvases = (workingRecord && workingRecord.planSetup && workingRecord.planSetup.canvases) || [];
-          canvases.forEach(function (cv) {
-            if (!cv || !cv.id) return;
-            var layer = byCanvas[cv.id] || null;
-            var areas = (layer && Array.isArray(layer.areas)) ? layer.areas : [];
-            if (areas.length) {
-              // GPT-030: keep whole-level Combined alongside each boundary.
-              // With two+ boundaries, scope=all is the Combined figure; do not
-              // drop it just because area options exist.
-              addSourceOption(cv.id, fs && fs.id, null, 'all',
-                (cv.name || 'Level') + ' — Combined');
-              areas.forEach(function (area) {
-                if (!area || !area.id) return;
-                addSourceOption(cv.id, fs && fs.id, area.id, 'area',
-                  (cv.name || 'Level') + ' — ' + (area.name || 'Boundary'));
-              });
-            } else {
-              addSourceOption(cv.id, fs && fs.id, null, 'all', cv.name || 'Level');
-            }
-          });
-          // Fall back to report outline pages if Plan Setup is empty.
-          if (!srcSelect.options.length) {
-            pages.forEach(function (fp) {
-              if (!fp || fp.type !== 'floor' || !fp.meta || fp.meta.reserved) return;
-              var m = fp.meta;
-              addSourceOption(m.canvasId, m.epochId, m.areaId, m.scope || 'all',
-                fp.railLabel || fp.title || m.levelName || 'Level');
-            });
-          }
-          wrap.appendChild(srcSelect);
-
-          // GPT-030: Legend & H/L tab owns chrome via settings sync, but keep
-          // explicit Show/Hide as the same selected-view controls (they write
-          // views[] and settings together). Truthful on/off from views[].
-          if (viewsNow.length > 1 && activeView) {
-            wrap.appendChild(railButton(
-              activeView.showLegend ? 'Hide legend' : 'Show legend',
-              'quiet', 'data-rb-floor-view-chrome', activeView.showLegend ? 'legend-off' : 'legend-on'));
-            wrap.appendChild(railButton(
-              activeView.showPill ? 'Hide H/L/Δ' : 'Show H/L/Δ',
-              'quiet', 'data-rb-floor-view-chrome', activeView.showPill ? 'pill-off' : 'pill-on'));
-          }
-          return wrap;
-        };
+        setRailFootSource('floor');
+        return;
       }
 
-      // Middle: the real Floor Survey controls, for an imported slide.
+      // GPT-036: Sheet Layout | Topo peer tabs — one group in the same-width
+      // sidebar. Switching tabs changes tools only.
+      railTopEl.appendChild(buildFloorTaskTabs());
+
       var api = window.ToolboxFloorSurvey;
       var meta = page.meta || {};
       var activeSpec = floorViewSpec(page, floorSlot(page));
@@ -4549,40 +4563,60 @@
       var ctrlArea = ctrlScope === 'all' ? null : ((activeSpec && activeSpec.areaId) || meta.areaId || null);
       var key = [page.id, ctrlCanvas, ctrlArea || '', ctrlScope,
         floorSlot(page), activeSpec && activeSpec.id].join('|');
-      if (!imported || !api || typeof api.mount !== 'function' || !ctrlCanvas) {
+
+      if (floorTaskTab === 'layout') {
         releaseRailControls();
-      } else if (railControls.el && railControls.key === key) {
-        if (railControls.api && typeof railControls.api.update === 'function') {
-          railControls.api.update({ settings: floorViewFor(page) });
-          railControls.key = key;
+        if (railBodyEl) {
+          railBodyEl.textContent = '';
+          railBodyEl.appendChild(buildFloorLayoutBody(page));
         }
-        if (railControls.el.parentNode !== railBodyEl) railBodyEl.appendChild(railControls.el);
-      } else {
-        releaseRailControls();
-        var host = document.createElement('div');
-        host.className = 'rb-ws__controls';
-        railBodyEl.appendChild(host);
-        railControls = { el: host, key: key, api: null };
-        railControls.api = api.mount(host, {
-          customerFileId: customerFileId,
-          workspace: 'report-topo-controls',
-          canvasId: ctrlCanvas,
-          areaId: ctrlArea,
-          settings: floorViewFor(page),
-          onBack: function () {},
-          onSettingsChange: function (next) {
-            var live = activePage();
-            setFloorViewFor(live, next);
-            markDirty();
-            pushPieceScale('legend', liveLegendScale());
-            var host = topoHosts[floorSlot(live)] || topoHosts[0];
-            if (host && host.api && typeof host.api.update === 'function') {
-              host.api.update({ settings: next });
-            }
-            renderPages();
-            flushSave().catch(function () {});
-          },
-        });
+      } else if (railBodyEl) {
+        // Rebuild identity + chrome; keep the mounted Topo host when the view
+        // key is unchanged so settings state is not torn down on every sync.
+        var keepHost = (railControls.el && railControls.key === key) ? railControls.el : null;
+        railBodyEl.textContent = '';
+        railBodyEl.appendChild(buildFloorTopoIdentity(page));
+        if (!api || typeof api.mount !== 'function' || !ctrlCanvas) {
+          releaseRailControls();
+          var empty = document.createElement('p');
+          empty.className = 'rb-panel__lead';
+          empty.setAttribute('data-rb-floor-topo-empty', '1');
+          empty.textContent = ctrlCanvas
+            ? 'Topo controls are unavailable for this view.'
+            : 'No topo view to format. Add a view under Sheet Layout, or import a level.';
+          railBodyEl.appendChild(empty);
+        } else if (keepHost) {
+          if (railControls.api && typeof railControls.api.update === 'function') {
+            railControls.api.update({ settings: floorViewFor(page) });
+          }
+          railBodyEl.appendChild(keepHost);
+        } else {
+          releaseRailControls();
+          var host = document.createElement('div');
+          host.className = 'rb-ws__controls';
+          railBodyEl.appendChild(host);
+          railControls = { el: host, key: key, api: null };
+          railControls.api = api.mount(host, {
+            customerFileId: customerFileId,
+            workspace: 'report-topo-controls',
+            canvasId: ctrlCanvas,
+            areaId: ctrlArea,
+            settings: floorViewFor(page),
+            onBack: function () {},
+            onSettingsChange: function (next) {
+              var live = activePage();
+              setFloorViewFor(live, next);
+              markDirty();
+              pushPieceScale('legend', liveLegendScale());
+              var topoHost = topoHosts[floorSlot(live)] || topoHosts[0];
+              if (topoHost && topoHost.api && typeof topoHost.api.update === 'function') {
+                topoHost.api.update({ settings: next });
+              }
+              renderPages();
+              flushSave().catch(function () {});
+            },
+          });
+        }
       }
 
       setRailFootSource('floor');
@@ -4592,6 +4626,17 @@
     // delegation rather than by listeners attached once at mount.
     if (railEl) {
       railEl.addEventListener('click', function (event) {
+        var taskBtn = event.target.closest('[data-rb-floor-task]');
+        if (taskBtn) {
+          event.preventDefault();
+          var nextTask = taskBtn.getAttribute('data-rb-floor-task');
+          if (nextTask !== 'layout' && nextTask !== 'topo') return;
+          if (floorTaskTab === nextTask) return;
+          floorTaskTab = nextTask;
+          var taskPage = activePage();
+          if (taskPage) syncRail(taskPage);
+          return;
+        }
         var ownBtn = event.target.closest('[data-rb-floor-own]');
         if (ownBtn) {
           event.preventDefault();

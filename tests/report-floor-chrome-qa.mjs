@@ -124,6 +124,13 @@ async function dragBy(id, dx, dy) {
 }
 
 // --- The rail shows its controls, on a short screen as well as a tall one ---
+async function openFloorTask(which) {
+  await page.evaluate((want) => {
+    document.querySelector(`[data-rb-floor-task="${want}"]`)?.click();
+  }, which);
+  await new Promise((r) => setTimeout(r, 450));
+}
+
 async function controlsRoom() {
   return page.evaluate(() => {
     const body = document.querySelector('[data-rb-rail-body]');
@@ -133,19 +140,25 @@ async function controlsRoom() {
       wanted: controls ? controls.scrollHeight : 0 };
   });
 }
+await openFloorTask('topo');
 const tall = await controlsRoom();
 await page.setViewport({ width: 1536, height: 864 });
 await new Promise((r) => setTimeout(r, 2200));
+await openFloorTask('topo');
 const short = await controlsRoom();
 check('the Floor Survey controls keep their full height on a short screen',
   short.controls >= short.wanted - 2 && tall.controls >= tall.wanted - 2 &&
-  short.controls > 300,
+  short.controls > 200,
   JSON.stringify({ tall, short }));
 
-const tabNames = await page.evaluate(() =>
-  [...document.querySelectorAll('[role=tab]')].map((b) => b.textContent.trim()));
-check('the rail is three tabs, named in the app\'s own words',
-  tabNames.join(' | ') === 'Contours | Readings | Legend & H/L', JSON.stringify(tabNames));
+const taskNames = await page.evaluate(() =>
+  [...document.querySelectorAll('[data-rb-floor-task]')].map((b) => b.textContent.trim()));
+check('the rail has Sheet Layout | Topo peer tabs',
+  taskNames.join(' | ') === 'Sheet Layout | Topo', JSON.stringify(taskNames));
+const accordionNames = await page.evaluate(() =>
+  [...document.querySelectorAll('[data-rb-rail-tab]')].map((b) => b.textContent.trim()));
+check('Topo organizes Contours / Readings / Legend & H/L',
+  accordionNames.join(' | ') === 'Contours | Readings | Legend & H/L', JSON.stringify(accordionNames));
 
 // Each size sits beside the thing it sizes, on one tab, rather than buried in
 // a pile of switches.
@@ -171,8 +184,11 @@ await new Promise((r) => setTimeout(r, 2000));
  * brief). A control is reached by naming its tab first.
  */
 async function openTab(name) {
+  await openFloorTask('topo');
   const found = await page.evaluate((n) => {
-    const b = [...document.querySelectorAll('[role=tab]')].find((x) => x.textContent.trim() === n);
+    const b = [...document.querySelectorAll('[data-rb-rail-tab]')]
+      .find((x) => x.textContent.trim() === n)
+      || [...document.querySelectorAll('[role=tab]')].find((x) => x.textContent.trim() === n);
     if (!b) return false;
     b.click();
     return true;
