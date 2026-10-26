@@ -3620,8 +3620,16 @@ button.cf-home__delete[hidden] {
   .app-bar {
     height: calc(52px + env(safe-area-inset-top));
     min-height: calc(52px + env(safe-area-inset-top));
-    padding-right: 12px;
-    padding-left: 12px;
+    padding-right: 10px;
+    padding-left: 10px;
+    gap: 8px;
+  }
+
+  .app-bar__title {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0; /* keep brand mark; free width for actions on phone */
+    gap: 0;
   }
 
   .app-bar__title::before {
@@ -3633,12 +3641,20 @@ button.cf-home__delete[hidden] {
   .app-bar__refresh,
   .app-bar__explorer,
   .app-bar__sync {
+    padding: 5px 7px;
+    font-size: 11px;
+  }
+
+  .app-bar__refresh.is-update-ready {
     padding: 5px 8px;
     font-size: 11px;
   }
 
   .app-bar__actions {
-    gap: 6px;
+    gap: 5px;
+    min-width: 0;
+    flex: 1 1 auto;
+    justify-content: flex-end;
   }
 
   .view-bar--file {
@@ -4467,4 +4483,10 @@ button.cf-home__delete[hidden] {
   background: var(--accent);
   color: #fff;
   font-weight: 700;
+}
+
+/* GPT-035: while Refresh drains the active save, block canvas edits so a
+   keystroke cannot land after the finish snapshot and before reload. */
+html.tb-refresh-locked .canvas {
+  pointer-events: none;
 }

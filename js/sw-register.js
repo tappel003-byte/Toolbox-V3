@@ -125,23 +125,41 @@
   function refresh() {
     pendingRefresh = true;
     if (!registration) { reloadOnce(); return Promise.resolve(); }
+    // GPT-035: arm the stall fallback before update() so a hung network
+    // check cannot leave Updating… forever. reloadOnce is idempotent.
+    var fallback = setTimeout(reloadOnce, 4000);
+    function clearFallback() {
+      if (fallback != null) {
+        clearTimeout(fallback);
+        fallback = null;
+      }
+    }
     return registration.update().then(function () {
       syncFromRegistration(registration);
       var next = registration.waiting || registration.installing;
       if (!next) {
         // Already activated (skipWaiting) or no update — reload this document
         // so scripts/styles come from the controlling shell.
+        clearFallback();
         reloadOnce();
         return;
       }
-      if (next.state === 'activated') { reloadOnce(); return; }
+      if (next.state === 'activated') {
+        clearFallback();
+        reloadOnce();
+        return;
+      }
       next.addEventListener('statechange', function () {
-        if (next.state === 'activated' || next.state === 'redundant') reloadOnce();
+        if (next.state === 'activated' || next.state === 'redundant') {
+          clearFallback();
+          reloadOnce();
+        }
       });
-      // Never leave the investigator looking at a spinner because an update
-      // stalled; reload anyway.
-      setTimeout(reloadOnce, 4000);
-    }).catch(function () { reloadOnce(); });
+      // Fallback already covers a stalled install after update() resolved.
+    }).catch(function () {
+      clearFallback();
+      reloadOnce();
+    });
   }
 
   function onAvailable(fn) {

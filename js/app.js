@@ -2619,11 +2619,15 @@
     // One place that says "something changed", so nothing can set `dirty`
     // without also moving the counter a save is checked against.
     function noteEdit() {
+      // GPT-035: Refresh finish lock — do not accept new edits after the
+      // investigator asked to reload; drain writes what was already dirty.
+      if (document.documentElement.classList.contains('tb-refresh-locked')) return;
       editSeq += 1;
       dirty = true;
     }
 
     function scheduleSave() {
+      if (document.documentElement.classList.contains('tb-refresh-locked')) return;
       noteEdit();
       setStatus('Unsaved changes…');
       refreshEditorProgress();
@@ -2633,7 +2637,7 @@
       }, AUTOSAVE_DELAY_MS);
     }
 
-    function flushSave() {
+    function flushSave(opts) {
       if (saveTimer) {
         clearTimeout(saveTimer);
         saveTimer = null;
@@ -2656,6 +2660,8 @@
       }
       pendingCustomerBump = false;
       pendingPlansBump = false;
+      const drain = !!(opts && opts.drain);
+      const drainPass = drain ? ((opts && opts._drainPass) || 0) + 1 : 0;
       return window.ToolboxDB.saveCustomerFile(record).then(function () {
         isNewFile = false;
         updateIdentityBar();
@@ -2665,6 +2671,14 @@
           // behind the form, so it stays dirty and the status does not say
           // otherwise. Re-arm if nothing else did, so the newer edit lands.
           setStatus('Unsaved changes…');
+          // GPT-035: a deliberate Refresh/finish drain must write the newer
+          // snapshot before reload is allowed — not wait on the debounce.
+          if (drain) {
+            if (drainPass > 20) {
+              throw new Error('Save could not finish before refresh');
+            }
+            return flushSave({ drain: true, _drainPass: drainPass });
+          }
           if (!saveTimer) {
             saveTimer = setTimeout(function () {
               flushSave().catch(function () {});
@@ -2810,27 +2824,34 @@
         && typeof window.ToolboxUpdate.isAvailable === 'function'
         && window.ToolboxUpdate.isAvailable();
       refreshBtn.disabled = false;
+      document.documentElement.classList.remove('tb-refresh-locked');
       if (ready) {
         refreshBtn.classList.add('is-update-ready');
-        refreshBtn.textContent = '↻ Update ready';
+        // GPT-035: shorter phone label so the red control fits the app bar.
+        const narrow = window.matchMedia && window.matchMedia('(max-width: 560px)').matches;
+        refreshBtn.textContent = narrow ? '↻ Update' : '↻ Update ready';
         refreshBtn.title = 'A new version of Toolbox is ready. Click to load it.';
+        refreshBtn.setAttribute('aria-label', 'Update ready — load new Toolbox version');
       } else {
         refreshBtn.classList.remove('is-update-ready');
         refreshBtn.textContent = '↻ Refresh';
         refreshBtn.title = '';
+        refreshBtn.setAttribute('aria-label', 'Refresh Toolbox');
       }
     }
 
     // A plain reload fetches a fresh document that then loads the OLD scripts
     // and styles from the installed shell, so the app comes back on the
     // previous version. Refresh asks the service worker to take the new one
-    // first, then reloads. GPT-034: wait for the active save to settle; a
-    // failed flush keeps the page and does not claim a safe update.
+    // first, then reloads. GPT-034/035: lock the canvas so mid-refresh typing
+    // cannot land, drain the active save until the latest snapshot is durable,
+    // then update; a failed flush keeps the page and does not claim a safe update.
     refreshBtn.addEventListener('click', function () {
       if (refreshBtn.disabled) return;
       refreshBtn.disabled = true;
       refreshBtn.textContent = 'Updating…';
-      Promise.resolve(activeFileFlush ? activeFileFlush() : null).then(function () {
+      document.documentElement.classList.add('tb-refresh-locked');
+      Promise.resolve(activeFileFlush ? activeFileFlush({ drain: true }) : null).then(function () {
         if (window.ToolboxUpdate && typeof window.ToolboxUpdate.refresh === 'function') {
           return window.ToolboxUpdate.refresh();
         }
@@ -2838,6 +2859,7 @@
         return null;
       }).catch(function () {
         // Status already set by the active view's flushSave.
+        // Never time out a failed/slow save into a destructive reload.
         paintRefreshIdle();
       });
     });

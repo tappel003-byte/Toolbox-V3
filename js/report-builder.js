@@ -3390,6 +3390,7 @@
     // One place that says "something changed", so no edit can set `dirty`
     // without also moving the counter a save is checked against.
     function noteEdit() {
+      if (document.documentElement.classList.contains('tb-refresh-locked')) return;
       editSeq += 1;
       dirty = true;
     }
@@ -3434,7 +3435,7 @@
       });
     }
 
-    function flushSave() {
+    function flushSave(opts) {
       if (saveTimer) {
         clearTimeout(saveTimer);
         saveTimer = null;
@@ -3445,6 +3446,8 @@
       }
       // The edit this save is carrying. Everything below is a snapshot of it.
       var savedSeq = editSeq;
+      var drain = !!(opts && opts.drain);
+      var drainPass = drain ? ((opts && opts._drainPass) || 0) + 1 : 0;
       var doc = persistableDocument(
         pages,
         activeId,
@@ -3487,6 +3490,13 @@
             lastSavedAt = doc.updatedAt;
             setSaveStatus('Edited');
             if (draftEl) draftEl.textContent = 'Edited';
+            // GPT-035: Refresh drain writes the newer snapshot before reload.
+            if (drain) {
+              if (drainPass > 20) {
+                throw new Error('Save could not finish before refresh');
+              }
+              return flushSave({ drain: true, _drainPass: drainPass });
+            }
             if (!saveTimer) {
               saveTimer = setTimeout(function () {
                 flushSave().catch(function () {});

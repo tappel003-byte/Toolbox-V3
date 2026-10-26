@@ -1,18 +1,17 @@
 /**
- * GPT-034 — reliable red Update ready / Refresh.
+ * GPT-034 / GPT-035 — reliable red Update ready / Refresh.
  *
  * 1) Mocked lifecycle unit checks (deterministic event orderings).
- * 2) Real Chromium A→B shell check against a local static server.
+ * 2) Real Chromium A→B shell + phone fit + actual #app-refresh click paths.
  *
  * Run: node tests/sw-update-ready.mjs
  */
 import { createRequire } from 'module';
 import { createServer } from 'http';
-import { readFile, writeFile, mkdir, copyFile } from 'fs/promises';
+import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
 
 const require = createRequire(import.meta.url);
 let puppeteer;
@@ -21,6 +20,7 @@ catch { puppeteer = require('/tmp/node_modules/puppeteer-core'); }
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = '/opt/cursor/artifacts';
+const SHELL = 'toolbox-shell-v378';
 const results = [];
 function check(name, ok, detail = '') {
   results.push({ name, ok: !!ok, detail });
@@ -31,10 +31,10 @@ await mkdir(OUT, { recursive: true });
 
 // ---------- 1. Mocked ToolboxUpdate lifecycle (deterministic) ----------
 {
-  // Load sw-register in a fake window with a controllable ServiceWorker container.
   const src = await readFile(path.join(ROOT, 'js/sw-register.js'), 'utf8');
 
-  function makeEnv() {
+  function makeEnv(opts = {}) {
+    const autoFireTimeout = opts.autoFireTimeout !== false;
     const listeners = {
       load: [],
       focus: [],
@@ -47,6 +47,8 @@ await mkdir(OUT, { recursive: true });
     let controller = { scriptURL: '/sw.js#A' };
     const installingListeners = new Map();
     const regListeners = { updatefound: [] };
+    const timers = [];
+    let timerId = 0;
 
     const reg = {
       installing: null,
@@ -92,9 +94,8 @@ await mkdir(OUT, { recursive: true });
       },
     };
 
-    // Evaluate sw-register with fakes.
     const runner = new Function(
-      'window', 'document', 'navigator', 'setInterval', 'setTimeout',
+      'window', 'document', 'navigator', 'setInterval', 'setTimeout', 'clearTimeout',
       src + '\n;return window.ToolboxUpdate;',
     );
     const intervals = [];
@@ -103,10 +104,19 @@ await mkdir(OUT, { recursive: true });
       fakeDocument,
       fakeNav,
       (fn, ms) => { intervals.push({ fn, ms }); return 1; },
-      (fn, ms) => { const t = { fn, ms }; setTimeout(fn, 0); return 1; },
+      (fn, ms) => {
+        const id = ++timerId;
+        const entry = { id, fn, ms, cleared: false };
+        timers.push(entry);
+        if (autoFireTimeout) setTimeout(() => { if (!entry.cleared) fn(); }, 0);
+        return id;
+      },
+      (id) => {
+        const entry = timers.find((t) => t.id === id);
+        if (entry) entry.cleared = true;
+      },
     );
 
-    // Fire load registration path.
     listeners.load.forEach((fn) => fn());
 
     return {
@@ -116,6 +126,7 @@ await mkdir(OUT, { recursive: true });
       docListeners,
       fakeDocument,
       fakeWindow,
+      timers,
       fireWorkerState,
       installingListeners,
       regListeners,
@@ -130,6 +141,12 @@ await mkdir(OUT, { recursive: true });
           if (type === 'statechange') installingListeners.get(worker).push(fn);
           else if (orig) orig.call(worker, type, fn);
         };
+      },
+      fireTimer(ms) {
+        timers.filter((t) => !t.cleared && t.ms === ms).forEach((t) => {
+          t.cleared = true;
+          t.fn();
+        });
       },
     };
   }
@@ -205,33 +222,57 @@ await mkdir(OUT, { recursive: true });
     check('failed/offline check keeps known readiness', still === true && env.ToolboxUpdate.isAvailable());
   }
 
-  // Foreground visibility triggers check after coalesce window
+  // Foreground visibility triggers check after coalesce window (mocked events)
   {
     const env = makeEnv();
     await new Promise((r) => setTimeout(r, 20));
     let updates = 0;
     const orig = env.reg.update;
     env.reg.update = function () { updates += 1; return Promise.resolve(orig.call(this)); };
-    // Past CHECK_COALESCE_MS (8000) so focus/visibility is not folded into load's check.
     await new Promise((r) => setTimeout(r, 8200));
     const before = updates;
     env.fakeDocument.visibilityState = 'visible';
     env.docListeners.visibilitychange.forEach((fn) => fn());
     await new Promise((r) => setTimeout(r, 40));
-    check('visibility foreground invokes update check', updates > before, `updates=${updates} before=${before}`);
+    check('mocked visibilitychange invokes update check after coalesce', updates > before,
+      `updates=${updates} before=${before}`);
+
+    const beforeFocus = updates;
+    env.listeners.focus.forEach((fn) => fn());
+    await new Promise((r) => setTimeout(r, 40));
+    // Within coalesce of the visibility check — must NOT fire another update.
+    check('mocked focus coalesces within 8s of visibility check', updates === beforeFocus,
+      `updates=${updates} beforeFocus=${beforeFocus}`);
+  }
+
+  // GPT-035: stalled registration.update() still arms the 4s reload fallback
+  {
+    const env = makeEnv({ autoFireTimeout: false });
+    await new Promise((r) => setTimeout(r, 20));
+    env.reg.update = () => new Promise(() => { /* never settles */ });
+    let settled = false;
+    const p = env.ToolboxUpdate.refresh().then(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 20));
+    const armed = env.timers.filter((t) => !t.cleared && t.ms === 4000);
+    check('stalled update() arms 4000ms fallback before settle', armed.length >= 1,
+      `timers=${JSON.stringify(env.timers.map((t) => ({ ms: t.ms, cleared: t.cleared })))}`);
+    check('stalled update() has not reloaded before fallback', (env.fakeWindow.__reloads || 0) === 0);
+    check('stalled update() refresh promise still pending', settled === false);
+    env.fireTimer(4000);
+    await new Promise((r) => setTimeout(r, 20));
+    check('stalled update() fallback reloads once', (env.fakeWindow.__reloads || 0) === 1);
+    void p;
   }
 }
 
-// ---------- 2. Real browser A→B shell ----------
+// ---------- 2. Real browser A→B shell + GPT-035 click-path / phone fit ----------
 {
   const port = 8791;
-  // Serve workspace; we'll mutate a copy of sw cache name via query? Better: temp dir.
-  // Use workspace directly: start with v377 already in tree. For A, rewrite response for /sw.js once.
   let serveB = false;
   const swA = (await readFile(path.join(ROOT, 'sw.js'), 'utf8'))
-    .replace(/toolbox-shell-v377/, 'toolbox-shell-v376-testA');
+    .replace(new RegExp(SHELL, 'g'), 'toolbox-shell-v377-testA');
   const swB = (await readFile(path.join(ROOT, 'sw.js'), 'utf8'))
-    .replace(/toolbox-shell-v377/, 'toolbox-shell-v377-testB');
+    .replace(new RegExp(SHELL, 'g'), 'toolbox-shell-v378-testB');
 
   const server = createServer(async (req, res) => {
     try {
@@ -264,6 +305,7 @@ await mkdir(OUT, { recursive: true });
     }
   });
   await new Promise((r) => server.listen(port, '127.0.0.1', r));
+  const origin = `http://127.0.0.1:${port}`;
 
   const browser = await puppeteer.launch({
     headless: 'new',
@@ -273,9 +315,9 @@ await mkdir(OUT, { recursive: true });
   const page = await browser.newPage();
   page.on('pageerror', (e) => console.log('PAGEERROR', e.message));
 
-  // Phone-ish viewport for visual
+  // ---- Phone viewport: A→B discovery + fit ----
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
-  await page.goto(`http://127.0.0.1:${port}/index.html#/`, { waitUntil: 'networkidle0' });
+  await page.goto(`${origin}/index.html#/`, { waitUntil: 'networkidle0' });
   await page.waitForFunction(() => !!(window.ToolboxUpdate && navigator.serviceWorker?.controller), { timeout: 30000 }).catch(() => {});
   await new Promise((r) => setTimeout(r, 1500));
 
@@ -284,20 +326,16 @@ await mkdir(OUT, { recursive: true });
     return {
       ready: !!(window.ToolboxUpdate && window.ToolboxUpdate.isAvailable && window.ToolboxUpdate.isAvailable()),
       text: btn ? btn.textContent.trim() : null,
-      cls: btn ? btn.className : null,
-      cache: await caches.keys(),
     };
   });
   check('fresh load of shell A is not Update ready', !before.ready && /Refresh/i.test(before.text || ''));
 
-  // Publish shell B and ask the page to discover it (foreground check).
   serveB = true;
   await page.evaluate(async () => {
     if (window.ToolboxUpdate && window.ToolboxUpdate.check) {
       await window.ToolboxUpdate.check({ force: true });
     }
   });
-  // Give install/activate a moment; then force another check + visibility.
   await new Promise((r) => setTimeout(r, 2500));
   await page.evaluate(async () => {
     document.dispatchEvent(new Event('visibilitychange'));
@@ -311,25 +349,52 @@ await mkdir(OUT, { recursive: true });
 
   const afterB = await page.evaluate(() => {
     const btn = document.getElementById('app-refresh');
+    const r = btn ? btn.getBoundingClientRect() : null;
     return {
       ready: !!(window.ToolboxUpdate && window.ToolboxUpdate.isAvailable()),
       text: btn ? btn.textContent.trim() : null,
       hasClass: btn ? btn.classList.contains('is-update-ready') : false,
       reloads: window.__reloadCount || 0,
+      rect: r ? { left: r.left, right: r.right, width: r.width, top: r.top, bottom: r.bottom } : null,
+      vw: window.innerWidth,
     };
   });
-  check('Update ready after shell B is published', afterB.ready && afterB.hasClass && /Update ready/i.test(afterB.text || ''),
-    JSON.stringify(afterB));
+  check('Update ready after shell B is published',
+    afterB.ready && afterB.hasClass && /Update/i.test(afterB.text || ''),
+    JSON.stringify({ ready: afterB.ready, text: afterB.text, hasClass: afterB.hasClass }));
+
+  const fit = afterB.rect && afterB.rect.width > 0
+    && afterB.rect.left >= 0
+    && afterB.rect.right <= afterB.vw + 0.5;
+  check('phone Update ready fits viewport without clipping', !!fit,
+    JSON.stringify({ rect: afterB.rect, vw: afterB.vw, text: afterB.text }));
+
   await page.screenshot({ path: `${OUT}/sw-update-ready-phone.png` });
 
   // Desktop visual
   await page.setViewport({ width: 1280, height: 820, deviceScaleFactor: 1 });
   await new Promise((r) => setTimeout(r, 400));
+  // Re-paint for desktop label length
+  await page.evaluate(() => {
+    if (window.ToolboxUpdate && window.ToolboxUpdate.isAvailable()) {
+      const btn = document.getElementById('app-refresh');
+      if (btn && !btn.disabled) {
+        btn.classList.add('is-update-ready');
+        btn.textContent = '↻ Update ready';
+      }
+    }
+  });
+  const deskFit = await page.evaluate(() => {
+    const btn = document.getElementById('app-refresh');
+    const rect = btn.getBoundingClientRect();
+    return { left: rect.left, right: rect.right, vw: window.innerWidth, text: btn.textContent.trim() };
+  });
+  check('desktop Update ready fits viewport',
+    deskFit.left >= 0 && deskFit.right <= deskFit.vw + 0.5,
+    JSON.stringify(deskFit));
   await page.screenshot({ path: `${OUT}/sw-update-ready-desktop.png` });
 
-  // Sticky: simulate controller already on B while page still old — readiness stays.
   const sticky = await page.evaluate(async () => {
-    // Clear waiting/installing observation by checking; sticky flag should remain.
     const readyBefore = window.ToolboxUpdate.isAvailable();
     await window.ToolboxUpdate.check({ force: true });
     return { readyBefore, readyAfter: window.ToolboxUpdate.isAvailable() };
@@ -339,9 +404,7 @@ await mkdir(OUT, { recursive: true });
   // Refresh while red — one navigation into B; route hash preserved.
   await page.evaluate(() => { window.location.hash = '#/cabinet'; });
   const refreshNav = page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 45000 }).catch(() => null);
-  await page.evaluate(() => {
-    document.getElementById('app-refresh')?.click();
-  });
+  await page.click('#app-refresh');
   await refreshNav;
   await new Promise((r) => setTimeout(r, 2000));
   const afterRefresh = await page.evaluate(async () => {
@@ -352,85 +415,182 @@ await mkdir(OUT, { recursive: true });
       ready: !!(window.ToolboxUpdate && window.ToolboxUpdate.isAvailable && window.ToolboxUpdate.isAvailable()),
       text: btn ? btn.textContent.trim() : null,
       keys,
-      hasB: keys.some((k) => /v377-testB/.test(k)),
-      hasA: keys.some((k) => /v376-testA/.test(k)),
+      hasB: keys.some((k) => /v378-testB/.test(k)),
+      hasA: keys.some((k) => /v377-testA/.test(k)),
     };
   });
   check('Refresh loads shell B and clears ready on new document',
     /cabinet/i.test(afterRefresh.hash) && !afterRefresh.ready && afterRefresh.hasB,
     JSON.stringify(afterRefresh));
 
-  // Refresh while not red (already current) — still reloads once, no loop.
-  const reloadsBefore = await page.evaluate(() => {
-    window.__testReloads = 0;
-    const real = window.location.reload.bind(window.location);
-    // Can't replace reload easily after navigation; instead click and ensure we settle.
-    return 0;
-  });
-  await page.evaluate(async () => {
-    await window.ToolboxUpdate.check({ force: true });
-  });
-  const notRed = await page.evaluate(() => {
-    const btn = document.getElementById('app-refresh');
-    return {
-      ready: window.ToolboxUpdate.isAvailable(),
-      text: btn.textContent.trim(),
-      cls: btn.classList.contains('is-update-ready'),
-    };
-  });
-  check('current shell does not show stale Update ready', !notRed.ready && !notRed.cls);
+  // GPT-035: Refresh while NOT red — actual click, one reload, no loop.
+  {
+    const notRed = await page.evaluate(() => {
+      const btn = document.getElementById('app-refresh');
+      return {
+        ready: window.ToolboxUpdate.isAvailable(),
+        text: btn.textContent.trim(),
+        cls: btn.classList.contains('is-update-ready'),
+        disabled: btn.disabled,
+      };
+    });
+    check('current shell does not show stale Update ready', !notRed.ready && !notRed.cls);
 
-  // Failed flush blocks refresh
-  await page.evaluate(() => {
-    window.__blockedRefresh = false;
-    const tu = window.ToolboxUpdate;
-    const orig = tu.refresh.bind(tu);
-    tu.refresh = function () {
-      window.__blockedRefresh = true;
-      return orig();
-    };
-    // Simulate active flush failure via app's registerActiveFlush if exposed —
-    // call the button path by patching a rejecting flush through ToolboxUpdate only:
-    // Directly exercise the promise ordering used by the click handler.
-  });
-  // Unit-level flush-fail: invoke the same Promise chain the button uses.
-  const flushFail = await page.evaluate(async () => {
-    let refreshed = false;
-    const fakeFlush = () => Promise.reject(new Error('save failed'));
-    const fakeRefresh = () => { refreshed = true; return Promise.resolve(); };
-    let restored = false;
-    try {
-      await fakeFlush().then(() => fakeRefresh());
-    } catch (e) {
-      restored = true;
-    }
-    return { refreshed, restored };
-  });
-  check('rejected save prevents refresh chain', !flushFail.refreshed && flushFail.restored);
+    await page.evaluate(() => { window.location.hash = '#/cabinet'; });
+    const nav2 = page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 45000 }).catch(() => null);
+    await page.click('#app-refresh');
+    await nav2;
+    await new Promise((r) => setTimeout(r, 1500));
+    const afterNotRed = await page.evaluate(async () => {
+      const btn = document.getElementById('app-refresh');
+      const keys = await caches.keys();
+      return {
+        hash: location.hash,
+        ready: window.ToolboxUpdate.isAvailable(),
+        text: btn.textContent.trim(),
+        updating: /Updating/i.test(btn.textContent || ''),
+        hasB: keys.some((k) => /v378-testB/.test(k)),
+      };
+    });
+    check('Refresh while not red still reloads once into current shell',
+      /cabinet/i.test(afterNotRed.hash) && !afterNotRed.ready && !afterNotRed.updating && afterNotRed.hasB,
+      JSON.stringify(afterNotRed));
+  }
 
-  // Background/foreground discovery: hide, publish already B, show → still ready or re-check.
-  // (B already active after refresh; publish a C to prove foreground discovery.)
-  const swC = swB.replace(/toolbox-shell-v377-testB/, 'toolbox-shell-v378-testC');
-  const prevServe = serveB;
-  // Monkey: swap serve body to C
-  let serveC = false;
-  const origListeners = server.listeners('request');
-  // Simpler: set serveB false and replace swA/swB variables — reassign via closure
-  // We can't reassign const swB; use serveC flag by rewriting server — instead evaluate check after changing serveB content:
-  // Replace approach: write flag on server object
-  server.__swBody = swC;
-  // Patch by setting serveB and mutating — rebuild handler is closed. Use page-level:
-  // Re-register update by fetching new sw through evaluation of registration.update after
-  // changing what /sw.js returns: set serveB true still and change file by replacing server code path.
-  // Easiest: close and note foreground was already tested in unit section.
-  check('foreground visibility check covered in mocked suite', true);
+  // GPT-035: actual #app-refresh click — rejected flush never calls refresh.
+  {
+    await page.goto(`${origin}/index.html#/`, { waitUntil: 'networkidle0' });
+    await page.waitForFunction(() => !!window.ToolboxApp, { timeout: 30000 });
+    const rejected = await page.evaluate(async () => {
+      let refreshCalls = 0;
+      const tu = window.ToolboxUpdate;
+      const origRefresh = tu.refresh.bind(tu);
+      tu.refresh = function () {
+        refreshCalls += 1;
+        return Promise.resolve(); // do not unload
+      };
+      window.ToolboxApp.registerActiveFlush(() => Promise.reject(new Error('save failed')));
+      const btn = document.getElementById('app-refresh');
+      btn.disabled = false;
+      btn.click();
+      await new Promise((r) => setTimeout(r, 80));
+      const restored = !btn.disabled && !/Updating/i.test(btn.textContent || '');
+      const locked = document.documentElement.classList.contains('tb-refresh-locked');
+      tu.refresh = origRefresh;
+      window.ToolboxApp.registerActiveFlush(null);
+      return { refreshCalls, restored, locked, text: btn.textContent.trim() };
+    });
+    check('actual click: rejected save never calls ToolboxUpdate.refresh',
+      rejected.refreshCalls === 0 && rejected.restored && !rejected.locked,
+      JSON.stringify(rejected));
+  }
+
+  // GPT-035: held save + type-during — latest durable bytes before refresh.
+  {
+    await page.goto(`${origin}/index.html#/`, { waitUntil: 'networkidle0' });
+    await page.waitForFunction(() => !!(window.ToolboxDB && window.ToolboxApp), { timeout: 30000 });
+    await page.evaluate(async () => {
+      const rec = window.ToolboxApp.blankCustomerFile('refresh-probe');
+      window.ToolboxPlanSetup.ensurePlanSetup(rec);
+      rec.firstName = 'Original';
+      rec.lastName = 'Probe';
+      rec.propertyAddress = '1 Test Lane';
+      await window.ToolboxDB.saveCustomerFile(rec);
+    });
+    await page.goto(`${origin}/index.html#/file/refresh-probe/edit/customer`, { waitUntil: 'networkidle0' });
+    await page.waitForSelector('#field-firstName', { timeout: 30000 });
+    await new Promise((r) => setTimeout(r, 800));
+
+    const probe = await page.evaluate(async () => {
+      const db = window.ToolboxDB;
+      const realSave = db.saveCustomerFile.bind(db);
+      const held = [];
+      const writes = [];
+      db.saveCustomerFile = function (rec) {
+        writes.push(rec && rec.firstName);
+        return new Promise((resolve, reject) => {
+          held.push(() => realSave(rec).then(resolve, reject));
+        });
+      };
+
+      let refreshCalls = 0;
+      let storedAtRefresh = null;
+      let visibleAtRefresh = null;
+      const tu = window.ToolboxUpdate;
+      const origRefresh = tu.refresh.bind(tu);
+      tu.refresh = async function () {
+        refreshCalls += 1;
+        const rec = await db.getCustomerFile('refresh-probe');
+        storedAtRefresh = rec && rec.firstName;
+        const el = document.getElementById('field-firstName');
+        visibleAtRefresh = el ? el.value : null;
+        return Promise.resolve();
+      };
+
+      const field = document.getElementById('field-firstName');
+      field.focus();
+      field.value = 'Before click';
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // Let autosave arm, then click Refresh (starts flush → held save).
+      await new Promise((r) => setTimeout(r, 1000));
+      const btn = document.getElementById('app-refresh');
+      btn.click();
+      await new Promise((r) => setTimeout(r, 100));
+
+      const locked = document.documentElement.classList.contains('tb-refresh-locked');
+      // Attempt mid-refresh typing (must not land while locked).
+      field.value = 'Typed while saving';
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      const visibleWhileLocked = field.value;
+
+      // Release held saves (drain may issue more than one).
+      for (let i = 0; i < 6 && held.length; i += 1) {
+        const fn = held.shift();
+        if (fn) await fn();
+        await new Promise((r) => setTimeout(r, 30));
+      }
+      await new Promise((r) => setTimeout(r, 200));
+
+      // If drain still pending more holds, release again.
+      while (held.length) {
+        const fn = held.shift();
+        if (fn) await fn();
+      }
+      await new Promise((r) => setTimeout(r, 200));
+
+      const finalRec = await db.getCustomerFile('refresh-probe');
+      tu.refresh = origRefresh;
+      db.saveCustomerFile = realSave;
+
+      return {
+        refreshCalls,
+        storedAtRefresh,
+        visibleAtRefresh,
+        locked,
+        visibleWhileLocked,
+        finalStored: finalRec && finalRec.firstName,
+        writes,
+      };
+    });
+
+    // Lock prevents "Typed while saving" from becoming an edit; durable text
+    // at refresh must be the pre-click snapshot (or drained latest), never lost.
+    const durableOk = probe.refreshCalls === 1
+      && probe.locked === true
+      && probe.storedAtRefresh === 'Before click'
+      && probe.finalStored === 'Before click';
+    check('actual click: held save drains before refresh; lock blocks mid-refresh edit',
+      durableOk,
+      JSON.stringify(probe));
+  }
 
   await page.setViewport({ width: 1280, height: 820, deviceScaleFactor: 1 });
+  await page.goto(`${origin}/index.html#/`, { waitUntil: 'networkidle0' });
   await page.screenshot({ path: `${OUT}/sw-update-ready-desktop-after.png` });
 
   await browser.close();
   server.close();
-  void prevServe; void reloadsBefore; void origListeners; void serveC;
 }
 
 const passed = results.filter((r) => r.ok).length;

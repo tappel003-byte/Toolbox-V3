@@ -4457,3 +4457,71 @@ Keep all three in ONE focused correction of GPT-034. Preserve the cumulative FS/
 No unrelated audit or planning loop. Return one finished handoff with exact SHA, tests actually run, real phone/desktop visual evidence, and limitations. Other regression results in CURSOR-021 remain implementer-reported in this review. No merge or promotion performed by GPT. Live Cloudflare unverified. Tim retains promotion; GPT handles the authorized merge after substantive review passes.
 
 Files changed by GPT: docs/AI-REVIEW-LOG.md only.
+
+---
+
+### CURSOR-022 — 2026-10-26 — Cursor → Tim / GPT
+
+Topic: GPT-035 correction — refresh safety, stalled-update bound, phone fit  
+Reply to: GPT-035  
+PR: #134 (`cursor/sw-refresh-ready-7b33` → `claude/milestone-1-customer-file-qv5ybf`)  
+Status: **Finished for GPT re-review.** No merge, deploy, or promotion by Cursor.
+
+#### Corrected (GPT-035 items 1–3)
+
+1. **Do not reload with newer text still unsaved**
+   - Refresh click sets `html.tb-refresh-locked` (canvas `pointer-events: none`) before drain.
+   - Customer Information and Report Builder `noteEdit` ignore edits while locked.
+   - Active flush accepts `{ drain: true }` and immediately re-saves when `editSeq` moved during the in-flight write (bounded), instead of only arming the debounce.
+   - Failed flush restores idle/ready paint and never calls `ToolboxUpdate.refresh`.
+   - Verified on the **actual** `#app-refresh` click path with held `saveCustomerFile` and mid-refresh typing: `refreshCalls=1`, durable `firstName` at refresh = `Before click`.
+
+2. **Timeout covers `registration.update()`**
+   - `refresh()` arms the 4000ms `reloadOnce` fallback **before** `registration.update()`.
+   - Cleared on successful path / catch; `reloadOnce` remains idempotent (no duplicate reload from late worker events).
+   - Mocked never-settling `update()`: fallback armed at 4000ms, reload fires once when timer runs; promise still pending beforehand.
+
+3. **Phone indicator fits**
+   - Phone (≤560px): shorter ready label `↻ Update`, tighter app-bar padding/gaps, title text hidden (brand mark kept) so Explorer / Sync Now / Update all fit.
+   - Bounding-box assertion: ready button fully inside 390×844 viewport (`right=380 ≤ vw=390`).
+   - Desktop keeps full `↻ Update ready` label; also bbox-checked.
+
+#### Test hardening (as required)
+
+- Actual `#app-refresh` click for rejected flush and held-save drain (not a detached Promise chain).
+- Actual Refresh while **not** red (click → one reload into current shell, route kept).
+- Replaced unconditional “foreground covered” with mocked `visibilitychange` + coalesce assertions (and real A→B discovery separately).
+- Shell **`toolbox-shell-v378`**.
+
+#### Suites run this pass
+
+| Suite | Result |
+|---|---|
+| `sw-update-ready.mjs` | **23/23** |
+| `pwa-publish.mjs` | **28/28** (`toolbox-shell-v378`) |
+| `autosave-latest-edit.mjs` | **7/7** |
+| `floor-survey-parity.mjs` | **22/22** (Control panel) |
+| `report-floor-flex-finish-acceptance.mjs` | **9/9** |
+
+Evidence: `/opt/cursor/artifacts/sw-update-ready.json`, `sw-update-ready-phone.png`, `sw-update-ready-desktop.png`, `sw-update-ready-gpt035b.log`.
+
+#### Files changed
+
+- `js/sw-register.js` — fallback armed before `update()`
+- `js/app.js` — refresh lock + drain flush; phone-ready label
+- `js/report-builder.js` — drain flush + lock-aware `noteEdit`
+- `css/styles.css` — phone app-bar fit; `.tb-refresh-locked`
+- `sw.js` — `toolbox-shell-v378`
+- `tests/sw-update-ready.mjs` — stalled update, click-path, bbox, mocked FG
+
+#### Decisions / assumptions
+
+- Mid-refresh edits are blocked (lock) rather than queued into the finishing drain; already-dirty work is drained before reload.
+- A slow/failed **save** is never timed out into reload; only the post-save SW update/wait phase uses the 4s bound.
+- Mocked foreground ≠ iOS device suspend/resume; Chromium A→B + mocked events are what this suite claims.
+
+#### Remaining limitations
+
+- Live Tim-device / production promotion unverified.
+- iOS PWA focus/visibility not separately instrumented.
+- No merge/promote by Cursor; GPT reviews then handles authorized merge.
