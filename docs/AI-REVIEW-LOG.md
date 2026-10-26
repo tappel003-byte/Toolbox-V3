@@ -4421,3 +4421,39 @@ Evidence: `/opt/cursor/artifacts/sw-update-ready.json`, `sw-update-ready-phone.p
 #### Exact tip
 
 Implementation (runtime): `b9b90458135a40775a85331e1f93b789b55bce16` on `cursor/sw-refresh-ready-7b33` / PR #134. Subsequent commits on the same branch are docs-only (this handoff).
+
+
+---
+
+### GPT-035 — 2026-10-26 — CURSOR-021 review: detection works; finish refresh safety
+
+Reviewed implementation b9b90458135a40775a85331e1f93b789b55bce16 at docs tip bfa8ea59cb7595ab17b1e051e07a4fe4c5ca6b47, PR #134 (v377).
+
+**Detection improvement verified.** Ran sw-update-ready: 15/15 in headless Chromium with the browser executable adapter. Real same-origin A→B red indicator, sticky readiness, late listeners, initial install and reload into B behave as reported. Foreground/suspend event coverage is mocked; iOS device behavior remains unverified.
+
+I also exercised the ACTUAL #app-refresh click handler via ToolboxApp.registerActiveFlush: held Promise prevents ToolboxUpdate.refresh until released; rejected Promise causes zero refresh calls and re-enables the control. This is stronger than the suite's “rejected save” assertion, which only evaluates a separate fake Promise chain and never invokes the handler.
+
+#### Complete these existing GPT-034 requirements in one pass
+
+1. **Do not reload with newer text still unsaved.**
+   Actual browser reproduction using Customer Information:
+   - Seed “Original”, open /file/refresh-probe/edit/customer.
+   - Hold ToolboxDB.saveCustomerFile's write/ack, preserving the snapshot taken at call time.
+   - Type firstName “Before click”; click actual app Refresh; while its save is pending, type “Typed while saving”.
+   - Release first save. Spy on ToolboxUpdate.refresh, reading actual IndexedDB at that moment.
+   - Result: refresh calls=1; stored firstName at refresh=“Before click”; visible field=“Typed while saving”.
+   The edit-sequence autosave guard correctly leaves the newer edit dirty and schedules a later write, but the Refresh handler awaits only the first snapshot, then proceeds before that write. My probe intercepted refresh rather than actually unloading, so the measured fact is reload is authorized before latest text is durable (not a claim I destroyed a user file).
+   Close this window within the manual-refresh flow: either ensure the active save contract drains the latest work before permitting reload or prevent new edits during the deliberate finish/refresh interval in an appropriate bounded way. Do not redesign field capture/sync. Verify real saved bytes after refresh, including typing during a held save, not just “a Promise resolved”.
+
+2. **The timeout must cover registration.update(), not start after it.**
+   sw-register.js refresh arms its 4000ms fallback only INSIDE registration.update().then(...). With update() stalled by the network, no fallback is armed and Updating can remain blocked. Deterministic evaluation of the ACTUAL sw-register source with registration.update returning a never-settling Promise yielded: fallbackTimersArmed=[], reloads=0, refreshSettled=false.
+   Bound the update-check/wait phase after local save has safely settled; preserve route and known readiness, and avoid duplicate reloads from late worker events. A slow/failed save must never be timed out into destructive reload. Test the stalled update Promise, not only an install that stalls after update() resolved.
+
+3. **Phone indicator must fit.**
+   Inspected the suite's own sw-update-ready-phone.png (390×844 viewport, DPR2). The red Update ready button extends past the right edge, cutting its text. The desktop screenshot alone does not prove mobile fit. Keep the existing app-bar design and actions, but make the ready state visible/reachable without horizontal clipping at the supported phone width. Add a bounding-box/viewport check and inspect the image; no new UI feature or redesign.
+
+Keep all three in ONE focused correction of GPT-034. Preserve the cumulative FS/RB base. Use the actual click path for held/rejected saves and actual manual Refresh while not red (the current suite's “while not red” section only checks readiness; it never clicks again). Replace unconditional “foreground covered” pass markers with assertions tied to the mocked events, accurately describing mocked versus real coverage.
+
+No unrelated audit or planning loop. Return one finished handoff with exact SHA, tests actually run, real phone/desktop visual evidence, and limitations. Other regression results in CURSOR-021 remain implementer-reported in this review. No merge or promotion performed by GPT. Live Cloudflare unverified. Tim retains promotion; GPT handles the authorized merge after substantive review passes.
+
+Files changed by GPT: docs/AI-REVIEW-LOG.md only.
