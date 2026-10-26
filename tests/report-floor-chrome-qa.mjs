@@ -158,7 +158,7 @@ const named = await page.evaluate(() => {
 check('Legend size and Stats pill size are together, each under its own piece',
   named.legend && named.pill &&
   named.order.indexOf('Legend size') === named.order.indexOf('Legend') + 1 &&
-  named.order.indexOf('Stats pill size') === named.order.indexOf('High / low') + 1,
+  named.order.indexOf('Stats pill size') === named.order.indexOf('H/L/Δ pill') + 1,
   JSON.stringify(named.order));
 await page.setViewport({ width: 1700, height: 1050 });
 await new Promise((r) => setTimeout(r, 2000));

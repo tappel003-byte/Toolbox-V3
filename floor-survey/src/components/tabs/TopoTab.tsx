@@ -2232,181 +2232,184 @@ export function TopoTab({
                     value={resolved.palette}
                     onChange={(p) => update({ palette: p })}
                   />
+                  {/* GPT-030: plan background under Contours. */}
+                  <SwitchRow
+                    label="Floor plan"
+                    checked={resolved.showPlan}
+                    onChange={(v) => update({ showPlan: v })}
+                  />
                 </>
               )}
               {ctrlTab === "readings" && (
                 <>
+                  {/* GPT-030: point visibility + reading style under Readings. */}
                   <div className="grid grid-cols-2 gap-2">
                     <SwitchRow
-                                    label="Labels"
-                                    checked={resolved.showLabels}
-                                    onChange={(v) => update({ showLabels: v })}
-                                  />
-                    <NumberControl
-                                    label="Decimals"
-                                    value={resolved.decimalPlaces}
-                                    min={0}
-                                    max={3}
-                                    step={1}
-                                    onChange={(v) =>
-                                      update({
-                                        decimalPlaces: Math.max(
-                                          0,
-                                          Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
-                                        ),
-                                      })
-                                    }
-                                  />
+                      label="Points"
+                      checked={resolved.showPoints}
+                      onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
+                    />
                     <SwitchRow
-                                    label="Declutter"
-                                    checked={resolved.declutterLabels !== false}
-                                    onChange={(v) => update({ declutterLabels: v })}
-                                  />
+                      label="Labels"
+                      checked={resolved.showLabels}
+                      onChange={(v) => update({ showLabels: v })}
+                    />
+                    <NumberControl
+                      label="Decimals"
+                      value={resolved.decimalPlaces}
+                      min={0}
+                      max={3}
+                      step={1}
+                      onChange={(v) =>
+                        update({
+                          decimalPlaces: Math.max(
+                            0,
+                            Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
+                          ),
+                        })
+                      }
+                    />
+                    <SwitchRow
+                      label="Declutter"
+                      checked={resolved.declutterLabels !== false}
+                      onChange={(v) => update({ declutterLabels: v })}
+                    />
                     <div className="col-span-2 flex items-center justify-between gap-2">
-                                    <Label className="text-xs">Label bg</Label>
-                                    <div className="inline-flex rounded-md border overflow-hidden">
-                                      {(["white", "transparent", "plain"] as const).map((opt) => (
-                                        <button
-                                          key={opt}
-                                          type="button"
-                                          className={`px-2 py-1 text-xs ${
-                                            resolved.pointLabelBackground === opt
-                                              ? "bg-primary text-primary-foreground"
-                                              : "bg-background"
-                                          }`}
-                                          onClick={() => update({ pointLabelBackground: opt })}
-                                        >
-                                          {opt === "white" ? "Box" : opt === "transparent" ? "Border" : "Plain"}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
+                      <Label className="text-xs">Label bg</Label>
+                      <div className="inline-flex rounded-md border overflow-hidden">
+                        {(["white", "transparent", "plain"] as const).map((opt) => (
+                          <button
+                            key={opt}
+                            type="button"
+                            className={`px-2 py-1 text-xs ${
+                              resolved.pointLabelBackground === opt
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-background"
+                            }`}
+                            onClick={() => update({ pointLabelBackground: opt })}
+                          >
+                            {opt === "white" ? "Box" : opt === "transparent" ? "Border" : "Plain"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                   <details className="border-t pt-2">
-                                <summary className="text-xs text-muted-foreground cursor-pointer select-none">
-                                  Label style
-                                </summary>
-                                <div className="grid grid-cols-2 gap-2 mt-2">
-                                  <StepperControl
-                                    label="Point label size"
-                                    value={resolved.pointLabelFontSize}
-                                    min={6}
-                                    max={28}
-                                    step={1}
-                                    onChange={(v) =>
-                                      update({ pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))) })
-                                    }
-                                  />
-                                  <StepperControl
-                                    label="High / low size"
-                                    value={resolved.highLowPinSize}
-                                    min={7}
-                                    max={28}
-                                    step={1}
-                                    onChange={(v) =>
-                                      update({ highLowPinSize: Math.max(7, Math.min(28, Math.round(v))) })
-                                    }
-                                  />
-                                  <div>
-                                    <Label className="text-xs">Weight</Label>
-                                    <select
-                                      value={resolved.pointLabelWeight}
-                                      onChange={(e) =>
-                                        update({ pointLabelWeight: e.target.value as "normal" | "bold" })
-                                      }
-                                      className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
-                                    >
-                                      <option value="normal">Normal</option>
-                                      <option value="bold">Bold</option>
-                                    </select>
-                                  </div>
-                                  <div className="col-span-2">
-                                    <Label className="text-xs">Color</Label>
-                                    <div className="mt-1 flex items-center gap-2">
-                                      <input
-                                        type="color"
-                                        value={resolved.pointLabelColor}
-                                        onChange={(e) => update({ pointLabelColor: e.target.value })}
-                                        className="h-9 w-12 rounded-md border bg-background p-1 cursor-pointer"
-                                      />
-                                      <Input
-                                        enterKeyHint="done"
-                                        value={resolved.pointLabelColor}
-                                        onChange={(e) => update({ pointLabelColor: e.target.value })}
-                                        className="h-9 flex-1 font-mono text-base"
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={resetAllLabelPositions}
-                                  className="mt-2 w-full h-8"
-                                >
-                                  Reset label positions
-                                </Button>
-                              </details>
+                    <summary className="text-xs text-muted-foreground cursor-pointer select-none">
+                      Label style
+                    </summary>
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      <StepperControl
+                        label="Point label size"
+                        value={resolved.pointLabelFontSize}
+                        min={6}
+                        max={28}
+                        step={1}
+                        onChange={(v) =>
+                          update({ pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))) })
+                        }
+                      />
+                      <div>
+                        <Label className="text-xs">Weight</Label>
+                        <select
+                          value={resolved.pointLabelWeight}
+                          onChange={(e) =>
+                            update({ pointLabelWeight: e.target.value as "normal" | "bold" })
+                          }
+                          className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
+                        >
+                          <option value="normal">Normal</option>
+                          <option value="bold">Bold</option>
+                        </select>
+                      </div>
+                      <div className="col-span-2">
+                        <Label className="text-xs">Color</Label>
+                        <div className="mt-1 flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={resolved.pointLabelColor}
+                            onChange={(e) => update({ pointLabelColor: e.target.value })}
+                            className="h-9 w-12 rounded-md border bg-background p-1 cursor-pointer"
+                          />
+                          <Input
+                            enterKeyHint="done"
+                            value={resolved.pointLabelColor}
+                            onChange={(e) => update({ pointLabelColor: e.target.value })}
+                            className="h-9 flex-1 font-mono text-base"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={resetAllLabelPositions}
+                      className="mt-2 w-full h-8"
+                    >
+                      Reset label positions
+                    </Button>
+                  </details>
                 </>
               )}
               {ctrlTab === "legendhl" && (
                 <div className="grid grid-cols-2 gap-2">
+                  {/*
+                    GPT-030: legend + H/L under Legend & H/L. Report chrome
+                    (colour scale / H/LΔ pill) and plan markers stay separate.
+                    Legend / Stats pill switches sync to views[].showLegend /
+                    showPill via Report Builder onSettingsChange.
+                  */}
                   <SwitchRow
-                                  label="Floor plan"
-                                  checked={resolved.showPlan}
-                                  onChange={(v) => update({ showPlan: v })}
-                                />
-                  <SwitchRow
-                                  label="Points"
-                                  checked={resolved.showPoints}
-                                  onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
-                                />
-                  <SwitchRow
-                                  label="Legend"
-                                  checked={resolved.showLegend}
-                                  onChange={(v) => update({ showLegend: v })}
-                                />
+                    label="Legend"
+                    checked={resolved.showLegend}
+                    onChange={(v) => update({ showLegend: v })}
+                  />
                   <StepperControl
-                                  label="Legend size"
-                                  value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
-                                  min={0.4}
-                                  max={4}
-                                  step={0.1}
-                                  format={(v) => `${v.toFixed(1)}×`}
-                                  onChange={(v) =>
-                                    update({ legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)) })
-                                  }
-                                />
+                    label="Legend size"
+                    value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+                    min={0.4}
+                    max={4}
+                    step={0.1}
+                    format={(v) => `${v.toFixed(1)}×`}
+                    onChange={(v) =>
+                      update({ legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)) })
+                    }
+                  />
                   <SwitchRow
-                                  label="High / low"
-                                  checked={resolved.showHighLow}
-                                  onChange={(v) => update({ showHighLow: v })}
-                                />
-                  {/* Set once, and it stays. Tim: "I don't think I'll ever use that
-                                    setting because it's always wrong -- you just adjust it to
-                                    the size that you want and it stays that size." There used to
-                                    be a "Use Auto size for this screen" link under this, back
-                                    when Auto read the window width and picked 24, 32 or 40. That
-                                    was taken out so a job did not render at three sizes
-                                    depending on what opened it, which left the link clearing the
-                                    size to a fixed 32 under a label promising something about
-                                    this screen. The size is simply the last one set, kept on
-                                    this device and used by every job on it. */}
-                                <div className="col-span-2">
-                                  <StepperControl
-                                    label="Stats pill size"
-                                    value={statsChipSize}
-                                    min={STATS_CHIP_MIN}
-                                    max={STATS_CHIP_MAX}
-                                    step={2}
-                                    format={(v) => `${Math.round(v)}px`}
-                                    onChange={(v) => {
-                                      const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(v)));
-                                      setStatsChipLocked(n);
-                                      setStatsChipSize(n);
-                                    }}
-                                  />
-                                </div>
+                    label="High / low"
+                    checked={resolved.showHighLow}
+                    onChange={(v) => update({ showHighLow: v })}
+                  />
+                  <StepperControl
+                    label="Marker size"
+                    value={resolved.highLowPinSize}
+                    min={7}
+                    max={28}
+                    step={1}
+                    onChange={(v) =>
+                      update({ highLowPinSize: Math.max(7, Math.min(28, Math.round(v))) })
+                    }
+                  />
+                  <SwitchRow
+                    label="H/L/Δ pill"
+                    checked={resolved.showStatsPill !== false}
+                    onChange={(v) => update({ showStatsPill: v })}
+                  />
+                  <div className="col-span-2">
+                    <StepperControl
+                      label="Stats pill size"
+                      value={statsChipSize}
+                      min={STATS_CHIP_MIN}
+                      max={STATS_CHIP_MAX}
+                      step={2}
+                      format={(v) => `${Math.round(v)}px`}
+                      onChange={(v) => {
+                        const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(v)));
+                        setStatsChipLocked(n);
+                        setStatsChipSize(n);
+                      }}
+                    />
+                  </div>
                 </div>
               )}
             </div>

@@ -3248,11 +3248,22 @@
     function floorViewFor(page, slot) {
       var at = typeof slot === 'number' ? slot : floorSlot(page);
       var view = floorViewSpec(page, at);
-      if (view && view.settings) return view.settings;
-      var meta = (page && page.meta) || {};
-      if (at === 1) return meta.floorView2 || meta.floorView || floorView;
-      if (meta.floorView) return meta.floorView;
-      return floorView;
+      var base = null;
+      if (view && view.settings) base = view.settings;
+      else {
+        var meta = (page && page.meta) || {};
+        if (at === 1) base = meta.floorView2 || meta.floorView || floorView;
+        else if (meta.floorView) base = meta.floorView;
+        else base = floorView;
+      }
+      // GPT-030: rail switches must show the same legend/pill state layout uses.
+      if (view && base && typeof base === 'object') {
+        var synced = Object.assign({}, base);
+        if (typeof view.showLegend === 'boolean') synced.showLegend = view.showLegend;
+        if (typeof view.showPill === 'boolean') synced.showStatsPill = view.showPill;
+        return synced;
+      }
+      return base;
     }
     function setFloorViewFor(page, next, slot) {
       if (!page) {
@@ -3265,7 +3276,22 @@
       if (viewsApi) {
         var list = viewsApi.ensurePageViews(page);
         if (list[at]) {
+          var prevSettings = list[at].settings || {};
           list[at].settings = next;
+          // GPT-030: one ownership for report legend/pill. Sync views[] chrome
+          // only when the investigator actually toggled those flags — not on
+          // every Contours/Readings update (that would re-light multi-view
+          // chrome from defaultRenderSettings.showLegend).
+          if (next && typeof next === 'object') {
+            if (typeof next.showLegend === 'boolean'
+                && next.showLegend !== prevSettings.showLegend) {
+              list[at].showLegend = next.showLegend;
+            }
+            if (typeof next.showStatsPill === 'boolean'
+                && next.showStatsPill !== prevSettings.showStatsPill) {
+              list[at].showPill = next.showStatsPill;
+            }
+          }
           // Keep legacy fields in sync for older readers / migration safety.
           if (at === 0) page.meta.floorView = next;
           if (at === 1) page.meta.floorView2 = next;
@@ -4452,6 +4478,11 @@
             var layer = byCanvas[cv.id] || null;
             var areas = (layer && Array.isArray(layer.areas)) ? layer.areas : [];
             if (areas.length) {
+              // GPT-030: keep whole-level Combined alongside each boundary.
+              // With two+ boundaries, scope=all is the Combined figure; do not
+              // drop it just because area options exist.
+              addSourceOption(cv.id, fs && fs.id, null, 'all',
+                (cv.name || 'Level') + ' — Combined');
               areas.forEach(function (area) {
                 if (!area || !area.id) return;
                 addSourceOption(cv.id, fs && fs.id, area.id, 'area',
@@ -4472,6 +4503,9 @@
           }
           wrap.appendChild(srcSelect);
 
+          // GPT-030: Legend & H/L tab owns chrome via settings sync, but keep
+          // explicit Show/Hide as the same selected-view controls (they write
+          // views[] and settings together). Truthful on/off from views[].
           if (viewsNow.length > 1 && activeView) {
             wrap.appendChild(railButton(
               activeView.showLegend ? 'Hide legend' : 'Show legend',
@@ -4689,6 +4723,14 @@
           if (chromeAct === 'legend-off') cv.showLegend = false;
           if (chromeAct === 'pill-on') cv.showPill = true;
           if (chromeAct === 'pill-off') cv.showPill = false;
+          // Keep settings in lockstep with views[] chrome (GPT-030).
+          cv.settings = Object.assign({}, cv.settings || {});
+          if (chromeAct === 'legend-on' || chromeAct === 'legend-off') {
+            cv.settings.showLegend = !!cv.showLegend;
+          }
+          if (chromeAct === 'pill-on' || chromeAct === 'pill-off') {
+            cv.settings.showStatsPill = !!cv.showPill;
+          }
           markDirty();
           renderPages();
           flushSave().catch(function () {});

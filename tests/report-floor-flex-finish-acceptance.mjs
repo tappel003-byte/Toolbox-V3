@@ -76,8 +76,9 @@ await page.evaluate(async (id) => {
   garage.frontDoorFacing = 'N';
   rec.planSetup.canvases.push(garage);
 
-  function layer(cv, tag, base) {
+  function layer(cv, tag, base, twoBoundaries) {
     const poly = [{ x: 40, y: 40 }, { x: 960, y: 40 }, { x: 960, y: 760 }, { x: 40, y: 760 }];
+    const polyB = [{ x: 80, y: 80 }, { x: 480, y: 80 }, { x: 480, y: 400 }, { x: 80, y: 400 }];
     const points = [];
     let n = 0;
     for (let r = 0; r < 3; r += 1) for (let c = 0; c < 4; c += 1) {
@@ -88,17 +89,21 @@ await page.evaluate(async (id) => {
         value: base + ((n * 5) % 20) / 10,
       });
     }
+    const areas = [{ id: tag + '-a', name: cv.name, polygon: poly, createdAt: 1 }];
+    if (twoBoundaries) {
+      areas.push({ id: tag + '-b', name: 'Garage Bay', polygon: polyB, createdAt: 2 });
+    }
     return {
-      canvasId: cv.id, points, boundary: poly,
-      areas: [{ id: tag + '-a', name: cv.name, polygon: poly, createdAt: 1 }],
+      canvasId: cv.id, points, boundary: poly, areas,
     };
   }
   rec.floorSurvey = {
     id: 'fs-fin', inspectionDate: '2026-10-25',
     byCanvasId: {
-      [main.id]: layer(main, 'm', 6),
-      [second.id]: layer(second, 's', 18),
-      [garage.id]: layer(garage, 'g', 3),
+      // Two boundaries so Combined appears in the source picker (GPT-030 #2).
+      [main.id]: layer(main, 'm', 6, true),
+      [second.id]: layer(second, 's', 18, false),
+      [garage.id]: layer(garage, 'g', 3, false),
     },
   };
   await window.ToolboxDB.saveCustomerFile(rec);
@@ -136,6 +141,44 @@ function clickRailText(re) {
     b.click();
     return (b.textContent || '').trim();
   }, re);
+}
+
+async function openLegendHlTab() {
+  await page.evaluate(() => {
+    [...document.querySelectorAll('[role=tab]')]
+      .find((t) => /Legend & H\/L/i.test(t.textContent || ''))?.click();
+  });
+  await new Promise((r) => setTimeout(r, 400));
+}
+
+async function setLegendHlSwitch(label, wantOn) {
+  await openLegendHlTab();
+  const box = await page.evaluate((lab) => {
+    const labEl = [...document.querySelectorAll('.rb-ws__controls label, .rb-panel label')]
+      .find((l) => (l.textContent || '').trim() === lab);
+    if (!labEl) return null;
+    const row = labEl.closest('div.flex');
+    const sw = row && row.querySelector('[role=switch]');
+    if (!sw) return null;
+    const r = sw.getBoundingClientRect();
+    const on = sw.getAttribute('aria-checked') === 'true'
+      || sw.getAttribute('data-state') === 'checked';
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2, on };
+  }, label);
+  if (!box) return { ok: false, reason: 'no-switch' };
+  if (box.on !== wantOn) {
+    await page.mouse.click(box.x, box.y);
+    await new Promise((r) => setTimeout(r, 600));
+  }
+  const after = await page.evaluate((lab) => {
+    const labEl = [...document.querySelectorAll('.rb-ws__controls label, .rb-panel label')]
+      .find((l) => (l.textContent || '').trim() === lab);
+    const sw = labEl?.closest('div.flex')?.querySelector('[role=switch]');
+    return sw
+      ? (sw.getAttribute('data-state') || sw.getAttribute('aria-checked'))
+      : null;
+  }, label);
+  return { ok: true, was: box.on, want: wantOn, after };
 }
 
 async function savedMainViews() {
@@ -202,10 +245,11 @@ const rail = await page.evaluate(() => {
       .map((p) => p.textContent.trim()).slice(0, 4),
   };
 });
-accept(9, 'Finished rail — Contours/Readings/Legend & H/L; no Two views; no floor default',
+accept(9, 'Finished rail — Contours/Readings/Legend & H/L; Combined source; no floor default',
   rail.tabs.join('|') === 'Contours|Readings|Legend & H/L' &&
   !rail.floorDefault && !rail.twoup &&
   rail.hasAdd && rail.hasCopy && rail.thisSlide &&
+  rail.srcOpts.some((s) => /Combined/i.test(s)) &&
   rail.srcOpts.some((s) => /Main/i.test(s)) &&
   rail.srcOpts.some((s) => /Second|Garage/i.test(s)),
   JSON.stringify(rail).slice(0, 600));
@@ -218,7 +262,7 @@ await page.waitForFunction(
   { timeout: 20000 });
 await new Promise((r) => setTimeout(r, 1500));
 
-// Select view 0 — Contours tab — ensure Points on (appearance A)
+// Select view 0 — Contours Mode → Color fill (appearance A)
 await page.evaluate(() => {
   document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame]')[0]?.click();
 });
@@ -228,25 +272,45 @@ await page.evaluate(() => {
 });
 await new Promise((r) => setTimeout(r, 400));
 const modeA = await page.evaluate(() => {
-  // Flip Points switch if present
-  const labels = [...document.querySelectorAll('.rb-ws__controls label, .rb-panel label')];
-  const points = labels.find((l) => /^Points$/i.test((l.textContent || '').trim()));
-  const sw = points && (points.querySelector('button,[role=switch]') ||
-    points.parentElement?.querySelector('button,[role=switch]'));
-  if (sw) { sw.click(); return 'toggled-points'; }
-  return labels.map((l) => l.textContent.trim()).filter(Boolean).slice(0, 10);
+  const sel = document.querySelector('.rb-ws__controls select, .rb-panel select');
+  if (!sel) return { ok: false };
+  sel.value = 'contour-bw';
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+  return { ok: true, mode: sel.value };
 });
-await new Promise((r) => setTimeout(r, 700));
+await new Promise((r) => setTimeout(r, 1200));
 
-// Select view 1 — change appearance independently if possible
+// Select view 1 — Contours Mode → Points only (appearance B); leave view 0 unchanged
 await page.evaluate(() => {
-  document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame]')[1]?.click();
+  const frame = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame="1"]');
+  frame?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
 });
-await new Promise((r) => setTimeout(r, 500));
+await new Promise((r) => setTimeout(r, 800));
+await page.evaluate(() => {
+  [...document.querySelectorAll('[role=tab]')].find((t) => /Contours/i.test(t.textContent || ''))?.click();
+});
+await new Promise((r) => setTimeout(r, 400));
+const modeB = await page.evaluate(() => {
+  const sel = document.querySelector('.rb-ws__controls select, .rb-panel select');
+  if (!sel) return { ok: false };
+  sel.value = 'points-only';
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+  return { ok: true, mode: sel.value };
+});
+await new Promise((r) => setTimeout(r, 1200));
+await page.waitForFunction(
+  () => /^Saved/.test(document.querySelector('#rb-save-status')?.textContent || ''),
+  { timeout: 15000 }).catch(() => {});
+const appearanceProbe = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  const floor = (rec.reportBuilder.pages || []).find((p) =>
+    p && p.type === 'floor' && Array.isArray(p.meta?.views) && p.meta.views.length >= 2);
+  const modes = (floor?.meta?.views || []).map((v) => (v.settings && v.settings.mode) || null);
+  return { modes, distinct: modes.length >= 2 && !!modes[0] && !!modes[1] && modes[0] !== modes[1] };
+}, FILE);
 const selLead = await page.evaluate(() =>
   [...document.querySelectorAll('.rb-panel .rb-panel__lead')]
     .map((p) => p.textContent.trim()).find((t) => /Selected: View|View \d/i.test(t)) || '');
-
 // Ensure linked (Add view same-source starts linked; do not click Unlink by accident).
 const linkClicked = await page.evaluate(() => {
   const unlink = document.querySelector('[data-rb-floor-view-link="off"]');
@@ -334,12 +398,13 @@ const unlinkedPct = await page.evaluate(() =>
 const independent = unlinkedPct.length >= 2 &&
   Math.abs(unlinkedPct[0].height - unlinkedPct[1].height) > 2;
 await page.screenshot({ path: `${OUT}/rb-finish-01-same-floor.png` });
-accept(1, 'Same floor two views — select/link/resize match/unlink independent',
-  handleNow.ok && linkedMatch && independent && /View/i.test(selLead),
+accept(1, 'Same floor two views — distinct appearance + link/resize/unlink',
+  handleNow.ok && linkedMatch && independent && /View/i.test(selLead) &&
+  modeA.ok && modeB.ok && appearanceProbe.distinct,
   JSON.stringify({
-    modeA, selLead, linkClicked, handleNow, linkedPct, handle2, unlinkedPct,
-    linkedMatch, independent,
-  }).slice(0, 700));
+    modeA, modeB, appearanceProbe, selLead, linkClicked, handleNow, linkedPct, handle2,
+    unlinkedPct, linkedMatch, independent,
+  }).slice(0, 800));
 
 // ========== 2. Different floors ==========
 await page.evaluate(() => {
@@ -403,8 +468,9 @@ await page.evaluate(() => {
 await new Promise((r) => setTimeout(r, 400));
 const garage = await page.evaluate(() => {
   const sel = document.querySelector('[data-rb-floor-view-source]');
-  const opt = [...(sel?.options || [])].find((o) => /Garage/i.test(o.textContent || ''));
-  if (!sel || !opt) return { ok: false };
+  // Prefer the Garage level, not "Garage Bay" on Main.
+  const opt = [...(sel?.options || [])].find((o) => /^Garage\s*—/.test(o.textContent || ''));
+  if (!sel || !opt) return { ok: false, opts: [...(sel?.options || [])].map((o) => o.textContent.trim()) };
   sel.value = opt.value;
   sel.dispatchEvent(new Event('change', { bubbles: true }));
   return { ok: true, label: opt.textContent.trim() };
@@ -414,21 +480,79 @@ const chrome0 = await page.evaluate(() => ({
   legends: document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="legend"]').length,
   pills: document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="pill"]').length,
 }));
-await clickRailText('^Show legend$');
-await new Promise((r) => setTimeout(r, 500));
-await clickRailText('^Show H/L');
+// Enable chrome on the selected (garage) view only.
+await page.evaluate(() => document.querySelector('[data-rb-floor-view-chrome="legend-on"]')?.click());
+await page.evaluate(() => document.querySelector('[data-rb-floor-view-chrome="pill-on"]')?.click());
 await new Promise((r) => setTimeout(r, 2200));
 const chrome1 = await page.evaluate(() => ({
   legends: document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="legend"]').length,
   pills: [...document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="pill"]')]
     .map((el) => (el.textContent || '').replace(/\s+/g, ' ').trim()),
 }));
+await openLegendHlTab();
+const switchOn = await page.evaluate(() => {
+  const lab = [...document.querySelectorAll('.rb-ws__controls label')]
+    .find((l) => (l.textContent || '').trim() === 'Legend');
+  const sw = lab?.closest('div.flex')?.querySelector('[role=switch]');
+  return sw ? (sw.getAttribute('data-state') || sw.getAttribute('aria-checked')) : null;
+});
+// GPT-030: Legend & H/L tab switch OFF must clear THIS view's report legend.
+const legendOff = await setLegendHlSwitch('Legend', false);
+await new Promise((r) => setTimeout(r, 1800));
+const chromeAfterOff = await page.evaluate(() => ({
+  legends: document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="legend"]').length,
+  pills: document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="pill"]').length,
+}));
+const legendOffSaved = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  const floor = (rec.reportBuilder.pages || []).find((p) =>
+    p && p.type === 'floor' && Array.isArray(p.meta?.views) && p.meta.views.length > 1);
+  const views = (floor && floor.meta.views) || [];
+  return views.map((v) => ({
+    id: v.id, L: !!v.showLegend, P: !!v.showPill, sL: !!(v.settings && v.settings.showLegend),
+  }));
+}, FILE);
+// Combined source for Main Level (two boundaries) on view 0.
+await page.evaluate(() => {
+  document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame="0"]')
+    ?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+});
+await new Promise((r) => setTimeout(r, 800));
+const combined = await page.evaluate(() => {
+  const sel = document.querySelector('[data-rb-floor-view-source]');
+  const opts = [...(sel?.options || [])].map((o) => o.textContent.trim());
+  const opt = [...(sel?.options || [])]
+    .find((o) => /Main Level\s*—\s*Combined/i.test(o.textContent || ''));
+  if (!sel || !opt) return { ok: false, opts };
+  sel.value = opt.value;
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+  return { ok: true, label: opt.textContent.trim(), value: opt.value, opts };
+});
+await new Promise((r) => setTimeout(r, 2000));
+await page.waitForFunction(
+  () => /^Saved/.test(document.querySelector('#rb-save-status')?.textContent || ''),
+  { timeout: 15000 }).catch(() => {});
+const combinedSaved = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  const floor = (rec.reportBuilder.pages || []).find((p) =>
+    p && p.type === 'floor' && Array.isArray(p.meta?.views) && p.meta.views.length >= 2);
+  const v0 = floor && floor.meta.views[0];
+  return v0 ? { scope: v0.scope, areaId: v0.areaId || null } : null;
+}, FILE);
 await page.screenshot({ path: `${OUT}/rb-finish-03-reference.png` });
-accept(3, 'Reference sheet — 3 views incl. garage; legends/pills start hidden; enable one each',
+accept(3, 'Reference sheet — chrome on; Legend tab clears it; Combined source',
   garage.ok && chrome0.legends === 0 && chrome0.pills === 0 &&
   chrome1.legends >= 1 && chrome1.pills.length >= 1 &&
-  chrome1.pills.some((t) => /\d/.test(t)),
-  JSON.stringify({ garage, chrome0, chrome1 }).slice(0, 600));
+  chrome1.pills.some((t) => /\d/.test(t)) &&
+  /checked|true/i.test(String(switchOn || '')) &&
+  legendOff.ok &&
+  // Selected garage view's legend cleared; may still have pill.
+  legendOffSaved.some((v) => v.L === false && v.sL === false && v.P === true) &&
+  chromeAfterOff.legends === 0 &&
+  combined.ok && combinedSaved && combinedSaved.scope === 'all' && !combinedSaved.areaId,
+  JSON.stringify({
+    garage, chrome0, chrome1, switchOn, legendOff, chromeAfterOff, legendOffSaved, combined, combinedSaved,
+  }).slice(0, 900));
 
 // ========== 4. Shared vs This slide only ==========
 await openFloorThumb('second');
@@ -520,55 +644,72 @@ accept(5, 'Save and reopen — sources/chrome/frames survive browser reload',
   persist,
   JSON.stringify({ before: beforeClose.views, after: afterReopen.views }).slice(0, 800));
 
-// ========== 6. Present + PDF ==========
-await page.evaluate(() => {
-  const b = [...document.querySelectorAll('button, .btn')]
-    .find((el) => /^Present$/i.test((el.textContent || '').trim()) ||
-      el.getAttribute('data-rb-present') != null);
-  b?.click();
+// ========== 6. Present + PDF via real #rb-present / #rb-print ==========
+const presentClicked = await page.evaluate(() => {
+  const b = document.querySelector('#rb-present');
+  if (!b) return false;
+  b.click();
+  return true;
 });
-await new Promise((r) => setTimeout(r, 5000));
+await page.waitForFunction(
+  () => !!document.querySelector('.rb-print.rb-print--present, .rb-print--present'),
+  { timeout: 45000 }).catch(() => {});
+await new Promise((r) => setTimeout(r, 2500));
 const present = await page.evaluate(() => {
-  const root = document.querySelector('.rb-present, [data-rb-present-deck], .rb-present-deck');
-  const imgs = [...document.querySelectorAll('.rb-present img, .rb-present-deck img, [data-rb-present-deck] img')];
+  const deck = document.querySelector('.rb-print.rb-print--present, .rb-print--present');
+  const sheets = deck ? deck.querySelectorAll('.rb-sheet, .rb-print__page') : [];
+  const stills = deck
+    ? [...deck.querySelectorAll('img.rb-topo-still')].map((img) => ({
+      w: img.naturalWidth, h: img.naturalHeight, src: !!(img.currentSrc || img.src),
+    }))
+    : [];
   return {
-    open: !!root || imgs.length > 0,
-    imgs: imgs.slice(0, 6).map((img) => ({
-      w: img.naturalWidth, h: img.naturalHeight,
-      ink: !!(img.currentSrc || img.src),
-    })),
+    open: !!deck,
+    sheets: sheets.length,
+    stills: stills.length,
+    inked: stills.filter((s) => s.w > 50).length,
   };
 });
 await page.screenshot({ path: `${OUT}/rb-finish-06-present.png` });
 await page.keyboard.press('Escape');
-await new Promise((r) => setTimeout(r, 600));
+await new Promise((r) => setTimeout(r, 800));
+// Leave present if Escape was not enough
+await page.evaluate(() => {
+  document.querySelector('.rb-present-bar button, [data-rb-present-close]')?.click();
+  document.querySelector('.rb-print--present')?.classList.remove('rb-print--present');
+});
+await new Promise((r) => setTimeout(r, 500));
 
-// Trigger print deck composition the way Print does
 const printDeck = await page.evaluate(async () => {
-  const b = [...document.querySelectorAll('button, .btn')]
-    .find((el) => /Print/i.test((el.textContent || '').trim()));
-  // Prefer calling internal prepare if clicking opens a dialog that blocks
-  if (b) {
-    // Hold off native print — look for a prepare path
-  }
-  // Build by clicking Print with beforeprint prevention
   const blocker = (e) => { e.preventDefault(); };
   window.addEventListener('beforeprint', blocker, true);
+  const b = document.querySelector('#rb-print');
   b?.click();
-  await new Promise((r) => setTimeout(r, 7000));
+  await new Promise((r) => setTimeout(r, 8000));
   window.removeEventListener('beforeprint', blocker, true);
-  const sheets = document.querySelectorAll('.rb-print .rb-sheet, .rb-print-root .rb-sheet');
+  const deck = document.querySelector('.rb-print');
+  const sheets = deck ? deck.querySelectorAll('.rb-print__page, .rb-sheet') : [];
   const stills = [...document.querySelectorAll('.rb-print img.rb-topo-still')];
   return {
+    clicked: !!b,
+    deck: !!deck,
     sheets: sheets.length,
     stills: stills.length,
     sizes: stills.slice(0, 4).map((img) => ({ w: img.naturalWidth, h: img.naturalHeight })),
   };
 });
 const pdfPath = `${OUT}/rb-finish-06-compose.pdf`;
-await page.emulateMediaType('print');
-await page.pdf({ path: pdfPath, width: '17in', height: '11in', printBackground: true });
-await page.emulateMediaType('screen');
+// Prefer printing the real print deck when present
+const pdfTarget = await page.$('.rb-print');
+if (pdfTarget) {
+  await page.emulateMediaType('print');
+  await page.pdf({ path: pdfPath, width: '17in', height: '11in', printBackground: true });
+  await page.emulateMediaType('screen');
+} else {
+  await page.emulateMediaType('print');
+  await page.pdf({ path: pdfPath, width: '17in', height: '11in', printBackground: true });
+  await page.emulateMediaType('screen');
+}
 let pdfMeta = { ok: false };
 try {
   const buf = await readFile(pdfPath);
@@ -585,10 +726,11 @@ try {
   pdfMeta.error = String(err.message || err);
 }
 await page.screenshot({ path: `${OUT}/rb-finish-06-editor.png` });
-accept(6, 'Actual output — Present and 11×17 PDF with painted content',
-  (present.open || present.imgs.some((i) => i.w > 50) || printDeck.stills > 0) &&
-  pdfMeta.ok && pdfMeta.bytes > 40000,
-  JSON.stringify({ present, printDeck, pdfMeta }).slice(0, 700));
+accept(6, 'Actual output — #rb-present and #rb-print decks + 11×17 PDF',
+  presentClicked && present.open && present.inked >= 1 &&
+  printDeck.clicked && printDeck.stills >= 1 &&
+  pdfMeta.ok && pdfMeta.bytes > 40000 && pdfMeta.pages >= 2,
+  JSON.stringify({ presentClicked, present, printDeck, pdfMeta }).slice(0, 700));
 
 // ========== 7. Window size / editor zoom ==========
 const paperA = await page.evaluate(() => {
@@ -598,24 +740,31 @@ const paperA = await page.evaluate(() => {
 });
 await page.setViewport({ width: 1280, height: 820, deviceScaleFactor: 1 });
 await new Promise((r) => setTimeout(r, 1500));
-await page.evaluate(() => {
-  const fit = [...document.querySelectorAll('button, .btn, [data-rb-zoom]')]
-    .find((el) => /Fit/i.test(el.textContent || '') || el.getAttribute('data-rb-zoom') === 'fit');
-  fit?.click();
-});
-await new Promise((r) => setTimeout(r, 700));
-await page.evaluate(() => {
-  const z = [...document.querySelectorAll('button, .btn, [data-rb-zoom]')]
-    .find((el) => /100%/.test(el.textContent || '') || el.getAttribute('data-rb-zoom') === '100');
-  z?.click();
-});
-await new Promise((r) => setTimeout(r, 700));
-await page.evaluate(() => {
-  const z = [...document.querySelectorAll('button, .btn, [data-rb-zoom]')]
-    .find((el) => /150%/.test(el.textContent || '') || el.getAttribute('data-rb-zoom') === '150');
-  z?.click();
-});
-await new Promise((r) => setTimeout(r, 700));
+const zoomLevels = [];
+async function clickZoom(which) {
+  const before = await page.evaluate(() =>
+    (document.querySelector('#rb-zoom-level')?.textContent || '').trim());
+  if (which === 'fit') {
+    await page.evaluate(() => document.querySelector('#rb-zoom-level')?.click());
+  } else if (which === 'in') {
+    await page.evaluate(() => document.querySelector('#rb-zoom-in')?.click());
+  } else {
+    await page.evaluate(() => document.querySelector('#rb-zoom-out')?.click());
+  }
+  await new Promise((r) => setTimeout(r, 500));
+  const after = await page.evaluate(() =>
+    (document.querySelector('#rb-zoom-level')?.textContent || '').trim());
+  zoomLevels.push({ which, before, after });
+  return after;
+}
+// Reach Fit, then step toward 100%/150% via zoom-in, proving readout changes.
+await clickZoom('fit');
+const atFit = await page.evaluate(() =>
+  (document.querySelector('#rb-zoom-level')?.textContent || '').trim());
+await clickZoom('in');
+await clickZoom('in');
+const atZoomed = await page.evaluate(() =>
+  (document.querySelector('#rb-zoom-level')?.textContent || '').trim());
 const afterZoom = await savedMainViews();
 const paperB = await page.evaluate(() => {
   const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
@@ -625,13 +774,14 @@ const paperB = await page.evaluate(() => {
 await page.setViewport({ width: 1700, height: 1050, deviceScaleFactor: 1 });
 await new Promise((r) => setTimeout(r, 1000));
 await page.screenshot({ path: `${OUT}/rb-finish-07-zoom.png` });
-accept(7, 'Window size / editor zoom — saved view composition unchanged',
+accept(7, 'Window size / editor zoom — zoom readout moves; saved frames unchanged',
   !!paperA && afterZoom.views.length === afterReopen.views.length &&
   afterZoom.views.every((v, i) =>
     v.frame && afterReopen.views[i].frame &&
     Math.abs(v.frame.w - afterReopen.views[i].frame.w) < 0.5 &&
-    Math.abs(v.frame.h - afterReopen.views[i].frame.h) < 0.5),
-  JSON.stringify({ paperA, paperB, views: afterZoom.views.map((v) => v.frame) }).slice(0, 500));
+    Math.abs(v.frame.h - afterReopen.views[i].frame.h) < 0.5) &&
+  /Fit/i.test(atFit) && atZoomed !== atFit,
+  JSON.stringify({ paperA, paperB, atFit, atZoomed, zoomLevels, frames: afterZoom.views.map((v) => v.frame) }).slice(0, 600));
 
 // ========== 8. Existing / stale shared-camera policy ==========
 const plant = await page.evaluate(async (id) => {
