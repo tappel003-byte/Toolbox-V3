@@ -3276,37 +3276,44 @@
       if (viewsApi) {
         var list = viewsApi.ensurePageViews(page);
         if (list[at]) {
-          var prevSettings = list[at].settings || {};
+          var prevSettings = list[at].settings && typeof list[at].settings === 'object'
+            ? list[at].settings : {};
           var stored = next;
-          // GPT-030: views[] owns report legend/pill for layout. Contours /
-          // Readings updates arrive with defaultRenderSettings chrome=true;
-          // only accept a settings→views chrome write when the tab was already
-          // truthful to views[] and the investigator changed the flag.
-          // Otherwise pin settings back to views[] (do not re-light multi-view).
+          // GPT-030: views[] owns report legend/pill. Contours/Readings writes
+          // arrive with defaultRenderSettings chrome=true — never promote those
+          // into views[]. Only a chrome-only settings write (Legend & H/L
+          // switch) may change views[].showLegend / showPill; otherwise pin
+          // settings chrome back to views[] so layout and the tab stay truthful.
           if (next && typeof next === 'object') {
             stored = Object.assign({}, next);
-            var viewLeg = list[at].showLegend;
-            // Missing settings chrome ≡ views[] (floorViewFor overlay on mount).
-            var prevLeg = typeof prevSettings.showLegend === 'boolean'
-              ? prevSettings.showLegend : viewLeg;
-            if (typeof next.showLegend === 'boolean' && typeof viewLeg === 'boolean') {
-              if (prevLeg === viewLeg && next.showLegend !== viewLeg) {
+            var prevKeys = Object.keys(prevSettings);
+            var chromeOnly = prevKeys.length > 0;
+            if (chromeOnly) {
+              var seen = Object.create(null);
+              prevKeys.forEach(function (k) { seen[k] = 1; });
+              Object.keys(next).forEach(function (k) { seen[k] = 1; });
+              Object.keys(seen).forEach(function (k) {
+                if (k === 'showLegend' || k === 'showStatsPill') return;
+                if (JSON.stringify(prevSettings[k]) !== JSON.stringify(next[k])) {
+                  chromeOnly = false;
+                }
+              });
+            }
+            if (chromeOnly) {
+              if (typeof next.showLegend === 'boolean'
+                  && next.showLegend !== list[at].showLegend) {
                 list[at].showLegend = next.showLegend;
-                stored.showLegend = next.showLegend;
-              } else {
-                stored.showLegend = list[at].showLegend;
+              }
+              if (typeof next.showStatsPill === 'boolean'
+                  && next.showStatsPill !== list[at].showPill) {
+                list[at].showPill = next.showStatsPill;
               }
             }
-            var viewPill = list[at].showPill;
-            var prevPill = typeof prevSettings.showStatsPill === 'boolean'
-              ? prevSettings.showStatsPill : viewPill;
-            if (typeof next.showStatsPill === 'boolean' && typeof viewPill === 'boolean') {
-              if (prevPill === viewPill && next.showStatsPill !== viewPill) {
-                list[at].showPill = next.showStatsPill;
-                stored.showStatsPill = next.showStatsPill;
-              } else {
-                stored.showStatsPill = list[at].showPill;
-              }
+            if (typeof list[at].showLegend === 'boolean') {
+              stored.showLegend = list[at].showLegend;
+            }
+            if (typeof list[at].showPill === 'boolean') {
+              stored.showStatsPill = list[at].showPill;
             }
           }
           list[at].settings = stored;
@@ -4813,8 +4820,9 @@
         var parts = String(srcSel.value || '').split('|');
         sv.canvasId = parts[0] || '';
         sv.epochId = parts[1] || null;
-        sv.areaId = parts[2] || null;
         sv.scope = parts[3] || 'all';
+        // Combined = whole level; never keep a leftover boundary id (GPT-030).
+        sv.areaId = sv.scope === 'all' ? null : (parts[2] || null);
         // Drop a stale independent camera so the new level opens framed, not
         // at the previous floor's pan. Linked same-source broadcast is N/A here.
         sv.camera = null;
