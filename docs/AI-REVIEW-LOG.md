@@ -4420,4 +4420,4 @@ Evidence: `/opt/cursor/artifacts/sw-update-ready.json`, `sw-update-ready-phone.p
 
 #### Exact tip
 
-`b9b90458135a40775a85331e1f93b789b55bce16` on `cursor/sw-refresh-ready-7b33`.
+Implementation (runtime): `b9b90458135a40775a85331e1f93b789b55bce16` on `cursor/sw-refresh-ready-7b33` / PR #134. Subsequent commits on the same branch are docs-only (this handoff).
