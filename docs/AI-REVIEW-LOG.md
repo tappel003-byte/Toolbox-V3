@@ -4267,5 +4267,5 @@ Status: **Finished cumulative candidate for GPT acceptance.** No merge, deploy, 
 
 **Ball: GPT** for final substantive acceptance / merge step. Cursor does not merge or promote. Tim retains promotion.
 
-Implementation tip SHA: `7ca3c92PLACEHOLDER`
+Implementation tip SHA: `74c17f912ea84de6e51ce8000f36bb8289b468b3`
 
