@@ -4310,3 +4310,47 @@ Cloudflare head ba398b9 build succeeded (version 0db71667-bdfc-42c7-be45-09d14a5
 Next: merge #133 into its established shared working branch, preserving merge ancestry so both streams are present. Verify #130 is incorporated and do not separately re-promote its older snapshot. Tim promotes ONE cumulative build. Do not merge unrelated historical PRs or delete preserved branches.
 
 GPT changed docs/AI-REVIEW-LOG.md only. No runtime implementation by GPT.
+
+
+---
+
+### GPT-034 — 2026-10-26 — Build: reliable red Refresh / Update ready indicator
+
+Read the entire current Toolbox-V3 repository before making changes. Authority: VISION.md → AGENTS.md → MILESTONE.md → DECISIONS.md → current code; Tim's explicit scope below governs this repair.
+
+**Tim authorized this focused repair:** after discussing why the red Refresh indicator is unreliable, he said “Give that to Cursor.” Implement it, not another planning proposal.
+
+#### Why
+
+Tim promotes a build, returns to his phone, and needs a trustworthy sign that an update is ready. The red indicator must not depend on catching a brief worker event or keeping a phone awake for a five-minute timer. Losing that signal makes correct promotions look unsuccessful.
+
+This is separate from the branch regression: FS + Report Builder are now combined through merged #133 (9e0bda681c2937099a244d46a6988efbdcc5d37b, v376; #130 included). Start from the LATEST shared working branch, not a stale earlier FS/RB branch, and preserve both interfaces.
+
+Current relevant code: js/sw-register.js (event-only announceAvailable, onAvailable only queues handlers; load + five-minute checks; controllerchange reload only for manual refresh), js/app.js app-refresh/onAvailable, CSS .app-bar__refresh.is-update-ready, sw.js install/activation. Re-read current source before editing; these are inspection pointers, not a prescribed implementation.
+
+#### Required behavior
+
+- Check for updates on initial load and when the app returns to the foreground. Reconnect may trigger a check. Keep periodic checking as appropriate; coalesce/throttle overlapping focus/visibility/online events.
+- If a newer shell is ready while this page still runs the earlier app code, show the existing red **Update ready** control. Keep that state until the page actually loads the new shell, including if the new worker auto-activates in the meantime.
+- A listener attached after readiness was discovered must receive the current state. Handle an already installing/waiting worker when attaching; do not rely only on the next updatefound event.
+- A freshly loaded, current page must not show a stale red indicator forever. Initial installation is not a new update for an already running app.
+- Manual Refresh must explicitly check even when not red, preserve the current route, and load the available shell without a reload loop or an indefinite Updating spinner. Do not auto-reload active field capture just because an update is detected.
+- Preserve local saved work/offline operation. Inspect the existing flush-before-refresh ordering: do not initiate a manual update/reload before the necessary active save has successfully settled. If saving fails, keep the work/page and show the failure rather than claim a safe refresh.
+- No cache purge, IndexedDB deletion, checkout/sync redesign, field UI change, new version dashboard, backend, Cloudflare configuration change, or polling infrastructure. Use the existing indicator and service-worker update flow.
+
+“New version” means a version available to this app origin after promotion, not any unrelated preview build. Do not claim to verify Tim's live device or promotion based on GitHub build success.
+
+#### Concrete acceptance — one complete pass
+
+1. Run shell A in a browser, make shell B available from the same local test origin. Confirm red Update ready appears after B is ready; the old page must stay open until the user requests Refresh.
+2. Background/foreground the page with B made available while hidden; verify returning triggers discovery without waiting five minutes. Include throttled/suspended-timer conditions.
+3. Cover late subscription and already installing/waiting/activated-worker event orderings. Red must remain truthful while old page code remains, and disappear on a fresh page actually running B. Initial install / no update must not show false readiness.
+4. Click Refresh while red AND while not red. Assert one successful reload into B, retained route, no reload loop. Hold a save pending and confirm reload waits; a rejected save must not silently discard the edit.
+5. Offline / failed update check must leave local capture usable. Do not clear known readiness solely because a subsequent check is offline. Reconnect/return should recover.
+6. Visually inspect the existing red indicator on phone and desktop. Run focused update/publish regressions plus appropriate save checks; prove this merged build still contains the accepted FS Control panel and Report Builder work.
+
+Use deterministic conditions/event fixtures instead of sleeps to prove races. Distinguish real browser checks from mocked lifecycle tests and untested iOS specifics. Own routine implementation details; one bounded repair and one final handoff, no serial micro-approval loop.
+
+Continue from the current shared branch in one focused PR. Rebuild only if affected generated sources require it; bump shell for changed cached assets. Reply as CURSOR-021 (or next unused Cursor number) in this log with results, exact implementation SHA, PR, evidence, and remaining limitations. GPT reviews before merge. Never promote/deploy; Tim retains promotion.
+
+End by reporting exactly which files changed, what changed, decisions/assumptions, tests actually run, and commit SHA.
