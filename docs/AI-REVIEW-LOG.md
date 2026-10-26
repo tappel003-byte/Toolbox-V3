@@ -4530,3 +4530,42 @@ Evidence: `/opt/cursor/artifacts/sw-update-ready.json`, `sw-update-ready-phone.p
 #### Exact tip
 
 Implementation (runtime): `59f0f9c46cb7434c4a8149f4eb40e4b304ffbc30` on `cursor/sw-refresh-ready-7b33` / PR #134.
+
+
+---
+
+### GPT-036 — 2026-10-26 — Build: task tabs in the Floor Survey Report Builder sidebar
+
+Read the entire current Toolbox-V3 repository before making changes. Authority: VISION.md → AGENTS.md → MILESTONE.md → DECISIONS.md → current code, with Tim's explicit authorization below.
+
+**Build authorization, not a planning request.** Tim asked GPT to put this prompt here and have Cursor build a first usable version. We will refine the design by using it. Do not return another proposal or ask about routine naming/placement details.
+
+**Why:** the functionality is largely present, but the Floor Survey report sidebar mixes sheet composition with topo appearance in a long menu. Tim wants to click one clearly named group and have that group occupy the existing sidebar, rather than hunt and scroll past unrelated controls. The sidebar width is acceptable. Preserve it. Excel-style tabs illustrate switching tools in the same space, not copying Excel or building a ribbon.
+
+**Starting point:** latest shared working branch claude/milestone-1-customer-file-qv5ybf, including merged #133 FS/RB integration and #134 Refresh repair (v379). Do not start from an old field-panel or composition branch and regress either accepted interface.
+
+#### Build one complete, usable sidebar reorganization
+
+- On Floor Survey report sheets, provide two obvious peer tabs at the top of the existing right sidebar: **Sheet Layout** and **Topo**. Top tabs are the first version; no tab-position preference/settings needed. One group visible at a time. Switching tabs changes tools only, never the report content, selection, camera or saved layout.
+- **Sheet Layout:** group the existing composition controls here: Add/Copy/Remove view; selected view's level/boundary/Combined source; existing linked/independent sizing/framing controls; shared placement versus this slide only; existing sheet/view placement and aerial controls as appropriate. Audit the actual controls first, and place every existing relevant action once. Do not invent alignment, snapping, reset or other capabilities that are not implemented. Clearly label sheet-wide versus selected-view effects.
+- **Topo:** identify the selected view (level/source and view number when multiple). Organize the existing controls into **Contours**, **Readings**, and **Legend & H/L** accordions, using the accepted field Control panel grouping as the conceptual map. Contours includes its existing display/colors/lines settings; Readings includes existing label/font/number appearance; Legend & H/L includes the correct selected-view visibility and sizing controls. Keep the hierarchy shallow: these accordions directly expose existing controls, not another layer of doors/tabs inside accordions. One accordion open at a time is a reasonable starting choice. Do not expose field-only capture controls.
+- Keep tab/section navigation visible while the control body scrolls. Make active tab, expanded section and selected-view identity obvious. Use the app's existing visual language and readable control sizing; avoid oversized cards and explanatory paragraphs that recreate the long menu.
+- Selecting another view must retarget the controls truthfully without losing the chosen task tab unnecessarily. Sheet Layout remains usable with no selected view; Topo must show an honest empty state if no topo view exists.
+- Scope is the Floor Survey Report Builder sidebar. Do not redesign global text/drawing toolbar, other page types, field capture, or the FS Control panel. Other report page types may adopt the pattern later; do not build speculative infrastructure for them now.
+- Preserve all existing data/selection/persistence semantics, legacy reports, shared versus slide-only placement, multi-view defaults (legends/H/L hidden until deliberately enabled), Combined source choices, and normalized readings. No schema migration, correction-math change, print-composer change or new feature is needed for this organization.
+
+Own routine implementation choices. Reuse the current controls and handlers; avoid parallel copies that drift or duplicate live hosts. If adapting the report-only hosted controls requires shared-source edits, keep field behavior unchanged and rebuild its committed bundle as required.
+
+#### Done means these physical checks pass
+
+1. In a real browser on a Floor Survey report page, switch Sheet Layout ↔ Topo. Only the chosen group's controls appear in the same-width sidebar; sheet geometry/content does not change. No inaccessible controls, horizontal overflow or duplicated control groups. Inspect desktop screenshots at an ordinary laptop viewport and a larger desktop viewport.
+2. From Sheet Layout, exercise Add/Copy/Remove and source selection including Combined where available; exercise the existing link and slide-only/shared controls. Do not merely assert labels exist.
+3. On a multi-view sheet, select each view and change a contour setting and a reading style. Confirm only the intended view changes. Open Legend & H/L and verify its displayed state and toggles match that view's actual visible objects, including a freshly added second view.
+4. Save/reopen the report and confirm data/layout survived. Open actual Presentation and generate an actual 11×17 landscape PDF: sidebar organization must not alter output or leak editor controls onto the report.
+5. Run focused relevant composition/ownership/print regressions and the new sidebar interaction checks. If shared Floor Survey sources/bundle changed, run applicable field parity/integration checks and inspect the accepted field Control panel. Distinguish independently run tests, implementation tests and visual observations. No full unrelated audit.
+
+Deliver the complete first usable version in one focused PR against the shared working branch. Bump the shell for cached runtime changes. No preliminary acknowledgment commit, no docs-pin follow-up commits, no serial micro-approval round. Put one concise CURSOR-023 (or next unused number) result alongside the implementation, or reply on the PR with exact SHA, changed files, actual checks/screenshots and limitations.
+
+GPT performs one substantive review and handles authorized merge after acceptance; Tim alone promotes. Do not deploy or promote. Do not claim a successful build is live verification.
+
+End by reporting exactly which files changed, what changed, decisions/assumptions, tests actually run, and commit SHA.
