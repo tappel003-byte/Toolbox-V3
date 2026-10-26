@@ -11,8 +11,9 @@
 //   - Customer File owns canvases (via planSetup.canvases).
 //   - Distress owns survey/pins; each pin references a CF canvas via canvasId.
 //   - Floor Survey owns record.floorSurvey; layers keyed by CF canvasId.
-// Apps never duplicate plan/rooms/media. Canvas deletion is not implemented;
-// when it is, consult findOrphanedCanvasRefs before destroying field data.
+// Apps never duplicate plan/rooms/media. Removing a level is Customer File
+// work (Plans & levels); it must retire that canvas's Distress pins, Floor
+// Survey layer, and unreferenced plan/contour media in the same write.
 
 (function () {
   'use strict';
@@ -285,8 +286,7 @@
   }
 
   // Detect application refs whose canvasId no longer exists on the Customer File.
-  // Canvas deletion is not product-implemented yet; this enables a future guard
-  // that must not silently destroy field observations.
+  // Used after a level is removed, and as a guard against silent orphans.
   function findOrphanedCanvasRefs(record) {
     const known = {};
     const canvases = (record && record.planSetup && record.planSetup.canvases) || [];
@@ -311,6 +311,69 @@
       if (!known[cid]) floorSurveyCanvasIds.push(cid);
     });
     return { distressPins: distressPins, floorSurveyCanvasIds: floorSurveyCanvasIds };
+  }
+
+  /**
+   * Remove one level from the Customer File.
+   *
+   * Tim, Oct 26, 2026: needs to delete a Recovered Plan (or any extra level)
+   * from Plans & levels. The last remaining level cannot be removed — a
+   * Customer File always keeps at least one canvas. Distress pins and the
+   * Floor Survey layer for that canvasId go with it; plan/contour media is
+   * deleted only when nothing else still references it.
+   *
+   * Returns { ok, reason?, mediaIds[] } — caller may deleteMedia the ids.
+   */
+  function removeCanvas(record, canvasId) {
+    ensurePlanSetup(record);
+    const canvases = record.planSetup.canvases;
+    if (!Array.isArray(canvases) || canvases.length <= 1) {
+      return { ok: false, reason: 'A Customer File needs at least one level.', mediaIds: [] };
+    }
+    const index = canvases.findIndex(function (c) { return c && c.id === canvasId; });
+    if (index < 0) {
+      return { ok: false, reason: 'That level is not on this Customer File.', mediaIds: [] };
+    }
+    const removed = canvases[index];
+    const mediaIds = canvasMediaIds(removed).slice();
+    canvases.splice(index, 1);
+
+    const now = new Date().toISOString();
+    record.planSetup.updatedAt = now;
+
+    if (record.planSetup.activeCanvasId === canvasId) {
+      record.planSetup.activeCanvasId = canvases[0].id;
+    }
+    if (record.distress) {
+      if (record.distress.activeCanvasId === canvasId) {
+        record.distress.activeCanvasId = record.planSetup.activeCanvasId;
+      }
+      if (Array.isArray(record.distress.pins)) {
+        record.distress.pins = record.distress.pins.filter(function (pin) {
+          return !(pin && pin.canvasId === canvasId);
+        });
+      }
+      if (Array.isArray(record.distress.drawings)) {
+        record.distress.drawings = record.distress.drawings.filter(function (drawing) {
+          return !(drawing && drawing.canvasId === canvasId);
+        });
+      }
+      record.distress.updatedAt = now;
+    }
+    if (record.floorSurvey && record.floorSurvey.byCanvasId &&
+        typeof record.floorSurvey.byCanvasId === 'object') {
+      if (record.floorSurvey.byCanvasId[canvasId]) {
+        delete record.floorSurvey.byCanvasId[canvasId];
+        record.floorSurvey.updatedAt = now;
+      }
+    }
+
+    // Keep only media that is no longer referenced by any remaining canvas.
+    const stillUsed = {};
+    planSetupMediaIds(record).forEach(function (id) { stillUsed[id] = true; });
+    const orphanMedia = mediaIds.filter(function (id) { return id && !stillUsed[id]; });
+    record.updatedAt = now;
+    return { ok: true, mediaIds: orphanMedia, removedName: (removed && removed.name) || 'Level' };
   }
 
   function activeCanvas(record) {
@@ -519,6 +582,7 @@
       '    <div class="plan-canvas-name__row">' +
       '      <input type="text" id="canvas-name-input" class="canvas-name-input" autocomplete="off" aria-label="Level name">' +
       '      <button type="button" id="canvas-rename-btn" class="canvas-icon-btn" aria-label="Rename level" title="Rename">✎</button>' +
+      '      <button type="button" id="canvas-remove-btn" class="btn btn--ghost plan-remove-level" hidden>Remove level</button>' +
       '    </div>' +
       '  </div>' +
       '  <div class="field field--full">' +
@@ -569,6 +633,7 @@
     const nameWrap = panel.querySelector('#plan-canvas-name-wrap');
     const nameInput = panel.querySelector('#canvas-name-input');
     const renameBtn = panel.querySelector('#canvas-rename-btn');
+    const removeBtn = panel.querySelector('#canvas-remove-btn');
     const dropZone = panel.querySelector('#plan-drop-zone');
     const dropBtn = panel.querySelector('#plan-drop-btn');
     const preview = panel.querySelector('#plan-preview');
@@ -674,6 +739,8 @@
       // Level name always available (even for one-level jobs); roster only when multi.
       nameWrap.hidden = false;
       addCanvasBtn.textContent = '+ Add another level';
+      // Remove only when there is another level to keep. A lone level stays.
+      if (removeBtn) removeBtn.hidden = !multi;
     }
 
     function renderRoster() {
@@ -870,6 +937,50 @@
       ocrMoreBtn.hidden = true;
     });
 
+    if (removeBtn) {
+      removeBtn.addEventListener('click', function () {
+        const rec = record();
+        const canvas = activeCanvas(rec);
+        if (!canvas) return;
+        if ((rec.planSetup.canvases || []).length <= 1) {
+          setFeedback('A Customer File needs at least one level.');
+          return;
+        }
+        const pinCount = ((rec.distress && rec.distress.pins) || []).filter(function (pin) {
+          return pin && pin.canvasId === canvas.id;
+        }).length;
+        const hasFloor = !!(rec.floorSurvey && rec.floorSurvey.byCanvasId &&
+          rec.floorSurvey.byCanvasId[canvas.id]);
+        let detail = 'Remove “' + (canvas.name || 'this level') + '” from this Customer File?';
+        if (pinCount || hasFloor) {
+          detail += '\n\nThis also removes';
+          if (pinCount) detail += ' ' + pinCount + ' Distress pin' + (pinCount === 1 ? '' : 's');
+          if (pinCount && hasFloor) detail += ' and';
+          if (hasFloor) detail += ' Floor Survey work on this level';
+          detail += '.';
+        }
+        detail += '\n\nThis cannot be undone from here.';
+        if (!window.confirm(detail)) return;
+        const result = removeCanvas(rec, canvas.id);
+        if (!result.ok) {
+          setFeedback(result.reason || 'Could not remove that level.');
+          return;
+        }
+        (result.mediaIds || []).forEach(function (id) {
+          if (id) {
+            delete planCache[id];
+            window.ToolboxDB.deleteMedia(id).catch(function () {});
+          }
+        });
+        ctx.scheduleSave();
+        syncActiveCanvasForm();
+        hydrateAndShowPlan(activeCanvas(rec));
+        setFeedback('Removed “' + (result.removedName || 'level') + '”.');
+        setOcrMessage('');
+        ocrMoreBtn.hidden = true;
+      });
+    }
+
     frontDoorSelect.addEventListener('change', function () {
       const canvas = activeCanvas(record());
       if (!canvas) return;
@@ -1060,6 +1171,7 @@
     ensureFloorSurveyCanvasRef: ensureFloorSurveyCanvasRef,
     normalizeDistressPinCanvasRefs: normalizeDistressPinCanvasRefs,
     findOrphanedCanvasRefs: findOrphanedCanvasRefs,
+    removeCanvas: removeCanvas,
     mountPlansPanel: mountPlansPanel,
     DEFAULT_CANVAS_NAME: DEFAULT_CANVAS_NAME,
   };
