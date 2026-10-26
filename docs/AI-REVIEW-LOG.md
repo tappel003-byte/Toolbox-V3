@@ -4012,3 +4012,37 @@ Evidence: `/opt/cursor/artifacts/rb-finish-0{1–9}-*.png`, `rb-finish-06-compos
 
 Implementation tip SHA: `db4d083a171ab2661d969fbc9b51c01c36e942d0`
 
+
+
+---
+
+### GPT-030 — 2026-10-25 — CURSOR-018 acceptance review
+
+Reviewed PR #133 at 37420583a00b0edcbabf8b3fad6d1291acd04515 (runtime db4d083a171ab2661d969fbc9b51c01c36e942d0, v374). Scope: agreed user journeys and material failures; no new product/design preferences.
+
+**Progress verified:** obsolete floor-default and Two views buttons removed, selected-view lead and placement wording improved, source picker now reads Customer File plans. Field changes in TopoTab are within controlsOnly. Workers build succeeds.
+
+#### Independently run
+
+- report-floor-flex-finish-acceptance: **8/9 here**, not 9/9. Its output check finds neither a Present deck nor a Print deck; it produced a one-page PDF of the editor. This is a test-selector/timing failure, not evidence that the real print buttons are broken.
+- Separately used the real **#rb-present** and **#rb-print** controls on a two-boundary-per-level fixture. Presentation and Print each produced 11 sheets / 10 stills. Generated a real PDF: 11 pages, 2814803 bytes, 1224×792 points (11×17 landscape). Rendered and visually inspected the multi-view page with Poppler. Drawings/edge labels and the enabled legend are present. No claim of full pixel equivalence across every page.
+- Browser-tested the Legend switch and multi-boundary source picker, producing the two functional findings below.
+- Did not rerun every regression listed by Cursor; those other results remain implementer-reported.
+
+#### Complete these together within the existing finish task
+
+1. **Legend & H/L control path remains duplicated/inconsistent.**
+   Actual reproduction: Add view → Show legend on the selected view → Legend & H/L tab → turn its Legend switch from true to false. The switch visibly becomes false, but the report legend remains visible in the editor AND the actual rendered PDF. The outside Show/Hide legend button drives views[].showLegend; the tab drives settings.showLegend, which report-floor-layout.js ignores when deciding to place the report legend. Checked TopoTab.tsx 2364–2367 and layout 677–678. This is a no-effect control and competing answers, not a preference about styling.
+   Finish the agreed single control grouping/ownership: one effective selected-view control for each report legend/pill property, truthful on/off state, same result in editor/Presentation/PDF. Preserve separate H/L plan markers versus the H/L/Delta pill.
+   The new rail currently RENAMES Labels/Layers but leaves Floor plan and Points under Legend & H/L, and H/L marker size under Readings. Carry through the already agreed grouping: plan background under Contours; point visibility/reading style under Readings; legend and H/L controls under Legend & H/L. This is completion of Tim's requested grouping, not a new redesign. Keep field capture UI unchanged.
+
+2. **The new source picker loses Combined/all-boundaries choices.**
+   report-builder.js 4454–4462 adds scope=all only when areas.length is zero. With two boundaries on a level, the running picker offers only each boundary; no Combined/all-boundaries option. The previous report-outline picker included Combined. Preserve each eligible level's whole-level Combined source alongside its individual boundaries, including correct selection when an existing Combined view is active. Verify Add/Copy can select it, save/reopen retains it, and output paints the intended boundaries. Use at least two boundaries in this fixture; one boundary cannot expose this gap.
+
+3. **Make acceptance evidence exercise the promised actions.**
+   Repair the finish suite to use the actual #rb-present/#rb-print controls and wait for their real decks; do not pass a Presentation check because Print happened to contain an image. The same-floor appearance step currently looks for Points while Contours is selected, finds no switch (modeA returns a label list), then passes without changing appearance. Assert an actual selected-view appearance change with the other unchanged. Zoom optional-click selectors likewise need proof the requested zoom was reached, not just unchanged frame dimensions. Include the Legend toggle and Combined-source repros above.
+   These checks should establish the existing agreed behavior; do not expand into unrelated testing or another design round.
+
+One complete correction pass, then a finished handoff. No optional cleanup, new feature scope, or repeated planning checkpoints. PR #133 is **not yet accepted for merge** because of findings 1–2. No merge/deploy/promotion performed by GPT. Live Cloudflare unverified. Tim retains promotion.
+
+Files changed by GPT: docs/AI-REVIEW-LOG.md only.
