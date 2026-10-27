@@ -1251,15 +1251,18 @@ export function TopoTab({
             onTab={openTrialDoor}
             onClose={() => setOpenCorner(null)}
           >
-            {gridAndContours?.grid && (
-              <p className="mb-1 shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                Range {readingText(gridAndContours.grid.minValue)}"–
-                {readingText(gridAndContours.grid.maxValue)}"
-              </p>
-            )}
-            <TrialAccordion
-              openId={trialSectionByDoor.contours ?? null}
+            <TrialSectionTabs
+              label="Contours"
+              openId={trialSectionByDoor.contours ?? "display"}
               onChange={(id) => setTrialSection("contours", id)}
+              lead={
+                gridAndContours?.grid ? (
+                  <p className="text-[10px] tabular-nums text-muted-foreground">
+                    Range {readingText(gridAndContours.grid.minValue)}"–
+                    {readingText(gridAndContours.grid.maxValue)}"
+                  </p>
+                ) : null
+              }
               items={[
                 {
                   id: "display",
@@ -1511,8 +1514,9 @@ export function TopoTab({
             onTab={openTrialDoor}
             onClose={() => setOpenCorner(null)}
           >
-            <TrialAccordion
-              openId={trialSectionByDoor.readings ?? null}
+            <TrialSectionTabs
+              label="Readings"
+              openId={trialSectionByDoor.readings ?? "show"}
               onChange={(id) => setTrialSection("readings", id)}
               items={[
                 {
@@ -1662,8 +1666,9 @@ export function TopoTab({
             onTab={openTrialDoor}
             onClose={() => setOpenCorner(null)}
           >
-            <TrialAccordion
-              openId={trialSectionByDoor.legendhl ?? null}
+            <TrialSectionTabs
+              label="Legend & H/L"
+              openId={trialSectionByDoor.legendhl ?? "legend"}
               onChange={(id) => setTrialSection("legendhl", id)}
               items={[
                 {
@@ -2274,7 +2279,11 @@ function TrialPanel({
         id={tabbed ? "fs-cp-panel" : undefined}
         role={tabbed ? "tabpanel" : undefined}
         aria-labelledby={tabbed ? "fs-cp-tab-" + tabs : undefined}
-        className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden bg-white px-3 py-2.5 text-sm"
+        className={
+          tabbed
+            ? "flex min-h-0 flex-1 flex-col overflow-hidden bg-white text-sm"
+            : "flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden bg-white px-3 py-2.5 text-sm"
+        }
       >
         {children}
       </div>
@@ -2290,60 +2299,81 @@ function TrialPanel({
   );
 }
 
-/** Navy open heading / cool-gray closed; white body; right-aligned titles. */
-function TrialAccordion({
+/** Second folder-tab row. The selected section's controls scroll beneath it. */
+function TrialSectionTabs({
+  label,
   openId,
   onChange,
   items,
+  lead,
 }: {
-  openId: string | null;
-  onChange: (id: string | null) => void;
+  label: string;
+  openId: string;
+  onChange: (id: string) => void;
   items: { id: string; title: string; body: React.ReactNode }[];
+  lead?: React.ReactNode;
 }) {
+  const active = items.find((item) => item.id === openId) ?? items[0];
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-1.5">
-      {items.map((item) => {
-        const open = openId === item.id;
-        return (
-          <div
-            key={item.id}
-            className={
-              open
-                ? "flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border shadow-sm"
-                : "shrink-0 rounded-lg border shadow-sm"
-            }
-            style={{ borderColor: TRIAL_LINE, backgroundColor: open ? "#fff" : TRIAL_COOL_GRAY }}
-          >
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        role="tablist"
+        aria-label={label}
+        className="flex shrink-0 items-end gap-1 border-b bg-white px-1.5 pt-1"
+        style={{ borderColor: TRIAL_LINE }}
+        onKeyDown={(event) => {
+          const idx = Math.max(0, items.findIndex((item) => item.id === active?.id));
+          let next = idx;
+          if (event.key === "ArrowRight") next = (idx + 1) % items.length;
+          else if (event.key === "ArrowLeft") next = (idx + items.length - 1) % items.length;
+          else if (event.key === "Home") next = 0;
+          else if (event.key === "End") next = items.length - 1;
+          else return;
+          event.preventDefault();
+          const id = items[next].id;
+          onChange(id);
+          requestAnimationFrame(() => {
+            document.getElementById("fs-cp-section-" + id)?.focus();
+          });
+        }}
+      >
+        {items.map((item) => {
+          const on = item.id === active?.id;
+          return (
             <button
+              key={item.id}
               type="button"
-              onClick={() => onChange(open ? null : item.id)}
-              aria-expanded={open}
-              className="flex min-h-11 w-full shrink-0 items-center justify-end gap-2 px-2.5 text-xs font-semibold"
-              style={
-                open
-                  ? { backgroundColor: TRIAL_NAVY, color: "#fff" }
-                  : { backgroundColor: TRIAL_COOL_GRAY, color: TRIAL_NAVY }
-              }
+              role="tab"
+              id={"fs-cp-section-" + item.id}
+              data-fs-cp-section={item.id}
+              aria-selected={on}
+              aria-controls="fs-cp-section-panel"
+              tabIndex={on ? 0 : -1}
+              onClick={() => onChange(item.id)}
+              className="min-h-11 shrink-0 whitespace-nowrap rounded-t-[6px] border px-2 text-xs leading-none"
+              style={{
+                marginBottom: -1,
+                backgroundColor: on ? TRIAL_NAVY : "#e5ebee",
+                color: on ? "#fff" : "#3d5c70",
+                fontWeight: on ? 700 : 650,
+                borderColor: on ? TRIAL_NAVY : TRIAL_LINE,
+              }}
             >
-              <span className="min-w-0 truncate text-right">{item.title}</span>
-              <ChevronDown
-                className={
-                  "h-5 w-5 shrink-0 transition-transform " + (open ? "rotate-180" : "rotate-0")
-                }
-                style={{ color: open ? "#fff" : "#66727d" }}
-              />
+              {item.title}
             </button>
-            {open ? (
-              <div
-                className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain border-t bg-white px-2.5 py-2 text-left"
-                style={{ borderColor: TRIAL_LINE }}
-              >
-                {item.body}
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+      <div
+        id="fs-cp-section-panel"
+        role="tabpanel"
+        aria-labelledby={active ? "fs-cp-section-" + active.id : undefined}
+        data-fs-cp-section-body={active?.id}
+        className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-white px-3 py-2.5 text-left"
+      >
+        {lead}
+        {active?.body}
+      </div>
     </div>
   );
 }
