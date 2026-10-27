@@ -1781,48 +1781,51 @@ export function TopoTab({
           This tab strip is Report Builder only.
         */}
         {controlsOnly && (
-          <div className="flex flex-col gap-1.5" data-rb-rail-groups="1">
+          <div className="flex flex-col gap-0" data-rb-rail-groups="1">
             {/*
-              GPT-036: Contours / Readings / Legend & H/L as one-open-at-a-time
-              accordions under the Sheet Layout | Topo peer tabs. Same controls
-              as before — no nested doors.
+              Tim / GPT on #136 (Oct 26, 2026): second row of Excel-style folder
+              tabs under Sheet Layout | Topo — Contours / Readings / Legend & H/L.
+              Same attached-tab construction as the primary row; compact and
+              subordinate. No accordion headers or chevrons. Report only.
             */}
-            {([
-              ["contours", "Contours"],
-              ["readings", "Readings"],
-              ["legendhl", "Legend & H/L"],
-            ] as const).map(([key, name]) => {
-              const open = ctrlTab === key;
-              return (
-                <div
-                  key={key}
-                  className={
-                    open
-                      ? "flex flex-col overflow-hidden rounded-lg border border-[#c9d0d5] bg-white shadow-sm"
-                      : "shrink-0 rounded-lg border border-[#c9d0d5] bg-[#eef1f3] shadow-sm"
-                  }
-                >
-                  <button
-                    type="button"
-                    data-rb-rail-tab={key}
-                    aria-expanded={open}
-                    onClick={() => setCtrlTab(key)}
-                    className={
-                      "flex min-h-10 w-full items-center justify-between gap-2 px-2.5 text-xs font-semibold " +
-                      (open ? "bg-[#07283d] text-white" : "bg-[#eef1f3] text-[#07283d]")
-                    }
-                  >
-                    <span>{name}</span>
-                    <ChevronDown
-                      className={
-                        "h-4 w-4 shrink-0 transition-transform " + (open ? "rotate-180" : "")
-                      }
-                    />
-                  </button>
-                  {open && (
-                    <div className="space-y-3 p-3 text-sm">
-                      {key === "contours" && (
-                        <>
+            <div className="rb-ws__sub-nav" data-rb-rail-tabs="1">
+              <div
+                className="rb-ws__sub-tabs"
+                role="tablist"
+                aria-label="Topo controls"
+              >
+                {([
+                  ["contours", "Contours"],
+                  ["readings", "Readings"],
+                  ["legendhl", "Legend & H/L"],
+                ] as const).map(([key, name]) => {
+                  const selected = ctrlTab === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      role="tab"
+                      data-rb-rail-tab={key}
+                      aria-selected={selected}
+                      className={"rb-ws__sub-tab" + (selected ? " is-active" : "")}
+                      onClick={() => setCtrlTab(key)}
+                    >
+                      {name}
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Report Builder fills selected-view identity here so both
+                  Excel tab rows sit stacked with nothing between them. */}
+              <div data-rb-topo-identity className="rb-ws__sub-identity" />
+            </div>
+            <div
+              className="rb-ws__sub-panel space-y-3 p-3 text-sm"
+              role="tabpanel"
+              data-rb-rail-panel={ctrlTab}
+            >
+              {ctrlTab === "contours" && (
+                <>
                           {gridAndContours?.grid && (
                             <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
                               Range {readingText(gridAndContours.grid.minValue)}"–
@@ -1932,9 +1935,9 @@ export function TopoTab({
                             onChange={(v) => update({ showPlan: v })}
                           />
                         </>
-                      )}
-                      {key === "readings" && (
-                        <>
+              )}
+              {ctrlTab === "readings" && (
+                <>
                           <div className="grid grid-cols-2 gap-2">
                             <SwitchRow
                               label="Points"
@@ -2050,9 +2053,9 @@ export function TopoTab({
                             </Button>
                           </details>
                         </>
-                      )}
-                      {key === "legendhl" && (
-                        <div className="grid grid-cols-2 gap-2">
+              )}
+              {ctrlTab === "legendhl" && (
+                <div className="grid grid-cols-2 gap-2">
                           <SwitchRow
                             label="Legend"
                             checked={resolved.showLegend}
@@ -2112,12 +2115,8 @@ export function TopoTab({
                             />
                           </div>
                         </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+              )}
+            </div>
           </div>
         )}
       </div>

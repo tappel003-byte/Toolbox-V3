@@ -119,7 +119,11 @@ const topo = await page.evaluate(() => ({
   active: document.querySelector('[data-rb-floor-task].is-active')?.getAttribute('data-rb-floor-task'),
   hasAdd: !!document.querySelector('[data-rb-floor-view="add"]'),
   hasTopoHost: !!document.querySelector('.rb-ws__controls'),
-  accordions: [...document.querySelectorAll('[data-rb-rail-tab]')].map((b) => b.textContent.trim()),
+  subTabs: [...document.querySelectorAll('[data-rb-rail-tab]')].map((b) => b.textContent.trim()),
+  subTabClasses: [...document.querySelectorAll('[data-rb-rail-tab]')].map((b) => b.className),
+  hasSubNav: !!document.querySelector('.rb-ws__sub-tabs'),
+  hasAccordionChevron: !!document.querySelector('.rb-ws__controls [data-rb-rail-tab] svg'),
+  activeSub: document.querySelector('[data-rb-rail-tab][aria-selected="true"]')?.getAttribute('data-rb-rail-tab'),
   railW: Math.round(document.querySelector('#rb-rail')?.getBoundingClientRect().width || 0),
   overflowX: document.querySelector('#rb-rail')
     ? document.querySelector('#rb-rail').scrollWidth > document.querySelector('#rb-rail').clientWidth + 1
@@ -130,9 +134,11 @@ const afterGeom = await page.evaluate(() => {
   const r = frame?.getBoundingClientRect();
   return r ? { x: +r.left.toFixed(1), y: +r.top.toFixed(1), w: +r.width.toFixed(1), h: +r.height.toFixed(1) } : null;
 });
-check('Topo tab shows Contours/Readings/Legend accordions, hides layout controls',
-  topo.active === 'topo' && !topo.hasAdd && topo.hasTopoHost
-    && topo.accordions.join('|') === 'Contours|Readings|Legend & H/L' && !topo.overflowX,
+check('Topo tab shows Contours/Readings/Legend Excel sub-tabs, hides layout controls',
+  topo.active === 'topo' && !topo.hasAdd && topo.hasTopoHost && topo.hasSubNav
+    && topo.subTabs.join('|') === 'Contours|Readings|Legend & H/L'
+    && topo.subTabClasses.every((c) => /\brb-ws__sub-tab\b/.test(c))
+    && !topo.hasAccordionChevron && !topo.overflowX,
   JSON.stringify(topo));
 check('switching task tabs does not move sheet geometry',
   beforeGeom && afterGeom
@@ -209,9 +215,35 @@ const legendState = await page.evaluate(() => {
     showBtn: !!document.querySelector('[data-rb-floor-view-chrome="legend-on"]'),
   };
 });
-check('Legend & H/L accordion shows selected-view chrome for multi-view',
+check('Legend & H/L sub-tab shows selected-view chrome for multi-view',
   legendState.showBtn && (legendState.switch === 'unchecked' || legendState.switch === 'false'),
   JSON.stringify(legendState));
+
+// Secondary Excel folder-tab geometry: rounded top, flat bottom, active joins panel.
+const folderGeom = await page.evaluate(() => {
+  const primary = document.querySelector('[data-rb-floor-task="topo"]');
+  const sub = document.querySelector('[data-rb-rail-tab].is-active') ||
+    document.querySelector('[data-rb-rail-tab][aria-selected="true"]');
+  const cs = (el) => el ? getComputedStyle(el) : null;
+  const p = cs(primary);
+  const s = cs(sub);
+  return {
+    primaryRadius: p && [p.borderTopLeftRadius, p.borderTopRightRadius, p.borderBottomLeftRadius, p.borderBottomRightRadius],
+    subRadius: s && [s.borderTopLeftRadius, s.borderTopRightRadius, s.borderBottomLeftRadius, s.borderBottomRightRadius],
+    subBottomBorder: s && s.borderBottomColor,
+    subBg: s && s.backgroundColor,
+    subMinH: s && parseFloat(s.minHeight),
+    primaryMinH: p && parseFloat(p.minHeight),
+  };
+});
+check('secondary tabs use same Excel folder construction, compact vs primary',
+  folderGeom.subRadius &&
+    folderGeom.subRadius[0] !== '0px' && folderGeom.subRadius[1] !== '0px' &&
+    folderGeom.subRadius[2] === '0px' && folderGeom.subRadius[3] === '0px' &&
+    folderGeom.primaryRadius && folderGeom.primaryRadius[2] === '0px' &&
+    folderGeom.subMinH > 0 && folderGeom.primaryMinH > 0 &&
+    folderGeom.subMinH < folderGeom.primaryMinH,
+  JSON.stringify(folderGeom));
 
 await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
 await new Promise((r) => setTimeout(r, 600));

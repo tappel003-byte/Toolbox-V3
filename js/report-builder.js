@@ -4573,11 +4573,28 @@
       } else if (railBodyEl) {
         // Rebuild identity + chrome; keep the mounted Topo host when the view
         // key is unchanged so settings state is not torn down on every sync.
+        // Identity lands in [data-rb-topo-identity] under the secondary Excel
+        // tab row so Contours|Readings|Legend sit immediately beneath Topo.
         var keepHost = (railControls.el && railControls.key === key) ? railControls.el : null;
         railBodyEl.textContent = '';
-        railBodyEl.appendChild(buildFloorTopoIdentity(page));
+        function placeTopoIdentity(targetPage) {
+          var slot = railBodyEl.querySelector('[data-rb-topo-identity]');
+          if (!slot) return false;
+          slot.textContent = '';
+          slot.appendChild(buildFloorTopoIdentity(targetPage));
+          return true;
+        }
+        function fillTopoIdentity(targetPage) {
+          if (placeTopoIdentity(targetPage)) return;
+          requestAnimationFrame(function () {
+            if (!placeTopoIdentity(targetPage)) {
+              requestAnimationFrame(function () { placeTopoIdentity(targetPage); });
+            }
+          });
+        }
         if (!api || typeof api.mount !== 'function' || !ctrlCanvas) {
           releaseRailControls();
+          railBodyEl.appendChild(buildFloorTopoIdentity(page));
           var empty = document.createElement('p');
           empty.className = 'rb-panel__lead';
           empty.setAttribute('data-rb-floor-topo-empty', '1');
@@ -4590,6 +4607,7 @@
             railControls.api.update({ settings: floorViewFor(page) });
           }
           railBodyEl.appendChild(keepHost);
+          fillTopoIdentity(page);
         } else {
           releaseRailControls();
           var host = document.createElement('div');
@@ -4616,6 +4634,7 @@
               flushSave().catch(function () {});
             },
           });
+          fillTopoIdentity(page);
         }
       }
 

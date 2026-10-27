@@ -942,6 +942,85 @@ body.report-builder-open .canvas {
   border-bottom-color: #fff;
   box-shadow: none;
 }
+
+/* GPT on #136: second Excel folder-tab row under Sheet Layout | Topo.
+   Same attached construction — rounded tops, flat bottoms, active tab
+   joined to its panel — compact and subordinate. Report controlsOnly only. */
+.rb-ws__sub-nav {
+  position: sticky;
+  /* Below sticky title (~28px) + primary task tabs (~36px). */
+  top: 64px;
+  z-index: 2;
+  margin: 0 0 -1px;
+  padding: 0;
+  background: #fff;
+}
+.rb-ws__sub-tabs {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: nowrap;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line, #dce1e4);
+  border-radius: 0;
+  background: transparent;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+.rb-ws__sub-tab {
+  appearance: none;
+  position: relative;
+  flex: 0 0 auto;
+  margin: 0 0 -1px;
+  border: 1px solid var(--line, #dce1e4);
+  border-bottom-color: var(--line, #dce1e4);
+  border-radius: 5px 5px 0 0;
+  box-shadow: none;
+  min-height: 28px;
+  padding: 4px 9px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--navy, #07283d);
+  background: #e5ebee;
+  cursor: pointer;
+}
+.rb-ws__sub-tab:hover:not(.is-active) {
+  background: #d9e4e9;
+}
+.rb-ws__sub-tab:focus {
+  outline: none;
+}
+.rb-ws__sub-tab:focus-visible {
+  outline: 2px solid var(--navy, #07283d);
+  outline-offset: -3px;
+}
+.rb-ws__sub-tab.is-active {
+  z-index: 1;
+  background: #fff;
+  color: var(--navy, #07283d);
+  border-bottom-color: #fff;
+  box-shadow: none;
+}
+.rb-ws__sub-identity {
+  padding: 6px 0 0;
+  background: #fff;
+}
+.rb-ws__sub-identity:empty {
+  display: none;
+  padding: 0;
+}
+.rb-ws__sub-panel {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+}
 .rb-ws__section-label {
   margin: 4px 0 0;
   font-size: 11px;
