@@ -954,6 +954,11 @@ body.report-builder-open .canvas {
   border-bottom-color: #fff;
   box-shadow: none;
 }
+/* Topo and its three sub tabs are one set. Sheet Layout stays the gray tab. */
+.rb-ws__task-tab.is-active[data-rb-floor-task="topo"] {
+  color: #c14a2b;
+  font-weight: 700;
+}
 /* Second tier under Topo: the same folder tabs, drawn smaller.
    Rounded tops, flat bottoms, cool-gray inactive, white active tab that
    interrupts this row's baseline. Not a pill, and not an underline. */
@@ -981,10 +986,10 @@ body.report-builder-open .canvas {
   border-radius: 5px 5px 0 0;
   background: #e5ebee;
   box-shadow: none;
-  color: var(--navy, #07283d);
+  color: #c14a2b;
   font: inherit;
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
   cursor: pointer;
@@ -1002,7 +1007,6 @@ body.report-builder-open .canvas {
 .rb-ws__subtab.is-active {
   z-index: 1;
   background: #fff;
-  color: var(--navy, #07283d);
   border-bottom-color: #fff;
   box-shadow: none;
 }
