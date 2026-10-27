@@ -28,6 +28,8 @@
     onNote: null,
     onSelect: null,
     layout: null,
+    /** Report-owned Picture Locations pin scale (never capture prefs). */
+    pinScale: 1,
   };
   var fitObserver = null;
   var formatToolbar = null;
@@ -2129,6 +2131,10 @@
       // photograph 31 on the second sheet needs the same plan in front of
       // them as the one who looked up photograph 3 on the first.
       allPins: pins,
+      // Report pin scale only — never capture device prefs.
+      pinScale: (typeof penLogUi.pinScale === 'number' && penLogUi.pinScale > 0)
+        ? penLogUi.pinScale
+        : 1,
       selectedPinId: penLogUi.selectedPinId,
       onNote: function (id, value, source) {
         if (typeof penLogUi.onNote === 'function') penLogUi.onNote(id, value, source);
@@ -3064,6 +3070,10 @@
     // placement for the whole report, like the Floor Survey layout: level on
     // level, the sheets have to register with each other.
     var penLogBoxLayout = null;
+    // Distress numbered-pin size on Picture Locations sheets. Report-owned;
+    // never read capture ds-capture-sizes. Default 1 = proven 11×17 diameter.
+    var penLogPinScale = 1;
+    var penLogPinScaleSeeded = false;
     // One camera for every Floor Survey slide: the same part of the plan at the
     // same zoom, so clicking through Combined, Main Level, Kitchen and Garage
     // is a flip book -- the building does not move. The chrome (colour scale,
@@ -3391,6 +3401,8 @@
     var laterBtn = root.querySelector('#rb-page-later');
     var penPanel = root.querySelector('#rb-penlog-panel');
     var penContourBtn = root.querySelector('#rb-penlog-contour');
+    var penPinSizeInput = root.querySelector('#rb-penlog-pin-size');
+    var penPinSizeVal = root.querySelector('#rb-penlog-pin-size-val');
     var penNoteField = root.querySelector('#rb-report-note');
     var penSaveState = root.querySelector('#rb-save-state');
     var penPhotoList = root.querySelector('#rb-photo-list');
@@ -3470,10 +3482,11 @@
       var savedSeq = editSeq;
       var drain = !!(opts && opts.drain);
       var drainPass = drain ? ((opts && opts._drainPass) || 0) + 1 : 0;
+      var priorDoc = workingRecord && (workingRecord.reportBuilder || workingRecord.report);
       var doc = persistableDocument(
         pages,
         activeId,
-        workingRecord && (workingRecord.reportBuilder || workingRecord.report),
+        priorDoc,
         floorLayout,
         coverLayout,
         brandBox,
@@ -3485,6 +3498,31 @@
         reportNorth,
         draftStamp
       );
+      // Keep notes and pinScale together on reportBuilder.penLog.
+      // Use this mount's own penLogPinScale / priorDoc only — never the shared
+      // penLogUi, which another Customer File's in-flight save could have set.
+      var scale = Number(penLogPinScale);
+      if (!(isFinite(scale) && scale > 0) && priorDoc && priorDoc.penLog) {
+        scale = Number(priorDoc.penLog.pinScale);
+      }
+      if (!(isFinite(scale) && scale > 0)) scale = 1;
+      doc.penLog = doc.penLog || {
+        schema: 'toolbox.pen-log-notes',
+        schemaVersion: 1,
+      };
+      if ((!doc.penLog.notes || !Object.keys(doc.penLog.notes).length) &&
+          priorDoc && priorDoc.penLog && priorDoc.penLog.notes) {
+        doc.penLog.notes = priorDoc.penLog.notes;
+      }
+      doc.penLog.pinScale = window.ToolboxPenLog && window.ToolboxPenLog.clampPinScale
+        ? window.ToolboxPenLog.clampPinScale(scale)
+        : scale;
+      penLogPinScale = doc.penLog.pinScale;
+      // Shared module state feeds Present/print. A stale mount's save (seed on
+      // a previous Customer File) must not overwrite the live job's scale.
+      if (token === mountGeneration) {
+        penLogUi.pinScale = doc.penLog.pinScale;
+      }
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;
       delete workingRecord.report;
@@ -3591,6 +3629,15 @@
         penContourBtn.className = 'btn rb-ws__btn ' + (showing ? 'btn--accent' : 'btn--secondary');
         penContourBtn.setAttribute('data-rb-penlog-contour', showing ? 'off' : 'on');
         penContourBtn.setAttribute('aria-pressed', showing ? 'true' : 'false');
+      }
+      if (penPinSizeInput) {
+        var shownScale = window.ToolboxPenLog && window.ToolboxPenLog.clampPinScale
+          ? window.ToolboxPenLog.clampPinScale(penLogPinScale)
+          : (Number(penLogPinScale) > 0 ? Number(penLogPinScale) : 1);
+        if (document.activeElement !== penPinSizeInput) {
+          penPinSizeInput.value = String(shownScale);
+        }
+        if (penPinSizeVal) penPinSizeVal.textContent = shownScale.toFixed(2) + '×';
       }
       var notes = penLogNoteMap(page, penLogUi.noteMap);
       var pins = penLogPinsForPage(page, notes);
@@ -4987,6 +5034,33 @@
         if (typeof onBack === 'function') onBack();
       });
     });
+
+    // Report pin size for Picture Locations. Capture ds-capture-sizes is never read.
+    function applyPenLogPinScale(raw) {
+      var next = window.ToolboxPenLog && window.ToolboxPenLog.clampPinScale
+        ? window.ToolboxPenLog.clampPinScale(raw)
+        : Number(raw);
+      if (!(isFinite(next) && next > 0)) return;
+      if (Math.abs(next - penLogPinScale) < 0.001) {
+        if (penPinSizeVal) penPinSizeVal.textContent = next.toFixed(2) + '×';
+        return;
+      }
+      penLogPinScale = next;
+      penLogUi.pinScale = next;
+      penLogPinScaleSeeded = true;
+      if (penPinSizeVal) penPinSizeVal.textContent = next.toFixed(2) + '×';
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
+    }
+    if (penPinSizeInput) {
+      penPinSizeInput.addEventListener('input', function () {
+        applyPenLogPinScale(penPinSizeInput.value);
+      });
+      penPinSizeInput.addEventListener('change', function () {
+        applyPenLogPinScale(penPinSizeInput.value);
+      });
+    }
 
     // Contours on or off for this Picture Locations sheet. The level's layer
     // is untouched, and so is what Distress is showing: this is how this page
@@ -8592,6 +8666,18 @@
       if (penSeed && window.ToolboxPenLog && window.ToolboxPenLog.normalizeLayout) {
         penLogBoxLayout = window.ToolboxPenLog.normalizeLayout(penSeed);
       }
+      // Report pin scale: keep saved value; missing field seeds once to 1 (11×17 default).
+      var savedPinScale = savedDoc && savedDoc.penLog && Number(savedDoc.penLog.pinScale);
+      if (isFinite(savedPinScale) && savedPinScale > 0) {
+        penLogPinScale = window.ToolboxPenLog && window.ToolboxPenLog.clampPinScale
+          ? window.ToolboxPenLog.clampPinScale(savedPinScale)
+          : savedPinScale;
+        penLogPinScaleSeeded = true;
+      } else {
+        penLogPinScale = 1;
+        penLogPinScaleSeeded = false;
+      }
+      penLogUi.pinScale = penLogPinScale;
       var cameraSeed = (savedDoc && savedDoc.floorCamera) || template.floorCamera;
       if (cameraSeed) {
         floorCamera = JSON.parse(JSON.stringify(cameraSeed));
@@ -8682,7 +8768,10 @@
       return refreshCoverOverviewUrl().then(function () {
         renderPages();
         fitSheet(root);
-        if (loaded.assembledFresh || loaded.reconciled) {
+        // Persist a missing pinScale once so reopen / other devices keep sheet default.
+        var needSave = loaded.assembledFresh || loaded.reconciled || !penLogPinScaleSeeded;
+        if (!penLogPinScaleSeeded) penLogPinScaleSeeded = true;
+        if (needSave) {
           markDirty();
           flushSave().catch(function () {});
         } else {
@@ -8821,6 +8910,11 @@
       // Shown only on a level Floor Survey has written a contour for; a
       // button offering a layer that does not exist is worse than no button.
       '        <button type="button" class="btn rb-ws__btn" id="rb-penlog-contour" data-rb-penlog-contour="off" hidden></button>' +
+      '        <label class="rb-panel__label" for="rb-penlog-pin-size">Pin size</label>' +
+      '        <div class="rb-penlog-pinsize" id="rb-penlog-pinsize">' +
+      '          <input type="range" id="rb-penlog-pin-size" min="0.35" max="2.5" step="0.05" value="1" aria-label="Pin size" />' +
+      '          <span class="rb-penlog-pinsize__val" id="rb-penlog-pin-size-val">1.00×</span>' +
+      '        </div>' +
       '        <button type="button" class="btn btn--quiet rb-ws__btn" data-rb-template="penlog">Use this as my default</button>' +
       '        <button type="button" class="btn btn--secondary rb-ws__btn" data-rb-source="distress">Open Distress Survey</button>' +
       '        <p class="rb-panel__status" id="rb-save-state" aria-live="polite"></p>' +
@@ -8865,6 +8959,10 @@
     penLogUi.layout = null;
     penLogUi.noteMap = {};
     penLogUi.selectedPinId = '';
+    // Report pin scale is per mount / per Customer File. Leaving it set would
+    // paint the previous job's size onto the next open before load finishes,
+    // and a missing penLog.pinScale would never look missing.
+    penLogUi.pinScale = 1;
     if (formatToolbar) {
       formatToolbar.destroy();
       formatToolbar = null;

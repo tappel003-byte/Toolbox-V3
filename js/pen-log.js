@@ -289,6 +289,15 @@
    * not change when the sheet does, so the ratio survives every scale.
    */
   var DISTRESS_PIN_DIAMETER = 0.0175;
+  var PIN_SCALE_MIN = 0.35;
+  var PIN_SCALE_MAX = 2.5;
+
+  /** Report-owned multiplier. Default 1 = proven 11×17 sheet diameter. */
+  function clampPinScale(n) {
+    var x = Number(n);
+    if (!isFinite(x) || x <= 0) return 1;
+    return Math.max(PIN_SCALE_MIN, Math.min(PIN_SCALE_MAX, Math.round(x * 100) / 100));
+  }
 
   function publishPinSize(root, rect) {
     var fit = root.querySelector('.rb-penlog__fit');
@@ -302,7 +311,8 @@
       fit.style.removeProperty('--rb-pin-size');
       return;
     }
-    var cqh = (longSide * DISTRESS_PIN_DIAMETER / sheetH) * 100;
+    var scale = clampPinScale(root && root.getAttribute('data-rb-pin-scale'));
+    var cqh = (longSide * DISTRESS_PIN_DIAMETER * scale / sheetH) * 100;
     fit.style.setProperty('--rb-pin-size', cqh.toFixed(3) + 'cqh');
   }
 
@@ -526,6 +536,8 @@
     var root = document.createElement('div');
     root.className = 'rb-penlog';
     root.setAttribute('data-level', levelName);
+    // Report-owned pin scale only — never capture ds-capture-sizes.
+    root.setAttribute('data-rb-pin-scale', String(clampPinScale(model.pinScale)));
 
     var placement = normalizeLayout(model.layout);
     var frame = document.createElement('div');
@@ -701,6 +713,9 @@
     PAGE_W: PAGE_W,
     PAGE_H: PAGE_H,
     LAYOUT: LAYOUT,
+    PIN_SCALE_MIN: PIN_SCALE_MIN,
+    PIN_SCALE_MAX: PIN_SCALE_MAX,
+    clampPinScale: clampPinScale,
     containedFrame: containedFrame,
     pinPoint: pinPoint,
     assignPinNumbers: assignPinNumbers,

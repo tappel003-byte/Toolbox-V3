@@ -2624,6 +2624,25 @@ body.report-builder-open .canvas {
   font-weight: 700;
 }
 
+.rb-penlog-pinsize {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rb-penlog-pinsize input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: var(--accent, #c14a2b);
+}
+.rb-penlog-pinsize__val {
+  flex: 0 0 auto;
+  min-width: 3.2em;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink, #222);
+  font-variant-numeric: tabular-nums;
+}
+
 .rb-panel__note,
 .rb-panel__note.rb-panel__note {
   width: 100%;
