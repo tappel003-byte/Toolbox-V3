@@ -16,7 +16,7 @@ import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/l
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import { Undo2, X, SlidersHorizontal, Minus, Plus, ChevronRight, ChevronDown } from "lucide-react";
+import { Undo2, X, SlidersHorizontal, Minus, Plus, ChevronDown } from "lucide-react";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { TopoDiagnosticPanel } from "../TopoDiagnosticPanel";
@@ -451,21 +451,19 @@ export function TopoTab({
   resizeCorners = false,
   allowContourLayer = false,
 }: Props) {
-  // Field Control panel (GPT-024 cut over Tim Oct 24, 2026): Contours /
-  // Readings / Legend & H/L with accordion. Same update() handlers.
-  // Report controlsOnly untouched. Diagnostic corner undecided — left alone.
-  const [openCorner, setOpenCorner] = useState<
-    null | "hub" | "contours" | "readings" | "legendhl"
-  >(null);
-  /** Last Control panel door — Resume on the hub. */
+  // Field Control panel: Contours / Readings / Misc, each with folder
+  // subtabs. Report Builder keeps its own rail (controlsOnly). Diagnostic
+  // corner is unchanged.
+  const [openCorner, setOpenCorner] = useState<TrialDoorKey | null>(null);
+  /** Last parent tab, so Close then the pill returns to the same group. */
   const [lastTrialDoor, setLastTrialDoor] = useState<TrialDoorKey | null>(null);
-  /** Which accordion section is open per door (visit memory only). */
+  /** Which child tab is open per parent (visit memory only; not a setting). */
   const [trialSectionByDoor, setTrialSectionByDoor] = useState<
     Partial<Record<TrialDoorKey, string>>
   >({
-    contours: "display",
+    contours: "legend",
     readings: "show",
-    legendhl: "legend",
+    misc: "adjustments",
   });
   const openTrialDoor = useCallback((key: TrialDoorKey) => {
     setLastTrialDoor(key);
@@ -989,13 +987,10 @@ export function TopoTab({
       {/* Control panel — labeled pill ~Data/Topo size (Tim Oct 24–25, 2026). Hidden while open. */}
       {!chromeless &&
         !controlsOnly &&
-        openCorner !== "hub" &&
-        openCorner !== "contours" &&
-        openCorner !== "readings" &&
-        openCorner !== "legendhl" && (
+        openCorner == null && (
         <button
           type="button"
-          onClick={() => setOpenCorner("hub")}
+          onClick={() => openTrialDoor(lastTrialDoor ?? "contours")}
           aria-label="Control panel"
           className={
             "absolute z-30 top-2 right-2 landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:translate-x-[0.25rem] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] " +
@@ -1252,26 +1247,52 @@ export function TopoTab({
         {(openCorner === "contours" && !controlsOnly) && (
           <TrialPanel
             title="Contours"
-            stepLabel={trialStepLabel("contours")}
+            tabs="contours"
+            onTab={openTrialDoor}
             onClose={() => setOpenCorner(null)}
-            footer={
-              <TrialDoorNav
-                door="contours"
-                onBack={() => setOpenCorner("hub")}
-                onNext={openTrialDoor}
-              />
-            }
           >
-            {gridAndContours?.grid && (
-              <p className="mb-1 shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                Range {readingText(gridAndContours.grid.minValue)}"–
-                {readingText(gridAndContours.grid.maxValue)}"
-              </p>
-            )}
-            <TrialAccordion
-              openId={trialSectionByDoor.contours ?? null}
+            <TrialSectionTabs
+              label="Contours"
+              openId={trialSectionByDoor.contours ?? "legend"}
               onChange={(id) => setTrialSection("contours", id)}
+              lead={
+                gridAndContours?.grid ? (
+                  <p className="text-[10px] tabular-nums text-muted-foreground">
+                    Range {readingText(gridAndContours.grid.minValue)}"–
+                    {readingText(gridAndContours.grid.maxValue)}"
+                  </p>
+                ) : null
+              }
               items={[
+                {
+                  id: "legend",
+                  title: "Legend",
+                  body: (
+                    <>
+                      <p className="text-[10px] text-muted-foreground">
+                        Color scale on the plan — show it and size it. Drag to place.
+                      </p>
+                      <SwitchRow
+                        label="Legend"
+                        checked={resolved.showLegend}
+                        onChange={(v) => update({ showLegend: v })}
+                      />
+                      <StepperControl
+                        label="Legend size"
+                        value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+                        min={0.4}
+                        max={4}
+                        step={0.1}
+                        format={(v) => `${v.toFixed(1)}×`}
+                        onChange={(v) =>
+                          update({
+                            legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)),
+                          })
+                        }
+                      />
+                    </>
+                  ),
+                },
                 {
                   id: "display",
                   title: "Display",
@@ -1463,73 +1484,16 @@ export function TopoTab({
           </TrialPanel>
         )}
 
-        {/* Control panel hub + doors */}
-        {(openCorner === "hub" && !controlsOnly) && (
-          <TrialPanel title="Control panel" titleAccent="rust" onClose={() => setOpenCorner(null)}>
-            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
-              <p className="text-[10px] text-muted-foreground">
-                Pick what to change. The plan stays on screen.
-              </p>
-              {lastTrialDoor ? (
-                <button
-                  type="button"
-                  onClick={() => openTrialDoor(lastTrialDoor)}
-                  className="flex w-full items-center justify-end gap-2 rounded-md px-3 py-2 text-xs font-medium text-white hover:opacity-95"
-                  style={{ backgroundColor: TRIAL_NAVY }}
-                >
-                  <span className="text-right">
-                    Resume{" "}
-                    {TRIAL_DOORS.find((d) => d.key === lastTrialDoor)?.name ?? "door"}
-                  </span>
-                  <span aria-hidden>→</span>
-                </button>
-              ) : null}
-              <div className="flex flex-col gap-1.5">
-                {TRIAL_DOORS.map(({ key, name, hint }) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => openTrialDoor(key)}
-                    className="flex items-center justify-end gap-2 rounded-md border px-2.5 py-2.5 hover:brightness-[0.98]"
-                    style={{
-                      backgroundColor: TRIAL_COOL_GRAY,
-                      borderColor: TRIAL_LINE_STRONG,
-                    }}
-                  >
-                    <span className="min-w-0 flex-1 text-right">
-                      <span
-                        className="block text-sm font-medium leading-tight"
-                        style={{ color: TRIAL_NAVY }}
-                      >
-                        {name}
-                      </span>
-                      <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
-                        {hint}
-                      </span>
-                    </span>
-                    <ChevronRight className="h-4 w-4 shrink-0" style={{ color: TRIAL_NAVY }} />
-                  </button>
-                ))}
-              </div>
-            </div>
-          </TrialPanel>
-        )}
-
         {(openCorner === "readings" && !controlsOnly) && (
           <TrialPanel
             title="Readings"
-            stepLabel={trialStepLabel("readings")}
+            tabs="readings"
+            onTab={openTrialDoor}
             onClose={() => setOpenCorner(null)}
-            footer={
-              <TrialDoorNav
-                door="readings"
-                onBack={() => setOpenCorner("hub")}
-                onNext={openTrialDoor}
-              />
-            }
           >
-            <TrialAccordion
-              openId={trialSectionByDoor.readings ?? null}
+            <TrialSectionTabs
+              label="Readings"
+              openId={trialSectionByDoor.readings ?? "show"}
               onChange={(id) => setTrialSection("readings", id)}
               items={[
                 {
@@ -1552,7 +1516,7 @@ export function TopoTab({
                 },
                 {
                   id: "labels",
-                  title: "Labels",
+                  title: "Font",
                   body: (
                     <div className="space-y-2.5">
                       <StepperControl
@@ -1618,53 +1582,7 @@ export function TopoTab({
                           ))}
                         </div>
                       </div>
-                      {/* Decimals is 0–3 — compact box, Declutter rides the freed row. */}
-                      <div className="flex items-end gap-3">
-                        <NumberControl
-                          compact
-                          label="Decimals"
-                          value={resolved.decimalPlaces}
-                          min={0}
-                          max={3}
-                          step={1}
-                          onChange={(v) =>
-                            update({
-                              decimalPlaces: Math.max(
-                                0,
-                                Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
-                              ),
-                            })
-                          }
-                        />
-                        <div className="min-w-0 flex-1">
-                          <SwitchRow
-                            label="Declutter"
-                            checked={resolved.declutterLabels !== false}
-                            onChange={(v) => update({ declutterLabels: v })}
-                          />
-                        </div>
-                      </div>
                     </div>
-                  ),
-                },
-                {
-                  id: "positions",
-                  title: "Positions",
-                  body: (
-                    <>
-                      <p className="text-[10px] text-muted-foreground">
-                        Clears moved reading labels and High/Low marker positions. Does not
-                        move the legend or stats pill.
-                      </p>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={resetAllLabelPositions}
-                        className="h-10 w-full text-xs"
-                      >
-                        Reset label & H/L positions
-                      </Button>
-                    </>
                   ),
                 },
               ]}
@@ -1672,50 +1590,47 @@ export function TopoTab({
           </TrialPanel>
         )}
 
-        {(openCorner === "legendhl" && !controlsOnly) && (
+        {(openCorner === "misc" && !controlsOnly) && (
           <TrialPanel
-            title="Legend & H/L"
-            stepLabel={trialStepLabel("legendhl")}
+            title="Misc"
+            tabs="misc"
+            onTab={openTrialDoor}
             onClose={() => setOpenCorner(null)}
-            footer={
-              <TrialDoorNav
-                door="legendhl"
-                onBack={() => setOpenCorner("hub")}
-                onNext={openTrialDoor}
-              />
-            }
           >
-            <TrialAccordion
-              openId={trialSectionByDoor.legendhl ?? null}
-              onChange={(id) => setTrialSection("legendhl", id)}
+            <TrialSectionTabs
+              label="Misc"
+              openId={trialSectionByDoor.misc ?? "adjustments"}
+              onChange={(id) => setTrialSection("misc", id)}
               items={[
                 {
-                  id: "legend",
-                  title: "Legend",
+                  id: "adjustments",
+                  title: "Adjustments",
                   body: (
-                    <>
-                      <p className="text-[10px] text-muted-foreground">
-                        Color scale on the plan — show it and size it. Drag to place.
-                      </p>
-                      <SwitchRow
-                        label="Legend"
-                        checked={resolved.showLegend}
-                        onChange={(v) => update({ showLegend: v })}
-                      />
-                      <StepperControl
-                        label="Legend size"
-                        value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
-                        min={0.4}
-                        max={4}
-                        step={0.1}
-                        format={(v) => `${v.toFixed(1)}×`}
+                    <div className="flex items-end gap-3">
+                      <NumberControl
+                        compact
+                        label="Decimals"
+                        value={resolved.decimalPlaces}
+                        min={0}
+                        max={3}
+                        step={1}
                         onChange={(v) =>
                           update({
-                            legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)),
+                            decimalPlaces: Math.max(
+                              0,
+                              Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
+                            ),
                           })
                         }
                       />
-                    </>
+                      <div className="min-w-0 flex-1">
+                        <SwitchRow
+                          label="Declutter"
+                          checked={resolved.declutterLabels !== false}
+                          onChange={(v) => update({ declutterLabels: v })}
+                        />
+                      </div>
+                    </div>
                   ),
                 },
                 {
@@ -1762,6 +1677,26 @@ export function TopoTab({
                     </>
                   ),
                 },
+                {
+                  id: "positions",
+                  title: "Positions",
+                  body: (
+                    <>
+                      <p className="text-[10px] text-muted-foreground">
+                        Clears moved reading labels and High/Low marker positions. Does not
+                        move the legend or stats pill.
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={resetAllLabelPositions}
+                        className="h-10 w-full text-xs"
+                      >
+                        Reset label & H/L positions
+                      </Button>
+                    </>
+                  ),
+                },
               ]}
             />
           </TrialPanel>
@@ -1782,8 +1717,8 @@ export function TopoTab({
           Stats pill size under High / low -- so a piece and its size are
           never in two different places.
 
-          Field screen uses the Control panel hub (cut over Oct 24, 2026).
-          This tab strip is Report Builder only.
+          The field Control panel is the floating folder tabs. This accordion
+          strip is Report Builder only, and it keeps Legend & H/L.
         */}
         {controlsOnly && (
           <div
@@ -2107,11 +2042,11 @@ export function TopoTab({
   );
 }
 
-/** Control panel doors (GPT-024). Accordion sections inside each. */
+/** Field Control panel parent tabs. */
 const TRIAL_DOORS = [
-  { key: "contours", name: "Contours", hint: "Mode, colors, contour lines" },
-  { key: "readings", name: "Readings", hint: "Dots · label size, bold, color" },
-  { key: "legendhl", name: "Legend & H/L", hint: "Legend size · high/low markers" },
+  { key: "contours", name: "Contours" },
+  { key: "readings", name: "Readings" },
+  { key: "misc", name: "Misc" },
 ] as const;
 
 type TrialDoorKey = (typeof TRIAL_DOORS)[number]["key"];
@@ -2123,9 +2058,67 @@ type TrialDoorKey = (typeof TRIAL_DOORS)[number]["key"];
 /** Customer File visual system — css/styles.css (:root --navy / --accent / --line). */
 const TRIAL_NAVY = "#07283d";
 const TRIAL_RUST = "#c14a2b";
-const TRIAL_COOL_GRAY = "#eef1f3";
 const TRIAL_LINE = "#c9d0d5";
-const TRIAL_LINE_STRONG = "#a8b0b8";
+
+function TrialFolderTabs({
+  active,
+  onChange,
+}: {
+  active: TrialDoorKey;
+  onChange: (key: TrialDoorKey) => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Control panel"
+      className="flex min-w-0 flex-1 items-end gap-1"
+      onKeyDown={(event) => {
+        const keys = TRIAL_DOORS.map((d) => d.key);
+        const idx = Math.max(0, keys.indexOf(active));
+        let next = idx;
+        if (event.key === "ArrowRight") next = (idx + 1) % keys.length;
+        else if (event.key === "ArrowLeft") next = (idx + keys.length - 1) % keys.length;
+        else if (event.key === "Home") next = 0;
+        else if (event.key === "End") next = keys.length - 1;
+        else return;
+        event.preventDefault();
+        const key = keys[next];
+        onChange(key);
+        requestAnimationFrame(() => {
+          document.getElementById("fs-cp-tab-" + key)?.focus();
+        });
+      }}
+    >
+      {TRIAL_DOORS.map((d) => {
+        const on = d.key === active;
+        return (
+          <button
+            key={d.key}
+            type="button"
+            role="tab"
+            id={"fs-cp-tab-" + d.key}
+            data-fs-cp-tab={d.key}
+            aria-selected={on}
+            aria-controls="fs-cp-panel"
+            tabIndex={on ? 0 : -1}
+            onClick={() => onChange(d.key)}
+            className="min-h-11 min-w-0 flex-1 whitespace-nowrap rounded-t-[6px] border px-1 text-center text-xs leading-none"
+            style={{
+              marginBottom: -1,
+              backgroundColor: on ? TRIAL_NAVY : "#e5ebee",
+              color: on ? "#fff" : "#3d5c70",
+              fontWeight: on ? 700 : 650,
+              borderColor: on ? TRIAL_NAVY : TRIAL_LINE,
+              borderBottomColor: on ? TRIAL_NAVY : TRIAL_LINE,
+            }}
+          >
+            {d.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function TrialPanel({
   title,
@@ -2135,6 +2128,8 @@ function TrialPanel({
   onClose,
   children,
   footer,
+  tabs,
+  onTab,
 }: {
   title: string;
   /** Hub only: rust title so the Control panel name carries the accent. */
@@ -2144,13 +2139,42 @@ function TrialPanel({
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  /** Field trial: one folder-tab row. The accepted hub stays in this file and is not opened. */
+  tabs?: TrialDoorKey;
+  onTab?: (key: TrialDoorKey) => void;
 }) {
   const rustTitle = titleAccent === "rust";
+  const tabbed = tabs != null && onTab != null;
   return (
     <div
-      className="absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg backdrop-blur landscape-short:top-2"
+      data-fs-cp={tabbed ? "panel" : undefined}
+      className={
+        tabbed
+          ? "absolute z-30 right-[max(0.5rem,env(safe-area-inset-right))] top-2 flex w-[300px] max-w-[calc(100%-1rem)] max-h-[min(32rem,calc(100%-env(safe-area-inset-bottom)-0.75rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg landscape-short:top-2"
+          : "absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg backdrop-blur landscape-short:top-2"
+      }
       style={{ borderColor: TRIAL_LINE }}
     >
+      {tabbed ? (
+        <div className="flex shrink-0 flex-col bg-white">
+          <div className="flex h-11 shrink-0 items-center justify-end pr-0.5">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-black/5 hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div
+            className="flex shrink-0 items-end border-b pl-1.5 pr-1.5"
+            style={{ borderColor: TRIAL_LINE }}
+          >
+            <TrialFolderTabs active={tabs} onChange={onTab} />
+          </div>
+        </div>
+      ) : (
       <div
         className="flex shrink-0 items-start justify-between gap-2 border-b bg-white px-3 pb-2 pt-2.5"
         style={{ borderColor: TRIAL_LINE }}
@@ -2182,10 +2206,20 @@ function TrialPanel({
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden bg-white px-3 py-2.5 text-sm">
+      )}
+      <div
+        id={tabbed ? "fs-cp-panel" : undefined}
+        role={tabbed ? "tabpanel" : undefined}
+        aria-labelledby={tabbed ? "fs-cp-tab-" + tabs : undefined}
+        className={
+          tabbed
+            ? "flex min-h-0 flex-1 flex-col overflow-hidden bg-white text-sm"
+            : "flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden bg-white px-3 py-2.5 text-sm"
+        }
+      >
         {children}
       </div>
-      {footer ? (
+      {footer && !tabbed ? (
         <div
           className="shrink-0 border-t bg-white px-3 py-2"
           style={{ borderColor: TRIAL_LINE }}
@@ -2197,123 +2231,83 @@ function TrialPanel({
   );
 }
 
-/** Navy open heading / cool-gray closed; white body; right-aligned titles. */
-function TrialAccordion({
+/** Second folder-tab row. The selected section's controls scroll beneath it. */
+function TrialSectionTabs({
+  label,
   openId,
   onChange,
   items,
+  lead,
 }: {
-  openId: string | null;
-  onChange: (id: string | null) => void;
+  label: string;
+  openId: string;
+  onChange: (id: string) => void;
   items: { id: string; title: string; body: React.ReactNode }[];
+  lead?: React.ReactNode;
 }) {
+  const active = items.find((item) => item.id === openId) ?? items[0];
   return (
-    <div className="flex min-h-0 flex-col gap-1.5">
-      {items.map((item) => {
-        const open = openId === item.id;
-        return (
-          <div
-            key={item.id}
-            className={
-              open
-                ? "flex max-h-[min(28rem,calc(100dvh-14rem))] min-h-0 flex-col overflow-hidden rounded-lg border shadow-sm"
-                : "shrink-0 rounded-lg border shadow-sm"
-            }
-            style={{ borderColor: TRIAL_LINE, backgroundColor: open ? "#fff" : TRIAL_COOL_GRAY }}
-          >
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        role="tablist"
+        aria-label={label}
+        className="flex shrink-0 items-end gap-1 border-b bg-white px-1.5 pt-1"
+        style={{ borderColor: TRIAL_LINE }}
+        onKeyDown={(event) => {
+          const idx = Math.max(0, items.findIndex((item) => item.id === active?.id));
+          let next = idx;
+          if (event.key === "ArrowRight") next = (idx + 1) % items.length;
+          else if (event.key === "ArrowLeft") next = (idx + items.length - 1) % items.length;
+          else if (event.key === "Home") next = 0;
+          else if (event.key === "End") next = items.length - 1;
+          else return;
+          event.preventDefault();
+          const id = items[next].id;
+          onChange(id);
+          requestAnimationFrame(() => {
+            document.getElementById("fs-cp-section-" + id)?.focus();
+          });
+        }}
+      >
+        {items.map((item) => {
+          const on = item.id === active?.id;
+          return (
             <button
+              key={item.id}
               type="button"
-              onClick={() => onChange(open ? null : item.id)}
-              aria-expanded={open}
-              className="flex min-h-11 w-full shrink-0 items-center justify-end gap-2 px-2.5 text-xs font-semibold"
-              style={
-                open
-                  ? { backgroundColor: TRIAL_NAVY, color: "#fff" }
-                  : { backgroundColor: TRIAL_COOL_GRAY, color: TRIAL_NAVY }
-              }
+              role="tab"
+              id={"fs-cp-section-" + item.id}
+              data-fs-cp-section={item.id}
+              aria-selected={on}
+              aria-controls="fs-cp-section-panel"
+              tabIndex={on ? 0 : -1}
+              onClick={() => onChange(item.id)}
+              className="min-h-11 min-w-0 flex-1 whitespace-nowrap rounded-t-[6px] border px-1 text-center text-xs leading-none"
+              style={{
+                marginBottom: -1,
+                backgroundColor: on ? TRIAL_NAVY : "#e5ebee",
+                color: on ? "#fff" : "#3d5c70",
+                fontWeight: on ? 700 : 650,
+                borderColor: on ? TRIAL_NAVY : TRIAL_LINE,
+              }}
             >
-              <span className="min-w-0 truncate text-right">{item.title}</span>
-              <ChevronDown
-                className={
-                  "h-5 w-5 shrink-0 transition-transform " + (open ? "rotate-180" : "rotate-0")
-                }
-                style={{ color: open ? "#fff" : "#66727d" }}
-              />
+              {item.title}
             </button>
-            {open ? (
-              <div
-                className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain border-t bg-white px-2.5 py-2 text-left"
-                style={{ borderColor: TRIAL_LINE }}
-              >
-                {item.body}
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Bottom walk: dots + Back + destination name. */
-function TrialDoorNav({
-  door,
-  onBack,
-  onNext,
-}: {
-  door: TrialDoorKey;
-  onBack: () => void;
-  onNext: (key: TrialDoorKey) => void;
-}) {
-  const idx = TRIAL_DOORS.findIndex((d) => d.key === door);
-  const next = idx >= 0 && idx < TRIAL_DOORS.length - 1 ? TRIAL_DOORS[idx + 1] : null;
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-center gap-1" aria-hidden>
-        {TRIAL_DOORS.map((d, i) => (
-          <span
-            key={d.key}
-            className={
-              "h-1 rounded-full " +
-              (i === idx ? "w-3 bg-primary" : "w-1 bg-muted-foreground/30")
-            }
-          />
-        ))}
+          );
+        })}
       </div>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onBack}
-          className="h-11 flex-1 rounded-md border bg-white px-2.5 text-xs font-medium hover:bg-black/[0.03]"
-          style={{ borderColor: TRIAL_LINE, color: TRIAL_NAVY }}
-        >
-          ← Back
-        </button>
-        {next ? (
-          <button
-            type="button"
-            onClick={() => onNext(next.key)}
-            className="h-11 flex-1 truncate rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            {next.name} →
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={onBack}
-            className="h-11 flex-1 truncate rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            Done
-          </button>
-        )}
+      <div
+        id="fs-cp-section-panel"
+        role="tabpanel"
+        aria-labelledby={active ? "fs-cp-section-" + active.id : undefined}
+        data-fs-cp-section-body={active?.id}
+        className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-white px-3 py-2.5 text-left"
+      >
+        {lead}
+        {active?.body}
       </div>
     </div>
   );
-}
-
-function trialStepLabel(door: TrialDoorKey) {
-  const idx = TRIAL_DOORS.findIndex((d) => d.key === door);
-  return `${idx + 1} of ${TRIAL_DOORS.length}`;
 }
 
 function CornerPanel({
