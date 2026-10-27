@@ -2383,6 +2383,7 @@
         host.api.update({
           locked: !!(hooks && hooks.locked),
           settings: (hooks && hooks.settings) || null,
+          hostStatsPillPx: liveHostPillPx(page, hooks),
         });
       }
       return host.el;
@@ -2399,8 +2400,8 @@
     var canvasId = (view && view.canvasId) || meta.canvasId || '';
     var scope = (view && view.scope) || meta.scope || 'all';
     var areaId = scope === 'all' ? null : ((view && view.areaId) || meta.areaId || null);
-    // The hooks are read through the host so a later re-render can swap them
-    // without remounting the view.
+    // Live drawing is settingsOwnedByHost and receives report pill px from
+    // hooks / page layout so it never subscribes to capture sizes.
     host.api = api.mount(el, {
       customerFileId: (hooks && hooks.customerFileId) || '',
       workspace: 'report-topo',
@@ -2409,6 +2410,7 @@
       camera: (hooks && hooks.camera) || null,
       settings: (hooks && hooks.settings) || null,
       locked: !!(hooks && hooks.locked),
+      hostStatsPillPx: liveHostPillPx(page, hooks),
       onBack: function () {},
       onCameraChange: function (camera) {
         if (host.hooks && host.hooks.onCameraChange) host.hooks.onCameraChange(camera, n);
@@ -2424,6 +2426,14 @@
       },
     });
     return el;
+  }
+
+  /** Report pill px for a live topo host — never capture localStorage. */
+  function liveHostPillPx(page, hooks) {
+    if (hooks && isFinite(Number(hooks.hostStatsPillPx)) && Number(hooks.hostStatsPillPx) > 0) {
+      return Number(hooks.hostStatsPillPx);
+    }
+    return pillPxFromLayout((page && page._bookFloorLayout) || null);
   }
 
   /**
@@ -4046,6 +4056,8 @@
             customerFileId: customerFileId,
             camera: cameraForView(page, at),
             settings: floorViewFor(page, at),
+            hostStatsPillPx: pillPxFromLayout(
+              (page && page._bookFloorLayout) || floorLayout),
             // Never locked. The drawing is panned and zoomed like the
             // workspace it came from, on every slide.
             //

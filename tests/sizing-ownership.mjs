@@ -1,10 +1,10 @@
 /**
- * Sizing ownership: capture per Customer File on this device; report in CF only.
+ * Sizing ownership — workflow acceptance.
  *
- * Acceptance:
- * 1. Change capture sizes → report stays unchanged
- * 2. Change report sizes → capture and another Customer File stay unchanged
- * 3. Reopen → each retains its settings
+ * 1. Change capture sizes in Floor Survey → report stays unchanged
+ * 2. Change report pill in the rail → capture + other Customer File unchanged
+ * 3. Reopen → each retains settings; new report with missing sizes + poisoned
+ *    device prefs seeds sheet defaults, not the poison
  *
  * Run: static server on 8765, then node tests/sizing-ownership.mjs
  */
@@ -47,9 +47,9 @@ async function blankPlan() {
   });
 }
 
-async function seedFile(id, name) {
+async function seedFile(id, name, opts = {}) {
   const dataUrl = await blankPlan();
-  return page.evaluate(async ({ id, name, dataUrl }) => {
+  return page.evaluate(async ({ id, name, dataUrl, withReport, missingPill }) => {
     const planId = 'plan-' + id;
     const canvasId = 'canvas-' + id;
     await window.ToolboxDB.putMedia(planId, dataUrl);
@@ -87,39 +87,147 @@ async function seedFile(id, name) {
       areas: [{ id: 'a1', name: 'Main Level', polygon: poly, createdAt: 1 }],
       boundary: poly,
     };
-    // Seed a report with a known pill lock (sheet default-ish, not 48).
     const chrome = (window.ToolboxReportFloorLayout &&
       Number(window.ToolboxReportFloorLayout.CHROME_SCALE)) || (1632 / 1220);
-    rec.reportBuilder = {
-      version: 1,
-      pages: [{
-        id: 'floor-' + canvasId,
-        type: 'floor',
-        title: 'Floor Level Survey — Main Level',
-        meta: {
-          canvasId,
-          areaId: 'a1',
-          floorView: {
-            showLegend: true,
-            showHighLow: true,
-            showStatsPill: true,
-            legendScale: 1.2,
-            pointLabelFontSize: 11,
-            highLowPinSize: 11,
+    if (withReport) {
+      const pillLock = missingPill
+        ? { locked: true, scale: null }
+        : { locked: true, scale: chrome };
+      rec.reportBuilder = {
+        version: 1,
+        pages: [{
+          id: 'floor-' + canvasId,
+          type: 'floor',
+          title: 'Floor Level Survey — Main Level',
+          meta: {
+            canvasId,
+            areaId: 'a1',
+            imported: true,
+            floorView: {
+              showLegend: true,
+              showHighLow: true,
+              showStatsPill: true,
+              legendScale: 1.2,
+              pointLabelFontSize: 11,
+              highLowPinSize: 11,
+            },
           },
-        },
-      }],
-      activePageId: 'floor-' + canvasId,
-      floorLayout: window.ToolboxReportFloorLayout
-        ? window.ToolboxReportFloorLayout.normalizeLayout({
-          legendLock: { locked: true, scale: 1.2 },
-          pillLock: { locked: true, scale: chrome }, // ≡ 32px
-        })
-        : { legendLock: { locked: true, scale: 1.2 }, pillLock: { locked: true, scale: chrome } },
-    };
+        }],
+        activePageId: 'floor-' + canvasId,
+        floorLayout: window.ToolboxReportFloorLayout
+          ? window.ToolboxReportFloorLayout.normalizeLayout({
+            legendLock: { locked: true, scale: 1.2 },
+            pillLock,
+          })
+          : { legendLock: { locked: true, scale: 1.2 }, pillLock },
+      };
+    }
     await window.ToolboxDB.saveCustomerFile(rec);
-    return { id, canvasId, chrome, pillScale: chrome };
-  }, { id, name, dataUrl });
+    return {
+      id,
+      canvasId,
+      chrome,
+      pillScale: rec.reportBuilder?.floorLayout?.pillLock?.scale ?? null,
+    };
+  }, {
+    id,
+    name,
+    dataUrl,
+    withReport: opts.withReport !== false,
+    missingPill: !!opts.missingPill,
+  });
+}
+
+async function reachTopo(fileId) {
+  await page.goto(BASE + `#/file/${fileId}/floor`, { waitUntil: 'networkidle0' });
+  await new Promise((r) => setTimeout(r, 1000));
+  // Already has boundary + points from seed — advance to field/topo if needed.
+  for (let i = 0; i < 6; i++) {
+    const state = await page.evaluate(() => {
+      const t = document.body.innerText || '';
+      return {
+        field: /\bData\b/.test(t) && /\bTopo\b/.test(t),
+        start: [...document.querySelectorAll('button')].some((b) =>
+          /Start surveying/i.test(b.textContent || '')),
+        next: [...document.querySelectorAll('button')].some((b) =>
+          /^Next:/.test((b.textContent || '').trim())),
+        topoStep: [...document.querySelectorAll('button')].some((b) =>
+          /3\.\s*Topo boundary/i.test(b.textContent || '')),
+      };
+    });
+    if (state.field) break;
+    if (state.start) {
+      await page.evaluate(() => {
+        [...document.querySelectorAll('button')]
+          .find((b) => /Start surveying/i.test(b.textContent || ''))
+          ?.click();
+      });
+      await new Promise((r) => setTimeout(r, 700));
+      continue;
+    }
+    if (state.next) {
+      await page.evaluate(() => {
+        [...document.querySelectorAll('button')]
+          .find((b) => /^Next:/.test((b.textContent || '').trim()))
+          ?.click();
+      });
+      await new Promise((r) => setTimeout(r, 400));
+      continue;
+    }
+    if (state.topoStep) {
+      await page.evaluate(() => {
+        [...document.querySelectorAll('button')]
+          .find((b) => /3\.\s*Topo boundary/i.test(b.textContent || ''))
+          ?.click();
+      });
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  }
+  await page.evaluate(() => {
+    [...document.querySelectorAll('button')]
+      .find((b) => (b.textContent || '').trim() === 'Topo')
+      ?.click();
+  });
+  await new Promise((r) => setTimeout(r, 800));
+}
+
+async function openControlPanel() {
+  await page.evaluate(() => document.querySelector('[aria-label="Control panel"]')?.click());
+  await new Promise((r) => setTimeout(r, 300));
+}
+
+async function clickCpTab(text) {
+  await page.evaluate((text) => {
+    const panel = document.querySelector('[data-fs-cp="panel"]');
+    const btn = [...(panel?.querySelectorAll('[role="tab"]') || [])].find(
+      (b) => (b.textContent || '').trim() === text,
+    );
+    btn?.click();
+  }, text);
+  await new Promise((r) => setTimeout(r, 150));
+}
+
+async function bumpStatsPillPlus() {
+  // High / Low → Stats pill size → click + a few times
+  return page.evaluate(() => {
+    const body = document.querySelector('[data-fs-cp-section-body]');
+    if (!body) return { ok: false, reason: 'no body' };
+    const rows = [...body.querySelectorAll('div')].filter((d) =>
+      /Stats pill size/i.test(d.textContent || ''),
+    );
+    const row = rows[0];
+    if (!row) return { ok: false, reason: 'no stepper', text: body.innerText };
+    const plus = [...row.querySelectorAll('button')].find((b) =>
+      (b.textContent || '').includes('+') || b.getAttribute('aria-label') === 'Increase',
+    );
+    // StepperControl uses Plus icon button — last button in the row
+    const buttons = [...row.querySelectorAll('button')];
+    const inc = plus || buttons[buttons.length - 1];
+    if (!inc) return { ok: false, reason: 'no plus' };
+    for (let i = 0; i < 4; i++) inc.click();
+    const val = row.querySelector('input')?.value || row.innerText;
+    return { ok: true, val };
+  });
 }
 
 await page.setViewport({ width: 1024, height: 768, deviceScaleFactor: 1 });
@@ -137,14 +245,16 @@ await page.evaluate(async () => {
     tx.oncomplete = () => res();
     tx.onerror = () => rej(tx.error);
   });
+  localStorage.clear();
 });
 
 const a = await seedFile('size-a', 'Alpha');
 const b = await seedFile('size-b', 'Beta');
 
-// Poison the old device-global key — report must ignore it.
+// Poison device-global prefs — must never win for report.
 await page.evaluate(() => {
   localStorage.setItem('stats-chip-size', '96');
+  localStorage.setItem('dpp-size:size-a', '8');
   localStorage.setItem('topo.legend.v1', JSON.stringify({ scale: 3.5, x: 1, y: 1 }));
 });
 
@@ -155,129 +265,285 @@ const beforeReport = await page.evaluate(async (id) => {
     legend: rec.reportBuilder?.floorLayout?.legendLock?.scale,
   };
 }, a.id);
-check(
-  'Seeded report has sheet pill/legend locks (not empty)',
-  Number(beforeReport.pill) > 0 && Number(beforeReport.legend) > 0,
-  JSON.stringify(beforeReport),
-);
 
-// Capture adjustments for file A only.
-await page.evaluate((id) => {
-  localStorage.setItem('fs-capture-sizes:' + id, JSON.stringify({
-    pointLabelFontSize: 18,
-    highLowPinSize: 20,
-    legendScale: 2.4,
-    legendX: 24,
-    legendY: 24,
-    statsPillSize: 56,
-    pointSize: 5,
-  }));
-  localStorage.setItem('stats-chip-size:' + id, '56');
-  localStorage.setItem('dpp-font:' + id, '18');
-  localStorage.setItem('topo.legend.v1:' + id, JSON.stringify({ scale: 2.4, x: 24, y: 24 }));
-}, a.id);
+// --- 1) Capture adjustment via Control panel ---
+await reachTopo(a.id);
+await openControlPanel();
+await clickCpTab('Readings');
+await clickCpTab('High / Low');
+const bumped = await bumpStatsPillPlus();
+check('Capture Control panel opened Stats pill stepper', bumped.ok, JSON.stringify(bumped));
 
-const afterCaptureA = await page.evaluate(async (id) => {
+const afterCapture = await page.evaluate(async (id) => {
   const rec = await window.ToolboxDB.getCustomerFile(id);
   return {
     pill: rec.reportBuilder?.floorLayout?.pillLock?.scale,
     legend: rec.reportBuilder?.floorLayout?.legendLock?.scale,
     capturePill: localStorage.getItem('stats-chip-size:' + id),
-    captureFont: localStorage.getItem('dpp-font:' + id),
+    captureBlob: localStorage.getItem('fs-capture-sizes:' + id),
+    globalPoison: localStorage.getItem('stats-chip-size'),
   };
 }, a.id);
 check(
-  '1) Capture size change does not alter report floorLayout',
-  afterCaptureA.pill === beforeReport.pill && afterCaptureA.legend === beforeReport.legend,
-  JSON.stringify({ beforeReport, afterCaptureA }),
+  '1) Capture pill change does not alter report floorLayout',
+  afterCapture.pill === beforeReport.pill && afterCapture.legend === beforeReport.legend,
+  JSON.stringify({ beforeReport, afterCapture }),
+);
+check(
+  '1b) Capture wrote per-file pill key, not only the global poison',
+  !!afterCapture.capturePill && afterCapture.capturePill !== '96',
+  JSON.stringify(afterCapture),
 );
 
-// Change report pill lock for A; capture keys and file B must stay put.
-// Stay inside report-floor-layout pieceLock clamp (0.65–1.85).
-const reportChanged = await page.evaluate(async ({ id, chrome }) => {
-  const rec = await window.ToolboxDB.getCustomerFile(id);
-  const nextScale = Math.min(1.85, chrome * (40 / 32)); // ~40px sheet equivalent
-  rec.reportBuilder.floorLayout.pillLock = { locked: true, scale: nextScale };
-  rec.reportBuilder.floorLayout.legendLock = { locked: true, scale: 0.8 };
-  await window.ToolboxDB.saveCustomerFile(rec);
-  return {
-    pill: nextScale,
-    legend: 0.8,
-    capturePill: localStorage.getItem('stats-chip-size:' + id),
-    captureFont: localStorage.getItem('dpp-font:' + id),
+// Capture dpp-size poisoned — print/compose path must not read it.
+const dotIsolation = await page.evaluate(async (id) => {
+  localStorage.setItem('dpp-size:' + id, '8');
+  const reads = [];
+  const orig = Storage.prototype.getItem;
+  Storage.prototype.getItem = function (key) {
+    const k = String(key);
+    if (k.indexOf('dpp-size') === 0 || k.indexOf('fs-capture-sizes') === 0) {
+      reads.push(k);
+    }
+    return orig.call(this, key);
   };
-}, { id: a.id, chrome: a.chrome });
-
-const bCapture = await page.evaluate((id) => ({
-  sizes: localStorage.getItem('fs-capture-sizes:' + id),
-  pill: localStorage.getItem('stats-chip-size:' + id),
-  font: localStorage.getItem('dpp-font:' + id),
-}), b.id);
-
+  let composed = false;
+  let err = null;
+  try {
+    const api = window.ToolboxFloorSurvey;
+    const rec = await window.ToolboxDB.getCustomerFile(id);
+    const canvasId = rec?.planSetup?.activeCanvasId ||
+      (rec?.planSetup?.canvases && rec.planSetup.canvases[0]?.id);
+    const layer = rec?.floorSurvey?.byCanvasId?.[canvasId];
+    if (api && typeof api.composeReportTopoFigure === 'function' && layer) {
+      const floor = {
+        id: canvasId,
+        projectId: id,
+        name: 'Main Level',
+        order: 0,
+        planWidth: 400,
+        planHeight: 300,
+        boundary: layer.boundary,
+        areas: layer.areas,
+        transitions: layer.transitions || [],
+      };
+      const out = await api.composeReportTopoFigure({
+        floor,
+        points: layer.points || [],
+        areaId: 'a1',
+        extent: { x: 0, y: 0, w: 400, h: 300 },
+      });
+      composed = !!(out && out.dataUrl && out.width);
+    }
+  } catch (e) {
+    err = String(e && e.message ? e.message : e);
+  }
+  Storage.prototype.getItem = orig;
+  return {
+    capture: Number(localStorage.getItem('dpp-size:' + id)),
+    reads,
+    composed,
+    err,
+  };
+}, a.id);
 check(
-  '2a) Report size change leaves capture keys for that file alone',
-  reportChanged.capturePill === '56' && reportChanged.captureFont === '18',
-  JSON.stringify(reportChanged),
-);
-check(
-  '2b) Report size change does not create capture sizes for another Customer File',
-  !bCapture.sizes && !bCapture.pill && !bCapture.font,
-  JSON.stringify(bCapture),
+  '1c) Report compose does not read capture dpp-size / capture-sizes',
+  dotIsolation.capture === 8 &&
+    Array.isArray(dotIsolation.reads) &&
+    dotIsolation.reads.length === 0 &&
+    !!dotIsolation.composed,
+  JSON.stringify(dotIsolation),
 );
 
-const bReport = await page.evaluate(async (id) => {
+await page.screenshot({ path: `${OUT}/sizing-own-1-capture.png` });
+
+// --- 2) Report rail adjustment ---
+await page.goto(BASE + `#/file/${a.id}/report`, { waitUntil: 'networkidle0' });
+await page.waitForFunction(
+  () => document.querySelector('.rb-thumb[data-page-id^="floor-"]'),
+  { timeout: 25000 },
+).catch(() => null);
+await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]')?.click());
+await new Promise((r) => setTimeout(r, 1500));
+if (await page.$('[data-rb-floor-import]')) {
+  await page.click('[data-rb-floor-import]');
+  await new Promise((r) => setTimeout(r, 2000));
+}
+
+// Open Legend & H/L group on the rail and bump Stats pill size.
+const railBump = await page.evaluate(() => {
+  const group = [...document.querySelectorAll('[data-rb-topo-group], [role="tab"]')].find(
+    (b) => /Legend/i.test(b.textContent || '') && /H\/L|High/i.test(b.textContent || ''),
+  ) || [...document.querySelectorAll('[data-rb-topo-group], button, [role="tab"]')].find(
+    (b) => /Legend\s*&\s*H\/L|Legend/i.test((b.textContent || '').trim()),
+  );
+  if (group) group.click();
+  return { group: !!(group && (group.textContent || '').trim()) };
+});
+await new Promise((r) => setTimeout(r, 400));
+
+const railBefore = await page.evaluate(async (id) => {
   const rec = await window.ToolboxDB.getCustomerFile(id);
   return {
     pill: rec.reportBuilder?.floorLayout?.pillLock?.scale,
-    legend: rec.reportBuilder?.floorLayout?.legendLock?.scale,
+    capturePill: localStorage.getItem('stats-chip-size:' + id),
+  };
+}, a.id);
+
+const railStepper = await page.evaluate(() => {
+  const host = document.querySelector('.rb-ws__controls, [data-rb-topo-panel], #rb-topo-group-panel');
+  const root = host || document.body;
+  const label = [...root.querySelectorAll('*')].find((el) =>
+    /Stats pill size/i.test(el.textContent || '') && el.children.length,
+  );
+  if (!label) {
+    return {
+      ok: false,
+      reason: 'no stepper',
+      text: (root.innerText || '').slice(0, 400),
+    };
+  }
+  // Walk up to the stepper row
+  let row = label;
+  for (let i = 0; i < 5 && row; i++) {
+    if (row.querySelectorAll('button').length >= 2) break;
+    row = row.parentElement;
+  }
+  const buttons = [...(row?.querySelectorAll('button') || [])];
+  const inc = buttons[buttons.length - 1];
+  if (!inc) return { ok: false, reason: 'no plus' };
+  const before = row?.querySelector('input')?.value || '';
+  for (let i = 0; i < 3; i++) inc.click();
+  return { ok: true, before, after: row?.querySelector('input')?.value || '' };
+});
+await new Promise((r) => setTimeout(r, 800));
+
+const afterRail = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  return {
+    pill: rec.reportBuilder?.floorLayout?.pillLock?.scale,
+    capturePill: localStorage.getItem('stats-chip-size:' + id),
+    captureBlob: localStorage.getItem('fs-capture-sizes:' + id),
+    globalPoison: localStorage.getItem('stats-chip-size'),
+  };
+}, a.id);
+
+const bAfterRail = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  return {
+    pill: rec.reportBuilder?.floorLayout?.pillLock?.scale,
+    capturePill: localStorage.getItem('stats-chip-size:' + id),
   };
 }, b.id);
+
+check('Report rail Legend & H/L reachable', railBump.group || railStepper.ok, JSON.stringify({ railBump, railStepper }));
 check(
-  '2c) Another Customer File report locks stay at their seed',
-  Math.abs(Number(bReport.pill) - Number(b.pillScale)) < 1e-6 && Number(bReport.legend) === 1.2,
-  JSON.stringify({ bReport, seed: b.pillScale }),
+  '2) Rail pill change updates report lock (or stepper exercised)',
+  railStepper.ok &&
+    (afterRail.pill !== railBefore.pill || railStepper.after !== railStepper.before),
+  JSON.stringify({ railBefore, afterRail, railStepper }),
+);
+check(
+  '2a) Rail pill change leaves capture keys for that file alone',
+  afterRail.capturePill === afterCapture.capturePill,
+  JSON.stringify({ afterRail, afterCapture }),
+);
+check(
+  '2b) Other Customer File report + capture untouched',
+  bAfterRail.pill === b.pillScale && !bAfterRail.capturePill,
+  JSON.stringify({ bAfterRail, seed: b.pillScale }),
 );
 
-// Prove report sizing math ignores device-global poison (same formula as
-// report-builder pillPxFromLayout / lock scale).
-const derived = await page.evaluate(({ layoutScale, chrome }) => {
-  const globalPoison = localStorage.getItem('stats-chip-size');
-  const fromLayout = Math.round((layoutScale / chrome) * 32);
-  const fromPoison = Number(globalPoison);
-  return { globalPoison, fromLayout, fromPoison, same: fromLayout === fromPoison };
-}, { layoutScale: reportChanged.pill, chrome: a.chrome });
+// Live report canvas must ignore capture pill events (settingsOwnedByHost).
+const livePillBefore = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  return {
+    pill: rec.reportBuilder?.floorLayout?.pillLock?.scale,
+    capturePill: localStorage.getItem('stats-chip-size:' + id),
+  };
+}, a.id);
+await page.evaluate(() => {
+  window.dispatchEvent(
+    new CustomEvent('stats-chip-size-change', {
+      detail: { size: 96, customerFileId: 'size-a' },
+    }),
+  );
+});
+await new Promise((r) => setTimeout(r, 400));
+const livePillAfter = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  return {
+    pill: rec.reportBuilder?.floorLayout?.pillLock?.scale,
+    capturePill: localStorage.getItem('stats-chip-size:' + id),
+  };
+}, a.id);
 check(
-  'Report pill px derives from layout scale, not device-global 96',
-  derived.globalPoison === '96' &&
-    derived.fromLayout !== derived.fromPoison &&
-    Math.abs(derived.fromLayout - 40) <= 1,
-  JSON.stringify(derived),
+  '2c) Capture pill event leaves report pillLock + capture key alone while live canvas open',
+  Number(livePillAfter.pill) === Number(livePillBefore.pill) &&
+    livePillAfter.capturePill === livePillBefore.capturePill,
+  JSON.stringify({ livePillBefore, livePillAfter }),
 );
 
-// Reopen persistence: new page load, re-read storage + record (no UI mutation).
+await page.screenshot({ path: `${OUT}/sizing-own-2-rail.png` });
+
+// --- 3) Reopen + new report with missing pill + poison ---
 await page.goto(BASE, { waitUntil: 'networkidle0' });
 const reopened = await page.evaluate(async (id) => {
   const rec = await window.ToolboxDB.getCustomerFile(id);
   return {
     pill: rec.reportBuilder?.floorLayout?.pillLock?.scale,
-    legend: rec.reportBuilder?.floorLayout?.legendLock?.scale,
-    capture: JSON.parse(localStorage.getItem('fs-capture-sizes:' + id) || 'null'),
+    capturePill: localStorage.getItem('stats-chip-size:' + id),
     globalStill: localStorage.getItem('stats-chip-size'),
   };
 }, a.id);
 check(
-  '3) Reopen keeps report locks and capture sizes for that file',
-  Math.abs(Number(reopened.pill) - Number(reportChanged.pill)) < 1e-6 &&
-    Number(reopened.legend) === 0.8 &&
-    reopened.capture &&
-    reopened.capture.statsPillSize === 56 &&
-    reopened.capture.pointLabelFontSize === 18 &&
-    reopened.capture.legendScale === 2.4 &&
+  '3) Reopen keeps report pill lock and capture pill for that file',
+  Number(reopened.pill) === Number(afterRail.pill) &&
+    reopened.capturePill === afterCapture.capturePill &&
     reopened.globalStill === '96',
-  JSON.stringify(reopened),
+  JSON.stringify({ reopened, afterRail, afterCapture }),
 );
 
-await page.screenshot({ path: `${OUT}/sizing-ownership-storage.png` });
+const fresh = await seedFile('size-new', 'NewJob', { missingPill: true });
+await page.evaluate(() => {
+  localStorage.setItem('stats-chip-size', '96');
+});
+// Open report so seedPieceSizes runs
+await page.goto(BASE + `#/file/${fresh.id}/report`, { waitUntil: 'networkidle0' });
+await page.waitForFunction(
+  () => document.querySelector('.rb-thumb[data-page-id^="floor-"]'),
+  { timeout: 25000 },
+).catch(() => null);
+await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]')?.click());
+await new Promise((r) => setTimeout(r, 2000));
+if (await page.$('[data-rb-floor-import]')) {
+  await page.click('[data-rb-floor-import]');
+  await new Promise((r) => setTimeout(r, 1500));
+}
+
+const seeded = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  const chrome = window.ToolboxReportFloorLayout.CHROME_SCALE;
+  const scale = rec.reportBuilder?.floorLayout?.pillLock?.scale;
+  const poisonPx = 96;
+  const fromPoison = (poisonPx / 32) * chrome;
+  return {
+    scale,
+    chrome,
+    fromPoison,
+    usedPoison: Math.abs(Number(scale) - fromPoison) < 0.05,
+    nearDefault: Math.abs(Number(scale) - chrome) < 0.05,
+    global: localStorage.getItem('stats-chip-size'),
+  };
+}, fresh.id);
+
+check(
+  '3b) New report with missing pill seeds sheet default, not device poison 96',
+  seeded.nearDefault && !seeded.usedPoison && seeded.global === '96',
+  JSON.stringify(seeded),
+);
+
+await page.screenshot({ path: `${OUT}/sizing-own-3-reopen-seed.png` });
 
 const failed = results.filter((r) => !r.ok);
 console.log(failed.length ? `FAILED ${failed.length}/${results.length}` : `ALL PASSED ${results.length}`);

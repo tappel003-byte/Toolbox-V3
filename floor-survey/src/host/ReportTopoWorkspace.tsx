@@ -33,7 +33,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listFloors, listPoints, saveFloor, setHostCustomerFileId } from "@/lib/db";
-import { readPointStyle } from "@/lib/point-style";
+import { reportPointStyle } from "@/lib/point-style";
 import type { Floor, RenderSettings, SurveyPoint } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { withCorrectedValues } from "@/lib/transitions";
@@ -107,14 +107,9 @@ export function ReportTopoWorkspace({
   });
   const [loading, setLoading] = useState(true);
 
-  // The investigator's own dot size and colour, saved per Customer File. Read
-  // through the shared helper so the slide, the figure composer and the field
-  // export cannot drift apart -- they did, and a composed figure drew readings
-  // three times the size of the slide it came from.
-  const { pointSize, pointColor } = useMemo(
-    () => readPointStyle(customerFileId),
-    [customerFileId],
-  );
+  // Report dots use sheet defaults — never capture dpp-size / capture-sizes.
+  // Capture adjustments must not rewrite the slide or the print.
+  const { pointSize, pointColor } = useMemo(() => reportPointStyle(), []);
 
   // A camera arriving from the report is applied once per change. The nonce is
   // what tells the canvas to take it, and it must not fire on every render or

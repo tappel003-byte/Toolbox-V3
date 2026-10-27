@@ -492,9 +492,9 @@ export function TopoTab({
   const [layerState, setLayerState] = useState<"idle" | "working" | "done" | "failed">("idle");
   const [layerMessage, setLayerMessage] = useState("");
   // Stats pill size: capture = per Customer File on this device; report =
-  // hostStatsPillPx from floorLayout.pillLock. Window resize never changes it.
-  const hostOwnsPill =
-    settingsOwnedByHost && typeof onHostStatsPillPxChange === "function";
+  // hostStatsPillPx from floorLayout.pillLock. Any settingsOwnedByHost mount
+  // (rail or live drawing) must not read or listen to capture storage.
+  const hostOwnsPill = settingsOwnedByHost;
   const [statsChipLocked, setStatsChipLocked] = useState<number | null>(null);
   useEffect(() => {
     if (hostOwnsPill) return;
