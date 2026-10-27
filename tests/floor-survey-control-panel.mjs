@@ -1,5 +1,5 @@
 /**
- * Field Control panel grouping: Contours / Readings / Misc folder tabs.
+ * Field Control panel grouping: Contours / Readings folder tabs.
  * Run: node tests/floor-survey-control-panel.mjs  (static server on 8765)
  */
 import { createRequire } from 'module';
@@ -129,8 +129,8 @@ async function reachTopo() {
   await new Promise((r) => setTimeout(r, 800));
 }
 
-function tabLabels(role) {
-  return page.evaluate((role) => {
+function tabLabels() {
+  return page.evaluate(() => {
     const panel = document.querySelector('[data-fs-cp="panel"]');
     if (!panel) return [];
     return [...panel.querySelectorAll(`[role="tablist"]`)].map((list) =>
@@ -140,7 +140,7 @@ function tabLabels(role) {
         id: b.id,
       })),
     );
-  }, role);
+  });
 }
 
 async function clickTab(text) {
@@ -200,6 +200,7 @@ async function layout() {
       tabs,
       overlap,
       back: /← Back|Back/.test(panel.innerText || '') && [...panel.querySelectorAll('button')].some((b) => /Back/.test(b.textContent || '')),
+      reset: /Reset label/.test(panel.innerText || ''),
     };
   });
 }
@@ -226,7 +227,7 @@ check('Control panel pill opens the panel', opened.ok, opened.text?.slice(0, 200
 let rows = await tabLabels();
 check(
   'Phone Contours shows Legend Display Colors Lines, Legend first and selected',
-  rows[0]?.map((t) => t.text).join('|') === 'Contours|Readings|Misc' &&
+  rows[0]?.map((t) => t.text).join('|') === 'Contours|Readings' &&
     rows[1]?.map((t) => t.text).join('|') === 'Legend|Display|Colors|Lines' &&
     rows[1]?.[0]?.selected === true,
   JSON.stringify(rows),
@@ -266,33 +267,38 @@ await page.screenshot({ path: `${OUT}/fs-cp-phone-contours-lines.png` });
 
 check('Readings parent opens', await clickTab('Readings'));
 rows = await tabLabels();
-check('Readings children are Show and Font', rows[1]?.map((t) => t.text).join('|') === 'Show|Font' && rows[1][0].selected, JSON.stringify(rows[1]));
-lay = await layout();
-check('Phone Readings tabs do not overlap or clip', !lay.overlap && lay.tabs.every((t) => t.inPanel && !t.clipped && t.h >= 40), JSON.stringify(lay.tabs));
-check('Show has points and labels only', /Points/.test(await bodyText()) && /Labels/.test(await bodyText()) && !/Decimals/.test(await bodyText()));
-await page.screenshot({ path: `${OUT}/fs-cp-phone-readings-show.png` });
-
-check('Font tab opens', await clickTab('Font'));
-const font = await bodyText();
 check(
-  'Font has size, weight, color, and background, not decimals',
-  /Point label size/.test(font) && /Weight/.test(font) && /Color/.test(font) && /Label bg/.test(font) && /Box/.test(font) && /Border/.test(font) && /Plain/.test(font) && !/Decimals/.test(font) && !/Declutter/.test(font),
-  font.replace(/\n/g, ' | '),
-);
-await page.screenshot({ path: `${OUT}/fs-cp-phone-readings-font.png` });
-
-check('Misc parent opens', await clickTab('Misc'));
-rows = await tabLabels();
-check(
-  'Misc children are Adjustments, High / Low, Positions',
-  rows[1]?.map((t) => t.text).join('|') === 'Adjustments|High / Low|Positions' && rows[1][0].selected,
+  'Readings children are Show, Format, and High / Low',
+  rows[1]?.map((t) => t.text).join('|') === 'Show|Format|High / Low' && rows[1][0].selected,
   JSON.stringify(rows[1]),
 );
 lay = await layout();
-check('Phone Misc tabs do not overlap or clip', !lay.overlap && lay.tabs.every((t) => t.inPanel && !t.clipped && t.h >= 40), JSON.stringify(lay.tabs));
-const adj = await bodyText();
-check('Adjustments has decimals and declutter', /Decimals/.test(adj) && /Declutter/.test(adj), adj.replace(/\n/g, ' | '));
-await page.screenshot({ path: `${OUT}/fs-cp-phone-misc-adjustments.png` });
+check('Phone Readings tabs do not overlap or clip', !lay.overlap && lay.tabs.every((t) => t.inPanel && !t.clipped && t.h >= 40), JSON.stringify(lay.tabs));
+check('No Misc parent', !rows[0]?.some((t) => t.text === 'Misc'), JSON.stringify(rows[0]));
+const show = await bodyText();
+check(
+  'Show has points, labels, and declutter',
+  /Points/.test(show) && /Labels/.test(show) && /Declutter/.test(show) && !/Decimals/.test(show),
+  show.replace(/\n/g, ' | '),
+);
+await page.screenshot({ path: `${OUT}/fs-cp-phone-readings-show.png` });
+
+check('Format tab opens', await clickTab('Format'));
+const format = await bodyText();
+check(
+  'Format has size, weight, color, background, and decimals',
+  /Point label size/.test(format) &&
+    /Weight/.test(format) &&
+    /Color/.test(format) &&
+    /Label bg/.test(format) &&
+    /Box/.test(format) &&
+    /Border/.test(format) &&
+    /Plain/.test(format) &&
+    /Decimals/.test(format) &&
+    !/Declutter/.test(format),
+  format.replace(/\n/g, ' | '),
+);
+await page.screenshot({ path: `${OUT}/fs-cp-phone-readings-format.png` });
 
 check('High / Low tab opens', await clickTab('High / Low'));
 const hl = await bodyText();
@@ -302,11 +308,8 @@ check(
   hl.replace(/\n/g, ' | '),
 );
 check('Capture panel does not invent a stats-pill visibility switch', !/H\/L\/Δ pill/.test(hl) || !hl.includes('H/L/Δ pill\n'), hl.replace(/\n/g, ' | '));
-await page.screenshot({ path: `${OUT}/fs-cp-phone-misc-highlow.png` });
-
-check('Positions tab opens', await clickTab('Positions'));
-check('Positions keeps the reset action', /Reset label & H\/L positions/.test(await bodyText()));
-await page.screenshot({ path: `${OUT}/fs-cp-phone-misc-positions.png` });
+check('Field panel has no Reset positions button', !(await layout()).reset);
+await page.screenshot({ path: `${OUT}/fs-cp-phone-readings-highlow.png` });
 await page.screenshot({ path: `${OUT}/fs-cp-phone-full.png`, fullPage: false });
 
 check('No Back or Next in the panel', !(await layout()).back);
@@ -321,28 +324,32 @@ check('Close hides the panel and shows one opener', !closed.panel && closed.pill
 
 await page.evaluate(() => document.querySelector('[aria-label="Control panel"]')?.click());
 await new Promise((r) => setTimeout(r, 250));
-rows = await tabLabels();
 const legendNow = await page.evaluate(() => {
-  // Reopen should restore Misc / Positions, not reset the legend setting.
+  // Reopen should restore Readings / High / Low, not reset the legend setting.
   return {
     parents: [...document.querySelectorAll('[data-fs-cp="panel"] [role="tablist"]')][0]
-      ? [...document.querySelectorAll('[data-fs-cp="panel"] [role="tab"]')].filter((b) => ['Contours', 'Readings', 'Misc'].includes((b.textContent || '').trim())).map((b) => ({ t: b.textContent.trim(), on: b.getAttribute('aria-selected') }))
+      ? [...document.querySelectorAll('[data-fs-cp="panel"] [role="tab"]')]
+          .filter((b) => ['Contours', 'Readings'].includes((b.textContent || '').trim()))
+          .map((b) => ({ t: b.textContent.trim(), on: b.getAttribute('aria-selected') }))
       : [],
     child: document.querySelector('[data-fs-cp-section-body]')?.getAttribute('data-fs-cp-section-body'),
   };
 });
-check('Reopen returns to Misc / Positions', legendNow.child === 'positions' && legendNow.parents.find((p) => p.t === 'Misc')?.on === 'true', JSON.stringify(legendNow));
+check(
+  'Reopen returns to Readings / High / Low',
+  legendNow.child === 'highlow' && legendNow.parents.find((p) => p.t === 'Readings')?.on === 'true',
+  JSON.stringify(legendNow),
+);
 
 await clickTab('Contours');
 await clickTab('Legend');
 await new Promise((r) => setTimeout(r, 200));
 const legendKept = await page.evaluate(() => {
-  const body = document.querySelector('[data-fs-cp-section-body]');
   const switches = [...document.querySelectorAll('[data-fs-cp-section-body] [role="switch"]')].map((s) => ({
     checked: s.getAttribute('aria-checked'),
     label: (s.parentElement?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 40),
   }));
-  return { child: body?.getAttribute('data-fs-cp-section-body'), switches };
+  return { child: document.querySelector('[data-fs-cp-section-body]')?.getAttribute('data-fs-cp-section-body'), switches };
 });
 const legendSwitch = legendKept.switches?.find((s) => s.label === 'Legend');
 check(
@@ -373,8 +380,9 @@ await clickTab('Legend');
 lay = await layout();
 check('iPad tabs stay inside the panel without overlap', lay.open && !lay.overlap && lay.tabs.every((t) => t.inPanel && !t.clipped), JSON.stringify({ panel: lay.panel, tabs: lay.tabs }));
 await page.screenshot({ path: `${OUT}/fs-cp-ipad-contours.png` });
-await clickTab('Misc');
-await page.screenshot({ path: `${OUT}/fs-cp-ipad-misc.png` });
+await clickTab('Readings');
+await clickTab('High / Low');
+await page.screenshot({ path: `${OUT}/fs-cp-ipad-readings.png` });
 await page.screenshot({ path: `${OUT}/fs-cp-ipad-full.png` });
 
 const failed = results.filter((r) => !r.ok);
