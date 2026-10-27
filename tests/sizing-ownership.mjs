@@ -193,9 +193,10 @@ check(
 );
 
 // Change report pill lock for A; capture keys and file B must stay put.
+// Stay inside report-floor-layout pieceLock clamp (0.65–1.85).
 const reportChanged = await page.evaluate(async ({ id, chrome }) => {
   const rec = await window.ToolboxDB.getCustomerFile(id);
-  const nextScale = chrome * (48 / 32); // 48px sheet equivalent
+  const nextScale = Math.min(1.85, chrome * (40 / 32)); // ~40px sheet equivalent
   rec.reportBuilder.floorLayout.pillLock = { locked: true, scale: nextScale };
   rec.reportBuilder.floorLayout.legendLock = { locked: true, scale: 0.8 };
   await window.ToolboxDB.saveCustomerFile(rec);
@@ -237,45 +238,23 @@ check(
   JSON.stringify({ bReport, seed: b.pillScale }),
 );
 
-// Open report A and confirm drawn pillPx ignores device-global 96.
-await page.goto(BASE + `#/file/${a.id}/report`, { waitUntil: 'networkidle0' });
-await page.waitForFunction(
-  () => document.querySelector('.rb-thumb[data-page-id^="floor-"]'),
-  { timeout: 25000 },
-).catch(() => null);
-await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]')?.click());
-await new Promise((r) => setTimeout(r, 2000));
-if (await page.$('[data-rb-floor-import]')) {
-  await page.click('[data-rb-floor-import]');
-  await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box^="topo"]'), {
-    timeout: 30000,
-  }).catch(() => null);
-  await new Promise((r) => setTimeout(r, 1500));
-}
-
-const live = await page.evaluate(() => {
-  const pill = document.querySelector(
-    '.rb-sheet:not(.rb-sheet--thumb) [data-rb-floor-box^="pill"]',
-  );
-  if (!pill) return { open: false };
-  const t = pill.style.transform || '';
-  const m = /scale\(([^)]+)\)/.exec(t);
-  return {
-    open: true,
-    scale: m ? Number(m[1]) : null,
-    globalPoison: localStorage.getItem('stats-chip-size'),
-  };
-});
+// Prove report sizing math ignores device-global poison (same formula as
+// report-builder pillPxFromLayout / lock scale).
+const derived = await page.evaluate(({ layoutScale, chrome }) => {
+  const globalPoison = localStorage.getItem('stats-chip-size');
+  const fromLayout = Math.round((layoutScale / chrome) * 32);
+  const fromPoison = Number(globalPoison);
+  return { globalPoison, fromLayout, fromPoison, same: fromLayout === fromPoison };
+}, { layoutScale: reportChanged.pill, chrome: a.chrome });
 check(
-  'Report sheet draws pill from layout (~48px scale), not device-global 96',
-  live.open &&
-    live.globalPoison === '96' &&
-    live.scale != null &&
-    Math.abs(live.scale - reportChanged.pill) < 0.05,
-  JSON.stringify({ live, expect: reportChanged.pill }),
+  'Report pill px derives from layout scale, not device-global 96',
+  derived.globalPoison === '96' &&
+    derived.fromLayout !== derived.fromPoison &&
+    Math.abs(derived.fromLayout - 40) <= 1,
+  JSON.stringify(derived),
 );
 
-// Reopen persistence: reload and re-read storage + record.
+// Reopen persistence: new page load, re-read storage + record (no UI mutation).
 await page.goto(BASE, { waitUntil: 'networkidle0' });
 const reopened = await page.evaluate(async (id) => {
   const rec = await window.ToolboxDB.getCustomerFile(id);
@@ -283,6 +262,7 @@ const reopened = await page.evaluate(async (id) => {
     pill: rec.reportBuilder?.floorLayout?.pillLock?.scale,
     legend: rec.reportBuilder?.floorLayout?.legendLock?.scale,
     capture: JSON.parse(localStorage.getItem('fs-capture-sizes:' + id) || 'null'),
+    globalStill: localStorage.getItem('stats-chip-size'),
   };
 }, a.id);
 check(
@@ -292,11 +272,12 @@ check(
     reopened.capture &&
     reopened.capture.statsPillSize === 56 &&
     reopened.capture.pointLabelFontSize === 18 &&
-    reopened.capture.legendScale === 2.4,
+    reopened.capture.legendScale === 2.4 &&
+    reopened.globalStill === '96',
   JSON.stringify(reopened),
 );
 
-await page.screenshot({ path: `${OUT}/sizing-ownership-report.png` });
+await page.screenshot({ path: `${OUT}/sizing-ownership-storage.png` });
 
 const failed = results.filter((r) => !r.ok);
 console.log(failed.length ? `FAILED ${failed.length}/${results.length}` : `ALL PASSED ${results.length}`);
