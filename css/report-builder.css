@@ -954,52 +954,56 @@ body.report-builder-open .canvas {
   border-bottom-color: #fff;
   box-shadow: none;
 }
-/* Second tier under Topo: smaller than the folder tabs, still a real tab row.
-   It sits in the sticky header so a long group cannot push the others away. */
+/* Second tier under Topo: the same folder tabs, drawn smaller.
+   Rounded tops, flat bottoms, cool-gray inactive, white active tab that
+   interrupts this row's baseline. Not a pill, and not an underline. */
 .rb-ws__subtabs {
   display: flex;
-  align-items: stretch;
-  gap: 0;
-  margin: 0;
-  padding: 1px 0 0;
+  align-items: flex-end;
+  gap: 2px;
+  margin: 3px 0 0;
+  padding: 0;
+  border: 0;
   border-bottom: 1px solid var(--line, #dce1e4);
-  background: #fff;
+  border-radius: 0;
+  background: transparent;
 }
 .rb-ws__subtab {
   appearance: none;
-  flex: 1 1 0;
+  position: relative;
+  flex: 0 0 auto;
   min-width: 0;
-  min-height: 28px;
-  margin: 0;
-  padding: 3px 4px 4px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: transparent;
+  min-height: 26px;
+  margin: 0 0 -1px;
+  padding: 2px 7px 3px;
+  border: 1px solid var(--line, #dce1e4);
+  border-bottom-color: var(--line, #dce1e4);
+  border-radius: 5px 5px 0 0;
+  background: #e5ebee;
   box-shadow: none;
-  color: #3d5c70;
+  color: var(--navy, #07283d);
   font: inherit;
   font-size: 11px;
   font-weight: 650;
-  line-height: 1.15;
+  line-height: 1.2;
   white-space: nowrap;
   cursor: pointer;
 }
 .rb-ws__subtab:hover:not(.is-active) {
-  color: var(--navy, #07283d);
-  background: #f4f7f8;
+  background: #d9e4e9;
 }
 .rb-ws__subtab:focus {
   outline: none;
 }
 .rb-ws__subtab:focus-visible {
   outline: 2px solid var(--navy, #07283d);
-  outline-offset: -2px;
+  outline-offset: -3px;
 }
 .rb-ws__subtab.is-active {
-  color: var(--navy, #07283d);
+  z-index: 1;
   background: #fff;
-  border-bottom-color: var(--navy, #07283d);
+  color: var(--navy, #07283d);
+  border-bottom-color: #fff;
   box-shadow: none;
 }
 .rb-ws__section-label {
