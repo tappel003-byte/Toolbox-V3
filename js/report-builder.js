@@ -3499,25 +3499,29 @@
         draftStamp
       );
       // Keep notes and pinScale together on reportBuilder.penLog.
+      // Use this mount's own penLogPinScale / priorDoc only — never the shared
+      // penLogUi, which another Customer File's in-flight save could have set.
       var scale = Number(penLogPinScale);
-      if (!(isFinite(scale) && scale > 0)) scale = Number(penLogUi.pinScale);
       if (!(isFinite(scale) && scale > 0) && priorDoc && priorDoc.penLog) {
         scale = Number(priorDoc.penLog.pinScale);
       }
-      if (isFinite(scale) && scale > 0) {
-        doc.penLog = doc.penLog || {
-          schema: 'toolbox.pen-log-notes',
-          schemaVersion: 1,
-        };
-        if ((!doc.penLog.notes || !Object.keys(doc.penLog.notes).length) &&
-            priorDoc && priorDoc.penLog && priorDoc.penLog.notes) {
-          doc.penLog.notes = priorDoc.penLog.notes;
-        }
-        doc.penLog.pinScale = window.ToolboxPenLog && window.ToolboxPenLog.clampPinScale
-          ? window.ToolboxPenLog.clampPinScale(scale)
-          : scale;
+      if (!(isFinite(scale) && scale > 0)) scale = 1;
+      doc.penLog = doc.penLog || {
+        schema: 'toolbox.pen-log-notes',
+        schemaVersion: 1,
+      };
+      if ((!doc.penLog.notes || !Object.keys(doc.penLog.notes).length) &&
+          priorDoc && priorDoc.penLog && priorDoc.penLog.notes) {
+        doc.penLog.notes = priorDoc.penLog.notes;
+      }
+      doc.penLog.pinScale = window.ToolboxPenLog && window.ToolboxPenLog.clampPinScale
+        ? window.ToolboxPenLog.clampPinScale(scale)
+        : scale;
+      penLogPinScale = doc.penLog.pinScale;
+      // Shared module state feeds Present/print. A stale mount's save (seed on
+      // a previous Customer File) must not overwrite the live job's scale.
+      if (token === mountGeneration) {
         penLogUi.pinScale = doc.penLog.pinScale;
-        penLogPinScale = doc.penLog.pinScale;
       }
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;

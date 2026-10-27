@@ -1148,17 +1148,23 @@ function distressPinCaptureKey() {
   return TOOLBOX_CF_ID ? ('ds-capture-sizes:' + TOOLBOX_CF_ID) : 'ds-capture-sizes:local';
 }
 function loadCapturePinScale() {
-  let scale = screenDistressPinScaleDefault();
+  // One-time screen-class default per Customer File on this device. If nothing
+  // is stored yet, choose it once and persist immediately — otherwise a later
+  // rotate/resize would pick a different class and the "once" rule would lie.
+  let stored = null;
   try {
     const raw = localStorage.getItem(distressPinCaptureKey());
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.pinScale != null) scale = clampDistressPinScale(parsed.pinScale);
+      if (parsed && parsed.pinScale != null) stored = clampDistressPinScale(parsed.pinScale);
     }
-  } catch (_) { /* keep screen-class default */ }
-  _capturePinScale = scale;
-  syncPinSizeButtons();
-  return _capturePinScale;
+  } catch (_) { /* treat as missing */ }
+  if (stored != null) {
+    _capturePinScale = stored;
+    syncPinSizeButtons();
+    return _capturePinScale;
+  }
+  return saveCapturePinScale(screenDistressPinScaleDefault());
 }
 function saveCapturePinScale(scale) {
   _capturePinScale = clampDistressPinScale(scale);

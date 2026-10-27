@@ -101,11 +101,13 @@ async function seedFiles() {
 
     await window.ToolboxDB.putMedia('plan-pin-a', planPng(800, 600, 'Alpha'));
     await window.ToolboxDB.putMedia('plan-pin-b', planPng(800, 600, 'Beta'));
+    await window.ToolboxDB.putMedia('plan-pin-fresh', planPng(800, 600, 'Fresh'));
     await window.ToolboxDB.putMedia('ph_pin_a1', photo('A1'));
     await window.ToolboxDB.putMedia('ph_pin_a2', photo('A2'));
     await window.ToolboxDB.putMedia('ph_pin_b1', photo('B1'));
+    await window.ToolboxDB.putMedia('ph_pin_f1', photo('F1'));
 
-    async function seed(id, name, pins) {
+    async function seed(id, name, planMediaId, pins) {
       const rec = window.ToolboxApp.blankCustomerFile(id);
       window.ToolboxPlanSetup.ensurePlanSetup(rec);
       rec.firstName = name;
@@ -118,7 +120,7 @@ async function seedFiles() {
         name: 'Main Level',
         createdAt: now,
         updatedAt: now,
-        plan: { id: 'plan-pin-' + (id === 'pin-a' ? 'a' : 'b'), width: 800, height: 600 },
+        plan: { id: planMediaId, width: 800, height: 600 },
         rooms: [{ name: 'Hall', x: 120, y: 140 }],
         frontDoorFacing: 'S',
         frontDoor: null,
@@ -131,14 +133,18 @@ async function seedFiles() {
       return { id, canvasId };
     }
 
-    const a = await seed('pin-a', 'Alpha', [
+    const a = await seed('pin-a', 'Alpha', 'plan-pin-a', [
       { id: 'pa1', x: 200, y: 220, photos: ['ph_pin_a1'], description: 'Crack A', location: 'Hall' },
       { id: 'pa2', x: 520, y: 300, photos: ['ph_pin_a2'], description: 'Stain A', location: 'Living' },
     ]);
-    const b = await seed('pin-b', 'Beta', [
+    const b = await seed('pin-b', 'Beta', 'plan-pin-b', [
       { id: 'pb1', x: 300, y: 250, photos: ['ph_pin_b1'], description: 'Crack B', location: 'Hall' },
     ]);
-    return { a, b };
+    // No ds-capture-sizes key — used to prove first-open persistence.
+    const fresh = await seed('pin-fresh', 'Fresh', 'plan-pin-fresh', [
+      { id: 'pf1', x: 240, y: 260, photos: ['ph_pin_f1'], description: 'Fresh crack', location: 'Hall' },
+    ]);
+    return { a, b, fresh };
   });
 }
 
@@ -274,7 +280,40 @@ math.forEach((item) => check(item.name, item.ok, item.detail));
 const seeded = await seedFiles();
 fileIdForReportState = seeded.a.id;
 
-// Poison device prefs that must never drive the report.
+// ========== 0) Fresh first-open persists screen-class default once ==========
+await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
+// Guarantee nothing stored for the fresh file.
+await page.evaluate((id) => {
+  localStorage.removeItem('ds-capture-sizes:' + id);
+}, seeded.fresh.id);
+let fr = await openDistress(seeded.fresh.id);
+const firstOpen = await capturePinState(fr);
+const firstStored = (() => {
+  try { return JSON.parse(firstOpen.stored || 'null'); } catch { return null; }
+})();
+check(
+  '0) First open picks phone screen-class default (1.2) and persists it',
+  near(firstOpen.scale, 1.2, 0.02) &&
+    firstStored && near(firstStored.pinScale, 1.2, 0.02) &&
+    firstOpen.cfId === seeded.fresh.id,
+  JSON.stringify(firstOpen),
+);
+// Reopen at a larger viewport — must keep 1.2, not re-class to 0.9/1.0.
+await page.goto(BASE + `#/file/${seeded.fresh.id}`, { waitUntil: 'networkidle0' });
+await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+await new Promise((r) => setTimeout(r, 400));
+fr = await openDistress(seeded.fresh.id);
+const reopenedFresh = await capturePinState(fr);
+const liveClass = await fr.evaluate(() => screenDistressPinScaleDefault());
+check(
+  '0b) Reopen after larger viewport keeps the persisted first-open default',
+  near(reopenedFresh.scale, 1.2, 0.02) &&
+    !near(liveClass, 1.2, 0.05) &&
+    near(JSON.parse(reopenedFresh.stored || '{}').pinScale, 1.2, 0.02),
+  JSON.stringify({ reopenedFresh, liveClass }),
+);
+
+// Poison device prefs that must never drive the report (after init probe).
 await page.evaluate((aId) => {
   localStorage.setItem('ds-capture-sizes:' + aId, JSON.stringify({ pinScale: 2.4 }));
   localStorage.setItem('ds-capture-sizes:pin-b', JSON.stringify({ pinScale: 0.4 }));
@@ -283,7 +322,7 @@ await page.evaluate((aId) => {
 
 // ========== 1) Phone capture: −/+ resizes pins ==========
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
-let fr = await openDistress(seeded.a.id);
+fr = await openDistress(seeded.a.id);
 const beforeBump = await capturePinState(fr);
 check(
   '1) Pin size pill visible with label on phone capture',
@@ -327,28 +366,36 @@ check(
 
 await page.screenshot({ path: `${OUT}/distress-pin-capture-phone.png` });
 
-// Tap still works (hit target independent of visual shrink/grow).
+// Hit-test must succeed and select the pin (not just "pins still exist").
 const tapOk = await fr.evaluate(() => {
   const pins = (project && project.pins) || [];
   if (!pins.length) return { ok: false, reason: 'no pins' };
   const p = pins[0];
-  // Simulate selecting via hitTest if available, else count stays.
+  ui.selectedPinId = null;
+  renderPins();
   let hit = null;
   try {
-    if (typeof hitTestPin === 'function') hit = hitTestPin(p.x, p.y);
-    else if (typeof findPinAt === 'function') hit = findPinAt(p.x, p.y);
+    hit = hitTestPin(p.x, p.y);
   } catch (e) {
     return { ok: false, reason: String(e) };
   }
-  // Fallback: pin count + numbering intact.
+  if (!hit || hit.id !== p.id) {
+    return { ok: false, reason: 'hitTest missed', hit: hit && hit.id, want: p.id };
+  }
+  selectPin(hit.id);
   return {
-    ok: pins.length >= 2 && pins.every((x) => x.num || x.id),
+    ok: ui.selectedPinId === p.id,
     count: pins.length,
-    hit: hit && (hit.id || hit),
+    hit: hit.id,
+    selected: ui.selectedPinId,
     nums: pins.map((x) => x.num),
   };
 });
-check('1e) Pins still present after size change (numbering intact)', tapOk.ok, JSON.stringify(tapOk));
+check(
+  '1e) Hit-test selects the pin after size change',
+  tapOk.ok && tapOk.hit === 'pa1' && tapOk.selected === 'pa1',
+  JSON.stringify(tapOk),
+);
 
 // ========== 2) Close/reopen retains; other CF unchanged ==========
 await page.goto(BASE + `#/file/${seeded.a.id}`, { waitUntil: 'networkidle0' });
@@ -420,8 +467,8 @@ check(
 
 await page.screenshot({ path: `${OUT}/distress-pin-report-default.png` });
 
-// Spy: report paths must not read ds-capture-sizes.
-const spyReads = await page.evaluate(async (id) => {
+// Spy: report paths must not read ds-capture-sizes (editor re-render only here).
+const spyReads = await page.evaluate(async () => {
   const reads = [];
   const orig = Storage.prototype.getItem;
   Storage.prototype.getItem = function (key) {
@@ -429,30 +476,14 @@ const spyReads = await page.evaluate(async (id) => {
     if (k.indexOf('ds-capture-sizes') === 0) reads.push(k);
     return orig.call(this, key);
   };
-  // Force a re-render of the active pen-log page.
   const thumb = document.querySelector('.rb-thumb[data-page-id^="distress-"]');
   if (thumb) thumb.click();
   await new Promise((r) => setTimeout(r, 800));
-  // Present compose path if available.
-  let presentPin = null;
-  try {
-    const present = document.querySelector('#rb-present');
-    if (present) {
-      present.click();
-      await new Promise((r) => setTimeout(r, 1500));
-      const fit = document.querySelector('.rb-print--present .rb-penlog__fit');
-      presentPin = fit ? (fit.style.getPropertyValue('--rb-pin-size') || '').trim() : null;
-      document.querySelector('#rb-present-close, [data-rb-present-close], .rb-present__close')?.click();
-      // Escape present if still open.
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      await new Promise((r) => setTimeout(r, 400));
-    }
-  } catch (_) { /* present optional */ }
   Storage.prototype.getItem = orig;
-  return { reads, presentPin };
-}, seeded.a.id);
+  return { reads };
+});
 check(
-  '4c) Report render/present does not read ds-capture-sizes',
+  '4c) Report editor re-render does not read ds-capture-sizes',
   spyReads.reads.length === 0,
   JSON.stringify(spyReads),
 );
@@ -505,6 +536,209 @@ check(
   near(otherReport.pinScale, 1, 0.02) && near(otherReport.slider, 1, 0.02),
   JSON.stringify(otherReport),
 );
+
+// ========== 5e/5f) Presentation + Print/PDF decks carry report pinScale ==========
+fileIdForReportState = seeded.a.id;
+await openPenLog(seeded.a.id);
+// Ensure slider is at the saved 1.8 from step 5.
+await page.waitForFunction(() => {
+  const root = document.querySelector('.rb-sheet .rb-penlog');
+  return root && root.getAttribute('data-rb-pin-scale') === '1.8';
+}, { timeout: 10000 });
+
+const editorBaseline = await page.evaluate(() => {
+  const sheet = document.querySelector('.rb-sheet');
+  const root = sheet.querySelector('.rb-penlog');
+  const fit = sheet.querySelector('.rb-penlog__fit');
+  const pin = sheet.querySelector('.rb-penlog__pin');
+  const pinBox = pin.getBoundingClientRect();
+  const fitBox = fit.getBoundingClientRect();
+  const cx = pinBox.left + pinBox.width / 2;
+  const cy = pinBox.top + pinBox.height / 2;
+  return {
+    attr: root.getAttribute('data-rb-pin-scale'),
+    cssPin: (fit.style.getPropertyValue('--rb-pin-size') || '').trim(),
+    pinW: pinBox.width,
+    // Pin centre lands on the laid-out plan fit (registration to the drawing).
+    onFit: cx >= fitBox.left - 2 && cx <= fitBox.right + 2 &&
+      cy >= fitBox.top - 2 && cy <= fitBox.bottom + 2,
+  };
+});
+check(
+  '5e0) Editor sheet pin is on the plan fit at report scale 1.8',
+  near(Number(editorBaseline.attr), 1.8, 0.02) && editorBaseline.onFit && editorBaseline.pinW > 0,
+  JSON.stringify(editorBaseline),
+);
+
+// Presentation: required, must use report 1.8 and not read capture keys.
+const presentOut = await page.evaluate(async () => {
+  const reads = [];
+  const orig = Storage.prototype.getItem;
+  Storage.prototype.getItem = function (key) {
+    const k = String(key);
+    if (k.indexOf('ds-capture-sizes') === 0) reads.push(k);
+    return orig.call(this, key);
+  };
+  const btn = document.querySelector('#rb-present');
+  if (!btn) {
+    Storage.prototype.getItem = orig;
+    return { ok: false, reason: 'no present button' };
+  }
+  btn.click();
+  // Wait for present deck + settle.
+  for (let i = 0; i < 60; i++) {
+    if (document.querySelector('.rb-print--present .rb-sheet')) break;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  await new Promise((r) => setTimeout(r, 800));
+  const deck = document.querySelector('.rb-print--present');
+  if (!deck) {
+    Storage.prototype.getItem = orig;
+    return { ok: false, reason: 'no present deck', reads };
+  }
+  // Flip to the Picture Locations sheet.
+  const sheets = [...deck.querySelectorAll('.rb-sheet')];
+  let distress = sheets.find((s) => s.querySelector('.rb-penlog'));
+  if (!distress) {
+    // Advance via keyboard until found.
+    for (let i = 0; i < sheets.length; i++) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      await new Promise((r) => setTimeout(r, 200));
+      distress = deck.querySelector('.rb-sheet.is-present-current .rb-penlog')?.closest('.rb-sheet')
+        || [...deck.querySelectorAll('.rb-sheet')].find((s) => s.querySelector('.rb-penlog'));
+      if (distress && distress.classList.contains('is-present-current')) break;
+    }
+  }
+  // Prefer measuring the distress sheet even if not current — layout already settled.
+  const target = [...deck.querySelectorAll('.rb-sheet')].find((s) => s.querySelector('.rb-penlog'));
+  const root = target && target.querySelector('.rb-penlog');
+  const fit = target && target.querySelector('.rb-penlog__fit');
+  const pin = target && target.querySelector('.rb-penlog__pin');
+  let pinW = null;
+  let onFit = false;
+  if (pin && fit && root) {
+    // Temporarily show the sheet for truthful geometry if present-mode hid others.
+    const wasCurrent = target.classList.contains('is-present-current');
+    if (!wasCurrent) {
+      [...deck.querySelectorAll('.rb-sheet')].forEach((s) => s.classList.remove('is-present-current'));
+      target.classList.add('is-present-current');
+      await new Promise((r) => setTimeout(r, 200));
+      try { window.ToolboxPenLog.layoutPlans(root); } catch (_) {}
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const pinBox = pin.getBoundingClientRect();
+    const fitBox = fit.getBoundingClientRect();
+    pinW = pinBox.width;
+    const cx = pinBox.left + pinBox.width / 2;
+    const cy = pinBox.top + pinBox.height / 2;
+    onFit = fitBox.width > 40 && fitBox.height > 40 &&
+      cx >= fitBox.left - 2 && cx <= fitBox.right + 2 &&
+      cy >= fitBox.top - 2 && cy <= fitBox.bottom + 2;
+  }
+  const out = {
+    ok: !!root,
+    reads,
+    attr: root ? root.getAttribute('data-rb-pin-scale') : null,
+    cssPin: fit ? (fit.style.getPropertyValue('--rb-pin-size') || '').trim() : '',
+    pinW,
+    onFit,
+  };
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await new Promise((r) => setTimeout(r, 500));
+  Storage.prototype.getItem = orig;
+  return out;
+});
+check(
+  '5e) Presentation uses report pinScale 1.8 and does not read capture prefs',
+  presentOut.ok &&
+    near(Number(presentOut.attr), 1.8, 0.02) &&
+    !!presentOut.cssPin && !String(presentOut.cssPin).startsWith('0') &&
+    presentOut.reads.length === 0 &&
+    presentOut.pinW != null && presentOut.pinW > editorBaseline.pinW * 0.8,
+  JSON.stringify({ presentOut, editorBaseline }),
+);
+check(
+  '5e2) Presentation pin stays registered on the plan fit',
+  !!presentOut.onFit,
+  JSON.stringify(presentOut),
+);
+
+await page.screenshot({ path: `${OUT}/distress-pin-present-1.8.png` });
+
+// Print/PDF deck (stub window.print so the dialog never opens).
+const printOut = await page.evaluate(async () => {
+  const reads = [];
+  const origGet = Storage.prototype.getItem;
+  Storage.prototype.getItem = function (key) {
+    const k = String(key);
+    if (k.indexOf('ds-capture-sizes') === 0) reads.push(k);
+    return origGet.call(this, key);
+  };
+  window.__rbPrintStubCalls = 0;
+  const prevPrint = window.print;
+  window.print = () => { window.__rbPrintStubCalls += 1; };
+  const btn = document.querySelector('#rb-print');
+  if (!btn) {
+    Storage.prototype.getItem = origGet;
+    window.print = prevPrint;
+    return { ok: false, reason: 'no print button' };
+  }
+  btn.click();
+  for (let i = 0; i < 80; i++) {
+    if (document.querySelector('body.is-printing .rb-print .rb-penlog, .rb-print:not(.rb-print--present) .rb-penlog')) break;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  await new Promise((r) => setTimeout(r, 600));
+  const deck = document.querySelector('body.is-printing .rb-print')
+    || document.querySelector('.rb-print:not(.rb-print--present)');
+  const root = deck && deck.querySelector('.rb-penlog');
+  const fit = deck && deck.querySelector('.rb-penlog__fit');
+  const pin = deck && deck.querySelector('.rb-penlog__pin');
+  let pinW = null;
+  let onFit = false;
+  if (root && pin && fit && window.ToolboxPenLog) {
+    try { window.ToolboxPenLog.layoutPlans(root); } catch (_) {}
+    const pinBox = pin.getBoundingClientRect();
+    const fitBox = fit.getBoundingClientRect();
+    pinW = pinBox.width;
+    const cx = pinBox.left + pinBox.width / 2;
+    const cy = pinBox.top + pinBox.height / 2;
+    onFit = fitBox.width > 40 && fitBox.height > 40 &&
+      cx >= fitBox.left - 2 && cx <= fitBox.right + 2 &&
+      cy >= fitBox.top - 2 && cy <= fitBox.bottom + 2;
+  }
+  const out = {
+    ok: !!root,
+    reads,
+    printCalls: window.__rbPrintStubCalls,
+    attr: root ? root.getAttribute('data-rb-pin-scale') : null,
+    cssPin: fit ? (fit.style.getPropertyValue('--rb-pin-size') || '').trim() : '',
+    pinW,
+    onFit,
+  };
+  // Tear down print deck the way afterprint would.
+  document.dispatchEvent(new Event('afterprint'));
+  await new Promise((r) => setTimeout(r, 400));
+  window.print = prevPrint;
+  Storage.prototype.getItem = origGet;
+  return out;
+});
+check(
+  '5f) Print/PDF deck uses report pinScale 1.8 and does not read capture prefs',
+  printOut.ok &&
+    near(Number(printOut.attr), 1.8, 0.02) &&
+    !!printOut.cssPin && !String(printOut.cssPin).startsWith('0') &&
+    printOut.reads.length === 0 &&
+    printOut.pinW != null && printOut.pinW > 0,
+  JSON.stringify(printOut),
+);
+check(
+  '5f2) Print/PDF pin stays registered on the plan fit',
+  !!printOut.onFit,
+  JSON.stringify(printOut),
+);
+
+await page.screenshot({ path: `${OUT}/distress-pin-print-1.8.png` });
 
 // ========== 6) Reopen report retains; missing field seeds only itself ==========
 fileIdForReportState = seeded.a.id;
