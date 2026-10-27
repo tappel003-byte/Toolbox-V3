@@ -224,15 +224,17 @@ const folderGeom = await page.evaluate(() => {
   const primary = document.querySelector('[data-rb-floor-task="topo"]');
   const sub = document.querySelector('[data-rb-rail-tab].is-active') ||
     document.querySelector('[data-rb-rail-tab][aria-selected="true"]');
-  const inactive = document.querySelector('[data-rb-rail-tab]:not(.is-active)');
+  const inactiveSub = document.querySelector('[data-rb-rail-tab]:not(.is-active)');
+  const idleLayout = document.querySelector('[data-rb-floor-task="layout"]:not(.is-active)');
   const cs = (el) => el ? getComputedStyle(el) : null;
   const p = cs(primary);
   const s = cs(sub);
-  const i = cs(inactive);
+  const i = cs(inactiveSub);
+  const layoutIdle = cs(idleLayout);
   const navy = 'rgb(7, 40, 61)';
   const softNavy = 'rgb(61, 95, 115)';
   const muted = 'rgb(90, 115, 130)';
-  const inactiveFill = 'rgb(229, 235, 238)';
+  const layoutGray = 'rgb(229, 235, 238)';
   return {
     primaryRadius: p && [p.borderTopLeftRadius, p.borderTopRightRadius, p.borderBottomLeftRadius, p.borderBottomRightRadius],
     subRadius: s && [s.borderTopLeftRadius, s.borderTopRightRadius, s.borderBottomLeftRadius, s.borderBottomRightRadius],
@@ -242,16 +244,17 @@ const folderGeom = await page.evaluate(() => {
     subBg: s && s.backgroundColor,
     subColor: s && s.color,
     subWeight: s && s.fontWeight,
-    inactiveBg: i && i.backgroundColor,
-    inactiveColor: i && i.color,
-    inactiveWeight: i && i.fontWeight,
+    inactiveSubBg: i && i.backgroundColor,
+    inactiveSubColor: i && i.color,
+    inactiveSubWeight: i && i.fontWeight,
+    layoutIdleBg: layoutIdle && layoutIdle.backgroundColor,
     subBottomBorder: s && s.borderBottomColor,
     subMinH: s && parseFloat(s.minHeight),
     primaryMinH: p && parseFloat(p.minHeight),
     navy,
     softNavy,
     muted,
-    inactiveFill,
+    layoutGray,
   };
 });
 check('secondary tabs use same Excel folder construction, compact vs primary',
@@ -262,13 +265,14 @@ check('secondary tabs use same Excel folder construction, compact vs primary',
     folderGeom.subMinH > 0 && folderGeom.primaryMinH > 0 &&
     folderGeom.subMinH < folderGeom.primaryMinH,
   JSON.stringify(folderGeom));
-check('hybrid: primary navy bold, secondary softer navy, unselected gray+muted',
+check('hybrid: only idle Sheet Layout is gray; secondary idle stays white',
   folderGeom.primaryBg === folderGeom.navy && folderGeom.primaryColor === 'rgb(255, 255, 255)' &&
     Number(folderGeom.primaryWeight) >= 600 &&
     folderGeom.subBg === folderGeom.softNavy && folderGeom.subColor === 'rgb(255, 255, 255)' &&
     folderGeom.subBg !== folderGeom.primaryBg &&
-    folderGeom.inactiveBg === folderGeom.inactiveFill && folderGeom.inactiveColor === folderGeom.muted &&
-    Number(folderGeom.inactiveWeight) <= 500 &&
+    folderGeom.layoutIdleBg === folderGeom.layoutGray &&
+    folderGeom.inactiveSubBg === 'rgb(255, 255, 255)' && folderGeom.inactiveSubColor === folderGeom.muted &&
+    Number(folderGeom.inactiveSubWeight) <= 500 &&
     folderGeom.subBottomBorder === 'rgb(255, 255, 255)',
   JSON.stringify(folderGeom));
 
