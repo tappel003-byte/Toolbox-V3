@@ -850,22 +850,30 @@ body.report-builder-open .canvas {
   overflow-x: hidden;
   padding: 2px 8px 8px;
 }
-.rb-ws__title {
-  margin: 0;
-  font-size: 18px;
+/* Title and the tab/tool row stick as one piece. Separate sticky offsets
+   overlapped once the Topo row made the tool block taller than the old 28px. */
+.rb-ws__sticky {
   position: sticky;
   top: 0;
   z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   background: rgba(255, 255, 255, 0.96);
-  padding-bottom: 4px;
+}
+.rb-ws__title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 22px;
+  position: static;
+  background: transparent;
+  padding-bottom: 0;
 }
 .rb-ws__top,
 .rb-ws__foot { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
 .rb-ws__top {
-  position: sticky;
-  top: 28px;
-  z-index: 2;
-  background: rgba(255, 255, 255, 0.96);
+  position: static;
+  background: transparent;
   padding-bottom: 6px;
 }
 .rb-ws__body {
@@ -884,13 +892,17 @@ body.report-builder-open .canvas {
 /* GPT-036: Sheet Layout | Topo as folder tabs on the rail's top edge.
    Rounded tops, flat bottoms, no capsule. The active tab is the white
    panel; the baseline continues under the inactive tab. */
+.rb-ws__sticky:has(.rb-ws__task-tabs) {
+  gap: 6px;
+  margin-bottom: -10px;
+  background: #fff;
+}
 .rb-ws__top:has(.rb-ws__task-tabs) {
   gap: 0;
-  margin-bottom: -10px;
   padding-bottom: 0;
   background: #fff;
 }
-.rb-ws__top:has(.rb-ws__task-tabs) + .rb-ws__body {
+.rb-ws__sticky:has(.rb-ws__task-tabs) + .rb-ws__body {
   padding-top: 10px;
   background: #fff;
 }
@@ -940,6 +952,54 @@ body.report-builder-open .canvas {
   background: #fff;
   color: var(--navy, #07283d);
   border-bottom-color: #fff;
+  box-shadow: none;
+}
+/* Second tier under Topo: smaller than the folder tabs, still a real tab row.
+   It sits in the sticky header so a long group cannot push the others away. */
+.rb-ws__subtabs {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin: 0;
+  padding: 1px 0 0;
+  border-bottom: 1px solid var(--line, #dce1e4);
+  background: #fff;
+}
+.rb-ws__subtab {
+  appearance: none;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 28px;
+  margin: 0;
+  padding: 3px 4px 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #3d5c70;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.15;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.rb-ws__subtab:hover:not(.is-active) {
+  color: var(--navy, #07283d);
+  background: #f4f7f8;
+}
+.rb-ws__subtab:focus {
+  outline: none;
+}
+.rb-ws__subtab:focus-visible {
+  outline: 2px solid var(--navy, #07283d);
+  outline-offset: -2px;
+}
+.rb-ws__subtab.is-active {
+  color: var(--navy, #07283d);
+  background: #fff;
+  border-bottom-color: var(--navy, #07283d);
   box-shadow: none;
 }
 .rb-ws__section-label {

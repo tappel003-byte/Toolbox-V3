@@ -220,6 +220,11 @@ interface Props {
    * would drift from them.
    */
   controlsOnly?: boolean;
+  /**
+   * Which Topo group the report rail is showing. The tab row itself lives
+   * under the Sheet Layout | Topo tabs. Field Control panel does not use this.
+   */
+  reportGroup?: "contours" | "readings" | "legendhl";
   /** A picture on a page: no pan, no zoom, the plan fits its frame. */
   staticView?: boolean;
   /**
@@ -439,6 +444,7 @@ export function TopoTab({
   statsPillForSingleBoundary = false,
   chromeless = false,
   controlsOnly = false,
+  reportGroup,
   staticView = false,
   locked = false,
   onStats,
@@ -473,9 +479,8 @@ export function TopoTab({
       return next;
     });
   }, []);
-  /** Which tab the rail shows. Report Builder only; the field screen opens one corner panel at a time. */
-  // Report Builder rail: Contours / Readings / Legend & H/L (Tim finish brief).
-  const [ctrlTab, setCtrlTab] = useState<"contours" | "readings" | "legendhl">("contours");
+  /** Report rail group. The tab row is outside this panel; field doors do not use it. */
+  const reportPanel = reportGroup || "contours";
   const [warningDismissed, setWarningDismissed] = useState(false);
   // "Send to Distress Survey" — idle while nothing has been asked for.
   const [layerState, setLayerState] = useState<"idle" | "working" | "done" | "failed">("idle");
@@ -1781,46 +1786,25 @@ export function TopoTab({
           This tab strip is Report Builder only.
         */}
         {controlsOnly && (
-          <div className="flex flex-col gap-1.5" data-rb-rail-groups="1">
+          <div
+            id="rb-topo-group-panel"
+            role="tabpanel"
+            aria-labelledby={"rb-topo-tab-" + reportPanel}
+            data-rb-topo-panel={reportPanel}
+            className="space-y-3 text-sm"
+          >
             {/*
-              GPT-036: Contours / Readings / Legend & H/L as one-open-at-a-time
-              accordions under the Sheet Layout | Topo peer tabs. Same controls
-              as before — no nested doors.
+              The three groups are a second tab row on the report rail, above
+              this panel. Only the selected group's controls render. Field
+              Control panel keeps its own accordions.
             */}
             {([
               ["contours", "Contours"],
               ["readings", "Readings"],
               ["legendhl", "Legend & H/L"],
-            ] as const).map(([key, name]) => {
-              const open = ctrlTab === key;
+            ] as const).filter(([key]) => key === reportPanel).map(([key]) => {
               return (
-                <div
-                  key={key}
-                  className={
-                    open
-                      ? "flex flex-col overflow-hidden rounded-lg border border-[#c9d0d5] bg-white shadow-sm"
-                      : "shrink-0 rounded-lg border border-[#c9d0d5] bg-[#eef1f3] shadow-sm"
-                  }
-                >
-                  <button
-                    type="button"
-                    data-rb-rail-tab={key}
-                    aria-expanded={open}
-                    onClick={() => setCtrlTab(key)}
-                    className={
-                      "flex min-h-10 w-full items-center justify-between gap-2 px-2.5 text-xs font-semibold " +
-                      (open ? "bg-[#07283d] text-white" : "bg-[#eef1f3] text-[#07283d]")
-                    }
-                  >
-                    <span>{name}</span>
-                    <ChevronDown
-                      className={
-                        "h-4 w-4 shrink-0 transition-transform " + (open ? "rotate-180" : "")
-                      }
-                    />
-                  </button>
-                  {open && (
-                    <div className="space-y-3 p-3 text-sm">
+                <div key={key}>
                       {key === "contours" && (
                         <>
                           {gridAndContours?.grid && (
@@ -2113,8 +2097,6 @@ export function TopoTab({
                           </div>
                         </div>
                       )}
-                    </div>
-                  )}
                 </div>
               );
             })}
