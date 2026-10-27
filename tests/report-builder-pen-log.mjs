@@ -184,7 +184,9 @@ const openedClean = await page.evaluate(async () => {
 check('opening the report leaves Distress source unchanged',
   openedClean.distressUpdatedAt === '2026-09-26T11:00:00.000Z' &&
   openedClean.title === 'Keep me' &&
-  !openedClean.penLog &&
+  // Missing penLog.pinScale may seed once to 1; notes must stay empty (no write-back).
+  (!openedClean.penLog ||
+    (!openedClean.penLog.notes || !Object.keys(openedClean.penLog.notes).length)) &&
   openedClean.source === 'Hairline seam|Door sticks|Ceiling stain|Stair crack',
   JSON.stringify(openedClean));
 

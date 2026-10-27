@@ -440,6 +440,17 @@
   .mode-pill .tool.active{background:var(--ink);color:var(--paper)}
   .mode-pill .tool:active{transform:scale(.95)}
 
+  /* Pin size — next to mode pill; capture-only, per Customer File on this device */
+  .pin-size-pill{position:absolute;top:54px;left:8px;display:flex;align-items:center;gap:4px;
+    background:rgba(255,250,240,.92);padding:4px 6px;border-radius:12px;
+    box-shadow:var(--shadow);border:1px solid var(--line);z-index:6}
+  .pin-size-pill .ps-label{font-size:12px;font-weight:600;color:var(--ink);padding:0 4px;white-space:nowrap}
+  .pin-size-pill .ps-btn{width:36px;height:34px;min-width:36px;border-radius:8px;border:none;
+    background:transparent;font-size:20px;line-height:1;font-weight:600;color:var(--ink);
+    display:flex;align-items:center;justify-content:center}
+  .pin-size-pill .ps-btn:active{transform:scale(.95);background:rgba(0,0,0,.06)}
+  .pin-size-pill .ps-btn:disabled{opacity:.35}
+
   /* Pin picker pill — bottom-left */
   .pin-picker-btn{position:absolute !important;bottom:calc(14px + var(--app-bottom-offset,0px));left:12px;
     display:flex !important;align-items:center;gap:8px;background:var(--paper);
@@ -870,6 +881,11 @@
       <button class="tool active" id="toolPin" onclick="setTool('pin')" title="Pin mode">📍</button>
       <button class="tool" id="toolDraw" onclick="setTool('draw')" title="Draw mode">✏️</button>
     </div>
+    <div class="pin-size-pill" id="pinSizePill" title="Pin size for this Customer File on this device">
+      <span class="ps-label">Pin size</span>
+      <button type="button" class="ps-btn" id="pinSizeMinus" aria-label="Decrease pin size">−</button>
+      <button type="button" class="ps-btn" id="pinSizePlus" aria-label="Increase pin size">+</button>
+    </div>
     <button class="pin-picker-btn" id="pinPickerBtn" onclick="openPinPicker()" disabled>
       <span>📍 Edit pin ▾</span>
       <span class="ppc" id="pinPickerCount">(0 pins)</span>
@@ -1105,6 +1121,79 @@ let _hostActiveCanvasId = null;
 // Customer File -- it is a view, like the zoom, and the sheet of record is the
 // report. Default is the plan, which is what this app has always shown.
 let _hostLayerView = 'plan';
+
+/* ---- Capture pin size (per Customer File on this device; never the report) ----
+ * Visual radius stays plan-proportional (× long side × scale). Hit targets stay
+ * independent so smaller pins remain tappable. Screen-class default is chosen
+ * once when nothing is stored; rotate/resize must not rewrite it. */
+const DS_PIN_SCALE_MIN = 0.35;
+const DS_PIN_SCALE_MAX = 2.5;
+const DS_PIN_SCALE_STEP = 0.1;
+const DS_PIN_VISUAL_FRAC = 0.009;
+const DS_PIN_HIT_FRAC = 0.013;
+let _capturePinScale = 1;
+
+function screenDistressPinScaleDefault() {
+  const short = Math.min(window.innerWidth || 390, window.innerHeight || 844);
+  if (short < 500) return 1.2;   // phone: slightly larger for fit view
+  if (short < 850) return 1.0;   // tablet
+  return 0.9;                    // large screen / crowded facilities
+}
+function clampDistressPinScale(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return screenDistressPinScaleDefault();
+  return Math.max(DS_PIN_SCALE_MIN, Math.min(DS_PIN_SCALE_MAX, Math.round(x * 100) / 100));
+}
+function distressPinCaptureKey() {
+  return TOOLBOX_CF_ID ? ('ds-capture-sizes:' + TOOLBOX_CF_ID) : 'ds-capture-sizes:local';
+}
+function loadCapturePinScale() {
+  let scale = screenDistressPinScaleDefault();
+  try {
+    const raw = localStorage.getItem(distressPinCaptureKey());
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.pinScale != null) scale = clampDistressPinScale(parsed.pinScale);
+    }
+  } catch (_) { /* keep screen-class default */ }
+  _capturePinScale = scale;
+  syncPinSizeButtons();
+  return _capturePinScale;
+}
+function saveCapturePinScale(scale) {
+  _capturePinScale = clampDistressPinScale(scale);
+  try {
+    localStorage.setItem(distressPinCaptureKey(), JSON.stringify({ pinScale: _capturePinScale }));
+  } catch (_) { /* quota / private mode */ }
+  syncPinSizeButtons();
+  return _capturePinScale;
+}
+function bumpCapturePinScale(dir) {
+  saveCapturePinScale(_capturePinScale + dir * DS_PIN_SCALE_STEP);
+  renderPins();
+}
+function syncPinSizeButtons() {
+  const minus = document.getElementById('pinSizeMinus');
+  const plus = document.getElementById('pinSizePlus');
+  if (minus) minus.disabled = _capturePinScale <= DS_PIN_SCALE_MIN + 1e-6;
+  if (plus) plus.disabled = _capturePinScale >= DS_PIN_SCALE_MAX - 1e-6;
+}
+/** Drawn pin radius in plan pixels. Multiplier only — zoom math unchanged. */
+function pinVisualRadius() {
+  if (!project || !project.plan) return 8;
+  return Math.max(project.plan.width, project.plan.height) * DS_PIN_VISUAL_FRAC * _capturePinScale;
+}
+/** Hit radius: never shrinks below the proven baseline when visual scale is small. */
+function pinHitRadius(cx, cy) {
+  if (!project || !project.plan) return 12;
+  const long = Math.max(project.plan.width, project.plan.height);
+  const visualHit = Math.max(long * DS_PIN_HIT_FRAC, pinVisualRadius() * 1.35);
+  let touchR = visualHit;
+  if (cx != null && cy != null) {
+    try { touchR = Math.max(visualHit, screenPixelsToImage(18, cx, cy)); } catch (_) {}
+  }
+  return touchR;
+}
 
 const MAX_IMG_DIM = 2400;        // floor plan downscale cap
 const MAX_PHOTO_DIM = 1600;      // photo downscale cap
@@ -3447,6 +3536,7 @@ function enterWork() {
   project.north.rotation = frontDoorToNorthRotation(project.frontDoorFacing || '');
   setupNorthWidget();
   setupDrawToolbar();
+  setupPinSizePill();
   document.getElementById('drawToolbar').classList.toggle('show', ui.tool === 'draw');
   showScreen('screenWork');
   // Render after layout
@@ -3513,6 +3603,22 @@ function setupDrawToolbar() {
       ui.drawColor = b.dataset.dcolor;
       tb.querySelectorAll('[data-dcolor]').forEach(x => x.classList.toggle('active', x === b));
     }
+  });
+}
+function setupPinSizePill() {
+  const minus = document.getElementById('pinSizeMinus');
+  const plus = document.getElementById('pinSizePlus');
+  if (!minus || !plus || minus._wired) return;
+  minus._wired = true;
+  plus._wired = true;
+  loadCapturePinScale();
+  minus.addEventListener('click', (e) => {
+    e.stopPropagation();
+    bumpCapturePinScale(-1);
+  });
+  plus.addEventListener('click', (e) => {
+    e.stopPropagation();
+    bumpCapturePinScale(1);
   });
 }
 
@@ -4186,13 +4292,8 @@ function onStageClickFallback(e) {
 
 function hitTestPin(x, y, cx, cy) {
   if (!project || !project.pins) return null;
-  const visualR = Math.max(project.plan.width, project.plan.height) * 0.013;
-  // Finger-friendly tap target, but tight enough that adjacent interior/exterior
-  // walls can hold separate pins without colliding.
-  let touchR = visualR;
-  if (cx != null && cy != null) {
-    try { touchR = Math.max(visualR, screenPixelsToImage(18, cx, cy)); } catch(_) {}
-  }
+  // Finger-friendly tap target, separate from drawn size so smaller pins stay usable.
+  const touchR = pinHitRadius(cx, cy);
   // iterate reverse so topmost wins; pick the closest within range
   let best = null, bestD = Infinity;
   for (let i = project.pins.length-1; i>=0; i--) {
@@ -5796,7 +5897,7 @@ function renderPins() {
   if (!g) return;
   g.innerHTML = '';
   if (!project) return;
-  const R = Math.max(project.plan.width, project.plan.height) * 0.009;
+  const R = pinVisualRadius();
   const tol = Math.max(project.plan.width, project.plan.height) * 0.005;
   // Determine which pin is the "top" of each stack (last in array at those coords)
   const pins = project.pins || [];
@@ -6034,7 +6135,8 @@ async function composeMapImage(format) {
       // No padding: map.png matches plan.png pixel-for-pixel so the X,Y
       // values in pins.csv (normalized to plan.png) overlay correctly on
       // map.png as well. Edge pins may clip slightly — that's expected.
-      const R = Math.max(W, H) * 0.00875;
+      // Field export follows capture pin scale (report uses its own scale).
+      const R = Math.max(W, H) * 0.00875 * _capturePinScale;
       const c = document.createElement('canvas');
       c.width = W; c.height = H;
       const ctx = c.getContext('2d');
@@ -7783,7 +7885,7 @@ renderPins = function () {
   if (!g) return;
   g.innerHTML = '';
   if (!project || !project.plan) return;
-  const R = Math.max(project.plan.width, project.plan.height) * 0.009;
+  const R = pinVisualRadius();
   const tol = Math.max(project.plan.width, project.plan.height) * 0.005;
   const pins = hostVisiblePins();
   const topOfStack = new Map();
@@ -7894,11 +7996,7 @@ const _hitTestPin = hitTestPin;
 hitTestPin = function (x, y, cx, cy) {
   if (!HOST_MODE) return _hitTestPin(x, y, cx, cy);
   if (!project || !project.pins) return null;
-  const visualR = Math.max(project.plan.width, project.plan.height) * 0.013;
-  let touchR = visualR;
-  if (cx != null && cy != null) {
-    try { touchR = Math.max(visualR, screenPixelsToImage(18, cx, cy)); } catch (_) {}
-  }
+  const touchR = pinHitRadius(cx, cy);
   let best = null, bestD = Infinity;
   const pins = hostVisiblePins();
   for (let i = pins.length - 1; i >= 0; i--) {
