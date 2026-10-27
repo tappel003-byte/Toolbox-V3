@@ -234,7 +234,7 @@ const folderGeom = await page.evaluate(() => {
   const navy = 'rgb(7, 40, 61)';
   const softNavy = 'rgb(61, 95, 115)';
   const muted = 'rgb(90, 115, 130)';
-  const layoutGray = 'rgb(229, 235, 238)';
+  const primaryGray = 'rgb(229, 235, 238)';
   return {
     primaryRadius: p && [p.borderTopLeftRadius, p.borderTopRightRadius, p.borderBottomLeftRadius, p.borderBottomRightRadius],
     subRadius: s && [s.borderTopLeftRadius, s.borderTopRightRadius, s.borderBottomLeftRadius, s.borderBottomRightRadius],
@@ -254,7 +254,7 @@ const folderGeom = await page.evaluate(() => {
     navy,
     softNavy,
     muted,
-    layoutGray,
+    primaryGray,
   };
 });
 check('secondary tabs use same Excel folder construction, compact vs primary',
@@ -265,16 +265,35 @@ check('secondary tabs use same Excel folder construction, compact vs primary',
     folderGeom.subMinH > 0 && folderGeom.primaryMinH > 0 &&
     folderGeom.subMinH < folderGeom.primaryMinH,
   JSON.stringify(folderGeom));
-check('hybrid: only idle Sheet Layout is gray; secondary idle stays white',
+check('hybrid: idle primary is gray; secondary idle stays white',
   folderGeom.primaryBg === folderGeom.navy && folderGeom.primaryColor === 'rgb(255, 255, 255)' &&
     Number(folderGeom.primaryWeight) >= 600 &&
     folderGeom.subBg === folderGeom.softNavy && folderGeom.subColor === 'rgb(255, 255, 255)' &&
     folderGeom.subBg !== folderGeom.primaryBg &&
-    folderGeom.layoutIdleBg === folderGeom.layoutGray &&
+    folderGeom.layoutIdleBg === folderGeom.primaryGray &&
     folderGeom.inactiveSubBg === 'rgb(255, 255, 255)' && folderGeom.inactiveSubColor === folderGeom.muted &&
     Number(folderGeom.inactiveSubWeight) <= 500 &&
     folderGeom.subBottomBorder === 'rgb(255, 255, 255)',
   JSON.stringify(folderGeom));
+
+// When Sheet Layout is selected, idle Topo must be gray (primary row only).
+await openTask('layout');
+const layoutSel = await page.evaluate(() => {
+  const layout = document.querySelector('[data-rb-floor-task="layout"].is-active');
+  const topo = document.querySelector('[data-rb-floor-task="topo"]:not(.is-active)');
+  const cs = (el) => el ? getComputedStyle(el) : null;
+  return {
+    layoutBg: cs(layout)?.backgroundColor,
+    topoBg: cs(topo)?.backgroundColor,
+    hasSub: !!document.querySelector('.rb-ws__sub-tab'),
+  };
+});
+check('Sheet Layout selected → Topo idle is gray; no secondary row',
+  layoutSel.layoutBg === 'rgb(7, 40, 61)' &&
+    layoutSel.topoBg === 'rgb(229, 235, 238)' &&
+    !layoutSel.hasSub,
+  JSON.stringify(layoutSel));
+await openTask('topo');
 
 await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
 await new Promise((r) => setTimeout(r, 600));

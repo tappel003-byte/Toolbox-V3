@@ -884,9 +884,9 @@ body.report-builder-open .canvas {
 /* Hybrid folder tabs (Tim, Oct 26, 2026): fill shows selection; muted
    type lets unused tabs recede. Primary selected = full Toolbox navy;
    secondary selected = softer navy so Topo + Contours don't compete.
-   Unselected = white + muted gray-blue regular, except Sheet Layout which
-   uses light cool gray when idle so it clearly reads as off under Topo.
-   Active joins white panel. */
+   Primary idle (Sheet Layout or Topo): light cool gray. Secondary idle
+   (Contours/Readings/Legend): white + muted — never gray. Active joins
+   white panel. */
 .rb-ws__top:has(.rb-ws__task-tabs) {
   gap: 0;
   margin-bottom: -10px;
@@ -925,20 +925,13 @@ body.report-builder-open .canvas {
   line-height: 1.2;
   white-space: nowrap;
   color: #5a7382;
-  background: #fff;
+  /* Primary row only: idle Sheet Layout or idle Topo is cool gray. */
+  background: #e5ebee;
   cursor: pointer;
 }
-/* Only Sheet Layout goes gray when idle — secondary Contours/Readings/
-   Legend stay white so they still look selectable under Topo. */
-.rb-ws__task-tab[data-rb-floor-task="layout"]:not(.is-active) {
-  background: #e5ebee;
-}
 .rb-ws__task-tab:hover:not(.is-active) {
-  background: #f3f6f8;
-  color: var(--navy, #07283d);
-}
-.rb-ws__task-tab[data-rb-floor-task="layout"]:hover:not(.is-active) {
   background: #d9e4e9;
+  color: var(--navy, #07283d);
 }
 .rb-ws__task-tab:focus {
   outline: none;
