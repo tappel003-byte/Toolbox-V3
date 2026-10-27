@@ -50,6 +50,8 @@ export type ReportTopoWorkspaceProps = {
   camera?: PlanCamera | null;
   /** The book's render settings, if any have been set. */
   settings?: Partial<RenderSettings> | null;
+  /** Report rail: which control group is on screen. */
+  railGroup?: "contours" | "readings" | "legendhl";
   /** Locked slides are shown, not steered. */
   locked?: boolean;
   /** The rail: the controls, stacked, with no canvas. */
@@ -84,6 +86,7 @@ export function ReportTopoWorkspace({
   areaId = null,
   camera = null,
   settings: settingsProp = null,
+  railGroup,
   locked = false,
   controlsOnly = false,
   onCameraChange,
@@ -227,6 +230,7 @@ export function ReportTopoWorkspace({
         settingsOwnedByHost
         chromeless
         controlsOnly={controlsOnly}
+        reportGroup={railGroup}
         resizeCorners={!controlsOnly}
       />
     </div>
