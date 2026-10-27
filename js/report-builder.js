@@ -3171,9 +3171,15 @@
      * alone so reopen never resets a saved report. Never seeds from
      * device-global capture localStorage.
      */
+    /**
+     * Idempotent. Skip reserved placeholders — seeding only on those used to
+     * set a one-shot flag so a later real floor page never filled missing
+     * pill/legend scales (reopen stayed at null and looked like device poison).
+     */
     function seedPieceSizes(firstFloor) {
       var flApi = window.ToolboxReportFloorLayout;
       if (!flApi || !firstFloor) return;
+      if (firstFloor.meta && firstFloor.meta.reserved) return;
       var next = flApi.normalizeLayout(floorLayout);
       var changed = false;
       if (!next.legendLock || !(Number(next.legendLock.scale) > 0)) {
@@ -3190,8 +3196,6 @@
       putFloorLayout(next);
       markDirty();
     }
-
-    var seededPieces = false;
 
     function putFloorLayout(next) {
       if (!next) return;
@@ -4012,10 +4016,8 @@
         // scaled up until it ran off the sheet, and the colour scale, the
         // pill and the aerial view each back in a default corner, on top of
         // the drawing. Same fault the Discussion had, same cure.
-        if (!seededPieces) {
-          seededPieces = true;
-          seedPieceSizes(item);
-        }
+        // seedPieceSizes is idempotent and skips reserved placeholders.
+        seedPieceSizes(item);
         // The report's placement, unless this slide was deliberately taken
         // off it. ownLayout is only ever there because somebody put it there.
         var ownLayout = item.meta && item.meta.ownLayout;

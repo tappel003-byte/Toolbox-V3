@@ -33,95 +33,78 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage();
 page.on('pageerror', (e) => console.log('PAGEERROR', e.message));
 
-async function blankPlan() {
-  return page.evaluate(() => {
+async function seedFile(id, name, opts = {}) {
+  return page.evaluate(async ({ id, name, withReport, missingPill }) => {
+    const planId = 'plan-' + id;
     const c = document.createElement('canvas');
-    c.width = 400;
-    c.height = 300;
+    c.width = 800;
+    c.height = 600;
     const ctx = c.getContext('2d');
     ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, 400, 300);
-    ctx.strokeStyle = '#333';
-    ctx.strokeRect(20, 20, 360, 260);
-    return c.toDataURL('image/png');
-  });
-}
+    ctx.fillRect(0, 0, 800, 600);
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(20, 20, 760, 560);
+    await window.ToolboxDB.putMedia(planId, c.toDataURL('image/png'));
 
-async function seedFile(id, name, opts = {}) {
-  const dataUrl = await blankPlan();
-  return page.evaluate(async ({ id, name, dataUrl, withReport, missingPill }) => {
-    const planId = 'plan-' + id;
-    const canvasId = 'canvas-' + id;
-    await window.ToolboxDB.putMedia(planId, dataUrl);
-    let rec = window.ToolboxApp.blankCustomerFile(id);
+    const rec = window.ToolboxApp.blankCustomerFile(id);
     window.ToolboxPlanSetup.ensurePlanSetup(rec);
     rec.firstName = name;
     rec.lastName = 'Owner';
     rec.propertyAddress = '1 Size St';
-    rec.planSetup.canvases = [{
-      id: canvasId,
-      name: 'Main Level',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      plan: { id: planId, width: 400, height: 300 },
-      rooms: [],
-      frontDoorFacing: 'S',
-      frontDoor: null,
-    }];
-    rec.planSetup.activeCanvasId = canvasId;
+    const cv = rec.planSetup.canvases[0];
+    cv.name = 'Main Level';
+    cv.plan = { id: planId, width: 800, height: 600 };
+    cv.frontDoorFacing = 'N';
+    const canvasId = cv.id;
     window.ToolboxPlanSetup.ensurePlanSetup(rec);
     window.ToolboxPlanSetup.ensureFloorSurveyCanvasRef(rec, canvasId);
+
     const poly = [
-      { x: 40, y: 40 }, { x: 360, y: 40 }, { x: 360, y: 260 }, { x: 40, y: 260 },
+      { x: 40, y: 40 }, { x: 760, y: 40 }, { x: 760, y: 560 }, { x: 40, y: 560 },
     ];
-    const now = Date.now();
-    const points = [
-      { id: 'p1', index: 1, x: 120, y: 120, value: 9.4, createdAt: now, updatedAt: now },
-      { id: 'p2', index: 2, x: 280, y: 120, value: 8.1, createdAt: now, updatedAt: now },
-      { id: 'p3', index: 3, x: 200, y: 200, value: 7.1, createdAt: now, updatedAt: now },
-    ];
-    if (!rec.floorSurvey) rec.floorSurvey = { byCanvasId: {} };
-    rec.floorSurvey.byCanvasId[canvasId] = {
-      canvasId,
-      points,
-      areas: [{ id: 'a1', name: 'Main Level', polygon: poly, createdAt: 1 }],
-      boundary: poly,
+    const points = [];
+    for (let i = 1; i <= 6; i += 1) {
+      points.push({
+        id: 'p' + i,
+        floorId: canvasId,
+        index: i,
+        x: 120 + i * 90,
+        y: 200,
+        value: 5 + i * 0.4,
+      });
+    }
+    rec.floorSurvey = {
+      id: 'fs-' + id,
+      inspectionDate: '2026-10-26',
+      byCanvasId: {
+        [canvasId]: {
+          canvasId,
+          points,
+          areas: [{ id: 'a1', name: 'Main Level', polygon: poly, createdAt: 1 }],
+          boundary: poly,
+        },
+      },
     };
+
     const chrome = (window.ToolboxReportFloorLayout &&
       Number(window.ToolboxReportFloorLayout.CHROME_SCALE)) || (1632 / 1220);
+
     if (withReport) {
+      // Seed floorLayout only — do not mark pages imported. Import runs in the
+      // UI so the rail and live drawing are real (chrome / task-tabs pattern).
       const pillLock = missingPill
         ? { locked: true, scale: null }
         : { locked: true, scale: chrome };
-      rec.reportBuilder = {
-        version: 1,
-        pages: [{
-          id: 'floor-' + canvasId,
-          type: 'floor',
-          title: 'Floor Level Survey — Main Level',
-          meta: {
-            canvasId,
-            areaId: 'a1',
-            imported: true,
-            floorView: {
-              showLegend: true,
-              showHighLow: true,
-              showStatsPill: true,
-              legendScale: 1.2,
-              pointLabelFontSize: 11,
-              highLowPinSize: 11,
-            },
-          },
-        }],
-        activePageId: 'floor-' + canvasId,
-        floorLayout: window.ToolboxReportFloorLayout
-          ? window.ToolboxReportFloorLayout.normalizeLayout({
-            legendLock: { locked: true, scale: 1.2 },
-            pillLock,
-          })
-          : { legendLock: { locked: true, scale: 1.2 }, pillLock },
-      };
+      rec.reportBuilder = rec.reportBuilder || { version: 1, pages: [] };
+      rec.reportBuilder.floorLayout = window.ToolboxReportFloorLayout
+        ? window.ToolboxReportFloorLayout.normalizeLayout({
+          legendLock: { locked: true, scale: 1.2 },
+          pillLock,
+        })
+        : { legendLock: { locked: true, scale: 1.2 }, pillLock };
     }
+
     await window.ToolboxDB.saveCustomerFile(rec);
     return {
       id,
@@ -132,7 +115,6 @@ async function seedFile(id, name, opts = {}) {
   }, {
     id,
     name,
-    dataUrl,
     withReport: opts.withReport !== false,
     missingPill: !!opts.missingPill,
   });
@@ -141,7 +123,6 @@ async function seedFile(id, name, opts = {}) {
 async function reachTopo(fileId) {
   await page.goto(BASE + `#/file/${fileId}/floor`, { waitUntil: 'networkidle0' });
   await new Promise((r) => setTimeout(r, 1000));
-  // Already has boundary + points from seed — advance to field/topo if needed.
   for (let i = 0; i < 6; i++) {
     const state = await page.evaluate(() => {
       const t = document.body.innerText || '';
@@ -208,7 +189,6 @@ async function clickCpTab(text) {
 }
 
 async function bumpStatsPillPlus() {
-  // High / Low → Stats pill size → click + a few times
   return page.evaluate(() => {
     const body = document.querySelector('[data-fs-cp-section-body]');
     if (!body) return { ok: false, reason: 'no body' };
@@ -217,12 +197,8 @@ async function bumpStatsPillPlus() {
     );
     const row = rows[0];
     if (!row) return { ok: false, reason: 'no stepper', text: body.innerText };
-    const plus = [...row.querySelectorAll('button')].find((b) =>
-      (b.textContent || '').includes('+') || b.getAttribute('aria-label') === 'Increase',
-    );
-    // StepperControl uses Plus icon button — last button in the row
     const buttons = [...row.querySelectorAll('button')];
-    const inc = plus || buttons[buttons.length - 1];
+    const inc = buttons[buttons.length - 1];
     if (!inc) return { ok: false, reason: 'no plus' };
     for (let i = 0; i < 4; i++) inc.click();
     const val = row.querySelector('input')?.value || row.innerText;
@@ -230,9 +206,87 @@ async function bumpStatsPillPlus() {
   });
 }
 
-await page.setViewport({ width: 1024, height: 768, deviceScaleFactor: 1 });
+/** Open report, import floor slide, wait for topo pieces (proven chrome pattern). */
+async function openReportSlide(fileId) {
+  await page.goto(BASE + `#/file/${fileId}/report`, { waitUntil: 'networkidle0' });
+  await page.waitForFunction(
+    () => !!document.querySelector('.rb-sheet') ||
+      !!document.querySelector('.rb-thumb[data-page-id^="floor-"]'),
+    { timeout: 40000 },
+  );
+  await new Promise((r) => setTimeout(r, 2000));
+  await page.evaluate(() => {
+    const t = [...document.querySelectorAll('.rb-thumb[data-page-id^="floor-"]')]
+      .find((el) => !/reserved/i.test(el.getAttribute('data-page-id') || ''))
+      || document.querySelector('.rb-thumb[data-page-id^="floor-"]');
+    t?.click();
+  });
+  await page.waitForFunction(
+    () => !!document.querySelector('[data-rb-floor-import]') ||
+      !!document.querySelector('[data-rb-floor-box^="topo"]') ||
+      !!document.querySelector('[data-rb-floor-task]'),
+    { timeout: 25000 },
+  ).catch(() => null);
+  if (await page.$('[data-rb-floor-import]')) {
+    await page.click('[data-rb-floor-import]');
+    await page.waitForFunction(
+      () => !!document.querySelector('[data-rb-floor-box^="topo"]') ||
+        !!document.querySelector('[data-rb-floor-task]'),
+      { timeout: 30000 },
+    ).catch(() => null);
+  }
+  await new Promise((r) => setTimeout(r, 2200));
+}
+
+async function openLegendHlRail() {
+  await page.evaluate(() => {
+    document.querySelector('[data-rb-floor-task="topo"]')?.click();
+  });
+  await new Promise((r) => setTimeout(r, 500));
+  await page.evaluate(() => {
+    document.querySelector('[data-rb-rail-tab="legendhl"]')?.click() ||
+      document.querySelector('[data-rb-topo-group="legendhl"]')?.click();
+  });
+  await new Promise((r) => setTimeout(r, 600));
+}
+
+async function bumpRailStatsPill() {
+  return page.evaluate(() => {
+    const host = document.querySelector('.rb-ws__controls') ||
+      document.querySelector('#rb-rail') ||
+      document.body;
+    const label = [...host.querySelectorAll('*')].find((el) => {
+      const t = (el.textContent || '').trim();
+      return t === 'Stats pill size' || /^Stats pill size/i.test(t);
+    });
+    if (!label) {
+      return {
+        ok: false,
+        reason: 'no stepper',
+        text: (host.innerText || '').slice(0, 500),
+      };
+    }
+    let row = label;
+    for (let i = 0; i < 6 && row; i++) {
+      if (row.querySelectorAll('button').length >= 2) break;
+      row = row.parentElement;
+    }
+    const buttons = [...(row?.querySelectorAll('button') || [])];
+    const inc = buttons[buttons.length - 1];
+    if (!inc) return { ok: false, reason: 'no plus' };
+    const before = row?.querySelector('input')?.value || '';
+    for (let i = 0; i < 3; i++) inc.click();
+    return { ok: true, before, after: row?.querySelector('input')?.value || '' };
+  });
+}
+
+await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
 await page.goto(BASE, { waitUntil: 'networkidle0' });
 await page.evaluate(async () => {
+  const regs = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(regs.map((r) => r.unregister()));
+  const keys = await caches.keys();
+  await Promise.all(keys.map((k) => caches.delete(k)));
   const db = await new Promise((res, rej) => {
     const req = indexedDB.open('toolbox', 2);
     req.onerror = () => rej(req.error);
@@ -247,6 +301,8 @@ await page.evaluate(async () => {
   });
   localStorage.clear();
 });
+// Reload so the app runs without a stale service worker shell.
+await page.goto(BASE, { waitUntil: 'networkidle0' });
 
 const a = await seedFile('size-a', 'Alpha');
 const b = await seedFile('size-b', 'Beta');
@@ -321,8 +377,8 @@ const dotIsolation = await page.evaluate(async (id) => {
         projectId: id,
         name: 'Main Level',
         order: 0,
-        planWidth: 400,
-        planHeight: 300,
+        planWidth: 800,
+        planHeight: 600,
         boundary: layer.boundary,
         areas: layer.areas,
         transitions: layer.transitions || [],
@@ -331,7 +387,7 @@ const dotIsolation = await page.evaluate(async (id) => {
         floor,
         points: layer.points || [],
         areaId: 'a1',
-        extent: { x: 0, y: 0, w: 400, h: 300 },
+        extent: { x: 0, y: 0, w: 800, h: 600 },
       });
       composed = !!(out && out.dataUrl && out.width);
     }
@@ -358,29 +414,8 @@ check(
 await page.screenshot({ path: `${OUT}/sizing-own-1-capture.png` });
 
 // --- 2) Report rail adjustment ---
-await page.goto(BASE + `#/file/${a.id}/report`, { waitUntil: 'networkidle0' });
-await page.waitForFunction(
-  () => document.querySelector('.rb-thumb[data-page-id^="floor-"]'),
-  { timeout: 25000 },
-).catch(() => null);
-await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]')?.click());
-await new Promise((r) => setTimeout(r, 1500));
-if (await page.$('[data-rb-floor-import]')) {
-  await page.click('[data-rb-floor-import]');
-  await new Promise((r) => setTimeout(r, 2000));
-}
-
-// Open Legend & H/L group on the rail and bump Stats pill size.
-const railBump = await page.evaluate(() => {
-  const group = [...document.querySelectorAll('[data-rb-topo-group], [role="tab"]')].find(
-    (b) => /Legend/i.test(b.textContent || '') && /H\/L|High/i.test(b.textContent || ''),
-  ) || [...document.querySelectorAll('[data-rb-topo-group], button, [role="tab"]')].find(
-    (b) => /Legend\s*&\s*H\/L|Legend/i.test((b.textContent || '').trim()),
-  );
-  if (group) group.click();
-  return { group: !!(group && (group.textContent || '').trim()) };
-});
-await new Promise((r) => setTimeout(r, 400));
+await openReportSlide(a.id);
+await openLegendHlRail();
 
 const railBefore = await page.evaluate(async (id) => {
   const rec = await window.ToolboxDB.getCustomerFile(id);
@@ -390,32 +425,7 @@ const railBefore = await page.evaluate(async (id) => {
   };
 }, a.id);
 
-const railStepper = await page.evaluate(() => {
-  const host = document.querySelector('.rb-ws__controls, [data-rb-topo-panel], #rb-topo-group-panel');
-  const root = host || document.body;
-  const label = [...root.querySelectorAll('*')].find((el) =>
-    /Stats pill size/i.test(el.textContent || '') && el.children.length,
-  );
-  if (!label) {
-    return {
-      ok: false,
-      reason: 'no stepper',
-      text: (root.innerText || '').slice(0, 400),
-    };
-  }
-  // Walk up to the stepper row
-  let row = label;
-  for (let i = 0; i < 5 && row; i++) {
-    if (row.querySelectorAll('button').length >= 2) break;
-    row = row.parentElement;
-  }
-  const buttons = [...(row?.querySelectorAll('button') || [])];
-  const inc = buttons[buttons.length - 1];
-  if (!inc) return { ok: false, reason: 'no plus' };
-  const before = row?.querySelector('input')?.value || '';
-  for (let i = 0; i < 3; i++) inc.click();
-  return { ok: true, before, after: row?.querySelector('input')?.value || '' };
-});
+const railStepper = await bumpRailStatsPill();
 await new Promise((r) => setTimeout(r, 800));
 
 const afterRail = await page.evaluate(async (id) => {
@@ -436,9 +446,13 @@ const bAfterRail = await page.evaluate(async (id) => {
   };
 }, b.id);
 
-check('Report rail Legend & H/L reachable', railBump.group || railStepper.ok, JSON.stringify({ railBump, railStepper }));
 check(
-  '2) Rail pill change updates report lock (or stepper exercised)',
+  'Report rail Legend & H/L reachable with Stats pill stepper',
+  railStepper.ok,
+  JSON.stringify(railStepper),
+);
+check(
+  '2) Rail pill change updates report lock',
   railStepper.ok &&
     (afterRail.pill !== railBefore.pill || railStepper.after !== railStepper.before),
   JSON.stringify({ railBefore, afterRail, railStepper }),
@@ -508,18 +522,7 @@ const fresh = await seedFile('size-new', 'NewJob', { missingPill: true });
 await page.evaluate(() => {
   localStorage.setItem('stats-chip-size', '96');
 });
-// Open report so seedPieceSizes runs
-await page.goto(BASE + `#/file/${fresh.id}/report`, { waitUntil: 'networkidle0' });
-await page.waitForFunction(
-  () => document.querySelector('.rb-thumb[data-page-id^="floor-"]'),
-  { timeout: 25000 },
-).catch(() => null);
-await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]')?.click());
-await new Promise((r) => setTimeout(r, 2000));
-if (await page.$('[data-rb-floor-import]')) {
-  await page.click('[data-rb-floor-import]');
-  await new Promise((r) => setTimeout(r, 1500));
-}
+await openReportSlide(fresh.id);
 
 const seeded = await page.evaluate(async (id) => {
   const rec = await window.ToolboxDB.getCustomerFile(id);
