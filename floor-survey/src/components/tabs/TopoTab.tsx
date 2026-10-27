@@ -990,7 +990,7 @@ export function TopoTab({
         openCorner !== "legendhl" && (
         <button
           type="button"
-          onClick={() => setOpenCorner("hub")}
+          onClick={() => openTrialDoor(lastTrialDoor ?? "contours")}
           aria-label="Control panel"
           className={
             "absolute z-30 top-2 right-2 landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:translate-x-[0.25rem] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] " +
@@ -1247,15 +1247,9 @@ export function TopoTab({
         {(openCorner === "contours" && !controlsOnly) && (
           <TrialPanel
             title="Contours"
-            stepLabel={trialStepLabel("contours")}
+            tabs="contours"
+            onTab={openTrialDoor}
             onClose={() => setOpenCorner(null)}
-            footer={
-              <TrialDoorNav
-                door="contours"
-                onBack={() => setOpenCorner("hub")}
-                onNext={openTrialDoor}
-              />
-            }
           >
             {gridAndContours?.grid && (
               <p className="mb-1 shrink-0 text-[10px] tabular-nums text-muted-foreground">
@@ -1513,15 +1507,9 @@ export function TopoTab({
         {(openCorner === "readings" && !controlsOnly) && (
           <TrialPanel
             title="Readings"
-            stepLabel={trialStepLabel("readings")}
+            tabs="readings"
+            onTab={openTrialDoor}
             onClose={() => setOpenCorner(null)}
-            footer={
-              <TrialDoorNav
-                door="readings"
-                onBack={() => setOpenCorner("hub")}
-                onNext={openTrialDoor}
-              />
-            }
           >
             <TrialAccordion
               openId={trialSectionByDoor.readings ?? null}
@@ -1670,15 +1658,9 @@ export function TopoTab({
         {(openCorner === "legendhl" && !controlsOnly) && (
           <TrialPanel
             title="Legend & H/L"
-            stepLabel={trialStepLabel("legendhl")}
+            tabs="legendhl"
+            onTab={openTrialDoor}
             onClose={() => setOpenCorner(null)}
-            footer={
-              <TrialDoorNav
-                door="legendhl"
-                onBack={() => setOpenCorner("hub")}
-                onNext={openTrialDoor}
-              />
-            }
           >
             <TrialAccordion
               openId={trialSectionByDoor.legendhl ?? null}
@@ -2145,6 +2127,66 @@ const TRIAL_COOL_GRAY = "#eef1f3";
 const TRIAL_LINE = "#c9d0d5";
 const TRIAL_LINE_STRONG = "#a8b0b8";
 
+function TrialFolderTabs({
+  active,
+  onChange,
+}: {
+  active: TrialDoorKey;
+  onChange: (key: TrialDoorKey) => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Control panel"
+      className="flex min-w-0 flex-1 items-end gap-1"
+      onKeyDown={(event) => {
+        const keys = TRIAL_DOORS.map((d) => d.key);
+        const idx = Math.max(0, keys.indexOf(active));
+        let next = idx;
+        if (event.key === "ArrowRight") next = (idx + 1) % keys.length;
+        else if (event.key === "ArrowLeft") next = (idx + keys.length - 1) % keys.length;
+        else if (event.key === "Home") next = 0;
+        else if (event.key === "End") next = keys.length - 1;
+        else return;
+        event.preventDefault();
+        const key = keys[next];
+        onChange(key);
+        requestAnimationFrame(() => {
+          document.getElementById("fs-cp-tab-" + key)?.focus();
+        });
+      }}
+    >
+      {TRIAL_DOORS.map((d) => {
+        const on = d.key === active;
+        return (
+          <button
+            key={d.key}
+            type="button"
+            role="tab"
+            id={"fs-cp-tab-" + d.key}
+            data-fs-cp-tab={d.key}
+            aria-selected={on}
+            aria-controls="fs-cp-panel"
+            tabIndex={on ? 0 : -1}
+            onClick={() => onChange(d.key)}
+            className="min-h-11 shrink-0 whitespace-nowrap rounded-t-[6px] border px-1.5 text-xs leading-none"
+            style={{
+              marginBottom: -1,
+              backgroundColor: on ? TRIAL_NAVY : "#e5ebee",
+              color: on ? "#fff" : "#3d5c70",
+              fontWeight: on ? 700 : 650,
+              borderColor: on ? TRIAL_NAVY : TRIAL_LINE,
+              borderBottomColor: on ? TRIAL_NAVY : TRIAL_LINE,
+            }}
+          >
+            {d.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function TrialPanel({
   title,
   titleAccent,
@@ -2153,6 +2195,8 @@ function TrialPanel({
   onClose,
   children,
   footer,
+  tabs,
+  onTab,
 }: {
   title: string;
   /** Hub only: rust title so the Control panel name carries the accent. */
@@ -2162,13 +2206,38 @@ function TrialPanel({
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  /** Field trial: one folder-tab row. The accepted hub stays in this file and is not opened. */
+  tabs?: TrialDoorKey;
+  onTab?: (key: TrialDoorKey) => void;
 }) {
   const rustTitle = titleAccent === "rust";
+  const tabbed = tabs != null && onTab != null;
   return (
     <div
-      className="absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg backdrop-blur landscape-short:top-2"
+      data-fs-cp={tabbed ? "trial" : undefined}
+      className={
+        tabbed
+          ? "absolute z-30 right-[max(0.5rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] flex w-80 max-h-[min(32rem,calc(100%-env(safe-area-inset-bottom)-0.75rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg landscape-short:top-2"
+          : "absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg backdrop-blur landscape-short:top-2"
+      }
       style={{ borderColor: TRIAL_LINE }}
     >
+      {tabbed ? (
+        <div
+          className="flex shrink-0 items-end gap-0.5 border-b bg-white pl-1.5 pr-0.5 pt-1.5"
+          style={{ borderColor: TRIAL_LINE }}
+        >
+          <TrialFolderTabs active={tabs} onChange={onTab} />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-black/5 hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
       <div
         className="flex shrink-0 items-start justify-between gap-2 border-b bg-white px-3 pb-2 pt-2.5"
         style={{ borderColor: TRIAL_LINE }}
@@ -2200,10 +2269,16 @@ function TrialPanel({
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden bg-white px-3 py-2.5 text-sm">
+      )}
+      <div
+        id={tabbed ? "fs-cp-panel" : undefined}
+        role={tabbed ? "tabpanel" : undefined}
+        aria-labelledby={tabbed ? "fs-cp-tab-" + tabs : undefined}
+        className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden bg-white px-3 py-2.5 text-sm"
+      >
         {children}
       </div>
-      {footer ? (
+      {footer && !tabbed ? (
         <div
           className="shrink-0 border-t bg-white px-3 py-2"
           style={{ borderColor: TRIAL_LINE }}
@@ -2226,7 +2301,7 @@ function TrialAccordion({
   items: { id: string; title: string; body: React.ReactNode }[];
 }) {
   return (
-    <div className="flex min-h-0 flex-col gap-1.5">
+    <div className="flex min-h-0 flex-1 flex-col gap-1.5">
       {items.map((item) => {
         const open = openId === item.id;
         return (
@@ -2234,7 +2309,7 @@ function TrialAccordion({
             key={item.id}
             className={
               open
-                ? "flex max-h-[min(28rem,calc(100dvh-14rem))] min-h-0 flex-col overflow-hidden rounded-lg border shadow-sm"
+                ? "flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border shadow-sm"
                 : "shrink-0 rounded-lg border shadow-sm"
             }
             style={{ borderColor: TRIAL_LINE, backgroundColor: open ? "#fff" : TRIAL_COOL_GRAY }}
