@@ -881,9 +881,12 @@ body.report-builder-open .canvas {
 .rb-ws__controls .floor-survey-host,
 .rb-ws__controls .rtw-root--controls { display: block; height: auto; }
 
-/* GPT-036: Sheet Layout | Topo as folder tabs on the rail's top edge.
-   Rounded tops, flat bottoms, no capsule. The active tab is the white
-   panel; the baseline continues under the inactive tab. */
+/* Hybrid folder tabs (Tim, Oct 26, 2026): fill shows selection; muted
+   type lets unused tabs recede. Primary selected = full Toolbox navy;
+   secondary selected = softer navy so Topo + Contours don't compete.
+   Primary idle (Sheet Layout or Topo): light cool gray. Secondary idle
+   (Contours/Readings/Legend): white + muted — never gray. Active joins
+   white panel. */
 .rb-ws__top:has(.rb-ws__task-tabs) {
   gap: 0;
   margin-bottom: -10px;
@@ -918,15 +921,17 @@ body.report-builder-open .canvas {
   padding: 6px 12px;
   font: inherit;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 500;
   line-height: 1.2;
   white-space: nowrap;
-  color: var(--navy, #07283d);
+  color: #5a7382;
+  /* Primary row only: idle Sheet Layout or idle Topo is cool gray. */
   background: #e5ebee;
   cursor: pointer;
 }
 .rb-ws__task-tab:hover:not(.is-active) {
   background: #d9e4e9;
+  color: var(--navy, #07283d);
 }
 .rb-ws__task-tab:focus {
   outline: none;
@@ -937,10 +942,99 @@ body.report-builder-open .canvas {
 }
 .rb-ws__task-tab.is-active {
   z-index: 1;
-  background: #fff;
-  color: var(--navy, #07283d);
+  background: var(--navy, #07283d);
+  color: #fff;
+  font-weight: 700;
+  border-color: var(--navy, #07283d);
   border-bottom-color: #fff;
   box-shadow: none;
+}
+.rb-ws__task-tab.is-active:focus-visible {
+  outline-color: #fff;
+}
+
+/* Second row: same hybrid language, softer selected fill, compact size. */
+.rb-ws__sub-nav {
+  position: sticky;
+  /* Below sticky title (~28px) + primary task tabs (~36px). */
+  top: 64px;
+  z-index: 2;
+  margin: 0 0 -1px;
+  padding: 0;
+  background: #fff;
+}
+.rb-ws__sub-tabs {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: nowrap;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line, #dce1e4);
+  border-radius: 0;
+  background: transparent;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+.rb-ws__sub-tab {
+  appearance: none;
+  position: relative;
+  flex: 0 0 auto;
+  margin: 0 0 -1px;
+  border: 1px solid var(--line, #dce1e4);
+  border-bottom-color: var(--line, #dce1e4);
+  border-radius: 5px 5px 0 0;
+  box-shadow: none;
+  min-height: 28px;
+  padding: 4px 9px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: #5a7382;
+  background: #fff;
+  cursor: pointer;
+}
+.rb-ws__sub-tab:hover:not(.is-active) {
+  background: #f3f6f8;
+  color: var(--navy, #07283d);
+}
+.rb-ws__sub-tab:focus {
+  outline: none;
+}
+.rb-ws__sub-tab:focus-visible {
+  outline: 2px solid var(--navy, #07283d);
+  outline-offset: -3px;
+}
+.rb-ws__sub-tab.is-active {
+  z-index: 1;
+  /* Softer than primary navy so Contours doesn't compete with Topo. */
+  background: #3d5f73;
+  color: #fff;
+  font-weight: 700;
+  border-color: #3d5f73;
+  border-bottom-color: #fff;
+  box-shadow: none;
+}
+.rb-ws__sub-tab.is-active:focus-visible {
+  outline-color: #fff;
+}
+.rb-ws__sub-identity {
+  padding: 6px 0 0;
+  background: #fff;
+}
+.rb-ws__sub-identity:empty {
+  display: none;
+  padding: 0;
+}
+.rb-ws__sub-panel {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
 }
 .rb-ws__section-label {
   margin: 4px 0 0;

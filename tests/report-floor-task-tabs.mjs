@@ -119,7 +119,11 @@ const topo = await page.evaluate(() => ({
   active: document.querySelector('[data-rb-floor-task].is-active')?.getAttribute('data-rb-floor-task'),
   hasAdd: !!document.querySelector('[data-rb-floor-view="add"]'),
   hasTopoHost: !!document.querySelector('.rb-ws__controls'),
-  accordions: [...document.querySelectorAll('[data-rb-rail-tab]')].map((b) => b.textContent.trim()),
+  subTabs: [...document.querySelectorAll('[data-rb-rail-tab]')].map((b) => b.textContent.trim()),
+  subTabClasses: [...document.querySelectorAll('[data-rb-rail-tab]')].map((b) => b.className),
+  hasSubNav: !!document.querySelector('.rb-ws__sub-tabs'),
+  hasAccordionChevron: !!document.querySelector('.rb-ws__controls [data-rb-rail-tab] svg'),
+  activeSub: document.querySelector('[data-rb-rail-tab][aria-selected="true"]')?.getAttribute('data-rb-rail-tab'),
   railW: Math.round(document.querySelector('#rb-rail')?.getBoundingClientRect().width || 0),
   overflowX: document.querySelector('#rb-rail')
     ? document.querySelector('#rb-rail').scrollWidth > document.querySelector('#rb-rail').clientWidth + 1
@@ -130,9 +134,11 @@ const afterGeom = await page.evaluate(() => {
   const r = frame?.getBoundingClientRect();
   return r ? { x: +r.left.toFixed(1), y: +r.top.toFixed(1), w: +r.width.toFixed(1), h: +r.height.toFixed(1) } : null;
 });
-check('Topo tab shows Contours/Readings/Legend accordions, hides layout controls',
-  topo.active === 'topo' && !topo.hasAdd && topo.hasTopoHost
-    && topo.accordions.join('|') === 'Contours|Readings|Legend & H/L' && !topo.overflowX,
+check('Topo tab shows Contours/Readings/Legend Excel sub-tabs, hides layout controls',
+  topo.active === 'topo' && !topo.hasAdd && topo.hasTopoHost && topo.hasSubNav
+    && topo.subTabs.join('|') === 'Contours|Readings|Legend & H/L'
+    && topo.subTabClasses.every((c) => /\brb-ws__sub-tab\b/.test(c))
+    && !topo.hasAccordionChevron && !topo.overflowX,
   JSON.stringify(topo));
 check('switching task tabs does not move sheet geometry',
   beforeGeom && afterGeom
@@ -209,9 +215,85 @@ const legendState = await page.evaluate(() => {
     showBtn: !!document.querySelector('[data-rb-floor-view-chrome="legend-on"]'),
   };
 });
-check('Legend & H/L accordion shows selected-view chrome for multi-view',
+check('Legend & H/L sub-tab shows selected-view chrome for multi-view',
   legendState.showBtn && (legendState.switch === 'unchecked' || legendState.switch === 'false'),
   JSON.stringify(legendState));
+
+// Secondary Excel folder-tab geometry: rounded top, flat bottom, active joins panel.
+const folderGeom = await page.evaluate(() => {
+  const primary = document.querySelector('[data-rb-floor-task="topo"]');
+  const sub = document.querySelector('[data-rb-rail-tab].is-active') ||
+    document.querySelector('[data-rb-rail-tab][aria-selected="true"]');
+  const inactiveSub = document.querySelector('[data-rb-rail-tab]:not(.is-active)');
+  const idleLayout = document.querySelector('[data-rb-floor-task="layout"]:not(.is-active)');
+  const cs = (el) => el ? getComputedStyle(el) : null;
+  const p = cs(primary);
+  const s = cs(sub);
+  const i = cs(inactiveSub);
+  const layoutIdle = cs(idleLayout);
+  const navy = 'rgb(7, 40, 61)';
+  const softNavy = 'rgb(61, 95, 115)';
+  const muted = 'rgb(90, 115, 130)';
+  const primaryGray = 'rgb(229, 235, 238)';
+  return {
+    primaryRadius: p && [p.borderTopLeftRadius, p.borderTopRightRadius, p.borderBottomLeftRadius, p.borderBottomRightRadius],
+    subRadius: s && [s.borderTopLeftRadius, s.borderTopRightRadius, s.borderBottomLeftRadius, s.borderBottomRightRadius],
+    primaryBg: p && p.backgroundColor,
+    primaryColor: p && p.color,
+    primaryWeight: p && p.fontWeight,
+    subBg: s && s.backgroundColor,
+    subColor: s && s.color,
+    subWeight: s && s.fontWeight,
+    inactiveSubBg: i && i.backgroundColor,
+    inactiveSubColor: i && i.color,
+    inactiveSubWeight: i && i.fontWeight,
+    layoutIdleBg: layoutIdle && layoutIdle.backgroundColor,
+    subBottomBorder: s && s.borderBottomColor,
+    subMinH: s && parseFloat(s.minHeight),
+    primaryMinH: p && parseFloat(p.minHeight),
+    navy,
+    softNavy,
+    muted,
+    primaryGray,
+  };
+});
+check('secondary tabs use same Excel folder construction, compact vs primary',
+  folderGeom.subRadius &&
+    folderGeom.subRadius[0] !== '0px' && folderGeom.subRadius[1] !== '0px' &&
+    folderGeom.subRadius[2] === '0px' && folderGeom.subRadius[3] === '0px' &&
+    folderGeom.primaryRadius && folderGeom.primaryRadius[2] === '0px' &&
+    folderGeom.subMinH > 0 && folderGeom.primaryMinH > 0 &&
+    folderGeom.subMinH < folderGeom.primaryMinH,
+  JSON.stringify(folderGeom));
+check('hybrid: idle primary is gray; secondary idle stays white',
+  folderGeom.primaryBg === folderGeom.navy && folderGeom.primaryColor === 'rgb(255, 255, 255)' &&
+    Number(folderGeom.primaryWeight) >= 600 &&
+    folderGeom.subBg === folderGeom.softNavy && folderGeom.subColor === 'rgb(255, 255, 255)' &&
+    folderGeom.subBg !== folderGeom.primaryBg &&
+    folderGeom.layoutIdleBg === folderGeom.primaryGray &&
+    folderGeom.inactiveSubBg === 'rgb(255, 255, 255)' && folderGeom.inactiveSubColor === folderGeom.muted &&
+    Number(folderGeom.inactiveSubWeight) <= 500 &&
+    folderGeom.subBottomBorder === 'rgb(255, 255, 255)',
+  JSON.stringify(folderGeom));
+
+// When Sheet Layout is selected, idle Topo must be gray (primary row only).
+await openTask('layout');
+const layoutSel = await page.evaluate(() => {
+  const layout = document.querySelector('[data-rb-floor-task="layout"].is-active');
+  const topo = document.querySelector('[data-rb-floor-task="topo"]:not(.is-active)');
+  const cs = (el) => el ? getComputedStyle(el) : null;
+  return {
+    layoutBg: cs(layout)?.backgroundColor,
+    topoBg: cs(topo)?.backgroundColor,
+    hasSub: !!document.querySelector('.rb-ws__sub-tab'),
+  };
+});
+check('Sheet Layout selected → Topo idle is gray; no secondary row',
+  layoutSel.layoutBg === 'rgb(7, 40, 61)' &&
+    layoutSel.topoBg === 'rgb(229, 235, 238)' &&
+    !layoutSel.hasSub,
+  JSON.stringify(layoutSel));
+await openTask('topo');
 
 await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
 await new Promise((r) => setTimeout(r, 600));
