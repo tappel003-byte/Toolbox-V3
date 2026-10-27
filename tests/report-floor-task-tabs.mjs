@@ -232,6 +232,7 @@ const folderGeom = await page.evaluate(() => {
   const navy = 'rgb(7, 40, 61)';
   const softNavy = 'rgb(61, 95, 115)';
   const muted = 'rgb(90, 115, 130)';
+  const inactiveFill = 'rgb(229, 235, 238)';
   return {
     primaryRadius: p && [p.borderTopLeftRadius, p.borderTopRightRadius, p.borderBottomLeftRadius, p.borderBottomRightRadius],
     subRadius: s && [s.borderTopLeftRadius, s.borderTopRightRadius, s.borderBottomLeftRadius, s.borderBottomRightRadius],
@@ -250,6 +251,7 @@ const folderGeom = await page.evaluate(() => {
     navy,
     softNavy,
     muted,
+    inactiveFill,
   };
 });
 check('secondary tabs use same Excel folder construction, compact vs primary',
@@ -260,12 +262,12 @@ check('secondary tabs use same Excel folder construction, compact vs primary',
     folderGeom.subMinH > 0 && folderGeom.primaryMinH > 0 &&
     folderGeom.subMinH < folderGeom.primaryMinH,
   JSON.stringify(folderGeom));
-check('hybrid: primary navy bold, secondary softer navy, unselected muted',
+check('hybrid: primary navy bold, secondary softer navy, unselected gray+muted',
   folderGeom.primaryBg === folderGeom.navy && folderGeom.primaryColor === 'rgb(255, 255, 255)' &&
     Number(folderGeom.primaryWeight) >= 600 &&
     folderGeom.subBg === folderGeom.softNavy && folderGeom.subColor === 'rgb(255, 255, 255)' &&
     folderGeom.subBg !== folderGeom.primaryBg &&
-    folderGeom.inactiveBg === 'rgb(255, 255, 255)' && folderGeom.inactiveColor === folderGeom.muted &&
+    folderGeom.inactiveBg === folderGeom.inactiveFill && folderGeom.inactiveColor === folderGeom.muted &&
     Number(folderGeom.inactiveWeight) <= 500 &&
     folderGeom.subBottomBorder === 'rgb(255, 255, 255)',
   JSON.stringify(folderGeom));

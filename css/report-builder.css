@@ -884,7 +884,7 @@ body.report-builder-open .canvas {
 /* Hybrid folder tabs (Tim, Oct 26, 2026): fill shows selection; muted
    type lets unused tabs recede. Primary selected = full Toolbox navy;
    secondary selected = softer navy so Topo + Contours don't compete.
-   Unselected = white + muted gray-blue regular. Active joins white panel. */
+   Unselected = light cool gray + muted gray-blue regular. Active joins white panel. */
 .rb-ws__top:has(.rb-ws__task-tabs) {
   gap: 0;
   margin-bottom: -10px;
@@ -923,11 +923,12 @@ body.report-builder-open .canvas {
   line-height: 1.2;
   white-space: nowrap;
   color: #5a7382;
-  background: #fff;
+  /* Light cool gray so unselected (e.g. Sheet Layout) clearly recedes. */
+  background: #e5ebee;
   cursor: pointer;
 }
 .rb-ws__task-tab:hover:not(.is-active) {
-  background: #f3f6f8;
+  background: #d9e4e9;
   color: var(--navy, #07283d);
 }
 .rb-ws__task-tab:focus {
@@ -992,11 +993,11 @@ body.report-builder-open .canvas {
   line-height: 1.2;
   white-space: nowrap;
   color: #5a7382;
-  background: #fff;
+  background: #e5ebee;
   cursor: pointer;
 }
 .rb-ws__sub-tab:hover:not(.is-active) {
-  background: #f3f6f8;
+  background: #d9e4e9;
   color: var(--navy, #07283d);
 }
 .rb-ws__sub-tab:focus {
