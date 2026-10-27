@@ -1539,7 +1539,7 @@ export function TopoTab({
                 },
                 {
                   id: "labels",
-                  title: "Labels",
+                  title: "Font",
                   body: (
                     <div className="space-y-2.5">
                       <StepperControl
@@ -2222,25 +2222,29 @@ function TrialPanel({
       data-fs-cp={tabbed ? "trial" : undefined}
       className={
         tabbed
-          ? "absolute z-30 right-[max(0.5rem,env(safe-area-inset-right))] top-2 flex w-[296px] max-h-[min(32rem,calc(100%-env(safe-area-inset-bottom)-0.75rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg landscape-short:top-2"
+          ? "absolute z-30 right-[max(0.5rem,env(safe-area-inset-right))] top-2 flex w-[254px] max-h-[min(32rem,calc(100%-env(safe-area-inset-bottom)-0.75rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg landscape-short:top-2"
           : "absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg backdrop-blur landscape-short:top-2"
       }
       style={{ borderColor: TRIAL_LINE }}
     >
       {tabbed ? (
-        <div
-          className="flex shrink-0 items-end gap-0.5 border-b bg-white pl-1.5 pr-0.5 pt-1.5"
-          style={{ borderColor: TRIAL_LINE }}
-        >
-          <TrialFolderTabs active={tabs} onChange={onTab} />
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-black/5 hover:text-foreground"
+        <div className="flex shrink-0 flex-col bg-white">
+          <div className="flex shrink-0 justify-end pr-1 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-black/5 hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div
+            className="flex shrink-0 items-end border-b pl-1.5 pr-1.5"
+            style={{ borderColor: TRIAL_LINE }}
           >
-            <X className="h-4 w-4" />
-          </button>
+            <TrialFolderTabs active={tabs} onChange={onTab} />
+          </div>
         </div>
       ) : (
       <div
