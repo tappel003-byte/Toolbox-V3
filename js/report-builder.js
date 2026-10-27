@@ -8955,6 +8955,10 @@
     penLogUi.layout = null;
     penLogUi.noteMap = {};
     penLogUi.selectedPinId = '';
+    // Report pin scale is per mount / per Customer File. Leaving it set would
+    // paint the previous job's size onto the next open before load finishes,
+    // and a missing penLog.pinScale would never look missing.
+    penLogUi.pinScale = 1;
     if (formatToolbar) {
       formatToolbar.destroy();
       formatToolbar = null;

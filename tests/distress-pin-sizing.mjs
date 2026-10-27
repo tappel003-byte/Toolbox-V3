@@ -518,8 +518,10 @@ check(
   JSON.stringify(reopenedReport),
 );
 
-// Missing field on a fresh-ish doc: strip pinScale, reopen, must become 1 without
-// reading capture 1.5.
+// Missing field: leave the report so unmount cannot rewrite, strip pinScale,
+// reopen — must seed to 1 without reading capture.
+await page.goto(BASE + `#/file/${seeded.a.id}`, { waitUntil: 'networkidle0' });
+await new Promise((r) => setTimeout(r, 800));
 await page.evaluate(async (id) => {
   const rec = await window.ToolboxDB.getCustomerFile(id);
   if (!rec.reportBuilder) rec.reportBuilder = { version: 1, pages: [] };
@@ -528,11 +530,18 @@ await page.evaluate(async (id) => {
     schemaVersion: 1,
   };
   delete rec.reportBuilder.penLog.pinScale;
-  // Leave a poison capture value.
   localStorage.setItem('ds-capture-sizes:' + id, JSON.stringify({ pinScale: 2.2 }));
   await window.ToolboxDB.saveCustomerFile(rec);
 }, seeded.a.id);
 await openPenLog(seeded.a.id);
+await page.waitForFunction(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  const scale = rec && rec.reportBuilder && rec.reportBuilder.penLog &&
+    Number(rec.reportBuilder.penLog.pinScale);
+  const root = document.querySelector('.rb-sheet .rb-penlog');
+  const attr = root && root.getAttribute('data-rb-pin-scale');
+  return isFinite(scale) && scale > 0 && attr === '1';
+}, { timeout: 15000 }, seeded.a.id).catch(() => null);
 const seededMissing = await reportPinState();
 check(
   '6b) Missing penLog.pinScale seeds itself to 1 (not capture 2.2)',
