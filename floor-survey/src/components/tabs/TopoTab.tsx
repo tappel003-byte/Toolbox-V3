@@ -2222,7 +2222,7 @@ function TrialPanel({
       data-fs-cp={tabbed ? "trial" : undefined}
       className={
         tabbed
-          ? "absolute z-30 right-[max(0.5rem,env(safe-area-inset-right))] top-2 flex w-80 max-h-[min(32rem,calc(100%-env(safe-area-inset-bottom)-0.75rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg landscape-short:top-2"
+          ? "absolute z-30 right-[max(0.5rem,env(safe-area-inset-right))] top-2 flex w-[296px] max-h-[min(32rem,calc(100%-env(safe-area-inset-bottom)-0.75rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg landscape-short:top-2"
           : "absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg backdrop-blur landscape-short:top-2"
       }
       style={{ borderColor: TRIAL_LINE }}
