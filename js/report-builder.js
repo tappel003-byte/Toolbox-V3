@@ -4241,6 +4241,8 @@
     // GPT-036: peer task tabs for Floor Survey sheets. Session-only; switching
     // tools must not clear selection, camera, or saved layout.
     var floorTaskTab = 'layout';
+    // Second tier under Topo. Session-only, same rule: tools only.
+    var floorTopoGroup = 'contours';
 
     function buildFloorTaskTabs() {
       var row = document.createElement('div');
@@ -4259,6 +4261,53 @@
         btn.setAttribute('aria-selected', floorTaskTab === pair[0] ? 'true' : 'false');
         btn.textContent = pair[1];
         row.appendChild(btn);
+      });
+      return row;
+    }
+
+    var FLOOR_TOPO_GROUPS = [
+      ['contours', 'Contours'],
+      ['readings', 'Readings'],
+      ['legendhl', 'Legend & H/L'],
+    ];
+
+    function buildFloorTopoSubtabs() {
+      var row = document.createElement('div');
+      row.className = 'rb-ws__subtabs';
+      row.setAttribute('role', 'tablist');
+      row.setAttribute('aria-label', 'Topo controls');
+      FLOOR_TOPO_GROUPS.forEach(function (pair) {
+        var on = floorTopoGroup === pair[0];
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'rb-ws__subtab' + (on ? ' is-active' : '');
+        btn.setAttribute('role', 'tab');
+        btn.setAttribute('data-rb-rail-tab', pair[0]);
+        btn.setAttribute('data-rb-topo-group', pair[0]);
+        btn.id = 'rb-topo-tab-' + pair[0];
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+        btn.setAttribute('aria-controls', 'rb-topo-group-panel');
+        btn.tabIndex = on ? 0 : -1;
+        btn.textContent = pair[1];
+        row.appendChild(btn);
+      });
+      row.addEventListener('keydown', function (event) {
+        var keys = FLOOR_TOPO_GROUPS.map(function (pair) { return pair[0]; });
+        var idx = keys.indexOf(floorTopoGroup);
+        if (idx < 0) idx = 0;
+        var next = idx;
+        if (event.key === 'ArrowRight') next = (idx + 1) % keys.length;
+        else if (event.key === 'ArrowLeft') next = (idx + keys.length - 1) % keys.length;
+        else if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = keys.length - 1;
+        else return;
+        event.preventDefault();
+        floorTopoGroup = keys[next];
+        var taskPage = activePage();
+        if (taskPage) syncRail(taskPage);
+        var focusBtn = railTopEl && railTopEl.querySelector(
+          '[data-rb-topo-group="' + floorTopoGroup + '"]');
+        if (focusBtn && focusBtn.focus) focusBtn.focus();
       });
       return row;
     }
@@ -4564,6 +4613,10 @@
       var key = [page.id, ctrlCanvas, ctrlArea || '', ctrlScope,
         floorSlot(page), activeSpec && activeSpec.id].join('|');
 
+      if (floorTaskTab === 'topo' && ctrlCanvas) {
+        railTopEl.appendChild(buildFloorTopoSubtabs());
+      }
+
       if (floorTaskTab === 'layout') {
         releaseRailControls();
         if (railBodyEl) {
@@ -4587,7 +4640,10 @@
           railBodyEl.appendChild(empty);
         } else if (keepHost) {
           if (railControls.api && typeof railControls.api.update === 'function') {
-            railControls.api.update({ settings: floorViewFor(page) });
+            railControls.api.update({
+              settings: floorViewFor(page),
+              railGroup: floorTopoGroup,
+            });
           }
           railBodyEl.appendChild(keepHost);
         } else {
@@ -4602,6 +4658,7 @@
             canvasId: ctrlCanvas,
             areaId: ctrlArea,
             settings: floorViewFor(page),
+            railGroup: floorTopoGroup,
             onBack: function () {},
             onSettingsChange: function (next) {
               var live = activePage();
@@ -4626,6 +4683,17 @@
     // delegation rather than by listeners attached once at mount.
     if (railEl) {
       railEl.addEventListener('click', function (event) {
+        var groupBtn = event.target.closest('[data-rb-topo-group]');
+        if (groupBtn) {
+          event.preventDefault();
+          var nextGroup = groupBtn.getAttribute('data-rb-topo-group');
+          if (nextGroup !== 'contours' && nextGroup !== 'readings' && nextGroup !== 'legendhl') return;
+          if (floorTopoGroup === nextGroup) return;
+          floorTopoGroup = nextGroup;
+          var groupPage = activePage();
+          if (groupPage) syncRail(groupPage);
+          return;
+        }
         var taskBtn = event.target.closest('[data-rb-floor-task]');
         if (taskBtn) {
           event.preventDefault();
@@ -8709,8 +8777,10 @@
       // links, and it shows nothing on a slide that owns no source.
       '      <p class="eyebrow">Toolbox</p>' +
       '      <div id="rb-rail" class="rb-ws" data-rb-rail hidden>' +
-      '        <h2 class="rb-ws__title" data-rb-rail-title>Floor Survey</h2>' +
-      '        <div class="rb-ws__top" data-rb-rail-top></div>' +
+      '        <div class="rb-ws__sticky">' +
+      '          <h2 class="rb-ws__title" data-rb-rail-title>Floor Survey</h2>' +
+      '          <div class="rb-ws__top" data-rb-rail-top></div>' +
+      '        </div>' +
       '        <div class="rb-ws__body" data-rb-rail-body></div>' +
       '        <div class="rb-ws__foot" data-rb-rail-foot></div>' +
       '      </div>' +

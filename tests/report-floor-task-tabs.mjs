@@ -130,7 +130,7 @@ const afterGeom = await page.evaluate(() => {
   const r = frame?.getBoundingClientRect();
   return r ? { x: +r.left.toFixed(1), y: +r.top.toFixed(1), w: +r.width.toFixed(1), h: +r.height.toFixed(1) } : null;
 });
-check('Topo tab shows Contours/Readings/Legend accordions, hides layout controls',
+check('Topo tab shows Contours/Readings/Legend secondary tabs, hides layout controls',
   topo.active === 'topo' && !topo.hasAdd && topo.hasTopoHost
     && topo.accordions.join('|') === 'Contours|Readings|Legend & H/L' && !topo.overflowX,
   JSON.stringify(topo));
@@ -140,6 +140,76 @@ check('switching task tabs does not move sheet geometry',
     && beforeGeom.w === afterGeom.w && beforeGeom.h === afterGeom.h
     && peer.railW === topo.railW,
   JSON.stringify({ beforeGeom, afterGeom, railW: peer.railW }));
+
+async function groupShows() {
+  return page.evaluate(() => {
+    const panel = document.querySelector('[data-rb-topo-panel]');
+    const text = panel ? panel.innerText : '';
+    const sub = [...document.querySelectorAll('[data-rb-topo-group]')];
+    const primary = document.querySelector('.rb-ws__task-tabs')?.getBoundingClientRect();
+    const row = document.querySelector('.rb-ws__subtabs')?.getBoundingClientRect();
+    return {
+      panel: panel?.getAttribute('data-rb-topo-panel') || '',
+      mode: text.includes('Mode'),
+      points: text.includes('Points'),
+      legend: text.includes('Legend size'),
+      labels: sub.map((b) => b.textContent.trim()).join('|'),
+      active: sub.filter((b) => b.getAttribute('aria-selected') === 'true')
+        .map((b) => b.getAttribute('data-rb-topo-group')).join('|'),
+      clipped: sub.some((b) => b.scrollWidth > b.clientWidth + 1),
+      gap: primary && row ? Math.round(row.top - primary.bottom) : null,
+    };
+  });
+}
+const contoursOn = await groupShows();
+check('Topo opens on Contours and keeps all three secondary tabs',
+  contoursOn.panel === 'contours' && contoursOn.mode && !contoursOn.legend
+    && contoursOn.labels === 'Contours|Readings|Legend & H/L'
+    && contoursOn.active === 'contours' && !contoursOn.clipped
+    && contoursOn.gap != null && contoursOn.gap >= -1 && contoursOn.gap <= 8,
+  JSON.stringify(contoursOn));
+await page.evaluate(() => document.querySelector('[data-rb-rail-tab="readings"]')?.click());
+await new Promise((r) => setTimeout(r, 400));
+const readingsOn = await groupShows();
+await page.evaluate(() => document.querySelector('[data-rb-rail-tab="legendhl"]')?.click());
+await new Promise((r) => setTimeout(r, 400));
+const legendOn = await groupShows();
+const geomAfterGroups = await page.evaluate(() => {
+  const frame = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame]');
+  const r = frame?.getBoundingClientRect();
+  return r ? { x: +r.left.toFixed(1), y: +r.top.toFixed(1), w: +r.width.toFixed(1), h: +r.height.toFixed(1) } : null;
+});
+check('secondary tabs show one group and do not move the sheet',
+  readingsOn.panel === 'readings' && readingsOn.points && !readingsOn.mode && !readingsOn.legend
+    && legendOn.panel === 'legendhl' && legendOn.legend && !legendOn.mode && !legendOn.points
+    && geomAfterGroups && beforeGeom
+    && geomAfterGroups.x === beforeGeom.x && geomAfterGroups.y === beforeGeom.y
+    && geomAfterGroups.w === beforeGeom.w && geomAfterGroups.h === beforeGeom.h,
+  JSON.stringify({ readingsOn, legendOn, geomAfterGroups }));
+await page.evaluate(() => document.querySelector('[data-rb-rail-tab="contours"]')?.click());
+await new Promise((r) => setTimeout(r, 300));
+await page.evaluate(() => {
+  const rail = document.querySelector('#rb-rail');
+  if (rail) rail.scrollTop = rail.scrollHeight;
+});
+await new Promise((r) => setTimeout(r, 200));
+const stuck = await page.evaluate(() => {
+  const rail = document.querySelector('#rb-rail').getBoundingClientRect();
+  const primary = document.querySelector('.rb-ws__task-tabs').getBoundingClientRect();
+  const sub = document.querySelector('.rb-ws__subtabs').getBoundingClientRect();
+  const title = document.querySelector('#rb-rail .rb-ws__title')?.getBoundingClientRect();
+  return {
+    primaryIn: primary.top >= rail.top - 1 && primary.bottom <= rail.bottom,
+    subIn: sub.top >= rail.top - 1 && sub.bottom <= rail.bottom,
+    overlapTitle: title ? primary.top < title.bottom - 1 : false,
+    overlapRows: sub.top < primary.bottom - 2,
+    scroll: document.querySelector('#rb-rail').scrollTop,
+  };
+});
+check('scrolled Contours keeps both tab rows reachable without overlap',
+  stuck.primaryIn && stuck.subIn && !stuck.overlapTitle && !stuck.overlapRows && stuck.scroll > 0,
+  JSON.stringify(stuck));
+await page.evaluate(() => { const rail = document.querySelector('#rb-rail'); if (rail) rail.scrollTop = 0; });
 
 await page.screenshot({ path: `${OUT}/rb-task-tabs-topo-1440.png`, fullPage: false });
 
@@ -209,7 +279,7 @@ const legendState = await page.evaluate(() => {
     showBtn: !!document.querySelector('[data-rb-floor-view-chrome="legend-on"]'),
   };
 });
-check('Legend & H/L accordion shows selected-view chrome for multi-view',
+check('Legend & H/L tab shows selected-view chrome for multi-view',
   legendState.showBtn && (legendState.switch === 'unchecked' || legendState.switch === 'false'),
   JSON.stringify(legendState));
 

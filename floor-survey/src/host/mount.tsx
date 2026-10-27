@@ -36,6 +36,8 @@ export type MountOptions = {
   areaId?: string | null;
   camera?: PlanCamera | null;
   settings?: Partial<RenderSettings> | null;
+  /** Report rail only: which Topo control group is showing. */
+  railGroup?: "contours" | "readings" | "legendhl";
   locked?: boolean;
   onCameraChange?: (camera: PlanCamera) => void;
   onSettingsChange?: (settings: RenderSettings) => void;
@@ -99,6 +101,7 @@ export function mount(el: HTMLElement, options: MountOptions) {
           areaId={current.areaId ?? null}
           camera={current.camera ?? null}
           settings={current.settings ?? null}
+          railGroup={current.railGroup}
           locked={!!current.locked}
           controlsOnly={current.workspace === "report-topo-controls"}
           onCameraChange={current.onCameraChange}
