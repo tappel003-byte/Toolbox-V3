@@ -451,9 +451,9 @@ export function TopoTab({
   resizeCorners = false,
   allowContourLayer = false,
 }: Props) {
-  // Field Control panel: Contours / Readings / Misc, each with folder
-  // subtabs. Report Builder keeps its own rail (controlsOnly). Diagnostic
-  // corner is unchanged.
+  // Field Control panel: Contours / Readings, each with folder subtabs.
+  // Report Builder keeps its own rail (controlsOnly). Diagnostic corner is
+  // unchanged.
   const [openCorner, setOpenCorner] = useState<TrialDoorKey | null>(null);
   /** Last parent tab, so Close then the pill returns to the same group. */
   const [lastTrialDoor, setLastTrialDoor] = useState<TrialDoorKey | null>(null);
@@ -463,7 +463,6 @@ export function TopoTab({
   >({
     contours: "legend",
     readings: "show",
-    misc: "adjustments",
   });
   const openTrialDoor = useCallback((key: TrialDoorKey) => {
     setLastTrialDoor(key);
@@ -1500,23 +1499,30 @@ export function TopoTab({
                   id: "show",
                   title: "Show",
                   body: (
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <div className="grid grid-cols-2 gap-2">
+                        <SwitchRow
+                          label="Points"
+                          checked={resolved.showPoints}
+                          onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
+                        />
+                        <SwitchRow
+                          label="Labels"
+                          checked={resolved.showLabels}
+                          onChange={(v) => update({ showLabels: v })}
+                        />
+                      </div>
                       <SwitchRow
-                        label="Points"
-                        checked={resolved.showPoints}
-                        onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
-                      />
-                      <SwitchRow
-                        label="Labels"
-                        checked={resolved.showLabels}
-                        onChange={(v) => update({ showLabels: v })}
+                        label="Declutter"
+                        checked={resolved.declutterLabels !== false}
+                        onChange={(v) => update({ declutterLabels: v })}
                       />
                     </div>
                   ),
                 },
                 {
-                  id: "labels",
-                  title: "Font",
+                  id: "format",
+                  title: "Format",
                   body: (
                     <div className="space-y-2.5">
                       <StepperControl
@@ -1582,31 +1588,6 @@ export function TopoTab({
                           ))}
                         </div>
                       </div>
-                    </div>
-                  ),
-                },
-              ]}
-            />
-          </TrialPanel>
-        )}
-
-        {(openCorner === "misc" && !controlsOnly) && (
-          <TrialPanel
-            title="Misc"
-            tabs="misc"
-            onTab={openTrialDoor}
-            onClose={() => setOpenCorner(null)}
-          >
-            <TrialSectionTabs
-              label="Misc"
-              openId={trialSectionByDoor.misc ?? "adjustments"}
-              onChange={(id) => setTrialSection("misc", id)}
-              items={[
-                {
-                  id: "adjustments",
-                  title: "Adjustments",
-                  body: (
-                    <div className="flex items-end gap-3">
                       <NumberControl
                         compact
                         label="Decimals"
@@ -1623,13 +1604,6 @@ export function TopoTab({
                           })
                         }
                       />
-                      <div className="min-w-0 flex-1">
-                        <SwitchRow
-                          label="Declutter"
-                          checked={resolved.declutterLabels !== false}
-                          onChange={(v) => update({ declutterLabels: v })}
-                        />
-                      </div>
                     </div>
                   ),
                 },
@@ -1674,26 +1648,6 @@ export function TopoTab({
                           setStatsChipSize(n);
                         }}
                       />
-                    </>
-                  ),
-                },
-                {
-                  id: "positions",
-                  title: "Positions",
-                  body: (
-                    <>
-                      <p className="text-[10px] text-muted-foreground">
-                        Clears moved reading labels and High/Low marker positions. Does not
-                        move the legend or stats pill.
-                      </p>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={resetAllLabelPositions}
-                        className="h-10 w-full text-xs"
-                      >
-                        Reset label & H/L positions
-                      </Button>
                     </>
                   ),
                 },
@@ -2046,7 +2000,6 @@ export function TopoTab({
 const TRIAL_DOORS = [
   { key: "contours", name: "Contours" },
   { key: "readings", name: "Readings" },
-  { key: "misc", name: "Misc" },
 ] as const;
 
 type TrialDoorKey = (typeof TRIAL_DOORS)[number]["key"];
@@ -2150,7 +2103,7 @@ function TrialPanel({
       data-fs-cp={tabbed ? "panel" : undefined}
       className={
         tabbed
-          ? "absolute z-30 right-[max(0.5rem,env(safe-area-inset-right))] top-2 flex w-[300px] max-w-[calc(100%-1rem)] max-h-[min(32rem,calc(100%-env(safe-area-inset-bottom)-0.75rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg landscape-short:top-2"
+          ? "absolute z-30 right-[max(0.5rem,env(safe-area-inset-right))] top-2 flex w-[280px] max-w-[calc(100%-1rem)] max-h-[min(32rem,calc(100%-env(safe-area-inset-bottom)-0.75rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg landscape-short:top-2"
           : "absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg backdrop-blur landscape-short:top-2"
       }
       style={{ borderColor: TRIAL_LINE }}
