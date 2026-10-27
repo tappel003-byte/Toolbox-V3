@@ -230,19 +230,26 @@ const folderGeom = await page.evaluate(() => {
   const s = cs(sub);
   const i = cs(inactive);
   const navy = 'rgb(7, 40, 61)';
+  const softNavy = 'rgb(61, 95, 115)';
+  const muted = 'rgb(90, 115, 130)';
   return {
     primaryRadius: p && [p.borderTopLeftRadius, p.borderTopRightRadius, p.borderBottomLeftRadius, p.borderBottomRightRadius],
     subRadius: s && [s.borderTopLeftRadius, s.borderTopRightRadius, s.borderBottomLeftRadius, s.borderBottomRightRadius],
     primaryBg: p && p.backgroundColor,
     primaryColor: p && p.color,
+    primaryWeight: p && p.fontWeight,
     subBg: s && s.backgroundColor,
     subColor: s && s.color,
+    subWeight: s && s.fontWeight,
     inactiveBg: i && i.backgroundColor,
     inactiveColor: i && i.color,
+    inactiveWeight: i && i.fontWeight,
     subBottomBorder: s && s.borderBottomColor,
     subMinH: s && parseFloat(s.minHeight),
     primaryMinH: p && parseFloat(p.minHeight),
     navy,
+    softNavy,
+    muted,
   };
 });
 check('secondary tabs use same Excel folder construction, compact vs primary',
@@ -253,10 +260,13 @@ check('secondary tabs use same Excel folder construction, compact vs primary',
     folderGeom.subMinH > 0 && folderGeom.primaryMinH > 0 &&
     folderGeom.subMinH < folderGeom.primaryMinH,
   JSON.stringify(folderGeom));
-check('selected tabs are navy/white; unselected are white/navy on both rows',
+check('hybrid: primary navy bold, secondary softer navy, unselected muted',
   folderGeom.primaryBg === folderGeom.navy && folderGeom.primaryColor === 'rgb(255, 255, 255)' &&
-    folderGeom.subBg === folderGeom.navy && folderGeom.subColor === 'rgb(255, 255, 255)' &&
-    folderGeom.inactiveBg === 'rgb(255, 255, 255)' && folderGeom.inactiveColor === folderGeom.navy &&
+    Number(folderGeom.primaryWeight) >= 600 &&
+    folderGeom.subBg === folderGeom.softNavy && folderGeom.subColor === 'rgb(255, 255, 255)' &&
+    folderGeom.subBg !== folderGeom.primaryBg &&
+    folderGeom.inactiveBg === 'rgb(255, 255, 255)' && folderGeom.inactiveColor === folderGeom.muted &&
+    Number(folderGeom.inactiveWeight) <= 500 &&
     folderGeom.subBottomBorder === 'rgb(255, 255, 255)',
   JSON.stringify(folderGeom));
 

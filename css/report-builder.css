@@ -881,9 +881,10 @@ body.report-builder-open .canvas {
 .rb-ws__controls .floor-survey-host,
 .rb-ws__controls .rtw-root--controls { display: block; height: auto; }
 
-/* GPT-036 / Tim color pass: Sheet Layout | Topo folder tabs.
-   Selected = Toolbox navy + white text; unselected = white + navy text
-   + thin border. Rounded tops, flat bottoms; active joins white panel. */
+/* Hybrid folder tabs (Tim, Oct 26, 2026): fill shows selection; muted
+   type lets unused tabs recede. Primary selected = full Toolbox navy;
+   secondary selected = softer navy so Topo + Contours don't compete.
+   Unselected = white + muted gray-blue regular. Active joins white panel. */
 .rb-ws__top:has(.rb-ws__task-tabs) {
   gap: 0;
   margin-bottom: -10px;
@@ -918,15 +919,16 @@ body.report-builder-open .canvas {
   padding: 6px 12px;
   font: inherit;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 500;
   line-height: 1.2;
   white-space: nowrap;
-  color: var(--navy, #07283d);
+  color: #5a7382;
   background: #fff;
   cursor: pointer;
 }
 .rb-ws__task-tab:hover:not(.is-active) {
   background: #f3f6f8;
+  color: var(--navy, #07283d);
 }
 .rb-ws__task-tab:focus {
   outline: none;
@@ -939,6 +941,7 @@ body.report-builder-open .canvas {
   z-index: 1;
   background: var(--navy, #07283d);
   color: #fff;
+  font-weight: 700;
   border-color: var(--navy, #07283d);
   border-bottom-color: #fff;
   box-shadow: none;
@@ -947,8 +950,7 @@ body.report-builder-open .canvas {
   outline-color: #fff;
 }
 
-/* GPT on #136: second Excel folder-tab row under Sheet Layout | Topo.
-   Same navy/white selection rule as the primary row — compact only. */
+/* Second row: same hybrid language, softer selected fill, compact size. */
 .rb-ws__sub-nav {
   position: sticky;
   /* Below sticky title (~28px) + primary task tabs (~36px). */
@@ -986,15 +988,16 @@ body.report-builder-open .canvas {
   padding: 4px 9px;
   font: inherit;
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 500;
   line-height: 1.2;
   white-space: nowrap;
-  color: var(--navy, #07283d);
+  color: #5a7382;
   background: #fff;
   cursor: pointer;
 }
 .rb-ws__sub-tab:hover:not(.is-active) {
   background: #f3f6f8;
+  color: var(--navy, #07283d);
 }
 .rb-ws__sub-tab:focus {
   outline: none;
@@ -1005,9 +1008,11 @@ body.report-builder-open .canvas {
 }
 .rb-ws__sub-tab.is-active {
   z-index: 1;
-  background: var(--navy, #07283d);
+  /* Softer than primary navy so Contours doesn't compete with Topo. */
+  background: #3d5f73;
   color: #fff;
-  border-color: var(--navy, #07283d);
+  font-weight: 700;
+  border-color: #3d5f73;
   border-bottom-color: #fff;
   box-shadow: none;
 }
