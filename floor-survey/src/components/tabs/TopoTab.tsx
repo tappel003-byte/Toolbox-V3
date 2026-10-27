@@ -12,6 +12,10 @@ import {
   STATS_CHIP_MIN,
   STATS_CHIP_SIZE_EVENT,
 } from "@/components/chrome/StatsChip";
+import {
+  legendStorageKey,
+  patchCaptureSizes,
+} from "@/lib/capture-sizes";
 import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/lib/screen-size";
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import { Switch } from "@/components/ui/switch";
@@ -191,17 +195,19 @@ interface Props {
   /**
    * The host owns these render settings and persists them itself.
    *
-   * The field app remembers the legend size on the device, and did it by
-   * writing localStorage into the settings on mount -- which meant a host that
-   * passed settings in had them overwritten by a device-local value every time
-   * the view opened, and then had its own value written back out over the
-   * device's. A report that stored a legend size could not keep it, and sizing
-   * a legend on one job changed it on every other job on that iPad.
-   *
-   * When the host owns the settings, this view neither reads nor writes that
-   * key. It renders what it is given and reports changes back.
+   * Capture remembers sizes per Customer File on this device. Report Builder
+   * owns report sizes in the Customer File report component. When the host
+   * owns the settings, this view neither reads nor writes capture localStorage.
    */
   settingsOwnedByHost?: boolean;
+  /** Capture scope for per-Customer-File-on-device size keys. */
+  customerFileId?: string;
+  /**
+   * Report Builder rail: stats pill height in CSS px from floorLayout.pillLock.
+   * When set with settingsOwnedByHost, the stepper never touches capture keys.
+   */
+  hostStatsPillPx?: number;
+  onHostStatsPillPxChange?: (px: number) => void;
   /**
    * Draw the H / L / delta pill on the canvas even when the level has a single
    * boundary.
@@ -441,6 +447,9 @@ export function TopoTab({
   chromeOnPage = false,
   presentation = false,
   settingsOwnedByHost = false,
+  customerFileId,
+  hostStatsPillPx,
+  onHostStatsPillPxChange,
   statsPillForSingleBoundary = false,
   chromeless = false,
   controlsOnly = false,
@@ -482,22 +491,59 @@ export function TopoTab({
   // "Send to Distress Survey" — idle while nothing has been asked for.
   const [layerState, setLayerState] = useState<"idle" | "working" | "done" | "failed">("idle");
   const [layerMessage, setLayerMessage] = useState("");
-  // Stats pill (High/Low/Δ chip) size: the last size set on this device, used
-  // by every job on it. Nothing watches the window any more -- the size does
-  // not depend on the screen, so a resize cannot change it.
+  // Stats pill size: capture = per Customer File on this device; report =
+  // hostStatsPillPx from floorLayout.pillLock. Any settingsOwnedByHost mount
+  // (rail or live drawing) must not read or listen to capture storage.
+  const hostOwnsPill = settingsOwnedByHost;
   const [statsChipLocked, setStatsChipLocked] = useState<number | null>(null);
   useEffect(() => {
-    setStatsChipLocked(getStatsChipSize());
+    if (hostOwnsPill) return;
+    setStatsChipLocked(getStatsChipSize(customerFileId));
     const onSize = (e: Event) => {
-      const detail = (e as CustomEvent<number | null>).detail;
-      setStatsChipLocked(typeof detail === "number" ? detail : null);
+      const detail = (
+        e as CustomEvent<number | { size: number; customerFileId?: string | null }>
+      ).detail;
+      if (typeof detail === "number") {
+        setStatsChipLocked(detail);
+        return;
+      }
+      if (!detail || typeof detail.size !== "number") return;
+      if (
+        customerFileId &&
+        detail.customerFileId &&
+        detail.customerFileId !== customerFileId
+      ) {
+        return;
+      }
+      setStatsChipLocked(detail.size);
     };
     window.addEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     return () => {
       window.removeEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     };
-  }, []);
-  const statsChipSize = statsChipLocked ?? DEFAULT_STATS_CHIP_SIZE;
+  }, [customerFileId, hostOwnsPill]);
+  const statsChipSize = hostOwnsPill
+    ? Math.max(
+        STATS_CHIP_MIN,
+        Math.min(
+          STATS_CHIP_MAX,
+          Math.round(hostStatsPillPx ?? DEFAULT_STATS_CHIP_SIZE),
+        ),
+      )
+    : (statsChipLocked ?? DEFAULT_STATS_CHIP_SIZE);
+  const commitStatsPillSize = useCallback(
+    (raw: number) => {
+      const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(raw)));
+      if (hostOwnsPill) {
+        onHostStatsPillPxChange?.(n);
+        return;
+      }
+      setStatsChipLocked(n);
+      setStatsChipSize(n, customerFileId);
+      if (customerFileId) patchCaptureSizes(customerFileId, { statsPillSize: n });
+    },
+    [hostOwnsPill, onHostStatsPillPxChange, customerFileId],
+  );
   const [legendDrag, setLegendDrag] = useState<{
     areaId: string;
     /** Pointer offset inside the legend box. */
@@ -562,46 +608,52 @@ export function TopoTab({
       })
     : resolveSettings(settings);
 
-  // Persist legend scale/position across sessions (localStorage). Defaults: 1.5×.
-  const LEGEND_STORAGE_KEY = "topo.legend.v1";
+  // Persist legend scale/position per Customer File on this device (capture only).
   const legendHydratedRef = useRef(false);
   useEffect(() => {
     if (settingsOwnedByHost) return;
+    if (!customerFileId) return;
     if (legendHydratedRef.current) return;
     legendHydratedRef.current = true;
     if (typeof window === "undefined") return;
     let stored: { scale?: number; x?: number; y?: number } | null = null;
     try {
-      const raw = window.localStorage.getItem(LEGEND_STORAGE_KEY);
+      const raw =
+        window.localStorage.getItem(legendStorageKey(customerFileId)) ||
+        window.localStorage.getItem("topo.legend.v1");
       if (raw) stored = JSON.parse(raw);
     } catch {
       stored = null;
     }
+    // Only apply stored capture values. Screen defaults already came from the
+    // host via loadCaptureSizes — do not force 1.5 over them.
+    if (!stored) return;
     const patch: Partial<RenderSettings> = {};
-    if (stored && typeof stored.scale === "number") patch.legendScale = stored.scale;
-    else patch.legendScale = 1.5;
-    if (stored && typeof stored.x === "number") patch.legendX = stored.x;
-    if (stored && typeof stored.y === "number") patch.legendY = stored.y;
-    onSettingsChange(resolveSettings({ ...resolved, ...patch }));
+    if (typeof stored.scale === "number") patch.legendScale = stored.scale;
+    if (typeof stored.x === "number") patch.legendX = stored.x;
+    if (typeof stored.y === "number") patch.legendY = stored.y;
+    if (Object.keys(patch).length) {
+      onSettingsChange(resolveSettings({ ...resolved, ...patch }));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [customerFileId, settingsOwnedByHost]);
   useEffect(() => {
     if (settingsOwnedByHost) return;
+    if (!customerFileId) return;
     if (!legendHydratedRef.current) return;
     if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(
-        LEGEND_STORAGE_KEY,
-        JSON.stringify({
-          scale: resolved.legendScale ?? 1.5,
-          x: resolved.legendX,
-          y: resolved.legendY,
-        }),
-      );
-    } catch {
-      /* ignore quota */
-    }
-  }, [resolved.legendScale, resolved.legendX, resolved.legendY]);
+    patchCaptureSizes(customerFileId, {
+      legendScale: resolved.legendScale ?? 1.5,
+      legendX: resolved.legendX,
+      legendY: resolved.legendY,
+    });
+  }, [
+    customerFileId,
+    settingsOwnedByHost,
+    resolved.legendScale,
+    resolved.legendX,
+    resolved.legendY,
+  ]);
 
 
   // Live drag (long-press-and-drag). One kind at a time: a point label, a H/L
@@ -1639,14 +1691,7 @@ export function TopoTab({
                         max={STATS_CHIP_MAX}
                         step={2}
                         format={(v) => `${Math.round(v)}px`}
-                        onChange={(v) => {
-                          const n = Math.max(
-                            STATS_CHIP_MIN,
-                            Math.min(STATS_CHIP_MAX, Math.round(v)),
-                          );
-                          setStatsChipLocked(n);
-                          setStatsChipSize(n);
-                        }}
+                        onChange={(v) => commitStatsPillSize(v)}
                       />
                     </>
                   ),
@@ -1974,14 +2019,7 @@ export function TopoTab({
                               max={STATS_CHIP_MAX}
                               step={2}
                               format={(v) => `${Math.round(v)}px`}
-                              onChange={(v) => {
-                                const n = Math.max(
-                                  STATS_CHIP_MIN,
-                                  Math.min(STATS_CHIP_MAX, Math.round(v)),
-                                );
-                                setStatsChipLocked(n);
-                                setStatsChipSize(n);
-                              }}
+                              onChange={(v) => commitStatsPillSize(v)}
                             />
                           </div>
                         </div>

@@ -95,11 +95,21 @@ await page.evaluate(async (id) => {
       },
     },
   };
+  // Report pill size lives in floorLayout.pillLock. Seed 48px-equivalent on
+  // the report so the sheet is visibly away from the 32px default — and poison
+  // the old device-global key to prove the sheet does not read it.
+  const chrome = (window.ToolboxReportFloorLayout &&
+    Number(window.ToolboxReportFloorLayout.CHROME_SCALE)) || (1632 / 1220);
+  const pillScale = Math.min(1.85, chrome * (48 / 32));
+  record.reportBuilder = record.reportBuilder || {};
+  record.reportBuilder.floorLayout = window.ToolboxReportFloorLayout
+    ? window.ToolboxReportFloorLayout.normalizeLayout({
+      pillLock: { locked: true, scale: pillScale },
+      legendLock: { locked: true, scale: 1 },
+    })
+    : { pillLock: { locked: true, scale: pillScale }, legendLock: { locked: true, scale: 1 } };
   await window.ToolboxDB.saveCustomerFile(record);
-  // The readings are sized by Stats pill size, the control that sizes them in
-  // Floor Survey. Set away from its default so a piece drawn at the wrong
-  // size is visible as a wrong size rather than as the default.
-  try { window.localStorage.setItem('stats-chip-size', '48'); } catch (_) {}
+  try { window.localStorage.setItem('stats-chip-size', '14'); } catch (_) {}
 }, FILE);
 
 async function openSlide() {
@@ -155,6 +165,19 @@ async function dragPiece(which, dx, dy) {
 }
 
 await openSlide();
+
+const ownership = await page.evaluate(async (fileId) => {
+  const rec = await window.ToolboxDB.getCustomerFile(fileId);
+  const scale = rec.reportBuilder?.floorLayout?.pillLock?.scale;
+  const chrome = window.ToolboxReportFloorLayout.CHROME_SCALE;
+  const global = localStorage.getItem('stats-chip-size');
+  return { scale, chrome, global, px: scale && chrome ? Math.round((scale / chrome) * 32) : null };
+}, FILE);
+check(
+  'report pill lock ignores device-global stats-chip-size poison',
+  ownership.global === '14' && ownership.px != null && ownership.px >= 40 && ownership.px <= 48,
+  JSON.stringify(ownership),
+);
 
 const scaleBox = await piece('legend');
 const pillBox = await piece('pill');

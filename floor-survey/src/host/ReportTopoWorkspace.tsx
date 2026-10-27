@@ -33,7 +33,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listFloors, listPoints, saveFloor, setHostCustomerFileId } from "@/lib/db";
-import { readPointStyle } from "@/lib/point-style";
+import { reportPointStyle } from "@/lib/point-style";
 import type { Floor, RenderSettings, SurveyPoint } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { withCorrectedValues } from "@/lib/transitions";
@@ -56,6 +56,9 @@ export type ReportTopoWorkspaceProps = {
   locked?: boolean;
   /** The rail: the controls, stacked, with no canvas. */
   controlsOnly?: boolean;
+  /** Report pill height from floorLayout.pillLock (CSS px). */
+  hostStatsPillPx?: number;
+  onHostStatsPillPxChange?: (px: number) => void;
   onCameraChange?: (camera: PlanCamera) => void;
   onSettingsChange?: (settings: RenderSettings) => void;
   /** The High, Low and difference this slide is drawing, per boundary. */
@@ -89,6 +92,8 @@ export function ReportTopoWorkspace({
   railGroup,
   locked = false,
   controlsOnly = false,
+  hostStatsPillPx,
+  onHostStatsPillPxChange,
   onCameraChange,
   onSettingsChange,
   onStats,
@@ -102,14 +107,9 @@ export function ReportTopoWorkspace({
   });
   const [loading, setLoading] = useState(true);
 
-  // The investigator's own dot size and colour, saved per Customer File. Read
-  // through the shared helper so the slide, the figure composer and the field
-  // export cannot drift apart -- they did, and a composed figure drew readings
-  // three times the size of the slide it came from.
-  const { pointSize, pointColor } = useMemo(
-    () => readPointStyle(customerFileId),
-    [customerFileId],
-  );
+  // Report dots use sheet defaults — never capture dpp-size / capture-sizes.
+  // Capture adjustments must not rewrite the slide or the print.
+  const { pointSize, pointColor } = useMemo(() => reportPointStyle(), []);
 
   // A camera arriving from the report is applied once per change. The nonce is
   // what tells the canvas to take it, and it must not fire on every render or
@@ -228,6 +228,9 @@ export function ReportTopoWorkspace({
         presentation
         locked={locked}
         settingsOwnedByHost
+        customerFileId={customerFileId}
+        hostStatsPillPx={hostStatsPillPx}
+        onHostStatsPillPxChange={onHostStatsPillPxChange}
         chromeless
         controlsOnly={controlsOnly}
         reportGroup={railGroup}
