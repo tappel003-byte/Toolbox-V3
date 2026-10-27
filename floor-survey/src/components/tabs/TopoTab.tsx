@@ -1759,8 +1759,8 @@ export function TopoTab({
           Stats pill size under High / low -- so a piece and its size are
           never in two different places.
 
-          Field screen uses the Control panel hub (cut over Oct 24, 2026).
-          This tab strip is Report Builder only.
+          The field Control panel trial uses folder tabs in the floating panel.
+          This accordion strip is Report Builder only.
         */}
         {controlsOnly && (
           <div className="flex flex-col gap-1.5" data-rb-rail-groups="1">
@@ -2217,7 +2217,7 @@ function TrialPanel({
       data-fs-cp={tabbed ? "trial" : undefined}
       className={
         tabbed
-          ? "absolute z-30 right-[max(0.5rem,env(safe-area-inset-right))] top-[max(0.5rem,env(safe-area-inset-top))] flex w-80 max-h-[min(32rem,calc(100%-env(safe-area-inset-bottom)-0.75rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg landscape-short:top-2"
+          ? "absolute z-30 right-[max(0.5rem,env(safe-area-inset-right))] top-2 flex w-80 max-h-[min(32rem,calc(100%-env(safe-area-inset-bottom)-0.75rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg landscape-short:top-2"
           : "absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg backdrop-blur landscape-short:top-2"
       }
       style={{ borderColor: TRIAL_LINE }}
