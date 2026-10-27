@@ -881,9 +881,9 @@ body.report-builder-open .canvas {
 .rb-ws__controls .floor-survey-host,
 .rb-ws__controls .rtw-root--controls { display: block; height: auto; }
 
-/* GPT-036: Sheet Layout | Topo as folder tabs on the rail's top edge.
-   Rounded tops, flat bottoms, no capsule. The active tab is the white
-   panel; the baseline continues under the inactive tab. */
+/* GPT-036 / Tim color pass: Sheet Layout | Topo folder tabs.
+   Selected = Toolbox navy + white text; unselected = white + navy text
+   + thin border. Rounded tops, flat bottoms; active joins white panel. */
 .rb-ws__top:has(.rb-ws__task-tabs) {
   gap: 0;
   margin-bottom: -10px;
@@ -922,11 +922,11 @@ body.report-builder-open .canvas {
   line-height: 1.2;
   white-space: nowrap;
   color: var(--navy, #07283d);
-  background: #e5ebee;
+  background: #fff;
   cursor: pointer;
 }
 .rb-ws__task-tab:hover:not(.is-active) {
-  background: #d9e4e9;
+  background: #f3f6f8;
 }
 .rb-ws__task-tab:focus {
   outline: none;
@@ -937,15 +937,18 @@ body.report-builder-open .canvas {
 }
 .rb-ws__task-tab.is-active {
   z-index: 1;
-  background: #fff;
-  color: var(--navy, #07283d);
+  background: var(--navy, #07283d);
+  color: #fff;
+  border-color: var(--navy, #07283d);
   border-bottom-color: #fff;
   box-shadow: none;
 }
+.rb-ws__task-tab.is-active:focus-visible {
+  outline-color: #fff;
+}
 
 /* GPT on #136: second Excel folder-tab row under Sheet Layout | Topo.
-   Same attached construction — rounded tops, flat bottoms, active tab
-   joined to its panel — compact and subordinate. Report controlsOnly only. */
+   Same navy/white selection rule as the primary row — compact only. */
 .rb-ws__sub-nav {
   position: sticky;
   /* Below sticky title (~28px) + primary task tabs (~36px). */
@@ -987,11 +990,11 @@ body.report-builder-open .canvas {
   line-height: 1.2;
   white-space: nowrap;
   color: var(--navy, #07283d);
-  background: #e5ebee;
+  background: #fff;
   cursor: pointer;
 }
 .rb-ws__sub-tab:hover:not(.is-active) {
-  background: #d9e4e9;
+  background: #f3f6f8;
 }
 .rb-ws__sub-tab:focus {
   outline: none;
@@ -1002,10 +1005,14 @@ body.report-builder-open .canvas {
 }
 .rb-ws__sub-tab.is-active {
   z-index: 1;
-  background: #fff;
-  color: var(--navy, #07283d);
+  background: var(--navy, #07283d);
+  color: #fff;
+  border-color: var(--navy, #07283d);
   border-bottom-color: #fff;
   box-shadow: none;
+}
+.rb-ws__sub-tab.is-active:focus-visible {
+  outline-color: #fff;
 }
 .rb-ws__sub-identity {
   padding: 6px 0 0;

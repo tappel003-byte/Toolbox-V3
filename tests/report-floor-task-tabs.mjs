@@ -224,16 +224,25 @@ const folderGeom = await page.evaluate(() => {
   const primary = document.querySelector('[data-rb-floor-task="topo"]');
   const sub = document.querySelector('[data-rb-rail-tab].is-active') ||
     document.querySelector('[data-rb-rail-tab][aria-selected="true"]');
+  const inactive = document.querySelector('[data-rb-rail-tab]:not(.is-active)');
   const cs = (el) => el ? getComputedStyle(el) : null;
   const p = cs(primary);
   const s = cs(sub);
+  const i = cs(inactive);
+  const navy = 'rgb(7, 40, 61)';
   return {
     primaryRadius: p && [p.borderTopLeftRadius, p.borderTopRightRadius, p.borderBottomLeftRadius, p.borderBottomRightRadius],
     subRadius: s && [s.borderTopLeftRadius, s.borderTopRightRadius, s.borderBottomLeftRadius, s.borderBottomRightRadius],
-    subBottomBorder: s && s.borderBottomColor,
+    primaryBg: p && p.backgroundColor,
+    primaryColor: p && p.color,
     subBg: s && s.backgroundColor,
+    subColor: s && s.color,
+    inactiveBg: i && i.backgroundColor,
+    inactiveColor: i && i.color,
+    subBottomBorder: s && s.borderBottomColor,
     subMinH: s && parseFloat(s.minHeight),
     primaryMinH: p && parseFloat(p.minHeight),
+    navy,
   };
 });
 check('secondary tabs use same Excel folder construction, compact vs primary',
@@ -243,6 +252,12 @@ check('secondary tabs use same Excel folder construction, compact vs primary',
     folderGeom.primaryRadius && folderGeom.primaryRadius[2] === '0px' &&
     folderGeom.subMinH > 0 && folderGeom.primaryMinH > 0 &&
     folderGeom.subMinH < folderGeom.primaryMinH,
+  JSON.stringify(folderGeom));
+check('selected tabs are navy/white; unselected are white/navy on both rows',
+  folderGeom.primaryBg === folderGeom.navy && folderGeom.primaryColor === 'rgb(255, 255, 255)' &&
+    folderGeom.subBg === folderGeom.navy && folderGeom.subColor === 'rgb(255, 255, 255)' &&
+    folderGeom.inactiveBg === 'rgb(255, 255, 255)' && folderGeom.inactiveColor === folderGeom.navy &&
+    folderGeom.subBottomBorder === 'rgb(255, 255, 255)',
   JSON.stringify(folderGeom));
 
 await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });

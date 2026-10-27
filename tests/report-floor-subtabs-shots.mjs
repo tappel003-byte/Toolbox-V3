@@ -149,6 +149,11 @@ await openSub('legendhl');
 await shotRailCloseup('rb-subtabs-closeup-legend-1440');
 await page.screenshot({ path: `${OUT}/rb-subtabs-full-legend-1440.png`, fullPage: false });
 
+await openTask('layout');
+await shotRailCloseup('rb-subtabs-closeup-layout-1440');
+await page.screenshot({ path: `${OUT}/rb-subtabs-full-layout-1440.png`, fullPage: false });
+await openTask('topo');
+
 await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
 await new Promise((r) => setTimeout(r, 600));
 await openSub('contours');
@@ -159,6 +164,9 @@ await shotRailCloseup('rb-subtabs-closeup-readings-1920');
 await openSub('legendhl');
 await shotRailCloseup('rb-subtabs-closeup-legend-1920');
 await page.screenshot({ path: `${OUT}/rb-subtabs-full-legend-1920.png`, fullPage: false });
+await openTask('layout');
+await shotRailCloseup('rb-subtabs-closeup-layout-1920');
+await openTask('topo');
 
 const meta = await page.evaluate(() => ({
   primary: [...document.querySelectorAll('[data-rb-floor-task]')].map((b) => ({
