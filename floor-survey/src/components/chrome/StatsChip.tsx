@@ -1,25 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 /**
- * The chip's height until someone sets one.
+ * Default chip height when nothing is stored for this Customer File yet.
+ * Capture starts from screen-class defaults (see capture-sizes.ts); this is
+ * the middle tablet-class value used as a fallback constant.
  *
- * It used to be three heights picked from `window.innerWidth` -- 24 on a
- * phone, 32 on a tablet, 40 on a desktop. That made the same Customer File
- * render at three different sizes depending on what you opened it on, and on a
- * report slide it meant the pill's size depended on the browser window rather
- * than on the page it was printed to. One number instead: the middle of the
- * three, which is what a tablet showed.
- *
- * What survived that change for a while was an "Auto" idea and a "Use Auto
- * size for this screen" link, which by then only cleared the chosen size back
- * to this number. Tim: "I don't think I'll ever use that setting because it's
- * always wrong -- you just adjust it to the size that you want and it stays
- * that size." So there is no Auto: the size is the last one set, kept on this
- * device and used by every job on it, and this is only where it starts.
+ * Capture adjustments are per Customer File on this device. Report Builder
+ * must not read this key — report pill size lives in floorLayout.pillLock.
  */
 export const DEFAULT_STATS_CHIP_SIZE = 32;
 
-/** localStorage key holding the user's chosen chip height in px. */
+/** @deprecated Device-global key. Capture now uses stats-chip-size:<customerFileId>. */
 export const STATS_CHIP_SIZE_KEY = "stats-chip-size";
 export const STATS_CHIP_SIZE_EVENT = "stats-chip-size-change";
 /**
@@ -35,11 +26,17 @@ export const STATS_CHIP_SIZE_EVENT = "stats-chip-size-change";
 export const STATS_CHIP_MIN = 8;
 export const STATS_CHIP_MAX = 120;
 
-/** Read the user's chosen chip height, or null when unset (auto). */
-export function getStatsChipSize(): number | null {
+function chipKey(customerFileId?: string | null): string {
+  return customerFileId ? `stats-chip-size:${customerFileId}` : STATS_CHIP_SIZE_KEY;
+}
+
+/** Read the capture chip height for this Customer File on this device. */
+export function getStatsChipSize(customerFileId?: string | null): number | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(STATS_CHIP_SIZE_KEY);
+    const raw =
+      window.localStorage.getItem(chipKey(customerFileId)) ??
+      (customerFileId ? window.localStorage.getItem(STATS_CHIP_SIZE_KEY) : null);
     const n = raw == null ? NaN : Number(raw);
     return Number.isFinite(n) ? n : null;
   } catch {
@@ -47,15 +44,28 @@ export function getStatsChipSize(): number | null {
   }
 }
 
-/** Persist a chip height and notify any mounted chip immediately. */
-export function setStatsChipSize(px: number) {
+/**
+ * Persist a capture chip height for this Customer File on this device.
+ * Does not write Report Builder state. Report paths must not listen to this
+ * as a source of sheet size.
+ */
+export function setStatsChipSize(px: number, customerFileId?: string | null) {
   const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(px)));
   try {
-    window.localStorage.setItem(STATS_CHIP_SIZE_KEY, String(n));
+    if (customerFileId) {
+      window.localStorage.setItem(chipKey(customerFileId), String(n));
+    } else {
+      // Avoid widening the old device-global key; callers should pass an id.
+      window.localStorage.setItem(STATS_CHIP_SIZE_KEY, String(n));
+    }
   } catch {
     /* ignore */
   }
-  window.dispatchEvent(new CustomEvent(STATS_CHIP_SIZE_EVENT, { detail: n }));
+  window.dispatchEvent(
+    new CustomEvent(STATS_CHIP_SIZE_EVENT, {
+      detail: { size: n, customerFileId: customerFileId || null },
+    }),
+  );
 }
 
 
@@ -65,6 +75,8 @@ import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@
 interface Props {
   points: SurveyPoint[];
   storageKey?: string;
+  /** Capture size scope: this Customer File on this device. */
+  customerFileId?: string;
   /** Optional area name shown as a leading segment (combined multi-area view). */
   label?: string;
   /** Vertical stacking slot so multiple pills don't overlap. */
@@ -91,13 +103,14 @@ function topChromeHeight() {
  *   the high low pills it highlights the high or the low on the top -- I don't
  *   think I want that." The pill is a readout and a thing to drag out of the
  *   way, not a control.
- * - Size is the one set in Topo → Labels & layers → "Stats pill size", kept on
- *   this device; the pills drawn on the plan take the same size.
+ * - Size is the one set in the Control panel → High / Low → Stats pill size,
+ *   kept per Customer File on this device; plan pills use the same size.
  * - Position persists per storageKey and clamps to viewport on resize/rotate.
  */
 export function StatsChip({
   points,
   storageKey = "stats-chip-pos",
+  customerFileId,
   label,
   stackIndex = 0,
   decimals = defaultRenderSettings.decimalPlaces,
@@ -124,21 +137,32 @@ export function StatsChip({
     return null;
   });
 
-  // The size last set on this device, until someone sets another. Nothing
-  // watches the window: the size does not depend on the screen, so turning the
-  // phone or dragging a window cannot change it.
+  // Size last set for this Customer File on this device. Window resize must
+  // not change it; only the Control panel stepper does.
   const [userSize, setUserSize] = useState<number | null>(null);
   useEffect(() => {
-    setUserSize(getStatsChipSize());
+    setUserSize(getStatsChipSize(customerFileId));
     const onSize = (e: Event) => {
-      const detail = (e as CustomEvent<number | null>).detail;
-      setUserSize(typeof detail === "number" ? detail : null);
+      const detail = (e as CustomEvent<number | { size: number; customerFileId?: string | null }>).detail;
+      if (typeof detail === "number") {
+        setUserSize(detail);
+        return;
+      }
+      if (!detail || typeof detail.size !== "number") return;
+      if (
+        customerFileId &&
+        detail.customerFileId &&
+        detail.customerFileId !== customerFileId
+      ) {
+        return;
+      }
+      setUserSize(detail.size);
     };
     window.addEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     return () => {
       window.removeEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     };
-  }, []);
+  }, [customerFileId]);
 
   // The same type and air as the pills drawn on the plan, with no floor of
   // its own. This chip used to hold its type at 9px and its padding at 4px

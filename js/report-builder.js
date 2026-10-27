@@ -1145,15 +1145,26 @@
     return Math.max(1, Math.ceil(picturesOnPage(page) / picturesAcross(page)));
   }
 
-  /** The Stats pill size set in Labels & layers, kept per device. */
-  function storedStatsPillPx() {
-    try {
-      var raw = window.localStorage.getItem('stats-chip-size');
-      var n = raw == null ? NaN : Number(raw);
-      return isFinite(n) && n > 0 ? n : 32;
-    } catch (err) {
-      return 32;
+  /**
+   * Report readings pill height in CSS px from the Customer File layout.
+   * Never from device-global stats-chip-size — capture and report stay apart.
+   * 32px is the sheet default (matches CHROME_SCALE as scale 1× reference).
+   */
+  function pillPxFromLayout(layout) {
+    var flApi = window.ToolboxReportFloorLayout;
+    var chrome = (flApi && Number(flApi.CHROME_SCALE)) || 1;
+    var scale = layout && layout.pillLock && Number(layout.pillLock.scale);
+    if (isFinite(scale) && scale > 0) {
+      return Math.max(8, Math.min(120, Math.round((scale / chrome) * 32)));
     }
+    return 32;
+  }
+
+  /** Sheet-default pill lock scale (32px on the 11×17 chrome base). */
+  function defaultPillLockScale() {
+    var flApi = window.ToolboxReportFloorLayout;
+    var chrome = (flApi && Number(flApi.CHROME_SCALE)) || 1;
+    return chrome > 0 ? chrome : 1;
   }
 
   /**
@@ -2682,10 +2693,9 @@
           // The colour scales, as pictures painted by Floor Survey. One per
           // boundary, in the order the readings come in.
           legendUrls: page._legendUrls || null,
-          // The readings are sized by Stats pill size, which is kept on this
-          // device rather than in the report -- the same number the drawing's
-          // own pill used before it came off the picture.
-          pillPx: storedStatsPillPx(),
+          // Readings size from this report's floorLayout.pillLock only.
+          // page._bookFloorLayout is set before render; never device localStorage.
+          pillPx: pillPxFromLayout(page && page._bookFloorLayout),
         });
         // Back to the one record, not onto the slide. renderSheet runs
         // outside the closure that holds it, so the way in is handed over on
@@ -3101,10 +3111,11 @@
     }
 
     function livePillScale() {
-      var flApi = window.ToolboxReportFloorLayout;
-      var page = (flApi && Number(flApi.CHROME_SCALE)) || 1;
-      var n = (storedStatsPillPx() / 32) * page;
-      return isFinite(n) && n > 0 ? n : page;
+      // Prefer the report's stored lock; otherwise the sheet default — never
+      // device-global capture prefs.
+      var have = floorLayout && floorLayout.pillLock && Number(floorLayout.pillLock.scale);
+      if (isFinite(have) && have > 0) return have;
+      return defaultPillLockScale();
     }
 
     /**
@@ -3145,12 +3156,10 @@
     /**
      * Pin the size of each chrome piece into the record, once.
      *
-     * With nothing stored, the colour scale falls back to the slide's own
-     * Legend size setting and the readings to this device's Stats pill size.
-     * Two slides whose settings differ would then draw the same piece at two
-     * sizes -- the drift this change exists to end, by another road. So the
-     * first time a report is drawn the sizes are read once and written into
-     * the record, and from then on every slide draws those.
+     * Missing sizes get sheet code defaults (legend from the view or 1;
+     * pill from CHROME_SCALE ≡ 32px). Existing positive scales are left
+     * alone so reopen never resets a saved report. Never seeds from
+     * device-global capture localStorage.
      */
     function seedPieceSizes(firstFloor) {
       var flApi = window.ToolboxReportFloorLayout;
@@ -3164,7 +3173,7 @@
         changed = true;
       }
       if (!next.pillLock || !(Number(next.pillLock.scale) > 0)) {
-        next.pillLock = { locked: true, scale: livePillScale() };
+        next.pillLock = { locked: true, scale: defaultPillLockScale() };
         changed = true;
       }
       if (!changed) return;
@@ -4643,6 +4652,7 @@
             railControls.api.update({
               settings: floorViewFor(page),
               railGroup: floorTopoGroup,
+              hostStatsPillPx: pillPxFromLayout(floorLayout),
             });
           }
           railBodyEl.appendChild(keepHost);
@@ -4659,6 +4669,20 @@
             areaId: ctrlArea,
             settings: floorViewFor(page),
             railGroup: floorTopoGroup,
+            hostStatsPillPx: pillPxFromLayout(floorLayout),
+            onHostStatsPillPxChange: function (px) {
+              var flApi = window.ToolboxReportFloorLayout;
+              var chrome = (flApi && Number(flApi.CHROME_SCALE)) || 1;
+              var n = Number(px);
+              if (!isFinite(n) || n <= 0) return;
+              if (pushPieceScale('pill', (n / 32) * chrome)) {
+                if (railControls.api && typeof railControls.api.update === 'function') {
+                  railControls.api.update({ hostStatsPillPx: pillPxFromLayout(floorLayout) });
+                }
+                renderPages();
+                flushSave().catch(function () {});
+              }
+            },
             onBack: function () {},
             onSettingsChange: function (next) {
               var live = activePage();
@@ -5725,24 +5749,8 @@
     // propagation, so the canvas's own pan, wheel zoom and grip drags are
     // untouched. While a drawing tool is armed the shield above swallows the
     // event first, so the plan is correctly not selectable then.
-    /**
-     * The readings pill's size is set in Labels & layers, and the sheet has
-     * to hear about it.
-     *
-     * Floor Survey keeps that size on the device and announces the change on
-     * the window; Report Builder read the stored number when it drew a sheet
-     * but never listened, so pressing + moved the readout from 32px to 38px
-     * and the pill on the paper did not move at all. Tim: "You can't change
-     * the pill size."
-     *
-     * The colour scale never had this fault because its size travels in the
-     * slide's own settings, which already re-draw the sheet.
-     */
-    onWindow('stats-chip-size-change', function () {
-      if (!sheetEl || !sheetEl.isConnected) return;
-      if (pushPieceScale('pill', livePillScale())) flushSave().catch(function () {});
-      renderPages();
-    });
+    // Capture stats-pill-size-change must NOT rewrite this report. Report
+    // pill size is floorLayout.pillLock only, changed from the rail stepper.
 
     onDocument('pointerdown', function (event) {
       if (inkTool) return;

@@ -39,6 +39,9 @@ export type MountOptions = {
   /** Report rail only: which Topo control group is showing. */
   railGroup?: "contours" | "readings" | "legendhl";
   locked?: boolean;
+  /** Report pill size from floorLayout (CSS px). Capture must not supply this. */
+  hostStatsPillPx?: number;
+  onHostStatsPillPxChange?: (px: number) => void;
   onCameraChange?: (camera: PlanCamera) => void;
   onSettingsChange?: (settings: RenderSettings) => void;
   /** The High, Low and difference the slide is drawing, per boundary. */
@@ -104,6 +107,8 @@ export function mount(el: HTMLElement, options: MountOptions) {
           railGroup={current.railGroup}
           locked={!!current.locked}
           controlsOnly={current.workspace === "report-topo-controls"}
+          hostStatsPillPx={current.hostStatsPillPx}
+          onHostStatsPillPxChange={current.onHostStatsPillPxChange}
           onCameraChange={current.onCameraChange}
           onSettingsChange={current.onSettingsChange}
           onStats={current.onStats}

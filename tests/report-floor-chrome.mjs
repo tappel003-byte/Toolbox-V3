@@ -96,9 +96,8 @@ await page.evaluate(async (id) => {
     },
   };
   await window.ToolboxDB.saveCustomerFile(record);
-  // The readings are sized by Stats pill size, the control that sizes them in
-  // Floor Survey. Set away from its default so a piece drawn at the wrong
-  // size is visible as a wrong size rather than as the default.
+  // Report pill size lives in floorLayout.pillLock, not device localStorage.
+  // Leaving capture stats-chip-size alone proves the sheet does not read it.
   try { window.localStorage.setItem('stats-chip-size', '48'); } catch (_) {}
 }, FILE);
 

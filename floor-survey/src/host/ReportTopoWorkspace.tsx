@@ -56,6 +56,9 @@ export type ReportTopoWorkspaceProps = {
   locked?: boolean;
   /** The rail: the controls, stacked, with no canvas. */
   controlsOnly?: boolean;
+  /** Report pill height from floorLayout.pillLock (CSS px). */
+  hostStatsPillPx?: number;
+  onHostStatsPillPxChange?: (px: number) => void;
   onCameraChange?: (camera: PlanCamera) => void;
   onSettingsChange?: (settings: RenderSettings) => void;
   /** The High, Low and difference this slide is drawing, per boundary. */
@@ -89,6 +92,8 @@ export function ReportTopoWorkspace({
   railGroup,
   locked = false,
   controlsOnly = false,
+  hostStatsPillPx,
+  onHostStatsPillPxChange,
   onCameraChange,
   onSettingsChange,
   onStats,
@@ -228,6 +233,9 @@ export function ReportTopoWorkspace({
         presentation
         locked={locked}
         settingsOwnedByHost
+        customerFileId={customerFileId}
+        hostStatsPillPx={hostStatsPillPx}
+        onHostStatsPillPxChange={onHostStatsPillPxChange}
         chromeless
         controlsOnly={controlsOnly}
         reportGroup={railGroup}
