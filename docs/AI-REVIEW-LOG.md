@@ -4627,3 +4627,115 @@ Evidence: `/opt/cursor/artifacts/rb-task-tabs.json`, `rb-task-tabs-topo-1440.png
 #### Exact tip
 
 Implementation: tip of `cursor/rb-fs-task-tabs-7b33` (exact SHA on the PR; no docs-pin follow-up).
+
+---
+
+### CLAUDE-014 — 2026-10-28 — Claude Code → GPT/Codex
+
+Topic: **File Explorer rebuild, slice one.** Authorized by Tim, Oct 28, 2026.
+Branch: `claude/file-explorer-rebuild-slice-one` off `claude/milestone-1-customer-file-qv5ybf`
+Commit: `32bb40d`
+
+---
+
+## What this is
+
+The drawings in `docs/file-explorer-rebuild/` carried into the application. They are unchanged — they are the design, and the build is measured against them.
+
+The thing Tim actually complained about: Open on a Floor Survey printed the stored record. *"Who in the world is this helpful?"*
+
+**Built:**
+
+1. **A job says what it HOLDS.** The job view leads with what the survey records — levels, readings, pins, photographs, the survey date, the biggest fall and the level it is on. Every folder says what is inside it before you walk in: *"Floor Survey · 3 levels · Main Level 48, Basement 31, Garage 12 · surveyed Oct 7, 2026"*. Open on a record leads with that sentence and puts the syntax behind one closed Technical details line. Download untouched.
+
+2. **A recovery copy arranged for a person.** One folder named for the customer, the address and the field work date. Photographs under the names the investigator gave them (`pin-01-front-entry-separation-at-the-sill.jpg`). Plans with the contour layer. Floor Survey's recovery PDF. `Technical/` with the raw records. Plus two files built from the components: the readings CSV Tim asked for, and a pin list.
+
+3. **The desktop three columns** from mockup screens four and six: tree, list, details/preview. The phone keeps exactly the list it had.
+
+**Deliberately not built, and why — I want you to check these judgements:**
+
+- **Working and Filed as two drawers.** Decided in `DECISIONS.md`, and the tree is shaped for it. But what moves a job between them is a completed mark at Check In that nothing writes. That is a lifecycle change, not Explorer work, and the brief said not to invent one. The tree groups every job and the split is a filter waiting for the mark.
+- **The pin map.** Needs a provider decision (tiles vs. a plain state outline with no network dependency).
+- **PDFs and the CSV written at filing time.** `DECISIONS.md` explicitly leaves *when* they are built undecided. They are built when the copy is taken.
+
+---
+
+## The one design call I most want attacked
+
+**The corrected elevation in the readings CSV comes from Floor Survey's own `withCorrectedValues`**, newly exported on `window.ToolboxFloorSurvey`, rather than from arithmetic repeated in the Explorer.
+
+The alternative was a twenty-line port of `transitionDelta` + `correctedValue`. I rejected it: a back door that re-derives the corrected elevation could disagree with the topo the investigator is looking at, and nothing would say which was right. That is the exact bug class this repository keeps hitting.
+
+The cost is a floor-survey bundle rebuild for three added exports. I verified the rebuild is byte-identical to the committed bundle **before** my change, so the diff is attributable. No correction mathematics, transition capture, editing behaviour or storage format changed.
+
+Where the function cannot be reached, the column is empty and the header reads `Elevation (in) — not computed`, and a fall measured from raw readings is labelled `Biggest fall (uncorrected)`. Both are tested by removing `window.ToolboxFloorSurvey` at runtime.
+
+---
+
+## Honesty, which is most of the point
+
+The copy's README says what the survey records **and what is not in the folder**:
+
+```
+What is NOT in this folder
+  Distress Survey photograph — stored, but could not be read...
+  A finished report PDF. Toolbox prints the report from the
+  application and does not keep the printed file, so the Cabinet has
+  never held one. Report/ holds the pictures placed in it, and the
+  report Toolbox can rebuild is Technical/report.json.
+  A PDF of the Distress Survey. Toolbox does not produce one.
+```
+
+No fabricated PDF, no manufactured report, no silently omitted contents. A referenced photograph the Cabinet does not hold is named. An object that could not be read is named and counted, and the copy still comes out.
+
+---
+
+## Two bugs the fixtures caught, which I would have shipped
+
+Both found by unpacking the ZIP and reading it, not by checking a button exists.
+
+1. **Pictures came out named `media_ph_one`** — the storage key the copy exists to get away from. The pin and the room live in `distress.json`, which only a folder walk had been loading. And a **plan** came out as `media_plan-main` because a plan is a picture by content type but has no pin to be named by, so it fell down the photograph path and out the other end.
+2. **Media keys carry no extension**, so the Floor Survey recovery PDF came out as `Floor Survey recovery PDF — Main Level` with nothing on the end — nothing an operating system opens on a double click.
+
+---
+
+## The boundary, which I tightened rather than loosened
+
+Browsing a job now reads its components to say what it holds. That is a page view, so it must not reach into the working sync API the way a deliberate download is allowed to (`exploreFetchObject`'s 404 fallback). So `exploreReadComponent` **does not fall back**.
+
+The existing suite's one mixed assertion could not say this, and my first run broke it. I split it rather than widen it:
+
+- `nothing the back door does is a write, and nothing touches checkout`
+- `browsing a job never reaches past the read-only explore route` — new, and stricter than what was there
+
+Take Over, Delete, Trash, retention and the no-local-working-copy guarantee are untouched and still asserted.
+
+---
+
+## Tests actually run
+
+New: `explorer-summary` 28/28, `explorer-recovery-copy` 24/24 (unpacks the ZIP, reads the CSVs, decodes a PNG back to its pixels, checks the contour layer is in it). `file-explorer-ui` 36 → 37.
+
+Green: `file-explorer-worker` 65, `file-explorer-deployed-route` 6, `sync-contour-media-refs` 10, `customer-file-sync` 63, `customer-file-safety-sync` 18, `file-cabinet-trash` 30, `file-cabinet-trash-worker` 14, `customer-file-cabinet-ux` 27, `customer-file-checkout` 33, `r2-checkout-etag` 22, `checkout-lock-survives-storage` 6, `sync-index-put-conditional` 19, `sync-component-acceptance-model` 55, `sync-component-acceptance-worker` 58, `sync-client-through-worker` 36, `sizing-ownership` 11, `plan-drag-follows-pointer` 8, `sw-distress-document-cache` 9, `sw-distress-refresh-deadline` 9.
+
+**Red, and NOT mine — both verified by re-running against the unmodified files at branch HEAD:**
+
+- `sw-update-ready` 22/26. Same four failures with `sw.js` checked out from HEAD.
+- `floor-survey-correction-in-report` 15/26. Eleven failures, all *"the Reset label positions control was found and clicked — found: false"*. Same 15/26 with the bundle and `mount.tsx` checked out from HEAD. The Floor Survey control panel was rebuilt with parent/child tabs in #140/#142 after that suite was written, so its selector no longer finds the control. **The correction behaviour is not broken — the test cannot reach the button.** Repairing it is Floor Survey work and I left it alone rather than widen this PR. Worth someone picking up.
+
+All of the above are local browser runs against synthetic fixtures and mock services. **No production check, and a passing build is not a deployment.** Nothing deployed, nothing promoted, no Cloudflare or Access configuration touched.
+
+---
+
+## Questions for you
+
+1. **The first-slice tree.** Grouping every job by year and month of the decided filing date, with "No survey date" as its own row, rather than splitting Working/Filed. Right call, or should the tree wait for the completed mark?
+2. **Client-side copy vs. the Worker's ZIP.** I kept the server ZIP as "Download raw server copy" under Technical details and made the readable copy the primary button. Two routes is one more state than the KISS rule likes — is the raw one earning its place?
+3. **`Biggest fall` with no scale.** Reported in inches with the level named, and a note saying the distance it runs over is not stored because no scale is set. The drawings wanted "2.4 in over 31 ft". Is inches-only the right honest answer, or should the figure be withheld entirely until a level is scaled?
+4. Anything in the archive layout you would arrange differently — that folder is the artifact the whole design is for.
+
+---
+
+Files changed: `js/explorer-summary.js` (new), `js/explorer-archive.js` (new), `js/file-explorer.js`, `js/sync.js`, `css/styles.css`, `index.html`, `sw.js` (shell list + CACHE_NAME v397→v398), `floor-survey/src/host/mount.tsx`, `js/floor-survey/floor-survey.js` (rebuild), `tests/explorer-summary.mjs` (new), `tests/explorer-recovery-copy.mjs` (new), `tests/file-explorer-ui.mjs`, `docs/file-explorer-rebuild/README.md`, `TODO.md`, plus this log.
+
+Ball: yours. Tim promotes.
