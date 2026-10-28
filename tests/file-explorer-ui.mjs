@@ -485,6 +485,19 @@ try {
       if (close) close.click();
     }
 
+    /**
+     * Everything up to here was BROWSING -- opening the job, walking its
+     * folders, drawing thumbnails. Nothing below is: each step is a download
+     * or a preview the investigator asked for, and the existing design lets
+     * a deliberate request fall back to the working read route when the
+     * explore route is not deployed ("a download is a request the
+     * investigator made, so that is where the join belongs").
+     *
+     * Recording the line lets the browsing phase be judged by the stricter
+     * rule, which is the one the back door's own comments claim.
+     */
+    const browseRequests = fetchLog.length;
+
     await clickAction('media/fsrec_canvas-ground', 'Download');
     await clickAction(`media/${fixture.planId}`, 'Open');
     const image = document.querySelector('.explorer-lightbox__img');
@@ -630,6 +643,8 @@ try {
       unreferenced: !!unreferenced,
       imageOpened,
       jsonText,
+      browseRequests,
+      browsePhase: fetchLog.slice(0, browseRequests),
       pdfSrc: pdf ? pdf.getAttribute('src') : '',
       pdfTitle: pdf ? pdf.getAttribute('title') : '',
       otherPhotos: otherPhotosText,
@@ -767,15 +782,34 @@ try {
     flow.fallback.added === 1 && /downloads/i.test(flow.fallback.notice) &&
     flow.fallback.last.includes('fsrec_canvas-ground'),
     JSON.stringify(flow.fallback));
-  check('ZIP download uses the archive response, named after the job',
-    flow.picked.some((item) => item.name === 'ada-mitchell.zip' && item.size > 0),
+  // The recovery copy is named for who it was for, where, and the field work
+  // date -- so a drive full of them sorts and reads. It used to be named
+  // "ada-mitchell.zip", which said nothing about which job or when.
+  check('the job copy is named for the customer, the address and the field work date',
+    flow.picked.some((item) => item.name === 'Ada Mitchell - 10 Oak Street (2026-03-01).zip'
+      && item.size > 0),
     JSON.stringify(flow.picked.map((item) => item.name)));
-  check('browsing does not check out or write the cabinet',
+  check('nothing the back door does is a write, and nothing touches checkout',
     flow.fetchLog.length > 0 &&
     flow.fetchLog.every((entry) => entry.method === 'GET') &&
-    flow.fetchLog.every((entry) => entry.path.startsWith('explore/') || /^media\//.test(entry.path)) &&
     !flow.fetchLog.some((entry) => entry.path.includes('checkout')),
-    JSON.stringify(flow.fetchLog));
+    JSON.stringify(flow.fetchLog.filter((entry) => entry.method !== 'GET' ||
+      entry.path.includes('checkout'))));
+  /**
+   * BROWSING stays on the back door's own route.
+   *
+   * Opening a job now reads its stored components to say what it holds --
+   * two levels, 48 readings, surveyed Sep 29 -- instead of printing the
+   * record. That is a page view, so it must not quietly reach into the
+   * working sync API the way a deliberate download is allowed to. Said as
+   * its own assertion because the mixed log cannot say it.
+   */
+  check('browsing a job never reaches past the read-only explore route',
+    flow.browseRequests > 0 &&
+    flow.browsePhase.every((entry) => entry.path.startsWith('explore/') ||
+      /^media\//.test(entry.path)),
+    JSON.stringify(flow.browsePhase.filter((entry) => !entry.path.startsWith('explore/') &&
+      !/^media\//.test(entry.path))));
   check('a job with nothing but record files says so',
     flow.bare.folders === 0 && flow.bare.records === 1 &&
     /No pictures, plans or surveys/.test(flow.bare.text),

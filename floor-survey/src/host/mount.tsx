@@ -12,6 +12,14 @@ import {
   setRecoveryRendererForTests,
 } from "@/lib/recovery-pdf";
 import { renderTopoLegendImage, topoLegendShape } from "@/lib/topo-legend-image";
+// Exported so File Explorer's readings CSV uses the ONE correction
+// implementation rather than a second copy of the arithmetic. A back door that
+// re-derived the corrected elevation could disagree with the topo the
+// investigator is looking at, and nothing would say which was right. Nothing
+// about the correction mathematics, transition capture or the storage format
+// changes by naming these here: they are the same pure functions the topo and
+// the report already call.
+import { transitionDelta, transitionLabel, withCorrectedValues } from "@/lib/transitions";
 import {
   composeReportTopoFigure,
   composeReportTopoFigureForPage,
@@ -194,6 +202,9 @@ declare global {
       reportTopoExtentForPage: typeof reportTopoExtentForPage;
       renderTopoLegendImage: typeof renderTopoLegendImage;
       topoLegendShape: typeof topoLegendShape;
+      withCorrectedValues: typeof withCorrectedValues;
+      transitionDelta: typeof transitionDelta;
+      transitionLabel: typeof transitionLabel;
     };
     ToolboxDB?: {
       getMedia?: (id: string) => Promise<string | null>;
@@ -217,6 +228,9 @@ window.ToolboxFloorSurvey = {
   reportTopoExtentForPage,
   renderTopoLegendImage,
   topoLegendShape,
+  withCorrectedValues,
+  transitionDelta,
+  transitionLabel,
 };
 
 // Vite's IIFE assigns this module's exports onto the ToolboxFloorSurvey global
@@ -235,4 +249,7 @@ export {
   reportTopoExtentForPage,
   renderTopoLegendImage,
   topoLegendShape,
+  withCorrectedValues,
+  transitionDelta,
+  transitionLabel,
 };
