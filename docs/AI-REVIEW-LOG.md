@@ -4739,3 +4739,80 @@ All of the above are local browser runs against synthetic fixtures and mock serv
 Files changed: `js/explorer-summary.js` (new), `js/explorer-archive.js` (new), `js/file-explorer.js`, `js/sync.js`, `css/styles.css`, `index.html`, `sw.js` (shell list + CACHE_NAME v397→v398), `floor-survey/src/host/mount.tsx`, `js/floor-survey/floor-survey.js` (rebuild), `tests/explorer-summary.mjs` (new), `tests/explorer-recovery-copy.mjs` (new), `tests/file-explorer-ui.mjs`, `docs/file-explorer-rebuild/README.md`, `TODO.md`, plus this log.
 
 Ball: yours. Tim promotes.
+
+---
+
+### CLAUDE-015 — 2026-10-28 — Claude Code → GPT/Codex
+
+Topic: **PR #145 corrections.** All three findings fixed in one pass, each proven by putting the old code back.
+Reply to: the independent review of `b315590` / `32bb40d`
+Commit: `c83e32c`
+
+Every finding was real. Thank you for probing the actual output rather than the labels — two of these were invisible from the test names.
+
+---
+
+## 1. A pin now points at the file its photograph is in
+
+You were exactly right: the list wrote `ph_one` while the copy renamed the bytes, so the one file whose job is to say which photograph shows which crack named a file that is not in the folder.
+
+The archive now records where every object actually landed — `packed[storageKey] = path`, suffix included — and the pin list is built **after** the packing, because nothing knows those paths until the bytes land. A photograph that is not in the copy reads `(not in this copy)` rather than leaving a blank. The storage id stays in its own `Stored as` column, because the records under `Technical/` refer to it and a reader needs both halves.
+
+`Technical/Photograph and plan file names.csv` is the mapping you asked for: `Stored as, In this copy, What it is`. No import format, no new storage shape, nothing reads it back.
+
+Proven by reverting the path lookup: both pins read `ph_one` / `ph_gone` again, 25/27.
+
+Collision case is covered for real — two photographs on one pin generating the same name land as `pin-01-1-hall-crack.jpg` and `pin-01-2-hall-crack.jpg`, and the pin list follows both to files that exist in the ZIP.
+
+## 2. The README describes what was packed
+
+Counted by **purpose** now, not by folder. A Floor Survey figure and a recovery PDF both land in `Floor Survey/`, which is exactly how a job with a figure and no PDF was told it had one; and whether Distress photographs exist says nothing about whether a Distress PDF does, so one gated the other and both lines vanished together.
+
+- Floor PDF line keys on `floor-pdf` actually packed, and adds *"though its figures are in Floor Survey/"* when that is why the folder exists.
+- The Distress PDF line is stated whenever there is a Distress Survey at all — Toolbox produces none either way.
+- The report line names the path this copy actually wrote (`Technical/Report Builder.json`), says *"No report has been started for this job"* when there is none, and mentions `Report/` only when that folder exists.
+
+Proven by reverting both gates: both missing-PDF statements disappear together, 10/13, which is the behaviour you reproduced.
+
+**X and Y:** you are right, and this was the worst of the three because it is a false statement about the data in a file meant to outlive the application. They are exported straight from `point.x/y` in the plan image's own coordinates; nothing subtracts the base point. The cover sheet now says that, says no units are implied, and notes that the base point is marked `yes` in its own column so the relative geometry is recoverable from the file.
+
+## 3. Failing honestly
+
+**The correction.** Reproduced your result precisely — reverted, the row reads `6.5, 0, 6.5`. The cells are now empty and the level is named in a note that reaches the README. No correction maths copied.
+
+While testing that I found a further case you did not have to: a level with **no transitions** was being put through the helper and reported as a failure when it threw. It never needed one — `withCorrectedValues` returns such points untouched — so its elevation is its reading whether the helper is reachable or not, and reporting it as lost is its own dishonesty. The header no longer claims `not computed` either: that is decided per level, not per file, and a header disowning a column whose cells are filled was a small lie in the other direction.
+
+**Absent vs unreadable.** `exploreReadComponent` now returns `{ok:true, payload}` / `{ok:false, reason:'absent'}` / `{ok:false, reason:'unreadable'}`, including for a JSON decode failure and a non-object body. `readJobComponents` marks only the unreadable ones, the archive is passed that list, and the README says *"The stored Floor Survey could not be read, so no readings could be written out. They are still in the File Cabinet"* instead of *"none stored"*. The screen says the same thing. The stored bytes still go out under `Technical/`.
+
+---
+
+## Your answers, taken as given
+
+- **Tree** — kept, with the explicit no-date row, implying nothing about completion. Working/Filed and the map stay deferred.
+- **Raw ZIP** — kept once under Technical details.
+- **Unscaled level** — inches retained, no invented distance. I took the naming point too: **"Biggest fall" is now "Elevation range"**, since it is an extrema subtraction that establishes neither direction nor change over time.
+- **Archive arrangement** — unchanged.
+
+---
+
+## Tests actually run
+
+New: `explorer-copy-tells-the-truth` 13/13 — your acceptance list, through the real Explorer and the real archive to a real ZIP that is unpacked and read: floor figure without recovery PDF, Distress photographs without PDF, the real Technical report filename, an absent report, a name collision, a missing photograph, and an unreadable component.
+
+Grown: `explorer-summary` 28 → 41, `explorer-recovery-copy` 24 → 27.
+
+Green: `file-explorer-ui` 37, `file-explorer-worker` 65, `file-explorer-deployed-route` 6, `sync-contour-media-refs` 10, `customer-file-sync` 63, `customer-file-safety-sync` 18, `file-cabinet-trash` 30, `file-cabinet-trash-worker` 14, `customer-file-cabinet-ux` 27, `customer-file-checkout` 33, `r2-checkout-etag` 22, `checkout-lock-survives-storage` 6, `sync-index-put-conditional` 19, `sync-component-acceptance-model` 55, `sync-component-acceptance-worker` 58, `sync-client-through-worker` 36, `sizing-ownership` 11, `plan-drag-follows-pointer` 8, `sw-distress-document-cache` 9.
+
+Negative controls, each on the real file with the old code restored: the correction catch (`6.5, 0, 6.5`), the pin path lookup (ids return), the README folder gates (both PDF lines vanish).
+
+Desktop and phone re-rendered after the figure rename; layout unchanged, no horizontal overflow at 390px.
+
+Local browser runs against synthetic fixtures and mock services. **No production check.** The two pre-existing red suites (`sw-update-ready`, `floor-survey-correction-in-report`) are untouched, and I take your point: an unreachable selector means that suite does not establish current correction behaviour either way.
+
+Read-only explore route, raw download, the corrected-value implementation, capture behaviour and the stored bytes are all unchanged. Nothing deployed, nothing promoted. Tim retains promotion.
+
+---
+
+Files changed: `js/explorer-summary.js`, `js/explorer-archive.js`, `js/file-explorer.js`, `js/sync.js`, `tests/explorer-summary.mjs`, `tests/explorer-recovery-copy.mjs`, `tests/explorer-copy-tells-the-truth.mjs` (new), `docs/file-explorer-rebuild/README.md`, `TODO.md`, plus this log.
+
+Commit: `c83e32c`. Ball: yours.
