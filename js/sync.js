@@ -3094,9 +3094,19 @@
    * So this one does not fall back. A component the explore route cannot
    * serve is reported as unreadable and the screen says so, which is the
    * honest answer for a back door that is only supposed to look.
+   *
+   * ABSENT AND UNREADABLE ARE NOT THE SAME ANSWER, and this used to return
+   * null for both. "No Floor Survey is stored for this job" and "the stored
+   * Floor Survey could not be read" lead to opposite actions, and a recovery
+   * copy that prints the first when the second is true is telling the reader
+   * there was never anything to recover. So the result says which:
+   *
+   *   { ok: true, payload }             the component, decoded
+   *   { ok: false, reason: 'absent' }   the Cabinet holds none
+   *   { ok: false, reason: 'unreadable' } it holds one that will not decode
    */
   async function exploreReadComponent(id, name) {
-    if (!exploreCustomerIdSafe(id)) return null;
+    if (!exploreCustomerIdSafe(id)) return { ok: false, reason: 'absent' };
     const key = name === 'index'
       ? 'cf/' + id + '/index.json'
       : 'cf/' + id + '/' + name + '.json';
@@ -3104,12 +3114,17 @@
       '/explore/files/' + encodeURIComponent(id) + '/object?key=' + encodeURIComponent(key),
       { allow404: true },
     );
-    if (response.status === 404) return null;
+    if (response.status === 404) return { ok: false, reason: 'absent' };
+    let payload;
     try {
-      return await response.json();
+      payload = await response.json();
     } catch (_) {
-      return null;
+      return { ok: false, reason: 'unreadable' };
     }
+    if (!payload || typeof payload !== 'object') {
+      return { ok: false, reason: 'unreadable' };
+    }
+    return { ok: true, payload: payload };
   }
 
   async function exploreFetchArchive(id) {

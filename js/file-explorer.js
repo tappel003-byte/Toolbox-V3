@@ -883,8 +883,8 @@
       let read = 0;
       COMPONENT_READS.reduce(function (chain, name) {
         return chain.then(function () {
-          return sync.exploreReadComponent(id, name).then(function (payload) {
-            if (payload && typeof payload === 'object') { found[name] = payload; read += 1; }
+          return sync.exploreReadComponent(id, name).then(function (result) {
+            if (result && result.ok) { found[name] = result.payload; read += 1; }
           }).catch(function () {});
         });
       }, Promise.resolve()).then(function () {
@@ -1087,10 +1087,12 @@
       const unread = [];
       return COMPONENT_READS.reduce(function (chain, name) {
         return chain.then(function () {
-          return sync.exploreReadComponent(id, name).then(function (payload) {
-            if (payload && typeof payload === 'object') found[name] = payload;
+          return sync.exploreReadComponent(id, name).then(function (result) {
+            if (result && result.ok) { found[name] = result.payload; return; }
+            // Stored but unreadable is worth saying; absent is not. They are
+            // opposite facts and the copy must not print one for the other.
+            if (result && result.reason === 'unreadable') unread.push(name);
           }).catch(function () {
-            // Stored but unreadable is worth saying; absent is not.
             unread.push(name);
           });
         });
@@ -1220,7 +1222,7 @@
 
     /**
      * What this job records, as figures: levels, readings, pins,
-     * photographs, the survey date, the biggest fall. The drawings' details
+     * photographs, the survey date, the elevation range. The drawings' details
      * pane, computed from the survey rather than typed anywhere.
      */
     function jobSummaryPanel(id) {
@@ -2243,6 +2245,7 @@
             address: jobAddress,
             objects: jobObjects,
             components: jobComponents,
+            unreadable: jobComponentsUnread.slice(),
             fallbackDate: jobFieldDate,
             fetchObject: function (fileId, key) {
               return window.ToolboxSync.exploreFetchObject(fileId, key).then(responseBlob);

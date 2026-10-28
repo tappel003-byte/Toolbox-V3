@@ -92,7 +92,7 @@ none of it is approved to build.
   what you are looking at.
 - ~~**Open says what is in a component, not what it is made of.**~~ Built
   Oct 28. A job leads with what it records — levels, readings, pins,
-  photographs, the survey date, the biggest fall — every folder says what is
+  photographs, the survey date, the elevation range — every folder says what is
   inside it before you walk in, and Open on a record leads with that sentence
   with the raw text behind one closed Technical details line. Download still
   hands over the real file. Tim: "who in the world is this helpful?"

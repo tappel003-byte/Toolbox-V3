@@ -260,6 +260,7 @@ const out = await page.evaluate(async (id) => {
     details: await readText('Customer details.txt'),
     readme: await readText('README.txt'),
     rawFloor: await readText('Technical/Floor Survey.json'),
+    mediaMap: await readText('Technical/Photograph and plan file names.csv'),
     planPixels: planPixels,
     notice: (document.getElementById('explorer-notice') || {}).textContent || '',
     progress: progress,
@@ -291,10 +292,30 @@ check('the readings CSV is a real file with a row per reading',
 check('and the corrected elevation is in it, from Floor Survey’s own code',
   out.readings.indexOf('Main Level,3,,110,10,6.5,0.4,6.9,') >= 0,
   out.readings.trim().split('\r\n')[3]);
-check('the pin list names each pin, its level, its room and its photographs',
-  out.pins.indexOf('1,Main Level,Front entry,Separation at the sill,1,ph_one') >= 0 &&
-  out.pins.indexOf('2,Basement,Utility,Step crack,1,ph_gone') >= 0,
+/**
+ * THE LINK FROM A PIN TO ITS PICTURE, end to end through a real ZIP.
+ *
+ * The column carried the storage id while the copy renamed the bytes, so the
+ * one file whose job is to say which photograph shows which crack named a
+ * file that is not in the folder.
+ */
+check('a pin points at the file its photograph is actually in',
+  out.pins.indexOf('1,Main Level,Front entry,Separation at the sill,1,' +
+    'Photographs/Distress Survey/pin-01-front-entry-separation-at-the-sill.jpg,ph_one') >= 0,
   JSON.stringify(out.pins));
+check('and that file is really in the ZIP under that exact path',
+  out.names.some((name) => name.endsWith(
+    '/Photographs/Distress Survey/pin-01-front-entry-separation-at-the-sill.jpg')),
+  JSON.stringify(out.names.filter((n) => n.indexOf('Distress Survey/') > 0)));
+check('a photograph the Cabinet does not hold says so instead of naming a file',
+  out.pins.indexOf('2,Basement,Utility,Step crack,1,(not in this copy),ph_gone') >= 0,
+  JSON.stringify(out.pins));
+check('and Technical carries the mapping the raw records need to resolve an id',
+  out.mediaMap.indexOf('Stored as,In this copy,What it is') === 0 &&
+  out.mediaMap.indexOf('ph_one,Photographs/Distress Survey/' +
+    'pin-01-front-entry-separation-at-the-sill.jpg') > 0 &&
+  out.mediaMap.indexOf('ph_gone,(not in this copy)') > 0,
+  JSON.stringify(out.mediaMap));
 check('customer details are a page a person reads',
   out.details.indexOf('Rhonda Sorenson') === 0 &&
   out.details.indexOf('Cell    505-555-0144') > 0, JSON.stringify(out.details.slice(0, 40)));
@@ -325,7 +346,7 @@ check('and they are the stored bytes, not a rewrite of them',
 
 // --------------------------------------------------------- honesty, in full
 check('the README says what the survey records',
-  out.readme.indexOf('Readings') > 0 && out.readme.indexOf('Biggest fall') > 0, 'figures');
+  out.readme.indexOf('Readings') > 0 && out.readme.indexOf('Elevation range') > 0, 'figures');
 check('and names the photograph the Cabinet does not hold',
   out.readme.indexOf('What is NOT in this folder') > 0 &&
   /Distress Survey photograph/.test(out.readme.split('What is NOT in this folder')[1] || ''),
@@ -355,7 +376,7 @@ check('and the notice says how many went in, truthfully',
 check('the job view leads with what the job records',
   out.factsText.indexOf('What this job records') === 0 &&
   /READINGS\s*4/.test(out.factsText) && /PINS\s*2/.test(out.factsText) &&
-  /BIGGEST FALL\s*2\.1 in on Main Level/.test(out.factsText),
+  /ELEVATION RANGE\s*2\.1 in on Main Level/.test(out.factsText),
   JSON.stringify(out.factsText.replace(/\n/g, ' | ')));
 check('and each folder says what is inside it before you walk in',
   out.folderSays.some((text) => /2 levels/.test(text)) &&

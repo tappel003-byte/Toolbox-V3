@@ -198,7 +198,12 @@
   }
 
   /**
-   * The biggest fall on any one level, in inches.
+   * The ELEVATION RANGE on any one level, in inches: its highest corrected
+   * reading less its lowest.
+   *
+   * Called a range rather than a fall because that is what the subtraction
+   * is. It establishes neither a direction nor a change over time, and
+   * "fall" implies both.
    *
    * The drawings show this as "2.4 in over 31 ft". The span needs a scale,
    * and most levels do not have one set, so the distance is reported only
@@ -335,7 +340,7 @@
     const drop = maxDrop(levels);
     if (drop) {
       figures.push({
-        label: drop.corrected ? 'Biggest fall' : 'Biggest fall (uncorrected)',
+        label: drop.corrected ? 'Elevation range' : 'Elevation range (uncorrected)',
         value: inches(drop.drop) + ' in on ' + drop.level,
       });
     }
@@ -465,7 +470,7 @@
 
   /**
    * What the drawings' details pane carries: levels, readings, pins,
-   * photographs, the survey date and the biggest fall. Computed from the
+   * photographs, the survey date and the elevation range. Computed from the
    * survey, never typed, and omitted where the component is not stored.
    */
   function jobFigures(components) {
@@ -484,7 +489,7 @@
     const drop = maxDrop(surveyLevels);
     if (drop) {
       figures.push({
-        label: drop.corrected ? 'Biggest fall' : 'Biggest fall (uncorrected)',
+        label: drop.corrected ? 'Elevation range' : 'Elevation range (uncorrected)',
         value: inches(drop.drop) + ' in on ' + drop.level,
       });
     }
@@ -555,11 +560,22 @@
    * a named origin. They are a true layout; only the units of distance are
    * missing until a level's scale is set, and the header says that too.
    */
-  function readingsCsv(floor, plans) {
+  function readingsCsv(floor, plans, notes) {
+    const told = Array.isArray(notes) ? notes : [];
     const levels = levelsOf(plans, floor).filter(function (l) { return l.readings > 0; });
     if (!levels.length) return '';
     const api = (typeof window !== 'undefined' && window.ToolboxFloorSurvey) || null;
     const canCorrect = !!(api && typeof api.withCorrectedValues === 'function');
+    /**
+     * The header names the column and nothing else.
+     *
+     * It used to say "not computed" whenever the helper was unavailable --
+     * but that is decided per LEVEL, not per file: a level with no flooring
+     * transitions has nothing to correct, so its elevation is its reading
+     * whether the helper is there or not. A header claiming the whole column
+     * was not computed, over cells that are, is its own small lie. An empty
+     * cell plus the note below carries the failure, and both are per level.
+     */
     const rows = [[
       'Level',
       'Point',
@@ -568,7 +584,7 @@
       'Y (plan)',
       'Reading (in)',
       'Correction (in)',
-      canCorrect ? 'Elevation (in)' : 'Elevation (in) — not computed',
+      'Elevation (in)',
       'Base point',
       'Transition',
       'Notes',
@@ -576,14 +592,44 @@
     levels.forEach(function (level) {
       const layer = level.layer || {};
       const raw = Array.isArray(level.points) ? level.points : [];
-      let corrected = raw;
-      if (canCorrect) {
+      /**
+       * A correction that THREW is not a correction of zero.
+       *
+       * This used to catch the exception, fall back to the raw points, and
+       * carry on with canCorrect still true -- so a raw reading of 6.5 came
+       * out in the Elevation column as 6.5 with a correction of 0, which
+       * reads as "measured on the reference surface, nothing to correct".
+       * That is a false statement about a measurement, written into an
+       * archive meant to outlive the application.
+       *
+       * Per level, because one level's transitions failing says nothing
+       * about another's. The cells are left empty and the failure is named.
+       */
+      const hasTransitions = Array.isArray(layer.transitions) && layer.transitions.length > 0;
+      let corrected = null;
+      if (!hasTransitions) {
+        // Nothing to correct. withCorrectedValues returns the points
+        // untouched in this case, so the elevation IS the reading and that
+        // is knowable without the helper -- and a level like this must not
+        // be reported as a correction failure when the helper is missing or
+        // broken, because it never needed one.
+        corrected = raw;
+      } else if (canCorrect) {
         try {
           corrected = api.withCorrectedValues(raw, layer.transitions, layer.transitionGroupAverages);
-        } catch (_) { corrected = raw; }
+        } catch (_) {
+          corrected = null;
+          told.push('The flooring corrections for ' + level.name + ' could not be ' +
+            'applied, so that level\u2019s Elevation and Correction cells are empty. ' +
+            'The readings themselves are unaffected.');
+        }
+      } else {
+        told.push(level.name + ' has flooring transitions, and the correction could ' +
+          'not be reached when this copy was taken, so that level\u2019s Elevation ' +
+          'and Correction cells are empty. The readings themselves are unaffected.');
       }
       const byId = Object.create(null);
-      corrected.forEach(function (p) {
+      (corrected || []).forEach(function (p) {
         if (isObject(p) && trim(p.id)) byId[trim(p.id)] = p;
       });
       const ordered = raw.slice().sort(function (a, b) {
@@ -593,7 +639,7 @@
       });
       ordered.forEach(function (point) {
         const fixed = byId[trim(point.id)];
-        const elevation = canCorrect && fixed && typeof fixed.value === 'number'
+        const elevation = corrected && fixed && typeof fixed.value === 'number'
           ? fixed.value : null;
         const correction = elevation !== null && typeof point.value === 'number'
           ? Math.round((elevation - point.value) * 100) / 100
@@ -636,18 +682,32 @@
 
   /**
    * The pins as a readable file: number, level, room, the note, and which
-   * photographs belong to it. The same material the report's Picture/Damage
-   * Locations page carries, and what makes "find the half-inch cracks" work
-   * years later without opening Toolbox.
+   * photographs belong to it.
+   *
+   * THE PHOTOGRAPH COLUMN IS A PATH INTO THIS FOLDER, not a storage id.
+   * It used to be the id -- "ph_one" -- while the copy renamed the bytes to
+   * Photographs/Distress Survey/pin-01-front-entry.jpg. So the one file whose
+   * job is to say which picture belongs to which crack named a file that is
+   * not in the folder, and the link the whole list exists for was broken on
+   * the way out. A person opening this in 2031 searches for ph_one and finds
+   * nothing.
+   *
+   * `pathFor(mediaId)` is the copy's own record of where each object actually
+   * landed, including the suffix a name collision forced. It returns '' for a
+   * photograph that is not in the copy, and that is said in words rather than
+   * left as a blank cell. The storage id stays in its own column, because the
+   * records under Technical/ refer to it and a reader needs both halves.
    */
-  function pinsCsv(distress, plans, floor) {
+  function pinsCsv(distress, plans, floor, pathFor) {
     const pins = isObject(distress) && Array.isArray(distress.pins)
       ? distress.pins.filter(isObject) : [];
     if (!pins.length) return '';
+    const look = typeof pathFor === 'function' ? pathFor : function () { return ''; };
     const levels = levelsOf(plans, floor);
     const named = Object.create(null);
     levels.forEach(function (level) { named[level.id] = level.name; });
-    const rows = [['Pin', 'Level', 'Room', 'Description', 'Photographs', 'Photograph files']];
+    const rows = [['Pin', 'Level', 'Room', 'Description', 'Photographs',
+      'Photograph files', 'Stored as']];
     pins.slice().sort(function (a, b) {
       const an = typeof a.num === 'number' ? a.num : 0;
       const bn = typeof b.num === 'number' ? b.num : 0;
@@ -656,13 +716,43 @@
       const photos = Array.isArray(pin.photos) ? pin.photos.filter(function (id) {
         return typeof id === 'string' && id;
       }) : [];
+      const paths = photos.map(function (id) {
+        const landed = trim(look(id));
+        return landed || '(not in this copy)';
+      });
       rows.push([
         pin.num == null ? '' : pin.num,
         named[trim(pin.canvasId)] || '',
         trim(pin.location),
         trim(pin.description),
         photos.length,
+        paths.join(' | '),
         photos.join(' '),
+      ]);
+    });
+    return csvRows(rows);
+  }
+
+  /**
+   * The same mapping, on its own, for the records under Technical/.
+   *
+   * Those records name a photograph by its storage id and nothing else. This
+   * is the one small file that turns an id in `distress.json` into a file in
+   * this folder. It is not an import format and nothing reads it back: it is
+   * there so a person, or whatever they are using in 2031, can follow the
+   * reference.
+   */
+  function mediaMapCsv(entries) {
+    const list = Array.isArray(entries) ? entries : [];
+    if (!list.length) return '';
+    const rows = [['Stored as', 'In this copy', 'What it is']];
+    list.slice().sort(function (a, b) {
+      return String(a.id) < String(b.id) ? -1 : 1;
+    }).forEach(function (entry) {
+      rows.push([
+        trim(entry.id),
+        trim(entry.path) || '(not in this copy)',
+        trim(entry.label),
       ]);
     });
     return csvRows(rows);
@@ -772,11 +862,24 @@
     lines.push('  Reading (in) is what the instrument showed and is what Toolbox');
     lines.push('  stores. Elevation (in) is that reading with its flooring');
     lines.push('  transition correction applied, which is the comparable floor;');
-    lines.push('  the correction between them shows the arithmetic. X and Y are');
-    lines.push('  positions on the level\'s plan image measured from its base');
-    lines.push('  point, so they are a true layout — the shape of the floor and');
-    lines.push('  which corner is low. They become distances on the ground only');
-    lines.push('  once a level\'s scale is set.');
+    lines.push('  the correction between them shows the arithmetic. An empty');
+    lines.push('  Elevation cell means the correction could not be applied, not');
+    lines.push('  that it was zero.');
+    lines.push('');
+    // What X and Y ARE. This said they were "measured from the base point",
+    // which they are not: they are exported straight from the stored point,
+    // in the plan image's own coordinates. The base point sits in that same
+    // space and is marked in the Base point column, so the geometry relative
+    // to it is recoverable -- but the file must not claim the subtraction was
+    // already done.
+    lines.push('  X and Y are positions on that level\'s plan image, in the');
+    lines.push('  image\'s own coordinates, exactly as Toolbox stored them. They');
+    lines.push('  are not measured from anywhere and no units are implied. The');
+    lines.push('  level\'s base point is a reading like any other and is marked');
+    lines.push('  "yes" in the Base point column, so positions relative to it');
+    lines.push('  can be worked out from these columns. They become distances on');
+    lines.push('  the ground only once that level\'s scale is set, which is not');
+    lines.push('  part of this file.');
     lines.push('');
     lines.push('The Technical folder holds the records Toolbox itself writes.');
     lines.push('They are the only thing that could rebuild this job inside');
@@ -834,6 +937,7 @@
     distressFacts: distressFacts,
     readingsCsv: readingsCsv,
     pinsCsv: pinsCsv,
+    mediaMapCsv: mediaMapCsv,
     customerDetailsText: customerDetailsText,
     coverSheet: coverSheet,
     archiveFolderName: archiveFolderName,

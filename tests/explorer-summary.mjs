@@ -128,7 +128,23 @@ const out = await page.evaluate((fx) => {
     figures: S.jobFigures(fx),
     surveyDate: S.surveyDateOf(fx),
     readings: S.readingsCsv(fx.floor, fx.plans),
-    pins: S.pinsCsv(fx.distress, fx.plans, fx.floor),
+    pins: S.pinsCsv(fx.distress, fx.plans, fx.floor, function (id) {
+      // What the copy recorded: where each photograph actually landed.
+      // ph_c collided and took a suffix; ph_b never made it in.
+      const landed = {
+        ph_a: 'Photographs/Distress Survey/pin-02-dining-room-hairline-crack.jpg',
+        ph_c: 'Photographs/Distress Survey/pin-01-front-entry-separation-2.jpg',
+      };
+      return landed[id] || '';
+    }),
+    pinsUnmapped: S.pinsCsv(fx.distress, fx.plans, fx.floor),
+    mediaMap: S.mediaMapCsv([
+      { id: 'ph_c', path: 'Photographs/Distress Survey/pin-01-front-entry-separation-2.jpg',
+        label: 'Distress Survey photograph' },
+      { id: 'ph_a', path: 'Photographs/Distress Survey/pin-02-dining-room-hairline-crack.jpg',
+        label: 'Distress Survey photograph' },
+      { id: 'ph_b', path: '', label: 'Distress Survey photograph' },
+    ]),
     details: S.customerDetailsText(fx.customer, { displayName: 'Rhonda Sorenson' }),
     folderName: S.archiveFolderName({
       name: 'Rhonda Sorenson',
@@ -152,7 +168,7 @@ check('a Floor Survey says its levels, its readings and when it was surveyed',
   out.floor.headline === '2 levels · Main Level 4, Basement 2 · surveyed Sep 30, 2026',
   out.floor.headline);
 check('and carries the biggest fall as a figure, naming the level it is on',
-  out.floor.figures.some((f) => f.label === 'Biggest fall' && f.value === '2.1 in on Main Level'),
+  out.floor.figures.some((f) => f.label === 'Elevation range' && f.value === '2.1 in on Main Level'),
   JSON.stringify(out.floor.figures));
 check('a Distress Survey says its photographs, its pins and the levels they are on',
   out.distress.headline === '5 photographs · on 3 pins · across Main Level, Basement · Oct 1, 2026',
@@ -179,7 +195,7 @@ check('a Floor Survey with nothing in it says so rather than inventing a level',
 // ------------------------------------------- the figures for the job pane
 check('the job figures are the ones the drawings carry',
   JSON.stringify(out.figures.map((f) => f.label)) ===
-  JSON.stringify(['Survey', 'Levels', 'Readings', 'Pins', 'Photographs', 'Biggest fall', 'Report pages']),
+  JSON.stringify(['Survey', 'Levels', 'Readings', 'Pins', 'Photographs', 'Elevation range', 'Report pages']),
   JSON.stringify(out.figures));
 check('and they are computed from the survey, not typed',
   out.figures.find((f) => f.label === 'Readings').value === '6' &&
@@ -224,11 +240,38 @@ check('the pin list is ordered by pin number, not by storage order',
   pinLines[1].indexOf('1,Main Level,Front entry') === 0 &&
   pinLines[2].indexOf('2,Main Level,Dining room') === 0,
   pinLines.slice(1, 3).join(' | '));
-check('each pin names its level, its room, its note and its photographs',
-  pinLines[2] === '2,Main Level,Dining room,Hairline crack at the sill.,2,ph_a ph_b',
-  pinLines[2]);
+/**
+ * THE LINK FROM A PIN TO ITS PICTURE, which is what this file is for.
+ *
+ * The column used to carry the storage id -- ph_a -- while the copy renamed
+ * the bytes to a path. So the one file whose job is to say which photograph
+ * shows which crack named a file that is not in the folder. It now carries
+ * the path the bytes actually took, collision suffix and all, with the id
+ * kept in its own column because the records under Technical/ use it.
+ */
+check('a pin points at the file its photograph is actually in',
+  pinLines[2] === '2,Main Level,Dining room,Hairline crack at the sill.,2,' +
+  'Photographs/Distress Survey/pin-02-dining-room-hairline-crack.jpg | (not in this copy),' +
+  'ph_a ph_b', pinLines[2]);
+check('a name collision is followed to the suffixed file, not the plain one',
+  pinLines[1].indexOf('pin-01-front-entry-separation-2.jpg') > 0, pinLines[1]);
+check('a photograph that is not in the copy says so, rather than leaving a blank',
+  pinLines[2].indexOf('(not in this copy)') > 0, pinLines[2]);
+check('and the storage id is still there, because the records under Technical use it',
+  pinLines[2].split(',').slice(-1)[0] === 'ph_a ph_b', pinLines[2]);
 check('a pin with no photograph is still listed',
-  pinLines[3] === '3,Basement,Utility,"Step crack, mortar line.",0,', pinLines[3]);
+  pinLines[3] === '3,Basement,Utility,"Step crack, mortar line.",0,,', pinLines[3]);
+check('with no mapping at all, every photograph is declared not in the copy',
+  out.pinsUnmapped.indexOf('(not in this copy)') > 0 &&
+  out.pinsUnmapped.indexOf('ph_a ph_b') > 0, 'honest without a map');
+
+const mapLines = out.mediaMap.trim().split('\r\n');
+check('the mapping file turns a storage id into a file in this folder',
+  mapLines[0] === 'Stored as,In this copy,What it is' &&
+  mapLines[1] === 'ph_a,Photographs/Distress Survey/pin-02-dining-room-hairline-crack.jpg,' +
+  'Distress Survey photograph', mapLines.slice(0, 2).join(' | '));
+check('and says plainly which ids have no file behind them',
+  mapLines[2] === 'ph_b,(not in this copy),Distress Survey photograph', mapLines[2]);
 check('a Distress Survey with no pins produces no file at all',
   out.noPins === '', JSON.stringify(out.noPins));
 
@@ -241,13 +284,28 @@ check('customer details read as a page, not a record',
 check('the copy is named for who it was for, where, and the field work date',
   out.folderName === 'Rhonda Sorenson - 4925 Edwards Dr NE (2026-09-30)', out.folderName);
 check('the cover sheet says what the survey records',
-  out.cover.indexOf('Readings') > 0 && out.cover.indexOf('Biggest fall') > 0, 'figures');
+  out.cover.indexOf('Readings') > 0 && out.cover.indexOf('Elevation range') > 0, 'figures');
 check('and says plainly what is NOT in the folder',
   out.cover.indexOf('What is NOT in this folder') > 0 &&
   out.cover.indexOf('No report has been printed for this job.') > 0, 'honest');
 check('and explains the readings file to someone who has never seen Toolbox',
   out.cover.indexOf('Reading (in) is what the instrument showed') > 0 &&
-  out.cover.indexOf('once a level\'s scale is set') > 0, 'explained');
+  out.cover.indexOf('once that level\'s scale is set') > 0, 'explained');
+/**
+ * X and Y are exported straight from the stored point, in the plan image's
+ * own coordinates. The cover sheet used to say they were "measured from its
+ * base point", which is a subtraction nothing performs -- a false statement
+ * about the data, written into a file meant to outlive the application.
+ */
+check('and does not claim X and Y were measured from anywhere',
+  out.cover.indexOf('in the\n  image\'s own coordinates, exactly as Toolbox stored them') > 0 &&
+  out.cover.indexOf('They\n  are not measured from anywhere') > 0 &&
+  out.cover.indexOf('measured from its base') < 0,
+  JSON.stringify(out.cover.slice(out.cover.indexOf('X and Y'),
+    out.cover.indexOf('X and Y') + 160)));
+check('and says an empty Elevation cell is a failure, not a zero correction',
+  out.cover.indexOf('An empty') > 0 &&
+  out.cover.indexOf('that it was zero') > 0, 'not a zero');
 
 // ------------- what it does when the correction cannot be reached at all
 //
@@ -257,21 +315,70 @@ const degraded = await page.evaluate((fx) => {
   const real = window.ToolboxFloorSurvey;
   window.ToolboxFloorSurvey = undefined;
   try {
-    const csv = window.ToolboxExplorerSummary.readingsCsv(fx.floor, fx.plans);
+    const notes = [];
+    const csv = window.ToolboxExplorerSummary.readingsCsv(fx.floor, fx.plans, notes);
     const summary = window.ToolboxExplorerSummary.componentSummary('floor', fx.floor, { plans: fx.plans });
-    const fall = summary.figures.filter((f) => f.label.indexOf('Biggest fall') === 0)[0];
+    const fall = summary.figures.filter((f) => f.label.indexOf('Elevation range') === 0)[0];
     return { header: csv.split('\r\n')[0], row: csv.split('\r\n')[4],
-      headline: summary.headline, fall: fall && fall.label };
+      basement: csv.split('\r\n')[6],
+      headline: summary.headline, fall: fall && fall.label, notes: notes };
   } finally {
     window.ToolboxFloorSurvey = real;
   }
 }, FIXTURE);
-check('and the fall it reports is labelled uncorrected rather than passed off',
-  degraded.fall === 'Biggest fall (uncorrected)', String(degraded.fall));
-check('with no correction available the column is empty and the header says so',
-  /Elevation \(in\) — not computed/.test(degraded.header) &&
+check('and the range it reports is labelled uncorrected rather than passed off',
+  degraded.fall === 'Elevation range (uncorrected)', String(degraded.fall));
+// A level with no transitions needed no helper, so it keeps its elevations
+// even with nothing to call. Reporting it as a failure would be a second
+// kind of dishonesty: claiming something was lost that never existed.
+check('while a level with no transitions keeps its elevations either way',
+  degraded.basement === 'Basement,2,,55,5,8.6,0,8.6,,,', degraded.basement);
+check('with no correction available, a level that needs one has empty cells and says why',
+  degraded.header === 'Level,Point,Label,X (plan),Y (plan),Reading (in),' +
+  'Correction (in),Elevation (in),Base point,Transition,Notes' &&
+  degraded.notes.length === 1 && /Main Level has flooring transitions/.test(degraded.notes[0]) &&
   degraded.row === 'Main Level,4,,160,10,6.5,,,,Carpet/subfloor,under the window',
   JSON.stringify(degraded));
+
+/**
+ * A CORRECTION THAT THREW IS NOT A CORRECTION OF ZERO.
+ *
+ * The catch used to fall back to the raw points and carry on, so a raw 6.5
+ * came out in the Elevation column as 6.5 with a correction of 0 -- which
+ * reads as "measured on the reference surface, nothing to correct". A false
+ * statement about a measurement, in a file meant to outlive Toolbox.
+ */
+const threw = await page.evaluate((fx) => {
+  const real = window.ToolboxFloorSurvey.withCorrectedValues;
+  window.ToolboxFloorSurvey.withCorrectedValues = function () {
+    throw new Error('transitions are broken');
+  };
+  try {
+    const notes = [];
+    const csv = window.ToolboxExplorerSummary.readingsCsv(fx.floor, fx.plans, notes);
+    const lines = csv.trim().split('\r\n');
+    return {
+      header: lines[0],
+      transitioned: lines[4],
+      plain: lines[1],
+      basement: lines[6],
+      notes: notes,
+    };
+  } finally {
+    window.ToolboxFloorSurvey.withCorrectedValues = real;
+  }
+}, FIXTURE);
+
+check('a thrown correction leaves the Elevation cell empty, not equal to the reading',
+  threw.transitioned === 'Main Level,4,,160,10,6.5,,,,"Carpet/subfloor correction +0.4""",under the window', threw.transitioned);
+check('and does not report a correction of zero for a point it could not correct',
+  threw.plain === 'Main Level,1,BP1,10,10,9,,,yes,,', threw.plain);
+check('and says which level could not be corrected',
+  threw.notes.length === 1 && /Main Level/.test(threw.notes[0]) &&
+  /readings themselves are unaffected/.test(threw.notes[0]),
+  JSON.stringify(threw.notes));
+check('a level with no transitions is unaffected by another level failing',
+  threw.basement === 'Basement,2,,55,5,8.6,0,8.6,,,', threw.basement);
 
 await browser.close();
 const failed = results.filter((r) => !r.ok);

@@ -71,6 +71,12 @@
     return FOLDER_FOR[purpose] || 'Other';
   }
 
+  /** The media id a row is stored under, or '' for a cf/ record. */
+  function mediaIdOf(row) {
+    const key = String((row && row.key) || '');
+    return key.indexOf('media/') === 0 ? key.slice('media/'.length) : '';
+  }
+
   /** The leaf name of a stored key, for anything with no better name. */
   function leafOf(key) {
     const parts = String(key || '').split('/');
@@ -139,11 +145,28 @@
     const failed = [];
     const missing = [];
     const folders = Object.create(null);
+    /**
+     * WHAT ACTUALLY LANDED, which is the only thing the README may describe.
+     *
+     * `packed` maps a storage key to the path the bytes really took, suffix
+     * and all, so the pin list and the mapping file can point at files that
+     * exist. `havePurpose` counts by what a thing IS rather than by which
+     * folder exists -- a Floor Survey figure and a Floor Survey recovery PDF
+     * both land in Floor Survey/, so testing the folder said a job with a
+     * figure and no PDF had a PDF.
+     */
+    const packed = Object.create(null);
+    const havePurpose = Object.create(null);
+    const mediaMap = [];
 
     const stored = rows.filter(function (row) { return row && !row.missing; });
     const absent = rows.filter(function (row) { return row && row.missing; });
     absent.forEach(function (row) {
-      missing.push(trim(row.label) || leafOf(row.key));
+      missing.push((trim(row.label) || leafOf(row.key)) +
+        ' \u2014 referenced by this job, but the File Cabinet does not hold it.');
+      if (mediaIdOf(row)) {
+        mediaMap.push({ id: mediaIdOf(row), path: '', label: trim(row.label) });
+      }
     });
 
     const total = stored.length;
@@ -169,10 +192,19 @@
         const loaded = await options.fetchObject(options.id, row.key);
         zip.file(root + '/' + path, loaded.buffer);
         folders[folder] = (folders[folder] || 0) + 1;
+        packed[row.key] = path;
+        const purpose = trim(row.purpose) || 'other';
+        havePurpose[purpose] = (havePurpose[purpose] || 0) + 1;
+        if (mediaIdOf(row)) {
+          mediaMap.push({ id: mediaIdOf(row), path: path, label: trim(row.label) });
+        }
       } catch (_) {
         // Named, counted, and the copy goes on. Silently dropping it is how
         // an archive ends up quietly incomplete.
         failed.push(trim(row.label) || leafOf(row.key));
+        if (mediaIdOf(row)) {
+          mediaMap.push({ id: mediaIdOf(row), path: '', label: trim(row.label) });
+        }
       }
       done += 1;
       report(name);
@@ -181,13 +213,35 @@
     // ---- the files the copy makes for itself ----------------------------
     const madeHere = [];
 
+    /**
+     * A component that could not be READ is not a component that is ABSENT.
+     *
+     * "No Floor Survey readings are stored for this job" and "the stored
+     * Floor Survey could not be read" lead to opposite actions, and the
+     * second one is the one worth acting on. The copy is told which by the
+     * Explorer, which gets it from the explore route.
+     */
+    const unreadable = {};
+    (Array.isArray(options.unreadable) ? options.unreadable : []).forEach(function (name) {
+      unreadable[trim(name)] = true;
+    });
+    const sayAbsent = function (name, absentLine, unreadableLine) {
+      missing.push(unreadable[name] ? unreadableLine : absentLine);
+    };
+
     const details = Summary.customerDetailsText(components.customer, components.index);
     if (details) {
       zip.file(root + '/Customer details.txt', details);
       madeHere.push({ name: 'Customer details.txt', what: 'who the job was for, and where' });
+    } else {
+      sayAbsent('customer',
+        'Customer details. No customer information is stored for this job.',
+        'Customer details. The stored customer information could not be read, ' +
+        'so none of it is in this copy. It is still in the File Cabinet.');
     }
 
-    const readings = Summary.readingsCsv(components.floor, components.plans);
+    const readingNotes = [];
+    const readings = Summary.readingsCsv(components.floor, components.plans, readingNotes);
     if (readings) {
       zip.file(root + '/Floor Survey readings.csv', readings);
       madeHere.push({
@@ -195,43 +249,101 @@
         what: 'every reading, raw and corrected, with its position',
       });
     } else {
-      missing.push('A readings CSV. No Floor Survey readings are stored for this job.');
+      sayAbsent('floor',
+        'A readings CSV. No Floor Survey readings are stored for this job.',
+        'A readings CSV. The stored Floor Survey could not be read, so no ' +
+        'readings could be written out. They are still in the File Cabinet.');
     }
+    readingNotes.forEach(function (note) { missing.push(note); });
 
-    const pins = Summary.pinsCsv(components.distress, components.plans, components.floor);
+    /**
+     * The pin list is built AFTER the packing, because its photograph column
+     * is a path into this folder and nothing knows those paths until the
+     * bytes have landed -- including the suffix a name collision forced.
+     */
+    const pathForMedia = function (mediaId) {
+      const id = trim(mediaId);
+      return id ? (packed['media/' + id] || '') : '';
+    };
+    const pins = Summary.pinsCsv(components.distress, components.plans,
+      components.floor, pathForMedia);
     if (pins) {
       zip.file(root + '/Distress Survey pins.csv', pins);
       madeHere.push({
         name: 'Distress Survey pins.csv',
-        what: 'each numbered pin, its room, its note and its photographs',
+        what: 'each numbered pin, its room, its note, and the file each of its ' +
+          'photographs is in',
       });
     } else {
-      missing.push('A pin list. No Distress Survey pins are stored for this job.');
+      sayAbsent('distress',
+        'A pin list. No Distress Survey pins are stored for this job.',
+        'A pin list. The stored Distress Survey could not be read, so no pins ' +
+        'could be written out. They are still in the File Cabinet.');
+    }
+
+    const mapCsv = Summary.mediaMapCsv(mediaMap);
+    if (mapCsv) {
+      zip.file(root + '/Technical/Photograph and plan file names.csv', mapCsv);
     }
 
     /**
-     * The finished documents, named honestly.
+     * The finished documents, named honestly, from WHAT WAS PACKED.
      *
-     * Floor Survey writes a recovery PDF, so a job that has one really does
-     * carry a PDF of that survey. Report Builder prints from the application
-     * and does not store the printed file, and Distress has no PDF at all
-     * today -- so those are reported ABSENT rather than produced. Saying
-     * otherwise, or quietly leaving the line out, is the fabricated report
-     * the brief forbids.
+     * This used to test whether a folder existed. A Floor Survey figure and a
+     * Floor Survey recovery PDF both land in Floor Survey/, so a job with a
+     * figure and no PDF was told it had a PDF. And whether Distress
+     * photographs exist says nothing at all about whether a Distress PDF
+     * does -- Toolbox does not produce one either way -- so one gated the
+     * other for no reason and both lines vanished together.
+     *
+     * Counted by purpose now, which is what the thing IS.
      */
-    if (!folders['Floor Survey']) {
-      missing.push('A PDF of the Floor Survey. None is stored for this job.');
+    if (!havePurpose['floor-pdf']) {
+      sayAbsent('floor',
+        'A PDF of the Floor Survey. None is stored for this job' +
+        (havePurpose['floor-figure'] ? ', though its figures are in Floor Survey/.' : '.'),
+        'A PDF of the Floor Survey. The stored Floor Survey could not be read, ' +
+        'so whether it has one is unknown.');
     }
-    missing.push('A finished report PDF. Toolbox prints the report from the ' +
-      'application and does not keep the printed file, so the Cabinet has ' +
-      'never held one. Report/ holds the pictures placed in it, and the ' +
-      'report Toolbox can rebuild is Technical/report.json.');
-    if (!folders['Photographs/Distress Survey']) {
+
+    // Toolbox does not produce one, whatever else the job holds.
+    if (components.distress || unreadable.distress) {
       missing.push('A PDF of the Distress Survey. Toolbox does not produce one.');
     }
 
+    /**
+     * The report, described by the files this copy actually wrote.
+     *
+     * The record is written under its readable label, so naming
+     * "Technical/report.json" pointed at a file that is not there. And
+     * Report/ only exists when the report had pictures placed in it.
+     */
+    const reportRecordPath = packed['cf/' + options.id + '/report.json'] || '';
+    const reportParts = ['A finished report PDF. Toolbox prints the report from ' +
+      'the application and does not keep the printed file, so the File Cabinet ' +
+      'has never held one.'];
+    if (folders['Report']) {
+      reportParts.push('Report/ holds the pictures placed in it.');
+    }
+    if (reportRecordPath) {
+      reportParts.push('The report Toolbox can rebuild is ' + reportRecordPath + '.');
+    } else if (unreadable.report) {
+      reportParts.push('The stored report could not be read, so it is not in this copy.');
+    } else {
+      reportParts.push('No report has been started for this job.');
+    }
+    missing.push(reportParts.join(' '));
+
+    if (unreadable.plans) {
+      missing.push('The plans record could not be read, so the levels could not ' +
+        'be named and the plan pictures are listed under their stored names.');
+    }
+    if (unreadable.diagnostics) {
+      missing.push('The stored Diagnostics could not be read.');
+    }
+
     failed.forEach(function (label) {
-      missing.push(label + ' — stored, but could not be read when this copy was taken.');
+      missing.push(label + ' \u2014 stored, but could not be read when this copy was taken.');
     });
 
     const folderList = Object.keys(folders).sort().map(function (key) {

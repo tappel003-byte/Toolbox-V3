@@ -38,8 +38,7 @@ Also published, if the file is easier to reach as a link:
 Built, and in the application:
 
 - **A job says what it holds.** The job view leads with what the survey
-  records — levels, readings, pins, photographs, the survey date, the biggest
-  fall — and every folder says what is inside it before you walk in ("Floor
+  records — levels, readings, pins, photographs, the survey date, the elevation range — and every folder says what is inside it before you walk in ("Floor
   Survey · 3 levels · Main Level 48, Basement 31 · surveyed Oct 7, 2026").
   Open on one of Toolbox's own records leads with that sentence and puts the
   record syntax behind one closed line. Tim: *"who in the world is this
