@@ -3082,6 +3082,36 @@
     return fetchCabinetObject(id, key);
   }
 
+  /**
+   * Read one component for the back door, and ONLY through the back door.
+   *
+   * File Explorer reads the stored records to say what a job holds -- two
+   * levels, 48 readings, surveyed Sep 29 -- rather than printing the record
+   * at the investigator. That happens on a page view, which is exactly where
+   * browsing must not quietly reach past the read-only explore route into
+   * the working sync API the way exploreFetchObject's 404 fallback does.
+   *
+   * So this one does not fall back. A component the explore route cannot
+   * serve is reported as unreadable and the screen says so, which is the
+   * honest answer for a back door that is only supposed to look.
+   */
+  async function exploreReadComponent(id, name) {
+    if (!exploreCustomerIdSafe(id)) return null;
+    const key = name === 'index'
+      ? 'cf/' + id + '/index.json'
+      : 'cf/' + id + '/' + name + '.json';
+    const response = await apiFetch(
+      '/explore/files/' + encodeURIComponent(id) + '/object?key=' + encodeURIComponent(key),
+      { allow404: true },
+    );
+    if (response.status === 404) return null;
+    try {
+      return await response.json();
+    } catch (_) {
+      return null;
+    }
+  }
+
   async function exploreFetchArchive(id) {
     const response = await apiFetch('/explore/files/' + encodeURIComponent(id) + '/archive', { allow404: true });
     if (response.status !== 404) return response;
@@ -3599,6 +3629,7 @@
     exploreListFiles: exploreListFiles,
     exploreListCustomerFile: exploreListCustomerFile,
     exploreFetchObject: exploreFetchObject,
+    exploreReadComponent: exploreReadComponent,
     exploreFetchArchive: exploreFetchArchive,
     trashCabinetCustomerFile: trashCabinetCustomerFile,
     destroyCabinetCustomerFile: destroyCabinetCustomerFile,

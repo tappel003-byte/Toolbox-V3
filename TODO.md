@@ -82,17 +82,20 @@ none of it is approved to build.
   drive, a flash drive or Drive. Chrome and Edge on a desktop; everywhere
   else falls back to the ordinary download. Tim: "I could be saving it to a
   Google Drive... that's a good idea."
-  Still on the list, from the same conversation: saving as *folders* rather
-  than one ZIP (the same dialog can hand back a folder, which PGG never
-  did); choosing what goes in the copy -- whole job, pictures only, report
-  only; saving just what you are looking at; a readable cover sheet inside
-  the copy so a folder opened in 2031 explains itself; and a progress line
-  while a big one is packed.
-- **Open says what is in a component, not what it is made of.** Today Open on
-  Distress, Floor Survey or Report Builder prints the raw file. Tim: "who in
-  the world is this helpful?" It should read *Floor Survey -- 2 levels · Main
-  Level 48 readings · surveyed Sep 29, 2026*, with Download still handing over
-  the real file and the raw text behind Technical details.
+  The cover sheet and the progress line were built Oct 28: the copy comes
+  out as one folder named for the customer, the address and the field work
+  date, with a README that says what the survey records and what is **not**
+  in the folder, and the button counts its way through. Still on the list,
+  from the same conversation: saving as *folders* rather than one ZIP (the
+  same dialog can hand back a folder, which PGG never did); choosing what
+  goes in the copy -- whole job, pictures only, report only; and saving just
+  what you are looking at.
+- ~~**Open says what is in a component, not what it is made of.**~~ Built
+  Oct 28. A job leads with what it records — levels, readings, pins,
+  photographs, the survey date, the biggest fall — every folder says what is
+  inside it before you walk in, and Open on a record leads with that sentence
+  with the raw text behind one closed Technical details line. Download still
+  hands over the real file. Tim: "who in the world is this helpful?"
 - **A picture of the survey, before a PDF of it.** Tim: "I wonder if we just
   for this initially we just take screenshots of the floor level survey, of
   the distress survey." A picture of the drawing is readable by anyone, costs
@@ -118,7 +121,14 @@ none of it is approved to build.
 - **The Cabinet index and the Trash record are not documents.** They sit in the
   list today as if they were things to open. They belong behind Technical
   details with the keys and the ids.
-- **The readings CSV, and what X and Y mean.** Tim, on the objection that
+- ~~**The readings CSV.**~~ Built Oct 28, in the job copy: a row per reading
+  with the level, the point, its plan position, the raw reading, the
+  correction applied and the corrected elevation. The corrected column comes
+  from Floor Survey's own `withCorrectedValues`, reached through
+  `window.ToolboxFloorSurvey`, so the back door cannot disagree with the topo.
+  A pin list lands beside it — pin number, level, room, the note and which
+  photographs belong to it. What remains is below.
+- **What X and Y mean.** Tim, on the objection that
   without a scale the positions are meaningless: "we have our starting point
   and we actually name it in the beginning, so if we have a starting point we
   at least have a layout." He is right. The base point is a named origin, so
@@ -398,7 +408,8 @@ Then remove the completed item from the active checklist and cite its
 implementation/verification in the completion record; Git history retains the
 original discussion. Do not erase the preserved design or old evidence.
 
-The File Explorer redesign is already retained in
+The File Explorer redesign is retained in
 [docs/file-explorer-rebuild/](docs/file-explorer-rebuild/README.md), including
-`explorer-mockups.html`. It remains deferred, not lost or authorized by this
-Report Builder discussion.
+`explorer-mockups.html`. Tim authorized implementation on Oct 28, 2026 and the
+first slice is built; that README says what landed and what is still waiting
+on a product decision.

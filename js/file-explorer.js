@@ -457,7 +457,7 @@
       '        <p id="explorer-sub" class="explorer-sub"></p>' +
       '      </div>' +
       (inside
-        ? '<button type="button" id="explorer-zip" class="btn btn--secondary">Download ZIP</button>'
+        ? '<button type="button" id="explorer-zip" class="btn btn--secondary">Download job copy</button>'
         : '') +
       '    </header>' +
       (inside
@@ -466,13 +466,26 @@
           '  <span class="sr-only">Search Customer Files</span>' +
           '  <input type="search" id="explorer-search" placeholder="Search name or address" autocomplete="off" />' +
           '</label>') +
-      '    <p class="explorer-crumb" id="explorer-crumb"></p>' +
       '    <p class="cabinet-notice" id="explorer-notice" hidden></p>' +
-      '    <div id="explorer-notes"></div>' +
-      '    <div class="explorer-list" id="explorer-list">' +
-      '      <p class="cabinet-empty">Loading Customer Files…</p>' +
+      // Three columns on a desktop, one on a phone: the drawings' tree down
+      // the left, the list in the middle, and the details beside it. On a
+      // phone the tree and the details chrome are simply not there and the
+      // list is the screen, exactly as before -- "each workspace should fit
+      // its actual use context", not one identical UI everywhere.
+      '    <div class="explorer-panes' + (inside ? ' explorer-panes--inside' : '') + '">' +
+      '      <nav class="explorer-tree" id="explorer-tree" hidden aria-label="File Cabinet"></nav>' +
+      '      <div class="explorer-main">' +
+      '        <p class="explorer-crumb" id="explorer-crumb"></p>' +
+      '        <div id="explorer-notes"></div>' +
+      '        <div class="explorer-list" id="explorer-list">' +
+      '          <p class="cabinet-empty">Loading Customer Files…</p>' +
+      '        </div>' +
+      '      </div>' +
+      '      <aside class="explorer-details" id="explorer-details">' +
+      '        <div class="explorer-details__body" id="explorer-details-body" hidden></div>' +
+      '        <section class="explorer-preview" id="explorer-preview" hidden></section>' +
+      '      </aside>' +
       '    </div>' +
-      '    <section class="explorer-preview" id="explorer-preview" hidden></section>' +
       '  </section>' +
       '</div>',
     );
@@ -485,6 +498,8 @@
     const notesEl = app.querySelector('#explorer-notes');
     const notice = app.querySelector('#explorer-notice');
     const preview = app.querySelector('#explorer-preview');
+    const treeEl = app.querySelector('#explorer-tree');
+    const detailsEl = app.querySelector('#explorer-details-body');
     const searchInput = app.querySelector('#explorer-search');
 
     lead.textContent = inside
@@ -520,6 +535,19 @@
 
     let rootFiles = [];
 
+    // The three columns are a function of the room there is, so they have to
+    // follow the window rather than be decided once at load.
+    if (typeof window.matchMedia === 'function') {
+      const wide = window.matchMedia('(min-width: 1100px)');
+      const onWidth = function () {
+        if (!document.body.contains(app)) return;
+        paintTree();
+        paintDetails();
+      };
+      if (typeof wide.addEventListener === 'function') wide.addEventListener('change', onWidth);
+      else if (typeof wide.addListener === 'function') wide.addListener(onWidth);
+    }
+
     if (inside) {
       app.querySelector('#explorer-zip').addEventListener('click', function () {
         downloadArchive(customerId, app.querySelector('#explorer-zip'), showNotice);
@@ -551,6 +579,7 @@
       // and repaints, so a slow or failed lease read never holds up the list.
       return window.ToolboxSync.exploreListFiles().then(function (data) {
         rootFiles = data && Array.isArray(data.files) ? data.files : [];
+        paintTree();
         paintRoot();
       }).catch(function (err) {
         listEl.innerHTML = '';
@@ -574,9 +603,17 @@
       });
     }
 
+    /** The month the tree has open, if any. */
+    function inOpenMonth(row) {
+      if (!openMonth) return true;
+      const when = yearMonthOf(row);
+      if (openMonth === 'undated') return !when;
+      return !!when && when.monthKey === openMonth;
+    }
+
     function filteredRoot() {
       const query = searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
-      const files = rootFiles.slice().sort(function (a, b) {
+      const files = rootFiles.filter(inOpenMonth).slice().sort(function (a, b) {
         const nameA = String(a && a.displayName || a && a.propertyAddress || '').toLowerCase();
         const nameB = String(b && b.displayName || b && b.propertyAddress || '').toLowerCase();
         if (nameA < nameB) return -1;
@@ -592,6 +629,280 @@
         ].join('\n').toLowerCase();
         return hay.indexOf(query) !== -1;
       });
+    }
+
+    /**
+     * DESKTOP ONLY, decided by the room there is rather than by sniffing a
+     * device. A phone keeps the list it already had.
+     */
+    function wideEnoughForPanes() {
+      try {
+        return window.matchMedia('(min-width: 1100px)').matches;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    /** Which job the details pane is describing, at the root. */
+    let selectedId = '';
+    const figureCache = Object.create(null);
+
+    /**
+     * The tree: the drawers and the years, as the drawings have it.
+     *
+     * Grouped by the field work date, which is the DECIDED filing rule --
+     * the floor survey date, else the distress survey date, and no third
+     * fallback (Tim, Oct 18, 2026). js/sync.js already computes it onto the
+     * Cabinet index, so nothing new is derived here.
+     *
+     * WORKING AND FILED ARE NOT SPLIT. The drawings show two drawers and
+     * Tim decided them, but what moves a job from one to the other is a
+     * completed mark at Check In that nothing writes yet. Inventing one here
+     * would be inventing a lifecycle, so the tree groups every job it can
+     * see and the split is a filter waiting for that mark.
+     */
+    function yearMonthOf(row) {
+      const text = String((row && row.fieldWorkDate) || '').trim();
+      const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+      if (day) {
+        const date = new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3]));
+        return {
+          year: day[1],
+          month: date.toLocaleDateString(undefined, { month: 'long' }),
+          monthKey: day[1] + '-' + day[2],
+        };
+      }
+      return null;
+    }
+
+    function treeGroups(files) {
+      const years = Object.create(null);
+      const order = [];
+      const undated = [];
+      files.forEach(function (row) {
+        const when = yearMonthOf(row);
+        if (!when) { undated.push(row); return; }
+        if (!years[when.year]) {
+          years[when.year] = { year: when.year, months: Object.create(null), order: [], count: 0 };
+          order.push(when.year);
+        }
+        const year = years[when.year];
+        if (!year.months[when.monthKey]) {
+          year.months[when.monthKey] = { key: when.monthKey, label: when.month, rows: [] };
+          year.order.push(when.monthKey);
+        }
+        year.months[when.monthKey].rows.push(row);
+        year.count += 1;
+      });
+      order.sort(function (a, b) { return a < b ? 1 : -1; });
+      order.forEach(function (key) {
+        years[key].order.sort(function (a, b) { return a < b ? 1 : -1; });
+      });
+      return { years: order.map(function (key) { return years[key]; }), undated: undated };
+    }
+
+    /** Which month the list is narrowed to, or '' for everything. */
+    let openMonth = '';
+    const shutYears = Object.create(null);
+
+    function paintTree() {
+      if (!treeEl) return;
+      if (inside || !wideEnoughForPanes() || !rootFiles.length) {
+        treeEl.hidden = true;
+        treeEl.innerHTML = '';
+        return;
+      }
+      treeEl.hidden = false;
+      treeEl.innerHTML = '';
+      const head = document.createElement('p');
+      head.className = 'explorer-tree__head';
+      head.textContent = 'File Cabinet';
+      treeEl.appendChild(head);
+
+      const all = document.createElement('button');
+      all.type = 'button';
+      all.className = 'explorer-tree__row' + (openMonth ? '' : ' is-on');
+      all.innerHTML = '<span class="explorer-tree__label">All jobs</span>' +
+        '<span class="explorer-tree__n">' + rootFiles.length + '</span>';
+      all.addEventListener('click', function () {
+        openMonth = '';
+        paintTree();
+        paintRoot();
+      });
+      treeEl.appendChild(all);
+
+      const groups = treeGroups(rootFiles);
+      groups.years.forEach(function (year) {
+        const shut = !!shutYears[year.year];
+        const yearRow = document.createElement('button');
+        yearRow.type = 'button';
+        yearRow.className = 'explorer-tree__row explorer-tree__row--l2';
+        yearRow.innerHTML = '<span class="explorer-tree__car">' + (shut ? '▸' : '▾') + '</span>' +
+          '<span class="explorer-tree__label">' + escapeHtml(year.year) + '</span>' +
+          '<span class="explorer-tree__n">' + year.count + '</span>';
+        yearRow.addEventListener('click', function () {
+          shutYears[year.year] = !shutYears[year.year];
+          paintTree();
+        });
+        treeEl.appendChild(yearRow);
+        if (shut) return;
+        year.order.forEach(function (key) {
+          const month = year.months[key];
+          const row = document.createElement('button');
+          row.type = 'button';
+          row.className = 'explorer-tree__row explorer-tree__row--l3' +
+            (openMonth === key ? ' is-on' : '');
+          row.innerHTML = '<span class="explorer-tree__label">' + escapeHtml(month.label) + '</span>' +
+            '<span class="explorer-tree__n">' + month.rows.length + '</span>';
+          row.addEventListener('click', function () {
+            openMonth = openMonth === key ? '' : key;
+            paintTree();
+            paintRoot();
+          });
+          treeEl.appendChild(row);
+        });
+      });
+
+      if (groups.undated.length) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'explorer-tree__row explorer-tree__row--l2' +
+          (openMonth === 'undated' ? ' is-on' : '');
+        // Said plainly rather than filed under a date it does not have.
+        row.innerHTML = '<span class="explorer-tree__label">No survey date</span>' +
+          '<span class="explorer-tree__n">' + groups.undated.length + '</span>';
+        row.addEventListener('click', function () {
+          openMonth = openMonth === 'undated' ? '' : 'undated';
+          paintTree();
+          paintRoot();
+        });
+        treeEl.appendChild(row);
+      }
+    }
+
+    /**
+     * The details pane: the figures the survey already knows, so a job can be
+     * judged without opening it. Computed, never typed.
+     */
+    function paintDetails() {
+      if (!detailsEl) return;
+      if (inside || !wideEnoughForPanes() || !selectedId) {
+        detailsEl.hidden = true;
+        detailsEl.innerHTML = '';
+        return;
+      }
+      const row = rootFiles.filter(function (item) { return item && item.id === selectedId; })[0];
+      if (!row) {
+        detailsEl.hidden = true;
+        detailsEl.innerHTML = '';
+        return;
+      }
+      detailsEl.hidden = false;
+      detailsEl.innerHTML = '';
+      const name = document.createElement('h2');
+      name.className = 'explorer-details__name';
+      name.textContent = row.displayName || row.propertyAddress || 'Customer File';
+      detailsEl.appendChild(name);
+      if (row.propertyAddress) {
+        const addr = document.createElement('p');
+        addr.className = 'explorer-details__addr';
+        addr.textContent = row.propertyAddress;
+        detailsEl.appendChild(addr);
+      }
+      const when = usefulDate(row);
+      if (when) {
+        const date = document.createElement('p');
+        date.className = 'explorer-details__addr';
+        date.textContent = 'Field work ' + when;
+        detailsEl.appendChild(date);
+      }
+      if (row.deletedAt) {
+        const trashed = document.createElement('p');
+        trashed.className = 'explorer-details__addr';
+        trashed.textContent = 'In File Cabinet Trash';
+        detailsEl.appendChild(trashed);
+      }
+
+      const figures = figureCache[selectedId];
+      if (figures === undefined) {
+        const wait = document.createElement('p');
+        wait.className = 'explorer-details__wait';
+        wait.textContent = 'Reading the survey…';
+        detailsEl.appendChild(wait);
+        loadFigures(selectedId);
+      } else if (figures === null) {
+        const none = document.createElement('p');
+        none.className = 'explorer-details__wait';
+        none.textContent = 'The stored surveys for this job could not be read.';
+        detailsEl.appendChild(none);
+      } else if (!figures.length) {
+        const none = document.createElement('p');
+        none.className = 'explorer-details__wait';
+        none.textContent = 'No surveys are stored for this job yet.';
+        detailsEl.appendChild(none);
+      } else {
+        const dl = document.createElement('dl');
+        dl.className = 'explorer-facts__list';
+        figures.forEach(function (figure) {
+          const dt = document.createElement('dt');
+          dt.textContent = figure.label;
+          const dd = document.createElement('dd');
+          dd.textContent = figure.value;
+          dl.appendChild(dt);
+          dl.appendChild(dd);
+        });
+        detailsEl.appendChild(dl);
+      }
+
+      const acts = document.createElement('div');
+      acts.className = 'explorer-details__acts';
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'btn btn--secondary';
+      open.textContent = 'Open';
+      open.addEventListener('click', function () {
+        window.location.hash = '#/explore/' + encodeURIComponent(selectedId);
+      });
+      acts.appendChild(open);
+      detailsEl.appendChild(acts);
+    }
+
+    /**
+     * Read one job's components for the pane, once, on a deliberate
+     * selection. Through the back door's own route only.
+     */
+    function loadFigures(id) {
+      const sync = window.ToolboxSync || {};
+      const Summary = window.ToolboxExplorerSummary;
+      if (typeof sync.exploreReadComponent !== 'function' || !Summary) {
+        figureCache[id] = null;
+        return;
+      }
+      figureCache[id] = undefined;
+      const found = {};
+      let read = 0;
+      COMPONENT_READS.reduce(function (chain, name) {
+        return chain.then(function () {
+          return sync.exploreReadComponent(id, name).then(function (payload) {
+            if (payload && typeof payload === 'object') { found[name] = payload; read += 1; }
+          }).catch(function () {});
+        });
+      }, Promise.resolve()).then(function () {
+        figureCache[id] = read ? Summary.jobFigures(found) : [];
+        if (selectedId === id) paintDetails();
+      }).catch(function () {
+        figureCache[id] = null;
+        if (selectedId === id) paintDetails();
+      });
+    }
+
+    function selectRoot(id) {
+      if (!wideEnoughForPanes()) return;
+      selectedId = id;
+      listEl.querySelectorAll('.explorer-row').forEach(function (node) {
+        node.classList.toggle('is-selected', node.dataset.id === id);
+      });
+      paintDetails();
     }
 
     function paintRoot() {
@@ -614,6 +925,7 @@
       files.forEach(function (row) {
         listEl.appendChild(rootRow(row));
       });
+      if (selectedId) selectRoot(selectedId);
     }
 
     function rootRow(row) {
@@ -621,6 +933,13 @@
       article.className = 'explorer-row';
       const key = row && row.key ? row.key : '';
       article.dataset.key = key;
+      if (row && row.id) article.dataset.id = row.id;
+      // On a desktop, picking a row shows it on the right the way a file
+      // explorer does; Open still opens it. On a phone there is no pane to
+      // fill, so this does nothing and the tap opens as it always did.
+      if (row && row.id) {
+        article.addEventListener('click', function () { selectRoot(row.id); });
+      }
       const main = document.createElement('div');
       main.className = 'explorer-row__main';
       const keyBtn = document.createElement('button');
@@ -739,9 +1058,49 @@
     }
 
     let jobName = '';
+    let jobAddress = '';
+    let jobFieldDate = '';
     /** Everything the Cabinet holds for this job, and which folder is open. */
     let jobObjects = [];
     let openFolder = '';
+    /**
+     * The parsed records, read once per job so the screen can say what the
+     * job HOLDS instead of printing how it is written down. Read through the
+     * back door's own route only -- exploreReadComponent does not fall back
+     * to the working sync API the way a download does.
+     */
+    let jobComponents = {};
+    let jobComponentsFor = '';
+    let jobComponentsUnread = [];
+
+    const COMPONENT_READS = ['customer', 'plans', 'floor', 'distress', 'report', 'diagnostics'];
+
+    function readJobComponents(id) {
+      if (jobComponentsFor === id) return Promise.resolve(jobComponents);
+      const sync = window.ToolboxSync || {};
+      if (typeof sync.exploreReadComponent !== 'function') {
+        jobComponents = {};
+        jobComponentsFor = id;
+        return Promise.resolve(jobComponents);
+      }
+      const found = {};
+      const unread = [];
+      return COMPONENT_READS.reduce(function (chain, name) {
+        return chain.then(function () {
+          return sync.exploreReadComponent(id, name).then(function (payload) {
+            if (payload && typeof payload === 'object') found[name] = payload;
+          }).catch(function () {
+            // Stored but unreadable is worth saying; absent is not.
+            unread.push(name);
+          });
+        });
+      }, Promise.resolve()).then(function () {
+        jobComponents = found;
+        jobComponentsUnread = unread;
+        jobComponentsFor = id;
+        return found;
+      });
+    }
 
     function showCustomerIdentity(data) {
       const name = data && data.displayName;
@@ -750,9 +1109,15 @@
         jobName = name;
       }
       const bits = [];
-      if (data && data.propertyAddress) bits.push(data.propertyAddress);
+      if (data && data.propertyAddress) {
+        bits.push(data.propertyAddress);
+        jobAddress = data.propertyAddress;
+      }
       const date = usefulDate(data);
       if (date) bits.push(date);
+      // The Cabinet index already carries the decided filing date, so the
+      // copy can be named for it even before the components are read.
+      if (data && data.fieldWorkDate) jobFieldDate = data.fieldWorkDate;
       if (data && data.deletedAt) bits.push('In File Cabinet Trash');
       if (bits.length) lead.textContent = bits.join(' · ');
     }
@@ -853,6 +1218,65 @@
       return captureDay(iso) + '_' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
     }
 
+    /**
+     * What this job records, as figures: levels, readings, pins,
+     * photographs, the survey date, the biggest fall. The drawings' details
+     * pane, computed from the survey rather than typed anywhere.
+     */
+    function jobSummaryPanel(id) {
+      const Summary = window.ToolboxExplorerSummary;
+      if (!Summary) return null;
+      const figures = Summary.jobFigures(jobComponents);
+      if (!figures.length && !jobComponentsUnread.length) return null;
+      const box = document.createElement('section');
+      box.className = 'explorer-facts';
+      box.id = 'explorer-facts';
+      const heading = document.createElement('h2');
+      heading.className = 'explorer-facts__head';
+      heading.textContent = 'What this job records';
+      box.appendChild(heading);
+      if (figures.length) {
+        const dl = document.createElement('dl');
+        dl.className = 'explorer-facts__list';
+        figures.forEach(function (figure) {
+          const dt = document.createElement('dt');
+          dt.textContent = figure.label;
+          const dd = document.createElement('dd');
+          dd.textContent = figure.value;
+          dl.appendChild(dt);
+          dl.appendChild(dd);
+        });
+        box.appendChild(dl);
+      }
+      if (jobComponentsUnread.length) {
+        const note = document.createElement('p');
+        note.className = 'explorer-facts__note';
+        note.textContent = 'Stored but could not be read: ' +
+          jobComponentsUnread.join(', ') + '. The figures above leave them out.';
+        box.appendChild(note);
+      }
+      return box;
+    }
+
+    /** What a component says about itself, under its folder. */
+    function folderSummaryFor(groupId) {
+      const Summary = window.ToolboxExplorerSummary;
+      if (!Summary) return null;
+      const byGroup = {
+        customer: 'customer',
+        plans: 'plans',
+        floor: 'floor',
+        distress: 'distress',
+        report: 'report',
+        diagnostics: 'diagnostics',
+      };
+      const name = byGroup[groupId];
+      if (!name) return null;
+      const payload = jobComponents[name];
+      if (!payload) return null;
+      return Summary.componentSummary(name, payload, jobComponents);
+    }
+
     function paintCustomer(id, data) {
       showCustomerIdentity(data || {});
       notesEl.innerHTML = '';
@@ -876,6 +1300,11 @@
       jobObjects = objects;
       openFolder = '';
       paintJob(id);
+      // The listing is drawn at once; what the job HOLDS follows and
+      // repaints, so a slow component read never holds up the folders.
+      readJobComponents(id).then(function () {
+        if (jobComponentsFor === id) paintJob(id);
+      }).catch(function () {});
     }
 
     /** Sort a folder's contents: the things worth seeing first, then by name. */
@@ -930,6 +1359,8 @@
       const buckets = sorted.buckets;
       if (!openFolder) {
         crumb.innerHTML = '';
+        const facts = jobSummaryPanel(id);
+        if (facts) listEl.appendChild(facts);
         let folders = 0;
         GROUPS.forEach(function (group) {
           const rows = buckets[group.id];
@@ -979,6 +1410,12 @@
       const heading = document.createElement('h2');
       heading.textContent = group.title;
       section.appendChild(heading);
+      // Tim, on Open printing the stored record: "who in the world is this
+      // helpful?" So the folder leads with what its component holds --
+      // levels, readings, pins, dates -- and the record itself stays below,
+      // downloadable, behind Technical details.
+      const told = folderSummaryFor(group.id);
+      if (told) section.appendChild(summaryBlock(told));
       sortRows(id, rows);
       // Pictures become a contact sheet; everything else stays a row. A
       // hundred photographs listed as a hundred identical cards is a list of
@@ -1015,6 +1452,36 @@
       paintJob(id);
     }
 
+    /** A headline, its figures and its honest notes, as one block. */
+    function summaryBlock(told) {
+      const box = document.createElement('div');
+      box.className = 'explorer-told';
+      const head = document.createElement('p');
+      head.className = 'explorer-told__head';
+      head.textContent = told.headline;
+      box.appendChild(head);
+      if (told.figures && told.figures.length) {
+        const dl = document.createElement('dl');
+        dl.className = 'explorer-told__list';
+        told.figures.forEach(function (figure) {
+          const dt = document.createElement('dt');
+          dt.textContent = figure.label;
+          const dd = document.createElement('dd');
+          dd.textContent = figure.value;
+          dl.appendChild(dt);
+          dl.appendChild(dd);
+        });
+        box.appendChild(dl);
+      }
+      (told.notes || []).forEach(function (note) {
+        const p = document.createElement('p');
+        p.className = 'explorer-told__note';
+        p.textContent = note;
+        box.appendChild(p);
+      });
+      return box;
+    }
+
     /** What is in a folder, said in the words of the thing itself. */
     function folderCount(rows) {
       const pictures = rows.filter(isPicture).length;
@@ -1047,6 +1514,15 @@
       count.className = 'explorer-folder__count';
       count.textContent = folderCount(rows);
       text.appendChild(count);
+      // "Floor Survey · 2 levels · Main Level 48, Basement 31" tells him
+      // whether to walk in. "3 files" does not.
+      const told = folderSummaryFor(group.id);
+      if (told && told.headline) {
+        const says = document.createElement('span');
+        says.className = 'explorer-folder__says';
+        says.textContent = told.headline;
+        text.appendChild(says);
+      }
       open.appendChild(text);
       const chev = document.createElement('span');
       chev.className = 'explorer-folder__chev';
@@ -1069,6 +1545,27 @@
       note.textContent = 'How Toolbox writes this job down. Nothing in here is a ' +
         'picture, a survey or a report — those are above.';
       box.appendChild(note);
+      // The server's byte-for-byte copy: every object under the key it is
+      // actually stored at. Download job copy above is the one arranged for
+      // a person; this one is the one that reproduces the bucket.
+      if (window.ToolboxSync && typeof window.ToolboxSync.exploreFetchArchive === 'function') {
+        const rawRow = document.createElement('div');
+        rawRow.className = 'explorer-records__raw';
+        const rawText = document.createElement('p');
+        rawText.className = 'explorer-records__note';
+        rawText.textContent = 'A copy with every object under its real storage key, ' +
+          'arranged the way the server holds it rather than the way a person reads it.';
+        rawRow.appendChild(rawText);
+        const rawBtn = document.createElement('button');
+        rawBtn.type = 'button';
+        rawBtn.className = 'btn btn--secondary explorer-raw-zip';
+        rawBtn.textContent = 'Download raw server copy';
+        rawBtn.addEventListener('click', function () {
+          downloadRawArchive(id, rawBtn, showNotice);
+        });
+        rawRow.appendChild(rawBtn);
+        box.appendChild(rawRow);
+      }
       rows.sort(function (a, b) {
         return String(a._label || '') < String(b._label || '') ? -1 : 1;
       });
@@ -1383,6 +1880,38 @@
     }
 
     /**
+     * The extension for anything, not just a picture.
+     *
+     * Media keys carry none -- `media/fsrec_main` is a PDF and says so only
+     * in its content type -- so a copy named from the Cabinet's own label
+     * came out as "Floor Survey recovery PDF — Main Level" with nothing on
+     * the end, which no operating system will open on a double click. The
+     * stored content type is what knows, and the key's own extension is the
+     * fallback for a `cf/` file that has one.
+     */
+    function anyExtensionFor(row) {
+      const type = String((row && row.contentType) || '').toLowerCase().split(';')[0].trim();
+      const known = {
+        'application/pdf': '.pdf',
+        'application/json': '.json',
+        'image/png': '.png',
+        'image/jpeg': '.jpg',
+        'image/webp': '.webp',
+        'image/gif': '.gif',
+        'image/heic': '.heic',
+        'image/heif': '.heif',
+        'image/bmp': '.bmp',
+        'image/svg+xml': '.svg',
+        'text/plain': '.txt',
+        'text/csv': '.csv',
+      };
+      if (known[type]) return known[type];
+      const leaf = downloadName(row && row.key);
+      const dot = leaf.lastIndexOf('.');
+      return dot > 0 ? leaf.slice(dot) : '';
+    }
+
+    /**
      * The folder the pictures land in, named for the day they were taken.
      *
      * One day of Quick Captures becomes that date. Several days keep the span,
@@ -1527,6 +2056,19 @@
       return article;
     }
 
+    /** Which component a stored record key is, or '' when it is not one. */
+    function componentNameFor(id, key) {
+      const prefix = 'cf/' + id + '/';
+      const text = String(key || '');
+      if (text.indexOf(prefix) !== 0) return '';
+      const leaf = text.slice(prefix.length);
+      if (!/\.json$/i.test(leaf)) return '';
+      const name = leaf.slice(0, -'.json'.length);
+      if (name === 'index') return 'index';
+      if (name === 'trash') return 'trash';
+      return COMPONENT_READS.indexOf(name) !== -1 ? name : '';
+    }
+
     function openObject(id, key, label, panel, notify) {
       notify('');
       revokePreview();
@@ -1572,12 +2114,41 @@
           frame.src = previewUrl;
           panel.appendChild(frame);
         } else if (kind === 'text') {
+          const text = new TextDecoder().decode(loaded.buffer);
+          /**
+           * One of Toolbox's own records opens as what it HOLDS.
+           *
+           * Tim, after pressing Open on a Floor Survey and getting the stored
+           * record: "who in the world is this helpful?" So the summary leads,
+           * and the record syntax goes behind one closed line below it. The
+           * bytes are not hidden and Download is untouched -- the Cabinet is
+           * the repository and everything in it stays reachable.
+           */
+          const component = componentNameFor(id, key);
+          const Summary = window.ToolboxExplorerSummary;
+          let told = null;
+          if (component && Summary) {
+            try {
+              told = Summary.componentSummary(component, JSON.parse(text), jobComponents);
+            } catch (_) { told = null; }
+          }
+          if (told) panel.appendChild(summaryBlock(told));
+          const limit = 512 * 1024;
+          const shown = text.length > limit ? text.slice(0, limit) : text;
           const pre = document.createElement('pre');
           pre.className = 'explorer-preview__text';
-          const text = new TextDecoder().decode(loaded.buffer);
-          const limit = 512 * 1024;
-          pre.textContent = text.length > limit ? text.slice(0, limit) : text;
-          panel.appendChild(pre);
+          pre.textContent = shown;
+          if (told) {
+            const raw = document.createElement('details');
+            raw.className = 'explorer-preview__raw';
+            const summaryEl = document.createElement('summary');
+            summaryEl.textContent = 'Technical details';
+            raw.appendChild(summaryEl);
+            raw.appendChild(pre);
+            panel.appendChild(raw);
+          } else {
+            panel.appendChild(pre);
+          }
           if (text.length > limit) {
             const more = document.createElement('p');
             more.className = 'explorer-preview__meta';
@@ -1632,7 +2203,142 @@
       return (stem || ('cf-' + id)) + '.zip';
     }
 
+    /**
+     * THE RECOVERY COPY, arranged for a person.
+     *
+     * Built here rather than on the Worker, for two reasons that both matter.
+     * It can say how far it has got -- "Packing 34 of 118" -- where one
+     * server request can only sit there; and a job with seventy photographs
+     * is tens of megabytes, which is a Worker's memory rather than a
+     * browser's.
+     *
+     * The server's own ZIP is NOT removed. It stays as the raw copy, under
+     * Technical details, because it is the one that reproduces the bucket key
+     * for key and that is what some kinds of recovery need.
+     */
     function downloadArchive(id, button, notify) {
+      notify('');
+      const previous = button.textContent;
+      const Archive = window.ToolboxExplorerArchive;
+      if (!Archive || !window.JSZip) {
+        // Rather than fail, fall back to the route that does not need either.
+        downloadRawArchive(id, button, notify);
+        return;
+      }
+      button.disabled = true;
+      button.textContent = canChooseWhere() ? 'Where to?' : 'Reading…';
+      let built = null;
+      saveWhereChosen(plannedArchiveName(id), 'application/zip', function () {
+        button.textContent = 'Reading…';
+        // The pin, the room and the day the shutter was pressed live in
+        // distress.json, and naming a photograph needs them in hand. Walking
+        // into a folder loads them; taking the whole job copy may not have,
+        // so it is asked for here -- without it every picture came out named
+        // "media_ph_one", which is the storage key the copy exists to get
+        // away from.
+        return Promise.all([readJobComponents(id), readPhotoFacts(id)]).then(function () {
+          return Archive.buildJobArchive({
+            id: id,
+            name: jobName,
+            address: jobAddress,
+            objects: jobObjects,
+            components: jobComponents,
+            fallbackDate: jobFieldDate,
+            fetchObject: function (fileId, key) {
+              return window.ToolboxSync.exploreFetchObject(fileId, key).then(responseBlob);
+            },
+            nameFor: archiveNameFor,
+            isRecord: function (row) { return isRecordFile(row, id); },
+            onProgress: function (step) {
+              button.textContent = step.total
+                ? 'Packing ' + step.done + ' of ' + step.total + '…'
+                : 'Packing…';
+            },
+          });
+        }).then(function (result) {
+          built = result;
+          button.textContent = 'Saving…';
+          return result.blob;
+        });
+      }).then(function (result) {
+        button.disabled = false;
+        button.textContent = previous;
+        if (result.cancelled) {
+          notify('');
+          return;
+        }
+        // Truthfully: what went in, and what could not be read.
+        const parts = [];
+        if (built) {
+          parts.push(built.written + ' of ' + built.total +
+            (built.total === 1 ? ' stored file' : ' stored files') + ' packed');
+          if (built.failed.length) {
+            parts.push(built.failed.length +
+              (built.failed.length === 1 ? ' could not be read: ' : ' could not be read: ') +
+              built.failed.slice(0, 3).join(', ') +
+              (built.failed.length > 3 ? '…' : ''));
+          }
+        }
+        parts.push(savedNotice(result));
+        notify(parts.join('. '));
+      }).catch(function (err) {
+        button.disabled = false;
+        button.textContent = previous;
+        notify(errorText(err));
+      });
+    }
+
+    /** What the copy will be called, before it is built. */
+    function plannedArchiveName(id) {
+      const Summary = window.ToolboxExplorerSummary;
+      if (!Summary) return archiveFileName(id);
+      return Summary.archiveFolderName({
+        name: jobName,
+        address: jobAddress,
+        components: jobComponents,
+        fallbackDate: jobFieldDate,
+      }) + '.zip';
+    }
+
+    /**
+     * What a stored object is called inside the copy.
+     *
+     * Pictures reuse the Explorer's own naming, so a photograph saved on its
+     * own and the same photograph inside the job copy are called the same
+     * thing. Everything else takes the name the Cabinet already gives it,
+     * with its real extension kept.
+     */
+    function archiveNameFor(row) {
+      // A photograph the investigator named something -- a pin and a room, or
+      // the moment the shutter went -- is called that.
+      //
+      // Only a photograph. A plan and a contour layer are pictures too by
+      // content type, and they have no pin and no shutter time, so sending
+      // them down this path produced "media_plan-main": the storage key the
+      // copy exists to get away from. They take the labelled path below,
+      // which is where their real name lives.
+      if (isPicture(row) && factFor(row)) {
+        const named = pictureFileName(row);
+        // The pictures ZIP puts a Quick Capture run in its own subfolder;
+        // inside the job copy that folder is already Photographs/Quick
+        // Capture, so only the leaf is wanted here.
+        const slash = named.lastIndexOf('/');
+        return slash >= 0 ? named.slice(slash + 1) : named;
+      }
+      const label = String((row && row._label) || '').trim();
+      const leaf = downloadName(row && row.key);
+      const ext = anyExtensionFor(row);
+      if (!label) return ext && leaf.indexOf('.') < 0 ? leaf + ext : leaf;
+      const stem = String(label).replace(/[\\/:*?"<>|\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!stem) return leaf;
+      // A label that already ends in the extension (a stored filename that
+      // the listing simply echoes) must not gain a second one.
+      if (ext && stem.toLowerCase().slice(-ext.length) === ext.toLowerCase()) return stem;
+      return stem + ext;
+    }
+
+    /** The server's byte-for-byte copy, kept for recovery. */
+    function downloadRawArchive(id, button, notify) {
       notify('');
       const previous = button.textContent;
       button.disabled = true;
