@@ -489,9 +489,18 @@ const sent = await page.evaluate(async () => {
     (b) => (b.getAttribute('title') || b.getAttribute('aria-label') || '')
       .trim().toLowerCase() === needle,
   );
-  const waves = labelled('contours');
+  // Since Oct 25 the Contours corner is a door of the Control panel pill,
+  // and Mode lives in that door's Display section.
+  const waves = labelled('contours') || labelled('control panel');
   if (waves) waves.click();
   await new Promise((r) => setTimeout(r, 600));
+  if (!Array.from(document.querySelectorAll('select')).some((el) =>
+    Array.from(el.options || []).some((o) => o.value === 'contour-bw'))) {
+    const display = Array.from(document.querySelectorAll('button')).find(
+      (b) => (b.textContent || '').trim().toLowerCase() === 'display');
+    if (display) display.click();
+    await new Promise((r) => setTimeout(r, 600));
+  }
   const select = Array.from(document.querySelectorAll('select')).find((el) =>
     Array.from(el.options || []).some((o) => o.value === 'contour-bw'),
   );
