@@ -8,6 +8,12 @@
  * folders, names, or bytes, and it never writes the bucket. A media id is
  * included only when a manifest cites it.
  *
+ * The one exception to "never writes" is the job text (job-text.js): a
+ * derived, plain-text copy of a job's words kept at cf/{id}/search.txt so a
+ * search reads text instead of opening jobs. It is written only by the
+ * search and text routes, never by a listing, and never touches an index,
+ * a lease, a component or a photograph.
+ *
  * WHICH manifest is not a matter of its key. A component's current bytes are
  * whichever candidate the index names -- see resolveAcceptedComponent in
  * components.js. Reading cf/{id}/plans.json directly would have shown this
@@ -16,6 +22,7 @@
  */
 
 import { resolveAcceptedComponent, legacyIsStale } from './components.js';
+import { searchJobText, currentJobText, JOB_TEXT_LEAF } from './job-text.js';
 
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -449,6 +456,7 @@ const STORED_FILE = {
   'diagnostics.json': { purpose: 'diagnostics', label: 'Diagnostics' },
   'report.json': { purpose: 'report', label: 'Report Builder' },
   'trash.json': { purpose: 'technical', label: 'Trash record' },
+  [JOB_TEXT_LEAF]: { purpose: 'job-text', label: 'Job text' },
 };
 
 const COMPONENT_LABEL = {
@@ -886,6 +894,31 @@ export async function exploreResult(request, env) {
     match = /^explore\/files\/([^/]+)\/object$/.exec(path);
     if (match && request.method === 'GET') {
       return readExploreObject(cabinet, decodeURIComponent(match[1]), url.searchParams.get('key'));
+    }
+
+    if (path === 'explore/search' && request.method === 'GET') {
+      return searchJobText(cabinet, url.searchParams.get('q'));
+    }
+
+    match = /^explore\/files\/([^/]+)\/text$/.exec(path);
+    if (match && request.method === 'GET') {
+      const id = decodeURIComponent(match[1]);
+      if (!safeCustomerId(id)) return { status: 400, text: 'Bad request' };
+      const text = await currentJobText(cabinet, id);
+      if (text === null) return { status: 404, text: 'Not found' };
+      const body = new TextEncoder().encode(text);
+      return {
+        status: 200,
+        body: body,
+        headers: {
+          'content-type': 'text/plain; charset=utf-8',
+          'content-length': String(body.byteLength),
+          'content-disposition': 'attachment; filename="job-text.txt"',
+          'x-content-type-options': 'nosniff',
+          'cache-control': 'no-store',
+          'access-control-expose-headers': 'content-disposition, content-type',
+        },
+      };
     }
 
     match = /^explore\/files\/([^/]+)\/archive$/.exec(path);

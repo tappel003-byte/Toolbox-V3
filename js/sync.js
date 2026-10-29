@@ -3083,6 +3083,27 @@
   }
 
   /**
+   * Search every job's plain text on the server -- pin descriptions, picture
+   * captions, the report's discussion, the customer -- and say which section
+   * each hit came from. Null when the Worker predates the route; there is no
+   * fallback, because reading every job from here is exactly what the text
+   * exists to avoid.
+   */
+  async function exploreSearchText(query) {
+    const response = await apiFetch('/explore/search?q=' + encodeURIComponent(query || ''), { allow404: true });
+    if (response.status === 404) return null;
+    return response.json();
+  }
+
+  /** One job's plain text, built from its components; null if unavailable. */
+  async function exploreFetchJobText(id) {
+    if (!exploreCustomerIdSafe(id)) return null;
+    const response = await apiFetch('/explore/files/' + encodeURIComponent(id) + '/text', { allow404: true });
+    if (response.status === 404) return null;
+    return response;
+  }
+
+  /**
    * Read one component for the back door, and ONLY through the back door.
    *
    * File Explorer reads the stored records to say what a job holds -- two
@@ -3644,6 +3665,8 @@
     exploreListFiles: exploreListFiles,
     exploreListCustomerFile: exploreListCustomerFile,
     exploreFetchObject: exploreFetchObject,
+    exploreSearchText: exploreSearchText,
+    exploreFetchJobText: exploreFetchJobText,
     exploreReadComponent: exploreReadComponent,
     exploreFetchArchive: exploreFetchArchive,
     trashCabinetCustomerFile: trashCabinetCustomerFile,
