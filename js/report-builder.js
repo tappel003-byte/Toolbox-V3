@@ -3017,6 +3017,11 @@
 
   function mount(host, options) {
     if (!host) return;
+    // Switching Customer File while staying on the report route remounts
+    // without going through the leave-report path. Tear the previous visit
+    // down first so its hold timer, size HUD, and document listeners cannot
+    // outlive that Customer File.
+    unmount();
     var token = ++mountGeneration;
     var customerFileId = options && options.customerFileId;
     var onBack = options && options.onBack;
@@ -3503,7 +3508,8 @@
     }
 
     // Outside press dismisses the report chrome size HUD; its −/+ stay usable.
-    document.addEventListener('pointerdown', function (event) {
+    // Tracked so unmount removes it with the rest of this visit's document listeners.
+    onDocument('pointerdown', function (event) {
       if (!chromeSizeHud) return;
       var t = event.target;
       if (t && t.closest && t.closest('[data-accessory-size-hud]')) return;
@@ -3898,6 +3904,11 @@
         clearTimeout(floorShotTimer);
         floorShotTimer = null;
       }
+      // Accessory hold-to-size: a timer left armed would open a HUD after leave;
+      // an open HUD on document.body would outlive this Customer File visit.
+      clearFloorHold();
+      floorDrag = null;
+      dismissChromeSizeHud();
     };
 
     function thumbSignature(page) {
