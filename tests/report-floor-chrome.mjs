@@ -317,6 +317,23 @@ check('and the drawing itself can be sent behind the scale again',
   stackPlanBack.plan < stackPlanBack.scale,
   JSON.stringify(stackPlanBack));
 
+// A drawing is stacked by its own view frame since flexible views; the
+// restack has to land there and be saved with the page (CLAUDE-017).
+await openSlide();
+const stackPlanKept = await stackOf();
+check('and the drawing stays behind when the report is reopened',
+  stackPlanKept.plan < stackPlanKept.scale, JSON.stringify(stackPlanKept));
+
+const planAgain = await piece('topo');
+await page.mouse.click(planAgain.x + planAgain.w / 2, planAgain.y + 14, { button: 'right' });
+await new Promise((r) => setTimeout(r, 400));
+await page.click('[data-rb-stackmenu] [data-rb-stack="front"]');
+await new Promise((r) => setTimeout(r, 900));
+const stackPlanFront = await stackOf();
+check('and Bring to front puts the drawing over the scale and the readings',
+  stackPlanFront.plan > stackPlanFront.scale && stackPlanFront.plan > stackPlanFront.readings,
+  JSON.stringify(stackPlanFront));
+
 // The scale is a key on the paper, so its size belongs to the paper. Tim:
 // "it does not lock the size, its different than the FS legend." It was drawn
 // here in screen pixels -- an 8px label beside an 88px bar -- so it was a

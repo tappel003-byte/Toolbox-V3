@@ -7582,12 +7582,32 @@
       var layout = flApi.normalizeLayout(floorLayout);
       var id = box.getAttribute('data-rb-floor-box') || '';
       var kind = box.getAttribute('data-rb-floor-kind') || 'topo';
+      // Since flexible views, a drawing is drawn at its OWN view frame's z,
+      // not layout.topo.z -- so restacking the drawing wrote a number nothing
+      // read, and Send to back / Bring to front did nothing to it. The
+      // frames are part of the stack too, so "behind" and "in front" are
+      // measured against everything on the sheet.
+      var views = floorViewsForPage(page) || [];
+      var viewId = box.getAttribute('data-rb-view-id') || '';
       var stack = [layout.topo.z, layout.overview.z].concat(
         layout.overlays.map(function (item) { return item.z; }));
+      views.forEach(function (v) {
+        if (v && v.frame && isFinite(Number(v.frame.z))) stack.push(Number(v.frame.z));
+      });
       var want = toFront
         ? Math.max.apply(null, stack) + 1
         : Math.min.apply(null, stack) - 1;
       want = Math.max(flApi.MIN_STACK, Math.min(flApi.MAX_STACK, want));
+      if (kind === 'topo' && viewId) {
+        var view = views.filter(function (v) { return v && v.id === viewId; })[0];
+        if (!view) return;
+        view.frame = view.frame && typeof view.frame === 'object' ? view.frame : {};
+        view.frame.z = want;
+        markDirty();
+        renderPages();
+        flushSave().catch(function () {});
+        return;
+      }
       if (kind === 'topo') {
         layout.topo.z = want;
       } else if (kind === 'overview') {
