@@ -299,14 +299,13 @@ check('two readings carry a label offset before the reset',
 // The control lives in a collapsed <details> inside Floor Survey's own
 // panel, so open the panels before looking for it. This is the real control
 // and a real click; nothing about the handler is stubbed.
-await p.evaluate(() => {
-  document.querySelectorAll('details').forEach((d) => { d.open = true; });
-  // Floor Survey's panel groups its controls behind tabs; the label controls
-  // are behind the one that says so.
-  [...document.querySelectorAll('button')]
-    .filter((b) => /^(labels?|points?|markers?)$/i.test((b.textContent || '').trim()))
-    .slice(0, 3)
-    .forEach((b) => { try { b.click(); } catch (_) { /* not a tab */ } });
+await p.evaluate(async () => {
+  // The report rail: the Topo task tab, then its Readings group, where the
+  // label controls live behind a closed <details>.
+  document.querySelector('[data-rb-floor-task="topo"]')?.click();
+  await new Promise((r) => setTimeout(r, 400));
+  document.querySelector('[data-rb-rail-tab="readings"]')?.click();
+  await new Promise((r) => setTimeout(r, 600));
   document.querySelectorAll('details').forEach((d) => { d.open = true; });
 });
 await new Promise((r) => setTimeout(r, 1500));
@@ -380,10 +379,10 @@ const delayed = await p.evaluate(async (f, cid) => {
     }
     return real(rec);
   };
-  document.querySelectorAll('details').forEach((d) => { d.open = true; });
-  [...document.querySelectorAll('button')]
-    .filter((b) => /^(labels?|points?|markers?)$/i.test((b.textContent || '').trim()))
-    .slice(0, 3).forEach((b) => { try { b.click(); } catch (_) { /* not a tab */ } });
+  document.querySelector('[data-rb-floor-task="topo"]')?.click();
+  await new Promise((r) => setTimeout(r, 400));
+  document.querySelector('[data-rb-rail-tab="readings"]')?.click();
+  await new Promise((r) => setTimeout(r, 600));
   document.querySelectorAll('details').forEach((d) => { d.open = true; });
   await new Promise((r) => setTimeout(r, 400));
   const btn = [...document.querySelectorAll('button')]
@@ -456,10 +455,10 @@ await p.evaluate(async (f, cid) => {
 }, 'corr-t1', canvasId);
 
 const stale = await p.evaluate(async (f, cid) => {
-  document.querySelectorAll('details').forEach((d) => { d.open = true; });
-  [...document.querySelectorAll('button')]
-    .filter((b) => /^(labels?|points?|markers?)$/i.test((b.textContent || '').trim()))
-    .slice(0, 3).forEach((b) => { try { b.click(); } catch (_) { /* not a tab */ } });
+  document.querySelector('[data-rb-floor-task="topo"]')?.click();
+  await new Promise((r) => setTimeout(r, 400));
+  document.querySelector('[data-rb-rail-tab="readings"]')?.click();
+  await new Promise((r) => setTimeout(r, 600));
   document.querySelectorAll('details').forEach((d) => { d.open = true; });
   await new Promise((r) => setTimeout(r, 400));
   const btn = [...document.querySelectorAll('button')]
