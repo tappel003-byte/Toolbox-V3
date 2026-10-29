@@ -4227,10 +4227,6 @@ button.cf-home__delete[hidden] {
   padding: 0 16px 12px;
 }
 
-.explorer-panes .explorer-textsearch {
-  padding-left: 0;
-  padding-right: 0;
-}
 
 .explorer-textsearch__head {
   margin: 0 0 4px;
@@ -4585,6 +4581,11 @@ button.cf-home__delete[hidden] {
 
   /* The list already carries the page's side padding on a phone; inside the
      grid the column provides it, so it would be doubled. */
+  .explorer-panes .explorer-textsearch {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
   .explorer-panes .explorer-list {
     padding-left: 0;
     padding-right: 0;
