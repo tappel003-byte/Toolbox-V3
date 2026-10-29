@@ -32,7 +32,7 @@
  * search.txt, and it removes that again if the job turned out to be gone.
  */
 
-import { resolveAcceptedComponent, legacyIsStale } from './components.js';
+import { resolveAcceptedComponent, legacyIsStale, revField, revMs } from './components.js';
 
 export const JOB_TEXT_FORMAT = '1';
 export const JOB_TEXT_LEAF = 'search.txt';
@@ -334,9 +334,13 @@ export async function buildAndStoreJobText(cabinet, id) {
       components[name] = read.value;
       if (resolved.from === 'legacy' && legacyIsStale(index, name, read.value)) components.stale.push(name);
     } else if (read.absent) {
-      // A legacy key with nothing at it is a job without that component.
-      // An accepted reference with nothing at it is a fault.
-      if (resolved.from === 'accepted') components.missing.push(name);
+      // Nothing stored is a job without that component only when the index
+      // does not say it has one. An accepted reference with nothing at it,
+      // or an index advertising a revision of a legacy record that is not
+      // there, is a fault.
+      if (resolved.from === 'accepted' || revMs(index[revField(name)]) !== null) {
+        components.missing.push(name);
+      }
     } else {
       components.unreadable.push(name);
     }

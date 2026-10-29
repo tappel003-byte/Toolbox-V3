@@ -360,6 +360,42 @@ for (const fault of ['missing', 'malformed']) {
     cabinet.ops.every((op) => !/^put /.test(op) || op.endsWith('/search.txt')));
 }
 
+// ---- a legacy record the index advertises but the Cabinet does not hold
+//
+// GPT review of integration 5686ec8: reportUpdatedAt on the index with no
+// report.json stored was treated as "no report" and cached as complete, so
+// restoring report.json without an index change was never searched.
+{
+  const cabinet = seedJob();
+  const advertised = Object.assign({}, index, { reportUpdatedAt: '2026-10-07T00:00:00.000Z' });
+  cabinet.store(`cf/${ID}/index.json`, JSON.stringify(advertised));
+  cabinet.objects.delete(`cf/${ID}/report.json`);
+  const indexBefore = new TextDecoder().decode(cabinet.objects.get(`cf/${ID}/index.json`).bytes);
+  const etagBefore = cabinet.objects.get(`cf/${ID}/index.json`).etag;
+
+  const first = await (await call('explore/search?q=zebra', cabinet)).json();
+  const partial = (first.incomplete || []).find((j) => j.id === ID);
+  check('advertised but absent: the first search says the job was only partly read',
+    !!partial && partial.components.join() === 'report', JSON.stringify(first.incomplete));
+  check('advertised but absent: the text is marked incomplete and says why',
+    cabinet.objects.get(`cf/${ID}/search.txt`).customMetadata.complete === '0' &&
+    /record the index names is not stored: report/.test(new TextDecoder().decode(cabinet.objects.get(`cf/${ID}/search.txt`).bytes)));
+
+  cabinet.store(`cf/${ID}/report.json`, JSON.stringify({
+    updatedAt: '2026-10-07T00:00:00.000Z',
+    pages: [{ title: 'Discussion', meta: { sectionId: 'discussion' }, reportText: { body: 'A zebra pattern of cracks.' } }],
+  }));
+  const second = await (await call('explore/search?q=zebra', cabinet)).json();
+  check('advertised but absent: restoring the record makes its words searchable',
+    second.results.length === 1 && second.results[0].id === ID && second.built >= 1 &&
+    !(second.incomplete || []).some((j) => j.id === ID), JSON.stringify(second));
+  check('advertised but absent: the index was not touched',
+    cabinet.objects.get(`cf/${ID}/index.json`).etag === etagBefore &&
+    new TextDecoder().decode(cabinet.objects.get(`cf/${ID}/index.json`).bytes) === indexBefore);
+  const third = await (await call('explore/search?q=zebra', cabinet)).json();
+  check('advertised but absent: once whole, a warm search builds nothing', third.built === 0 && third.results.length === 1);
+}
+
 // ---- a job without a component is whole as it is: no endless rebuilding
 {
   // job-other has only an index and a legacy distress: no customer, plans,
