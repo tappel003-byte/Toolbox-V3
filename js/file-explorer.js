@@ -1132,10 +1132,56 @@
         mapJobs = data && Array.isArray(data.jobs) ? data.jobs : [];
         mapPartial = !!(data && data.partial);
         if (mode === 'map') paintMap(!mapView);
+        lookUpTypedAddresses(mapJobs);
       }).catch(function (err) {
         mapEl.innerHTML = '';
         showNotice(errorText(err));
       });
+    }
+
+    /**
+     * Third, and last: the typed address, looked up. Only for jobs neither
+     * the picked address nor the base point placed, only where the lookup
+     * names the house or its street, and never written back to the job.
+     */
+    function lookUpTypedAddresses(jobs) {
+      const Geo = window.ToolboxGeo;
+      if (!Geo || typeof Geo.geocodeAddress !== 'function') return;
+      const waiting = jobs.filter(function (job) {
+        return !window.ToolboxExplorerMap.hasPlace(job) && String(job.propertyAddress || '').trim();
+      });
+      let at = 0;
+      const next = function () {
+        if (at >= waiting.length || mapJobs !== jobs) return;
+        const job = waiting[at++];
+        Geo.geocodeAddress(job.propertyAddress).then(function (found) {
+          if (mapJobs !== jobs) return;
+          if (found) {
+            job.lat = found.lat;
+            job.lon = found.lon;
+            job.from = 'looked-up';
+            if (mode === 'map' && mapView) paintMap(false);
+          }
+          next();
+        });
+      };
+      next();
+    }
+
+    /** Where the pins on the map came from, said plainly. */
+    function sourcesLine(jobs) {
+      const counts = { address: 0, base: 0, lookup: 0 };
+      jobs.forEach(function (job) {
+        if (!window.ToolboxExplorerMap.hasPlace(job)) return;
+        if (job.from === 'base-point') counts.base += 1;
+        else if (job.from === 'looked-up') counts.lookup += 1;
+        else counts.address += 1;
+      });
+      const parts = [];
+      if (counts.address) parts.push(counts.address + ' from the picked address');
+      if (counts.base) parts.push(counts.base + ' from the base point GPS');
+      if (counts.lookup) parts.push(counts.lookup + ' looked up from the typed address');
+      return parts.length ? 'Placed ' + parts.join(', ') + '.' : '';
     }
 
     function yearOfJob(job) {
@@ -1240,6 +1286,13 @@
         head.appendChild(back);
       }
       below.appendChild(head);
+      const sources = sourcesLine(mapCandidates());
+      if (sources) {
+        const said = document.createElement('p');
+        said.className = 'explorer-mapbelow__note explorer-mapbelow__sources';
+        said.textContent = sources;
+        below.appendChild(said);
+      }
       const shown = jobs.slice().sort(function (a, b) {
         const da = String(a.fieldWorkDate || '');
         const db = String(b.fieldWorkDate || '');
@@ -1266,7 +1319,7 @@
         box.className = 'explorer-mapbelow__unplaced';
         const summary = document.createElement('summary');
         summary.textContent = (unplaced.length === 1 ? '1 job has' : unplaced.length + ' jobs have') +
-          ' no location on file and ' + (unplaced.length === 1 ? 'is' : 'are') + ' not on the map';
+          ' no location that could be found and ' + (unplaced.length === 1 ? 'is' : 'are') + ' not on the map';
         box.appendChild(summary);
         if (mapPartial) {
           const why = document.createElement('p');

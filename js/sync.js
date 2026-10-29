@@ -3164,8 +3164,7 @@
     if (response.status !== 404) return response.json();
     const listing = await exploreListFiles();
     const files = listing && Array.isArray(listing.files) ? listing.files : [];
-    return {
-      jobs: files.map(function (row) {
+    const jobs = files.map(function (row) {
         const job = {
           id: row.id,
           displayName: row.displayName || '',
@@ -3177,11 +3176,46 @@
         if (typeof row.propertyAddressLat === 'number' && typeof row.propertyAddressLon === 'number') {
           job.lat = row.propertyAddressLat;
           job.lon = row.propertyAddressLon;
+          job.from = 'index';
         }
         return job;
-      }),
-      partial: true,
-    };
+      });
+    // The same order the Worker's route uses, through the back door's own
+    // read route: the customer's picked address, then the Floor Survey base
+    // point. Read only.
+    const unplaced = jobs.filter(function (job) { return job.lat == null && exploreCustomerIdSafe(job.id); });
+    await runWithLimit(unplaced, 4, async function (job) {
+      try {
+        const customer = await exploreReadComponent(job.id, 'customer');
+        const picked = customer.ok ? indexPlace(customer.payload) : null;
+        if (picked) {
+          job.lat = picked.lat; job.lon = picked.lon; job.from = 'customer';
+          return;
+        }
+        const floor = await exploreReadComponent(job.id, 'floor');
+        const point = floor.ok ? basePointPlace(floor.payload) : null;
+        if (point) {
+          job.lat = point.lat; job.lon = point.lon; job.from = 'base-point';
+        }
+      } catch (_) {}
+    });
+    return { jobs: jobs };
+  }
+
+  /** Floor Survey's Base Point 1 GPS, latest capture across levels. */
+  function basePointPlace(floor) {
+    const layers = floor && floor.byCanvasId && typeof floor.byCanvasId === 'object' ? floor.byCanvasId : {};
+    let best = null;
+    let bestAt = -Infinity;
+    Object.keys(layers).forEach(function (canvasId) {
+      const gps = layers[canvasId] && layers[canvasId].bp1Gps;
+      if (!gps) return;
+      const place = indexPlace({ propertyAddressLat: gps.latitude, propertyAddressLon: gps.longitude });
+      if (!place) return;
+      const at = typeof gps.capturedAt === 'number' && Number.isFinite(gps.capturedAt) ? gps.capturedAt : 0;
+      if (at >= bestAt) { best = place; bestAt = at; }
+    });
+    return best;
   }
 
   /**

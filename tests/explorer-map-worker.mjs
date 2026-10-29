@@ -49,6 +49,19 @@ const seed = () => createCabinet([
   // An empty field's 0,0 is not a house.
   { key: 'cf/job-zero/index.json', body: JSON.stringify({ id: 'job-zero', displayName: 'Zero', propertyAddressLat: 0, propertyAddressLon: 0 }) },
   { key: 'cf/job-zero/customer.json', body: JSON.stringify({ propertyAddressLat: 0, propertyAddressLon: 0 }) },
+  // No picked address, but Floor Survey captured the base point on two
+  // levels: the later capture wins.
+  { key: 'cf/job-bp/index.json', body: JSON.stringify({ id: 'job-bp', displayName: 'Base Point', propertyAddress: 'Rural Route 2' }) },
+  { key: 'cf/job-bp/customer.json', body: JSON.stringify({ propertyAddress: 'Rural Route 2' }) },
+  { key: 'cf/job-bp/floor.json', body: JSON.stringify({ byCanvasId: {
+    main: { bp1Gps: { latitude: 34.05, longitude: -106.89, accuracyMeters: 6, capturedAt: 2000 } },
+    base: { bp1Gps: { latitude: 34.00, longitude: -106.80, accuracyMeters: 9, capturedAt: 1000 } },
+    bad: { bp1Gps: { latitude: 0, longitude: 0, capturedAt: 3000 } },
+  } }) },
+  // A picked address and a base point: the picked address comes first.
+  { key: 'cf/job-both/index.json', body: JSON.stringify({ id: 'job-both', displayName: 'Both' }) },
+  { key: 'cf/job-both/customer.json', body: JSON.stringify({ propertyAddressLat: 35.68, propertyAddressLon: -105.94 }) },
+  { key: 'cf/job-both/floor.json', body: JSON.stringify({ byCanvasId: { main: { bp1Gps: { latitude: 32.3, longitude: -106.7, capturedAt: 5 } } } }) },
   { key: 'cf/job-gone/index.json', body: JSON.stringify({ id: 'job-gone', purged: { at: '2026-10-01' }, propertyAddressLat: 35, propertyAddressLon: -106 }) },
 ]);
 
@@ -95,7 +108,15 @@ check('missing, text and out-of-range are not places',
     by['job-none'] && !('lat' in by['job-none']) && by['job-none'].displayName === 'Ada Mitchell');
   check('a 0,0 comes back with no place', by['job-zero'] && !('lat' in by['job-zero']));
   check('a purged job is not on the map', !by['job-gone']);
-  check('the count of jobs read from the customer is reported', data.readFromCustomer === 1);
+  check('the count of jobs read from the customer is reported', data.readFromCustomer === 2);
+  check('with no picked address, the Floor Survey base point places the job (latest capture)',
+    by['job-bp'].lat === 34.05 && by['job-bp'].lon === -106.89 && by['job-bp'].from === 'base-point');
+  check('the picked address comes before the base point',
+    by['job-both'].lat === 35.68 && by['job-both'].from === 'customer');
+  check('the base point count is reported', data.readFromBasePoint === 1);
+  check('a job placed from its customer reads no floor', !cabinet.ops.includes('get cf/job-both/floor.json'));
+  check('a job with no place anywhere is left for the browser to look up, not guessed here',
+    !('lat' in by['job-none']) && by['job-none'].propertyAddress === '10 Oak Street');
   check('a job placed from its index reads no component', !cabinet.ops.some((op) => op.startsWith('get cf/job-new/') && !op.endsWith('index.json')));
   check('the map does not carry the lease', !('checkout' in by['job-new']));
   check('nothing is written', !cabinet.ops.some((op) => /^(put|delete) /.test(op)));

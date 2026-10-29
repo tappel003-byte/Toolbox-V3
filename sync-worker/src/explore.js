@@ -553,20 +553,45 @@ export function placeOf(lat, lon) {
 }
 
 /**
+ * Where Floor Survey's Base Point 1 GPS put the house, if it was captured.
+ * Each level keeps its own; the latest capture wins.
+ */
+export function basePointPlace(floor) {
+  const layers = floor && typeof floor === 'object' && floor.byCanvasId && typeof floor.byCanvasId === 'object'
+    ? floor.byCanvasId : {};
+  let best = null;
+  let bestAt = -Infinity;
+  Object.keys(layers).forEach(function (canvasId) {
+    const gps = layers[canvasId] && layers[canvasId].bp1Gps;
+    if (!gps || typeof gps !== 'object') return;
+    const place = placeOf(gps.latitude, gps.longitude);
+    if (!place) return;
+    const at = typeof gps.capturedAt === 'number' && isFinite(gps.capturedAt) ? gps.capturedAt : 0;
+    if (at >= bestAt) { best = place; bestAt = at; }
+  });
+  return best;
+}
+
+/**
  * Every job, with where it is, for File Explorer's map.
  *
  * The index carries the property's coordinates for jobs synced since they
  * were added to it. The jobs already in the Cabinet were filed before that,
  * and their coordinates are in the customer component -- so for those this
  * READS the customer component the index names. Nothing is written back:
- * the index is not rewritten and no lease moves. A job with coordinates in
- * neither place comes back without them and is listed as having no
- * location; nothing here looks an address up or guesses one.
+ * the index is not rewritten and no lease moves.
+ *
+ * The order, decided by Tim (Oct 29, 2026): the address picked from the
+ * suggestions (or Use Current Location), then the Floor Survey base point's
+ * GPS, then -- in the browser, not here -- the typed address looked up. A
+ * job with none of the first two comes back without coordinates and the
+ * browser decides whether its typed address can be found.
  */
 export async function readCabinetMap(cabinet) {
   const listed = await listPrefix(cabinet, 'cf/');
   const jobs = [];
   let fromCustomer = 0;
+  let fromBasePoint = 0;
   for (let i = 0; i < listed.length; i++) {
     const match = /^cf\/([^/]+)\/index\.json$/.exec(listed[i] && listed[i].key);
     if (!match || !safeCustomerId(match[1])) continue;
@@ -597,13 +622,22 @@ export async function readCabinetMap(cabinet) {
         }
       }
     }
+    if (!place) {
+      const resolved = resolveAcceptedComponent(index, id, 'floor');
+      const floor = await readJson(await cabinet.get(resolved.key));
+      if (floor.ok) place = basePointPlace(floor.value);
+      if (place) {
+        job.from = 'base-point';
+        fromBasePoint += 1;
+      }
+    }
     if (place) {
       job.lat = place.lat;
       job.lon = place.lon;
     }
     jobs.push(job);
   }
-  return { jobs: jobs, readFromCustomer: fromCustomer };
+  return { jobs: jobs, readFromCustomer: fromCustomer, readFromBasePoint: fromBasePoint };
 }
 
 export async function readCabinetIndexListing(cabinet) {

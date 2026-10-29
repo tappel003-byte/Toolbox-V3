@@ -82,8 +82,20 @@ async function setup(page, mapRoute) {
     window.ToolboxConfig.syncApiBase = base;
     window.__log = [];
     const json = (body) => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+    window.__geocodeAsked = [];
     window.fetch = async function (url, opts) {
-      const path = String(url).slice(base.length).replace(/^\//, '');
+      const href = String(url);
+      // The typed-address lookup. One page answers with only the town, which
+      // must be refused; the other with the house.
+      if (href.startsWith('https://api.geoapify.com/v1/geocode/search')) {
+        const text = new URL(href).searchParams.get('text');
+        window.__geocodeAsked.push(text);
+        const house = window.__geocodeHouse;
+        return json({ results: [house
+          ? { lat: 35.084, lon: -106.65, result_type: 'building', rank: { confidence: 0.95 }, formatted: text }
+          : { lat: 35.11, lon: -106.62, result_type: 'city', rank: { confidence: 0.4 }, formatted: 'Albuquerque' }] });
+      }
+      const path = href.slice(base.length).replace(/^\//, '');
       window.__log.push(((opts && opts.method) || 'GET') + ' ' + path);
       if (path === 'explore/files') {
         return json({ files: jobs.map((job) => {
@@ -94,6 +106,16 @@ async function setup(page, mapRoute) {
         }) });
       }
       if (path === 'explore/map' && withRoute) return json({ jobs, readFromCustomer: 2 });
+      // An older Worker: the browser reads the customer, then the floor.
+      const object = /^explore\/files\/([^/]+)\/object\?key=(.+)$/.exec(path);
+      if (object) {
+        const key = decodeURIComponent(object[2]);
+        if (key === 'cf/job-gallup/customer.json') return json({ propertyAddressLat: 35.528, propertyAddressLon: -108.742 });
+        if (key === 'cf/job-abq2/customer.json') return json({ propertyAddress: '3777 American Rd NW' });
+        if (key === 'cf/job-abq2/floor.json') {
+          return json({ byCanvasId: { main: { bp1Gps: { latitude: 35.19, longitude: -106.68, accuracyMeters: 5, capturedAt: 1 } } } });
+        }
+      }
       return new Response('Not found', { status: 404 });
     };
     window.location.hash = '#/explore';
@@ -109,6 +131,7 @@ const below = (page) => page.evaluate(() => ({
   ids: [...document.querySelectorAll('#explorer-mapbelow > .explorer-row[data-id]')].map((r) => r.dataset.id),
   unplaced: (document.querySelector('.explorer-mapbelow__unplaced summary') || {}).textContent || '',
   partial: !!document.querySelector('.explorer-mapbelow__unplaced .explorer-mapbelow__note'),
+  sources: (document.querySelector('.explorer-mapbelow__sources') || {}).textContent || '',
 }));
 
 try {
@@ -147,7 +170,11 @@ try {
   check('the jobs in view are listed under the map',
     first.below.title === '3 jobs in this view' && first.below.ids.length === 3, JSON.stringify(first.below));
   check('the job with no location is counted, not guessed',
-    first.below.unplaced === '1 job has no location on file and is not on the map', first.below.unplaced);
+    first.below.unplaced === '1 job has no location that could be found and is not on the map', first.below.unplaced);
+  check('its typed address was looked up, and a town-only answer was refused',
+    (await page.evaluate(() => window.__geocodeAsked)).join() === '10 Oak Street');
+  check('the map says where its pins came from',
+    first.below.sources === 'Placed 3 from the picked address.', first.below.sources);
   check('tiles come from Geoapify with the configured key',
     tiles.length > 0 && tiles.every((u) => /maps\.geoapify\.com\/v1\/tile\/osm-bright\/\d+\/\d+\/\d+(@2x)?\.png\?apiKey=c77231dd/.test(u)),
     tiles[0] || 'none');
@@ -253,15 +280,32 @@ try {
   });
   await old.setViewport({ width: 390, height: 844 });
   await setup(old, false);
+  // The first page's refused town-only answer is kept for this address;
+  // start this one clean.
+  await old.evaluate(() => {
+    Object.keys(localStorage).filter((k) => k.indexOf('toolboxAddressLookup:') === 0).forEach((k) => localStorage.removeItem(k));
+    window.__geocodeHouse = true;
+  });
   await old.click('.explorer-mode__btn[data-mode="map"]');
-  await old.waitForFunction(() => document.querySelector('.explorer-mapbelow__title'));
+  await old.waitForFunction(() => document.querySelectorAll('.explorer-map__pin').length > 0 &&
+    /looked up/.test((document.querySelector('.explorer-mapbelow__sources') || {}).textContent || ''));
+  await new Promise((r) => setTimeout(r, 300));
+  await old.evaluate(() => { for (let i = 0; i < 12; i += 1) document.querySelector('.explorer-map__zoom button:last-child').click(); });
   await new Promise((r) => setTimeout(r, 300));
   const oldPins = await pins(old);
   const oldBelow = await below(old);
-  check('without the map route, jobs placed in the listing are still on the map',
-    oldPins.map((p) => p.ids).join(' ') === 'job-abq1', JSON.stringify(oldPins));
-  check('and the rest are counted, with why', oldBelow.unplaced.startsWith('3 jobs have no location') && oldBelow.partial,
-    JSON.stringify(oldBelow));
+  const placed = oldPins.map((p) => p.ids).join(' ').split(' ').filter(Boolean).sort();
+  check('without the map route, the browser places every job in the same order',
+    JSON.stringify(placed) === JSON.stringify(['job-abq1', 'job-abq2', 'job-gallup', 'job-none']), JSON.stringify(oldPins));
+  check('picked address, then base point, then the typed address looked up',
+    oldBelow.sources === 'Placed 2 from the picked address, 1 from the base point GPS, 1 looked up from the typed address.',
+    oldBelow.sources);
+  check('nothing is left unplaced when all three found it', oldBelow.unplaced === '', oldBelow.unplaced);
+  check('a job placed by its address or base point is not looked up',
+    (await old.evaluate(() => window.__geocodeAsked)).join() === '10 Oak Street');
+  check('the lookup is kept on this device, not written to the job',
+    await old.evaluate(() => Object.keys(localStorage).some((k) => k.indexOf('toolboxAddressLookup:v1:10 oak street') === 0) &&
+      window.__log.every((p) => p.startsWith('GET '))));
 
   // It opens on New Mexico (Tim, Oct 29, 2026), and widens only for a job
   // that lies outside the state.
