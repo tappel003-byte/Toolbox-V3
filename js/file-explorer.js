@@ -497,7 +497,11 @@
         : '<label class="explorer-search">' +
           '  <span class="sr-only">Search Customer Files</span>' +
           '  <input type="search" id="explorer-search" placeholder="Search name, address or town" autocomplete="off" />' +
-          '</label>') +
+          '</label>' +
+          '<div class="explorer-mode" role="group" aria-label="Show jobs as">' +
+          '  <button type="button" class="explorer-mode__btn is-on" data-mode="list" aria-pressed="true">List</button>' +
+          '  <button type="button" class="explorer-mode__btn" data-mode="map" aria-pressed="false">Map</button>' +
+          '</div>') +
       '    <p class="cabinet-notice" id="explorer-notice" hidden></p>' +
       // Three columns on a desktop, one on a phone: the drawings' tree down
       // the left, the list in the middle, and the details beside it. On a
@@ -513,6 +517,7 @@
       '          <p class="cabinet-empty">Loading Customer Files…</p>' +
       '        </div>' +
       '        <section class="explorer-textsearch" id="explorer-textsearch" hidden></section>' +
+      '        <div class="explorer-mapview" id="explorer-mapview" hidden></div>' +
       '      </div>' +
       '      <aside class="explorer-details" id="explorer-details">' +
       '        <div class="explorer-details__body" id="explorer-details-body" hidden></div>' +
@@ -613,6 +618,11 @@
       // and repaints, so a slow or failed lease read never holds up the list.
       return window.ToolboxSync.exploreListFiles().then(function (data) {
         rootFiles = data && Array.isArray(data.files) ? data.files : [];
+        // A job deleted or taken over from under the map must not stay on it.
+        if (mapJobs) {
+          mapJobs = null;
+          if (mode === 'map') openMap();
+        }
         paintTree();
         paintRoot();
       }).catch(function (err) {
@@ -1075,7 +1085,204 @@
       paintDetails();
     }
 
+    // ---------------------------------------------------------------- map
+
+    /**
+     * The same jobs on a map. Pan or zoom to an area and the jobs in it are
+     * listed underneath; a year filter narrows them by the filing date.
+     *
+     * A job is placed only where it carries coordinates. One without them is
+     * not put anywhere near where it might be: it is counted and listed
+     * under the map as having no location.
+     */
+    let mode = 'list';
+    let mapView = null;
+    let mapJobs = null;
+    let mapPartial = false;
+    let mapYear = 'all';
+    let mapPicked = null;
+    const mapEl = app.querySelector('#explorer-mapview');
+
+    app.querySelectorAll('.explorer-mode__btn').forEach(function (button) {
+      button.addEventListener('click', function () { setMode(button.dataset.mode); });
+    });
+
+    function setMode(next) {
+      if (next === mode || !mapEl) return;
+      mode = next;
+      app.querySelectorAll('.explorer-mode__btn').forEach(function (button) {
+        const on = button.dataset.mode === mode;
+        button.classList.toggle('is-on', on);
+        button.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      listEl.hidden = mode === 'map';
+      mapEl.hidden = mode !== 'map';
+      if (mode === 'map') openMap();
+    }
+
+    function openMap() {
+      if (mapJobs) { paintMap(true); return; }
+      if (!mapView) mapEl.innerHTML = '<p class="cabinet-empty">Finding where the jobs are…</p>';
+      const sync = window.ToolboxSync || {};
+      if (typeof sync.exploreMapJobs !== 'function' || !window.ToolboxExplorerMap) {
+        mapEl.innerHTML = '<p class="cabinet-empty">The map is unavailable.</p>';
+        return;
+      }
+      sync.exploreMapJobs().then(function (data) {
+        mapJobs = data && Array.isArray(data.jobs) ? data.jobs : [];
+        mapPartial = !!(data && data.partial);
+        if (mode === 'map') paintMap(!mapView);
+      }).catch(function (err) {
+        mapEl.innerHTML = '';
+        showNotice(errorText(err));
+      });
+    }
+
+    function yearOfJob(job) {
+      const match = /^(\d{4})-/.exec(String(job && job.fieldWorkDate || ''));
+      return match ? match[1] : '';
+    }
+
+    /** The map's jobs, narrowed by the search box, the tree and the year. */
+    function mapCandidates() {
+      const allowed = Object.create(null);
+      filteredRoot().forEach(function (row) { if (row && row.id) allowed[row.id] = row; });
+      return (mapJobs || []).filter(function (job) {
+        if (!allowed[job.id]) return false;
+        if (mapYear !== 'all' && yearOfJob(job) !== mapYear) return false;
+        return true;
+      });
+    }
+
+    /** The full listing row for a job when we have it, so Take Over and Delete stay. */
+    function rowForJob(job) {
+      const row = rootFiles.filter(function (item) { return item && item.id === job.id; })[0];
+      return row || Object.assign({ key: 'cf/' + job.id + '/index.json' }, job);
+    }
+
+    function paintMap(refit) {
+      if (!mapEl) return;
+      const MapApi = window.ToolboxExplorerMap;
+      if (!mapView) {
+        mapEl.innerHTML = '';
+        const years = document.createElement('div');
+        years.className = 'explorer-mapyears';
+        years.id = 'explorer-mapyears';
+        mapEl.appendChild(years);
+        const host = document.createElement('div');
+        host.className = 'explorer-maphost';
+        mapEl.appendChild(host);
+        const below = document.createElement('div');
+        below.className = 'explorer-mapbelow';
+        below.id = 'explorer-mapbelow';
+        mapEl.appendChild(below);
+        mapView = MapApi.create(host, {
+          onView: function (inView) {
+            if (!mapPicked) paintMapList(inView, false);
+          },
+          onPick: function (picked) {
+            mapPicked = picked;
+            paintMapList(picked, true);
+          },
+        });
+      }
+      paintYears();
+      mapPicked = null;
+      mapView.setJobs(mapCandidates(), refit);
+    }
+
+    function paintYears() {
+      const box = mapEl.querySelector('#explorer-mapyears');
+      if (!box) return;
+      box.innerHTML = '';
+      const years = Object.create(null);
+      (mapJobs || []).forEach(function (job) {
+        const year = yearOfJob(job);
+        if (year) years[year] = 1;
+      });
+      const order = ['all'].concat(Object.keys(years).sort().reverse());
+      if (mapYear !== 'all' && !years[mapYear]) mapYear = 'all';
+      order.forEach(function (year) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'explorer-mapyears__chip' + (year === mapYear ? ' is-on' : '');
+        chip.dataset.year = year;
+        chip.textContent = year === 'all' ? 'All years' : year;
+        chip.setAttribute('aria-pressed', year === mapYear ? 'true' : 'false');
+        chip.addEventListener('click', function () {
+          mapYear = year;
+          paintMap(true);
+        });
+        box.appendChild(chip);
+      });
+    }
+
+    function paintMapList(jobs, picked) {
+      const below = mapEl.querySelector('#explorer-mapbelow');
+      if (!below) return;
+      below.innerHTML = '';
+      const head = document.createElement('div');
+      head.className = 'explorer-mapbelow__head';
+      const title = document.createElement('h2');
+      title.className = 'explorer-mapbelow__title';
+      const count = jobs.length === 1 ? '1 job' : jobs.length + ' jobs';
+      title.textContent = picked ? count + ' at this spot' : count + ' in this view';
+      head.appendChild(title);
+      if (picked) {
+        const back = document.createElement('button');
+        back.type = 'button';
+        back.className = 'btn btn--ghost';
+        back.textContent = 'Everything in view';
+        back.addEventListener('click', function () {
+          mapPicked = null;
+          paintMapList(mapView.jobsInView(), false);
+        });
+        head.appendChild(back);
+      }
+      below.appendChild(head);
+      const shown = jobs.slice().sort(function (a, b) {
+        const da = String(a.fieldWorkDate || '');
+        const db = String(b.fieldWorkDate || '');
+        if (da !== db) return da < db ? 1 : -1;
+        return String(a.displayName || '') < String(b.displayName || '') ? -1 : 1;
+      });
+      const LIMIT = 40;
+      shown.slice(0, LIMIT).forEach(function (job) {
+        below.appendChild(rootRow(rowForJob(job)));
+      });
+      if (shown.length > LIMIT) {
+        const more = document.createElement('p');
+        more.className = 'explorer-mapbelow__note';
+        more.textContent = 'And ' + (shown.length - LIMIT) + ' more in this view. Zooming in narrows the list.';
+        below.appendChild(more);
+      }
+
+      // Said, not hidden, and not guessed onto the map.
+      const unplaced = mapCandidates().filter(function (job) {
+        return !window.ToolboxExplorerMap.hasPlace(job);
+      });
+      if (unplaced.length) {
+        const box = document.createElement('details');
+        box.className = 'explorer-mapbelow__unplaced';
+        const summary = document.createElement('summary');
+        summary.textContent = (unplaced.length === 1 ? '1 job has' : unplaced.length + ' jobs have') +
+          ' no location on file and ' + (unplaced.length === 1 ? 'is' : 'are') + ' not on the map';
+        box.appendChild(summary);
+        if (mapPartial) {
+          const why = document.createElement('p');
+          why.className = 'explorer-mapbelow__note';
+          why.textContent = 'This File Cabinet server places only jobs synced since locations were added to the index.';
+          box.appendChild(why);
+        }
+        unplaced.forEach(function (job) {
+          box.appendChild(rootRow(rowForJob(job)));
+        });
+        below.appendChild(box);
+      }
+    }
+
     function paintRoot() {
+      if (mode === 'map' && mapView) paintMap(false);
       const files = filteredRoot();
       listEl.innerHTML = '';
       if (!rootFiles.length) {

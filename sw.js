@@ -51,6 +51,7 @@ const STATIC_SHELL = [
   '/js/sync.js',
   '/js/explorer-summary.js',
   '/js/explorer-archive.js',
+  '/js/explorer-map.js',
   '/js/file-explorer.js',
   '/js/ai-export.js',
   '/js/report-source.js',

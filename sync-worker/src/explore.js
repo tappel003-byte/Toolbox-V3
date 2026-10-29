@@ -524,6 +524,11 @@ function copyIdentity(target, value) {
   if (survey) target.fieldWorkDate = survey;
   if (created) target.createdAt = created;
   if (trimmed(value.deletedAt)) target.deletedAt = trimmed(value.deletedAt);
+  const place = placeOf(value.propertyAddressLat, value.propertyAddressLon);
+  if (place) {
+    target.propertyAddressLat = place.lat;
+    target.propertyAddressLon = place.lon;
+  }
   // Who holds the job, so the back door can offer Take Over without
   // reaching past its own read-only route to find out.
   const checkout = value.checkout;
@@ -536,6 +541,69 @@ function copyIdentity(target, value) {
       if (at) target.checkout.checkedOutAt = at;
     }
   }
+}
+
+/** A real place, or null. A 0,0 is what an empty field leaves, not a house. */
+export function placeOf(lat, lon) {
+  if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+  if (!isFinite(lat) || !isFinite(lon)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  if (lat === 0 && lon === 0) return null;
+  return { lat: lat, lon: lon };
+}
+
+/**
+ * Every job, with where it is, for File Explorer's map.
+ *
+ * The index carries the property's coordinates for jobs synced since they
+ * were added to it. The jobs already in the Cabinet were filed before that,
+ * and their coordinates are in the customer component -- so for those this
+ * READS the customer component the index names. Nothing is written back:
+ * the index is not rewritten and no lease moves. A job with coordinates in
+ * neither place comes back without them and is listed as having no
+ * location; nothing here looks an address up or guesses one.
+ */
+export async function readCabinetMap(cabinet) {
+  const listed = await listPrefix(cabinet, 'cf/');
+  const jobs = [];
+  let fromCustomer = 0;
+  for (let i = 0; i < listed.length; i++) {
+    const match = /^cf\/([^/]+)\/index\.json$/.exec(listed[i] && listed[i].key);
+    if (!match || !safeCustomerId(match[1])) continue;
+    const id = match[1];
+    const parsed = await readJson(await cabinet.get(listed[i].key));
+    if (!parsed.ok || !parsed.value || typeof parsed.value !== 'object') continue;
+    const index = parsed.value;
+    if (index.purged) continue;
+    const job = { id: id };
+    const name = trimmed(index.displayName);
+    const address = trimmed(index.propertyAddress);
+    if (name) job.displayName = name;
+    if (address) job.propertyAddress = address;
+    if (trimmed(index.fieldWorkDate)) job.fieldWorkDate = trimmed(index.fieldWorkDate);
+    if (trimmed(index.createdAt)) job.createdAt = trimmed(index.createdAt);
+    if (trimmed(index.deletedAt)) job.deletedAt = trimmed(index.deletedAt);
+    let place = placeOf(index.propertyAddressLat, index.propertyAddressLon);
+    if (place) {
+      job.from = 'index';
+    } else {
+      const resolved = resolveAcceptedComponent(index, id, 'customer');
+      const customer = await readJson(await cabinet.get(resolved.key));
+      if (customer.ok && customer.value && typeof customer.value === 'object') {
+        place = placeOf(customer.value.propertyAddressLat, customer.value.propertyAddressLon);
+        if (place) {
+          job.from = 'customer';
+          fromCustomer += 1;
+        }
+      }
+    }
+    if (place) {
+      job.lat = place.lat;
+      job.lon = place.lon;
+    }
+    jobs.push(job);
+  }
+  return { jobs: jobs, readFromCustomer: fromCustomer };
 }
 
 export async function readCabinetIndexListing(cabinet) {
@@ -1018,6 +1086,10 @@ export async function exploreResult(request, env) {
     if (path === 'explore/files' && request.method === 'GET') {
       const listing = await readCabinetIndexListing(cabinet);
       return { status: 200, json: listing };
+    }
+
+    if (path === 'explore/map' && request.method === 'GET') {
+      return { status: 200, json: await readCabinetMap(cabinet) };
     }
 
     let match = /^explore\/files\/([^/]+)$/.exec(path);
