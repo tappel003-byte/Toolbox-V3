@@ -113,6 +113,11 @@
   var MIN_STACK = -40;
   var MAX_STACK = 40;
 
+  /** legend-<n> / pill-<n>: a boundary's slot, as opposed to a view's. */
+  function isBoundarySlotId(id) {
+    return /^(legend|pill)-\d+$/.test(String(id || ''));
+  }
+
   function stackOf(piece, kind) {
     var base = BASE_STACK[kind] || 1;
     var raw = piece && typeof piece.z === 'number' && isFinite(piece.z) ? piece.z : base;
@@ -733,6 +738,13 @@
         layout.overlays.forEach(function (overlay) {
           if (overlay.kind !== 'legend' && overlay.kind !== 'pill') return;
           if (combinedSheet) return;
+          // Only the per-boundary slots (legend-0, pill-1, ...) belong to a
+          // one-view sheet. A multi-view sheet keeps its own pieces in the
+          // same record under legend-<viewId> / pill-<viewId>, and the record
+          // is the book's: drawn here as well, turning a view's scale on one
+          // slide stacked a second, identical scale on every one-view slide,
+          // and removing the view left it there (CLAUDE-017).
+          if (!isBoundarySlotId(overlay.id)) return;
           if (readingsOnly && overlay.kind === 'legend') return;
           var stats = statsList[overlay.statsIndex];
           if (!stats) return;
