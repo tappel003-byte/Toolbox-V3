@@ -53,41 +53,58 @@ those lists, which is why its phone view has drifted.
 
 ---
 
-## The sequencing argument that matters most
+## How old jobs get covered — settled
 
 Tim has decided: **no backfill of existing jobs.** No bulk pass rewriting
-every index in the Cabinet.
+every index in the Cabinet, and no server-side pass either.
 
-That decision has a consequence that drives the order of everything below.
-Anything written into a job's index only appears for jobs that **sync after
-the change ships**. A finished job that is never touched again never gets it.
+That was the right call for the reason he gave — he has months of data, not
+years, and few enough jobs to go through by hand if he wants to. A bulk
+rewrite would have been a large, risky operation to solve a small problem.
 
-So the two small "write it going forward" changes — map coordinates, and the
-search catalogue entry — have a lead time that the user interface work does
-not. Every week they are not shipped is another week of jobs that will never
-have a pin on the map and will never answer a search.
+But the obvious manual version does not work, and this is worth stating
+plainly because it would otherwise be discovered the hard way.
 
-**That argues for shipping the two write-side changes first, even though the
-features that consume them come later.**
+**Opening a job in File Explorer writes nothing.** Explorer only reads. That
+is deliberate, it is one of the guarantees PR #145 tightened a test around
+(*"browsing a job never reaches past the read-only explore route"*), and it is
+not going to change.
 
-### A question that could change this considerably
+**And an ordinary sync may skip it too.** `syncOneRecord` pushes the index
+only when `(changed || !remote)`. Open a job, change nothing, sync it — the
+index is not sent. So even going job by job, every job not actually edited
+would be missed.
 
-Tim's "no backfill" was rejecting a pass that **rewrites every job's index** —
-which is the dangerous operation, because index writes are where the ownership
-races live, and PR #145 was largely about closing those.
+### The change that makes it work
 
-There is a different operation that is not that: the **Worker reads** each
-job's existing `customer.json` and `distress.json`, which it already holds,
-and writes **one derived file** — a catalogue. No job index is touched. No
-component is rewritten. Nothing a device owns is modified.
+Sync pushes the index when the stored one is **missing the new information**,
+as well as when something changed:
 
-If that is acceptable, search and the map cover **every job including the old
-ones**, and both become useful immediately instead of in five years. If it is
-not, both features start empty and grow.
+```
+if ((changed || !remote || indexLacksNewFields(remote)) && mayPush) { … }
+```
 
-**This is the single biggest open question in the plan**, and it is Tim's to
-answer, not GPT's. Flagged here so it is answered deliberately rather than
-assumed either way.
+What that buys:
+
+- Jobs fill in **as Tim works**. Any job checked out, edited, checked in or
+  synced for any reason gets caught. No deliberate effort, no bulk operation.
+- If he would rather not wait, going through and re-syncing each job then
+  actually does something — which, today, it would not.
+- `mayPush` is unchanged, so a job checked out on another device is still
+  left alone and gets picked up when it comes back.
+
+**Risk.** One extra index write per job, once, through the ordinary sync path
+with the component-acceptance protocol from #145 already in front of it, one
+job at a time. That is a materially different thing from a bulk pass over the
+whole Cabinet, and it is the reason this is acceptable where the pass was not.
+
+**What is still true:** a job that is never synced again never gets covered.
+At Tim's current scale that is a short, visible list rather than a structural
+hole.
+
+**One small decision inside this:** a job sitting in Cabinet Trash is
+recoverable, so it should keep its catalogue entry and its pin, with the map
+and search filtering it rather than the catalogue omitting it.
 
 ---
 
@@ -235,8 +252,14 @@ during autocomplete, so the map adds no new category of exposure.
 **Coordinates.** `propertyAddressLat` / `propertyAddressLon` are already
 captured on every job where an address suggestion was picked or Use My
 Location was tapped. They live in the customer component and are **not** in
-the Cabinet index, which is what a map must read — it cannot open 187 jobs to
-find out where they are. Adding the pair to `buildIndex` is two lines.
+the Cabinet index, which is what a map must read — it cannot open every job to
+find out where they are. Adding the pair to `buildIndex` is two lines; getting
+them onto jobs that already exist is the sync trigger change above.
+
+**A job with no coordinates at all** — an address typed by hand with no
+suggestion picked and no location captured — has nothing to plot and must be
+shown as absent from the map rather than guessed at or quietly dropped. How
+many of Tim's jobs that affects is not known from here.
 
 **Work:** index field (small), the map itself (about a day), clustering and
 the year range (about a day, and not optional under this use case).
@@ -279,18 +302,25 @@ recommendations, listed for GPT to challenge:
 
 ## Open questions
 
-1. **The big one.** Does "no backfill" rule out a Worker-side pass that reads
-   existing components and writes one derived catalogue, touching no job index
-   and rewriting no component? If allowed, search and the map cover every job
-   immediately rather than only jobs synced from now on.
-2. Should the catalogue carry the report's full text, or only its headings and
-   the pin and picture descriptions?
-3. Is the existing Geoapify key valid for tiles, or does tiles need enabling
-   on that account?
-4. Does the Images binding need enabling on the account, and is Toolbox on the
-   Cloudflare free or paid plan? It changes the over-allowance behaviour from
-   "thumbnails stop" to "it bills".
-5. Where should Delete sit on a phone row? It stays in Explorer either way.
+The largest one — whether old jobs get covered — is **answered**: no backfill,
+no server pass, and the sync trigger change above instead. What is left:
+
+1. Should the catalogue carry the report's full text, or only its headings
+   plus the pin and picture descriptions? Full text makes more findable; it
+   also means a search hit can land on a conclusion rather than an
+   observation, which is why the sections are labelled either way.
+2. Is the existing Geoapify key valid for map tiles, or does that need
+   enabling on the same account?
+3. Does the Images binding need enabling, and is Toolbox on Cloudflare's free
+   or paid plan? It changes the over-allowance behaviour from "thumbnails stop
+   working" to "it bills".
+4. Where should Delete sit on a phone row? It stays in Explorer either way —
+   this is only about it being at thumb height next to Open.
+5. Is the sync trigger condition (`indexLacksNewFields`) better keyed on the
+   map coordinates, the catalogue entry, or a single version number on the
+   index that both hang off? A version number is one check instead of two and
+   survives the next field being added; it is also one more thing on the
+   index.
 
 ---
 
@@ -306,14 +336,17 @@ two minutes: `explorer-mockups.html` has no `<meta charset="utf-8">`, so the
 
 ## Suggested order
 
-1. Map coordinates into `buildIndex`, and the catalogue write — **first**,
-   because of the lead time the no-backfill decision creates.
-2. Thumbnails, with caching. Highest value per unit of risk; makes the phone
-   usable.
-3. Phone entry screen.
-4. The map.
-5. Simplification pass, once there is something to simplify against.
+1. **The write side**, together: map coordinates and the catalogue entry into
+   `buildIndex`, plus the sync trigger change that makes old jobs fill in as
+   Tim works. Small, and nothing downstream is worth building until jobs
+   actually carry the information.
+2. **Thumbnails**, with caching. Highest value per unit of risk, costs
+   nothing, and it is the change that makes the phone usable at all.
+3. **The phone entry screen.**
+4. **The map**, once coordinates have been landing long enough to show
+   something worth looking at.
+5. **The simplification pass**, last, once there is something to simplify
+   against.
 
-Slices 2 and 3 are independent and could run in either order. The map needs
-its coordinates to have been landing for a while before it shows anything
-worth looking at.
+Steps 2 and 3 are independent of each other and of step 1, and could be
+reordered or run in parallel. Step 4 is the only one with a real dependency.
