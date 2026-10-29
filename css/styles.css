@@ -4252,6 +4252,72 @@ button.cf-home__delete[hidden] {
   padding: 8px 12px;
 }
 
+/* Words found inside the jobs, under the card list. Each hit carries the
+   heading it came from, so an observation never reads as a conclusion. */
+.explorer-textsearch {
+  margin-top: 18px;
+  padding: 0 16px 12px;
+}
+
+
+.explorer-textsearch__head {
+  margin: 0 0 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--navy);
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.explorer-textsearch__status {
+  margin: 6px 2px 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.explorer-hit {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-width: 0;
+}
+
+.explorer-hit__line {
+  margin-top: 8px;
+  padding-left: 10px;
+  border-left: 3px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.explorer-hit__from {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.explorer-hit__text {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.explorer-hit__text mark {
+  background: #fde7b0;
+  color: inherit;
+  border-radius: 2px;
+}
+
+.explorer-row--text {
+  background: #f6f8f4;
+}
+
 .explorer-note,
 .explorer-view .cabinet-notice {
   margin: 8px 16px 0;
@@ -4547,6 +4613,11 @@ button.cf-home__delete[hidden] {
 
   /* The list already carries the page's side padding on a phone; inside the
      grid the column provides it, so it would be doubled. */
+  .explorer-panes .explorer-textsearch {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
   .explorer-panes .explorer-list {
     padding-left: 0;
     padding-right: 0;

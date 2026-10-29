@@ -512,6 +512,7 @@
       '        <div class="explorer-list" id="explorer-list">' +
       '          <p class="cabinet-empty">Loading Customer Files…</p>' +
       '        </div>' +
+      '        <section class="explorer-textsearch" id="explorer-textsearch" hidden></section>' +
       '      </div>' +
       '      <aside class="explorer-details" id="explorer-details">' +
       '        <div class="explorer-details__body" id="explorer-details-body" hidden></div>' +
@@ -623,7 +624,143 @@
     if (searchInput) {
       searchInput.addEventListener('input', function () {
         paintRoot();
+        scheduleTextSearch(false);
       });
+      searchInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') scheduleTextSearch(true);
+      });
+    }
+
+    /**
+     * Search the words inside the jobs, not just the card.
+     *
+     * The card catalogue above answers names, addresses and towns instantly,
+     * on the device. "Half inch drywall crack" is not on any card: it is in
+     * a pin description or a report paragraph. Those words live in each
+     * job's text file on the server, and the server scans them. Each hit
+     * says which section it came from -- a field observation, a measurement,
+     * or a conclusion in the report -- because those are not the same kind
+     * of statement.
+     */
+    const textSearchEl = app.querySelector('#explorer-textsearch');
+    let textSearchTimer = 0;
+    let textSearchSeq = 0;
+
+    function scheduleTextSearch(now) {
+      if (!textSearchEl) return;
+      clearTimeout(textSearchTimer);
+      const query = String(searchInput.value || '').trim();
+      if (query.length < 3) {
+        textSearchSeq += 1;
+        textSearchEl.hidden = true;
+        textSearchEl.innerHTML = '';
+        return;
+      }
+      textSearchTimer = setTimeout(function () { runTextSearch(query); }, now ? 0 : 650);
+    }
+
+    function runTextSearch(query) {
+      const sync = window.ToolboxSync || {};
+      if (typeof sync.exploreSearchText !== 'function') return;
+      const seq = ++textSearchSeq;
+      textSearchEl.hidden = false;
+      textSearchEl.innerHTML = '';
+      const head = document.createElement('h2');
+      head.className = 'explorer-textsearch__head';
+      head.textContent = 'In the job text';
+      textSearchEl.appendChild(head);
+      const status = document.createElement('p');
+      status.className = 'explorer-textsearch__status';
+      status.textContent = 'Reading the job text…';
+      textSearchEl.appendChild(status);
+      sync.exploreSearchText(query).then(function (data) {
+        if (seq !== textSearchSeq) return;
+        paintTextResults(data, status);
+      }).catch(function (err) {
+        if (seq !== textSearchSeq) return;
+        status.textContent = errorText(err);
+      });
+    }
+
+    function paintTextResults(data, status) {
+      if (!data) {
+        status.textContent = 'Searching the job text needs the newer File Cabinet server.';
+        return;
+      }
+      const results = Array.isArray(data.results) ? data.results : [];
+      const parts = [];
+      parts.push(results.length
+        ? (results.length === 1 ? '1 job says this' : results.length + ' jobs say this')
+        : 'No job says this');
+      parts.push('searched ' + data.searched + ' of ' + data.total);
+      status.textContent = parts.join(' · ') + '.';
+      if (data.notYetRead) {
+        const more = document.createElement('p');
+        more.className = 'explorer-textsearch__status';
+        more.textContent = data.notYetRead + (data.notYetRead === 1 ? ' job has' : ' jobs have') +
+          ' not been read into the search yet. Each search reads more of them.';
+        textSearchEl.appendChild(more);
+      }
+      // Read, but not all of it: a record the job names could not be read.
+      // Said here so "no job says this" is never taken as the whole answer.
+      const partial = Array.isArray(data.incomplete) ? data.incomplete : [];
+      if (partial.length) {
+        const part = document.createElement('p');
+        part.className = 'explorer-textsearch__status explorer-textsearch__partial';
+        part.textContent = (partial.length === 1 ? '1 job' : partial.length + ' jobs') +
+          ' could only be partly read: ' + partial.map(function (job) {
+            return (job.displayName || 'Customer File') + ' (' + (job.components || []).join(', ') + ')';
+          }).join('; ') + '. They are read again on the next search.';
+        textSearchEl.appendChild(part);
+      }
+      const words = Array.isArray(data.words) ? data.words : [];
+      results.forEach(function (result) {
+        const card = document.createElement('article');
+        card.className = 'explorer-hit';
+        card.dataset.id = result.id;
+        const open = document.createElement('button');
+        open.type = 'button';
+        open.className = 'explorer-row__key';
+        open.textContent = result.displayName || result.propertyAddress || 'Customer File';
+        open.addEventListener('click', function () {
+          window.location.hash = '#/explore/' + encodeURIComponent(result.id);
+        });
+        card.appendChild(open);
+        const where = [];
+        if (result.inTrash) where.push('In File Cabinet Trash');
+        if (result.propertyAddress) where.push(result.propertyAddress);
+        if (result.fieldWorkDate) where.push(formatFieldDate(result.fieldWorkDate));
+        if (where.length) {
+          const meta = document.createElement('p');
+          meta.className = 'explorer-row__label';
+          meta.textContent = where.join(' · ');
+          card.appendChild(meta);
+        }
+        (result.hits || []).forEach(function (hit) {
+          const box = document.createElement('div');
+          box.className = 'explorer-hit__line';
+          const from = document.createElement('span');
+          from.className = 'explorer-hit__from';
+          from.textContent = hit.section;
+          box.appendChild(from);
+          const said = document.createElement('span');
+          said.className = 'explorer-hit__text';
+          said.innerHTML = markWords(hit.text, words);
+          box.appendChild(said);
+          card.appendChild(box);
+        });
+        textSearchEl.appendChild(card);
+      });
+    }
+
+    function markWords(text, words) {
+      let html = escapeHtml(text);
+      words.slice().sort(function (a, b) { return b.length - a.length; }).forEach(function (word) {
+        const safe = escapeHtml(word).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (!safe) return;
+        html = html.replace(new RegExp('(' + safe + ')(?![^<]*>)', 'gi'), '<mark>$1</mark>');
+      });
+      return html;
     }
 
     function loadCustomer(id) {
@@ -1403,7 +1540,12 @@
         p.textContent = note;
         notesEl.appendChild(p);
       });
-      const objects = Array.isArray(data.objects) ? data.objects : [];
+      // The job text is derived from the records; it has its own row below,
+      // built fresh when asked for, rather than sitting among the files as
+      // though it were one of them.
+      const objects = (Array.isArray(data.objects) ? data.objects : []).filter(function (row) {
+        return String(row && row.key || '') !== 'cf/' + id + '/search.txt';
+      });
       stopTileWatching();
       listEl.innerHTML = '';
       if (!objects.length) {
@@ -1494,6 +1636,8 @@
             'Customer File yet.';
           listEl.appendChild(empty);
         }
+        const words = jobTextRow(id);
+        if (words) listEl.appendChild(words);
         if (sorted.records.length) listEl.appendChild(recordFiles(id, sorted.records));
         return;
       }
@@ -1648,6 +1792,112 @@
       open.appendChild(chev);
       article.appendChild(open);
       return article;
+    }
+
+    /**
+     * The job's words as plain text -- the customer, the pins, the photographs,
+     * the report -- under headings that say what kind of statement each is.
+     * Built on the server from the records when asked for; it is not one of
+     * the records and nothing reads it back.
+     */
+    function jobTextRow(id) {
+      const sync = window.ToolboxSync || {};
+      if (typeof sync.exploreFetchJobText !== 'function') return null;
+      const article = document.createElement('article');
+      article.className = 'explorer-row explorer-row--text';
+      article.dataset.purpose = 'job-text';
+      const main = document.createElement('div');
+      main.className = 'explorer-row__main';
+      const title = document.createElement('strong');
+      title.className = 'explorer-row__title';
+      title.textContent = 'Job text';
+      main.appendChild(title);
+      const note = document.createElement('p');
+      note.className = 'explorer-row__label';
+      note.textContent = 'Everything this job says, as plain text: the customer, pins, ' +
+        'photographs and the report, each under its own heading.';
+      main.appendChild(note);
+      article.appendChild(main);
+      const actions = document.createElement('div');
+      actions.className = 'explorer-row__actions';
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'btn btn--secondary';
+      open.textContent = 'Open';
+      open.addEventListener('click', function () {
+        openJobText(id, open);
+      });
+      actions.appendChild(open);
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.className = 'btn btn--secondary';
+      download.textContent = 'Download';
+      download.addEventListener('click', function () {
+        showNotice('');
+        const previous = download.textContent;
+        download.disabled = true;
+        const stem = slugWords(jobName, 48) || ('cf-' + id);
+        saveWhereChosen(stem + '-job-text.txt', 'text/plain', function () {
+          return sync.exploreFetchJobText(id).then(function (response) {
+            if (!response) throw new Error('unavailable');
+            return response;
+          });
+        }).then(function (result) {
+          showNotice(savedNotice(result));
+        }).catch(function (err) {
+          showNotice(err && err.message === 'unavailable'
+            ? 'The job text needs the newer File Cabinet server.'
+            : errorText(err));
+        }).then(function () {
+          download.disabled = false;
+          download.textContent = previous;
+        });
+      });
+      actions.appendChild(download);
+      article.appendChild(actions);
+      return article;
+    }
+
+    function openJobText(id, button) {
+      showNotice('');
+      revokePreview();
+      preview.hidden = false;
+      preview.innerHTML = '<p class="explorer-preview__status">Opening Job text…</p>';
+      button.disabled = true;
+      window.ToolboxSync.exploreFetchJobText(id).then(function (response) {
+        if (!response) throw new Error('unavailable');
+        return response.text();
+      }).then(function (text) {
+        preview.innerHTML = '';
+        const head = document.createElement('div');
+        head.className = 'explorer-preview__head';
+        const title = document.createElement('h2');
+        title.textContent = 'Job text';
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'btn btn--ghost';
+        close.textContent = 'Close';
+        close.addEventListener('click', function () {
+          preview.hidden = true;
+          preview.innerHTML = '';
+        });
+        head.appendChild(title);
+        head.appendChild(close);
+        preview.appendChild(head);
+        const pre = document.createElement('pre');
+        pre.className = 'explorer-preview__text';
+        pre.textContent = text;
+        preview.appendChild(pre);
+        preview.scrollIntoView({ block: 'nearest' });
+      }).catch(function (err) {
+        preview.hidden = true;
+        preview.innerHTML = '';
+        showNotice(err && err.message === 'unavailable'
+          ? 'The job text needs the newer File Cabinet server.'
+          : errorText(err));
+      }).then(function () {
+        button.disabled = false;
+      });
     }
 
     /** Toolbox's own record files, at the foot of the job, closed. */
