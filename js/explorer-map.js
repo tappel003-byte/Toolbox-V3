@@ -24,6 +24,13 @@
   const MAX_ZOOM = 18;
   const CLUSTER_PX = 46;
   const TILE_URL = 'https://maps.geoapify.com/v1/tile/osm-bright/';
+  // Where the work is. Tim, Oct 29, 2026: "99% of our work will be in the
+  // state of New Mexico." The map opens on the state, and widens only when a
+  // located job lies outside it, so nothing is ever framed out of view.
+  const HOME = [
+    { lat: 37.0, lon: -109.05 },
+    { lat: 31.33, lon: -103.0 },
+  ];
 
   function apiKey() {
     return (window.ToolboxConfig && window.ToolboxConfig.geoapifyApiKey) || '';
@@ -100,9 +107,9 @@
     root.appendChild(say);
     host.appendChild(root);
 
-    // The continental United States until there are jobs to frame.
-    let zoom = 4;
-    let center = project(39, -98, zoom);
+    // New Mexico until the view is framed to the window.
+    let zoom = 6;
+    let center = project(34.2, -106.0, zoom);
     let jobs = [];
     const tiles = new Map();
     let tileFailures = 0;
@@ -346,23 +353,23 @@
       resizeObserver.observe(root);
     }
 
-    /** Frame every located job, or keep the current view when there are none. */
+    /** Frame New Mexico, and any located job outside it. */
     function fit() {
-      if (!jobs.length) { render(); return; }
       const view = size();
+      const points = HOME.concat(jobs);
       let best = MIN_ZOOM;
       for (let z = 15; z >= MIN_ZOOM; z--) {
         let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
-        jobs.forEach(function (job) {
+        points.forEach(function (job) {
           const p = project(job.lat, job.lon, z);
           minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
           minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
         });
-        if (maxX - minX <= view.w - 80 && maxY - minY <= view.h - 80) { best = z; break; }
+        if (maxX - minX <= view.w - 24 && maxY - minY <= view.h - 24) { best = z; break; }
       }
-      zoom = Math.min(best, 14);
+      zoom = best;
       let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
-      jobs.forEach(function (job) {
+      points.forEach(function (job) {
         const p = project(job.lat, job.lon, zoom);
         minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
         minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);

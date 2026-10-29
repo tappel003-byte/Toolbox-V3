@@ -263,6 +263,31 @@ try {
   check('and the rest are counted, with why', oldBelow.unplaced.startsWith('3 jobs have no location') && oldBelow.partial,
     JSON.stringify(oldBelow));
 
+  // It opens on New Mexico (Tim, Oct 29, 2026), and widens only for a job
+  // that lies outside the state.
+  const home = await old.evaluate(() => {
+    const host = document.createElement('div');
+    host.style.cssText = 'width:366px;height:520px;position:fixed;left:0;top:0';
+    document.body.appendChild(host);
+    const map = window.ToolboxExplorerMap.create(host, {});
+    map.setJobs([], true);
+    const empty = map.view();
+    map.setJobs([{ id: 'abq', lat: 35.1, lon: -106.6 }], true);
+    const inState = map.view();
+    map.setJobs([{ id: 'abq', lat: 35.1, lon: -106.6 }, { id: 'phoenix', lat: 33.45, lon: -112.07 }], true);
+    const wider = map.view();
+    const seesPhoenix = map.jobsInView().some((j) => j.id === 'phoenix');
+    map.destroy();
+    host.remove();
+    return { empty, inState, wider, seesPhoenix };
+  });
+  const inNM = (v) => v.center.lat > 31.3 && v.center.lat < 37 && v.center.lon > -109.1 && v.center.lon < -103;
+  check('with no jobs placed, the map opens on New Mexico', inNM(home.empty) && home.empty.zoom === 6, JSON.stringify(home.empty));
+  check('a job in the state does not zoom the map away from the state',
+    home.inState.zoom === home.empty.zoom && Math.abs(home.inState.center.lat - home.empty.center.lat) < 0.01, JSON.stringify(home.inState));
+  check('a job outside the state widens the view to include it',
+    home.wider.zoom < home.empty.zoom && home.seesPhoenix, JSON.stringify(home.wider));
+
   // buildIndex carries the place, and only a real one.
   const built = await old.evaluate(() => {
     const B = window.ToolboxSync.buildIndex;
