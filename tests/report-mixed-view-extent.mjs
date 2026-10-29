@@ -100,17 +100,28 @@ const split = await p.evaluate(() => {
   const api = window.__rbTestHooks;
   return !!api;
 });
-await p.evaluate(async (id) => {
-  const rec = await window.ToolboxDB.getCustomerFile(id);
-  const doc = rec.reportBuilder || {};
-  (doc.pages || []).forEach((pg) => {
-    if (pg && pg.type === 'floor' && pg.meta && /Basement/i.test(pg.title || pg.railLabel || '')) {
-      pg.meta.floorTwoUp = true;
-    }
-  });
-  rec.reportBuilder = doc;
-  await window.ToolboxDB.saveCustomerFile(rec);
-}, FILE);
+// The second view is added the way an investigator adds one now: open the
+// slide, Sheet Layout, Add view. (Setting the old meta.floorTwoUp flag on a
+// saved record no longer does it: a page that already carries meta.views is
+// read from those, and the flag only migrates a report that has none.)
+await p.evaluate(() => {
+  const t = [...document.querySelectorAll('.rb-thumb')].find((x) =>
+    /Basement/i.test((x.querySelector('.rb-thumb__caption') || {}).textContent || ''));
+  if (t) t.click();
+});
+await new Promise((r) => setTimeout(r, 4000));
+await p.evaluate(() => document.querySelector('[data-rb-floor-task="layout"]')?.click());
+await new Promise((r) => setTimeout(r, 600));
+const added = await p.evaluate(() => {
+  const b = document.querySelector('[data-rb-floor-view="add"]');
+  if (!b) return false;
+  b.click();
+  return true;
+});
+check('a second view is added to the Basement slide from the rail', added);
+await new Promise((r) => setTimeout(r, 3000));
+await p.waitForFunction(
+  () => /^Saved/.test(document.querySelector('#rb-save-status')?.textContent || ''), { timeout: 15000 }).catch(() => {});
 await p.reload({ waitUntil: 'networkidle0' });
 await p.waitForFunction(() => !!document.querySelector('.rb-sheet'), { timeout: 40000 });
 await new Promise((r) => setTimeout(r, 8000));
@@ -123,7 +134,7 @@ const slotCounts = await p.evaluate(async (id) => {
   const out = {};
   ((rec.reportBuilder || {}).pages || []).forEach((pg) => {
     if (pg && pg.type === 'floor') {
-      out[pg.title || pg.railLabel || pg.id] = (pg.meta && pg.meta.floorTwoUp) ? 2 : 1;
+      out[pg.title || pg.railLabel || pg.id] = (pg.meta && Array.isArray(pg.meta.views) && pg.meta.views.length) || 1;
     }
   });
   return out;

@@ -177,8 +177,12 @@ check('and the second scale still ends on the paper',
 const repaired = await page.evaluate(async (id) => {
   const rec = await window.ToolboxDB.getCustomerFile(id);
   const doc = rec.reportBuilder || rec.report;
-  const floor = (doc.pages || []).find((p) => p.type === 'floor' && p.meta && p.meta.layout);
   const api = window.ToolboxReportFloorLayout;
+  // The book's one layout record (DECIDED Tim, Oct 22, 2026); a slide no
+  // longer carries a layout of its own. Only its topo and overview are
+  // borrowed here, as the unchanging part of the record being repaired.
+  const book = (doc && doc.floorLayout) || api.defaultLayout();
+  const floor = { meta: { layout: book } };
   // Exactly the old defaults for boundary 0 and 1 — never touched by hand.
   const stale = api.normalizeLayout({
     locked: false,

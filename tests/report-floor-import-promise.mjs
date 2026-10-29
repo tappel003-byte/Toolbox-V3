@@ -182,8 +182,11 @@ const drawing = () => page.evaluate(() => {
   const r = box ? box.getBoundingClientRect() : null;
   return r ? Math.round(r.width) + 'x' + Math.round(r.height) : '';
 });
-// Legend size lives under Legend & H/L, so open it the way a person would
-// before reaching for the stepper.
+// Legend size lives under Topo, then Legend & H/L, so open them the way a
+// person would before reaching for the stepper. The Topo task tab has sat
+// above the rail's groups since the Sheet Layout | Topo split (#135).
+await page.evaluate(() => document.querySelector('[data-rb-floor-task="topo"]')?.click());
+await new Promise((resolve) => setTimeout(resolve, 400));
 const openedLegendHl = await page.evaluate(() => {
   const tab = Array.from(document.querySelectorAll('[role="tab"]'))
     .find((button) => (button.textContent || '').trim() === 'Legend & H/L');
