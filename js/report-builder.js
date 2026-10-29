@@ -3079,6 +3079,8 @@
     // never read capture ds-capture-sizes. Default 1 = proven 11×17 diameter.
     var penLogPinScale = 1;
     var penLogPinScaleSeeded = false;
+    // Set on open when the cover held another job's aerial and it was dropped.
+    var coverOverviewDropped = false;
     // One camera for every Floor Survey slide: the same part of the plan at the
     // same zoom, so clicking through Combined, Main Level, Kitchen and Garage
     // is a flip book -- the building does not move. The chrome (colour scale,
@@ -4938,7 +4940,12 @@
           var which = templateBtn.getAttribute('data-rb-template');
           var saved;
           if (which === 'cover') {
-            saved = saveTemplatePiece({ coverLayout: coverLayout });
+            // Where the cover's boxes sit, never which aerial is in one. The
+            // picture is this property's; carried in a default it put one
+            // job's aerial on every new report (Tim, Oct 29, 2026).
+            var coverDefault = JSON.parse(JSON.stringify(coverLayout || {}));
+            coverDefault.overviewMediaId = '';
+            saved = saveTemplatePiece({ coverLayout: coverDefault });
           } else if (which === 'floor') {
             // How the building is framed, where the scale and the readings
             // sit on the page, and what is drawn inside the frame.
@@ -8853,6 +8860,15 @@
       var coverSeed = (savedDoc && savedDoc.coverLayout) || template.coverLayout;
       if (coverSeed && window.ToolboxReportCoverLayout) {
         coverLayout = window.ToolboxReportCoverLayout.normalizeLayout(coverSeed);
+        // The aerial is stored under the job it was placed on. One that names
+        // another job came in through a default saved before defaults
+        // stopped carrying the picture -- drop it, and say so in the save.
+        var ownOverview = 'report-cover-overview-' + customerFileId;
+        if (coverLayout.overviewMediaId && coverLayout.overviewMediaId !== ownOverview &&
+          coverLayout.overviewMediaId.indexOf('report-cover-overview-') === 0) {
+          coverLayout.overviewMediaId = '';
+          coverOverviewDropped = true;
+        }
       }
       var brandSeed = (savedDoc && savedDoc.brandBox) || template.brandBox;
       if (brandSeed && window.ToolboxReportDiscussion) {
@@ -8969,7 +8985,9 @@
         renderPages();
         fitSheet(root);
         // Persist a missing pinScale once so reopen / other devices keep sheet default.
-        var needSave = loaded.assembledFresh || loaded.reconciled || !penLogPinScaleSeeded;
+        var needSave = loaded.assembledFresh || loaded.reconciled || !penLogPinScaleSeeded ||
+          coverOverviewDropped;
+        coverOverviewDropped = false;
         if (!penLogPinScaleSeeded) penLogPinScaleSeeded = true;
         if (needSave) {
           markDirty();
