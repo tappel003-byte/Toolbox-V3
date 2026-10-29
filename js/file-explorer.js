@@ -1666,12 +1666,31 @@
       return rows.map(function (row) { return formatFieldDate(row.uploaded) || ''; });
     }
 
+    /**
+     * What a tile is drawn from: the server's small copy when it has one,
+     * the stored original when it does not. A folder of 38 photographs was
+     * 70-100 MB of originals to draw tiles 320 pixels across; the small copy
+     * is a few KB each. The original stays the fallback, so a Worker without
+     * the route or without Images still draws every tile.
+     */
+    function tileSource(id, row) {
+      const sync = window.ToolboxSync;
+      const key = String(row && row.key || '');
+      const mediaId = key.indexOf('media/') === 0 ? key.slice(6) : '';
+      if (!mediaId || typeof sync.exploreFetchThumb !== 'function') {
+        return sync.exploreFetchObject(id, key);
+      }
+      return sync.exploreFetchThumb(mediaId, THUMB_EDGE).then(function (small) {
+        return small || sync.exploreFetchObject(id, key);
+      });
+    }
+
     function watchTile(id, row, img, tile) {
       let started = false;
       const load = function () {
         if (started) return;
         started = true;
-        window.ToolboxSync.exploreFetchObject(id, row.key)
+        tileSource(id, row)
           .then(responseBlob)
           .then(function (loaded) { return thumbnailFrom(loaded.blob); })
           .then(function (src) {

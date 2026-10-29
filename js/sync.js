@@ -3083,6 +3083,31 @@
   }
 
   /**
+   * A tile-sized picture of a stored photograph, or null.
+   *
+   * The Worker shrinks it next to R2 (Cloudflare Images) and keeps the shrunk
+   * copy in its cache, so a folder of photographs no longer pulls every
+   * original to draw tiles. Null on any answer that is not a picture --
+   * including a Worker that predates the route -- and the caller fetches the
+   * original the way it always did. The answer may itself be the original
+   * when the Worker has no Images binding; x-toolbox-thumb says which.
+   */
+  async function exploreFetchThumb(mediaId, edge) {
+    if (!exploreMediaIdSafe(mediaId)) return null;
+    let response;
+    try {
+      response = await apiFetch(
+        '/explore/thumbs/' + encodeURIComponent(mediaId) + '?w=' + encodeURIComponent(edge || 320),
+        { allow404: true, skipAccessPrompt: true },
+      );
+    } catch (_) {
+      return null;
+    }
+    if (!response || !response.ok) return null;
+    return response;
+  }
+
+  /**
    * Read one component for the back door, and ONLY through the back door.
    *
    * File Explorer reads the stored records to say what a job holds -- two
@@ -3644,6 +3669,7 @@
     exploreListFiles: exploreListFiles,
     exploreListCustomerFile: exploreListCustomerFile,
     exploreFetchObject: exploreFetchObject,
+    exploreFetchThumb: exploreFetchThumb,
     exploreReadComponent: exploreReadComponent,
     exploreFetchArchive: exploreFetchArchive,
     trashCabinetCustomerFile: trashCabinetCustomerFile,

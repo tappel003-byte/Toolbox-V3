@@ -866,6 +866,140 @@ export async function buildExploreZip(cabinet, id) {
   };
 }
 
+/**
+ * A small picture of a stored photograph, for a tile.
+ *
+ * A folder of 38 photographs used to pull the whole of every original --
+ * 70 to 100 MB -- to draw tiles 320 pixels across. Cloudflare Images shrinks
+ * the original inside the Worker, next to R2, and the shrunk copy is kept in
+ * the Workers Cache so the next look costs nothing.
+ *
+ * The binding is used only when it is there. Without it, or when a picture
+ * will not transform, the answer is the original bytes, said so in
+ * x-toolbox-thumb, and the browser shrinks it the way it always did. The
+ * cached copy is keyed on the object's etag, so a plan replaced under the
+ * same id is never answered with the picture it replaced.
+ *
+ * Reads only. The same media is already served whole to the same signed-in
+ * people by the sync API's own media route; this route is no wider than that.
+ */
+export const THUMB_EDGES = [160, 320, 640];
+
+export function thumbEdge(value) {
+  const asked = Number(value);
+  if (!isFinite(asked) || asked <= 0) return 320;
+  for (let i = 0; i < THUMB_EDGES.length; i++) {
+    if (asked <= THUMB_EDGES[i]) return THUMB_EDGES[i];
+  }
+  return THUMB_EDGES[THUMB_EDGES.length - 1];
+}
+
+function thumbCache() {
+  try {
+    return typeof caches !== 'undefined' && caches && caches.default ? caches.default : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function originalAnswer(got, contentType) {
+  return {
+    status: 200,
+    body: got.body,
+    headers: {
+      'content-type': contentType || 'application/octet-stream',
+      'x-toolbox-thumb': 'original',
+      'x-content-type-options': 'nosniff',
+      'cache-control': 'no-store',
+      'access-control-expose-headers': 'x-toolbox-thumb, content-type',
+    },
+  };
+}
+
+export async function readExploreThumb(env, origin, mediaId, edgeValue) {
+  const cabinet = env.CABINET;
+  if (!safeMediaId(mediaId)) return { status: 400, text: 'Bad request' };
+  const edge = thumbEdge(edgeValue);
+  const key = 'media/' + mediaId;
+  const head = await cabinet.head(key);
+  if (!head) return { status: 404, text: 'Not stored' };
+  const contentType = (head.httpMetadata && head.httpMetadata.contentType) || '';
+  const type = contentType.toLowerCase();
+  // A PDF or a record is not a picture, whatever asked for it. Stored photos
+  // often carry no type at all, so an empty one is still worth trying.
+  const mayBePicture = !type || type === 'application/octet-stream' || type.indexOf('image/') === 0;
+
+  const cache = thumbCache();
+  const version = head.httpEtag || head.etag || String(head.size || '') + '-' + String(head.uploaded || '');
+  const cacheKey = cache
+    ? new Request(origin + '/explore/thumbs/' + encodeURIComponent(mediaId) +
+        '?w=' + edge + '&v=' + encodeURIComponent(version))
+    : null;
+  if (cache && cacheKey) {
+    try {
+      const hit = await cache.match(cacheKey);
+      if (hit) {
+        const bytes = new Uint8Array(await hit.arrayBuffer());
+        return {
+          status: 200,
+          body: bytes,
+          headers: {
+            'content-type': hit.headers.get('content-type') || 'image/jpeg',
+            'content-length': String(bytes.byteLength),
+            'x-toolbox-thumb': 'resized',
+            'x-content-type-options': 'nosniff',
+            'cache-control': 'private, max-age=300',
+            'access-control-expose-headers': 'x-toolbox-thumb, content-type',
+          },
+        };
+      }
+    } catch (_) {}
+  }
+
+  if (env.IMAGES && mayBePicture) {
+    try {
+      const got = await cabinet.get(key);
+      if (!got) return { status: 404, text: 'Not stored' };
+      const result = await env.IMAGES.input(got.body)
+        .transform({ width: edge, height: edge, fit: 'scale-down' })
+        .output({ format: 'image/jpeg', quality: 75 });
+      const transformed = result.response();
+      const bytes = new Uint8Array(await transformed.arrayBuffer());
+      if (bytes.byteLength) {
+        if (cache && cacheKey) {
+          try {
+            await cache.put(cacheKey, new Response(bytes, {
+              headers: {
+                'content-type': 'image/jpeg',
+                'cache-control': 'public, max-age=2592000',
+              },
+            }));
+          } catch (_) {}
+        }
+        return {
+          status: 200,
+          body: bytes,
+          headers: {
+            'content-type': 'image/jpeg',
+            'content-length': String(bytes.byteLength),
+            'x-toolbox-thumb': 'resized',
+            'x-content-type-options': 'nosniff',
+            'cache-control': 'private, max-age=300',
+            'access-control-expose-headers': 'x-toolbox-thumb, content-type',
+          },
+        };
+      }
+    } catch (err) {
+      console.warn('Thumbnail transform failed; serving the original', mediaId, err && err.message);
+    }
+  }
+
+  // The fallback is the original, exactly as the Explorer fetched it before.
+  const got = await cabinet.get(key);
+  if (!got) return { status: 404, text: 'Not stored' };
+  return originalAnswer(got, contentType);
+}
+
 export async function exploreResult(request, env) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/^\/+/, '');
@@ -886,6 +1020,11 @@ export async function exploreResult(request, env) {
     match = /^explore\/files\/([^/]+)\/object$/.exec(path);
     if (match && request.method === 'GET') {
       return readExploreObject(cabinet, decodeURIComponent(match[1]), url.searchParams.get('key'));
+    }
+
+    match = /^explore\/thumbs\/([^/]+)$/.exec(path);
+    if (match && request.method === 'GET') {
+      return readExploreThumb(env, url.origin, decodeURIComponent(match[1]), url.searchParams.get('w'));
     }
 
     match = /^explore\/files\/([^/]+)\/archive$/.exec(path);

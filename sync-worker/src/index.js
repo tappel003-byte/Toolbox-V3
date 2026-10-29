@@ -1141,6 +1141,9 @@ export default {
         ok: true,
         service: 'toolbox-sync',
         accessConfigured: accessConfigReady(env),
+        // Whether File Explorer tiles are shrunk on the server or arrive as
+        // the original. Says what is true of this deployment, nothing more.
+        imagesBinding: !!env.IMAGES,
       });
     }
 
