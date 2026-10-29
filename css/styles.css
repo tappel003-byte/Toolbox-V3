@@ -3992,6 +3992,220 @@ button.cf-home__delete[hidden] {
   font-size: 0.95rem;
 }
 
+/* List | Map, as the drawings have it under the search box. */
+.explorer-mode {
+  display: flex;
+  gap: 3px;
+  max-width: 16rem;
+  margin: 0.5rem 1.25rem 0;
+  padding: 3px;
+  border-radius: 10px;
+  background: #e7e3da;
+}
+
+.explorer-mode__btn {
+  flex: 1 1 0;
+  min-height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.explorer-mode__btn.is-on {
+  background: #fff;
+  color: var(--navy);
+  box-shadow: 0 1px 3px rgba(8, 32, 54, 0.14);
+}
+
+.explorer-mapview {
+  padding: 8px 16px 12px;
+}
+
+.explorer-mapyears {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.explorer-mapyears__chip {
+  min-height: 34px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.explorer-mapyears__chip.is-on {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: #fff;
+}
+
+.explorer-maphost {
+  height: min(62vh, 560px);
+  min-height: 300px;
+}
+
+.explorer-map {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #e8ecee;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.explorer-map__tiles,
+.explorer-map__pins {
+  position: absolute;
+  inset: 0;
+}
+
+.explorer-map__tile {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 256px;
+  height: 256px;
+  pointer-events: none;
+}
+
+.explorer-map__pin {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 4px rgba(8, 32, 54, 0.35);
+  color: #fff;
+  font: 800 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+
+.explorer-map__pin--many {
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+  background: var(--navy);
+}
+
+.explorer-map__zoom {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.explorer-map__zoom button {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  background: #fff;
+  color: var(--navy);
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.explorer-map__zoom button + button {
+  border-top: 1px solid var(--line);
+}
+
+.explorer-map__zoom button:disabled {
+  color: var(--line);
+  cursor: default;
+}
+
+.explorer-map__credit {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  padding: 2px 6px;
+  border-top-left-radius: 6px;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+.explorer-map__credit a {
+  color: inherit;
+}
+
+.explorer-map__say {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 60px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.explorer-mapbelow__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.explorer-mapbelow__title {
+  margin: 0;
+  color: var(--navy);
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.explorer-mapbelow__note {
+  margin: 8px 2px 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.explorer-mapbelow__unplaced {
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+
+.explorer-mapbelow__unplaced > summary {
+  cursor: pointer;
+  color: var(--ink-soft);
+  font-weight: 650;
+}
+
 .explorer-search input:focus {
   outline: 2px solid rgba(15, 55, 95, 0.25);
   outline-offset: 1px;
@@ -4515,6 +4729,11 @@ button.cf-home__delete[hidden] {
 
   /* The list already carries the page's side padding on a phone; inside the
      grid the column provides it, so it would be doubled. */
+  .explorer-panes .explorer-mapview {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
   .explorer-panes .explorer-list {
     padding-left: 0;
     padding-right: 0;

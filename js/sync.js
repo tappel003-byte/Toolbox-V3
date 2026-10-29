@@ -662,10 +662,28 @@
     };
     const surveyDate = fieldWorkSurveyDate(record);
     if (surveyDate) index.fieldWorkDate = surveyDate;
+    // Where the property is, so File Explorer's map can place the job from
+    // the index alone. Captured on the Customer File already; copied only
+    // when it is a real place, never a 0,0 left by an empty field.
+    const place = indexPlace(record);
+    if (place) {
+      index.propertyAddressLat = place.lat;
+      index.propertyAddressLon = place.lon;
+    }
     CABINET_SEARCH_FIELDS.forEach(function (key) {
       index[key] = trimStr(record[key]);
     });
     return index;
+  }
+
+  function indexPlace(record) {
+    const lat = record && record.propertyAddressLat;
+    const lon = record && record.propertyAddressLon;
+    if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    if (lat === 0 && lon === 0) return null;
+    return { lat: lat, lon: lon };
   }
 
   // Every media id the plans component owns: each level's plan picture, plus
@@ -2653,6 +2671,11 @@
     if (survey) row.fieldWorkDate = survey;
     if (created) row.createdAt = created;
     if (trimStr(index.deletedAt)) row.deletedAt = trimStr(index.deletedAt);
+    const place = indexPlace(index);
+    if (place) {
+      row.propertyAddressLat = place.lat;
+      row.propertyAddressLon = place.lon;
+    }
     return row;
   }
 
@@ -3080,6 +3103,38 @@
     );
     if (response.status !== 404) return response;
     return fetchCabinetObject(id, key);
+  }
+
+  /**
+   * Every job with where it is, for the map. The Worker places a job from
+   * its index, and for a job whose index predates the coordinates it reads
+   * the customer component -- read only, nothing rewritten. A Worker without
+   * the route gives the ordinary listing, which carries coordinates only for
+   * jobs synced since they were added to the index.
+   */
+  async function exploreMapJobs() {
+    const response = await apiFetch('/explore/map', { allow404: true });
+    if (response.status !== 404) return response.json();
+    const listing = await exploreListFiles();
+    const files = listing && Array.isArray(listing.files) ? listing.files : [];
+    return {
+      jobs: files.map(function (row) {
+        const job = {
+          id: row.id,
+          displayName: row.displayName || '',
+          propertyAddress: row.propertyAddress || '',
+          fieldWorkDate: row.fieldWorkDate || '',
+          createdAt: row.createdAt || '',
+        };
+        if (row.deletedAt) job.deletedAt = row.deletedAt;
+        if (typeof row.propertyAddressLat === 'number' && typeof row.propertyAddressLon === 'number') {
+          job.lat = row.propertyAddressLat;
+          job.lon = row.propertyAddressLon;
+        }
+        return job;
+      }),
+      partial: true,
+    };
   }
 
   /**
@@ -3644,6 +3699,7 @@
     exploreListFiles: exploreListFiles,
     exploreListCustomerFile: exploreListCustomerFile,
     exploreFetchObject: exploreFetchObject,
+    exploreMapJobs: exploreMapJobs,
     exploreReadComponent: exploreReadComponent,
     exploreFetchArchive: exploreFetchArchive,
     trashCabinetCustomerFile: trashCabinetCustomerFile,
