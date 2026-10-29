@@ -219,6 +219,20 @@ export function StatsChip({
       holdTimer.current = null;
     }
   };
+  useEffect(() => {
+    return () => clearHold();
+  }, []);
+  // Outside press dismisses; −/+ on the HUD stay usable.
+  useEffect(() => {
+    if (!sizeHud) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (t && t.closest("[data-accessory-size-hud]")) return;
+      setSizeHud(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [sizeHud]);
   const drag = useRef<{
     startX: number;
     startY: number;
@@ -337,6 +351,7 @@ export function StatsChip({
       </div>
       {sizeHud && (
         <div
+          data-accessory-size-hud=""
           className="fixed z-50 flex items-center gap-1 rounded-full border bg-white/95 px-1.5 py-1 shadow-md backdrop-blur"
           style={{
             left: Math.min(Math.max(8, pos.x), window.innerWidth - 180),

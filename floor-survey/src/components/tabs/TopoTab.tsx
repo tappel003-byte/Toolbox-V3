@@ -266,6 +266,8 @@ interface Props {
 const DEFAULT_LABEL_DX = 8;
 const DEFAULT_LABEL_DY = 6;
 const LONG_PRESS_MS = 350;
+/** Accessory hold-vs-drag threshold in SCREEN pixels (hand, not image zoom). */
+const ACCESSORY_MOVE_PX = 6;
 
 /**
  * The High/Low marker's drawn size, in image coordinates.
@@ -568,9 +570,12 @@ export function TopoTab({
     /** Live legendDx/legendDy while dragging a per-boundary legend. */
     legendDx: number;
     legendDy: number;
-    /** Image-space pointer start — used before move threshold arms the drag. */
+    /** Image-space pointer start — used once the drag is armed. */
     startPointerX: number;
     startPointerY: number;
+    /** Screen-space start — hold-vs-drag threshold is zoom-independent. */
+    startClientX: number;
+    startClientY: number;
     /** False until the finger moves; hold-still opens size instead. */
     active: boolean;
   } | null>(null);
@@ -688,6 +693,8 @@ export function TopoTab({
     dy: number;
     startPointerX: number;
     startPointerY: number;
+    startClientX: number;
+    startClientY: number;
     startDx: number;
     startDy: number;
     active: boolean; // true after long-press (labels) or move threshold (accessories)
@@ -696,6 +703,26 @@ export function TopoTab({
   } | null>(null);
   const longPressTimer = useRef<number | null>(null);
   const sizeHoldClient = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Drop hold timer if Topo unmounts mid-press.
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current !== null) {
+        window.clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+      }
+    };
+  }, []);
+  // Outside press dismisses the size HUD; −/+ inside it stay usable.
+  useEffect(() => {
+    if (!sizeHud) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (t && t.closest("[data-accessory-size-hud]")) return;
+      setSizeHud(null);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [sizeHud]);
   type LastMove =
     | { kind: "label"; id: string; prevDx: number | undefined; prevDy: number | undefined }
     | { kind: "pin-high" | "pin-low"; prevDx: number | undefined; prevDy: number | undefined }
@@ -1181,6 +1208,8 @@ export function TopoTab({
                     legendDy: at.area.legendDy ?? 0,
                     startPointerX: x,
                     startPointerY: y,
+                    startClientX: event.clientX,
+                    startClientY: event.clientY,
                     active: false,
                   });
                   clearLongPress();
@@ -1218,6 +1247,8 @@ export function TopoTab({
                 dy: startDy,
                 startPointerX: x,
                 startPointerY: y,
+                startClientX: event.clientX,
+                startClientY: event.clientY,
                 startDx,
                 startDy,
                 active: false,
@@ -1246,11 +1277,12 @@ export function TopoTab({
             sizeHoldClient.current = { x: event.clientX, y: event.clientY };
             if (legendDrag?.areaId) {
               if (!legendDrag.active) {
+                // Screen pixels: same finger travel at any canvas zoom.
                 const moved = Math.hypot(
-                  x - legendDrag.startPointerX,
-                  y - legendDrag.startPointerY,
+                  event.clientX - legendDrag.startClientX,
+                  event.clientY - legendDrag.startClientY,
                 );
-                if (moved > 6) {
+                if (moved > ACCESSORY_MOVE_PX) {
                   clearLongPress();
                   setLegendDrag({ ...legendDrag, active: true });
                 }
@@ -1269,14 +1301,24 @@ export function TopoTab({
             }
             if (drag) {
               if (!drag.active) {
-                const moved = Math.hypot(x - drag.startPointerX, y - drag.startPointerY);
-                if (moved > 6) {
-                  clearLongPress();
-                  if (drag.sizeHold) {
+                if (drag.sizeHold) {
+                  const moved = Math.hypot(
+                    event.clientX - drag.startClientX,
+                    event.clientY - drag.startClientY,
+                  );
+                  if (moved > ACCESSORY_MOVE_PX) {
+                    clearLongPress();
                     // Accessory: movement wins — drag instead of size.
                     setDrag({ ...drag, active: true });
-                  } else {
-                    // Label: movement before long-press cancels (pinch / pan).
+                  }
+                } else {
+                  // Label: image-space cancel before long-press (proven gesture).
+                  const moved = Math.hypot(
+                    x - drag.startPointerX,
+                    y - drag.startPointerY,
+                  );
+                  if (moved > 6) {
+                    clearLongPress();
                     setDrag(null);
                   }
                 }
@@ -2672,6 +2714,7 @@ function AccessorySizeHud({
   const top = Math.min(Math.max(8, clientY - 56), (typeof window !== "undefined" ? window.innerHeight : 640) - 72);
   return (
     <div
+      data-accessory-size-hud=""
       className="fixed z-50 flex items-center gap-1 rounded-full border bg-white/95 px-1.5 py-1 shadow-md backdrop-blur"
       style={{ left, top }}
       role="group"

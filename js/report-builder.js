@@ -3385,7 +3385,130 @@
     var coverDrag = null;
     var discDrag = null;
     var penDrag = null;
+    /** Report HTML legend / H/L/Δ hold-to-size HUD (same report-owned scales as rail). */
+    var chromeSizeHud = null;
+    var floorHoldTimer = null;
+    var ACCESSORY_HOLD_MS = 350;
+    var ACCESSORY_MOVE_PX = 6;
     pageSeq = pages.length;
+
+    function clearFloorHold() {
+      if (floorHoldTimer != null) {
+        window.clearTimeout(floorHoldTimer);
+        floorHoldTimer = null;
+      }
+    }
+
+    function dismissChromeSizeHud() {
+      if (!chromeSizeHud) return;
+      if (chromeSizeHud.el && chromeSizeHud.el.parentNode) {
+        chromeSizeHud.el.parentNode.removeChild(chromeSizeHud.el);
+      }
+      chromeSizeHud = null;
+    }
+
+    /**
+     * Hold-to-size −/+ for report legend / H/L/Δ HTML boxes. Writes the same
+     * legendLock / pillLock the Accessories rail uses, then refreshes sheet + rail.
+     */
+    function bumpReportChromeSize(kind, direction) {
+      if (kind === 'legend') {
+        var cur = liveLegendScale();
+        var next = Math.max(0.4, Math.min(4, Math.round((cur + direction * 0.1) * 10) / 10));
+        if (next === cur) return;
+        var page = activePage();
+        var settings = Object.assign({}, floorViewFor(page) || {});
+        settings.legendScale = next;
+        setFloorViewFor(page, settings);
+        pushPieceScale('legend', next);
+        var topoHost = topoHosts[floorSlot(page)] || topoHosts[0];
+        if (topoHost && topoHost.api && typeof topoHost.api.update === 'function') {
+          topoHost.api.update({ settings: floorViewFor(page) });
+        }
+        if (railControls && railControls.api && typeof railControls.api.update === 'function') {
+          railControls.api.update({ settings: floorViewFor(page) });
+        }
+      } else if (kind === 'pill') {
+        var px = pillPxFromLayout(floorLayout);
+        var n = Math.max(8, Math.min(120, px + direction * 2));
+        if (n === px) return;
+        var flApi = window.ToolboxReportFloorLayout;
+        var chrome = (flApi && Number(flApi.CHROME_SCALE)) || 1;
+        if (!pushPieceScale('pill', (n / 32) * chrome)) return;
+        var pillPx = pillPxFromLayout(floorLayout);
+        if (railControls && railControls.api && typeof railControls.api.update === 'function') {
+          railControls.api.update({ hostStatsPillPx: pillPx });
+        }
+        Object.keys(topoHosts || {}).forEach(function (k) {
+          var host = topoHosts[k];
+          if (host && host.api && typeof host.api.update === 'function') {
+            host.api.update({ hostStatsPillPx: pillPx });
+          }
+        });
+      } else {
+        return;
+      }
+      renderPages();
+      flushSave().catch(function () {});
+    }
+
+    function showChromeSizeHud(kind, clientX, clientY) {
+      dismissChromeSizeHud();
+      if (kind !== 'legend' && kind !== 'pill') return;
+      var label = kind === 'legend' ? 'Legend size' : 'H/L/\u0394 size';
+      var el = document.createElement('div');
+      el.setAttribute('data-accessory-size-hud', kind);
+      el.setAttribute('role', 'group');
+      el.setAttribute('aria-label', label);
+      el.style.cssText = [
+        'position:fixed',
+        'z-index:80',
+        'display:flex',
+        'align-items:center',
+        'gap:4px',
+        'padding:4px 6px',
+        'border-radius:999px',
+        'border:1px solid #c9d0d5',
+        'background:rgba(255,255,255,0.95)',
+        'box-shadow:0 1px 4px rgba(0,0,0,0.12)',
+        'font:500 10px/1 system-ui,sans-serif',
+        'color:#64748b',
+      ].join(';');
+      var left = Math.min(Math.max(8, clientX - 72), window.innerWidth - 180);
+      var top = Math.min(Math.max(8, clientY - 56), window.innerHeight - 72);
+      el.style.left = left + 'px';
+      el.style.top = top + 'px';
+      function mkBtn(text, aria, onClick) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = text;
+        b.setAttribute('aria-label', aria);
+        b.style.cssText = 'width:36px;height:36px;border-radius:999px;border:1px solid #c9d0d5;background:#fff;cursor:pointer';
+        b.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          onClick();
+        });
+        return b;
+      }
+      el.appendChild(mkBtn('\u2212', 'Decrease ' + label, function () { bumpReportChromeSize(kind, -1); }));
+      var mid = document.createElement('span');
+      mid.textContent = label;
+      mid.style.padding = '0 4px';
+      el.appendChild(mid);
+      el.appendChild(mkBtn('+', 'Increase ' + label, function () { bumpReportChromeSize(kind, 1); }));
+      el.appendChild(mkBtn('\u00d7', 'Close size', function () { dismissChromeSizeHud(); }));
+      document.body.appendChild(el);
+      chromeSizeHud = { kind: kind, el: el };
+    }
+
+    // Outside press dismisses the report chrome size HUD; its −/+ stay usable.
+    document.addEventListener('pointerdown', function (event) {
+      if (!chromeSizeHud) return;
+      var t = event.target;
+      if (t && t.closest && t.closest('[data-accessory-size-hud]')) return;
+      dismissChromeSizeHud();
+    }, true);
 
     host.innerHTML = shellHtml();
     var root = host.querySelector('.rb-shell');
@@ -7067,6 +7190,11 @@
           }
         }
       }
+      // Legend / H/L/Δ: press-and-move to place; press-and-hold opens size −/+.
+      // Corner resize stays immediate. Topo / overview keep immediate drag.
+      var holdForSize = !resize && (kind === 'legend' || kind === 'pill');
+      dismissChromeSizeHud();
+      clearFloorHold();
       floorDrag = {
         id: id,
         kind: kind,
@@ -7080,6 +7208,9 @@
         stageH: stage.height,
         layout: layout,
         viewFrame: viewFrame,
+        holdForSize: holdForSize,
+        active: !holdForSize,
+        pointerId: event.pointerId,
       };
       // Captured by the element the pointer is ACTUALLY on -- the handle when
       // one was grabbed, the box otherwise.
@@ -7093,6 +7224,25 @@
       var grabbed = resize || box;
       try { grabbed.setPointerCapture(event.pointerId); } catch (_) {}
       floorDrag.grabbed = grabbed;
+      if (holdForSize) {
+        floorHoldTimer = window.setTimeout(function () {
+          floorHoldTimer = null;
+          if (!floorDrag || !floorDrag.holdForSize || floorDrag.active) return;
+          var hudKind = floorDrag.kind;
+          var sx = floorDrag.startX;
+          var sy = floorDrag.startY;
+          var g = floorDrag.grabbed;
+          var pid = floorDrag.pointerId;
+          floorDrag = null;
+          try {
+            if (g && typeof g.releasePointerCapture === 'function' && pid != null) {
+              g.releasePointerCapture(pid);
+            }
+          } catch (_) {}
+          // Hold alone never moves or resizes — only opens size −/+.
+          showChromeSizeHud(hudKind, sx, sy);
+        }, ACCESSORY_HOLD_MS);
+      }
       // And nothing downstream gets a say in this gesture.
       event.stopPropagation();
     });
@@ -7175,6 +7325,19 @@
       if (!floorDrag) return;
       var current = activePage();
       if (!current || current.type !== 'floor') return;
+      // Accessory hold-vs-drag uses SCREEN pixels so zoom does not change feel.
+      if (floorDrag.holdForSize && !floorDrag.active) {
+        var finger = Math.hypot(
+          event.clientX - floorDrag.startX,
+          event.clientY - floorDrag.startY
+        );
+        if (finger > ACCESSORY_MOVE_PX) {
+          clearFloorHold();
+          floorDrag.active = true;
+        } else {
+          return;
+        }
+      }
       var dx = ((event.clientX - floorDrag.startX) / floorDrag.stageW) * 100;
       var dy = ((event.clientY - floorDrag.startY) / floorDrag.stageH) * 100;
       var layout = window.ToolboxReportFloorLayout
@@ -7349,6 +7512,7 @@
     });
 
     function endLayoutDrag() {
+      clearFloorHold();
       if (penDrag) {
         var wasResize = penDrag.resize;
         penDrag = null;
@@ -7375,6 +7539,11 @@
         return;
       }
       if (!floorDrag) return;
+      // Hold armed but never moved: no position write, no dirty.
+      if (floorDrag.holdForSize && !floorDrag.active) {
+        floorDrag = null;
+        return;
+      }
       var endPage = activePage();
       if (floorDrag.viewId && endPage && window.ToolboxReportFloorViews) {
         var vApi = window.ToolboxReportFloorViews;
