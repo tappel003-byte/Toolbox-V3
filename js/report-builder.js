@@ -4338,7 +4338,7 @@
     var FLOOR_TOPO_GROUPS = [
       ['contours', 'Contours'],
       ['readings', 'Readings'],
-      ['legendhl', 'Legend & H/L'],
+      ['accessories', 'Accessories'],
     ];
 
     function buildFloorTopoSubtabs() {
@@ -4511,10 +4511,10 @@
       } else if (viewsNow.length > 1) {
         lead.textContent = 'Selected: View ' + (floorSlot(page) + 1) + ' of ' + viewsNow.length
           + (srcName ? (' — ' + srcName) : '')
-          + '. Contours / Readings / Legend & H/L apply to it.';
+          + '. Contours / Readings / Accessories apply to it.';
       } else {
         lead.textContent = (srcName ? (srcName + ' — ') : '')
-          + 'Contours / Readings / Legend & H/L for this view.';
+          + 'Contours / Readings / Accessories for this view.';
       }
       wrap.appendChild(lead);
       if (viewsNow.length > 1 && activeView) {
@@ -4772,7 +4772,7 @@
         if (groupBtn) {
           event.preventDefault();
           var nextGroup = groupBtn.getAttribute('data-rb-topo-group');
-          if (nextGroup !== 'contours' && nextGroup !== 'readings' && nextGroup !== 'legendhl') return;
+          if (nextGroup !== 'contours' && nextGroup !== 'readings' && nextGroup !== 'accessories') return;
           if (floorTopoGroup === nextGroup) return;
           floorTopoGroup = nextGroup;
           var groupPage = activePage();

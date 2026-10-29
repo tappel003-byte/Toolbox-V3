@@ -45,7 +45,7 @@ export type MountOptions = {
   camera?: PlanCamera | null;
   settings?: Partial<RenderSettings> | null;
   /** Report rail only: which Topo control group is showing. */
-  railGroup?: "contours" | "readings" | "legendhl";
+  railGroup?: "contours" | "readings" | "accessories" | "legendhl";
   locked?: boolean;
   /** Report pill size from floorLayout (CSS px). Capture must not supply this. */
   hostStatsPillPx?: number;

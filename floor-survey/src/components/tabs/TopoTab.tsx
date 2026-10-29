@@ -229,8 +229,9 @@ interface Props {
   /**
    * Which Topo group the report rail is showing. The tab row itself lives
    * under the Sheet Layout | Topo tabs. Field Control panel does not use this.
+   * `legendhl` is accepted as a synonym for `accessories` (older rail state).
    */
-  reportGroup?: "contours" | "readings" | "legendhl";
+  reportGroup?: "contours" | "readings" | "accessories" | "legendhl";
   /** A picture on a page: no pan, no zoom, the plan fits its frame. */
   staticView?: boolean;
   /**
@@ -460,9 +461,9 @@ export function TopoTab({
   resizeCorners = false,
   allowContourLayer = false,
 }: Props) {
-  // Field Control panel: Contours / Readings, each with folder subtabs.
-  // Report Builder keeps its own rail (controlsOnly). Diagnostic corner is
-  // unchanged.
+  // Field Control panel: Contours / Readings / Accessories, each with folder
+  // subtabs. Report Builder keeps its own rail (controlsOnly). Diagnostic
+  // corner is unchanged.
   const [openCorner, setOpenCorner] = useState<TrialDoorKey | null>(null);
   /** Last parent tab, so Close then the pill returns to the same group. */
   const [lastTrialDoor, setLastTrialDoor] = useState<TrialDoorKey | null>(null);
@@ -470,8 +471,9 @@ export function TopoTab({
   const [trialSectionByDoor, setTrialSectionByDoor] = useState<
     Partial<Record<TrialDoorKey, string>>
   >({
-    contours: "legend",
+    contours: "display",
     readings: "show",
+    accessories: "legend",
   });
   const openTrialDoor = useCallback((key: TrialDoorKey) => {
     setLastTrialDoor(key);
@@ -486,7 +488,21 @@ export function TopoTab({
     });
   }, []);
   /** Report rail group. The tab row is outside this panel; field doors do not use it. */
-  const reportPanel = reportGroup || "contours";
+  const reportPanel =
+    reportGroup === "legendhl" ? "accessories" : reportGroup || "contours";
+  /** Accessories sibling inside the report Accessories group. */
+  const [reportAccessoryTab, setReportAccessoryTab] = useState<
+    "legend" | "hld" | "highlow"
+  >("legend");
+  /**
+   * Hold-to-size HUD for Legend / H/L/Δ / High/Low. Additive to the panel;
+   * reading labels never open this.
+   */
+  const [sizeHud, setSizeHud] = useState<null | {
+    kind: "legend" | "pill" | "pin";
+    clientX: number;
+    clientY: number;
+  }>(null);
   const [warningDismissed, setWarningDismissed] = useState(false);
   // "Send to Distress Survey" — idle while nothing has been asked for.
   const [layerState, setLayerState] = useState<"idle" | "working" | "done" | "failed">("idle");
@@ -552,6 +568,11 @@ export function TopoTab({
     /** Live legendDx/legendDy while dragging a per-boundary legend. */
     legendDx: number;
     legendDy: number;
+    /** Image-space pointer start — used before move threshold arms the drag. */
+    startPointerX: number;
+    startPointerY: number;
+    /** False until the finger moves; hold-still opens size instead. */
+    active: boolean;
   } | null>(null);
   // Topo boundary selector (All boundaries / named border) — drag to clear the plan.
   const BOUNDARY_SELECT_KEY = `topo.boundary-select:${floor.id}`;
@@ -656,8 +677,9 @@ export function TopoTab({
   ]);
 
 
-  // Live drag (long-press-and-drag). One kind at a time: a point label, a H/L
-  // pin, or an area's stats pill.
+  // Live drag. Labels: long-press then move (unchanged). Accessories
+  // (Legend / H/L/Δ pill / High/Low): press-and-move to move; press-and-hold
+  // opens unitless size −/+. Reading labels never use the size hold.
   type DragKind = "label" | "pin-high" | "pin-low" | "pill";
   const [drag, setDrag] = useState<{
     kind: DragKind;
@@ -668,9 +690,12 @@ export function TopoTab({
     startPointerY: number;
     startDx: number;
     startDy: number;
-    active: boolean; // true after long-press fires
+    active: boolean; // true after long-press (labels) or move threshold (accessories)
+    /** Accessory: hold-still opens size HUD instead of arming a move. */
+    sizeHold?: boolean;
   } | null>(null);
   const longPressTimer = useRef<number | null>(null);
+  const sizeHoldClient = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   type LastMove =
     | { kind: "label"; id: string; prevDx: number | undefined; prevDy: number | undefined }
     | { kind: "pin-high" | "pin-low"; prevDx: number | undefined; prevDy: number | undefined }
@@ -1131,8 +1156,10 @@ export function TopoTab({
           // keeping pixels measured against the old one.
           reframeOnResize={presentation}
           onTransform={(t) => setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s))}
-          onImagePointerDown={(x, y) => {
-            // Legend tap: start drag only. Size is edited in Labels & layers.
+          onImagePointerDown={(x, y, event) => {
+            sizeHoldClient.current = { x: event.clientX, y: event.clientY };
+            setSizeHud(null);
+            // Legend: press-and-move to place; press-and-hold opens size −/+.
             // Every visible contour surface gets its own legend next to that
             // boundary — All boundaries, Main Floor alone, or Lower Bedroom alone.
             if (resolved.showLegend && !chromeOnPage && areaTopos.length > 0 &&
@@ -1152,26 +1179,33 @@ export function TopoTab({
                     dy: y - box.y,
                     legendDx: at.area.legendDx ?? 0,
                     legendDy: at.area.legendDy ?? 0,
+                    startPointerX: x,
+                    startPointerY: y,
+                    active: false,
                   });
+                  clearLongPress();
+                  longPressTimer.current = window.setTimeout(() => {
+                    setLegendDrag(null);
+                    setSizeHud({
+                      kind: "legend",
+                      clientX: sizeHoldClient.current.x,
+                      clientY: sizeHoldClient.current.y,
+                    });
+                  }, LONG_PRESS_MS);
                   return true;
                 }
               }
             }
-            // Boundary H/L/Δ pills drag immediately (same as the legend).
-            // On a report slide the High/Low pins do too — long-press is a
-            // field/phone gesture; on paper the investigator just grabs them
-            // (Tim, Oct 26, 2026). Point labels still need a long-press so a
-            // casual pan does not pick one up.
+            // Accessories (pill / High/Low): press-and-move to move; hold for
+            // size. Point labels keep long-press-to-arm so a casual pan does
+            // not pick one up (and so pinch can cancel before the move arms).
             const hit = hitDraggable(x, y);
             if (hit) {
               const startDx =
                 hit.kind === "label" ? (hit.point.labelDx ?? DEFAULT_LABEL_DX) : hit.dx;
               const startDy =
                 hit.kind === "label" ? (hit.point.labelDy ?? DEFAULT_LABEL_DY) : hit.dy;
-              const immediate =
-                hit.kind === "pill" ||
-                ((hit.kind === "pin-high" || hit.kind === "pin-low") &&
-                  (chromeOnPage || presentation));
+              const sizeHold = hit.kind !== "label";
               setDrag({
                 kind: hit.kind,
                 id:
@@ -1186,10 +1220,20 @@ export function TopoTab({
                 startPointerY: y,
                 startDx,
                 startDy,
-                active: immediate,
+                active: false,
+                sizeHold,
               });
               clearLongPress();
-              if (!immediate) {
+              if (sizeHold) {
+                longPressTimer.current = window.setTimeout(() => {
+                  setDrag(null);
+                  setSizeHud({
+                    kind: hit.kind === "pill" ? "pill" : "pin",
+                    clientX: sizeHoldClient.current.x,
+                    clientY: sizeHoldClient.current.y,
+                  });
+                }, LONG_PRESS_MS);
+              } else {
                 longPressTimer.current = window.setTimeout(() => {
                   setDrag((d) => (d ? { ...d, active: true } : d));
                 }, LONG_PRESS_MS);
@@ -1198,8 +1242,20 @@ export function TopoTab({
             }
             return false;
           }}
-          onImagePointerMove={(x, y) => {
+          onImagePointerMove={(x, y, event) => {
+            sizeHoldClient.current = { x: event.clientX, y: event.clientY };
             if (legendDrag?.areaId) {
+              if (!legendDrag.active) {
+                const moved = Math.hypot(
+                  x - legendDrag.startPointerX,
+                  y - legendDrag.startPointerY,
+                );
+                if (moved > 6) {
+                  clearLongPress();
+                  setLegendDrag({ ...legendDrag, active: true });
+                }
+                return;
+              }
               const area = getAreas(floor).find((a) => a.id === legendDrag.areaId);
               if (area) {
                 const anchor = areaLegendAnchor(area);
@@ -1216,7 +1272,13 @@ export function TopoTab({
                 const moved = Math.hypot(x - drag.startPointerX, y - drag.startPointerY);
                 if (moved > 6) {
                   clearLongPress();
-                  setDrag(null);
+                  if (drag.sizeHold) {
+                    // Accessory: movement wins — drag instead of size.
+                    setDrag({ ...drag, active: true });
+                  } else {
+                    // Label: movement before long-press cancels (pinch / pan).
+                    setDrag(null);
+                  }
                 }
                 return;
               }
@@ -1228,7 +1290,12 @@ export function TopoTab({
             }
           }}
           onImagePointerUp={() => {
-            if (legendDrag?.areaId != null && legendDrag.legendDx != null && legendDrag.legendDy != null) {
+            if (
+              legendDrag?.areaId != null &&
+              legendDrag.active &&
+              legendDrag.legendDx != null &&
+              legendDrag.legendDy != null
+            ) {
               applyLegendOffset(legendDrag.areaId, legendDrag.legendDx, legendDrag.legendDy);
             }
             setLegendDrag(null);
@@ -1248,6 +1315,12 @@ export function TopoTab({
             }
             setDrag(null);
           }}
+          onImagePointerCancel={() => {
+            // Pinch took over — discard accessory / label drag without commit.
+            clearLongPress();
+            setLegendDrag(null);
+            setDrag(null);
+          }}
           drawOverlay={(ctx) => {
             renderTopoBase(ctx, floor, resolved, areaTopos);
           }}
@@ -1265,7 +1338,8 @@ export function TopoTab({
                 ? { id: drag.id, dx: drag.dx, dy: drag.dy }
                 : null;
             const activeLegend =
-              legendDrag?.areaId != null &&
+              legendDrag?.active &&
+              legendDrag.areaId != null &&
               legendDrag.legendDx != null &&
               legendDrag.legendDy != null
                 ? { id: legendDrag.areaId, dx: legendDrag.legendDx, dy: legendDrag.legendDy }
@@ -1304,7 +1378,7 @@ export function TopoTab({
           >
             <TrialSectionTabs
               label="Contours"
-              openId={trialSectionByDoor.contours ?? "legend"}
+              openId={trialSectionByDoor.contours ?? "display"}
               onChange={(id) => setTrialSection("contours", id)}
               lead={
                 gridAndContours?.grid ? (
@@ -1315,35 +1389,6 @@ export function TopoTab({
                 ) : null
               }
               items={[
-                {
-                  id: "legend",
-                  title: "Legend",
-                  body: (
-                    <>
-                      <p className="text-[10px] text-muted-foreground">
-                        Color scale on the plan — show it and size it. Drag to place.
-                      </p>
-                      <SwitchRow
-                        label="Legend"
-                        checked={resolved.showLegend}
-                        onChange={(v) => update({ showLegend: v })}
-                      />
-                      <StepperControl
-                        label="Legend size"
-                        value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
-                        min={0.4}
-                        max={4}
-                        step={0.1}
-                        format={(v) => `${v.toFixed(1)}×`}
-                        onChange={(v) =>
-                          update({
-                            legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)),
-                          })
-                        }
-                      />
-                    </>
-                  ),
-                },
                 {
                   id: "display",
                   title: "Display",
@@ -1659,13 +1704,82 @@ export function TopoTab({
                     </div>
                   ),
                 },
+              ]}
+            />
+          </TrialPanel>
+        )}
+
+        {(openCorner === "accessories" && !controlsOnly) && (
+          <TrialPanel
+            title="Accessories"
+            tabs="accessories"
+            onTab={openTrialDoor}
+            onClose={() => setOpenCorner(null)}
+          >
+            <TrialSectionTabs
+              label="Accessories"
+              openId={trialSectionByDoor.accessories ?? "legend"}
+              onChange={(id) => setTrialSection("accessories", id)}
+              items={[
                 {
-                  id: "highlow",
-                  title: "High / Low",
+                  id: "legend",
+                  title: "Legend",
                   body: (
                     <>
                       <p className="text-[10px] text-muted-foreground">
-                        High and Low markers and the H/L/Δ pill. Drag on the plan.
+                        Color scale on the plan. Press and move to place. Press and
+                        hold for size −/+.
+                      </p>
+                      <SwitchRow
+                        label="Legend"
+                        checked={resolved.showLegend}
+                        onChange={(v) => update({ showLegend: v })}
+                      />
+                      <StepperControl
+                        label="Legend size"
+                        value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+                        min={0.4}
+                        max={4}
+                        step={0.1}
+                        unitless
+                        onChange={(v) =>
+                          update({
+                            legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)),
+                          })
+                        }
+                      />
+                    </>
+                  ),
+                },
+                {
+                  id: "hld",
+                  title: "H/L/Δ",
+                  body: (
+                    <>
+                      <p className="text-[10px] text-muted-foreground">
+                        Summary pill. Press and move to place. Press and hold for
+                        size −/+.
+                      </p>
+                      <StepperControl
+                        label="H/L/Δ size"
+                        value={statsChipSize}
+                        min={STATS_CHIP_MIN}
+                        max={STATS_CHIP_MAX}
+                        step={2}
+                        unitless
+                        onChange={(v) => commitStatsPillSize(v)}
+                      />
+                    </>
+                  ),
+                },
+                {
+                  id: "highlow",
+                  title: "High/Low",
+                  body: (
+                    <>
+                      <p className="text-[10px] text-muted-foreground">
+                        High and Low markers. Press and move to place. Press and
+                        hold for size −/+.
                       </p>
                       <SwitchRow
                         label="High / low"
@@ -1673,25 +1787,17 @@ export function TopoTab({
                         onChange={(v) => update({ showHighLow: v })}
                       />
                       <StepperControl
-                        label="Marker size"
+                        label="High/Low size"
                         value={resolved.highLowPinSize}
                         min={7}
                         max={28}
                         step={1}
+                        unitless
                         onChange={(v) =>
                           update({
                             highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
                           })
                         }
-                      />
-                      <StepperControl
-                        label="Stats pill size"
-                        value={statsChipSize}
-                        min={STATS_CHIP_MIN}
-                        max={STATS_CHIP_MAX}
-                        step={2}
-                        format={(v) => `${Math.round(v)}px`}
-                        onChange={(v) => commitStatsPillSize(v)}
                       />
                     </>
                   ),
@@ -1713,11 +1819,11 @@ export function TopoTab({
 
           The names are the app's own words, not invented categories. Each
           size sits beside the thing it sizes -- Legend size under Legend,
-          Stats pill size under High / low -- so a piece and its size are
-          never in two different places.
+          H/L/Δ size under H/L/Δ -- so a piece and its size are never in two
+          different places.
 
-          The field Control panel is the floating folder tabs. This accordion
-          strip is Report Builder only, and it keeps Legend & H/L.
+          The field Control panel is the floating folder tabs. This strip is
+          Report Builder only. Accessories holds Legend, H/L/Δ, and High/Low.
         */}
         {controlsOnly && (
           <div
@@ -1735,7 +1841,7 @@ export function TopoTab({
             {([
               ["contours", "Contours"],
               ["readings", "Readings"],
-              ["legendhl", "Legend & H/L"],
+              ["accessories", "Accessories"],
             ] as const).filter(([key]) => key === reportPanel).map(([key]) => {
               return (
                 <div key={key}>
@@ -1969,65 +2075,132 @@ export function TopoTab({
                           </details>
                         </>
                       )}
-                      {key === "legendhl" && (
-                        <div className="grid grid-cols-2 gap-2">
-                          <SwitchRow
-                            label="Legend"
-                            checked={resolved.showLegend}
-                            onChange={(v) => update({ showLegend: v })}
-                          />
-                          <StepperControl
-                            label="Legend size"
-                            value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
-                            min={0.4}
-                            max={4}
-                            step={0.1}
-                            format={(v) => `${v.toFixed(1)}×`}
-                            onChange={(v) =>
-                              update({
-                                legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)),
-                              })
-                            }
-                          />
-                          <SwitchRow
-                            label="High / low"
-                            checked={resolved.showHighLow}
-                            onChange={(v) => update({ showHighLow: v })}
-                          />
-                          <StepperControl
-                            label="Marker size"
-                            value={resolved.highLowPinSize}
-                            min={7}
-                            max={28}
-                            step={1}
-                            onChange={(v) =>
-                              update({
-                                highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
-                              })
-                            }
-                          />
-                          <SwitchRow
-                            label="H/L/Δ pill"
-                            checked={resolved.showStatsPill !== false}
-                            onChange={(v) => update({ showStatsPill: v })}
-                          />
-                          <div className="col-span-2">
-                            <StepperControl
-                              label="Stats pill size"
-                              value={statsChipSize}
-                              min={STATS_CHIP_MIN}
-                              max={STATS_CHIP_MAX}
-                              step={2}
-                              format={(v) => `${Math.round(v)}px`}
-                              onChange={(v) => commitStatsPillSize(v)}
-                            />
+                      {key === "accessories" && (
+                        <div className="space-y-3">
+                          <div
+                            role="tablist"
+                            aria-label="Accessories"
+                            className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/40 p-1"
+                          >
+                            {(
+                              [
+                                ["legend", "Legend"],
+                                ["hld", "H/L/Δ"],
+                                ["highlow", "High/Low"],
+                              ] as const
+                            ).map(([id, name]) => (
+                              <button
+                                key={id}
+                                type="button"
+                                role="tab"
+                                aria-selected={reportAccessoryTab === id}
+                                onClick={() => setReportAccessoryTab(id)}
+                                className={
+                                  "rounded-md px-2 py-1.5 text-xs font-medium " +
+                                  (reportAccessoryTab === id
+                                    ? "bg-background shadow-sm"
+                                    : "text-muted-foreground hover:text-foreground")
+                                }
+                              >
+                                {name}
+                              </button>
+                            ))}
                           </div>
+                          {reportAccessoryTab === "legend" && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <SwitchRow
+                                label="Legend"
+                                checked={resolved.showLegend}
+                                onChange={(v) => update({ showLegend: v })}
+                              />
+                              <StepperControl
+                                label="Legend size"
+                                value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+                                min={0.4}
+                                max={4}
+                                step={0.1}
+                                unitless
+                                onChange={(v) =>
+                                  update({
+                                    legendScale: Math.max(
+                                      0.4,
+                                      Math.min(4, Math.round(v * 10) / 10),
+                                    ),
+                                  })
+                                }
+                              />
+                            </div>
+                          )}
+                          {reportAccessoryTab === "hld" && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <SwitchRow
+                                label="H/L/Δ pill"
+                                checked={resolved.showStatsPill !== false}
+                                onChange={(v) => update({ showStatsPill: v })}
+                              />
+                              <div className="col-span-2">
+                                <StepperControl
+                                  label="H/L/Δ size"
+                                  value={statsChipSize}
+                                  min={STATS_CHIP_MIN}
+                                  max={STATS_CHIP_MAX}
+                                  step={2}
+                                  unitless
+                                  onChange={(v) => commitStatsPillSize(v)}
+                                />
+                              </div>
+                            </div>
+                          )}
+                          {reportAccessoryTab === "highlow" && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <SwitchRow
+                                label="High / low"
+                                checked={resolved.showHighLow}
+                                onChange={(v) => update({ showHighLow: v })}
+                              />
+                              <StepperControl
+                                label="High/Low size"
+                                value={resolved.highLowPinSize}
+                                min={7}
+                                max={28}
+                                step={1}
+                                unitless
+                                onChange={(v) =>
+                                  update({
+                                    highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
+                                  })
+                                }
+                              />
+                            </div>
+                          )}
                         </div>
                       )}
                 </div>
               );
             })}
           </div>
+        )}
+        {sizeHud && !controlsOnly && (
+          <AccessorySizeHud
+            kind={sizeHud.kind}
+            clientX={sizeHud.clientX}
+            clientY={sizeHud.clientY}
+            legendScale={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+            pillSize={statsChipSize}
+            pinSize={resolved.highLowPinSize}
+            onLegend={(v) =>
+              update({
+                legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)),
+              })
+            }
+            onPill={(v) => commitStatsPillSize(v)}
+            onPin={(v) =>
+              update({
+                highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
+              })
+            }
+            onClose={() => setSizeHud(null)}
+          />
         )}
       </div>
     </div>
@@ -2038,6 +2211,7 @@ export function TopoTab({
 const TRIAL_DOORS = [
   { key: "contours", name: "Contours" },
   { key: "readings", name: "Readings" },
+  { key: "accessories", name: "Accessories" },
 ] as const;
 
 type TrialDoorKey = (typeof TRIAL_DOORS)[number]["key"];
@@ -2460,6 +2634,96 @@ function NumberControl({
   );
 }
 
+/**
+ * Hold-to-size −/+ for Legend / H/L/Δ / High/Low. Sits near the press so the
+ * investigator does not have to open the panel; the panel still has the same
+ * steppers.
+ */
+function AccessorySizeHud({
+  kind,
+  clientX,
+  clientY,
+  legendScale,
+  pillSize,
+  pinSize,
+  onLegend,
+  onPill,
+  onPin,
+  onClose,
+}: {
+  kind: "legend" | "pill" | "pin";
+  clientX: number;
+  clientY: number;
+  legendScale: number;
+  pillSize: number;
+  pinSize: number;
+  onLegend: (v: number) => void;
+  onPill: (v: number) => void;
+  onPin: (v: number) => void;
+  onClose: () => void;
+}) {
+  const label =
+    kind === "legend" ? "Legend size" : kind === "pill" ? "H/L/Δ size" : "High/Low size";
+  const value = kind === "legend" ? legendScale : kind === "pill" ? pillSize : pinSize;
+  const min = kind === "legend" ? 0.4 : kind === "pill" ? STATS_CHIP_MIN : 7;
+  const max = kind === "legend" ? 4 : kind === "pill" ? STATS_CHIP_MAX : 28;
+  const step = kind === "legend" ? 0.1 : kind === "pill" ? 2 : 1;
+  const left = Math.min(Math.max(8, clientX - 72), (typeof window !== "undefined" ? window.innerWidth : 360) - 160);
+  const top = Math.min(Math.max(8, clientY - 56), (typeof window !== "undefined" ? window.innerHeight : 640) - 72);
+  return (
+    <div
+      className="fixed z-50 flex items-center gap-1 rounded-full border bg-white/95 px-1.5 py-1 shadow-md backdrop-blur"
+      style={{ left, top }}
+      role="group"
+      aria-label={label}
+    >
+      <button
+        type="button"
+        onClick={() => {
+          const next =
+            kind === "legend"
+              ? Math.max(min, Math.round((value - step) * 10) / 10)
+              : Math.max(min, value - step);
+          if (kind === "legend") onLegend(next);
+          else if (kind === "pill") onPill(next);
+          else onPin(next);
+        }}
+        disabled={value <= min}
+        aria-label={`Decrease ${label}`}
+        className="flex h-9 w-9 items-center justify-center rounded-full border hover:bg-muted disabled:opacity-40"
+      >
+        <Minus className="h-4 w-4" />
+      </button>
+      <span className="px-1 text-[10px] font-medium text-muted-foreground select-none">{label}</span>
+      <button
+        type="button"
+        onClick={() => {
+          const next =
+            kind === "legend"
+              ? Math.min(max, Math.round((value + step) * 10) / 10)
+              : Math.min(max, value + step);
+          if (kind === "legend") onLegend(next);
+          else if (kind === "pill") onPill(next);
+          else onPin(next);
+        }}
+        disabled={value >= max}
+        aria-label={`Increase ${label}`}
+        className="flex h-9 w-9 items-center justify-center rounded-full border hover:bg-muted disabled:opacity-40"
+      >
+        <Plus className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close size"
+        className="ml-0.5 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
 function StepperControl({
   label,
   value,
@@ -2467,6 +2731,7 @@ function StepperControl({
   max,
   step = 1,
   format,
+  unitless = false,
   onChange,
 }: {
   label: string;
@@ -2475,16 +2740,18 @@ function StepperControl({
   max: number;
   step?: number;
   format?: (v: number) => string;
+  /** Accessory sizes: −/+ only — no px / × in the face. */
+  unitless?: boolean;
   onChange: (v: number) => void;
 }) {
-  const display = format ? format(value) : `${value}px`;
+  const display = unitless ? "" : format ? format(value) : `${value}px`;
   return (
     <div>
       <Label className="text-xs">{label}</Label>
       <div className="mt-1 flex items-center gap-1.5">
         <button
           type="button"
-          onClick={() => onChange(Math.max(min, value - step))}
+          onClick={() => onChange(Math.max(min, roundStepper(value - step, step)))}
           disabled={value <= min}
           aria-label={`Decrease ${label}`}
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border hover:bg-muted disabled:opacity-40"
@@ -2492,14 +2759,17 @@ function StepperControl({
           <Minus className="h-4 w-4" />
         </button>
         <output
-          aria-label={`${label}: ${display}`}
-          className="flex h-10 min-w-0 flex-1 select-none items-center justify-center rounded-md border border-input bg-background px-2 text-center font-mono text-xs leading-none tabular-nums text-foreground"
+          aria-label={unitless ? label : `${label}: ${display}`}
+          className={
+            "flex h-10 min-w-0 flex-1 select-none items-center justify-center rounded-md border border-input bg-background px-2 text-center text-xs leading-none text-foreground " +
+            (unitless ? "" : "font-mono tabular-nums")
+          }
         >
-          {display}
+          {unitless ? <span className="text-muted-foreground">− / +</span> : display}
         </output>
         <button
           type="button"
-          onClick={() => onChange(Math.min(max, value + step))}
+          onClick={() => onChange(Math.min(max, roundStepper(value + step, step)))}
           disabled={value >= max}
           aria-label={`Increase ${label}`}
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border hover:bg-muted disabled:opacity-40"
@@ -2509,6 +2779,13 @@ function StepperControl({
       </div>
     </div>
   );
+}
+
+function roundStepper(v: number, step: number) {
+  if (step >= 1) return Math.round(v);
+  const places = Math.max(0, Math.round(-Math.log10(step)));
+  const f = 10 ** places;
+  return Math.round(v * f) / f;
 }
 
 // Exported so ExportTab can reuse the exact rendering pipeline.
