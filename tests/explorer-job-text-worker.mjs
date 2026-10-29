@@ -304,6 +304,88 @@ check('matching ignores case', findInText(text, queryWords('HALF INCH')) !== nul
   check('text written for a job deleted meanwhile is taken back', !cabinet.objects.has(`cf/${ID}/search.txt`));
 }
 
+// ---- a record the index names that cannot be read: never cached as whole
+//
+// GPT review of #148: text built while an accepted component was missing or
+// would not decode was stored as current for that index ETag, so restoring
+// the component without an index change left its words unsearchable forever.
+for (const fault of ['missing', 'malformed']) {
+  const ACC = `cf/${ID}/c/distress/tok1.json`;
+  const cabinet = seedJob();
+  if (fault === 'missing') cabinet.objects.delete(ACC);
+  else cabinet.store(ACC, '{"pins": [');
+  const indexBefore = new TextDecoder().decode(cabinet.objects.get(`cf/${ID}/index.json`).bytes);
+  const checkoutBefore = JSON.stringify(JSON.parse(indexBefore).checkout);
+  const sourcesBefore = [...cabinet.objects.keys()].filter((k) => !k.endsWith('/search.txt')).sort()
+    .map((k) => k + '=' + new TextDecoder().decode(cabinet.objects.get(k).bytes)).join('|');
+
+  const first = await (await call('explore/search?q=' + encodeURIComponent('large crack'), cabinet)).json();
+  const partial = (first.incomplete || []).find((j) => j.id === ID);
+  check(`${fault}: the first search says the job was only partly read`,
+    !!partial && partial.components.join() === 'distress', JSON.stringify(first.incomplete));
+  check(`${fault}: and finds nothing it could not read`, first.results.length === 0);
+  const stored = cabinet.objects.get(`cf/${ID}/search.txt`);
+  check(`${fault}: the partial text is marked incomplete, not current`,
+    stored && stored.customMetadata.complete === '0');
+  check(`${fault}: the partial text says what is left out`,
+    /Not included, because the (record the index names is not stored|stored record could not be read): distress/
+      .test(new TextDecoder().decode(stored.bytes)));
+
+  // Restore valid bytes; the index does not change.
+  cabinet.store(ACC, JSON.stringify({ pins: [{ num: 9, canvasId: 'cv-main', location: 'Garage', description: 'Large crack in slab', photos: [] }] }));
+  const etagBefore = cabinet.objects.get(`cf/${ID}/index.json`).etag;
+  cabinet.ops.length = 0;
+  const second = await (await call('explore/search?q=' + encodeURIComponent('large crack'), cabinet)).json();
+  check(`${fault}: the next search finds the restored words`,
+    second.results.length === 1 && second.results[0].id === ID && second.built >= 1, JSON.stringify(second));
+  check(`${fault}: it is no longer reported partial`, !(second.incomplete || []).some((j) => j.id === ID));
+  check(`${fault}: the restored component was read again`, cabinet.ops.includes('get ' + ACC));
+  check(`${fault}: the index was not touched to get there`, cabinet.objects.get(`cf/${ID}/index.json`).etag === etagBefore);
+
+  // Now whole: a warm search rereads no component.
+  cabinet.ops.length = 0;
+  const third = await (await call('explore/search?q=' + encodeURIComponent('large crack'), cabinet)).json();
+  check(`${fault}: a complete warm search builds nothing`, third.built === 0 && third.results.length === 1);
+  check(`${fault}: and rereads no component`,
+    !cabinet.ops.some((op) => /^get cf\/[^/]+\/(c\/|customer|plans|distress|floor|report|diagnostics)/.test(op)),
+    JSON.stringify(cabinet.ops));
+
+  const indexAfter = new TextDecoder().decode(cabinet.objects.get(`cf/${ID}/index.json`).bytes);
+  check(`${fault}: index and checkout bytes are unchanged`,
+    indexAfter === indexBefore && JSON.stringify(JSON.parse(indexAfter).checkout) === checkoutBefore);
+  const sourcesAfter = [...cabinet.objects.keys()].filter((k) => !k.endsWith('/search.txt') && k !== ACC).sort()
+    .map((k) => k + '=' + new TextDecoder().decode(cabinet.objects.get(k).bytes)).join('|');
+  check(`${fault}: no source record was written`,
+    sourcesAfter === sourcesBefore.split('|').filter((row) => !row.startsWith(ACC + '=')).join('|') &&
+    cabinet.ops.every((op) => !/^put /.test(op) || op.endsWith('/search.txt')));
+}
+
+// ---- a job without a component is whole as it is: no endless rebuilding
+{
+  // job-other has only an index and a legacy distress: no customer, plans,
+  // floor, report or diagnostics. That is a job without them, not a fault.
+  const cabinet = seedJob();
+  await call('explore/search?q=door', cabinet);
+  check('a job with absent optional components is stored as complete',
+    cabinet.objects.get('cf/job-other/search.txt').customMetadata.complete === '1');
+  cabinet.ops.length = 0;
+  const again = await (await call('explore/search?q=door', cabinet)).json();
+  check('and is not rebuilt on the next search',
+    again.built === 0 && (again.incomplete || []).length === 0 && !cabinet.ops.some((op) => op.startsWith('put ')));
+}
+
+// ---- the same fault class: a legacy record older than the index says
+{
+  const cabinet = seedJob();
+  const stale = Object.assign({}, index, { reportUpdatedAt: '2026-10-20T00:00:00.000Z' });
+  cabinet.store(`cf/${ID}/index.json`, JSON.stringify(stale));
+  cabinet.store(`cf/${ID}/report.json`, JSON.stringify(Object.assign({}, report, { updatedAt: '2026-10-01T00:00:00.000Z' })));
+  const res = await (await call(`explore/search?q=drywall`, cabinet)).json();
+  check('a legacy record older than its index is reported partial, not cached as whole',
+    (res.incomplete || []).some((j) => j.id === ID && j.components.indexOf('report') !== -1) &&
+    cabinet.objects.get(`cf/${ID}/search.txt`).customMetadata.complete === '0', JSON.stringify(res.incomplete));
+}
+
 // ---- a big Cabinet is read a slice at a time, and says so
 {
   const seed = [];

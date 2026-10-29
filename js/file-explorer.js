@@ -668,6 +668,18 @@
           ' not been read into the search yet. Each search reads more of them.';
         textSearchEl.appendChild(more);
       }
+      // Read, but not all of it: a record the job names could not be read.
+      // Said here so "no job says this" is never taken as the whole answer.
+      const partial = Array.isArray(data.incomplete) ? data.incomplete : [];
+      if (partial.length) {
+        const part = document.createElement('p');
+        part.className = 'explorer-textsearch__status explorer-textsearch__partial';
+        part.textContent = (partial.length === 1 ? '1 job' : partial.length + ' jobs') +
+          ' could only be partly read: ' + partial.map(function (job) {
+            return (job.displayName || 'Customer File') + ' (' + (job.components || []).join(', ') + ')';
+          }).join('; ') + '. They are read again on the next search.';
+        textSearchEl.appendChild(part);
+      }
       const words = Array.isArray(data.words) ? data.words : [];
       results.forEach(function (result) {
         const card = document.createElement('article');

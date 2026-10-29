@@ -18,12 +18,21 @@
  * time a search reaches it -- which is how the jobs already in the Cabinet
  * are included: the Worker READS them.
  *
+ * INCOMPLETE TEXT IS NEVER CURRENT. When a component the index names cannot
+ * be read -- the accepted reference points at bytes that are not stored, the
+ * bytes will not decode, or a legacy object is older than the revision the
+ * index advertises -- the text is still written and still searched, but it
+ * is marked incomplete, said so in the answer, and built again on the next
+ * search even though the index has not moved. Otherwise the restored
+ * component's words would never be found. A component that is simply not
+ * there (a job with no Floor Survey) is complete as it is.
+ *
  * What this never does: write a job's index, touch a checkout lease, or
  * write any component or media. The only object it writes is its own
  * search.txt, and it removes that again if the job turned out to be gone.
  */
 
-import { resolveAcceptedComponent } from './components.js';
+import { resolveAcceptedComponent, legacyIsStale } from './components.js';
 
 export const JOB_TEXT_FORMAT = '1';
 export const JOB_TEXT_LEAF = 'search.txt';
@@ -278,6 +287,15 @@ export function buildJobText(id, index, components) {
     out.push('');
     out.push('Not included, because the stored record could not be read: ' + parts.unreadable.join(', ') + '.');
   }
+  if (parts.missing && parts.missing.length) {
+    out.push('');
+    out.push('Not included, because the record the index names is not stored: ' + parts.missing.join(', ') + '.');
+  }
+  if (parts.stale && parts.stale.length) {
+    out.push('');
+    out.push('Possibly out of date, because the stored record is older than the index says: ' +
+      parts.stale.join(', ') + '.');
+  }
   return out.join('\n') + '\n';
 }
 
@@ -295,8 +313,10 @@ function indexVersion(obj) {
 }
 
 /**
- * Build one job's text from its components and store it. Returns the text,
- * or null when the job is not there to describe (no index, or purged).
+ * Build one job's text from its components and store it. Returns
+ * { text, incomplete } -- incomplete names the components that should have
+ * been read and were not -- or null when the job is not there to describe
+ * (no index, or purged).
  */
 export async function buildAndStoreJobText(cabinet, id) {
   const indexGot = await cabinet.get('cf/' + id + '/index.json');
@@ -305,18 +325,31 @@ export async function buildAndStoreJobText(cabinet, id) {
   const indexRead = await readJsonObject(indexGot);
   if (!indexRead.value || !isObject(indexRead.value) || indexRead.value.purged) return null;
   const index = indexRead.value;
-  const components = { unreadable: [] };
+  const components = { unreadable: [], missing: [], stale: [] };
   for (let i = 0; i < COMPONENTS.length; i++) {
     const name = COMPONENTS[i];
     const resolved = resolveAcceptedComponent(index, id, name);
     const read = await readJsonObject(await cabinet.get(resolved.key));
-    if (read.value && typeof read.value === 'object') components[name] = read.value;
-    else if (read.unreadable) components.unreadable.push(name);
+    if (read.value && typeof read.value === 'object') {
+      components[name] = read.value;
+      if (resolved.from === 'legacy' && legacyIsStale(index, name, read.value)) components.stale.push(name);
+    } else if (read.absent) {
+      // A legacy key with nothing at it is a job without that component.
+      // An accepted reference with nothing at it is a fault.
+      if (resolved.from === 'accepted') components.missing.push(name);
+    } else {
+      components.unreadable.push(name);
+    }
   }
+  const incomplete = components.unreadable.concat(components.missing, components.stale);
   const text = buildJobText(id, index, components);
   await cabinet.put(jobTextKey(id), text, {
     httpMetadata: { contentType: 'text/plain; charset=utf-8' },
-    customMetadata: { indexEtag: version, format: JOB_TEXT_FORMAT },
+    customMetadata: {
+      indexEtag: version,
+      format: JOB_TEXT_FORMAT,
+      complete: incomplete.length ? '0' : '1',
+    },
   });
   // A permanent delete that ran while this was being read would leave the
   // text behind with no job. Look once more, and take it back if so.
@@ -325,13 +358,18 @@ export async function buildAndStoreJobText(cabinet, id) {
     try { await cabinet.delete(jobTextKey(id)); } catch (_) {}
     return null;
   }
-  return text;
+  return { text: text, incomplete: incomplete };
 }
 
-/** Is the stored text the one for this version of the index? */
+/**
+ * Is the stored text the whole of this version of the index? Text built
+ * while a component could not be read is never current, so the next search
+ * tries that component again.
+ */
 export function textIsCurrent(textMeta, indexEtag) {
   const meta = textMeta && textMeta.customMetadata;
-  return !!meta && meta.format === JOB_TEXT_FORMAT && !!indexEtag && meta.indexEtag === indexEtag;
+  return !!meta && meta.format === JOB_TEXT_FORMAT && meta.complete === '1' &&
+    !!indexEtag && meta.indexEtag === indexEtag;
 }
 
 /**
@@ -369,7 +407,8 @@ export async function currentJobText(cabinet, id) {
     const got = await cabinet.get(jobTextKey(id));
     if (got) return await got.text();
   }
-  return buildAndStoreJobText(cabinet, id);
+  const built = await buildAndStoreJobText(cabinet, id);
+  return built ? built.text : null;
 }
 
 export function queryWords(query) {
@@ -434,6 +473,7 @@ export async function searchJobText(cabinet, query) {
   let attempts = 0;
   let notYet = 0;
   let gone = 0;
+  const incomplete = [];
   for (let i = 0; i < jobs.length; i++) {
     const job = jobs[i];
     let text = null;
@@ -444,16 +484,21 @@ export async function searchJobText(cabinet, query) {
     if (text === null) {
       if (attempts >= MAX_BUILDS_PER_SEARCH) { notYet += 1; continue; }
       attempts += 1;
+      let made;
       try {
-        text = await buildAndStoreJobText(cabinet, job.id);
+        made = await buildAndStoreJobText(cabinet, job.id);
       } catch (err) {
         console.error('Job text could not be built', job.id, err);
         notYet += 1;
         continue;
       }
       // Being permanently deleted: not a job to search, and not counted.
-      if (text === null) { gone += 1; continue; }
+      if (made === null) { gone += 1; continue; }
       built += 1;
+      text = made.text;
+      if (made.incomplete.length) {
+        incomplete.push({ id: job.id, displayName: readIdentity(text).displayName, components: made.incomplete });
+      }
     }
     const hits = findInText(text, words);
     if (!hits) continue;
@@ -473,6 +518,9 @@ export async function searchJobText(cabinet, query) {
       searched: jobs.length - gone - notYet,
       total: jobs.length - gone,
       notYetRead: notYet,
+      // Searched, but only in part: a record the index names could not be
+      // read. These are read again on the next search.
+      incomplete: incomplete,
       built: built,
       results: results,
     },

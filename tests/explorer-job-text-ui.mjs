@@ -97,6 +97,7 @@ try {
         const q = decodeURIComponent(path.slice('explore/search?q='.length));
         return json({
           query: q, words: q.toLowerCase().split(/\s+/), searched: 2, total: 3, notYetRead: 1, built: 2,
+          incomplete: [{ id: 'job-y', displayName: 'Marcus Yazzie', components: ['distress'] }],
           results: [{
             id: 'job-s', displayName: 'Rhonda Sorenson', propertyAddress: '4925 Edwards Dr NE', fieldWorkDate: '2026-10-07',
             hits: [
@@ -140,6 +141,7 @@ try {
       listEmpty: document.getElementById('explorer-list').innerText,
       status: panel.querySelector('.explorer-textsearch__status').textContent,
       notYet: panel.innerText.includes('1 job has not been read into the search yet'),
+      partial: (panel.querySelector('.explorer-textsearch__partial') || {}).textContent || '',
       from: [...hit.querySelectorAll('.explorer-hit__from')].map((el) => el.textContent),
       marks: [...hit.querySelectorAll('mark')].map((el) => el.textContent.toLowerCase()),
       injected: !!hit.querySelector('b'),
@@ -154,6 +156,9 @@ try {
   check('the text search says how many jobs it read',
     root.status === '1 job says this · searched 2 of 3.', root.status);
   check('jobs not yet read are said, not hidden', root.notYet);
+  check('a job only partly read is named, with what could not be read',
+    root.partial === '1 job could only be partly read: Marcus Yazzie (distress). They are read again on the next search.',
+    root.partial);
   check('each hit says whether it is an observation or a conclusion',
     JSON.stringify(root.from) === JSON.stringify(['Field observation · Distress pins', 'Conclusion · Report discussion']),
     JSON.stringify(root.from));
