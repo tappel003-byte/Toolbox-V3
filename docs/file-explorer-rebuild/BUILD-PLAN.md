@@ -53,58 +53,73 @@ those lists, which is why its phone view has drifted.
 
 ---
 
-## How old jobs get covered — settled
+## How existing jobs get covered — settled
 
-Tim has decided: **no backfill of existing jobs.** No bulk pass rewriting
-every index in the Cabinet, and no server-side pass either.
+There are roughly **15 jobs on the server today**, and Tim wants all of them
+searchable and on the map — not just jobs created from here on (Tim, Oct 29:
+*"I would like those to be searchable going forward because that's what
+populates our map right now, so I guess I want those included somehow"*).
 
-That was the right call for the reason he gave — he has months of data, not
-years, and few enough jobs to go through by hand if he wants to. A bulk
-rewrite would have been a large, risky operation to solve a small problem.
+Two separate things were being conflated in the conversation that produced
+this plan, and the distinction is the whole decision:
 
-But the obvious manual version does not work, and this is worth stating
-plainly because it would otherwise be discovered the hard way.
+**Rewriting jobs — rejected.** A pass that opens each job's index and writes
+to it. Tim said no, and he was right: index writes are where the ownership
+races live, and PR #145 was largely about closing them.
 
-**Opening a job in File Explorer writes nothing.** Explorer only reads. That
-is deliberate, it is one of the guarantees PR #145 tightened a test around
-(*"browsing a job never reaches past the read-only explore route"*), and it is
-not going to change.
+**Reading jobs — this is what we do.** The Worker reads `customer.json`,
+`distress.json` and `floor.json` for each job — objects it already holds —
+and writes **one** catalogue file. No job index is opened for writing. No
+component is modified. No checkout lease moves. At 15 jobs it is 45 reads and
+one write, and it takes seconds.
 
-**And an ordinary sync may skip it too.** `syncOneRecord` pushes the index
-only when `(changed || !remote)`. Open a job, change nothing, sync it — the
-index is not sent. So even going job by job, every job not actually edited
-would be missed.
+### Why not do it by hand instead
 
-### The change that makes it work
+Syncing each job manually was considered and is worse. A job has to be on a
+device to sync, so any job that lives only on the server would have to be
+**checked out first** — which transfers the lease to that device and then
+needs checking back in. That is about thirty real state changes, each with
+consequences, to achieve what a read-only pass does in seconds.
 
-Sync pushes the index when the stored one is **missing the new information**,
-as well as when something changed:
+### The two pieces
+
+1. **Once:** the Worker builds the catalogue from the jobs already in the
+   Cabinet. Covers everything that exists today.
+2. **Ongoing:** a job adds itself as it syncs. Covers everything after.
+
+For (2) there is a catch worth stating, because it would otherwise be found
+the hard way. `syncOneRecord` pushes the index only when `(changed ||
+!remote)` — so a job opened and synced without being edited is skipped. And
+**opening a job in File Explorer writes nothing at all**: Explorer only reads,
+which is deliberate and is a guarantee PR #145 tightened a test around. So (2)
+needs the push condition to also fire when the stored index lacks the new
+information:
 
 ```
 if ((changed || !remote || indexLacksNewFields(remote)) && mayPush) { … }
 ```
 
-What that buys:
+`mayPush` is unchanged, so a job checked out on another device is still left
+alone and is picked up when it returns.
 
-- Jobs fill in **as Tim works**. Any job checked out, edited, checked in or
-  synced for any reason gets caught. No deliberate effort, no bulk operation.
-- If he would rather not wait, going through and re-syncing each job then
-  actually does something — which, today, it would not.
-- `mayPush` is unchanged, so a job checked out on another device is still
-  left alone and gets picked up when it comes back.
+### What keeps this safe
 
-**Risk.** One extra index write per job, once, through the ordinary sync path
-with the component-acceptance protocol from #145 already in front of it, one
-job at a time. That is a materially different thing from a bulk pass over the
-whole Cabinet, and it is the reason this is acceptable where the pass was not.
+The catalogue is **derived, never authoritative**. It is only ever built from
+the jobs; nothing exists solely inside it. If it is wrong, stale, or lost, the
+fix is to rebuild it — the jobs always win. That is what makes a rebuild a
+non-event rather than a risk, and it is why rebuilding is the answer to any
+later drift rather than patching the catalogue in place.
 
-**What is still true:** a job that is never synced again never gets covered.
-At Tim's current scale that is a short, visible list rather than a structural
-hole.
+**Two small decisions inside this:**
 
-**One small decision inside this:** a job sitting in Cabinet Trash is
-recoverable, so it should keep its catalogue entry and its pin, with the map
-and search filtering it rather than the catalogue omitting it.
+- A job with **no coordinates at all** — address typed by hand, no suggestion
+  picked, no location captured — has nothing to plot. It must be shown as
+  absent from the map rather than guessed at or silently dropped. How many of
+  the 15 that affects is not known from here and is worth checking before the
+  map is built.
+- A job in **Cabinet Trash** is recoverable, so it keeps its catalogue entry
+  and its pin, with the map and search filtering it rather than the catalogue
+  omitting it.
 
 ---
 
@@ -254,7 +269,7 @@ captured on every job where an address suggestion was picked or Use My
 Location was tapped. They live in the customer component and are **not** in
 the Cabinet index, which is what a map must read — it cannot open every job to
 find out where they are. Adding the pair to `buildIndex` is two lines; getting
-them onto jobs that already exist is the sync trigger change above.
+them onto jobs that already exist is the one-time read above.
 
 **A job with no coordinates at all** — an address typed by hand with no
 suggestion picked and no location captured — has nothing to plot and must be
@@ -295,15 +310,16 @@ recommendations, listed for GPT to challenge:
 | --- | --- |
 | Working / Filed drawers, ✓ Completed | Needs a completion mark at Check In that nothing writes. A lifecycle change, not Explorer work. |
 | R2 lifecycle rules for the 120-day Trash | Would mean Cloudflare deleting Tim's files on a timer with Toolbox having no part in it. Raised, not recommended, wants a deliberate decision. |
-| Backfilling existing job indexes | Tim's decision, Oct 29. See the open question above about the derived-file alternative, which is a different operation. |
+| Rewriting existing job indexes in bulk | Tim's decision, Oct 29. The one-time catalogue build is a different operation — it only reads. |
 | Semantic / "find jobs like this one" search | Would mean Vectorize or Workers AI. Real, but a large step beyond a text file, and forbidden without authorization. |
 
 ---
 
 ## Open questions
 
-The largest one — whether old jobs get covered — is **answered**: no backfill,
-no server pass, and the sync trigger change above instead. What is left:
+The largest one — whether the jobs already on the server get covered — is
+**answered**: yes, by a one-time read-only build of the catalogue, plus the
+sync trigger change for everything after. What is left:
 
 1. Should the catalogue carry the report's full text, or only its headings
    plus the pin and picture descriptions? Full text makes more findable; it
@@ -321,6 +337,10 @@ no server pass, and the sync trigger change above instead. What is left:
    index that both hang off? A version number is one check instead of two and
    survives the next field being added; it is also one more thing on the
    index.
+6. What triggers a catalogue rebuild after the first one — every sync that
+   changes a job, a periodic rebuild, or only on request? Rebuilding is cheap
+   at this scale and always safe, so the question is about when rather than
+   whether.
 
 ---
 
@@ -337,9 +357,10 @@ two minutes: `explorer-mockups.html` has no `<meta charset="utf-8">`, so the
 ## Suggested order
 
 1. **The write side**, together: map coordinates and the catalogue entry into
-   `buildIndex`, plus the sync trigger change that makes old jobs fill in as
-   Tim works. Small, and nothing downstream is worth building until jobs
-   actually carry the information.
+   `buildIndex`, the sync trigger change, and the one-time Worker build of the
+   catalogue from the ~15 jobs already in the Cabinet. Small, and nothing
+   downstream is worth building until the jobs actually carry the
+   information.
 2. **Thumbnails**, with caching. Highest value per unit of risk, costs
    nothing, and it is the change that makes the phone usable at all.
 3. **The phone entry screen.**
