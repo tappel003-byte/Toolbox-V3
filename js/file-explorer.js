@@ -91,6 +91,38 @@
     return formatFieldDate(row.fieldWorkDate || row.createdAt);
   }
 
+  /**
+   * The street and the town out of one stored address.
+   *
+   * The Customer File keeps the property as one line -- "4925 Edwards Dr NE,
+   * Albuquerque, NM 87111, United States of America" when it came from the
+   * address search -- and there is no separate city field to read. The town
+   * is the part just before the state; without a state it is the second
+   * part. An address that does not split that way gives no town, and the
+   * row shows the address as it was typed rather than a guess.
+   */
+  const STATE_PART = /^[A-Za-z]{2}(\s+\d{5}(-\d{4})?)?$|^[A-Za-z][A-Za-z .]+\s+\d{5}(-\d{4})?$/;
+
+  function addressParts(address) {
+    const parts = String(address || '').split(/[,\n]/).map(function (part) {
+      return part.trim();
+    }).filter(Boolean);
+    if (parts.length < 2) return { street: parts[0] || '', town: '' };
+    let town = '';
+    for (let i = 1; i < parts.length; i++) {
+      if (STATE_PART.test(parts[i])) {
+        if (i > 1) town = parts[i - 1];
+        break;
+      }
+    }
+    if (!town && !STATE_PART.test(parts[1]) && !/^\d/.test(parts[1])) town = parts[1];
+    return { street: parts[0], town: town };
+  }
+
+  function townOf(address) {
+    return addressParts(address).town;
+  }
+
   // A filename prefix is not ownership. Without a manifest purpose, media
   // stays in Other stored files.
   function classify(row, id) {
@@ -464,7 +496,7 @@
         ? ''
         : '<label class="explorer-search">' +
           '  <span class="sr-only">Search Customer Files</span>' +
-          '  <input type="search" id="explorer-search" placeholder="Search name or address" autocomplete="off" />' +
+          '  <input type="search" id="explorer-search" placeholder="Search name, address or town" autocomplete="off" />' +
           '</label>') +
       '    <p class="cabinet-notice" id="explorer-notice" hidden></p>' +
       // Three columns on a desktop, one on a phone: the drawings' tree down
@@ -504,7 +536,7 @@
 
     lead.textContent = inside
       ? 'Stored surveys, photos, plans, and other data.'
-      : 'Customer Files stored on the server. Open a file to view its stored surveys, photos, plans, and other data. Delete removes a job from the server for good.';
+      : 'Jobs on the server, filed by field work date.';
     sub.textContent = inside ? 'Missing items are marked not stored.' : '';
     crumb.textContent = '';
 
@@ -543,6 +575,7 @@
         if (!document.body.contains(app)) return;
         paintTree();
         paintDetails();
+        if (!inside && rootFiles.length) paintRoot();
       };
       if (typeof wide.addEventListener === 'function') wide.addEventListener('change', onWidth);
       else if (typeof wide.addListener === 'function') wide.addListener(onWidth);
@@ -922,10 +955,70 @@
         listEl.appendChild(empty);
         return;
       }
+      // A phone has no tree, so the list carries the years and months
+      // itself, newest first -- the same filing the desktop tree shows.
+      if (!wideEnoughForPanes()) {
+        paintRootByMonth(files);
+        return;
+      }
       files.forEach(function (row) {
         listEl.appendChild(rootRow(row));
       });
       if (selectedId) selectRoot(selectedId);
+    }
+
+    function paintRootByMonth(files) {
+      const groups = treeGroups(files);
+      groups.years.forEach(function (year) {
+        const head = document.createElement('h2');
+        head.className = 'explorer-year';
+        const label = document.createElement('span');
+        label.className = 'explorer-year__label';
+        label.textContent = year.year;
+        const count = document.createElement('span');
+        count.className = 'explorer-year__n';
+        count.textContent = year.count === 1 ? '1 job' : year.count + ' jobs';
+        head.appendChild(label);
+        head.appendChild(count);
+        listEl.appendChild(head);
+        year.order.forEach(function (key) {
+          const month = year.months[key];
+          const title = document.createElement('h3');
+          title.className = 'explorer-month';
+          title.textContent = month.label;
+          listEl.appendChild(title);
+          newestFirst(month.rows).forEach(function (row) {
+            listEl.appendChild(rootRow(row));
+          });
+        });
+      });
+      if (groups.undated.length) {
+        const head = document.createElement('h2');
+        head.className = 'explorer-year';
+        const label = document.createElement('span');
+        label.className = 'explorer-year__label';
+        // Said plainly rather than filed under a date it does not have.
+        label.textContent = 'No survey date';
+        const count = document.createElement('span');
+        count.className = 'explorer-year__n';
+        count.textContent = groups.undated.length === 1 ? '1 job' : groups.undated.length + ' jobs';
+        head.appendChild(label);
+        head.appendChild(count);
+        listEl.appendChild(head);
+        groups.undated.forEach(function (row) {
+          listEl.appendChild(rootRow(row));
+        });
+      }
+    }
+
+    /** Within a month, the latest field work first; a tie keeps name order. */
+    function newestFirst(rows) {
+      return rows.slice().sort(function (a, b) {
+        const da = String(a && a.fieldWorkDate || '');
+        const db = String(b && b.fieldWorkDate || '');
+        if (da !== db) return da < db ? 1 : -1;
+        return 0;
+      });
     }
 
     function rootRow(row) {
@@ -953,7 +1046,14 @@
       main.appendChild(keyBtn);
       const secondary = [];
       if (row && row.deletedAt) secondary.push('In File Cabinet Trash');
-      if (named && row.propertyAddress) secondary.push(row.propertyAddress);
+      // "4925 Edwards Dr NE, Albuquerque" -- the street and the town, which
+      // is how a job is remembered. The whole address is in the details.
+      const where = addressParts(row && row.propertyAddress);
+      if (named && row.propertyAddress) {
+        secondary.push(where.town ? where.street + ', ' + where.town : row.propertyAddress);
+      } else if (where.town) {
+        secondary.push(where.town);
+      }
       const date = usefulDate(row);
       if (date) secondary.push(date);
       if (secondary.length) {
@@ -979,6 +1079,19 @@
         if (row && row.id) window.location.hash = '#/explore/' + encodeURIComponent(row.id);
       });
       actions.appendChild(open);
+
+      // The person-arranged copy, from the list, without walking in first.
+      if (row && row.id) {
+        const take = document.createElement('button');
+        take.type = 'button';
+        take.className = 'btn btn--secondary explorer-download-job';
+        take.textContent = 'Download job';
+        take.addEventListener('click', function (event) {
+          event.stopPropagation();
+          downloadJobFromList(row, take);
+        });
+        actions.appendChild(take);
+      }
 
       const id = row && row.id;
       const sync = window.ToolboxSync || {};
@@ -1062,6 +1175,7 @@
     let jobFieldDate = '';
     /** Everything the Cabinet holds for this job, and which folder is open. */
     let jobObjects = [];
+    let jobObjectsFor = '';
     let openFolder = '';
     /**
      * The parsed records, read once per job so the screen can say what the
@@ -1300,6 +1414,7 @@
         return;
       }
       jobObjects = objects;
+      jobObjectsFor = id;
       openFolder = '';
       paintJob(id);
       // The listing is drawn at once; what the job HOLDS follows and
@@ -2218,13 +2333,15 @@
      * Technical details, because it is the one that reproduces the bucket key
      * for key and that is what some kinds of recovery need.
      */
-    function downloadArchive(id, button, notify) {
+    function downloadArchive(id, button, notify, whenDone) {
       notify('');
       const previous = button.textContent;
       const Archive = window.ToolboxExplorerArchive;
+      const finished = typeof whenDone === 'function' ? whenDone : function () {};
       if (!Archive || !window.JSZip) {
         // Rather than fail, fall back to the route that does not need either.
         downloadRawArchive(id, button, notify);
+        finished();
         return;
       }
       button.disabled = true;
@@ -2238,7 +2355,7 @@
         // so it is asked for here -- without it every picture came out named
         // "media_ph_one", which is the storage key the copy exists to get
         // away from.
-        return Promise.all([readJobComponents(id), readPhotoFacts(id)]).then(function () {
+        return Promise.all([ensureJobObjects(id), readJobComponents(id), readPhotoFacts(id)]).then(function () {
           return Archive.buildJobArchive({
             id: id,
             name: jobName,
@@ -2266,6 +2383,7 @@
       }).then(function (result) {
         button.disabled = false;
         button.textContent = previous;
+        finished();
         if (result.cancelled) {
           notify('');
           return;
@@ -2287,7 +2405,40 @@
       }).catch(function (err) {
         button.disabled = false;
         button.textContent = previous;
+        finished();
         notify(errorText(err));
+      });
+    }
+
+    /**
+     * What the Cabinet holds for a job, for a copy asked for from the list.
+     * Inside a job this is already in hand; from the list it is read once,
+     * through the back door's own listing, and labelled the same way.
+     */
+    function ensureJobObjects(id) {
+      if (jobObjectsFor === id) return Promise.resolve(jobObjects);
+      return window.ToolboxSync.exploreListCustomerFile(id).then(function (data) {
+        jobObjects = data && Array.isArray(data.objects) ? data.objects : [];
+        jobObjectsFor = id;
+        sortJob(id);
+        return jobObjects;
+      });
+    }
+
+    let listDownloadBusy = false;
+
+    /** Download job, from a row in the list. One copy is packed at a time. */
+    function downloadJobFromList(row, button) {
+      if (listDownloadBusy) {
+        showNotice('Another job copy is still being packed.');
+        return;
+      }
+      listDownloadBusy = true;
+      jobName = row.displayName || row.propertyAddress || '';
+      jobAddress = row.propertyAddress || '';
+      jobFieldDate = row.fieldWorkDate || '';
+      downloadArchive(row.id, button, showNotice, function () {
+        listDownloadBusy = false;
       });
     }
 
@@ -2298,7 +2449,7 @@
       return Summary.archiveFolderName({
         name: jobName,
         address: jobAddress,
-        components: jobComponents,
+        components: jobComponentsFor === id ? jobComponents : {},
         fallbackDate: jobFieldDate,
       }) + '.zip';
     }

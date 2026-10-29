@@ -4193,6 +4193,38 @@ button.cf-home__delete[hidden] {
   user-select: text;
 }
 
+/* The phone's list, filed by year and month the way the desktop tree is. */
+.explorer-year {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--navy);
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.explorer-year:first-child {
+  margin-top: 6px;
+}
+
+.explorer-year__n {
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.explorer-month {
+  margin: 12px 2px 0;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .explorer-row__label {
   margin: 4px 0 0;
   color: var(--ink-soft);

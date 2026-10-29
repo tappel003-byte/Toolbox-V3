@@ -696,7 +696,7 @@ try {
     !!(flow.backDoor && flow.backDoor.fredTakeOver && !flow.backDoor.adaTakeOver),
     JSON.stringify({ held: flow.backDoor && flow.backDoor.fredTakeOver, free: flow.backDoor && flow.backDoor.adaTakeOver }));
   check('root copy is plain language',
-    flow.rootLead === 'Customer Files stored on the server. Open a file to view its stored surveys, photos, plans, and other data. Delete removes a job from the server for good.');
+    flow.rootLead === 'Jobs on the server, filed by field work date.');
   check('search finds one Customer File by name',
     flow.searchedCount === 1 && flow.searched.includes('Fred Keulen') && !flow.searched.includes('Ada Mitchell'));
   check('detail groups every stored piece and keeps raw keys available',
