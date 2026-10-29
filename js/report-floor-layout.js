@@ -305,8 +305,10 @@
   // The colour scale used to be here too, built out of HTML. It is Floor
   // Survey's own now, painted by Floor Survey and placed as a picture -- see
   // renderLegendCard. renderPin is not called: the High and Low markers point
-  // at a spot on the floor, so the drawing carries them, and this is what a
-  // page of its own would be built from if that is ever wanted.
+  // at a spot on the floor, so the drawing carries them -- the live canvas in
+  // the editor, and the composed still in Presentation and the PDF, both
+  // drawn by Floor Survey's renderTopoTop from the slide's own settings. This
+  // is what a page of its own would be built from if that is ever wanted.
 
   function renderPill(stats) {
     var pill = document.createElement('div');

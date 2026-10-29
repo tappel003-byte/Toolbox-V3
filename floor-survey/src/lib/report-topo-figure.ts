@@ -145,9 +145,9 @@ function statsFromTopos(
       lo,
       delta: hi - lo,
       decimalPlaces: dec,
-      // The pins are NOT drawn into the figure any more. They come back as
-      // positions so Report Builder places them as its own movable markers --
-      // a pin baked into the image cannot be nudged off a wall.
+      // Where the High and Low readings are, as fractions of the figure. The
+      // markers themselves are drawn into the figure (see reportSettings);
+      // these positions are data, for anything that wants to point at them.
       hiPin: { value: hi, fx: fx(at.hi.x), fy: fy(at.hi.y) },
       loPin: { value: lo, fx: fx(at.lo.x), fy: fy(at.lo.y) },
       legend: legendStopsFor(at, settings),
@@ -159,13 +159,18 @@ function reportSettings(partial?: Partial<RenderSettings>): RenderSettings {
   return resolveSettings({
     ...defaultRenderSettings,
     ...(partial || {}),
-    // Every piece of chrome is a Report Builder slot, so none of it is baked
-    // into the picture: the colour scale, the H/L/delta pill and the High and
-    // Low pins all come back as data and are placed, moved and sized on the
-    // page. Anything drawn into the PNG is frozen there for good.
+    // The colour scale and the H/L/delta pill are Report Builder boxes, placed,
+    // moved and sized on the page, so neither is baked into the picture.
+    //
+    // The High and Low markers are NOT boxes. They point at a spot on the
+    // floor, and the slide draws them on the live canvas -- by this same
+    // renderTopoTop, at the level's saved nudges, at the plan-proportional
+    // size -- whenever the slide's own showHighLow says so. They used to be
+    // forced off here too, and nothing placed them back, so a sheet that
+    // showed High and Low in the editor printed and presented without them.
+    // The slide's setting is the answer for the still, as it is on screen.
     showLegend: false,
     showStatsPill: false,
-    showHighLow: false,
   });
 }
 
