@@ -2713,6 +2713,9 @@ body.report-builder-open .canvas {
 .rb-floor-stage {
   position: relative;
   overflow: hidden;
+  /* Its own stacking context, so a piece sent behind the others (a negative
+     z) still sits above the stage and can be picked up again. */
+  isolation: isolate;
 }
 
 .rb-floor-empty {
