@@ -339,10 +339,12 @@ export function StatsChip({
       {sizeHud && (
         <div
           data-accessory-size-hud=""
-          className="fixed z-50 flex items-center gap-0.5 rounded-full border border-sky-700 bg-sky-600 px-1.5 py-1 text-white shadow-lg"
+          className="fixed z-50 flex h-7 items-stretch overflow-hidden rounded-full border shadow-md"
           style={{
-            left: Math.min(Math.max(8, pos.x), window.innerWidth - 180),
+            left: Math.min(Math.max(8, pos.x), window.innerWidth - 88),
             top: Math.max(8, chipTop - SIZE_HUD_ABOVE_PX),
+            background: "#07283d",
+            borderColor: "#07283d",
           }}
           role="group"
           aria-label="H/L/Δ size"
@@ -356,13 +358,11 @@ export function StatsChip({
             }}
             disabled={height <= STATS_CHIP_MIN}
             aria-label="Decrease H/L/Δ size"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/80 hover:bg-sky-500 disabled:opacity-40"
+            className="flex w-7 items-center justify-center text-white/95 hover:bg-white/10 disabled:opacity-40"
           >
-            <Minus className="h-4 w-4" />
+            <Minus className="h-3 w-3" />
           </button>
-          <span className="px-1.5 text-[10px] font-semibold select-none whitespace-nowrap">
-            H/L/Δ size
-          </span>
+          <span className="w-px self-stretch bg-white/25" aria-hidden />
           <button
             type="button"
             onClick={() => {
@@ -372,17 +372,17 @@ export function StatsChip({
             }}
             disabled={height >= STATS_CHIP_MAX}
             aria-label="Increase H/L/Δ size"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/80 hover:bg-sky-500 disabled:opacity-40"
+            className="flex w-7 items-center justify-center text-white/95 hover:bg-white/10 disabled:opacity-40"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3 w-3" />
           </button>
           <button
             type="button"
             onClick={() => setSizeHud(false)}
             aria-label="Close size"
-            className="ml-0.5 flex h-8 w-8 items-center justify-center rounded-full text-sky-100 hover:bg-sky-500"
+            className="flex w-6 items-center justify-center border-l border-white/25 text-white/80 hover:bg-white/10"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-3 w-3" />
           </button>
         </div>
       )}

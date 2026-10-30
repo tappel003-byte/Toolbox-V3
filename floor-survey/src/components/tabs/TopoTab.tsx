@@ -2801,8 +2801,8 @@ function NumberControl({
 
 /**
  * Tap-to-size −/+ for Legend / H/L/Δ / High/Low.
- * Blue pill, way above the accessory so move stays unobstructed. Panel
- * steppers remain as the same sizes.
+ * Compact chrome-navy pill, way above the accessory so move stays clear.
+ * Panel steppers remain as the same sizes.
  */
 /** Screen gap above the tapped accessory — clear of the drag target. */
 const ACCESSORY_SIZE_HUD_ABOVE_PX = 112;
@@ -2837,14 +2837,14 @@ function AccessorySizeHud({
   const max = kind === "legend" ? 4 : kind === "pill" ? STATS_CHIP_MAX : 28;
   const step = kind === "legend" ? 0.1 : kind === "pill" ? 2 : 1;
   const vw = typeof window !== "undefined" ? window.innerWidth : 360;
-  const left = Math.min(Math.max(8, clientX - 72), vw - 168);
+  const left = Math.min(Math.max(8, clientX - 36), vw - 88);
   // Way above the accessory (not near the finger on the piece).
   const top = Math.max(8, clientY - ACCESSORY_SIZE_HUD_ABOVE_PX);
   return (
     <div
       data-accessory-size-hud=""
-      className="fixed z-50 flex items-center gap-0.5 rounded-full border border-sky-700 bg-sky-600 px-1.5 py-1 text-white shadow-lg"
-      style={{ left, top }}
+      className="fixed z-50 flex h-7 items-stretch overflow-hidden rounded-full border shadow-md"
+      style={{ left, top, background: TRIAL_NAVY, borderColor: TRIAL_NAVY }}
       role="group"
       aria-label={label}
     >
@@ -2861,11 +2861,11 @@ function AccessorySizeHud({
         }}
         disabled={value <= min}
         aria-label={`Decrease ${label}`}
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/80 hover:bg-sky-500 disabled:opacity-40"
+        className="flex w-7 items-center justify-center text-white/95 hover:bg-white/10 disabled:opacity-40"
       >
-        <Minus className="h-4 w-4" />
+        <Minus className="h-3 w-3" />
       </button>
-      <span className="px-1.5 text-[10px] font-semibold select-none whitespace-nowrap">{label}</span>
+      <span className="w-px self-stretch bg-white/25" aria-hidden />
       <button
         type="button"
         onClick={() => {
@@ -2879,17 +2879,17 @@ function AccessorySizeHud({
         }}
         disabled={value >= max}
         aria-label={`Increase ${label}`}
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/80 hover:bg-sky-500 disabled:opacity-40"
+        className="flex w-7 items-center justify-center text-white/95 hover:bg-white/10 disabled:opacity-40"
       >
-        <Plus className="h-4 w-4" />
+        <Plus className="h-3 w-3" />
       </button>
       <button
         type="button"
         onClick={onClose}
         aria-label="Close size"
-        className="ml-0.5 flex h-8 w-8 items-center justify-center rounded-full text-sky-100 hover:bg-sky-500"
+        className="flex w-6 items-center justify-center border-l border-white/25 text-white/80 hover:bg-white/10"
       >
-        <X className="h-3.5 w-3.5" />
+        <X className="h-3 w-3" />
       </button>
     </div>
   );
