@@ -82,10 +82,15 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [topoExcludedIds, setTopoExcludedIds] = useState<Set<string>>(new Set());
   const [topoAreaId, setTopoAreaId] = useState<string | null>(null);
+  /** Field Clean view — hide Data/Topo + H/L/Δ chip. Local session only. */
+  const [topoCleanView, setTopoCleanView] = useState(false);
   useEffect(() => {
     setTopoExcludedIds(new Set());
     setTopoAreaId(null);
   }, [activeFloorId]);
+  useEffect(() => {
+    if (mode !== "topo") setTopoCleanView(false);
+  }, [mode]);
   useEffect(() => {
     if (mode !== "topo") setTopoExcludedIds(new Set());
   }, [mode]);
@@ -567,11 +572,12 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
             selectedAreaId={topoAreaId}
             onSelectedAreaIdChange={setTopoAreaId}
             allowContourLayer
+            onCleanViewChange={setTopoCleanView}
           />
         )}
       </main>
 
-      {(mode === "field" || mode === "topo") && (
+      {(mode === "field" || mode === "topo") && !(mode === "topo" && topoCleanView) && (
         <>
           <ModeToggle
             mode={mode === "topo" ? "topo" : "data"}

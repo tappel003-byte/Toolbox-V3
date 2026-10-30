@@ -20,7 +20,7 @@ import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/l
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import { Undo2, X, SlidersHorizontal, Minus, Plus, ChevronDown, Hash } from "lucide-react";
+import { Undo2, X, SlidersHorizontal, Minus, Plus, ChevronDown, Hash, Eye, EyeOff } from "lucide-react";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { TopoDiagnosticPanel } from "../TopoDiagnosticPanel";
@@ -261,6 +261,11 @@ interface Props {
    * handed over bare and the rail drives it through props.
    */
   chromeless?: boolean;
+  /**
+   * Field Clean view: host hides Data/Topo and the floating H/L/Δ chip when
+   * true. Local-only; no network. Report mounts leave this unset.
+   */
+  onCleanViewChange?: (clean: boolean) => void;
 }
 
 const DEFAULT_LABEL_DX = 8;
@@ -493,6 +498,7 @@ export function TopoTab({
   statsPillForSingleBoundary = false,
   chromeless = false,
   controlsOnly = false,
+  onCleanViewChange,
   reportGroup,
   staticView = false,
   locked = false,
@@ -504,6 +510,8 @@ export function TopoTab({
   // Display; H/L/Δ and High/Low live under Readings → Accessories (they come
   // from the readings). Report Builder keeps its own rail (controlsOnly).
   const [openCorner, setOpenCorner] = useState<TrialDoorKey | null>(null);
+  /** Hide floating field chrome; Clean pill stays so chrome can return. Local only. */
+  const [cleanView, setCleanView] = useState(false);
   /** Last parent tab, so Close then the pill returns to the same group. */
   const [lastTrialDoor, setLastTrialDoor] = useState<TrialDoorKey | null>(null);
   /** Which child tab is open per parent (visit memory only; not a setting). */
@@ -843,6 +851,8 @@ export function TopoTab({
   /** Last Points/Labels state before a field “Readings” hide — restore on show. */
   const readingsPrevRef = useRef<{ showPoints: boolean; showLabels: boolean } | null>(null);
   const readingsOn = resolved.showPoints || resolved.showLabels;
+  const LABEL_SIZE_MIN = 6;
+  const LABEL_SIZE_MAX = 28;
   function toggleReadings() {
     if (readingsOn) {
       readingsPrevRef.current = {
@@ -858,6 +868,26 @@ export function TopoTab({
       });
     }
   }
+  function nudgeLabelSize(delta: number) {
+    const next = Math.max(
+      LABEL_SIZE_MIN,
+      Math.min(LABEL_SIZE_MAX, Math.round(resolved.pointLabelFontSize + delta)),
+    );
+    if (next !== resolved.pointLabelFontSize) update({ pointLabelFontSize: next });
+  }
+  function setCleanViewOn(next: boolean) {
+    setCleanView(next);
+    if (next) {
+      setOpenCorner(null);
+      setDiagOpen(false);
+    }
+    onCleanViewChange?.(next);
+  }
+  useEffect(() => {
+    return () => {
+      onCleanViewChange?.(false);
+    };
+  }, [onCleanViewChange]);
 
   // High / Low of the focused area (used for pin hit-testing / dragging).
   const hiLo = soloTopo ? { hi: soloTopo.hi, lo: soloTopo.lo } : null;
@@ -1072,7 +1102,7 @@ export function TopoTab({
     <div className="flex flex-col h-full relative">
       {/* Area selector — only when the floor has more than one drawn area.
           Draggable so report screenshots can clear it off the plan. */}
-      {areas.length > 1 && !chromeless && (
+      {areas.length > 1 && !chromeless && !cleanView && (
         <div
           className="absolute z-30 touch-none"
           style={
@@ -1147,46 +1177,97 @@ export function TopoTab({
           </div>
         </div>
       )}
-      {/* Readings on/off — same pill family as Control panel; quick homeowner view. */}
-      {!chromeless && !controlsOnly && (
-        <button
-          type="button"
-          onClick={toggleReadings}
-          aria-label={readingsOn ? "Hide readings" : "Show readings"}
-          aria-pressed={readingsOn}
+      {/* Readings | − | + — on/off + label size; same pill family as Control panel. */}
+      {!chromeless && !controlsOnly && !cleanView && (
+        <div
           className={
             "absolute z-30 top-2 left-2 landscape-short:top-auto landscape-short:left-[calc(env(safe-area-inset-left)+0.75rem)] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] " +
-            "h-9 px-3 flex items-center gap-1.5 rounded-full backdrop-blur shadow-md border " +
-            "text-xs font-medium " +
+            "h-9 flex items-stretch rounded-full backdrop-blur shadow-md border overflow-hidden text-xs font-medium " +
             (readingsOn
-              ? "bg-white/95 border-gray-300 text-gray-700 hover:bg-gray-50"
-              : "bg-white/80 border-gray-300 text-gray-400 hover:bg-gray-50 hover:text-gray-600")
+              ? "bg-white/95 border-gray-300 text-gray-700"
+              : "bg-white/80 border-gray-300 text-gray-400")
           }
+          role="group"
+          aria-label="Readings"
         >
-          <Hash className="h-3.5 w-3.5 shrink-0" />
-          <span>Readings</span>
-        </button>
+          <button
+            type="button"
+            onClick={toggleReadings}
+            aria-label={readingsOn ? "Hide readings" : "Show readings"}
+            aria-pressed={readingsOn}
+            className="px-3 flex items-center gap-1.5 hover:bg-gray-50"
+          >
+            <Hash className="h-3.5 w-3.5 shrink-0" />
+            <span>Readings</span>
+          </button>
+          <span className="w-px bg-gray-200" aria-hidden />
+          <button
+            type="button"
+            onClick={() => nudgeLabelSize(-1)}
+            disabled={resolved.pointLabelFontSize <= LABEL_SIZE_MIN}
+            aria-label="Smaller reading labels"
+            className="w-9 flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <span className="w-px bg-gray-200" aria-hidden />
+          <button
+            type="button"
+            onClick={() => nudgeLabelSize(1)}
+            disabled={resolved.pointLabelFontSize >= LABEL_SIZE_MAX}
+            aria-label="Larger reading labels"
+            className="w-9 flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
       )}
-      {/* Control panel — labeled pill ~Data/Topo size (Tim Oct 24–25, 2026). Hidden while open. */}
-      {!chromeless &&
-        !controlsOnly &&
-        openCorner == null && (
-        <button
-          type="button"
-          onClick={() => openTrialDoor(lastTrialDoor ?? "contours")}
-          aria-label="Control panel"
+      {/* Clean view + Control panel — same row, same height (peer pills). */}
+      {!chromeless && !controlsOnly && (
+        <div
           className={
-            "absolute z-30 top-2 right-2 landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:translate-x-[0.25rem] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] " +
-            "h-9 px-3 flex items-center gap-1.5 rounded-full bg-white/95 backdrop-blur shadow-md border border-gray-300 " +
-            "text-xs font-medium text-gray-700 hover:bg-gray-50"
+            "absolute z-30 top-2 right-2 flex items-center gap-1.5 " +
+            "landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:-translate-x-1/2 landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
           }
         >
-          <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
-          <span>Control panel</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => setCleanViewOn(!cleanView)}
+            aria-label={cleanView ? "Show chrome" : "Clean view"}
+            aria-pressed={cleanView}
+            className={
+              "h-9 px-3 flex items-center gap-1.5 rounded-full backdrop-blur shadow-md border " +
+              "text-xs font-medium " +
+              (cleanView
+                ? "bg-white/95 border-gray-300 text-gray-700 hover:bg-gray-50"
+                : "bg-white/95 border-gray-300 text-gray-700 hover:bg-gray-50")
+            }
+          >
+            {cleanView ? (
+              <EyeOff className="h-3.5 w-3.5 shrink-0" />
+            ) : (
+              <Eye className="h-3.5 w-3.5 shrink-0" />
+            )}
+            <span>{cleanView ? "Chrome" : "Clean"}</span>
+          </button>
+          {!cleanView && openCorner == null && (
+            <button
+              type="button"
+              onClick={() => openTrialDoor(lastTrialDoor ?? "contours")}
+              aria-label="Control panel"
+              className={
+                "h-9 px-3 flex items-center gap-1.5 rounded-full bg-white/95 backdrop-blur shadow-md border border-gray-300 " +
+                "text-xs font-medium text-gray-700 hover:bg-gray-50"
+              }
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
+              <span>Control panel</span>
+            </button>
+          )}
+        </div>
       )}
       {/* Diagnostic panel toggle — Topo-only. Excludes points from contour math without touching stored data. Undecided; left in place. */}
-      {!chromeless && (
+      {!chromeless && !cleanView && (
       <button
         type="button"
         onClick={() => setDiagOpen((v) => !v)}
@@ -1205,7 +1286,7 @@ export function TopoTab({
       </button>
       )}
 
-      {diagOpen && !chromeless && (
+      {diagOpen && !chromeless && !cleanView && (
         <TopoDiagnosticPanel
           points={points}
           excludedIds={excludedIds}
