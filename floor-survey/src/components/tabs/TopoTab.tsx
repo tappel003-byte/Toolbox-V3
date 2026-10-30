@@ -268,6 +268,20 @@ const DEFAULT_LABEL_DY = 6;
 const LONG_PRESS_MS = 350;
 /** Accessory hold-vs-drag threshold in SCREEN pixels (hand, not image zoom). */
 const ACCESSORY_MOVE_PX = 6;
+/**
+ * Design font (screen CSS px) that authored the label pad 4 / 2.5 and radius 2.5.
+ * Padding used to be `4 * (fontPx / fontBase)`. Under screen-anchored capture
+ * that ratio is only the inverse view scale, so pad stayed fixed in CSS px while
+ * the font stepper shrank the text — at 6px the box was mostly padding.
+ * Scale chrome against this reference so the complete label footprint tracks the
+ * font setting. At the default 11px font this matches the previous pad.
+ */
+const LABEL_CHROME_REF_PX = defaultRenderSettings.pointLabelFontSize;
+
+/** Image-space multiplier so label pad/radius/stroke track drawn fontPx. */
+function labelChromeK(fontPx: number) {
+  return fontPx / LABEL_CHROME_REF_PX;
+}
 
 /**
  * The High/Low marker's drawn size, in image coordinates.
@@ -865,7 +879,7 @@ export function TopoTab({
       const k = fontPx / fontBase;
       const dec = resolved.decimalPlaces;
       const weight = resolved.pointLabelWeight;
-      const pad = 4 * k;
+      const pad = 4 * labelChromeK(fontPx);
       for (const p of visiblePoints) {
         const text = p.value.toFixed(dec);
         const { w, h } = measureLabel(text, fontPx, weight);
@@ -3063,7 +3077,10 @@ export function renderTopoTop(
   // helper, as the H/L/delta pill and the High and Low markers.
   const fontBase = resolved.pointLabelFontSize;
   const fontPx = chromeSizeImg(fontBase, viewScale, !!overlay?.presentation, floor);
+  // k keeps default label offsets screen-anchored under zoom. Label box chrome
+  // (pad / radius / stroke) uses labelChromeK so it tracks the font setting.
   const k = fontPx / fontBase;
+  const chromeK = labelChromeK(fontPx);
   const weight = resolved.pointLabelWeight;
   const color = resolved.pointLabelColor;
 
@@ -3075,8 +3092,8 @@ export function renderTopoTop(
     const dotBase = overlay?.pointSize ?? 6;
     const dotR = chromeSizeImg(dotBase, viewScale, !!overlay?.presentation, floor);
     const dotColor = overlay?.pointColor ?? "#dc2626";
-    const padX = 4 * k;
-    const padY = 2.5 * k;
+    const padX = 4 * chromeK;
+    const padY = 2.5 * chromeK;
 
     // Decluttering: figure out which labels can be drawn without colliding.
     // Dots always draw. Highlighted / dragged labels win ties.
@@ -3139,7 +3156,7 @@ export function renderTopoTop(
       const inverted = highlightId === p.id;
       const pillW = tw + padX * 2;
       const pillH = fontPx + padY * 2;
-      const radius = 2.5 * k;
+      const radius = 2.5 * chromeK;
       const cx = tx + tw / 2;
       const cy = ty + fontPx / 2;
 
@@ -3148,7 +3165,7 @@ export function renderTopoTop(
         ctx.fillStyle = color;
         roundRectPath(ctx, tx - padX, ty - padY, pillW, pillH, radius);
         ctx.fill();
-        ctx.lineWidth = k;
+        ctx.lineWidth = chromeK;
         ctx.strokeStyle = color;
         ctx.stroke();
         ctx.fillStyle = "#ffffff";
@@ -3160,7 +3177,7 @@ export function renderTopoTop(
           ctx.fill();
         }
         if (resolved.pointLabelBackground !== "plain") {
-          ctx.lineWidth = 0.8 * k;
+          ctx.lineWidth = 0.8 * chromeK;
           ctx.strokeStyle = color;
           roundRectPath(ctx, tx - padX, ty - padY, pillW, pillH, radius);
           ctx.stroke();

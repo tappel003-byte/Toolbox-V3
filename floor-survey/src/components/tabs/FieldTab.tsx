@@ -11,11 +11,18 @@ import { Button } from "@/components/ui/button";
 import { Pencil, List, Trash2 } from "lucide-react";
 
 import type { Bp1Gps, Floor, NotePin, SurveyPoint, Transition } from "@/lib/types";
+import { defaultRenderSettings } from "@/lib/types";
 import { savePoint, deletePoint, reindexFloorPoints, saveFloor, saveBp1Gps, uid } from "@/lib/db";
 import { transitionDelta, formatDelta, getChainBaselineSurface } from "@/lib/transitions";
 import { drawExclusionShape, zoneOfXY } from "@/lib/exclusions";
 import type { FloorSnapshot } from "@/lib/useFloorHistory";
 import { screenAnchoredImageSize } from "@/lib/screen-size";
+
+/** Same design-font reference as TopoTab — pad must track font, not only zoom. */
+const LABEL_CHROME_REF_PX = defaultRenderSettings.pointLabelFontSize;
+function labelChromeK(fontPx: number) {
+  return fontPx / LABEL_CHROME_REF_PX;
+}
 
 
 interface Props {
@@ -440,12 +447,13 @@ export function FieldTab({
     const fontBase = labelFontSize;
     const fontPx = screenAnchoredImageSize(fontBase, s);
     const k = fontPx / fontBase;
-    const pad = 4 * k;
+    const chromeK = labelChromeK(fontPx);
+    const pad = 4 * chromeK;
     const markerR = screenAnchoredImageSize(pointSize, s);
     for (const p of points) {
       const text = readingText(p.value);
       const w = text.length * fontPx * 0.62;
-      const h = fontPx + 2 * k;
+      const h = fontPx + 2 * chromeK;
       const lx = p.x + markerR + 4 * k;
       const ly = p.y + markerR + 3 * k;
       if (x >= lx - pad && x <= lx + w + pad && y >= ly - pad && y <= ly + h + pad) {
@@ -1027,8 +1035,9 @@ export function FieldTab({
           const fontBase = labelFontSize;
           const lblFontPx = screenAnchoredImageSize(fontBase, s);
           const k = lblFontPx / fontBase;
-          const lblPadX = 3 * k;
-          const lblPadY = 2 * k;
+          const chromeK = labelChromeK(lblFontPx);
+          const lblPadX = 3 * chromeK;
+          const lblPadY = 2 * chromeK;
           // Dot: anchored to the pointSize stepper (Data panel "Dot" control)
           // instead of derived from font size, so the stepper controls what's drawn.
           const markerR = screenAnchoredImageSize(pointSize, s);
@@ -1136,7 +1145,7 @@ export function FieldTab({
               const padY = lblPadY;
               ctx.fillStyle = "#ffffff";
               ctx.beginPath();
-              ctx.roundRect(lx - padX, ly - padY, tm.width + padX * 2, lblFontPx + padY * 2, 3 * k);
+              ctx.roundRect(lx - padX, ly - padY, tm.width + padX * 2, lblFontPx + padY * 2, 3 * chromeK);
               ctx.fill();
 
               ctx.strokeStyle = isHighlighted ? TRANSITION_COLOR : "#111827";
