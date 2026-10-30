@@ -462,6 +462,7 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
         onBack={onBack}
         onReturnToReport={onReturnToReport}
         onOpenSetup={() => setMode("setup")}
+        setupMenuLabel="Boundary & exclusions"
         onOpenReview={() => setMode("review")}
         onOpenTransitions={() => setTransitionsSheetOpen(true)}
         onOpenDiagnosticPoints={

@@ -7,6 +7,8 @@ type Props = {
   onBack?: () => void;
   onReturnToReport?: () => void;
   onOpenSetup: () => void;
+  /** ⋯ label for setup — integrated host uses Boundary & exclusions (CF owns plan). */
+  setupMenuLabel?: string;
   onOpenReview: () => void;
   onOpenExport?: () => void;
   onOpenTransitions?: () => void;
@@ -38,6 +40,7 @@ export function AppTopBar({
   onBack,
   onReturnToReport,
   onOpenSetup,
+  setupMenuLabel = "Setup",
   onOpenReview,
   onOpenExport,
   onOpenTransitions,
@@ -213,7 +216,7 @@ export function AppTopBar({
                 }}
               />
               <MenuItem
-                label="Setup"
+                label={setupMenuLabel}
                 onClick={() => {
                   setMenuOpen(false);
                   onOpenSetup();
