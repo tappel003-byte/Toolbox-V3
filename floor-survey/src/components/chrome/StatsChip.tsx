@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Minus, Plus, X } from "lucide-react";
+import { patchCaptureSizes } from "@/lib/capture-sizes";
 
 /**
  * Default chip height when nothing is stored for this Customer File yet.
@@ -103,8 +105,9 @@ function topChromeHeight() {
  *   the high low pills it highlights the high or the low on the top -- I don't
  *   think I want that." The pill is a readout and a thing to drag out of the
  *   way, not a control.
- * - Size is the one set in the Control panel → High / Low → Stats pill size,
- *   kept per Customer File on this device; plan pills use the same size.
+ * - Size is the one set in Control panel → Accessories → H/L/Δ, kept per
+ *   Customer File on this device; plan pills use the same size. Press-and-hold
+ *   also opens unitless −/+ next to this chip.
  * - Position persists per storageKey and clamps to viewport on resize/rotate.
  */
 export function StatsChip({
@@ -207,6 +210,29 @@ export function StatsChip({
     };
   }, []);
 
+  const HOLD_MS = 350;
+  const [sizeHud, setSizeHud] = useState(false);
+  const holdTimer = useRef<number | null>(null);
+  const clearHold = () => {
+    if (holdTimer.current !== null) {
+      window.clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+  };
+  useEffect(() => {
+    return () => clearHold();
+  }, []);
+  // Outside press dismisses; −/+ on the HUD stay usable.
+  useEffect(() => {
+    if (!sizeHud) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (t && t.closest("[data-accessory-size-hud]")) return;
+      setSizeHud(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [sizeHud]);
   const drag = useRef<{
     startX: number;
     startY: number;
@@ -219,6 +245,7 @@ export function StatsChip({
   const onPointerDown = (e: React.PointerEvent) => {
     if (!pos) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    setSizeHud(false);
     drag.current = {
       startX: e.clientX,
       startY: e.clientY,
@@ -227,6 +254,12 @@ export function StatsChip({
       pointerId: e.pointerId,
       moved: false,
     };
+    clearHold();
+    holdTimer.current = window.setTimeout(() => {
+      // Hold still → size −/+. Drag is cancelled so release does not move.
+      drag.current = null;
+      setSizeHud(true);
+    }, HOLD_MS);
   };
   const onPointerMove = (e: React.PointerEvent) => {
     const d = drag.current;
@@ -235,6 +268,7 @@ export function StatsChip({
     const dy = e.clientY - d.startY;
     if (!d.moved && Math.hypot(dx, dy) < 5) return;
     d.moved = true;
+    clearHold();
     const w = ref.current?.offsetWidth ?? 0;
     const h = ref.current?.offsetHeight ?? 0;
     const top = topChromeHeight();
@@ -244,6 +278,7 @@ export function StatsChip({
   };
   const endDrag = (e: React.PointerEvent) => {
     const d = drag.current;
+    clearHold();
     if (!d || d.pointerId !== e.pointerId) return;
     drag.current = null;
     if (!d.moved) return;
@@ -264,53 +299,106 @@ export function StatsChip({
     );
   }
 
+  const chipTop = pos.y + stackIndex * (height + 6);
   return (
-    <div
-      ref={ref}
-      className="fixed z-40 flex items-stretch rounded-full bg-white/95 backdrop-blur shadow-sm border border-gray-300 overflow-hidden font-medium select-none touch-none cursor-grab active:cursor-grabbing"
-      style={{
-        left: pos.x,
-        top: pos.y + stackIndex * (height + 6),
-        height,
-        fontSize: fontPx,
-        lineHeight: 1,
-      }}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={(e) => endDrag(e)}
-      onPointerCancel={(e) => endDrag(e)}
-      aria-label="Elevation stats — drag to move"
-    >
-      {label && (
+    <>
+      <div
+        ref={ref}
+        className="fixed z-40 flex items-stretch rounded-full bg-white/95 backdrop-blur shadow-sm border border-gray-300 overflow-hidden font-medium select-none touch-none cursor-grab active:cursor-grabbing"
+        style={{
+          left: pos.x,
+          top: chipTop,
+          height,
+          fontSize: fontPx,
+          lineHeight: 1,
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={(e) => endDrag(e)}
+        onPointerCancel={(e) => endDrag(e)}
+        aria-label="Elevation stats — press and move to place; press and hold for size"
+      >
+        {label && (
+          <div
+            className="flex items-center border-r border-gray-200 max-w-[8rem] truncate"
+            style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.label }}
+          >
+            {label}
+          </div>
+        )}
+        {/* Reading and letter in one colour, as the shipped decks set them.
+            Tabular figures in the interface face, not a monospace: a
+            monospaced 1 hangs air on both sides, which is most of what made
+            this read loose beside the deck. */}
         <div
-          className="flex items-center border-r border-gray-200 max-w-[8rem] truncate"
-          style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.label }}
+          className="flex items-center font-semibold"
+          style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.hi }}
         >
-          {label}
+          {statsPillText("H", stats.hi.value.toFixed(decimals))}
+        </div>
+        <div
+          className="flex items-center border-l border-gray-200 font-semibold"
+          style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.lo }}
+        >
+          {statsPillText("L", stats.lo.value.toFixed(decimals))}
+        </div>
+        <div
+          className="flex items-center border-l border-gray-200 font-semibold"
+          style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.delta }}
+        >
+          {statsPillText("Δ", stats.delta.toFixed(decimals))}
+        </div>
+      </div>
+      {sizeHud && (
+        <div
+          data-accessory-size-hud=""
+          className="fixed z-50 flex items-center gap-1 rounded-full border bg-white/95 px-1.5 py-1 shadow-md backdrop-blur"
+          style={{
+            left: Math.min(Math.max(8, pos.x), window.innerWidth - 180),
+            top: Math.max(8, chipTop - 48),
+          }}
+          role="group"
+          aria-label="H/L/Δ size"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              const n = Math.max(STATS_CHIP_MIN, height - 2);
+              setStatsChipSize(n, customerFileId);
+              if (customerFileId) patchCaptureSizes(customerFileId, { statsPillSize: n });
+            }}
+            disabled={height <= STATS_CHIP_MIN}
+            aria-label="Decrease H/L/Δ size"
+            className="flex h-9 w-9 items-center justify-center rounded-full border hover:bg-muted disabled:opacity-40"
+          >
+            <Minus className="h-4 w-4" />
+          </button>
+          <span className="px-1 text-[10px] font-medium text-muted-foreground select-none">
+            H/L/Δ size
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const n = Math.min(STATS_CHIP_MAX, height + 2);
+              setStatsChipSize(n, customerFileId);
+              if (customerFileId) patchCaptureSizes(customerFileId, { statsPillSize: n });
+            }}
+            disabled={height >= STATS_CHIP_MAX}
+            aria-label="Increase H/L/Δ size"
+            className="flex h-9 w-9 items-center justify-center rounded-full border hover:bg-muted disabled:opacity-40"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setSizeHud(false)}
+            aria-label="Close size"
+            className="ml-0.5 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
-      {/* Reading and letter in one colour, as the shipped decks set them.
-          Tabular figures in the interface face, not a monospace: a
-          monospaced 1 hangs air on both sides, which is most of what made
-          this read loose beside the deck. */}
-      <div
-        className="flex items-center font-semibold"
-        style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.hi }}
-      >
-        {statsPillText("H", stats.hi.value.toFixed(decimals))}
-      </div>
-      <div
-        className="flex items-center border-l border-gray-200 font-semibold"
-        style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.lo }}
-      >
-        {statsPillText("L", stats.lo.value.toFixed(decimals))}
-      </div>
-      <div
-        className="flex items-center border-l border-gray-200 font-semibold"
-        style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.delta }}
-      >
-        {statsPillText("Δ", stats.delta.toFixed(decimals))}
-      </div>
-    </div>
+    </>
   );
 }

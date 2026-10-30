@@ -51,7 +51,7 @@ export type ReportTopoWorkspaceProps = {
   /** The book's render settings, if any have been set. */
   settings?: Partial<RenderSettings> | null;
   /** Report rail: which control group is on screen. */
-  railGroup?: "contours" | "readings" | "legendhl";
+  railGroup?: "contours" | "readings" | "accessories" | "legendhl";
   /** Locked slides are shown, not steered. */
   locked?: boolean;
   /** The rail: the controls, stacked, with no canvas. */
