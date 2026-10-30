@@ -11,6 +11,8 @@ type Props = {
   onOpenExport?: () => void;
   onOpenTransitions?: () => void;
   onOpen3D?: () => void;
+  /** Topo: exclude points from contour math (session-only). Parked in ⋯ — not a corner pill. */
+  onOpenDiagnosticPoints?: () => void;
   
   undoEnabled?: boolean;
   redoEnabled?: boolean;
@@ -40,7 +42,8 @@ export function AppTopBar({
   onOpenExport,
   onOpenTransitions,
   onOpen3D,
-  
+  onOpenDiagnosticPoints,
+
   undoEnabled = true,
   redoEnabled = true,
   onSave,
@@ -225,6 +228,15 @@ export function AppTopBar({
                   }}
                 />
               )}
+              {onOpenDiagnosticPoints && (
+                <MenuItem
+                  label="Diagnostic points"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenDiagnosticPoints();
+                  }}
+                />
+              )}
               {onOpen3D && (
                 <MenuItem
                   label="3D"
@@ -243,8 +255,6 @@ export function AppTopBar({
                   }}
                 />
               )}
-
-
             </div>
           )}
         </div>

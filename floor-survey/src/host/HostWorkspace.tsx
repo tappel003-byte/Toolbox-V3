@@ -84,12 +84,17 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
   const [topoAreaId, setTopoAreaId] = useState<string | null>(null);
   /** Field Clean view — hide Data/Topo + H/L/Δ chip. Local session only. */
   const [topoCleanView, setTopoCleanView] = useState(false);
+  /** Diagnostic points panel — opened from ⋯ on Topo only. */
+  const [topoDiagOpen, setTopoDiagOpen] = useState(false);
   useEffect(() => {
     setTopoExcludedIds(new Set());
     setTopoAreaId(null);
   }, [activeFloorId]);
   useEffect(() => {
-    if (mode !== "topo") setTopoCleanView(false);
+    if (mode !== "topo") {
+      setTopoCleanView(false);
+      setTopoDiagOpen(false);
+    }
   }, [mode]);
   useEffect(() => {
     if (mode !== "topo") setTopoExcludedIds(new Set());
@@ -459,6 +464,9 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
         onOpenSetup={() => setMode("setup")}
         onOpenReview={() => setMode("review")}
         onOpenTransitions={() => setTransitionsSheetOpen(true)}
+        onOpenDiagnosticPoints={
+          mode === "topo" ? () => setTopoDiagOpen(true) : undefined
+        }
         undoEnabled={undoActive && history.canUndo}
         redoEnabled={undoActive && history.canRedo}
         onSave={handleSave}
@@ -573,6 +581,8 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
             onSelectedAreaIdChange={setTopoAreaId}
             allowContourLayer
             onCleanViewChange={setTopoCleanView}
+            diagnosticOpen={topoDiagOpen}
+            onDiagnosticOpenChange={setTopoDiagOpen}
           />
         )}
       </main>

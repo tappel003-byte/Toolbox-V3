@@ -77,6 +77,7 @@ function ProjectWorkspace() {
   const [topoAreaId, setTopoAreaId] = useState<string | null>(null);
   /** Field Clean view — hide Data/Topo + H/L/Δ chip. Local session only. */
   const [topoCleanView, setTopoCleanView] = useState(false);
+  const [topoDiagOpen, setTopoDiagOpen] = useState(false);
   useEffect(() => {
     setTopoExcludedIds(new Set());
     setTopoAreaId(null);
@@ -85,6 +86,7 @@ function ProjectWorkspace() {
     if (mode !== "topo") {
       setTopoExcludedIds(new Set());
       setTopoCleanView(false);
+      setTopoDiagOpen(false);
     }
   }, [mode]);
   const [focusRequest, setFocusRequest] = useState<
@@ -353,7 +355,9 @@ function ProjectWorkspace() {
         onOpenExport={() => setMode("export")}
         onOpenTransitions={() => setTransitionsSheetOpen(true)}
         onOpen3D={() => setThreeDOpen(true)}
-        
+        onOpenDiagnosticPoints={
+          mode === "topo" ? () => setTopoDiagOpen(true) : undefined
+        }
         undoEnabled={undoActive && history.canUndo}
         redoEnabled={undoActive && history.canRedo}
       />
@@ -460,6 +464,8 @@ function ProjectWorkspace() {
             selectedAreaId={topoAreaId}
             onSelectedAreaIdChange={setTopoAreaId}
             onCleanViewChange={setTopoCleanView}
+            diagnosticOpen={topoDiagOpen}
+            onDiagnosticOpenChange={setTopoDiagOpen}
           />
         )}
         {mode === "export" && (

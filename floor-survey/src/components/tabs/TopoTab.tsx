@@ -266,6 +266,12 @@ interface Props {
    * true. Local-only; no network. Report mounts leave this unset.
    */
   onCleanViewChange?: (clean: boolean) => void;
+  /**
+   * Session diagnostic point panel (exclude from contour math). Host opens this
+   * from ⋯; the field corner pill is gone. Uncontrolled when omitted.
+   */
+  diagnosticOpen?: boolean;
+  onDiagnosticOpenChange?: (open: boolean) => void;
 }
 
 const DEFAULT_LABEL_DX = 8;
@@ -499,6 +505,8 @@ export function TopoTab({
   chromeless = false,
   controlsOnly = false,
   onCleanViewChange,
+  diagnosticOpen: diagnosticOpenProp,
+  onDiagnosticOpenChange,
   reportGroup,
   staticView = false,
   locked = false,
@@ -784,7 +792,13 @@ export function TopoTab({
     if (onExcludedIdsChange) onExcludedIdsChange(ids);
     else setExcludedIdsLocal(ids);
   };
-  const [diagOpen, setDiagOpen] = useState(false);
+  const [diagOpenLocal, setDiagOpenLocal] = useState(false);
+  const diagControlled = typeof onDiagnosticOpenChange === "function";
+  const diagOpen = diagControlled ? !!diagnosticOpenProp : diagOpenLocal;
+  const setDiagOpen = (open: boolean) => {
+    if (diagControlled) onDiagnosticOpenChange!(open);
+    else setDiagOpenLocal(open);
+  };
   useEffect(() => {
     if (onExcludedIdsChange) onExcludedIdsChange(new Set());
     else setExcludedIdsLocal(new Set());
@@ -877,10 +891,7 @@ export function TopoTab({
   }
   function setCleanViewOn(next: boolean) {
     setCleanView(next);
-    if (next) {
-      setOpenCorner(null);
-      setDiagOpen(false);
-    }
+    if (next) setOpenCorner(null);
     onCleanViewChange?.(next);
   }
   useEffect(() => {
@@ -1266,27 +1277,8 @@ export function TopoTab({
           )}
         </div>
       )}
-      {/* Diagnostic panel toggle — Topo-only. Excludes points from contour math without touching stored data. Undecided; left in place. */}
-      {!chromeless && !cleanView && (
-      <button
-        type="button"
-        onClick={() => setDiagOpen((v) => !v)}
-        aria-label="Diagnostic points panel"
-        className={
-          "fixed z-30 h-9 min-w-9 px-2 rounded-full backdrop-blur border shadow-md flex items-center justify-center gap-1 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] right-[calc(env(safe-area-inset-right)+0.75rem)] " +
-          (diagOpen || excludedIds.size > 0
-            ? "bg-amber-100 border-amber-300 text-amber-900"
-            : "bg-white/95 border-gray-300 text-gray-700 hover:bg-gray-50")
-        }
-      >
-        <SlidersHorizontal className="h-4 w-4" />
-        {excludedIds.size > 0 && (
-          <span className="text-[10px] font-mono tabular-nums">{excludedIds.size}</span>
-        )}
-      </button>
-      )}
-
-      {diagOpen && !chromeless && !cleanView && (
+      {/* Diagnostic points — opened from ⋯ (not a field corner pill). */}
+      {diagOpen && !chromeless && (
         <TopoDiagnosticPanel
           points={points}
           excludedIds={excludedIds}
