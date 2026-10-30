@@ -20,7 +20,7 @@ import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/l
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import { Undo2, X, SlidersHorizontal, Minus, Plus, ChevronDown } from "lucide-react";
+import { Undo2, X, SlidersHorizontal, Minus, Plus, ChevronDown, Hash } from "lucide-react";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { TopoDiagnosticPanel } from "../TopoDiagnosticPanel";
@@ -840,6 +840,25 @@ export function TopoTab({
   const update = (patch: Partial<RenderSettings>) =>
     onSettingsChange(resolveSettings({ ...resolved, ...patch }));
 
+  /** Last Points/Labels state before a field “Readings” hide — restore on show. */
+  const readingsPrevRef = useRef<{ showPoints: boolean; showLabels: boolean } | null>(null);
+  const readingsOn = resolved.showPoints || resolved.showLabels;
+  function toggleReadings() {
+    if (readingsOn) {
+      readingsPrevRef.current = {
+        showPoints: resolved.showPoints,
+        showLabels: resolved.showLabels,
+      };
+      update({ showPoints: false, showLabels: false });
+    } else {
+      const prev = readingsPrevRef.current;
+      update({
+        showPoints: prev?.showPoints ?? true,
+        showLabels: prev?.showLabels ?? true,
+      });
+    }
+  }
+
   // High / Low of the focused area (used for pin hit-testing / dragging).
   const hiLo = soloTopo ? { hi: soloTopo.hi, lo: soloTopo.lo } : null;
 
@@ -1127,6 +1146,26 @@ export function TopoTab({
             </select>
           </div>
         </div>
+      )}
+      {/* Readings on/off — same pill family as Control panel; quick homeowner view. */}
+      {!chromeless && !controlsOnly && (
+        <button
+          type="button"
+          onClick={toggleReadings}
+          aria-label={readingsOn ? "Hide readings" : "Show readings"}
+          aria-pressed={readingsOn}
+          className={
+            "absolute z-30 top-2 left-2 landscape-short:top-auto landscape-short:left-[calc(env(safe-area-inset-left)+0.75rem)] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] " +
+            "h-9 px-3 flex items-center gap-1.5 rounded-full backdrop-blur shadow-md border " +
+            "text-xs font-medium " +
+            (readingsOn
+              ? "bg-white/95 border-gray-300 text-gray-700 hover:bg-gray-50"
+              : "bg-white/80 border-gray-300 text-gray-400 hover:bg-gray-50 hover:text-gray-600")
+          }
+        >
+          <Hash className="h-3.5 w-3.5 shrink-0" />
+          <span>Readings</span>
+        </button>
       )}
       {/* Control panel — labeled pill ~Data/Topo size (Tim Oct 24–25, 2026). Hidden while open. */}
       {!chromeless &&
@@ -3091,7 +3130,8 @@ export function renderTopoTop(
     const padY = 2.5 * chromeK;
 
     // Decluttering: figure out which labels can be drawn without colliding.
-    // Dots always draw. Highlighted / dragged labels win ties.
+    // Dots always draw when points are on. Labels obey showLabels (Readings pill
+    // and Control panel → Readings → Show).
     ctx.font = `${weight} ${fontPx}px sans-serif`;
     const rectFor = (p: SurveyPoint) => {
       const isLive = live && live.id === p.id;
@@ -3101,23 +3141,25 @@ export function renderTopoTop(
       return { x: p.x + dx - padX, y: p.y + dy - padY, w, h: fontPx + padY * 2 };
     };
     const visibleLabelIds = new Set<string>();
-    if (resolved.declutterLabels === false) {
-      for (const p of points) visibleLabelIds.add(p.id);
-    } else {
-      const placed: { x: number; y: number; w: number; h: number }[] = [];
-      const ordered = [...points].sort((a, b) => {
-        const pr = (p: SurveyPoint) =>
-          highlightId === p.id ? 0 : p.labelDx !== undefined || p.labelDy !== undefined ? 1 : 2;
-        return pr(a) - pr(b);
-      });
-      for (const p of ordered) {
-        const r = rectFor(p);
-        const hit = placed.some(
-          (q) => r.x < q.x + q.w && r.x + r.w > q.x && r.y < q.y + q.h && r.y + r.h > q.y,
-        );
-        if (!hit) {
-          placed.push(r);
-          visibleLabelIds.add(p.id);
+    if (resolved.showLabels) {
+      if (resolved.declutterLabels === false) {
+        for (const p of points) visibleLabelIds.add(p.id);
+      } else {
+        const placed: { x: number; y: number; w: number; h: number }[] = [];
+        const ordered = [...points].sort((a, b) => {
+          const pr = (p: SurveyPoint) =>
+            highlightId === p.id ? 0 : p.labelDx !== undefined || p.labelDy !== undefined ? 1 : 2;
+          return pr(a) - pr(b);
+        });
+        for (const p of ordered) {
+          const r = rectFor(p);
+          const hit = placed.some(
+            (q) => r.x < q.x + q.w && r.x + r.w > q.x && r.y < q.y + q.h && r.y + r.h > q.y,
+          );
+          if (!hit) {
+            placed.push(r);
+            visibleLabelIds.add(p.id);
+          }
         }
       }
     }
@@ -3137,7 +3179,7 @@ export function renderTopoTop(
       }
 
       // label
-      if (!visibleLabelIds.has(p.id)) continue;
+      if (!resolved.showLabels || !visibleLabelIds.has(p.id)) continue;
       const text = p.value.toFixed(resolved.decimalPlaces);
       ctx.font = `${weight} ${fontPx}px sans-serif`;
       ctx.textAlign = "center";
