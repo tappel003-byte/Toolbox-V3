@@ -477,9 +477,9 @@ export function TopoTab({
   resizeCorners = false,
   allowContourLayer = false,
 }: Props) {
-  // Field Control panel: Contours / Readings / Accessories, each with folder
-  // subtabs. Report Builder keeps its own rail (controlsOnly). Diagnostic
-  // corner is unchanged.
+  // Field Control panel: Contours | Readings. Legend lives under Contours →
+  // Display; H/L/Δ and High/Low live under Readings → Accessories (they come
+  // from the readings). Report Builder keeps its own rail (controlsOnly).
   const [openCorner, setOpenCorner] = useState<TrialDoorKey | null>(null);
   /** Last parent tab, so Close then the pill returns to the same group. */
   const [lastTrialDoor, setLastTrialDoor] = useState<TrialDoorKey | null>(null);
@@ -489,7 +489,6 @@ export function TopoTab({
   >({
     contours: "display",
     readings: "show",
-    accessories: "legend",
   });
   const openTrialDoor = useCallback((key: TrialDoorKey) => {
     setLastTrialDoor(key);
@@ -1539,6 +1538,30 @@ export function TopoTab({
                           )}
                         </div>
                       )}
+                      <div className="border-t pt-2 space-y-2">
+                        <p className="text-[10px] text-muted-foreground">
+                          Color scale on the plan. Press and move to place. Press and
+                          hold for size −/+.
+                        </p>
+                        <SwitchRow
+                          label="Legend"
+                          checked={resolved.showLegend}
+                          onChange={(v) => update({ showLegend: v })}
+                        />
+                        <StepperControl
+                          label="Legend size"
+                          value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+                          min={0.4}
+                          max={4}
+                          step={0.1}
+                          unitless
+                          onChange={(v) =>
+                            update({
+                              legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)),
+                            })
+                          }
+                        />
+                      </div>
                     </>
                   ),
                 },
@@ -1760,61 +1783,14 @@ export function TopoTab({
                     </div>
                   ),
                 },
-              ]}
-            />
-          </TrialPanel>
-        )}
-
-        {(openCorner === "accessories" && !controlsOnly) && (
-          <TrialPanel
-            title="Accessories"
-            tabs="accessories"
-            onTab={openTrialDoor}
-            onClose={() => setOpenCorner(null)}
-          >
-            <TrialSectionTabs
-              label="Accessories"
-              openId={trialSectionByDoor.accessories ?? "legend"}
-              onChange={(id) => setTrialSection("accessories", id)}
-              items={[
                 {
-                  id: "legend",
-                  title: "Legend",
+                  id: "accessories",
+                  title: "Accessories",
                   body: (
-                    <>
+                    <div className="space-y-3">
                       <p className="text-[10px] text-muted-foreground">
-                        Color scale on the plan. Press and move to place. Press and
-                        hold for size −/+.
-                      </p>
-                      <SwitchRow
-                        label="Legend"
-                        checked={resolved.showLegend}
-                        onChange={(v) => update({ showLegend: v })}
-                      />
-                      <StepperControl
-                        label="Legend size"
-                        value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
-                        min={0.4}
-                        max={4}
-                        step={0.1}
-                        unitless
-                        onChange={(v) =>
-                          update({
-                            legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)),
-                          })
-                        }
-                      />
-                    </>
-                  ),
-                },
-                {
-                  id: "hld",
-                  title: "H/L/Δ",
-                  body: (
-                    <>
-                      <p className="text-[10px] text-muted-foreground">
-                        Summary pill. Press and move to place. Press and hold for
-                        size −/+.
+                        Summary pill and High/Low markers come from these readings.
+                        Press and move to place. Press and hold for size −/+.
                       </p>
                       <StepperControl
                         label="H/L/Δ size"
@@ -1825,37 +1801,27 @@ export function TopoTab({
                         unitless
                         onChange={(v) => commitStatsPillSize(v)}
                       />
-                    </>
-                  ),
-                },
-                {
-                  id: "highlow",
-                  title: "High/Low",
-                  body: (
-                    <>
-                      <p className="text-[10px] text-muted-foreground">
-                        High and Low markers. Press and move to place. Press and
-                        hold for size −/+.
-                      </p>
-                      <SwitchRow
-                        label="High / low"
-                        checked={resolved.showHighLow}
-                        onChange={(v) => update({ showHighLow: v })}
-                      />
-                      <StepperControl
-                        label="High/Low size"
-                        value={resolved.highLowPinSize}
-                        min={7}
-                        max={28}
-                        step={1}
-                        unitless
-                        onChange={(v) =>
-                          update({
-                            highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
-                          })
-                        }
-                      />
-                    </>
+                      <div className="border-t pt-2 space-y-2">
+                        <SwitchRow
+                          label="High / low"
+                          checked={resolved.showHighLow}
+                          onChange={(v) => update({ showHighLow: v })}
+                        />
+                        <StepperControl
+                          label="High/Low size"
+                          value={resolved.highLowPinSize}
+                          min={7}
+                          max={28}
+                          step={1}
+                          unitless
+                          onChange={(v) =>
+                            update({
+                              highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
                   ),
                 },
               ]}
@@ -2267,7 +2233,6 @@ export function TopoTab({
 const TRIAL_DOORS = [
   { key: "contours", name: "Contours" },
   { key: "readings", name: "Readings" },
-  { key: "accessories", name: "Accessories" },
 ] as const;
 
 type TrialDoorKey = (typeof TRIAL_DOORS)[number]["key"];

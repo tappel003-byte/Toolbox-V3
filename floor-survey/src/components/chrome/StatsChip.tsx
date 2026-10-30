@@ -105,7 +105,7 @@ function topChromeHeight() {
  *   the high low pills it highlights the high or the low on the top -- I don't
  *   think I want that." The pill is a readout and a thing to drag out of the
  *   way, not a control.
- * - Size is the one set in Control panel → Accessories → H/L/Δ, kept per
+ * - Size is the one set in Control panel → Readings → Accessories, kept per
  *   Customer File on this device; plan pills use the same size. Press-and-hold
  *   also opens unitless −/+ next to this chip.
  * - Position persists per storageKey and clamps to viewport on resize/rotate.
