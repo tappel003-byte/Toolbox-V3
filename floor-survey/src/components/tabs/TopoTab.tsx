@@ -362,6 +362,29 @@ export const DEFAULT_STATS_PILL_SIZE = 28;
 
 /** Pill height in IMAGE coords for a given base (screen px) and zoom. */
 /**
+ * Reading label font in image coordinates.
+ *
+ * Capture: fixed in image space so labels zoom with the plan (quieter fit
+ * overview; pinch-in grows them). Sized from the fit scale so a phone fit
+ * lands near ~72% of the old screen-anchored CSS size — a realistic drop that
+ * stays readable; Point label size −/+ still scales it. Report slides keep
+ * plan-proportional sizing. Legend / H/L/Δ / High/Low keep chromeSizeImg.
+ */
+const LABEL_FIT_FACTOR = 0.72;
+function pointLabelFontImg(
+  fontBase: number,
+  floor: Floor,
+  opts?: { presentation?: boolean; fitScale?: number },
+) {
+  const base = Math.max(1, fontBase);
+  if (opts?.presentation) {
+    return planProportionalSize(base, planLongSide(floor.planWidth, floor.planHeight));
+  }
+  const fit = opts?.fitScale && opts.fitScale > 0 ? opts.fitScale : 1;
+  return (base * LABEL_FIT_FACTOR) / fit;
+}
+
+/**
  * The H / L / delta pill's drawn height, in image coordinates.
  *
  * Two modes, because the two surfaces genuinely want different things.
@@ -623,6 +646,8 @@ export function TopoTab({
   }, [floor.id]);
   // Current canvas zoom — labels are drawn at a screen-constant size.
   const [viewScale, setViewScale] = useState(1);
+  /** Scale at which the plan fits the viewport — anchors plan-scaled labels. */
+  const [fitScale, setFitScale] = useState(1);
   // The plan's zoom against fit. Reported by the canvas with every camera
   // change; the legend uses it to hold one size on a page.
   const [planZoom, setPlanZoom] = useState(1);
@@ -874,7 +899,10 @@ export function TopoTab({
     if (resolved.showPoints) {
       const fontBase = resolved.pointLabelFontSize;
       // Must match the drawn size exactly, or a tap lands beside the label.
-      const fontPx = chromeSizeImg(fontBase, viewScale || 1, presentation, floor);
+      const fontPx = pointLabelFontImg(fontBase, floor, {
+        presentation,
+        fitScale,
+      });
       const k = fontPx / fontBase;
       const dec = resolved.decimalPlaces;
       const weight = resolved.pointLabelWeight;
@@ -1195,7 +1223,12 @@ export function TopoTab({
           // sheet -- it shows the same view in the new frame rather than
           // keeping pixels measured against the old one.
           reframeOnResize={presentation}
-          onTransform={(t) => setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s))}
+          onTransform={(t, meta) => {
+            setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s));
+            if (meta?.fitScale > 0) {
+              setFitScale((s) => (Math.abs(s - meta.fitScale) > 1e-4 ? meta.fitScale : s));
+            }
+          }}
           onImagePointerDown={(x, y, event) => {
             sizeHoldClient.current = { x: event.clientX, y: event.clientY };
             setSizeHud(null);
@@ -1418,6 +1451,7 @@ export function TopoTab({
               pointSize,
               pointColor,
               viewScale,
+              fitScale,
             });
           }}
         />
@@ -3018,6 +3052,8 @@ export function renderTopoTop(
     pointSize?: number;
     pointColor?: string;
     viewScale?: number;
+    /** Fit-to-viewport scale — capture reading labels are sized from this. */
+    fitScale?: number;
   },
 ) {
   const resolved = resolveSettings(settings);
@@ -3028,22 +3064,16 @@ export function renderTopoTop(
   const highlightPin = overlay?.highlightPin ?? null;
   const liveLegend = overlay?.liveLegend ?? null;
   const viewScale = overlay?.viewScale || 1;
-  // Label font. In capture, the chosen screen px holds when the plan is
-  // fit-scaled out and grows gently when zoomed in -- proven, and right for a
-  // device in your hand.
-  //
-  // On a page it is a fixed fraction of the plan instead, because a picture's
-  // chrome scales with the picture. Screen-anchored, a reading label kept its
-  // size on the sheet while the plan shrank around it: putting the same level
-  // on a sheet twice halved each plan and left the readings at full size, so
-  // the labels swamped the drawing. At the default fit the two formulas land
-  // within a few percent of each other, so nothing moves until the plan is
-  // resized -- which is the case being fixed. Same reasoning, and the same
-  // helper, as the H/L/delta pill and the High and Low markers.
+  const fitScale = overlay?.fitScale || viewScale || 1;
+  // Reading labels: plan-scaled in capture (zoom with the drawing); report
+  // stays plan-proportional. −/+ sets the size. Other chrome keeps chromeSizeImg.
   const fontBase = resolved.pointLabelFontSize;
-  const fontPx = chromeSizeImg(fontBase, viewScale, !!overlay?.presentation, floor);
-  // k keeps default label offsets screen-anchored under zoom. Label box chrome
-  // (pad / radius / stroke) uses labelChromeK so it tracks the font setting.
+  const fontPx = pointLabelFontImg(fontBase, floor, {
+    presentation: !!overlay?.presentation,
+    fitScale,
+  });
+  // k scales default label offsets with the drawn font. Label box chrome
+  // (pad / radius / stroke) tracks drawn fontPx.
   const k = fontPx / fontBase;
   const chromeK = labelChromeK(fontPx);
   const weight = resolved.pointLabelWeight;

@@ -18,10 +18,17 @@ import { drawExclusionShape, zoneOfXY } from "@/lib/exclusions";
 import type { FloorSnapshot } from "@/lib/useFloorHistory";
 import { screenAnchoredImageSize } from "@/lib/screen-size";
 
-/** Same design-font reference as TopoTab — pad must track font, not only zoom. */
+/** Same design-font reference as TopoTab — pad must track font size. */
 const LABEL_CHROME_REF_PX = defaultRenderSettings.pointLabelFontSize;
 function labelChromeK(fontPx: number) {
   return fontPx / LABEL_CHROME_REF_PX;
+}
+
+/** Capture reading labels: fixed in image space from fit scale (zoom with plan). */
+const LABEL_FIT_FACTOR = 0.72;
+function pointLabelFontImg(fontBase: number, fitScale: number) {
+  const fit = fitScale > 0 ? fitScale : 1;
+  return (Math.max(1, fontBase) * LABEL_FIT_FACTOR) / fit;
 }
 
 
@@ -96,6 +103,7 @@ export function FieldTab({
 }: Props) {
   void projectId;
   const scaleRef = useRef(1);
+  const fitScaleRef = useRef(1);
   const [transform, setTransform] = useState<CanvasTransform>({ scale: 1, tx: 0, ty: 0 });
   const [pending, setPending] = useState<{ x: number; y: number } | null>(null);
   const [bpPromptOpen, setBpPromptOpen] = useState(false);
@@ -445,7 +453,7 @@ export function FieldTab({
       if (Math.hypot(p.x - x, p.y - y) < dotHit) return { point: p, on: "dot" };
     }
     const fontBase = labelFontSize;
-    const fontPx = screenAnchoredImageSize(fontBase, s);
+    const fontPx = pointLabelFontImg(fontBase, fitScaleRef.current || s);
     const k = fontPx / fontBase;
     const chromeK = labelChromeK(fontPx);
     const pad = 4 * chromeK;
@@ -733,8 +741,9 @@ export function FieldTab({
             : focusRequest
         }
         onTap={handleTap}
-        onTransform={(t) => {
+        onTransform={(t, meta) => {
           scaleRef.current = t.scale;
+          if (meta?.fitScale > 0) fitScaleRef.current = meta.fitScale;
           setTransform(t);
         }}
         onImagePointerDown={(x, y, event) => {
@@ -1033,7 +1042,7 @@ export function FieldTab({
           // and a decluttering pass hides labels that would collide. Dots always draw.
           const s = scaleRef.current || 1;
           const fontBase = labelFontSize;
-          const lblFontPx = screenAnchoredImageSize(fontBase, s);
+          const lblFontPx = pointLabelFontImg(fontBase, fitScaleRef.current || s);
           const k = lblFontPx / fontBase;
           const chromeK = labelChromeK(lblFontPx);
           const lblPadX = 3 * chromeK;
