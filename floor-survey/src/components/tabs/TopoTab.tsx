@@ -541,8 +541,9 @@ export function TopoTab({
     "legend" | "hld" | "highlow"
   >("legend");
   /**
-   * Hold-to-size HUD for Legend / H/L/Δ / High/Low. Additive to the panel;
-   * reading labels never open this.
+   * Tap-to-size HUD for Legend / H/L/Δ / High/Low. Blue −/+ sits way above
+   * the accessory so it does not fight press-and-move. Reading labels never
+   * open this (they use the Readings | − | + pill).
    */
   const [sizeHud, setSizeHud] = useState<null | {
     kind: "legend" | "pill" | "pin";
@@ -729,8 +730,8 @@ export function TopoTab({
 
 
   // Live drag. Labels: long-press then move (unchanged). Accessories
-  // (Legend / H/L/Δ pill / High/Low): press-and-move to move; press-and-hold
-  // opens unitless size −/+. Reading labels never use the size hold.
+  // (Legend / H/L/Δ pill / High/Low): press-and-move to move; tap opens the
+  // blue size −/+ way above the piece. Reading labels never use this HUD.
   type DragKind = "label" | "pin-high" | "pin-low" | "pill";
   const [drag, setDrag] = useState<{
     kind: DragKind;
@@ -744,12 +745,11 @@ export function TopoTab({
     startDx: number;
     startDy: number;
     active: boolean; // true after long-press (labels) or move threshold (accessories)
-    /** Accessory: hold-still opens size HUD instead of arming a move. */
-    sizeHold?: boolean;
+    /** Accessory (not a reading label): move on drag, size on tap. */
+    accessory?: boolean;
   } | null>(null);
   const longPressTimer = useRef<number | null>(null);
-  const sizeHoldClient = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  // Drop hold timer if Topo unmounts mid-press.
+  // Drop label long-press timer if Topo unmounts mid-press.
   useEffect(() => {
     return () => {
       if (longPressTimer.current !== null) {
@@ -1350,9 +1350,7 @@ export function TopoTab({
             }
           }}
           onImagePointerDown={(x, y, event) => {
-            sizeHoldClient.current = { x: event.clientX, y: event.clientY };
-            setSizeHud(null);
-            // Legend: press-and-move to place; press-and-hold opens size −/+.
+            // Legend: press-and-move to place; tap opens blue size −/+ above it.
             // Every visible contour surface gets its own legend next to that
             // boundary — All boundaries, Main Floor alone, or Lower Bedroom alone.
             if (resolved.showLegend && !chromeOnPage && areaTopos.length > 0 &&
@@ -1379,19 +1377,11 @@ export function TopoTab({
                     active: false,
                   });
                   clearLongPress();
-                  longPressTimer.current = window.setTimeout(() => {
-                    setLegendDrag(null);
-                    setSizeHud({
-                      kind: "legend",
-                      clientX: sizeHoldClient.current.x,
-                      clientY: sizeHoldClient.current.y,
-                    });
-                  }, LONG_PRESS_MS);
                   return true;
                 }
               }
             }
-            // Accessories (pill / High/Low): press-and-move to move; hold for
+            // Accessories (pill / High/Low): press-and-move to move; tap for
             // size. Point labels keep long-press-to-arm so a casual pan does
             // not pick one up (and so pinch can cancel before the move arms).
             const hit = hitDraggable(x, y);
@@ -1400,7 +1390,7 @@ export function TopoTab({
                 hit.kind === "label" ? (hit.point.labelDx ?? DEFAULT_LABEL_DX) : hit.dx;
               const startDy =
                 hit.kind === "label" ? (hit.point.labelDy ?? DEFAULT_LABEL_DY) : hit.dy;
-              const sizeHold = hit.kind !== "label";
+              const accessory = hit.kind !== "label";
               setDrag({
                 kind: hit.kind,
                 id:
@@ -1418,19 +1408,10 @@ export function TopoTab({
                 startDx,
                 startDy,
                 active: false,
-                sizeHold,
+                accessory,
               });
               clearLongPress();
-              if (sizeHold) {
-                longPressTimer.current = window.setTimeout(() => {
-                  setDrag(null);
-                  setSizeHud({
-                    kind: hit.kind === "pill" ? "pill" : "pin",
-                    clientX: sizeHoldClient.current.x,
-                    clientY: sizeHoldClient.current.y,
-                  });
-                }, LONG_PRESS_MS);
-              } else {
+              if (!accessory) {
                 longPressTimer.current = window.setTimeout(() => {
                   setDrag((d) => (d ? { ...d, active: true } : d));
                 }, LONG_PRESS_MS);
@@ -1440,7 +1421,6 @@ export function TopoTab({
             return false;
           }}
           onImagePointerMove={(x, y, event) => {
-            sizeHoldClient.current = { x: event.clientX, y: event.clientY };
             if (legendDrag?.areaId) {
               if (!legendDrag.active) {
                 // Screen pixels: same finger travel at any canvas zoom.
@@ -1449,7 +1429,7 @@ export function TopoTab({
                   event.clientY - legendDrag.startClientY,
                 );
                 if (moved > ACCESSORY_MOVE_PX) {
-                  clearLongPress();
+                  setSizeHud(null);
                   setLegendDrag({ ...legendDrag, active: true });
                 }
                 return;
@@ -1467,14 +1447,14 @@ export function TopoTab({
             }
             if (drag) {
               if (!drag.active) {
-                if (drag.sizeHold) {
+                if (drag.accessory) {
                   const moved = Math.hypot(
                     event.clientX - drag.startClientX,
                     event.clientY - drag.startClientY,
                   );
                   if (moved > ACCESSORY_MOVE_PX) {
-                    clearLongPress();
-                    // Accessory: movement wins — drag instead of size.
+                    // Accessory: movement wins — drag; size stays out of the way.
+                    setSizeHud(null);
                     setDrag({ ...drag, active: true });
                   }
                 } else {
@@ -1498,13 +1478,21 @@ export function TopoTab({
             }
           }}
           onImagePointerUp={() => {
-            if (
-              legendDrag?.areaId != null &&
-              legendDrag.active &&
-              legendDrag.legendDx != null &&
-              legendDrag.legendDy != null
-            ) {
-              applyLegendOffset(legendDrag.areaId, legendDrag.legendDx, legendDrag.legendDy);
+            if (legendDrag?.areaId != null) {
+              if (
+                legendDrag.active &&
+                legendDrag.legendDx != null &&
+                legendDrag.legendDy != null
+              ) {
+                applyLegendOffset(legendDrag.areaId, legendDrag.legendDx, legendDrag.legendDy);
+              } else if (!legendDrag.active) {
+                // Tap legend → blue size −/+ way above (not under the thumb).
+                setSizeHud({
+                  kind: "legend",
+                  clientX: legendDrag.startClientX,
+                  clientY: legendDrag.startClientY,
+                });
+              }
             }
             setLegendDrag(null);
             clearLongPress();
@@ -1514,12 +1502,14 @@ export function TopoTab({
                 if (drag.kind === "label") commitLabelMove(drag.id, drag.dx, drag.dy);
                 else if (drag.kind === "pill") commitPillMove(drag.id, drag.dx, drag.dy);
                 else commitPinMove(drag.kind, drag.dx, drag.dy);
+              } else if (drag.accessory && !drag.active) {
+                // Tap accessory → size. Move is press-and-drag only.
+                setSizeHud({
+                  kind: drag.kind === "pill" ? "pill" : "pin",
+                  clientX: drag.startClientX,
+                  clientY: drag.startClientY,
+                });
               }
-              // A tap on the pill does nothing. It used to highlight the High
-              // or the Low point whose reading was under the finger. Tim: "if
-              // you click the numbers on the high low pills it highlights the
-              // high or the low on the top -- I don't think I want that." The
-              // pill is a readout and a thing to drag, not a control.
             }
             setDrag(null);
           }}
@@ -1694,8 +1684,8 @@ export function TopoTab({
                       )}
                       <div className="border-t pt-2 space-y-2">
                         <p className="text-[10px] text-muted-foreground">
-                          Color scale on the plan. Press and move to place. Press and
-                          hold for size −/+.
+                          Color scale on the plan. Press and move to place. Tap for
+                          size −/+.
                         </p>
                         <SwitchRow
                           label="Legend"
@@ -1944,7 +1934,7 @@ export function TopoTab({
                     <div className="space-y-3">
                       <p className="text-[10px] text-muted-foreground">
                         Summary pill and High/Low markers come from these readings.
-                        Press and move to place. Press and hold for size −/+.
+                        Press and move to place. Tap for size −/+.
                       </p>
                       <StepperControl
                         label="H/L/Δ size"
@@ -2810,10 +2800,13 @@ function NumberControl({
 }
 
 /**
- * Hold-to-size −/+ for Legend / H/L/Δ / High/Low. Sits near the press so the
- * investigator does not have to open the panel; the panel still has the same
- * steppers.
+ * Tap-to-size −/+ for Legend / H/L/Δ / High/Low.
+ * Blue pill, way above the accessory so move stays unobstructed. Panel
+ * steppers remain as the same sizes.
  */
+/** Screen gap above the tapped accessory — clear of the drag target. */
+const ACCESSORY_SIZE_HUD_ABOVE_PX = 112;
+
 function AccessorySizeHud({
   kind,
   clientX,
@@ -2843,12 +2836,14 @@ function AccessorySizeHud({
   const min = kind === "legend" ? 0.4 : kind === "pill" ? STATS_CHIP_MIN : 7;
   const max = kind === "legend" ? 4 : kind === "pill" ? STATS_CHIP_MAX : 28;
   const step = kind === "legend" ? 0.1 : kind === "pill" ? 2 : 1;
-  const left = Math.min(Math.max(8, clientX - 72), (typeof window !== "undefined" ? window.innerWidth : 360) - 160);
-  const top = Math.min(Math.max(8, clientY - 56), (typeof window !== "undefined" ? window.innerHeight : 640) - 72);
+  const vw = typeof window !== "undefined" ? window.innerWidth : 360;
+  const left = Math.min(Math.max(8, clientX - 72), vw - 168);
+  // Way above the accessory (not near the finger on the piece).
+  const top = Math.max(8, clientY - ACCESSORY_SIZE_HUD_ABOVE_PX);
   return (
     <div
       data-accessory-size-hud=""
-      className="fixed z-50 flex items-center gap-1 rounded-full border bg-white/95 px-1.5 py-1 shadow-md backdrop-blur"
+      className="fixed z-50 flex items-center gap-0.5 rounded-full border border-sky-700 bg-sky-600 px-1.5 py-1 text-white shadow-lg"
       style={{ left, top }}
       role="group"
       aria-label={label}
@@ -2866,11 +2861,11 @@ function AccessorySizeHud({
         }}
         disabled={value <= min}
         aria-label={`Decrease ${label}`}
-        className="flex h-9 w-9 items-center justify-center rounded-full border hover:bg-muted disabled:opacity-40"
+        className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/80 hover:bg-sky-500 disabled:opacity-40"
       >
         <Minus className="h-4 w-4" />
       </button>
-      <span className="px-1 text-[10px] font-medium text-muted-foreground select-none">{label}</span>
+      <span className="px-1.5 text-[10px] font-semibold select-none whitespace-nowrap">{label}</span>
       <button
         type="button"
         onClick={() => {
@@ -2884,7 +2879,7 @@ function AccessorySizeHud({
         }}
         disabled={value >= max}
         aria-label={`Increase ${label}`}
-        className="flex h-9 w-9 items-center justify-center rounded-full border hover:bg-muted disabled:opacity-40"
+        className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/80 hover:bg-sky-500 disabled:opacity-40"
       >
         <Plus className="h-4 w-4" />
       </button>
@@ -2892,7 +2887,7 @@ function AccessorySizeHud({
         type="button"
         onClick={onClose}
         aria-label="Close size"
-        className="ml-0.5 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+        className="ml-0.5 flex h-8 w-8 items-center justify-center rounded-full text-sky-100 hover:bg-sky-500"
       >
         <X className="h-3.5 w-3.5" />
       </button>

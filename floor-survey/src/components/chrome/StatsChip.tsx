@@ -106,8 +106,8 @@ function topChromeHeight() {
  *   think I want that." The pill is a readout and a thing to drag out of the
  *   way, not a control.
  * - Size is the one set in Control panel → Readings → Accessories, kept per
- *   Customer File on this device; plan pills use the same size. Press-and-hold
- *   also opens unitless −/+ next to this chip.
+ *   Customer File on this device; plan pills use the same size. Tap opens a
+ *   blue −/+ way above this chip (press-and-move still only moves).
  * - Position persists per storageKey and clamps to viewport on resize/rotate.
  */
 export function StatsChip({
@@ -210,18 +210,9 @@ export function StatsChip({
     };
   }, []);
 
-  const HOLD_MS = 350;
+  /** Way above the chip so −/+ does not sit on the drag target. */
+  const SIZE_HUD_ABOVE_PX = 112;
   const [sizeHud, setSizeHud] = useState(false);
-  const holdTimer = useRef<number | null>(null);
-  const clearHold = () => {
-    if (holdTimer.current !== null) {
-      window.clearTimeout(holdTimer.current);
-      holdTimer.current = null;
-    }
-  };
-  useEffect(() => {
-    return () => clearHold();
-  }, []);
   // Outside press dismisses; −/+ on the HUD stay usable.
   useEffect(() => {
     if (!sizeHud) return;
@@ -245,7 +236,6 @@ export function StatsChip({
   const onPointerDown = (e: React.PointerEvent) => {
     if (!pos) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
-    setSizeHud(false);
     drag.current = {
       startX: e.clientX,
       startY: e.clientY,
@@ -254,12 +244,6 @@ export function StatsChip({
       pointerId: e.pointerId,
       moved: false,
     };
-    clearHold();
-    holdTimer.current = window.setTimeout(() => {
-      // Hold still → size −/+. Drag is cancelled so release does not move.
-      drag.current = null;
-      setSizeHud(true);
-    }, HOLD_MS);
   };
   const onPointerMove = (e: React.PointerEvent) => {
     const d = drag.current;
@@ -268,7 +252,7 @@ export function StatsChip({
     const dy = e.clientY - d.startY;
     if (!d.moved && Math.hypot(dx, dy) < 5) return;
     d.moved = true;
-    clearHold();
+    setSizeHud(false);
     const w = ref.current?.offsetWidth ?? 0;
     const h = ref.current?.offsetHeight ?? 0;
     const top = topChromeHeight();
@@ -278,10 +262,13 @@ export function StatsChip({
   };
   const endDrag = (e: React.PointerEvent) => {
     const d = drag.current;
-    clearHold();
     if (!d || d.pointerId !== e.pointerId) return;
     drag.current = null;
-    if (!d.moved) return;
+    if (!d.moved) {
+      // Tap → blue size −/+ way above. Move is press-and-drag only.
+      setSizeHud(true);
+      return;
+    }
     try {
       localStorage.setItem(storageKey, JSON.stringify(pos));
     } catch {
@@ -316,7 +303,7 @@ export function StatsChip({
         onPointerMove={onPointerMove}
         onPointerUp={(e) => endDrag(e)}
         onPointerCancel={(e) => endDrag(e)}
-        aria-label="Elevation stats — press and move to place; press and hold for size"
+        aria-label="Elevation stats — press and move to place; tap for size"
       >
         {label && (
           <div
@@ -352,10 +339,10 @@ export function StatsChip({
       {sizeHud && (
         <div
           data-accessory-size-hud=""
-          className="fixed z-50 flex items-center gap-1 rounded-full border bg-white/95 px-1.5 py-1 shadow-md backdrop-blur"
+          className="fixed z-50 flex items-center gap-0.5 rounded-full border border-sky-700 bg-sky-600 px-1.5 py-1 text-white shadow-lg"
           style={{
             left: Math.min(Math.max(8, pos.x), window.innerWidth - 180),
-            top: Math.max(8, chipTop - 48),
+            top: Math.max(8, chipTop - SIZE_HUD_ABOVE_PX),
           }}
           role="group"
           aria-label="H/L/Δ size"
@@ -369,11 +356,11 @@ export function StatsChip({
             }}
             disabled={height <= STATS_CHIP_MIN}
             aria-label="Decrease H/L/Δ size"
-            className="flex h-9 w-9 items-center justify-center rounded-full border hover:bg-muted disabled:opacity-40"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/80 hover:bg-sky-500 disabled:opacity-40"
           >
             <Minus className="h-4 w-4" />
           </button>
-          <span className="px-1 text-[10px] font-medium text-muted-foreground select-none">
+          <span className="px-1.5 text-[10px] font-semibold select-none whitespace-nowrap">
             H/L/Δ size
           </span>
           <button
@@ -385,7 +372,7 @@ export function StatsChip({
             }}
             disabled={height >= STATS_CHIP_MAX}
             aria-label="Increase H/L/Δ size"
-            className="flex h-9 w-9 items-center justify-center rounded-full border hover:bg-muted disabled:opacity-40"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/80 hover:bg-sky-500 disabled:opacity-40"
           >
             <Plus className="h-4 w-4" />
           </button>
@@ -393,7 +380,7 @@ export function StatsChip({
             type="button"
             onClick={() => setSizeHud(false)}
             aria-label="Close size"
-            className="ml-0.5 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+            className="ml-0.5 flex h-8 w-8 items-center justify-center rounded-full text-sky-100 hover:bg-sky-500"
           >
             <X className="h-3.5 w-3.5" />
           </button>
