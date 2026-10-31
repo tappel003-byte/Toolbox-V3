@@ -1674,24 +1674,26 @@ export function TopoTab({
                           Color scale on the plan. Press and move to place. Tap for
                           size −/+.
                         </p>
-                        <SwitchRow
-                          label="Legend"
-                          checked={resolved.showLegend}
-                          onChange={(v) => update({ showLegend: v })}
-                        />
-                        <StepperControl
-                          label="Legend size"
-                          value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
-                          min={0.4}
-                          max={4}
-                          step={0.1}
-                          unitless
-                          onChange={(v) =>
-                            update({
-                              legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)),
-                            })
-                          }
-                        />
+                        <div className="flex flex-wrap items-end justify-between gap-2">
+                          <SwitchRow
+                            label="Legend"
+                            checked={resolved.showLegend}
+                            onChange={(v) => update({ showLegend: v })}
+                          />
+                          <StepperControl
+                            label="Legend size"
+                            value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+                            min={0.4}
+                            max={4}
+                            step={0.1}
+                            unitless
+                            onChange={(v) =>
+                              update({
+                                legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)),
+                              })
+                            }
+                          />
+                        </div>
                       </div>
                     </>
                   ),
@@ -1923,20 +1925,15 @@ export function TopoTab({
                         Summary pill and High/Low markers come from these readings.
                         Press and move to place. Tap for size −/+.
                       </p>
-                      <StepperControl
-                        label="H/L/Δ size"
-                        value={statsChipSize}
-                        min={STATS_CHIP_MIN}
-                        max={STATS_CHIP_MAX}
-                        step={2}
-                        unitless
-                        onChange={(v) => commitStatsPillSize(v)}
-                      />
-                      <div className="border-t pt-2 space-y-2">
-                        <SwitchRow
-                          label="High / low"
-                          checked={resolved.showHighLow}
-                          onChange={(v) => update({ showHighLow: v })}
+                      <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+                        <StepperControl
+                          label="H/L/Δ size"
+                          value={statsChipSize}
+                          min={STATS_CHIP_MIN}
+                          max={STATS_CHIP_MAX}
+                          step={2}
+                          unitless
+                          onChange={(v) => commitStatsPillSize(v)}
                         />
                         <StepperControl
                           label="High/Low size"
@@ -1952,6 +1949,11 @@ export function TopoTab({
                           }
                         />
                       </div>
+                      <SwitchRow
+                        label="High / low"
+                        checked={resolved.showHighLow}
+                        onChange={(v) => update({ showHighLow: v })}
+                      />
                     </div>
                   ),
                 },
@@ -2285,23 +2287,21 @@ export function TopoTab({
                             </div>
                           )}
                           {reportAccessoryTab === "hld" && (
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="flex flex-wrap items-end justify-between gap-2">
                               <SwitchRow
                                 label="H/L/Δ pill"
                                 checked={resolved.showStatsPill !== false}
                                 onChange={(v) => update({ showStatsPill: v })}
                               />
-                              <div className="col-span-2">
-                                <StepperControl
-                                  label="H/L/Δ size"
-                                  value={statsChipSize}
-                                  min={STATS_CHIP_MIN}
-                                  max={STATS_CHIP_MAX}
-                                  step={2}
-                                  unitless
-                                  onChange={(v) => commitStatsPillSize(v)}
-                                />
-                              </div>
+                              <StepperControl
+                                label="H/L/Δ size"
+                                value={statsChipSize}
+                                min={STATS_CHIP_MIN}
+                                max={STATS_CHIP_MAX}
+                                step={2}
+                                unitless
+                                onChange={(v) => commitStatsPillSize(v)}
+                              />
                             </div>
                           )}
                           {reportAccessoryTab === "highlow" && (
@@ -2898,11 +2898,45 @@ function StepperControl({
   max: number;
   step?: number;
   format?: (v: number) => string;
-  /** Accessory sizes: −/+ only — no px / × in the face. */
+  /** Accessory sizes: compact −|+ only — no empty middle face. */
   unitless?: boolean;
   onChange: (v: number) => void;
 }) {
   const display = unitless ? "" : format ? format(value) : `${value}px`;
+  // Unitless size: a tight −|+ pill like the field Readings control — the old
+  // full-width "− / +" middle was empty chrome once px left the face.
+  if (unitless) {
+    return (
+      <div>
+        <Label className="text-xs">{label}</Label>
+        <div
+          className="mt-1 inline-flex h-9 items-stretch overflow-hidden rounded-full border border-input bg-background"
+          role="group"
+          aria-label={label}
+        >
+          <button
+            type="button"
+            onClick={() => onChange(Math.max(min, roundStepper(value - step, step)))}
+            disabled={value <= min}
+            aria-label={`Decrease ${label}`}
+            className="flex w-9 items-center justify-center hover:bg-muted disabled:opacity-40"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <span className="w-px self-stretch bg-border" aria-hidden />
+          <button
+            type="button"
+            onClick={() => onChange(Math.min(max, roundStepper(value + step, step)))}
+            disabled={value >= max}
+            aria-label={`Increase ${label}`}
+            className="flex w-9 items-center justify-center hover:bg-muted disabled:opacity-40"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div>
       <Label className="text-xs">{label}</Label>
@@ -2917,13 +2951,10 @@ function StepperControl({
           <Minus className="h-4 w-4" />
         </button>
         <output
-          aria-label={unitless ? label : `${label}: ${display}`}
-          className={
-            "flex h-10 min-w-0 flex-1 select-none items-center justify-center rounded-md border border-input bg-background px-2 text-center text-xs leading-none text-foreground " +
-            (unitless ? "" : "font-mono tabular-nums")
-          }
+          aria-label={`${label}: ${display}`}
+          className="flex h-10 min-w-0 flex-1 select-none items-center justify-center rounded-md border border-input bg-background px-2 text-center font-mono text-xs tabular-nums leading-none text-foreground"
         >
-          {unitless ? <span className="text-muted-foreground">− / +</span> : display}
+          {display}
         </output>
         <button
           type="button"
