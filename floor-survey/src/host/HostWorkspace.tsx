@@ -589,26 +589,20 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
       </main>
 
       {(mode === "field" || mode === "topo") && !(mode === "topo" && topoCleanView) && (
-        <>
-          <ModeToggle
-            mode={mode === "topo" ? "topo" : "data"}
-            onChange={(m) => setMode(m === "topo" ? "topo" : "field")}
-          />
-          {/* Proven baseline: the floating H / L / Δ chip is on both Data and Topo.
-              One chip for this level. Topo draws named canvas pills only when
-              several boundaries are on the same level — not a second copy of
-              this readout for a single surface. */}
-          <StatsChip
-            customerFileId={id}
-            storageKey={`stats-chip-pos:${activeFloor.id}:solo`}
-            decimals={settings.decimalPlaces}
-            points={
-              mode === "topo" && topoExcludedIds.size
-                ? statsPoints.filter((p) => !topoExcludedIds.has(p.id))
-                : statsPoints
-            }
-          />
-        </>
+        <ModeToggle
+          mode={mode === "topo" ? "topo" : "data"}
+          onChange={(m) => setMode(m === "topo" ? "topo" : "field")}
+        />
+      )}
+      {/* Data mode: floating chip. Topo draws H/L/Δ on the plan so it pans,
+          zooms, and stays where placed — including a lone surface. */}
+      {mode === "field" && (
+        <StatsChip
+          customerFileId={id}
+          storageKey={`stats-chip-pos:${activeFloor.id}:solo`}
+          decimals={settings.decimalPlaces}
+          points={statsPoints}
+        />
       )}
       {mode === "field" && (
         <DataPointsPanel

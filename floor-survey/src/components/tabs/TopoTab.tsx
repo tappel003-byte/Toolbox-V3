@@ -209,14 +209,9 @@ interface Props {
   hostStatsPillPx?: number;
   onHostStatsPillPxChange?: (px: number) => void;
   /**
-   * Draw the H / L / delta pill on the canvas even when the level has a single
-   * boundary.
-   *
-   * In the field a lone surface uses the floating StatsChip instead, which is
-   * positioned against the browser window. A report slide is a page, not a
-   * window, so that pill has nowhere to live -- and a one-boundary level would
-   * be the only page in the book with no pill on it. With this on, one boundary
-   * is drawn exactly the way five are.
+   * Report slides: draw the H / L / Δ pill on a one-boundary page when
+   * chromeOnPage would otherwise leave the canvas bare. Field Topo already
+   * draws the pill on every surface (including a lone one).
    */
   statsPillForSingleBoundary?: boolean;
   /**
@@ -363,10 +358,9 @@ function labelAnchor(p: SurveyPoint, k = 1) {
 }
 
 /* ---------------------------------------------------------------------------
- * H / L / Δ stats pill — drawn on the canvas for multi-area Topo only.
- * One surface / one boundary uses the floating StatsChip instead, so the
- * same readout is not drawn twice. Sized like point labels: chosen screen
- * px holds when fit-scaled out, grows gently when zoomed in.
+ * H / L / Δ stats pill — drawn on the Topo canvas for every boundary
+ * (including a lone surface). Data mode keeps the floating StatsChip.
+ * Plan-locked: pans/zooms with the drawing; Size −/+ sets the base.
  * ------------------------------------------------------------------------- */
 
 export const DEFAULT_STATS_PILL_SIZE = 28;
@@ -391,23 +385,15 @@ function pointLabelFontImg(
   if (opts?.presentation) {
     return planProportionalSize(base, planLongSide(floor.planWidth, floor.planHeight));
   }
-  const fit = opts?.fitScale && opts.fitScale > 0 ? opts.fitScale : 1;
-  return (base * LABEL_FIT_FACTOR) / fit;
+  return planLockedImg(base, opts?.fitScale && opts.fitScale > 0 ? opts.fitScale : 1);
 }
 
 /**
- * The H / L / delta pill's drawn height, in image coordinates.
+ * Chrome height in image coordinates (legend ticks, dots, etc.).
  *
- * Two modes, because the two surfaces genuinely want different things.
- *
- * In the field the pill is screen-anchored: you zoom into a plan to work and
- * the numbers have to stay readable on the device in your hand. That is proven
- * and it stays.
- *
- * On a page there is no screen to anchor to. A report slide, an export and a
- * PDF are pictures, so the pill is a fixed fraction of the plan -- it scales
- * with the drawing when the investigator resizes the topo, and it renders the
- * same on a phone, a desktop and on paper.
+ * Report / presentation: fixed fraction of the plan.
+ * Field: screen-anchored so working zoom keeps chrome readable — except the
+ * H/L/Δ pill and reading dots/labels, which are plan-locked (see below).
  */
 function chromeSizeImg(
   base: number,
@@ -421,13 +407,29 @@ function chromeSizeImg(
   return screenAnchoredImageSize(base, viewScale);
 }
 
+/** Image-space size that zooms with the plan (capture), from fit scale. */
+function planLockedImg(base: number, fitScale: number) {
+  const fit = fitScale > 0 ? fitScale : 1;
+  return (Math.max(1, base) * LABEL_FIT_FACTOR) / fit;
+}
+
+/**
+ * H / L / Δ pill height in image coordinates.
+ *
+ * Plan-locked in the field and on report: pans and zooms with the drawing and
+ * stays where it was placed. Size −/+ still sets the base.
+ */
 function pillHeightImg(
   base: number,
   viewScale: number,
   presentation: boolean,
   floor: Floor,
+  fitScale?: number,
 ) {
-  return chromeSizeImg(base, viewScale, presentation, floor);
+  if (presentation) {
+    return planProportionalSize(base, planLongSide(floor.planWidth, floor.planHeight));
+  }
+  return planLockedImg(base, fitScale && fitScale > 0 ? fitScale : viewScale);
 }
 
 type PillSeg = { kind: "label" | "hi" | "lo" | "delta"; text: string; w: number };
@@ -454,9 +456,10 @@ function pillMetrics(h: number, label: string | null, hi: number, lo: number, de
 /**
  * Does the canvas carry the H / L / delta pill?
  *
- * The field app draws it per boundary when a level has more than one, and
- * leaves a lone surface to the floating StatsChip. A report slide has no
- * window to float against, so it asks for the pill on one boundary too.
+ * Topo draws the pill on the plan for every boundary (including a lone
+ * surface) so it pans, zooms, and stays where it was placed. Data mode still
+ * uses the floating StatsChip. A report slide asks for the pill on one
+ * boundary via forSingleBoundary when chromeOnPage leaves the canvas bare.
  *
  * This is one function because the drawing and the hit test must agree: when
  * they disagree, a pill is drawn where it cannot be grabbed.
@@ -464,10 +467,11 @@ function pillMetrics(h: number, label: string | null, hi: number, lo: number, de
 function statsPillOnCanvas(
   settings: RenderSettings,
   areaCount: number,
-  forSingleBoundary: boolean,
+  _forSingleBoundary: boolean,
 ): boolean {
   if (settings.showStatsPill === false) return false;
-  return areaCount > 1 || (forSingleBoundary && areaCount === 1);
+  // Field Topo: every surface, including a lone one (no floating StatsChip).
+  return areaCount >= 1;
 }
 
 function pillCenter(area: TopoArea, live?: { dx: number; dy: number } | null) {
@@ -919,7 +923,7 @@ export function TopoTab({
 
   function hitDraggable(x: number, y: number): Hit | null {
     if (canvasStatsPill) {
-      const h = pillHeightImg(statsChipSize, viewScale, presentation, floor);
+      const h = pillHeightImg(statsChipSize, viewScale, presentation, floor, fitScale);
       const showLabel = true;
       const dec = resolved.decimalPlaces;
       for (let i = areaTopos.length - 1; i >= 0; i--) {
@@ -3218,7 +3222,10 @@ export function renderTopoTop(
     // stepper (pointSize) instead of font size, so the stepper actually
     // controls what's drawn.
     const dotBase = overlay?.pointSize ?? 6;
-    const dotR = chromeSizeImg(dotBase, viewScale, !!overlay?.presentation, floor);
+    // Dots plan-lock with the labels so zoom grows/shrinks both together.
+    const dotR = overlay?.presentation
+      ? planProportionalSize(dotBase, planLongSide(floor.planWidth, floor.planHeight))
+      : planLockedImg(dotBase, fitScale);
     const dotColor = overlay?.pointColor ?? "#dc2626";
     const padX = 4 * chromeK;
     const padY = 2.5 * chromeK;
@@ -3368,14 +3375,13 @@ export function renderTopoTop(
     }
   }
 
-  // One named pill per boundary. In the field a lone surface uses the floating
-  // StatsChip instead, so H / L / Δ is not drawn twice; a report slide asks for
-  // it here so one boundary looks the same as five.
+  // One named pill per boundary on the plan (including a lone surface). Data
+  // mode still uses the floating StatsChip; Topo does not.
   if (!overlay?.chromeOnPage &&
       statsPillOnCanvas(resolved, areaTopos.length, !!overlay?.pillForSingleBoundary)) {
     const livePill = overlay?.livePill ?? null;
     const base = overlay?.pillSize ?? DEFAULT_STATS_PILL_SIZE;
-    const h = pillHeightImg(base, viewScale, !!overlay?.presentation, floor);
+    const h = pillHeightImg(base, viewScale, !!overlay?.presentation, floor, fitScale);
     for (const at of areaTopos) {
       const live = livePill && livePill.id === at.area.id ? livePill : null;
       drawStatsPill(
