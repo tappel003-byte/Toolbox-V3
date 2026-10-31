@@ -15,7 +15,11 @@
 // sw.js file's own bytes change; a precached static asset edited without
 // bumping this stays served from the stale cache indefinitely on already
 // installed devices, invisibly, no matter how many times it's redeployed.
+<<<<<<< HEAD
 const CACHE_NAME = 'toolbox-shell-v409';
+=======
+const CACHE_NAME = 'toolbox-shell-v406';
+>>>>>>> de94a4f (fix(rb): visible right/bottom stage scrollbars when zoomed)
 const OFFLINE_DOCUMENT = '/index.html';
 const DISTRESS_DOCUMENT = '/distress-survey/survey.html';
 
