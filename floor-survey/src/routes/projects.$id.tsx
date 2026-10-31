@@ -75,12 +75,19 @@ function ProjectWorkspace() {
   const [topoExcludedIds, setTopoExcludedIds] = useState<Set<string>>(new Set());
   // Topo area focus. null = "All areas".
   const [topoAreaId, setTopoAreaId] = useState<string | null>(null);
+  /** Field Clean view — hide Data/Topo + H/L/Δ chip. Local session only. */
+  const [topoCleanView, setTopoCleanView] = useState(false);
+  const [topoDiagOpen, setTopoDiagOpen] = useState(false);
   useEffect(() => {
     setTopoExcludedIds(new Set());
     setTopoAreaId(null);
   }, [activeFloorId]);
   useEffect(() => {
-    if (mode !== "topo") setTopoExcludedIds(new Set());
+    if (mode !== "topo") {
+      setTopoExcludedIds(new Set());
+      setTopoCleanView(false);
+      setTopoDiagOpen(false);
+    }
   }, [mode]);
   const [focusRequest, setFocusRequest] = useState<
     { x: number; y: number; nonce: number } | undefined
@@ -348,7 +355,9 @@ function ProjectWorkspace() {
         onOpenExport={() => setMode("export")}
         onOpenTransitions={() => setTransitionsSheetOpen(true)}
         onOpen3D={() => setThreeDOpen(true)}
-        
+        onOpenDiagnosticPoints={
+          mode === "topo" ? () => setTopoDiagOpen(true) : undefined
+        }
         undoEnabled={undoActive && history.canUndo}
         redoEnabled={undoActive && history.canRedo}
       />
@@ -454,6 +463,9 @@ function ProjectWorkspace() {
             onExcludedIdsChange={setTopoExcludedIds}
             selectedAreaId={topoAreaId}
             onSelectedAreaIdChange={setTopoAreaId}
+            onCleanViewChange={setTopoCleanView}
+            diagnosticOpen={topoDiagOpen}
+            onDiagnosticOpenChange={setTopoDiagOpen}
           />
         )}
         {mode === "export" && (
@@ -466,7 +478,7 @@ function ProjectWorkspace() {
         )}
       </main>
 
-      {(mode === "field" || mode === "topo") && (
+      {(mode === "field" || mode === "topo") && !(mode === "topo" && topoCleanView) && (
         <>
           <ModeToggle
             mode={mode === "topo" ? "topo" : "data"}
