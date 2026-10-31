@@ -11,14 +11,11 @@ import { ExportTab } from "@/components/tabs/ExportTab";
 import { AppTopBar } from "@/components/chrome/AppTopBar";
 import { ModeToggle } from "@/components/chrome/ModeToggle";
 import { DataPointsPanel } from "@/components/DataPointsPanel";
-import { StatsChip } from "@/components/chrome/StatsChip";
 import { AveragedCorrectionsChip } from "@/components/chrome/AveragedCorrectionsChip";
 import { TransitionsSheet } from "@/components/TransitionsSheet";
 import { useFloorHistory, useUndoRedoEvents, type FloorSnapshot } from "@/lib/useFloorHistory";
 import { withCorrectedValues, migrateSurfaceName, transitionGroupKey } from "@/lib/transitions";
 import { computeExclusionMap } from "@/lib/exclusions";
-import { closedAreas, pointsInAnyArea, pointsInArea } from "@/lib/areas";
-
 
 const ThreeDTab = lazy(() =>
   import("@/components/ThreeDTab").then((m) => ({ default: m.ThreeDTab })),
@@ -278,22 +275,6 @@ function ProjectWorkspace() {
     () => computeExclusionMap(correctedPoints, activeFloor?.exclusions),
     [correctedPoints, activeFloor?.exclusions],
   );
-  const nonExcludedPoints = useMemo(
-    () => correctedPoints.filter((p) => !exclusionMap.has(p.id)),
-    [correctedPoints, exclusionMap],
-  );
-  // Stats mirror the topo surfaces: only readings inside a drawn area
-  // (and outside exclusions) count toward High / Low / Δ.
-  const floorAreas = useMemo(
-    () => (activeFloor ? closedAreas(activeFloor) : []),
-    [activeFloor],
-  );
-  const statsPoints = useMemo(
-    () => pointsInAnyArea(nonExcludedPoints, floorAreas),
-    [nonExcludedPoints, floorAreas],
-  );
-
-
   const [transitionsSheetOpen, setTransitionsSheetOpen] = useState(false);
   const [threeDOpen, setThreeDOpen] = useState(false);
   const handleFloorChange = useCallback((f: Floor) => {
@@ -413,6 +394,9 @@ function ProjectWorkspace() {
             pointSize={pointSize}
             pointColor={pointColor}
             labelFontSize={settings.pointLabelFontSize}
+            customerFileId={id}
+            decimals={settings.decimalPlaces}
+            correctedPoints={correctedPoints}
             focusRequest={focusRequest}
             onCommit={(snap) => history.commit(snap)}
           />
@@ -484,14 +468,7 @@ function ProjectWorkspace() {
           onChange={(m) => setMode(m === "topo" ? "topo" : "field")}
         />
       )}
-      {/* Data mode: floating chip. Topo draws H/L/Δ on the plan. */}
-      {mode === "field" && (
-        <StatsChip
-          storageKey={`stats-chip-pos:${activeFloor.id}:solo`}
-          decimals={settings.decimalPlaces}
-          points={statsPoints}
-        />
-      )}
+      {/* H/L/Δ is drawn on the plan in both Data and Topo (shared pillDx/pillDy). */}
       {mode === "field" && (
         <DataPointsPanel
           hasFloorSelector={floors.length > 1}

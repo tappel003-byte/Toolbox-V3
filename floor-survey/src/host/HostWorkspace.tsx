@@ -25,13 +25,12 @@ import { TopoTab } from "@/components/tabs/TopoTab";
 import { AppTopBar } from "@/components/chrome/AppTopBar";
 import { ModeToggle } from "@/components/chrome/ModeToggle";
 import { DataPointsPanel } from "@/components/DataPointsPanel";
-import { StatsChip } from "@/components/chrome/StatsChip";
 import { AveragedCorrectionsChip } from "@/components/chrome/AveragedCorrectionsChip";
 import { TransitionsSheet } from "@/components/TransitionsSheet";
 import { useFloorHistory, useUndoRedoEvents, type FloorSnapshot } from "@/lib/useFloorHistory";
 import { withCorrectedValues, migrateSurfaceName, transitionGroupKey } from "@/lib/transitions";
 import { computeExclusionMap } from "@/lib/exclusions";
-import { closedAreas, getAreas, pointsInAnyArea } from "@/lib/areas";
+import { getAreas } from "@/lib/areas";
 
 type Mode = "setup" | "field" | "review" | "topo";
 
@@ -271,19 +270,6 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
     () => computeExclusionMap(correctedPoints, activeFloor?.exclusions),
     [correctedPoints, activeFloor?.exclusions],
   );
-  const nonExcludedPoints = useMemo(
-    () => correctedPoints.filter((p) => !exclusionMap.has(p.id)),
-    [correctedPoints, exclusionMap],
-  );
-  const floorAreas = useMemo(
-    () => (activeFloor ? closedAreas(activeFloor) : []),
-    [activeFloor],
-  );
-  const statsPoints = useMemo(
-    () => pointsInAnyArea(nonExcludedPoints, floorAreas),
-    [nonExcludedPoints, floorAreas],
-  );
-
   const [transitionsSheetOpen, setTransitionsSheetOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
@@ -530,6 +516,9 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
             pointSize={pointSize}
             pointColor={pointColor}
             labelFontSize={settings.pointLabelFontSize}
+            customerFileId={id}
+            decimals={settings.decimalPlaces}
+            correctedPoints={correctedPoints}
             focusRequest={focusRequest}
             onCommit={(snap) => history.commit(snap)}
           />
@@ -594,16 +583,7 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
           onChange={(m) => setMode(m === "topo" ? "topo" : "field")}
         />
       )}
-      {/* Data mode: floating chip. Topo draws H/L/Δ on the plan so it pans,
-          zooms, and stays where placed — including a lone surface. */}
-      {mode === "field" && (
-        <StatsChip
-          customerFileId={id}
-          storageKey={`stats-chip-pos:${activeFloor.id}:solo`}
-          decimals={settings.decimalPlaces}
-          points={statsPoints}
-        />
-      )}
+      {/* H/L/Δ is drawn on the plan in both Data and Topo (shared pillDx/pillDy). */}
       {mode === "field" && (
         <DataPointsPanel
           hasFloorSelector={floors.length > 1}
