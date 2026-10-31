@@ -8,7 +8,7 @@ import { AddTransitionSheet } from "../AddTransitionSheet";
 import { TransitionDetailDialog } from "../TransitionDetailDialog";
 
 import { Button } from "@/components/ui/button";
-import { Minus, Plus, Pencil, List, Trash2 } from "lucide-react";
+import { Minus, Plus, Pencil, List, Trash2, X } from "lucide-react";
 
 import type { Bp1Gps, Floor, NotePin, SurveyPoint, TopoArea, Transition } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
@@ -176,11 +176,16 @@ export function FieldTab({
     window.addEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     return () => window.removeEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
   }, [customerFileId]);
+  // Outside press dismisses; −/+ inside stay usable (same as Topo accessory HUD).
   useEffect(() => {
     if (!pillSizeHud) return;
-    const close = () => setPillSizeHud(null);
-    window.addEventListener("pointerdown", close, true);
-    return () => window.removeEventListener("pointerdown", close, true);
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (t && t.closest("[data-accessory-size-hud]")) return;
+      setPillSizeHud(null);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
   }, [pillSizeHud]);
 
   function areaHiLo(area: TopoArea): { hi: number; lo: number } | null {
@@ -1610,38 +1615,49 @@ export function FieldTab({
 
 
 
-      {pillSizeHud && (
-        <div
-          className="fixed z-[80] flex items-center gap-1 rounded-full bg-sky-600 text-white shadow-lg px-2 py-1"
-          style={{
-            left: Math.max(8, Math.min(window.innerWidth - 120, pillSizeHud.clientX - 56)),
-            top: Math.max(8, pillSizeHud.clientY - 52),
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="h-8 w-8 inline-flex items-center justify-center rounded-full disabled:opacity-40"
-            aria-label="Smaller H/L/Δ"
-            disabled={statsChipSize <= STATS_CHIP_MIN}
-            onClick={() => bumpPillSize(-2)}
+      {pillSizeHud && (() => {
+        const vw = typeof window !== "undefined" ? window.innerWidth : 360;
+        const left = Math.min(Math.max(8, pillSizeHud.clientX - 36), vw - 88);
+        // Way above the pill so move stays clear (same offset as Topo).
+        const top = Math.max(8, pillSizeHud.clientY - 112);
+        return (
+          <div
+            data-accessory-size-hud=""
+            className="fixed z-[80] flex h-7 items-stretch overflow-hidden rounded-full border shadow-md"
+            style={{ left, top, background: "#07283d", borderColor: "#07283d" }}
+            role="group"
+            aria-label="H/L/Δ size"
           >
-            <Minus className="h-4 w-4" />
-          </button>
-          <span className="text-xs font-semibold tabular-nums min-w-[2.5rem] text-center">
-            {Math.round(statsChipSize)}
-          </span>
-          <button
-            type="button"
-            className="h-8 w-8 inline-flex items-center justify-center rounded-full disabled:opacity-40"
-            aria-label="Larger H/L/Δ"
-            disabled={statsChipSize >= STATS_CHIP_MAX}
-            onClick={() => bumpPillSize(2)}
-          >
-            <Plus className="h-4 w-4" />
-          </button>
-        </div>
-      )}
+            <button
+              type="button"
+              onClick={() => bumpPillSize(-2)}
+              disabled={statsChipSize <= STATS_CHIP_MIN}
+              aria-label="Decrease H/L/Δ size"
+              className="flex w-7 items-center justify-center text-white/95 hover:bg-white/10 disabled:opacity-40"
+            >
+              <Minus className="h-3 w-3" />
+            </button>
+            <span className="w-px self-stretch bg-white/25" aria-hidden />
+            <button
+              type="button"
+              onClick={() => bumpPillSize(2)}
+              disabled={statsChipSize >= STATS_CHIP_MAX}
+              aria-label="Increase H/L/Δ size"
+              className="flex w-7 items-center justify-center text-white/95 hover:bg-white/10 disabled:opacity-40"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setPillSizeHud(null)}
+              aria-label="Close size"
+              className="flex w-6 items-center justify-center border-l border-white/25 text-white/80 hover:bg-white/10"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        );
+      })()}
 
       {bpPromptOpen && pending && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
