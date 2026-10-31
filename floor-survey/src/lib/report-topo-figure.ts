@@ -11,7 +11,7 @@ import { withCorrectedValues } from "@/lib/transitions";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { contourThresholds, type Grid } from "@/lib/topo";
-import { labelSeatOffset } from "@/lib/label-seat";
+import { DEFAULT_LABEL_SEAT, labelSeatOffset } from "@/lib/label-seat";
 import {
   buildAreaTopos,
   paletteColor,
@@ -235,16 +235,16 @@ export function reportTopoDataExtent(options: {
   };
 
   // A reading is a dot with a label box beside it, so the point coordinate is
-  // not its visual extent. Match Topo's default right seat (tight to the font)
-  // unless the label was nudged. Without this the outlying reading that the
-  // frame exists to include had its label cut off by the edge.
+  // not its visual extent. Match Topo's default Right+Bottom seat unless the
+  // label was nudged. Without this the outlying reading that the frame exists
+  // to include had its label cut off by the edge.
   const ls = { ...defaultRenderSettings, ...(options.settings || {}) };
   const fontPx = Math.max(1, ls.pointLabelFontSize || 11);
   const chars = (ls.decimalPlaces ?? 2) + 3; // "9.75" and friends
   const labelW = fontPx * 0.6 * chars + 8;
   const labelH = fontPx + 5;
   const dotR = 8;
-  const defaultSeat = labelSeatOffset("right", labelW, fontPx, 4, 2.5);
+  const defaultSeat = labelSeatOffset(DEFAULT_LABEL_SEAT, labelW, fontPx, 4, 2.5);
 
   for (const p of pts) {
     see(p.x - dotR, p.y - dotR);

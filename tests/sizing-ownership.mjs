@@ -193,7 +193,7 @@ async function bumpStatsPillPlus() {
     const body = document.querySelector('[data-fs-cp-section-body]');
     if (!body) return { ok: false, reason: 'no body' };
     const rows = [...body.querySelectorAll('div')].filter((d) =>
-      /Stats pill size/i.test(d.textContent || ''),
+      /Stats pill size|H\/L\/Δ size/i.test(d.textContent || ''),
     );
     const row = rows[0];
     if (!row) return { ok: false, reason: 'no stepper', text: body.innerText };
@@ -243,9 +243,16 @@ async function openLegendHlRail() {
     document.querySelector('[data-rb-floor-task="topo"]')?.click();
   });
   await new Promise((r) => setTimeout(r, 500));
+  // H/L/Δ size lives under Readings → Accessories (same tree as field).
   await page.evaluate(() => {
-    document.querySelector('[data-rb-rail-tab="legendhl"]')?.click() ||
-      document.querySelector('[data-rb-topo-group="legendhl"]')?.click();
+    document.querySelector('[data-rb-rail-tab="readings"]')?.click();
+  });
+  await new Promise((r) => setTimeout(r, 400));
+  await page.evaluate(() => {
+    const panel = document.querySelector('#rb-topo-group-panel');
+    [...(panel?.querySelectorAll('[role="tab"]') || [])]
+      .find((t) => /Accessories/.test((t.textContent || '').trim()))
+      ?.click();
   });
   await new Promise((r) => setTimeout(r, 600));
 }
@@ -257,7 +264,7 @@ async function bumpRailStatsPill() {
       document.body;
     const label = [...host.querySelectorAll('*')].find((el) => {
       const t = (el.textContent || '').trim();
-      return t === 'Stats pill size' || /^Stats pill size/i.test(t);
+      return t === 'H/L/Δ size' || t === 'Stats pill size' || /^Stats pill size/i.test(t) || /^H\/L\/Δ size/i.test(t);
     });
     if (!label) {
       return {

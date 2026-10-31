@@ -137,15 +137,36 @@ await page.evaluate(() => {
 });
 await new Promise((r) => setTimeout(r, 800));
 // Also enable via Topo accordions if chrome buttons absent (single-view defaults may already show)
+// Contours → Display has Legend; Readings → Accessories has H/L.
+await page.evaluate(() => document.querySelector('[data-rb-rail-tab="contours"]')?.click());
+await new Promise((r) => setTimeout(r, 300));
 await page.evaluate(() => {
-  document.querySelector('[data-rb-rail-tab="legendhl"]')?.click();
-});
-await new Promise((r) => setTimeout(r, 400));
-await page.evaluate(() => {
-  const rows = [...document.querySelectorAll('.rb-ws__controls label')];
+  const panel = document.querySelector('#rb-topo-group-panel');
+  [...(panel?.querySelectorAll('[role="tab"]') || [])]
+    .find((t) => /Display/.test((t.textContent || '').trim()))
+    ?.click();
+  const rows = [...document.querySelectorAll('.rb-ws__controls label, #rb-topo-group-panel label')];
   for (const lab of rows) {
     const t = (lab.textContent || '').trim();
-    if (t === 'Legend' || t === 'H/L/Δ pill' || t === 'High / low') {
+    if (t === 'Legend') {
+      const sw = lab.closest('div')?.querySelector('[role=switch]');
+      if (sw && (sw.getAttribute('data-state') === 'unchecked' || sw.getAttribute('aria-checked') === 'false')) {
+        sw.click();
+      }
+    }
+  }
+});
+await page.evaluate(() => document.querySelector('[data-rb-rail-tab="readings"]')?.click());
+await new Promise((r) => setTimeout(r, 300));
+await page.evaluate(() => {
+  const panel = document.querySelector('#rb-topo-group-panel');
+  [...(panel?.querySelectorAll('[role="tab"]') || [])]
+    .find((t) => /Accessories/.test((t.textContent || '').trim()))
+    ?.click();
+  const rows = [...document.querySelectorAll('.rb-ws__controls label, #rb-topo-group-panel label')];
+  for (const lab of rows) {
+    const t = (lab.textContent || '').trim();
+    if (t === 'High / low' || t === 'H/L/Δ pill') {
       const sw = lab.closest('div')?.querySelector('[role=switch]');
       if (sw && (sw.getAttribute('data-state') === 'unchecked' || sw.getAttribute('aria-checked') === 'false')) {
         sw.click();
@@ -212,19 +233,41 @@ await page.evaluate(() => {
 });
 await new Promise((r) => setTimeout(r, 500));
 await openTask('topo');
-await page.evaluate(() => document.querySelector('[data-rb-rail-tab="legendhl"]')?.click());
-await new Promise((r) => setTimeout(r, 400));
 await page.evaluate(() => {
   // Show buttons on multi-view
   document.querySelector('[data-rb-floor-view-chrome="legend-on"]')?.click();
   document.querySelector('[data-rb-floor-view-chrome="pill-on"]')?.click();
 });
 await new Promise((r) => setTimeout(r, 400));
+await page.evaluate(() => document.querySelector('[data-rb-rail-tab="contours"]')?.click());
+await new Promise((r) => setTimeout(r, 300));
 await page.evaluate(() => {
-  const rows = [...document.querySelectorAll('.rb-ws__controls label')];
+  const panel = document.querySelector('#rb-topo-group-panel');
+  [...(panel?.querySelectorAll('[role="tab"]') || [])]
+    .find((t) => /Display/.test((t.textContent || '').trim()))
+    ?.click();
+  const rows = [...document.querySelectorAll('#rb-topo-group-panel label, .rb-ws__controls label')];
   for (const lab of rows) {
     const t = (lab.textContent || '').trim();
-    if (t === 'Legend' || t === 'H/L/Δ pill' || t === 'High / low') {
+    if (t === 'Legend') {
+      const sw = lab.closest('div')?.querySelector('[role=switch]');
+      if (sw && (sw.getAttribute('data-state') === 'unchecked' || sw.getAttribute('aria-checked') === 'false')) {
+        sw.click();
+      }
+    }
+  }
+});
+await page.evaluate(() => document.querySelector('[data-rb-rail-tab="readings"]')?.click());
+await new Promise((r) => setTimeout(r, 300));
+await page.evaluate(() => {
+  const panel = document.querySelector('#rb-topo-group-panel');
+  [...(panel?.querySelectorAll('[role="tab"]') || [])]
+    .find((t) => /Accessories/.test((t.textContent || '').trim()))
+    ?.click();
+  const rows = [...document.querySelectorAll('#rb-topo-group-panel label, .rb-ws__controls label')];
+  for (const lab of rows) {
+    const t = (lab.textContent || '').trim();
+    if (t === 'H/L/Δ pill' || t === 'High / low') {
       const sw = lab.closest('div')?.querySelector('[role=switch]');
       if (sw && (sw.getAttribute('data-state') === 'unchecked' || sw.getAttribute('aria-checked') === 'false')) {
         sw.click();

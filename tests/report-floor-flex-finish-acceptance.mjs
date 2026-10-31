@@ -166,8 +166,16 @@ async function openFloorTask(which) {
 
 async function openLegendHlTab() {
   await openFloorTask('topo');
+  // Legend under Contours → Display; H/L under Readings → Accessories.
   await page.evaluate(() => {
-    document.querySelector('[data-rb-rail-tab="legendhl"]')?.click();
+    document.querySelector('[data-rb-rail-tab="contours"]')?.click();
+  });
+  await new Promise((r) => setTimeout(r, 300));
+  await page.evaluate(() => {
+    const panel = document.querySelector('#rb-topo-group-panel');
+    [...(panel?.querySelectorAll('[role="tab"]') || [])]
+      .find((t) => /Display/.test((t.textContent || '').trim()))
+      ?.click();
   });
   await new Promise((r) => setTimeout(r, 400));
 }

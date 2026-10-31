@@ -165,7 +165,7 @@ export interface SurveyPoint {
   notes?: string;
   createdAt: number;
   // Topo presentation: user-nudged label offset from the dot (text top-left).
-  // undefined = seat to the right of the point, tight to the font size.
+  // undefined = default seat Right+Bottom (number on the right, parked low).
   labelDx?: number;
   labelDy?: number;
   // Transition tagging.
