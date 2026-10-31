@@ -3079,6 +3079,8 @@
     // never read capture ds-capture-sizes. Default 1 = proven 11×17 diameter.
     var penLogPinScale = 1;
     var penLogPinScaleSeeded = false;
+    // Set on open when the cover held another job's aerial and it was dropped.
+    var coverOverviewDropped = false;
     // One camera for every Floor Survey slide: the same part of the plan at the
     // same zoom, so clicking through Combined, Main Level, Kitchen and Garage
     // is a flip book -- the building does not move. The chrome (colour scale,
@@ -4938,7 +4940,12 @@
           var which = templateBtn.getAttribute('data-rb-template');
           var saved;
           if (which === 'cover') {
-            saved = saveTemplatePiece({ coverLayout: coverLayout });
+            // Where the cover's boxes sit, never which aerial is in one. The
+            // picture is this property's; carried in a default it put one
+            // job's aerial on every new report (Tim, Oct 29, 2026).
+            var coverDefault = JSON.parse(JSON.stringify(coverLayout || {}));
+            coverDefault.overviewMediaId = '';
+            saved = saveTemplatePiece({ coverLayout: coverDefault });
           } else if (which === 'floor') {
             // How the building is framed, where the scale and the readings
             // sit on the page, and what is drawn inside the frame.
@@ -7762,12 +7769,32 @@
       var layout = flApi.normalizeLayout(floorLayout);
       var id = box.getAttribute('data-rb-floor-box') || '';
       var kind = box.getAttribute('data-rb-floor-kind') || 'topo';
+      // Since flexible views, a drawing is drawn at its OWN view frame's z,
+      // not layout.topo.z -- so restacking the drawing wrote a number nothing
+      // read, and Send to back / Bring to front did nothing to it. The
+      // frames are part of the stack too, so "behind" and "in front" are
+      // measured against everything on the sheet.
+      var views = floorViewsForPage(page) || [];
+      var viewId = box.getAttribute('data-rb-view-id') || '';
       var stack = [layout.topo.z, layout.overview.z].concat(
         layout.overlays.map(function (item) { return item.z; }));
+      views.forEach(function (v) {
+        if (v && v.frame && isFinite(Number(v.frame.z))) stack.push(Number(v.frame.z));
+      });
       var want = toFront
         ? Math.max.apply(null, stack) + 1
         : Math.min.apply(null, stack) - 1;
       want = Math.max(flApi.MIN_STACK, Math.min(flApi.MAX_STACK, want));
+      if (kind === 'topo' && viewId) {
+        var view = views.filter(function (v) { return v && v.id === viewId; })[0];
+        if (!view) return;
+        view.frame = view.frame && typeof view.frame === 'object' ? view.frame : {};
+        view.frame.z = want;
+        markDirty();
+        renderPages();
+        flushSave().catch(function () {});
+        return;
+      }
       if (kind === 'topo') {
         layout.topo.z = want;
       } else if (kind === 'overview') {
@@ -8833,6 +8860,15 @@
       var coverSeed = (savedDoc && savedDoc.coverLayout) || template.coverLayout;
       if (coverSeed && window.ToolboxReportCoverLayout) {
         coverLayout = window.ToolboxReportCoverLayout.normalizeLayout(coverSeed);
+        // The aerial is stored under the job it was placed on. One that names
+        // another job came in through a default saved before defaults
+        // stopped carrying the picture -- drop it, and say so in the save.
+        var ownOverview = 'report-cover-overview-' + customerFileId;
+        if (coverLayout.overviewMediaId && coverLayout.overviewMediaId !== ownOverview &&
+          coverLayout.overviewMediaId.indexOf('report-cover-overview-') === 0) {
+          coverLayout.overviewMediaId = '';
+          coverOverviewDropped = true;
+        }
       }
       var brandSeed = (savedDoc && savedDoc.brandBox) || template.brandBox;
       if (brandSeed && window.ToolboxReportDiscussion) {
@@ -8949,7 +8985,9 @@
         renderPages();
         fitSheet(root);
         // Persist a missing pinScale once so reopen / other devices keep sheet default.
-        var needSave = loaded.assembledFresh || loaded.reconciled || !penLogPinScaleSeeded;
+        var needSave = loaded.assembledFresh || loaded.reconciled || !penLogPinScaleSeeded ||
+          coverOverviewDropped;
+        coverOverviewDropped = false;
         if (!penLogPinScaleSeeded) penLogPinScaleSeeded = true;
         if (needSave) {
           markDirty();

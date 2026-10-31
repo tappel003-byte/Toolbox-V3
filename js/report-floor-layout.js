@@ -113,6 +113,11 @@
   var MIN_STACK = -40;
   var MAX_STACK = 40;
 
+  /** legend-<n> / pill-<n>: a boundary's slot, as opposed to a view's. */
+  function isBoundarySlotId(id) {
+    return /^(legend|pill)-\d+$/.test(String(id || ''));
+  }
+
   function stackOf(piece, kind) {
     var base = BASE_STACK[kind] || 1;
     var raw = piece && typeof piece.z === 'number' && isFinite(piece.z) ? piece.z : base;
@@ -305,8 +310,10 @@
   // The colour scale used to be here too, built out of HTML. It is Floor
   // Survey's own now, painted by Floor Survey and placed as a picture -- see
   // renderLegendCard. renderPin is not called: the High and Low markers point
-  // at a spot on the floor, so the drawing carries them, and this is what a
-  // page of its own would be built from if that is ever wanted.
+  // at a spot on the floor, so the drawing carries them -- the live canvas in
+  // the editor, and the composed still in Presentation and the PDF, both
+  // drawn by Floor Survey's renderTopoTop from the slide's own settings. This
+  // is what a page of its own would be built from if that is ever wanted.
 
   function renderPill(stats) {
     var pill = document.createElement('div');
@@ -731,6 +738,13 @@
         layout.overlays.forEach(function (overlay) {
           if (overlay.kind !== 'legend' && overlay.kind !== 'pill') return;
           if (combinedSheet) return;
+          // Only the per-boundary slots (legend-0, pill-1, ...) belong to a
+          // one-view sheet. A multi-view sheet keeps its own pieces in the
+          // same record under legend-<viewId> / pill-<viewId>, and the record
+          // is the book's: drawn here as well, turning a view's scale on one
+          // slide stacked a second, identical scale on every one-view slide,
+          // and removing the view left it there (CLAUDE-017).
+          if (!isBoundarySlotId(overlay.id)) return;
           if (readingsOnly && overlay.kind === 'legend') return;
           var stats = statsList[overlay.statsIndex];
           if (!stats) return;

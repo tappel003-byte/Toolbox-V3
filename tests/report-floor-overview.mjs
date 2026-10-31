@@ -189,7 +189,9 @@ const stored = await page.evaluate(async (id) => {
   return {
     hidden: !!(floor?.meta && floor.meta.hideOverview),
     coverStillHasIt: (record.reportBuilder?.coverLayout || {}).overviewMediaId || '',
-    savedX: floor?.meta?.layout?.overview?.x ?? null,
+    // One layout record for the whole report (DECIDED Tim, Oct 22, 2026):
+    // the aerial's place is the book's, not a copy on the slide.
+    savedX: record.reportBuilder?.floorLayout?.overview?.x ?? null,
   };
 }, FILE);
 check('the x takes it off this page and leaves the cover alone',

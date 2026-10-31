@@ -200,7 +200,10 @@ const caption = await page.evaluate(() => {
     cut: field.scrollHeight - field.clientHeight,
     lines: Math.round(field.clientHeight / parseFloat(getComputedStyle(field).lineHeight)),
     past,
-    overflow: sheet.scrollHeight - Math.round(sr.height),
+    // Both sides in the sheet's own (unzoomed) pixels: the editor shows the
+    // paper zoomed to the window, so the on-screen height is not comparable
+    // with scrollHeight.
+    overflow: sheet.scrollHeight - sheet.clientHeight,
   };
 });
 // What this was written for is a caption box that stopped at a little under

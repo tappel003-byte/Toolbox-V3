@@ -1,5 +1,22 @@
 # Report Builder — where it actually is
 
+> **Status, Oct 29, 2026 (CLAUDE-017).** This is the Oct 20 measurement, kept
+> as history. Where it is now out of date:
+>
+> - **Gap 1 is closed.** A Floor Survey sheet imports its drawing when the
+>   report opens; "a dashed empty box and a button" no longer describes it.
+> - **Gap 2 is closed upstream.** Done taking points is built in Floor Survey.
+> - **Discussion was rebuilt** (`js/report-discussion.js`); "never rebuilt" is
+>   obsolete.
+> - **Pin size** shipped as a capture/report split (#144), not the one
+>   per-level number this audit assumed; see `TODO.md`.
+> - **The H/L/Δ pill, the colour scale and the High/Low markers** are back on
+>   floor sheets, and the markers now reach Present and the PDF.
+>
+> What is still true: the remaining work is Tim's page-by-page acceptance on a
+> real Customer File — the cover above all.
+
+
 Measured Oct 20, 2026, against the finish line Tim set the same day:
 
 > "I have to be able to open up Report Builder to an 80–90% built report."

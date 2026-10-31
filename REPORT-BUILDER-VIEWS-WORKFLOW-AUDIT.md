@@ -1,5 +1,14 @@
 # Report Builder vs proposed multi-view compose workflow — read-only audit
 
+> **Status, Oct 29, 2026 (CLAUDE-017): historical.** This audit describes the
+> code at `b6aea91`, before flexible views merged in #133. Its "not
+> implemented" rows — different floors on one sheet, more than two views,
+> free move and resize, snapping — are built now, and `meta.floorTwoUp` /
+> `floorView2` survive only as a migration for old reports. Read it for why
+> the design went the way it did, not for what the code does. The open
+> questions it raises are carried in `TODO.md` under "Questions still open".
+
+
 **For:** Tim → ChatGPT handoff  
 **Authority used:** VISION.md → AGENTS.md → MILESTONE.md → DECISIONS.md → current code  
 **Audited commit:** `b6aea91f151adf3e187f532afbfaa0e6415329eb` (branch `cursor/fs-topo-control-hub-7b33`)  

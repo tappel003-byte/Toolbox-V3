@@ -245,6 +245,15 @@ export function StatsChip({
       moved: false,
     };
   };
+  function clampChipPos(originX: number, originY: number, clientX: number, clientY: number, startX: number, startY: number) {
+    const w = ref.current?.offsetWidth ?? 0;
+    const h = ref.current?.offsetHeight ?? 0;
+    const top = topChromeHeight();
+    const x = Math.min(Math.max(4, originX + (clientX - startX)), window.innerWidth - w - 4);
+    const y = Math.min(Math.max(top, originY + (clientY - startY)), window.innerHeight - h - 4);
+    return { x, y };
+  }
+
   const onPointerMove = (e: React.PointerEvent) => {
     const d = drag.current;
     if (!d || d.pointerId !== e.pointerId) return;
@@ -253,12 +262,7 @@ export function StatsChip({
     if (!d.moved && Math.hypot(dx, dy) < 5) return;
     d.moved = true;
     setSizeHud(false);
-    const w = ref.current?.offsetWidth ?? 0;
-    const h = ref.current?.offsetHeight ?? 0;
-    const top = topChromeHeight();
-    const x = Math.min(Math.max(4, d.originX + dx), window.innerWidth - w - 4);
-    const y = Math.min(Math.max(top, d.originY + dy), window.innerHeight - h - 4);
-    setPos({ x, y });
+    setPos(clampChipPos(d.originX, d.originY, e.clientX, e.clientY, d.startX, d.startY));
   };
   const endDrag = (e: React.PointerEvent) => {
     const d = drag.current;
@@ -269,8 +273,13 @@ export function StatsChip({
       setSizeHud(true);
       return;
     }
+    // Persist from the pointer + drag origin — not React `pos`, which can still
+    // be the pre-drag value when pointerup races the last setPos (chip then
+    // snaps back on Clean / Data↔Topo remount).
+    const next = clampChipPos(d.originX, d.originY, e.clientX, e.clientY, d.startX, d.startY);
+    setPos(next);
     try {
-      localStorage.setItem(storageKey, JSON.stringify(pos));
+      localStorage.setItem(storageKey, JSON.stringify(next));
     } catch {
       /* ignore */
     }

@@ -2713,6 +2713,9 @@ body.report-builder-open .canvas {
 .rb-floor-stage {
   position: relative;
   overflow: hidden;
+  /* Its own stacking context, so a piece sent behind the others (a negative
+     z) still sits above the stage and can be picked up again. */
+  isolation: isolate;
 }
 
 .rb-floor-empty {
@@ -2866,8 +2869,15 @@ body.report-builder-open .canvas {
 
 .rb-floor-box:not(.is-locked) {
   cursor: move;
-  outline: 1px dashed rgba(30, 64, 110, 0.35);
   background: rgba(255, 255, 255, 0.02);
+}
+
+/* The dashed edge is for the box being pointed at, as on the cover. It was
+   the unlocked look when boxes had a lock; with the lock gone it stood on
+   every drawing at rest. */
+.rb-floor-box:not(.is-locked):hover,
+.rb-floor-box:not(.is-locked):focus-within {
+  outline: 1px dashed rgba(30, 64, 110, 0.35);
 }
 
 .rb-floor-box:not(.is-locked):focus {
