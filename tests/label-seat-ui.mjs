@@ -168,6 +168,65 @@ check(
   JSON.stringify(afterCenter),
 );
 
+// Back to Right+Bottom, then bump Label gap + and confirm dx grows.
+await page.evaluate(() => {
+  const sides = document.querySelector('[aria-label="Point label side"]');
+  const heights = document.querySelector('[aria-label="Point label seat"]');
+  [...(sides?.querySelectorAll('button') || [])]
+    .find((b) => (b.textContent || '').trim() === 'Right')
+    ?.click();
+  [...(heights?.querySelectorAll('button') || [])]
+    .find((b) => (b.textContent || '').trim() === 'Bottom')
+    ?.click();
+});
+await new Promise((r) => setTimeout(r, 400));
+
+const beforeGap = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  const layer = Object.values(rec.floorSurvey?.byCanvasId || {})[0];
+  return (layer?.points || []).map((p) => p.labelDx);
+}, FILE);
+
+const gapGroup = await page.evaluate(() => {
+  const g = document.querySelector('[aria-label="Label gap"]');
+  if (!g) return null;
+  const buttons = [...g.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'));
+  return { buttons };
+});
+check(
+  'Show has Label gap −/+',
+  !!gapGroup && gapGroup.buttons.some((a) => /Increase Label gap/i.test(a || '')),
+  JSON.stringify(gapGroup),
+);
+
+await page.evaluate(() => {
+  const g = document.querySelector('[aria-label="Label gap"]');
+  [...(g?.querySelectorAll('button') || [])]
+    .find((b) => /Increase Label gap/i.test(b.getAttribute('aria-label') || ''))
+    ?.click();
+});
+await new Promise((r) => setTimeout(r, 400));
+await page.evaluate(() => {
+  const g = document.querySelector('[aria-label="Label gap"]');
+  [...(g?.querySelectorAll('button') || [])]
+    .find((b) => /Increase Label gap/i.test(b.getAttribute('aria-label') || ''))
+    ?.click();
+});
+await new Promise((r) => setTimeout(r, 400));
+
+const afterGap = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  const layer = Object.values(rec.floorSurvey?.byCanvasId || {})[0];
+  return (layer?.points || []).map((p) => p.labelDx);
+}, FILE);
+
+check(
+  'Label gap + pushes Right+Bottom farther (larger labelDx)',
+  afterGap.length === beforeGap.length &&
+    afterGap.every((dx, i) => typeof dx === 'number' && dx > beforeGap[i]),
+  JSON.stringify({ beforeGap, afterGap }),
+);
+
 await page.screenshot({ path: `${OUT}/label-seat-show-panel.png` });
 
 const failed = results.filter((r) => !r.ok).length;

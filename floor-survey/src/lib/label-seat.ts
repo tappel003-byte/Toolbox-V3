@@ -2,7 +2,8 @@
  * Reading-label seats relative to a point.
  *
  * Free drag still writes labelDx / labelDy. A seat is a preset that parks the
- * number; drag remains an override afterward.
+ * number; the gap −/+ walks distance off the dot; drag remains an override
+ * for a single label afterward.
  *
  * Two axes (Tim's sketch):
  *
@@ -44,26 +45,35 @@ export const LABEL_HEIGHTS: { id: LabelHeight; label: string }[] = [
   { id: "bottom", label: "Bottom" },
 ];
 
-/** Gap between the dot and the label pill, as a fraction of font size. */
-const GAP_RATIO = 0.22;
+/** Gap −/+ range (unitless steps). Default lands near the tight park. */
+export const LABEL_GAP_MIN = 0;
+export const LABEL_GAP_MAX = 12;
+export const LABEL_GAP_DEFAULT = 2;
+/** Each step as a fraction of font size. */
+const GAP_STEP_RATIO = 0.12;
 
-function gapPx(fontPx: number) {
-  return Math.max(2, fontPx * GAP_RATIO);
+/**
+ * Clearance between the dot and the label pill for a gap-step setting.
+ */
+export function labelGapPx(fontPx: number, gapSteps: number = LABEL_GAP_DEFAULT): number {
+  const steps = Math.max(LABEL_GAP_MIN, Math.min(LABEL_GAP_MAX, Math.round(gapSteps)));
+  return Math.max(1, fontPx * GAP_STEP_RATIO * Math.max(1, steps));
 }
 
 /** Vertical text-top offset for a height on a side. */
-function heightDy(height: LabelHeight, fontPx: number, padY: number): number {
-  const gap = gapPx(fontPx);
+function heightDy(
+  height: LabelHeight,
+  fontPx: number,
+  padY: number,
+  gap: number,
+): number {
   const fh = Math.max(1, fontPx);
   switch (height) {
     case "top":
-      // Above the crosshair, still on the chosen side.
       return -gap - padY - fh;
     case "middle":
-      // Level with the dot.
       return -fh / 2;
     case "bottom":
-      // Below the crosshair (the long-standing default height).
       return gap;
   }
 }
@@ -71,8 +81,7 @@ function heightDy(height: LabelHeight, fontPx: number, padY: number): number {
 /**
  * Image-space offset (text top-left from the point) for a seat selection.
  *
- * `textW` / `fontPx` / pads match the drawn label box so the seat lands
- * where the eye expects.
+ * `gapSteps` is the Show-panel −/+ (distance off the dot). Center ignores it.
  */
 export function labelSeatOffset(
   seat: LabelSeatSelection,
@@ -80,8 +89,8 @@ export function labelSeatOffset(
   fontPx: number,
   padX: number,
   padY: number,
+  gapSteps: number = LABEL_GAP_DEFAULT,
 ): { dx: number; dy: number } {
-  const gap = gapPx(fontPx);
   const tw = Math.max(0, textW);
   const fh = Math.max(1, fontPx);
 
@@ -89,7 +98,8 @@ export function labelSeatOffset(
     return { dx: -tw / 2, dy: -fh / 2 };
   }
 
-  const dy = heightDy(seat.height, fontPx, padY);
+  const gap = labelGapPx(fontPx, gapSteps);
+  const dy = heightDy(seat.height, fontPx, padY, gap);
   if (seat.side === "right") {
     return { dx: gap + padX, dy };
   }
