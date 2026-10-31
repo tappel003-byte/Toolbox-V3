@@ -2274,7 +2274,7 @@ function TrialFolderTabs({
             aria-controls="fs-cp-panel"
             tabIndex={on ? 0 : -1}
             onClick={() => onChange(d.key)}
-            className="min-h-11 min-w-0 flex-1 whitespace-nowrap rounded-t-[6px] border px-1 text-center text-xs leading-none"
+            className="min-h-10 min-w-0 flex-1 whitespace-nowrap rounded-t-[6px] border px-1 text-center text-xs leading-none"
             style={{
               marginBottom: -1,
               backgroundColor: on ? TRIAL_NAVY : "#e5ebee",
@@ -2475,7 +2475,7 @@ function TrialSectionTabs({
               aria-controls="fs-cp-section-panel"
               tabIndex={on ? 0 : -1}
               onClick={() => onChange(item.id)}
-              className="min-h-11 min-w-0 flex-1 whitespace-nowrap rounded-t-[6px] border px-1 text-center text-xs leading-none"
+              className="min-h-8 min-w-0 flex-1 whitespace-nowrap rounded-t-[5px] border px-1.5 text-center text-[11px] leading-none"
               style={{
                 marginBottom: -1,
                 backgroundColor: on ? TRIAL_NAVY : "#e5ebee",
