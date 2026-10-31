@@ -321,34 +321,62 @@ async function openSlide(pg) {
   await new Promise((r) => setTimeout(r, 1500));
   await page.evaluate(() => document.querySelector('[data-rb-floor-task="topo"]')?.click());
   await new Promise((r) => setTimeout(r, 400));
-  await page.evaluate(() => document.querySelector('[data-rb-rail-tab="legendhl"]')?.click());
+  // Contours / Readings / Accessories — High/Low size lives under Accessories.
+  // (Older builds used a single legendhl rail tab and a "Marker size" label.)
+  await page.evaluate(() => {
+    document.querySelector('[data-rb-rail-tab="accessories"]')?.click()
+      || document.querySelector('[data-rb-rail-tab="legendhl"]')?.click();
+  });
+  await new Promise((r) => setTimeout(r, 400));
+  await page.evaluate(() => {
+    const tabs = [...document.querySelectorAll('[role="tablist"][aria-label="Accessories"] [role="tab"]')];
+    tabs.find((t) => /High\/Low/.test((t.textContent || '').trim()))?.click();
+  });
   await new Promise((r) => setTimeout(r, 600));
 }
 
 await openSlide(P_A0);
-const sizeBefore = await page.evaluate(() => {
-  const el = [...document.querySelectorAll('[aria-label^="Marker size:"]')][0];
-  return el ? Number((el.getAttribute('aria-label').match(/([\d.]+)px$/) || [])[1]) : null;
+// Accessory steppers are unitless (− / +), so aria-label no longer carries the
+// px value. Default highLowPinSize is 11. Each click must wait for the rail →
+// report settings round-trip; rapid clicks reused the same value and looked
+// like a no-op.
+const sizeBefore = 11;
+const sizeTarget = 22;
+let sizeAfter = sizeBefore;
+const hasSizeControl = await page.evaluate(() => {
+  const panel = document.querySelector('#rb-topo-group-panel');
+  return !!(panel && (
+    panel.querySelector('button[aria-label="Increase High/Low size"]')
+    || panel.querySelector('button[aria-label="Increase Marker size"]')
+  ));
 });
-for (let i = 0; i < 11; i += 1) {
-  await page.evaluate(() => document.querySelector('button[aria-label="Increase Marker size"]')?.click());
-  await new Promise((r) => setTimeout(r, 120));
+for (let n = sizeBefore; n < sizeTarget; n += 1) {
+  const ok = await page.evaluate(() => {
+    const panel = document.querySelector('#rb-topo-group-panel');
+    const btn = (panel && (
+      panel.querySelector('button[aria-label="Increase High/Low size"]')
+      || panel.querySelector('button[aria-label="Increase Marker size"]')
+    )) || null;
+    if (!btn || btn.disabled) return false;
+    btn.click();
+    return true;
+  });
+  if (!ok) break;
+  sizeAfter = n + 1;
+  await new Promise((r) => setTimeout(r, 450));
 }
-await new Promise((r) => setTimeout(r, 1200));
-const sizeAfter = await page.evaluate(() => {
-  const el = [...document.querySelectorAll('[aria-label^="Marker size:"]')][0];
-  return el ? Number((el.getAttribute('aria-label').match(/([\d.]+)px$/) || [])[1]) : null;
-});
-check('the rail\'s Marker size control is the one being driven',
-  sizeBefore > 0 && sizeAfter > sizeBefore, JSON.stringify({ sizeBefore, sizeAfter }));
+await new Promise((r) => setTimeout(r, 800));
+check('the rail\'s High/Low size control is the one being driven',
+  hasSizeControl && sizeAfter > sizeBefore,
+  JSON.stringify({ sizeBefore, sizeAfter, hasSizeControl }));
 
 const run2 = await present();
 const a0Big = await analyze(stillFor(run2, P_A0), { 'high:a0': EXPECT.a0.high }, {});
 const ratio = a0Big.markers['high:a0'].planH / a0.markers['high:a0'].planH;
 const wantRatio = sizeAfter / sizeBefore;
-check('a bigger Marker size on the slide is a bigger marker in Presentation, in proportion',
-  placed(a0Big.markers['high:a0']) && Math.abs(ratio - wantRatio) <= 0.15 * wantRatio,
-  JSON.stringify({ ratio: +ratio.toFixed(2), wantRatio: +wantRatio.toFixed(2) }));
+check('a bigger High/Low size on the slide is a bigger marker in Presentation, in proportion',
+  placed(a0Big.markers['high:a0']) && wantRatio > 1 && Math.abs(ratio - wantRatio) <= 0.15 * wantRatio,
+  JSON.stringify({ ratio: +ratio.toFixed(2), wantRatio: +wantRatio.toFixed(2), sizeBefore, sizeAfter }));
 const a1Same = await analyze(stillFor(run2, P_A1), { 'high:a1': EXPECT.a1.high }, {});
 check('and only on that slide: another page keeps its own size',
   Math.abs(a1Same.markers['high:a1'].planH - a1.markers['high:a1'].planH) <= 1.5,

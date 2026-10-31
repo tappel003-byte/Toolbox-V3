@@ -79,7 +79,15 @@ await page.evaluate(() => document.querySelector('.rb-sheet:not(.rb-sheet--thumb
 await new Promise((r) => setTimeout(r, 500));
 await page.evaluate(() => document.querySelector('[data-rb-floor-task="topo"]')?.click());
 await new Promise((r) => setTimeout(r, 400));
-await page.evaluate(() => document.querySelector('[data-rb-rail-tab="legendhl"]')?.click());
+await page.evaluate(() => {
+  document.querySelector('[data-rb-rail-tab="accessories"]')?.click()
+    || document.querySelector('[data-rb-rail-tab="legendhl"]')?.click();
+});
+await new Promise((r) => setTimeout(r, 400));
+await page.evaluate(() => {
+  const tabs = [...document.querySelectorAll('[role="tablist"][aria-label="Accessories"] [role="tab"]')];
+  tabs.find((t) => /Legend/.test((t.textContent || '').trim()))?.click();
+});
 await new Promise((r) => setTimeout(r, 400));
 const btns = await page.evaluate(() => [...document.querySelectorAll('[data-rb-floor-view-chrome]')].map((b) => b.getAttribute('data-rb-floor-view-chrome')));
 await page.evaluate(() => document.querySelector('[data-rb-floor-view-chrome="legend-on"]')?.click());
