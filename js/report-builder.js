@@ -4828,6 +4828,9 @@
       var key = [page.id, ctrlCanvas, ctrlArea || '', ctrlScope,
         floorSlot(page), activeSpec && activeSpec.id].join('|');
 
+      // Contours | Readings: Control-panel parents under Topo — inset folder
+      // tabs with a clear break after Sheet|Topo, not a second full-bleed
+      // page-chrome row (same lesson as the field Control panel hierarchy).
       if (floorTaskTab === 'topo' && ctrlCanvas) {
         railTopEl.appendChild(buildFloorTopoSubtabs());
       }

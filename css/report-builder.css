@@ -889,90 +889,110 @@ body.report-builder-open .canvas {
 .rb-ws__controls .floor-survey-host,
 .rb-ws__controls .rtw-root--controls { display: block; height: auto; }
 
-/* GPT-036: Sheet Layout | Topo as folder tabs on the rail's top edge.
-   Rounded tops, flat bottoms, no capsule. The active tab is the white
-   panel; the baseline continues under the inactive tab. */
+/*
+ * Rail tab hierarchy (Tim):
+ *   Grandparents — Sheet Layout | Topo: edge-to-edge equal halves only
+ *   Parents      — Contours | Readings: downstream in the Topo body (inset
+ *                  folder tabs, like the field Control panel — not a second
+ *                  Sheet|Topo chrome row)
+ *   Siblings     — Display… / Show…: compact under parents (TopoTab)
+ * Active = navy. Inactive = light blue (not gray). No rust on these tabs.
+ */
 .rb-ws__sticky:has(.rb-ws__task-tabs) {
-  gap: 6px;
-  margin-bottom: -10px;
+  /* Sheet|Topo full-bleed; parents stay inset inside padded top. */
+  margin-left: -8px;
+  margin-right: -8px;
+  padding-left: 0;
+  padding-right: 0;
+  width: calc(100% + 16px);
+  gap: 0;
+  margin-bottom: 0;
   background: #fff;
 }
 .rb-ws__top:has(.rb-ws__task-tabs) {
-  gap: 0;
-  padding-bottom: 0;
+  /* Clear break after grandparents — Control-panel parents, not chrome row 2. */
+  gap: 16px;
+  padding: 0 8px 8px;
   background: #fff;
 }
 .rb-ws__sticky:has(.rb-ws__task-tabs) + .rb-ws__body {
-  padding-top: 10px;
+  padding-top: 8px;
   background: #fff;
 }
-/*
- * Rail tab hierarchy (Tim):
- *   Grandparents — Sheet Layout | Topo: equal half-width, tallest
- *   Parents      — Contours | Readings: mid, navy blue active (no rust)
- *   Siblings     — Display… / Show…: smaller blue pills in TopoTab
- */
+/* Grandparents alone bleed edge-to-edge; undo the top’s side pad for them. */
+.rb-ws__top:has(.rb-ws__task-tabs) > .rb-ws__task-tabs {
+  margin-left: -8px;
+  margin-right: -8px;
+  width: calc(100% + 16px);
+}
 .rb-ws__task-tabs {
   display: flex;
-  align-items: flex-end;
-  gap: 3px;
+  align-items: stretch;
+  gap: 0;
+  width: 100%;
   margin: 0;
   padding: 0;
   border: 0;
-  border-bottom: 1px solid var(--line, #dce1e4);
+  border-bottom: 1px solid var(--navy, #07283d);
   border-radius: 0;
   background: transparent;
 }
 .rb-ws__task-tab {
   appearance: none;
   position: relative;
-  flex: 1 1 0;
+  flex: 1 1 50%;
+  width: 50%;
   min-width: 0;
-  margin: 0 0 -1px;
-  border: 1px solid var(--line, #dce1e4);
-  border-bottom-color: var(--line, #dce1e4);
-  border-radius: 7px 7px 0 0;
+  margin: 0;
+  border: 1px solid var(--navy, #07283d);
+  border-bottom: 0;
+  border-radius: 0;
   box-shadow: none;
-  min-height: 40px;
-  padding: 8px 10px;
+  min-height: 44px;
+  padding: 10px 8px;
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
   text-align: center;
-  color: #3d5c70;
-  background: #e5ebee;
+  color: var(--navy, #07283d);
+  background: #c5d8e4;
   cursor: pointer;
 }
+.rb-ws__task-tab + .rb-ws__task-tab {
+  border-left-width: 0;
+}
 .rb-ws__task-tab:hover:not(.is-active) {
-  background: #d9e4e9;
+  background: #b3cddc;
 }
 .rb-ws__task-tab:focus {
   outline: none;
 }
 .rb-ws__task-tab:focus-visible {
-  outline: 2px solid var(--navy, #07283d);
-  outline-offset: -3px;
+  outline: 2px solid #fff;
+  outline-offset: -4px;
 }
-/* Grandparents: navy fill when on (obvious), taller + equal width for rank. */
 .rb-ws__task-tab.is-active {
   z-index: 1;
   background: var(--navy, #07283d);
   color: #fff;
   border-color: var(--navy, #07283d);
-  border-bottom-color: var(--navy, #07283d);
   box-shadow: none;
 }
-/* Parents under Topo: Contours | Readings — mid height, navy fill when on. */
+/*
+ * Parents: field Control panel language — rounded folder tabs, inset, gap
+ * under Sheet|Topo. Taller than siblings. Not a second full-bleed chrome row.
+ */
 .rb-ws__subtabs {
   display: flex;
   align-items: flex-end;
-  gap: 3px;
-  margin: 4px 0 0;
+  gap: 4px;
+  width: 100%;
+  margin: 0;
   padding: 0;
   border: 0;
-  border-bottom: 1px solid var(--line, #dce1e4);
+  border-bottom: 1px solid var(--line, #c9d0d5);
   border-radius: 0;
   background: transparent;
 }
@@ -981,25 +1001,24 @@ body.report-builder-open .canvas {
   position: relative;
   flex: 1 1 0;
   min-width: 0;
-  min-height: 32px;
+  min-height: 36px;
   margin: 0 0 -1px;
-  padding: 5px 8px;
-  border: 1px solid var(--line, #dce1e4);
-  border-bottom-color: var(--line, #dce1e4);
+  padding: 7px 8px;
+  border: 1px solid var(--navy, #07283d);
   border-radius: 6px 6px 0 0;
-  background: #e5ebee;
+  background: #c5d8e4;
   box-shadow: none;
-  color: #3d5c70;
+  color: var(--navy, #07283d);
   font: inherit;
-  font-size: 12px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
   text-align: center;
   cursor: pointer;
 }
 .rb-ws__subtab:hover:not(.is-active) {
-  background: #d9e4e9;
+  background: #b3cddc;
 }
 .rb-ws__subtab:focus {
   outline: none;
@@ -1012,7 +1031,6 @@ body.report-builder-open .canvas {
   z-index: 1;
   background: var(--navy, #07283d);
   color: #fff;
-  font-weight: 700;
   border-color: var(--navy, #07283d);
   border-bottom-color: var(--navy, #07283d);
   box-shadow: none;
