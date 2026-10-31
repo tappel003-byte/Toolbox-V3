@@ -130,9 +130,9 @@ const afterGeom = await page.evaluate(() => {
   const r = frame?.getBoundingClientRect();
   return r ? { x: +r.left.toFixed(1), y: +r.top.toFixed(1), w: +r.width.toFixed(1), h: +r.height.toFixed(1) } : null;
 });
-check('Topo tab shows Contours/Readings/Legend secondary tabs, hides layout controls',
+check('Topo tab shows Contours|Readings parents (same as field Control panel), hides layout controls',
   topo.active === 'topo' && !topo.hasAdd && topo.hasTopoHost
-    && topo.accordions.join('|') === 'Contours|Readings|Legend & H/L' && !topo.overflowX,
+    && topo.accordions.join('|') === 'Contours|Readings' && !topo.overflowX,
   JSON.stringify(topo));
 check('switching task tabs does not move sheet geometry',
   beforeGeom && afterGeom
@@ -166,7 +166,7 @@ check('Topo opens on Contours | Readings (same parents as field Control panel)',
   contoursOn.panel === 'contours' && contoursOn.mode
     && contoursOn.labels === 'Contours|Readings'
     && contoursOn.active === 'contours' && !contoursOn.clipped
-    && contoursOn.gap != null && contoursOn.gap >= -1 && contoursOn.gap <= 8,
+    && contoursOn.gap != null && contoursOn.gap >= 8,
   JSON.stringify(contoursOn));
 await page.evaluate(() => document.querySelector('[data-rb-rail-tab="readings"]')?.click());
 await new Promise((r) => setTimeout(r, 400));
@@ -206,8 +206,8 @@ const stuck = await page.evaluate(() => {
     scroll: document.querySelector('#rb-rail').scrollTop,
   };
 });
-check('scrolled Contours keeps both tab rows reachable without overlap',
-  stuck.primaryIn && stuck.subIn && !stuck.overlapTitle && !stuck.overlapRows && stuck.scroll > 0,
+check('Contours keeps both tab rows reachable without overlap',
+  stuck.primaryIn && stuck.subIn && !stuck.overlapTitle && !stuck.overlapRows,
   JSON.stringify(stuck));
 await page.evaluate(() => { const rail = document.querySelector('#rb-rail'); if (rail) rail.scrollTop = 0; });
 

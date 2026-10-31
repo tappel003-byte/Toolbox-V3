@@ -190,7 +190,72 @@ check(
   JSON.stringify(contoursKids),
 );
 
+const hierarchy = await page.evaluate(() => {
+  const rail = document.querySelector('#rb-rail')?.getBoundingClientRect();
+  const gp = [...document.querySelectorAll('.rb-ws__task-tab')].map((b) => {
+    const r = b.getBoundingClientRect();
+    const cs = getComputedStyle(b);
+    return {
+      t: (b.textContent || '').trim(),
+      w: Math.round(r.width),
+      h: Math.round(r.height),
+      left: Math.round(r.left),
+      bg: cs.backgroundColor,
+      on: b.classList.contains('is-active'),
+    };
+  });
+  const parents = [...document.querySelectorAll('.rb-ws__subtab')].map((b) => {
+    const r = b.getBoundingClientRect();
+    const cs = getComputedStyle(b);
+    return {
+      t: (b.textContent || '').trim(),
+      w: Math.round(r.width),
+      h: Math.round(r.height),
+      left: Math.round(r.left),
+      bg: cs.backgroundColor,
+      on: b.classList.contains('is-active'),
+    };
+  });
+  const panel = document.querySelector('#rb-topo-group-panel');
+  const sibs = [...(panel?.querySelectorAll('[role="tab"]') || [])].map((b) => {
+    const r = b.getBoundingClientRect();
+    return {
+      t: (b.textContent || '').trim(),
+      h: Math.round(r.height),
+      on: b.getAttribute('aria-selected') === 'true',
+    };
+  });
+  const gpRow = document.querySelector('.rb-ws__task-tabs')?.getBoundingClientRect();
+  const parentRow = document.querySelector('.rb-ws__subtabs')?.getBoundingClientRect();
+  const gap = gpRow && parentRow ? Math.round(parentRow.top - gpRow.bottom) : null;
+  const gpSpan = gp.length === 2 ? Math.round(gp[1].left + gp[1].w - gp[0].left) : 0;
+  const railInner = rail ? Math.round(rail.width) : 0;
+  return { gp, parents, sibs, gap, gpSpan, railInner };
+});
+const parentH = Math.min(...hierarchy.parents.map((p) => p.h));
+const sibH = Math.min(...hierarchy.sibs.map((s) => s.h));
+const gpH = Math.min(...hierarchy.gp.map((g) => g.h));
+const inactiveGp = hierarchy.gp.find((g) => !g.on);
+const inactiveParent = hierarchy.parents.find((p) => !p.on);
+const looksGray = (bg) => /rgb\(\s*22[89]|rgb\(\s*23[0-9]/.test(bg || '');
+check(
+  'Hierarchy: full-width grandparents, gap before parents, parents taller than siblings, blue not gray',
+  hierarchy.gp.length === 2 &&
+    hierarchy.parents.length === 2 &&
+    hierarchy.sibs.length >= 2 &&
+    hierarchy.gap != null &&
+    hierarchy.gap >= 8 &&
+    gpH > parentH &&
+    parentH > sibH &&
+    hierarchy.gpSpan >= hierarchy.railInner - 4 &&
+    !looksGray(inactiveGp?.bg) &&
+    !looksGray(inactiveParent?.bg),
+  JSON.stringify(hierarchy),
+);
+
 await page.screenshot({ path: `${OUT}/rb-topo-rail-contours.png` });
+const railShot = await page.$('#rb-rail');
+if (railShot) await railShot.screenshot({ path: `${OUT}/rb-tab-hierarchy-rail-crop.png` });
 await page.evaluate(() => document.querySelector('[data-rb-topo-group="readings"]')?.click());
 await new Promise((r) => setTimeout(r, 400));
 await page.screenshot({ path: `${OUT}/rb-topo-rail-readings-show.png` });
