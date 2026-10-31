@@ -1190,13 +1190,13 @@ export function TopoTab({
       )}
       {/*
         Field corner chrome (screen-fixed; does not zoom with the plan):
-        TL Readings vertical · TR Control panel · BR Clean.
+        TL # − + · TR Control panel · BR Clean.
         Data/Topo stays BL (ModeToggle). Boundary selector + H/L/Δ float.
       */}
       {!chromeless && !controlsOnly && !cleanView && (
         <div
           className={
-            "absolute z-30 top-2 left-2 flex w-11 flex-col items-stretch overflow-hidden rounded-full backdrop-blur shadow-md border text-xs font-medium " +
+            "absolute z-30 top-2 left-2 h-9 flex items-stretch overflow-hidden rounded-full backdrop-blur shadow-md border text-xs font-medium " +
             (readingsOn
               ? "bg-white/95 border-gray-300 text-gray-700"
               : "bg-white/80 border-gray-300 text-gray-400")
@@ -1209,28 +1209,27 @@ export function TopoTab({
             onClick={toggleReadings}
             aria-label={readingsOn ? "Hide readings" : "Show readings"}
             aria-pressed={readingsOn}
-            className="flex flex-col items-center gap-0.5 px-1.5 py-2 hover:bg-gray-50"
+            className="w-9 flex items-center justify-center hover:bg-gray-50"
           >
             <Hash className="h-3.5 w-3.5 shrink-0" />
-            <span className="text-[9px] leading-tight tracking-tight">Readings</span>
           </button>
-          <span className="h-px bg-gray-200" aria-hidden />
+          <span className="w-px bg-gray-200" aria-hidden />
           <button
             type="button"
             onClick={() => nudgeLabelSize(-1)}
             disabled={resolved.pointLabelFontSize <= LABEL_SIZE_MIN}
             aria-label="Smaller reading labels"
-            className="flex h-9 items-center justify-center hover:bg-gray-50 disabled:opacity-40"
+            className="w-9 flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
           >
             <Minus className="h-3.5 w-3.5" />
           </button>
-          <span className="h-px bg-gray-200" aria-hidden />
+          <span className="w-px bg-gray-200" aria-hidden />
           <button
             type="button"
             onClick={() => nudgeLabelSize(1)}
             disabled={resolved.pointLabelFontSize >= LABEL_SIZE_MAX}
             aria-label="Larger reading labels"
-            className="flex h-9 items-center justify-center hover:bg-gray-50 disabled:opacity-40"
+            className="w-9 flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
