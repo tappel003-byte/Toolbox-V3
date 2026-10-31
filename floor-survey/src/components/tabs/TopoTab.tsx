@@ -25,6 +25,9 @@ import {
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import {
   DEFAULT_LABEL_SEAT,
+  LABEL_GAP_DEFAULT,
+  LABEL_GAP_MAX,
+  LABEL_GAP_MIN,
   LABEL_HEIGHTS,
   LABEL_SIDES,
   labelSeatOffset,
@@ -373,8 +376,15 @@ function labelOffsetFor(
   }
   const { w } = measureLabel(text, fontPx, weight);
   const chromeK = labelChromeK(fontPx);
-  // Un-nudged default: Right + Bottom (always has been).
-  return labelSeatOffset(DEFAULT_LABEL_SEAT, w, fontPx, 4 * chromeK, 2.5 * chromeK);
+  // Un-nudged default: Right + Bottom at the default gap (always has been).
+  return labelSeatOffset(
+    DEFAULT_LABEL_SEAT,
+    w,
+    fontPx,
+    4 * chromeK,
+    2.5 * chromeK,
+    LABEL_GAP_DEFAULT,
+  );
 }
 
 // Where the label sits (top-left corner) for a given point in image coords.
@@ -554,6 +564,8 @@ export function TopoTab({
    * live on each point. Default Right+Bottom matches the long-standing park.
    */
   const [labelSeat, setLabelSeat] = useState<LabelSeatSelection>(DEFAULT_LABEL_SEAT);
+  /** Gap −/+ off the dot for the current seat. Free drag still nudges one label. */
+  const [labelGapSteps, setLabelGapSteps] = useState(LABEL_GAP_DEFAULT);
   /** Last parent tab, so Close then the pill returns to the same group. */
   const [lastTrialDoor, setLastTrialDoor] = useState<TrialDoorKey | null>(null);
   /** Which child tab is open per parent (visit memory only; not a setting). */
@@ -1095,11 +1107,15 @@ export function TopoTab({
   }
 
   /**
-   * Park every reading label on a seat (side×height, or Center on the dot).
-   * Free drag still moves a single label afterward — seats are an add-on.
+   * Park every reading label on a seat (side×height, or Center on the dot)
+   * at the current gap. Free drag still moves a single label afterward.
    */
-  function applyLabelSeat(seat: LabelSeatSelection) {
+  function applyLabelSeat(
+    seat: LabelSeatSelection,
+    gapSteps: number = labelGapSteps,
+  ) {
     setLabelSeat(seat);
+    setLabelGapSteps(gapSteps);
     const fontPx = pointLabelFontImg(resolved.pointLabelFontSize, floor, {
       presentation,
       fitScale,
@@ -1112,7 +1128,7 @@ export function TopoTab({
     const next = points.map((p) => {
       const text = p.value.toFixed(dec);
       const { w } = measureLabel(text, fontPx, weight);
-      const { dx, dy } = labelSeatOffset(seat, w, fontPx, padX, padY);
+      const { dx, dy } = labelSeatOffset(seat, w, fontPx, padX, padY, gapSteps);
       return { ...p, labelDx: dx, labelDy: dy };
     });
     onPointsChange(next);
@@ -1137,6 +1153,17 @@ export function TopoTab({
     const side: LabelSide =
       labelSeat.mode === "side" ? labelSeat.side : "right";
     applyLabelSeat({ mode: "side", side, height });
+  }
+
+  function applyLabelGap(gapSteps: number) {
+    const next = Math.max(LABEL_GAP_MIN, Math.min(LABEL_GAP_MAX, Math.round(gapSteps)));
+    // Center stays on the dot; gap only walks side seats. Still remember the
+    // step so leaving Center picks it up.
+    if (labelSeat.mode === "center") {
+      setLabelGapSteps(next);
+      return;
+    }
+    applyLabelSeat(labelSeat, next);
   }
 
   function resetAllLabelPositions() {
@@ -1926,7 +1953,7 @@ export function TopoTab({
                         </p>
                         <p className="text-[10px] text-muted-foreground">
                           Left or Right, then Top / Middle / Bottom. Center sits on
-                          the dot. Drag a label to nudge one.
+                          the dot. −/+ walks the gap; drag a label to nudge one.
                         </p>
                         <div
                           className="flex flex-wrap gap-1"
@@ -1993,6 +2020,15 @@ export function TopoTab({
                             Center
                           </button>
                         </div>
+                        <StepperControl
+                          label="Label gap"
+                          value={labelGapSteps}
+                          min={LABEL_GAP_MIN}
+                          max={LABEL_GAP_MAX}
+                          step={1}
+                          unitless
+                          onChange={(v) => applyLabelGap(v)}
+                        />
                       </div>
                     </div>
                   ),
