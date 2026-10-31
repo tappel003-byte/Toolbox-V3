@@ -24,9 +24,13 @@ import {
 } from "@/lib/screen-size";
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import {
-  LABEL_SEATS,
+  DEFAULT_LABEL_SEAT,
+  LABEL_HEIGHTS,
+  LABEL_SIDES,
   labelSeatOffset,
-  type LabelSeat,
+  type LabelHeight,
+  type LabelSeatSelection,
+  type LabelSide,
 } from "@/lib/label-seat";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -369,7 +373,8 @@ function labelOffsetFor(
   }
   const { w } = measureLabel(text, fontPx, weight);
   const chromeK = labelChromeK(fontPx);
-  return labelSeatOffset("right", w, fontPx, 4 * chromeK, 2.5 * chromeK);
+  // Un-nudged default: Right + Bottom (always has been).
+  return labelSeatOffset(DEFAULT_LABEL_SEAT, w, fontPx, 4 * chromeK, 2.5 * chromeK);
 }
 
 // Where the label sits (top-left corner) for a given point in image coords.
@@ -544,6 +549,11 @@ export function TopoTab({
   const [openCorner, setOpenCorner] = useState<TrialDoorKey | null>(null);
   /** Hide floating field chrome; Clean pill stays so chrome can return. Local only. */
   const [cleanView, setCleanView] = useState(false);
+  /**
+   * Last applied label seat (side×height, or Center). Highlight only — offsets
+   * live on each point. Default Right+Bottom matches the long-standing park.
+   */
+  const [labelSeat, setLabelSeat] = useState<LabelSeatSelection>(DEFAULT_LABEL_SEAT);
   /** Last parent tab, so Close then the pill returns to the same group. */
   const [lastTrialDoor, setLastTrialDoor] = useState<TrialDoorKey | null>(null);
   /** Which child tab is open per parent (visit memory only; not a setting). */
@@ -1085,10 +1095,11 @@ export function TopoTab({
   }
 
   /**
-   * Park every reading label on one seat (left / right / top / middle / center).
-   * Free drag still moves a single label afterward.
+   * Park every reading label on a seat (side×height, or Center on the dot).
+   * Free drag still moves a single label afterward — seats are an add-on.
    */
-  function applyLabelSeat(seat: LabelSeat) {
+  function applyLabelSeat(seat: LabelSeatSelection) {
+    setLabelSeat(seat);
     const fontPx = pointLabelFontImg(resolved.pointLabelFontSize, floor, {
       presentation,
       fitScale,
@@ -1114,6 +1125,18 @@ export function TopoTab({
         next.map((p) => ({ id: p.id, labelDx: p.labelDx, labelDy: p.labelDy })),
       ).catch(() => {});
     }
+  }
+
+  function applyLabelSide(side: LabelSide) {
+    const height: LabelHeight =
+      labelSeat.mode === "side" ? labelSeat.height : "bottom";
+    applyLabelSeat({ mode: "side", side, height });
+  }
+
+  function applyLabelHeight(height: LabelHeight) {
+    const side: LabelSide =
+      labelSeat.mode === "side" ? labelSeat.side : "right";
+    applyLabelSeat({ mode: "side", side, height });
   }
 
   function resetAllLabelPositions() {
@@ -1879,7 +1902,7 @@ export function TopoTab({
                   id: "show",
                   title: "Show",
                   body: (
-                    <div className="space-y-1">
+                    <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-2">
                         <SwitchRow
                           label="Points"
@@ -1897,6 +1920,80 @@ export function TopoTab({
                         checked={resolved.declutterLabels !== false}
                         onChange={(v) => update({ declutterLabels: v })}
                       />
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-medium text-muted-foreground">
+                          Point label seat
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          Left or Right, then Top / Middle / Bottom. Center sits on
+                          the dot. Drag a label to nudge one.
+                        </p>
+                        <div
+                          className="flex flex-wrap gap-1"
+                          role="group"
+                          aria-label="Point label side"
+                        >
+                          {LABEL_SIDES.map((s) => {
+                            const on =
+                              labelSeat.mode === "side" && labelSeat.side === s.id;
+                            return (
+                              <button
+                                key={s.id}
+                                type="button"
+                                aria-pressed={on}
+                                onClick={() => applyLabelSide(s.id)}
+                                className={
+                                  "rounded-md border px-2 py-1 text-[11px] font-medium " +
+                                  (on
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "border-border bg-background hover:bg-muted")
+                                }
+                              >
+                                {s.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div
+                          className="flex flex-wrap gap-1"
+                          role="group"
+                          aria-label="Point label seat"
+                        >
+                          {LABEL_HEIGHTS.map((h) => {
+                            const on =
+                              labelSeat.mode === "side" && labelSeat.height === h.id;
+                            return (
+                              <button
+                                key={h.id}
+                                type="button"
+                                aria-pressed={on}
+                                onClick={() => applyLabelHeight(h.id)}
+                                className={
+                                  "rounded-md border px-2 py-1 text-[11px] font-medium " +
+                                  (on
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "border-border bg-background hover:bg-muted")
+                                }
+                              >
+                                {h.label}
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            aria-pressed={labelSeat.mode === "center"}
+                            onClick={() => applyLabelSeat({ mode: "center" })}
+                            className={
+                              "rounded-md border px-2 py-1 text-[11px] font-medium " +
+                              (labelSeat.mode === "center"
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-background hover:bg-muted")
+                            }
+                          >
+                            Center
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   ),
                 },
@@ -2019,30 +2116,6 @@ export function TopoTab({
                             })
                           }
                         />
-                      </div>
-                      <div className="space-y-1.5">
-                        <p className="text-[10px] font-medium text-muted-foreground">
-                          Point label seat
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">
-                          Parks every number next to its point. Drag a label to nudge one.
-                        </p>
-                        <div
-                          className="flex flex-wrap gap-1"
-                          role="group"
-                          aria-label="Point label seat"
-                        >
-                          {LABEL_SEATS.map((s) => (
-                            <button
-                              key={s.id}
-                              type="button"
-                              onClick={() => applyLabelSeat(s.id)}
-                              className="rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium hover:bg-muted"
-                            >
-                              {s.label}
-                            </button>
-                          ))}
-                        </div>
                       </div>
                       <SwitchRow
                         label="High / low"
