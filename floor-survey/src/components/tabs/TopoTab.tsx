@@ -20,7 +20,7 @@ import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/l
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import { Undo2, X, SlidersHorizontal, Minus, Plus, ChevronDown } from "lucide-react";
+import { Undo2, X, SlidersHorizontal, Minus, Plus, ChevronDown, Hash, Eye, EyeOff } from "lucide-react";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { TopoDiagnosticPanel } from "../TopoDiagnosticPanel";
@@ -261,6 +261,17 @@ interface Props {
    * handed over bare and the rail drives it through props.
    */
   chromeless?: boolean;
+  /**
+   * Field Clean view: host hides Data/Topo and the floating H/L/Δ chip when
+   * true. Local-only; no network. Report mounts leave this unset.
+   */
+  onCleanViewChange?: (clean: boolean) => void;
+  /**
+   * Session diagnostic point panel (exclude from contour math). Host opens this
+   * from ⋯; the field corner pill is gone. Uncontrolled when omitted.
+   */
+  diagnosticOpen?: boolean;
+  onDiagnosticOpenChange?: (open: boolean) => void;
 }
 
 const DEFAULT_LABEL_DX = 8;
@@ -268,6 +279,20 @@ const DEFAULT_LABEL_DY = 6;
 const LONG_PRESS_MS = 350;
 /** Accessory hold-vs-drag threshold in SCREEN pixels (hand, not image zoom). */
 const ACCESSORY_MOVE_PX = 6;
+/**
+ * Design font (screen CSS px) that authored the label pad 4 / 2.5 and radius 2.5.
+ * Padding used to be `4 * (fontPx / fontBase)`. Under screen-anchored capture
+ * that ratio is only the inverse view scale, so pad stayed fixed in CSS px while
+ * the font stepper shrank the text — at 6px the box was mostly padding.
+ * Scale chrome against this reference so the complete label footprint tracks the
+ * font setting. At the default 11px font this matches the previous pad.
+ */
+const LABEL_CHROME_REF_PX = defaultRenderSettings.pointLabelFontSize;
+
+/** Image-space multiplier so label pad/radius/stroke track drawn fontPx. */
+function labelChromeK(fontPx: number) {
+  return fontPx / LABEL_CHROME_REF_PX;
+}
 
 /**
  * The High/Low marker's drawn size, in image coordinates.
@@ -347,6 +372,29 @@ function labelAnchor(p: SurveyPoint, k = 1) {
 export const DEFAULT_STATS_PILL_SIZE = 28;
 
 /** Pill height in IMAGE coords for a given base (screen px) and zoom. */
+/**
+ * Reading label font in image coordinates.
+ *
+ * Capture: fixed in image space so labels zoom with the plan (quieter fit
+ * overview; pinch-in grows them). Sized from the fit scale so a phone fit
+ * lands near ~72% of the old screen-anchored CSS size — a realistic drop that
+ * stays readable; Point label size −/+ still scales it. Report slides keep
+ * plan-proportional sizing. Legend / H/L/Δ / High/Low keep chromeSizeImg.
+ */
+const LABEL_FIT_FACTOR = 0.72;
+function pointLabelFontImg(
+  fontBase: number,
+  floor: Floor,
+  opts?: { presentation?: boolean; fitScale?: number },
+) {
+  const base = Math.max(1, fontBase);
+  if (opts?.presentation) {
+    return planProportionalSize(base, planLongSide(floor.planWidth, floor.planHeight));
+  }
+  const fit = opts?.fitScale && opts.fitScale > 0 ? opts.fitScale : 1;
+  return (base * LABEL_FIT_FACTOR) / fit;
+}
+
 /**
  * The H / L / delta pill's drawn height, in image coordinates.
  *
@@ -456,6 +504,9 @@ export function TopoTab({
   statsPillForSingleBoundary = false,
   chromeless = false,
   controlsOnly = false,
+  onCleanViewChange,
+  diagnosticOpen: diagnosticOpenProp,
+  onDiagnosticOpenChange,
   reportGroup,
   staticView = false,
   locked = false,
@@ -463,10 +514,12 @@ export function TopoTab({
   resizeCorners = false,
   allowContourLayer = false,
 }: Props) {
-  // Field Control panel: Contours / Readings / Accessories, each with folder
-  // subtabs. Report Builder keeps its own rail (controlsOnly). Diagnostic
-  // corner is unchanged.
+  // Field Control panel: Contours | Readings. Legend lives under Contours →
+  // Display; H/L/Δ and High/Low live under Readings → Accessories (they come
+  // from the readings). Report Builder keeps its own rail (controlsOnly).
   const [openCorner, setOpenCorner] = useState<TrialDoorKey | null>(null);
+  /** Hide floating field chrome; Clean pill stays so chrome can return. Local only. */
+  const [cleanView, setCleanView] = useState(false);
   /** Last parent tab, so Close then the pill returns to the same group. */
   const [lastTrialDoor, setLastTrialDoor] = useState<TrialDoorKey | null>(null);
   /** Which child tab is open per parent (visit memory only; not a setting). */
@@ -475,7 +528,6 @@ export function TopoTab({
   >({
     contours: "display",
     readings: "show",
-    accessories: "legend",
   });
   const openTrialDoor = useCallback((key: TrialDoorKey) => {
     setLastTrialDoor(key);
@@ -497,8 +549,9 @@ export function TopoTab({
     "legend" | "hld" | "highlow"
   >("legend");
   /**
-   * Hold-to-size HUD for Legend / H/L/Δ / High/Low. Additive to the panel;
-   * reading labels never open this.
+   * Tap-to-size HUD for Legend / H/L/Δ / High/Low. Blue −/+ sits way above
+   * the accessory so it does not fight press-and-move. Reading labels never
+   * open this (they use the Readings | − | + pill).
    */
   const [sizeHud, setSizeHud] = useState<null | {
     kind: "legend" | "pill" | "pin";
@@ -610,6 +663,8 @@ export function TopoTab({
   }, [floor.id]);
   // Current canvas zoom — labels are drawn at a screen-constant size.
   const [viewScale, setViewScale] = useState(1);
+  /** Scale at which the plan fits the viewport — anchors plan-scaled labels. */
+  const [fitScale, setFitScale] = useState(1);
   // The plan's zoom against fit. Reported by the canvas with every camera
   // change; the legend uses it to hold one size on a page.
   const [planZoom, setPlanZoom] = useState(1);
@@ -683,8 +738,8 @@ export function TopoTab({
 
 
   // Live drag. Labels: long-press then move (unchanged). Accessories
-  // (Legend / H/L/Δ pill / High/Low): press-and-move to move; press-and-hold
-  // opens unitless size −/+. Reading labels never use the size hold.
+  // (Legend / H/L/Δ pill / High/Low): press-and-move to move; tap opens the
+  // blue size −/+ way above the piece. Reading labels never use this HUD.
   type DragKind = "label" | "pin-high" | "pin-low" | "pill";
   const [drag, setDrag] = useState<{
     kind: DragKind;
@@ -698,12 +753,11 @@ export function TopoTab({
     startDx: number;
     startDy: number;
     active: boolean; // true after long-press (labels) or move threshold (accessories)
-    /** Accessory: hold-still opens size HUD instead of arming a move. */
-    sizeHold?: boolean;
+    /** Accessory (not a reading label): move on drag, size on tap. */
+    accessory?: boolean;
   } | null>(null);
   const longPressTimer = useRef<number | null>(null);
-  const sizeHoldClient = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  // Drop hold timer if Topo unmounts mid-press.
+  // Drop label long-press timer if Topo unmounts mid-press.
   useEffect(() => {
     return () => {
       if (longPressTimer.current !== null) {
@@ -738,7 +792,13 @@ export function TopoTab({
     if (onExcludedIdsChange) onExcludedIdsChange(ids);
     else setExcludedIdsLocal(ids);
   };
-  const [diagOpen, setDiagOpen] = useState(false);
+  const [diagOpenLocal, setDiagOpenLocal] = useState(false);
+  const diagControlled = typeof onDiagnosticOpenChange === "function";
+  const diagOpen = diagControlled ? !!diagnosticOpenProp : diagOpenLocal;
+  const setDiagOpen = (open: boolean) => {
+    if (diagControlled) onDiagnosticOpenChange!(open);
+    else setDiagOpenLocal(open);
+  };
   useEffect(() => {
     if (onExcludedIdsChange) onExcludedIdsChange(new Set());
     else setExcludedIdsLocal(new Set());
@@ -802,6 +862,44 @@ export function TopoTab({
   const update = (patch: Partial<RenderSettings>) =>
     onSettingsChange(resolveSettings({ ...resolved, ...patch }));
 
+  /** Last Points/Labels state before a field “Readings” hide — restore on show. */
+  const readingsPrevRef = useRef<{ showPoints: boolean; showLabels: boolean } | null>(null);
+  const readingsOn = resolved.showPoints || resolved.showLabels;
+  const LABEL_SIZE_MIN = 6;
+  const LABEL_SIZE_MAX = 28;
+  function toggleReadings() {
+    if (readingsOn) {
+      readingsPrevRef.current = {
+        showPoints: resolved.showPoints,
+        showLabels: resolved.showLabels,
+      };
+      update({ showPoints: false, showLabels: false });
+    } else {
+      const prev = readingsPrevRef.current;
+      update({
+        showPoints: prev?.showPoints ?? true,
+        showLabels: prev?.showLabels ?? true,
+      });
+    }
+  }
+  function nudgeLabelSize(delta: number) {
+    const next = Math.max(
+      LABEL_SIZE_MIN,
+      Math.min(LABEL_SIZE_MAX, Math.round(resolved.pointLabelFontSize + delta)),
+    );
+    if (next !== resolved.pointLabelFontSize) update({ pointLabelFontSize: next });
+  }
+  function setCleanViewOn(next: boolean) {
+    setCleanView(next);
+    if (next) setOpenCorner(null);
+    onCleanViewChange?.(next);
+  }
+  useEffect(() => {
+    return () => {
+      onCleanViewChange?.(false);
+    };
+  }, [onCleanViewChange]);
+
   // High / Low of the focused area (used for pin hit-testing / dragging).
   const hiLo = soloTopo ? { hi: soloTopo.hi, lo: soloTopo.lo } : null;
 
@@ -861,11 +959,14 @@ export function TopoTab({
     if (resolved.showPoints) {
       const fontBase = resolved.pointLabelFontSize;
       // Must match the drawn size exactly, or a tap lands beside the label.
-      const fontPx = chromeSizeImg(fontBase, viewScale || 1, presentation, floor);
+      const fontPx = pointLabelFontImg(fontBase, floor, {
+        presentation,
+        fitScale,
+      });
       const k = fontPx / fontBase;
       const dec = resolved.decimalPlaces;
       const weight = resolved.pointLabelWeight;
-      const pad = 4 * k;
+      const pad = 4 * labelChromeK(fontPx);
       for (const p of visiblePoints) {
         const text = p.value.toFixed(dec);
         const { w, h } = measureLabel(text, fontPx, weight);
@@ -1012,7 +1113,7 @@ export function TopoTab({
     <div className="flex flex-col h-full relative">
       {/* Area selector — only when the floor has more than one drawn area.
           Draggable so report screenshots can clear it off the plan. */}
-      {areas.length > 1 && !chromeless && (
+      {areas.length > 1 && !chromeless && !cleanView && (
         <div
           className="absolute z-30 touch-none"
           style={
@@ -1087,16 +1188,61 @@ export function TopoTab({
           </div>
         </div>
       )}
-      {/* Control panel — labeled pill ~Data/Topo size (Tim Oct 24–25, 2026). Hidden while open. */}
-      {!chromeless &&
-        !controlsOnly &&
-        openCorner == null && (
+      {/*
+        Field corner chrome (screen-fixed; does not zoom with the plan):
+        TL # − + · TR Control panel · BR Clean.
+        Data/Topo stays BL (ModeToggle). Boundary selector + H/L/Δ float.
+      */}
+      {!chromeless && !controlsOnly && !cleanView && (
+        <div
+          className={
+            "absolute z-30 top-2 left-2 h-9 flex items-stretch overflow-hidden rounded-full backdrop-blur shadow-md border text-xs font-medium " +
+            (readingsOn
+              ? "bg-white/95 border-gray-300 text-gray-700"
+              : "bg-white/80 border-gray-300 text-gray-400")
+          }
+          role="group"
+          aria-label="Readings"
+        >
+          <button
+            type="button"
+            onClick={toggleReadings}
+            aria-label={readingsOn ? "Hide readings" : "Show readings"}
+            aria-pressed={readingsOn}
+            className="w-9 flex items-center justify-center hover:bg-gray-50"
+          >
+            <Hash className="h-3.5 w-3.5 shrink-0" />
+          </button>
+          <span className="w-px bg-gray-200" aria-hidden />
+          <button
+            type="button"
+            onClick={() => nudgeLabelSize(-1)}
+            disabled={resolved.pointLabelFontSize <= LABEL_SIZE_MIN}
+            aria-label="Smaller reading labels"
+            className="w-9 flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <span className="w-px bg-gray-200" aria-hidden />
+          <button
+            type="button"
+            onClick={() => nudgeLabelSize(1)}
+            disabled={resolved.pointLabelFontSize >= LABEL_SIZE_MAX}
+            aria-label="Larger reading labels"
+            className="w-9 flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+      {/* Top right — Control panel only */}
+      {!chromeless && !controlsOnly && !cleanView && openCorner == null && (
         <button
           type="button"
           onClick={() => openTrialDoor(lastTrialDoor ?? "contours")}
           aria-label="Control panel"
           className={
-            "absolute z-30 top-2 right-2 landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:translate-x-[0.25rem] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] " +
+            "absolute z-30 top-2 right-2 " +
             "h-9 px-3 flex items-center gap-1.5 rounded-full bg-white/95 backdrop-blur shadow-md border border-gray-300 " +
             "text-xs font-medium text-gray-700 hover:bg-gray-50"
           }
@@ -1105,26 +1251,28 @@ export function TopoTab({
           <span>Control panel</span>
         </button>
       )}
-      {/* Diagnostic panel toggle — Topo-only. Excludes points from contour math without touching stored data. Undecided; left in place. */}
-      {!chromeless && (
-      <button
-        type="button"
-        onClick={() => setDiagOpen((v) => !v)}
-        aria-label="Diagnostic points panel"
-        className={
-          "fixed z-30 h-9 min-w-9 px-2 rounded-full backdrop-blur border shadow-md flex items-center justify-center gap-1 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] right-[calc(env(safe-area-inset-right)+0.75rem)] " +
-          (diagOpen || excludedIds.size > 0
-            ? "bg-amber-100 border-amber-300 text-amber-900"
-            : "bg-white/95 border-gray-300 text-gray-700 hover:bg-gray-50")
-        }
-      >
-        <SlidersHorizontal className="h-4 w-4" />
-        {excludedIds.size > 0 && (
-          <span className="text-[10px] font-mono tabular-nums">{excludedIds.size}</span>
-        )}
-      </button>
+      {/* Bottom right — Clean (Data/Topo owns bottom left) */}
+      {!chromeless && !controlsOnly && (
+        <button
+          type="button"
+          onClick={() => setCleanViewOn(!cleanView)}
+          aria-label={cleanView ? "Show chrome" : "Clean view"}
+          aria-pressed={cleanView}
+          className={
+            "fixed z-30 h-9 px-3 flex items-center gap-1.5 rounded-full backdrop-blur shadow-md border " +
+            "text-xs font-medium bg-white/95 border-gray-300 text-gray-700 hover:bg-gray-50 " +
+            "bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] right-[calc(env(safe-area-inset-right)+0.75rem)]"
+          }
+        >
+          {cleanView ? (
+            <EyeOff className="h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <Eye className="h-3.5 w-3.5 shrink-0" />
+          )}
+          <span>{cleanView ? "Chrome" : "Clean"}</span>
+        </button>
       )}
-
+      {/* Diagnostic points — opened from ⋯ (not a field corner pill). */}
       {diagOpen && !chromeless && (
         <TopoDiagnosticPanel
           points={points}
@@ -1182,11 +1330,14 @@ export function TopoTab({
           // sheet -- it shows the same view in the new frame rather than
           // keeping pixels measured against the old one.
           reframeOnResize={presentation}
-          onTransform={(t) => setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s))}
+          onTransform={(t, meta) => {
+            setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s));
+            if (meta?.fitScale > 0) {
+              setFitScale((s) => (Math.abs(s - meta.fitScale) > 1e-4 ? meta.fitScale : s));
+            }
+          }}
           onImagePointerDown={(x, y, event) => {
-            sizeHoldClient.current = { x: event.clientX, y: event.clientY };
-            setSizeHud(null);
-            // Legend: press-and-move to place; press-and-hold opens size −/+.
+            // Legend: press-and-move to place; tap opens blue size −/+ above it.
             // Every visible contour surface gets its own legend next to that
             // boundary — All boundaries, Main Floor alone, or Lower Bedroom alone.
             if (resolved.showLegend && !chromeOnPage && areaTopos.length > 0 &&
@@ -1213,19 +1364,11 @@ export function TopoTab({
                     active: false,
                   });
                   clearLongPress();
-                  longPressTimer.current = window.setTimeout(() => {
-                    setLegendDrag(null);
-                    setSizeHud({
-                      kind: "legend",
-                      clientX: sizeHoldClient.current.x,
-                      clientY: sizeHoldClient.current.y,
-                    });
-                  }, LONG_PRESS_MS);
                   return true;
                 }
               }
             }
-            // Accessories (pill / High/Low): press-and-move to move; hold for
+            // Accessories (pill / High/Low): press-and-move to move; tap for
             // size. Point labels keep long-press-to-arm so a casual pan does
             // not pick one up (and so pinch can cancel before the move arms).
             const hit = hitDraggable(x, y);
@@ -1234,7 +1377,7 @@ export function TopoTab({
                 hit.kind === "label" ? (hit.point.labelDx ?? DEFAULT_LABEL_DX) : hit.dx;
               const startDy =
                 hit.kind === "label" ? (hit.point.labelDy ?? DEFAULT_LABEL_DY) : hit.dy;
-              const sizeHold = hit.kind !== "label";
+              const accessory = hit.kind !== "label";
               setDrag({
                 kind: hit.kind,
                 id:
@@ -1252,19 +1395,10 @@ export function TopoTab({
                 startDx,
                 startDy,
                 active: false,
-                sizeHold,
+                accessory,
               });
               clearLongPress();
-              if (sizeHold) {
-                longPressTimer.current = window.setTimeout(() => {
-                  setDrag(null);
-                  setSizeHud({
-                    kind: hit.kind === "pill" ? "pill" : "pin",
-                    clientX: sizeHoldClient.current.x,
-                    clientY: sizeHoldClient.current.y,
-                  });
-                }, LONG_PRESS_MS);
-              } else {
+              if (!accessory) {
                 longPressTimer.current = window.setTimeout(() => {
                   setDrag((d) => (d ? { ...d, active: true } : d));
                 }, LONG_PRESS_MS);
@@ -1274,7 +1408,6 @@ export function TopoTab({
             return false;
           }}
           onImagePointerMove={(x, y, event) => {
-            sizeHoldClient.current = { x: event.clientX, y: event.clientY };
             if (legendDrag?.areaId) {
               if (!legendDrag.active) {
                 // Screen pixels: same finger travel at any canvas zoom.
@@ -1283,7 +1416,7 @@ export function TopoTab({
                   event.clientY - legendDrag.startClientY,
                 );
                 if (moved > ACCESSORY_MOVE_PX) {
-                  clearLongPress();
+                  setSizeHud(null);
                   setLegendDrag({ ...legendDrag, active: true });
                 }
                 return;
@@ -1301,14 +1434,14 @@ export function TopoTab({
             }
             if (drag) {
               if (!drag.active) {
-                if (drag.sizeHold) {
+                if (drag.accessory) {
                   const moved = Math.hypot(
                     event.clientX - drag.startClientX,
                     event.clientY - drag.startClientY,
                   );
                   if (moved > ACCESSORY_MOVE_PX) {
-                    clearLongPress();
-                    // Accessory: movement wins — drag instead of size.
+                    // Accessory: movement wins — drag; size stays out of the way.
+                    setSizeHud(null);
                     setDrag({ ...drag, active: true });
                   }
                 } else {
@@ -1332,13 +1465,21 @@ export function TopoTab({
             }
           }}
           onImagePointerUp={() => {
-            if (
-              legendDrag?.areaId != null &&
-              legendDrag.active &&
-              legendDrag.legendDx != null &&
-              legendDrag.legendDy != null
-            ) {
-              applyLegendOffset(legendDrag.areaId, legendDrag.legendDx, legendDrag.legendDy);
+            if (legendDrag?.areaId != null) {
+              if (
+                legendDrag.active &&
+                legendDrag.legendDx != null &&
+                legendDrag.legendDy != null
+              ) {
+                applyLegendOffset(legendDrag.areaId, legendDrag.legendDx, legendDrag.legendDy);
+              } else if (!legendDrag.active) {
+                // Tap legend → blue size −/+ way above (not under the thumb).
+                setSizeHud({
+                  kind: "legend",
+                  clientX: legendDrag.startClientX,
+                  clientY: legendDrag.startClientY,
+                });
+              }
             }
             setLegendDrag(null);
             clearLongPress();
@@ -1348,12 +1489,14 @@ export function TopoTab({
                 if (drag.kind === "label") commitLabelMove(drag.id, drag.dx, drag.dy);
                 else if (drag.kind === "pill") commitPillMove(drag.id, drag.dx, drag.dy);
                 else commitPinMove(drag.kind, drag.dx, drag.dy);
+              } else if (drag.accessory && !drag.active) {
+                // Tap accessory → size. Move is press-and-drag only.
+                setSizeHud({
+                  kind: drag.kind === "pill" ? "pill" : "pin",
+                  clientX: drag.startClientX,
+                  clientY: drag.startClientY,
+                });
               }
-              // A tap on the pill does nothing. It used to highlight the High
-              // or the Low point whose reading was under the finger. Tim: "if
-              // you click the numbers on the high low pills it highlights the
-              // high or the low on the top -- I don't think I want that." The
-              // pill is a readout and a thing to drag, not a control.
             }
             setDrag(null);
           }}
@@ -1405,6 +1548,7 @@ export function TopoTab({
               pointSize,
               pointColor,
               viewScale,
+              fitScale,
             });
           }}
         />
@@ -1525,6 +1669,30 @@ export function TopoTab({
                           )}
                         </div>
                       )}
+                      <div className="border-t pt-2 space-y-2">
+                        <p className="text-[10px] text-muted-foreground">
+                          Color scale on the plan. Press and move to place. Tap for
+                          size −/+.
+                        </p>
+                        <SwitchRow
+                          label="Legend"
+                          checked={resolved.showLegend}
+                          onChange={(v) => update({ showLegend: v })}
+                        />
+                        <StepperControl
+                          label="Legend size"
+                          value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+                          min={0.4}
+                          max={4}
+                          step={0.1}
+                          unitless
+                          onChange={(v) =>
+                            update({
+                              legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)),
+                            })
+                          }
+                        />
+                      </div>
                     </>
                   ),
                 },
@@ -1746,61 +1914,14 @@ export function TopoTab({
                     </div>
                   ),
                 },
-              ]}
-            />
-          </TrialPanel>
-        )}
-
-        {(openCorner === "accessories" && !controlsOnly) && (
-          <TrialPanel
-            title="Accessories"
-            tabs="accessories"
-            onTab={openTrialDoor}
-            onClose={() => setOpenCorner(null)}
-          >
-            <TrialSectionTabs
-              label="Accessories"
-              openId={trialSectionByDoor.accessories ?? "legend"}
-              onChange={(id) => setTrialSection("accessories", id)}
-              items={[
                 {
-                  id: "legend",
-                  title: "Legend",
+                  id: "accessories",
+                  title: "Accessories",
                   body: (
-                    <>
+                    <div className="space-y-3">
                       <p className="text-[10px] text-muted-foreground">
-                        Color scale on the plan. Press and move to place. Press and
-                        hold for size −/+.
-                      </p>
-                      <SwitchRow
-                        label="Legend"
-                        checked={resolved.showLegend}
-                        onChange={(v) => update({ showLegend: v })}
-                      />
-                      <StepperControl
-                        label="Legend size"
-                        value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
-                        min={0.4}
-                        max={4}
-                        step={0.1}
-                        unitless
-                        onChange={(v) =>
-                          update({
-                            legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)),
-                          })
-                        }
-                      />
-                    </>
-                  ),
-                },
-                {
-                  id: "hld",
-                  title: "H/L/Δ",
-                  body: (
-                    <>
-                      <p className="text-[10px] text-muted-foreground">
-                        Summary pill. Press and move to place. Press and hold for
-                        size −/+.
+                        Summary pill and High/Low markers come from these readings.
+                        Press and move to place. Tap for size −/+.
                       </p>
                       <StepperControl
                         label="H/L/Δ size"
@@ -1811,37 +1932,27 @@ export function TopoTab({
                         unitless
                         onChange={(v) => commitStatsPillSize(v)}
                       />
-                    </>
-                  ),
-                },
-                {
-                  id: "highlow",
-                  title: "High/Low",
-                  body: (
-                    <>
-                      <p className="text-[10px] text-muted-foreground">
-                        High and Low markers. Press and move to place. Press and
-                        hold for size −/+.
-                      </p>
-                      <SwitchRow
-                        label="High / low"
-                        checked={resolved.showHighLow}
-                        onChange={(v) => update({ showHighLow: v })}
-                      />
-                      <StepperControl
-                        label="High/Low size"
-                        value={resolved.highLowPinSize}
-                        min={7}
-                        max={28}
-                        step={1}
-                        unitless
-                        onChange={(v) =>
-                          update({
-                            highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
-                          })
-                        }
-                      />
-                    </>
+                      <div className="border-t pt-2 space-y-2">
+                        <SwitchRow
+                          label="High / low"
+                          checked={resolved.showHighLow}
+                          onChange={(v) => update({ showHighLow: v })}
+                        />
+                        <StepperControl
+                          label="High/Low size"
+                          value={resolved.highLowPinSize}
+                          min={7}
+                          max={28}
+                          step={1}
+                          unitless
+                          onChange={(v) =>
+                            update({
+                              highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
                   ),
                 },
               ]}
@@ -2253,7 +2364,6 @@ export function TopoTab({
 const TRIAL_DOORS = [
   { key: "contours", name: "Contours" },
   { key: "readings", name: "Readings" },
-  { key: "accessories", name: "Accessories" },
 ] as const;
 
 type TrialDoorKey = (typeof TRIAL_DOORS)[number]["key"];
@@ -2677,10 +2787,13 @@ function NumberControl({
 }
 
 /**
- * Hold-to-size −/+ for Legend / H/L/Δ / High/Low. Sits near the press so the
- * investigator does not have to open the panel; the panel still has the same
- * steppers.
+ * Tap-to-size −/+ for Legend / H/L/Δ / High/Low.
+ * Compact chrome-navy pill, way above the accessory so move stays clear.
+ * Panel steppers remain as the same sizes.
  */
+/** Screen gap above the tapped accessory — clear of the drag target. */
+const ACCESSORY_SIZE_HUD_ABOVE_PX = 112;
+
 function AccessorySizeHud({
   kind,
   clientX,
@@ -2710,13 +2823,15 @@ function AccessorySizeHud({
   const min = kind === "legend" ? 0.4 : kind === "pill" ? STATS_CHIP_MIN : 7;
   const max = kind === "legend" ? 4 : kind === "pill" ? STATS_CHIP_MAX : 28;
   const step = kind === "legend" ? 0.1 : kind === "pill" ? 2 : 1;
-  const left = Math.min(Math.max(8, clientX - 72), (typeof window !== "undefined" ? window.innerWidth : 360) - 160);
-  const top = Math.min(Math.max(8, clientY - 56), (typeof window !== "undefined" ? window.innerHeight : 640) - 72);
+  const vw = typeof window !== "undefined" ? window.innerWidth : 360;
+  const left = Math.min(Math.max(8, clientX - 36), vw - 88);
+  // Way above the accessory (not near the finger on the piece).
+  const top = Math.max(8, clientY - ACCESSORY_SIZE_HUD_ABOVE_PX);
   return (
     <div
       data-accessory-size-hud=""
-      className="fixed z-50 flex items-center gap-1 rounded-full border bg-white/95 px-1.5 py-1 shadow-md backdrop-blur"
-      style={{ left, top }}
+      className="fixed z-50 flex h-7 items-stretch overflow-hidden rounded-full border shadow-md"
+      style={{ left, top, background: TRIAL_NAVY, borderColor: TRIAL_NAVY }}
       role="group"
       aria-label={label}
     >
@@ -2733,11 +2848,11 @@ function AccessorySizeHud({
         }}
         disabled={value <= min}
         aria-label={`Decrease ${label}`}
-        className="flex h-9 w-9 items-center justify-center rounded-full border hover:bg-muted disabled:opacity-40"
+        className="flex w-7 items-center justify-center text-white/95 hover:bg-white/10 disabled:opacity-40"
       >
-        <Minus className="h-4 w-4" />
+        <Minus className="h-3 w-3" />
       </button>
-      <span className="px-1 text-[10px] font-medium text-muted-foreground select-none">{label}</span>
+      <span className="w-px self-stretch bg-white/25" aria-hidden />
       <button
         type="button"
         onClick={() => {
@@ -2751,17 +2866,17 @@ function AccessorySizeHud({
         }}
         disabled={value >= max}
         aria-label={`Increase ${label}`}
-        className="flex h-9 w-9 items-center justify-center rounded-full border hover:bg-muted disabled:opacity-40"
+        className="flex w-7 items-center justify-center text-white/95 hover:bg-white/10 disabled:opacity-40"
       >
-        <Plus className="h-4 w-4" />
+        <Plus className="h-3 w-3" />
       </button>
       <button
         type="button"
         onClick={onClose}
         aria-label="Close size"
-        className="ml-0.5 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+        className="flex w-6 items-center justify-center border-l border-white/25 text-white/80 hover:bg-white/10"
       >
-        <X className="h-3.5 w-3.5" />
+        <X className="h-3 w-3" />
       </button>
     </div>
   );
@@ -3039,6 +3154,8 @@ export function renderTopoTop(
     pointSize?: number;
     pointColor?: string;
     viewScale?: number;
+    /** Fit-to-viewport scale — capture reading labels are sized from this. */
+    fitScale?: number;
   },
 ) {
   const resolved = resolveSettings(settings);
@@ -3049,21 +3166,18 @@ export function renderTopoTop(
   const highlightPin = overlay?.highlightPin ?? null;
   const liveLegend = overlay?.liveLegend ?? null;
   const viewScale = overlay?.viewScale || 1;
-  // Label font. In capture, the chosen screen px holds when the plan is
-  // fit-scaled out and grows gently when zoomed in -- proven, and right for a
-  // device in your hand.
-  //
-  // On a page it is a fixed fraction of the plan instead, because a picture's
-  // chrome scales with the picture. Screen-anchored, a reading label kept its
-  // size on the sheet while the plan shrank around it: putting the same level
-  // on a sheet twice halved each plan and left the readings at full size, so
-  // the labels swamped the drawing. At the default fit the two formulas land
-  // within a few percent of each other, so nothing moves until the plan is
-  // resized -- which is the case being fixed. Same reasoning, and the same
-  // helper, as the H/L/delta pill and the High and Low markers.
+  const fitScale = overlay?.fitScale || viewScale || 1;
+  // Reading labels: plan-scaled in capture (zoom with the drawing); report
+  // stays plan-proportional. −/+ sets the size. Other chrome keeps chromeSizeImg.
   const fontBase = resolved.pointLabelFontSize;
-  const fontPx = chromeSizeImg(fontBase, viewScale, !!overlay?.presentation, floor);
+  const fontPx = pointLabelFontImg(fontBase, floor, {
+    presentation: !!overlay?.presentation,
+    fitScale,
+  });
+  // k scales default label offsets with the drawn font. Label box chrome
+  // (pad / radius / stroke) tracks drawn fontPx.
   const k = fontPx / fontBase;
+  const chromeK = labelChromeK(fontPx);
   const weight = resolved.pointLabelWeight;
   const color = resolved.pointLabelColor;
 
@@ -3075,11 +3189,12 @@ export function renderTopoTop(
     const dotBase = overlay?.pointSize ?? 6;
     const dotR = chromeSizeImg(dotBase, viewScale, !!overlay?.presentation, floor);
     const dotColor = overlay?.pointColor ?? "#dc2626";
-    const padX = 4 * k;
-    const padY = 2.5 * k;
+    const padX = 4 * chromeK;
+    const padY = 2.5 * chromeK;
 
     // Decluttering: figure out which labels can be drawn without colliding.
-    // Dots always draw. Highlighted / dragged labels win ties.
+    // Dots always draw when points are on. Labels obey showLabels (Readings pill
+    // and Control panel → Readings → Show).
     ctx.font = `${weight} ${fontPx}px sans-serif`;
     const rectFor = (p: SurveyPoint) => {
       const isLive = live && live.id === p.id;
@@ -3089,23 +3204,25 @@ export function renderTopoTop(
       return { x: p.x + dx - padX, y: p.y + dy - padY, w, h: fontPx + padY * 2 };
     };
     const visibleLabelIds = new Set<string>();
-    if (resolved.declutterLabels === false) {
-      for (const p of points) visibleLabelIds.add(p.id);
-    } else {
-      const placed: { x: number; y: number; w: number; h: number }[] = [];
-      const ordered = [...points].sort((a, b) => {
-        const pr = (p: SurveyPoint) =>
-          highlightId === p.id ? 0 : p.labelDx !== undefined || p.labelDy !== undefined ? 1 : 2;
-        return pr(a) - pr(b);
-      });
-      for (const p of ordered) {
-        const r = rectFor(p);
-        const hit = placed.some(
-          (q) => r.x < q.x + q.w && r.x + r.w > q.x && r.y < q.y + q.h && r.y + r.h > q.y,
-        );
-        if (!hit) {
-          placed.push(r);
-          visibleLabelIds.add(p.id);
+    if (resolved.showLabels) {
+      if (resolved.declutterLabels === false) {
+        for (const p of points) visibleLabelIds.add(p.id);
+      } else {
+        const placed: { x: number; y: number; w: number; h: number }[] = [];
+        const ordered = [...points].sort((a, b) => {
+          const pr = (p: SurveyPoint) =>
+            highlightId === p.id ? 0 : p.labelDx !== undefined || p.labelDy !== undefined ? 1 : 2;
+          return pr(a) - pr(b);
+        });
+        for (const p of ordered) {
+          const r = rectFor(p);
+          const hit = placed.some(
+            (q) => r.x < q.x + q.w && r.x + r.w > q.x && r.y < q.y + q.h && r.y + r.h > q.y,
+          );
+          if (!hit) {
+            placed.push(r);
+            visibleLabelIds.add(p.id);
+          }
         }
       }
     }
@@ -3125,7 +3242,7 @@ export function renderTopoTop(
       }
 
       // label
-      if (!visibleLabelIds.has(p.id)) continue;
+      if (!resolved.showLabels || !visibleLabelIds.has(p.id)) continue;
       const text = p.value.toFixed(resolved.decimalPlaces);
       ctx.font = `${weight} ${fontPx}px sans-serif`;
       ctx.textAlign = "center";
@@ -3139,7 +3256,7 @@ export function renderTopoTop(
       const inverted = highlightId === p.id;
       const pillW = tw + padX * 2;
       const pillH = fontPx + padY * 2;
-      const radius = 2.5 * k;
+      const radius = 2.5 * chromeK;
       const cx = tx + tw / 2;
       const cy = ty + fontPx / 2;
 
@@ -3148,7 +3265,7 @@ export function renderTopoTop(
         ctx.fillStyle = color;
         roundRectPath(ctx, tx - padX, ty - padY, pillW, pillH, radius);
         ctx.fill();
-        ctx.lineWidth = k;
+        ctx.lineWidth = chromeK;
         ctx.strokeStyle = color;
         ctx.stroke();
         ctx.fillStyle = "#ffffff";
@@ -3160,7 +3277,7 @@ export function renderTopoTop(
           ctx.fill();
         }
         if (resolved.pointLabelBackground !== "plain") {
-          ctx.lineWidth = 0.8 * k;
+          ctx.lineWidth = 0.8 * chromeK;
           ctx.strokeStyle = color;
           roundRectPath(ctx, tx - padX, ty - padY, pillW, pillH, radius);
           ctx.stroke();

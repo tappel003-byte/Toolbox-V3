@@ -53,8 +53,8 @@ interface Props {
   badge?: React.ReactNode;
   /** Fill space or use fixed height */
   className?: string;
-  /** Called on transform change */
-  onTransform?: (t: CanvasTransform) => void;
+  /** Called on transform change. `fitScale` is the scale that fits the plan in the wrapper. */
+  onTransform?: (t: CanvasTransform, meta: { fitScale: number }) => void;
   /** Optional image-space pointer hooks. Return true from down to consume pan/tap. */
   onImagePointerDown?: (x: number, y: number, event: ReactPointerEvent<HTMLDivElement>) => boolean;
   onImagePointerMove?: (x: number, y: number, event: ReactPointerEvent<HTMLDivElement>) => void;
@@ -204,7 +204,7 @@ export function PlanCanvas({
     (t: CanvasTransform, silent?: boolean) => {
       transformRef.current = t;
       setTransform(t);
-      onTransformRef.current?.(t);
+      onTransformRef.current?.(t, { fitScale: fitScale() });
       const wrap = wrapRef.current;
       if (wrap && t.scale > 0) {
         const camera: PlanCamera = {
