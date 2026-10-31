@@ -399,6 +399,33 @@ check('Done files the level\'s contour, drawn from the readings',
   JSON.stringify({ status: done.status, contour: afterDone.contour,
     stored: afterDone.contourStored }));
 
+// The layer sits under Distress Survey's own pins, so it carries no High or
+// Low marker even though the level's High/Low is on. The report's still draws
+// them (CLAUDE-016 D1) and this layer is drawn by the same composer, so it has
+// to say so for itself.
+const layerMarkers = await page.evaluate(async (id) => {
+  const src = id ? await window.ToolboxDB.getMedia(id) : '';
+  if (!src) return null;
+  const im = await new Promise((res, rej) => {
+    const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src;
+  });
+  const c = document.createElement('canvas');
+  c.width = im.naturalWidth; c.height = im.naturalHeight;
+  const x = c.getContext('2d');
+  x.drawImage(im, 0, 0);
+  const d = x.getImageData(0, 0, c.width, c.height).data;
+  const near = (i, rgb) => Math.abs(d[i] - rgb[0]) + Math.abs(d[i + 1] - rgb[1]) + Math.abs(d[i + 2] - rgb[2]) < 60 && d[i + 3] > 200;
+  let high = 0; let low = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (near(i, [181, 29, 22])) high += 1;
+    if (near(i, [31, 95, 159])) low += 1;
+  }
+  return { high, low };
+}, afterDone.contour && afterDone.contour.id);
+check('the filed contour layer carries no High or Low marker',
+  !!layerMarkers && layerMarkers.high === 0 && layerMarkers.low === 0,
+  JSON.stringify(layerMarkers));
+
 // Press it again: a button, not a state. Nothing is locked, and the level
 // ends up with exactly one contour.
 const doneAgain = await clickDone();

@@ -5,7 +5,7 @@
  * Topo pipeline as field Export. Legend and High/Low/Δ are returned as data
  * for fixed Report Builder slots — not baked at field chrome positions.
  */
-import { readPointStyle } from "./point-style";
+import { reportPointStyle } from "./point-style";
 import { closedAreas, pointsInArea } from "@/lib/areas";
 import { withCorrectedValues } from "@/lib/transitions";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
@@ -145,9 +145,9 @@ function statsFromTopos(
       lo,
       delta: hi - lo,
       decimalPlaces: dec,
-      // The pins are NOT drawn into the figure any more. They come back as
-      // positions so Report Builder places them as its own movable markers --
-      // a pin baked into the image cannot be nudged off a wall.
+      // Where the High and Low readings are, as fractions of the figure. The
+      // markers themselves are drawn into the figure (see reportSettings);
+      // these positions are data, for anything that wants to point at them.
       hiPin: { value: hi, fx: fx(at.hi.x), fy: fy(at.hi.y) },
       loPin: { value: lo, fx: fx(at.lo.x), fy: fy(at.lo.y) },
       legend: legendStopsFor(at, settings),
@@ -159,13 +159,18 @@ function reportSettings(partial?: Partial<RenderSettings>): RenderSettings {
   return resolveSettings({
     ...defaultRenderSettings,
     ...(partial || {}),
-    // Every piece of chrome is a Report Builder slot, so none of it is baked
-    // into the picture: the colour scale, the H/L/delta pill and the High and
-    // Low pins all come back as data and are placed, moved and sized on the
-    // page. Anything drawn into the PNG is frozen there for good.
+    // The colour scale and the H/L/delta pill are Report Builder boxes, placed,
+    // moved and sized on the page, so neither is baked into the picture.
+    //
+    // The High and Low markers are NOT boxes. They point at a spot on the
+    // floor, and the slide draws them on the live canvas -- by this same
+    // renderTopoTop, at the level's saved nudges, at the plan-proportional
+    // size -- whenever the slide's own showHighLow says so. They used to be
+    // forced off here too, and nothing placed them back, so a sheet that
+    // showed High and Low in the editor printed and presented without them.
+    // The slide's setting is the answer for the still, as it is on screen.
     showLegend: false,
     showStatsPill: false,
-    showHighLow: false,
   });
 }
 
@@ -373,12 +378,9 @@ export async function composeReportTopoFigure(options: {
   // made a report topo look nothing like the same drawing in Floor Survey.
   //
   // The figure is seen about REPORT_REFERENCE_WIDTH across, so that is the
-  // scale it is drawn for, and every screen-anchored size follows.
-  // The dot size and colour are the investigator's, saved per Customer File.
-  // Omitting them left renderTopoTop on its own fallback of 6 against the field
-  // app's 2, so a composed figure drew every reading three times the size of
-  // the same reading on the slide it was composed from.
-  const pointStyle = readPointStyle(floor.projectId);
+  // scale it is drawn for. Dot size is the report sheet default — never
+  // capture dpp-size, or a field adjustment rewrites the print.
+  const pointStyle = reportPointStyle();
   // The live canvas's three passes, in its order.
   renderTopoBase(ctx, floor, settings, areaTopos);
   drawPlanOver();

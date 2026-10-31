@@ -870,6 +870,23 @@ body {
   background: var(--bg);
 }
 
+/* Remove level — only shown when another level remains (Tim, Oct 26, 2026). */
+.plan-remove-level {
+  flex: 0 0 auto;
+  height: 40px;
+  padding: 0 12px;
+  font-size: 13px;
+  white-space: nowrap;
+  color: #8a2f2f;
+  border-color: #e0c8c8;
+}
+
+.plan-remove-level:hover {
+  color: #6e1f1f;
+  background: #faf2f2;
+  border-color: #d4a8a8;
+}
+
 .field-hint {
   margin: 6px 0 0;
   font-size: 12px;
@@ -3620,8 +3637,16 @@ button.cf-home__delete[hidden] {
   .app-bar {
     height: calc(52px + env(safe-area-inset-top));
     min-height: calc(52px + env(safe-area-inset-top));
-    padding-right: 12px;
-    padding-left: 12px;
+    padding-right: 10px;
+    padding-left: 10px;
+    gap: 8px;
+  }
+
+  .app-bar__title {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0; /* keep brand mark; free width for actions on phone */
+    gap: 0;
   }
 
   .app-bar__title::before {
@@ -3633,12 +3658,20 @@ button.cf-home__delete[hidden] {
   .app-bar__refresh,
   .app-bar__explorer,
   .app-bar__sync {
+    padding: 5px 7px;
+    font-size: 11px;
+  }
+
+  .app-bar__refresh.is-update-ready {
     padding: 5px 8px;
     font-size: 11px;
   }
 
   .app-bar__actions {
-    gap: 6px;
+    gap: 5px;
+    min-width: 0;
+    flex: 1 1 auto;
+    justify-content: flex-end;
   }
 
   .view-bar--file {
@@ -3959,6 +3992,220 @@ button.cf-home__delete[hidden] {
   font-size: 0.95rem;
 }
 
+/* List | Map, as the drawings have it under the search box. */
+.explorer-mode {
+  display: flex;
+  gap: 3px;
+  max-width: 16rem;
+  margin: 0.5rem 1.25rem 0;
+  padding: 3px;
+  border-radius: 10px;
+  background: #e7e3da;
+}
+
+.explorer-mode__btn {
+  flex: 1 1 0;
+  min-height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.explorer-mode__btn.is-on {
+  background: #fff;
+  color: var(--navy);
+  box-shadow: 0 1px 3px rgba(8, 32, 54, 0.14);
+}
+
+.explorer-mapview {
+  padding: 8px 16px 12px;
+}
+
+.explorer-mapyears {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.explorer-mapyears__chip {
+  min-height: 34px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.explorer-mapyears__chip.is-on {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: #fff;
+}
+
+.explorer-maphost {
+  height: min(62vh, 560px);
+  min-height: 300px;
+}
+
+.explorer-map {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #e8ecee;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.explorer-map__tiles,
+.explorer-map__pins {
+  position: absolute;
+  inset: 0;
+}
+
+.explorer-map__tile {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 256px;
+  height: 256px;
+  pointer-events: none;
+}
+
+.explorer-map__pin {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 4px rgba(8, 32, 54, 0.35);
+  color: #fff;
+  font: 800 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+
+.explorer-map__pin--many {
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+  background: var(--navy);
+}
+
+.explorer-map__zoom {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.explorer-map__zoom button {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  background: #fff;
+  color: var(--navy);
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.explorer-map__zoom button + button {
+  border-top: 1px solid var(--line);
+}
+
+.explorer-map__zoom button:disabled {
+  color: var(--line);
+  cursor: default;
+}
+
+.explorer-map__credit {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  padding: 2px 6px;
+  border-top-left-radius: 6px;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+.explorer-map__credit a {
+  color: inherit;
+}
+
+.explorer-map__say {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 60px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.explorer-mapbelow__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.explorer-mapbelow__title {
+  margin: 0;
+  color: var(--navy);
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.explorer-mapbelow__note {
+  margin: 8px 2px 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.explorer-mapbelow__unplaced {
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+
+.explorer-mapbelow__unplaced > summary {
+  cursor: pointer;
+  color: var(--ink-soft);
+  font-weight: 650;
+}
+
 .explorer-search input:focus {
   outline: 2px solid rgba(15, 55, 95, 0.25);
   outline-offset: 1px;
@@ -4160,6 +4407,38 @@ button.cf-home__delete[hidden] {
   user-select: text;
 }
 
+/* The phone's list, filed by year and month the way the desktop tree is. */
+.explorer-year {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--navy);
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.explorer-year:first-child {
+  margin-top: 6px;
+}
+
+.explorer-year__n {
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.explorer-month {
+  margin: 12px 2px 0;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .explorer-row__label {
   margin: 4px 0 0;
   color: var(--ink-soft);
@@ -4185,6 +4464,72 @@ button.cf-home__delete[hidden] {
 .explorer-row__actions .btn {
   min-height: 40px;
   padding: 8px 12px;
+}
+
+/* Words found inside the jobs, under the card list. Each hit carries the
+   heading it came from, so an observation never reads as a conclusion. */
+.explorer-textsearch {
+  margin-top: 18px;
+  padding: 0 16px 12px;
+}
+
+
+.explorer-textsearch__head {
+  margin: 0 0 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--navy);
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.explorer-textsearch__status {
+  margin: 6px 2px 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.explorer-hit {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-width: 0;
+}
+
+.explorer-hit__line {
+  margin-top: 8px;
+  padding-left: 10px;
+  border-left: 3px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.explorer-hit__from {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.explorer-hit__text {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.explorer-hit__text mark {
+  background: #fde7b0;
+  color: inherit;
+  border-radius: 2px;
+}
+
+.explorer-row--text {
+  background: #f6f8f4;
 }
 
 .explorer-note,
@@ -4433,6 +4778,342 @@ button.cf-home__delete[hidden] {
   overflow-wrap: anywhere;
 }
 
+/* ---------------------------------------------------------------------------
+   Three columns on a desktop, one on a phone.
+
+   Mockup screens four and six: the tree down the left, the list in the
+   middle, the details and the preview on the right. On a phone the tree and
+   the details chrome are not there at all and the list is the screen, so the
+   proven phone layout is untouched -- "responsive design means each workspace
+   should fit its actual use context; do not force one identical UI across
+   phone, tablet and desktop."
+   --------------------------------------------------------------------------- */
+.explorer-panes {
+  display: block;
+  min-width: 0;
+}
+
+.explorer-main {
+  min-width: 0;
+}
+
+/* Below the desktop breakpoint the right column is just the page continuing:
+   no border, no sticky, and the preview sits under the list as it always
+   has. */
+.explorer-details {
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .explorer-view {
+    max-width: 90rem;
+  }
+
+  .explorer-panes {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 1fr) 20rem;
+    gap: 18px;
+    align-items: start;
+    padding: 0 1.25rem;
+  }
+
+  /* Inside a job there is no tree: the folders ARE the list, which is what
+     mockup six's left column is showing. Two columns, not three -- without
+     this the hidden tree's 15rem track was still in the template and the
+     folders were squeezed into it while the rest of the screen sat empty. */
+  .explorer-panes--inside {
+    grid-template-columns: minmax(0, 1fr) 22rem;
+  }
+
+  /* The list already carries the page's side padding on a phone; inside the
+     grid the column provides it, so it would be doubled. */
+  .explorer-panes .explorer-textsearch,
+  .explorer-panes .explorer-mapview {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .explorer-panes .explorer-list {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .explorer-panes .explorer-facts,
+  .explorer-panes .explorer-told {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .explorer-tree,
+  .explorer-details {
+    position: sticky;
+    top: 12px;
+    max-height: calc(100vh - 7rem);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .explorer-tree {
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.78);
+  }
+
+  .explorer-details__body {
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.78);
+  }
+}
+
+.explorer-tree__head {
+  margin: 0 0 8px;
+  padding: 0 6px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.explorer-tree__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 32px;
+  margin: 1px 0;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--navy);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+
+.explorer-tree__row:hover,
+.explorer-tree__row:focus-visible {
+  background: rgba(7, 40, 61, 0.07);
+}
+
+.explorer-tree__row.is-on {
+  background: rgba(7, 40, 61, 0.12);
+  font-weight: 750;
+}
+
+.explorer-tree__row--l2 { padding-left: 14px; }
+.explorer-tree__row--l3 { padding-left: 30px; font-weight: 600; }
+
+.explorer-tree__car {
+  flex: 0 0 auto;
+  width: 0.8em;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+}
+
+.explorer-tree__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-tree__n {
+  flex: 0 0 auto;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.explorer-details__name {
+  margin: 0;
+  color: var(--navy);
+  font-size: 1.02rem;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.explorer-details__addr {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: pre-line;
+}
+
+.explorer-details__wait {
+  margin: 12px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.explorer-details__body .explorer-facts__list {
+  margin-top: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+}
+
+.explorer-details__acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/* The picked row, the way a file explorer shows it. Navy and a tint rather
+   than the accent, which sat beside the red Delete button on the same row
+   and read as a warning instead of a selection. */
+.explorer-row.is-selected {
+  border-color: var(--navy);
+  background: rgba(7, 40, 61, 0.06);
+}
+
+/* ---------------------------------------------------------------------------
+   What a job RECORDS, and what a component HOLDS.
+
+   Tim, after pressing Open on a Floor Survey and getting the stored record:
+   "who in the world is this helpful?" These two blocks are the answer -- the
+   figures the survey already knows, above the folders, and a line under each
+   folder saying what is inside it. Everything here is read from the stored
+   components; nothing is typed anywhere.
+   --------------------------------------------------------------------------- */
+.explorer-facts {
+  margin: 10px 4px 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.explorer-facts__head {
+  margin: 0 0 8px;
+  color: var(--navy);
+  font-size: 0.98rem;
+  font-weight: 750;
+}
+
+/* Label above value, in columns that reflow -- a figure and its name must
+   never be split across a wrap, which a plain two-column dl does on a
+   phone. */
+.explorer-facts__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 10px 18px;
+  margin: 0;
+}
+
+.explorer-facts__list dt {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.explorer-facts__list dd {
+  margin: 2px 0 0;
+  color: var(--navy);
+  font-size: 0.98rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.explorer-facts__note {
+  margin: 10px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* What one component holds, inside its own folder or above its record. */
+.explorer-told {
+  margin: 6px 4px 10px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 10px 10px 0;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.explorer-told__head {
+  margin: 0;
+  color: var(--navy);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.explorer-told__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 8px 16px;
+  margin: 10px 0 0;
+}
+
+.explorer-told__list dt {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.explorer-told__list dd {
+  margin: 2px 0 0;
+  color: var(--navy);
+  font-size: 0.92rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.explorer-told__note {
+  margin: 8px 0 0;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+/* The line on a folder that says whether to walk into it. */
+.explorer-folder__says {
+  display: block;
+  margin-top: 3px;
+  color: var(--navy);
+  font-size: 12.5px;
+  font-weight: 650;
+  line-height: 1.35;
+  opacity: 0.85;
+}
+
+/* The record syntax, behind one closed line inside a preview. */
+.explorer-preview__raw {
+  margin-top: 10px;
+}
+
+.explorer-preview__raw > summary {
+  cursor: pointer;
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.explorer-records__raw {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.explorer-records__raw .btn {
+  margin-top: 8px;
+}
+
 @media (max-width: 860px) {
   .explorer-head {
     align-items: stretch;
@@ -4467,4 +5148,10 @@ button.cf-home__delete[hidden] {
   background: var(--accent);
   color: #fff;
   font-weight: 700;
+}
+
+/* GPT-035: finish lock uses #app-view[inert] (focus + keyboard). Keep
+   pointer-events as a belt for older WebViews that lag on inert. */
+html.tb-refresh-locked .canvas {
+  pointer-events: none;
 }

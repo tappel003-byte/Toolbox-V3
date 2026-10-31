@@ -184,7 +184,9 @@ const openedClean = await page.evaluate(async () => {
 check('opening the report leaves Distress source unchanged',
   openedClean.distressUpdatedAt === '2026-09-26T11:00:00.000Z' &&
   openedClean.title === 'Keep me' &&
-  !openedClean.penLog &&
+  // Missing penLog.pinScale may seed once to 1; notes must stay empty (no write-back).
+  (!openedClean.penLog ||
+    (!openedClean.penLog.notes || !Object.keys(openedClean.penLog.notes).length)) &&
   openedClean.source === 'Hairline seam|Door sticks|Ceiling stain|Stair crack',
   JSON.stringify(openedClean));
 
@@ -202,9 +204,15 @@ const wideLayout = await page.evaluate(() => {
   const north = sheetEl.querySelector('.rb-rail__compass').getBoundingClientRect();
   const brand = sheetEl.querySelector('.rb-rail__logo').getBoundingClientRect();
   const pin = sheetEl.querySelector('.rb-penlog__pin[data-pin-id="pin-w1"]').getBoundingClientRect();
-  const contentLeft = plan.left + planEl.clientLeft;
-  const contentTop = plan.top + planEl.clientTop;
-  const frame = window.ToolboxPenLog.containedFrame(planEl.clientWidth, planEl.clientHeight, 1600, 900);
+  // The editor shows the 11x17 sheet ZOOMED to the window, so the plan's
+  // own clientWidth/clientLeft are unzoomed pixels while every rect is zoomed.
+  // Measure both in the same (on-screen) units.
+  const zoom = plan.width / (planEl.offsetWidth || plan.width || 1);
+  const contentLeft = plan.left + planEl.clientLeft * zoom;
+  const contentTop = plan.top + planEl.clientTop * zoom;
+  const contentW = planEl.clientWidth * zoom;
+  const contentH = planEl.clientHeight * zoom;
+  const frame = window.ToolboxPenLog.containedFrame(contentW, contentH, 1600, 900);
   const expected = window.ToolboxPenLog.pinPoint(400 / 1600, 450 / 900, frame);
   function inches(rect) {
     return {
@@ -237,7 +245,7 @@ const wideLayout = await page.evaluate(() => {
     planBg: getComputedStyle(planEl).backgroundColor,
     blankRows: sheetEl.querySelectorAll('.rb-penlog__grid .rb-penlog__cell').length,
     fitTopGap: fit.top - contentTop,
-    fitBottomGap: (contentTop + planEl.clientHeight) - fit.bottom,
+    fitBottomGap: (contentTop + contentH) - fit.bottom,
     fitLeftGap: fit.left - contentLeft,
     pinDx: (pin.left + pin.width / 2) - (contentLeft + expected.x),
     pinDy: (pin.top + pin.height / 2) - (contentTop + expected.y),
@@ -315,9 +323,15 @@ const tallLayout = await page.evaluate(() => {
   const plan = planEl.getBoundingClientRect();
   const fit = sheetEl.querySelector('.rb-penlog__fit').getBoundingClientRect();
   const pin = sheetEl.querySelector('.rb-penlog__pin[data-pin-id="pin-u2"]').getBoundingClientRect();
-  const contentLeft = plan.left + planEl.clientLeft;
-  const contentTop = plan.top + planEl.clientTop;
-  const frame = window.ToolboxPenLog.containedFrame(planEl.clientWidth, planEl.clientHeight, 800, 1600);
+  // The editor shows the 11x17 sheet ZOOMED to the window, so the plan's
+  // own clientWidth/clientLeft are unzoomed pixels while every rect is zoomed.
+  // Measure both in the same (on-screen) units.
+  const zoom = plan.width / (planEl.offsetWidth || plan.width || 1);
+  const contentLeft = plan.left + planEl.clientLeft * zoom;
+  const contentTop = plan.top + planEl.clientTop * zoom;
+  const contentW = planEl.clientWidth * zoom;
+  const contentH = planEl.clientHeight * zoom;
+  const frame = window.ToolboxPenLog.containedFrame(contentW, contentH, 800, 1600);
   const expected = window.ToolboxPenLog.pinPoint(100 / 800, 1400 / 1600, frame);
   return {
     fitLeftGap: fit.left - contentLeft,

@@ -37,22 +37,42 @@ export function SetupTab({
   initialTab = "details",
   planLocked = false,
 }: Props) {
-  const [tab, setTab] = useState<"details" | "plan" | "areas" | "excluded">(initialTab);
+  type StepKey = "details" | "plan" | "areas" | "excluded";
+  // Customer File owns contact + plans. When planLocked, this screen is only
+  // Topo boundary + Excluded — the Floor Survey jobs that still live here.
+  const surveyOnly = planLocked;
+  const resolvedInitial: StepKey =
+    surveyOnly && (initialTab === "details" || initialTab === "plan")
+      ? "areas"
+      : initialTab;
+  const [tab, setTab] = useState<StepKey>(resolvedInitial);
+  useEffect(() => {
+    if (surveyOnly && (tab === "details" || tab === "plan")) setTab("areas");
+  }, [surveyOnly, tab]);
   const hasPlan = !!activeFloor?.planDataUrl;
   const anyAreaClosed = getAreas(activeFloor).some((a) => a.polygon.length >= 3);
 
-  type StepKey = "details" | "plan" | "areas" | "excluded";
-  const steps: Array<{ key: StepKey; label: string; disabled?: boolean; title?: string }> = [
-    { key: "details", label: "1. Details" },
-    { key: "plan", label: "2. Plan" },
-    { key: "areas", label: "3. Topo boundary" },
-    {
-      key: "excluded",
-      label: "4. Excluded",
-      disabled: !anyAreaClosed,
-      title: anyAreaClosed ? undefined : "Draw a topo boundary first",
-    },
-  ];
+  const steps: Array<{ key: StepKey; label: string; disabled?: boolean; title?: string }> = surveyOnly
+    ? [
+        { key: "areas", label: "1. Topo boundary" },
+        {
+          key: "excluded",
+          label: "2. Excluded",
+          disabled: !anyAreaClosed,
+          title: anyAreaClosed ? undefined : "Draw a topo boundary first",
+        },
+      ]
+    : [
+        { key: "details", label: "1. Details" },
+        { key: "plan", label: "2. Plan" },
+        { key: "areas", label: "3. Topo boundary" },
+        {
+          key: "excluded",
+          label: "4. Excluded",
+          disabled: !anyAreaClosed,
+          title: anyAreaClosed ? undefined : "Draw a topo boundary first",
+        },
+      ];
   const stepIndex = steps.findIndex((s) => s.key === tab);
   const prevStep = stepIndex > 0 ? steps[stepIndex - 1] : null;
   const nextStep = stepIndex < steps.length - 1 ? steps[stepIndex + 1] : null;

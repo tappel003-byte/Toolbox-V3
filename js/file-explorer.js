@@ -91,6 +91,38 @@
     return formatFieldDate(row.fieldWorkDate || row.createdAt);
   }
 
+  /**
+   * The street and the town out of one stored address.
+   *
+   * The Customer File keeps the property as one line -- "4925 Edwards Dr NE,
+   * Albuquerque, NM 87111, United States of America" when it came from the
+   * address search -- and there is no separate city field to read. The town
+   * is the part just before the state; without a state it is the second
+   * part. An address that does not split that way gives no town, and the
+   * row shows the address as it was typed rather than a guess.
+   */
+  const STATE_PART = /^[A-Za-z]{2}(\s+\d{5}(-\d{4})?)?$|^[A-Za-z][A-Za-z .]+\s+\d{5}(-\d{4})?$/;
+
+  function addressParts(address) {
+    const parts = String(address || '').split(/[,\n]/).map(function (part) {
+      return part.trim();
+    }).filter(Boolean);
+    if (parts.length < 2) return { street: parts[0] || '', town: '' };
+    let town = '';
+    for (let i = 1; i < parts.length; i++) {
+      if (STATE_PART.test(parts[i])) {
+        if (i > 1) town = parts[i - 1];
+        break;
+      }
+    }
+    if (!town && !STATE_PART.test(parts[1]) && !/^\d/.test(parts[1])) town = parts[1];
+    return { street: parts[0], town: town };
+  }
+
+  function townOf(address) {
+    return addressParts(address).town;
+  }
+
   // A filename prefix is not ownership. Without a manifest purpose, media
   // stays in Other stored files.
   function classify(row, id) {
@@ -457,22 +489,41 @@
       '        <p id="explorer-sub" class="explorer-sub"></p>' +
       '      </div>' +
       (inside
-        ? '<button type="button" id="explorer-zip" class="btn btn--secondary">Download ZIP</button>'
+        ? '<button type="button" id="explorer-zip" class="btn btn--secondary">Download job copy</button>'
         : '') +
       '    </header>' +
       (inside
         ? ''
         : '<label class="explorer-search">' +
           '  <span class="sr-only">Search Customer Files</span>' +
-          '  <input type="search" id="explorer-search" placeholder="Search name or address" autocomplete="off" />' +
-          '</label>') +
-      '    <p class="explorer-crumb" id="explorer-crumb"></p>' +
+          '  <input type="search" id="explorer-search" placeholder="Search name, address or town" autocomplete="off" />' +
+          '</label>' +
+          '<div class="explorer-mode" role="group" aria-label="Show jobs as">' +
+          '  <button type="button" class="explorer-mode__btn is-on" data-mode="list" aria-pressed="true">List</button>' +
+          '  <button type="button" class="explorer-mode__btn" data-mode="map" aria-pressed="false">Map</button>' +
+          '</div>') +
       '    <p class="cabinet-notice" id="explorer-notice" hidden></p>' +
-      '    <div id="explorer-notes"></div>' +
-      '    <div class="explorer-list" id="explorer-list">' +
-      '      <p class="cabinet-empty">Loading Customer Files…</p>' +
+      // Three columns on a desktop, one on a phone: the drawings' tree down
+      // the left, the list in the middle, and the details beside it. On a
+      // phone the tree and the details chrome are simply not there and the
+      // list is the screen, exactly as before -- "each workspace should fit
+      // its actual use context", not one identical UI everywhere.
+      '    <div class="explorer-panes' + (inside ? ' explorer-panes--inside' : '') + '">' +
+      '      <nav class="explorer-tree" id="explorer-tree" hidden aria-label="File Cabinet"></nav>' +
+      '      <div class="explorer-main">' +
+      '        <p class="explorer-crumb" id="explorer-crumb"></p>' +
+      '        <div id="explorer-notes"></div>' +
+      '        <div class="explorer-list" id="explorer-list">' +
+      '          <p class="cabinet-empty">Loading Customer Files…</p>' +
+      '        </div>' +
+      '        <section class="explorer-textsearch" id="explorer-textsearch" hidden></section>' +
+      '        <div class="explorer-mapview" id="explorer-mapview" hidden></div>' +
+      '      </div>' +
+      '      <aside class="explorer-details" id="explorer-details">' +
+      '        <div class="explorer-details__body" id="explorer-details-body" hidden></div>' +
+      '        <section class="explorer-preview" id="explorer-preview" hidden></section>' +
+      '      </aside>' +
       '    </div>' +
-      '    <section class="explorer-preview" id="explorer-preview" hidden></section>' +
       '  </section>' +
       '</div>',
     );
@@ -485,11 +536,13 @@
     const notesEl = app.querySelector('#explorer-notes');
     const notice = app.querySelector('#explorer-notice');
     const preview = app.querySelector('#explorer-preview');
+    const treeEl = app.querySelector('#explorer-tree');
+    const detailsEl = app.querySelector('#explorer-details-body');
     const searchInput = app.querySelector('#explorer-search');
 
     lead.textContent = inside
       ? 'Stored surveys, photos, plans, and other data.'
-      : 'Customer Files stored on the server. Open a file to view its stored surveys, photos, plans, and other data. Delete removes a job from the server for good.';
+      : 'Jobs on the server, filed by field work date.';
     sub.textContent = inside ? 'Missing items are marked not stored.' : '';
     crumb.textContent = '';
 
@@ -519,6 +572,20 @@
     }
 
     let rootFiles = [];
+
+    // The three columns are a function of the room there is, so they have to
+    // follow the window rather than be decided once at load.
+    if (typeof window.matchMedia === 'function') {
+      const wide = window.matchMedia('(min-width: 1100px)');
+      const onWidth = function () {
+        if (!document.body.contains(app)) return;
+        paintTree();
+        paintDetails();
+        if (!inside && rootFiles.length) paintRoot();
+      };
+      if (typeof wide.addEventListener === 'function') wide.addEventListener('change', onWidth);
+      else if (typeof wide.addListener === 'function') wide.addListener(onWidth);
+    }
 
     if (inside) {
       app.querySelector('#explorer-zip').addEventListener('click', function () {
@@ -551,6 +618,12 @@
       // and repaints, so a slow or failed lease read never holds up the list.
       return window.ToolboxSync.exploreListFiles().then(function (data) {
         rootFiles = data && Array.isArray(data.files) ? data.files : [];
+        // A job deleted or taken over from under the map must not stay on it.
+        if (mapJobs) {
+          mapJobs = null;
+          if (mode === 'map') openMap();
+        }
+        paintTree();
         paintRoot();
       }).catch(function (err) {
         listEl.innerHTML = '';
@@ -561,7 +634,143 @@
     if (searchInput) {
       searchInput.addEventListener('input', function () {
         paintRoot();
+        scheduleTextSearch(false);
       });
+      searchInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') scheduleTextSearch(true);
+      });
+    }
+
+    /**
+     * Search the words inside the jobs, not just the card.
+     *
+     * The card catalogue above answers names, addresses and towns instantly,
+     * on the device. "Half inch drywall crack" is not on any card: it is in
+     * a pin description or a report paragraph. Those words live in each
+     * job's text file on the server, and the server scans them. Each hit
+     * says which section it came from -- a field observation, a measurement,
+     * or a conclusion in the report -- because those are not the same kind
+     * of statement.
+     */
+    const textSearchEl = app.querySelector('#explorer-textsearch');
+    let textSearchTimer = 0;
+    let textSearchSeq = 0;
+
+    function scheduleTextSearch(now) {
+      if (!textSearchEl) return;
+      clearTimeout(textSearchTimer);
+      const query = String(searchInput.value || '').trim();
+      if (query.length < 3) {
+        textSearchSeq += 1;
+        textSearchEl.hidden = true;
+        textSearchEl.innerHTML = '';
+        return;
+      }
+      textSearchTimer = setTimeout(function () { runTextSearch(query); }, now ? 0 : 650);
+    }
+
+    function runTextSearch(query) {
+      const sync = window.ToolboxSync || {};
+      if (typeof sync.exploreSearchText !== 'function') return;
+      const seq = ++textSearchSeq;
+      textSearchEl.hidden = false;
+      textSearchEl.innerHTML = '';
+      const head = document.createElement('h2');
+      head.className = 'explorer-textsearch__head';
+      head.textContent = 'In the job text';
+      textSearchEl.appendChild(head);
+      const status = document.createElement('p');
+      status.className = 'explorer-textsearch__status';
+      status.textContent = 'Reading the job text…';
+      textSearchEl.appendChild(status);
+      sync.exploreSearchText(query).then(function (data) {
+        if (seq !== textSearchSeq) return;
+        paintTextResults(data, status);
+      }).catch(function (err) {
+        if (seq !== textSearchSeq) return;
+        status.textContent = errorText(err);
+      });
+    }
+
+    function paintTextResults(data, status) {
+      if (!data) {
+        status.textContent = 'Searching the job text needs the newer File Cabinet server.';
+        return;
+      }
+      const results = Array.isArray(data.results) ? data.results : [];
+      const parts = [];
+      parts.push(results.length
+        ? (results.length === 1 ? '1 job says this' : results.length + ' jobs say this')
+        : 'No job says this');
+      parts.push('searched ' + data.searched + ' of ' + data.total);
+      status.textContent = parts.join(' · ') + '.';
+      if (data.notYetRead) {
+        const more = document.createElement('p');
+        more.className = 'explorer-textsearch__status';
+        more.textContent = data.notYetRead + (data.notYetRead === 1 ? ' job has' : ' jobs have') +
+          ' not been read into the search yet. Each search reads more of them.';
+        textSearchEl.appendChild(more);
+      }
+      // Read, but not all of it: a record the job names could not be read.
+      // Said here so "no job says this" is never taken as the whole answer.
+      const partial = Array.isArray(data.incomplete) ? data.incomplete : [];
+      if (partial.length) {
+        const part = document.createElement('p');
+        part.className = 'explorer-textsearch__status explorer-textsearch__partial';
+        part.textContent = (partial.length === 1 ? '1 job' : partial.length + ' jobs') +
+          ' could only be partly read: ' + partial.map(function (job) {
+            return (job.displayName || 'Customer File') + ' (' + (job.components || []).join(', ') + ')';
+          }).join('; ') + '. They are read again on the next search.';
+        textSearchEl.appendChild(part);
+      }
+      const words = Array.isArray(data.words) ? data.words : [];
+      results.forEach(function (result) {
+        const card = document.createElement('article');
+        card.className = 'explorer-hit';
+        card.dataset.id = result.id;
+        const open = document.createElement('button');
+        open.type = 'button';
+        open.className = 'explorer-row__key';
+        open.textContent = result.displayName || result.propertyAddress || 'Customer File';
+        open.addEventListener('click', function () {
+          window.location.hash = '#/explore/' + encodeURIComponent(result.id);
+        });
+        card.appendChild(open);
+        const where = [];
+        if (result.inTrash) where.push('In File Cabinet Trash');
+        if (result.propertyAddress) where.push(result.propertyAddress);
+        if (result.fieldWorkDate) where.push(formatFieldDate(result.fieldWorkDate));
+        if (where.length) {
+          const meta = document.createElement('p');
+          meta.className = 'explorer-row__label';
+          meta.textContent = where.join(' · ');
+          card.appendChild(meta);
+        }
+        (result.hits || []).forEach(function (hit) {
+          const box = document.createElement('div');
+          box.className = 'explorer-hit__line';
+          const from = document.createElement('span');
+          from.className = 'explorer-hit__from';
+          from.textContent = hit.section;
+          box.appendChild(from);
+          const said = document.createElement('span');
+          said.className = 'explorer-hit__text';
+          said.innerHTML = markWords(hit.text, words);
+          box.appendChild(said);
+          card.appendChild(box);
+        });
+        textSearchEl.appendChild(card);
+      });
+    }
+
+    function markWords(text, words) {
+      let html = escapeHtml(text);
+      words.slice().sort(function (a, b) { return b.length - a.length; }).forEach(function (word) {
+        const safe = escapeHtml(word).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (!safe) return;
+        html = html.replace(new RegExp('(' + safe + ')(?![^<]*>)', 'gi'), '<mark>$1</mark>');
+      });
+      return html;
     }
 
     function loadCustomer(id) {
@@ -574,9 +783,17 @@
       });
     }
 
+    /** The month the tree has open, if any. */
+    function inOpenMonth(row) {
+      if (!openMonth) return true;
+      const when = yearMonthOf(row);
+      if (openMonth === 'undated') return !when;
+      return !!when && when.monthKey === openMonth;
+    }
+
     function filteredRoot() {
       const query = searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
-      const files = rootFiles.slice().sort(function (a, b) {
+      const files = rootFiles.filter(inOpenMonth).slice().sort(function (a, b) {
         const nameA = String(a && a.displayName || a && a.propertyAddress || '').toLowerCase();
         const nameB = String(b && b.displayName || b && b.propertyAddress || '').toLowerCase();
         if (nameA < nameB) return -1;
@@ -594,7 +811,531 @@
       });
     }
 
+    /**
+     * DESKTOP ONLY, decided by the room there is rather than by sniffing a
+     * device. A phone keeps the list it already had.
+     */
+    function wideEnoughForPanes() {
+      try {
+        return window.matchMedia('(min-width: 1100px)').matches;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    /** Which job the details pane is describing, at the root. */
+    let selectedId = '';
+    const figureCache = Object.create(null);
+
+    /**
+     * The tree: the drawers and the years, as the drawings have it.
+     *
+     * Grouped by the field work date, which is the DECIDED filing rule --
+     * the floor survey date, else the distress survey date, and no third
+     * fallback (Tim, Oct 18, 2026). js/sync.js already computes it onto the
+     * Cabinet index, so nothing new is derived here.
+     *
+     * WORKING AND FILED ARE NOT SPLIT. The drawings show two drawers and
+     * Tim decided them, but what moves a job from one to the other is a
+     * completed mark at Check In that nothing writes yet. Inventing one here
+     * would be inventing a lifecycle, so the tree groups every job it can
+     * see and the split is a filter waiting for that mark.
+     */
+    function yearMonthOf(row) {
+      const text = String((row && row.fieldWorkDate) || '').trim();
+      const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+      if (day) {
+        const date = new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3]));
+        return {
+          year: day[1],
+          month: date.toLocaleDateString(undefined, { month: 'long' }),
+          monthKey: day[1] + '-' + day[2],
+        };
+      }
+      return null;
+    }
+
+    function treeGroups(files) {
+      const years = Object.create(null);
+      const order = [];
+      const undated = [];
+      files.forEach(function (row) {
+        const when = yearMonthOf(row);
+        if (!when) { undated.push(row); return; }
+        if (!years[when.year]) {
+          years[when.year] = { year: when.year, months: Object.create(null), order: [], count: 0 };
+          order.push(when.year);
+        }
+        const year = years[when.year];
+        if (!year.months[when.monthKey]) {
+          year.months[when.monthKey] = { key: when.monthKey, label: when.month, rows: [] };
+          year.order.push(when.monthKey);
+        }
+        year.months[when.monthKey].rows.push(row);
+        year.count += 1;
+      });
+      order.sort(function (a, b) { return a < b ? 1 : -1; });
+      order.forEach(function (key) {
+        years[key].order.sort(function (a, b) { return a < b ? 1 : -1; });
+      });
+      return { years: order.map(function (key) { return years[key]; }), undated: undated };
+    }
+
+    /** Which month the list is narrowed to, or '' for everything. */
+    let openMonth = '';
+    const shutYears = Object.create(null);
+
+    function paintTree() {
+      if (!treeEl) return;
+      if (inside || !wideEnoughForPanes() || !rootFiles.length) {
+        treeEl.hidden = true;
+        treeEl.innerHTML = '';
+        return;
+      }
+      treeEl.hidden = false;
+      treeEl.innerHTML = '';
+      const head = document.createElement('p');
+      head.className = 'explorer-tree__head';
+      head.textContent = 'File Cabinet';
+      treeEl.appendChild(head);
+
+      const all = document.createElement('button');
+      all.type = 'button';
+      all.className = 'explorer-tree__row' + (openMonth ? '' : ' is-on');
+      all.innerHTML = '<span class="explorer-tree__label">All jobs</span>' +
+        '<span class="explorer-tree__n">' + rootFiles.length + '</span>';
+      all.addEventListener('click', function () {
+        openMonth = '';
+        paintTree();
+        paintRoot();
+      });
+      treeEl.appendChild(all);
+
+      const groups = treeGroups(rootFiles);
+      groups.years.forEach(function (year) {
+        const shut = !!shutYears[year.year];
+        const yearRow = document.createElement('button');
+        yearRow.type = 'button';
+        yearRow.className = 'explorer-tree__row explorer-tree__row--l2';
+        yearRow.innerHTML = '<span class="explorer-tree__car">' + (shut ? '▸' : '▾') + '</span>' +
+          '<span class="explorer-tree__label">' + escapeHtml(year.year) + '</span>' +
+          '<span class="explorer-tree__n">' + year.count + '</span>';
+        yearRow.addEventListener('click', function () {
+          shutYears[year.year] = !shutYears[year.year];
+          paintTree();
+        });
+        treeEl.appendChild(yearRow);
+        if (shut) return;
+        year.order.forEach(function (key) {
+          const month = year.months[key];
+          const row = document.createElement('button');
+          row.type = 'button';
+          row.className = 'explorer-tree__row explorer-tree__row--l3' +
+            (openMonth === key ? ' is-on' : '');
+          row.innerHTML = '<span class="explorer-tree__label">' + escapeHtml(month.label) + '</span>' +
+            '<span class="explorer-tree__n">' + month.rows.length + '</span>';
+          row.addEventListener('click', function () {
+            openMonth = openMonth === key ? '' : key;
+            paintTree();
+            paintRoot();
+          });
+          treeEl.appendChild(row);
+        });
+      });
+
+      if (groups.undated.length) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'explorer-tree__row explorer-tree__row--l2' +
+          (openMonth === 'undated' ? ' is-on' : '');
+        // Said plainly rather than filed under a date it does not have.
+        row.innerHTML = '<span class="explorer-tree__label">No survey date</span>' +
+          '<span class="explorer-tree__n">' + groups.undated.length + '</span>';
+        row.addEventListener('click', function () {
+          openMonth = openMonth === 'undated' ? '' : 'undated';
+          paintTree();
+          paintRoot();
+        });
+        treeEl.appendChild(row);
+      }
+    }
+
+    /**
+     * The details pane: the figures the survey already knows, so a job can be
+     * judged without opening it. Computed, never typed.
+     */
+    function paintDetails() {
+      if (!detailsEl) return;
+      if (inside || !wideEnoughForPanes() || !selectedId) {
+        detailsEl.hidden = true;
+        detailsEl.innerHTML = '';
+        return;
+      }
+      const row = rootFiles.filter(function (item) { return item && item.id === selectedId; })[0];
+      if (!row) {
+        detailsEl.hidden = true;
+        detailsEl.innerHTML = '';
+        return;
+      }
+      detailsEl.hidden = false;
+      detailsEl.innerHTML = '';
+      const name = document.createElement('h2');
+      name.className = 'explorer-details__name';
+      name.textContent = row.displayName || row.propertyAddress || 'Customer File';
+      detailsEl.appendChild(name);
+      if (row.propertyAddress) {
+        const addr = document.createElement('p');
+        addr.className = 'explorer-details__addr';
+        addr.textContent = row.propertyAddress;
+        detailsEl.appendChild(addr);
+      }
+      const when = usefulDate(row);
+      if (when) {
+        const date = document.createElement('p');
+        date.className = 'explorer-details__addr';
+        date.textContent = 'Field work ' + when;
+        detailsEl.appendChild(date);
+      }
+      if (row.deletedAt) {
+        const trashed = document.createElement('p');
+        trashed.className = 'explorer-details__addr';
+        trashed.textContent = 'In File Cabinet Trash';
+        detailsEl.appendChild(trashed);
+      }
+
+      const figures = figureCache[selectedId];
+      if (figures === undefined) {
+        const wait = document.createElement('p');
+        wait.className = 'explorer-details__wait';
+        wait.textContent = 'Reading the survey…';
+        detailsEl.appendChild(wait);
+        loadFigures(selectedId);
+      } else if (figures === null) {
+        const none = document.createElement('p');
+        none.className = 'explorer-details__wait';
+        none.textContent = 'The stored surveys for this job could not be read.';
+        detailsEl.appendChild(none);
+      } else if (!figures.length) {
+        const none = document.createElement('p');
+        none.className = 'explorer-details__wait';
+        none.textContent = 'No surveys are stored for this job yet.';
+        detailsEl.appendChild(none);
+      } else {
+        const dl = document.createElement('dl');
+        dl.className = 'explorer-facts__list';
+        figures.forEach(function (figure) {
+          const dt = document.createElement('dt');
+          dt.textContent = figure.label;
+          const dd = document.createElement('dd');
+          dd.textContent = figure.value;
+          dl.appendChild(dt);
+          dl.appendChild(dd);
+        });
+        detailsEl.appendChild(dl);
+      }
+
+      const acts = document.createElement('div');
+      acts.className = 'explorer-details__acts';
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'btn btn--secondary';
+      open.textContent = 'Open';
+      open.addEventListener('click', function () {
+        window.location.hash = '#/explore/' + encodeURIComponent(selectedId);
+      });
+      acts.appendChild(open);
+      detailsEl.appendChild(acts);
+    }
+
+    /**
+     * Read one job's components for the pane, once, on a deliberate
+     * selection. Through the back door's own route only.
+     */
+    function loadFigures(id) {
+      const sync = window.ToolboxSync || {};
+      const Summary = window.ToolboxExplorerSummary;
+      if (typeof sync.exploreReadComponent !== 'function' || !Summary) {
+        figureCache[id] = null;
+        return;
+      }
+      figureCache[id] = undefined;
+      const found = {};
+      let read = 0;
+      COMPONENT_READS.reduce(function (chain, name) {
+        return chain.then(function () {
+          return sync.exploreReadComponent(id, name).then(function (result) {
+            if (result && result.ok) { found[name] = result.payload; read += 1; }
+          }).catch(function () {});
+        });
+      }, Promise.resolve()).then(function () {
+        figureCache[id] = read ? Summary.jobFigures(found) : [];
+        if (selectedId === id) paintDetails();
+      }).catch(function () {
+        figureCache[id] = null;
+        if (selectedId === id) paintDetails();
+      });
+    }
+
+    function selectRoot(id) {
+      if (!wideEnoughForPanes()) return;
+      selectedId = id;
+      listEl.querySelectorAll('.explorer-row').forEach(function (node) {
+        node.classList.toggle('is-selected', node.dataset.id === id);
+      });
+      paintDetails();
+    }
+
+    // ---------------------------------------------------------------- map
+
+    /**
+     * The same jobs on a map. Pan or zoom to an area and the jobs in it are
+     * listed underneath; a year filter narrows them by the filing date.
+     *
+     * A job is placed only where it carries coordinates. One without them is
+     * not put anywhere near where it might be: it is counted and listed
+     * under the map as having no location.
+     */
+    let mode = 'list';
+    let mapView = null;
+    let mapJobs = null;
+    let mapPartial = false;
+    let mapYear = 'all';
+    let mapPicked = null;
+    const mapEl = app.querySelector('#explorer-mapview');
+
+    app.querySelectorAll('.explorer-mode__btn').forEach(function (button) {
+      button.addEventListener('click', function () { setMode(button.dataset.mode); });
+    });
+
+    function setMode(next) {
+      if (next === mode || !mapEl) return;
+      mode = next;
+      app.querySelectorAll('.explorer-mode__btn').forEach(function (button) {
+        const on = button.dataset.mode === mode;
+        button.classList.toggle('is-on', on);
+        button.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      listEl.hidden = mode === 'map';
+      mapEl.hidden = mode !== 'map';
+      if (mode === 'map') openMap();
+    }
+
+    function openMap() {
+      if (mapJobs) { paintMap(true); return; }
+      if (!mapView) mapEl.innerHTML = '<p class="cabinet-empty">Finding where the jobs are…</p>';
+      const sync = window.ToolboxSync || {};
+      if (typeof sync.exploreMapJobs !== 'function' || !window.ToolboxExplorerMap) {
+        mapEl.innerHTML = '<p class="cabinet-empty">The map is unavailable.</p>';
+        return;
+      }
+      sync.exploreMapJobs().then(function (data) {
+        mapJobs = data && Array.isArray(data.jobs) ? data.jobs : [];
+        mapPartial = !!(data && data.partial);
+        if (mode === 'map') paintMap(!mapView);
+        lookUpTypedAddresses(mapJobs);
+      }).catch(function (err) {
+        mapEl.innerHTML = '';
+        showNotice(errorText(err));
+      });
+    }
+
+    /**
+     * Third, and last: the typed address, looked up. Only for jobs neither
+     * the picked address nor the base point placed, only where the lookup
+     * names the house or its street, and never written back to the job.
+     */
+    function lookUpTypedAddresses(jobs) {
+      const Geo = window.ToolboxGeo;
+      if (!Geo || typeof Geo.geocodeAddress !== 'function') return;
+      const waiting = jobs.filter(function (job) {
+        return !window.ToolboxExplorerMap.hasPlace(job) && String(job.propertyAddress || '').trim();
+      });
+      let at = 0;
+      const next = function () {
+        if (at >= waiting.length || mapJobs !== jobs) return;
+        const job = waiting[at++];
+        Geo.geocodeAddress(job.propertyAddress).then(function (found) {
+          if (mapJobs !== jobs) return;
+          if (found) {
+            job.lat = found.lat;
+            job.lon = found.lon;
+            job.from = 'looked-up';
+            if (mode === 'map' && mapView) paintMap(false);
+          }
+          next();
+        });
+      };
+      next();
+    }
+
+    /** Where the pins on the map came from, said plainly. */
+    function sourcesLine(jobs) {
+      const counts = { address: 0, base: 0, lookup: 0 };
+      jobs.forEach(function (job) {
+        if (!window.ToolboxExplorerMap.hasPlace(job)) return;
+        if (job.from === 'base-point') counts.base += 1;
+        else if (job.from === 'looked-up') counts.lookup += 1;
+        else counts.address += 1;
+      });
+      const parts = [];
+      if (counts.address) parts.push(counts.address + ' from the picked address');
+      if (counts.base) parts.push(counts.base + ' from the base point GPS');
+      if (counts.lookup) parts.push(counts.lookup + ' looked up from the typed address');
+      return parts.length ? 'Placed ' + parts.join(', ') + '.' : '';
+    }
+
+    function yearOfJob(job) {
+      const match = /^(\d{4})-/.exec(String(job && job.fieldWorkDate || ''));
+      return match ? match[1] : '';
+    }
+
+    /** The map's jobs, narrowed by the search box, the tree and the year. */
+    function mapCandidates() {
+      const allowed = Object.create(null);
+      filteredRoot().forEach(function (row) { if (row && row.id) allowed[row.id] = row; });
+      return (mapJobs || []).filter(function (job) {
+        if (!allowed[job.id]) return false;
+        if (mapYear !== 'all' && yearOfJob(job) !== mapYear) return false;
+        return true;
+      });
+    }
+
+    /** The full listing row for a job when we have it, so Take Over and Delete stay. */
+    function rowForJob(job) {
+      const row = rootFiles.filter(function (item) { return item && item.id === job.id; })[0];
+      return row || Object.assign({ key: 'cf/' + job.id + '/index.json' }, job);
+    }
+
+    function paintMap(refit) {
+      if (!mapEl) return;
+      const MapApi = window.ToolboxExplorerMap;
+      if (!mapView) {
+        mapEl.innerHTML = '';
+        const years = document.createElement('div');
+        years.className = 'explorer-mapyears';
+        years.id = 'explorer-mapyears';
+        mapEl.appendChild(years);
+        const host = document.createElement('div');
+        host.className = 'explorer-maphost';
+        mapEl.appendChild(host);
+        const below = document.createElement('div');
+        below.className = 'explorer-mapbelow';
+        below.id = 'explorer-mapbelow';
+        mapEl.appendChild(below);
+        mapView = MapApi.create(host, {
+          onView: function (inView) {
+            if (!mapPicked) paintMapList(inView, false);
+          },
+          onPick: function (picked) {
+            mapPicked = picked;
+            paintMapList(picked, true);
+          },
+        });
+      }
+      paintYears();
+      mapPicked = null;
+      mapView.setJobs(mapCandidates(), refit);
+    }
+
+    function paintYears() {
+      const box = mapEl.querySelector('#explorer-mapyears');
+      if (!box) return;
+      box.innerHTML = '';
+      const years = Object.create(null);
+      (mapJobs || []).forEach(function (job) {
+        const year = yearOfJob(job);
+        if (year) years[year] = 1;
+      });
+      const order = ['all'].concat(Object.keys(years).sort().reverse());
+      if (mapYear !== 'all' && !years[mapYear]) mapYear = 'all';
+      order.forEach(function (year) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'explorer-mapyears__chip' + (year === mapYear ? ' is-on' : '');
+        chip.dataset.year = year;
+        chip.textContent = year === 'all' ? 'All years' : year;
+        chip.setAttribute('aria-pressed', year === mapYear ? 'true' : 'false');
+        chip.addEventListener('click', function () {
+          mapYear = year;
+          paintMap(true);
+        });
+        box.appendChild(chip);
+      });
+    }
+
+    function paintMapList(jobs, picked) {
+      const below = mapEl.querySelector('#explorer-mapbelow');
+      if (!below) return;
+      below.innerHTML = '';
+      const head = document.createElement('div');
+      head.className = 'explorer-mapbelow__head';
+      const title = document.createElement('h2');
+      title.className = 'explorer-mapbelow__title';
+      const count = jobs.length === 1 ? '1 job' : jobs.length + ' jobs';
+      title.textContent = picked ? count + ' at this spot' : count + ' in this view';
+      head.appendChild(title);
+      if (picked) {
+        const back = document.createElement('button');
+        back.type = 'button';
+        back.className = 'btn btn--ghost';
+        back.textContent = 'Everything in view';
+        back.addEventListener('click', function () {
+          mapPicked = null;
+          paintMapList(mapView.jobsInView(), false);
+        });
+        head.appendChild(back);
+      }
+      below.appendChild(head);
+      const sources = sourcesLine(mapCandidates());
+      if (sources) {
+        const said = document.createElement('p');
+        said.className = 'explorer-mapbelow__note explorer-mapbelow__sources';
+        said.textContent = sources;
+        below.appendChild(said);
+      }
+      const shown = jobs.slice().sort(function (a, b) {
+        const da = String(a.fieldWorkDate || '');
+        const db = String(b.fieldWorkDate || '');
+        if (da !== db) return da < db ? 1 : -1;
+        return String(a.displayName || '') < String(b.displayName || '') ? -1 : 1;
+      });
+      const LIMIT = 40;
+      shown.slice(0, LIMIT).forEach(function (job) {
+        below.appendChild(rootRow(rowForJob(job)));
+      });
+      if (shown.length > LIMIT) {
+        const more = document.createElement('p');
+        more.className = 'explorer-mapbelow__note';
+        more.textContent = 'And ' + (shown.length - LIMIT) + ' more in this view. Zooming in narrows the list.';
+        below.appendChild(more);
+      }
+
+      // Said, not hidden, and not guessed onto the map.
+      const unplaced = mapCandidates().filter(function (job) {
+        return !window.ToolboxExplorerMap.hasPlace(job);
+      });
+      if (unplaced.length) {
+        const box = document.createElement('details');
+        box.className = 'explorer-mapbelow__unplaced';
+        const summary = document.createElement('summary');
+        summary.textContent = (unplaced.length === 1 ? '1 job has' : unplaced.length + ' jobs have') +
+          ' no location that could be found and ' + (unplaced.length === 1 ? 'is' : 'are') + ' not on the map';
+        box.appendChild(summary);
+        if (mapPartial) {
+          const why = document.createElement('p');
+          why.className = 'explorer-mapbelow__note';
+          why.textContent = 'This File Cabinet server places only jobs synced since locations were added to the index.';
+          box.appendChild(why);
+        }
+        unplaced.forEach(function (job) {
+          box.appendChild(rootRow(rowForJob(job)));
+        });
+        below.appendChild(box);
+      }
+    }
+
     function paintRoot() {
+      if (mode === 'map' && mapView) paintMap(false);
       const files = filteredRoot();
       listEl.innerHTML = '';
       if (!rootFiles.length) {
@@ -611,8 +1352,69 @@
         listEl.appendChild(empty);
         return;
       }
+      // A phone has no tree, so the list carries the years and months
+      // itself, newest first -- the same filing the desktop tree shows.
+      if (!wideEnoughForPanes()) {
+        paintRootByMonth(files);
+        return;
+      }
       files.forEach(function (row) {
         listEl.appendChild(rootRow(row));
+      });
+      if (selectedId) selectRoot(selectedId);
+    }
+
+    function paintRootByMonth(files) {
+      const groups = treeGroups(files);
+      groups.years.forEach(function (year) {
+        const head = document.createElement('h2');
+        head.className = 'explorer-year';
+        const label = document.createElement('span');
+        label.className = 'explorer-year__label';
+        label.textContent = year.year;
+        const count = document.createElement('span');
+        count.className = 'explorer-year__n';
+        count.textContent = year.count === 1 ? '1 job' : year.count + ' jobs';
+        head.appendChild(label);
+        head.appendChild(count);
+        listEl.appendChild(head);
+        year.order.forEach(function (key) {
+          const month = year.months[key];
+          const title = document.createElement('h3');
+          title.className = 'explorer-month';
+          title.textContent = month.label;
+          listEl.appendChild(title);
+          newestFirst(month.rows).forEach(function (row) {
+            listEl.appendChild(rootRow(row));
+          });
+        });
+      });
+      if (groups.undated.length) {
+        const head = document.createElement('h2');
+        head.className = 'explorer-year';
+        const label = document.createElement('span');
+        label.className = 'explorer-year__label';
+        // Said plainly rather than filed under a date it does not have.
+        label.textContent = 'No survey date';
+        const count = document.createElement('span');
+        count.className = 'explorer-year__n';
+        count.textContent = groups.undated.length === 1 ? '1 job' : groups.undated.length + ' jobs';
+        head.appendChild(label);
+        head.appendChild(count);
+        listEl.appendChild(head);
+        groups.undated.forEach(function (row) {
+          listEl.appendChild(rootRow(row));
+        });
+      }
+    }
+
+    /** Within a month, the latest field work first; a tie keeps name order. */
+    function newestFirst(rows) {
+      return rows.slice().sort(function (a, b) {
+        const da = String(a && a.fieldWorkDate || '');
+        const db = String(b && b.fieldWorkDate || '');
+        if (da !== db) return da < db ? 1 : -1;
+        return 0;
       });
     }
 
@@ -621,6 +1423,13 @@
       article.className = 'explorer-row';
       const key = row && row.key ? row.key : '';
       article.dataset.key = key;
+      if (row && row.id) article.dataset.id = row.id;
+      // On a desktop, picking a row shows it on the right the way a file
+      // explorer does; Open still opens it. On a phone there is no pane to
+      // fill, so this does nothing and the tap opens as it always did.
+      if (row && row.id) {
+        article.addEventListener('click', function () { selectRoot(row.id); });
+      }
       const main = document.createElement('div');
       main.className = 'explorer-row__main';
       const keyBtn = document.createElement('button');
@@ -634,7 +1443,14 @@
       main.appendChild(keyBtn);
       const secondary = [];
       if (row && row.deletedAt) secondary.push('In File Cabinet Trash');
-      if (named && row.propertyAddress) secondary.push(row.propertyAddress);
+      // "4925 Edwards Dr NE, Albuquerque" -- the street and the town, which
+      // is how a job is remembered. The whole address is in the details.
+      const where = addressParts(row && row.propertyAddress);
+      if (named && row.propertyAddress) {
+        secondary.push(where.town ? where.street + ', ' + where.town : row.propertyAddress);
+      } else if (where.town) {
+        secondary.push(where.town);
+      }
       const date = usefulDate(row);
       if (date) secondary.push(date);
       if (secondary.length) {
@@ -660,6 +1476,19 @@
         if (row && row.id) window.location.hash = '#/explore/' + encodeURIComponent(row.id);
       });
       actions.appendChild(open);
+
+      // The person-arranged copy, from the list, without walking in first.
+      if (row && row.id) {
+        const take = document.createElement('button');
+        take.type = 'button';
+        take.className = 'btn btn--secondary explorer-download-job';
+        take.textContent = 'Download job';
+        take.addEventListener('click', function (event) {
+          event.stopPropagation();
+          downloadJobFromList(row, take);
+        });
+        actions.appendChild(take);
+      }
 
       const id = row && row.id;
       const sync = window.ToolboxSync || {};
@@ -739,9 +1568,52 @@
     }
 
     let jobName = '';
+    let jobAddress = '';
+    let jobFieldDate = '';
     /** Everything the Cabinet holds for this job, and which folder is open. */
     let jobObjects = [];
+    let jobObjectsFor = '';
     let openFolder = '';
+    /**
+     * The parsed records, read once per job so the screen can say what the
+     * job HOLDS instead of printing how it is written down. Read through the
+     * back door's own route only -- exploreReadComponent does not fall back
+     * to the working sync API the way a download does.
+     */
+    let jobComponents = {};
+    let jobComponentsFor = '';
+    let jobComponentsUnread = [];
+
+    const COMPONENT_READS = ['customer', 'plans', 'floor', 'distress', 'report', 'diagnostics'];
+
+    function readJobComponents(id) {
+      if (jobComponentsFor === id) return Promise.resolve(jobComponents);
+      const sync = window.ToolboxSync || {};
+      if (typeof sync.exploreReadComponent !== 'function') {
+        jobComponents = {};
+        jobComponentsFor = id;
+        return Promise.resolve(jobComponents);
+      }
+      const found = {};
+      const unread = [];
+      return COMPONENT_READS.reduce(function (chain, name) {
+        return chain.then(function () {
+          return sync.exploreReadComponent(id, name).then(function (result) {
+            if (result && result.ok) { found[name] = result.payload; return; }
+            // Stored but unreadable is worth saying; absent is not. They are
+            // opposite facts and the copy must not print one for the other.
+            if (result && result.reason === 'unreadable') unread.push(name);
+          }).catch(function () {
+            unread.push(name);
+          });
+        });
+      }, Promise.resolve()).then(function () {
+        jobComponents = found;
+        jobComponentsUnread = unread;
+        jobComponentsFor = id;
+        return found;
+      });
+    }
 
     function showCustomerIdentity(data) {
       const name = data && data.displayName;
@@ -750,9 +1622,15 @@
         jobName = name;
       }
       const bits = [];
-      if (data && data.propertyAddress) bits.push(data.propertyAddress);
+      if (data && data.propertyAddress) {
+        bits.push(data.propertyAddress);
+        jobAddress = data.propertyAddress;
+      }
       const date = usefulDate(data);
       if (date) bits.push(date);
+      // The Cabinet index already carries the decided filing date, so the
+      // copy can be named for it even before the components are read.
+      if (data && data.fieldWorkDate) jobFieldDate = data.fieldWorkDate;
       if (data && data.deletedAt) bits.push('In File Cabinet Trash');
       if (bits.length) lead.textContent = bits.join(' · ');
     }
@@ -853,6 +1731,65 @@
       return captureDay(iso) + '_' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
     }
 
+    /**
+     * What this job records, as figures: levels, readings, pins,
+     * photographs, the survey date, the elevation range. The drawings' details
+     * pane, computed from the survey rather than typed anywhere.
+     */
+    function jobSummaryPanel(id) {
+      const Summary = window.ToolboxExplorerSummary;
+      if (!Summary) return null;
+      const figures = Summary.jobFigures(jobComponents);
+      if (!figures.length && !jobComponentsUnread.length) return null;
+      const box = document.createElement('section');
+      box.className = 'explorer-facts';
+      box.id = 'explorer-facts';
+      const heading = document.createElement('h2');
+      heading.className = 'explorer-facts__head';
+      heading.textContent = 'What this job records';
+      box.appendChild(heading);
+      if (figures.length) {
+        const dl = document.createElement('dl');
+        dl.className = 'explorer-facts__list';
+        figures.forEach(function (figure) {
+          const dt = document.createElement('dt');
+          dt.textContent = figure.label;
+          const dd = document.createElement('dd');
+          dd.textContent = figure.value;
+          dl.appendChild(dt);
+          dl.appendChild(dd);
+        });
+        box.appendChild(dl);
+      }
+      if (jobComponentsUnread.length) {
+        const note = document.createElement('p');
+        note.className = 'explorer-facts__note';
+        note.textContent = 'Stored but could not be read: ' +
+          jobComponentsUnread.join(', ') + '. The figures above leave them out.';
+        box.appendChild(note);
+      }
+      return box;
+    }
+
+    /** What a component says about itself, under its folder. */
+    function folderSummaryFor(groupId) {
+      const Summary = window.ToolboxExplorerSummary;
+      if (!Summary) return null;
+      const byGroup = {
+        customer: 'customer',
+        plans: 'plans',
+        floor: 'floor',
+        distress: 'distress',
+        report: 'report',
+        diagnostics: 'diagnostics',
+      };
+      const name = byGroup[groupId];
+      if (!name) return null;
+      const payload = jobComponents[name];
+      if (!payload) return null;
+      return Summary.componentSummary(name, payload, jobComponents);
+    }
+
     function paintCustomer(id, data) {
       showCustomerIdentity(data || {});
       notesEl.innerHTML = '';
@@ -863,7 +1800,12 @@
         p.textContent = note;
         notesEl.appendChild(p);
       });
-      const objects = Array.isArray(data.objects) ? data.objects : [];
+      // The job text is derived from the records; it has its own row below,
+      // built fresh when asked for, rather than sitting among the files as
+      // though it were one of them.
+      const objects = (Array.isArray(data.objects) ? data.objects : []).filter(function (row) {
+        return String(row && row.key || '') !== 'cf/' + id + '/search.txt';
+      });
       stopTileWatching();
       listEl.innerHTML = '';
       if (!objects.length) {
@@ -874,8 +1816,14 @@
         return;
       }
       jobObjects = objects;
+      jobObjectsFor = id;
       openFolder = '';
       paintJob(id);
+      // The listing is drawn at once; what the job HOLDS follows and
+      // repaints, so a slow component read never holds up the folders.
+      readJobComponents(id).then(function () {
+        if (jobComponentsFor === id) paintJob(id);
+      }).catch(function () {});
     }
 
     /** Sort a folder's contents: the things worth seeing first, then by name. */
@@ -930,6 +1878,8 @@
       const buckets = sorted.buckets;
       if (!openFolder) {
         crumb.innerHTML = '';
+        const facts = jobSummaryPanel(id);
+        if (facts) listEl.appendChild(facts);
         let folders = 0;
         GROUPS.forEach(function (group) {
           const rows = buckets[group.id];
@@ -946,6 +1896,8 @@
             'Customer File yet.';
           listEl.appendChild(empty);
         }
+        const words = jobTextRow(id);
+        if (words) listEl.appendChild(words);
         if (sorted.records.length) listEl.appendChild(recordFiles(id, sorted.records));
         return;
       }
@@ -979,6 +1931,12 @@
       const heading = document.createElement('h2');
       heading.textContent = group.title;
       section.appendChild(heading);
+      // Tim, on Open printing the stored record: "who in the world is this
+      // helpful?" So the folder leads with what its component holds --
+      // levels, readings, pins, dates -- and the record itself stays below,
+      // downloadable, behind Technical details.
+      const told = folderSummaryFor(group.id);
+      if (told) section.appendChild(summaryBlock(told));
       sortRows(id, rows);
       // Pictures become a contact sheet; everything else stays a row. A
       // hundred photographs listed as a hundred identical cards is a list of
@@ -1015,6 +1973,36 @@
       paintJob(id);
     }
 
+    /** A headline, its figures and its honest notes, as one block. */
+    function summaryBlock(told) {
+      const box = document.createElement('div');
+      box.className = 'explorer-told';
+      const head = document.createElement('p');
+      head.className = 'explorer-told__head';
+      head.textContent = told.headline;
+      box.appendChild(head);
+      if (told.figures && told.figures.length) {
+        const dl = document.createElement('dl');
+        dl.className = 'explorer-told__list';
+        told.figures.forEach(function (figure) {
+          const dt = document.createElement('dt');
+          dt.textContent = figure.label;
+          const dd = document.createElement('dd');
+          dd.textContent = figure.value;
+          dl.appendChild(dt);
+          dl.appendChild(dd);
+        });
+        box.appendChild(dl);
+      }
+      (told.notes || []).forEach(function (note) {
+        const p = document.createElement('p');
+        p.className = 'explorer-told__note';
+        p.textContent = note;
+        box.appendChild(p);
+      });
+      return box;
+    }
+
     /** What is in a folder, said in the words of the thing itself. */
     function folderCount(rows) {
       const pictures = rows.filter(isPicture).length;
@@ -1047,6 +2035,15 @@
       count.className = 'explorer-folder__count';
       count.textContent = folderCount(rows);
       text.appendChild(count);
+      // "Floor Survey · 2 levels · Main Level 48, Basement 31" tells him
+      // whether to walk in. "3 files" does not.
+      const told = folderSummaryFor(group.id);
+      if (told && told.headline) {
+        const says = document.createElement('span');
+        says.className = 'explorer-folder__says';
+        says.textContent = told.headline;
+        text.appendChild(says);
+      }
       open.appendChild(text);
       const chev = document.createElement('span');
       chev.className = 'explorer-folder__chev';
@@ -1055,6 +2052,112 @@
       open.appendChild(chev);
       article.appendChild(open);
       return article;
+    }
+
+    /**
+     * The job's words as plain text -- the customer, the pins, the photographs,
+     * the report -- under headings that say what kind of statement each is.
+     * Built on the server from the records when asked for; it is not one of
+     * the records and nothing reads it back.
+     */
+    function jobTextRow(id) {
+      const sync = window.ToolboxSync || {};
+      if (typeof sync.exploreFetchJobText !== 'function') return null;
+      const article = document.createElement('article');
+      article.className = 'explorer-row explorer-row--text';
+      article.dataset.purpose = 'job-text';
+      const main = document.createElement('div');
+      main.className = 'explorer-row__main';
+      const title = document.createElement('strong');
+      title.className = 'explorer-row__title';
+      title.textContent = 'Job text';
+      main.appendChild(title);
+      const note = document.createElement('p');
+      note.className = 'explorer-row__label';
+      note.textContent = 'Everything this job says, as plain text: the customer, pins, ' +
+        'photographs and the report, each under its own heading.';
+      main.appendChild(note);
+      article.appendChild(main);
+      const actions = document.createElement('div');
+      actions.className = 'explorer-row__actions';
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'btn btn--secondary';
+      open.textContent = 'Open';
+      open.addEventListener('click', function () {
+        openJobText(id, open);
+      });
+      actions.appendChild(open);
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.className = 'btn btn--secondary';
+      download.textContent = 'Download';
+      download.addEventListener('click', function () {
+        showNotice('');
+        const previous = download.textContent;
+        download.disabled = true;
+        const stem = slugWords(jobName, 48) || ('cf-' + id);
+        saveWhereChosen(stem + '-job-text.txt', 'text/plain', function () {
+          return sync.exploreFetchJobText(id).then(function (response) {
+            if (!response) throw new Error('unavailable');
+            return response;
+          });
+        }).then(function (result) {
+          showNotice(savedNotice(result));
+        }).catch(function (err) {
+          showNotice(err && err.message === 'unavailable'
+            ? 'The job text needs the newer File Cabinet server.'
+            : errorText(err));
+        }).then(function () {
+          download.disabled = false;
+          download.textContent = previous;
+        });
+      });
+      actions.appendChild(download);
+      article.appendChild(actions);
+      return article;
+    }
+
+    function openJobText(id, button) {
+      showNotice('');
+      revokePreview();
+      preview.hidden = false;
+      preview.innerHTML = '<p class="explorer-preview__status">Opening Job text…</p>';
+      button.disabled = true;
+      window.ToolboxSync.exploreFetchJobText(id).then(function (response) {
+        if (!response) throw new Error('unavailable');
+        return response.text();
+      }).then(function (text) {
+        preview.innerHTML = '';
+        const head = document.createElement('div');
+        head.className = 'explorer-preview__head';
+        const title = document.createElement('h2');
+        title.textContent = 'Job text';
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'btn btn--ghost';
+        close.textContent = 'Close';
+        close.addEventListener('click', function () {
+          preview.hidden = true;
+          preview.innerHTML = '';
+        });
+        head.appendChild(title);
+        head.appendChild(close);
+        preview.appendChild(head);
+        const pre = document.createElement('pre');
+        pre.className = 'explorer-preview__text';
+        pre.textContent = text;
+        preview.appendChild(pre);
+        preview.scrollIntoView({ block: 'nearest' });
+      }).catch(function (err) {
+        preview.hidden = true;
+        preview.innerHTML = '';
+        showNotice(err && err.message === 'unavailable'
+          ? 'The job text needs the newer File Cabinet server.'
+          : errorText(err));
+      }).then(function () {
+        button.disabled = false;
+      });
     }
 
     /** Toolbox's own record files, at the foot of the job, closed. */
@@ -1069,6 +2172,27 @@
       note.textContent = 'How Toolbox writes this job down. Nothing in here is a ' +
         'picture, a survey or a report — those are above.';
       box.appendChild(note);
+      // The server's byte-for-byte copy: every object under the key it is
+      // actually stored at. Download job copy above is the one arranged for
+      // a person; this one is the one that reproduces the bucket.
+      if (window.ToolboxSync && typeof window.ToolboxSync.exploreFetchArchive === 'function') {
+        const rawRow = document.createElement('div');
+        rawRow.className = 'explorer-records__raw';
+        const rawText = document.createElement('p');
+        rawText.className = 'explorer-records__note';
+        rawText.textContent = 'A copy with every object under its real storage key, ' +
+          'arranged the way the server holds it rather than the way a person reads it.';
+        rawRow.appendChild(rawText);
+        const rawBtn = document.createElement('button');
+        rawBtn.type = 'button';
+        rawBtn.className = 'btn btn--secondary explorer-raw-zip';
+        rawBtn.textContent = 'Download raw server copy';
+        rawBtn.addEventListener('click', function () {
+          downloadRawArchive(id, rawBtn, showNotice);
+        });
+        rawRow.appendChild(rawBtn);
+        box.appendChild(rawRow);
+      }
       rows.sort(function (a, b) {
         return String(a._label || '') < String(b._label || '') ? -1 : 1;
       });
@@ -1167,12 +2291,31 @@
       return rows.map(function (row) { return formatFieldDate(row.uploaded) || ''; });
     }
 
+    /**
+     * What a tile is drawn from: the server's small copy when it has one,
+     * the stored original when it does not. A folder of 38 photographs was
+     * 70-100 MB of originals to draw tiles 320 pixels across; the small copy
+     * is a few KB each. The original stays the fallback, so a Worker without
+     * the route or without Images still draws every tile.
+     */
+    function tileSource(id, row) {
+      const sync = window.ToolboxSync;
+      const key = String(row && row.key || '');
+      const mediaId = key.indexOf('media/') === 0 ? key.slice(6) : '';
+      if (!mediaId || typeof sync.exploreFetchThumb !== 'function') {
+        return sync.exploreFetchObject(id, key);
+      }
+      return sync.exploreFetchThumb(mediaId, THUMB_EDGE).then(function (small) {
+        return small || sync.exploreFetchObject(id, key);
+      });
+    }
+
     function watchTile(id, row, img, tile) {
       let started = false;
       const load = function () {
         if (started) return;
         started = true;
-        window.ToolboxSync.exploreFetchObject(id, row.key)
+        tileSource(id, row)
           .then(responseBlob)
           .then(function (loaded) { return thumbnailFrom(loaded.blob); })
           .then(function (src) {
@@ -1383,6 +2526,38 @@
     }
 
     /**
+     * The extension for anything, not just a picture.
+     *
+     * Media keys carry none -- `media/fsrec_main` is a PDF and says so only
+     * in its content type -- so a copy named from the Cabinet's own label
+     * came out as "Floor Survey recovery PDF — Main Level" with nothing on
+     * the end, which no operating system will open on a double click. The
+     * stored content type is what knows, and the key's own extension is the
+     * fallback for a `cf/` file that has one.
+     */
+    function anyExtensionFor(row) {
+      const type = String((row && row.contentType) || '').toLowerCase().split(';')[0].trim();
+      const known = {
+        'application/pdf': '.pdf',
+        'application/json': '.json',
+        'image/png': '.png',
+        'image/jpeg': '.jpg',
+        'image/webp': '.webp',
+        'image/gif': '.gif',
+        'image/heic': '.heic',
+        'image/heif': '.heif',
+        'image/bmp': '.bmp',
+        'image/svg+xml': '.svg',
+        'text/plain': '.txt',
+        'text/csv': '.csv',
+      };
+      if (known[type]) return known[type];
+      const leaf = downloadName(row && row.key);
+      const dot = leaf.lastIndexOf('.');
+      return dot > 0 ? leaf.slice(dot) : '';
+    }
+
+    /**
      * The folder the pictures land in, named for the day they were taken.
      *
      * One day of Quick Captures becomes that date. Several days keep the span,
@@ -1527,6 +2702,19 @@
       return article;
     }
 
+    /** Which component a stored record key is, or '' when it is not one. */
+    function componentNameFor(id, key) {
+      const prefix = 'cf/' + id + '/';
+      const text = String(key || '');
+      if (text.indexOf(prefix) !== 0) return '';
+      const leaf = text.slice(prefix.length);
+      if (!/\.json$/i.test(leaf)) return '';
+      const name = leaf.slice(0, -'.json'.length);
+      if (name === 'index') return 'index';
+      if (name === 'trash') return 'trash';
+      return COMPONENT_READS.indexOf(name) !== -1 ? name : '';
+    }
+
     function openObject(id, key, label, panel, notify) {
       notify('');
       revokePreview();
@@ -1572,12 +2760,41 @@
           frame.src = previewUrl;
           panel.appendChild(frame);
         } else if (kind === 'text') {
+          const text = new TextDecoder().decode(loaded.buffer);
+          /**
+           * One of Toolbox's own records opens as what it HOLDS.
+           *
+           * Tim, after pressing Open on a Floor Survey and getting the stored
+           * record: "who in the world is this helpful?" So the summary leads,
+           * and the record syntax goes behind one closed line below it. The
+           * bytes are not hidden and Download is untouched -- the Cabinet is
+           * the repository and everything in it stays reachable.
+           */
+          const component = componentNameFor(id, key);
+          const Summary = window.ToolboxExplorerSummary;
+          let told = null;
+          if (component && Summary) {
+            try {
+              told = Summary.componentSummary(component, JSON.parse(text), jobComponents);
+            } catch (_) { told = null; }
+          }
+          if (told) panel.appendChild(summaryBlock(told));
+          const limit = 512 * 1024;
+          const shown = text.length > limit ? text.slice(0, limit) : text;
           const pre = document.createElement('pre');
           pre.className = 'explorer-preview__text';
-          const text = new TextDecoder().decode(loaded.buffer);
-          const limit = 512 * 1024;
-          pre.textContent = text.length > limit ? text.slice(0, limit) : text;
-          panel.appendChild(pre);
+          pre.textContent = shown;
+          if (told) {
+            const raw = document.createElement('details');
+            raw.className = 'explorer-preview__raw';
+            const summaryEl = document.createElement('summary');
+            summaryEl.textContent = 'Technical details';
+            raw.appendChild(summaryEl);
+            raw.appendChild(pre);
+            panel.appendChild(raw);
+          } else {
+            panel.appendChild(pre);
+          }
           if (text.length > limit) {
             const more = document.createElement('p');
             more.className = 'explorer-preview__meta';
@@ -1632,7 +2849,179 @@
       return (stem || ('cf-' + id)) + '.zip';
     }
 
-    function downloadArchive(id, button, notify) {
+    /**
+     * THE RECOVERY COPY, arranged for a person.
+     *
+     * Built here rather than on the Worker, for two reasons that both matter.
+     * It can say how far it has got -- "Packing 34 of 118" -- where one
+     * server request can only sit there; and a job with seventy photographs
+     * is tens of megabytes, which is a Worker's memory rather than a
+     * browser's.
+     *
+     * The server's own ZIP is NOT removed. It stays as the raw copy, under
+     * Technical details, because it is the one that reproduces the bucket key
+     * for key and that is what some kinds of recovery need.
+     */
+    function downloadArchive(id, button, notify, whenDone) {
+      notify('');
+      const previous = button.textContent;
+      const Archive = window.ToolboxExplorerArchive;
+      const finished = typeof whenDone === 'function' ? whenDone : function () {};
+      if (!Archive || !window.JSZip) {
+        // Rather than fail, fall back to the route that does not need either.
+        downloadRawArchive(id, button, notify);
+        finished();
+        return;
+      }
+      button.disabled = true;
+      button.textContent = canChooseWhere() ? 'Where to?' : 'Reading…';
+      let built = null;
+      saveWhereChosen(plannedArchiveName(id), 'application/zip', function () {
+        button.textContent = 'Reading…';
+        // The pin, the room and the day the shutter was pressed live in
+        // distress.json, and naming a photograph needs them in hand. Walking
+        // into a folder loads them; taking the whole job copy may not have,
+        // so it is asked for here -- without it every picture came out named
+        // "media_ph_one", which is the storage key the copy exists to get
+        // away from.
+        return Promise.all([ensureJobObjects(id), readJobComponents(id), readPhotoFacts(id)]).then(function () {
+          return Archive.buildJobArchive({
+            id: id,
+            name: jobName,
+            address: jobAddress,
+            objects: jobObjects,
+            components: jobComponents,
+            unreadable: jobComponentsUnread.slice(),
+            fallbackDate: jobFieldDate,
+            fetchObject: function (fileId, key) {
+              return window.ToolboxSync.exploreFetchObject(fileId, key).then(responseBlob);
+            },
+            nameFor: archiveNameFor,
+            isRecord: function (row) { return isRecordFile(row, id); },
+            onProgress: function (step) {
+              button.textContent = step.total
+                ? 'Packing ' + step.done + ' of ' + step.total + '…'
+                : 'Packing…';
+            },
+          });
+        }).then(function (result) {
+          built = result;
+          button.textContent = 'Saving…';
+          return result.blob;
+        });
+      }).then(function (result) {
+        button.disabled = false;
+        button.textContent = previous;
+        finished();
+        if (result.cancelled) {
+          notify('');
+          return;
+        }
+        // Truthfully: what went in, and what could not be read.
+        const parts = [];
+        if (built) {
+          parts.push(built.written + ' of ' + built.total +
+            (built.total === 1 ? ' stored file' : ' stored files') + ' packed');
+          if (built.failed.length) {
+            parts.push(built.failed.length +
+              (built.failed.length === 1 ? ' could not be read: ' : ' could not be read: ') +
+              built.failed.slice(0, 3).join(', ') +
+              (built.failed.length > 3 ? '…' : ''));
+          }
+        }
+        parts.push(savedNotice(result));
+        notify(parts.join('. '));
+      }).catch(function (err) {
+        button.disabled = false;
+        button.textContent = previous;
+        finished();
+        notify(errorText(err));
+      });
+    }
+
+    /**
+     * What the Cabinet holds for a job, for a copy asked for from the list.
+     * Inside a job this is already in hand; from the list it is read once,
+     * through the back door's own listing, and labelled the same way.
+     */
+    function ensureJobObjects(id) {
+      if (jobObjectsFor === id) return Promise.resolve(jobObjects);
+      return window.ToolboxSync.exploreListCustomerFile(id).then(function (data) {
+        jobObjects = data && Array.isArray(data.objects) ? data.objects : [];
+        jobObjectsFor = id;
+        sortJob(id);
+        return jobObjects;
+      });
+    }
+
+    let listDownloadBusy = false;
+
+    /** Download job, from a row in the list. One copy is packed at a time. */
+    function downloadJobFromList(row, button) {
+      if (listDownloadBusy) {
+        showNotice('Another job copy is still being packed.');
+        return;
+      }
+      listDownloadBusy = true;
+      jobName = row.displayName || row.propertyAddress || '';
+      jobAddress = row.propertyAddress || '';
+      jobFieldDate = row.fieldWorkDate || '';
+      downloadArchive(row.id, button, showNotice, function () {
+        listDownloadBusy = false;
+      });
+    }
+
+    /** What the copy will be called, before it is built. */
+    function plannedArchiveName(id) {
+      const Summary = window.ToolboxExplorerSummary;
+      if (!Summary) return archiveFileName(id);
+      return Summary.archiveFolderName({
+        name: jobName,
+        address: jobAddress,
+        components: jobComponentsFor === id ? jobComponents : {},
+        fallbackDate: jobFieldDate,
+      }) + '.zip';
+    }
+
+    /**
+     * What a stored object is called inside the copy.
+     *
+     * Pictures reuse the Explorer's own naming, so a photograph saved on its
+     * own and the same photograph inside the job copy are called the same
+     * thing. Everything else takes the name the Cabinet already gives it,
+     * with its real extension kept.
+     */
+    function archiveNameFor(row) {
+      // A photograph the investigator named something -- a pin and a room, or
+      // the moment the shutter went -- is called that.
+      //
+      // Only a photograph. A plan and a contour layer are pictures too by
+      // content type, and they have no pin and no shutter time, so sending
+      // them down this path produced "media_plan-main": the storage key the
+      // copy exists to get away from. They take the labelled path below,
+      // which is where their real name lives.
+      if (isPicture(row) && factFor(row)) {
+        const named = pictureFileName(row);
+        // The pictures ZIP puts a Quick Capture run in its own subfolder;
+        // inside the job copy that folder is already Photographs/Quick
+        // Capture, so only the leaf is wanted here.
+        const slash = named.lastIndexOf('/');
+        return slash >= 0 ? named.slice(slash + 1) : named;
+      }
+      const label = String((row && row._label) || '').trim();
+      const leaf = downloadName(row && row.key);
+      const ext = anyExtensionFor(row);
+      if (!label) return ext && leaf.indexOf('.') < 0 ? leaf + ext : leaf;
+      const stem = String(label).replace(/[\\/:*?"<>|\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!stem) return leaf;
+      // A label that already ends in the extension (a stored filename that
+      // the listing simply echoes) must not gain a second one.
+      if (ext && stem.toLowerCase().slice(-ext.length) === ext.toLowerCase()) return stem;
+      return stem + ext;
+    }
+
+    /** The server's byte-for-byte copy, kept for recovery. */
+    function downloadRawArchive(id, button, notify) {
       notify('');
       const previous = button.textContent;
       button.disabled = true;

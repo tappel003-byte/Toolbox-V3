@@ -1,5 +1,11 @@
 # Report Builder — A to B
 
+> **Status, Oct 29, 2026 (CLAUDE-017).** Items 2–4 are done and still hold. Item
+> 1 (the blank overview area on Tim's own cover) is still a question, not work.
+> The crop-or-fit question below is settled. What "Then" describes — Tim's
+> composition pass on a real job — is what remains.
+
+
 Rewritten Oct 20, 2026 after Tim's corrections. Short on purpose.
 
 **B is:** open Report Builder on a real job and find the report 80–90% built,
@@ -83,10 +89,9 @@ deck measures its own captions, which it had never done.
 on a Floor Survey sheet and on a Picture Locations sheet alike. Hover does
 nothing. Nothing prints.
 
-**Still Tim's to settle:** whether a photograph is *cropped* to fill the
-identical plate or *fitted* inside it. Cropping makes every picture literally
-the same rectangle; it also cuts evidence off the edge of a photograph. Not
-mine to choose.
+~~**Still Tim's to settle:** whether a photograph is *cropped* to fill the
+identical plate or *fitted* inside it.~~ Settled Oct 17: **fitted**, inside a
+black border, so no evidence is cut off the edge (`object-fit: contain`).
 
 ---
 

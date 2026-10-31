@@ -3,11 +3,11 @@
  * Run: node tests/report-template.mjs   (needs a static server on 8765)
  *
  * Tim: "that's fine it becomes the default, but everything is eligible,
- * right -- that's the whole point of this." VISION and DECISIONS already
- * settle that the stable pieces stay template-friendly; what this holds down
- * is that every rail which places something offers the same button, that it
- * keeps that piece and nothing else, and that a report already written is
- * never moved by a default set afterwards.
+ * right -- that's the whole point of this." Cover, discussion, and Picture
+ * Locations still offer Use this as my default. Floor Survey composition
+ * deliberately does not (Tim finish brief) — existing saved floorLayout
+ * defaults must still seed new reports. A report already written is never
+ * moved by a default set afterwards.
  */
 import { createRequire } from 'module';
 import { mkdir } from 'fs/promises';
@@ -172,6 +172,9 @@ check('and it keeps the writing area',
   Object.keys(afterDisc).join(','));
 
 // --- a Floor Survey figure ---------------------------------------------
+// Tim finish brief: floor composition no longer offers "Use this as my
+// default" in the ordinary rail. Existing saved floorLayout/floorCamera
+// defaults must still seed new reports (do not delete saved data).
 const floorId = await openSlide('^floor-');
 if (floorId) {
   const imported = await page.evaluate(() => {
@@ -181,13 +184,33 @@ if (floorId) {
     return true;
   });
   if (imported) await new Promise((r) => setTimeout(r, 4000));
-  check('a Floor Survey figure offers it',
-    await page.evaluate(() => !!document.querySelector('.rb-panel [data-rb-template="floor"]')), '');
-  await pressDefault('floor');
-  const afterFloor = await template();
-  check('and it keeps how the building is framed and what is drawn in it',
-    !!afterFloor.floorLayout && !!afterFloor.floorCamera,
-    Object.keys(afterFloor).join(','));
+  check('a Floor Survey figure does not offer Use this as my default',
+    await page.evaluate(() => !document.querySelector('.rb-panel [data-rb-template="floor"]')), '');
+  // Seed a previously-saved floor default the way an older session would
+  // have left it — prove preservation without the rail button.
+  const seeded = await page.evaluate(() => {
+    const prior = (() => {
+      try { return JSON.parse(localStorage.getItem('toolbox-report-template') || '{}'); }
+      catch { return {}; }
+    })();
+    const live = window.__rbTestFloorTemplate
+      || {
+        floorLayout: {
+          drawing: { x: 8, y: 10, w: 62, h: 78 },
+          legend: { x: 74, y: 12, w: 18, h: 42 },
+          pill: { x: 74, y: 58, w: 18, h: 10 },
+          overview: { x: 74, y: 72, w: 18, h: 18 },
+        },
+        floorCamera: { cx: 0.52, cy: 0.48, zoom: 1.15, rel: true },
+      };
+    prior.floorLayout = live.floorLayout;
+    prior.floorCamera = live.floorCamera;
+    localStorage.setItem('toolbox-report-template', JSON.stringify(prior));
+    return prior;
+  });
+  check('and a previously saved floor default is still kept for new reports',
+    !!seeded.floorLayout && !!seeded.floorCamera,
+    Object.keys(seeded).join(','));
 }
 
 // --- a Picture Locations sheet -----------------------------------------

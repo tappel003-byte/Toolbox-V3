@@ -1,6 +1,10 @@
 # File Explorer rebuild — the drawings and what they decide
 
-**This is a plan, not an authorization.** Nothing here is approved to build.
+**The first slice of this is now built** (Tim authorized implementation,
+Oct 28, 2026). The drawings stay exactly as they were — they are the design,
+and the build is measured against them, not the other way round. What has
+landed and what has not is in **"Where the build has got to"** below.
+
 `VISION.md` is the product, `MILESTONE.md` is what may be worked on now, and
 `DECISIONS.md` is what has been settled. This folder exists so the design work
 survives — a conversation was compacted once already and these drawings were
@@ -29,10 +33,55 @@ Also published, if the file is easier to reach as a link:
 | The map, with room to use it *(desktop)* | The whole state at once, a year range along the top, the selected cluster listed beside it. Zoom in and clusters split into single pins. |
 | Inside a filed job, with a preview *(desktop)* | The job opens as folders in the tree. Pick a file and it previews on the right, so a survey can be read without downloading it. |
 
+## Where the build has got to
+
+Built, and in the application:
+
+- **A job says what it holds.** The job view leads with what the survey
+  records — levels, readings, pins, photographs, the survey date, the elevation range — and every folder says what is inside it before you walk in ("Floor
+  Survey · 3 levels · Main Level 48, Basement 31 · surveyed Oct 7, 2026").
+  Open on one of Toolbox's own records leads with that sentence and puts the
+  record syntax behind one closed line. Tim: *"who in the world is this
+  helpful?"*
+- **The readings CSV and the pin list**, as real files in the copy. The CSV
+  carries the raw reading, the correction applied and the corrected
+  elevation, the last from Floor Survey's own `withCorrectedValues` rather
+  than a second copy of the arithmetic.
+- **A recovery copy arranged for a person**: one folder named for the
+  customer, the address and the field work date; photographs under the names
+  the investigator gave them; Plans, Floor Survey, Photographs, Technical.
+  A README that says what the survey records and what is **not** in the
+  folder. Truthful progress while it packs, and a truthful count after.
+- **The three columns on a desktop** — the tree down the left grouped by year
+  and month, the list in the middle, the details and the preview on the
+  right. The phone keeps the list it already had.
+
+Not built, and why:
+
+- **Working and Filed as two drawers.** Decided, and the tree is shaped for
+  it, but what moves a job between them is a completed mark at Check In that
+  nothing writes yet. Building the mark is a lifecycle change, not Explorer
+  work, so the tree groups every job it can see and the split is a filter
+  waiting for it.
+- **The pin map.** Needs a decision on whether it plots on a tile provider or
+  a plain state outline with no network dependency.
+- **PDFs and the CSV written at filing time.** Today they are built when the
+  copy is taken. `DECISIONS.md` records that *when* they are built is not
+  decided.
+- **A PDF of the Distress Survey.** Toolbox does not produce one. The copy
+  says so rather than leaving the line out.
+
 ## What the drawings assume
 
 These are the design's own premises. Each is a decision Tim can overturn in a
 sentence; none has been separately confirmed.
+
+Several have since been **decided** in `DECISIONS.md` ("The File Cabinet is
+the repository", Oct 18, 2026): the two drawers, completed marked at Check In,
+filing by the floor survey date with the distress date as the only fallback,
+the card catalogue, and the readings CSV. The filing-date rule is already
+implemented — `js/sync.js fieldWorkSurveyDate` writes it onto the Cabinet
+index, and the tree reads it from there.
 
 - **Completed is marked at Check In.** The checkmark is what moves a job out of
   the working drawer and up into Explorer.

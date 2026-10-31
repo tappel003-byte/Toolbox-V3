@@ -17,6 +17,7 @@ import {
 import { blobToDataUrl, recoveryCanvasToPdfBlob, renderRecoveryForSave } from "@/lib/recovery-pdf";
 import type { Floor, ProjectMeta, RenderSettings, SurveyPoint } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
+import { loadCaptureSizes, patchCaptureSizes } from "@/lib/capture-sizes";
 import { SetupTab } from "@/components/tabs/SetupTab";
 import { FieldTab } from "@/components/tabs/FieldTab";
 import { ReviewTab } from "@/components/tabs/ReviewTab";
@@ -40,17 +41,6 @@ export type HostWorkspaceProps = {
   onReturnToReport?: () => void;
 };
 
-/** The label size last set on this Customer File, within the panel's range. */
-function storedLabelFontSize(id: string): number {
-  try {
-    const raw = localStorage.getItem(`dpp-font:${id}`);
-    const n = raw ? Number(raw) : NaN;
-    return Number.isFinite(n) && n >= 6 && n <= 28 ? n : defaultRenderSettings.pointLabelFontSize;
-  } catch {
-    return defaultRenderSettings.pointLabelFontSize;
-  }
-}
-
 export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: HostWorkspaceProps) {
   const id = customerFileId;
   const [project, setProject] = useState<ProjectMeta | null>(null);
@@ -58,51 +48,63 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
   const [activeFloorId, setActiveFloorId] = useState<string | null>(null);
   const [points, setPoints] = useState<SurveyPoint[]>([]);
   const [mode, setMode] = useState<Mode>("field");
-  // The label size is kept with the dot size and the dot colour beside it in
-  // the Data panel. Tim: "whatever last setting it goes to it stays on." It
-  // was the one of the three nobody had stored, so a plan set to 8px for a
-  // dense level came back at the default on the next open.
-  const [settings, setSettings] = useState<RenderSettings>(() => ({
-    ...defaultRenderSettings,
-    pointLabelFontSize: storedLabelFontSize(id),
-  }));
+  // Capture sizes: per Customer File on this device. Screen defaults when unset.
+  // Never a Report Builder preference.
+  const [settings, setSettings] = useState<RenderSettings>(() => {
+    const sizes = loadCaptureSizes(id);
+    return {
+      ...defaultRenderSettings,
+      pointLabelFontSize: sizes.pointLabelFontSize,
+      highLowPinSize: sizes.highLowPinSize,
+      legendScale: sizes.legendScale,
+      legendX: sizes.legendX,
+      legendY: sizes.legendY,
+    };
+  });
   useEffect(() => {
-    try {
-      localStorage.setItem(`dpp-font:${id}`, String(settings.pointLabelFontSize));
-    } catch {
-      /* ignore */
-    }
-  }, [settings.pointLabelFontSize, id]);
+    patchCaptureSizes(id, {
+      pointLabelFontSize: settings.pointLabelFontSize,
+      highLowPinSize: settings.highLowPinSize,
+      legendScale: settings.legendScale,
+      legendX: settings.legendX,
+      legendY: settings.legendY,
+    });
+  }, [
+    id,
+    settings.pointLabelFontSize,
+    settings.highLowPinSize,
+    settings.legendScale,
+    settings.legendX,
+    settings.legendY,
+  ]);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [topoExcludedIds, setTopoExcludedIds] = useState<Set<string>>(new Set());
   const [topoAreaId, setTopoAreaId] = useState<string | null>(null);
+  /** Field Clean view — hide Data/Topo + H/L/Δ chip. Local session only. */
+  const [topoCleanView, setTopoCleanView] = useState(false);
+  /** Diagnostic points panel — opened from ⋯ on Topo only. */
+  const [topoDiagOpen, setTopoDiagOpen] = useState(false);
   useEffect(() => {
     setTopoExcludedIds(new Set());
     setTopoAreaId(null);
   }, [activeFloorId]);
+  useEffect(() => {
+    if (mode !== "topo") {
+      setTopoCleanView(false);
+      setTopoDiagOpen(false);
+    }
+  }, [mode]);
   useEffect(() => {
     if (mode !== "topo") setTopoExcludedIds(new Set());
   }, [mode]);
   const [focusRequest, setFocusRequest] = useState<
     { x: number; y: number; nonce: number } | undefined
   >(undefined);
-  const [pointSize, setPointSize] = useState<number>(() => {
-    try {
-      const raw = localStorage.getItem(`dpp-size:${id}`);
-      const n = raw ? Number(raw) : 2;
-      return Number.isFinite(n) && n >= 1 && n <= 8 ? n : 2;
-    } catch {
-      return 2;
-    }
-  });
+  const [pointSize, setPointSize] = useState<number>(() => loadCaptureSizes(id).pointSize);
   useEffect(() => {
-    try {
-      localStorage.setItem(`dpp-size:${id}`, String(pointSize));
-    } catch {
-      /* ignore */
-    }
+    patchCaptureSizes(id, { pointSize });
   }, [pointSize, id]);
   const [pointColor, setPointColor] = useState<string>(() => {
     try {
@@ -460,8 +462,12 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
         onBack={onBack}
         onReturnToReport={onReturnToReport}
         onOpenSetup={() => setMode("setup")}
+        setupMenuLabel="Boundary & exclusions"
         onOpenReview={() => setMode("review")}
         onOpenTransitions={() => setTransitionsSheetOpen(true)}
+        onOpenDiagnosticPoints={
+          mode === "topo" ? () => setTopoDiagOpen(true) : undefined
+        }
         undoEnabled={undoActive && history.canUndo}
         redoEnabled={undoActive && history.canRedo}
         onSave={handleSave}
@@ -567,6 +573,7 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
             onFloorChange={(f) => setFloors((prev) => prev.map((p) => (p.id === f.id ? f : p)))}
             settings={settings}
             onSettingsChange={setSettings}
+            customerFileId={id}
             pointSize={pointSize}
             pointColor={pointColor}
             excludedIds={topoExcludedIds}
@@ -574,11 +581,14 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
             selectedAreaId={topoAreaId}
             onSelectedAreaIdChange={setTopoAreaId}
             allowContourLayer
+            onCleanViewChange={setTopoCleanView}
+            diagnosticOpen={topoDiagOpen}
+            onDiagnosticOpenChange={setTopoDiagOpen}
           />
         )}
       </main>
 
-      {(mode === "field" || mode === "topo") && (
+      {(mode === "field" || mode === "topo") && !(mode === "topo" && topoCleanView) && (
         <>
           <ModeToggle
             mode={mode === "topo" ? "topo" : "data"}
@@ -589,6 +599,7 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
               several boundaries are on the same level — not a second copy of
               this readout for a single surface. */}
           <StatsChip
+            customerFileId={id}
             storageKey={`stats-chip-pos:${activeFloor.id}:solo`}
             decimals={settings.decimalPlaces}
             points={

@@ -113,6 +113,11 @@
   var MIN_STACK = -40;
   var MAX_STACK = 40;
 
+  /** legend-<n> / pill-<n>: a boundary's slot, as opposed to a view's. */
+  function isBoundarySlotId(id) {
+    return /^(legend|pill)-\d+$/.test(String(id || ''));
+  }
+
   function stackOf(piece, kind) {
     var base = BASE_STACK[kind] || 1;
     var raw = piece && typeof piece.z === 'number' && isFinite(piece.z) ? piece.z : base;
@@ -305,8 +310,10 @@
   // The colour scale used to be here too, built out of HTML. It is Floor
   // Survey's own now, painted by Floor Survey and placed as a picture -- see
   // renderLegendCard. renderPin is not called: the High and Low markers point
-  // at a spot on the floor, so the drawing carries them, and this is what a
-  // page of its own would be built from if that is ever wanted.
+  // at a spot on the floor, so the drawing carries them -- the live canvas in
+  // the editor, and the composed still in Presentation and the PDF, both
+  // drawn by Floor Survey's renderTopoTop from the slide's own settings. This
+  // is what a page of its own would be built from if that is ever wanted.
 
   function renderPill(stats) {
     var pill = document.createElement('div');
@@ -565,42 +572,51 @@
       var bareStage = document.createElement('div');
       bareStage.className = 'rb-topo-page__body rb-floor-stage rb-floor-stage--bare';
       bareStage.setAttribute('data-rb-floor-stage', '1');
-      // The drawing is the slide. The plan is placed inside it by dragging and
-      // zooming, exactly as in Floor Survey -- including off the edge -- so
-      // there is no frame to size and nothing to letterbox the plan into.
-      // One drawing, or two of the same level side by side. Tim: "it's a long
-      // narrow house... our space allows, maybe I can just put another floor
-      // plan that shows the data points." The second is not a second slide:
-      // it is the same level drawn another way, on the paper the first one is
-      // not using.
-      var slots = Math.max(1, Math.min(2, Number(options.topoSlots) || 1));
+      // Flexible compose (Checkpoint 1): one or more view frames on the stage.
+      // Legacy two-up equal shares become stored frames via ToolboxReportFloorViews.
+      var viewList = Array.isArray(options.views) ? options.views.slice() : null;
+      if ((!viewList || !viewList.length) && page && window.ToolboxReportFloorViews) {
+        viewList = window.ToolboxReportFloorViews.ensurePageViews(page);
+      }
+      if (viewList && !viewList.length) viewList = null;
+      var slots = viewList
+        ? viewList.length
+        : Math.max(1, Math.min(2, Number(options.topoSlots) || 1));
       var activeSlot = Math.max(0, Math.min(slots - 1, Number(options.topoActiveSlot) || 0));
-      var share = frameShare(slots);
+      var multiView = slots > 1;
       for (var slot = 0; slot < slots; slot += 1) {
-        var bare = boxShell('topo', slots > 1 ? ('topo-' + slot) : 'topo', true);
+        var viewSpec = viewList ? viewList[slot] : null;
+        var frame = viewSpec && viewSpec.frame
+          ? viewSpec.frame
+          : {
+            x: slot * (frameShare(slots) + FRAME_GUTTER),
+            y: 0,
+            w: frameShare(slots),
+            h: 100,
+            z: layout.topo.z,
+          };
+        // Free frames (unlocked) so Tim can move/resize; linked sizing is applied
+        // by the builder when a companion shares linkGroup.
+        // Box id keeps the topo- prefix so existing tests that look for
+        // [data-rb-floor-box^="topo"] still find the frame.
+        var bare = boxShell(
+          'topo',
+          viewSpec ? ('topo-view:' + viewSpec.id) : (slots > 1 ? ('topo-' + slot) : 'topo'),
+          false,
+        );
         bare.setAttribute('data-rb-topo-frame', String(slot));
-        if (slots > 1 && slot === activeSlot) bare.classList.add('is-active');
-        bare.style.left = (slot * (share + FRAME_GUTTER)) + '%';
-        bare.style.top = '0%';
-        bare.style.width = share + '%';
-        bare.style.height = '100%';
-        bare.style.zIndex = String(layout.topo.z);
+        if (viewSpec && viewSpec.id) bare.setAttribute('data-rb-view-id', viewSpec.id);
+        if (slot === activeSlot) bare.classList.add('is-active');
+        bare.style.left = frame.x + '%';
+        bare.style.top = frame.y + '%';
+        bare.style.width = frame.w + '%';
+        bare.style.height = frame.h + '%';
+        bare.style.zIndex = String(frame.z != null ? frame.z : layout.topo.z);
         var bareDraw = document.createElement('div');
         bareDraw.className = 'rb-topo-page__drawing rb-topo-page__drawing--live';
         var bareView = typeof options.mountTopo === 'function'
           ? options.mountTopo(page, slot)
           : null;
-        // The drawing is a live view, and there is exactly one of it per slot
-        // in the whole page. The slide being looked at borrows it; no other
-        // slide can have it at the same time. That was fine on screen, where
-        // only one slide is shown -- and wrong on paper, where every slide is
-        // shown at once: a printed report carried its contour map on the
-        // slide that happened to be open and this note on every other one.
-        // Tim: "the contour map was in the upper left-hand corner and not
-        // justified ... this is not done if I can't print it and send it."
-        //
-        // So a slide with no live view to borrow draws the still picture
-        // composed for it instead, at the same size and in the same frame.
         var stillShot = options.stillTopo ? options.stillTopo(page, slot) : '';
         if (bareView) {
           bareDraw.appendChild(bareView);
@@ -619,57 +635,133 @@
         bare.insertBefore(bareDraw, bare.firstChild);
         bareStage.appendChild(bare);
       }
-      // The colour scale and the readings: two pieces, each moved on its own.
-      //
-      // Each is dragged to move and sized from the control that has always
-      // sized it -- Legend size for the scale, Stats pill size for the
-      // readings -- which is how both behave on the Floor Survey screen.
-      // Tim: "those need to be able to move just like they do on the FS
-      // page." So neither carries corner handles: two controls for one size
-      // is one too many.
-      layout.overlays.forEach(function (overlay) {
-        if (overlay.kind !== 'legend' && overlay.kind !== 'pill') return;
-        if (combinedSheet) return;
-        if (readingsOnly && overlay.kind === 'legend') return;
-        var stats = statsList[overlay.statsIndex];
-        if (!stats) return;
-        // Movable on every slide, because every slide is showing the same
-        // one record. What it is moved to is the report's.
-        var pieceLocked = false;
-        var piece = boxShell(overlay.kind, overlay.id, true);
-        if (!pieceLocked) piece.classList.remove('is-locked');
-        piece.classList.add('rb-floor-box--chrome');
-        if (!pieceLocked) {
-          piece.setAttribute('tabindex', '0');
-          piece.setAttribute('role', 'button');
-          piece.setAttribute('aria-label',
-            overlay.kind === 'legend' ? 'Move the colour scale' : 'Move the readings');
+      // Legend / H/LΔ chrome.
+      // Single-view: prior Combined / readingsOnly rules (unchanged for saved reports).
+      // Multi-view (GPT-026): per-view showLegend / showPill; start hidden; no DOM
+      // when off — no reserved empty space.
+      /**
+       * Place a movable legend or H/L/Δ pill on the stage.
+       *
+       * Position lives in layout.overlays under this id. Multi-view used to
+       * paint `legend-<viewId>` / `pill-<viewId>` without writing those ids
+       * into overlays, so the drag handler looked them up, found nothing, and
+       * the piece never moved (Tim, Oct 26, 2026: need to move legend and
+       * pill on single-, multi-, or combined sheets alike). Ensure the
+       * overlay exists; reuse a saved spot when one is there.
+       */
+      function placeChrome(kind, id, x, y, z, stats, legendOpts) {
+        var existing = null;
+        for (var oi = 0; oi < layout.overlays.length; oi += 1) {
+          if (layout.overlays[oi] && layout.overlays[oi].id === id) {
+            existing = layout.overlays[oi];
+            break;
+          }
         }
-        piece.style.left = overlay.x + '%';
-        // With no colour scale above it, the readings take the scale's own
-        // slot rather than floating in the middle of the drawing where the
-        // scale used to end. Only a pill still sitting on its default: one
-        // the investigator dragged is his and is left where he put it.
-        var slotNow = scaleSlot(overlay.statsIndex || 0);
-        var liftPill = readingsOnly && overlay.kind === 'pill' &&
-          sameSpot(overlay.x, slotNow.x) && sameSpot(overlay.y, slotNow.pillY);
-        piece.style.top = (liftPill ? slotNow.legendY : overlay.y) + '%';
-        piece.style.zIndex = String(overlay.z);
-        // The size the report holds for this piece, so it is drawn the same
-        // on every sheet and on every machine. The field names still say
-        // "lock" because that is what is in saved reports; what they hold now
-        // is simply the size. Nothing stored yet means the rail's own control,
-        // which is how it has always been sized until it is set.
-        var lock = overlay.kind === 'legend' ? layout.legendLock : layout.pillLock;
-        var live = overlay.kind === 'legend' ? legendScale(options) : pillScale(options);
-        piece.style.transform = 'scale(' +
-          ((lock && lock.scale) ? lock.scale : live) + ')';
+        var px = existing && isFinite(Number(existing.x)) ? Number(existing.x) : x;
+        var py = existing && isFinite(Number(existing.y)) ? Number(existing.y) : y;
+        var pz = existing && existing.z != null ? existing.z : z;
+        if (!existing) {
+          layout.overlays.push({
+            id: id,
+            kind: kind,
+            statsIndex: 0,
+            x: px,
+            y: py,
+            z: pz != null ? pz : 3,
+            scale: 1,
+          });
+        } else {
+          existing.kind = kind;
+          existing.x = px;
+          existing.y = py;
+          if (pz != null) existing.z = pz;
+        }
+        var piece = boxShell(kind, id, true);
+        piece.classList.remove('is-locked');
+        piece.classList.add('rb-floor-box--chrome');
+        piece.setAttribute('tabindex', '0');
+        piece.setAttribute('role', 'button');
+        piece.setAttribute('aria-label',
+          kind === 'legend' ? 'Move the colour scale' : 'Move the readings');
+        piece.style.left = px + '%';
+        piece.style.top = py + '%';
+        piece.style.zIndex = String(pz != null ? pz : 3);
+        var lock = kind === 'legend' ? layout.legendLock : layout.pillLock;
+        var live = kind === 'legend' ? legendScale(legendOpts || options) : pillScale(legendOpts || options);
+        piece.style.transform = 'scale(' + ((lock && lock.scale) ? lock.scale : live) + ')';
         piece.style.transformOrigin = 'top left';
         piece.insertBefore(
-          overlay.kind === 'legend' ? renderLegendCard(options, overlay) : renderPill(stats),
+          kind === 'legend' ? renderLegendCard(legendOpts || options, { statsIndex: 0 }) : renderPill(stats),
           piece.firstChild);
         bareStage.appendChild(piece);
-      });
+      }
+
+      if (viewList && viewList.length > 1) {
+        // GPT-026: multi-view legends/pills start hidden; only place when a
+        // view explicitly enables them. Never fall through to layout.overlays
+        // alone (that path reserved empty columns for Combined-era slots).
+        // GPT-027: pill needs a stats OBJECT (hi/lo/delta), not the boundary array;
+        // legend URLs and settings come from that view's source.
+        // Positions still go through layout.overlays (same drag path as
+        // single-view) under legend-<viewId> / pill-<viewId>.
+        viewList.forEach(function (vs, vi) {
+          if (!vs) return;
+          var rawStats = options.viewStats && options.viewStats[vi];
+          var vStatsList = Array.isArray(rawStats) ? rawStats
+            : (rawStats ? [rawStats] : null);
+          var vStats = (vStatsList && vStatsList[0]) || statsList[0] || null;
+          var chromeX = Math.min(92, ((vs.frame && vs.frame.x) || 0) + 2);
+          var chromeY = Math.max(2, ((vs.frame && vs.frame.y) || 0) + 2);
+          var viewLegendUrls = (options.viewLegendUrls && options.viewLegendUrls[vi])
+            || options.legendUrls;
+          var viewChromeOpts = {
+            legendUrls: viewLegendUrls,
+            settings: vs.settings || options.settings,
+            pillPx: options.pillPx,
+          };
+          if (vs.showLegend && vStats) {
+            placeChrome('legend', 'legend-' + vs.id, chromeX, chromeY, 3, vStats, viewChromeOpts);
+          }
+          if (vs.showPill && vStats) {
+            placeChrome(
+              'pill',
+              'pill-' + vs.id,
+              chromeX,
+              vs.showLegend ? chromeY + PILL_DROP : chromeY,
+              3,
+              vStats,
+              viewChromeOpts,
+            );
+          }
+        });
+      } else if (!multiView) {
+        layout.overlays.forEach(function (overlay) {
+          if (overlay.kind !== 'legend' && overlay.kind !== 'pill') return;
+          if (combinedSheet) return;
+          // Only the per-boundary slots (legend-0, pill-1, ...) belong to a
+          // one-view sheet. A multi-view sheet keeps its own pieces in the
+          // same record under legend-<viewId> / pill-<viewId>, and the record
+          // is the book's: drawn here as well, turning a view's scale on one
+          // slide stacked a second, identical scale on every one-view slide,
+          // and removing the view left it there (CLAUDE-017).
+          if (!isBoundarySlotId(overlay.id)) return;
+          if (readingsOnly && overlay.kind === 'legend') return;
+          var stats = statsList[overlay.statsIndex];
+          if (!stats) return;
+          var slotNow = scaleSlot(overlay.statsIndex || 0);
+          var liftPill = readingsOnly && overlay.kind === 'pill' &&
+            sameSpot(overlay.x, slotNow.x) && sameSpot(overlay.y, slotNow.pillY);
+          placeChrome(
+            overlay.kind,
+            overlay.id,
+            overlay.x,
+            liftPill ? slotNow.legendY : overlay.y,
+            overlay.z,
+            stats,
+            options,
+          );
+        });
+      }
       var overviewBox = renderOverview(options, layout, locked);
       if (overviewBox) bareStage.appendChild(overviewBox);
       root.appendChild(bareStage);

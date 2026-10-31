@@ -29,10 +29,16 @@ const entries = publishFileSet();
 const again = publishFileSet();
 const swText = fs.readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
 const cacheName = (swText.match(/const CACHE_NAME = '([^']+)'/) || [])[1] || '';
+const surveyInShell = /const STATIC_SHELL = \[[\s\S]*?'\/distress-survey\/survey\.html'/.test(swText);
 check(
   'Publish set is deterministic',
   JSON.stringify(entries) === JSON.stringify(again) && entries.length >= 36,
   String(entries.length),
+);
+check(
+  'Publish set includes Distress survey.html even when it is out of STATIC_SHELL',
+  entries.some(([url, source]) => url === '/distress-survey/survey.html' && source === 'distress-survey/survey.html'),
+  surveyInShell ? 'still listed in STATIC_SHELL' : 'CLEAN_DOCUMENTS-only path',
 );
 check('Publish set includes Pen Log', entries.some(([url]) => url === '/js/pen-log.js'));
 const sources = entries.map(([, source]) => source);
@@ -89,7 +95,17 @@ const browser = await puppeteer.launch({
 });
 try {
   const page = await browser.newPage();
-  const required = ['/', '/sw.js', '/js/app.js', '/distress-survey/survey.html', '/icon-192.png', '/icons/icon-192.png', '/manifest.webmanifest'];
+  const required = [
+    '/',
+    '/sw.js',
+    '/js/app.js',
+    '/distress-survey/survey.html',
+    '/js/vendor/jszip.min.js',
+    '/js/vendor/jspdf.umd.min.js',
+    '/icon-192.png',
+    '/icons/icon-192.png',
+    '/manifest.webmanifest',
+  ];
   for (const urlPath of required) {
     const response = await fetch(base + urlPath);
     check('serves ' + urlPath, response.status === 200, String(response.status));

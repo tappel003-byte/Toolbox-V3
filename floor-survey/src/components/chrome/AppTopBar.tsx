@@ -7,10 +7,14 @@ type Props = {
   onBack?: () => void;
   onReturnToReport?: () => void;
   onOpenSetup: () => void;
+  /** ⋯ label for setup — integrated host uses Boundary & exclusions (CF owns plan). */
+  setupMenuLabel?: string;
   onOpenReview: () => void;
   onOpenExport?: () => void;
   onOpenTransitions?: () => void;
   onOpen3D?: () => void;
+  /** Topo: exclude points from contour math (session-only). Parked in ⋯ — not a corner pill. */
+  onOpenDiagnosticPoints?: () => void;
   
   undoEnabled?: boolean;
   redoEnabled?: boolean;
@@ -36,11 +40,13 @@ export function AppTopBar({
   onBack,
   onReturnToReport,
   onOpenSetup,
+  setupMenuLabel = "Setup",
   onOpenReview,
   onOpenExport,
   onOpenTransitions,
   onOpen3D,
-  
+  onOpenDiagnosticPoints,
+
   undoEnabled = true,
   redoEnabled = true,
   onSave,
@@ -210,7 +216,7 @@ export function AppTopBar({
                 }}
               />
               <MenuItem
-                label="Setup"
+                label={setupMenuLabel}
                 onClick={() => {
                   setMenuOpen(false);
                   onOpenSetup();
@@ -222,6 +228,15 @@ export function AppTopBar({
                   onClick={() => {
                     setMenuOpen(false);
                     onOpenTransitions();
+                  }}
+                />
+              )}
+              {onOpenDiagnosticPoints && (
+                <MenuItem
+                  label="Diagnostic points"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenDiagnosticPoints();
                   }}
                 />
               )}
@@ -243,8 +258,6 @@ export function AppTopBar({
                   }}
                 />
               )}
-
-
             </div>
           )}
         </div>

@@ -1,3 +1,7 @@
+# DEPLOY WITH THE CONFIG NAMED. Wrangler 4 run from this folder picks up the
+# repository root's wrangler.jsonc -- the static site, toolbox-v3 -- before
+# this file. From the repository root:
+#   npx wrangler@4 deploy --config sync-worker/wrangler.toml
 name = "toolbox-sync"
 main = "src/index.js"
 compatibility_date = "2024-09-23"
@@ -9,6 +13,14 @@ workers_dev = true
 [[r2_buckets]]
 binding = "CABINET"
 bucket_name = "toolbox-cabinet"
+
+# Cloudflare Images, for File Explorer's tile thumbnails (explore/thumbs).
+# Added to production by Tim, Oct 2026. Declared here so a deploy from this
+# file keeps it: a binding that exists only in the dashboard is removed by
+# the next `wrangler deploy`. Without it the route still answers, with the
+# original photograph; /health reports imagesBinding either way.
+[images]
+binding = "IMAGES"
 
 # Protect THIS Worker with Cloudflare Access (Tim + Lee).
 # Do NOT put the static Toolbox PWA origin behind Access.

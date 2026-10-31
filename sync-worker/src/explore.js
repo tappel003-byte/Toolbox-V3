@@ -4,10 +4,25 @@
  * Storage is not a folder of photos and plans. Each Customer File is
  * cf/{id}/*.json. Plan images and distress photos are flat media/{id}
  * objects. This module lists those keys and only the media ids cited by
- * the stored plans.json, distress.json, floor.json, and diagnostics.json
- * manifests. It does not invent folders, names, or bytes, and it never
- * writes the bucket. A media id is included only when a manifest cites it.
+ * the plans, distress, floor and diagnostics manifests. It does not invent
+ * folders, names, or bytes, and it never writes the bucket. A media id is
+ * included only when a manifest cites it.
+ *
+ * The one exception to "never writes" is the job text (job-text.js): a
+ * derived, plain-text copy of a job's words kept at cf/{id}/search.txt so a
+ * search reads text instead of opening jobs. It is written only by the
+ * search and text routes, never by a listing, and never touches an index,
+ * a lease, a component or a photograph.
+ *
+ * WHICH manifest is not a matter of its key. A component's current bytes are
+ * whichever candidate the index names -- see resolveAcceptedComponent in
+ * components.js. Reading cf/{id}/plans.json directly would have shown this
+ * back door a version the owner had already replaced, and cited the
+ * photographs of that older version while the real ones went unnamed.
  */
+
+import { resolveAcceptedComponent, legacyIsStale } from './components.js';
+import { searchJobText, currentJobText, JOB_TEXT_LEAF } from './job-text.js';
 
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -441,19 +456,60 @@ const STORED_FILE = {
   'diagnostics.json': { purpose: 'diagnostics', label: 'Diagnostics' },
   'report.json': { purpose: 'report', label: 'Report Builder' },
   'trash.json': { purpose: 'technical', label: 'Trash record' },
+  [JOB_TEXT_LEAF]: { purpose: 'job-text', label: 'Job text' },
 };
 
-function annotateStoredFile(row, id) {
+const COMPONENT_LABEL = {
+  customer: 'Customer information',
+  plans: 'Plans and canvases',
+  distress: 'Distress Survey',
+  floor: 'Floor Survey',
+  diagnostics: 'Diagnostics',
+  report: 'Report Builder',
+  trash: 'Trash record',
+};
+
+/**
+ * `index` is the parsed Customer File index, or null. It is what tells a
+ * candidate object apart from the one the index actually names -- without it
+ * every version of every component would be listed as "Stored file", and the
+ * back door would show a dozen indistinguishable files where there is one
+ * current survey.
+ */
+function annotateStoredFile(row, id, index) {
   const prefix = 'cf/' + id + '/';
   const filename = row.key.indexOf(prefix) === 0 ? row.key.slice(prefix.length) : '';
   const known = STORED_FILE[filename];
   if (known) {
     row.purpose = known.purpose;
     row.label = known.label;
-  } else {
-    row.purpose = 'other';
-    row.label = filename || 'Stored file';
+    // A legacy component key that the index no longer names is history, not
+    // the current survey, and saying so is the difference between a recovery
+    // file and the file itself.
+    const name = filename.slice(0, -'.json'.length);
+    if (COMPONENT_LABEL[name] && index) {
+      const resolved = resolveAcceptedComponent(index, id, name);
+      if (resolved.from === 'accepted' && resolved.key !== row.key) {
+        row.label = known.label + ' (superseded)';
+        row.superseded = true;
+      }
+    }
+    return row;
   }
+  const candidate = /^c\/([^/]+)\/[^/]+\.json$/.exec(filename);
+  if (candidate && COMPONENT_LABEL[candidate[1]]) {
+    const name = candidate[1];
+    const resolved = index ? resolveAcceptedComponent(index, id, name) : null;
+    const current = !!resolved && resolved.key === row.key;
+    row.purpose = current ? name : 'other';
+    row.label = current
+      ? COMPONENT_LABEL[name]
+      : COMPONENT_LABEL[name] + ' (superseded)';
+    if (!current) row.superseded = true;
+    return row;
+  }
+  row.purpose = 'other';
+  row.label = filename || 'Stored file';
   return row;
 }
 
@@ -468,6 +524,11 @@ function copyIdentity(target, value) {
   if (survey) target.fieldWorkDate = survey;
   if (created) target.createdAt = created;
   if (trimmed(value.deletedAt)) target.deletedAt = trimmed(value.deletedAt);
+  const place = placeOf(value.propertyAddressLat, value.propertyAddressLon);
+  if (place) {
+    target.propertyAddressLat = place.lat;
+    target.propertyAddressLon = place.lon;
+  }
   // Who holds the job, so the back door can offer Take Over without
   // reaching past its own read-only route to find out.
   const checkout = value.checkout;
@@ -480,6 +541,103 @@ function copyIdentity(target, value) {
       if (at) target.checkout.checkedOutAt = at;
     }
   }
+}
+
+/** A real place, or null. A 0,0 is what an empty field leaves, not a house. */
+export function placeOf(lat, lon) {
+  if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+  if (!isFinite(lat) || !isFinite(lon)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  if (lat === 0 && lon === 0) return null;
+  return { lat: lat, lon: lon };
+}
+
+/**
+ * Where Floor Survey's Base Point 1 GPS put the house, if it was captured.
+ * Each level keeps its own; the latest capture wins.
+ */
+export function basePointPlace(floor) {
+  const layers = floor && typeof floor === 'object' && floor.byCanvasId && typeof floor.byCanvasId === 'object'
+    ? floor.byCanvasId : {};
+  let best = null;
+  let bestAt = -Infinity;
+  Object.keys(layers).forEach(function (canvasId) {
+    const gps = layers[canvasId] && layers[canvasId].bp1Gps;
+    if (!gps || typeof gps !== 'object') return;
+    const place = placeOf(gps.latitude, gps.longitude);
+    if (!place) return;
+    const at = typeof gps.capturedAt === 'number' && isFinite(gps.capturedAt) ? gps.capturedAt : 0;
+    if (at >= bestAt) { best = place; bestAt = at; }
+  });
+  return best;
+}
+
+/**
+ * Every job, with where it is, for File Explorer's map.
+ *
+ * The index carries the property's coordinates for jobs synced since they
+ * were added to it. The jobs already in the Cabinet were filed before that,
+ * and their coordinates are in the customer component -- so for those this
+ * READS the customer component the index names. Nothing is written back:
+ * the index is not rewritten and no lease moves.
+ *
+ * The order, decided by Tim (Oct 29, 2026): the address picked from the
+ * suggestions (or Use Current Location), then the Floor Survey base point's
+ * GPS, then -- in the browser, not here -- the typed address looked up. A
+ * job with none of the first two comes back without coordinates and the
+ * browser decides whether its typed address can be found.
+ */
+export async function readCabinetMap(cabinet) {
+  const listed = await listPrefix(cabinet, 'cf/');
+  const jobs = [];
+  let fromCustomer = 0;
+  let fromBasePoint = 0;
+  for (let i = 0; i < listed.length; i++) {
+    const match = /^cf\/([^/]+)\/index\.json$/.exec(listed[i] && listed[i].key);
+    if (!match || !safeCustomerId(match[1])) continue;
+    const id = match[1];
+    const parsed = await readJson(await cabinet.get(listed[i].key));
+    if (!parsed.ok || !parsed.value || typeof parsed.value !== 'object') continue;
+    const index = parsed.value;
+    if (index.purged) continue;
+    const job = { id: id };
+    const name = trimmed(index.displayName);
+    const address = trimmed(index.propertyAddress);
+    if (name) job.displayName = name;
+    if (address) job.propertyAddress = address;
+    if (trimmed(index.fieldWorkDate)) job.fieldWorkDate = trimmed(index.fieldWorkDate);
+    if (trimmed(index.createdAt)) job.createdAt = trimmed(index.createdAt);
+    if (trimmed(index.deletedAt)) job.deletedAt = trimmed(index.deletedAt);
+    let place = placeOf(index.propertyAddressLat, index.propertyAddressLon);
+    if (place) {
+      job.from = 'index';
+    } else {
+      const resolved = resolveAcceptedComponent(index, id, 'customer');
+      const customer = await readJson(await cabinet.get(resolved.key));
+      if (customer.ok && customer.value && typeof customer.value === 'object') {
+        place = placeOf(customer.value.propertyAddressLat, customer.value.propertyAddressLon);
+        if (place) {
+          job.from = 'customer';
+          fromCustomer += 1;
+        }
+      }
+    }
+    if (!place) {
+      const resolved = resolveAcceptedComponent(index, id, 'floor');
+      const floor = await readJson(await cabinet.get(resolved.key));
+      if (floor.ok) place = basePointPlace(floor.value);
+      if (place) {
+        job.from = 'base-point';
+        fromBasePoint += 1;
+      }
+    }
+    if (place) {
+      job.lat = place.lat;
+      job.lon = place.lon;
+    }
+    jobs.push(job);
+  }
+  return { jobs: jobs, readFromCustomer: fromCustomer, readFromBasePoint: fromBasePoint };
 }
 
 export async function readCabinetIndexListing(cabinet) {
@@ -513,24 +671,39 @@ export async function readCabinetIndexListing(cabinet) {
   return { files: files };
 }
 
-async function readManifest(cabinet, id, name, storedByKey, notes) {
-  const key = 'cf/' + id + '/' + name + '.json';
-  if (!storedByKey[key]) return null;
+async function readManifest(cabinet, id, name, storedByKey, notes, index) {
+  const resolved = resolveAcceptedComponent(index, id, name);
+  const key = resolved.key;
+  if (!storedByKey[key]) {
+    // A reference naming an object that is not stored is a fault worth saying
+    // out loud: the component's photographs cannot be enumerated, so they
+    // would silently go unlisted. Falling back to the legacy key would be
+    // worse -- it would list the media of a version already replaced.
+    if (resolved.from === 'accepted') {
+      notes.push(key + ' is named by the index but is not stored; its media references are not listed.');
+    }
+    return null;
+  }
   const parsed = await readJson(await cabinet.get(key));
   if (!parsed.ok) {
     notes.push(key + ' could not be read; its media references are not listed.');
     return null;
   }
+  // The back door says so rather than quietly listing the media of a version
+  // the index does not vouch for. See legacyIsStale.
+  if (resolved.from === 'legacy' && legacyIsStale(index, name, parsed.value)) {
+    notes.push(key + ' is older than the revision the index advertises; its media references may be incomplete.');
+  }
   return parsed.value;
 }
 
-async function referencedMedia(cabinet, id, storedByKey, notes) {
-  const plans = await readManifest(cabinet, id, 'plans', storedByKey, notes);
-  const distress = await readManifest(cabinet, id, 'distress', storedByKey, notes);
-  const floor = await readManifest(cabinet, id, 'floor', storedByKey, notes);
-  const diagnostics = await readManifest(cabinet, id, 'diagnostics', storedByKey, notes);
-  const report = await readManifest(cabinet, id, 'report', storedByKey, notes);
-  const customer = await readManifest(cabinet, id, 'customer', storedByKey, notes);
+async function referencedMedia(cabinet, id, storedByKey, notes, index) {
+  const plans = await readManifest(cabinet, id, 'plans', storedByKey, notes, index);
+  const distress = await readManifest(cabinet, id, 'distress', storedByKey, notes, index);
+  const floor = await readManifest(cabinet, id, 'floor', storedByKey, notes, index);
+  const diagnostics = await readManifest(cabinet, id, 'diagnostics', storedByKey, notes, index);
+  const report = await readManifest(cabinet, id, 'report', storedByKey, notes, index);
+  const customer = await readManifest(cabinet, id, 'customer', storedByKey, notes, index);
   const names = canvasNameMap(plans);
   return mergeMediaRefs(
     mediaRefsFromPlans(plans, notes)
@@ -549,21 +722,27 @@ export async function readCustomerFileListing(cabinet, id) {
   const prefix = 'cf/' + id + '/';
   const indexKey = prefix + 'index.json';
   const listed = await listPrefix(cabinet, prefix, true);
-  const stored = [];
   const storedByKey = Object.create(null);
+  const rows = [];
   listed.forEach(function (obj) {
     if (!obj || typeof obj.key !== 'string') return;
     if (!obj.key.startsWith(prefix) || obj.key.indexOf('..') !== -1) return;
     storedByKey[obj.key] = obj;
-    stored.push(annotateStoredFile(objectMeta(obj.key, obj), id));
+    rows.push(obj);
   });
   if (!storedByKey[indexKey]) return { status: 404, text: 'Not found' };
 
   const notes = [];
   const identity = {};
+  // Read first: which bytes are current is a property of the index, so
+  // nothing below can be labelled or cited without it.
   const indexParsed = await readJson(await cabinet.get(indexKey));
-  if (indexParsed.ok) copyIdentity(identity, indexParsed.value);
-  const mediaRefs = await referencedMedia(cabinet, id, storedByKey, notes);
+  const index = indexParsed.ok ? indexParsed.value : null;
+  if (indexParsed.ok) copyIdentity(identity, index);
+  const stored = rows.map(function (obj) {
+    return annotateStoredFile(objectMeta(obj.key, obj), id, index);
+  });
+  const mediaRefs = await referencedMedia(cabinet, id, storedByKey, notes, index);
   const objects = stored.slice();
   for (let i = 0; i < mediaRefs.length; i++) {
     const ref = mediaRefs[i];
@@ -797,6 +976,140 @@ export async function buildExploreZip(cabinet, id) {
   };
 }
 
+/**
+ * A small picture of a stored photograph, for a tile.
+ *
+ * A folder of 38 photographs used to pull the whole of every original --
+ * 70 to 100 MB -- to draw tiles 320 pixels across. Cloudflare Images shrinks
+ * the original inside the Worker, next to R2, and the shrunk copy is kept in
+ * the Workers Cache so the next look costs nothing.
+ *
+ * The binding is used only when it is there. Without it, or when a picture
+ * will not transform, the answer is the original bytes, said so in
+ * x-toolbox-thumb, and the browser shrinks it the way it always did. The
+ * cached copy is keyed on the object's etag, so a plan replaced under the
+ * same id is never answered with the picture it replaced.
+ *
+ * Reads only. The same media is already served whole to the same signed-in
+ * people by the sync API's own media route; this route is no wider than that.
+ */
+export const THUMB_EDGES = [160, 320, 640];
+
+export function thumbEdge(value) {
+  const asked = Number(value);
+  if (!isFinite(asked) || asked <= 0) return 320;
+  for (let i = 0; i < THUMB_EDGES.length; i++) {
+    if (asked <= THUMB_EDGES[i]) return THUMB_EDGES[i];
+  }
+  return THUMB_EDGES[THUMB_EDGES.length - 1];
+}
+
+function thumbCache() {
+  try {
+    return typeof caches !== 'undefined' && caches && caches.default ? caches.default : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function originalAnswer(got, contentType) {
+  return {
+    status: 200,
+    body: got.body,
+    headers: {
+      'content-type': contentType || 'application/octet-stream',
+      'x-toolbox-thumb': 'original',
+      'x-content-type-options': 'nosniff',
+      'cache-control': 'no-store',
+      'access-control-expose-headers': 'x-toolbox-thumb, content-type',
+    },
+  };
+}
+
+export async function readExploreThumb(env, origin, mediaId, edgeValue) {
+  const cabinet = env.CABINET;
+  if (!safeMediaId(mediaId)) return { status: 400, text: 'Bad request' };
+  const edge = thumbEdge(edgeValue);
+  const key = 'media/' + mediaId;
+  const head = await cabinet.head(key);
+  if (!head) return { status: 404, text: 'Not stored' };
+  const contentType = (head.httpMetadata && head.httpMetadata.contentType) || '';
+  const type = contentType.toLowerCase();
+  // A PDF or a record is not a picture, whatever asked for it. Stored photos
+  // often carry no type at all, so an empty one is still worth trying.
+  const mayBePicture = !type || type === 'application/octet-stream' || type.indexOf('image/') === 0;
+
+  const cache = thumbCache();
+  const version = head.httpEtag || head.etag || String(head.size || '') + '-' + String(head.uploaded || '');
+  const cacheKey = cache
+    ? new Request(origin + '/explore/thumbs/' + encodeURIComponent(mediaId) +
+        '?w=' + edge + '&v=' + encodeURIComponent(version))
+    : null;
+  if (cache && cacheKey) {
+    try {
+      const hit = await cache.match(cacheKey);
+      if (hit) {
+        const bytes = new Uint8Array(await hit.arrayBuffer());
+        return {
+          status: 200,
+          body: bytes,
+          headers: {
+            'content-type': hit.headers.get('content-type') || 'image/jpeg',
+            'content-length': String(bytes.byteLength),
+            'x-toolbox-thumb': 'resized',
+            'x-content-type-options': 'nosniff',
+            'cache-control': 'private, max-age=300',
+            'access-control-expose-headers': 'x-toolbox-thumb, content-type',
+          },
+        };
+      }
+    } catch (_) {}
+  }
+
+  if (env.IMAGES && mayBePicture) {
+    try {
+      const got = await cabinet.get(key);
+      if (!got) return { status: 404, text: 'Not stored' };
+      const result = await env.IMAGES.input(got.body)
+        .transform({ width: edge, height: edge, fit: 'scale-down' })
+        .output({ format: 'image/jpeg', quality: 75 });
+      const transformed = result.response();
+      const bytes = new Uint8Array(await transformed.arrayBuffer());
+      if (bytes.byteLength) {
+        if (cache && cacheKey) {
+          try {
+            await cache.put(cacheKey, new Response(bytes, {
+              headers: {
+                'content-type': 'image/jpeg',
+                'cache-control': 'public, max-age=2592000',
+              },
+            }));
+          } catch (_) {}
+        }
+        return {
+          status: 200,
+          body: bytes,
+          headers: {
+            'content-type': 'image/jpeg',
+            'content-length': String(bytes.byteLength),
+            'x-toolbox-thumb': 'resized',
+            'x-content-type-options': 'nosniff',
+            'cache-control': 'private, max-age=300',
+            'access-control-expose-headers': 'x-toolbox-thumb, content-type',
+          },
+        };
+      }
+    } catch (err) {
+      console.warn('Thumbnail transform failed; serving the original', mediaId, err && err.message);
+    }
+  }
+
+  // The fallback is the original, exactly as the Explorer fetched it before.
+  const got = await cabinet.get(key);
+  if (!got) return { status: 404, text: 'Not stored' };
+  return originalAnswer(got, contentType);
+}
+
 export async function exploreResult(request, env) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/^\/+/, '');
@@ -809,6 +1122,10 @@ export async function exploreResult(request, env) {
       return { status: 200, json: listing };
     }
 
+    if (path === 'explore/map' && request.method === 'GET') {
+      return { status: 200, json: await readCabinetMap(cabinet) };
+    }
+
     let match = /^explore\/files\/([^/]+)$/.exec(path);
     if (match && request.method === 'GET') {
       return readCustomerFileListing(cabinet, decodeURIComponent(match[1]));
@@ -817,6 +1134,36 @@ export async function exploreResult(request, env) {
     match = /^explore\/files\/([^/]+)\/object$/.exec(path);
     if (match && request.method === 'GET') {
       return readExploreObject(cabinet, decodeURIComponent(match[1]), url.searchParams.get('key'));
+    }
+
+    match = /^explore\/thumbs\/([^/]+)$/.exec(path);
+    if (match && request.method === 'GET') {
+      return readExploreThumb(env, url.origin, decodeURIComponent(match[1]), url.searchParams.get('w'));
+    }
+
+    if (path === 'explore/search' && request.method === 'GET') {
+      return searchJobText(cabinet, url.searchParams.get('q'));
+    }
+
+    match = /^explore\/files\/([^/]+)\/text$/.exec(path);
+    if (match && request.method === 'GET') {
+      const id = decodeURIComponent(match[1]);
+      if (!safeCustomerId(id)) return { status: 400, text: 'Bad request' };
+      const text = await currentJobText(cabinet, id);
+      if (text === null) return { status: 404, text: 'Not found' };
+      const body = new TextEncoder().encode(text);
+      return {
+        status: 200,
+        body: body,
+        headers: {
+          'content-type': 'text/plain; charset=utf-8',
+          'content-length': String(body.byteLength),
+          'content-disposition': 'attachment; filename="job-text.txt"',
+          'x-content-type-options': 'nosniff',
+          'cache-control': 'no-store',
+          'access-control-expose-headers': 'content-disposition, content-type',
+        },
+      };
     }
 
     match = /^explore\/files\/([^/]+)\/archive$/.exec(path);

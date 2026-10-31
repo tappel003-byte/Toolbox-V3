@@ -848,21 +848,176 @@ body.report-builder-open .canvas {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  /* The rail had no padding of its own -- the padding was written against a
-     .rb-rail class this element has not carried for some time -- so every
-     label and every button in it sat flush against the window edge and the
-     wider ones were cut off there: "AGES", "eport sheets", a Remove button
-     with no R. */
   padding: 2px 8px 8px;
 }
-.rb-ws__title { margin: 0; font-size: 18px; }
+/* Title and the tab/tool row stick as one piece. Separate sticky offsets
+   overlapped once the Topo row made the tool block taller than the old 28px. */
+.rb-ws__sticky {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.96);
+}
+.rb-ws__title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 22px;
+  position: static;
+  background: transparent;
+  padding-bottom: 0;
+}
 .rb-ws__top,
 .rb-ws__foot { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
-.rb-ws__body { flex: 0 0 auto; min-height: 0; overflow: visible; }
+.rb-ws__top {
+  position: static;
+  background: transparent;
+  padding-bottom: 6px;
+}
+.rb-ws__body {
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .rb-ws__btn { width: 100%; }
 .rb-ws__controls { display: block; }
 .rb-ws__controls .floor-survey-host,
 .rb-ws__controls .rtw-root--controls { display: block; height: auto; }
+
+/* GPT-036: Sheet Layout | Topo as folder tabs on the rail's top edge.
+   Rounded tops, flat bottoms, no capsule. The active tab is the white
+   panel; the baseline continues under the inactive tab. */
+.rb-ws__sticky:has(.rb-ws__task-tabs) {
+  gap: 6px;
+  margin-bottom: -10px;
+  background: #fff;
+}
+.rb-ws__top:has(.rb-ws__task-tabs) {
+  gap: 0;
+  padding-bottom: 0;
+  background: #fff;
+}
+.rb-ws__sticky:has(.rb-ws__task-tabs) + .rb-ws__body {
+  padding-top: 10px;
+  background: #fff;
+}
+.rb-ws__task-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line, #dce1e4);
+  border-radius: 0;
+  background: transparent;
+}
+.rb-ws__task-tab {
+  appearance: none;
+  position: relative;
+  flex: 0 0 auto;
+  margin: 0 0 -1px;
+  border: 1px solid var(--line, #dce1e4);
+  border-bottom-color: var(--line, #dce1e4);
+  border-radius: 6px 6px 0 0;
+  box-shadow: none;
+  min-height: 36px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--navy, #07283d);
+  background: #e5ebee;
+  cursor: pointer;
+}
+.rb-ws__task-tab:hover:not(.is-active) {
+  background: #d9e4e9;
+}
+.rb-ws__task-tab:focus {
+  outline: none;
+}
+.rb-ws__task-tab:focus-visible {
+  outline: 2px solid var(--navy, #07283d);
+  outline-offset: -3px;
+}
+.rb-ws__task-tab.is-active {
+  z-index: 1;
+  background: #fff;
+  color: var(--navy, #07283d);
+  border-bottom-color: #fff;
+  box-shadow: none;
+}
+/* Topo and its three sub tabs are one set. Sheet Layout stays the gray tab. */
+.rb-ws__task-tab.is-active[data-rb-floor-task="topo"] {
+  color: #c14a2b;
+  font-weight: 700;
+}
+/* Second tier under Topo: the same folder tabs, drawn smaller.
+   Rounded tops, flat bottoms, cool-gray inactive, white active tab that
+   interrupts this row's baseline. Not a pill, and not an underline. */
+.rb-ws__subtabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  margin: 3px 0 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line, #dce1e4);
+  border-radius: 0;
+  background: transparent;
+}
+.rb-ws__subtab {
+  appearance: none;
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 26px;
+  margin: 0 0 -1px;
+  padding: 2px 7px 3px;
+  border: 1px solid var(--line, #dce1e4);
+  border-bottom-color: var(--line, #dce1e4);
+  border-radius: 5px 5px 0 0;
+  background: #e5ebee;
+  box-shadow: none;
+  color: #c14a2b;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.rb-ws__subtab:hover:not(.is-active) {
+  background: #d9e4e9;
+}
+.rb-ws__subtab:focus {
+  outline: none;
+}
+.rb-ws__subtab:focus-visible {
+  outline: 2px solid var(--navy, #07283d);
+  outline-offset: -3px;
+}
+.rb-ws__subtab.is-active {
+  z-index: 1;
+  background: #fff;
+  border-bottom-color: #fff;
+  box-shadow: none;
+}
+.rb-ws__section-label {
+  margin: 4px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft, #7a7468);
+}
 .rb-panel__idle h2 { margin: 0 0 6px; font-size: 18px; }
 
 /* The stage a stripped Floor Survey slide positions its frame against. */
@@ -2469,6 +2624,25 @@ body.report-builder-open .canvas {
   font-weight: 700;
 }
 
+.rb-penlog-pinsize {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rb-penlog-pinsize input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: var(--accent, #c14a2b);
+}
+.rb-penlog-pinsize__val {
+  flex: 0 0 auto;
+  min-width: 3.2em;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink, #222);
+  font-variant-numeric: tabular-nums;
+}
+
 .rb-panel__note,
 .rb-panel__note.rb-panel__note {
   width: 100%;
@@ -2539,6 +2713,9 @@ body.report-builder-open .canvas {
 .rb-floor-stage {
   position: relative;
   overflow: hidden;
+  /* Its own stacking context, so a piece sent behind the others (a negative
+     z) still sits above the stage and can be picked up again. */
+  isolation: isolate;
 }
 
 .rb-floor-empty {
@@ -2692,8 +2869,15 @@ body.report-builder-open .canvas {
 
 .rb-floor-box:not(.is-locked) {
   cursor: move;
-  outline: 1px dashed rgba(30, 64, 110, 0.35);
   background: rgba(255, 255, 255, 0.02);
+}
+
+/* The dashed edge is for the box being pointed at, as on the cover. It was
+   the unlocked look when boxes had a lock; with the lock gone it stood on
+   every drawing at rest. */
+.rb-floor-box:not(.is-locked):hover,
+.rb-floor-box:not(.is-locked):focus-within {
+  outline: 1px dashed rgba(30, 64, 110, 0.35);
 }
 
 .rb-floor-box:not(.is-locked):focus {
@@ -4136,4 +4320,14 @@ body.is-presenting { overflow: hidden; }
 
 .rb-stage__paper {
   margin: auto;
+}
+.rb-rail__select {
+  display: block;
+  width: 100%;
+  margin: 0.35rem 0 0.6rem;
+  padding: 0.35rem 0.45rem;
+  font: inherit;
+  border: 1px solid #c9d0d5;
+  border-radius: 6px;
+  background: #fff;
 }

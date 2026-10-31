@@ -1,9 +1,10 @@
 /**
  * Copy the Toolbox PWA into ./publish for the toolbox-v3 static Worker.
  *
- * The set is the service-worker shell, the two documents it caches, and
- * every local HTML/CSS/manifest reference those files make. sync-worker,
- * tests, docs, and source maps are not copied.
+ * The set is the service-worker shell, the offline HTML documents named by
+ * OFFLINE_DOCUMENT / DISTRESS_DOCUMENT (CLEAN_DOCUMENTS — not only
+ * STATIC_SHELL), and every local HTML/CSS/manifest reference those files
+ * make. sync-worker, tests, docs, and source maps are not copied.
  *
  * /icon-192.png is requested by distress-survey/survey.html and is not a
  * file at the repo root. The publish copy is distress-survey/icon-192.png,
@@ -31,12 +32,30 @@ const FORBIDDEN_PREFIXES = [
   '.github/',
 ];
 
+/**
+ * Paths named by sw.js document constants (OFFLINE_DOCUMENT / DISTRESS_DOCUMENT).
+ * CLEAN_DOCUMENTS references those identifiers; the publish set must include
+ * them even when they are kept out of STATIC_SHELL so cache.addAll cannot
+ * overwrite a cleaned Response. Omitting them 404s Distress on the live Worker.
+ */
+export function offlineDocumentsFromSw(swText) {
+  const docs = [];
+  for (const match of swText.matchAll(/const (?:OFFLINE_DOCUMENT|DISTRESS_DOCUMENT) = '([^']+)'/g)) {
+    docs.push(match[1]);
+  }
+  return docs;
+}
+
 export function publishFileSet(root = repoRoot) {
   const swText = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
   const shellMatch = swText.match(/const STATIC_SHELL = \[([\s\S]*?)\];/);
   if (!shellMatch) throw new Error('STATIC_SHELL was not found in sw.js');
   const shell = [...shellMatch[1].matchAll(/'([^']+)'/g)].map((match) => decodeURIComponent(match[1]));
   if (!shell.length) throw new Error('STATIC_SHELL is empty');
+  const offlineDocuments = offlineDocumentsFromSw(swText);
+  if (!offlineDocuments.includes('/distress-survey/survey.html')) {
+    throw new Error('sw.js must declare DISTRESS_DOCUMENT for publish');
+  }
 
   const wanted = new Map();
   function add(urlPath, sourceRel) {
@@ -49,6 +68,10 @@ export function publishFileSet(root = repoRoot) {
 
   add('/index.html', 'index.html');
   add('/sw.js', 'sw.js');
+  // Offline HTML documents first — they may be absent from STATIC_SHELL.
+  for (const urlPath of offlineDocuments) {
+    add(urlPath, decodeURIComponent(urlPath.slice(1)));
+  }
   for (const urlPath of shell) add(urlPath, urlPath.slice(1));
   add('/icon-192.png', ICON_ALIAS['/icon-192.png']);
 

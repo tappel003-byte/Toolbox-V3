@@ -28,6 +28,8 @@
     onNote: null,
     onSelect: null,
     layout: null,
+    /** Report-owned Picture Locations pin scale (never capture prefs). */
+    pinScale: 1,
   };
   var fitObserver = null;
   var formatToolbar = null;
@@ -456,12 +458,26 @@
   // floor page -- how many views it carries and which one is being driven --
   // are read through these rather than captured.
   function floorSlotsForPage(page) {
+    var api = window.ToolboxReportFloorViews;
+    if (api && typeof api.viewCount === 'function') return Math.max(1, api.viewCount(page));
     return page && page.meta && page.meta.floorTwoUp ? 2 : 1;
   }
 
   function floorActiveSlotForPage(page) {
     var n = Number(page && page._floorSlot) || 0;
     return Math.max(0, Math.min(floorSlotsForPage(page) - 1, n));
+  }
+
+  function floorViewsForPage(page) {
+    var api = window.ToolboxReportFloorViews;
+    if (api && typeof api.viewsFor === 'function') return api.viewsFor(page);
+    return [];
+  }
+
+  function floorViewSpec(page, slot) {
+    var api = window.ToolboxReportFloorViews;
+    if (api && typeof api.viewAt === 'function') return api.viewAt(page, slot);
+    return null;
   }
 
   // The one page in the deck that is written rather than drawn. Named here
@@ -1131,15 +1147,26 @@
     return Math.max(1, Math.ceil(picturesOnPage(page) / picturesAcross(page)));
   }
 
-  /** The Stats pill size set in Labels & layers, kept per device. */
-  function storedStatsPillPx() {
-    try {
-      var raw = window.localStorage.getItem('stats-chip-size');
-      var n = raw == null ? NaN : Number(raw);
-      return isFinite(n) && n > 0 ? n : 32;
-    } catch (err) {
-      return 32;
+  /**
+   * Report readings pill height in CSS px from the Customer File layout.
+   * Never from device-global stats-chip-size — capture and report stay apart.
+   * 32px is the sheet default (matches CHROME_SCALE as scale 1× reference).
+   */
+  function pillPxFromLayout(layout) {
+    var flApi = window.ToolboxReportFloorLayout;
+    var chrome = (flApi && Number(flApi.CHROME_SCALE)) || 1;
+    var scale = layout && layout.pillLock && Number(layout.pillLock.scale);
+    if (isFinite(scale) && scale > 0) {
+      return Math.max(8, Math.min(120, Math.round((scale / chrome) * 32)));
     }
+    return 32;
+  }
+
+  /** Sheet-default pill lock scale (32px on the 11×17 chrome base). */
+  function defaultPillLockScale() {
+    var flApi = window.ToolboxReportFloorLayout;
+    var chrome = (flApi && Number(flApi.CHROME_SCALE)) || 1;
+    return chrome > 0 ? chrome : 1;
   }
 
   /**
@@ -2104,6 +2131,10 @@
       // photograph 31 on the second sheet needs the same plan in front of
       // them as the one who looked up photograph 3 on the first.
       allPins: pins,
+      // Report pin scale only — never capture device prefs.
+      pinScale: (typeof penLogUi.pinScale === 'number' && penLogUi.pinScale > 0)
+        ? penLogUi.pinScale
+        : 1,
       selectedPinId: penLogUi.selectedPinId,
       onNote: function (id, value, source) {
         if (typeof penLogUi.onNote === 'function') penLogUi.onNote(id, value, source);
@@ -2177,6 +2208,11 @@
   var topoHosts = Object.create(null);
 
   function topoHostKey(page, slot) {
+    var view = floorViewSpec(page, slot);
+    if (view) {
+      return [page && page.id, slot, view.id, view.canvasId, view.epochId,
+        view.areaId || '', view.scope || ''].join('|');
+    }
     var meta = (page && page.meta) || {};
     return [page && page.id, slot, meta.canvasId, meta.epochId,
       meta.areaId || '', meta.scope || ''].join('|');
@@ -2193,19 +2229,20 @@
   }
 
   /**
-   * Hand a camera to the views a slide is hosting, except the one it came from.
+   * Hand a camera to linked same-source companions on this slide.
    *
-   * Two views on a sheet are two windows on one level, so they are two windows
-   * on one camera. Tim: "I need them to be side by side exactly. not one
-   * higher one lower." A pan used to be told only to the book, and the book
-   * does not re-mount a view that is already showing the right level -- so
-   * dragging either drawing left the other where it was, and the pair sat at
-   * different heights until the report was closed and opened again.
+   * Same-source linked pairs share pan/zoom (Tim: side by side exactly).
+   * Size-linked different floors and unlinked same-source views keep their
+   * own cameras (GPT-027) — do not broadcast the book camera to every host.
    */
-  function pushCameraToTopoHosts(camera, except) {
+  function pushCameraToTopoHosts(camera, except, onlySlots) {
     if (!camera) return;
+    var allow = onlySlots && onlySlots.length
+      ? onlySlots.reduce(function (m, s) { m[Number(s)] = true; return m; }, Object.create(null))
+      : null;
     Object.keys(topoHosts).forEach(function (slot) {
       if (Number(slot) === Number(except)) return;
+      if (allow && !allow[Number(slot)]) return;
       var host = topoHosts[slot];
       if (!host || !host.api || typeof host.api.update !== 'function') return;
       host.api.update({ camera: camera });
@@ -2226,15 +2263,23 @@
   var legendPainting = Object.create(null);
 
   /** What a painted scale depends on. A change to any of it is a new scale. */
-  function legendKey(page, statsIndex, settings) {
-    var meta = (page && page.meta) || {};
+  function legendKey(canvasId, areaId, scope, statsIndex, settings) {
     var view = settings || {};
     return [
-      meta.canvasId || '', meta.scope === 'all' ? '' : (meta.areaId || ''), statsIndex,
+      canvasId || '', scope === 'all' ? '' : (areaId || ''), statsIndex,
       view.palette || '', view.reversePalette ? 'r' : '',
       view.firstContour, view.contourStep, view.contourCount,
       view.minClamp, view.maxClamp, view.decimalPlaces,
     ].join('|');
+  }
+
+  function legendSourceForView(page, view) {
+    var meta = (page && page.meta) || {};
+    var canvasId = (view && view.canvasId) || meta.canvasId || '';
+    var scope = (view && view.scope) || meta.scope || 'all';
+    var areaId = scope === 'all' ? null : ((view && view.areaId) || meta.areaId || null);
+    var settings = (view && view.settings) || (page && page._floorView) || null;
+    return { canvasId: canvasId, scope: scope, areaId: areaId, settings: settings };
   }
 
   /**
@@ -2243,6 +2288,8 @@
    * Called from renderPages, and it draws the pages again once pictures have
    * arrived. The cache is what stops that from going round for ever: the
    * second pass finds every scale already painted and asks for nothing.
+   *
+   * Multi-view sheets paint one legend set per view source/settings (GPT-027).
    */
   function ensureFloorLegends(fileId, pages, redraw) {
     var api = window.ToolboxFloorSurvey;
@@ -2252,29 +2299,61 @@
       if (!page || page.type !== 'floor') return;
       var meta = page.meta || {};
       if (!meta.imported || !meta.canvasId) return;
-      var stats = page._liveStats ||
+      var views = floorViewsForPage(page);
+      page._viewLegendUrls = page._viewLegendUrls || {};
+      if (views.length > 1) {
+        views.forEach(function (vs, vi) {
+          var src = legendSourceForView(page, vs);
+          var slotStats = page._viewStats && page._viewStats[vi];
+          var stats = Array.isArray(slotStats) ? slotStats
+            : (page._liveStats ||
+              ((page.evidence && Array.isArray(page.evidence.stats)) ? page.evidence.stats : []));
+          var count = Math.max(1, Array.isArray(stats) ? stats.length : 1);
+          var urls = [];
+          for (var i = 0; i < count; i += 1) {
+            var key = legendKey(src.canvasId, src.areaId, src.scope, i, src.settings);
+            urls.push(legendImages[key] || '');
+            if (!legendImages[key] && !legendPainting[key]) {
+              wanted.push({
+                page: page, index: i, key: key, slot: vi,
+                canvasId: src.canvasId, areaId: src.areaId, settings: src.settings,
+              });
+            }
+          }
+          page._viewLegendUrls[vi] = urls;
+        });
+        // Keep page._legendUrls as the active view's set for single-slot readers.
+        var active = floorActiveSlotForPage(page);
+        page._legendUrls = page._viewLegendUrls[active] || page._viewLegendUrls[0] || [];
+        return;
+      }
+      var statsOne = page._liveStats ||
         ((page.evidence && Array.isArray(page.evidence.stats)) ? page.evidence.stats : []);
-      var count = Math.max(1, stats.length);
-      var urls = [];
-      for (var i = 0; i < count; i += 1) {
-        var key = legendKey(page, i, page._floorView);
-        urls.push(legendImages[key] || '');
-        if (!legendImages[key] && !legendPainting[key]) {
-          wanted.push({ page: page, index: i, key: key });
+      var countOne = Math.max(1, statsOne.length);
+      var urlsOne = [];
+      var srcOne = legendSourceForView(page, views[0] || null);
+      for (var j = 0; j < countOne; j += 1) {
+        var keyOne = legendKey(srcOne.canvasId, srcOne.areaId, srcOne.scope, j, srcOne.settings);
+        urlsOne.push(legendImages[keyOne] || '');
+        if (!legendImages[keyOne] && !legendPainting[keyOne]) {
+          wanted.push({
+            page: page, index: j, key: keyOne, slot: 0,
+            canvasId: srcOne.canvasId, areaId: srcOne.areaId, settings: srcOne.settings,
+          });
         }
       }
-      page._legendUrls = urls;
+      page._legendUrls = urlsOne;
+      page._viewLegendUrls[0] = urlsOne;
     });
     if (!wanted.length) return;
     wanted.forEach(function (job) { legendPainting[job.key] = true; });
     Promise.all(wanted.map(function (job) {
-      var meta = job.page.meta || {};
       return api.renderTopoLegendImage({
         customerFileId: fileId,
-        canvasId: meta.canvasId || '',
-        areaId: meta.scope === 'all' ? null : (meta.areaId || null),
+        canvasId: job.canvasId || '',
+        areaId: job.areaId || null,
         statsIndex: job.index,
-        settings: job.page._floorView || null,
+        settings: job.settings || null,
       }).then(function (painted) {
         delete legendPainting[job.key];
         if (painted && painted.dataUrl) legendImages[job.key] = painted.dataUrl;
@@ -2310,6 +2389,7 @@
         host.api.update({
           locked: !!(hooks && hooks.locked),
           settings: (hooks && hooks.settings) || null,
+          hostStatsPillPx: liveHostPillPx(page, hooks),
         });
       }
       return host.el;
@@ -2322,16 +2402,21 @@
     host = { el: el, key: key, api: null, hooks: hooks };
     topoHosts[n] = host;
     var meta = page.meta || {};
-    // The hooks are read through the host so a later re-render can swap them
-    // without remounting the view.
+    var view = floorViewSpec(page, n);
+    var canvasId = (view && view.canvasId) || meta.canvasId || '';
+    var scope = (view && view.scope) || meta.scope || 'all';
+    var areaId = scope === 'all' ? null : ((view && view.areaId) || meta.areaId || null);
+    // Live drawing is settingsOwnedByHost and receives report pill px from
+    // hooks / page layout so it never subscribes to capture sizes.
     host.api = api.mount(el, {
       customerFileId: (hooks && hooks.customerFileId) || '',
       workspace: 'report-topo',
-      canvasId: meta.canvasId || '',
-      areaId: meta.scope === 'all' ? null : (meta.areaId || null),
+      canvasId: canvasId,
+      areaId: areaId,
       camera: (hooks && hooks.camera) || null,
       settings: (hooks && hooks.settings) || null,
       locked: !!(hooks && hooks.locked),
+      hostStatsPillPx: liveHostPillPx(page, hooks),
       onBack: function () {},
       onCameraChange: function (camera) {
         if (host.hooks && host.hooks.onCameraChange) host.hooks.onCameraChange(camera, n);
@@ -2347,6 +2432,14 @@
       },
     });
     return el;
+  }
+
+  /** Report pill px for a live topo host — never capture localStorage. */
+  function liveHostPillPx(page, hooks) {
+    if (hooks && isFinite(Number(hooks.hostStatsPillPx)) && Number(hooks.hostStatsPillPx) > 0) {
+      return Number(hooks.hostStatsPillPx);
+    }
+    return pillPxFromLayout((page && page._bookFloorLayout) || null);
   }
 
   /**
@@ -2601,6 +2694,9 @@
           },
           topoSlots: thumb ? 1 : floorSlotsForPage(page),
           topoActiveSlot: thumb ? 0 : floorActiveSlotForPage(page),
+          views: thumb ? null : floorViewsForPage(page),
+          viewStats: thumb ? null : (page._viewStats || null),
+          viewLegendUrls: thumb ? null : (page._viewLegendUrls || null),
           // The cover's aerial view, carried onto this page automatically and
           // taken off it with the x. Settled Oct 10, 2026.
           overviewUrl: page._overviewUrl || '',
@@ -2613,10 +2709,9 @@
           // The colour scales, as pictures painted by Floor Survey. One per
           // boundary, in the order the readings come in.
           legendUrls: page._legendUrls || null,
-          // The readings are sized by Stats pill size, which is kept on this
-          // device rather than in the report -- the same number the drawing's
-          // own pill used before it came off the picture.
-          pillPx: storedStatsPillPx(),
+          // Readings size from this report's floorLayout.pillLock only.
+          // page._bookFloorLayout is set before render; never device localStorage.
+          pillPx: pillPxFromLayout(page && page._bookFloorLayout),
         });
         // Back to the one record, not onto the slide. renderSheet runs
         // outside the closure that holds it, so the way in is handed over on
@@ -2922,6 +3017,11 @@
 
   function mount(host, options) {
     if (!host) return;
+    // Switching Customer File while staying on the report route remounts
+    // without going through the leave-report path. Tear the previous visit
+    // down first so its hold timer, size HUD, and document listeners cannot
+    // outlive that Customer File.
+    unmount();
     var token = ++mountGeneration;
     var customerFileId = options && options.customerFileId;
     var onBack = options && options.onBack;
@@ -2975,6 +3075,12 @@
     // placement for the whole report, like the Floor Survey layout: level on
     // level, the sheets have to register with each other.
     var penLogBoxLayout = null;
+    // Distress numbered-pin size on Picture Locations sheets. Report-owned;
+    // never read capture ds-capture-sizes. Default 1 = proven 11×17 diameter.
+    var penLogPinScale = 1;
+    var penLogPinScaleSeeded = false;
+    // Set on open when the cover held another job's aerial and it was dropped.
+    var coverOverviewDropped = false;
     // One camera for every Floor Survey slide: the same part of the plan at the
     // same zoom, so clicking through Combined, Main Level, Kitchen and Garage
     // is a flip book -- the building does not move. The chrome (colour scale,
@@ -3006,7 +3112,7 @@
     // two named fields rather than an array, because nothing has to be
     // migrated and a report written before today reads unchanged.
     function floorSlots(page) {
-      return page && page.meta && page.meta.floorTwoUp ? 2 : 1;
+      return floorSlotsForPage(page);
     }
     /** Which of them the rail's controls are driving. Not saved: it is where
      *  the investigator is looking, not part of the report. */
@@ -3032,10 +3138,11 @@
     }
 
     function livePillScale() {
-      var flApi = window.ToolboxReportFloorLayout;
-      var page = (flApi && Number(flApi.CHROME_SCALE)) || 1;
-      var n = (storedStatsPillPx() / 32) * page;
-      return isFinite(n) && n > 0 ? n : page;
+      // Prefer the report's stored lock; otherwise the sheet default — never
+      // device-global capture prefs.
+      var have = floorLayout && floorLayout.pillLock && Number(floorLayout.pillLock.scale);
+      if (isFinite(have) && have > 0) return have;
+      return defaultPillLockScale();
     }
 
     /**
@@ -3076,16 +3183,20 @@
     /**
      * Pin the size of each chrome piece into the record, once.
      *
-     * With nothing stored, the colour scale falls back to the slide's own
-     * Legend size setting and the readings to this device's Stats pill size.
-     * Two slides whose settings differ would then draw the same piece at two
-     * sizes -- the drift this change exists to end, by another road. So the
-     * first time a report is drawn the sizes are read once and written into
-     * the record, and from then on every slide draws those.
+     * Missing sizes get sheet code defaults (legend from the view or 1;
+     * pill from CHROME_SCALE ≡ 32px). Existing positive scales are left
+     * alone so reopen never resets a saved report. Never seeds from
+     * device-global capture localStorage.
+     */
+    /**
+     * Idempotent. Skip reserved placeholders — seeding only on those used to
+     * set a one-shot flag so a later real floor page never filled missing
+     * pill/legend scales (reopen stayed at null and looked like device poison).
      */
     function seedPieceSizes(firstFloor) {
       var flApi = window.ToolboxReportFloorLayout;
       if (!flApi || !firstFloor) return;
+      if (firstFloor.meta && firstFloor.meta.reserved) return;
       var next = flApi.normalizeLayout(floorLayout);
       var changed = false;
       if (!next.legendLock || !(Number(next.legendLock.scale) > 0)) {
@@ -3095,15 +3206,13 @@
         changed = true;
       }
       if (!next.pillLock || !(Number(next.pillLock.scale) > 0)) {
-        next.pillLock = { locked: true, scale: livePillScale() };
+        next.pillLock = { locked: true, scale: defaultPillLockScale() };
         changed = true;
       }
       if (!changed) return;
       putFloorLayout(next);
       markDirty();
     }
-
-    var seededPieces = false;
 
     function putFloorLayout(next) {
       if (!next) return;
@@ -3178,10 +3287,25 @@
 
     function floorViewFor(page, slot) {
       var at = typeof slot === 'number' ? slot : floorSlot(page);
-      var meta = (page && page.meta) || {};
-      if (at === 1) return meta.floorView2 || meta.floorView || floorView;
-      if (meta.floorView) return meta.floorView;
-      return floorView;
+      var view = floorViewSpec(page, at);
+      var base = null;
+      if (view && view.settings && typeof view.settings === 'object') {
+        base = view.settings;
+      } else {
+        var meta = (page && page.meta) || {};
+        if (at === 1) base = meta.floorView2 || meta.floorView || floorView;
+        else if (meta.floorView) base = meta.floorView;
+        else base = floorView;
+      }
+      // GPT-030/031: never hand the rail a null settings object (defaults would
+      // advertise Legend=true while multi-view views[] chrome is off). Always
+      // return an object, and pin showLegend / showStatsPill to views[].
+      var synced = Object.assign({}, (base && typeof base === 'object') ? base : {});
+      if (view) {
+        if (typeof view.showLegend === 'boolean') synced.showLegend = view.showLegend;
+        if (typeof view.showPill === 'boolean') synced.showStatsPill = view.showPill;
+      }
+      return synced;
     }
     function setFloorViewFor(page, next, slot) {
       if (!page) {
@@ -3190,6 +3314,43 @@
       }
       page.meta = page.meta || {};
       var at = typeof slot === 'number' ? slot : floorSlot(page);
+      var viewsApi = window.ToolboxReportFloorViews;
+      if (viewsApi) {
+        var list = viewsApi.ensurePageViews(page);
+        if (list[at]) {
+          var stored = next;
+          // GPT-030/031: views[] owns report legend/pill. TopoTab update() sends
+          // one intentional patch at a time on top of resolved settings that
+          // already mirror views[] via floorViewFor — so a showLegend /
+          // showStatsPill delta vs views[] is a deliberate switch, even on a
+          // fresh/null/sparse settings object. Contours/Readings patches keep
+          // the same chrome in resolved, so they do not move views[].
+          if (next && typeof next === 'object') {
+            stored = Object.assign({}, next);
+            if (typeof next.showLegend === 'boolean'
+                && typeof list[at].showLegend === 'boolean'
+                && next.showLegend !== list[at].showLegend) {
+              list[at].showLegend = next.showLegend;
+            }
+            if (typeof next.showStatsPill === 'boolean'
+                && typeof list[at].showPill === 'boolean'
+                && next.showStatsPill !== list[at].showPill) {
+              list[at].showPill = next.showStatsPill;
+            }
+            if (typeof list[at].showLegend === 'boolean') {
+              stored.showLegend = list[at].showLegend;
+            }
+            if (typeof list[at].showPill === 'boolean') {
+              stored.showStatsPill = list[at].showPill;
+            }
+          }
+          list[at].settings = stored;
+          // Keep legacy fields in sync for older readers / migration safety.
+          if (at === 0) page.meta.floorView = stored;
+          if (at === 1) page.meta.floorView2 = stored;
+          return;
+        }
+      }
       if (at === 1) {
         page.meta.floorView2 = next;
         return;
@@ -3201,6 +3362,28 @@
       // other slide -- which is the behaviour being fixed. The default stays
       // the baseline a slide opens at.
     }
+
+    /**
+     * Ordinary one-view figures share the book camera (GPT-028).
+     * Multi-view: same-source LINKED companions share it; size-linked
+     * different floors and unlinked same-source stay on view.camera (GPT-027).
+     */
+    function viewUsesSharedBookCamera(page, slot) {
+      var viewsApi = window.ToolboxReportFloorViews;
+      var list = viewsApi ? viewsApi.viewsFor(page) : floorViewsForPage(page);
+      if (!list || list.length <= 1) return true;
+      if (!viewsApi || typeof viewsApi.linkedSameSourceIndexes !== 'function') return false;
+      return viewsApi.linkedSameSourceIndexes(list, Number(slot) || 0).length > 0;
+    }
+
+    function cameraForView(page, slot) {
+      var view = floorViewSpec(page, slot);
+      if (!view) return floorCamera;
+      if (viewUsesSharedBookCamera(page, slot)) {
+        return floorCamera || view.camera || null;
+      }
+      return view.camera || floorCamera;
+    }
     // Whether the frame has been given the plan's proportion yet. Once it has,
     // the frame is whatever it has been dragged to and is never re-fitted.
     var floorFramed = false;
@@ -3209,7 +3392,131 @@
     var coverDrag = null;
     var discDrag = null;
     var penDrag = null;
+    /** Report HTML legend / H/L/Δ hold-to-size HUD (same report-owned scales as rail). */
+    var chromeSizeHud = null;
+    var floorHoldTimer = null;
+    var ACCESSORY_HOLD_MS = 350;
+    var ACCESSORY_MOVE_PX = 6;
     pageSeq = pages.length;
+
+    function clearFloorHold() {
+      if (floorHoldTimer != null) {
+        window.clearTimeout(floorHoldTimer);
+        floorHoldTimer = null;
+      }
+    }
+
+    function dismissChromeSizeHud() {
+      if (!chromeSizeHud) return;
+      if (chromeSizeHud.el && chromeSizeHud.el.parentNode) {
+        chromeSizeHud.el.parentNode.removeChild(chromeSizeHud.el);
+      }
+      chromeSizeHud = null;
+    }
+
+    /**
+     * Hold-to-size −/+ for report legend / H/L/Δ HTML boxes. Writes the same
+     * legendLock / pillLock the Accessories rail uses, then refreshes sheet + rail.
+     */
+    function bumpReportChromeSize(kind, direction) {
+      if (kind === 'legend') {
+        var cur = liveLegendScale();
+        var next = Math.max(0.4, Math.min(4, Math.round((cur + direction * 0.1) * 10) / 10));
+        if (next === cur) return;
+        var page = activePage();
+        var settings = Object.assign({}, floorViewFor(page) || {});
+        settings.legendScale = next;
+        setFloorViewFor(page, settings);
+        pushPieceScale('legend', next);
+        var topoHost = topoHosts[floorSlot(page)] || topoHosts[0];
+        if (topoHost && topoHost.api && typeof topoHost.api.update === 'function') {
+          topoHost.api.update({ settings: floorViewFor(page) });
+        }
+        if (railControls && railControls.api && typeof railControls.api.update === 'function') {
+          railControls.api.update({ settings: floorViewFor(page) });
+        }
+      } else if (kind === 'pill') {
+        var px = pillPxFromLayout(floorLayout);
+        var n = Math.max(8, Math.min(120, px + direction * 2));
+        if (n === px) return;
+        var flApi = window.ToolboxReportFloorLayout;
+        var chrome = (flApi && Number(flApi.CHROME_SCALE)) || 1;
+        if (!pushPieceScale('pill', (n / 32) * chrome)) return;
+        var pillPx = pillPxFromLayout(floorLayout);
+        if (railControls && railControls.api && typeof railControls.api.update === 'function') {
+          railControls.api.update({ hostStatsPillPx: pillPx });
+        }
+        Object.keys(topoHosts || {}).forEach(function (k) {
+          var host = topoHosts[k];
+          if (host && host.api && typeof host.api.update === 'function') {
+            host.api.update({ hostStatsPillPx: pillPx });
+          }
+        });
+      } else {
+        return;
+      }
+      renderPages();
+      flushSave().catch(function () {});
+    }
+
+    function showChromeSizeHud(kind, clientX, clientY) {
+      dismissChromeSizeHud();
+      if (kind !== 'legend' && kind !== 'pill') return;
+      var label = kind === 'legend' ? 'Legend size' : 'H/L/\u0394 size';
+      var el = document.createElement('div');
+      el.setAttribute('data-accessory-size-hud', kind);
+      el.setAttribute('role', 'group');
+      el.setAttribute('aria-label', label);
+      el.style.cssText = [
+        'position:fixed',
+        'z-index:80',
+        'display:flex',
+        'align-items:center',
+        'gap:4px',
+        'padding:4px 6px',
+        'border-radius:999px',
+        'border:1px solid #c9d0d5',
+        'background:rgba(255,255,255,0.95)',
+        'box-shadow:0 1px 4px rgba(0,0,0,0.12)',
+        'font:500 10px/1 system-ui,sans-serif',
+        'color:#64748b',
+      ].join(';');
+      var left = Math.min(Math.max(8, clientX - 72), window.innerWidth - 180);
+      var top = Math.min(Math.max(8, clientY - 56), window.innerHeight - 72);
+      el.style.left = left + 'px';
+      el.style.top = top + 'px';
+      function mkBtn(text, aria, onClick) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = text;
+        b.setAttribute('aria-label', aria);
+        b.style.cssText = 'width:36px;height:36px;border-radius:999px;border:1px solid #c9d0d5;background:#fff;cursor:pointer';
+        b.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          onClick();
+        });
+        return b;
+      }
+      el.appendChild(mkBtn('\u2212', 'Decrease ' + label, function () { bumpReportChromeSize(kind, -1); }));
+      var mid = document.createElement('span');
+      mid.textContent = label;
+      mid.style.padding = '0 4px';
+      el.appendChild(mid);
+      el.appendChild(mkBtn('+', 'Increase ' + label, function () { bumpReportChromeSize(kind, 1); }));
+      el.appendChild(mkBtn('\u00d7', 'Close size', function () { dismissChromeSizeHud(); }));
+      document.body.appendChild(el);
+      chromeSizeHud = { kind: kind, el: el };
+    }
+
+    // Outside press dismisses the report chrome size HUD; its −/+ stay usable.
+    // Tracked so unmount removes it with the rest of this visit's document listeners.
+    onDocument('pointerdown', function (event) {
+      if (!chromeSizeHud) return;
+      var t = event.target;
+      if (t && t.closest && t.closest('[data-accessory-size-hud]')) return;
+      dismissChromeSizeHud();
+    }, true);
 
     host.innerHTML = shellHtml();
     var root = host.querySelector('.rb-shell');
@@ -3225,6 +3532,8 @@
     var laterBtn = root.querySelector('#rb-page-later');
     var penPanel = root.querySelector('#rb-penlog-panel');
     var penContourBtn = root.querySelector('#rb-penlog-contour');
+    var penPinSizeInput = root.querySelector('#rb-penlog-pin-size');
+    var penPinSizeVal = root.querySelector('#rb-penlog-pin-size-val');
     var penNoteField = root.querySelector('#rb-report-note');
     var penSaveState = root.querySelector('#rb-save-state');
     var penPhotoList = root.querySelector('#rb-photo-list');
@@ -3291,7 +3600,7 @@
       });
     }
 
-    function flushSave() {
+    function flushSave(opts) {
       if (saveTimer) {
         clearTimeout(saveTimer);
         saveTimer = null;
@@ -3302,10 +3611,13 @@
       }
       // The edit this save is carrying. Everything below is a snapshot of it.
       var savedSeq = editSeq;
+      var drain = !!(opts && opts.drain);
+      var drainPass = drain ? ((opts && opts._drainPass) || 0) + 1 : 0;
+      var priorDoc = workingRecord && (workingRecord.reportBuilder || workingRecord.report);
       var doc = persistableDocument(
         pages,
         activeId,
-        workingRecord && (workingRecord.reportBuilder || workingRecord.report),
+        priorDoc,
         floorLayout,
         coverLayout,
         brandBox,
@@ -3317,6 +3629,31 @@
         reportNorth,
         draftStamp
       );
+      // Keep notes and pinScale together on reportBuilder.penLog.
+      // Use this mount's own penLogPinScale / priorDoc only — never the shared
+      // penLogUi, which another Customer File's in-flight save could have set.
+      var scale = Number(penLogPinScale);
+      if (!(isFinite(scale) && scale > 0) && priorDoc && priorDoc.penLog) {
+        scale = Number(priorDoc.penLog.pinScale);
+      }
+      if (!(isFinite(scale) && scale > 0)) scale = 1;
+      doc.penLog = doc.penLog || {
+        schema: 'toolbox.pen-log-notes',
+        schemaVersion: 1,
+      };
+      if ((!doc.penLog.notes || !Object.keys(doc.penLog.notes).length) &&
+          priorDoc && priorDoc.penLog && priorDoc.penLog.notes) {
+        doc.penLog.notes = priorDoc.penLog.notes;
+      }
+      doc.penLog.pinScale = window.ToolboxPenLog && window.ToolboxPenLog.clampPinScale
+        ? window.ToolboxPenLog.clampPinScale(scale)
+        : scale;
+      penLogPinScale = doc.penLog.pinScale;
+      // Shared module state feeds Present/print. A stale mount's save (seed on
+      // a previous Customer File) must not overwrite the live job's scale.
+      if (token === mountGeneration) {
+        penLogUi.pinScale = doc.penLog.pinScale;
+      }
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;
       delete workingRecord.report;
@@ -3344,6 +3681,13 @@
             lastSavedAt = doc.updatedAt;
             setSaveStatus('Edited');
             if (draftEl) draftEl.textContent = 'Edited';
+            // GPT-035: Refresh drain writes the newer snapshot before reload.
+            if (drain) {
+              if (drainPass > 20) {
+                throw new Error('Save could not finish before refresh');
+              }
+              return flushSave({ drain: true, _drainPass: drainPass });
+            }
             if (!saveTimer) {
               saveTimer = setTimeout(function () {
                 flushSave().catch(function () {});
@@ -3416,6 +3760,15 @@
         penContourBtn.className = 'btn rb-ws__btn ' + (showing ? 'btn--accent' : 'btn--secondary');
         penContourBtn.setAttribute('data-rb-penlog-contour', showing ? 'off' : 'on');
         penContourBtn.setAttribute('aria-pressed', showing ? 'true' : 'false');
+      }
+      if (penPinSizeInput) {
+        var shownScale = window.ToolboxPenLog && window.ToolboxPenLog.clampPinScale
+          ? window.ToolboxPenLog.clampPinScale(penLogPinScale)
+          : (Number(penLogPinScale) > 0 ? Number(penLogPinScale) : 1);
+        if (document.activeElement !== penPinSizeInput) {
+          penPinSizeInput.value = String(shownScale);
+        }
+        if (penPinSizeVal) penPinSizeVal.textContent = shownScale.toFixed(2) + '×';
       }
       var notes = penLogNoteMap(page, penLogUi.noteMap);
       var pins = penLogPinsForPage(page, notes);
@@ -3553,6 +3906,11 @@
         clearTimeout(floorShotTimer);
         floorShotTimer = null;
       }
+      // Accessory hold-to-size: a timer left armed would open a HUD after leave;
+      // an open HUD on document.body would outlive this Customer File visit.
+      clearFloorHold();
+      floorDrag = null;
+      dismissChromeSizeHud();
     };
 
     function thumbSignature(page) {
@@ -3841,10 +4199,8 @@
         // scaled up until it ran off the sheet, and the colour scale, the
         // pill and the aerial view each back in a default corner, on top of
         // the drawing. Same fault the Discussion had, same cure.
-        if (!seededPieces) {
-          seededPieces = true;
-          seedPieceSizes(item);
-        }
+        // seedPieceSizes is idempotent and skips reserved placeholders.
+        seedPieceSizes(item);
         // The report's placement, unless this slide was deliberately taken
         // off it. ownLayout is only ever there because somebody put it there.
         var ownLayout = item.meta && item.meta.ownLayout;
@@ -3874,13 +4230,19 @@
       // same way, and a change to it is stored for the book rather than the
       // slide.
       if (current && current.type === 'floor' && current.meta && current.meta.imported &&
-          current.meta.canvasId && window.ToolboxFloorSurvey) {
+          window.ToolboxFloorSurvey) {
+        // Ensure views[] exists (migrates legacy two-up) before mounting hosts.
+        floorViewsForPage(current);
         current._mountTopo = function (page, slot) {
           var at = Number(slot) || 0;
+          var view = floorViewSpec(page, at);
+          if (!(view && view.canvasId) && !(page.meta && page.meta.canvasId)) return null;
           return mountTopoHost(page, at, {
             customerFileId: customerFileId,
-            camera: floorCamera,
+            camera: cameraForView(page, at),
             settings: floorViewFor(page, at),
+            hostStatsPillPx: pillPxFromLayout(
+              (page && page._bookFloorLayout) || floorLayout),
             // Never locked. The drawing is panned and zoomed like the
             // workspace it came from, on every slide.
             //
@@ -3892,25 +4254,53 @@
             // no control left to release it.
             locked: false,
             onCameraChange: function (camera, from) {
-              // A view that has just been handed a camera reports it straight
-              // back. Reading that as a fresh pan would save the report again
-              // and bounce the camera between the two views, so a camera that
-              // is the one already held is not news.
-              var same = !!floorCamera &&
-                Math.abs((floorCamera.cx || 0) - (camera.cx || 0)) < 1e-4 &&
-                Math.abs((floorCamera.cy || 0) - (camera.cy || 0)) < 1e-4 &&
-                Math.abs((floorCamera.zoom || 0) - (camera.zoom || 0)) < 1e-4;
-              if (same) return;
-              // rel marks a camera whose centre is a fraction of the plan
-              // rather than image pixels. Dropping it here would make every
-              // stored view read as the old pixel form, which is exactly the
-              // thing that made two levels of one building land in different
-              // places.
-              floorCamera = {
+              var viewsApi = window.ToolboxReportFloorViews;
+              var list = viewsApi ? viewsApi.viewsFor(page) : [];
+              var fromView = list[Number(from) || 0] || null;
+              var cam = {
                 cx: camera.cx, cy: camera.cy, zoom: camera.zoom,
                 rel: !!camera.rel,
               };
-              pushCameraToTopoHosts(floorCamera, from);
+              // Persist onto the live view object (stable identity after GPT-027).
+              function writeViewCamera(target) {
+                if (!target) return;
+                if (!target.camera || typeof target.camera !== 'object') target.camera = {};
+                target.camera.cx = cam.cx;
+                target.camera.cy = cam.cy;
+                target.camera.zoom = cam.zoom;
+                target.camera.rel = !!cam.rel;
+              }
+              var linkedSame = (fromView && viewsApi &&
+                typeof viewsApi.linkedSameSourceIndexes === 'function')
+                ? viewsApi.linkedSameSourceIndexes(list, Number(from) || 0)
+                : [];
+              // GPT-028: ordinary one-view figures update the shared book camera.
+              // Multi-view shares it only with same-source linked companions.
+              // Cross-source size-link / unlinked same-source stay independent.
+              var shareBook = (list.length <= 1) || linkedSame.length > 0;
+              if (shareBook) {
+                var same = !!floorCamera &&
+                  Math.abs((floorCamera.cx || 0) - (cam.cx || 0)) < 1e-4 &&
+                  Math.abs((floorCamera.cy || 0) - (cam.cy || 0)) < 1e-4 &&
+                  Math.abs((floorCamera.zoom || 0) - (cam.zoom || 0)) < 1e-4;
+                if (same) return;
+                floorCamera = cam;
+                writeViewCamera(fromView);
+                linkedSame.forEach(function (si) { writeViewCamera(list[si]); });
+                if (linkedSame.length) {
+                  pushCameraToTopoHosts(floorCamera, from, linkedSame);
+                }
+                markDirty();
+                return;
+              }
+              // Deliberately independent composition — do not touch floorCamera.
+              var prev = fromView && fromView.camera;
+              var sameV = !!prev &&
+                Math.abs((prev.cx || 0) - (cam.cx || 0)) < 1e-4 &&
+                Math.abs((prev.cy || 0) - (cam.cy || 0)) < 1e-4 &&
+                Math.abs((prev.zoom || 0) - (cam.zoom || 0)) < 1e-4;
+              if (sameV) return;
+              writeViewCamera(fromView);
               markDirty();
             },
               onSettingsChange: function (next, from) {
@@ -3922,11 +4312,12 @@
             // is drawing right now. Read from evidence stored at import, the
             // rail said 9.40 / 8.10 beside a pill reading 9.80 / 8.20.
             onStats: function (stats, from) {
-              // Both views draw the same level, so both report the same
-              // numbers; the rail takes them from the one its controls are
-              // driving so there is never a question of which it is quoting.
-              if ((Number(from) || 0) !== floorSlot(page)) return;
               var live = Array.isArray(stats) ? stats : [];
+              page._viewStats = page._viewStats || {};
+              // Keep the boundary array; layout picks the stats object for the pill.
+              page._viewStats[Number(from) || 0] = live;
+              // Rail quotes the selected view.
+              if ((Number(from) || 0) !== floorSlot(page)) return;
               var before = JSON.stringify(page._liveStats || null);
               if (before === JSON.stringify(live)) return;
               page._liveStats = live;
@@ -4005,8 +4396,6 @@
     var railTitleEl = root.querySelector('[data-rb-rail-title]');
     var railTopEl = root.querySelector('[data-rb-rail-top]');
     var railBodyEl = root.querySelector('[data-rb-rail-body]');
-    /** Built by the floor rail, placed under its controls once they are mounted. */
-    var floorRailExtras = null;
     var railFootEl = root.querySelector('[data-rb-rail-foot]');
     var railControls = { el: null, key: '', api: null };
 
@@ -4044,13 +4433,8 @@
     function setRailFootSource(key) {
       if (!railFootEl) return;
       railFootEl.textContent = '';
-      // Everything the floor rail used to stack ABOVE its controls goes here
-      // instead, under them: the tab strip has to be the first thing in the
-      // panel or it names nothing.
-      if (typeof floorRailExtras === 'function') {
-        railFootEl.appendChild(floorRailExtras());
-        floorRailExtras = null;
-      }
+      // GPT-036: composition controls live under Sheet Layout in the body,
+      // not jammed into the foot under Topo. Foot keeps the way back only.
       railFootEl.appendChild(railButton(
         key === 'floor' ? 'Open Floor Survey' : 'Open Distress Survey',
         'secondary', 'data-rb-source', key));
@@ -4060,9 +4444,228 @@
       railFootEl.appendChild(footHint);
     }
 
+    // GPT-036: peer task tabs for Floor Survey sheets. Session-only; switching
+    // tools must not clear selection, camera, or saved layout.
+    var floorTaskTab = 'layout';
+    // Second tier under Topo. Session-only, same rule: tools only.
+    var floorTopoGroup = 'contours';
+
+    function buildFloorTaskTabs() {
+      var row = document.createElement('div');
+      row.className = 'rb-ws__task-tabs';
+      row.setAttribute('role', 'tablist');
+      row.setAttribute('aria-label', 'Floor Survey sidebar');
+      [
+        ['layout', 'Sheet Layout'],
+        ['topo', 'Topo'],
+      ].forEach(function (pair) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'rb-ws__task-tab' + (floorTaskTab === pair[0] ? ' is-active' : '');
+        btn.setAttribute('role', 'tab');
+        btn.setAttribute('data-rb-floor-task', pair[0]);
+        btn.setAttribute('aria-selected', floorTaskTab === pair[0] ? 'true' : 'false');
+        btn.textContent = pair[1];
+        row.appendChild(btn);
+      });
+      return row;
+    }
+
+    var FLOOR_TOPO_GROUPS = [
+      ['contours', 'Contours'],
+      ['readings', 'Readings'],
+      ['accessories', 'Accessories'],
+    ];
+
+    function buildFloorTopoSubtabs() {
+      var row = document.createElement('div');
+      row.className = 'rb-ws__subtabs';
+      row.setAttribute('role', 'tablist');
+      row.setAttribute('aria-label', 'Topo controls');
+      FLOOR_TOPO_GROUPS.forEach(function (pair) {
+        var on = floorTopoGroup === pair[0];
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'rb-ws__subtab' + (on ? ' is-active' : '');
+        btn.setAttribute('role', 'tab');
+        btn.setAttribute('data-rb-rail-tab', pair[0]);
+        btn.setAttribute('data-rb-topo-group', pair[0]);
+        btn.id = 'rb-topo-tab-' + pair[0];
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+        btn.setAttribute('aria-controls', 'rb-topo-group-panel');
+        btn.tabIndex = on ? 0 : -1;
+        btn.textContent = pair[1];
+        row.appendChild(btn);
+      });
+      row.addEventListener('keydown', function (event) {
+        var keys = FLOOR_TOPO_GROUPS.map(function (pair) { return pair[0]; });
+        var idx = keys.indexOf(floorTopoGroup);
+        if (idx < 0) idx = 0;
+        var next = idx;
+        if (event.key === 'ArrowRight') next = (idx + 1) % keys.length;
+        else if (event.key === 'ArrowLeft') next = (idx + keys.length - 1) % keys.length;
+        else if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = keys.length - 1;
+        else return;
+        event.preventDefault();
+        floorTopoGroup = keys[next];
+        var taskPage = activePage();
+        if (taskPage) syncRail(taskPage);
+        var focusBtn = railTopEl && railTopEl.querySelector(
+          '[data-rb-topo-group="' + floorTopoGroup + '"]');
+        if (focusBtn && focusBtn.focus) focusBtn.focus();
+      });
+      return row;
+    }
+
+    function floorSourceLabel(view, page) {
+      var srcName = '';
+      if (view && workingRecord && window.ToolboxPlanSetup) {
+        try {
+          var cv = window.ToolboxPlanSetup.canvasById(workingRecord, view.canvasId);
+          srcName = (cv && cv.name) || '';
+        } catch (err) { srcName = ''; }
+      }
+      if (!srcName && page) srcName = page.railLabel || page.title || '';
+      return srcName;
+    }
+
+    function appendFloorSourcePicker(wrap, page, activeView) {
+      var srcLabel = document.createElement('label');
+      srcLabel.className = 'rb-panel__lead';
+      srcLabel.textContent = 'View source (selected view)';
+      wrap.appendChild(srcLabel);
+      var srcSelect = document.createElement('select');
+      srcSelect.className = 'rb-rail__select';
+      srcSelect.setAttribute('data-rb-floor-view-source', '1');
+      var seenSrc = Object.create(null);
+      function addSourceOption(canvasId, epochId, areaId, scope, label) {
+        var key = [canvasId || '', epochId || '', areaId || '', scope || 'all'].join('|');
+        if (!canvasId || seenSrc[key]) return;
+        seenSrc[key] = 1;
+        var opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = label || 'Level';
+        if (activeView &&
+            String(activeView.canvasId || '') === String(canvasId || '') &&
+            String(activeView.areaId || '') === String(areaId || '') &&
+            String(activeView.scope || 'all') === String(scope || 'all')) {
+          opt.selected = true;
+        }
+        srcSelect.appendChild(opt);
+      }
+      var fs = workingRecord && workingRecord.floorSurvey;
+      var byCanvas = (fs && fs.byCanvasId) || {};
+      var canvases = (workingRecord && workingRecord.planSetup && workingRecord.planSetup.canvases) || [];
+      canvases.forEach(function (cv) {
+        if (!cv || !cv.id) return;
+        var layer = byCanvas[cv.id] || null;
+        var areas = (layer && Array.isArray(layer.areas)) ? layer.areas : [];
+        if (areas.length) {
+          addSourceOption(cv.id, fs && fs.id, null, 'all',
+            (cv.name || 'Level') + ' — Combined');
+          areas.forEach(function (area) {
+            if (!area || !area.id) return;
+            addSourceOption(cv.id, fs && fs.id, area.id, 'area',
+              (cv.name || 'Level') + ' — ' + (area.name || 'Boundary'));
+          });
+        } else {
+          addSourceOption(cv.id, fs && fs.id, null, 'all', cv.name || 'Level');
+        }
+      });
+      if (!srcSelect.options.length) {
+        pages.forEach(function (fp) {
+          if (!fp || fp.type !== 'floor' || !fp.meta || fp.meta.reserved) return;
+          var m = fp.meta;
+          addSourceOption(m.canvasId, m.epochId, m.areaId, m.scope || 'all',
+            fp.railLabel || fp.title || m.levelName || 'Level');
+        });
+      }
+      wrap.appendChild(srcSelect);
+    }
+
+    function buildFloorLayoutBody(page) {
+      var wrap = document.createDocumentFragment();
+      var onItsOwn = floorSlideOnItsOwn(page);
+      var sheetHead = document.createElement('p');
+      sheetHead.className = 'rb-ws__section-label';
+      sheetHead.textContent = 'Sheet-wide';
+      wrap.appendChild(sheetHead);
+      var lockHint = document.createElement('p');
+      lockHint.className = 'rb-panel__lead';
+      lockHint.setAttribute('data-rb-floor-own-hint', onItsOwn ? 'own' : 'share');
+      lockHint.textContent = onItsOwn
+        ? 'This slide only — moving the plan, colour scale, readings or aerial '
+          + 'here changes this slide alone.'
+        : 'Shared placement — the plan, colour scale, readings and aerial sit in '
+          + 'one place on every Floor Survey slide. Contours and palette stay per slide.';
+      wrap.appendChild(lockHint);
+      wrap.appendChild(railButton(
+        onItsOwn ? 'Shared placement' : 'This slide only',
+        onItsOwn ? 'secondary' : 'quiet',
+        'data-rb-floor-own', onItsOwn ? 'share' : 'own'));
+
+      var viewsNow = floorViewsForPage(page);
+      var activeView = floorViewSpec(page, floorSlot(page));
+      var viewHead = document.createElement('p');
+      viewHead.className = 'rb-ws__section-label';
+      viewHead.textContent = 'Selected view';
+      wrap.appendChild(viewHead);
+      var viewLead = document.createElement('p');
+      viewLead.className = 'rb-panel__lead';
+      viewLead.setAttribute('data-rb-floor-view-lead', '1');
+      var srcName = floorSourceLabel(activeView, page);
+      viewLead.textContent = viewsNow.length > 1
+        ? ('View ' + (floorSlot(page) + 1) + ' of ' + viewsNow.length
+          + (srcName ? (' — ' + srcName) : '')
+          + '. Source, size link and Remove apply to it.')
+        : 'One view on this sheet. Add or copy a view to compose.';
+      wrap.appendChild(viewLead);
+      wrap.appendChild(railButton('Add view', 'quiet', 'data-rb-floor-view', 'add'));
+      wrap.appendChild(railButton('Copy view', 'quiet', 'data-rb-floor-view', 'copy'));
+      if (viewsNow.length > 1) {
+        wrap.appendChild(railButton('Remove view', 'quiet', 'data-rb-floor-view', 'remove'));
+        var linked = !!(activeView && activeView.linkGroup);
+        wrap.appendChild(railButton(
+          linked ? 'Unlink size' : 'Link size',
+          'quiet', 'data-rb-floor-view-link', linked ? 'off' : 'on'));
+      }
+      appendFloorSourcePicker(wrap, page, activeView);
+      return wrap;
+    }
+
+    function buildFloorTopoIdentity(page) {
+      var wrap = document.createDocumentFragment();
+      var viewsNow = floorViewsForPage(page);
+      var activeView = floorViewSpec(page, floorSlot(page));
+      var srcName = floorSourceLabel(activeView, page);
+      var lead = document.createElement('p');
+      lead.className = 'rb-panel__lead';
+      lead.setAttribute('data-rb-floor-topo-lead', '1');
+      if (!activeView) {
+        lead.textContent = 'No topo view on this sheet.';
+      } else if (viewsNow.length > 1) {
+        lead.textContent = 'Selected: View ' + (floorSlot(page) + 1) + ' of ' + viewsNow.length
+          + (srcName ? (' — ' + srcName) : '')
+          + '. Contours / Readings / Accessories apply to it.';
+      } else {
+        lead.textContent = (srcName ? (srcName + ' — ') : '')
+          + 'Contours / Readings / Accessories for this view.';
+      }
+      wrap.appendChild(lead);
+      if (viewsNow.length > 1 && activeView) {
+        wrap.appendChild(railButton(
+          activeView.showLegend ? 'Hide legend' : 'Show legend',
+          'quiet', 'data-rb-floor-view-chrome', activeView.showLegend ? 'legend-off' : 'legend-on'));
+        wrap.appendChild(railButton(
+          activeView.showPill ? 'Hide H/L/Δ' : 'Show H/L/Δ',
+          'quiet', 'data-rb-floor-view-chrome', activeView.showPill ? 'pill-off' : 'pill-on'));
+      }
+      return wrap;
+    }
+
     function syncRail(page) {
       if (!railEl) return;
-      floorRailExtras = null;
       if (page && page.type === 'cover') {
         releaseRailControls();
         railEl.hidden = false;
@@ -4191,144 +4794,107 @@
       var imported = !!(page.meta && page.meta.imported);
       railTopEl.textContent = '';
       if (!imported) {
+        releaseRailControls();
+        if (railBodyEl) railBodyEl.textContent = '';
         railTopEl.appendChild(
           railButton('Import Floor Survey', 'accent', 'data-rb-floor-import', page.id || ''));
         var hint = document.createElement('p');
         hint.className = 'rb-panel__lead';
         hint.textContent = 'Brings this level onto the slide.';
         railTopEl.appendChild(hint);
-      } else {
-        // Three locks, each over one thing, each over where it sits AND how
-        // big it is drawn. Tim: "lock view doesn't really tell us what we're
-        // supposed to do... I might want to lock floor survey, I might want
-        // to lock a legend contour and then I might want to lock the high/low
-        // delta pin, and all of those can be separate." They replace Lock
-        // view, which was only ever the plan's framing under a name that
-        // sounded like everything, and Lock layout, which moved the scale and
-        // the readings together and named neither.
-        // Nothing above the controls.
-        //
-        // The tabs are the top of this panel. They were below five buttons and
-        // their explanations, which is halfway down the rail -- Tim: "Tabs
-        // occur at the top of a listing, not in the middle of it. Who in their
-        // right mind thinks a tab goes in the middle of the page?" He is
-        // right: a tab strip names what is under it, so anything above it is
-        // out of its reach and reads as belonging to nothing.
-        //
-        // So the Floor Survey controls mount first and the locks go below
-        // them, folded away, where they are reached when they are wanted --
-        // "all of this locking stuff needs to move... that may be an accordion
-        // dropdown."
-        floorRailExtras = function () {
-          var wrap = document.createDocumentFragment();
-          var pieceApi = window.ToolboxReportFloorLayout;
-          var pieceLayout = pieceApi
-            ? pieceApi.normalizeLayout(floorLayout)
-            : (floorLayout || {});
-          // One lock, as it was before three replaced it. Tim: "Lock layout is
-          // better, one button vs three, let's go back to that."
-          //
-          // What was broken was never the idea: Lock layout drew its button
-          // only on a sheet that had not been imported, and an imported sheet
-          // returns before that code runs -- so the button existed and could
-          // not be pressed. Splitting it in three solved a missing button with
-          // two extra states. His Oct 8 line already drew the right boundary:
-          // "Lock the picture, not the rendition." The picture -- the framing,
-          // and where the colour scale and the readings sit and how big they
-          // are -- is what this pins. Contours on or off, palette and mode
-          // stay free per slide, which is the reason to lock first.
-          var onItsOwn = floorSlideOnItsOwn(page);
-          var lockHint = document.createElement('p');
-          lockHint.className = 'rb-panel__lead';
-          lockHint.textContent = onItsOwn
-            ? 'This slide is placed on its own. Moving the plan, the colour '
-              + 'scale, the readings or the aerial here changes this slide only.'
-            : 'The plan, the colour scale, the readings and the aerial sit in one '
-              + 'place on every Floor Survey slide. Move one here and it moves on '
-              + 'all of them. Contours and palette stay per slide.';
-          wrap.appendChild(lockHint);
-          // A Combined figure carries no colour scale and no readings pill --
-          // they go in the rail -- so its left column is free and the plan
-          // may want the middle of it. Tim: "on the combined view, I would
-          // probably put it more towards the middle."
-          wrap.appendChild(railButton(
-            onItsOwn ? 'Use the shared placement' : 'Place this slide on its own',
-            onItsOwn ? 'secondary' : 'quiet',
-            'data-rb-floor-own', onItsOwn ? 'share' : 'own'));
-
-          var twoUp = floorSlots(page) > 1;
-          wrap.appendChild(railButton(
-            twoUp ? 'One view' : 'Two views',
-            'quiet', 'data-rb-floor-twoup', twoUp ? 'off' : 'on'));
-          wrap.appendChild(railButton(
-            'Use this as my default', 'quiet', 'data-rb-template', 'floor'));
-          // The cover's copy of this button carries a line saying what it
-          // does; this one did not, so it read as though it might change
-          // something about THIS report. It does not: inside a report the
-          // arrangement is the arrangement, on every floor slide, and this
-          // only decides where the pieces start in the next one.
-          var floorDefaultHint = document.createElement('p');
-          floorDefaultHint.className = 'rb-panel__lead';
-          floorDefaultHint.textContent =
-            'New reports start with the plan, the colour scale, the readings '
-            + 'and the aerial where they are here.';
-          wrap.appendChild(floorDefaultHint);
-          return wrap;
-        };
+        setRailFootSource('floor');
+        return;
       }
 
-      // Middle: the real Floor Survey controls, for an imported slide.
+      // GPT-036: Sheet Layout | Topo peer tabs — one group in the same-width
+      // sidebar. Switching tabs changes tools only.
+      railTopEl.appendChild(buildFloorTaskTabs());
+
       var api = window.ToolboxFloorSurvey;
       var meta = page.meta || {};
-      var key = [page.id, meta.canvasId, meta.areaId || '', meta.scope || '',
-        floorSlot(page)].join('|');
-      if (!imported || !api || typeof api.mount !== 'function') {
+      var activeSpec = floorViewSpec(page, floorSlot(page));
+      var ctrlCanvas = (activeSpec && activeSpec.canvasId) || meta.canvasId || '';
+      var ctrlScope = (activeSpec && activeSpec.scope) || meta.scope || 'all';
+      var ctrlArea = ctrlScope === 'all' ? null : ((activeSpec && activeSpec.areaId) || meta.areaId || null);
+      var key = [page.id, ctrlCanvas, ctrlArea || '', ctrlScope,
+        floorSlot(page), activeSpec && activeSpec.id].join('|');
+
+      if (floorTaskTab === 'topo' && ctrlCanvas) {
+        railTopEl.appendChild(buildFloorTopoSubtabs());
+      }
+
+      if (floorTaskTab === 'layout') {
         releaseRailControls();
-      } else if (railControls.el && railControls.key === key) {
-        if (railControls.api && typeof railControls.api.update === 'function') {
-          railControls.api.update({ settings: floorViewFor(page) });
-          railControls.key = key;
+        if (railBodyEl) {
+          railBodyEl.textContent = '';
+          railBodyEl.appendChild(buildFloorLayoutBody(page));
         }
-        if (railControls.el.parentNode !== railBodyEl) railBodyEl.appendChild(railControls.el);
-      } else {
-        releaseRailControls();
-        var host = document.createElement('div');
-        host.className = 'rb-ws__controls';
-        railBodyEl.appendChild(host);
-        railControls = { el: host, key: key, api: null };
-        railControls.api = api.mount(host, {
-          customerFileId: customerFileId,
-          workspace: 'report-topo-controls',
-          canvasId: meta.canvasId || '',
-          areaId: meta.scope === 'all' ? null : (meta.areaId || null),
-          settings: floorViewFor(page),
-          onBack: function () {},
-          onSettingsChange: function (next) {
-            var live = activePage();
-            setFloorViewFor(live, next);
-            markDirty();
-            // Legend size is one of these settings, so a locked colour scale
-            // takes the new size rather than ignoring the control.
-            pushPieceScale('legend', liveLegendScale());
-            // The drawing is a second root looking at the same settings, and
-            // it has to be told. This named `topoHost`, a single mount that
-            // stopped existing when a sheet gained the option of two
-            // drawings -- so every control in this panel threw, and the
-            // colour scale, the pill, the labels and the palette all read as
-            // doing nothing at all. The setting was stored; the drawing was
-            // never informed.
-            var host = topoHosts[floorSlot(live)] || topoHosts[0];
-            if (host && host.api && typeof host.api.update === 'function') {
-              host.api.update({ settings: next });
-            }
-            // The sheet draws the colour scale and the readings itself now,
-            // and Legend size is what sizes them, so the page is redrawn too
-            // -- the live view is re-appended rather than rebuilt, so the
-            // drawing does not flicker or lose its place.
-            renderPages();
-            flushSave().catch(function () {});
-          },
-        });
+      } else if (railBodyEl) {
+        // Rebuild identity + chrome; keep the mounted Topo host when the view
+        // key is unchanged so settings state is not torn down on every sync.
+        var keepHost = (railControls.el && railControls.key === key) ? railControls.el : null;
+        railBodyEl.textContent = '';
+        railBodyEl.appendChild(buildFloorTopoIdentity(page));
+        if (!api || typeof api.mount !== 'function' || !ctrlCanvas) {
+          releaseRailControls();
+          var empty = document.createElement('p');
+          empty.className = 'rb-panel__lead';
+          empty.setAttribute('data-rb-floor-topo-empty', '1');
+          empty.textContent = ctrlCanvas
+            ? 'Topo controls are unavailable for this view.'
+            : 'No topo view to format. Add a view under Sheet Layout, or import a level.';
+          railBodyEl.appendChild(empty);
+        } else if (keepHost) {
+          if (railControls.api && typeof railControls.api.update === 'function') {
+            railControls.api.update({
+              settings: floorViewFor(page),
+              railGroup: floorTopoGroup,
+              hostStatsPillPx: pillPxFromLayout(floorLayout),
+            });
+          }
+          railBodyEl.appendChild(keepHost);
+        } else {
+          releaseRailControls();
+          var host = document.createElement('div');
+          host.className = 'rb-ws__controls';
+          railBodyEl.appendChild(host);
+          railControls = { el: host, key: key, api: null };
+          railControls.api = api.mount(host, {
+            customerFileId: customerFileId,
+            workspace: 'report-topo-controls',
+            canvasId: ctrlCanvas,
+            areaId: ctrlArea,
+            settings: floorViewFor(page),
+            railGroup: floorTopoGroup,
+            hostStatsPillPx: pillPxFromLayout(floorLayout),
+            onHostStatsPillPxChange: function (px) {
+              var flApi = window.ToolboxReportFloorLayout;
+              var chrome = (flApi && Number(flApi.CHROME_SCALE)) || 1;
+              var n = Number(px);
+              if (!isFinite(n) || n <= 0) return;
+              if (pushPieceScale('pill', (n / 32) * chrome)) {
+                if (railControls.api && typeof railControls.api.update === 'function') {
+                  railControls.api.update({ hostStatsPillPx: pillPxFromLayout(floorLayout) });
+                }
+                renderPages();
+                flushSave().catch(function () {});
+              }
+            },
+            onBack: function () {},
+            onSettingsChange: function (next) {
+              var live = activePage();
+              setFloorViewFor(live, next);
+              markDirty();
+              pushPieceScale('legend', liveLegendScale());
+              var topoHost = topoHosts[floorSlot(live)] || topoHosts[0];
+              if (topoHost && topoHost.api && typeof topoHost.api.update === 'function') {
+                topoHost.api.update({ settings: next });
+              }
+              renderPages();
+              flushSave().catch(function () {});
+            },
+          });
+        }
       }
 
       setRailFootSource('floor');
@@ -4338,6 +4904,28 @@
     // delegation rather than by listeners attached once at mount.
     if (railEl) {
       railEl.addEventListener('click', function (event) {
+        var groupBtn = event.target.closest('[data-rb-topo-group]');
+        if (groupBtn) {
+          event.preventDefault();
+          var nextGroup = groupBtn.getAttribute('data-rb-topo-group');
+          if (nextGroup !== 'contours' && nextGroup !== 'readings' && nextGroup !== 'accessories') return;
+          if (floorTopoGroup === nextGroup) return;
+          floorTopoGroup = nextGroup;
+          var groupPage = activePage();
+          if (groupPage) syncRail(groupPage);
+          return;
+        }
+        var taskBtn = event.target.closest('[data-rb-floor-task]');
+        if (taskBtn) {
+          event.preventDefault();
+          var nextTask = taskBtn.getAttribute('data-rb-floor-task');
+          if (nextTask !== 'layout' && nextTask !== 'topo') return;
+          if (floorTaskTab === nextTask) return;
+          floorTaskTab = nextTask;
+          var taskPage = activePage();
+          if (taskPage) syncRail(taskPage);
+          return;
+        }
         var ownBtn = event.target.closest('[data-rb-floor-own]');
         if (ownBtn) {
           event.preventDefault();
@@ -4352,7 +4940,12 @@
           var which = templateBtn.getAttribute('data-rb-template');
           var saved;
           if (which === 'cover') {
-            saved = saveTemplatePiece({ coverLayout: coverLayout });
+            // Where the cover's boxes sit, never which aerial is in one. The
+            // picture is this property's; carried in a default it put one
+            // job's aerial on every new report (Tim, Oct 29, 2026).
+            var coverDefault = JSON.parse(JSON.stringify(coverLayout || {}));
+            coverDefault.overviewMediaId = '';
+            saved = saveTemplatePiece({ coverLayout: coverDefault });
           } else if (which === 'floor') {
             // How the building is framed, where the scale and the readings
             // sit on the page, and what is drawn inside the frame.
@@ -4443,33 +5036,83 @@
           }).catch(function () { flushSave().catch(function () {}); });
           return;
         }
-        var twoBtn = event.target.closest('[data-rb-floor-twoup]');
-        if (twoBtn) {
+        var viewBtn = event.target.closest('[data-rb-floor-view]');
+        if (viewBtn) {
           event.preventDefault();
           var fp = activePage();
           if (!fp || fp.type !== 'floor') return;
-          fp.meta = fp.meta || {};
-          var on = twoBtn.getAttribute('data-rb-floor-twoup') === 'on';
-          fp.meta.floorTwoUp = on;
-          if (on && !fp.meta.floorView2) {
-            // The second view opens as a copy of the first, and nothing else.
-            // Floor Survey already has the control that makes one of them
-            // readings-only -- Colour fill / Cells / B&W lines / Points only
-            // -- and it is already in this rail. Tim: "I don't want you to
-            // reinvent something, it's already in the code, it's already in
-            // the rail functions." Seeding a second view with hand-picked
-            // flags sets things the investigator did not choose and leaves
-            // the two drawings framed differently.
-            var base = floorViewFor(fp, 0);
-            fp.meta.floorView2 = base ? JSON.parse(JSON.stringify(base)) : null;
+          var viewsApi = window.ToolboxReportFloorViews;
+          if (!viewsApi) return;
+          var action = viewBtn.getAttribute('data-rb-floor-view');
+          viewsApi.ensurePageViews(fp);
+          if (action === 'add' || action === 'copy') {
+            viewsApi.addView(fp, floorSlot(fp));
+            fp._floorSlot = floorSlots(fp) - 1;
+          } else if (action === 'remove') {
+            viewsApi.removeView(fp, floorSlot(fp));
+            fp._floorSlot = Math.min(floorSlot(fp), floorSlots(fp) - 1);
           }
-          if (!on) fp._floorSlot = 0;
-          // Both frames change width when the sheet goes from one view to two
-          // and back, and a mounted view does not re-fit when its frame
-          // resizes -- it keeps the scale it was fitted at and shows a crop.
-          // That is why the pair came out at two different scales: the first
-          // was still fitted to the full-width frame it was born in. Dropping
-          // both makes each one fit the frame it is actually in.
+          fp.meta.floorTwoUp = floorSlots(fp) > 1;
+          releaseTopoHosts();
+          markDirty();
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
+        var linkBtn = event.target.closest('[data-rb-floor-view-link]');
+        if (linkBtn) {
+          event.preventDefault();
+          var lp = activePage();
+          if (!lp || lp.type !== 'floor') return;
+          var lApi = window.ToolboxReportFloorViews;
+          if (!lApi) return;
+          lApi.setViewLink(lp, floorSlot(lp), linkBtn.getAttribute('data-rb-floor-view-link') === 'on');
+          markDirty();
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
+        var chromeBtn = event.target.closest('[data-rb-floor-view-chrome]');
+        if (chromeBtn) {
+          event.preventDefault();
+          var cp = activePage();
+          if (!cp || cp.type !== 'floor') return;
+          var cv = floorViewSpec(cp, floorSlot(cp));
+          if (!cv) return;
+          var chromeAct = chromeBtn.getAttribute('data-rb-floor-view-chrome');
+          if (chromeAct === 'legend-on') cv.showLegend = true;
+          if (chromeAct === 'legend-off') cv.showLegend = false;
+          if (chromeAct === 'pill-on') cv.showPill = true;
+          if (chromeAct === 'pill-off') cv.showPill = false;
+          // Keep settings in lockstep with views[] chrome (GPT-030). Use the
+          // full floorViewFor object so a later Legend & H/L switch is a
+          // chrome-only delta, not a sparse {showLegend} vs full resolved miss.
+          cv.settings = Object.assign({}, floorViewFor(cp) || {}, cv.settings || {});
+          cv.settings.showLegend = !!cv.showLegend;
+          cv.settings.showStatsPill = !!cv.showPill;
+          markDirty();
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
+        // Legacy two-up control (tests / old UI) — maps onto Add/Remove view.
+        var twoBtn = event.target.closest('[data-rb-floor-twoup]');
+        if (twoBtn) {
+          event.preventDefault();
+          var tp = activePage();
+          if (!tp || tp.type !== 'floor') return;
+          var tApi = window.ToolboxReportFloorViews;
+          if (!tApi) return;
+          tApi.ensurePageViews(tp);
+          var on = twoBtn.getAttribute('data-rb-floor-twoup') === 'on';
+          if (on && floorSlots(tp) < 2) {
+            tApi.addView(tp, 0);
+            tp._floorSlot = 1;
+          } else if (!on && floorSlots(tp) > 1) {
+            while (floorSlots(tp) > 1) tApi.removeView(tp, floorSlots(tp) - 1);
+            tp._floorSlot = 0;
+          }
+          tp.meta.floorTwoUp = floorSlots(tp) > 1;
           releaseTopoHosts();
           markDirty();
           renderPages();
@@ -4492,6 +5135,36 @@
           });
         }
       });
+
+      railEl.addEventListener('change', function (event) {
+        var srcSel = event.target && event.target.closest
+          ? event.target.closest('[data-rb-floor-view-source]')
+          : null;
+        if (!srcSel) return;
+        var sp = activePage();
+        if (!sp || sp.type !== 'floor') return;
+        var sApi = window.ToolboxReportFloorViews;
+        var slotNow = floorSlot(sp);
+        // Mutate the live list entry (stable identity). Do not clear size/align
+        // linkGroup on source change — size linking is source-agnostic (GPT-027);
+        // camera sharing already keys off sameSource + linkGroup.
+        var listNow = sApi ? sApi.viewsFor(sp) : [];
+        var sv = listNow[slotNow];
+        if (!sv) return;
+        var parts = String(srcSel.value || '').split('|');
+        sv.canvasId = parts[0] || '';
+        sv.epochId = parts[1] || null;
+        sv.scope = parts[3] || 'all';
+        // Combined = whole level; never keep a leftover boundary id (GPT-030).
+        sv.areaId = sv.scope === 'all' ? null : (parts[2] || null);
+        // Drop a stale independent camera so the new level opens framed, not
+        // at the previous floor's pan. Linked same-source broadcast is N/A here.
+        sv.camera = null;
+        releaseTopoHosts();
+        markDirty();
+        renderPages();
+        flushSave().catch(function () {});
+      });
     }
 
     root.querySelector('#rb-back').addEventListener('click', function () {
@@ -4502,6 +5175,33 @@
         if (typeof onBack === 'function') onBack();
       });
     });
+
+    // Report pin size for Picture Locations. Capture ds-capture-sizes is never read.
+    function applyPenLogPinScale(raw) {
+      var next = window.ToolboxPenLog && window.ToolboxPenLog.clampPinScale
+        ? window.ToolboxPenLog.clampPinScale(raw)
+        : Number(raw);
+      if (!(isFinite(next) && next > 0)) return;
+      if (Math.abs(next - penLogPinScale) < 0.001) {
+        if (penPinSizeVal) penPinSizeVal.textContent = next.toFixed(2) + '×';
+        return;
+      }
+      penLogPinScale = next;
+      penLogUi.pinScale = next;
+      penLogPinScaleSeeded = true;
+      if (penPinSizeVal) penPinSizeVal.textContent = next.toFixed(2) + '×';
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
+    }
+    if (penPinSizeInput) {
+      penPinSizeInput.addEventListener('input', function () {
+        applyPenLogPinScale(penPinSizeInput.value);
+      });
+      penPinSizeInput.addEventListener('change', function () {
+        applyPenLogPinScale(penPinSizeInput.value);
+      });
+    }
 
     // Contours on or off for this Picture Locations sheet. The level's layer
     // is untouched, and so is what Distress is showing: this is how this page
@@ -5278,24 +5978,8 @@
     // propagation, so the canvas's own pan, wheel zoom and grip drags are
     // untouched. While a drawing tool is armed the shield above swallows the
     // event first, so the plan is correctly not selectable then.
-    /**
-     * The readings pill's size is set in Labels & layers, and the sheet has
-     * to hear about it.
-     *
-     * Floor Survey keeps that size on the device and announces the change on
-     * the window; Report Builder read the stored number when it drew a sheet
-     * but never listened, so pressing + moved the readout from 32px to 38px
-     * and the pill on the paper did not move at all. Tim: "You can't change
-     * the pill size."
-     *
-     * The colour scale never had this fault because its size travels in the
-     * slide's own settings, which already re-draw the sheet.
-     */
-    onWindow('stats-chip-size-change', function () {
-      if (!sheetEl || !sheetEl.isConnected) return;
-      if (pushPieceScale('pill', livePillScale())) flushSave().catch(function () {});
-      renderPages();
-    });
+    // Capture stats-pill-size-change must NOT rewrite this report. Report
+    // pill size is floorLayout.pillLock only, changed from the rail stepper.
 
     onDocument('pointerdown', function (event) {
       if (inkTool) return;
@@ -6511,9 +7195,29 @@
       var layout = window.ToolboxReportFloorLayout
         ? window.ToolboxReportFloorLayout.normalizeLayout(floorLayout)
         : floorLayout;
+      var viewId = (id && id.indexOf('topo-view:') === 0) ? id.slice(10) : null;
+      var viewIndex = -1;
+      var viewFrame = null;
+      if (viewId && current.meta) {
+        var vList = floorViewsForPage(current);
+        for (var vi = 0; vi < vList.length; vi += 1) {
+          if (vList[vi] && vList[vi].id === viewId) {
+            viewIndex = vi;
+            viewFrame = JSON.parse(JSON.stringify(vList[vi].frame));
+            break;
+          }
+        }
+      }
+      // Legend / H/L/Δ: press-and-move to place; press-and-hold opens size −/+.
+      // Corner resize stays immediate. Topo / overview keep immediate drag.
+      var holdForSize = !resize && (kind === 'legend' || kind === 'pill');
+      dismissChromeSizeHud();
+      clearFloorHold();
       floorDrag = {
         id: id,
         kind: kind,
+        viewId: viewId,
+        viewIndex: viewIndex,
         resize: !!resize,
         corner: resize ? (resize.getAttribute('data-rb-floor-corner') || 'se') : null,
         startX: event.clientX,
@@ -6521,6 +7225,10 @@
         stageW: stage.width,
         stageH: stage.height,
         layout: layout,
+        viewFrame: viewFrame,
+        holdForSize: holdForSize,
+        active: !holdForSize,
+        pointerId: event.pointerId,
       };
       // Captured by the element the pointer is ACTUALLY on -- the handle when
       // one was grabbed, the box otherwise.
@@ -6534,6 +7242,25 @@
       var grabbed = resize || box;
       try { grabbed.setPointerCapture(event.pointerId); } catch (_) {}
       floorDrag.grabbed = grabbed;
+      if (holdForSize) {
+        floorHoldTimer = window.setTimeout(function () {
+          floorHoldTimer = null;
+          if (!floorDrag || !floorDrag.holdForSize || floorDrag.active) return;
+          var hudKind = floorDrag.kind;
+          var sx = floorDrag.startX;
+          var sy = floorDrag.startY;
+          var g = floorDrag.grabbed;
+          var pid = floorDrag.pointerId;
+          floorDrag = null;
+          try {
+            if (g && typeof g.releasePointerCapture === 'function' && pid != null) {
+              g.releasePointerCapture(pid);
+            }
+          } catch (_) {}
+          // Hold alone never moves or resizes — only opens size −/+.
+          showChromeSizeHud(hudKind, sx, sy);
+        }, ACCESSORY_HOLD_MS);
+      }
       // And nothing downstream gets a say in this gesture.
       event.stopPropagation();
     });
@@ -6616,12 +7343,68 @@
       if (!floorDrag) return;
       var current = activePage();
       if (!current || current.type !== 'floor') return;
+      // Accessory hold-vs-drag uses SCREEN pixels so zoom does not change feel.
+      if (floorDrag.holdForSize && !floorDrag.active) {
+        var finger = Math.hypot(
+          event.clientX - floorDrag.startX,
+          event.clientY - floorDrag.startY
+        );
+        if (finger > ACCESSORY_MOVE_PX) {
+          clearFloorHold();
+          floorDrag.active = true;
+        } else {
+          return;
+        }
+      }
       var dx = ((event.clientX - floorDrag.startX) / floorDrag.stageW) * 100;
       var dy = ((event.clientY - floorDrag.startY) / floorDrag.stageH) * 100;
       var layout = window.ToolboxReportFloorLayout
         ? window.ToolboxReportFloorLayout.cloneLayout(floorDrag.layout)
         : JSON.parse(JSON.stringify(floorDrag.layout));
       var flApi = window.ToolboxReportFloorLayout;
+      var viewsApi = window.ToolboxReportFloorViews;
+      var dragPage = activePage();
+      if (floorDrag.viewId && floorDrag.viewFrame && viewsApi && dragPage) {
+        var minW = viewsApi.MIN_FRAME_W || 18;
+        var minH = viewsApi.MIN_FRAME_H || 25;
+        var o = floorDrag.viewFrame;
+        var nextFrame;
+        if (floorDrag.resize) {
+          var west = floorDrag.corner === 'nw' || floorDrag.corner === 'sw';
+          var north = floorDrag.corner === 'nw' || floorDrag.corner === 'ne';
+          var nextW = Math.max(minW, west ? o.w - dx : o.w + dx);
+          var nextH = Math.max(minH, north ? o.h - dy : o.h + dy);
+          nextFrame = {
+            x: west ? o.x + (o.w - nextW) : o.x,
+            y: north ? o.y + (o.h - nextH) : o.y,
+            w: nextW,
+            h: nextH,
+            z: o.z,
+          };
+        } else {
+          nextFrame = { x: o.x + dx, y: o.y + dy, w: o.w, h: o.h, z: o.z };
+        }
+        nextFrame = viewsApi.normalizeFrame(nextFrame);
+        var list = viewsApi.viewsFor(dragPage);
+        if (list[floorDrag.viewIndex]) {
+          if (list[floorDrag.viewIndex].linkGroup) {
+            viewsApi.applyLinkedGeometry(list, floorDrag.viewIndex, nextFrame);
+          } else {
+            list[floorDrag.viewIndex].frame = nextFrame;
+          }
+        }
+        // Live update all view frames on the sheet.
+        list.forEach(function (v) {
+          if (!v) return;
+          var el = sheetEl.querySelector('[data-rb-floor-box="topo-view:' + v.id + '"]');
+          if (!el) return;
+          el.style.left = v.frame.x + '%';
+          el.style.top = v.frame.y + '%';
+          el.style.width = v.frame.w + '%';
+          el.style.height = v.frame.h + '%';
+        });
+        return;
+      }
       if (floorDrag.id === 'overview') {
         var ov = floorDrag.layout.overview;
         if (floorDrag.resize) {
@@ -6660,11 +7443,31 @@
           layout.topo.y = floorDrag.layout.topo.y + dy;
         }
       } else {
+        // Legend / H/L/Δ (and any other overlay). Multi-view chrome ids are
+        // legend-<viewId> / pill-<viewId>; seed the overlay if a older layout
+        // never wrote that id so the drag cannot die silently.
         var overlay = null;
         for (var i = 0; i < layout.overlays.length; i += 1) {
           if (layout.overlays[i].id === floorDrag.id) overlay = layout.overlays[i];
         }
-        if (!overlay) return;
+        if (!overlay) {
+          var seedBox = sheetEl.querySelector('[data-rb-floor-box="' + floorDrag.id + '"]');
+          var seedX = seedBox ? (parseFloat(seedBox.style.left) || 0) : 0;
+          var seedY = seedBox ? (parseFloat(seedBox.style.top) || 0) : 0;
+          overlay = {
+            id: floorDrag.id,
+            kind: floorDrag.kind || 'legend',
+            statsIndex: 0,
+            x: seedX,
+            y: seedY,
+            z: 3,
+            scale: 1,
+          };
+          layout.overlays.push(overlay);
+          if (floorDrag.layout && Array.isArray(floorDrag.layout.overlays)) {
+            floorDrag.layout.overlays.push(JSON.parse(JSON.stringify(overlay)));
+          }
+        }
         if (floorDrag.resize) {
           var base = 0;
           for (var j = 0; j < floorDrag.layout.overlays.length; j += 1) {
@@ -6676,8 +7479,8 @@
           for (var k = 0; k < floorDrag.layout.overlays.length; k += 1) {
             if (floorDrag.layout.overlays[k].id === floorDrag.id) origin = floorDrag.layout.overlays[k];
           }
-          overlay.x = (origin ? origin.x : 0) + dx;
-          overlay.y = (origin ? origin.y : 0) + dy;
+          overlay.x = (origin ? origin.x : overlay.x) + dx;
+          overlay.y = (origin ? origin.y : overlay.y) + dy;
         }
       }
       // Written through the slide, not straight at the report.
@@ -6727,6 +7530,7 @@
     });
 
     function endLayoutDrag() {
+      clearFloorHold();
       if (penDrag) {
         var wasResize = penDrag.resize;
         penDrag = null;
@@ -6753,8 +7557,32 @@
         return;
       }
       if (!floorDrag) return;
+      // Hold armed but never moved: no position write, no dirty.
+      if (floorDrag.holdForSize && !floorDrag.active) {
+        floorDrag = null;
+        return;
+      }
+      var endPage = activePage();
+      if (floorDrag.viewId && endPage && window.ToolboxReportFloorViews) {
+        var vApi = window.ToolboxReportFloorViews;
+        var vList = vApi.viewsFor(endPage);
+        var ix = floorDrag.viewIndex;
+        if (vList[ix]) {
+          var snapped = vApi.snapFrame(vList[ix].frame, vList, ix);
+          if (vList[ix].linkGroup) vApi.applyLinkedGeometry(vList, ix, snapped);
+          else vList[ix].frame = snapped;
+        }
+        floorDrag = null;
+        markDirty();
+        renderPages();
+        flushSave().catch(function () {});
+        return;
+      }
+      // Legend / pill / overview moves update floorLayout during pointermove;
+      // flush so a reload cannot silently discard the drop (same as view frames).
       floorDrag = null;
       markDirty();
+      flushSave().catch(function () {});
     }
     sheetEl.addEventListener('pointerup', endLayoutDrag);
     sheetEl.addEventListener('pointercancel', endLayoutDrag);
@@ -6941,12 +7769,32 @@
       var layout = flApi.normalizeLayout(floorLayout);
       var id = box.getAttribute('data-rb-floor-box') || '';
       var kind = box.getAttribute('data-rb-floor-kind') || 'topo';
+      // Since flexible views, a drawing is drawn at its OWN view frame's z,
+      // not layout.topo.z -- so restacking the drawing wrote a number nothing
+      // read, and Send to back / Bring to front did nothing to it. The
+      // frames are part of the stack too, so "behind" and "in front" are
+      // measured against everything on the sheet.
+      var views = floorViewsForPage(page) || [];
+      var viewId = box.getAttribute('data-rb-view-id') || '';
       var stack = [layout.topo.z, layout.overview.z].concat(
         layout.overlays.map(function (item) { return item.z; }));
+      views.forEach(function (v) {
+        if (v && v.frame && isFinite(Number(v.frame.z))) stack.push(Number(v.frame.z));
+      });
       var want = toFront
         ? Math.max.apply(null, stack) + 1
         : Math.min.apply(null, stack) - 1;
       want = Math.max(flApi.MIN_STACK, Math.min(flApi.MAX_STACK, want));
+      if (kind === 'topo' && viewId) {
+        var view = views.filter(function (v) { return v && v.id === viewId; })[0];
+        if (!view) return;
+        view.frame = view.frame && typeof view.frame === 'object' ? view.frame : {};
+        view.frame.z = want;
+        markDirty();
+        renderPages();
+        flushSave().catch(function () {});
+        return;
+      }
       if (kind === 'topo') {
         layout.topo.z = want;
       } else if (kind === 'overview') {
@@ -7306,51 +8154,27 @@
      * Anything missing falls back to the shared data extent, which is what
      * printed before.
      */
-    function cameraExtentFor(page, fallback) {
-      var cam = floorCamera;
+    function cameraExtentFor(page, fallback, slot) {
+      var at = typeof slot === 'number' ? slot : 0;
+      var view = floorViewSpec(page, at);
+      // GPT-029: same effective-camera policy as live mounts (cameraForView).
+      // Prefer shared floorCamera for ordinary / same-source-linked figures so
+      // a stale view.camera on a previously visited sibling cannot compose the
+      // print still from the wrong pan while the editor shows the book camera.
+      var cam = cameraForView(page, at);
       if (!cam || !cam.rel || !(Number(cam.zoom) > 0)) return fallback;
       var ps = window.ToolboxPlanSetup;
       var meta = (page && page.meta) || {};
-      if (!ps || typeof ps.canvasById !== 'function' || !workingRecord || !meta.canvasId) return fallback;
+      var canvasId = (view && view.canvasId) || meta.canvasId;
+      if (!ps || typeof ps.canvasById !== 'function' || !workingRecord || !canvasId) return fallback;
       var canvas = null;
-      try { canvas = ps.canvasById(workingRecord, meta.canvasId); } catch (err) { canvas = null; }
+      try { canvas = ps.canvasById(workingRecord, canvasId); } catch (err) { canvas = null; }
       var plan = canvas && canvas.plan;
       var planW = plan && Number(plan.width) > 0 ? Number(plan.width) : 0;
       var planH = plan && Number(plan.height) > 0 ? Number(plan.height) : 0;
       if (!planW || !planH) return fallback;
-      var slots = floorSlotsForPage(page);
       var frameAspect = 0;
-      // The shape of the box the drawing is ACTUALLY in, on the paper.
-      //
-      // An imported slide draws FULL BLEED: report-floor-layout.js lays its
-      // frames out across the whole stage -- share% wide by 100% tall, with a
-      // 2% gutter between two -- and never reads layout.topo for that frame
-      // at all. Taking the shape from layout.topo therefore described a box
-      // that is not on the page. On Janis's report that stored box is narrow
-      // and tall, so the still was painted from a tall narrow slice of the
-      // plan while the live view showed a wide one: the left-hand rooms and
-      // their readings were cut off inside the image itself, with white space
-      // to spare on its right. The extracted figure measured 2616 x 3000 --
-      // portrait -- on a landscape sheet.
-      //
-      // Tim: "Still cropping the left-hand side on a screenshot of preview.
-      // As well as the PDF."
       if (page && page.meta && page.meta.imported) {
-        // Measure the STAGE, not a frame.
-        //
-        // Measuring a frame took the shape of whatever slide happened to be
-        // open and gave it to the slide being composed. On a book holding
-        // both a one-view page and a two-view page those are different
-        // shapes, so the same target page composed differently depending on
-        // which slide Print was started from -- 889.5 x 666.7 from one,
-        // 888.9 x 1359.6 from the other. Audit finding 2.
-        //
-        // The stage is the sheet less the rail down its side, and it is the
-        // same on every imported slide whatever its slot count, so one
-        // measurement genuinely does serve them all. The target page's own
-        // share of it is then applied -- through the same frameShare() that
-        // LAYS the frames out, so two views are half of what is left after
-        // the gutter rather than a naive half.
         var stageAspect = 0;
         var stageEl = root.querySelector('.rb-stage .rb-sheet [data-rb-floor-stage]');
         if (stageEl) {
@@ -7358,29 +8182,28 @@
           if (sr.width > 8 && sr.height > 8) stageAspect = sr.width / sr.height;
         }
         if (!(stageAspect > 0)) {
-          // Nothing on screen to measure -- Print started from the cover or
-          // the discussion. STAGE_SHARE_OF_SHEET is that same stage measured:
-          // 86.336% of the sheet's width by the whole of its height, which is
-          // what the stylesheet's rail leaves. Within a rounding of the live
-          // measurement, so the two routes agree.
           stageAspect = (17 * STAGE_SHARE_OF_SHEET) / 11;
         }
-        var flApi = window.ToolboxReportFloorLayout;
-        var sharePct = (flApi && typeof flApi.frameShare === 'function')
-          ? flApi.frameShare(slots)
-          : (100 - (slots - 1) * 2) / slots;
-        frameAspect = stageAspect * (sharePct / 100);
+        // Prefer the stored free-frame geometry for this view (Checkpoint 1).
+        var fr = view && view.frame;
+        var sharePct = fr && Number(fr.w) > 0 ? Number(fr.w) : null;
+        var heightPct = fr && Number(fr.h) > 0 ? Number(fr.h) : 100;
+        if (!(sharePct > 0)) {
+          var slots = floorSlotsForPage(page);
+          var flApi = window.ToolboxReportFloorLayout;
+          sharePct = (flApi && typeof flApi.frameShare === 'function')
+            ? flApi.frameShare(slots)
+            : (100 - (slots - 1) * 2) / slots;
+        }
+        // Frame aspect on paper = (share of stage width × stage aspect) / (share of stage height).
+        frameAspect = stageAspect * (sharePct / 100) / (heightPct / 100);
       } else {
         var layout = page._bookFloorLayout || null;
         var topo = layout && layout.topo;
         if (!topo || !(Number(topo.w) > 0) || !(Number(topo.h) > 0)) return fallback;
-        // The frame's shape on the paper in real inches, not in percent of it.
         frameAspect = (Number(topo.w) * 17) / (Number(topo.h) * 11);
-        if (slots > 1) frameAspect /= slots;
       }
       if (!(frameAspect > 0)) return fallback;
-      // At fit, the frame shows the smallest rectangle of its own shape that
-      // holds the whole plan. Zoom divides it; the camera centres it.
       var planAspect = planW / planH;
       var regionW = planAspect > frameAspect ? planW : planH * frameAspect;
       var regionH = planAspect > frameAspect ? planW / frameAspect : planH;
@@ -7411,49 +8234,69 @@
       pages.forEach(function (page) {
         if (!page || page.type !== 'floor') return;
         var meta = page.meta || {};
-        if (meta.reserved || !meta.canvasId) return;
+        if (meta.reserved) return;
+        floorViewsForPage(page);
         var slots = floorSlotsForPage(page);
-        for (var slot = 0; slot < slots; slot += 1) wanted.push({ page: page, slot: slot });
+        var anySource = false;
+        for (var slot = 0; slot < slots; slot += 1) {
+          var vs = floorViewSpec(page, slot);
+          if ((vs && vs.canvasId) || meta.canvasId) {
+            anySource = true;
+            wanted.push({ page: page, slot: slot, view: vs });
+          }
+        }
+        if (!anySource && meta.canvasId) wanted.push({ page: page, slot: 0, view: null });
       });
       if (!wanted.length) return Promise.resolve(0);
 
-      var first = wanted[0];
-      var firstMeta = first.page.meta || {};
-      var sharedExtent = null;
-      var frame = (typeof api.reportTopoExtentForPage === 'function')
-        ? api.reportTopoExtentForPage(workingRecord, {
-          canvasId: firstMeta.canvasId,
-          epochId: firstMeta.epochId,
-          areaId: firstMeta.areaId || null,
-          scope: firstMeta.scope || 'all',
-          settings: floorViewFor(first.page, first.slot) || null,
-        }).catch(function () { return null; })
-        : Promise.resolve(null);
-
-      return frame.then(function (extent) {
-        sharedExtent = extent || null;
-        var painted = 0;
-        return wanted.reduce(function (chain, job) {
-          return chain.then(function () {
-            var meta = job.page.meta || {};
-            return api.composeReportTopoFigureForPage(workingRecord, {
-              canvasId: meta.canvasId,
-              epochId: meta.epochId,
-              areaId: meta.areaId || null,
-              scope: meta.scope || 'all',
+      var painted = 0;
+      return wanted.reduce(function (chain, job) {
+        return chain.then(function () {
+          var meta = job.page.meta || {};
+          var view = job.view;
+          var canvasId = (view && view.canvasId) || meta.canvasId;
+          var epochId = (view && view.epochId) || meta.epochId;
+          var areaId = view
+            ? (view.scope === 'all' ? null : (view.areaId || null))
+            : (meta.scope === 'all' ? null : (meta.areaId || null));
+          var scope = (view && view.scope) || meta.scope || 'all';
+          var fallbackExtent = null;
+          var extentPromise = (typeof api.reportTopoExtentForPage === 'function')
+            ? api.reportTopoExtentForPage(workingRecord, {
+              canvasId: canvasId,
+              epochId: epochId,
+              areaId: areaId,
+              scope: scope,
               settings: floorViewFor(job.page, job.slot) || null,
-              extent: cameraExtentFor(job.page, sharedExtent),
+            }).catch(function () { return null; })
+            : Promise.resolve(null);
+          return extentPromise.then(function (extent) {
+            fallbackExtent = extent || null;
+            return api.composeReportTopoFigureForPage(workingRecord, {
+              canvasId: canvasId,
+              epochId: epochId,
+              areaId: areaId,
+              scope: scope,
+              settings: floorViewFor(job.page, job.slot) || null,
+              extent: cameraExtentFor(job.page, fallbackExtent, job.slot),
             }, getMedia).then(function (composed) {
-              if (!composed || !composed.dataUrl) return;
+              if (!composed || !composed.dataUrl) {
+                throw new Error('Floor still compose returned no image for slot ' + job.slot);
+              }
               job.page._printTopo = job.page._printTopo || {};
               job.page._printTopo[job.slot] = composed.dataUrl;
               painted += 1;
             }).catch(function (err) {
-              // One slide that cannot be painted must not stop the print.
-              console.warn('Floor slide could not be painted for print', meta.canvasId, err);
+              console.error('Floor slide could not be painted for print', canvasId, err);
+              throw err;
             });
           });
-        }, Promise.resolve()).then(function () { return painted; });
+        });
+      }, Promise.resolve()).then(function () {
+        if (painted < wanted.length) {
+          throw new Error('Floor still compose incomplete: ' + painted + '/' + wanted.length);
+        }
+        return painted;
       });
     }
 
@@ -7610,6 +8453,11 @@
               });
             });
           });
+        }).catch(function (err) {
+          // GPT-027: do not hand a silently incomplete PDF when a still fails.
+          console.error('Print/PDF could not compose floor stills', err);
+          clearPrintDeck();
+          setSaveStatus('Print failed — a floor figure could not be composed');
         });
       });
     }
@@ -7847,7 +8695,9 @@
           showPresentSheet(0);
         });
       }).catch(function (err) {
-        console.warn('Presentation could not be opened', err);
+        // GPT-027: surface incomplete still compose instead of a blank Present deck.
+        console.error('Presentation could not be opened', err);
+        setSaveStatus('Presentation failed — a floor figure could not be composed');
         closePresentation();
       }).then(function () {
         if (presentBtn) {
@@ -8010,6 +8860,15 @@
       var coverSeed = (savedDoc && savedDoc.coverLayout) || template.coverLayout;
       if (coverSeed && window.ToolboxReportCoverLayout) {
         coverLayout = window.ToolboxReportCoverLayout.normalizeLayout(coverSeed);
+        // The aerial is stored under the job it was placed on. One that names
+        // another job came in through a default saved before defaults
+        // stopped carrying the picture -- drop it, and say so in the save.
+        var ownOverview = 'report-cover-overview-' + customerFileId;
+        if (coverLayout.overviewMediaId && coverLayout.overviewMediaId !== ownOverview &&
+          coverLayout.overviewMediaId.indexOf('report-cover-overview-') === 0) {
+          coverLayout.overviewMediaId = '';
+          coverOverviewDropped = true;
+        }
       }
       var brandSeed = (savedDoc && savedDoc.brandBox) || template.brandBox;
       if (brandSeed && window.ToolboxReportDiscussion) {
@@ -8023,6 +8882,18 @@
       if (penSeed && window.ToolboxPenLog && window.ToolboxPenLog.normalizeLayout) {
         penLogBoxLayout = window.ToolboxPenLog.normalizeLayout(penSeed);
       }
+      // Report pin scale: keep saved value; missing field seeds once to 1 (11×17 default).
+      var savedPinScale = savedDoc && savedDoc.penLog && Number(savedDoc.penLog.pinScale);
+      if (isFinite(savedPinScale) && savedPinScale > 0) {
+        penLogPinScale = window.ToolboxPenLog && window.ToolboxPenLog.clampPinScale
+          ? window.ToolboxPenLog.clampPinScale(savedPinScale)
+          : savedPinScale;
+        penLogPinScaleSeeded = true;
+      } else {
+        penLogPinScale = 1;
+        penLogPinScaleSeeded = false;
+      }
+      penLogUi.pinScale = penLogPinScale;
       var cameraSeed = (savedDoc && savedDoc.floorCamera) || template.floorCamera;
       if (cameraSeed) {
         floorCamera = JSON.parse(JSON.stringify(cameraSeed));
@@ -8034,8 +8905,25 @@
       if (viewSeed) floorView = reviveFloorView(viewSeed);
       if (savedDoc && Array.isArray(savedDoc.pages)) {
         savedDoc.pages.forEach(function (page) {
-          if (page && page.meta && page.meta.floorView) {
+          if (!page || !page.meta || page.type !== 'floor') return;
+          // Checkpoint 1: migrate legacy two-up into views[] and revive every
+          // view's settings (fixes the old floorView2 revive gap).
+          if (window.ToolboxReportFloorViews) {
+            window.ToolboxReportFloorViews.ensurePageViews(page);
+            (page.meta.views || []).forEach(function (v) {
+              if (v && v.settings) v.settings = reviveFloorView(v.settings);
+            });
+            if (page.meta.views && page.meta.views[0] && page.meta.views[0].settings) {
+              page.meta.floorView = page.meta.views[0].settings;
+            }
+            if (page.meta.views && page.meta.views[1] && page.meta.views[1].settings) {
+              page.meta.floorView2 = page.meta.views[1].settings;
+            }
+          } else if (page.meta.floorView) {
             page.meta.floorView = reviveFloorView(page.meta.floorView);
+          }
+          if (page.meta.floorView2) {
+            page.meta.floorView2 = reviveFloorView(page.meta.floorView2);
           }
         });
       }
@@ -8096,7 +8984,12 @@
       return refreshCoverOverviewUrl().then(function () {
         renderPages();
         fitSheet(root);
-        if (loaded.assembledFresh || loaded.reconciled) {
+        // Persist a missing pinScale once so reopen / other devices keep sheet default.
+        var needSave = loaded.assembledFresh || loaded.reconciled || !penLogPinScaleSeeded ||
+          coverOverviewDropped;
+        coverOverviewDropped = false;
+        if (!penLogPinScaleSeeded) penLogPinScaleSeeded = true;
+        if (needSave) {
           markDirty();
           flushSave().catch(function () {});
         } else {
@@ -8213,8 +9106,10 @@
       // links, and it shows nothing on a slide that owns no source.
       '      <p class="eyebrow">Toolbox</p>' +
       '      <div id="rb-rail" class="rb-ws" data-rb-rail hidden>' +
-      '        <h2 class="rb-ws__title" data-rb-rail-title>Floor Survey</h2>' +
-      '        <div class="rb-ws__top" data-rb-rail-top></div>' +
+      '        <div class="rb-ws__sticky">' +
+      '          <h2 class="rb-ws__title" data-rb-rail-title>Floor Survey</h2>' +
+      '          <div class="rb-ws__top" data-rb-rail-top></div>' +
+      '        </div>' +
       '        <div class="rb-ws__body" data-rb-rail-body></div>' +
       '        <div class="rb-ws__foot" data-rb-rail-foot></div>' +
       '      </div>' +
@@ -8233,6 +9128,11 @@
       // Shown only on a level Floor Survey has written a contour for; a
       // button offering a layer that does not exist is worse than no button.
       '        <button type="button" class="btn rb-ws__btn" id="rb-penlog-contour" data-rb-penlog-contour="off" hidden></button>' +
+      '        <label class="rb-panel__label" for="rb-penlog-pin-size">Pin size</label>' +
+      '        <div class="rb-penlog-pinsize" id="rb-penlog-pinsize">' +
+      '          <input type="range" id="rb-penlog-pin-size" min="0.35" max="2.5" step="0.05" value="1" aria-label="Pin size" />' +
+      '          <span class="rb-penlog-pinsize__val" id="rb-penlog-pin-size-val">1.00×</span>' +
+      '        </div>' +
       '        <button type="button" class="btn btn--quiet rb-ws__btn" data-rb-template="penlog">Use this as my default</button>' +
       '        <button type="button" class="btn btn--secondary rb-ws__btn" data-rb-source="distress">Open Distress Survey</button>' +
       '        <p class="rb-panel__status" id="rb-save-state" aria-live="polite"></p>' +
@@ -8277,6 +9177,10 @@
     penLogUi.layout = null;
     penLogUi.noteMap = {};
     penLogUi.selectedPinId = '';
+    // Report pin scale is per mount / per Customer File. Leaving it set would
+    // paint the previous job's size onto the next open before load finishes,
+    // and a missing penLog.pinScale would never look missing.
+    penLogUi.pinScale = 1;
     if (formatToolbar) {
       formatToolbar.destroy();
       formatToolbar = null;

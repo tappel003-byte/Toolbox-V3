@@ -106,36 +106,38 @@ await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="floor
 // per level. Tim: "Toolbox knows we have three levels, they can bring the
 // three levels in... I don't know why it needs to be hit." It does it itself
 // now, so the page opens with its drawing and there is no button to press.
-await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box="topo"]'), {
+await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box^="topo"]'), {
   timeout: 20000,
 });
 const onOpen = await page.evaluate(() => ({
   hasImport: !!document.querySelector('[data-rb-floor-import]'),
-  hasTopoBox: !!document.querySelector('[data-rb-floor-box="topo"]'),
+  hasTopoBox: !!document.querySelector('[data-rb-floor-box^="topo"]'),
   empty: !!document.querySelector('.rb-floor-empty'),
 }));
 check('Floor page opens with its drawing, nothing to import',
   !onOpen.hasImport && onOpen.hasTopoBox && !onOpen.empty, JSON.stringify(onOpen));
 
-// An imported slide is the plan and nothing else. The lock on offer is Lock
-// view -- the camera, so the plan sits the same way on every Floor Survey
-// slide -- and it lives in the rail, not on the sheet.
+// An imported slide is the plan and nothing else on the drawing: the colour
+// scale and the H / L / delta are two boxes ON THE PAGE, each moved on its
+// own, so the plan can be panned and zoomed underneath without carrying them
+// along. Tim, Oct 17: "those need to be movable separately... the
+// high/low/delta pill, the contour legend, those are all movable."
 //
-// The colour scale and the H / L / delta are no longer held back and no
-// longer painted into the plan's picture: they are two boxes ON THE PAGE,
-// each moved on its own, so the plan can be panned and zoomed underneath
-// without carrying them along. Tim, Oct 17: "those need to be movable
-// separately... the high/low/delta pill, the contour legend, those are all
-// movable." The figure block and the readings box stay off the sheet.
+// There is no Lock layout any more (DECIDED Tim, Oct 22, 2026, "One layout
+// record"): the report holds one floor layout and every Floor Survey page
+// draws it, so there is nothing to pin. A lock control coming back would be
+// that decision undone, so its absence is checked, not just ignored.
 const afterImport = await page.evaluate(() => ({
-  imported: !!document.querySelector('[data-rb-floor-box="topo"]'),
-  viewLock: document.querySelector('[data-rb-floor-lock-all]')?.getAttribute('data-rb-floor-lock-all') || '',
+  imported: !!document.querySelector('[data-rb-floor-box^="topo"]'),
+  lockAll: !!document.querySelector('[data-rb-floor-lock-all]'),
+  lockLabel: [...document.querySelectorAll('button')]
+    .some((b) => /^\s*(un)?lock layout\s*$/i.test(b.textContent || '')),
   legend: !!document.querySelector('.rb-floor-box--legend'),
   pill: !!document.querySelector('.rb-floor-box--pill'),
 }));
 check(
-  'Import places the topo frame and offers Lock layout',
-  afterImport.imported && afterImport.viewLock === 'lock',
+  'Import places the topo frame, and no Lock layout comes back',
+  afterImport.imported && !afterImport.lockAll && !afterImport.lockLabel,
   JSON.stringify(afterImport),
 );
 check(
@@ -145,33 +147,23 @@ check(
 );
 
 if (afterImport.imported) {
-  // Importing re-renders the sheet, so a handle taken before it is detached.
-  await page.evaluate(() => document.querySelector('[data-rb-floor-lock-all="lock"]').click());
-  await page.waitForFunction(
-    () => document.querySelector('[data-rb-floor-lock-all="unlock"]'), { timeout: 10000 });
-  await page.waitForFunction(() => {
-    const text = document.querySelector('#rb-save-status')?.textContent || '';
-    return /^Saved/.test(text) && !/Saving/.test(text);
-  }, { timeout: 10000 });
+  // The placement is the report's ONE layout record, on the Customer File.
   await page.waitForFunction(async () => {
     const record = await window.ToolboxDB.getCustomerFile('rb-floor-lock');
-    return !!record.reportBuilder?.floorCamera?.locked;
-  }, { timeout: 10000 });
-  const locked = await page.evaluate(async () => {
+    return !!record.reportBuilder?.floorLayout?.topo;
+  }, { timeout: 15000 }).catch(() => {});
+  const stored = await page.evaluate(async () => {
     const record = await window.ToolboxDB.getCustomerFile('rb-floor-lock');
+    const pages = (record.reportBuilder?.pages || []).filter((p) => p.type === 'floor');
     return {
-      cameraLocked: !!record.reportBuilder?.floorCamera?.locked,
       hasLayout: !!record.reportBuilder?.floorLayout?.topo,
-      btn: document.querySelector('[data-rb-floor-lock-all]')?.getAttribute('data-rb-floor-lock-all') || '',
-      legendLocked: !!record.reportBuilder?.floorLayout?.legendLock?.locked,
-      pillLocked: !!record.reportBuilder?.floorLayout?.pillLock?.locked,
+      // No slide keeps a layout of its own unless "This slide only" was asked
+      // for.
+      slideLayouts: pages.filter((p) => p.meta && (p.meta.layout || p.meta.ownLayout)).length,
     };
   });
-  // One button, one idea: the framing AND both pieces. Tim, Oct 21: "Lock
-  // layout is better, one button vs three, let's go back to that."
-  check('Lock layout persists the framing and both pieces on the Customer File',
-    locked.cameraLocked && locked.hasLayout && locked.btn === 'unlock' &&
-    locked.legendLocked && locked.pillLocked, JSON.stringify(locked));
+  check('the placement is the one layout record on the Customer File',
+    stored.hasLayout && stored.slideLayouts === 0, JSON.stringify(stored));
 }
 
 const staged = await page.evaluate(async () => {

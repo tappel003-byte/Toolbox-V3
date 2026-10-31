@@ -662,10 +662,28 @@
     };
     const surveyDate = fieldWorkSurveyDate(record);
     if (surveyDate) index.fieldWorkDate = surveyDate;
+    // Where the property is, so File Explorer's map can place the job from
+    // the index alone. Captured on the Customer File already; copied only
+    // when it is a real place, never a 0,0 left by an empty field.
+    const place = indexPlace(record);
+    if (place) {
+      index.propertyAddressLat = place.lat;
+      index.propertyAddressLon = place.lon;
+    }
     CABINET_SEARCH_FIELDS.forEach(function (key) {
       index[key] = trimStr(record[key]);
     });
     return index;
+  }
+
+  function indexPlace(record) {
+    const lat = record && record.propertyAddressLat;
+    const lon = record && record.propertyAddressLon;
+    if (typeof lat !== 'number' || typeof lon !== 'number') return null;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    if (lat === 0 && lon === 0) return null;
+    return { lat: lat, lon: lon };
   }
 
   // Every media id the plans component owns: each level's plan picture, plus
@@ -2653,6 +2671,11 @@
     if (survey) row.fieldWorkDate = survey;
     if (created) row.createdAt = created;
     if (trimStr(index.deletedAt)) row.deletedAt = trimStr(index.deletedAt);
+    const place = indexPlace(index);
+    if (place) {
+      row.propertyAddressLat = place.lat;
+      row.propertyAddressLon = place.lon;
+    }
     return row;
   }
 
@@ -3080,6 +3103,164 @@
     );
     if (response.status !== 404) return response;
     return fetchCabinetObject(id, key);
+  }
+
+  /**
+   * A tile-sized picture of a stored photograph, or null.
+   *
+   * The Worker shrinks it next to R2 (Cloudflare Images) and keeps the shrunk
+   * copy in its cache, so a folder of photographs no longer pulls every
+   * original to draw tiles. Null on any answer that is not a picture --
+   * including a Worker that predates the route -- and the caller fetches the
+   * original the way it always did. The answer may itself be the original
+   * when the Worker has no Images binding; x-toolbox-thumb says which.
+   */
+  async function exploreFetchThumb(mediaId, edge) {
+    if (!exploreMediaIdSafe(mediaId)) return null;
+    let response;
+    try {
+      response = await apiFetch(
+        '/explore/thumbs/' + encodeURIComponent(mediaId) + '?w=' + encodeURIComponent(edge || 320),
+        { allow404: true, skipAccessPrompt: true },
+      );
+    } catch (_) {
+      return null;
+    }
+    if (!response || !response.ok) return null;
+    return response;
+  }
+
+  /**
+   * Search every job's plain text on the server -- pin descriptions, picture
+   * captions, the report's discussion, the customer -- and say which section
+   * each hit came from. Null when the Worker predates the route; there is no
+   * fallback, because reading every job from here is exactly what the text
+   * exists to avoid.
+   */
+  async function exploreSearchText(query) {
+    const response = await apiFetch('/explore/search?q=' + encodeURIComponent(query || ''), { allow404: true });
+    if (response.status === 404) return null;
+    return response.json();
+  }
+
+  /** One job's plain text, built from its components; null if unavailable. */
+  async function exploreFetchJobText(id) {
+    if (!exploreCustomerIdSafe(id)) return null;
+    const response = await apiFetch('/explore/files/' + encodeURIComponent(id) + '/text', { allow404: true });
+    if (response.status === 404) return null;
+    return response;
+    return response;
+  }
+
+  /**
+   * Every job with where it is, for the map. The Worker places a job from
+   * its index, and for a job whose index predates the coordinates it reads
+   * the customer component -- read only, nothing rewritten. A Worker without
+   * the route gives the ordinary listing, which carries coordinates only for
+   * jobs synced since they were added to the index.
+   */
+  async function exploreMapJobs() {
+    const response = await apiFetch('/explore/map', { allow404: true });
+    if (response.status !== 404) return response.json();
+    const listing = await exploreListFiles();
+    const files = listing && Array.isArray(listing.files) ? listing.files : [];
+    const jobs = files.map(function (row) {
+        const job = {
+          id: row.id,
+          displayName: row.displayName || '',
+          propertyAddress: row.propertyAddress || '',
+          fieldWorkDate: row.fieldWorkDate || '',
+          createdAt: row.createdAt || '',
+        };
+        if (row.deletedAt) job.deletedAt = row.deletedAt;
+        if (typeof row.propertyAddressLat === 'number' && typeof row.propertyAddressLon === 'number') {
+          job.lat = row.propertyAddressLat;
+          job.lon = row.propertyAddressLon;
+          job.from = 'index';
+        }
+        return job;
+      });
+    // The same order the Worker's route uses, through the back door's own
+    // read route: the customer's picked address, then the Floor Survey base
+    // point. Read only.
+    const unplaced = jobs.filter(function (job) { return job.lat == null && exploreCustomerIdSafe(job.id); });
+    await runWithLimit(unplaced, 4, async function (job) {
+      try {
+        const customer = await exploreReadComponent(job.id, 'customer');
+        const picked = customer.ok ? indexPlace(customer.payload) : null;
+        if (picked) {
+          job.lat = picked.lat; job.lon = picked.lon; job.from = 'customer';
+          return;
+        }
+        const floor = await exploreReadComponent(job.id, 'floor');
+        const point = floor.ok ? basePointPlace(floor.payload) : null;
+        if (point) {
+          job.lat = point.lat; job.lon = point.lon; job.from = 'base-point';
+        }
+      } catch (_) {}
+    });
+    return { jobs: jobs };
+  }
+
+  /** Floor Survey's Base Point 1 GPS, latest capture across levels. */
+  function basePointPlace(floor) {
+    const layers = floor && floor.byCanvasId && typeof floor.byCanvasId === 'object' ? floor.byCanvasId : {};
+    let best = null;
+    let bestAt = -Infinity;
+    Object.keys(layers).forEach(function (canvasId) {
+      const gps = layers[canvasId] && layers[canvasId].bp1Gps;
+      if (!gps) return;
+      const place = indexPlace({ propertyAddressLat: gps.latitude, propertyAddressLon: gps.longitude });
+      if (!place) return;
+      const at = typeof gps.capturedAt === 'number' && Number.isFinite(gps.capturedAt) ? gps.capturedAt : 0;
+      if (at >= bestAt) { best = place; bestAt = at; }
+    });
+    return best;
+  }
+
+  /**
+   * Read one component for the back door, and ONLY through the back door.
+   *
+   * File Explorer reads the stored records to say what a job holds -- two
+   * levels, 48 readings, surveyed Sep 29 -- rather than printing the record
+   * at the investigator. That happens on a page view, which is exactly where
+   * browsing must not quietly reach past the read-only explore route into
+   * the working sync API the way exploreFetchObject's 404 fallback does.
+   *
+   * So this one does not fall back. A component the explore route cannot
+   * serve is reported as unreadable and the screen says so, which is the
+   * honest answer for a back door that is only supposed to look.
+   *
+   * ABSENT AND UNREADABLE ARE NOT THE SAME ANSWER, and this used to return
+   * null for both. "No Floor Survey is stored for this job" and "the stored
+   * Floor Survey could not be read" lead to opposite actions, and a recovery
+   * copy that prints the first when the second is true is telling the reader
+   * there was never anything to recover. So the result says which:
+   *
+   *   { ok: true, payload }             the component, decoded
+   *   { ok: false, reason: 'absent' }   the Cabinet holds none
+   *   { ok: false, reason: 'unreadable' } it holds one that will not decode
+   */
+  async function exploreReadComponent(id, name) {
+    if (!exploreCustomerIdSafe(id)) return { ok: false, reason: 'absent' };
+    const key = name === 'index'
+      ? 'cf/' + id + '/index.json'
+      : 'cf/' + id + '/' + name + '.json';
+    const response = await apiFetch(
+      '/explore/files/' + encodeURIComponent(id) + '/object?key=' + encodeURIComponent(key),
+      { allow404: true },
+    );
+    if (response.status === 404) return { ok: false, reason: 'absent' };
+    let payload;
+    try {
+      payload = await response.json();
+    } catch (_) {
+      return { ok: false, reason: 'unreadable' };
+    }
+    if (!payload || typeof payload !== 'object') {
+      return { ok: false, reason: 'unreadable' };
+    }
+    return { ok: true, payload: payload };
   }
 
   async function exploreFetchArchive(id) {
@@ -3599,6 +3780,11 @@
     exploreListFiles: exploreListFiles,
     exploreListCustomerFile: exploreListCustomerFile,
     exploreFetchObject: exploreFetchObject,
+    exploreFetchThumb: exploreFetchThumb,
+    exploreSearchText: exploreSearchText,
+    exploreFetchJobText: exploreFetchJobText,
+    exploreMapJobs: exploreMapJobs,
+    exploreReadComponent: exploreReadComponent,
     exploreFetchArchive: exploreFetchArchive,
     trashCabinetCustomerFile: trashCabinetCustomerFile,
     destroyCabinetCustomerFile: destroyCabinetCustomerFile,

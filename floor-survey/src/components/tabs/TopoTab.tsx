@@ -12,11 +12,15 @@ import {
   STATS_CHIP_MIN,
   STATS_CHIP_SIZE_EVENT,
 } from "@/components/chrome/StatsChip";
+import {
+  legendStorageKey,
+  patchCaptureSizes,
+} from "@/lib/capture-sizes";
 import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/lib/screen-size";
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import { Undo2, X, Waves, Palette, Tag, SlidersHorizontal, Minus, Plus } from "lucide-react";
+import { Undo2, X, SlidersHorizontal, Minus, Plus, ChevronDown, Hash, Eye, EyeOff } from "lucide-react";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { TopoDiagnosticPanel } from "../TopoDiagnosticPanel";
@@ -191,17 +195,19 @@ interface Props {
   /**
    * The host owns these render settings and persists them itself.
    *
-   * The field app remembers the legend size on the device, and did it by
-   * writing localStorage into the settings on mount -- which meant a host that
-   * passed settings in had them overwritten by a device-local value every time
-   * the view opened, and then had its own value written back out over the
-   * device's. A report that stored a legend size could not keep it, and sizing
-   * a legend on one job changed it on every other job on that iPad.
-   *
-   * When the host owns the settings, this view neither reads nor writes that
-   * key. It renders what it is given and reports changes back.
+   * Capture remembers sizes per Customer File on this device. Report Builder
+   * owns report sizes in the Customer File report component. When the host
+   * owns the settings, this view neither reads nor writes capture localStorage.
    */
   settingsOwnedByHost?: boolean;
+  /** Capture scope for per-Customer-File-on-device size keys. */
+  customerFileId?: string;
+  /**
+   * Report Builder rail: stats pill height in CSS px from floorLayout.pillLock.
+   * When set with settingsOwnedByHost, the stepper never touches capture keys.
+   */
+  hostStatsPillPx?: number;
+  onHostStatsPillPxChange?: (px: number) => void;
   /**
    * Draw the H / L / delta pill on the canvas even when the level has a single
    * boundary.
@@ -220,6 +226,12 @@ interface Props {
    * would drift from them.
    */
   controlsOnly?: boolean;
+  /**
+   * Which Topo group the report rail is showing. The tab row itself lives
+   * under the Sheet Layout | Topo tabs. Field Control panel does not use this.
+   * `legendhl` is accepted as a synonym for `accessories` (older rail state).
+   */
+  reportGroup?: "contours" | "readings" | "accessories" | "legendhl";
   /** A picture on a page: no pan, no zoom, the plan fits its frame. */
   staticView?: boolean;
   /**
@@ -249,11 +261,38 @@ interface Props {
    * handed over bare and the rail drives it through props.
    */
   chromeless?: boolean;
+  /**
+   * Field Clean view: host hides Data/Topo and the floating H/L/Δ chip when
+   * true. Local-only; no network. Report mounts leave this unset.
+   */
+  onCleanViewChange?: (clean: boolean) => void;
+  /**
+   * Session diagnostic point panel (exclude from contour math). Host opens this
+   * from ⋯; the field corner pill is gone. Uncontrolled when omitted.
+   */
+  diagnosticOpen?: boolean;
+  onDiagnosticOpenChange?: (open: boolean) => void;
 }
 
 const DEFAULT_LABEL_DX = 8;
 const DEFAULT_LABEL_DY = 6;
 const LONG_PRESS_MS = 350;
+/** Accessory hold-vs-drag threshold in SCREEN pixels (hand, not image zoom). */
+const ACCESSORY_MOVE_PX = 6;
+/**
+ * Design font (screen CSS px) that authored the label pad 4 / 2.5 and radius 2.5.
+ * Padding used to be `4 * (fontPx / fontBase)`. Under screen-anchored capture
+ * that ratio is only the inverse view scale, so pad stayed fixed in CSS px while
+ * the font stepper shrank the text — at 6px the box was mostly padding.
+ * Scale chrome against this reference so the complete label footprint tracks the
+ * font setting. At the default 11px font this matches the previous pad.
+ */
+const LABEL_CHROME_REF_PX = defaultRenderSettings.pointLabelFontSize;
+
+/** Image-space multiplier so label pad/radius/stroke track drawn fontPx. */
+function labelChromeK(fontPx: number) {
+  return fontPx / LABEL_CHROME_REF_PX;
+}
 
 /**
  * The High/Low marker's drawn size, in image coordinates.
@@ -333,6 +372,29 @@ function labelAnchor(p: SurveyPoint, k = 1) {
 export const DEFAULT_STATS_PILL_SIZE = 28;
 
 /** Pill height in IMAGE coords for a given base (screen px) and zoom. */
+/**
+ * Reading label font in image coordinates.
+ *
+ * Capture: fixed in image space so labels zoom with the plan (quieter fit
+ * overview; pinch-in grows them). Sized from the fit scale so a phone fit
+ * lands near ~72% of the old screen-anchored CSS size — a realistic drop that
+ * stays readable; Point label size −/+ still scales it. Report slides keep
+ * plan-proportional sizing. Legend / H/L/Δ / High/Low keep chromeSizeImg.
+ */
+const LABEL_FIT_FACTOR = 0.72;
+function pointLabelFontImg(
+  fontBase: number,
+  floor: Floor,
+  opts?: { presentation?: boolean; fitScale?: number },
+) {
+  const base = Math.max(1, fontBase);
+  if (opts?.presentation) {
+    return planProportionalSize(base, planLongSide(floor.planWidth, floor.planHeight));
+  }
+  const fit = opts?.fitScale && opts.fitScale > 0 ? opts.fitScale : 1;
+  return (base * LABEL_FIT_FACTOR) / fit;
+}
+
 /**
  * The H / L / delta pill's drawn height, in image coordinates.
  *
@@ -436,38 +498,123 @@ export function TopoTab({
   chromeOnPage = false,
   presentation = false,
   settingsOwnedByHost = false,
+  customerFileId,
+  hostStatsPillPx,
+  onHostStatsPillPxChange,
   statsPillForSingleBoundary = false,
   chromeless = false,
   controlsOnly = false,
+  onCleanViewChange,
+  diagnosticOpen: diagnosticOpenProp,
+  onDiagnosticOpenChange,
+  reportGroup,
   staticView = false,
   locked = false,
   onStats,
   resizeCorners = false,
   allowContourLayer = false,
 }: Props) {
-  const [openCorner, setOpenCorner] = useState<null | "contours" | "palette" | "labels">(null);
-  /** Which tab the rail shows. Report Builder only; the field screen opens one corner panel at a time. */
-  const [ctrlTab, setCtrlTab] = useState<"contours" | "labels" | "layers">("contours");
+  // Field Control panel: Contours | Readings. Legend lives under Contours →
+  // Display; H/L/Δ and High/Low live under Readings → Accessories (they come
+  // from the readings). Report Builder keeps its own rail (controlsOnly).
+  const [openCorner, setOpenCorner] = useState<TrialDoorKey | null>(null);
+  /** Hide floating field chrome; Clean pill stays so chrome can return. Local only. */
+  const [cleanView, setCleanView] = useState(false);
+  /** Last parent tab, so Close then the pill returns to the same group. */
+  const [lastTrialDoor, setLastTrialDoor] = useState<TrialDoorKey | null>(null);
+  /** Which child tab is open per parent (visit memory only; not a setting). */
+  const [trialSectionByDoor, setTrialSectionByDoor] = useState<
+    Partial<Record<TrialDoorKey, string>>
+  >({
+    contours: "display",
+    readings: "show",
+  });
+  const openTrialDoor = useCallback((key: TrialDoorKey) => {
+    setLastTrialDoor(key);
+    setOpenCorner(key);
+  }, []);
+  const setTrialSection = useCallback((door: TrialDoorKey, id: string | null) => {
+    setTrialSectionByDoor((prev) => {
+      const next = { ...prev };
+      if (id == null) delete next[door];
+      else next[door] = id;
+      return next;
+    });
+  }, []);
+  /** Report rail group. The tab row is outside this panel; field doors do not use it. */
+  const reportPanel =
+    reportGroup === "legendhl" ? "accessories" : reportGroup || "contours";
+  /** Accessories sibling inside the report Accessories group. */
+  const [reportAccessoryTab, setReportAccessoryTab] = useState<
+    "legend" | "hld" | "highlow"
+  >("legend");
+  /**
+   * Tap-to-size HUD for Legend / H/L/Δ / High/Low. Blue −/+ sits way above
+   * the accessory so it does not fight press-and-move. Reading labels never
+   * open this (they use the Readings | − | + pill).
+   */
+  const [sizeHud, setSizeHud] = useState<null | {
+    kind: "legend" | "pill" | "pin";
+    clientX: number;
+    clientY: number;
+  }>(null);
   const [warningDismissed, setWarningDismissed] = useState(false);
   // "Send to Distress Survey" — idle while nothing has been asked for.
   const [layerState, setLayerState] = useState<"idle" | "working" | "done" | "failed">("idle");
   const [layerMessage, setLayerMessage] = useState("");
-  // Stats pill (High/Low/Δ chip) size: the last size set on this device, used
-  // by every job on it. Nothing watches the window any more -- the size does
-  // not depend on the screen, so a resize cannot change it.
+  // Stats pill size: capture = per Customer File on this device; report =
+  // hostStatsPillPx from floorLayout.pillLock. Any settingsOwnedByHost mount
+  // (rail or live drawing) must not read or listen to capture storage.
+  const hostOwnsPill = settingsOwnedByHost;
   const [statsChipLocked, setStatsChipLocked] = useState<number | null>(null);
   useEffect(() => {
-    setStatsChipLocked(getStatsChipSize());
+    if (hostOwnsPill) return;
+    setStatsChipLocked(getStatsChipSize(customerFileId));
     const onSize = (e: Event) => {
-      const detail = (e as CustomEvent<number | null>).detail;
-      setStatsChipLocked(typeof detail === "number" ? detail : null);
+      const detail = (
+        e as CustomEvent<number | { size: number; customerFileId?: string | null }>
+      ).detail;
+      if (typeof detail === "number") {
+        setStatsChipLocked(detail);
+        return;
+      }
+      if (!detail || typeof detail.size !== "number") return;
+      if (
+        customerFileId &&
+        detail.customerFileId &&
+        detail.customerFileId !== customerFileId
+      ) {
+        return;
+      }
+      setStatsChipLocked(detail.size);
     };
     window.addEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     return () => {
       window.removeEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     };
-  }, []);
-  const statsChipSize = statsChipLocked ?? DEFAULT_STATS_CHIP_SIZE;
+  }, [customerFileId, hostOwnsPill]);
+  const statsChipSize = hostOwnsPill
+    ? Math.max(
+        STATS_CHIP_MIN,
+        Math.min(
+          STATS_CHIP_MAX,
+          Math.round(hostStatsPillPx ?? DEFAULT_STATS_CHIP_SIZE),
+        ),
+      )
+    : (statsChipLocked ?? DEFAULT_STATS_CHIP_SIZE);
+  const commitStatsPillSize = useCallback(
+    (raw: number) => {
+      const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(raw)));
+      if (hostOwnsPill) {
+        onHostStatsPillPxChange?.(n);
+        return;
+      }
+      setStatsChipLocked(n);
+      setStatsChipSize(n, customerFileId);
+      if (customerFileId) patchCaptureSizes(customerFileId, { statsPillSize: n });
+    },
+    [hostOwnsPill, onHostStatsPillPxChange, customerFileId],
+  );
   const [legendDrag, setLegendDrag] = useState<{
     areaId: string;
     /** Pointer offset inside the legend box. */
@@ -476,6 +623,14 @@ export function TopoTab({
     /** Live legendDx/legendDy while dragging a per-boundary legend. */
     legendDx: number;
     legendDy: number;
+    /** Image-space pointer start — used once the drag is armed. */
+    startPointerX: number;
+    startPointerY: number;
+    /** Screen-space start — hold-vs-drag threshold is zoom-independent. */
+    startClientX: number;
+    startClientY: number;
+    /** False until the finger moves; hold-still opens size instead. */
+    active: boolean;
   } | null>(null);
   // Topo boundary selector (All boundaries / named border) — drag to clear the plan.
   const BOUNDARY_SELECT_KEY = `topo.boundary-select:${floor.id}`;
@@ -508,6 +663,8 @@ export function TopoTab({
   }, [floor.id]);
   // Current canvas zoom — labels are drawn at a screen-constant size.
   const [viewScale, setViewScale] = useState(1);
+  /** Scale at which the plan fits the viewport — anchors plan-scaled labels. */
+  const [fitScale, setFitScale] = useState(1);
   // The plan's zoom against fit. Reported by the canvas with every camera
   // change; the legend uses it to hold one size on a page.
   const [planZoom, setPlanZoom] = useState(1);
@@ -532,50 +689,57 @@ export function TopoTab({
       })
     : resolveSettings(settings);
 
-  // Persist legend scale/position across sessions (localStorage). Defaults: 1.5×.
-  const LEGEND_STORAGE_KEY = "topo.legend.v1";
+  // Persist legend scale/position per Customer File on this device (capture only).
   const legendHydratedRef = useRef(false);
   useEffect(() => {
     if (settingsOwnedByHost) return;
+    if (!customerFileId) return;
     if (legendHydratedRef.current) return;
     legendHydratedRef.current = true;
     if (typeof window === "undefined") return;
     let stored: { scale?: number; x?: number; y?: number } | null = null;
     try {
-      const raw = window.localStorage.getItem(LEGEND_STORAGE_KEY);
+      const raw =
+        window.localStorage.getItem(legendStorageKey(customerFileId)) ||
+        window.localStorage.getItem("topo.legend.v1");
       if (raw) stored = JSON.parse(raw);
     } catch {
       stored = null;
     }
+    // Only apply stored capture values. Screen defaults already came from the
+    // host via loadCaptureSizes — do not force 1.5 over them.
+    if (!stored) return;
     const patch: Partial<RenderSettings> = {};
-    if (stored && typeof stored.scale === "number") patch.legendScale = stored.scale;
-    else patch.legendScale = 1.5;
-    if (stored && typeof stored.x === "number") patch.legendX = stored.x;
-    if (stored && typeof stored.y === "number") patch.legendY = stored.y;
-    onSettingsChange(resolveSettings({ ...resolved, ...patch }));
+    if (typeof stored.scale === "number") patch.legendScale = stored.scale;
+    if (typeof stored.x === "number") patch.legendX = stored.x;
+    if (typeof stored.y === "number") patch.legendY = stored.y;
+    if (Object.keys(patch).length) {
+      onSettingsChange(resolveSettings({ ...resolved, ...patch }));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [customerFileId, settingsOwnedByHost]);
   useEffect(() => {
     if (settingsOwnedByHost) return;
+    if (!customerFileId) return;
     if (!legendHydratedRef.current) return;
     if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(
-        LEGEND_STORAGE_KEY,
-        JSON.stringify({
-          scale: resolved.legendScale ?? 1.5,
-          x: resolved.legendX,
-          y: resolved.legendY,
-        }),
-      );
-    } catch {
-      /* ignore quota */
-    }
-  }, [resolved.legendScale, resolved.legendX, resolved.legendY]);
+    patchCaptureSizes(customerFileId, {
+      legendScale: resolved.legendScale ?? 1.5,
+      legendX: resolved.legendX,
+      legendY: resolved.legendY,
+    });
+  }, [
+    customerFileId,
+    settingsOwnedByHost,
+    resolved.legendScale,
+    resolved.legendX,
+    resolved.legendY,
+  ]);
 
 
-  // Live drag (long-press-and-drag). One kind at a time: a point label, a H/L
-  // pin, or an area's stats pill.
+  // Live drag. Labels: long-press then move (unchanged). Accessories
+  // (Legend / H/L/Δ pill / High/Low): press-and-move to move; tap opens the
+  // blue size −/+ way above the piece. Reading labels never use this HUD.
   type DragKind = "label" | "pin-high" | "pin-low" | "pill";
   const [drag, setDrag] = useState<{
     kind: DragKind;
@@ -584,11 +748,35 @@ export function TopoTab({
     dy: number;
     startPointerX: number;
     startPointerY: number;
+    startClientX: number;
+    startClientY: number;
     startDx: number;
     startDy: number;
-    active: boolean; // true after long-press fires
+    active: boolean; // true after long-press (labels) or move threshold (accessories)
+    /** Accessory (not a reading label): move on drag, size on tap. */
+    accessory?: boolean;
   } | null>(null);
   const longPressTimer = useRef<number | null>(null);
+  // Drop label long-press timer if Topo unmounts mid-press.
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current !== null) {
+        window.clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+      }
+    };
+  }, []);
+  // Outside press dismisses the size HUD; −/+ inside it stay usable.
+  useEffect(() => {
+    if (!sizeHud) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (t && t.closest("[data-accessory-size-hud]")) return;
+      setSizeHud(null);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [sizeHud]);
   type LastMove =
     | { kind: "label"; id: string; prevDx: number | undefined; prevDy: number | undefined }
     | { kind: "pin-high" | "pin-low"; prevDx: number | undefined; prevDy: number | undefined }
@@ -604,7 +792,13 @@ export function TopoTab({
     if (onExcludedIdsChange) onExcludedIdsChange(ids);
     else setExcludedIdsLocal(ids);
   };
-  const [diagOpen, setDiagOpen] = useState(false);
+  const [diagOpenLocal, setDiagOpenLocal] = useState(false);
+  const diagControlled = typeof onDiagnosticOpenChange === "function";
+  const diagOpen = diagControlled ? !!diagnosticOpenProp : diagOpenLocal;
+  const setDiagOpen = (open: boolean) => {
+    if (diagControlled) onDiagnosticOpenChange!(open);
+    else setDiagOpenLocal(open);
+  };
   useEffect(() => {
     if (onExcludedIdsChange) onExcludedIdsChange(new Set());
     else setExcludedIdsLocal(new Set());
@@ -668,6 +862,44 @@ export function TopoTab({
   const update = (patch: Partial<RenderSettings>) =>
     onSettingsChange(resolveSettings({ ...resolved, ...patch }));
 
+  /** Last Points/Labels state before a field “Readings” hide — restore on show. */
+  const readingsPrevRef = useRef<{ showPoints: boolean; showLabels: boolean } | null>(null);
+  const readingsOn = resolved.showPoints || resolved.showLabels;
+  const LABEL_SIZE_MIN = 6;
+  const LABEL_SIZE_MAX = 28;
+  function toggleReadings() {
+    if (readingsOn) {
+      readingsPrevRef.current = {
+        showPoints: resolved.showPoints,
+        showLabels: resolved.showLabels,
+      };
+      update({ showPoints: false, showLabels: false });
+    } else {
+      const prev = readingsPrevRef.current;
+      update({
+        showPoints: prev?.showPoints ?? true,
+        showLabels: prev?.showLabels ?? true,
+      });
+    }
+  }
+  function nudgeLabelSize(delta: number) {
+    const next = Math.max(
+      LABEL_SIZE_MIN,
+      Math.min(LABEL_SIZE_MAX, Math.round(resolved.pointLabelFontSize + delta)),
+    );
+    if (next !== resolved.pointLabelFontSize) update({ pointLabelFontSize: next });
+  }
+  function setCleanViewOn(next: boolean) {
+    setCleanView(next);
+    if (next) setOpenCorner(null);
+    onCleanViewChange?.(next);
+  }
+  useEffect(() => {
+    return () => {
+      onCleanViewChange?.(false);
+    };
+  }, [onCleanViewChange]);
+
   // High / Low of the focused area (used for pin hit-testing / dragging).
   const hiLo = soloTopo ? { hi: soloTopo.hi, lo: soloTopo.lo } : null;
 
@@ -727,11 +959,14 @@ export function TopoTab({
     if (resolved.showPoints) {
       const fontBase = resolved.pointLabelFontSize;
       // Must match the drawn size exactly, or a tap lands beside the label.
-      const fontPx = chromeSizeImg(fontBase, viewScale || 1, presentation, floor);
+      const fontPx = pointLabelFontImg(fontBase, floor, {
+        presentation,
+        fitScale,
+      });
       const k = fontPx / fontBase;
       const dec = resolved.decimalPlaces;
       const weight = resolved.pointLabelWeight;
-      const pad = 4 * k;
+      const pad = 4 * labelChromeK(fontPx);
       for (const p of visiblePoints) {
         const text = p.value.toFixed(dec);
         const { w, h } = measureLabel(text, fontPx, weight);
@@ -878,7 +1113,7 @@ export function TopoTab({
     <div className="flex flex-col h-full relative">
       {/* Area selector — only when the floor has more than one drawn area.
           Draggable so report screenshots can clear it off the plan. */}
-      {areas.length > 1 && !chromeless && (
+      {areas.length > 1 && !chromeless && !cleanView && (
         <div
           className="absolute z-30 touch-none"
           style={
@@ -953,57 +1188,91 @@ export function TopoTab({
           </div>
         </div>
       )}
-      {/* Corner icons — closed by default, tap to open. Hidden while their own panel is open. */}
-      {openCorner !== "contours" && !chromeless && !controlsOnly && (
-        <CornerIcon
-          pos="top-2 left-2 landscape-short:top-auto landscape-short:left-1/2 landscape-short:-translate-x-[calc(100%+0.25rem)] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
-          active={false}
-          onClick={() => setOpenCorner("contours")}
-          label="Contours"
+      {/*
+        Field corner chrome (screen-fixed; does not zoom with the plan):
+        TL # − + · TR Control panel · BR Clean.
+        Data/Topo stays BL (ModeToggle). Boundary selector + H/L/Δ float.
+      */}
+      {!chromeless && !controlsOnly && !cleanView && (
+        <div
+          className={
+            "absolute z-30 top-2 left-2 h-9 flex items-stretch overflow-hidden rounded-full backdrop-blur shadow-md border text-xs font-medium " +
+            (readingsOn
+              ? "bg-white/95 border-gray-300 text-gray-700"
+              : "bg-white/80 border-gray-300 text-gray-400")
+          }
+          role="group"
+          aria-label="Readings"
         >
-          <Waves className="h-4 w-4" />
-        </CornerIcon>
+          <button
+            type="button"
+            onClick={toggleReadings}
+            aria-label={readingsOn ? "Hide readings" : "Show readings"}
+            aria-pressed={readingsOn}
+            className="w-9 flex items-center justify-center hover:bg-gray-50"
+          >
+            <Hash className="h-3.5 w-3.5 shrink-0" />
+          </button>
+          <span className="w-px bg-gray-200" aria-hidden />
+          <button
+            type="button"
+            onClick={() => nudgeLabelSize(-1)}
+            disabled={resolved.pointLabelFontSize <= LABEL_SIZE_MIN}
+            aria-label="Smaller reading labels"
+            className="w-9 flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <span className="w-px bg-gray-200" aria-hidden />
+          <button
+            type="button"
+            onClick={() => nudgeLabelSize(1)}
+            disabled={resolved.pointLabelFontSize >= LABEL_SIZE_MAX}
+            aria-label="Larger reading labels"
+            className="w-9 flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
       )}
-      {openCorner !== "palette" && !chromeless && !controlsOnly && (
-        <CornerIcon
-          pos="top-2 right-2 landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:translate-x-[0.25rem] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
-          active={false}
-          onClick={() => setOpenCorner("palette")}
-          label="Palette"
-        >
-          <Palette className="h-4 w-4" />
-        </CornerIcon>
-      )}
-      {openCorner !== "labels" && !chromeless && !controlsOnly && (
+      {/* Top right — Control panel only */}
+      {!chromeless && !controlsOnly && !cleanView && openCorner == null && (
         <button
           type="button"
-          onClick={() => setOpenCorner("labels")}
-          aria-label="Labels & layers"
-          className="fixed z-30 h-9 w-9 rounded-full bg-white/95 backdrop-blur border border-gray-300 shadow-md flex items-center justify-center text-gray-700 hover:bg-gray-50 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] right-[calc(env(safe-area-inset-right)+0.75rem)]"
+          onClick={() => openTrialDoor(lastTrialDoor ?? "contours")}
+          aria-label="Control panel"
+          className={
+            "absolute z-30 top-2 right-2 " +
+            "h-9 px-3 flex items-center gap-1.5 rounded-full bg-white/95 backdrop-blur shadow-md border border-gray-300 " +
+            "text-xs font-medium text-gray-700 hover:bg-gray-50"
+          }
         >
-          <Tag className="h-4 w-4" />
+          <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
+          <span>Control panel</span>
         </button>
       )}
-      {/* Diagnostic panel toggle — Topo-only. Excludes points from contour math without touching stored data. */}
-      {!chromeless && (
-      <button
-        type="button"
-        onClick={() => setDiagOpen((v) => !v)}
-        aria-label="Diagnostic points panel"
-        className={
-          "fixed z-30 h-9 min-w-9 px-2 rounded-full backdrop-blur border shadow-md flex items-center justify-center gap-1 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] right-[calc(env(safe-area-inset-right)+3.5rem)] " +
-          (diagOpen || excludedIds.size > 0
-            ? "bg-amber-100 border-amber-300 text-amber-900"
-            : "bg-white/95 border-gray-300 text-gray-700 hover:bg-gray-50")
-        }
-      >
-        <SlidersHorizontal className="h-4 w-4" />
-        {excludedIds.size > 0 && (
-          <span className="text-[10px] font-mono tabular-nums">{excludedIds.size}</span>
-        )}
-      </button>
+      {/* Bottom right — Clean (Data/Topo owns bottom left) */}
+      {!chromeless && !controlsOnly && (
+        <button
+          type="button"
+          onClick={() => setCleanViewOn(!cleanView)}
+          aria-label={cleanView ? "Show chrome" : "Clean view"}
+          aria-pressed={cleanView}
+          className={
+            "fixed z-30 h-9 px-3 flex items-center gap-1.5 rounded-full backdrop-blur shadow-md border " +
+            "text-xs font-medium bg-white/95 border-gray-300 text-gray-700 hover:bg-gray-50 " +
+            "bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] right-[calc(env(safe-area-inset-right)+0.75rem)]"
+          }
+        >
+          {cleanView ? (
+            <EyeOff className="h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <Eye className="h-3.5 w-3.5 shrink-0" />
+          )}
+          <span>{cleanView ? "Chrome" : "Clean"}</span>
+        </button>
       )}
-
+      {/* Diagnostic points — opened from ⋯ (not a field corner pill). */}
       {diagOpen && !chromeless && (
         <TopoDiagnosticPanel
           points={points}
@@ -1061,9 +1330,14 @@ export function TopoTab({
           // sheet -- it shows the same view in the new frame rather than
           // keeping pixels measured against the old one.
           reframeOnResize={presentation}
-          onTransform={(t) => setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s))}
-          onImagePointerDown={(x, y) => {
-            // Legend tap: start drag only. Size is edited in Labels & layers.
+          onTransform={(t, meta) => {
+            setViewScale((s) => (Math.abs(s - t.scale) > 1e-4 ? t.scale : s));
+            if (meta?.fitScale > 0) {
+              setFitScale((s) => (Math.abs(s - meta.fitScale) > 1e-4 ? meta.fitScale : s));
+            }
+          }}
+          onImagePointerDown={(x, y, event) => {
+            // Legend: press-and-move to place; tap opens blue size −/+ above it.
             // Every visible contour surface gets its own legend next to that
             // boundary — All boundaries, Main Floor alone, or Lower Bedroom alone.
             if (resolved.showLegend && !chromeOnPage && areaTopos.length > 0 &&
@@ -1083,20 +1357,27 @@ export function TopoTab({
                     dy: y - box.y,
                     legendDx: at.area.legendDx ?? 0,
                     legendDy: at.area.legendDy ?? 0,
+                    startPointerX: x,
+                    startPointerY: y,
+                    startClientX: event.clientX,
+                    startClientY: event.clientY,
+                    active: false,
                   });
+                  clearLongPress();
                   return true;
                 }
               }
             }
-            // Boundary H/L/Δ pills drag immediately (same as the legend).
-            // Point labels and High/Low pins still need a long-press.
+            // Accessories (pill / High/Low): press-and-move to move; tap for
+            // size. Point labels keep long-press-to-arm so a casual pan does
+            // not pick one up (and so pinch can cancel before the move arms).
             const hit = hitDraggable(x, y);
             if (hit) {
               const startDx =
                 hit.kind === "label" ? (hit.point.labelDx ?? DEFAULT_LABEL_DX) : hit.dx;
               const startDy =
                 hit.kind === "label" ? (hit.point.labelDy ?? DEFAULT_LABEL_DY) : hit.dy;
-              const immediate = hit.kind === "pill";
+              const accessory = hit.kind !== "label";
               setDrag({
                 kind: hit.kind,
                 id:
@@ -1109,12 +1390,15 @@ export function TopoTab({
                 dy: startDy,
                 startPointerX: x,
                 startPointerY: y,
+                startClientX: event.clientX,
+                startClientY: event.clientY,
                 startDx,
                 startDy,
-                active: immediate,
+                active: false,
+                accessory,
               });
               clearLongPress();
-              if (!immediate) {
+              if (!accessory) {
                 longPressTimer.current = window.setTimeout(() => {
                   setDrag((d) => (d ? { ...d, active: true } : d));
                 }, LONG_PRESS_MS);
@@ -1123,8 +1407,20 @@ export function TopoTab({
             }
             return false;
           }}
-          onImagePointerMove={(x, y) => {
+          onImagePointerMove={(x, y, event) => {
             if (legendDrag?.areaId) {
+              if (!legendDrag.active) {
+                // Screen pixels: same finger travel at any canvas zoom.
+                const moved = Math.hypot(
+                  event.clientX - legendDrag.startClientX,
+                  event.clientY - legendDrag.startClientY,
+                );
+                if (moved > ACCESSORY_MOVE_PX) {
+                  setSizeHud(null);
+                  setLegendDrag({ ...legendDrag, active: true });
+                }
+                return;
+              }
               const area = getAreas(floor).find((a) => a.id === legendDrag.areaId);
               if (area) {
                 const anchor = areaLegendAnchor(area);
@@ -1138,10 +1434,26 @@ export function TopoTab({
             }
             if (drag) {
               if (!drag.active) {
-                const moved = Math.hypot(x - drag.startPointerX, y - drag.startPointerY);
-                if (moved > 6) {
-                  clearLongPress();
-                  setDrag(null);
+                if (drag.accessory) {
+                  const moved = Math.hypot(
+                    event.clientX - drag.startClientX,
+                    event.clientY - drag.startClientY,
+                  );
+                  if (moved > ACCESSORY_MOVE_PX) {
+                    // Accessory: movement wins — drag; size stays out of the way.
+                    setSizeHud(null);
+                    setDrag({ ...drag, active: true });
+                  }
+                } else {
+                  // Label: image-space cancel before long-press (proven gesture).
+                  const moved = Math.hypot(
+                    x - drag.startPointerX,
+                    y - drag.startPointerY,
+                  );
+                  if (moved > 6) {
+                    clearLongPress();
+                    setDrag(null);
+                  }
                 }
                 return;
               }
@@ -1153,8 +1465,21 @@ export function TopoTab({
             }
           }}
           onImagePointerUp={() => {
-            if (legendDrag?.areaId != null && legendDrag.legendDx != null && legendDrag.legendDy != null) {
-              applyLegendOffset(legendDrag.areaId, legendDrag.legendDx, legendDrag.legendDy);
+            if (legendDrag?.areaId != null) {
+              if (
+                legendDrag.active &&
+                legendDrag.legendDx != null &&
+                legendDrag.legendDy != null
+              ) {
+                applyLegendOffset(legendDrag.areaId, legendDrag.legendDx, legendDrag.legendDy);
+              } else if (!legendDrag.active) {
+                // Tap legend → blue size −/+ way above (not under the thumb).
+                setSizeHud({
+                  kind: "legend",
+                  clientX: legendDrag.startClientX,
+                  clientY: legendDrag.startClientY,
+                });
+              }
             }
             setLegendDrag(null);
             clearLongPress();
@@ -1164,13 +1489,21 @@ export function TopoTab({
                 if (drag.kind === "label") commitLabelMove(drag.id, drag.dx, drag.dy);
                 else if (drag.kind === "pill") commitPillMove(drag.id, drag.dx, drag.dy);
                 else commitPinMove(drag.kind, drag.dx, drag.dy);
+              } else if (drag.accessory && !drag.active) {
+                // Tap accessory → size. Move is press-and-drag only.
+                setSizeHud({
+                  kind: drag.kind === "pill" ? "pill" : "pin",
+                  clientX: drag.startClientX,
+                  clientY: drag.startClientY,
+                });
               }
-              // A tap on the pill does nothing. It used to highlight the High
-              // or the Low point whose reading was under the finger. Tim: "if
-              // you click the numbers on the high low pills it highlights the
-              // high or the low on the top -- I don't think I want that." The
-              // pill is a readout and a thing to drag, not a control.
             }
+            setDrag(null);
+          }}
+          onImagePointerCancel={() => {
+            // Pinch took over — discard accessory / label drag without commit.
+            clearLongPress();
+            setLegendDrag(null);
             setDrag(null);
           }}
           drawOverlay={(ctx) => {
@@ -1190,7 +1523,8 @@ export function TopoTab({
                 ? { id: drag.id, dx: drag.dx, dy: drag.dy }
                 : null;
             const activeLegend =
-              legendDrag?.areaId != null &&
+              legendDrag?.active &&
+              legendDrag.areaId != null &&
               legendDrag.legendDx != null &&
               legendDrag.legendDy != null
                 ? { id: legendDrag.areaId, dx: legendDrag.legendDx, dy: legendDrag.legendDy }
@@ -1214,384 +1548,418 @@ export function TopoTab({
               pointSize,
               pointColor,
               viewScale,
+              fitScale,
             });
           }}
         />
         )}
 
-        {/* Contours popover — upper left */}
+        {/* Contours — Control panel destination 1 */}
         {(openCorner === "contours" && !controlsOnly) && (
-          <CornerPanel inline={controlsOnly} pos="top-12 left-2 landscape-short:top-2 landscape-short:left-auto landscape-short:right-2" onClose={() => setOpenCorner(null)} title="Contours">
-            {gridAndContours?.grid && (
-              <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
-                Range {readingText(gridAndContours.grid.minValue)}"–
-                {readingText(gridAndContours.grid.maxValue)}"
-              </p>
-            )}
-            <div>
-              <Label className="text-xs">Mode</Label>
-              <select
-                value={resolved.mode}
-                onChange={(e) => update({ mode: e.target.value as RenderSettings["mode"] })}
-                className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
-              >
-                <option value="contour-fill">Color fill</option>
-                <option value="contour-cells">Color cells</option>
-                <option value="contour-bw">B&W lines</option>
-                <option value="points-only">Points only</option>
-              </select>
-            </div>
-            {/*
-              Send to Distress Survey.
-
-              Only on B&W lines, and only in the field app. Tim: "I wonder if
-              the button only triggers when we do black-and-white contours."
-              It does, which makes it what you see is what you send -- there is
-              no mode for the writer to override, so the picture that lands
-              under the damage pins is the one on this screen. The one thing it
-              drops is the reading labels, because the pins go where those
-              would be.
-            */}
-            {allowContourLayer && resolved.mode === "contour-bw" && (
-              <div className="border-t pt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 w-full text-xs"
-                  disabled={layerState === "working"}
-                  onClick={async () => {
-                    setLayerState("working");
-                    setLayerMessage("");
-                    try {
-                      // Imported here rather than at the top: the composer
-                      // reads renderTopo out of this module, so a static
-                      // import would close a cycle through it.
-                      const [{ composeContourLayer }, { persistContourLayer }] = await Promise.all([
-                        import("@/lib/contour-layer"),
-                        import("@/lib/db"),
-                      ]);
-                      const drawn = await composeContourLayer({
-                        floor,
-                        points,
-                        settings: resolved,
-                        // The boundary on screen, not every boundary. A
-                        // garage is sloped to drain and swamps the house.
-                        areaId: selectedAreaId,
-                      });
-                      if (!drawn) {
-                        setLayerState("failed");
-                        setLayerMessage("No contours to send yet — this level needs a closed boundary with readings inside it.");
-                        return;
-                      }
-                      await persistContourLayer(floor.id, drawn.dataUrl, {
-                        areaName: drawn.areaName,
-                        // The plan extent the layer covers, not the picture's
-                        // own pixels. The picture is drawn well above plan
-                        // resolution so it holds up on paper, and it is
-                        // stretched back into this box wherever it is shown --
-                        // so this is the number that says the two layers line
-                        // up, in the same units as the plan's own.
-                        width: drawn.extent.w,
-                        height: drawn.extent.h,
-                        pointCount: drawn.pointCount,
-                      });
-                      setLayerState("done");
-                      // Name what went, because sending the wrong boundary
-                      // looks exactly like sending nothing.
-                      setLayerMessage(
-                        `Sent ${drawn.areaName}. Distress Survey can show the pins on it.`,
-                      );
-                    } catch (err) {
-                      setLayerState("failed");
-                      setLayerMessage(
-                        (err as Error)?.message || "Could not send the contour to Distress Survey.",
-                      );
-                    }
-                  }}
-                >
-                  {layerState === "working" ? "Sending…" : "Send to Distress Survey"}
-                </Button>
-                {layerMessage && (
-                  <p
-                    className={
-                      "mt-1 text-[10px] leading-tight " +
-                      (layerState === "failed" ? "text-destructive" : "text-muted-foreground")
-                    }
-                  >
-                    {layerMessage}
+          <TrialPanel
+            title="Contours"
+            tabs="contours"
+            onTab={openTrialDoor}
+            onClose={() => setOpenCorner(null)}
+          >
+            <TrialSectionTabs
+              label="Contours"
+              openId={trialSectionByDoor.contours ?? "display"}
+              onChange={(id) => setTrialSection("contours", id)}
+              lead={
+                gridAndContours?.grid ? (
+                  <p className="text-[10px] tabular-nums text-muted-foreground">
+                    Range {readingText(gridAndContours.grid.minValue)}"–
+                    {readingText(gridAndContours.grid.maxValue)}"
                   </p>
-                )}
-              </div>
-            )}
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <Label className="text-xs">First</Label>
-                <Input
-                  type="number"
-                  step="0.05"
-                  enterKeyHint="done"
-                  value={resolved.firstContour ?? ""}
-                  placeholder="auto"
-                  onChange={(e) =>
-                    update({
-                      firstContour: e.target.value === "" ? null : parseFloat(e.target.value),
-                    })
-                  }
-                  className="mt-1 h-9 text-base"
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Step</Label>
-                <StepInput
-                  value={resolved.contourStep}
-                  onCommit={(step) => update({ contourStep: step, interval: step })}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Count</Label>
-                <Input
-                  type="text"
-                  inputMode="numeric"
-                  enterKeyHint="done"
-                  value={resolved.contourCount ?? ""}
-                  placeholder="auto"
-                  onChange={(e) => {
-                    const raw = e.target.value.trim();
-                    if (raw === "" || raw.toLowerCase() === "auto") {
-                      update({ contourCount: null });
-                    } else {
-                      const n = parseInt(raw, 10);
-                      update({ contourCount: isFinite(n) ? Math.max(2, n) : null });
-                    }
-                  }}
-                  className="mt-1 h-9 text-base"
-                />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Line thickness</Label>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {resolved.lineThickness.toFixed(1)}
-                </span>
-              </div>
-              <Slider
-                min={0.5}
-                max={4}
-                step={0.1}
-                value={[resolved.lineThickness]}
-                onValueChange={(v) => update({ lineThickness: v[0] })}
-                className="mt-2"
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <Label className="text-xs">Contours on</Label>
-              <Switch
-                checked={resolved.showContours}
-                onCheckedChange={(v) => update({ showContours: v })}
-              />
-            </div>
-          </CornerPanel>
-        )}
-
-        {/* Palette popover — upper right */}
-        {(openCorner === "palette" && !controlsOnly) && (
-          <CornerPanel
-            inline={controlsOnly}
-            pos="top-12 right-2 w-60 landscape-short:top-2"
-            onClose={() => setOpenCorner(null)}
-            title="Palette"
-          >
-            <div className="flex items-center justify-between">
-              <Label className="text-xs">Reverse</Label>
-              <Switch
-                checked={resolved.reversePalette}
-                onCheckedChange={(v) => update({ reversePalette: v })}
-              />
-            </div>
-            <PalettePicker
-              value={resolved.palette}
-              onChange={(p) => update({ palette: p })}
+                ) : null
+              }
+              items={[
+                {
+                  id: "display",
+                  title: "Display",
+                  body: (
+                    <>
+                      <div>
+                        <Label className="text-xs">Mode</Label>
+                        <select
+                          value={resolved.mode}
+                          onChange={(e) =>
+                            update({ mode: e.target.value as RenderSettings["mode"] })
+                          }
+                          className="mt-1 h-10 w-full rounded-md border bg-background px-2 text-xs"
+                        >
+                          <option value="contour-fill">Color fill</option>
+                          <option value="contour-cells">Color cells</option>
+                          <option value="contour-bw">B&W lines</option>
+                          <option value="points-only">Points only</option>
+                        </select>
+                      </div>
+                      <SwitchRow
+                        label="Contours on"
+                        checked={resolved.showContours}
+                        onChange={(v) => update({ showContours: v })}
+                      />
+                      <SwitchRow
+                        label="Floor plan"
+                        checked={resolved.showPlan}
+                        onChange={(v) => update({ showPlan: v })}
+                      />
+                      {allowContourLayer && resolved.mode === "contour-bw" && (
+                        <div className="border-t pt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-10 w-full text-xs"
+                            disabled={layerState === "working"}
+                            onClick={async () => {
+                              setLayerState("working");
+                              setLayerMessage("");
+                              try {
+                                const [{ composeContourLayer }, { persistContourLayer }] =
+                                  await Promise.all([
+                                    import("@/lib/contour-layer"),
+                                    import("@/lib/db"),
+                                  ]);
+                                const drawn = await composeContourLayer({
+                                  floor,
+                                  points,
+                                  settings: resolved,
+                                  areaId: selectedAreaId,
+                                });
+                                if (!drawn) {
+                                  setLayerState("failed");
+                                  setLayerMessage(
+                                    "No contours to send yet — this level needs a closed boundary with readings inside it.",
+                                  );
+                                  return;
+                                }
+                                await persistContourLayer(floor.id, drawn.dataUrl, {
+                                  areaName: drawn.areaName,
+                                  width: drawn.extent.w,
+                                  height: drawn.extent.h,
+                                  pointCount: drawn.pointCount,
+                                });
+                                setLayerState("done");
+                                setLayerMessage(
+                                  `Sent ${drawn.areaName}. Distress Survey can show the pins on it.`,
+                                );
+                              } catch (err) {
+                                setLayerState("failed");
+                                setLayerMessage(
+                                  (err as Error)?.message ||
+                                    "Could not send the contour to Distress Survey.",
+                                );
+                              }
+                            }}
+                          >
+                            {layerState === "working" ? "Sending…" : "Send to Distress Survey"}
+                          </Button>
+                          {layerMessage && (
+                            <p
+                              className={
+                                "mt-1 text-[10px] leading-tight " +
+                                (layerState === "failed"
+                                  ? "text-destructive"
+                                  : "text-muted-foreground")
+                              }
+                            >
+                              {layerMessage}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      <div className="border-t pt-2 space-y-2">
+                        <p className="text-[10px] text-muted-foreground">
+                          Color scale on the plan. Press and move to place. Tap for
+                          size −/+.
+                        </p>
+                        <div className="flex flex-wrap items-end justify-between gap-2">
+                          <SwitchRow
+                            label="Legend"
+                            checked={resolved.showLegend}
+                            onChange={(v) => update({ showLegend: v })}
+                          />
+                          <StepperControl
+                            label="Legend size"
+                            value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+                            min={0.4}
+                            max={4}
+                            step={0.1}
+                            unitless
+                            onChange={(v) =>
+                              update({
+                                legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)),
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+                    </>
+                  ),
+                },
+                {
+                  id: "colors",
+                  title: "Colors",
+                  body: (
+                    <>
+                      <SwitchRow
+                        label="Reverse"
+                        checked={resolved.reversePalette}
+                        onChange={(v) => update({ reversePalette: v })}
+                      />
+                      <PalettePicker
+                        value={resolved.palette}
+                        onChange={(p) => update({ palette: p })}
+                      />
+                    </>
+                  ),
+                },
+                {
+                  id: "lines",
+                  title: "Lines",
+                  body: (
+                    <>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="min-w-0">
+                          <Label className="text-xs">First</Label>
+                          <Input
+                            type="number"
+                            step="0.05"
+                            enterKeyHint="done"
+                            value={resolved.firstContour ?? ""}
+                            placeholder="auto"
+                            onChange={(e) =>
+                              update({
+                                firstContour:
+                                  e.target.value === "" ? null : parseFloat(e.target.value),
+                              })
+                            }
+                            className="mt-1 h-10 w-full text-base"
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <Label className="text-xs">Step</Label>
+                          <StepInput
+                            value={resolved.contourStep}
+                            onCommit={(step) => update({ contourStep: step, interval: step })}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <Label className="text-xs">Count</Label>
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            enterKeyHint="done"
+                            value={resolved.contourCount ?? ""}
+                            placeholder="auto"
+                            onChange={(e) => {
+                              const raw = e.target.value.trim();
+                              if (raw === "" || raw.toLowerCase() === "auto") {
+                                update({ contourCount: null });
+                              } else {
+                                const n = parseInt(raw, 10);
+                                update({
+                                  contourCount: isFinite(n) ? Math.max(2, n) : null,
+                                });
+                              }
+                            }}
+                            className="mt-1 h-10 w-full text-base"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs">Line thickness</Label>
+                          <span className="text-xs tabular-nums text-muted-foreground">
+                            {resolved.lineThickness.toFixed(1)}
+                          </span>
+                        </div>
+                        <Slider
+                          min={0.5}
+                          max={4}
+                          step={0.1}
+                          value={[resolved.lineThickness]}
+                          onValueChange={(v) => update({ lineThickness: v[0] })}
+                          className="mt-2"
+                        />
+                      </div>
+                    </>
+                  ),
+                },
+              ]}
             />
-          </CornerPanel>
+          </TrialPanel>
         )}
 
-        {/* Labels & layers popover — lower right */}
-        {(openCorner === "labels" && !controlsOnly) && (
-          <CornerPanel
-            inline={controlsOnly}
-            pos="bottom-14 right-3"
+        {(openCorner === "readings" && !controlsOnly) && (
+          <TrialPanel
+            title="Readings"
+            tabs="readings"
+            onTab={openTrialDoor}
             onClose={() => setOpenCorner(null)}
-            title="Labels & layers"
           >
-            <div className="grid grid-cols-2 gap-2">
-              <SwitchRow
-                label="Labels"
-                checked={resolved.showLabels}
-                onChange={(v) => update({ showLabels: v })}
-              />
-              <NumberControl
-                label="Decimals"
-                value={resolved.decimalPlaces}
-                min={0}
-                max={3}
-                step={1}
-                onChange={(v) =>
-                  update({
-                    decimalPlaces: Math.max(
-                      0,
-                      Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
-                    ),
-                  })
-                }
-              />
-              <SwitchRow
-                label="Floor plan"
-                checked={resolved.showPlan}
-                onChange={(v) => update({ showPlan: v })}
-              />
-              <SwitchRow
-                label="Points"
-                checked={resolved.showPoints}
-                onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
-              />
-              <SwitchRow
-                label="Legend"
-                checked={resolved.showLegend}
-                onChange={(v) => update({ showLegend: v })}
-              />
-              <SwitchRow
-                label="High / low"
-                checked={resolved.showHighLow}
-                onChange={(v) => update({ showHighLow: v })}
-              />
-              <SwitchRow
-                label="Declutter"
-                checked={resolved.declutterLabels !== false}
-                onChange={(v) => update({ declutterLabels: v })}
-              />
-              <StepperControl
-                label="Legend size"
-                value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
-                min={0.4}
-                max={4}
-                step={0.1}
-                format={(v) => `${v.toFixed(1)}×`}
-                onChange={(v) =>
-                  update({ legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)) })
-                }
-              />
-              {/* Set once, and it stays. Tim: "I don't think I'll ever use that
-                  setting because it's always wrong -- you just adjust it to
-                  the size that you want and it stays that size." There used to
-                  be a "Use Auto size for this screen" link under this, back
-                  when Auto read the window width and picked 24, 32 or 40. That
-                  was taken out so a job did not render at three sizes
-                  depending on what opened it, which left the link clearing the
-                  size to a fixed 32 under a label promising something about
-                  this screen. The size is simply the last one set, kept on
-                  this device and used by every job on it. */}
-              <div className="col-span-2">
-                <StepperControl
-                  label="Stats pill size"
-                  value={statsChipSize}
-                  min={STATS_CHIP_MIN}
-                  max={STATS_CHIP_MAX}
-                  step={2}
-                  format={(v) => `${Math.round(v)}px`}
-                  onChange={(v) => {
-                    const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(v)));
-                    setStatsChipLocked(n);
-                    setStatsChipSize(n);
-                  }}
-                />
-              </div>
-              <div className="col-span-2 flex items-center justify-between gap-2">
-                <Label className="text-xs">Label bg</Label>
-                <div className="inline-flex rounded-md border overflow-hidden">
-                  {(["white", "transparent", "plain"] as const).map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      className={`px-2 py-1 text-xs ${
-                        resolved.pointLabelBackground === opt
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-background"
-                      }`}
-                      onClick={() => update({ pointLabelBackground: opt })}
-                    >
-                      {opt === "white" ? "Box" : opt === "transparent" ? "Border" : "Plain"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <details className="border-t pt-2">
-              <summary className="text-xs text-muted-foreground cursor-pointer select-none">
-                Label style
-              </summary>
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                <StepperControl
-                  label="Point label size"
-                  value={resolved.pointLabelFontSize}
-                  min={6}
-                  max={28}
-                  step={1}
-                  onChange={(v) =>
-                    update({ pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))) })
-                  }
-                />
-                <StepperControl
-                  label="High / low size"
-                  value={resolved.highLowPinSize}
-                  min={7}
-                  max={28}
-                  step={1}
-                  onChange={(v) =>
-                    update({ highLowPinSize: Math.max(7, Math.min(28, Math.round(v))) })
-                  }
-                />
-                <div>
-                  <Label className="text-xs">Weight</Label>
-                  <select
-                    value={resolved.pointLabelWeight}
-                    onChange={(e) =>
-                      update({ pointLabelWeight: e.target.value as "normal" | "bold" })
-                    }
-                    className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
-                  >
-                    <option value="normal">Normal</option>
-                    <option value="bold">Bold</option>
-                  </select>
-                </div>
-                <div className="col-span-2">
-                  <Label className="text-xs">Color</Label>
-                  <div className="mt-1 flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={resolved.pointLabelColor}
-                      onChange={(e) => update({ pointLabelColor: e.target.value })}
-                      className="h-9 w-12 rounded-md border bg-background p-1 cursor-pointer"
-                    />
-                    <Input
-                      enterKeyHint="done"
-                      value={resolved.pointLabelColor}
-                      onChange={(e) => update({ pointLabelColor: e.target.value })}
-                      className="h-9 flex-1 font-mono text-base"
-                    />
-                  </div>
-                </div>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={resetAllLabelPositions}
-                className="mt-2 w-full h-8"
-              >
-                Reset label positions
-              </Button>
-            </details>
-          </CornerPanel>
+            <TrialSectionTabs
+              label="Readings"
+              openId={trialSectionByDoor.readings ?? "show"}
+              onChange={(id) => setTrialSection("readings", id)}
+              items={[
+                {
+                  id: "show",
+                  title: "Show",
+                  body: (
+                    <div className="space-y-1">
+                      <div className="grid grid-cols-2 gap-2">
+                        <SwitchRow
+                          label="Points"
+                          checked={resolved.showPoints}
+                          onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
+                        />
+                        <SwitchRow
+                          label="Labels"
+                          checked={resolved.showLabels}
+                          onChange={(v) => update({ showLabels: v })}
+                        />
+                      </div>
+                      <SwitchRow
+                        label="Declutter"
+                        checked={resolved.declutterLabels !== false}
+                        onChange={(v) => update({ declutterLabels: v })}
+                      />
+                    </div>
+                  ),
+                },
+                {
+                  id: "format",
+                  title: "Format",
+                  body: (
+                    <div className="space-y-2.5">
+                      <StepperControl
+                        label="Point label size"
+                        value={resolved.pointLabelFontSize}
+                        min={6}
+                        max={28}
+                        step={1}
+                        onChange={(v) =>
+                          update({
+                            pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))),
+                          })
+                        }
+                      />
+                      <div>
+                        <Label className="text-xs">Weight</Label>
+                        <select
+                          value={resolved.pointLabelWeight}
+                          onChange={(e) =>
+                            update({
+                              pointLabelWeight: e.target.value as "normal" | "bold",
+                            })
+                          }
+                          className="mt-1 h-10 w-full rounded-md border bg-background px-2 text-xs"
+                        >
+                          <option value="normal">Normal</option>
+                          <option value="bold">Bold</option>
+                        </select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Color</Label>
+                        <div className="mt-1 flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={resolved.pointLabelColor}
+                            onChange={(e) => update({ pointLabelColor: e.target.value })}
+                            className="h-10 w-12 shrink-0 cursor-pointer rounded-md border bg-background p-1"
+                          />
+                          <Input
+                            enterKeyHint="done"
+                            value={resolved.pointLabelColor}
+                            onChange={(e) => update({ pointLabelColor: e.target.value })}
+                            className="h-10 flex-1 font-mono text-base"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="shrink-0 text-xs">Label bg</Label>
+                        <div className="inline-flex h-10 min-w-0 flex-1 overflow-hidden rounded-md border">
+                          {(["white", "transparent", "plain"] as const).map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              className={`min-w-0 flex-1 px-2 text-xs font-medium ${
+                                resolved.pointLabelBackground === opt
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-background"
+                              }`}
+                              onClick={() => update({ pointLabelBackground: opt })}
+                            >
+                              {opt === "white" ? "Box" : opt === "transparent" ? "Border" : "Plain"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <NumberControl
+                        compact
+                        label="Decimals"
+                        value={resolved.decimalPlaces}
+                        min={0}
+                        max={3}
+                        step={1}
+                        onChange={(v) =>
+                          update({
+                            decimalPlaces: Math.max(
+                              0,
+                              Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
+                            ),
+                          })
+                        }
+                      />
+                    </div>
+                  ),
+                },
+                {
+                  id: "accessories",
+                  title: "Accessories",
+                  body: (
+                    <div className="space-y-3">
+                      <p className="text-[10px] text-muted-foreground">
+                        Summary pill and High/Low markers come from these readings.
+                        Press and move to place. Tap for size −/+.
+                      </p>
+                      <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+                        <StepperControl
+                          label="H/L/Δ size"
+                          value={statsChipSize}
+                          min={STATS_CHIP_MIN}
+                          max={STATS_CHIP_MAX}
+                          step={2}
+                          unitless
+                          onChange={(v) => commitStatsPillSize(v)}
+                        />
+                        <StepperControl
+                          label="High/Low size"
+                          value={resolved.highLowPinSize}
+                          min={7}
+                          max={28}
+                          step={1}
+                          unitless
+                          onChange={(v) =>
+                            update({
+                              highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
+                            })
+                          }
+                        />
+                      </div>
+                      <SwitchRow
+                        label="High / low"
+                        checked={resolved.showHighLow}
+                        onChange={(v) => update({ showHighLow: v })}
+                      />
+                    </div>
+                  ),
+                },
+              ]}
+            />
+          </TrialPanel>
         )}
 
         {/*
@@ -1606,435 +1974,656 @@ export function TopoTab({
 
           The names are the app's own words, not invented categories. Each
           size sits beside the thing it sizes -- Legend size under Legend,
-          Stats pill size under High / low -- so a piece and its size are
-          never in two different places.
+          H/L/Δ size under H/L/Δ -- so a piece and its size are never in two
+          different places.
 
-          The field screen is untouched: it still opens these as three corner
-          panels, one at a time.
+          The field Control panel is the floating folder tabs. This strip is
+          Report Builder only. Accessories holds Legend, H/L/Δ, and High/Low.
         */}
         {controlsOnly && (
-          <div className="flex flex-col gap-2">
-            <div role="tablist" className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/40 p-1">
-              {([
-                ["contours", "Contours"],
-                ["labels", "Labels"],
-                ["layers", "Layers"],
-              ] as const).map(([key, name]) => (
-                <button
-                  key={key}
-                  type="button"
-                  role="tab"
-                  aria-selected={ctrlTab === key}
-                  onClick={() => setCtrlTab(key)}
-                  className={
-                    "h-8 rounded-md text-xs font-medium transition-colors " +
-                    (ctrlTab === key
-                      ? "bg-background shadow-sm text-foreground"
-                      : "text-muted-foreground hover:text-foreground")
-                  }
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
-            <div className="rounded-xl border bg-card p-3 w-full overflow-visible space-y-3 text-sm">
-              {ctrlTab === "contours" && (
-                <>
-                  {gridAndContours?.grid && (
-                    <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
-                      Range {readingText(gridAndContours.grid.minValue)}"–
-                      {readingText(gridAndContours.grid.maxValue)}"
-                    </p>
-                  )}
-                  <div>
-                    <Label className="text-xs">Mode</Label>
-                    <select
-                      value={resolved.mode}
-                      onChange={(e) => update({ mode: e.target.value as RenderSettings["mode"] })}
-                      className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
-                    >
-                      <option value="contour-fill">Color fill</option>
-                      <option value="contour-cells">Color cells</option>
-                      <option value="contour-bw">B&W lines</option>
-                      <option value="points-only">Points only</option>
-                    </select>
-                  </div>
-                  {/*
-                    Send to Distress Survey.
-
-                    Only on B&W lines, and only in the field app. Tim: "I wonder if
-                    the button only triggers when we do black-and-white contours."
-                    It does, which makes it what you see is what you send -- there is
-                    no mode for the writer to override, so the picture that lands
-                    under the damage pins is the one on this screen. The one thing it
-                    drops is the reading labels, because the pins go where those
-                    would be.
-                  */}
-                  {allowContourLayer && resolved.mode === "contour-bw" && (
-                    <div className="border-t pt-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-9 w-full text-xs"
-                        disabled={layerState === "working"}
-                        onClick={async () => {
-                          setLayerState("working");
-                          setLayerMessage("");
-                          try {
-                            // Imported here rather than at the top: the composer
-                            // reads renderTopo out of this module, so a static
-                            // import would close a cycle through it.
-                            const [{ composeContourLayer }, { persistContourLayer }] = await Promise.all([
-                              import("@/lib/contour-layer"),
-                              import("@/lib/db"),
-                            ]);
-                            const drawn = await composeContourLayer({
-                              floor,
-                              points,
-                              settings: resolved,
-                              // The boundary on screen, not every boundary. A
-                              // garage is sloped to drain and swamps the house.
-                              areaId: selectedAreaId,
-                            });
-                            if (!drawn) {
-                              setLayerState("failed");
-                              setLayerMessage("No contours to send yet — this level needs a closed boundary with readings inside it.");
-                              return;
-                            }
-                            await persistContourLayer(floor.id, drawn.dataUrl, {
-                              areaName: drawn.areaName,
-                              // The plan extent the layer covers, not the picture's
-                              // own pixels. The picture is drawn well above plan
-                              // resolution so it holds up on paper, and it is
-                              // stretched back into this box wherever it is shown --
-                              // so this is the number that says the two layers line
-                              // up, in the same units as the plan's own.
-                              width: drawn.extent.w,
-                              height: drawn.extent.h,
-                              pointCount: drawn.pointCount,
-                            });
-                            setLayerState("done");
-                            // Name what went, because sending the wrong boundary
-                            // looks exactly like sending nothing.
-                            setLayerMessage(
-                              `Sent ${drawn.areaName}. Distress Survey can show the pins on it.`,
-                            );
-                          } catch (err) {
-                            setLayerState("failed");
-                            setLayerMessage(
-                              (err as Error)?.message || "Could not send the contour to Distress Survey.",
-                            );
-                          }
-                        }}
-                      >
-                        {layerState === "working" ? "Sending…" : "Send to Distress Survey"}
-                      </Button>
-                      {layerMessage && (
-                        <p
-                          className={
-                            "mt-1 text-[10px] leading-tight " +
-                            (layerState === "failed" ? "text-destructive" : "text-muted-foreground")
-                          }
-                        >
-                          {layerMessage}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <Label className="text-xs">First</Label>
-                      <Input
-                        type="number"
-                        step="0.05"
-                        enterKeyHint="done"
-                        value={resolved.firstContour ?? ""}
-                        placeholder="auto"
-                        onChange={(e) =>
-                          update({
-                            firstContour: e.target.value === "" ? null : parseFloat(e.target.value),
-                          })
-                        }
-                        className="mt-1 h-9 text-base"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Step</Label>
-                      <StepInput
-                        value={resolved.contourStep}
-                        onCommit={(step) => update({ contourStep: step, interval: step })}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Count</Label>
-                      <Input
-                        type="text"
-                        inputMode="numeric"
-                        enterKeyHint="done"
-                        value={resolved.contourCount ?? ""}
-                        placeholder="auto"
-                        onChange={(e) => {
-                          const raw = e.target.value.trim();
-                          if (raw === "" || raw.toLowerCase() === "auto") {
-                            update({ contourCount: null });
-                          } else {
-                            const n = parseInt(raw, 10);
-                            update({ contourCount: isFinite(n) ? Math.max(2, n) : null });
-                          }
-                        }}
-                        className="mt-1 h-9 text-base"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs">Line thickness</Label>
-                      <span className="text-xs tabular-nums text-muted-foreground">
-                        {resolved.lineThickness.toFixed(1)}
-                      </span>
-                    </div>
-                    <Slider
-                      min={0.5}
-                      max={4}
-                      step={0.1}
-                      value={[resolved.lineThickness]}
-                      onValueChange={(v) => update({ lineThickness: v[0] })}
-                      className="mt-2"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">Contours on</Label>
-                    <Switch
-                      checked={resolved.showContours}
-                      onCheckedChange={(v) => update({ showContours: v })}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">Reverse</Label>
-                    <Switch
-                      checked={resolved.reversePalette}
-                      onCheckedChange={(v) => update({ reversePalette: v })}
-                    />
-                  </div>
-                  <PalettePicker
-                    value={resolved.palette}
-                    onChange={(p) => update({ palette: p })}
-                  />
-                </>
-              )}
-              {ctrlTab === "labels" && (
-                <>
-                  <div className="grid grid-cols-2 gap-2">
-                    <SwitchRow
-                                    label="Labels"
-                                    checked={resolved.showLabels}
-                                    onChange={(v) => update({ showLabels: v })}
-                                  />
-                    <NumberControl
-                                    label="Decimals"
-                                    value={resolved.decimalPlaces}
-                                    min={0}
-                                    max={3}
-                                    step={1}
-                                    onChange={(v) =>
-                                      update({
-                                        decimalPlaces: Math.max(
-                                          0,
-                                          Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
-                                        ),
-                                      })
-                                    }
-                                  />
-                    <SwitchRow
-                                    label="Declutter"
-                                    checked={resolved.declutterLabels !== false}
-                                    onChange={(v) => update({ declutterLabels: v })}
-                                  />
-                    <div className="col-span-2 flex items-center justify-between gap-2">
-                                    <Label className="text-xs">Label bg</Label>
-                                    <div className="inline-flex rounded-md border overflow-hidden">
-                                      {(["white", "transparent", "plain"] as const).map((opt) => (
-                                        <button
-                                          key={opt}
-                                          type="button"
-                                          className={`px-2 py-1 text-xs ${
-                                            resolved.pointLabelBackground === opt
-                                              ? "bg-primary text-primary-foreground"
-                                              : "bg-background"
-                                          }`}
-                                          onClick={() => update({ pointLabelBackground: opt })}
-                                        >
-                                          {opt === "white" ? "Box" : opt === "transparent" ? "Border" : "Plain"}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-                  </div>
-                  <details className="border-t pt-2">
-                                <summary className="text-xs text-muted-foreground cursor-pointer select-none">
-                                  Label style
-                                </summary>
-                                <div className="grid grid-cols-2 gap-2 mt-2">
-                                  <StepperControl
-                                    label="Point label size"
-                                    value={resolved.pointLabelFontSize}
-                                    min={6}
-                                    max={28}
-                                    step={1}
-                                    onChange={(v) =>
-                                      update({ pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))) })
-                                    }
-                                  />
-                                  <StepperControl
-                                    label="High / low size"
-                                    value={resolved.highLowPinSize}
-                                    min={7}
-                                    max={28}
-                                    step={1}
-                                    onChange={(v) =>
-                                      update({ highLowPinSize: Math.max(7, Math.min(28, Math.round(v))) })
-                                    }
-                                  />
-                                  <div>
-                                    <Label className="text-xs">Weight</Label>
-                                    <select
-                                      value={resolved.pointLabelWeight}
-                                      onChange={(e) =>
-                                        update({ pointLabelWeight: e.target.value as "normal" | "bold" })
-                                      }
-                                      className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
-                                    >
-                                      <option value="normal">Normal</option>
-                                      <option value="bold">Bold</option>
-                                    </select>
-                                  </div>
-                                  <div className="col-span-2">
-                                    <Label className="text-xs">Color</Label>
-                                    <div className="mt-1 flex items-center gap-2">
-                                      <input
-                                        type="color"
-                                        value={resolved.pointLabelColor}
-                                        onChange={(e) => update({ pointLabelColor: e.target.value })}
-                                        className="h-9 w-12 rounded-md border bg-background p-1 cursor-pointer"
-                                      />
-                                      <Input
-                                        enterKeyHint="done"
-                                        value={resolved.pointLabelColor}
-                                        onChange={(e) => update({ pointLabelColor: e.target.value })}
-                                        className="h-9 flex-1 font-mono text-base"
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={resetAllLabelPositions}
-                                  className="mt-2 w-full h-8"
-                                >
-                                  Reset label positions
-                                </Button>
-                              </details>
-                </>
-              )}
-              {ctrlTab === "layers" && (
-                <div className="grid grid-cols-2 gap-2">
-                  <SwitchRow
-                                  label="Floor plan"
-                                  checked={resolved.showPlan}
-                                  onChange={(v) => update({ showPlan: v })}
-                                />
-                  <SwitchRow
-                                  label="Points"
-                                  checked={resolved.showPoints}
-                                  onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
-                                />
-                  <SwitchRow
-                                  label="Legend"
-                                  checked={resolved.showLegend}
-                                  onChange={(v) => update({ showLegend: v })}
-                                />
-                  <StepperControl
-                                  label="Legend size"
-                                  value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
-                                  min={0.4}
-                                  max={4}
-                                  step={0.1}
-                                  format={(v) => `${v.toFixed(1)}×`}
-                                  onChange={(v) =>
-                                    update({ legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)) })
+          <div
+            id="rb-topo-group-panel"
+            role="tabpanel"
+            aria-labelledby={"rb-topo-tab-" + reportPanel}
+            data-rb-topo-panel={reportPanel}
+            className="space-y-3 text-sm"
+          >
+            {/*
+              The three groups are a second tab row on the report rail, above
+              this panel. Only the selected group's controls render. Field
+              Control panel keeps its own accordions.
+            */}
+            {([
+              ["contours", "Contours"],
+              ["readings", "Readings"],
+              ["accessories", "Accessories"],
+            ] as const).filter(([key]) => key === reportPanel).map(([key]) => {
+              return (
+                <div key={key}>
+                      {key === "contours" && (
+                        <>
+                          {gridAndContours?.grid && (
+                            <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
+                              Range {readingText(gridAndContours.grid.minValue)}"–
+                              {readingText(gridAndContours.grid.maxValue)}"
+                            </p>
+                          )}
+                          <div>
+                            <Label className="text-xs">Mode</Label>
+                            <select
+                              value={resolved.mode}
+                              onChange={(e) =>
+                                update({ mode: e.target.value as RenderSettings["mode"] })
+                              }
+                              className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
+                            >
+                              <option value="contour-fill">Color fill</option>
+                              <option value="contour-cells">Color cells</option>
+                              <option value="contour-bw">B&W lines</option>
+                              <option value="points-only">Points only</option>
+                            </select>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <Label className="text-xs">First</Label>
+                              <Input
+                                type="number"
+                                step="0.05"
+                                enterKeyHint="done"
+                                value={resolved.firstContour ?? ""}
+                                placeholder="auto"
+                                onChange={(e) =>
+                                  update({
+                                    firstContour:
+                                      e.target.value === "" ? null : parseFloat(e.target.value),
+                                  })
+                                }
+                                className="mt-1 h-9 text-base"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Step</Label>
+                              <StepInput
+                                value={resolved.contourStep}
+                                onCommit={(step) => update({ contourStep: step, interval: step })}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Count</Label>
+                              <Input
+                                type="text"
+                                inputMode="numeric"
+                                enterKeyHint="done"
+                                value={resolved.contourCount ?? ""}
+                                placeholder="auto"
+                                onChange={(e) => {
+                                  const raw = e.target.value.trim();
+                                  if (raw === "" || raw.toLowerCase() === "auto") {
+                                    update({ contourCount: null });
+                                  } else {
+                                    const n = parseInt(raw, 10);
+                                    update({
+                                      contourCount: isFinite(n) ? Math.max(2, n) : null,
+                                    });
                                   }
-                                />
-                  <SwitchRow
-                                  label="High / low"
-                                  checked={resolved.showHighLow}
-                                  onChange={(v) => update({ showHighLow: v })}
-                                />
-                  {/* Set once, and it stays. Tim: "I don't think I'll ever use that
-                                    setting because it's always wrong -- you just adjust it to
-                                    the size that you want and it stays that size." There used to
-                                    be a "Use Auto size for this screen" link under this, back
-                                    when Auto read the window width and picked 24, 32 or 40. That
-                                    was taken out so a job did not render at three sizes
-                                    depending on what opened it, which left the link clearing the
-                                    size to a fixed 32 under a label promising something about
-                                    this screen. The size is simply the last one set, kept on
-                                    this device and used by every job on it. */}
-                                <div className="col-span-2">
-                                  <StepperControl
-                                    label="Stats pill size"
-                                    value={statsChipSize}
-                                    min={STATS_CHIP_MIN}
-                                    max={STATS_CHIP_MAX}
-                                    step={2}
-                                    format={(v) => `${Math.round(v)}px`}
-                                    onChange={(v) => {
-                                      const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(v)));
-                                      setStatsChipLocked(n);
-                                      setStatsChipSize(n);
-                                    }}
+                                }}
+                                className="mt-1 h-9 text-base"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex items-center justify-between">
+                              <Label className="text-xs">Line thickness</Label>
+                              <span className="text-xs tabular-nums text-muted-foreground">
+                                {resolved.lineThickness.toFixed(1)}
+                              </span>
+                            </div>
+                            <Slider
+                              min={0.5}
+                              max={4}
+                              step={0.1}
+                              value={[resolved.lineThickness]}
+                              onValueChange={(v) => update({ lineThickness: v[0] })}
+                              className="mt-2"
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs">Contours on</Label>
+                            <Switch
+                              checked={resolved.showContours}
+                              onCheckedChange={(v) => update({ showContours: v })}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs">Reverse</Label>
+                            <Switch
+                              checked={resolved.reversePalette}
+                              onCheckedChange={(v) => update({ reversePalette: v })}
+                            />
+                          </div>
+                          <PalettePicker
+                            value={resolved.palette}
+                            onChange={(p) => update({ palette: p })}
+                          />
+                          <SwitchRow
+                            label="Floor plan"
+                            checked={resolved.showPlan}
+                            onChange={(v) => update({ showPlan: v })}
+                          />
+                        </>
+                      )}
+                      {key === "readings" && (
+                        <>
+                          <div className="grid grid-cols-2 gap-2">
+                            <SwitchRow
+                              label="Points"
+                              checked={resolved.showPoints}
+                              onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
+                            />
+                            <SwitchRow
+                              label="Labels"
+                              checked={resolved.showLabels}
+                              onChange={(v) => update({ showLabels: v })}
+                            />
+                            <NumberControl
+                              label="Decimals"
+                              value={resolved.decimalPlaces}
+                              min={0}
+                              max={3}
+                              step={1}
+                              onChange={(v) =>
+                                update({
+                                  decimalPlaces: Math.max(
+                                    0,
+                                    Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
+                                  ),
+                                })
+                              }
+                            />
+                            <SwitchRow
+                              label="Declutter"
+                              checked={resolved.declutterLabels !== false}
+                              onChange={(v) => update({ declutterLabels: v })}
+                            />
+                            <div className="col-span-2 flex items-center justify-between gap-2">
+                              <Label className="text-xs">Label bg</Label>
+                              <div className="inline-flex rounded-md border overflow-hidden">
+                                {(["white", "transparent", "plain"] as const).map((opt) => (
+                                  <button
+                                    key={opt}
+                                    type="button"
+                                    className={`px-2 py-1 text-xs ${
+                                      resolved.pointLabelBackground === opt
+                                        ? "bg-primary text-primary-foreground"
+                                        : "bg-background"
+                                    }`}
+                                    onClick={() => update({ pointLabelBackground: opt })}
+                                  >
+                                    {opt === "white"
+                                      ? "Box"
+                                      : opt === "transparent"
+                                        ? "Border"
+                                        : "Plain"}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          <details className="border-t pt-2">
+                            <summary className="text-xs text-muted-foreground cursor-pointer select-none">
+                              Label style
+                            </summary>
+                            <div className="grid grid-cols-2 gap-2 mt-2">
+                              <StepperControl
+                                label="Point label size"
+                                value={resolved.pointLabelFontSize}
+                                min={6}
+                                max={28}
+                                step={1}
+                                onChange={(v) =>
+                                  update({
+                                    pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))),
+                                  })
+                                }
+                              />
+                              <div>
+                                <Label className="text-xs">Weight</Label>
+                                <select
+                                  value={resolved.pointLabelWeight}
+                                  onChange={(e) =>
+                                    update({
+                                      pointLabelWeight: e.target.value as "normal" | "bold",
+                                    })
+                                  }
+                                  className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
+                                >
+                                  <option value="normal">Normal</option>
+                                  <option value="bold">Bold</option>
+                                </select>
+                              </div>
+                              <div className="col-span-2">
+                                <Label className="text-xs">Color</Label>
+                                <div className="mt-1 flex items-center gap-2">
+                                  <input
+                                    type="color"
+                                    value={resolved.pointLabelColor}
+                                    onChange={(e) => update({ pointLabelColor: e.target.value })}
+                                    className="h-9 w-12 rounded-md border bg-background p-1 cursor-pointer"
+                                  />
+                                  <Input
+                                    enterKeyHint="done"
+                                    value={resolved.pointLabelColor}
+                                    onChange={(e) => update({ pointLabelColor: e.target.value })}
+                                    className="h-9 flex-1 font-mono text-base"
                                   />
                                 </div>
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={resetAllLabelPositions}
+                              className="mt-2 w-full h-8"
+                            >
+                              Reset label positions
+                            </Button>
+                          </details>
+                        </>
+                      )}
+                      {key === "accessories" && (
+                        <div className="space-y-3">
+                          <div
+                            role="tablist"
+                            aria-label="Accessories"
+                            className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/40 p-1"
+                          >
+                            {(
+                              [
+                                ["legend", "Legend"],
+                                ["hld", "H/L/Δ"],
+                                ["highlow", "High/Low"],
+                              ] as const
+                            ).map(([id, name]) => (
+                              <button
+                                key={id}
+                                type="button"
+                                role="tab"
+                                aria-selected={reportAccessoryTab === id}
+                                onClick={() => setReportAccessoryTab(id)}
+                                className={
+                                  "rounded-md px-2 py-1.5 text-xs font-medium " +
+                                  (reportAccessoryTab === id
+                                    ? "bg-background shadow-sm"
+                                    : "text-muted-foreground hover:text-foreground")
+                                }
+                              >
+                                {name}
+                              </button>
+                            ))}
+                          </div>
+                          {reportAccessoryTab === "legend" && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <SwitchRow
+                                label="Legend"
+                                checked={resolved.showLegend}
+                                onChange={(v) => update({ showLegend: v })}
+                              />
+                              <StepperControl
+                                label="Legend size"
+                                value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+                                min={0.4}
+                                max={4}
+                                step={0.1}
+                                unitless
+                                onChange={(v) =>
+                                  update({
+                                    legendScale: Math.max(
+                                      0.4,
+                                      Math.min(4, Math.round(v * 10) / 10),
+                                    ),
+                                  })
+                                }
+                              />
+                            </div>
+                          )}
+                          {reportAccessoryTab === "hld" && (
+                            <div className="flex flex-wrap items-end justify-between gap-2">
+                              <SwitchRow
+                                label="H/L/Δ pill"
+                                checked={resolved.showStatsPill !== false}
+                                onChange={(v) => update({ showStatsPill: v })}
+                              />
+                              <StepperControl
+                                label="H/L/Δ size"
+                                value={statsChipSize}
+                                min={STATS_CHIP_MIN}
+                                max={STATS_CHIP_MAX}
+                                step={2}
+                                unitless
+                                onChange={(v) => commitStatsPillSize(v)}
+                              />
+                            </div>
+                          )}
+                          {reportAccessoryTab === "highlow" && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <SwitchRow
+                                label="High / low"
+                                checked={resolved.showHighLow}
+                                onChange={(v) => update({ showHighLow: v })}
+                              />
+                              <StepperControl
+                                label="High/Low size"
+                                value={resolved.highLowPinSize}
+                                min={7}
+                                max={28}
+                                step={1}
+                                unitless
+                                onChange={(v) =>
+                                  update({
+                                    highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
+                                  })
+                                }
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
                 </div>
-              )}
-            </div>
+              );
+            })}
           </div>
+        )}
+        {sizeHud && !controlsOnly && (
+          <AccessorySizeHud
+            kind={sizeHud.kind}
+            clientX={sizeHud.clientX}
+            clientY={sizeHud.clientY}
+            legendScale={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+            pillSize={statsChipSize}
+            pinSize={resolved.highLowPinSize}
+            onLegend={(v) =>
+              update({
+                legendScale: Math.max(0.4, Math.min(4, Math.round(v * 10) / 10)),
+              })
+            }
+            onPill={(v) => commitStatsPillSize(v)}
+            onPin={(v) =>
+              update({
+                highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
+              })
+            }
+            onClose={() => setSizeHud(null)}
+          />
         )}
       </div>
     </div>
   );
 }
 
-function CornerIcon({
-  pos,
+/** Field Control panel parent tabs. */
+const TRIAL_DOORS = [
+  { key: "contours", name: "Contours" },
+  { key: "readings", name: "Readings" },
+] as const;
+
+type TrialDoorKey = (typeof TRIAL_DOORS)[number]["key"];
+
+/**
+ * Compact card (not full-height). Accordion in the body; Back / destination
+ * in the footer. Known-scroll only inside an open section.
+ */
+/** Customer File visual system — css/styles.css (:root --navy / --accent / --line). */
+const TRIAL_NAVY = "#07283d";
+const TRIAL_RUST = "#c14a2b";
+const TRIAL_LINE = "#c9d0d5";
+
+function TrialFolderTabs({
   active,
-  onClick,
-  label,
-  children,
+  onChange,
 }: {
-  pos: string;
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  children: React.ReactNode;
+  active: TrialDoorKey;
+  onChange: (key: TrialDoorKey) => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      aria-pressed={active}
-      className={
-        "absolute z-30 h-9 w-9 rounded-full backdrop-blur border shadow-sm flex items-center justify-center " +
-        pos +
-        " " +
-        (active
-          ? "bg-primary text-primary-foreground border-primary"
-          : "bg-background/90 hover:bg-background")
-      }
+    <div
+      role="tablist"
+      aria-label="Control panel"
+      className="flex min-w-0 flex-1 items-end gap-1"
+      onKeyDown={(event) => {
+        const keys = TRIAL_DOORS.map((d) => d.key);
+        const idx = Math.max(0, keys.indexOf(active));
+        let next = idx;
+        if (event.key === "ArrowRight") next = (idx + 1) % keys.length;
+        else if (event.key === "ArrowLeft") next = (idx + keys.length - 1) % keys.length;
+        else if (event.key === "Home") next = 0;
+        else if (event.key === "End") next = keys.length - 1;
+        else return;
+        event.preventDefault();
+        const key = keys[next];
+        onChange(key);
+        requestAnimationFrame(() => {
+          document.getElementById("fs-cp-tab-" + key)?.focus();
+        });
+      }}
     >
-      {children}
-    </button>
+      {TRIAL_DOORS.map((d) => {
+        const on = d.key === active;
+        return (
+          <button
+            key={d.key}
+            type="button"
+            role="tab"
+            id={"fs-cp-tab-" + d.key}
+            data-fs-cp-tab={d.key}
+            aria-selected={on}
+            aria-controls="fs-cp-panel"
+            tabIndex={on ? 0 : -1}
+            onClick={() => onChange(d.key)}
+            className="min-h-11 min-w-0 flex-1 whitespace-nowrap rounded-t-[6px] border px-1 text-center text-xs leading-none"
+            style={{
+              marginBottom: -1,
+              backgroundColor: on ? TRIAL_NAVY : "#e5ebee",
+              color: on ? "#fff" : "#3d5c70",
+              fontWeight: on ? 700 : 650,
+              borderColor: on ? TRIAL_NAVY : TRIAL_LINE,
+              borderBottomColor: on ? TRIAL_NAVY : TRIAL_LINE,
+            }}
+          >
+            {d.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function TrialPanel({
+  title,
+  titleAccent,
+  stepLabel,
+  status,
+  onClose,
+  children,
+  footer,
+  tabs,
+  onTab,
+}: {
+  title: string;
+  /** Hub only: rust title so the Control panel name carries the accent. */
+  titleAccent?: "rust";
+  stepLabel?: string;
+  status?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  /** Field trial: one folder-tab row. The accepted hub stays in this file and is not opened. */
+  tabs?: TrialDoorKey;
+  onTab?: (key: TrialDoorKey) => void;
+}) {
+  const rustTitle = titleAccent === "rust";
+  const tabbed = tabs != null && onTab != null;
+  return (
+    <div
+      data-fs-cp={tabbed ? "panel" : undefined}
+      className={
+        tabbed
+          ? "absolute z-30 right-[max(0.5rem,env(safe-area-inset-right))] top-2 flex w-[280px] max-w-[calc(100%-1rem)] max-h-[min(32rem,calc(100%-env(safe-area-inset-bottom)-0.75rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg landscape-short:top-2"
+          : "absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg backdrop-blur landscape-short:top-2"
+      }
+      style={{ borderColor: TRIAL_LINE }}
+    >
+      {tabbed ? (
+        <div className="flex shrink-0 flex-col bg-white">
+          <div className="flex h-11 shrink-0 items-center justify-end pr-0.5">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-black/5 hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div
+            className="flex shrink-0 items-end border-b pl-1.5 pr-1.5"
+            style={{ borderColor: TRIAL_LINE }}
+          >
+            <TrialFolderTabs active={tabs} onChange={onTab} />
+          </div>
+        </div>
+      ) : (
+      <div
+        className="flex shrink-0 items-start justify-between gap-2 border-b bg-white px-3 pb-2 pt-2.5"
+        style={{ borderColor: TRIAL_LINE }}
+      >
+        <div className="min-w-0">
+          {stepLabel ? (
+            <p className="text-[10px] font-medium text-muted-foreground">{stepLabel}</p>
+          ) : null}
+          <h2
+            className={
+              rustTitle
+                ? "text-base font-bold leading-tight"
+                : "text-sm font-semibold leading-tight"
+            }
+            style={{ color: rustTitle ? TRIAL_RUST : TRIAL_NAVY }}
+          >
+            {title}
+          </h2>
+          {status ? (
+            <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{status}</p>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-black/5 hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      )}
+      <div
+        id={tabbed ? "fs-cp-panel" : undefined}
+        role={tabbed ? "tabpanel" : undefined}
+        aria-labelledby={tabbed ? "fs-cp-tab-" + tabs : undefined}
+        className={
+          tabbed
+            ? "flex min-h-0 flex-1 flex-col overflow-hidden bg-white text-sm"
+            : "flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden bg-white px-3 py-2.5 text-sm"
+        }
+      >
+        {children}
+      </div>
+      {footer && !tabbed ? (
+        <div
+          className="shrink-0 border-t bg-white px-3 py-2"
+          style={{ borderColor: TRIAL_LINE }}
+        >
+          {footer}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Second folder-tab row. The selected section's controls scroll beneath it. */
+function TrialSectionTabs({
+  label,
+  openId,
+  onChange,
+  items,
+  lead,
+}: {
+  label: string;
+  openId: string;
+  onChange: (id: string) => void;
+  items: { id: string; title: string; body: React.ReactNode }[];
+  lead?: React.ReactNode;
+}) {
+  const active = items.find((item) => item.id === openId) ?? items[0];
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        role="tablist"
+        aria-label={label}
+        className="flex shrink-0 items-end gap-1 border-b bg-white px-1.5 pt-1"
+        style={{ borderColor: TRIAL_LINE }}
+        onKeyDown={(event) => {
+          const idx = Math.max(0, items.findIndex((item) => item.id === active?.id));
+          let next = idx;
+          if (event.key === "ArrowRight") next = (idx + 1) % items.length;
+          else if (event.key === "ArrowLeft") next = (idx + items.length - 1) % items.length;
+          else if (event.key === "Home") next = 0;
+          else if (event.key === "End") next = items.length - 1;
+          else return;
+          event.preventDefault();
+          const id = items[next].id;
+          onChange(id);
+          requestAnimationFrame(() => {
+            document.getElementById("fs-cp-section-" + id)?.focus();
+          });
+        }}
+      >
+        {items.map((item) => {
+          const on = item.id === active?.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              id={"fs-cp-section-" + item.id}
+              data-fs-cp-section={item.id}
+              aria-selected={on}
+              aria-controls="fs-cp-section-panel"
+              tabIndex={on ? 0 : -1}
+              onClick={() => onChange(item.id)}
+              className="min-h-11 min-w-0 flex-1 whitespace-nowrap rounded-t-[6px] border px-1 text-center text-xs leading-none"
+              style={{
+                marginBottom: -1,
+                backgroundColor: on ? TRIAL_NAVY : "#e5ebee",
+                color: on ? "#fff" : "#3d5c70",
+                fontWeight: on ? 700 : 650,
+                borderColor: on ? TRIAL_NAVY : TRIAL_LINE,
+              }}
+            >
+              {item.title}
+            </button>
+          );
+        })}
+      </div>
+      <div
+        id="fs-cp-section-panel"
+        role="tabpanel"
+        aria-labelledby={active ? "fs-cp-section-" + active.id : undefined}
+        data-fs-cp-section-body={active?.id}
+        className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-white px-3 py-2.5 text-left"
+      >
+        {lead}
+        {active?.body}
+      </div>
+    </div>
   );
 }
 
@@ -2091,7 +2680,7 @@ function SwitchRow({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-2">
+    <div className="flex min-h-10 items-center justify-between gap-2">
       <Label className="text-xs">{label}</Label>
       <Switch checked={checked} onCheckedChange={onChange} />
     </div>
@@ -2103,10 +2692,9 @@ function SwitchRow({
 function StepInput({ value, onCommit }: { value: number; onCommit: (v: number) => void }) {
   const [text, setText] = useState(String(value));
   const lastValueRef = useRef(value);
-  // Sync external changes (e.g. Reset) into the text field
+  // Sync external changes into the text field
   if (value !== lastValueRef.current && String(value) !== text) {
     lastValueRef.current = value;
-    // schedule via microtask isn't safe here — set directly
     setText(String(value));
   }
   return (
@@ -2130,7 +2718,7 @@ function StepInput({ value, onCommit }: { value: number; onCommit: (v: number) =
           setText(String(n));
         }
       }}
-      className="w-20 h-10 text-base"
+      className="mt-1 h-10 w-full text-base"
     />
   );
 }
@@ -2142,6 +2730,8 @@ function NumberControl({
   min,
   max,
   step = 0.1,
+  /** Short values (e.g. Decimals 0–3): ~3-char box, not full panel width. */
+  compact,
   onChange,
 }: {
   label: string;
@@ -2150,6 +2740,7 @@ function NumberControl({
   min?: number;
   max?: number;
   step?: number;
+  compact?: boolean;
   onChange: (v: number | null) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
@@ -2171,7 +2762,7 @@ function NumberControl({
     onChange(clamped);
   };
   return (
-    <div>
+    <div className={compact ? "shrink-0" : undefined}>
       <Label className="text-xs">{label}</Label>
       <Input
         type="number"
@@ -2185,8 +2776,108 @@ function NumberControl({
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
-        className="mt-1 h-9"
+        className={
+          compact
+            ? "mt-1 h-10 w-14 px-1 text-center text-base tabular-nums"
+            : "mt-1 h-10 w-full text-base"
+        }
       />
+    </div>
+  );
+}
+
+/**
+ * Tap-to-size −/+ for Legend / H/L/Δ / High/Low.
+ * Compact chrome-navy pill, way above the accessory so move stays clear.
+ * Panel steppers remain as the same sizes.
+ */
+/** Screen gap above the tapped accessory — clear of the drag target. */
+const ACCESSORY_SIZE_HUD_ABOVE_PX = 112;
+
+function AccessorySizeHud({
+  kind,
+  clientX,
+  clientY,
+  legendScale,
+  pillSize,
+  pinSize,
+  onLegend,
+  onPill,
+  onPin,
+  onClose,
+}: {
+  kind: "legend" | "pill" | "pin";
+  clientX: number;
+  clientY: number;
+  legendScale: number;
+  pillSize: number;
+  pinSize: number;
+  onLegend: (v: number) => void;
+  onPill: (v: number) => void;
+  onPin: (v: number) => void;
+  onClose: () => void;
+}) {
+  const label =
+    kind === "legend" ? "Legend size" : kind === "pill" ? "H/L/Δ size" : "High/Low size";
+  const value = kind === "legend" ? legendScale : kind === "pill" ? pillSize : pinSize;
+  const min = kind === "legend" ? 0.4 : kind === "pill" ? STATS_CHIP_MIN : 7;
+  const max = kind === "legend" ? 4 : kind === "pill" ? STATS_CHIP_MAX : 28;
+  const step = kind === "legend" ? 0.1 : kind === "pill" ? 2 : 1;
+  const vw = typeof window !== "undefined" ? window.innerWidth : 360;
+  const left = Math.min(Math.max(8, clientX - 36), vw - 88);
+  // Way above the accessory (not near the finger on the piece).
+  const top = Math.max(8, clientY - ACCESSORY_SIZE_HUD_ABOVE_PX);
+  return (
+    <div
+      data-accessory-size-hud=""
+      className="fixed z-50 flex h-7 items-stretch overflow-hidden rounded-full border shadow-md"
+      style={{ left, top, background: TRIAL_NAVY, borderColor: TRIAL_NAVY }}
+      role="group"
+      aria-label={label}
+    >
+      <button
+        type="button"
+        onClick={() => {
+          const next =
+            kind === "legend"
+              ? Math.max(min, Math.round((value - step) * 10) / 10)
+              : Math.max(min, value - step);
+          if (kind === "legend") onLegend(next);
+          else if (kind === "pill") onPill(next);
+          else onPin(next);
+        }}
+        disabled={value <= min}
+        aria-label={`Decrease ${label}`}
+        className="flex w-7 items-center justify-center text-white/95 hover:bg-white/10 disabled:opacity-40"
+      >
+        <Minus className="h-3 w-3" />
+      </button>
+      <span className="w-px self-stretch bg-white/25" aria-hidden />
+      <button
+        type="button"
+        onClick={() => {
+          const next =
+            kind === "legend"
+              ? Math.min(max, Math.round((value + step) * 10) / 10)
+              : Math.min(max, value + step);
+          if (kind === "legend") onLegend(next);
+          else if (kind === "pill") onPill(next);
+          else onPin(next);
+        }}
+        disabled={value >= max}
+        aria-label={`Increase ${label}`}
+        className="flex w-7 items-center justify-center text-white/95 hover:bg-white/10 disabled:opacity-40"
+      >
+        <Plus className="h-3 w-3" />
+      </button>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close size"
+        className="flex w-6 items-center justify-center border-l border-white/25 text-white/80 hover:bg-white/10"
+      >
+        <X className="h-3 w-3" />
+      </button>
     </div>
   );
 }
@@ -2198,6 +2889,7 @@ function StepperControl({
   max,
   step = 1,
   format,
+  unitless = false,
   onChange,
 }: {
   label: string;
@@ -2206,40 +2898,83 @@ function StepperControl({
   max: number;
   step?: number;
   format?: (v: number) => string;
+  /** Accessory sizes: compact −|+ only — no empty middle face. */
+  unitless?: boolean;
   onChange: (v: number) => void;
 }) {
-  const display = format ? format(value) : `${value}px`;
+  const display = unitless ? "" : format ? format(value) : `${value}px`;
+  // Unitless size: a tight −|+ pill like the field Readings control — the old
+  // full-width "− / +" middle was empty chrome once px left the face.
+  if (unitless) {
+    return (
+      <div>
+        <Label className="text-xs">{label}</Label>
+        <div
+          className="mt-1 inline-flex h-9 items-stretch overflow-hidden rounded-full border border-input bg-background"
+          role="group"
+          aria-label={label}
+        >
+          <button
+            type="button"
+            onClick={() => onChange(Math.max(min, roundStepper(value - step, step)))}
+            disabled={value <= min}
+            aria-label={`Decrease ${label}`}
+            className="flex w-9 items-center justify-center hover:bg-muted disabled:opacity-40"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <span className="w-px self-stretch bg-border" aria-hidden />
+          <button
+            type="button"
+            onClick={() => onChange(Math.min(max, roundStepper(value + step, step)))}
+            disabled={value >= max}
+            aria-label={`Increase ${label}`}
+            className="flex w-9 items-center justify-center hover:bg-muted disabled:opacity-40"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div>
       <Label className="text-xs">{label}</Label>
-      <div className="mt-1 flex items-center gap-1">
+      <div className="mt-1 flex items-center gap-1.5">
         <button
           type="button"
-          onClick={() => onChange(Math.max(min, value - step))}
+          onClick={() => onChange(Math.max(min, roundStepper(value - step, step)))}
           disabled={value <= min}
           aria-label={`Decrease ${label}`}
-          className="h-6 w-6 rounded border flex items-center justify-center hover:bg-muted disabled:opacity-40 shrink-0"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border hover:bg-muted disabled:opacity-40"
         >
-          <Minus className="h-3 w-3" />
+          <Minus className="h-4 w-4" />
         </button>
         <output
           aria-label={`${label}: ${display}`}
-          className="flex h-6 flex-1 min-w-0 select-none items-center justify-center rounded-md border border-input bg-background px-1 text-center font-mono text-[10px] leading-none tabular-nums text-foreground"
+          className="flex h-10 min-w-0 flex-1 select-none items-center justify-center rounded-md border border-input bg-background px-2 text-center font-mono text-xs tabular-nums leading-none text-foreground"
         >
           {display}
         </output>
         <button
           type="button"
-          onClick={() => onChange(Math.min(max, value + step))}
+          onClick={() => onChange(Math.min(max, roundStepper(value + step, step)))}
           disabled={value >= max}
           aria-label={`Increase ${label}`}
-          className="h-6 w-6 rounded border flex items-center justify-center hover:bg-muted disabled:opacity-40 shrink-0"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border hover:bg-muted disabled:opacity-40"
         >
-          <Plus className="h-3 w-3" />
+          <Plus className="h-4 w-4" />
         </button>
       </div>
     </div>
   );
+}
+
+function roundStepper(v: number, step: number) {
+  if (step >= 1) return Math.round(v);
+  const places = Math.max(0, Math.round(-Math.log10(step)));
+  const f = 10 ** places;
+  return Math.round(v * f) / f;
 }
 
 // Exported so ExportTab can reuse the exact rendering pipeline.
@@ -2450,6 +3185,8 @@ export function renderTopoTop(
     pointSize?: number;
     pointColor?: string;
     viewScale?: number;
+    /** Fit-to-viewport scale — capture reading labels are sized from this. */
+    fitScale?: number;
   },
 ) {
   const resolved = resolveSettings(settings);
@@ -2460,21 +3197,18 @@ export function renderTopoTop(
   const highlightPin = overlay?.highlightPin ?? null;
   const liveLegend = overlay?.liveLegend ?? null;
   const viewScale = overlay?.viewScale || 1;
-  // Label font. In capture, the chosen screen px holds when the plan is
-  // fit-scaled out and grows gently when zoomed in -- proven, and right for a
-  // device in your hand.
-  //
-  // On a page it is a fixed fraction of the plan instead, because a picture's
-  // chrome scales with the picture. Screen-anchored, a reading label kept its
-  // size on the sheet while the plan shrank around it: putting the same level
-  // on a sheet twice halved each plan and left the readings at full size, so
-  // the labels swamped the drawing. At the default fit the two formulas land
-  // within a few percent of each other, so nothing moves until the plan is
-  // resized -- which is the case being fixed. Same reasoning, and the same
-  // helper, as the H/L/delta pill and the High and Low markers.
+  const fitScale = overlay?.fitScale || viewScale || 1;
+  // Reading labels: plan-scaled in capture (zoom with the drawing); report
+  // stays plan-proportional. −/+ sets the size. Other chrome keeps chromeSizeImg.
   const fontBase = resolved.pointLabelFontSize;
-  const fontPx = chromeSizeImg(fontBase, viewScale, !!overlay?.presentation, floor);
+  const fontPx = pointLabelFontImg(fontBase, floor, {
+    presentation: !!overlay?.presentation,
+    fitScale,
+  });
+  // k scales default label offsets with the drawn font. Label box chrome
+  // (pad / radius / stroke) tracks drawn fontPx.
   const k = fontPx / fontBase;
+  const chromeK = labelChromeK(fontPx);
   const weight = resolved.pointLabelWeight;
   const color = resolved.pointLabelColor;
 
@@ -2486,11 +3220,12 @@ export function renderTopoTop(
     const dotBase = overlay?.pointSize ?? 6;
     const dotR = chromeSizeImg(dotBase, viewScale, !!overlay?.presentation, floor);
     const dotColor = overlay?.pointColor ?? "#dc2626";
-    const padX = 4 * k;
-    const padY = 2.5 * k;
+    const padX = 4 * chromeK;
+    const padY = 2.5 * chromeK;
 
     // Decluttering: figure out which labels can be drawn without colliding.
-    // Dots always draw. Highlighted / dragged labels win ties.
+    // Dots always draw when points are on. Labels obey showLabels (Readings pill
+    // and Control panel → Readings → Show).
     ctx.font = `${weight} ${fontPx}px sans-serif`;
     const rectFor = (p: SurveyPoint) => {
       const isLive = live && live.id === p.id;
@@ -2500,23 +3235,25 @@ export function renderTopoTop(
       return { x: p.x + dx - padX, y: p.y + dy - padY, w, h: fontPx + padY * 2 };
     };
     const visibleLabelIds = new Set<string>();
-    if (resolved.declutterLabels === false) {
-      for (const p of points) visibleLabelIds.add(p.id);
-    } else {
-      const placed: { x: number; y: number; w: number; h: number }[] = [];
-      const ordered = [...points].sort((a, b) => {
-        const pr = (p: SurveyPoint) =>
-          highlightId === p.id ? 0 : p.labelDx !== undefined || p.labelDy !== undefined ? 1 : 2;
-        return pr(a) - pr(b);
-      });
-      for (const p of ordered) {
-        const r = rectFor(p);
-        const hit = placed.some(
-          (q) => r.x < q.x + q.w && r.x + r.w > q.x && r.y < q.y + q.h && r.y + r.h > q.y,
-        );
-        if (!hit) {
-          placed.push(r);
-          visibleLabelIds.add(p.id);
+    if (resolved.showLabels) {
+      if (resolved.declutterLabels === false) {
+        for (const p of points) visibleLabelIds.add(p.id);
+      } else {
+        const placed: { x: number; y: number; w: number; h: number }[] = [];
+        const ordered = [...points].sort((a, b) => {
+          const pr = (p: SurveyPoint) =>
+            highlightId === p.id ? 0 : p.labelDx !== undefined || p.labelDy !== undefined ? 1 : 2;
+          return pr(a) - pr(b);
+        });
+        for (const p of ordered) {
+          const r = rectFor(p);
+          const hit = placed.some(
+            (q) => r.x < q.x + q.w && r.x + r.w > q.x && r.y < q.y + q.h && r.y + r.h > q.y,
+          );
+          if (!hit) {
+            placed.push(r);
+            visibleLabelIds.add(p.id);
+          }
         }
       }
     }
@@ -2536,7 +3273,7 @@ export function renderTopoTop(
       }
 
       // label
-      if (!visibleLabelIds.has(p.id)) continue;
+      if (!resolved.showLabels || !visibleLabelIds.has(p.id)) continue;
       const text = p.value.toFixed(resolved.decimalPlaces);
       ctx.font = `${weight} ${fontPx}px sans-serif`;
       ctx.textAlign = "center";
@@ -2550,7 +3287,7 @@ export function renderTopoTop(
       const inverted = highlightId === p.id;
       const pillW = tw + padX * 2;
       const pillH = fontPx + padY * 2;
-      const radius = 2.5 * k;
+      const radius = 2.5 * chromeK;
       const cx = tx + tw / 2;
       const cy = ty + fontPx / 2;
 
@@ -2559,7 +3296,7 @@ export function renderTopoTop(
         ctx.fillStyle = color;
         roundRectPath(ctx, tx - padX, ty - padY, pillW, pillH, radius);
         ctx.fill();
-        ctx.lineWidth = k;
+        ctx.lineWidth = chromeK;
         ctx.strokeStyle = color;
         ctx.stroke();
         ctx.fillStyle = "#ffffff";
@@ -2571,7 +3308,7 @@ export function renderTopoTop(
           ctx.fill();
         }
         if (resolved.pointLabelBackground !== "plain") {
-          ctx.lineWidth = 0.8 * k;
+          ctx.lineWidth = 0.8 * chromeK;
           ctx.strokeStyle = color;
           roundRectPath(ctx, tx - padX, ty - padY, pillW, pillH, radius);
           ctx.stroke();
@@ -2832,6 +3569,15 @@ function PalettePicker({
 }) {
   const activeInExtras = EXTRA_PALETTES.includes(value);
   const [expanded, setExpanded] = useState(activeInExtras);
+  const extrasRef = useRef<HTMLDivElement>(null);
+
+  // Inside the short Control-panel accordion the extras open below the fold;
+  // bring them into the scrollport so the toggle is not a no-op on the phone.
+  useEffect(() => {
+    if (!expanded) return;
+    extrasRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [expanded]);
+
   return (
     <div className="space-y-2">
       <Label className="text-xs">Palette</Label>
@@ -2842,18 +3588,29 @@ function PalettePicker({
       </div>
       <button
         type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full text-left text-xs text-muted-foreground hover:text-foreground py-1"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setExpanded((v) => !v);
+        }}
+        aria-expanded={expanded}
+        className="flex min-h-11 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs font-medium text-muted-foreground hover:bg-muted/80 hover:text-foreground"
       >
-        {expanded ? "▾" : "▸"} More palettes
+        <ChevronDown
+          className={
+            "h-4 w-4 shrink-0 transition-transform " +
+            (expanded ? "rotate-0" : "-rotate-90")
+          }
+        />
+        More palettes
       </button>
-      {expanded && (
-        <div className="space-y-1.5">
+      {expanded ? (
+        <div ref={extrasRef} className="space-y-1.5 pb-1">
           {EXTRA_PALETTES.map((p) => (
             <PaletteRow key={p} palette={p} active={value === p} onClick={() => onChange(p)} />
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

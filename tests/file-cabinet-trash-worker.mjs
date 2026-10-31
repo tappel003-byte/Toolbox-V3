@@ -170,35 +170,49 @@ check(
   JSON.stringify({ status: leased.status, ops: leased.ops, text: leased.text }),
 );
 
+// Fence lands before media discovery (GPT-012). An unreadable component still
+// stops the delete — no media or prefix removal, no tombstone — while the
+// purged marker on the index refuses new writes until a retry finishes.
 const corrupt = await callDelete(cabinet, 'corrupt');
+const corruptIndex = cabinet.store['cf/corrupt/index.json']
+  ? JSON.parse(cabinet.store['cf/corrupt/index.json']) : null;
 check(
   'DELETE stops when referenced component JSON cannot be read',
   corrupt.status === 500 &&
-    corrupt.ops.length === 0 &&
     cabinet.store['media/plan-corrupt'] === 'corrupt-bytes' &&
-    !cabinet.store['purge/corrupt.json'],
+    !cabinet.store['purge/corrupt.json'] &&
+    !!corruptIndex && !!corruptIndex.purged &&
+    corrupt.ops.every(function (op) { return op.op === 'put' && op.key === 'cf/corrupt/index.json'; }),
   JSON.stringify({ status: corrupt.status, ops: corrupt.ops, text: corrupt.text }),
 );
 
 const badFloor = await callDelete(cabinet, 'badfloor');
+const badFloorIndex = cabinet.store['cf/badfloor/index.json']
+  ? JSON.parse(cabinet.store['cf/badfloor/index.json']) : null;
 check(
   'DELETE stops when the Floor Survey component cannot be read',
   badFloor.status === 500 &&
     /Floor Survey/i.test(badFloor.text) &&
-    badFloor.ops.length === 0 &&
     cabinet.store['media/fsrec_badfloor'] === 'pdf-bytes' &&
-    !cabinet.store['purge/badfloor.json'],
+    !cabinet.store['purge/badfloor.json'] &&
+    !!badFloorIndex && !!badFloorIndex.purged &&
+    badFloor.ops.every(function (op) { return op.op === 'put' && op.key === 'cf/badfloor/index.json'; }),
   JSON.stringify({ status: badFloor.status, ops: badFloor.ops, text: badFloor.text }),
 );
 
 const badDiagnostics = await callDelete(cabinet, 'baddiagnostics');
+const badDiagnosticsIndex = cabinet.store['cf/baddiagnostics/index.json']
+  ? JSON.parse(cabinet.store['cf/baddiagnostics/index.json']) : null;
 check(
   'DELETE stops when the Diagnostics component cannot be read',
   badDiagnostics.status === 500 &&
     /Diagnostics/i.test(badDiagnostics.text) &&
-    badDiagnostics.ops.length === 0 &&
     cabinet.store['media/dxfig_baddiagnostics'] === 'figure-bytes' &&
-    !cabinet.store['purge/baddiagnostics.json'],
+    !cabinet.store['purge/baddiagnostics.json'] &&
+    !!badDiagnosticsIndex && !!badDiagnosticsIndex.purged &&
+    badDiagnostics.ops.every(function (op) {
+      return op.op === 'put' && op.key === 'cf/baddiagnostics/index.json';
+    }),
   JSON.stringify({ status: badDiagnostics.status, ops: badDiagnostics.ops, text: badDiagnostics.text }),
 );
 

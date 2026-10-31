@@ -58,6 +58,9 @@ function backdropSettings(settings: RenderSettings): Partial<RenderSettings> {
     showContours: true,
     showPlan: false,
     showPoints: false,
+    // The layer sits under Distress Survey's own pins. High and Low markers
+    // belong to a Floor Survey figure, not to this backdrop.
+    showHighLow: false,
   };
 }
 

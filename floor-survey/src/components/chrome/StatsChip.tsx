@@ -1,25 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Minus, Plus, X } from "lucide-react";
+import { patchCaptureSizes } from "@/lib/capture-sizes";
 
 /**
- * The chip's height until someone sets one.
+ * Default chip height when nothing is stored for this Customer File yet.
+ * Capture starts from screen-class defaults (see capture-sizes.ts); this is
+ * the middle tablet-class value used as a fallback constant.
  *
- * It used to be three heights picked from `window.innerWidth` -- 24 on a
- * phone, 32 on a tablet, 40 on a desktop. That made the same Customer File
- * render at three different sizes depending on what you opened it on, and on a
- * report slide it meant the pill's size depended on the browser window rather
- * than on the page it was printed to. One number instead: the middle of the
- * three, which is what a tablet showed.
- *
- * What survived that change for a while was an "Auto" idea and a "Use Auto
- * size for this screen" link, which by then only cleared the chosen size back
- * to this number. Tim: "I don't think I'll ever use that setting because it's
- * always wrong -- you just adjust it to the size that you want and it stays
- * that size." So there is no Auto: the size is the last one set, kept on this
- * device and used by every job on it, and this is only where it starts.
+ * Capture adjustments are per Customer File on this device. Report Builder
+ * must not read this key — report pill size lives in floorLayout.pillLock.
  */
 export const DEFAULT_STATS_CHIP_SIZE = 32;
 
-/** localStorage key holding the user's chosen chip height in px. */
+/** @deprecated Device-global key. Capture now uses stats-chip-size:<customerFileId>. */
 export const STATS_CHIP_SIZE_KEY = "stats-chip-size";
 export const STATS_CHIP_SIZE_EVENT = "stats-chip-size-change";
 /**
@@ -35,11 +28,17 @@ export const STATS_CHIP_SIZE_EVENT = "stats-chip-size-change";
 export const STATS_CHIP_MIN = 8;
 export const STATS_CHIP_MAX = 120;
 
-/** Read the user's chosen chip height, or null when unset (auto). */
-export function getStatsChipSize(): number | null {
+function chipKey(customerFileId?: string | null): string {
+  return customerFileId ? `stats-chip-size:${customerFileId}` : STATS_CHIP_SIZE_KEY;
+}
+
+/** Read the capture chip height for this Customer File on this device. */
+export function getStatsChipSize(customerFileId?: string | null): number | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(STATS_CHIP_SIZE_KEY);
+    const raw =
+      window.localStorage.getItem(chipKey(customerFileId)) ??
+      (customerFileId ? window.localStorage.getItem(STATS_CHIP_SIZE_KEY) : null);
     const n = raw == null ? NaN : Number(raw);
     return Number.isFinite(n) ? n : null;
   } catch {
@@ -47,15 +46,28 @@ export function getStatsChipSize(): number | null {
   }
 }
 
-/** Persist a chip height and notify any mounted chip immediately. */
-export function setStatsChipSize(px: number) {
+/**
+ * Persist a capture chip height for this Customer File on this device.
+ * Does not write Report Builder state. Report paths must not listen to this
+ * as a source of sheet size.
+ */
+export function setStatsChipSize(px: number, customerFileId?: string | null) {
   const n = Math.max(STATS_CHIP_MIN, Math.min(STATS_CHIP_MAX, Math.round(px)));
   try {
-    window.localStorage.setItem(STATS_CHIP_SIZE_KEY, String(n));
+    if (customerFileId) {
+      window.localStorage.setItem(chipKey(customerFileId), String(n));
+    } else {
+      // Avoid widening the old device-global key; callers should pass an id.
+      window.localStorage.setItem(STATS_CHIP_SIZE_KEY, String(n));
+    }
   } catch {
     /* ignore */
   }
-  window.dispatchEvent(new CustomEvent(STATS_CHIP_SIZE_EVENT, { detail: n }));
+  window.dispatchEvent(
+    new CustomEvent(STATS_CHIP_SIZE_EVENT, {
+      detail: { size: n, customerFileId: customerFileId || null },
+    }),
+  );
 }
 
 
@@ -65,6 +77,8 @@ import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@
 interface Props {
   points: SurveyPoint[];
   storageKey?: string;
+  /** Capture size scope: this Customer File on this device. */
+  customerFileId?: string;
   /** Optional area name shown as a leading segment (combined multi-area view). */
   label?: string;
   /** Vertical stacking slot so multiple pills don't overlap. */
@@ -91,13 +105,15 @@ function topChromeHeight() {
  *   the high low pills it highlights the high or the low on the top -- I don't
  *   think I want that." The pill is a readout and a thing to drag out of the
  *   way, not a control.
- * - Size is the one set in Topo → Labels & layers → "Stats pill size", kept on
- *   this device; the pills drawn on the plan take the same size.
+ * - Size is the one set in Control panel → Readings → Accessories, kept per
+ *   Customer File on this device; plan pills use the same size. Tap opens a
+ *   blue −/+ way above this chip (press-and-move still only moves).
  * - Position persists per storageKey and clamps to viewport on resize/rotate.
  */
 export function StatsChip({
   points,
   storageKey = "stats-chip-pos",
+  customerFileId,
   label,
   stackIndex = 0,
   decimals = defaultRenderSettings.decimalPlaces,
@@ -124,21 +140,32 @@ export function StatsChip({
     return null;
   });
 
-  // The size last set on this device, until someone sets another. Nothing
-  // watches the window: the size does not depend on the screen, so turning the
-  // phone or dragging a window cannot change it.
+  // Size last set for this Customer File on this device. Window resize must
+  // not change it; only the Control panel stepper does.
   const [userSize, setUserSize] = useState<number | null>(null);
   useEffect(() => {
-    setUserSize(getStatsChipSize());
+    setUserSize(getStatsChipSize(customerFileId));
     const onSize = (e: Event) => {
-      const detail = (e as CustomEvent<number | null>).detail;
-      setUserSize(typeof detail === "number" ? detail : null);
+      const detail = (e as CustomEvent<number | { size: number; customerFileId?: string | null }>).detail;
+      if (typeof detail === "number") {
+        setUserSize(detail);
+        return;
+      }
+      if (!detail || typeof detail.size !== "number") return;
+      if (
+        customerFileId &&
+        detail.customerFileId &&
+        detail.customerFileId !== customerFileId
+      ) {
+        return;
+      }
+      setUserSize(detail.size);
     };
     window.addEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     return () => {
       window.removeEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
     };
-  }, []);
+  }, [customerFileId]);
 
   // The same type and air as the pills drawn on the plan, with no floor of
   // its own. This chip used to hold its type at 9px and its padding at 4px
@@ -183,6 +210,20 @@ export function StatsChip({
     };
   }, []);
 
+  /** Way above the chip so −/+ does not sit on the drag target. */
+  const SIZE_HUD_ABOVE_PX = 112;
+  const [sizeHud, setSizeHud] = useState(false);
+  // Outside press dismisses; −/+ on the HUD stay usable.
+  useEffect(() => {
+    if (!sizeHud) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (t && t.closest("[data-accessory-size-hud]")) return;
+      setSizeHud(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [sizeHud]);
   const drag = useRef<{
     startX: number;
     startY: number;
@@ -204,6 +245,15 @@ export function StatsChip({
       moved: false,
     };
   };
+  function clampChipPos(originX: number, originY: number, clientX: number, clientY: number, startX: number, startY: number) {
+    const w = ref.current?.offsetWidth ?? 0;
+    const h = ref.current?.offsetHeight ?? 0;
+    const top = topChromeHeight();
+    const x = Math.min(Math.max(4, originX + (clientX - startX)), window.innerWidth - w - 4);
+    const y = Math.min(Math.max(top, originY + (clientY - startY)), window.innerHeight - h - 4);
+    return { x, y };
+  }
+
   const onPointerMove = (e: React.PointerEvent) => {
     const d = drag.current;
     if (!d || d.pointerId !== e.pointerId) return;
@@ -211,20 +261,25 @@ export function StatsChip({
     const dy = e.clientY - d.startY;
     if (!d.moved && Math.hypot(dx, dy) < 5) return;
     d.moved = true;
-    const w = ref.current?.offsetWidth ?? 0;
-    const h = ref.current?.offsetHeight ?? 0;
-    const top = topChromeHeight();
-    const x = Math.min(Math.max(4, d.originX + dx), window.innerWidth - w - 4);
-    const y = Math.min(Math.max(top, d.originY + dy), window.innerHeight - h - 4);
-    setPos({ x, y });
+    setSizeHud(false);
+    setPos(clampChipPos(d.originX, d.originY, e.clientX, e.clientY, d.startX, d.startY));
   };
   const endDrag = (e: React.PointerEvent) => {
     const d = drag.current;
     if (!d || d.pointerId !== e.pointerId) return;
     drag.current = null;
-    if (!d.moved) return;
+    if (!d.moved) {
+      // Tap → blue size −/+ way above. Move is press-and-drag only.
+      setSizeHud(true);
+      return;
+    }
+    // Persist from the pointer + drag origin — not React `pos`, which can still
+    // be the pre-drag value when pointerup races the last setPos (chip then
+    // snaps back on Clean / Data↔Topo remount).
+    const next = clampChipPos(d.originX, d.originY, e.clientX, e.clientY, d.startX, d.startY);
+    setPos(next);
     try {
-      localStorage.setItem(storageKey, JSON.stringify(pos));
+      localStorage.setItem(storageKey, JSON.stringify(next));
     } catch {
       /* ignore */
     }
@@ -240,53 +295,106 @@ export function StatsChip({
     );
   }
 
+  const chipTop = pos.y + stackIndex * (height + 6);
   return (
-    <div
-      ref={ref}
-      className="fixed z-40 flex items-stretch rounded-full bg-white/95 backdrop-blur shadow-sm border border-gray-300 overflow-hidden font-medium select-none touch-none cursor-grab active:cursor-grabbing"
-      style={{
-        left: pos.x,
-        top: pos.y + stackIndex * (height + 6),
-        height,
-        fontSize: fontPx,
-        lineHeight: 1,
-      }}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={(e) => endDrag(e)}
-      onPointerCancel={(e) => endDrag(e)}
-      aria-label="Elevation stats — drag to move"
-    >
-      {label && (
+    <>
+      <div
+        ref={ref}
+        className="fixed z-40 flex items-stretch rounded-full bg-white/95 backdrop-blur shadow-sm border border-gray-300 overflow-hidden font-medium select-none touch-none cursor-grab active:cursor-grabbing"
+        style={{
+          left: pos.x,
+          top: chipTop,
+          height,
+          fontSize: fontPx,
+          lineHeight: 1,
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={(e) => endDrag(e)}
+        onPointerCancel={(e) => endDrag(e)}
+        aria-label="Elevation stats — press and move to place; tap for size"
+      >
+        {label && (
+          <div
+            className="flex items-center border-r border-gray-200 max-w-[8rem] truncate"
+            style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.label }}
+          >
+            {label}
+          </div>
+        )}
+        {/* Reading and letter in one colour, as the shipped decks set them.
+            Tabular figures in the interface face, not a monospace: a
+            monospaced 1 hangs air on both sides, which is most of what made
+            this read loose beside the deck. */}
         <div
-          className="flex items-center border-r border-gray-200 max-w-[8rem] truncate"
-          style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.label }}
+          className="flex items-center font-semibold"
+          style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.hi }}
         >
-          {label}
+          {statsPillText("H", stats.hi.value.toFixed(decimals))}
+        </div>
+        <div
+          className="flex items-center border-l border-gray-200 font-semibold"
+          style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.lo }}
+        >
+          {statsPillText("L", stats.lo.value.toFixed(decimals))}
+        </div>
+        <div
+          className="flex items-center border-l border-gray-200 font-semibold"
+          style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.delta }}
+        >
+          {statsPillText("Δ", stats.delta.toFixed(decimals))}
+        </div>
+      </div>
+      {sizeHud && (
+        <div
+          data-accessory-size-hud=""
+          className="fixed z-50 flex h-7 items-stretch overflow-hidden rounded-full border shadow-md"
+          style={{
+            left: Math.min(Math.max(8, pos.x), window.innerWidth - 88),
+            top: Math.max(8, chipTop - SIZE_HUD_ABOVE_PX),
+            background: "#07283d",
+            borderColor: "#07283d",
+          }}
+          role="group"
+          aria-label="H/L/Δ size"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              const n = Math.max(STATS_CHIP_MIN, height - 2);
+              setStatsChipSize(n, customerFileId);
+              if (customerFileId) patchCaptureSizes(customerFileId, { statsPillSize: n });
+            }}
+            disabled={height <= STATS_CHIP_MIN}
+            aria-label="Decrease H/L/Δ size"
+            className="flex w-7 items-center justify-center text-white/95 hover:bg-white/10 disabled:opacity-40"
+          >
+            <Minus className="h-3 w-3" />
+          </button>
+          <span className="w-px self-stretch bg-white/25" aria-hidden />
+          <button
+            type="button"
+            onClick={() => {
+              const n = Math.min(STATS_CHIP_MAX, height + 2);
+              setStatsChipSize(n, customerFileId);
+              if (customerFileId) patchCaptureSizes(customerFileId, { statsPillSize: n });
+            }}
+            disabled={height >= STATS_CHIP_MAX}
+            aria-label="Increase H/L/Δ size"
+            className="flex w-7 items-center justify-center text-white/95 hover:bg-white/10 disabled:opacity-40"
+          >
+            <Plus className="h-3 w-3" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setSizeHud(false)}
+            aria-label="Close size"
+            className="flex w-6 items-center justify-center border-l border-white/25 text-white/80 hover:bg-white/10"
+          >
+            <X className="h-3 w-3" />
+          </button>
         </div>
       )}
-      {/* Reading and letter in one colour, as the shipped decks set them.
-          Tabular figures in the interface face, not a monospace: a
-          monospaced 1 hangs air on both sides, which is most of what made
-          this read loose beside the deck. */}
-      <div
-        className="flex items-center font-semibold"
-        style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.hi }}
-      >
-        {statsPillText("H", stats.hi.value.toFixed(decimals))}
-      </div>
-      <div
-        className="flex items-center border-l border-gray-200 font-semibold"
-        style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.lo }}
-      >
-        {statsPillText("L", stats.lo.value.toFixed(decimals))}
-      </div>
-      <div
-        className="flex items-center border-l border-gray-200 font-semibold"
-        style={{ paddingLeft: padPx, paddingRight: padPx, color: STATS_PILL_COLORS.delta }}
-      >
-        {statsPillText("Δ", stats.delta.toFixed(decimals))}
-      </div>
-    </div>
+    </>
   );
 }

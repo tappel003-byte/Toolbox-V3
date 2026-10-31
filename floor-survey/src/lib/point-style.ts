@@ -1,19 +1,20 @@
 /**
  * The investigator's reading dot size and colour.
  *
- * These are chosen in Floor Survey and saved per Customer File. Every renderer
- * that draws readings has to ask for them the same way, because the fallback
- * built into TopoTab is 6 while the field app's own default is 2 -- so any
- * renderer that forgets to pass them draws every reading three times the size
- * the investigator is looking at. That is what the report figure composer did,
- * and it is why a composed topo never matched the drawing it came from.
+ * Capture: chosen in Floor Survey and saved per Customer File on this device
+ * (`dpp-size` / capture-sizes). Use readCapturePointStyle for field work.
  *
- * One function, so there is one answer.
+ * Report: sheet defaults only — never read capture localStorage, or a field
+ * adjustment rewrites the deliverable and the print.
+ *
+ * TopoTab's own fallback is 6; the field default is 2. Always pass an explicit
+ * size into report/composer paths.
  */
 export const DEFAULT_POINT_SIZE = 2;
 export const DEFAULT_POINT_COLOR = "#dc2626";
 
-export function readPointStyle(customerFileId: string | undefined | null): {
+/** Capture-only. Do not call from Report Builder or print/compose. */
+export function readCapturePointStyle(customerFileId: string | undefined | null): {
   pointSize: number;
   pointColor: string;
 } {
@@ -29,4 +30,20 @@ export function readPointStyle(customerFileId: string | undefined | null): {
     /* storage unavailable — the defaults are the field app's own */
   }
   return { pointSize, pointColor };
+}
+
+/** Report / print / compose — sheet defaults, never capture prefs. */
+export function reportPointStyle(): {
+  pointSize: number;
+  pointColor: string;
+} {
+  return { pointSize: DEFAULT_POINT_SIZE, pointColor: DEFAULT_POINT_COLOR };
+}
+
+/** @deprecated Use readCapturePointStyle or reportPointStyle. */
+export function readPointStyle(customerFileId: string | undefined | null): {
+  pointSize: number;
+  pointColor: string;
+} {
+  return readCapturePointStyle(customerFileId);
 }

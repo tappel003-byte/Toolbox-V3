@@ -95,11 +95,21 @@ await page.evaluate(async (id) => {
       },
     },
   };
+  // Report pill size lives in floorLayout.pillLock. Seed 48px-equivalent on
+  // the report so the sheet is visibly away from the 32px default — and poison
+  // the old device-global key to prove the sheet does not read it.
+  const chrome = (window.ToolboxReportFloorLayout &&
+    Number(window.ToolboxReportFloorLayout.CHROME_SCALE)) || (1632 / 1220);
+  const pillScale = Math.min(1.85, chrome * (48 / 32));
+  record.reportBuilder = record.reportBuilder || {};
+  record.reportBuilder.floorLayout = window.ToolboxReportFloorLayout
+    ? window.ToolboxReportFloorLayout.normalizeLayout({
+      pillLock: { locked: true, scale: pillScale },
+      legendLock: { locked: true, scale: 1 },
+    })
+    : { pillLock: { locked: true, scale: pillScale }, legendLock: { locked: true, scale: 1 } };
   await window.ToolboxDB.saveCustomerFile(record);
-  // The readings are sized by Stats pill size, the control that sizes them in
-  // Floor Survey. Set away from its default so a piece drawn at the wrong
-  // size is visible as a wrong size rather than as the default.
-  try { window.localStorage.setItem('stats-chip-size', '48'); } catch (_) {}
+  try { window.localStorage.setItem('stats-chip-size', '14'); } catch (_) {}
 }, FILE);
 
 async function openSlide() {
@@ -108,10 +118,10 @@ async function openSlide() {
   await page.evaluate(() => document.querySelector('.rb-thumb[data-page-id^="floor-"]').click());
   await page.waitForFunction(
     () => !!document.querySelector('[data-rb-floor-import]') ||
-      !!document.querySelector('[data-rb-floor-box="topo"]'), { timeout: 20000 });
+      !!document.querySelector('[data-rb-floor-box^="topo"]'), { timeout: 20000 });
   if (await page.$('[data-rb-floor-import]')) {
     await page.click('[data-rb-floor-import]');
-    await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box="topo"]'), { timeout: 30000 });
+    await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-box^="topo"]'), { timeout: 30000 });
   }
   await new Promise((r) => setTimeout(r, 2500));
 }
@@ -155,6 +165,19 @@ async function dragPiece(which, dx, dy) {
 }
 
 await openSlide();
+
+const ownership = await page.evaluate(async (fileId) => {
+  const rec = await window.ToolboxDB.getCustomerFile(fileId);
+  const scale = rec.reportBuilder?.floorLayout?.pillLock?.scale;
+  const chrome = window.ToolboxReportFloorLayout.CHROME_SCALE;
+  const global = localStorage.getItem('stats-chip-size');
+  return { scale, chrome, global, px: scale && chrome ? Math.round((scale / chrome) * 32) : null };
+}, FILE);
+check(
+  'report pill lock ignores device-global stats-chip-size poison',
+  ownership.global === '14' && ownership.px != null && ownership.px >= 40 && ownership.px <= 48,
+  JSON.stringify(ownership),
+);
 
 const scaleBox = await piece('legend');
 const pillBox = await piece('pill');
@@ -293,6 +316,23 @@ const stackPlanBack = await stackOf();
 check('and the drawing itself can be sent behind the scale again',
   stackPlanBack.plan < stackPlanBack.scale,
   JSON.stringify(stackPlanBack));
+
+// A drawing is stacked by its own view frame since flexible views; the
+// restack has to land there and be saved with the page (CLAUDE-017).
+await openSlide();
+const stackPlanKept = await stackOf();
+check('and the drawing stays behind when the report is reopened',
+  stackPlanKept.plan < stackPlanKept.scale, JSON.stringify(stackPlanKept));
+
+const planAgain = await piece('topo');
+await page.mouse.click(planAgain.x + planAgain.w / 2, planAgain.y + 14, { button: 'right' });
+await new Promise((r) => setTimeout(r, 400));
+await page.click('[data-rb-stackmenu] [data-rb-stack="front"]');
+await new Promise((r) => setTimeout(r, 900));
+const stackPlanFront = await stackOf();
+check('and Bring to front puts the drawing over the scale and the readings',
+  stackPlanFront.plan > stackPlanFront.scale && stackPlanFront.plan > stackPlanFront.readings,
+  JSON.stringify(stackPlanFront));
 
 // The scale is a key on the paper, so its size belongs to the paper. Tim:
 // "it does not lock the size, its different than the FS legend." It was drawn

@@ -12,6 +12,14 @@ import {
   setRecoveryRendererForTests,
 } from "@/lib/recovery-pdf";
 import { renderTopoLegendImage, topoLegendShape } from "@/lib/topo-legend-image";
+// Exported so File Explorer's readings CSV uses the ONE correction
+// implementation rather than a second copy of the arithmetic. A back door that
+// re-derived the corrected elevation could disagree with the topo the
+// investigator is looking at, and nothing would say which was right. Nothing
+// about the correction mathematics, transition capture or the storage format
+// changes by naming these here: they are the same pure functions the topo and
+// the report already call.
+import { transitionDelta, transitionLabel, withCorrectedValues } from "@/lib/transitions";
 import {
   composeReportTopoFigure,
   composeReportTopoFigureForPage,
@@ -36,7 +44,12 @@ export type MountOptions = {
   areaId?: string | null;
   camera?: PlanCamera | null;
   settings?: Partial<RenderSettings> | null;
+  /** Report rail only: which Topo control group is showing. */
+  railGroup?: "contours" | "readings" | "accessories" | "legendhl";
   locked?: boolean;
+  /** Report pill size from floorLayout (CSS px). Capture must not supply this. */
+  hostStatsPillPx?: number;
+  onHostStatsPillPxChange?: (px: number) => void;
   onCameraChange?: (camera: PlanCamera) => void;
   onSettingsChange?: (settings: RenderSettings) => void;
   /** The High, Low and difference the slide is drawing, per boundary. */
@@ -99,8 +112,11 @@ export function mount(el: HTMLElement, options: MountOptions) {
           areaId={current.areaId ?? null}
           camera={current.camera ?? null}
           settings={current.settings ?? null}
+          railGroup={current.railGroup}
           locked={!!current.locked}
           controlsOnly={current.workspace === "report-topo-controls"}
+          hostStatsPillPx={current.hostStatsPillPx}
+          onHostStatsPillPxChange={current.onHostStatsPillPxChange}
           onCameraChange={current.onCameraChange}
           onSettingsChange={current.onSettingsChange}
           onStats={current.onStats}
@@ -186,6 +202,9 @@ declare global {
       reportTopoExtentForPage: typeof reportTopoExtentForPage;
       renderTopoLegendImage: typeof renderTopoLegendImage;
       topoLegendShape: typeof topoLegendShape;
+      withCorrectedValues: typeof withCorrectedValues;
+      transitionDelta: typeof transitionDelta;
+      transitionLabel: typeof transitionLabel;
     };
     ToolboxDB?: {
       getMedia?: (id: string) => Promise<string | null>;
@@ -209,6 +228,9 @@ window.ToolboxFloorSurvey = {
   reportTopoExtentForPage,
   renderTopoLegendImage,
   topoLegendShape,
+  withCorrectedValues,
+  transitionDelta,
+  transitionLabel,
 };
 
 // Vite's IIFE assigns this module's exports onto the ToolboxFloorSurvey global
@@ -227,4 +249,7 @@ export {
   reportTopoExtentForPage,
   renderTopoLegendImage,
   topoLegendShape,
+  withCorrectedValues,
+  transitionDelta,
+  transitionLabel,
 };
