@@ -16,7 +16,12 @@ import {
   legendStorageKey,
   patchCaptureSizes,
 } from "@/lib/capture-sizes";
-import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/lib/screen-size";
+import {
+  planLockedImageSize,
+  planLongSide,
+  planProportionalSize,
+  screenAnchoredImageSize,
+} from "@/lib/screen-size";
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -359,8 +364,9 @@ function labelAnchor(p: SurveyPoint, k = 1) {
 
 /* ---------------------------------------------------------------------------
  * H / L / Δ stats pill — drawn on the Topo canvas for every boundary
- * (including a lone surface). Data mode keeps the floating StatsChip.
- * Plan-locked: pans/zooms with the drawing; Size −/+ sets the base.
+ * (including a lone surface). Data draws the same pill on its canvas from
+ * the same pillDx/pillDy offsets. Plan-locked: pans/zooms with the drawing;
+ * Size −/+ sets the base (shared capture size key).
  * ------------------------------------------------------------------------- */
 
 export const DEFAULT_STATS_PILL_SIZE = 28;
@@ -375,7 +381,6 @@ export const DEFAULT_STATS_PILL_SIZE = 28;
  * stays readable; Point label size −/+ still scales it. Report slides keep
  * plan-proportional sizing. Legend / H/L/Δ / High/Low keep chromeSizeImg.
  */
-const LABEL_FIT_FACTOR = 0.72;
 function pointLabelFontImg(
   fontBase: number,
   floor: Floor,
@@ -409,8 +414,7 @@ function chromeSizeImg(
 
 /** Image-space size that zooms with the plan (capture), from fit scale. */
 function planLockedImg(base: number, fitScale: number) {
-  const fit = fitScale > 0 ? fitScale : 1;
-  return (Math.max(1, base) * LABEL_FIT_FACTOR) / fit;
+  return planLockedImageSize(base, fitScale);
 }
 
 /**

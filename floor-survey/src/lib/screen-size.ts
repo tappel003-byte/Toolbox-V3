@@ -30,6 +30,21 @@ export function screenAnchoredImageSize(
 }
 
 /**
+ * Image-space size that pans and zooms with the plan (capture).
+ *
+ * Sized from the fit-to-viewport scale so a phone fit lands near ~72% of the
+ * old screen-anchored CSS size; pinch-in grows the drawing and this chrome
+ * together. Data and Topo must use the same helper so a size set on one
+ * screen matches the other.
+ */
+export const PLAN_LOCK_FIT_FACTOR = 0.72;
+
+export function planLockedImageSize(base: number, fitScale: number): number {
+  const fit = fitScale > 0 ? fitScale : 1;
+  return (Math.max(1, base) * PLAN_LOCK_FIT_FACTOR) / fit;
+}
+
+/**
  * Presentation sizing: a size that is a fixed fraction of the plan.
  *
  * Distress Survey has always done this -- a pin is 0.9% of the plan's long
