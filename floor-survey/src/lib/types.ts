@@ -164,8 +164,8 @@ export interface SurveyPoint {
   label?: string; // BP1, BP2, etc.
   notes?: string;
   createdAt: number;
-  // Topo presentation: user-nudged label offset from the dot.
-  // undefined = use default offset (+8, +6).
+  // Topo presentation: user-nudged label offset from the dot (text top-left).
+  // undefined = seat to the right of the point, tight to the font size.
   labelDx?: number;
   labelDy?: number;
   // Transition tagging.
