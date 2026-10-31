@@ -906,6 +906,12 @@ body.report-builder-open .canvas {
   padding-top: 10px;
   background: #fff;
 }
+/*
+ * Rail tab hierarchy (Tim):
+ *   Grandparents — Sheet Layout | Topo: equal half-width, tallest
+ *   Parents      — Contours | Readings: mid, navy blue active (no rust)
+ *   Siblings     — Display… / Show…: smaller blue pills in TopoTab
+ */
 .rb-ws__task-tabs {
   display: flex;
   align-items: flex-end;
@@ -920,20 +926,22 @@ body.report-builder-open .canvas {
 .rb-ws__task-tab {
   appearance: none;
   position: relative;
-  flex: 0 0 auto;
+  flex: 1 1 0;
+  min-width: 0;
   margin: 0 0 -1px;
   border: 1px solid var(--line, #dce1e4);
   border-bottom-color: var(--line, #dce1e4);
-  border-radius: 6px 6px 0 0;
+  border-radius: 7px 7px 0 0;
   box-shadow: none;
-  min-height: 36px;
-  padding: 6px 12px;
+  min-height: 40px;
+  padding: 8px 10px;
   font: inherit;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
-  color: var(--navy, #07283d);
+  text-align: center;
+  color: #3d5c70;
   background: #e5ebee;
   cursor: pointer;
 }
@@ -947,26 +955,21 @@ body.report-builder-open .canvas {
   outline: 2px solid var(--navy, #07283d);
   outline-offset: -3px;
 }
+/* Grandparents: navy fill when on (obvious), taller + equal width for rank. */
 .rb-ws__task-tab.is-active {
   z-index: 1;
-  background: #fff;
-  color: var(--navy, #07283d);
-  border-bottom-color: #fff;
+  background: var(--navy, #07283d);
+  color: #fff;
+  border-color: var(--navy, #07283d);
+  border-bottom-color: var(--navy, #07283d);
   box-shadow: none;
 }
-/* Topo and its three sub tabs are one set. Sheet Layout stays the gray tab. */
-.rb-ws__task-tab.is-active[data-rb-floor-task="topo"] {
-  color: #c14a2b;
-  font-weight: 700;
-}
-/* Second tier under Topo: the same folder tabs, drawn smaller.
-   Rounded tops, flat bottoms, cool-gray inactive, white active tab that
-   interrupts this row's baseline. Not a pill, and not an underline. */
+/* Parents under Topo: Contours | Readings — mid height, navy fill when on. */
 .rb-ws__subtabs {
   display: flex;
   align-items: flex-end;
-  gap: 2px;
-  margin: 3px 0 0;
+  gap: 3px;
+  margin: 4px 0 0;
   padding: 0;
   border: 0;
   border-bottom: 1px solid var(--line, #dce1e4);
@@ -976,22 +979,23 @@ body.report-builder-open .canvas {
 .rb-ws__subtab {
   appearance: none;
   position: relative;
-  flex: 0 0 auto;
+  flex: 1 1 0;
   min-width: 0;
-  min-height: 26px;
+  min-height: 32px;
   margin: 0 0 -1px;
-  padding: 2px 7px 3px;
+  padding: 5px 8px;
   border: 1px solid var(--line, #dce1e4);
   border-bottom-color: var(--line, #dce1e4);
-  border-radius: 5px 5px 0 0;
+  border-radius: 6px 6px 0 0;
   background: #e5ebee;
   box-shadow: none;
-  color: #c14a2b;
+  color: #3d5c70;
   font: inherit;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 650;
   line-height: 1.2;
   white-space: nowrap;
+  text-align: center;
   cursor: pointer;
 }
 .rb-ws__subtab:hover:not(.is-active) {
@@ -1006,8 +1010,11 @@ body.report-builder-open .canvas {
 }
 .rb-ws__subtab.is-active {
   z-index: 1;
-  background: #fff;
-  border-bottom-color: #fff;
+  background: var(--navy, #07283d);
+  color: #fff;
+  font-weight: 700;
+  border-color: var(--navy, #07283d);
+  border-bottom-color: var(--navy, #07283d);
   box-shadow: none;
 }
 .rb-ws__section-label {
