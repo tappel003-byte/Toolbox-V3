@@ -4313,9 +4313,69 @@ body.is-presenting { overflow: hidden; }
 /* Zoomed past fit, the page is bigger than the stage, so the stage has to
    scroll. Centring a flex child with justify-content clips the top and left
    of an oversized one -- the part you cannot scroll back to -- so the paper
-   centres with margin:auto instead, which does not. */
+   centres with margin:auto instead, which does not.
+   Tim, Oct 31, 2026 (iPad Mini): once zoomed, need scrollbars on the RIGHT
+   and BOTTOM of the canvas viewing window to move around the sheet. */
 .rb-stage {
   overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.rb-stage--zoomed {
+  /* Always reserve scrollbar gutters so right + bottom bars are findable
+     on desktop and iPad (overlay bars were easy to miss). */
+  overflow: scroll;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(7, 40, 61, 0.45) rgba(8, 32, 54, 0.08);
+}
+
+.rb-stage--zoomed::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+.rb-stage--zoomed::-webkit-scrollbar-track {
+  background: rgba(8, 32, 54, 0.08);
+}
+.rb-stage--zoomed::-webkit-scrollbar-thumb {
+  background: rgba(7, 40, 61, 0.45);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.rb-stage--zoomed::-webkit-scrollbar-thumb:hover {
+  background: rgba(7, 40, 61, 0.65);
+  background-clip: padding-box;
+}
+.rb-stage--zoomed::-webkit-scrollbar-corner {
+  background: rgba(8, 32, 54, 0.08);
+}
+
+/* When zoomed, one-finger pan must reach the stage. Drag grips keep
+   touch-action: none; the sheet/boxes themselves allow pan so the
+   investigator can move around without finding a pixel of stage chrome. */
+.rb-stage--zoomed .rb-sheet,
+.rb-stage--zoomed .rb-cover-box,
+.rb-stage--zoomed .rb-floor-box,
+.rb-stage--zoomed .rb-discussion__frame {
+  touch-action: pan-x pan-y;
+}
+.rb-stage--zoomed [data-rb-brand-resize],
+.rb-stage--zoomed [data-rb-cover-resize],
+.rb-stage--zoomed [data-rb-cover-move],
+.rb-stage--zoomed .rb-cover-box__resize,
+.rb-stage--zoomed .rb-cover-box__move,
+.rb-stage--zoomed .rb-floor-box__resize,
+.rb-stage--zoomed [data-rb-floor-resize],
+.rb-stage--zoomed [data-plan-resize],
+.rb-stage--zoomed .rb-discussion__move,
+.rb-stage--zoomed .rb-discussion__resize,
+.rb-stage--zoomed [data-rb-disc-move],
+.rb-stage--zoomed [data-rb-disc-resize],
+.rb-stage--zoomed [data-rb-penlog-move],
+.rb-stage--zoomed [data-rb-penlog-resize] {
+  touch-action: none;
 }
 
 .rb-stage__paper {

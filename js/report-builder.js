@@ -107,8 +107,11 @@
     var styles = window.getComputedStyle(stage);
     var padX = (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0);
     var padY = (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0);
-    var availW = Math.max(0, stage.clientWidth - padX);
-    var availH = Math.max(0, stage.clientHeight - padY);
+    // Paper draws a 1px border outside the scaled sheet; leave room so Fit
+    // does not sprout a 2px phantom horizontal scrollbar.
+    var paperBorder = 2;
+    var availW = Math.max(0, stage.clientWidth - padX - paperBorder);
+    var availH = Math.max(0, stage.clientHeight - padY - paperBorder);
     if (availW < 40 || availH < 40) return;
     var fit = Math.min(availW / PAPER_W, availH / PAPER_H);
     if (!(fit > 0)) return;
@@ -5324,6 +5327,8 @@
       var mover = grip ? null : event.target.closest('[data-rb-brand-box]');
       if (!grip && !mover) return;
       if (mover && mover.classList.contains('is-locked')) return;
+      // Zoomed: let the stage scroll unless this is the resize grip.
+      if (!grip && root.querySelector('.rb-stage--zoomed')) return;
       var page = activePage();
       if (!page) return;
       // The logo is placed against the sheet, which is the one thing every
@@ -7151,8 +7156,12 @@
       if (current && current.type === 'cover') {
         if (coverLayout && coverLayout.locked) return;
         var coverResize = event.target.closest('[data-rb-cover-resize]');
+        var coverMove = event.target.closest('[data-rb-cover-move]');
         var coverBox = event.target.closest('[data-rb-cover-box]');
         if (!coverBox) return;
+        // Zoomed past fit: stage must pan. Only the move/resize grips claim
+        // the pointer; a finger on the box body scrolls the canvas window.
+        if (root.querySelector('.rb-stage--zoomed') && !coverResize && !coverMove) return;
         var coverStage = stageRect('[data-rb-cover-stage] .rb-cover__stage') || stageRect('[data-rb-cover-stage]');
         if (!coverStage || coverStage.width < 8 || coverStage.height < 8) return;
         event.preventDefault();
@@ -7187,6 +7196,8 @@
       if (!resize && event.target.closest('[data-rb-topo-live]')) return;
       // The x is a button, not a grab handle.
       if (event.target.closest('[data-rb-floor-overview]')) return;
+      // Zoomed: prefer canvas scroll over frame-body drag; resize grips still work.
+      if (!resize && root.querySelector('.rb-stage--zoomed')) return;
       var stage = stageRect('[data-rb-floor-stage]');
       if (!stage || stage.width < 8 || stage.height < 8) return;
       event.preventDefault();
