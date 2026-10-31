@@ -1188,12 +1188,15 @@ export function TopoTab({
           </div>
         </div>
       )}
-      {/* Readings | − | + — on/off + label size; same pill family as Control panel. */}
+      {/*
+        Field corner chrome (screen-fixed; does not zoom with the plan):
+        TL Readings vertical · TR Control panel · BR Clean.
+        Data/Topo stays BL (ModeToggle). Boundary selector + H/L/Δ float.
+      */}
       {!chromeless && !controlsOnly && !cleanView && (
         <div
           className={
-            "absolute z-30 top-2 left-2 landscape-short:top-auto landscape-short:left-[calc(env(safe-area-inset-left)+0.75rem)] landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] " +
-            "h-9 flex items-stretch rounded-full backdrop-blur shadow-md border overflow-hidden text-xs font-medium " +
+            "absolute z-30 top-2 left-2 flex w-11 flex-col items-stretch overflow-hidden rounded-full backdrop-blur shadow-md border text-xs font-medium " +
             (readingsOn
               ? "bg-white/95 border-gray-300 text-gray-700"
               : "bg-white/80 border-gray-300 text-gray-400")
@@ -1206,76 +1209,69 @@ export function TopoTab({
             onClick={toggleReadings}
             aria-label={readingsOn ? "Hide readings" : "Show readings"}
             aria-pressed={readingsOn}
-            className="px-3 flex items-center gap-1.5 hover:bg-gray-50"
+            className="flex flex-col items-center gap-0.5 px-1.5 py-2 hover:bg-gray-50"
           >
             <Hash className="h-3.5 w-3.5 shrink-0" />
-            <span>Readings</span>
+            <span className="text-[9px] leading-tight tracking-tight">Readings</span>
           </button>
-          <span className="w-px bg-gray-200" aria-hidden />
+          <span className="h-px bg-gray-200" aria-hidden />
           <button
             type="button"
             onClick={() => nudgeLabelSize(-1)}
             disabled={resolved.pointLabelFontSize <= LABEL_SIZE_MIN}
             aria-label="Smaller reading labels"
-            className="w-9 flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
+            className="flex h-9 items-center justify-center hover:bg-gray-50 disabled:opacity-40"
           >
             <Minus className="h-3.5 w-3.5" />
           </button>
-          <span className="w-px bg-gray-200" aria-hidden />
+          <span className="h-px bg-gray-200" aria-hidden />
           <button
             type="button"
             onClick={() => nudgeLabelSize(1)}
             disabled={resolved.pointLabelFontSize >= LABEL_SIZE_MAX}
             aria-label="Larger reading labels"
-            className="w-9 flex items-center justify-center hover:bg-gray-50 disabled:opacity-40"
+            className="flex h-9 items-center justify-center hover:bg-gray-50 disabled:opacity-40"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
         </div>
       )}
-      {/* Clean view + Control panel — same row, same height (peer pills). */}
-      {!chromeless && !controlsOnly && (
-        <div
+      {/* Top right — Control panel only */}
+      {!chromeless && !controlsOnly && !cleanView && openCorner == null && (
+        <button
+          type="button"
+          onClick={() => openTrialDoor(lastTrialDoor ?? "contours")}
+          aria-label="Control panel"
           className={
-            "absolute z-30 top-2 right-2 flex items-center gap-1.5 " +
-            "landscape-short:top-auto landscape-short:right-auto landscape-short:left-1/2 landscape-short:-translate-x-1/2 landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]"
+            "absolute z-30 top-2 right-2 " +
+            "h-9 px-3 flex items-center gap-1.5 rounded-full bg-white/95 backdrop-blur shadow-md border border-gray-300 " +
+            "text-xs font-medium text-gray-700 hover:bg-gray-50"
           }
         >
-          <button
-            type="button"
-            onClick={() => setCleanViewOn(!cleanView)}
-            aria-label={cleanView ? "Show chrome" : "Clean view"}
-            aria-pressed={cleanView}
-            className={
-              "h-9 px-3 flex items-center gap-1.5 rounded-full backdrop-blur shadow-md border " +
-              "text-xs font-medium " +
-              (cleanView
-                ? "bg-white/95 border-gray-300 text-gray-700 hover:bg-gray-50"
-                : "bg-white/95 border-gray-300 text-gray-700 hover:bg-gray-50")
-            }
-          >
-            {cleanView ? (
-              <EyeOff className="h-3.5 w-3.5 shrink-0" />
-            ) : (
-              <Eye className="h-3.5 w-3.5 shrink-0" />
-            )}
-            <span>{cleanView ? "Chrome" : "Clean"}</span>
-          </button>
-          {!cleanView && openCorner == null && (
-            <button
-              type="button"
-              onClick={() => openTrialDoor(lastTrialDoor ?? "contours")}
-              aria-label="Control panel"
-              className={
-                "h-9 px-3 flex items-center gap-1.5 rounded-full bg-white/95 backdrop-blur shadow-md border border-gray-300 " +
-                "text-xs font-medium text-gray-700 hover:bg-gray-50"
-              }
-            >
-              <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
-              <span>Control panel</span>
-            </button>
+          <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
+          <span>Control panel</span>
+        </button>
+      )}
+      {/* Bottom right — Clean (Data/Topo owns bottom left) */}
+      {!chromeless && !controlsOnly && (
+        <button
+          type="button"
+          onClick={() => setCleanViewOn(!cleanView)}
+          aria-label={cleanView ? "Show chrome" : "Clean view"}
+          aria-pressed={cleanView}
+          className={
+            "fixed z-30 h-9 px-3 flex items-center gap-1.5 rounded-full backdrop-blur shadow-md border " +
+            "text-xs font-medium bg-white/95 border-gray-300 text-gray-700 hover:bg-gray-50 " +
+            "bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] right-[calc(env(safe-area-inset-right)+0.75rem)]"
+          }
+        >
+          {cleanView ? (
+            <EyeOff className="h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <Eye className="h-3.5 w-3.5 shrink-0" />
           )}
-        </div>
+          <span>{cleanView ? "Chrome" : "Clean"}</span>
+        </button>
       )}
       {/* Diagnostic points — opened from ⋯ (not a field corner pill). */}
       {diagOpen && !chromeless && (
