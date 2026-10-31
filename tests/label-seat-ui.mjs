@@ -1,5 +1,5 @@
 /**
- * Control panel → Readings → Accessories → label seat writes offsets.
+ * Control panel → Readings → Show → label seat (side×height / Center).
  *
  * Run: node tests/label-seat-ui.mjs  (static server on 8765)
  */
@@ -74,7 +74,7 @@ await page.evaluate(() => {
 await new Promise((r) => setTimeout(r, 2000));
 
 await page.evaluate(() => {
-  [...document.querySelectorAll('button')].find((b) => /Control panel/i.test(b.textContent || ''))?.click();
+  document.querySelector('[aria-label="Control panel"]')?.click();
 });
 await new Promise((r) => setTimeout(r, 600));
 await page.evaluate(() => {
@@ -82,45 +82,93 @@ await page.evaluate(() => {
 });
 await new Promise((r) => setTimeout(r, 400));
 await page.evaluate(() => {
-  [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Accessories')?.click();
+  [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Show')?.click();
 });
 await new Promise((r) => setTimeout(r, 400));
 
 const seatUi = await page.evaluate(() => {
-  const group = document.querySelector('[aria-label="Point label seat"]');
-  if (!group) return null;
-  const labels = [...group.querySelectorAll('button')].map((b) => (b.textContent || '').trim());
-  return { labels };
+  const sides = document.querySelector('[aria-label="Point label side"]');
+  const heights = document.querySelector('[aria-label="Point label seat"]');
+  if (!sides || !heights) return null;
+  const sideLabels = [...sides.querySelectorAll('button')].map((b) => (b.textContent || '').trim());
+  const heightLabels = [...heights.querySelectorAll('button')].map((b) => (b.textContent || '').trim());
+  const pressed = [...sides.querySelectorAll('button'), ...heights.querySelectorAll('button')]
+    .filter((b) => b.getAttribute('aria-pressed') === 'true')
+    .map((b) => (b.textContent || '').trim());
+  return { sideLabels, heightLabels, pressed };
 });
 check(
-  'Accessories shows Left/Right/Top/Middle/Center',
-  !!seatUi && seatUi.labels.join(',') === 'Left,Right,Top,Middle,Center',
+  'Show has Left/Right and Top/Middle/Bottom/Center',
+  !!seatUi &&
+    seatUi.sideLabels.join(',') === 'Left,Right' &&
+    seatUi.heightLabels.join(',') === 'Top,Middle,Bottom,Center',
   JSON.stringify(seatUi),
+);
+check(
+  'Default highlights Right and Bottom',
+  !!seatUi && seatUi.pressed.join(',') === 'Right,Bottom',
+  JSON.stringify(seatUi?.pressed),
 );
 
 await page.evaluate(() => {
-  const group = document.querySelector('[aria-label="Point label seat"]');
-  [...(group?.querySelectorAll('button') || [])].find((b) => (b.textContent || '').trim() === 'Left')?.click();
+  const sides = document.querySelector('[aria-label="Point label side"]');
+  [...(sides?.querySelectorAll('button') || [])]
+    .find((b) => (b.textContent || '').trim() === 'Left')
+    ?.click();
 });
 await new Promise((r) => setTimeout(r, 500));
 
-const offsets = await page.evaluate(async (id) => {
+const afterLeft = await page.evaluate(async (id) => {
   const rec = await window.ToolboxDB.getCustomerFile(id);
   const layer = Object.values(rec.floorSurvey?.byCanvasId || {})[0];
-  return (layer?.points || []).map((p) => ({
+  const offsets = (layer?.points || []).map((p) => ({
     id: p.id,
     dx: p.labelDx,
     dy: p.labelDy,
   }));
+  const sides = document.querySelector('[aria-label="Point label side"]');
+  const heights = document.querySelector('[aria-label="Point label seat"]');
+  const pressed = [...(sides?.querySelectorAll('button') || []), ...(heights?.querySelectorAll('button') || [])]
+    .filter((b) => b.getAttribute('aria-pressed') === 'true')
+    .map((b) => (b.textContent || '').trim());
+  return { offsets, pressed };
 }, FILE);
 
 check(
-  'Left seat stores negative labelDx on every point',
-  offsets.length === 3 && offsets.every((o) => typeof o.dx === 'number' && o.dx < 0),
-  JSON.stringify(offsets),
+  'Left+Bottom stores negative labelDx on every point',
+  afterLeft.offsets.length === 3 &&
+    afterLeft.offsets.every((o) => typeof o.dx === 'number' && o.dx < 0),
+  JSON.stringify(afterLeft.offsets),
+);
+check(
+  'Left+Bottom pills stay highlighted',
+  afterLeft.pressed.join(',') === 'Left,Bottom',
+  JSON.stringify(afterLeft.pressed),
 );
 
-await page.screenshot({ path: `${OUT}/label-seat-accessories.png` });
+await page.evaluate(() => {
+  const heights = document.querySelector('[aria-label="Point label seat"]');
+  [...(heights?.querySelectorAll('button') || [])]
+    .find((b) => (b.textContent || '').trim() === 'Center')
+    ?.click();
+});
+await new Promise((r) => setTimeout(r, 500));
+
+const afterCenter = await page.evaluate(() => {
+  const sides = document.querySelector('[aria-label="Point label side"]');
+  const heights = document.querySelector('[aria-label="Point label seat"]');
+  const pressed = [...(sides?.querySelectorAll('button') || []), ...(heights?.querySelectorAll('button') || [])]
+    .filter((b) => b.getAttribute('aria-pressed') === 'true')
+    .map((b) => (b.textContent || '').trim());
+  return pressed;
+});
+check(
+  'Center alone is highlighted (no Left/Right)',
+  afterCenter.join(',') === 'Center',
+  JSON.stringify(afterCenter),
+);
+
+await page.screenshot({ path: `${OUT}/label-seat-show-panel.png` });
 
 const failed = results.filter((r) => !r.ok).length;
 console.log(`\n${results.length - failed}/${results.length} passed`);
