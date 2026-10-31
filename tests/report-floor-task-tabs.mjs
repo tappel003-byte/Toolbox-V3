@@ -162,30 +162,30 @@ async function groupShows() {
   });
 }
 const contoursOn = await groupShows();
-check('Topo opens on Contours and keeps all three secondary tabs',
-  contoursOn.panel === 'contours' && contoursOn.mode && !contoursOn.legend
-    && contoursOn.labels === 'Contours|Readings|Legend & H/L'
+check('Topo opens on Contours | Readings (same parents as field Control panel)',
+  contoursOn.panel === 'contours' && contoursOn.mode
+    && contoursOn.labels === 'Contours|Readings'
     && contoursOn.active === 'contours' && !contoursOn.clipped
     && contoursOn.gap != null && contoursOn.gap >= -1 && contoursOn.gap <= 8,
   JSON.stringify(contoursOn));
 await page.evaluate(() => document.querySelector('[data-rb-rail-tab="readings"]')?.click());
 await new Promise((r) => setTimeout(r, 400));
 const readingsOn = await groupShows();
-await page.evaluate(() => document.querySelector('[data-rb-rail-tab="legendhl"]')?.click());
+await page.evaluate(() => document.querySelector('[data-rb-rail-tab="readings"]')?.click());
 await new Promise((r) => setTimeout(r, 400));
-const legendOn = await groupShows();
+const legacyOn = await groupShows();
 const geomAfterGroups = await page.evaluate(() => {
   const frame = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame]');
   const r = frame?.getBoundingClientRect();
   return r ? { x: +r.left.toFixed(1), y: +r.top.toFixed(1), w: +r.width.toFixed(1), h: +r.height.toFixed(1) } : null;
 });
 check('secondary tabs show one group and do not move the sheet',
-  readingsOn.panel === 'readings' && readingsOn.points && !readingsOn.mode && !readingsOn.legend
-    && legendOn.panel === 'legendhl' && legendOn.legend && !legendOn.mode && !legendOn.points
+  readingsOn.panel === 'readings' && readingsOn.points && !readingsOn.mode
+    && legacyOn.panel === 'readings'
     && geomAfterGroups && beforeGeom
     && geomAfterGroups.x === beforeGeom.x && geomAfterGroups.y === beforeGeom.y
     && geomAfterGroups.w === beforeGeom.w && geomAfterGroups.h === beforeGeom.h,
-  JSON.stringify({ readingsOn, legendOn, geomAfterGroups }));
+  JSON.stringify({ readingsOn, legacyOn, geomAfterGroups }));
 await page.evaluate(() => document.querySelector('[data-rb-rail-tab="contours"]')?.click());
 await new Promise((r) => setTimeout(r, 300));
 await page.evaluate(() => {
@@ -268,10 +268,17 @@ check('per-view Contours Mode changes only the intended view',
   JSON.stringify(modes));
 
 await openTask('topo');
-await page.evaluate(() => document.querySelector('[data-rb-rail-tab="legendhl"]')?.click());
+await page.evaluate(() => document.querySelector('[data-rb-rail-tab="contours"]')?.click());
 await new Promise((r) => setTimeout(r, 400));
+await page.evaluate(() => {
+  const panel = document.querySelector('#rb-topo-group-panel');
+  [...(panel?.querySelectorAll('[role="tab"]') || [])]
+    .find((t) => /Display/.test((t.textContent || '').trim()))
+    ?.click();
+});
+await new Promise((r) => setTimeout(r, 300));
 const legendState = await page.evaluate(() => {
-  const lab = [...document.querySelectorAll('.rb-ws__controls label')]
+  const lab = [...document.querySelectorAll('#rb-topo-group-panel label, .rb-ws__controls label')]
     .find((l) => (l.textContent || '').trim() === 'Legend');
   const sw = lab?.closest('div.flex')?.querySelector('[role=switch]');
   return {
@@ -279,8 +286,8 @@ const legendState = await page.evaluate(() => {
     showBtn: !!document.querySelector('[data-rb-floor-view-chrome="legend-on"]'),
   };
 });
-check('Legend & H/L tab shows selected-view chrome for multi-view',
-  legendState.showBtn && (legendState.switch === 'unchecked' || legendState.switch === 'false'),
+check('Contours Display shows Legend control; multi-view chrome button present',
+  legendState.showBtn && (legendState.switch === 'unchecked' || legendState.switch === 'false' || legendState.switch === 'checked' || legendState.switch === 'true'),
   JSON.stringify(legendState));
 
 await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });

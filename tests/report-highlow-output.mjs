@@ -321,16 +321,16 @@ async function openSlide(pg) {
   await new Promise((r) => setTimeout(r, 1500));
   await page.evaluate(() => document.querySelector('[data-rb-floor-task="topo"]')?.click());
   await new Promise((r) => setTimeout(r, 400));
-  // Contours / Readings / Accessories — High/Low size lives under Accessories.
-  // (Older builds used a single legendhl rail tab and a "Marker size" label.)
+  // Contours | Readings — High/Low size lives under Readings → Accessories.
   await page.evaluate(() => {
-    document.querySelector('[data-rb-rail-tab="accessories"]')?.click()
-      || document.querySelector('[data-rb-rail-tab="legendhl"]')?.click();
+    document.querySelector('[data-rb-rail-tab="readings"]')?.click();
   });
   await new Promise((r) => setTimeout(r, 400));
   await page.evaluate(() => {
-    const tabs = [...document.querySelectorAll('[role="tablist"][aria-label="Accessories"] [role="tab"]')];
-    tabs.find((t) => /High\/Low/.test((t.textContent || '').trim()))?.click();
+    const panel = document.querySelector('#rb-topo-group-panel');
+    [...(panel?.querySelectorAll('[role="tab"]') || [])]
+      .find((t) => /Accessories/.test((t.textContent || '').trim()))
+      ?.click();
   });
   await new Promise((r) => setTimeout(r, 600));
 }
