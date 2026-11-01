@@ -24,9 +24,16 @@ import {
 } from "@/lib/screen-size";
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import {
-  LABEL_SEATS,
+  DEFAULT_LABEL_SEAT,
+  LABEL_GAP_DEFAULT,
+  LABEL_GAP_MAX,
+  LABEL_GAP_MIN,
+  LABEL_HEIGHTS,
+  LABEL_SIDES,
   labelSeatOffset,
-  type LabelSeat,
+  type LabelHeight,
+  type LabelSeatSelection,
+  type LabelSide,
 } from "@/lib/label-seat";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -235,7 +242,8 @@ interface Props {
   /**
    * Which Topo group the report rail is showing. The tab row itself lives
    * under the Sheet Layout | Topo tabs. Field Control panel does not use this.
-   * `legendhl` is accepted as a synonym for `accessories` (older rail state).
+   * Older rails used `accessories` / `legendhl` as a peer of Contours|Readings.
+   * Those map to Readings (Accessories child) so bookmarks keep working.
    */
   reportGroup?: "contours" | "readings" | "accessories" | "legendhl";
   /** A picture on a page: no pan, no zoom, the plan fits its frame. */
@@ -369,7 +377,15 @@ function labelOffsetFor(
   }
   const { w } = measureLabel(text, fontPx, weight);
   const chromeK = labelChromeK(fontPx);
-  return labelSeatOffset("right", w, fontPx, 4 * chromeK, 2.5 * chromeK);
+  // Un-nudged default: Right + Bottom at the default gap (always has been).
+  return labelSeatOffset(
+    DEFAULT_LABEL_SEAT,
+    w,
+    fontPx,
+    4 * chromeK,
+    2.5 * chromeK,
+    LABEL_GAP_DEFAULT,
+  );
 }
 
 // Where the label sits (top-left corner) for a given point in image coords.
@@ -538,12 +554,20 @@ export function TopoTab({
   resizeCorners = false,
   allowContourLayer = false,
 }: Props) {
-  // Field Control panel: Contours | Readings. Legend lives under Contours →
-  // Display; H/L/Δ and High/Low live under Readings → Accessories (they come
-  // from the readings). Report Builder keeps its own rail (controlsOnly).
+  // Field Control panel and Report Builder rail share one tree:
+  // Contours | Readings → (Contours: Display/Colors/Lines; Readings: Show/
+  // Format/Accessories). Legend under Contours → Display; H/L under Readings
+  // → Accessories. Report Builder only changes the door (rail vs pill).
   const [openCorner, setOpenCorner] = useState<TrialDoorKey | null>(null);
   /** Hide floating field chrome; Clean pill stays so chrome can return. Local only. */
   const [cleanView, setCleanView] = useState(false);
+  /**
+   * Last applied label seat (side×height, or Center). Highlight only — offsets
+   * live on each point. Default Right+Bottom matches the long-standing park.
+   */
+  const [labelSeat, setLabelSeat] = useState<LabelSeatSelection>(DEFAULT_LABEL_SEAT);
+  /** Gap −/+ off the dot for the current seat. Free drag still nudges one label. */
+  const [labelGapSteps, setLabelGapSteps] = useState(LABEL_GAP_DEFAULT);
   /** Last parent tab, so Close then the pill returns to the same group. */
   const [lastTrialDoor, setLastTrialDoor] = useState<TrialDoorKey | null>(null);
   /** Which child tab is open per parent (visit memory only; not a setting). */
@@ -565,13 +589,21 @@ export function TopoTab({
       return next;
     });
   }, []);
-  /** Report rail group. The tab row is outside this panel; field doors do not use it. */
-  const reportPanel =
-    reportGroup === "legendhl" ? "accessories" : reportGroup || "contours";
-  /** Accessories sibling inside the report Accessories group. */
-  const [reportAccessoryTab, setReportAccessoryTab] = useState<
-    "legend" | "hld" | "highlow"
-  >("legend");
+  /** Report rail parent tab (Contours | Readings). Old peer Accessories → Readings. */
+  const reportDoor: TrialDoorKey =
+    reportGroup === "readings" ||
+    reportGroup === "accessories" ||
+    reportGroup === "legendhl"
+      ? "readings"
+      : "contours";
+  // Old RB rail bookmarks that opened the peer Accessories group land on
+  // Readings → Accessories so H/L controls stay one click away.
+  useEffect(() => {
+    if (!controlsOnly) return;
+    if (reportGroup === "accessories" || reportGroup === "legendhl") {
+      setTrialSection("readings", "accessories");
+    }
+  }, [controlsOnly, reportGroup, setTrialSection]);
   /**
    * Tap-to-size HUD for Legend / H/L/Δ / High/Low. Blue −/+ sits way above
    * the accessory so it does not fight press-and-move. Reading labels never
@@ -1085,10 +1117,15 @@ export function TopoTab({
   }
 
   /**
-   * Park every reading label on one seat (left / right / top / middle / center).
-   * Free drag still moves a single label afterward.
+   * Park every reading label on a seat (side×height, or Center on the dot)
+   * at the current gap. Free drag still moves a single label afterward.
    */
-  function applyLabelSeat(seat: LabelSeat) {
+  function applyLabelSeat(
+    seat: LabelSeatSelection,
+    gapSteps: number = labelGapSteps,
+  ) {
+    setLabelSeat(seat);
+    setLabelGapSteps(gapSteps);
     const fontPx = pointLabelFontImg(resolved.pointLabelFontSize, floor, {
       presentation,
       fitScale,
@@ -1101,7 +1138,7 @@ export function TopoTab({
     const next = points.map((p) => {
       const text = p.value.toFixed(dec);
       const { w } = measureLabel(text, fontPx, weight);
-      const { dx, dy } = labelSeatOffset(seat, w, fontPx, padX, padY);
+      const { dx, dy } = labelSeatOffset(seat, w, fontPx, padX, padY, gapSteps);
       return { ...p, labelDx: dx, labelDy: dy };
     });
     onPointsChange(next);
@@ -1114,6 +1151,29 @@ export function TopoTab({
         next.map((p) => ({ id: p.id, labelDx: p.labelDx, labelDy: p.labelDy })),
       ).catch(() => {});
     }
+  }
+
+  function applyLabelSide(side: LabelSide) {
+    const height: LabelHeight =
+      labelSeat.mode === "side" ? labelSeat.height : "bottom";
+    applyLabelSeat({ mode: "side", side, height });
+  }
+
+  function applyLabelHeight(height: LabelHeight) {
+    const side: LabelSide =
+      labelSeat.mode === "side" ? labelSeat.side : "right";
+    applyLabelSeat({ mode: "side", side, height });
+  }
+
+  function applyLabelGap(gapSteps: number) {
+    const next = Math.max(LABEL_GAP_MIN, Math.min(LABEL_GAP_MAX, Math.round(gapSteps)));
+    // Center stays on the dot; gap only walks side seats. Still remember the
+    // step so leaving Center picks it up.
+    if (labelSeat.mode === "center") {
+      setLabelGapSteps(next);
+      return;
+    }
+    applyLabelSeat(labelSeat, next);
   }
 
   function resetAllLabelPositions() {
@@ -1625,9 +1685,12 @@ export function TopoTab({
         />
         )}
 
-        {/* Contours — Control panel destination 1 */}
-        {(openCorner === "contours" && !controlsOnly) && (
+        {/* Contours — field Control panel + Report Builder rail (bare). */}
+        {((openCorner === "contours" && !controlsOnly) ||
+          (controlsOnly && reportDoor === "contours")) && (
           <TrialPanel
+            bare={controlsOnly}
+            reportGroup="contours"
             title="Contours"
             tabs="contours"
             onTab={openTrialDoor}
@@ -1863,8 +1926,12 @@ export function TopoTab({
           </TrialPanel>
         )}
 
-        {(openCorner === "readings" && !controlsOnly) && (
+        {/* Readings — field Control panel + Report Builder rail (bare). */}
+        {((openCorner === "readings" && !controlsOnly) ||
+          (controlsOnly && reportDoor === "readings")) && (
           <TrialPanel
+            bare={controlsOnly}
+            reportGroup="readings"
             title="Readings"
             tabs="readings"
             onTab={openTrialDoor}
@@ -1879,7 +1946,7 @@ export function TopoTab({
                   id: "show",
                   title: "Show",
                   body: (
-                    <div className="space-y-1">
+                    <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-2">
                         <SwitchRow
                           label="Points"
@@ -1897,6 +1964,89 @@ export function TopoTab({
                         checked={resolved.declutterLabels !== false}
                         onChange={(v) => update({ declutterLabels: v })}
                       />
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-medium text-muted-foreground">
+                          Point label seat
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          Left or Right, then Top / Middle / Bottom. Center sits on
+                          the dot. −/+ walks the gap; drag a label to nudge one.
+                        </p>
+                        <div
+                          className="flex flex-wrap gap-1"
+                          role="group"
+                          aria-label="Point label side"
+                        >
+                          {LABEL_SIDES.map((s) => {
+                            const on =
+                              labelSeat.mode === "side" && labelSeat.side === s.id;
+                            return (
+                              <button
+                                key={s.id}
+                                type="button"
+                                aria-pressed={on}
+                                onClick={() => applyLabelSide(s.id)}
+                                className={
+                                  "rounded-md border px-2 py-1 text-[11px] font-medium " +
+                                  (on
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "border-border bg-background hover:bg-muted")
+                                }
+                              >
+                                {s.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div
+                          className="flex flex-wrap gap-1"
+                          role="group"
+                          aria-label="Point label seat"
+                        >
+                          {LABEL_HEIGHTS.map((h) => {
+                            const on =
+                              labelSeat.mode === "side" && labelSeat.height === h.id;
+                            return (
+                              <button
+                                key={h.id}
+                                type="button"
+                                aria-pressed={on}
+                                onClick={() => applyLabelHeight(h.id)}
+                                className={
+                                  "rounded-md border px-2 py-1 text-[11px] font-medium " +
+                                  (on
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "border-border bg-background hover:bg-muted")
+                                }
+                              >
+                                {h.label}
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            aria-pressed={labelSeat.mode === "center"}
+                            onClick={() => applyLabelSeat({ mode: "center" })}
+                            className={
+                              "rounded-md border px-2 py-1 text-[11px] font-medium " +
+                              (labelSeat.mode === "center"
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-background hover:bg-muted")
+                            }
+                          >
+                            Center
+                          </button>
+                        </div>
+                        <StepperControl
+                          label="Label gap"
+                          value={labelGapSteps}
+                          min={LABEL_GAP_MIN}
+                          max={LABEL_GAP_MAX}
+                          step={1}
+                          unitless
+                          onChange={(v) => applyLabelGap(v)}
+                        />
+                      </div>
                     </div>
                   ),
                 },
@@ -2020,30 +2170,6 @@ export function TopoTab({
                           }
                         />
                       </div>
-                      <div className="space-y-1.5">
-                        <p className="text-[10px] font-medium text-muted-foreground">
-                          Point label seat
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">
-                          Parks every number next to its point. Drag a label to nudge one.
-                        </p>
-                        <div
-                          className="flex flex-wrap gap-1"
-                          role="group"
-                          aria-label="Point label seat"
-                        >
-                          {LABEL_SEATS.map((s) => (
-                            <button
-                              key={s.id}
-                              type="button"
-                              onClick={() => applyLabelSeat(s.id)}
-                              className="rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium hover:bg-muted"
-                            >
-                              {s.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
                       <SwitchRow
                         label="High / low"
                         checked={resolved.showHighLow}
@@ -2058,376 +2184,10 @@ export function TopoTab({
         )}
 
         {/*
-          Three tabs, for the copy of this panel that Report Builder mounts.
-
-          The three panels used to be forced open at once and stacked down the
-          rail -- about a thousand pixels of it -- with "Labels & layers"
-          doing three unrelated jobs under one name: what is drawn, how the
-          numbers read, and how big each piece is. Legend size sat in the
-          middle of a pile of switches. Tim: "the contour rail has always been
-          very cluttered... the most common used controls are hidden deeper."
-
-          The names are the app's own words, not invented categories. Each
-          size sits beside the thing it sizes -- Legend size under Legend,
-          H/L/Δ size under H/L/Δ -- so a piece and its size are never in two
-          different places.
-
-          The field Control panel is the floating folder tabs. This strip is
-          Report Builder only. Accessories holds Legend, H/L/Δ, and High/Low.
+          Report Builder rail mounts the same Contours / Readings section
+          bodies as the field Control panel (TrialPanel bare=true above).
+          Parent Contours | Readings tabs live on the rail in report-builder.js.
         */}
-        {controlsOnly && (
-          <div
-            id="rb-topo-group-panel"
-            role="tabpanel"
-            aria-labelledby={"rb-topo-tab-" + reportPanel}
-            data-rb-topo-panel={reportPanel}
-            className="space-y-3 text-sm"
-          >
-            {/*
-              The three groups are a second tab row on the report rail, above
-              this panel. Only the selected group's controls render. Field
-              Control panel keeps its own accordions.
-            */}
-            {([
-              ["contours", "Contours"],
-              ["readings", "Readings"],
-              ["accessories", "Accessories"],
-            ] as const).filter(([key]) => key === reportPanel).map(([key]) => {
-              return (
-                <div key={key}>
-                      {key === "contours" && (
-                        <>
-                          {gridAndContours?.grid && (
-                            <p className="text-[10px] text-muted-foreground tabular-nums -mt-1">
-                              Range {readingText(gridAndContours.grid.minValue)}"–
-                              {readingText(gridAndContours.grid.maxValue)}"
-                            </p>
-                          )}
-                          <div>
-                            <Label className="text-xs">Mode</Label>
-                            <select
-                              value={resolved.mode}
-                              onChange={(e) =>
-                                update({ mode: e.target.value as RenderSettings["mode"] })
-                              }
-                              className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
-                            >
-                              <option value="contour-fill">Color fill</option>
-                              <option value="contour-cells">Color cells</option>
-                              <option value="contour-bw">B&W lines</option>
-                              <option value="points-only">Points only</option>
-                            </select>
-                          </div>
-                          <div className="grid grid-cols-3 gap-2">
-                            <div>
-                              <Label className="text-xs">First</Label>
-                              <Input
-                                type="number"
-                                step="0.05"
-                                enterKeyHint="done"
-                                value={resolved.firstContour ?? ""}
-                                placeholder="auto"
-                                onChange={(e) =>
-                                  update({
-                                    firstContour:
-                                      e.target.value === "" ? null : parseFloat(e.target.value),
-                                  })
-                                }
-                                className="mt-1 h-9 text-base"
-                              />
-                            </div>
-                            <div>
-                              <Label className="text-xs">Step</Label>
-                              <StepInput
-                                value={resolved.contourStep}
-                                onCommit={(step) => update({ contourStep: step, interval: step })}
-                              />
-                            </div>
-                            <div>
-                              <Label className="text-xs">Count</Label>
-                              <Input
-                                type="text"
-                                inputMode="numeric"
-                                enterKeyHint="done"
-                                value={resolved.contourCount ?? ""}
-                                placeholder="auto"
-                                onChange={(e) => {
-                                  const raw = e.target.value.trim();
-                                  if (raw === "" || raw.toLowerCase() === "auto") {
-                                    update({ contourCount: null });
-                                  } else {
-                                    const n = parseInt(raw, 10);
-                                    update({
-                                      contourCount: isFinite(n) ? Math.max(2, n) : null,
-                                    });
-                                  }
-                                }}
-                                className="mt-1 h-9 text-base"
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <div className="flex items-center justify-between">
-                              <Label className="text-xs">Line thickness</Label>
-                              <span className="text-xs tabular-nums text-muted-foreground">
-                                {resolved.lineThickness.toFixed(1)}
-                              </span>
-                            </div>
-                            <Slider
-                              min={0.5}
-                              max={4}
-                              step={0.1}
-                              value={[resolved.lineThickness]}
-                              onValueChange={(v) => update({ lineThickness: v[0] })}
-                              className="mt-2"
-                            />
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs">Contours on</Label>
-                            <Switch
-                              checked={resolved.showContours}
-                              onCheckedChange={(v) => update({ showContours: v })}
-                            />
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs">Reverse</Label>
-                            <Switch
-                              checked={resolved.reversePalette}
-                              onCheckedChange={(v) => update({ reversePalette: v })}
-                            />
-                          </div>
-                          <PalettePicker
-                            value={resolved.palette}
-                            onChange={(p) => update({ palette: p })}
-                          />
-                          <SwitchRow
-                            label="Floor plan"
-                            checked={resolved.showPlan}
-                            onChange={(v) => update({ showPlan: v })}
-                          />
-                        </>
-                      )}
-                      {key === "readings" && (
-                        <>
-                          <div className="grid grid-cols-2 gap-2">
-                            <SwitchRow
-                              label="Points"
-                              checked={resolved.showPoints}
-                              onChange={(v) => update({ showPoints: v, pointsOpacity: 1 })}
-                            />
-                            <SwitchRow
-                              label="Labels"
-                              checked={resolved.showLabels}
-                              onChange={(v) => update({ showLabels: v })}
-                            />
-                            <NumberControl
-                              label="Decimals"
-                              value={resolved.decimalPlaces}
-                              min={0}
-                              max={3}
-                              step={1}
-                              onChange={(v) =>
-                                update({
-                                  decimalPlaces: Math.max(
-                                    0,
-                                    Math.min(3, Math.round(v ?? defaultRenderSettings.decimalPlaces)),
-                                  ),
-                                })
-                              }
-                            />
-                            <SwitchRow
-                              label="Declutter"
-                              checked={resolved.declutterLabels !== false}
-                              onChange={(v) => update({ declutterLabels: v })}
-                            />
-                            <div className="col-span-2 flex items-center justify-between gap-2">
-                              <Label className="text-xs">Label bg</Label>
-                              <div className="inline-flex rounded-md border overflow-hidden">
-                                {(["white", "transparent", "plain"] as const).map((opt) => (
-                                  <button
-                                    key={opt}
-                                    type="button"
-                                    className={`px-2 py-1 text-xs ${
-                                      resolved.pointLabelBackground === opt
-                                        ? "bg-primary text-primary-foreground"
-                                        : "bg-background"
-                                    }`}
-                                    onClick={() => update({ pointLabelBackground: opt })}
-                                  >
-                                    {opt === "white"
-                                      ? "Box"
-                                      : opt === "transparent"
-                                        ? "Border"
-                                        : "Plain"}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                          <details className="border-t pt-2">
-                            <summary className="text-xs text-muted-foreground cursor-pointer select-none">
-                              Label style
-                            </summary>
-                            <div className="grid grid-cols-2 gap-2 mt-2">
-                              <StepperControl
-                                label="Point label size"
-                                value={resolved.pointLabelFontSize}
-                                min={6}
-                                max={28}
-                                step={1}
-                                onChange={(v) =>
-                                  update({
-                                    pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))),
-                                  })
-                                }
-                              />
-                              <div>
-                                <Label className="text-xs">Weight</Label>
-                                <select
-                                  value={resolved.pointLabelWeight}
-                                  onChange={(e) =>
-                                    update({
-                                      pointLabelWeight: e.target.value as "normal" | "bold",
-                                    })
-                                  }
-                                  className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-xs"
-                                >
-                                  <option value="normal">Normal</option>
-                                  <option value="bold">Bold</option>
-                                </select>
-                              </div>
-                              <div className="col-span-2">
-                                <Label className="text-xs">Color</Label>
-                                <div className="mt-1 flex items-center gap-2">
-                                  <input
-                                    type="color"
-                                    value={resolved.pointLabelColor}
-                                    onChange={(e) => update({ pointLabelColor: e.target.value })}
-                                    className="h-9 w-12 rounded-md border bg-background p-1 cursor-pointer"
-                                  />
-                                  <Input
-                                    enterKeyHint="done"
-                                    value={resolved.pointLabelColor}
-                                    onChange={(e) => update({ pointLabelColor: e.target.value })}
-                                    className="h-9 flex-1 font-mono text-base"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={resetAllLabelPositions}
-                              className="mt-2 w-full h-8"
-                            >
-                              Reset label positions
-                            </Button>
-                          </details>
-                        </>
-                      )}
-                      {key === "accessories" && (
-                        <div className="space-y-3">
-                          <div
-                            role="tablist"
-                            aria-label="Accessories"
-                            className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/40 p-1"
-                          >
-                            {(
-                              [
-                                ["legend", "Legend"],
-                                ["hld", "H/L/Δ"],
-                                ["highlow", "High/Low"],
-                              ] as const
-                            ).map(([id, name]) => (
-                              <button
-                                key={id}
-                                type="button"
-                                role="tab"
-                                aria-selected={reportAccessoryTab === id}
-                                onClick={() => setReportAccessoryTab(id)}
-                                className={
-                                  "rounded-md px-2 py-1.5 text-xs font-medium " +
-                                  (reportAccessoryTab === id
-                                    ? "bg-background shadow-sm"
-                                    : "text-muted-foreground hover:text-foreground")
-                                }
-                              >
-                                {name}
-                              </button>
-                            ))}
-                          </div>
-                          {reportAccessoryTab === "legend" && (
-                            <div className="grid grid-cols-2 gap-2">
-                              <SwitchRow
-                                label="Legend"
-                                checked={resolved.showLegend}
-                                onChange={(v) => update({ showLegend: v })}
-                              />
-                              <StepperControl
-                                label="Legend size"
-                                value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
-                                min={0.4}
-                                max={4}
-                                step={0.1}
-                                unitless
-                                onChange={(v) =>
-                                  update({
-                                    legendScale: Math.max(
-                                      0.4,
-                                      Math.min(4, Math.round(v * 10) / 10),
-                                    ),
-                                  })
-                                }
-                              />
-                            </div>
-                          )}
-                          {reportAccessoryTab === "hld" && (
-                            <div className="flex flex-wrap items-end justify-between gap-2">
-                              <SwitchRow
-                                label="H/L/Δ pill"
-                                checked={resolved.showStatsPill !== false}
-                                onChange={(v) => update({ showStatsPill: v })}
-                              />
-                              <StepperControl
-                                label="H/L/Δ size"
-                                value={statsChipSize}
-                                min={STATS_CHIP_MIN}
-                                max={STATS_CHIP_MAX}
-                                step={2}
-                                unitless
-                                onChange={(v) => commitStatsPillSize(v)}
-                              />
-                            </div>
-                          )}
-                          {reportAccessoryTab === "highlow" && (
-                            <div className="grid grid-cols-2 gap-2">
-                              <SwitchRow
-                                label="High / low"
-                                checked={resolved.showHighLow}
-                                onChange={(v) => update({ showHighLow: v })}
-                              />
-                              <StepperControl
-                                label="High/Low size"
-                                value={resolved.highLowPinSize}
-                                min={7}
-                                max={28}
-                                step={1}
-                                unitless
-                                onChange={(v) =>
-                                  update({
-                                    highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
-                                  })
-                                }
-                              />
-                            </div>
-                          )}
-                        </div>
-                      )}
-                </div>
-              );
-            })}
-          </div>
-        )}
         {sizeHud && !controlsOnly && (
           <AccessorySizeHud
             kind={sizeHud.kind}
@@ -2514,13 +2274,13 @@ function TrialFolderTabs({
             aria-controls="fs-cp-panel"
             tabIndex={on ? 0 : -1}
             onClick={() => onChange(d.key)}
-            className="min-h-11 min-w-0 flex-1 whitespace-nowrap rounded-t-[6px] border px-1 text-center text-xs leading-none"
+            className="min-h-10 min-w-0 flex-1 whitespace-nowrap rounded-t-[6px] border px-1 text-center text-xs leading-none"
             style={{
               marginBottom: -1,
-              backgroundColor: on ? TRIAL_NAVY : "#e5ebee",
-              color: on ? "#fff" : "#3d5c70",
+              backgroundColor: on ? TRIAL_NAVY : "#c5d8e4",
+              color: on ? "#fff" : TRIAL_NAVY,
               fontWeight: on ? 700 : 650,
-              borderColor: on ? TRIAL_NAVY : TRIAL_LINE,
+              borderColor: TRIAL_NAVY,
               borderBottomColor: on ? TRIAL_NAVY : TRIAL_LINE,
             }}
           >
@@ -2542,6 +2302,8 @@ function TrialPanel({
   footer,
   tabs,
   onTab,
+  bare,
+  reportGroup: bareGroup,
 }: {
   title: string;
   /** Hub only: rust title so the Control panel name carries the accent. */
@@ -2554,7 +2316,26 @@ function TrialPanel({
   /** Field trial: one folder-tab row. The accepted hub stays in this file and is not opened. */
   tabs?: TrialDoorKey;
   onTab?: (key: TrialDoorKey) => void;
+  /**
+   * Report Builder rail: same section body as the field Control panel, without
+   * the floating pill chrome. Parent Contours|Readings tabs live on the rail.
+   */
+  bare?: boolean;
+  reportGroup?: "contours" | "readings";
 }) {
+  if (bare && bareGroup) {
+    return (
+      <div
+        id="rb-topo-group-panel"
+        role="tabpanel"
+        aria-labelledby={"rb-topo-tab-" + bareGroup}
+        data-rb-topo-panel={bareGroup}
+        className="flex min-h-0 flex-1 flex-col text-sm"
+      >
+        {children}
+      </div>
+    );
+  }
   const rustTitle = titleAccent === "rust";
   const tabbed = tabs != null && onTab != null;
   return (
@@ -2694,11 +2475,11 @@ function TrialSectionTabs({
               aria-controls="fs-cp-section-panel"
               tabIndex={on ? 0 : -1}
               onClick={() => onChange(item.id)}
-              className="min-h-11 min-w-0 flex-1 whitespace-nowrap rounded-t-[6px] border px-1 text-center text-xs leading-none"
+              className="min-h-[26px] min-w-0 flex-1 whitespace-nowrap rounded-t-[5px] border px-1.5 text-center text-[11px] leading-none"
               style={{
                 marginBottom: -1,
-                backgroundColor: on ? TRIAL_NAVY : "#e5ebee",
-                color: on ? "#fff" : "#3d5c70",
+                backgroundColor: on ? TRIAL_NAVY : "#c5d8e4",
+                color: on ? "#fff" : TRIAL_NAVY,
                 fontWeight: on ? 700 : 650,
                 borderColor: on ? TRIAL_NAVY : TRIAL_LINE,
               }}

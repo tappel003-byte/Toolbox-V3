@@ -2,58 +2,106 @@
  * Reading-label seats relative to a point.
  *
  * Free drag still writes labelDx / labelDy. A seat is a preset that parks the
- * number close to the dot; drag remains an override afterward.
+ * number; the gap −/+ walks distance off the dot; drag remains an override
+ * for a single label afterward.
  *
- * Layout (cross + center):
+ * Two axes (Tim's sketch):
  *
- *           Top
- *   Left  Center  Right
- *         Middle   ← below the point
+ *          L · R
+ *            Top
+ *            Middle   ← level with the dot
+ *            Bottom
+ *
+ * Side (Left / Right) + height (Top / Middle / Bottom). Both stay highlighted.
+ * Center sits on the dot and has no side.
+ *
+ * Default has always been Right + Bottom.
  *
  * Offsets are for the text's top-left corner (same convention Topo draws with).
  */
 
-export type LabelSeat = "left" | "right" | "top" | "middle" | "center";
+export type LabelSide = "left" | "right";
+export type LabelHeight = "top" | "middle" | "bottom";
 
-export const LABEL_SEATS: { id: LabelSeat; label: string }[] = [
+export type LabelSeatSelection =
+  | { mode: "center" }
+  | { mode: "side"; side: LabelSide; height: LabelHeight };
+
+/** Historical / product default: number on the right, parked low. */
+export const DEFAULT_LABEL_SEAT: LabelSeatSelection = {
+  mode: "side",
+  side: "right",
+  height: "bottom",
+};
+
+export const LABEL_SIDES: { id: LabelSide; label: string }[] = [
   { id: "left", label: "Left" },
   { id: "right", label: "Right" },
-  { id: "top", label: "Top" },
-  { id: "middle", label: "Middle" },
-  { id: "center", label: "Center" },
 ];
 
-/** Gap between the dot and the label pill, as a fraction of font size. */
-const GAP_RATIO = 0.22;
+export const LABEL_HEIGHTS: { id: LabelHeight; label: string }[] = [
+  { id: "top", label: "Top" },
+  { id: "middle", label: "Middle" },
+  { id: "bottom", label: "Bottom" },
+];
+
+/** Gap −/+ range (unitless steps). Default lands near the tight park. */
+export const LABEL_GAP_MIN = 0;
+export const LABEL_GAP_MAX = 12;
+export const LABEL_GAP_DEFAULT = 2;
+/** Each step as a fraction of font size. */
+const GAP_STEP_RATIO = 0.12;
 
 /**
- * Image-space offset (text top-left from the point) for one seat.
+ * Clearance between the dot and the label pill for a gap-step setting.
+ */
+export function labelGapPx(fontPx: number, gapSteps: number = LABEL_GAP_DEFAULT): number {
+  const steps = Math.max(LABEL_GAP_MIN, Math.min(LABEL_GAP_MAX, Math.round(gapSteps)));
+  return Math.max(1, fontPx * GAP_STEP_RATIO * Math.max(1, steps));
+}
+
+/** Vertical text-top offset for a height on a side. */
+function heightDy(
+  height: LabelHeight,
+  fontPx: number,
+  padY: number,
+  gap: number,
+): number {
+  const fh = Math.max(1, fontPx);
+  switch (height) {
+    case "top":
+      return -gap - padY - fh;
+    case "middle":
+      return -fh / 2;
+    case "bottom":
+      return gap;
+  }
+}
+
+/**
+ * Image-space offset (text top-left from the point) for a seat selection.
  *
- * `textW` / `fontPx` / pads match the drawn label box so the seat lands
- * where the eye expects — not a fixed (+8,+6) that drifts as the font grows.
+ * `gapSteps` is the Show-panel −/+ (distance off the dot). Center ignores it.
  */
 export function labelSeatOffset(
-  seat: LabelSeat,
+  seat: LabelSeatSelection,
   textW: number,
   fontPx: number,
   padX: number,
   padY: number,
+  gapSteps: number = LABEL_GAP_DEFAULT,
 ): { dx: number; dy: number } {
-  const gap = Math.max(2, fontPx * GAP_RATIO);
   const tw = Math.max(0, textW);
   const fh = Math.max(1, fontPx);
-  switch (seat) {
-    case "right":
-      // Pill's left edge just clear of the dot; text vertically centered on the point.
-      return { dx: gap + padX, dy: -fh / 2 };
-    case "left":
-      return { dx: -gap - padX - tw, dy: -fh / 2 };
-    case "top":
-      return { dx: -tw / 2, dy: -gap - padY - fh };
-    case "middle":
-      // Below the point.
-      return { dx: -tw / 2, dy: gap + padY };
-    case "center":
-      return { dx: -tw / 2, dy: -fh / 2 };
+
+  if (seat.mode === "center") {
+    return { dx: -tw / 2, dy: -fh / 2 };
   }
+
+  const gap = labelGapPx(fontPx, gapSteps);
+  const dy = heightDy(seat.height, fontPx, padY, gap);
+  if (seat.side === "right") {
+    return { dx: gap + padX, dy };
+  }
+  return { dx: -gap - padX - tw, dy };
 }

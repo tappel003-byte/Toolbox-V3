@@ -1,47 +1,64 @@
 /**
- * Label seats: default sits close (right); presets write labelDx/labelDy.
+ * Label seats: Right+Bottom default; side×height + Center; gap −/+.
  *
  * Run: node tests/label-seat.mjs
  */
-import assert from 'assert';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-
-// Load compiled? Prefer importing source via tsx if available; else duplicate
-// the pure math by reading the module through dynamic import of the built path.
-// The helper is plain TS with no React — use a tiny inline port matching label-seat.ts
-// only if import fails. Prefer node --experimental-strip-types or vite-node.
-
 let labelSeatOffset;
-let LABEL_SEATS;
+let labelGapPx;
+let DEFAULT_LABEL_SEAT;
+let LABEL_SIDES;
+let LABEL_HEIGHTS;
+let LABEL_GAP_DEFAULT;
 try {
   const mod = await import('../floor-survey/src/lib/label-seat.ts');
   labelSeatOffset = mod.labelSeatOffset;
-  LABEL_SEATS = mod.LABEL_SEATS;
+  labelGapPx = mod.labelGapPx;
+  DEFAULT_LABEL_SEAT = mod.DEFAULT_LABEL_SEAT;
+  LABEL_SIDES = mod.LABEL_SIDES;
+  LABEL_HEIGHTS = mod.LABEL_HEIGHTS;
+  LABEL_GAP_DEFAULT = mod.LABEL_GAP_DEFAULT;
 } catch {
-  // Node without TS loader: evaluate the built idea by reading and Function.
   const fs = await import('fs');
   const src = fs.readFileSync(
     new URL('../floor-survey/src/lib/label-seat.ts', import.meta.url),
     'utf8',
   );
-  // Strip types enough for Function — only the switch body matters.
   const bare = src
-    .replace(/export type[\s\S]*?;/g, '')
-    .replace(/export const LABEL_SEATS[\s\S]*?;\n/, '')
+    .replace(/export type[\s\S]*?;\n/g, '')
+    .replace(/export const LABEL_SIDES[\s\S]*?;\n/g, '')
+    .replace(/export const LABEL_HEIGHTS[\s\S]*?;\n/g, '')
+    .replace(/export const DEFAULT_LABEL_SEAT[\s\S]*?;\n/g, '')
+    .replace(/export const LABEL_GAP_MIN[\s\S]*?;\n/g, '')
+    .replace(/export const LABEL_GAP_MAX[\s\S]*?;\n/g, '')
+    .replace(/export const LABEL_GAP_DEFAULT[\s\S]*?;\n/g, '')
     .replace(/export function/g, 'function')
-    .replace(/: LabelSeat/g, '')
+    .replace(/: LabelSeatSelection/g, '')
+    .replace(/: LabelHeight/g, '')
+    .replace(/: LabelSide/g, '')
     .replace(/: number/g, '')
+    .replace(/= LABEL_GAP_DEFAULT/g, '= 2')
     .replace(/: \{ dx: number; dy: number \}/g, '')
     .replace(/as const/g, '');
-  const fn = new Function(`${bare}; return { labelSeatOffset, LABEL_SEATS: [
-    { id: 'left', label: 'Left' },
-    { id: 'right', label: 'Right' },
-    { id: 'top', label: 'Top' },
-    { id: 'middle', label: 'Middle' },
-    { id: 'center', label: 'Center' },
-  ] };`);
-  ({ labelSeatOffset, LABEL_SEATS } = fn());
+  const fn = new Function(`${bare}; return {
+    labelSeatOffset,
+    labelGapPx,
+    DEFAULT_LABEL_SEAT: { mode: 'side', side: 'right', height: 'bottom' },
+    LABEL_SIDES: [{ id: 'left', label: 'Left' }, { id: 'right', label: 'Right' }],
+    LABEL_HEIGHTS: [
+      { id: 'top', label: 'Top' },
+      { id: 'middle', label: 'Middle' },
+      { id: 'bottom', label: 'Bottom' },
+    ],
+    LABEL_GAP_DEFAULT: 2,
+  };`);
+  ({
+    labelSeatOffset,
+    labelGapPx,
+    DEFAULT_LABEL_SEAT,
+    LABEL_SIDES,
+    LABEL_HEIGHTS,
+    LABEL_GAP_DEFAULT,
+  } = fn());
 }
 
 const results = [];
@@ -50,30 +67,51 @@ function check(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
 }
 
-check('five seats', LABEL_SEATS.length === 5, JSON.stringify(LABEL_SEATS.map((s) => s.id)));
+check('two sides', LABEL_SIDES.length === 2, JSON.stringify(LABEL_SIDES.map((s) => s.id)));
+check('three heights', LABEL_HEIGHTS.length === 3, JSON.stringify(LABEL_HEIGHTS.map((h) => h.id)));
+check(
+  'default is Right+Bottom',
+  DEFAULT_LABEL_SEAT.mode === 'side' &&
+    DEFAULT_LABEL_SEAT.side === 'right' &&
+    DEFAULT_LABEL_SEAT.height === 'bottom',
+  JSON.stringify(DEFAULT_LABEL_SEAT),
+);
 
 const font = 12;
 const padX = 4;
 const padY = 2.5;
 const textW = 20;
+const seatRB = { mode: 'side', side: 'right', height: 'bottom' };
 
-const right = labelSeatOffset('right', textW, font, padX, padY);
-const left = labelSeatOffset('left', textW, font, padX, padY);
-const top = labelSeatOffset('top', textW, font, padX, padY);
-const middle = labelSeatOffset('middle', textW, font, padX, padY);
-const center = labelSeatOffset('center', textW, font, padX, padY);
+const rightBottom = labelSeatOffset(seatRB, textW, font, padX, padY, LABEL_GAP_DEFAULT);
+const rightMiddle = labelSeatOffset(
+  { mode: 'side', side: 'right', height: 'middle' },
+  textW, font, padX, padY, LABEL_GAP_DEFAULT,
+);
+const rightTop = labelSeatOffset(
+  { mode: 'side', side: 'right', height: 'top' },
+  textW, font, padX, padY, LABEL_GAP_DEFAULT,
+);
+const leftBottom = labelSeatOffset(
+  { mode: 'side', side: 'left', height: 'bottom' },
+  textW, font, padX, padY, LABEL_GAP_DEFAULT,
+);
+const center = labelSeatOffset({ mode: 'center' }, textW, font, padX, padY, LABEL_GAP_DEFAULT);
+const farther = labelSeatOffset(seatRB, textW, font, padX, padY, LABEL_GAP_DEFAULT + 3);
+const closer = labelSeatOffset(seatRB, textW, font, padX, padY, 1);
 
-check('right is to the right of the point', right.dx > 0, JSON.stringify(right));
-check('left is to the left of the point', left.dx < -textW, JSON.stringify(left));
-check('top is above the point', top.dy < -font, JSON.stringify(top));
-check('middle is below the point', middle.dy > 0, JSON.stringify(middle));
-check('center is on the point (text centered)', Math.abs(center.dx + textW / 2) < 0.01, JSON.stringify(center));
-
-// Default right seat should be tighter than the old (+8,+6)*k at k≈2 → (16,12).
+check('Right+Bottom is to the right', rightBottom.dx > 0, JSON.stringify(rightBottom));
+check('Right+Bottom sits low (dy > middle)', rightBottom.dy > rightMiddle.dy, JSON.stringify({ rightBottom, rightMiddle }));
+check('Right+Top sits above middle', rightTop.dy < rightMiddle.dy, JSON.stringify({ rightTop, rightMiddle }));
+check('Left+Bottom is to the left', leftBottom.dx < -textW, JSON.stringify(leftBottom));
+check('Center is on the point', Math.abs(center.dx + textW / 2) < 0.01 && Math.abs(center.dy + font / 2) < 0.01, JSON.stringify(center));
+check('larger gap pushes Right+Bottom farther', farther.dx > rightBottom.dx && farther.dy > rightBottom.dy, JSON.stringify({ farther, rightBottom }));
+check('smaller gap pulls Right+Bottom closer', closer.dx < rightBottom.dx, JSON.stringify({ closer, rightBottom }));
+check('gap px grows with steps', labelGapPx(font, 5) > labelGapPx(font, 2), `${labelGapPx(font, 2)} → ${labelGapPx(font, 5)}`);
 check(
-  'default right seat is closer than the old (+16,+12) default',
-  right.dx < 16 && Math.abs(right.dy) <= font / 2 + 0.01,
-  JSON.stringify(right),
+  'Center ignores gap steps',
+  JSON.stringify(labelSeatOffset({ mode: 'center' }, textW, font, padX, padY, 2)) ===
+    JSON.stringify(labelSeatOffset({ mode: 'center' }, textW, font, padX, padY, 8)),
 );
 
 const failed = results.filter((r) => !r.ok).length;
