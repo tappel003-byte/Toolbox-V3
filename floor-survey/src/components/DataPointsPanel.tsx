@@ -8,6 +8,7 @@ import {
 } from "react";
 import { ChevronDown, ChevronUp, X, GripVertical, Database, Minus, Plus } from "lucide-react";
 import type { Floor, SurveyPoint } from "@/lib/types";
+import { POINT_COLOR_PRESETS, POINT_SIZE_MAX, POINT_SIZE_MIN } from "@/lib/point-style";
 import { PointDetail } from "@/components/PointDetail";
 import { deletePoint, reindexFloorPoints, savePoint } from "@/lib/db";
 
@@ -30,9 +31,7 @@ interface Props {
   hasFloorSelector?: boolean;
 }
 
-
-
-const COLOR_PRESETS = ["#dc2626", "#ea580c", "#ca8a04", "#16a34a", "#2563eb", "#7c3aed", "#111827"];
+const COLOR_PRESETS = POINT_COLOR_PRESETS;
 
 type SortMode = "index" | "desc" | "asc";
 
@@ -263,8 +262,8 @@ export function DataPointsPanel({
               <div className="flex items-center gap-1">
                 <button
                   className="h-6 w-6 rounded border flex items-center justify-center hover:bg-muted disabled:opacity-40"
-                  onClick={() => onPointSizeChange(Math.max(1, pointSize - 1))}
-                  disabled={pointSize <= 1}
+                  onClick={() => onPointSizeChange(Math.max(POINT_SIZE_MIN, pointSize - 1))}
+                  disabled={pointSize <= POINT_SIZE_MIN}
                   aria-label="Smaller dot"
                 >
                   <Minus className="h-3 w-3" />
@@ -274,8 +273,8 @@ export function DataPointsPanel({
                 </span>
                 <button
                   className="h-6 w-6 rounded border flex items-center justify-center hover:bg-muted disabled:opacity-40"
-                  onClick={() => onPointSizeChange(Math.min(8, pointSize + 1))}
-                  disabled={pointSize >= 8}
+                  onClick={() => onPointSizeChange(Math.min(POINT_SIZE_MAX, pointSize + 1))}
+                  disabled={pointSize >= POINT_SIZE_MAX}
                   aria-label="Larger dot"
                 >
                   <Plus className="h-3 w-3" />

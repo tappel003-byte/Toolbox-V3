@@ -107,9 +107,13 @@ export function ReportTopoWorkspace({
   });
   const [loading, setLoading] = useState(true);
 
-  // Report dots use sheet defaults — never capture dpp-size / capture-sizes.
-  // Capture adjustments must not rewrite the slide or the print.
-  const { pointSize, pointColor } = useMemo(() => reportPointStyle(), []);
+  // Report dots from report settings — never capture dpp-size / capture-sizes.
+  // Capture adjustments must not rewrite the slide or the print. Accessories
+  // Points writes readingPoint* through onSettingsChange (no capture callbacks).
+  const { pointSize, pointColor } = useMemo(
+    () => reportPointStyle(settings),
+    [settings.readingPointSize, settings.readingPointColor],
+  );
 
   // A camera arriving from the report is applied once per change. The nonce is
   // what tells the canvas to take it, and it must not fire on every render or
