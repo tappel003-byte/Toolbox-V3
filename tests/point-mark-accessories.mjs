@@ -38,6 +38,16 @@ assert.match(topo, /absolute z-\[60\]/);
 
 // Field Readings → Accessories includes the mark controls.
 assert.match(topo, /id: "accessories"[\s\S]*PointMarkStyleControls[\s\S]*H\/L\/Δ size/);
+// Accessories size rows stack with air — not a wrapping side-by-side that
+// collapses into a jammed column under the help line on a phone panel.
+assert.match(
+  topo,
+  /id: "accessories"[\s\S]*space-y-5[\s\S]*space-y-5 border-t[\s\S]*label="H\/L\/Δ size"[\s\S]*label="High\/Low size"/,
+);
+assert.doesNotMatch(
+  topo,
+  /Press and move to place[\s\S]{0,80}flex flex-wrap items-end gap-x-4 gap-y-2/,
+);
 
 // Report Accessories has a Points sibling tab.
 assert.match(topo, /\["points", "Points"\]/);

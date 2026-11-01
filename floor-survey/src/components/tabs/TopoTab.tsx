@@ -2154,18 +2154,21 @@ export function TopoTab({
                   id: "accessories",
                   title: "Accessories",
                   body: (
-                    <div className="space-y-3">
+                    // One control per row with room to breathe — the earlier
+                    // wrap row jammed H/L/Δ size under the help line and into
+                    // High/Low size on a phone-width panel.
+                    <div className="space-y-5">
                       <PointMarkStyleControls
                         pointSize={pointMarkSize}
                         pointColor={pointMarkColor}
                         onPointSizeChange={commitPointSize}
                         onPointColorChange={commitPointColor}
                       />
-                      <p className="text-[10px] text-muted-foreground">
-                        Summary pill and High/Low markers come from these readings.
-                        Press and move to place. Tap for size −/+.
-                      </p>
-                      <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+                      <div className="space-y-5 border-t border-border/70 pt-4">
+                        <p className="text-[10px] leading-relaxed text-muted-foreground">
+                          Summary pill and High/Low markers come from these readings.
+                          Press and move to place. Tap for size −/+.
+                        </p>
                         <StepperControl
                           label="H/L/Δ size"
                           value={statsChipSize}
@@ -2188,12 +2191,12 @@ export function TopoTab({
                             })
                           }
                         />
+                        <SwitchRow
+                          label="High / low"
+                          checked={resolved.showHighLow}
+                          onChange={(v) => update({ showHighLow: v })}
+                        />
                       </div>
-                      <SwitchRow
-                        label="High / low"
-                        checked={resolved.showHighLow}
-                        onChange={(v) => update({ showHighLow: v })}
-                      />
                     </div>
                   ),
                 },
@@ -3146,7 +3149,7 @@ function PointMarkStyleControls({
   onPointColorChange: (c: string) => void;
 }) {
   return (
-    <div className="space-y-2" data-point-mark-style>
+    <div className="space-y-3" data-point-mark-style>
       <StepperControl
         label="Point size"
         value={pointSize}
@@ -3159,7 +3162,7 @@ function PointMarkStyleControls({
       <div>
         <Label className="text-xs">Point color</Label>
         <div
-          className="mt-1 flex flex-wrap gap-1.5"
+          className="mt-1.5 flex flex-wrap gap-1.5"
           role="group"
           aria-label="Point color"
         >
