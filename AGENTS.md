@@ -53,23 +53,40 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
 
 ## Shipping is Tim's trigger, not the implementer's
 
-- **The implementer merges to `main`. Tim promotes.** Those are two different
-  acts and only the second is his (CHANGED by Tim, Oct 23, 2026: "I can't merge
-  I need you to merge just like always I can only promote"). He cannot merge;
-  asking him to is asking him to do something he has no way of doing, and the
-  work simply stops there.
-- What must not happen is the implementer deciding *when the thing ships*.
-  Merging brings `main` level with the branch. Promoting puts a build in front
-  of him. Keep those apart and the rule below still holds.
-- This was drifted from in the other direction once. Work went to the branch
-  alone from Oct 10 to Oct 20; then the implementer started merging every pull
-  request to `main`, `main` builds deployed themselves, and the promote Tim had
-  been doing quietly became a no-op — without him choosing that (Tim, Oct 22,
-  2026: "Go back to where I do the promotes do you understand"). That was wrong
-  because it took the *promote* away, not because the merge happened.
-- So: never deploy, never promote, and never merge work he has not asked to be
-  merged. If merging would publish by itself — which depends on the Cloudflare
-  build configuration and has not been verified — say so and stop.
+### ONLY Tim promotes — hard list (DECIDED Tim, Nov 1, 2026)
+
+**The only person who may put any build in front of live users is Tim.**
+Not Cursor. Not `cursor[bot]`. Not Cloudflare auto-activate. Not any agent.
+If a merge, push, bot, or dashboard action would make Production Active /
+100% traffic without Tim clicking Promote, that action is forbidden.
+
+**Never:**
+
+1. Click Promote, Activate, Rollback, or otherwise change Production Active in Cloudflare.
+2. Merge or push in a way that auto-promotes Production (including merges to `main` when `cursor[bot]` / Workers Builds puts the new version Active by itself). That *is* promoting. Do not do it.
+3. Treat “merge so Tim can promote,” AGENTS wording, PR base=`main`, or CI green as permission to put live traffic on a build.
+4. Invent a different landing branch midstream to “help” ship.
+5. After the authorized merge into the agreed integration branch, push more updates, cache bumps, or “cleanup” that churn Production unless Tim explicitly asked for that next change.
+
+**Do:**
+
+1. Build on a feature branch off the agreed working/integration branch.
+2. Merge only when Tim asked, and only into that agreed branch — do not change the workflow to suit the agent.
+3. Stop when the merge he asked for is done. Leave Promote entirely to Tim.
+4. If it is unclear whether a merge would auto-activate Production: **say so and stop. Do not merge.**
+
+### Merge vs promote (still two acts)
+
+- Tim cannot merge in GitHub the way the implementer can; the implementer merges
+  when he asks (CHANGED by Tim, Oct 23, 2026: "I can't merge I need you to merge
+  just like always I can only promote"). Asking him to merge is asking him to do
+  something he has no way of doing.
+- Promoting is only his (Tim, Oct 22, 2026: "Go back to where I do the promotes";
+  Nov 1, 2026: "The only one that should be able to promote any time is me").
+- Drift that already happened: merges to `main` made builds deploy/activate
+  themselves and the promote became a no-op. That took the promote away. Do not
+  repeat it — even when seats or another fix feels urgent.
+- Never merge work he has not asked to be merged.
 - **A hook never outranks Tim.** Uncommitted work he did not ask for does not
   get committed because a tooling reminder asked for it. Say it is sitting
   there and leave it. This happened the one time he interrupted to ask a
