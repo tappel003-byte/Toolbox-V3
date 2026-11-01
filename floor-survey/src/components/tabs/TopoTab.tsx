@@ -17,6 +17,12 @@ import {
   patchCaptureSizes,
 } from "@/lib/capture-sizes";
 import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/lib/screen-size";
+import {
+  clampPointSize,
+  POINT_COLOR_PRESETS,
+  POINT_SIZE_MAX,
+  POINT_SIZE_MIN,
+} from "@/lib/point-style";
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -130,6 +136,10 @@ interface Props {
   onSettingsChange: (s: RenderSettings) => void;
   pointSize?: number;
   pointColor?: string;
+  /** Field capture: same store as Data entry Dot size. */
+  onPointSizeChange?: (n: number) => void;
+  /** Field capture: same store as Data entry Dot color. */
+  onPointColorChange?: (c: string) => void;
   excludedIds?: Set<string>;
   onExcludedIdsChange?: (ids: Set<string>) => void;
   /**
@@ -488,6 +498,8 @@ export function TopoTab({
   onSettingsChange,
   pointSize = 6,
   pointColor = "#dc2626",
+  onPointSizeChange,
+  onPointColorChange,
   excludedIds: excludedIdsProp,
   onExcludedIdsChange,
   selectedAreaId = null,
@@ -546,8 +558,8 @@ export function TopoTab({
     reportGroup === "legendhl" ? "accessories" : reportGroup || "contours";
   /** Accessories sibling inside the report Accessories group. */
   const [reportAccessoryTab, setReportAccessoryTab] = useState<
-    "legend" | "hld" | "highlow"
-  >("legend");
+    "points" | "legend" | "hld" | "highlow"
+  >("points");
   /**
    * Tap-to-size HUD for Legend / H/L/Δ / High/Low. Blue −/+ sits way above
    * the accessory so it does not fight press-and-move. Reading labels never
@@ -861,6 +873,23 @@ export function TopoTab({
 
   const update = (patch: Partial<RenderSettings>) =>
     onSettingsChange(resolveSettings({ ...resolved, ...patch }));
+
+  /** Dot size: capture callbacks, else report readingPoint* on settings. */
+  const commitPointSize = (n: number) => {
+    const next = clampPointSize(n);
+    if (onPointSizeChange) onPointSizeChange(next);
+    else update({ readingPointSize: next });
+  };
+  const commitPointColor = (c: string) => {
+    if (onPointColorChange) onPointColorChange(c);
+    else update({ readingPointColor: c });
+  };
+  const pointMarkSize = onPointSizeChange
+    ? pointSize
+    : clampPointSize(resolved.readingPointSize ?? pointSize);
+  const pointMarkColor = onPointColorChange
+    ? pointColor
+    : resolved.readingPointColor || pointColor;
 
   /** Last Points/Labels state before a field “Readings” hide — restore on show. */
   const readingsPrevRef = useRef<{ showPoints: boolean; showLabels: boolean } | null>(null);
@@ -1921,6 +1950,12 @@ export function TopoTab({
                   title: "Accessories",
                   body: (
                     <div className="space-y-3">
+                      <PointMarkStyleControls
+                        pointSize={pointMarkSize}
+                        pointColor={pointMarkColor}
+                        onPointSizeChange={commitPointSize}
+                        onPointColorChange={commitPointColor}
+                      />
                       <p className="text-[10px] text-muted-foreground">
                         Summary pill and High/Low markers come from these readings.
                         Press and move to place. Tap for size −/+.
@@ -2235,10 +2270,11 @@ export function TopoTab({
                           <div
                             role="tablist"
                             aria-label="Accessories"
-                            className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/40 p-1"
+                            className="grid grid-cols-4 gap-1 rounded-lg border bg-muted/40 p-1"
                           >
                             {(
                               [
+                                ["points", "Points"],
                                 ["legend", "Legend"],
                                 ["hld", "H/L/Δ"],
                                 ["highlow", "High/Low"],
@@ -2261,6 +2297,14 @@ export function TopoTab({
                               </button>
                             ))}
                           </div>
+                          {reportAccessoryTab === "points" && (
+                            <PointMarkStyleControls
+                              pointSize={pointMarkSize}
+                              pointColor={pointMarkColor}
+                              onPointSizeChange={commitPointSize}
+                              onPointColorChange={commitPointColor}
+                            />
+                          )}
                           {reportAccessoryTab === "legend" && (
                             <div className="grid grid-cols-2 gap-2">
                               <SwitchRow
@@ -2878,6 +2922,55 @@ function AccessorySizeHud({
       >
         <X className="h-3 w-3" />
       </button>
+    </div>
+  );
+}
+
+/** Reading-dot size + colour for Accessories (field back door / report Points). */
+function PointMarkStyleControls({
+  pointSize,
+  pointColor,
+  onPointSizeChange,
+  onPointColorChange,
+}: {
+  pointSize: number;
+  pointColor: string;
+  onPointSizeChange: (n: number) => void;
+  onPointColorChange: (c: string) => void;
+}) {
+  return (
+    <div className="space-y-2" data-point-mark-style>
+      <StepperControl
+        label="Point size"
+        value={pointSize}
+        min={POINT_SIZE_MIN}
+        max={POINT_SIZE_MAX}
+        step={1}
+        onChange={onPointSizeChange}
+      />
+      <div>
+        <Label className="text-xs">Point color</Label>
+        <div
+          className="mt-1 flex flex-wrap gap-1.5"
+          role="group"
+          aria-label="Point color"
+        >
+          {POINT_COLOR_PRESETS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => onPointColorChange(c)}
+              className={
+                "h-7 w-7 rounded-full border-2 " +
+                (c === pointColor ? "border-foreground" : "border-transparent")
+              }
+              style={{ backgroundColor: c }}
+              aria-label={"Point color " + c}
+              aria-pressed={c === pointColor}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

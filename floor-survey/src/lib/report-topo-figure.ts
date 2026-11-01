@@ -378,9 +378,9 @@ export async function composeReportTopoFigure(options: {
   // made a report topo look nothing like the same drawing in Floor Survey.
   //
   // The figure is seen about REPORT_REFERENCE_WIDTH across, so that is the
-  // scale it is drawn for. Dot size is the report sheet default — never
+  // scale it is drawn for. Dot size comes from report settings — never
   // capture dpp-size, or a field adjustment rewrites the print.
-  const pointStyle = reportPointStyle();
+  const pointStyle = reportPointStyle(settings);
   // The live canvas's three passes, in its order.
   renderTopoBase(ctx, floor, settings, areaTopos);
   drawPlanOver();
