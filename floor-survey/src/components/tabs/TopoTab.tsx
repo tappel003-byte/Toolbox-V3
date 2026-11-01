@@ -2510,9 +2510,11 @@ function TrialPanel({
     <div
       data-fs-cp={tabbed ? "panel" : undefined}
       className={
+        // Above the floating H/L/Δ StatsChip (z-40) and its size HUD (z-50) so
+        // Accessories controls are never covered by the pill.
         tabbed
-          ? "absolute z-30 right-[max(0.5rem,env(safe-area-inset-right))] top-2 flex w-[280px] max-w-[calc(100%-1rem)] max-h-[min(32rem,calc(100%-env(safe-area-inset-bottom)-0.75rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg landscape-short:top-2"
-          : "absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg backdrop-blur landscape-short:top-2"
+          ? "absolute z-[60] right-[max(0.5rem,env(safe-area-inset-right))] top-2 flex w-[280px] max-w-[calc(100%-1rem)] max-h-[min(32rem,calc(100%-env(safe-area-inset-bottom)-0.75rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg landscape-short:top-2"
+          : "absolute z-[60] top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg backdrop-blur landscape-short:top-2"
       }
       style={{ borderColor: TRIAL_LINE }}
     >
@@ -2946,6 +2948,7 @@ function PointMarkStyleControls({
         min={POINT_SIZE_MIN}
         max={POINT_SIZE_MAX}
         step={1}
+        unitless
         onChange={onPointSizeChange}
       />
       <div>
@@ -2961,7 +2964,7 @@ function PointMarkStyleControls({
               type="button"
               onClick={() => onPointColorChange(c)}
               className={
-                "h-7 w-7 rounded-full border-2 " +
+                "h-5 w-5 rounded-full border-2 " +
                 (c === pointColor ? "border-foreground" : "border-transparent")
               }
               style={{ backgroundColor: c }}
