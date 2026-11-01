@@ -27,6 +27,14 @@ assert.match(topo, /function PointMarkStyleControls/);
 assert.match(topo, /label="Point size"/);
 assert.match(topo, /aria-label="Point color"/);
 assert.match(topo, /data-point-mark-style/);
+// Point size matches H/L/Δ: unitless −/+, no "2px" face.
+assert.match(
+  topo,
+  /label="Point size"[\s\S]*?unitless[\s\S]*?onChange=\{onPointSizeChange\}/,
+);
+assert.match(topo, /h-5 w-5 rounded-full/);
+// Control panel sits above the floating H/L/Δ chip.
+assert.match(topo, /absolute z-\[60\]/);
 
 // Field Readings → Accessories includes the mark controls.
 assert.match(topo, /id: "accessories"[\s\S]*PointMarkStyleControls[\s\S]*H\/L\/Δ size/);
