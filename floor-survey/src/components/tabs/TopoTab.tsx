@@ -23,6 +23,18 @@ import {
   POINT_SIZE_MAX,
   POINT_SIZE_MIN,
 } from "@/lib/point-style";
+import {
+  DEFAULT_LABEL_SEAT,
+  LABEL_GAP_DEFAULT,
+  LABEL_GAP_MAX,
+  LABEL_GAP_MIN,
+  LABEL_HEIGHTS,
+  LABEL_SIDES,
+  labelSeatOffset,
+  type LabelHeight,
+  type LabelSeatSelection,
+  type LabelSide,
+} from "@/lib/label-seat";
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -41,6 +53,7 @@ import {
 import {
   savePoint,
   savePointLabelOffset,
+  savePointLabelOffsets,
   resetFloorPresentation,
   saveFloor,
 } from "@/lib/db";
@@ -284,8 +297,6 @@ interface Props {
   onDiagnosticOpenChange?: (open: boolean) => void;
 }
 
-const DEFAULT_LABEL_DX = 8;
-const DEFAULT_LABEL_DY = 6;
 const LONG_PRESS_MS = 350;
 /** Accessory hold-vs-drag threshold in SCREEN pixels (hand, not image zoom). */
 const ACCESSORY_MOVE_PX = 6;
@@ -363,13 +374,33 @@ function pinWidth(text: string, fontPx: number) {
   return Math.max(pinMinWidth(fontPx), w + pinPadding(fontPx) * 2);
 }
 
+/** Default / stored label offset (text top-left from the point), matching draw. */
+function labelOffsetFor(
+  p: SurveyPoint,
+  text: string,
+  fontPx: number,
+  weight: string,
+): { dx: number; dy: number } {
+  if (p.labelDx !== undefined || p.labelDy !== undefined) {
+    return { dx: p.labelDx ?? 0, dy: p.labelDy ?? 0 };
+  }
+  const { w } = measureLabel(text, fontPx, weight);
+  const chromeK = labelChromeK(fontPx);
+  // Un-nudged default: Right + Bottom at the default gap (always has been).
+  return labelSeatOffset(
+    DEFAULT_LABEL_SEAT,
+    w,
+    fontPx,
+    4 * chromeK,
+    2.5 * chromeK,
+    LABEL_GAP_DEFAULT,
+  );
+}
+
 // Where the label sits (top-left corner) for a given point in image coords.
-// `k` = 1 / canvas zoom, so the default offset stays screen-constant.
-function labelAnchor(p: SurveyPoint, k = 1) {
-  return {
-    x: p.x + (p.labelDx ?? DEFAULT_LABEL_DX * k),
-    y: p.y + (p.labelDy ?? DEFAULT_LABEL_DY * k),
-  };
+function labelAnchor(p: SurveyPoint, fontPx: number, weight: string, text: string) {
+  const { dx, dy } = labelOffsetFor(p, text, fontPx, weight);
+  return { x: p.x + dx, y: p.y + dy };
 }
 
 /* ---------------------------------------------------------------------------
@@ -532,6 +563,13 @@ export function TopoTab({
   const [openCorner, setOpenCorner] = useState<TrialDoorKey | null>(null);
   /** Hide floating field chrome; Clean pill stays so chrome can return. Local only. */
   const [cleanView, setCleanView] = useState(false);
+  /**
+   * Last applied label seat (side×height, or Center). Highlight only — offsets
+   * live on each point. Default Right+Bottom matches the long-standing park.
+   */
+  const [labelSeat, setLabelSeat] = useState<LabelSeatSelection>(DEFAULT_LABEL_SEAT);
+  /** Gap −/+ off the dot for the current seat. Free drag still nudges one label. */
+  const [labelGapSteps, setLabelGapSteps] = useState(LABEL_GAP_DEFAULT);
   /** Last parent tab, so Close then the pill returns to the same group. */
   const [lastTrialDoor, setLastTrialDoor] = useState<TrialDoorKey | null>(null);
   /** Which child tab is open per parent (visit memory only; not a setting). */
@@ -992,14 +1030,13 @@ export function TopoTab({
         presentation,
         fitScale,
       });
-      const k = fontPx / fontBase;
       const dec = resolved.decimalPlaces;
       const weight = resolved.pointLabelWeight;
       const pad = 4 * labelChromeK(fontPx);
       for (const p of visiblePoints) {
         const text = p.value.toFixed(dec);
         const { w, h } = measureLabel(text, fontPx, weight);
-        const a = labelAnchor(p, k);
+        const a = labelAnchor(p, fontPx, weight, text);
         if (x >= a.x - pad && x <= a.x + w + pad && y >= a.y - pad && y <= a.y + h + pad) {
           return { kind: "label", point: p };
         }
@@ -1088,6 +1125,66 @@ export function TopoTab({
       saveFloor(updated).catch(() => {});
     }
     setLastMove(null);
+  }
+
+  /**
+   * Park every reading label on a seat (side×height, or Center on the dot)
+   * at the current gap. Free drag still moves a single label afterward.
+   */
+  function applyLabelSeat(
+    seat: LabelSeatSelection,
+    gapSteps: number = labelGapSteps,
+  ) {
+    setLabelSeat(seat);
+    setLabelGapSteps(gapSteps);
+    const fontPx = pointLabelFontImg(resolved.pointLabelFontSize, floor, {
+      presentation,
+      fitScale,
+    });
+    const weight = resolved.pointLabelWeight;
+    const chromeK = labelChromeK(fontPx);
+    const padX = 4 * chromeK;
+    const padY = 2.5 * chromeK;
+    const dec = resolved.decimalPlaces;
+    const next = points.map((p) => {
+      const text = p.value.toFixed(dec);
+      const { w } = measureLabel(text, fontPx, weight);
+      const { dx, dy } = labelSeatOffset(seat, w, fontPx, padX, padY, gapSteps);
+      return { ...p, labelDx: dx, labelDy: dy };
+    });
+    onPointsChange(next);
+    // One load/save — looping savePointLabelOffset races and only the last
+    // point keeps its seat (same trap as reset).
+    const floorId = next[0]?.floorId;
+    if (floorId) {
+      savePointLabelOffsets(
+        floorId,
+        next.map((p) => ({ id: p.id, labelDx: p.labelDx, labelDy: p.labelDy })),
+      ).catch(() => {});
+    }
+  }
+
+  function applyLabelSide(side: LabelSide) {
+    const height: LabelHeight =
+      labelSeat.mode === "side" ? labelSeat.height : "bottom";
+    applyLabelSeat({ mode: "side", side, height });
+  }
+
+  function applyLabelHeight(height: LabelHeight) {
+    const side: LabelSide =
+      labelSeat.mode === "side" ? labelSeat.side : "right";
+    applyLabelSeat({ mode: "side", side, height });
+  }
+
+  function applyLabelGap(gapSteps: number) {
+    const next = Math.max(LABEL_GAP_MIN, Math.min(LABEL_GAP_MAX, Math.round(gapSteps)));
+    // Center stays on the dot; gap only walks side seats. Still remember the
+    // step so leaving Center picks it up.
+    if (labelSeat.mode === "center") {
+      setLabelGapSteps(next);
+      return;
+    }
+    applyLabelSeat(labelSeat, next);
   }
 
   function resetAllLabelPositions() {
@@ -1402,10 +1499,26 @@ export function TopoTab({
             // not pick one up (and so pinch can cancel before the move arms).
             const hit = hitDraggable(x, y);
             if (hit) {
-              const startDx =
-                hit.kind === "label" ? (hit.point.labelDx ?? DEFAULT_LABEL_DX) : hit.dx;
-              const startDy =
-                hit.kind === "label" ? (hit.point.labelDy ?? DEFAULT_LABEL_DY) : hit.dy;
+              let startDx = 0;
+              let startDy = 0;
+              if (hit.kind === "label") {
+                const fontPx = pointLabelFontImg(resolved.pointLabelFontSize, floor, {
+                  presentation,
+                  fitScale,
+                });
+                const text = hit.point.value.toFixed(resolved.decimalPlaces);
+                const off = labelOffsetFor(
+                  hit.point,
+                  text,
+                  fontPx,
+                  resolved.pointLabelWeight,
+                );
+                startDx = off.dx;
+                startDy = off.dy;
+              } else {
+                startDx = hit.dx;
+                startDy = hit.dy;
+              }
               const accessory = hit.kind !== "label";
               setDrag({
                 kind: hit.kind,
@@ -1855,6 +1968,89 @@ export function TopoTab({
                         checked={resolved.declutterLabels !== false}
                         onChange={(v) => update({ declutterLabels: v })}
                       />
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-medium text-muted-foreground">
+                          Point label seat
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          Left or Right, then Top / Middle / Bottom. Center sits on
+                          the dot. −/+ walks the gap; drag a label to nudge one.
+                        </p>
+                        <div
+                          className="flex flex-wrap gap-1"
+                          role="group"
+                          aria-label="Point label side"
+                        >
+                          {LABEL_SIDES.map((s) => {
+                            const on =
+                              labelSeat.mode === "side" && labelSeat.side === s.id;
+                            return (
+                              <button
+                                key={s.id}
+                                type="button"
+                                aria-pressed={on}
+                                onClick={() => applyLabelSide(s.id)}
+                                className={
+                                  "rounded-md border px-2 py-1 text-[11px] font-medium " +
+                                  (on
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "border-border bg-background hover:bg-muted")
+                                }
+                              >
+                                {s.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div
+                          className="flex flex-wrap gap-1"
+                          role="group"
+                          aria-label="Point label seat"
+                        >
+                          {LABEL_HEIGHTS.map((h) => {
+                            const on =
+                              labelSeat.mode === "side" && labelSeat.height === h.id;
+                            return (
+                              <button
+                                key={h.id}
+                                type="button"
+                                aria-pressed={on}
+                                onClick={() => applyLabelHeight(h.id)}
+                                className={
+                                  "rounded-md border px-2 py-1 text-[11px] font-medium " +
+                                  (on
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "border-border bg-background hover:bg-muted")
+                                }
+                              >
+                                {h.label}
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            aria-pressed={labelSeat.mode === "center"}
+                            onClick={() => applyLabelSeat({ mode: "center" })}
+                            className={
+                              "rounded-md border px-2 py-1 text-[11px] font-medium " +
+                              (labelSeat.mode === "center"
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-background hover:bg-muted")
+                            }
+                          >
+                            Center
+                          </button>
+                        </div>
+                        <StepperControl
+                          label="Label gap"
+                          value={labelGapSteps}
+                          min={LABEL_GAP_MIN}
+                          max={LABEL_GAP_MAX}
+                          step={1}
+                          unitless
+                          onChange={(v) => applyLabelGap(v)}
+                        />
+                      </div>
                     </div>
                   ),
                 },
@@ -3301,9 +3497,7 @@ export function renderTopoTop(
     presentation: !!overlay?.presentation,
     fitScale,
   });
-  // k scales default label offsets with the drawn font. Label box chrome
-  // (pad / radius / stroke) tracks drawn fontPx.
-  const k = fontPx / fontBase;
+  // Label box chrome (pad / radius / stroke) tracks drawn fontPx.
   const chromeK = labelChromeK(fontPx);
   const weight = resolved.pointLabelWeight;
   const color = resolved.pointLabelColor;
@@ -3323,10 +3517,14 @@ export function renderTopoTop(
     // Dots always draw when points are on. Labels obey showLabels (Readings pill
     // and Control panel → Readings → Show).
     ctx.font = `${weight} ${fontPx}px sans-serif`;
+    const offsetOf = (p: SurveyPoint, isLive: boolean) => {
+      if (isLive) return { dx: live!.dx, dy: live!.dy };
+      const text = p.value.toFixed(resolved.decimalPlaces);
+      return labelOffsetFor(p, text, fontPx, weight);
+    };
     const rectFor = (p: SurveyPoint) => {
-      const isLive = live && live.id === p.id;
-      const dx = isLive ? live!.dx : (p.labelDx ?? DEFAULT_LABEL_DX * k);
-      const dy = isLive ? live!.dy : (p.labelDy ?? DEFAULT_LABEL_DY * k);
+      const isLive = !!(live && live.id === p.id);
+      const { dx, dy } = offsetOf(p, isLive);
       const w = ctx.measureText(p.value.toFixed(resolved.decimalPlaces)).width + padX * 2;
       return { x: p.x + dx - padX, y: p.y + dy - padY, w, h: fontPx + padY * 2 };
     };
@@ -3374,9 +3572,8 @@ export function renderTopoTop(
       ctx.font = `${weight} ${fontPx}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      const isLive = live && live.id === p.id;
-      const dx = isLive ? live!.dx : (p.labelDx ?? DEFAULT_LABEL_DX * k);
-      const dy = isLive ? live!.dy : (p.labelDy ?? DEFAULT_LABEL_DY * k);
+      const isLive = !!(live && live.id === p.id);
+      const { dx, dy } = offsetOf(p, isLive);
       const tx = p.x + dx;
       const ty = p.y + dy;
       const tw = ctx.measureText(text).width;
