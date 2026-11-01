@@ -967,9 +967,6 @@ export function TopoTab({
     };
   }, [onCleanViewChange]);
 
-  // High / Low of the focused area (used for pin hit-testing / dragging).
-  const hiLo = soloTopo ? { hi: soloTopo.hi, lo: soloTopo.lo } : null;
-
   // Whether the canvas carries the H / L / delta pill. One definition, used by
   // both the drawing and the hit test: when those two disagreed about where a
   // piece of chrome was, it drew in one place and could be grabbed in another.
@@ -1004,23 +1001,35 @@ export function TopoTab({
         };
       }
     }
-    // Pins next — they sit above the point dot and are visually on top.
-    if (resolved.showHighLow && hiLo && gridAndContours?.grid && resolved.mode !== "points-only") {
-      const check = (kind: "pin-high" | "pin-low", pt: SurveyPoint, dx: number, dy: number) => {
-        const fontPx = pinFontPx(resolved, floor);
+    // High/Low — hit every surface the canvas draws (not solo-only). Report
+    // Builder and field both press-and-move these like other presentation
+    // chrome; nudges live on the floor and travel with the plan.
+    if (resolved.showHighLow && areaTopos.length > 0 && resolved.mode !== "points-only") {
+      const fontPx = pinFontPx(resolved, floor);
+      const hDx = floor.highPinDx ?? 0;
+      const hDy = floor.highPinDy ?? 0;
+      const lDx = floor.lowPinDx ?? 0;
+      const lDy = floor.lowPinDy ?? 0;
+      const hitsPin = (
+        kind: "pin-high" | "pin-low",
+        pt: SurveyPoint,
+        dx: number,
+        dy: number,
+      ) => {
         const w = pinWidth(kind === "pin-high" ? "High" : "Low", fontPx);
         const cx = pt.x + dx;
         const top = pt.y + pinTopOffset(fontPx) + dy;
         return x >= cx - w / 2 && x <= cx + w / 2 && y >= top && y <= top + pinHeight(fontPx);
       };
-      const hDx = floor.highPinDx ?? 0;
-      const hDy = floor.highPinDy ?? 0;
-      const lDx = floor.lowPinDx ?? 0;
-      const lDy = floor.lowPinDy ?? 0;
-      if (check("pin-high", hiLo.hi, hDx, hDy))
-        return { kind: "pin-high", point: hiLo.hi, dx: hDx, dy: hDy };
-      if (check("pin-low", hiLo.lo, lDx, lDy))
-        return { kind: "pin-low", point: hiLo.lo, dx: lDx, dy: lDy };
+      for (let i = areaTopos.length - 1; i >= 0; i--) {
+        const at = areaTopos[i];
+        if (hitsPin("pin-high", at.hi, hDx, hDy)) {
+          return { kind: "pin-high", point: at.hi, dx: hDx, dy: hDy };
+        }
+        if (hitsPin("pin-low", at.lo, lDx, lDy)) {
+          return { kind: "pin-low", point: at.lo, dx: lDx, dy: lDy };
+        }
+      }
     }
     // Point-number labels
     if (resolved.showPoints) {
