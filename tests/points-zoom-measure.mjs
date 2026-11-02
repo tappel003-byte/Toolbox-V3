@@ -17,7 +17,7 @@ const BASE = "http://127.0.0.1:8765/index.html";
 const OUT = "/opt/cursor/artifacts";
 const FILE = "cf-points-zoom";
 const POINT_SIZE = 6;
-const FIT_FACTOR = 0.72;
+const REFERENCE_PLAN_LONG_SIDE = 1100;
 const results = [];
 
 function check(name, ok, detail = "") {
@@ -292,7 +292,7 @@ await page.screenshot({ path: zoomShot, fullPage: false });
 const zoomDot = await measureDotCss();
 check("zoomed view has a measurable black dot", !!(zoomDot && zoomDot.cssRadius > 0), JSON.stringify(zoomDot));
 
-const imgR = (POINT_SIZE * FIT_FACTOR) / fitScale;
+const imgR = POINT_SIZE * (PLAN_W / REFERENCE_PLAN_LONG_SIDE);
 const expectedFitCss = imgR * fitScale;
 const expectedZoomCss = imgR * (zoomed?.scale || 0);
 
@@ -311,6 +311,12 @@ if (fitDot?.cssRadius > 0 && zoomDot?.cssRadius > 0 && scaleRatio >= 1.5) {
       measuredVsExpectedFit: fitDot.cssRadius / expectedFitCss,
       measuredVsExpectedZoom: zoomDot.cssRadius / expectedZoomCss,
     }),
+  );
+  // Size 6 must read as small on a fit overview — the failure Tim called.
+  check(
+    "Point size 6 at fit is under 3 CSS px radius (quiet on overview)",
+    fitDot.cssRadius < 3.0,
+    JSON.stringify({ fitCss: fitDot.cssRadius, expectedFitCss }),
   );
 }
 

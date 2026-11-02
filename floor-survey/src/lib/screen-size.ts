@@ -30,10 +30,11 @@ export function screenAnchoredImageSize(
 }
 
 /**
- * Capture reading marks (dots + labels): fixed in image space from the fit
- * scale so they zoom with the plan — quieter when fit/zoomed out, larger when
- * pinched in. Same factor labels already use. Report/presentation keeps
- * planProportionalSize instead.
+ * Capture reading *labels*: fixed in image space from the fit scale so they
+ * zoom with the plan and stay readable at fit (~72% of the old screen px).
+ * Reading *dots* use planProportionalSize instead — a fraction of the plan —
+ * so a Point size of 6 is actually small on a zoomed-out house plan, not a
+ * ~8px screen blob. Both still grow/shrink with canvas zoom.
  */
 export const CAPTURE_PLAN_ZOOM_FIT_FACTOR = 0.72;
 

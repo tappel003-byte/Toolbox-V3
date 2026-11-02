@@ -1,10 +1,6 @@
 /**
- * Capture reading dots zoom with the plan — same rule as reading labels.
+ * Capture reading dots zoom with the plan and stay quiet at Point size 6.
  * Run: node tests/points-zoom-with-plan.mjs
- *
- * Tim (Nov 1, 2026): points were supposed to scale with the zoom, just like
- * readings. Measure the formula and the call sites so a zoomed-out Topo cannot
- * keep screen-anchored dots while labels track the plan.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -16,87 +12,65 @@ const screen = readFileSync(join(root, "floor-survey/src/lib/screen-size.ts"), "
 const topo = readFileSync(join(root, "floor-survey/src/components/tabs/TopoTab.tsx"), "utf8");
 const field = readFileSync(join(root, "floor-survey/src/components/tabs/FieldTab.tsx"), "utf8");
 
-assert.match(screen, /export const CAPTURE_PLAN_ZOOM_FIT_FACTOR = 0\.72/);
 assert.match(screen, /export function capturePlanZoomImageSize/);
+assert.match(screen, /export function planProportionalSize/);
+assert.match(
+  screen,
+  /Reading \*dots\* use planProportionalSize/,
+);
 
-/** Mirror of capturePlanZoomImageSize — keep in sync with screen-size.ts. */
-function capturePlanZoomImageSize(base, fitScale) {
-  const fit = fitScale > 0 ? fitScale : 1;
-  return (Math.max(1, base) * 0.72) / fit;
+/** Mirror planProportionalSize — keep in sync with screen-size.ts. */
+const REFERENCE = 1100;
+function planProportionalSize(base, planLongSide) {
+  if (!(planLongSide > 0)) return base;
+  return base * (planLongSide / REFERENCE);
 }
 
-function screenAnchoredImageSize(base, viewScale) {
-  const z = viewScale > 0 ? viewScale : 1;
-  const factor = z >= 1 ? Math.pow(z, 0.35) : 1;
-  const onScreen = Math.min(base * 2.5, Math.max(base, base * factor));
-  return onScreen / z;
-}
+const base = 6;
+const planLong = 900;
+const imgR = planProportionalSize(base, planLong);
+assert.ok(Math.abs(imgR - base * (planLong / REFERENCE)) < 1e-9);
 
-const base = 4;
 const fit = 0.45;
-const imgAtFit = capturePlanZoomImageSize(base, fit);
-const imgAtSameFitZoomed = capturePlanZoomImageSize(base, fit);
-// Image-space radius does not depend on the live view zoom — only on fit —
-// so on-screen size tracks the plan when the investigator pinches.
-assert.equal(imgAtFit, imgAtSameFitZoomed);
-assert.ok(Math.abs(imgAtFit - (base * 0.72) / fit) < 1e-9);
-
-// At fit, on-screen CSS px ≈ image × fit.
-const screenAtFit = imgAtFit * fit;
+const screenAtFit = imgR * fit;
 const zoomIn = fit * 2.2;
-const screenZoomedIn = imgAtFit * zoomIn;
+const screenZoomedIn = imgR * zoomIn;
 assert.ok(
   Math.abs(screenZoomedIn / screenAtFit - zoomIn / fit) < 1e-9,
-  `screen size must track zoom ratio; got ${screenZoomedIn / screenAtFit} vs ${zoomIn / fit}`,
+  "on-screen size must track zoom",
 );
+// Size 6 must be quiet on a phone fit overview — not ~4+ CSS px radius.
 assert.ok(
-  screenZoomedIn > screenAtFit * 1.5,
-  `pinch-in must grow the dot on screen (${screenAtFit} → ${screenZoomedIn})`,
+  screenAtFit < 3.0,
+  `Point size 6 at fit must be small on screen (got cssRadius ${screenAtFit})`,
 );
 
-// Old screen-anchored path held roughly constant CSS px when zooming out —
-// that is the bug Tim photographed.
-const oldImgAtFit = screenAnchoredImageSize(base, fit);
-const oldScreenAtFit = oldImgAtFit * fit;
-const oldImgZoomedOut = screenAnchoredImageSize(base, fit * 0.5);
-const oldScreenZoomedOut = oldImgZoomedOut * (fit * 0.5);
+// Old label-fit formula left size 6 too big at fit (~base*0.72).
+const oldLabelFitScreen = base * 0.72;
 assert.ok(
-  Math.abs(oldScreenZoomedOut - oldScreenAtFit) < 0.05 * base,
-  "sanity: old path holds screen size when zoom changes",
-);
-const newScreenZoomedOut = imgAtFit * (fit * 0.5);
-assert.ok(
-  newScreenZoomedOut < screenAtFit * 0.6,
-  `new path must shrink on zoom-out (${screenAtFit} → ${newScreenZoomedOut})`,
+  screenAtFit < oldLabelFitScreen * 0.75,
+  `plan-proportional size 6 must be quieter than label-fit formula (${screenAtFit} vs ${oldLabelFitScreen})`,
 );
 
-assert.match(topo, /function pointDotRadiusImg/);
-assert.match(
-  topo,
-  /const dotR = pointDotRadiusImg\(dotBase, floor, \{[\s\S]*fitScale/,
-);
-assert.doesNotMatch(
-  topo,
-  /const dotR = chromeSizeImg\(dotBase/,
-);
-assert.match(topo, /capturePlanZoomImageSize/);
+assert.match(topo, /function pointDotRadiusImg\(dotBase: number, floor: Floor\)/);
+assert.match(topo, /planProportionalSize/);
+assert.doesNotMatch(topo, /const dotR = capturePlanZoomImageSize/);
+assert.doesNotMatch(topo, /const dotR = chromeSizeImg\(dotBase/);
+assert.match(topo, /pointSize = 2/);
 
-assert.match(field, /function pointDotRadiusImg/);
-assert.match(field, /pointDotRadiusImg\(pointSize, fit\)/);
-assert.match(field, /pointDotRadiusImg\(pointSize, fitScaleRef/);
+assert.match(field, /function pointDotRadiusImg\(dotBase: number, floor: Floor\)/);
+assert.match(field, /pointDotRadiusImg\(pointSize, floor\)/);
 assert.doesNotMatch(field, /screenAnchoredImageSize\(pointSize/);
-assert.match(field, /capturePlanZoomImageSize/);
+assert.doesNotMatch(field, /pointDotRadiusImg\(pointSize, fit/);
 
 console.log("points-zoom-with-plan: ok");
 console.log(
   JSON.stringify({
     base,
-    fit,
-    imageRadius: imgAtFit,
+    planLong,
+    imageRadius: imgR,
     screenAtFit,
     screenZoomedIn,
-    screenZoomedOut: newScreenZoomedOut,
-    zoomRatioIn: screenZoomedIn / screenAtFit,
-    zoomRatioOut: newScreenZoomedOut / screenAtFit,
+    oldLabelFitScreen,
   }),
 );
