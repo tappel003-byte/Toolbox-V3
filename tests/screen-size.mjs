@@ -60,8 +60,13 @@ const src = fs.readFileSync('floor-survey/src/lib/screen-size.ts', 'utf8');
 const topo = fs.readFileSync('floor-survey/src/components/tabs/TopoTab.tsx', 'utf8');
 const field = fs.readFileSync('floor-survey/src/components/tabs/FieldTab.tsx', 'utf8');
 check('Helper lives in floor-survey/src/lib/screen-size.ts', /export function screenAnchoredSize/.test(src));
-check('Topo uses screenAnchoredImageSize for labels', /screenAnchoredImageSize/.test(topo));
-check('Data/Field uses screenAnchoredImageSize for labels', /screenAnchoredImageSize/.test(field));
+check('Capture plan-zoom helper lives beside it', /export function capturePlanZoomImageSize/.test(src));
+// Reading labels + dots zoom with the plan; legend/pill/High-Low chrome still
+// uses screenAnchoredImageSize via chromeSizeImg in Topo only.
+check('Topo still has screen-anchored chrome helper', /screenAnchoredImageSize/.test(topo));
+check('Topo reading dots use pointDotRadiusImg', /pointDotRadiusImg\(dotBase/.test(topo));
+check('Data/Field reading dots use plan-zoom helper', /capturePlanZoomImageSize/.test(field));
+check('Data/Field no longer screen-anchors pointSize', !/screenAnchoredImageSize\(pointSize/.test(field));
 // The rule has a name of its own now, so check the rule rather than the
 // shape of the code around it: a lone boundary uses the floating chip and
 // gets no canvas pill, unless a report slide asks for one so that one

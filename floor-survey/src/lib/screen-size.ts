@@ -30,6 +30,19 @@ export function screenAnchoredImageSize(
 }
 
 /**
+ * Capture reading marks (dots + labels): fixed in image space from the fit
+ * scale so they zoom with the plan — quieter when fit/zoomed out, larger when
+ * pinched in. Same factor labels already use. Report/presentation keeps
+ * planProportionalSize instead.
+ */
+export const CAPTURE_PLAN_ZOOM_FIT_FACTOR = 0.72;
+
+export function capturePlanZoomImageSize(base: number, fitScale: number): number {
+  const fit = fitScale > 0 ? fitScale : 1;
+  return (Math.max(1, base) * CAPTURE_PLAN_ZOOM_FIT_FACTOR) / fit;
+}
+
+/**
  * Presentation sizing: a size that is a fixed fraction of the plan.
  *
  * Distress Survey has always done this -- a pin is 0.9% of the plan's long
