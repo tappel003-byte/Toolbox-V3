@@ -2151,6 +2151,7 @@ body.report-builder-open .canvas {
      at the FOOT of it, so the caption is directly under the photograph and
      whatever is left over falls above -- and the pictures along a row line
      up on their bottom edge. */
+  position: relative;
   flex: 1 1 auto;
   width: 100%;
   height: auto;
@@ -2183,6 +2184,33 @@ body.report-builder-open .canvas {
      and a wide one are each framed to their own edge. */
   border: 0.12cqh solid #1a1a1a;
   box-sizing: border-box;
+}
+
+/* Visible View control for touch; desktop can also double-click the image. */
+.rb-pictures-page__view {
+  position: absolute;
+  top: 0.35em;
+  right: 0.35em;
+  z-index: 2;
+  appearance: none;
+  margin: 0;
+  padding: 0.28em 0.55em;
+  border: 1px solid rgba(7, 40, 61, 0.55);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--navy, #07283d);
+  font: inherit;
+  font-size: clamp(10px, 1.2cqb, 12px);
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.rb-pictures-page__view:hover,
+.rb-pictures-page__view:focus-visible {
+  background: #fff;
+  outline: 2px solid var(--navy, #07283d);
+  outline-offset: 1px;
 }
 
 /* One line, always: "Photograph 12" wrapping in one cell and not in the next

@@ -84,8 +84,11 @@
     const used = {};
     pins.forEach(function (pin) {
       const photos = pin && Array.isArray(pin.photos) ? pin.photos : [];
-      photos.forEach(function (id, index) {
-        if (typeof id !== 'string' || !id) return;
+      photos.forEach(function (entry, index) {
+        // Distress stores photo ids as strings; some report/test paths use { id }.
+        const id = typeof entry === 'string' ? entry
+          : (entry && typeof entry.id === 'string' ? entry.id : '');
+        if (!id) return;
         const pinLabel = pin.num != null ? String(pin.num) : '';
         const fallback = 'pin-' + (pinLabel || 'photo') + '-photo-' + (index + 1) + '.jpg';
         const fileName = uniqueFileName(used, safeFileName(sourceName(record, id, ''), fallback));
@@ -347,7 +350,10 @@
   }
 
   function onKeydown(event) {
-    if (event.key === 'Escape') close();
+    if (event.key !== 'Escape') return;
+    // Shared photo viewer owns Escape while it is open.
+    if (window.ToolboxPhotoViewer && window.ToolboxPhotoViewer.isOpen()) return;
+    close();
   }
 
   function visibleItems() {
@@ -372,7 +378,10 @@
       ? '<figure class="photo-folders__viewer"><img alt="' + escapeHtml(selected.title) + '" data-photo-id="' + escapeHtml(selected.id) + '">' +
         '<figcaption><strong>' + escapeHtml(selected.title) + '</strong>' +
         (selected.detail ? '<span>' + escapeHtml(selected.detail) + '</span>' : '') +
+        '<div class="photo-folders__viewer-actions">' +
+        '<button type="button" class="btn btn--secondary" id="photo-folders-view-one">View</button>' +
         '<button type="button" class="btn btn--secondary" id="photo-folders-download-one">Download</button>' +
+        '</div>' +
         '</figcaption></figure>'
       : '';
     const cards = items.length
@@ -404,6 +413,57 @@
     });
     const one = body.querySelector('#photo-folders-download-one');
     if (one) one.addEventListener('click', function () { downloadOne(selectedId); });
+    const viewOne = body.querySelector('#photo-folders-view-one');
+    if (viewOne) {
+      viewOne.addEventListener('click', function () {
+        openFolderViewer(selectedId);
+      });
+    }
+  }
+
+  function openFolderViewer(startId) {
+    const api = window.ToolboxPhotoViewer;
+    if (!api || typeof api.open !== 'function' || !photoDb) return;
+    const items = visibleItems();
+    if (!items.length) return;
+    let index = 0;
+    if (startId) {
+      for (let i = 0; i < items.length; i += 1) {
+        if (items[i].id === startId) { index = i; break; }
+      }
+    }
+    const viewerItems = items.map(function (item) {
+      return {
+        id: item.id,
+        title: item.title || 'Photograph',
+        caption: item.detail || '',
+        getSrc: function () {
+          // Same local resolve order as Report Builder evidence: Distress
+          // photo store first, then Toolbox media. Never fetches remotely.
+          return readPhoto(photoDb, item.id).then(function (value) {
+            if (typeof value === 'string' && value.indexOf('data:image/') === 0) return value;
+            if (window.ToolboxDB && typeof window.ToolboxDB.getMedia === 'function') {
+              return window.ToolboxDB.getMedia(item.id).then(function (media) {
+                return (typeof media === 'string' && media.indexOf('data:image/') === 0)
+                  ? media
+                  : null;
+              });
+            }
+            return null;
+          }).catch(function () {
+            if (window.ToolboxDB && typeof window.ToolboxDB.getMedia === 'function') {
+              return window.ToolboxDB.getMedia(item.id).then(function (media) {
+                return (typeof media === 'string' && media.indexOf('data:image/') === 0)
+                  ? media
+                  : null;
+              }).catch(function () { return null; });
+            }
+            return null;
+          });
+        },
+      };
+    });
+    api.open(viewerItems, { index: index });
   }
 
   function setFolder(folder) {

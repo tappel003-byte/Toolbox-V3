@@ -1253,6 +1253,13 @@
       if (!evidenceImage(frame, photo.dataUrl, 'rb-pictures-page__image', photoLabel(photo.displayNumber))) {
         addLine(frame, 'rb-sheet__note', 'Photo not on this device');
       }
+      var viewBtn = document.createElement('button');
+      viewBtn.type = 'button';
+      viewBtn.className = 'rb-pictures-page__view';
+      viewBtn.setAttribute('data-rb-photo-view', photo.key || '');
+      viewBtn.setAttribute('aria-label', 'View ' + photoLabel(photo.displayNumber));
+      viewBtn.textContent = 'View';
+      frame.appendChild(viewBtn);
       cell.appendChild(frame);
       var label = document.createElement('figcaption');
       label.className = 'rb-pictures-page__label';
@@ -6704,6 +6711,89 @@
       // As it is typed, so the writer sees what will print.
       fitCaption(field);
       markDirty();
+    });
+
+    // Shared read-only photo viewer (Report Builder Pictures). Local bytes
+    // only; report-wide order; does not write captions/layout/checkout.
+    function listReportViewerPhotos() {
+      var items = [];
+      pages.forEach(function (page) {
+        if (!page || page.type !== 'pictures') return;
+        var photos = (page.evidence && Array.isArray(page.evidence.photos))
+          ? page.evidence.photos : [];
+        var captions = (page.reportText && page.reportText.captions) || {};
+        photos.forEach(function (photo) {
+          if (!photo) return;
+          var key = photo.key || photo.id || '';
+          var hasSrc = typeof photo.dataUrl === 'string' && photo.dataUrl.indexOf('data:image/') === 0;
+          items.push({
+            id: key,
+            title: photoLabel(photo.displayNumber),
+            caption: typeof captions[key] === 'string'
+              ? captions[key]
+              : (photo.seedText || ''),
+            src: hasSrc ? photo.dataUrl : null,
+            missing: !!(photo.missing || !hasSrc),
+          });
+        });
+      });
+      return items;
+    }
+
+    function openReportPhotoViewer(photoKey) {
+      var api = window.ToolboxPhotoViewer;
+      if (!api || typeof api.open !== 'function') return;
+      if (presentDeck) return;
+      if (inkTool) return;
+      var items = listReportViewerPhotos();
+      if (!items.length) return;
+      var index = 0;
+      if (photoKey) {
+        for (var i = 0; i < items.length; i += 1) {
+          if (items[i].id === photoKey) { index = i; break; }
+        }
+      }
+      var stage = root.querySelector('.rb-stage');
+      var restore = {
+        activeId: activeId,
+        scrollTop: stage ? stage.scrollTop : 0,
+        scrollLeft: stage ? stage.scrollLeft : 0,
+      };
+      api.open(items, {
+        index: index,
+        onClose: function () {
+          if (restore.activeId && restore.activeId !== activeId) {
+            activeId = restore.activeId;
+            renderPages();
+          }
+          var stageNow = root.querySelector('.rb-stage');
+          if (stageNow) {
+            stageNow.scrollTop = restore.scrollTop;
+            stageNow.scrollLeft = restore.scrollLeft;
+          }
+        },
+      });
+    }
+
+    sheetEl.addEventListener('dblclick', function (event) {
+      if (presentDeck || inkTool) return;
+      if (event.target.closest('[data-rb-caption]')) return;
+      if (event.target.closest('.rb-pictures-page__view')) return;
+      var img = event.target.closest('.rb-pictures-page__image');
+      if (!img) return;
+      var cell = img.closest('[data-photo-key]');
+      if (!cell) return;
+      event.preventDefault();
+      openReportPhotoViewer(cell.getAttribute('data-photo-key') || '');
+    });
+
+    sheetEl.addEventListener('click', function (event) {
+      var viewBtn = event.target.closest('[data-rb-photo-view]');
+      if (!viewBtn) return;
+      if (presentDeck || inkTool) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openReportPhotoViewer(viewBtn.getAttribute('data-rb-photo-view') || '');
     });
 
     /**
