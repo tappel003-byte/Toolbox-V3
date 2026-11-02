@@ -1,5 +1,5 @@
 /**
- * Capture reading dots zoom with the plan and stay quiet at Point size 6.
+ * Capture reading dots + labels are plan-proportional and quiet at size 6.
  * Run: node tests/points-zoom-with-plan.mjs
  */
 import assert from "node:assert/strict";
@@ -8,18 +8,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const screen = readFileSync(join(root, "floor-survey/src/lib/screen-size.ts"), "utf8");
 const topo = readFileSync(join(root, "floor-survey/src/components/tabs/TopoTab.tsx"), "utf8");
 const field = readFileSync(join(root, "floor-survey/src/components/tabs/FieldTab.tsx"), "utf8");
+const panel = readFileSync(join(root, "floor-survey/src/components/DataPointsPanel.tsx"), "utf8");
+const capture = readFileSync(join(root, "floor-survey/src/lib/capture-sizes.ts"), "utf8");
 
-assert.match(screen, /export function capturePlanZoomImageSize/);
-assert.match(screen, /export function planProportionalSize/);
-assert.match(
-  screen,
-  /Reading \*dots\* use planProportionalSize/,
-);
-
-/** Mirror planProportionalSize — keep in sync with screen-size.ts. */
 const REFERENCE = 1100;
 function planProportionalSize(base, planLongSide) {
   if (!(planLongSide > 0)) return base;
@@ -28,49 +21,31 @@ function planProportionalSize(base, planLongSide) {
 
 const base = 6;
 const planLong = 900;
-const imgR = planProportionalSize(base, planLong);
-assert.ok(Math.abs(imgR - base * (planLong / REFERENCE)) < 1e-9);
-
 const fit = 0.45;
+const imgR = planProportionalSize(base, planLong);
 const screenAtFit = imgR * fit;
-const zoomIn = fit * 2.2;
-const screenZoomedIn = imgR * zoomIn;
-assert.ok(
-  Math.abs(screenZoomedIn / screenAtFit - zoomIn / fit) < 1e-9,
-  "on-screen size must track zoom",
-);
-// Size 6 must be quiet on a phone fit overview — not ~4+ CSS px radius.
 assert.ok(
   screenAtFit < 3.0,
-  `Point size 6 at fit must be small on screen (got cssRadius ${screenAtFit})`,
+  `size 6 at fit must be small (got ${screenAtFit})`,
 );
+assert.ok(screenAtFit < base * 0.72 * 0.75, "quieter than old label-fit screen size");
 
-// Old label-fit formula left size 6 too big at fit (~base*0.72).
-const oldLabelFitScreen = base * 0.72;
-assert.ok(
-  screenAtFit < oldLabelFitScreen * 0.75,
-  `plan-proportional size 6 must be quieter than label-fit formula (${screenAtFit} vs ${oldLabelFitScreen})`,
-);
-
+assert.match(topo, /function pointLabelFontImg\(fontBase: number, floor: Floor\)/);
 assert.match(topo, /function pointDotRadiusImg\(dotBase: number, floor: Floor\)/);
-assert.match(topo, /planProportionalSize/);
-assert.doesNotMatch(topo, /const dotR = capturePlanZoomImageSize/);
-assert.doesNotMatch(topo, /const dotR = chromeSizeImg\(dotBase/);
-assert.match(topo, /pointSize = 2/);
+assert.match(topo, /const LABEL_SIZE_MIN = 2/);
+assert.doesNotMatch(topo, /const LABEL_SIZE_MIN = 6/);
+assert.doesNotMatch(topo, /capturePlanZoomImageSize/);
+assert.match(topo, /pointLabelFontImg\(fontBase, floor\)/);
+assert.match(topo, /pointDotRadiusImg\(dotBase, floor\)/);
 
-assert.match(field, /function pointDotRadiusImg\(dotBase: number, floor: Floor\)/);
+assert.match(field, /pointLabelFontImg\(fontBase, floor\)/);
 assert.match(field, /pointDotRadiusImg\(pointSize, floor\)/);
-assert.doesNotMatch(field, /screenAnchoredImageSize\(pointSize/);
-assert.doesNotMatch(field, /pointDotRadiusImg\(pointSize, fit/);
+assert.doesNotMatch(field, /capturePlanZoomImageSize/);
+
+assert.doesNotMatch(panel, /\{pointSize\}px/);
+assert.doesNotMatch(panel, /\{labelFontSize\}px/);
+assert.match(panel, /Math\.max\(2, labelFontSize - 1\)/);
+assert.match(capture, /Math\.max\(2, Math\.min\(28/);
 
 console.log("points-zoom-with-plan: ok");
-console.log(
-  JSON.stringify({
-    base,
-    planLong,
-    imageRadius: imgR,
-    screenAtFit,
-    screenZoomedIn,
-    oldLabelFitScreen,
-  }),
-);
+console.log(JSON.stringify({ base, planLong, imgR, screenAtFit }));

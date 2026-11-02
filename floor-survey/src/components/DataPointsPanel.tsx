@@ -269,7 +269,7 @@ export function DataPointsPanel({
                   <Minus className="h-3 w-3" />
                 </button>
                 <span className="text-[10px] font-mono flex-1 text-center tabular-nums">
-                  {pointSize}px
+                  {pointSize}
                 </span>
                 <button
                   className="h-6 w-6 rounded border flex items-center justify-center hover:bg-muted disabled:opacity-40"
@@ -286,14 +286,14 @@ export function DataPointsPanel({
                 </span>
                 <button
                   className="h-6 w-6 rounded border flex items-center justify-center hover:bg-muted disabled:opacity-40"
-                  onClick={() => onLabelFontSizeChange(Math.max(6, labelFontSize - 1))}
-                  disabled={labelFontSize <= 6}
+                  onClick={() => onLabelFontSizeChange(Math.max(2, labelFontSize - 1))}
+                  disabled={labelFontSize <= 2}
                   aria-label="Smaller label"
                 >
                   <Minus className="h-3 w-3" />
                 </button>
                 <span className="text-[10px] font-mono flex-1 text-center tabular-nums">
-                  {labelFontSize}px
+                  {labelFontSize}
                 </span>
                 <button
                   className="h-6 w-6 rounded border flex items-center justify-center hover:bg-muted disabled:opacity-40"

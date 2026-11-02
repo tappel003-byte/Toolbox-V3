@@ -95,6 +95,11 @@ await page.evaluate(
     };
     localStorage.setItem(`dpp-size:${id}`, String(pointSize));
     localStorage.setItem(`dpp-color:${id}`, "#111827");
+    localStorage.setItem(`dpp-font:${id}`, "6");
+    localStorage.setItem(
+      `fs-capture-sizes:${id}`,
+      JSON.stringify({ pointLabelFontSize: 6, pointSize }),
+    );
     await window.ToolboxDB.saveCustomerFile(record);
   },
   { id: FILE, planW: PLAN_W, planH: PLAN_H, pointSize: POINT_SIZE },
