@@ -440,19 +440,18 @@ function pointLabelFontImg(
   return capturePlanZoomImageSize(fontBase, opts?.fitScale ?? 1);
 }
 
-/** Reading-dot radius in image coordinates — same zoom rule as the label. */
-function pointDotRadiusImg(
-  dotBase: number,
-  floor: Floor,
-  opts?: { presentation?: boolean; fitScale?: number },
-) {
-  if (opts?.presentation) {
-    return planProportionalSize(
-      Math.max(1, dotBase),
-      planLongSide(floor.planWidth, floor.planHeight),
-    );
-  }
-  return capturePlanZoomImageSize(dotBase, opts?.fitScale ?? 1);
+/**
+ * Reading-dot radius in image coordinates.
+ *
+ * Always a fraction of the plan (plan-proportional), capture and report.
+ * Zooms with the canvas. Point size 6 stays a small mark on a fit overview —
+ * not the old label-fit formula that left ~8 CSS px blobs on a phone.
+ */
+function pointDotRadiusImg(dotBase: number, floor: Floor) {
+  return planProportionalSize(
+    Math.max(1, dotBase),
+    planLongSide(floor.planWidth, floor.planHeight),
+  );
 }
 
 /**
@@ -546,7 +545,7 @@ export function TopoTab({
   onFloorChange,
   settings,
   onSettingsChange,
-  pointSize = 6,
+  pointSize = 2,
   pointColor = "#dc2626",
   onPointSizeChange,
   onPointColorChange,
@@ -3537,13 +3536,9 @@ export function renderTopoTop(
 
   if (resolved.showPoints) {
     ctx.globalAlpha = resolved.pointsOpacity;
-    // Dot: same plan-zoom rule as the label; keyed to the Point size stepper
-    // so −/+ still controls what's drawn.
-    const dotBase = overlay?.pointSize ?? 6;
-    const dotR = pointDotRadiusImg(dotBase, floor, {
-      presentation: !!overlay?.presentation,
-      fitScale,
-    });
+    // Dot: plan-proportional (quiet on fit overview); −/+ still owns size.
+    const dotBase = overlay?.pointSize ?? 2;
+    const dotR = pointDotRadiusImg(dotBase, floor);
     const dotColor = overlay?.pointColor ?? "#dc2626";
     const padX = 4 * chromeK;
     const padY = 2.5 * chromeK;
