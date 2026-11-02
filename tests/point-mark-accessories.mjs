@@ -32,21 +32,30 @@ assert.match(
   topo,
   /label="Point size"[\s\S]*?unitless[\s\S]*?onChange=\{onPointSizeChange\}/,
 );
-assert.match(topo, /h-5 w-5 rounded-full/);
+assert.match(topo, /h-6 w-6 rounded-full/);
 // Control panel sits above the floating H/L/Δ chip.
 assert.match(topo, /absolute z-\[60\]/);
 
 // Field Readings → Accessories includes the mark controls.
 assert.match(topo, /id: "accessories"[\s\S]*PointMarkStyleControls[\s\S]*H\/L\/Δ size/);
-// Accessories size rows stack with air — not a wrapping side-by-side that
-// collapses into a jammed column under the help line on a phone panel.
+// Accessories rows are label-left / control-right with real flex gaps — not
+// a stacked label-over-pill that still looks jammed after space-y-5 alone.
 assert.match(
   topo,
-  /id: "accessories"[\s\S]*space-y-5[\s\S]*space-y-5 border-t[\s\S]*label="H\/L\/Δ size"[\s\S]*label="High\/Low size"/,
+  /id: "accessories"[\s\S]*flex flex-col gap-6" data-fs-accessories-air[\s\S]*flex flex-col gap-5 border-t[\s\S]*label="H\/L\/Δ size"[\s\S]*label="High\/Low size"/,
+);
+assert.match(
+  topo,
+  /unitless[\s\S]*flex min-h-12 items-center justify-between gap-3 py-1[\s\S]*Decrease/,
 );
 assert.doesNotMatch(
   topo,
   /Press and move to place[\s\S]{0,80}flex flex-wrap items-end gap-x-4 gap-y-2/,
+);
+// Field Accessories body must not use the old stacked space-y-5 shell.
+assert.doesNotMatch(
+  topo,
+  /data-fs-accessories-air[\s\S]{0,40}space-y-5/,
 );
 
 // Report Accessories has a Points sibling tab.
