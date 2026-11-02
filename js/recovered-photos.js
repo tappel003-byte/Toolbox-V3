@@ -336,17 +336,30 @@
   let currentItems = [];
   let activeFolder = 'pins';
   let selectedId = '';
+  let ownerFileId = '';
 
   function close() {
+    // Folders own any viewer they opened; leave must not leak overlay/listener.
+    if (window.ToolboxPhotoViewer && typeof window.ToolboxPhotoViewer.close === 'function') {
+      try { window.ToolboxPhotoViewer.close({ discard: true }); } catch (_) {}
+    }
     if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
     overlay = null;
     currentItems = [];
     selectedId = '';
+    ownerFileId = '';
     if (photoDb) {
       try { photoDb.close(); } catch (_) {}
       photoDb = null;
     }
     document.removeEventListener('keydown', onKeydown);
+  }
+
+  /** Close when navigating to a different Customer File (or none). */
+  function closeUnlessFile(customerFileId) {
+    if (!overlay) return;
+    if (ownerFileId && customerFileId && ownerFileId === customerFileId) return;
+    close();
   }
 
   function onKeydown(event) {
@@ -515,6 +528,7 @@
     if (!window.ToolboxDB || !customerFileId) return;
     const record = await window.ToolboxDB.getCustomerFile(customerFileId);
     if (!record) return;
+    ownerFileId = customerFileId;
     currentItems = allItems(record);
     const pinCount = currentItems.filter(function (item) { return item.folder === 'pins'; }).length;
     const quickCount = currentItems.length - pinCount;
@@ -567,6 +581,7 @@
     label: label,
     open: open,
     close: close,
+    closeUnlessFile: closeUnlessFile,
     buildDownload: buildDownload,
   };
 })();

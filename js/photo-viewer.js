@@ -21,12 +21,18 @@
     return Math.max(lo, Math.min(hi, n));
   }
 
-  function close() {
+  /**
+   * Close the open viewer.
+   * options.discard — remove overlay/listener without running onClose
+   *   (visit teardown / leaving Customer File).
+   */
+  function close(options) {
     if (!active) return;
     var session = active;
     active = null;
     document.removeEventListener('keydown', session.onKey, true);
     if (session.box && session.box.parentNode) session.box.parentNode.removeChild(session.box);
+    if (options && options.discard) return;
     if (typeof session.onClose === 'function') {
       try { session.onClose(); } catch (_) {}
     }

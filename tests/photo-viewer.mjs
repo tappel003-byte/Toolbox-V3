@@ -222,6 +222,126 @@ check(
   await page.evaluate(() => !!document.querySelector('.photo-folders')),
 );
 
+// --- GPT review regressions: output exclusions + visit cleanup ---
+await page.goto(`${BASE}#/file/photo-viewer-cf/report`, { waitUntil: 'networkidle0' });
+await page.waitForFunction(() => document.querySelector('.rb-shell'), { timeout: 20000 });
+await page.waitForFunction(
+  () => /^Saved/.test(document.querySelector('#rb-save-status')?.textContent || ''),
+  { timeout: 20000 },
+);
+await page.evaluate(() => {
+  const picturesBtn = document.querySelector('.rb-thumb[data-page-id^="pictures-"]');
+  picturesBtn?.click();
+});
+await page.waitForFunction(() => document.querySelectorAll('.rb-pictures-page__view').length >= 1, {
+  timeout: 15000,
+});
+
+const outputExclusions = await page.evaluate(() => {
+  const thumbViews = document.querySelectorAll('.rb-thumb .rb-pictures-page__view, .rb-sheet--thumb .rb-pictures-page__view').length;
+  // Build the same Present/Print deck the app uses.
+  const api = window.ToolboxReportBuilder;
+  // Fall back: click Print is heavy; inspect build via private path if exposed.
+  // Drive Present which reuses the print deck.
+  const presentBtn = document.querySelector('#rb-present, [data-rb-present], button[title="Presentation view"]');
+  return { thumbViews, hasPresent: !!presentBtn, editorViews: document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) .rb-pictures-page__view').length };
+});
+check('Editor sheet still has View controls', outputExclusions.editorViews >= 1, JSON.stringify(outputExclusions));
+check('Rail thumbnails have no View controls', outputExclusions.thumbViews === 0, JSON.stringify(outputExclusions));
+
+// Present deck: open presentation and inspect sheets for View buttons.
+const presentOpened = await page.evaluate(async () => {
+  const btn = document.querySelector('#rb-present') ||
+    document.querySelector('button[title="Presentation view"]') ||
+    [...document.querySelectorAll('button')].find((b) => /present/i.test(b.textContent || '') || /present/i.test(b.getAttribute('title') || ''));
+  if (!btn) return { ok: false, reason: 'no present button' };
+  btn.click();
+  return { ok: true };
+});
+if (presentOpened.ok) {
+  await page.waitForFunction(
+    () => document.body.classList.contains('is-presenting') &&
+      document.querySelectorAll('.rb-print--present .rb-sheet--print').length > 0,
+    { timeout: 90000 },
+  );
+  const presentViews = await page.evaluate(() => ({
+    presenting: document.body.classList.contains('is-presenting'),
+    printSheets: document.querySelectorAll('.rb-print--present .rb-sheet--print').length,
+    printViews: document.querySelectorAll('.rb-print--present .rb-pictures-page__view').length,
+  }));
+  check(
+    'Present/Print deck has no View controls',
+    presentViews.presenting && presentViews.printSheets > 0 && presentViews.printViews === 0,
+    JSON.stringify(presentViews),
+  );
+  await page.evaluate(() => {
+    document.querySelector('[data-present="close"]')?.click();
+  });
+  await page.waitForFunction(
+    () => !document.body.classList.contains('is-presenting') &&
+      !document.querySelector('.rb-print--present'),
+    { timeout: 15000 },
+  );
+} else {
+  check('Present/Print deck has no View controls', false, JSON.stringify(presentOpened));
+}
+
+// Visit cleanup: leave and re-enter Report Builder so Present cannot leave
+// a sticky deck that swallows View clicks (same-hash goto is a no-op).
+await page.goto(`${BASE}#/file/photo-viewer-cf`, { waitUntil: 'networkidle0' });
+await page.waitForFunction(() => !document.querySelector('.rb-shell'), { timeout: 15000 }).catch(() => {});
+await page.goto(`${BASE}#/file/photo-viewer-cf/report`, { waitUntil: 'networkidle0' });
+await page.waitForFunction(() => document.querySelector('.rb-shell'), { timeout: 20000 });
+await page.waitForFunction(
+  () => /^Saved/.test(document.querySelector('#rb-save-status')?.textContent || ''),
+  { timeout: 20000 },
+);
+await page.evaluate(() => {
+  document.querySelector('.rb-thumb[data-page-id^="pictures-"]')?.click();
+});
+await page.waitForFunction(
+  () => document.querySelectorAll('.rb-sheet:not(.rb-sheet--thumb) [data-rb-photo-view]').length >= 1,
+  { timeout: 15000 },
+);
+await page.evaluate(() => {
+  document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-photo-view]')?.click();
+});
+await page.waitForFunction(() => !!document.querySelector('.tb-photo-viewer'), { timeout: 8000 });
+const beforeLeave = await page.evaluate(() => ({
+  open: !!document.querySelector('.tb-photo-viewer'),
+  activeId: document.querySelector('.rb-thumb.is-active')?.getAttribute('data-page-id') || '',
+}));
+await page.goto(`${BASE}#/file/photo-viewer-cf`, { waitUntil: 'networkidle0' });
+await new Promise((r) => setTimeout(r, 800));
+const afterLeave = await page.evaluate(() => ({
+  viewer: !!document.querySelector('.tb-photo-viewer'),
+  reportShell: !!document.querySelector('.rb-shell'),
+  folders: !!document.querySelector('.photo-folders'),
+}));
+check(
+  'Leaving Report Builder discards photo viewer overlay',
+  beforeLeave.open && !afterLeave.viewer && !afterLeave.reportShell,
+  JSON.stringify({ beforeLeave, afterLeave }),
+);
+
+// Photo folders ownership: open folders+viewer, navigate to report, both gone.
+await page.waitForFunction(() => !!document.querySelector('#home-photo-folders'), { timeout: 15000 });
+await page.click('#home-photo-folders');
+await page.waitForFunction(() => !!document.querySelector('#photo-folders-view-one'), { timeout: 8000 });
+await page.click('#photo-folders-view-one');
+await page.waitForFunction(() => !!document.querySelector('.tb-photo-viewer'), { timeout: 5000 });
+await page.goto(`${BASE}#/file/photo-viewer-cf/report`, { waitUntil: 'networkidle0' });
+await new Promise((r) => setTimeout(r, 1000));
+const afterFoldersLeave = await page.evaluate(() => ({
+  viewer: !!document.querySelector('.tb-photo-viewer'),
+  folders: !!document.querySelector('.photo-folders'),
+}));
+check(
+  'Leaving Photo folders discards folders modal and viewer',
+  !afterFoldersLeave.viewer && !afterFoldersLeave.folders,
+  JSON.stringify(afterFoldersLeave),
+);
+
 const failed = results.filter((r) => !r.ok).length;
 console.log(`\n${results.length - failed}/${results.length} passed`);
 await browser.close();

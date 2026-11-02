@@ -1219,11 +1219,13 @@
     }
   }
 
-  function renderPicturesPage(page) {
+  function renderPicturesPage(page, opts) {
     var meta = page.meta || {};
     var evidence = page.evidence || {};
     var captions = (page.reportText && page.reportText.captions) || {};
     var photos = Array.isArray(evidence.photos) ? evidence.photos : [];
+    // View is editor chrome only — never Present, Print/PDF, or rail thumbs.
+    var showView = !!(opts && opts.showView);
     var root = document.createElement('div');
     root.className = 'rb-pictures-page';
 
@@ -1253,13 +1255,15 @@
       if (!evidenceImage(frame, photo.dataUrl, 'rb-pictures-page__image', photoLabel(photo.displayNumber))) {
         addLine(frame, 'rb-sheet__note', 'Photo not on this device');
       }
-      var viewBtn = document.createElement('button');
-      viewBtn.type = 'button';
-      viewBtn.className = 'rb-pictures-page__view';
-      viewBtn.setAttribute('data-rb-photo-view', photo.key || '');
-      viewBtn.setAttribute('aria-label', 'View ' + photoLabel(photo.displayNumber));
-      viewBtn.textContent = 'View';
-      frame.appendChild(viewBtn);
+      if (showView) {
+        var viewBtn = document.createElement('button');
+        viewBtn.type = 'button';
+        viewBtn.className = 'rb-pictures-page__view';
+        viewBtn.setAttribute('data-rb-photo-view', photo.key || '');
+        viewBtn.setAttribute('aria-label', 'View ' + photoLabel(photo.displayNumber));
+        viewBtn.textContent = 'View';
+        frame.appendChild(viewBtn);
+      }
       cell.appendChild(frame);
       var label = document.createElement('figcaption');
       label.className = 'rb-pictures-page__label';
@@ -2664,7 +2668,9 @@
       margin.appendChild(rows);
     } else if (page.type === 'pictures') {
       margin.classList.add('rb-sheet__margin--pictures');
-      margin.appendChild(renderPicturesPage(page));
+      // Output decks (print / Present) and rail thumbs must not carry View.
+      var output = !!(opts && opts.output);
+      margin.appendChild(renderPicturesPage(page, { showView: !thumb && !output }));
       // Measured once the sheet has a width, like the cover's street. Never
       // on a stamp: a thumbnail is too small to read either way, and there
       // are as many of them as there are pages.
@@ -3909,7 +3915,24 @@
     // hands it the way to clear them. Measured before this: a job with twelve
     // photographs cost about a megabyte every time Report Builder was opened
     // and left, with a whole screen's worth of elements retained each time.
+    // This mount's visit. Viewer restore callbacks check it so an overlay
+    // closed after leave cannot rewrite an expired report session.
+    var visitAlive = true;
     mountCleanup = function () {
+      visitAlive = false;
+      if (window.ToolboxPhotoViewer && typeof window.ToolboxPhotoViewer.close === 'function') {
+        try { window.ToolboxPhotoViewer.close({ discard: true }); } catch (_) {}
+      }
+      try { if (typeof closePresentation === 'function') closePresentation(); } catch (_) {}
+      try { if (typeof clearPrintDeck === 'function') clearPrintDeck(); } catch (_) {}
+      // Belt: Present/Print decks append to document.body and must not survive
+      // a Customer File leave if close helpers were not yet bound.
+      try {
+        document.querySelectorAll('.rb-print, .rb-present-bar').forEach(function (el) {
+          if (el && el.parentNode) el.parentNode.removeChild(el);
+        });
+        document.body.classList.remove('is-presenting', 'is-printing');
+      } catch (_) {}
       Object.keys(thumbCache).forEach(function (key) { delete thumbCache[key]; });
       Object.keys(floorShots).forEach(function (key) { delete floorShots[key]; });
       if (floorShotTimer) {
@@ -6762,6 +6785,8 @@
       api.open(items, {
         index: index,
         onClose: function () {
+          // Teardown discarded the visit — do not touch an expired report.
+          if (!visitAlive) return;
           if (restore.activeId && restore.activeId !== activeId) {
             activeId = restore.activeId;
             renderPages();
@@ -8463,7 +8488,9 @@
         var liveMount = page._mountTopo;
         page._mountTopo = null;
         try {
-          renderSheet(sheet, page, pages);
+          // Present reuses this print deck. Mark as output so View chrome
+          // never lands in Present or Print/PDF.
+          renderSheet(sheet, page, pages, { output: true });
         } catch (err) {
           // A sheet that could not be built says so ON the sheet.
           //
