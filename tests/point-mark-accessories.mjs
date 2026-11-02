@@ -58,9 +58,15 @@ assert.doesNotMatch(
   /data-fs-accessories-air[\s\S]{0,40}space-y-5/,
 );
 
-// Report Accessories has a Points sibling tab.
-assert.match(topo, /\["points", "Points"\]/);
-assert.match(topo, /reportAccessoryTab === "points"/);
+// Report Accessories reuses Readings → Accessories (bare TrialSectionTabs),
+// not a separate segmented Points|Legend|H/L|High/Low strip.
+assert.match(topo, /bare=\{controlsOnly\}/);
+assert.match(topo, /reportDoor === "readings"/);
+assert.doesNotMatch(topo, /reportAccessoryTab/);
+assert.match(
+  topo,
+  /controlsOnly \?[\s\S]*label="H\/L\/Δ pill"[\s\S]*label="High \/ low"/,
+);
 
 assert.match(types, /readingPointSize: number/);
 assert.match(types, /readingPointColor: string/);

@@ -889,27 +889,36 @@ body.report-builder-open .canvas {
 .rb-ws__controls .floor-survey-host,
 .rb-ws__controls .rtw-root--controls { display: block; height: auto; }
 
-/* GPT-036: Sheet Layout | Topo as folder tabs on the rail's top edge.
-   Rounded tops, flat bottoms, no capsule. The active tab is the white
-   panel; the baseline continues under the inactive tab. */
+/*
+ * Rail tab hierarchy (Tim):
+ *   Grandparents — Sheet Layout | Topo: distinct full-width gray/white header
+ *                  (may differ from capture; not main’s blue band).
+ *   Parents      — Contours | Readings: exact Floor Survey capture folder
+ *                  tokens (TrialFolderTabs). Width may flex to the rail; do
+ *                  not independently shrink type / height / pad / hit.
+ *   Siblings     — Display… / Show…: TrialSectionTabs in TopoTab (same chrome).
+ * Active parent = navy fill. Inactive = cool gray. No blue palette.
+ */
 .rb-ws__sticky:has(.rb-ws__task-tabs) {
-  gap: 6px;
-  margin-bottom: -10px;
+  gap: 0;
+  margin-bottom: 0;
   background: #fff;
 }
 .rb-ws__top:has(.rb-ws__task-tabs) {
-  gap: 0;
-  padding-bottom: 0;
+  /* Clear break after grandparents — Contours|Readings are inset parents. */
+  gap: 12px;
+  padding-bottom: 8px;
   background: #fff;
 }
 .rb-ws__sticky:has(.rb-ws__task-tabs) + .rb-ws__body {
-  padding-top: 10px;
+  padding-top: 8px;
   background: #fff;
 }
 .rb-ws__task-tabs {
   display: flex;
   align-items: flex-end;
   gap: 3px;
+  width: 100%;
   margin: 0;
   padding: 0;
   border: 0;
@@ -920,7 +929,8 @@ body.report-builder-open .canvas {
 .rb-ws__task-tab {
   appearance: none;
   position: relative;
-  flex: 0 0 auto;
+  flex: 1 1 50%;
+  min-width: 0;
   margin: 0 0 -1px;
   border: 1px solid var(--line, #dce1e4);
   border-bottom-color: var(--line, #dce1e4);
@@ -933,6 +943,7 @@ body.report-builder-open .canvas {
   font-weight: 650;
   line-height: 1.2;
   white-space: nowrap;
+  text-align: center;
   color: var(--navy, #07283d);
   background: #e5ebee;
   cursor: pointer;
@@ -954,44 +965,46 @@ body.report-builder-open .canvas {
   border-bottom-color: #fff;
   box-shadow: none;
 }
-/* Topo and its three sub tabs are one set. Sheet Layout stays the gray tab. */
+/* Sheet Layout stays gray/white; Topo active may carry rust as level cue. */
 .rb-ws__task-tab.is-active[data-rb-floor-task="topo"] {
   color: #c14a2b;
   font-weight: 700;
 }
-/* Second tier under Topo: the same folder tabs, drawn smaller.
-   Rounded tops, flat bottoms, cool-gray inactive, white active tab that
-   interrupts this row's baseline. Not a pill, and not an underline. */
+/*
+ * Parents: same tokens as capture TrialFolderTabs / TrialSectionTabs.
+ * #e5ebee / #3d5c70 / #c9d0d5 inactive; #07283d fill + white text active.
+ */
 .rb-ws__subtabs {
   display: flex;
   align-items: flex-end;
-  gap: 2px;
-  margin: 3px 0 0;
+  gap: 4px;
+  width: 100%;
+  margin: 0;
   padding: 0;
   border: 0;
-  border-bottom: 1px solid var(--line, #dce1e4);
+  border-bottom: 1px solid var(--line-strong, #c9d0d5);
   border-radius: 0;
   background: transparent;
 }
 .rb-ws__subtab {
   appearance: none;
   position: relative;
-  flex: 0 0 auto;
+  flex: 1 1 0;
   min-width: 0;
-  min-height: 26px;
+  min-height: 44px;
   margin: 0 0 -1px;
-  padding: 2px 7px 3px;
-  border: 1px solid var(--line, #dce1e4);
-  border-bottom-color: var(--line, #dce1e4);
-  border-radius: 5px 5px 0 0;
+  padding: 0 4px;
+  border: 1px solid var(--line-strong, #c9d0d5);
+  border-radius: 6px 6px 0 0;
   background: #e5ebee;
   box-shadow: none;
-  color: #c14a2b;
+  color: #3d5c70;
   font: inherit;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.2;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
   white-space: nowrap;
+  text-align: center;
   cursor: pointer;
 }
 .rb-ws__subtab:hover:not(.is-active) {
@@ -1006,8 +1019,11 @@ body.report-builder-open .canvas {
 }
 .rb-ws__subtab.is-active {
   z-index: 1;
-  background: #fff;
-  border-bottom-color: #fff;
+  background: var(--navy, #07283d);
+  color: #fff;
+  font-weight: 700;
+  border-color: var(--navy, #07283d);
+  border-bottom-color: var(--navy, #07283d);
   box-shadow: none;
 }
 .rb-ws__section-label {
