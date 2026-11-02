@@ -16,11 +16,7 @@ import { savePoint, deletePoint, reindexFloorPoints, saveFloor, saveBp1Gps, uid 
 import { transitionDelta, formatDelta, getChainBaselineSurface } from "@/lib/transitions";
 import { drawExclusionShape, zoneOfXY } from "@/lib/exclusions";
 import type { FloorSnapshot } from "@/lib/useFloorHistory";
-import {
-  capturePlanZoomImageSize,
-  planLongSide,
-  planProportionalSize,
-} from "@/lib/screen-size";
+import { planLongSide, planProportionalSize } from "@/lib/screen-size";
 
 /** Same design-font reference as TopoTab — pad must track font size. */
 const LABEL_CHROME_REF_PX = defaultRenderSettings.pointLabelFontSize;
@@ -28,11 +24,13 @@ function labelChromeK(fontPx: number) {
   return fontPx / LABEL_CHROME_REF_PX;
 }
 
-/** Capture reading labels: fit-anchored so text stays readable and zooms with plan. */
-function pointLabelFontImg(fontBase: number, fitScale: number) {
-  return capturePlanZoomImageSize(fontBase, fitScale);
+/** Reading labels + dots: plan-proportional — size 6 is small on a fit overview. */
+function pointLabelFontImg(fontBase: number, floor: Floor) {
+  return planProportionalSize(
+    Math.max(1, fontBase),
+    planLongSide(floor.planWidth, floor.planHeight),
+  );
 }
-/** Reading dots: fraction of the plan — size 6 is small on a fit overview. */
 function pointDotRadiusImg(dotBase: number, floor: Floor) {
   return planProportionalSize(
     Math.max(1, dotBase),
@@ -462,7 +460,7 @@ export function FieldTab({
       if (Math.hypot(p.x - x, p.y - y) < dotHit) return { point: p, on: "dot" };
     }
     const fontBase = labelFontSize;
-    const fontPx = pointLabelFontImg(fontBase, fitScaleRef.current || s);
+    const fontPx = pointLabelFontImg(fontBase, floor);
     const k = fontPx / fontBase;
     const chromeK = labelChromeK(fontPx);
     const pad = 4 * chromeK;
@@ -1047,12 +1045,11 @@ export function FieldTab({
           for (const p of points) {
             if (p.transitionId && highlightIds.has(p.transitionId)) highlightPointIds.add(p.id);
           }
-          // Labels: fit-anchored. Dots: plan-proportional. Both zoom with the plan.
+          // Labels + dots: plan-proportional. Both zoom with the plan.
           // Decluttering hides labels that would collide. Dots always draw.
           const s = scaleRef.current || 1;
           const fontBase = labelFontSize;
-          const fit = fitScaleRef.current || s;
-          const lblFontPx = pointLabelFontImg(fontBase, fit);
+          const lblFontPx = pointLabelFontImg(fontBase, floor);
           const k = lblFontPx / fontBase;
           const chromeK = labelChromeK(lblFontPx);
           const lblPadX = 3 * chromeK;

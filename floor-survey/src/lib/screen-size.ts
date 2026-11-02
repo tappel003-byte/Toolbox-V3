@@ -30,11 +30,8 @@ export function screenAnchoredImageSize(
 }
 
 /**
- * Capture reading *labels*: fixed in image space from the fit scale so they
- * zoom with the plan and stay readable at fit (~72% of the old screen px).
- * Reading *dots* use planProportionalSize instead — a fraction of the plan —
- * so a Point size of 6 is actually small on a zoomed-out house plan, not a
- * ~8px screen blob. Both still grow/shrink with canvas zoom.
+ * @deprecated Capture reading labels and dots both use planProportionalSize.
+ * Kept for any leftover callers / tests during the Nov 1 sizing correction.
  */
 export const CAPTURE_PLAN_ZOOM_FIT_FACTOR = 0.72;
 

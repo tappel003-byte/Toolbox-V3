@@ -73,7 +73,7 @@ function clampPill(n: number): number {
 }
 
 function clampFont(n: number): number {
-  return Math.max(6, Math.min(28, Math.round(n)));
+  return Math.max(2, Math.min(28, Math.round(n)));
 }
 
 function clampPin(n: number): number {

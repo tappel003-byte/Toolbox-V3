@@ -17,7 +17,6 @@ import {
   patchCaptureSizes,
 } from "@/lib/capture-sizes";
 import {
-  capturePlanZoomImageSize,
   planLongSide,
   planProportionalSize,
   screenAnchoredImageSize,
@@ -421,23 +420,16 @@ export const DEFAULT_STATS_PILL_SIZE = 28;
 /**
  * Reading label font in image coordinates.
  *
- * Capture: fixed in image space so labels zoom with the plan (quieter fit
- * overview; pinch-in grows them). Same capturePlanZoomImageSize helper as the
- * reading dots — Point label size −/+ still scales it. Report slides keep
- * plan-proportional sizing. Legend / H/L/Δ / High/Low keep chromeSizeImg.
+ * Capture and report: plan-proportional — zooms with the plan. Size 6 is a
+ * small mark on a fit overview (the old fit-anchored formula left 6 reading
+ * as ~screen-px and not small). Point label size −/+ still scales it.
+ * Legend / H/L/Δ / High/Low keep chromeSizeImg.
  */
-function pointLabelFontImg(
-  fontBase: number,
-  floor: Floor,
-  opts?: { presentation?: boolean; fitScale?: number },
-) {
-  if (opts?.presentation) {
-    return planProportionalSize(
-      Math.max(1, fontBase),
-      planLongSide(floor.planWidth, floor.planHeight),
-    );
-  }
-  return capturePlanZoomImageSize(fontBase, opts?.fitScale ?? 1);
+function pointLabelFontImg(fontBase: number, floor: Floor) {
+  return planProportionalSize(
+    Math.max(1, fontBase),
+    planLongSide(floor.planWidth, floor.planHeight),
+  );
 }
 
 /**
@@ -950,7 +942,8 @@ export function TopoTab({
   /** Last Points/Labels state before a field “Readings” hide — restore on show. */
   const readingsPrevRef = useRef<{ showPoints: boolean; showLabels: boolean } | null>(null);
   const readingsOn = resolved.showPoints || resolved.showLabels;
-  const LABEL_SIZE_MIN = 6;
+  // Floor was 6 and Tim could not get readings small on a fit overview.
+  const LABEL_SIZE_MIN = 2;
   const LABEL_SIZE_MAX = 28;
   function toggleReadings() {
     if (readingsOn) {
@@ -1053,10 +1046,7 @@ export function TopoTab({
     if (resolved.showPoints) {
       const fontBase = resolved.pointLabelFontSize;
       // Must match the drawn size exactly, or a tap lands beside the label.
-      const fontPx = pointLabelFontImg(fontBase, floor, {
-        presentation,
-        fitScale,
-      });
+      const fontPx = pointLabelFontImg(fontBase, floor);
       const dec = resolved.decimalPlaces;
       const weight = resolved.pointLabelWeight;
       const pad = 4 * labelChromeK(fontPx);
@@ -1164,10 +1154,7 @@ export function TopoTab({
   ) {
     setLabelSeat(seat);
     setLabelGapSteps(gapSteps);
-    const fontPx = pointLabelFontImg(resolved.pointLabelFontSize, floor, {
-      presentation,
-      fitScale,
-    });
+    const fontPx = pointLabelFontImg(resolved.pointLabelFontSize, floor);
     const weight = resolved.pointLabelWeight;
     const chromeK = labelChromeK(fontPx);
     const padX = 4 * chromeK;
@@ -1529,10 +1516,7 @@ export function TopoTab({
               let startDx = 0;
               let startDy = 0;
               if (hit.kind === "label") {
-                const fontPx = pointLabelFontImg(resolved.pointLabelFontSize, floor, {
-                  presentation,
-                  fitScale,
-                });
+                const fontPx = pointLabelFontImg(resolved.pointLabelFontSize, floor);
                 const text = hit.point.value.toFixed(resolved.decimalPlaces);
                 const off = labelOffsetFor(
                   hit.point,
@@ -2089,12 +2073,15 @@ export function TopoTab({
                       <StepperControl
                         label="Point label size"
                         value={resolved.pointLabelFontSize}
-                        min={6}
-                        max={28}
+                        min={LABEL_SIZE_MIN}
+                        max={LABEL_SIZE_MAX}
                         step={1}
                         onChange={(v) =>
                           update({
-                            pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))),
+                            pointLabelFontSize: Math.max(
+                              LABEL_SIZE_MIN,
+                              Math.min(LABEL_SIZE_MAX, Math.round(v)),
+                            ),
                           })
                         }
                       />
@@ -2439,12 +2426,15 @@ export function TopoTab({
                               <StepperControl
                                 label="Point label size"
                                 value={resolved.pointLabelFontSize}
-                                min={6}
-                                max={28}
+                                min={LABEL_SIZE_MIN}
+                                max={LABEL_SIZE_MAX}
                                 step={1}
                                 onChange={(v) =>
                                   update({
-                                    pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))),
+                                    pointLabelFontSize: Math.max(
+                                      LABEL_SIZE_MIN,
+                                      Math.min(LABEL_SIZE_MAX, Math.round(v)),
+                                    ),
                                   })
                                 }
                               />
@@ -3525,10 +3515,7 @@ export function renderTopoTop(
   // report stays plan-proportional. −/+ sets the size. Legend / pill /
   // High/Low keep chromeSizeImg.
   const fontBase = resolved.pointLabelFontSize;
-  const fontPx = pointLabelFontImg(fontBase, floor, {
-    presentation: !!overlay?.presentation,
-    fitScale,
-  });
+  const fontPx = pointLabelFontImg(fontBase, floor);
   // Label box chrome (pad / radius / stroke) tracks drawn fontPx.
   const chromeK = labelChromeK(fontPx);
   const weight = resolved.pointLabelWeight;
