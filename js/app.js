@@ -339,6 +339,19 @@
         window.ToolboxReportBuilder.unmount();
       }
     }
+    // Photo folders / shared photo viewer are visit chrome. Close when leaving
+    // the owning Customer File hub or switching files — not on same-hub redraw.
+    if (window.ToolboxRecoveredPhotos) {
+      try {
+        if (route.view !== 'home' || !route.id) {
+          if (typeof window.ToolboxRecoveredPhotos.close === 'function') {
+            window.ToolboxRecoveredPhotos.close();
+          }
+        } else if (typeof window.ToolboxRecoveredPhotos.closeUnlessFile === 'function') {
+          window.ToolboxRecoveredPhotos.closeUnlessFile(route.id);
+        }
+      } catch (_) {}
+    }
     if (route.legacyPlan) {
       window.location.replace('#/file/' + encodeURIComponent(route.id) + '/edit/plans');
       return;
