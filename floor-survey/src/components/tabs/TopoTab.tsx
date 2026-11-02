@@ -2154,17 +2154,18 @@ export function TopoTab({
                   id: "accessories",
                   title: "Accessories",
                   body: (
-                    // One control per row with room to breathe — the earlier
-                    // wrap row jammed H/L/Δ size under the help line and into
-                    // High/Low size on a phone-width panel.
-                    <div className="space-y-5">
+                    // Full-width rows with real gaps — stacking a label above a
+                    // compact −|+ still looked packed on the phone panel even
+                    // after a tall stack. One control per row, label left /
+                    // control right, same rhythm as the High / low switch.
+                    <div className="flex flex-col gap-6" data-fs-accessories-air>
                       <PointMarkStyleControls
                         pointSize={pointMarkSize}
                         pointColor={pointMarkColor}
                         onPointSizeChange={commitPointSize}
                         onPointColorChange={commitPointColor}
                       />
-                      <div className="space-y-5 border-t border-border/70 pt-4">
+                      <div className="flex flex-col gap-5 border-t border-border/70 pt-5">
                         <p className="text-[10px] leading-relaxed text-muted-foreground">
                           Summary pill and High/Low markers come from these readings.
                           Press and move to place. Tap for size −/+.
@@ -2934,7 +2935,7 @@ function SwitchRow({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex min-h-10 items-center justify-between gap-2">
+    <div className="flex min-h-12 items-center justify-between gap-3 py-1">
       <Label className="text-xs">{label}</Label>
       <Switch checked={checked} onCheckedChange={onChange} />
     </div>
@@ -3149,7 +3150,7 @@ function PointMarkStyleControls({
   onPointColorChange: (c: string) => void;
 }) {
   return (
-    <div className="space-y-3" data-point-mark-style>
+    <div className="flex flex-col gap-5" data-point-mark-style>
       <StepperControl
         label="Point size"
         value={pointSize}
@@ -3159,10 +3160,10 @@ function PointMarkStyleControls({
         unitless
         onChange={onPointSizeChange}
       />
-      <div>
+      <div className="flex flex-col gap-2.5">
         <Label className="text-xs">Point color</Label>
         <div
-          className="mt-1.5 flex flex-wrap gap-1.5"
+          className="flex flex-wrap gap-2"
           role="group"
           aria-label="Point color"
         >
@@ -3172,7 +3173,7 @@ function PointMarkStyleControls({
               type="button"
               onClick={() => onPointColorChange(c)}
               className={
-                "h-5 w-5 rounded-full border-2 " +
+                "h-6 w-6 rounded-full border-2 " +
                 (c === pointColor ? "border-foreground" : "border-transparent")
               }
               style={{ backgroundColor: c }}
@@ -3207,14 +3208,14 @@ function StepperControl({
   onChange: (v: number) => void;
 }) {
   const display = unitless ? "" : format ? format(value) : `${value}px`;
-  // Unitless size: a tight −|+ pill like the field Readings control — the old
-  // full-width "− / +" middle was empty chrome once px left the face.
+  // Unitless size: label left, −|+ right — one clear row, not a stacked
+  // label-over-pill that packs against the next control on a phone panel.
   if (unitless) {
     return (
-      <div>
+      <div className="flex min-h-12 items-center justify-between gap-3 py-1">
         <Label className="text-xs">{label}</Label>
         <div
-          className="mt-1 inline-flex h-9 items-stretch overflow-hidden rounded-full border border-input bg-background"
+          className="inline-flex h-9 shrink-0 items-stretch overflow-hidden rounded-full border border-input bg-background"
           role="group"
           aria-label={label}
         >
