@@ -16,7 +16,7 @@ import { savePoint, deletePoint, reindexFloorPoints, saveFloor, saveBp1Gps, uid 
 import { transitionDelta, formatDelta, getChainBaselineSurface } from "@/lib/transitions";
 import { drawExclusionShape, zoneOfXY } from "@/lib/exclusions";
 import type { FloorSnapshot } from "@/lib/useFloorHistory";
-import { screenAnchoredImageSize } from "@/lib/screen-size";
+import { capturePlanZoomImageSize } from "@/lib/screen-size";
 
 /** Same design-font reference as TopoTab — pad must track font size. */
 const LABEL_CHROME_REF_PX = defaultRenderSettings.pointLabelFontSize;
@@ -24,11 +24,12 @@ function labelChromeK(fontPx: number) {
   return fontPx / LABEL_CHROME_REF_PX;
 }
 
-/** Capture reading labels: fixed in image space from fit scale (zoom with plan). */
-const LABEL_FIT_FACTOR = 0.72;
+/** Capture reading labels + dots: fixed in image space from fit (zoom with plan). */
 function pointLabelFontImg(fontBase: number, fitScale: number) {
-  const fit = fitScale > 0 ? fitScale : 1;
-  return (Math.max(1, fontBase) * LABEL_FIT_FACTOR) / fit;
+  return capturePlanZoomImageSize(fontBase, fitScale);
+}
+function pointDotRadiusImg(dotBase: number, fitScale: number) {
+  return capturePlanZoomImageSize(dotBase, fitScale);
 }
 
 
@@ -457,7 +458,7 @@ export function FieldTab({
     const k = fontPx / fontBase;
     const chromeK = labelChromeK(fontPx);
     const pad = 4 * chromeK;
-    const markerR = screenAnchoredImageSize(pointSize, s);
+    const markerR = pointDotRadiusImg(pointSize, fitScaleRef.current || s);
     for (const p of points) {
       const text = readingText(p.value);
       const w = text.length * fontPx * 0.62;
@@ -1038,18 +1039,18 @@ export function FieldTab({
           for (const p of points) {
             if (p.transitionId && highlightIds.has(p.transitionId)) highlightPointIds.add(p.id);
           }
-          // Labels stay near the chosen screen px when fit-scaled on desktop,
-          // and a decluttering pass hides labels that would collide. Dots always draw.
+          // Labels + dots zoom with the plan (fixed in image space from fit).
+          // Decluttering hides labels that would collide. Dots always draw.
           const s = scaleRef.current || 1;
           const fontBase = labelFontSize;
-          const lblFontPx = pointLabelFontImg(fontBase, fitScaleRef.current || s);
+          const fit = fitScaleRef.current || s;
+          const lblFontPx = pointLabelFontImg(fontBase, fit);
           const k = lblFontPx / fontBase;
           const chromeK = labelChromeK(lblFontPx);
           const lblPadX = 3 * chromeK;
           const lblPadY = 2 * chromeK;
-          // Dot: anchored to the pointSize stepper (Data panel "Dot" control)
-          // instead of derived from font size, so the stepper controls what's drawn.
-          const markerR = screenAnchoredImageSize(pointSize, s);
+          // Dot: same plan-zoom rule as the label; Point size −/+ still owns size.
+          const markerR = pointDotRadiusImg(pointSize, fit);
           const labelTextFor = (p: SurveyPoint) => {
             const lt = p.transitionId ? transitions.find((t) => t.id === p.transitionId) : null;
             return lt && !p.isTransitionAnchor

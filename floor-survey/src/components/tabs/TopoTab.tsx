@@ -16,7 +16,12 @@ import {
   legendStorageKey,
   patchCaptureSizes,
 } from "@/lib/capture-sizes";
-import { planLongSide, planProportionalSize, screenAnchoredImageSize } from "@/lib/screen-size";
+import {
+  capturePlanZoomImageSize,
+  planLongSide,
+  planProportionalSize,
+  screenAnchoredImageSize,
+} from "@/lib/screen-size";
 import {
   clampPointSize,
   POINT_COLOR_PRESETS,
@@ -417,23 +422,37 @@ export const DEFAULT_STATS_PILL_SIZE = 28;
  * Reading label font in image coordinates.
  *
  * Capture: fixed in image space so labels zoom with the plan (quieter fit
- * overview; pinch-in grows them). Sized from the fit scale so a phone fit
- * lands near ~72% of the old screen-anchored CSS size — a realistic drop that
- * stays readable; Point label size −/+ still scales it. Report slides keep
+ * overview; pinch-in grows them). Same capturePlanZoomImageSize helper as the
+ * reading dots — Point label size −/+ still scales it. Report slides keep
  * plan-proportional sizing. Legend / H/L/Δ / High/Low keep chromeSizeImg.
  */
-const LABEL_FIT_FACTOR = 0.72;
 function pointLabelFontImg(
   fontBase: number,
   floor: Floor,
   opts?: { presentation?: boolean; fitScale?: number },
 ) {
-  const base = Math.max(1, fontBase);
   if (opts?.presentation) {
-    return planProportionalSize(base, planLongSide(floor.planWidth, floor.planHeight));
+    return planProportionalSize(
+      Math.max(1, fontBase),
+      planLongSide(floor.planWidth, floor.planHeight),
+    );
   }
-  const fit = opts?.fitScale && opts.fitScale > 0 ? opts.fitScale : 1;
-  return (base * LABEL_FIT_FACTOR) / fit;
+  return capturePlanZoomImageSize(fontBase, opts?.fitScale ?? 1);
+}
+
+/** Reading-dot radius in image coordinates — same zoom rule as the label. */
+function pointDotRadiusImg(
+  dotBase: number,
+  floor: Floor,
+  opts?: { presentation?: boolean; fitScale?: number },
+) {
+  if (opts?.presentation) {
+    return planProportionalSize(
+      Math.max(1, dotBase),
+      planLongSide(floor.planWidth, floor.planHeight),
+    );
+  }
+  return capturePlanZoomImageSize(dotBase, opts?.fitScale ?? 1);
 }
 
 /**
@@ -3503,8 +3522,9 @@ export function renderTopoTop(
   const liveLegend = overlay?.liveLegend ?? null;
   const viewScale = overlay?.viewScale || 1;
   const fitScale = overlay?.fitScale || viewScale || 1;
-  // Reading labels: plan-scaled in capture (zoom with the drawing); report
-  // stays plan-proportional. −/+ sets the size. Other chrome keeps chromeSizeImg.
+  // Reading labels + dots: plan-scaled in capture (zoom with the drawing);
+  // report stays plan-proportional. −/+ sets the size. Legend / pill /
+  // High/Low keep chromeSizeImg.
   const fontBase = resolved.pointLabelFontSize;
   const fontPx = pointLabelFontImg(fontBase, floor, {
     presentation: !!overlay?.presentation,
@@ -3517,11 +3537,13 @@ export function renderTopoTop(
 
   if (resolved.showPoints) {
     ctx.globalAlpha = resolved.pointsOpacity;
-    // Dot: same anchoring as the label, but keyed to the user's dot-size
-    // stepper (pointSize) instead of font size, so the stepper actually
-    // controls what's drawn.
+    // Dot: same plan-zoom rule as the label; keyed to the Point size stepper
+    // so −/+ still controls what's drawn.
     const dotBase = overlay?.pointSize ?? 6;
-    const dotR = chromeSizeImg(dotBase, viewScale, !!overlay?.presentation, floor);
+    const dotR = pointDotRadiusImg(dotBase, floor, {
+      presentation: !!overlay?.presentation,
+      fitScale,
+    });
     const dotColor = overlay?.pointColor ?? "#dc2626";
     const padX = 4 * chromeK;
     const padY = 2.5 * chromeK;
