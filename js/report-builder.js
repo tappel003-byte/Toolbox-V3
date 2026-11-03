@@ -682,7 +682,106 @@
     return pages.length;
   }
 
-  function reconcileReportPages(savedPages, freshPages, photos) {
+  /**
+   * Floor Survey page identity for reconcile / output — not the title.
+   *
+   * Page ids embed epochId, so stamping floorSurvey.id after pages were saved
+   * under "current" used to mint a second Combined / boundary set. Source keys
+   * stay stable across that transition when we remap current/empty → floor.id.
+   * Remap (and remapped coverage / output specs) only when the canvas still
+   * resolves under the working Floor Survey. Unresolvable refs keep their raw
+   * epoch and remain explicit failures — never title match or silent substitute.
+   */
+  function floorLayerResolves(record, canvasId) {
+    if (!record || !canvasId) return false;
+    var floor = record.floorSurvey;
+    return !!(floor && floor.byCanvasId && floor.byCanvasId[canvasId]);
+  }
+
+  function normalizeFloorEpochId(epochId, floorSurveyId, canvasResolves) {
+    if (floorSurveyId == null || floorSurveyId === '') {
+      return epochId == null || epochId === '' ? null : String(epochId);
+    }
+    if (canvasResolves && (epochId == null || epochId === '' || epochId === 'current')) {
+      return String(floorSurveyId);
+    }
+    if (epochId == null || epochId === '') return null;
+    return String(epochId);
+  }
+
+  function floorSourceKeyParts(canvasId, epochId, scope, areaId, floorSurveyId, record) {
+    var resolves = floorLayerResolves(record, canvasId);
+    var ep = normalizeFloorEpochId(epochId, floorSurveyId, resolves) || '';
+    var cv = canvasId ? String(canvasId) : '';
+    var sc = scope === 'area' ? 'area' : 'all';
+    var area = sc === 'all' ? 'all' : (areaId ? String(areaId) : '');
+    return [ep, cv, sc, area].join('|');
+  }
+
+  function floorPageSourceKeys(page, floorSurveyId, record) {
+    if (!page || page.type !== 'floor') return [];
+    var meta = page.meta || {};
+    if (meta.reserved) return [];
+    var keys = [];
+    var views = Array.isArray(meta.views) ? meta.views : null;
+    if (views && views.length) {
+      views.forEach(function (view) {
+        if (!view) return;
+        keys.push(floorSourceKeyParts(
+          view.canvasId || meta.canvasId,
+          view.epochId != null ? view.epochId : meta.epochId,
+          view.scope || meta.scope || 'all',
+          view.scope === 'all' ? null : (view.areaId || meta.areaId),
+          floorSurveyId,
+          record
+        ));
+      });
+      return keys;
+    }
+    keys.push(floorSourceKeyParts(
+      meta.canvasId,
+      meta.epochId,
+      meta.scope || 'all',
+      meta.scope === 'all' ? null : meta.areaId,
+      floorSurveyId,
+      record
+    ));
+    return keys;
+  }
+
+  /** Guarded current/empty → floor.id only when the canvas layer still resolves. */
+  function remapFloorEpochOnPages(pages, floorSurveyId, record) {
+    if (!floorSurveyId) return false;
+    var changed = false;
+    (pages || []).forEach(function (page) {
+      if (!page || page.type !== 'floor' || !page.meta || page.meta.reserved) return;
+      var meta = page.meta;
+      if (floorLayerResolves(record, meta.canvasId)) {
+        var nextEpoch = normalizeFloorEpochId(meta.epochId, floorSurveyId, true);
+        if (nextEpoch && nextEpoch !== meta.epochId) {
+          meta.epochId = nextEpoch;
+          changed = true;
+        }
+      }
+      if (Array.isArray(meta.views)) {
+        meta.views.forEach(function (view) {
+          if (!view) return;
+          var cv = view.canvasId || meta.canvasId;
+          if (!floorLayerResolves(record, cv)) return;
+          var ve = normalizeFloorEpochId(view.epochId, floorSurveyId, true);
+          if (ve && ve !== view.epochId) {
+            view.epochId = ve;
+            changed = true;
+          }
+        });
+      }
+    });
+    return changed;
+  }
+
+  function reconcileReportPages(savedPages, freshPages, photos, options) {
+    var floorSurveyId = options && options.floorSurveyId ? String(options.floorSurveyId) : '';
+    var record = options && options.record ? options.record : null;
     var pages = (savedPages || []).map(function (page) {
       return {
         id: page.id,
@@ -713,8 +812,18 @@
       if (page.type === 'diagnostics') return false;
       return true;
     });
+    // Epoch remap runs on the caller's saved clones before reconcile when
+    // needed; still normalize here (canvas-resolved only) so coverage keys
+    // match fresh assemble ids without laundering unresolvable refs.
+    remapFloorEpochOnPages(pages, floorSurveyId, record);
     var byId = {};
-    pages.forEach(function (page) { byId[page.id] = true; });
+    var coveredFloorKeys = Object.create(null);
+    pages.forEach(function (page) {
+      byId[page.id] = true;
+      floorPageSourceKeys(page, floorSurveyId, record).forEach(function (key) {
+        if (key) coveredFloorKeys[key] = true;
+      });
+    });
     if (!pages.some(function (page) { return page.type === 'section' && page.meta && page.meta.sectionId === 'discussion'; })) {
       var discussionFresh = (freshPages || []).find(function (page) {
         return page && page.type === 'section' && page.meta && page.meta.sectionId === 'discussion';
@@ -748,6 +857,14 @@
         if (!fresh || fresh.type !== type) return;
         if (fresh.meta && fresh.meta.reserved) return;
         if (byId[fresh.id]) return;
+        // Floor: same survey source already on a saved page — do not accumulate
+        // a second Combined / boundary set after epoch stamp or id-stable rename.
+        // New area ids (recreate / recovery replace) still add. Titles never match.
+        if (type === 'floor') {
+          var freshKeys = floorPageSourceKeys(fresh, floorSurveyId, record);
+          var covered = freshKeys.some(function (key) { return key && coveredFloorKeys[key]; });
+          if (covered) return;
+        }
         additions.push({
           id: fresh.id,
           type: fresh.type,
@@ -763,6 +880,11 @@
           evidence: null,
         });
         byId[fresh.id] = true;
+        if (type === 'floor') {
+          floorPageSourceKeys(additions[additions.length - 1], floorSurveyId, record).forEach(function (key) {
+            if (key) coveredFloorKeys[key] = true;
+          });
+        }
       });
       if (!additions.length) return;
       var anchor = lastIndexOfType(pages, type);
@@ -8373,81 +8495,228 @@
       };
     }
 
-    function composeFloorStills() {
-      var api = window.ToolboxFloorSurvey;
-      if (!api || typeof api.composeReportTopoFigureForPage !== 'function' || !workingRecord) {
-        return Promise.resolve(0);
+    /**
+     * Resolve the Floor Survey layer the way compose does (no title guessing).
+     * Mirrors floor-survey findLayer so Present/Print can name the failure
+     * before a still is attempted — including slides with empty canvasId that
+     * used to be skipped and still printed as "unavailable".
+     */
+    function findFloorLayerForOutput(record, epochId, canvasId) {
+      var floor = record && record.floorSurvey;
+      if (!floor || !canvasId) return null;
+      var ep = epochId == null || epochId === '' ? '' : String(epochId);
+      if ((floor.id || 'current') === ep && floor.byCanvasId) {
+        return floor.byCanvasId[canvasId] || null;
       }
-      var getMedia = window.ToolboxDB && window.ToolboxDB.getMedia
-        ? window.ToolboxDB.getMedia.bind(window.ToolboxDB)
-        : null;
-      var wanted = [];
-      pages.forEach(function (page) {
+      var groups = ['epochs', 'sessions', 'surveys'];
+      for (var g = 0; g < groups.length; g += 1) {
+        var list = floor[groups[g]];
+        if (!Array.isArray(list)) continue;
+        for (var i = 0; i < list.length; i += 1) {
+          var entry = list[i];
+          if (!entry || entry.id !== ep) continue;
+          return (entry.byCanvasId && entry.byCanvasId[canvasId]) || null;
+        }
+      }
+      if (floor.byCanvasId && floor.byCanvasId[canvasId] && (ep === 'current' || !ep)) {
+        return floor.byCanvasId[canvasId];
+      }
+      return null;
+    }
+
+    function floorOutputViewJobs() {
+      var jobs = [];
+      (pages || []).forEach(function (page) {
         if (!page || page.type !== 'floor') return;
         var meta = page.meta || {};
         if (meta.reserved) return;
         floorViewsForPage(page);
-        var slots = floorSlotsForPage(page);
-        var anySource = false;
+        var slots = Math.max(1, floorSlotsForPage(page));
         for (var slot = 0; slot < slots; slot += 1) {
-          var vs = floorViewSpec(page, slot);
-          if ((vs && vs.canvasId) || meta.canvasId) {
-            anySource = true;
-            wanted.push({ page: page, slot: slot, view: vs });
+          jobs.push({ page: page, slot: slot, view: floorViewSpec(page, slot) });
+        }
+      });
+      return jobs;
+    }
+
+    function floorOutputJobSpec(job) {
+      var meta = (job.page && job.page.meta) || {};
+      var view = job.view;
+      var floorSurveyId = workingRecord && workingRecord.floorSurvey && workingRecord.floorSurvey.id
+        ? String(workingRecord.floorSurvey.id)
+        : '';
+      var canvasId = (view && view.canvasId) || meta.canvasId || '';
+      var epochRaw = (view && view.epochId != null) ? view.epochId : meta.epochId;
+      // Same canvas-resolution guard as reconcile: do not rewrite current/empty
+      // onto floor.id when the layer is gone — leave the unresolved epoch explicit.
+      var epochId = normalizeFloorEpochId(
+        epochRaw,
+        floorSurveyId,
+        floorLayerResolves(workingRecord, canvasId)
+      );
+      var scope = (view && view.scope) || meta.scope || 'all';
+      var areaId = scope === 'all'
+        ? null
+        : ((view && view.areaId) || meta.areaId || null);
+      return {
+        canvasId: canvasId,
+        epochId: epochId,
+        areaId: areaId,
+        scope: scope,
+        canvasResolves: floorLayerResolves(workingRecord, canvasId),
+      };
+    }
+
+    function describeFloorOutputFailure(job, reason) {
+      var title = (job.page && (job.page.title || job.page.railLabel)) || 'Floor Survey';
+      var slot = Number(job.slot) || 0;
+      var slotBit = (floorSlotsForPage(job.page) > 1) ? (' · view ' + (slot + 1)) : '';
+      return title + slotBit + ': ' + reason;
+    }
+
+    /**
+     * Every included Floor Survey view must be resolvable before Present/Print.
+     * Fail closed with slide-specific reasons — never an apparently complete PDF
+     * with unavailable drawings.
+     */
+    function preflightFloorOutput() {
+      var failures = [];
+      if (!workingRecord) {
+        return Promise.reject(new Error('Customer File is not loaded for Present/Print.'));
+      }
+      var jobs = floorOutputViewJobs();
+      jobs.forEach(function (job) {
+        var spec = floorOutputJobSpec(job);
+        if (!spec.canvasId) {
+          failures.push(describeFloorOutputFailure(job, 'no canvasId (unresolved survey source)'));
+          return;
+        }
+        var canvas = canvasById(workingRecord, spec.canvasId);
+        if (!canvas) {
+          failures.push(describeFloorOutputFailure(job, 'canvas is not on this Customer File'));
+          return;
+        }
+        var layer = findFloorLayerForOutput(workingRecord, spec.epochId, spec.canvasId);
+        if (!layer) {
+          failures.push(describeFloorOutputFailure(job, 'Floor Survey layer not found for this epoch/canvas'));
+          return;
+        }
+        if (spec.scope === 'area' && spec.areaId) {
+          var areas = Array.isArray(layer.areas) ? layer.areas : [];
+          var found = areas.some(function (area) { return area && area.id === spec.areaId; });
+          if (!found) {
+            failures.push(describeFloorOutputFailure(job, 'boundary id is not on this Floor Survey layer'));
           }
         }
-        if (!anySource && meta.canvasId) wanted.push({ page: page, slot: 0, view: null });
       });
-      if (!wanted.length) return Promise.resolve(0);
+      if (failures.length) {
+        var err = new Error('Floor Survey output blocked');
+        err.floorOutputFailures = failures;
+        return Promise.reject(err);
+      }
+      return Promise.resolve(jobs);
+    }
 
-      var painted = 0;
-      return wanted.reduce(function (chain, job) {
-        return chain.then(function () {
-          var meta = job.page.meta || {};
-          var view = job.view;
-          var canvasId = (view && view.canvasId) || meta.canvasId;
-          var epochId = (view && view.epochId) || meta.epochId;
-          var areaId = view
-            ? (view.scope === 'all' ? null : (view.areaId || null))
-            : (meta.scope === 'all' ? null : (meta.areaId || null));
-          var scope = (view && view.scope) || meta.scope || 'all';
-          var fallbackExtent = null;
-          var extentPromise = (typeof api.reportTopoExtentForPage === 'function')
-            ? api.reportTopoExtentForPage(workingRecord, {
-              canvasId: canvasId,
-              epochId: epochId,
-              areaId: areaId,
-              scope: scope,
-              settings: floorViewFor(job.page, job.slot) || null,
-            }).catch(function () { return null; })
-            : Promise.resolve(null);
-          return extentPromise.then(function (extent) {
-            fallbackExtent = extent || null;
-            return api.composeReportTopoFigureForPage(workingRecord, {
-              canvasId: canvasId,
-              epochId: epochId,
-              areaId: areaId,
-              scope: scope,
-              settings: floorViewFor(job.page, job.slot) || null,
-              extent: cameraExtentFor(job.page, fallbackExtent, job.slot),
-            }, getMedia).then(function (composed) {
-              if (!composed || !composed.dataUrl) {
-                throw new Error('Floor still compose returned no image for slot ' + job.slot);
-              }
-              job.page._printTopo = job.page._printTopo || {};
-              job.page._printTopo[job.slot] = composed.dataUrl;
-              painted += 1;
-            }).catch(function (err) {
-              console.error('Floor slide could not be painted for print', canvasId, err);
-              throw err;
+    function formatFloorOutputFailures(err) {
+      var list = err && Array.isArray(err.floorOutputFailures) ? err.floorOutputFailures : null;
+      if (!list || !list.length) {
+        return (err && err.message) || 'a floor figure could not be composed';
+      }
+      var shown = list.slice(0, 4);
+      var more = list.length > shown.length ? (' (+' + (list.length - shown.length) + ' more)') : '';
+      return shown.join('; ') + more;
+    }
+
+    function composeFloorStills() {
+      if (!workingRecord) {
+        return Promise.reject(new Error('Customer File is not loaded for Present/Print.'));
+      }
+      // Reports with no Floor Survey figures must Present/Print without the
+      // Floor Survey composer — cover, Discussion, Pictures only.
+      var pendingJobs = floorOutputViewJobs();
+      if (!pendingJobs.length) return Promise.resolve(0);
+      var api = window.ToolboxFloorSurvey;
+      if (!api || typeof api.composeReportTopoFigureForPage !== 'function') {
+        return Promise.reject(new Error('Floor Survey compose is not available in this session.'));
+      }
+      var getMedia = window.ToolboxDB && window.ToolboxDB.getMedia
+        ? window.ToolboxDB.getMedia.bind(window.ToolboxDB)
+        : null;
+      return preflightFloorOutput().then(function (wanted) {
+        if (!wanted.length) return 0;
+        var painted = 0;
+        return wanted.reduce(function (chain, job) {
+          return chain.then(function () {
+            var spec = floorOutputJobSpec(job);
+            var fallbackExtent = null;
+            var extentPromise = (typeof api.reportTopoExtentForPage === 'function')
+              ? api.reportTopoExtentForPage(workingRecord, {
+                canvasId: spec.canvasId,
+                epochId: spec.epochId,
+                areaId: spec.areaId,
+                scope: spec.scope,
+                settings: floorViewFor(job.page, job.slot) || null,
+              }).catch(function () { return null; })
+              : Promise.resolve(null);
+            return extentPromise.then(function (extent) {
+              fallbackExtent = extent || null;
+              return api.composeReportTopoFigureForPage(workingRecord, {
+                canvasId: spec.canvasId,
+                epochId: spec.epochId,
+                areaId: spec.areaId,
+                scope: spec.scope,
+                settings: floorViewFor(job.page, job.slot) || null,
+                extent: cameraExtentFor(job.page, fallbackExtent, job.slot),
+              }, getMedia).then(function (composed) {
+                if (!composed || !composed.dataUrl) {
+                  var miss = new Error(describeFloorOutputFailure(job, 'compose returned no drawing'));
+                  miss.floorOutputFailures = [miss.message];
+                  throw miss;
+                }
+                job.page._printTopo = job.page._printTopo || {};
+                job.page._printTopo[job.slot] = composed.dataUrl;
+                // Same resolved source as the still: print/Present readings
+                // must not fall back to stale import evidence from another view.
+                var liveStats = Array.isArray(composed.stats) ? composed.stats : [];
+                job.page._viewStats = job.page._viewStats || {};
+                job.page._viewStats[job.slot] = liveStats;
+                if (job.slot === 0 || floorSlotsForPage(job.page) === 1) {
+                  job.page._liveStats = liveStats;
+                } else if (job.slot === floorActiveSlotForPage(job.page)) {
+                  job.page._liveStats = liveStats;
+                }
+                painted += 1;
+              }).catch(function (err) {
+                if (err && err.floorOutputFailures) throw err;
+                console.error('Floor slide could not be painted for print', spec.canvasId, err);
+                var wrapped = new Error(describeFloorOutputFailure(job,
+                  (err && err.message) ? err.message : 'compose failed'));
+                wrapped.floorOutputFailures = [wrapped.message];
+                throw wrapped;
+              });
             });
           });
+        }, Promise.resolve()).then(function () {
+          if (painted < wanted.length) {
+            var incomplete = new Error('Floor still compose incomplete: ' + painted + '/' + wanted.length);
+            incomplete.floorOutputFailures = [incomplete.message];
+            throw incomplete;
+          }
+          // Multi-view: rail Relative Readings list every resolved view's stats,
+          // in slot order — same sources the stills just painted.
+          (pages || []).forEach(function (page) {
+            if (!page || page.type !== 'floor' || !page._viewStats) return;
+            var slotCount = floorSlotsForPage(page);
+            if (slotCount <= 1) return;
+            var merged = [];
+            for (var s = 0; s < slotCount; s += 1) {
+              var part = page._viewStats[s];
+              if (Array.isArray(part) && part.length) merged = merged.concat(part);
+            }
+            if (merged.length) page._liveStats = merged;
+          });
+          return painted;
         });
-      }, Promise.resolve()).then(function () {
-        if (painted < wanted.length) {
-          throw new Error('Floor still compose incomplete: ' + painted + '/' + wanted.length);
-        }
-        return painted;
       });
     }
 
@@ -8607,10 +8876,10 @@
             });
           });
         }).catch(function (err) {
-          // GPT-027: do not hand a silently incomplete PDF when a still fails.
-          console.error('Print/PDF could not compose floor stills', err);
+          // Fail closed: never hand an apparently complete PDF with unavailable drawings.
+          console.error('Print/PDF blocked', err && err.floorOutputFailures ? err.floorOutputFailures : err);
           clearPrintDeck();
-          setSaveStatus('Print failed — a floor figure could not be composed');
+          setSaveStatus('Print blocked — ' + formatFloorOutputFailures(err));
         });
       });
     }
@@ -8848,9 +9117,9 @@
           showPresentSheet(0);
         });
       }).catch(function (err) {
-        // GPT-027: surface incomplete still compose instead of a blank Present deck.
-        console.error('Presentation could not be opened', err);
-        setSaveStatus('Presentation failed — a floor figure could not be composed');
+        // Fail closed with slide-specific reasons — no Present deck of holes.
+        console.error('Presentation blocked', err && err.floorOutputFailures ? err.floorOutputFailures : err);
+        setSaveStatus('Present blocked — ' + formatFloorOutputFailures(err));
         closePresentation();
       }).then(function () {
         if (presentBtn) {
@@ -9083,14 +9352,23 @@
       if (savedDoc && savedDoc.floorFramed) floorFramed = true;
       var saved = savedReportPages(record);
       if (saved) {
+        var floorSurveyId = record.floorSurvey && record.floorSurvey.id
+          ? String(record.floorSurvey.id)
+          : '';
+        var remappedEpoch = remapFloorEpochOnPages(saved.pages, floorSurveyId, record);
         var before = saved.pages.map(function (page) {
           return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',') +
-            ':' + !!(page.meta && page.meta.imported);
+            ':' + !!(page.meta && page.meta.imported) +
+            ':' + ((page.meta && page.meta.epochId) || '');
         }).join('|');
-        pages = reconcileReportPages(saved.pages, freshPages, photoList);
+        pages = reconcileReportPages(saved.pages, freshPages, photoList, {
+          floorSurveyId: floorSurveyId,
+          record: record,
+        });
         var after = pages.map(function (page) {
           return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',') +
-            ':' + !!(page.meta && page.meta.imported);
+            ':' + !!(page.meta && page.meta.imported) +
+            ':' + ((page.meta && page.meta.epochId) || '');
         }).join('|');
         var restored = restoreReturnPage();
         if (!restored) {
@@ -9100,7 +9378,10 @@
         }
         pageSeq = pages.length;
         lastSavedAt = saved.updatedAt || '';
-        return { assembledFresh: false, reconciled: before !== after };
+        return {
+          assembledFresh: false,
+          reconciled: before !== after || remappedEpoch,
+        };
       }
       pages = freshPages;
       activeId = pages[0] ? pages[0].id : '';
@@ -9374,8 +9655,17 @@
     var source = api ? api.read(record) : null;
     var fresh = api ? withProperty(api.assemble(source), source) : { pages: [] };
     var saved = savedReportPages(record);
+    var floorSurveyId = record.floorSurvey && record.floorSurvey.id
+      ? String(record.floorSurvey.id)
+      : '';
+    if (saved) remapFloorEpochOnPages(saved.pages, floorSurveyId, record);
     var pages = saved
-      ? reconcileReportPages(saved.pages, ensurePicturesInFreshPages(fresh.pages.slice(), photoList), photoList)
+      ? reconcileReportPages(
+        saved.pages,
+        ensurePicturesInFreshPages(fresh.pages.slice(), photoList),
+        photoList,
+        { floorSurveyId: floorSurveyId, record: record }
+      )
       : ensurePicturesInFreshPages(fresh.pages.slice(), photoList);
     var firstPictures = null;
     for (var i = 0; i < pages.length; i += 1) {
