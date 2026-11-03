@@ -2259,7 +2259,8 @@
       plan: (page.evidence && page.evidence.plan) || {},
       contour: penLogContour(page),
       layout: page._penLogLayout || null,
-      locked: !!thumb,
+      // Thumbs and Present/Print decks: no move/resize chrome in the DOM.
+      locked: !!thumb || !!(sheet && sheet.classList && sheet.classList.contains('rb-sheet--print')),
       // Present / Print deck: static notes, not textareas (Chrome print mush).
       printable: !!(sheet && sheet.classList && sheet.classList.contains('rb-sheet--print')),
       pins: shown,
@@ -6504,7 +6505,25 @@
      */
     function penLogBoxes() {
       var api = window.ToolboxPenLog;
-      return api && api.normalizeLayout
+      if (!api) return penLogBoxLayout || {};
+      // Match what renderPage shows: missing layout tightens to the plan
+      // aspect (+ pin pad). Dragging from the tall LAYOUT slot while the
+      // sheet showed the tight box made the plan jump on the first move.
+      var page = activePage();
+      var plan = page && page.evidence && page.evidence.plan;
+      var pw = plan && Number(plan.width);
+      var ph = plan && Number(plan.height);
+      if (!(pw > 0) || !(ph > 0)) {
+        var live = sheetEl && sheetEl.querySelector('.rb-penlog__plan');
+        if (live) {
+          pw = Number(live.getAttribute('data-plan-width')) || pw;
+          ph = Number(live.getAttribute('data-plan-height')) || ph;
+        }
+      }
+      if (typeof api.resolveLayout === 'function') {
+        return api.resolveLayout(penLogBoxLayout, pw, ph);
+      }
+      return api.normalizeLayout
         ? api.normalizeLayout(penLogBoxLayout)
         : (penLogBoxLayout || {});
     }
@@ -7565,6 +7584,13 @@
           livePen.style.top = ((b.y / 11) * 100) + '%';
           livePen.style.width = ((b.w / 17) * 100) + '%';
           livePen.style.height = ((b.h / 11) * 100) + '%';
+          // Plan box changed: refit the image + pins inside it so blank bands
+          // do not linger mid-drag and pin registration stays live.
+          if (penDrag.which === 'plan' && window.ToolboxPenLog &&
+              typeof window.ToolboxPenLog.layoutPlans === 'function') {
+            var penRoot = livePen.closest('.rb-penlog');
+            if (penRoot) window.ToolboxPenLog.layoutPlans(penRoot);
+          }
         }
         return;
       }

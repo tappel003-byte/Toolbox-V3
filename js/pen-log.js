@@ -89,6 +89,63 @@
     });
   }
 
+  // Fraction of the fitted plan added on each side of the plan box.
+  // Pins are often dragged or placed just outside the plan (exterior
+  // shots, stacked photos pulled apart). A hair of pad keeps those near
+  // pins inside the plan object; overflow:visible still lets far offsets
+  // sit on the sheet white beyond the box. Not a crop of the source image.
+  var PLAN_PIN_PAD = 0.06;
+
+  /**
+   * Size the plan box to the plan's own proportion inside a max slot.
+   *
+   * The default slot is tall (half the sheet by nearly full height). A
+   * landscape plan letterboxed inside it left empty bands above and below
+   * the drawing — Report Builder container space, not pixels on the plan
+   * file. Matching the box to the image removes that empty band without
+   * cropping or stretching the source. Pins stay registered on the fitted
+   * image rect; a small pad leaves room for pins that sit just outside
+   * the plan.
+   *
+   * Source-bitmap margins (white drawn into the plan file itself) are not
+   * trimmed here — that would guess at drawing boundaries.
+   */
+  function tightPlanBox(maxBox, planW, planH) {
+    var max = clampBox(maxBox, LAYOUT.plan);
+    var iw = Number(planW);
+    var ih = Number(planH);
+    if (!(iw > 0) || !(ih > 0)) return max;
+    var scale = Math.min(max.w / iw, max.h / ih);
+    if (!(scale > 0)) return max;
+    var w = iw * scale;
+    var h = ih * scale;
+    var pad = PLAN_PIN_PAD;
+    var pw = Math.min(max.w, w * (1 + 2 * pad));
+    var ph = Math.min(max.h, h * (1 + 2 * pad));
+    // Keep the slot's top-left; shrink only the unused dimension.
+    return clampBox({
+      x: max.x,
+      y: max.y,
+      w: Math.round(pw * 1000) / 1000,
+      h: Math.round(ph * 1000) / 1000,
+    }, LAYOUT.plan);
+  }
+
+  /**
+   * Resolve placement for a sheet. Any investigator-saved penLogLayout
+   * wins as stored (including an older tall default they already have).
+   * Only a missing layout tightens the plan box to the plan aspect so
+   * first paint is not a letterboxed stub. Schedule stays on the default
+   * band until the investigator moves it.
+   */
+  function resolveLayout(raw, planW, planH) {
+    if (raw && typeof raw === 'object') return normalizeLayout(raw);
+    return {
+      plan: tightPlanBox(LAYOUT.plan, planW, planH),
+      schedule: clampBox(null, LAYOUT.schedule),
+    };
+  }
+
   function text(value) {
     return typeof value === 'string' ? value.trim() : '';
   }
@@ -539,13 +596,13 @@
     // Report-owned pin scale only — never capture ds-capture-sizes.
     root.setAttribute('data-rb-pin-scale', String(clampPinScale(model.pinScale)));
 
-    var placement = normalizeLayout(model.layout);
+    var planWidth = Number(plan.width);
+    var planHeight = Number(plan.height);
+    var placement = resolveLayout(model.layout, planWidth, planHeight);
     var frame = document.createElement('div');
     frame.className = 'rb-penlog__plan';
     frame.setAttribute('data-rb-penlog-box', 'plan');
     place(frame, placement.plan);
-    var planWidth = Number(plan.width);
-    var planHeight = Number(plan.height);
     if (planWidth > 0 && planHeight > 0) {
       frame.setAttribute('data-plan-width', String(planWidth));
       frame.setAttribute('data-plan-height', String(planHeight));
@@ -566,6 +623,12 @@
           frame.setAttribute('data-plan-width', String(img.naturalWidth));
           frame.setAttribute('data-plan-height', String(img.naturalHeight));
           frame.setAttribute('data-registration', 'plan');
+          // Dims arrived after first paint: tighten a missing layout now
+          // that the aspect is known. Investigator-saved layouts stay put.
+          if (!model.layout) {
+            var tightened = resolveLayout(null, img.naturalWidth, img.naturalHeight);
+            place(frame, tightened.plan);
+          }
         }
         layoutPlans(root);
       });
@@ -626,7 +689,8 @@
 
     // Each piece is moved from its top-left corner and sized from its
     // bottom-right, both waiting until it is pointed at -- the rule every
-    // other placed thing on a sheet follows.
+    // other placed thing on a sheet follows. Present / Print decks pass
+    // locked so handles never enter the deliverable DOM.
     if (!model.locked) {
       [frame, schedule].forEach(function (box) {
         var which = box.getAttribute('data-rb-penlog-box');
@@ -732,6 +796,8 @@
     normalizeLayout: normalizeLayout,
     defaultLayout: defaultLayout,
     isDefaultLayout: isDefaultLayout,
+    tightPlanBox: tightPlanBox,
+    resolveLayout: resolveLayout,
   };
 
   if (typeof window !== 'undefined') window.ToolboxPenLog = api;
