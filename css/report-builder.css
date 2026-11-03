@@ -3370,6 +3370,9 @@ body.report-builder-open .canvas {
 .rb-print .rb-cover-box,
 .rb-print .rb-floor-box,
 .rb-print .rb-discussion__box,
+.rb-print .rb-penlog__plan,
+.rb-print .rb-penlog__schedule,
+.rb-print [data-rb-penlog-box],
 .rb-print [data-rb-rich] {
   outline: none !important;
 }

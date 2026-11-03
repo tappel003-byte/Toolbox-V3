@@ -262,12 +262,22 @@ const wideLayout = await page.evaluate(() => {
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
   };
 });
-check('wide plan is letterboxed and the pin stays on the image',
-  wideLayout.fitTopGap > 8 && wideLayout.fitBottomGap > 8 && wideLayout.fitLeftGap < 3 &&
-  Math.abs(wideLayout.pinDx) < 2 && Math.abs(wideLayout.pinDy) < 2,
-  JSON.stringify({ fitTopGap: wideLayout.fitTopGap, fitLeftGap: wideLayout.fitLeftGap, pinDx: wideLayout.pinDx, pinDy: wideLayout.pinDy }));
+// Default plan box now matches plan aspect (+ small pin pad). Excess
+// letterboxing from the old tall slot is gone; a thin pad remains so pins
+// that sit just outside the plan are not clipped by the box.
+check('wide plan fills its box (no tall letterbox bands) and the pin stays on the image',
+  wideLayout.fitTopGap < 40 &&
+  wideLayout.fitBottomGap < 40 &&
+  wideLayout.fitLeftGap < 3 &&
+  Math.abs(wideLayout.pinDx) < 2 && Math.abs(wideLayout.pinDy) < 2 &&
+  (wideLayout.plan.b - wideLayout.plan.y) < 7.5,
+  JSON.stringify({
+    fitTopGap: wideLayout.fitTopGap, fitBottomGap: wideLayout.fitBottomGap,
+    fitLeftGap: wideLayout.fitLeftGap, pinDx: wideLayout.pinDx, pinDy: wideLayout.pinDy,
+    planH: wideLayout.plan.b - wideLayout.plan.y,
+  }));
 check('the plan, the schedule and the rail each own a band of the sheet',
-  near(wideLayout.plan.r, 8.5, 0.2) &&
+  near(wideLayout.plan.r, 8.5, 0.35) &&
   near(wideLayout.schedule.x, 8.8, 0.2) && near(wideLayout.schedule.b, 10.5, 0.2) &&
   wideLayout.sheetRail.x > wideLayout.schedule.r &&
   !wideLayout.overlapPlan && !wideLayout.overlapRail,
