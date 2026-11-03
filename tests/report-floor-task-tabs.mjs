@@ -130,9 +130,9 @@ const afterGeom = await page.evaluate(() => {
   const r = frame?.getBoundingClientRect();
   return r ? { x: +r.left.toFixed(1), y: +r.top.toFixed(1), w: +r.width.toFixed(1), h: +r.height.toFixed(1) } : null;
 });
-check('Topo tab shows Contours/Readings/Legend secondary tabs, hides layout controls',
+check('Topo tab shows Contours|Readings parents, hides layout controls',
   topo.active === 'topo' && !topo.hasAdd && topo.hasTopoHost
-    && topo.accordions.join('|') === 'Contours|Readings|Legend & H/L' && !topo.overflowX,
+    && topo.accordions.join('|') === 'Contours|Readings' && !topo.overflowX,
   JSON.stringify(topo));
 check('switching task tabs does not move sheet geometry',
   beforeGeom && afterGeom
@@ -162,30 +162,39 @@ async function groupShows() {
   });
 }
 const contoursOn = await groupShows();
-check('Topo opens on Contours and keeps all three secondary tabs',
-  contoursOn.panel === 'contours' && contoursOn.mode && !contoursOn.legend
-    && contoursOn.labels === 'Contours|Readings|Legend & H/L'
+check('Topo opens on Contours with Contours|Readings parents',
+  contoursOn.panel === 'contours' && contoursOn.mode
+    && contoursOn.labels === 'Contours|Readings'
     && contoursOn.active === 'contours' && !contoursOn.clipped
-    && contoursOn.gap != null && contoursOn.gap >= -1 && contoursOn.gap <= 8,
+    && contoursOn.gap != null && contoursOn.gap >= 12,
   JSON.stringify(contoursOn));
 await page.evaluate(() => document.querySelector('[data-rb-rail-tab="readings"]')?.click());
 await new Promise((r) => setTimeout(r, 400));
 const readingsOn = await groupShows();
-await page.evaluate(() => document.querySelector('[data-rb-rail-tab="legendhl"]')?.click());
+await page.evaluate(() => document.querySelector('[data-fs-cp-section="accessories"]')?.click());
 await new Promise((r) => setTimeout(r, 400));
-const legendOn = await groupShows();
+const accessoriesOn = await page.evaluate(() => {
+  const panel = document.querySelector('[data-rb-topo-panel]');
+  const text = panel ? panel.innerText : '';
+  return {
+    panel: panel?.getAttribute('data-rb-topo-panel') || '',
+    pill: /H\/L\/Δ pill/i.test(text),
+    highLow: /High \/ low/i.test(text),
+    mode: /Mode/i.test(text),
+  };
+});
 const geomAfterGroups = await page.evaluate(() => {
   const frame = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-frame]');
   const r = frame?.getBoundingClientRect();
   return r ? { x: +r.left.toFixed(1), y: +r.top.toFixed(1), w: +r.width.toFixed(1), h: +r.height.toFixed(1) } : null;
 });
-check('secondary tabs show one group and do not move the sheet',
+check('Readings parent + Accessories sibling show one group and do not move the sheet',
   readingsOn.panel === 'readings' && readingsOn.points && !readingsOn.mode && !readingsOn.legend
-    && legendOn.panel === 'legendhl' && legendOn.legend && !legendOn.mode && !legendOn.points
+    && accessoriesOn.panel === 'readings' && accessoriesOn.pill && accessoriesOn.highLow && !accessoriesOn.mode
     && geomAfterGroups && beforeGeom
     && geomAfterGroups.x === beforeGeom.x && geomAfterGroups.y === beforeGeom.y
     && geomAfterGroups.w === beforeGeom.w && geomAfterGroups.h === beforeGeom.h,
-  JSON.stringify({ readingsOn, legendOn, geomAfterGroups }));
+  JSON.stringify({ readingsOn, accessoriesOn, geomAfterGroups }));
 await page.evaluate(() => document.querySelector('[data-rb-rail-tab="contours"]')?.click());
 await new Promise((r) => setTimeout(r, 300));
 await page.evaluate(() => {

@@ -4504,19 +4504,28 @@
       return row;
     }
 
+    // Same parent tabs as Floor Survey Control panel: Contours | Readings.
+    // Show / Format / Accessories (and Contours children) live inside TopoTab.
+    // Internal `accessories` / `legendhl` still mean Readings → Accessories so
+    // older rail bookmarks keep landing on H/L controls.
     var FLOOR_TOPO_GROUPS = [
       ['contours', 'Contours'],
       ['readings', 'Readings'],
-      ['accessories', 'Accessories'],
     ];
+    if (floorTopoGroup === 'legendhl') floorTopoGroup = 'accessories';
+
+    function floorTopoParent() {
+      return floorTopoGroup === 'accessories' ? 'readings' : floorTopoGroup;
+    }
 
     function buildFloorTopoSubtabs() {
       var row = document.createElement('div');
       row.className = 'rb-ws__subtabs';
       row.setAttribute('role', 'tablist');
       row.setAttribute('aria-label', 'Topo controls');
+      var parent = floorTopoParent();
       FLOOR_TOPO_GROUPS.forEach(function (pair) {
-        var on = floorTopoGroup === pair[0];
+        var on = parent === pair[0];
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'rb-ws__subtab' + (on ? ' is-active' : '');
@@ -4532,7 +4541,7 @@
       });
       row.addEventListener('keydown', function (event) {
         var keys = FLOOR_TOPO_GROUPS.map(function (pair) { return pair[0]; });
-        var idx = keys.indexOf(floorTopoGroup);
+        var idx = keys.indexOf(floorTopoParent());
         if (idx < 0) idx = 0;
         var next = idx;
         if (event.key === 'ArrowRight') next = (idx + 1) % keys.length;
@@ -4545,7 +4554,7 @@
         var taskPage = activePage();
         if (taskPage) syncRail(taskPage);
         var focusBtn = railTopEl && railTopEl.querySelector(
-          '[data-rb-topo-group="' + floorTopoGroup + '"]');
+          '[data-rb-topo-group="' + floorTopoParent() + '"]');
         if (focusBtn && focusBtn.focus) focusBtn.focus();
       });
       return row;
@@ -4941,6 +4950,7 @@
         if (groupBtn) {
           event.preventDefault();
           var nextGroup = groupBtn.getAttribute('data-rb-topo-group');
+          if (nextGroup === 'legendhl') nextGroup = 'accessories';
           if (nextGroup !== 'contours' && nextGroup !== 'readings' && nextGroup !== 'accessories') return;
           if (floorTopoGroup === nextGroup) return;
           floorTopoGroup = nextGroup;
