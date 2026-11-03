@@ -2570,7 +2570,7 @@ function TrialSectionTabs({
       <div
         role="tablist"
         aria-label={label}
-        className="flex shrink-0 items-end gap-1 border-b bg-white px-1.5 pt-1"
+        className="flex shrink-0 items-end gap-1.5 border-b bg-white px-2 pt-1"
         style={{ borderColor: TRIAL_LINE }}
         onKeyDown={(event) => {
           const idx = Math.max(0, items.findIndex((item) => item.id === active?.id));
@@ -2601,7 +2601,10 @@ function TrialSectionTabs({
               aria-controls="fs-cp-section-panel"
               tabIndex={on ? 0 : -1}
               onClick={() => onChange(item.id)}
-              className="min-h-11 min-w-0 flex-1 whitespace-nowrap rounded-t-[6px] border px-1 text-center text-xs leading-none"
+              // min-w-min keeps long labels (Accessories) from shrinking under
+              // neighbors; px-2 gives the navy active fill room so it does not
+              // sit on Format.
+              className="min-h-11 min-w-min flex-1 overflow-visible whitespace-nowrap rounded-t-[6px] border px-2 text-center text-xs leading-none"
               style={{
                 marginBottom: -1,
                 backgroundColor: on ? TRIAL_NAVY : "#e5ebee",
