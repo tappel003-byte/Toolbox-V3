@@ -4431,6 +4431,25 @@
     var railBodyEl = root.querySelector('[data-rb-rail-body]');
     var railFootEl = root.querySelector('[data-rb-rail-foot]');
     var railControls = { el: null, key: '', api: null };
+    // Sibling tabs (Show|Format|Accessories) stick under Contours|Readings.
+    // Offset = current sticky header height so they do not cover grandparents.
+    var railStickyObserver = null;
+    function syncRailStickyOffset() {
+      if (!railEl) return;
+      var sticky = railEl.querySelector('.rb-ws__sticky');
+      if (!sticky) return;
+      railEl.style.setProperty('--rb-ws-sticky-h', sticky.offsetHeight + 'px');
+    }
+    function ensureRailStickyObserver() {
+      if (!railEl || typeof ResizeObserver === 'undefined') return;
+      var sticky = railEl.querySelector('.rb-ws__sticky');
+      if (!sticky) return;
+      if (!railStickyObserver) {
+        railStickyObserver = new ResizeObserver(function () { syncRailStickyOffset(); });
+        railStickyObserver.observe(sticky);
+      }
+      syncRailStickyOffset();
+    }
 
     function releaseRailControls() {
       if (railControls.api && typeof railControls.api.unmount === 'function') {
@@ -4933,6 +4952,9 @@
       }
 
       setRailFootSource('floor');
+      ensureRailStickyObserver();
+      // Sibling sticky offset after React paints Show|Format|Accessories.
+      requestAnimationFrame(function () { syncRailStickyOffset(); });
     }
 
     // The rail's buttons are built per slide, so they are handled by

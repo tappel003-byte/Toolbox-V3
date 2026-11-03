@@ -1729,6 +1729,7 @@ export function TopoTab({
           >
             <TrialSectionTabs
               label="Contours"
+              stickyTabs={controlsOnly}
               openId={trialSectionByDoor.contours ?? "display"}
               onChange={(id) => setTrialSection("contours", id)}
               lead={
@@ -1970,6 +1971,7 @@ export function TopoTab({
           >
             <TrialSectionTabs
               label="Readings"
+              stickyTabs={controlsOnly}
               openId={trialSectionByDoor.readings ?? "show"}
               onChange={(id) => setTrialSection("readings", id)}
               items={[
@@ -2557,12 +2559,16 @@ function TrialSectionTabs({
   onChange,
   items,
   lead,
+  stickyTabs = false,
 }: {
   label: string;
   openId: string;
   onChange: (id: string) => void;
   items: { id: string; title: string; body: React.ReactNode }[];
   lead?: React.ReactNode;
+  /** Report rail: keep Show|Format|Accessories (and Contours siblings) under
+   *  the sticky Contours|Readings header while the rail scrolls. */
+  stickyTabs?: boolean;
 }) {
   const active = items.find((item) => item.id === openId) ?? items[0];
   return (
@@ -2570,8 +2576,15 @@ function TrialSectionTabs({
       <div
         role="tablist"
         aria-label={label}
-        className="flex shrink-0 items-end gap-1.5 border-b bg-white px-2 pt-1"
-        style={{ borderColor: TRIAL_LINE }}
+        data-rb-section-tabs-sticky={stickyTabs ? "1" : undefined}
+        className={
+          "flex shrink-0 items-end gap-1.5 border-b bg-white px-2 pt-1" +
+          (stickyTabs ? " sticky z-[2]" : "")
+        }
+        style={{
+          borderColor: TRIAL_LINE,
+          ...(stickyTabs ? { top: "var(--rb-ws-sticky-h, 0px)" } : null),
+        }}
         onKeyDown={(event) => {
           const idx = Math.max(0, items.findIndex((item) => item.id === active?.id));
           let next = idx;

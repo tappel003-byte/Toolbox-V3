@@ -1040,6 +1040,14 @@ body.report-builder-open .canvas {
   border-bottom-color: var(--navy, #07283d);
   box-shadow: none;
 }
+/* Sibling tabs (Show|Format|Accessories) stick under Contours|Readings while
+   the rail scrolls. Offset comes from --rb-ws-sticky-h on #rb-rail. */
+.rb-ws [data-rb-section-tabs-sticky="1"] {
+  position: sticky;
+  top: var(--rb-ws-sticky-h, 0px);
+  z-index: 2;
+  background: #fff;
+}
 .rb-ws__section-label {
   margin: 4px 0 0;
   font-size: 11px;
