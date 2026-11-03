@@ -158,8 +158,8 @@ async function openDistress(fileId) {
   if (!fr) throw new Error('no distress iframe for ' + fileId);
   await fr.waitForSelector('#screenWork.active, body.host-mode #stage', { timeout: 20000 });
   await new Promise((r) => setTimeout(r, 900));
-  // Ensure pin-size pill is wired (enterWork calls setupPinSizePill).
-  await fr.waitForSelector('#pinSizePill', { timeout: 10000 });
+  // Pin size control lives in the Select a pin sheet (wired by setupPinSizePill).
+  await fr.waitForSelector('#pinPickerSheet #pinSizePill', { timeout: 10000 });
   return fr;
 }
 
@@ -178,15 +178,22 @@ async function capturePinState(fr) {
     const circles = [...document.querySelectorAll('#pinsLayer circle, #overlaySvg circle, svg circle')];
     const radii = circles.map((c) => Number(c.getAttribute('r'))).filter((n) => n > 0);
     const pill = document.getElementById('pinSizePill');
+    const sheet = document.getElementById('pinPickerSheet');
     const minus = document.getElementById('pinSizeMinus');
     const plus = document.getElementById('pinSizePlus');
+    const onCanvas = !!(document.querySelector('#stage #pinSizePill, #stage .pin-size-pill, #stage .pin-size-row'));
+    const inPicker = !!(pill && sheet && sheet.contains(pill));
+    const sheetOpen = !!(sheet && sheet.classList.contains('open'));
     return {
       scale,
       stored,
       visual,
       radii,
       maxR: radii.length ? Math.max(...radii) : null,
-      pillVisible: !!(pill && pill.offsetParent !== null),
+      onCanvas,
+      inPicker,
+      sheetOpen,
+      pillVisibleInSheet: !!(inPicker && sheetOpen && pill.getBoundingClientRect().height > 0),
       label: pill ? (pill.querySelector('.ps-label')?.textContent || '').trim() : '',
       minusDisabled: !!(minus && minus.disabled),
       plusDisabled: !!(plus && plus.disabled),
@@ -325,10 +332,38 @@ await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
 fr = await openDistress(seeded.a.id);
 const beforeBump = await capturePinState(fr);
 check(
-  '1) Pin size pill visible with label on phone capture',
-  beforeBump.pillVisible && beforeBump.label === 'Pin size',
+  '1) Pin size is not a floating panel on the canvas',
+  beforeBump.onCanvas === false && beforeBump.inPicker === true && beforeBump.label === 'Pin size',
   JSON.stringify(beforeBump),
 );
+await fr.evaluate(() => {
+  if (typeof openPinPicker === 'function') openPinPicker();
+});
+await new Promise((r) => setTimeout(r, 200));
+const pickerOpen = await capturePinState(fr);
+check(
+  '1a) Pin size is visible in the Select a pin window',
+  pickerOpen.pillVisibleInSheet && pickerOpen.sheetOpen && pickerOpen.label === 'Pin size',
+  JSON.stringify(pickerOpen),
+);
+// Keep the window open while changing size — must not select a pin or close.
+const selectedBefore = await fr.evaluate(() => (typeof ui !== 'undefined' ? ui.selectedPinId || ui.activePinId || null : null));
+await bumpCapturePlus(fr, 1);
+await new Promise((r) => setTimeout(r, 150));
+const afterOneBump = await fr.evaluate(() => ({
+  sheetOpen: document.getElementById('pinPickerSheet')?.classList.contains('open'),
+  selected: typeof ui !== 'undefined' ? (ui.selectedPinId || ui.activePinId || null) : null,
+  scale: _capturePinScale,
+}));
+check(
+  '1a2) Changing pin size keeps Select a pin open and does not select a pin',
+  afterOneBump.sheetOpen === true && afterOneBump.selected === selectedBefore,
+  JSON.stringify({ selectedBefore, afterOneBump }),
+);
+// Evidence for Tim: Select a pin window with Pin size below the heading.
+await page.screenshot({ path: `${OUT}/distress-pin-size-in-select-window.png` });
+await fr.evaluate(() => { if (typeof closeSheets === 'function') closeSheets(); });
+await new Promise((r) => setTimeout(r, 150));
 // Poison in localStorage should load as starting scale for THIS file.
 check(
   '1b) Capture loads per-file ds-capture-sizes (poisoned 2.4)',
