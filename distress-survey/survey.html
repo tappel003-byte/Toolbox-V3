@@ -440,16 +440,22 @@
   .mode-pill .tool.active{background:var(--ink);color:var(--paper)}
   .mode-pill .tool:active{transform:scale(.95)}
 
-  /* Pin size — next to mode pill; capture-only, per Customer File on this device */
-  .pin-size-pill{position:absolute;top:54px;left:8px;display:flex;align-items:center;gap:4px;
-    background:rgba(255,250,240,.92);padding:4px 6px;border-radius:12px;
-    box-shadow:var(--shadow);border:1px solid var(--line);z-index:6}
-  .pin-size-pill .ps-label{font-size:12px;font-weight:600;color:var(--ink);padding:0 4px;white-space:nowrap}
-  .pin-size-pill .ps-btn{width:36px;height:34px;min-width:36px;border-radius:8px;border:none;
-    background:transparent;font-size:20px;line-height:1;font-weight:600;color:var(--ink);
-    display:flex;align-items:center;justify-content:center}
-  .pin-size-pill .ps-btn:active{transform:scale(.95);background:rgba(0,0,0,.06)}
-  .pin-size-pill .ps-btn:disabled{opacity:.35}
+  /* Pin size — lives in the Select a pin sheet (not on the canvas). Capture-only,
+     per Customer File on this device. Stays put while the pin list scrolls. */
+  #pinPickerSheet.sheet{display:flex;flex-direction:column;overflow:hidden}
+  #pinPickerSheet .sheet-head{flex-shrink:0;margin-bottom:8px}
+  #pinPickerSheet .pin-size-row{flex-shrink:0;display:flex;align-items:center;gap:6px;
+    margin:0 0 12px;padding:6px 8px;background:var(--bg);border:1px solid var(--line);
+    border-radius:10px}
+  #pinPickerSheet .pin-size-row .ps-label{font-size:12px;font-weight:600;color:var(--ink);
+    padding:0 4px;white-space:nowrap}
+  #pinPickerSheet .pin-size-row .ps-btn{width:36px;height:34px;min-width:36px;border-radius:8px;
+    border:none;background:transparent;font-size:20px;line-height:1;font-weight:600;
+    color:var(--ink);display:flex;align-items:center;justify-content:center}
+  #pinPickerSheet .pin-size-row .ps-btn:active{transform:scale(.95);background:rgba(0,0,0,.06)}
+  #pinPickerSheet .pin-size-row .ps-btn:disabled{opacity:.35}
+  #pinPickerSheet .pin-list{flex:1 1 auto;min-height:0;max-height:none;overflow-y:auto;
+    -webkit-overflow-scrolling:touch}
 
   /* Pin picker pill — bottom-left */
   .pin-picker-btn{position:absolute !important;bottom:calc(14px + var(--app-bottom-offset,0px));left:12px;
@@ -881,11 +887,6 @@
       <button class="tool active" id="toolPin" onclick="setTool('pin')" title="Pin mode">📍</button>
       <button class="tool" id="toolDraw" onclick="setTool('draw')" title="Draw mode">✏️</button>
     </div>
-    <div class="pin-size-pill" id="pinSizePill" title="Pin size for this Customer File on this device">
-      <span class="ps-label">Pin size</span>
-      <button type="button" class="ps-btn" id="pinSizeMinus" aria-label="Decrease pin size">−</button>
-      <button type="button" class="ps-btn" id="pinSizePlus" aria-label="Increase pin size">+</button>
-    </div>
     <button class="pin-picker-btn" id="pinPickerBtn" onclick="openPinPicker()" disabled>
       <span>📍 Edit pin ▾</span>
       <span class="ppc" id="pinPickerCount">(0 pins)</span>
@@ -930,6 +931,11 @@
       <div class="sheet-sub">Tap any pin to edit</div>
     </div>
     <button class="ghost" onclick="closeSheets()">Cancel</button>
+  </div>
+  <div class="pin-size-row" id="pinSizePill" title="Pin size for this Customer File on this device">
+    <span class="ps-label">Pin size</span>
+    <button type="button" class="ps-btn" id="pinSizeMinus" aria-label="Decrease pin size">−</button>
+    <button type="button" class="ps-btn" id="pinSizePlus" aria-label="Increase pin size">+</button>
   </div>
   <div class="pin-list" id="pinList"></div>
 </div>
@@ -3618,14 +3624,14 @@ function setupPinSizePill() {
   minus._wired = true;
   plus._wired = true;
   loadCapturePinScale();
-  minus.addEventListener('click', (e) => {
+  // Size changes stay in the Select a pin window — do not select a pin or close.
+  const bump = (dir) => (e) => {
+    e.preventDefault();
     e.stopPropagation();
-    bumpCapturePinScale(-1);
-  });
-  plus.addEventListener('click', (e) => {
-    e.stopPropagation();
-    bumpCapturePinScale(1);
-  });
+    bumpCapturePinScale(dir);
+  };
+  minus.addEventListener('click', bump(-1));
+  plus.addEventListener('click', bump(1));
 }
 
 // ---------- Menu ----------
