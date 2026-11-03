@@ -688,25 +688,37 @@
    * Page ids embed epochId, so stamping floorSurvey.id after pages were saved
    * under "current" used to mint a second Combined / boundary set. Source keys
    * stay stable across that transition when we remap current/empty → floor.id.
-   * Title matching and silent canvas substitution are out of bounds.
+   * Remap (and remapped coverage / output specs) only when the canvas still
+   * resolves under the working Floor Survey. Unresolvable refs keep their raw
+   * epoch and remain explicit failures — never title match or silent substitute.
    */
-  function normalizeFloorEpochId(epochId, floorSurveyId) {
+  function floorLayerResolves(record, canvasId) {
+    if (!record || !canvasId) return false;
+    var floor = record.floorSurvey;
+    return !!(floor && floor.byCanvasId && floor.byCanvasId[canvasId]);
+  }
+
+  function normalizeFloorEpochId(epochId, floorSurveyId, canvasResolves) {
     if (floorSurveyId == null || floorSurveyId === '') {
       return epochId == null || epochId === '' ? null : String(epochId);
     }
-    if (epochId == null || epochId === '' || epochId === 'current') return String(floorSurveyId);
+    if (canvasResolves && (epochId == null || epochId === '' || epochId === 'current')) {
+      return String(floorSurveyId);
+    }
+    if (epochId == null || epochId === '') return null;
     return String(epochId);
   }
 
-  function floorSourceKeyParts(canvasId, epochId, scope, areaId, floorSurveyId) {
-    var ep = normalizeFloorEpochId(epochId, floorSurveyId) || '';
+  function floorSourceKeyParts(canvasId, epochId, scope, areaId, floorSurveyId, record) {
+    var resolves = floorLayerResolves(record, canvasId);
+    var ep = normalizeFloorEpochId(epochId, floorSurveyId, resolves) || '';
     var cv = canvasId ? String(canvasId) : '';
     var sc = scope === 'area' ? 'area' : 'all';
     var area = sc === 'all' ? 'all' : (areaId ? String(areaId) : '');
     return [ep, cv, sc, area].join('|');
   }
 
-  function floorPageSourceKeys(page, floorSurveyId) {
+  function floorPageSourceKeys(page, floorSurveyId, record) {
     if (!page || page.type !== 'floor') return [];
     var meta = page.meta || {};
     if (meta.reserved) return [];
@@ -720,7 +732,8 @@
           view.epochId != null ? view.epochId : meta.epochId,
           view.scope || meta.scope || 'all',
           view.scope === 'all' ? null : (view.areaId || meta.areaId),
-          floorSurveyId
+          floorSurveyId,
+          record
         ));
       });
       return keys;
@@ -730,27 +743,32 @@
       meta.epochId,
       meta.scope || 'all',
       meta.scope === 'all' ? null : meta.areaId,
-      floorSurveyId
+      floorSurveyId,
+      record
     ));
     return keys;
   }
 
-  /** Guarded current/empty → floor.id on saved floor pages. Returns whether anything changed. */
-  function remapFloorEpochOnPages(pages, floorSurveyId) {
+  /** Guarded current/empty → floor.id only when the canvas layer still resolves. */
+  function remapFloorEpochOnPages(pages, floorSurveyId, record) {
     if (!floorSurveyId) return false;
     var changed = false;
     (pages || []).forEach(function (page) {
       if (!page || page.type !== 'floor' || !page.meta || page.meta.reserved) return;
       var meta = page.meta;
-      var nextEpoch = normalizeFloorEpochId(meta.epochId, floorSurveyId);
-      if (nextEpoch && nextEpoch !== meta.epochId) {
-        meta.epochId = nextEpoch;
-        changed = true;
+      if (floorLayerResolves(record, meta.canvasId)) {
+        var nextEpoch = normalizeFloorEpochId(meta.epochId, floorSurveyId, true);
+        if (nextEpoch && nextEpoch !== meta.epochId) {
+          meta.epochId = nextEpoch;
+          changed = true;
+        }
       }
       if (Array.isArray(meta.views)) {
         meta.views.forEach(function (view) {
           if (!view) return;
-          var ve = normalizeFloorEpochId(view.epochId, floorSurveyId);
+          var cv = view.canvasId || meta.canvasId;
+          if (!floorLayerResolves(record, cv)) return;
+          var ve = normalizeFloorEpochId(view.epochId, floorSurveyId, true);
           if (ve && ve !== view.epochId) {
             view.epochId = ve;
             changed = true;
@@ -763,6 +781,7 @@
 
   function reconcileReportPages(savedPages, freshPages, photos, options) {
     var floorSurveyId = options && options.floorSurveyId ? String(options.floorSurveyId) : '';
+    var record = options && options.record ? options.record : null;
     var pages = (savedPages || []).map(function (page) {
       return {
         id: page.id,
@@ -794,13 +813,14 @@
       return true;
     });
     // Epoch remap runs on the caller's saved clones before reconcile when
-    // needed; still normalize here so coverage keys match fresh assemble ids.
-    remapFloorEpochOnPages(pages, floorSurveyId);
+    // needed; still normalize here (canvas-resolved only) so coverage keys
+    // match fresh assemble ids without laundering unresolvable refs.
+    remapFloorEpochOnPages(pages, floorSurveyId, record);
     var byId = {};
     var coveredFloorKeys = Object.create(null);
     pages.forEach(function (page) {
       byId[page.id] = true;
-      floorPageSourceKeys(page, floorSurveyId).forEach(function (key) {
+      floorPageSourceKeys(page, floorSurveyId, record).forEach(function (key) {
         if (key) coveredFloorKeys[key] = true;
       });
     });
@@ -841,7 +861,7 @@
         // a second Combined / boundary set after epoch stamp or id-stable rename.
         // New area ids (recreate / recovery replace) still add. Titles never match.
         if (type === 'floor') {
-          var freshKeys = floorPageSourceKeys(fresh, floorSurveyId);
+          var freshKeys = floorPageSourceKeys(fresh, floorSurveyId, record);
           var covered = freshKeys.some(function (key) { return key && coveredFloorKeys[key]; });
           if (covered) return;
         }
@@ -861,7 +881,7 @@
         });
         byId[fresh.id] = true;
         if (type === 'floor') {
-          floorPageSourceKeys(additions[additions.length - 1], floorSurveyId).forEach(function (key) {
+          floorPageSourceKeys(additions[additions.length - 1], floorSurveyId, record).forEach(function (key) {
             if (key) coveredFloorKeys[key] = true;
           });
         }
@@ -8527,7 +8547,13 @@
         : '';
       var canvasId = (view && view.canvasId) || meta.canvasId || '';
       var epochRaw = (view && view.epochId != null) ? view.epochId : meta.epochId;
-      var epochId = normalizeFloorEpochId(epochRaw, floorSurveyId);
+      // Same canvas-resolution guard as reconcile: do not rewrite current/empty
+      // onto floor.id when the layer is gone — leave the unresolved epoch explicit.
+      var epochId = normalizeFloorEpochId(
+        epochRaw,
+        floorSurveyId,
+        floorLayerResolves(workingRecord, canvasId)
+      );
       var scope = (view && view.scope) || meta.scope || 'all';
       var areaId = scope === 'all'
         ? null
@@ -8537,6 +8563,7 @@
         epochId: epochId,
         areaId: areaId,
         scope: scope,
+        canvasResolves: floorLayerResolves(workingRecord, canvasId),
       };
     }
 
@@ -8601,8 +8628,15 @@
     }
 
     function composeFloorStills() {
+      if (!workingRecord) {
+        return Promise.reject(new Error('Customer File is not loaded for Present/Print.'));
+      }
+      // Reports with no Floor Survey figures must Present/Print without the
+      // Floor Survey composer — cover, Discussion, Pictures only.
+      var pendingJobs = floorOutputViewJobs();
+      if (!pendingJobs.length) return Promise.resolve(0);
       var api = window.ToolboxFloorSurvey;
-      if (!api || typeof api.composeReportTopoFigureForPage !== 'function' || !workingRecord) {
+      if (!api || typeof api.composeReportTopoFigureForPage !== 'function') {
         return Promise.reject(new Error('Floor Survey compose is not available in this session.'));
       }
       var getMedia = window.ToolboxDB && window.ToolboxDB.getMedia
@@ -9321,7 +9355,7 @@
         var floorSurveyId = record.floorSurvey && record.floorSurvey.id
           ? String(record.floorSurvey.id)
           : '';
-        var remappedEpoch = remapFloorEpochOnPages(saved.pages, floorSurveyId);
+        var remappedEpoch = remapFloorEpochOnPages(saved.pages, floorSurveyId, record);
         var before = saved.pages.map(function (page) {
           return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',') +
             ':' + !!(page.meta && page.meta.imported) +
@@ -9329,6 +9363,7 @@
         }).join('|');
         pages = reconcileReportPages(saved.pages, freshPages, photoList, {
           floorSurveyId: floorSurveyId,
+          record: record,
         });
         var after = pages.map(function (page) {
           return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',') +
@@ -9623,13 +9658,13 @@
     var floorSurveyId = record.floorSurvey && record.floorSurvey.id
       ? String(record.floorSurvey.id)
       : '';
-    if (saved) remapFloorEpochOnPages(saved.pages, floorSurveyId);
+    if (saved) remapFloorEpochOnPages(saved.pages, floorSurveyId, record);
     var pages = saved
       ? reconcileReportPages(
         saved.pages,
         ensurePicturesInFreshPages(fresh.pages.slice(), photoList),
         photoList,
-        { floorSurveyId: floorSurveyId }
+        { floorSurveyId: floorSurveyId, record: record }
       )
       : ensurePicturesInFreshPages(fresh.pages.slice(), photoList);
     var firstPictures = null;
