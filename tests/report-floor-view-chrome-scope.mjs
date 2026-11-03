@@ -79,23 +79,25 @@ await page.evaluate(() => document.querySelector('.rb-sheet:not(.rb-sheet--thumb
 await new Promise((r) => setTimeout(r, 500));
 await page.evaluate(() => document.querySelector('[data-rb-floor-task="topo"]')?.click());
 await new Promise((r) => setTimeout(r, 400));
-await page.evaluate(() => {
-  document.querySelector('[data-rb-rail-tab="accessories"]')?.click()
-    || document.querySelector('[data-rb-rail-tab="legendhl"]')?.click();
-});
+await page.evaluate(() => document.querySelector('[data-rb-topo-group="readings"]')?.click()
+  || document.querySelector('[data-rb-rail-tab="readings"]')?.click());
 await new Promise((r) => setTimeout(r, 400));
-await page.evaluate(() => {
-  const tabs = [...document.querySelectorAll('[role="tablist"][aria-label="Accessories"] [role="tab"]')];
-  tabs.find((t) => /Legend/.test((t.textContent || '').trim()))?.click();
-});
+await page.evaluate(() => document.querySelector('[data-fs-cp-section="accessories"]')?.click());
 await new Promise((r) => setTimeout(r, 400));
-const btns = await page.evaluate(() => [...document.querySelectorAll('[data-rb-floor-view-chrome]')].map((b) => b.getAttribute('data-rb-floor-view-chrome')));
-await page.evaluate(() => document.querySelector('[data-rb-floor-view-chrome="legend-on"]')?.click());
+const chromeGone = await page.evaluate(() => document.querySelectorAll('[data-rb-floor-view-chrome]').length);
+await page.evaluate(() => {
+  const lab = [...document.querySelectorAll('[data-rb-topo-panel] label, .rb-ws__controls label')]
+    .find((l) => (l.textContent || '').trim() === 'Legend');
+  const sw = lab?.closest('div')?.querySelector('[role=switch]');
+  if (!sw) return;
+  const on = sw.getAttribute('data-state') === 'checked' || sw.getAttribute('aria-checked') === 'true';
+  if (!on) sw.click();
+});
 await new Promise((r) => setTimeout(r, 2500));
 const mainTwo = await count();
 const bookTwo = await book();
 check('turning on a view\'s colour scale draws it on that sheet',
-  btns.includes('legend-on') && mainTwo.includes('legend-v0'), JSON.stringify({ btns, mainTwo }));
+  chromeGone === 0 && mainTwo.includes('legend-v0'), JSON.stringify({ chromeGone, mainTwo }));
 check('and stores its place in the one layout record, under the view',
   bookTwo.includes('legend-v0') && bookTwo.includes('legend-0'), JSON.stringify(bookTwo));
 await open('Basement');

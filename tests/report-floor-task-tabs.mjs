@@ -277,19 +277,65 @@ check('per-view Contours Mode changes only the intended view',
   JSON.stringify(modes));
 
 await openTask('topo');
-await page.evaluate(() => document.querySelector('[data-rb-rail-tab="legendhl"]')?.click());
-await new Promise((r) => setTimeout(r, 400));
-const legendState = await page.evaluate(() => {
-  const lab = [...document.querySelectorAll('.rb-ws__controls label')]
-    .find((l) => (l.textContent || '').trim() === 'Legend');
-  const sw = lab?.closest('div.flex')?.querySelector('[role=switch]');
+const hierarchy = await page.evaluate(() => {
+  const lead = document.querySelector('[data-rb-floor-topo-lead]');
+  const title = document.querySelector('[data-rb-rail-title]');
+  const task = document.querySelector('.rb-ws__task-tabs');
+  const parents = document.querySelector('.rb-ws__subtabs');
+  const siblings = document.querySelector('[data-fs-cp-section]')?.closest('[role="tablist"]')
+    || document.querySelector('[data-fs-cp-section]')?.parentElement;
+  const leadBox = lead?.getBoundingClientRect();
+  const titleBox = title?.getBoundingClientRect();
+  const taskBox = task?.getBoundingClientRect();
+  const parentBox = parents?.getBoundingClientRect();
+  const sibBox = siblings?.getBoundingClientRect();
+  const betweenParentsSiblings = (() => {
+    if (!parentBox || !sibBox) return null;
+    const midTop = parentBox.bottom;
+    const midBottom = sibBox.top;
+    const blockers = [...document.querySelectorAll('#rb-rail [data-rb-floor-view-chrome], #rb-rail [data-rb-floor-topo-lead], #rb-rail button, #rb-rail p.rb-panel__lead')]
+      .filter((el) => {
+        if (el.closest('.rb-ws__task-tabs') || el.closest('.rb-ws__subtabs')) return false;
+        if (el.matches('[data-fs-cp-section]')) return false;
+        const r = el.getBoundingClientRect();
+        return r.top >= midTop - 1 && r.bottom <= midBottom + 1 && r.height > 2;
+      });
+    return blockers.map((el) => (el.textContent || '').trim().slice(0, 40));
+  })();
   return {
-    switch: sw ? (sw.getAttribute('data-state') || sw.getAttribute('aria-checked')) : null,
-    showBtn: !!document.querySelector('[data-rb-floor-view-chrome="legend-on"]'),
+    text: (lead?.textContent || '').trim(),
+    chrome: document.querySelectorAll('[data-rb-floor-view-chrome]').length,
+    aboveGrandparents: !!(leadBox && taskBox && leadBox.bottom <= taskBox.top + 2),
+    belowTitle: !!(leadBox && titleBox && leadBox.top >= titleBox.bottom - 2),
+    betweenParentsSiblings,
+    parentToSiblingGap: parentBox && sibBox ? Math.round(sibBox.top - parentBox.bottom) : null,
   };
 });
-check('Legend & H/L tab shows selected-view chrome for multi-view',
-  legendState.showBtn && (legendState.switch === 'unchecked' || legendState.switch === 'false'),
+check('multi-view compact identity sits under Floor Survey heading, above grandparents',
+  /^View \d+ of \d+/.test(hierarchy.text)
+    && !/Contours \/ Readings/.test(hierarchy.text)
+    && hierarchy.chrome === 0
+    && hierarchy.aboveGrandparents
+    && hierarchy.belowTitle,
+  JSON.stringify(hierarchy));
+check('no legacy chrome between parents and siblings',
+  Array.isArray(hierarchy.betweenParentsSiblings) && hierarchy.betweenParentsSiblings.length === 0,
+  JSON.stringify(hierarchy.betweenParentsSiblings));
+await page.evaluate(() => document.querySelector('[data-rb-topo-group="readings"]')?.click());
+await new Promise((r) => setTimeout(r, 300));
+await page.evaluate(() => document.querySelector('[data-fs-cp-section="accessories"]')?.click());
+await new Promise((r) => setTimeout(r, 400));
+const legendState = await page.evaluate(() => {
+  const lab = [...document.querySelectorAll('.rb-ws__controls label, [data-rb-topo-panel] label')]
+    .find((l) => (l.textContent || '').trim() === 'Legend');
+  const sw = lab?.closest('div')?.querySelector('[role=switch]');
+  return {
+    switch: sw ? (sw.getAttribute('data-state') || sw.getAttribute('aria-checked')) : null,
+    chromeBtns: document.querySelectorAll('[data-rb-floor-view-chrome]').length,
+  };
+});
+check('Accessories Legend switch is the selected-view visibility control',
+  legendState.chromeBtns === 0 && legendState.switch != null,
   JSON.stringify(legendState));
 
 await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });

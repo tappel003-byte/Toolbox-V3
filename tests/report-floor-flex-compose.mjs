@@ -448,16 +448,46 @@ await page.evaluate(() => {
     ?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
 });
 await new Promise((r) => setTimeout(r, 300));
-await page.evaluate(() => document.querySelector('[data-rb-floor-view-chrome="pill-on"]')?.click());
-await page.evaluate(() => document.querySelector('[data-rb-floor-view-chrome="legend-on"]')?.click());
+await page.evaluate(() => {
+  document.querySelector('[data-rb-topo-group="readings"]')?.click()
+    || document.querySelector('[data-rb-rail-tab="readings"]')?.click();
+});
+await new Promise((r) => setTimeout(r, 300));
+await page.evaluate(() => document.querySelector('[data-fs-cp-section="accessories"]')?.click());
 await new Promise((r) => setTimeout(r, 400));
+await page.evaluate(() => {
+  for (const name of ['Legend', 'H/L/Δ pill']) {
+    const lab = [...document.querySelectorAll('[data-rb-topo-panel] label, .rb-ws__controls label')]
+      .find((l) => (l.textContent || '').trim() === name);
+    const sw = lab?.closest('div')?.querySelector('[role=switch]');
+    if (sw && (sw.getAttribute('data-state') === 'unchecked' || sw.getAttribute('aria-checked') === 'false')) {
+      sw.click();
+    }
+  }
+});
+await new Promise((r) => setTimeout(r, 600));
 await page.evaluate(() => {
   document.querySelector('[data-rb-topo-frame="1"]')
     ?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
 });
+await new Promise((r) => setTimeout(r, 400));
+await page.evaluate(() => {
+  document.querySelector('[data-rb-topo-group="readings"]')?.click()
+    || document.querySelector('[data-rb-rail-tab="readings"]')?.click();
+});
 await new Promise((r) => setTimeout(r, 300));
-await page.evaluate(() => document.querySelector('[data-rb-floor-view-chrome="pill-on"]')?.click());
-await page.evaluate(() => document.querySelector('[data-rb-floor-view-chrome="legend-on"]')?.click());
+await page.evaluate(() => document.querySelector('[data-fs-cp-section="accessories"]')?.click());
+await new Promise((r) => setTimeout(r, 400));
+await page.evaluate(() => {
+  for (const name of ['Legend', 'H/L/Δ pill']) {
+    const lab = [...document.querySelectorAll('[data-rb-topo-panel] label, .rb-ws__controls label')]
+      .find((l) => (l.textContent || '').trim() === name);
+    const sw = lab?.closest('div')?.querySelector('[role=switch]');
+    if (sw && (sw.getAttribute('data-state') === 'unchecked' || sw.getAttribute('aria-checked') === 'false')) {
+      sw.click();
+    }
+  }
+});
 await new Promise((r) => setTimeout(r, 2500));
 
 const chromeOn = await page.evaluate(() => {
