@@ -444,13 +444,13 @@
      per Customer File on this device. Stays put while the pin list scrolls. */
   #pinPickerSheet.sheet{display:flex;flex-direction:column;overflow:hidden}
   #pinPickerSheet .sheet-head{flex-shrink:0;margin-bottom:8px}
-  #pinPickerSheet .pin-size-row{flex-shrink:0;display:flex;align-items:center;gap:6px;
-    margin:0 0 12px;padding:6px 8px;background:var(--bg);border:1px solid var(--line);
-    border-radius:10px}
+  #pinPickerSheet .pin-size-row{flex-shrink:0;align-self:flex-start;display:inline-flex;
+    align-items:center;gap:2px;margin:0 0 8px;padding:2px 4px 2px 8px;background:var(--bg);
+    border:1px solid var(--line);border-radius:8px;width:auto}
   #pinPickerSheet .pin-size-row .ps-label{font-size:12px;font-weight:600;color:var(--ink);
-    padding:0 4px;white-space:nowrap}
-  #pinPickerSheet .pin-size-row .ps-btn{width:36px;height:34px;min-width:36px;border-radius:8px;
-    border:none;background:transparent;font-size:20px;line-height:1;font-weight:600;
+    padding:0 2px;white-space:nowrap}
+  #pinPickerSheet .pin-size-row .ps-btn{width:30px;height:28px;min-width:30px;border-radius:6px;
+    border:none;background:transparent;font-size:18px;line-height:1;font-weight:600;
     color:var(--ink);display:flex;align-items:center;justify-content:center}
   #pinPickerSheet .pin-size-row .ps-btn:active{transform:scale(.95);background:rgba(0,0,0,.06)}
   #pinPickerSheet .pin-size-row .ps-btn:disabled{opacity:.35}
@@ -509,9 +509,9 @@
   .pin-list-item .pli-num{flex-shrink:0;width:32px;height:32px;border-radius:50%;
     background:var(--accent);color:#fff;font-weight:700;font-size:13px;
     display:flex;align-items:center;justify-content:center;margin-top:1px}
-  .pin-list-item .pli-body{flex:1;min-width:0}
+  .pin-list-item .pli-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
   .pin-list-item .pli-title{font-size:14px;font-weight:600}
-  .pin-list-item .pli-sub{font-size:13px;color:var(--ink);margin-top:4px;
+  .pin-list-item .pli-sub{font-size:13px;color:var(--ink);margin-top:0;
     white-space:pre-wrap;word-break:break-word;line-height:1.4}
   .pin-list-item .pli-sub.empty{color:var(--muted);font-size:12px}
   .pin-list-empty{padding:30px 10px;text-align:center;color:var(--muted);font-size:13px}
