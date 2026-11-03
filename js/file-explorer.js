@@ -1477,7 +1477,8 @@
       });
       actions.appendChild(open);
 
-      // The person-arranged copy, from the list, without walking in first.
+      // Bring the Cabinet job onto this device as a working Customer File.
+      // Same materialization as File Cabinet Check Out — not a ZIP to Safari.
       if (row && row.id) {
         const take = document.createElement('button');
         take.type = 'button';
@@ -2956,18 +2957,68 @@
 
     let listDownloadBusy = false;
 
-    /** Download job, from a row in the list. One copy is packed at a time. */
+    /**
+     * Download job, from a row in the list.
+     *
+     * Tim (Nov 3, 2026): this brings the Customer File into Toolbox on this
+     * device. The cloud copy stays. It must not build a ZIP or hand the job
+     * to Safari/Files. Reuses Check Out materialization so authority, media
+     * integrity, progress, and lease cleanup stay one path.
+     *
+     * The person-arranged ZIP remains available inside a job (Download job
+     * copy) and under Technical details (raw server copy).
+     */
     function downloadJobFromList(row, button) {
       if (listDownloadBusy) {
-        showNotice('Another job copy is still being packed.');
+        showNotice('Another job is still being brought onto this device.');
         return;
       }
+      const id = row && row.id;
+      if (!id) return;
+      const name = (row.displayName || row.propertyAddress || 'Customer File').trim() || 'Customer File';
+      const sync = window.ToolboxSync || {};
+      if (typeof sync.checkOutCustomerFile !== 'function') {
+        showNotice('Download to this device is unavailable.');
+        return;
+      }
+
+      // Held elsewhere: explain. Take Over stays a separate confirmed action.
+      if (heldByAnotherDevice(row)) {
+        const who = (row.checkout && row.checkout.email) ? row.checkout.email : 'another device';
+        showNotice(name + ' is checked out by ' + who +
+          '. Download job cannot bring it onto this device while that lease is held. ' +
+          'Use Take Over only if that device cannot Check In.');
+        return;
+      }
+
+      const previous = button.textContent;
       listDownloadBusy = true;
-      jobName = row.displayName || row.propertyAddress || '';
-      jobAddress = row.propertyAddress || '';
-      jobFieldDate = row.fieldWorkDate || '';
-      downloadArchive(row.id, button, showNotice, function () {
+      button.disabled = true;
+      button.textContent = 'Downloading…';
+      const stopProgress = typeof sync.onSyncProgress === 'function'
+        ? sync.onSyncProgress(function (info) {
+            if (!info || !info.total) return;
+            button.textContent = (info.label || 'Downloading') + ' ' + info.done + ' of ' + info.total;
+          })
+        : function () {};
+
+      sync.checkOutCustomerFile(id).then(function (result) {
+        stopProgress();
         listDownloadBusy = false;
+        const leftBehind = typeof sync.describeMissingMedia === 'function'
+          ? sync.describeMissingMedia(result && result.missingMedia)
+          : '';
+        const notice = name + ' is on this device.' + (leftBehind ? ' ' + leftBehind : '');
+        if (window.ToolboxApp && typeof window.ToolboxApp.setCustomerFilesNotice === 'function') {
+          window.ToolboxApp.setCustomerFilesNotice(notice);
+        }
+        window.location.hash = '#/';
+      }).catch(function (err) {
+        stopProgress();
+        listDownloadBusy = false;
+        button.disabled = false;
+        button.textContent = previous;
+        showNotice((err && err.message) || 'Could not bring that Customer File onto this device.');
       });
     }
 

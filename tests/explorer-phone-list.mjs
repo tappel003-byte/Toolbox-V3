@@ -193,47 +193,54 @@ try {
   check('search by town narrows the grouped list', searched.first.some((t) => t.indexOf('Marcus Yazzie') !== -1) &&
     !searched.first.some((t) => t.indexOf('Rhonda') !== -1), JSON.stringify(searched.first));
 
-  // Download job from the row: the arranged copy, named for the job, built
-  // through the read-only explore routes alone.
+  // Download job from the row: bring onto this device via Check Out, not a ZIP.
   const download = await page.evaluate(async () => {
-    window.__log.length = 0;
+    window.__picked.length = 0;
+    window.__checkoutCalls = [];
+    window.ToolboxSync.checkOutCustomerFile = async function (id) {
+      window.__checkoutCalls.push(id);
+      if (window.ToolboxSync.emitProgressForTest) {
+        window.ToolboxSync.emitProgressForTest({ label: 'Distress photographs', done: 1, total: 2 });
+      }
+      return { ok: true, id: id, missingMedia: [] };
+    };
+    const notices = [];
+    window.ToolboxApp.setCustomerFilesNotice = function (message) {
+      notices.push(String(message || ''));
+    };
     const row = document.querySelector('.explorer-row[data-id="job-yazzie"]');
     const button = [...row.querySelectorAll('button')].find((b) => b.textContent === 'Download job');
     button.click();
-    for (let i = 0; i < 200; i += 1) {
-      if (window.__picked.length && button.textContent === 'Download job' && !button.disabled) break;
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    const entry = window.__picked[0];
-    const blob = entry ? new Blob(entry.chunks) : null;
-    let names = [];
-    if (blob && blob.size) {
-      const zip = await window.JSZip.loadAsync(blob);
-      names = Object.keys(zip.files);
+    for (let i = 0; i < 100; i += 1) {
+      if (window.location.hash === '#/' || window.location.hash === '') break;
+      await new Promise((r) => setTimeout(r, 20));
     }
     return {
-      name: entry && entry.name,
-      size: blob ? blob.size : 0,
-      names,
-      log: window.__log.slice(),
+      calls: window.__checkoutCalls.slice(),
+      picked: window.__picked.length,
       hash: window.location.hash,
-      notice: document.getElementById('explorer-notice').textContent,
+      notices,
     };
   });
-  check('Download job on the row saves a ZIP named for the job',
-    /^Marcus Yazzie - 812 Hilltop Ave.*\(2026-10-02\)\.zip$/.test(download.name || '') && download.size > 0,
-    JSON.stringify({ name: download.name, size: download.size }));
-  check('the copy holds the job\'s photograph', download.names.some((n) => /Photographs\//.test(n)), JSON.stringify(download.names));
-  check('the row download stays on the list', download.hash === '#/explore');
-  // Reading a photograph's pin and room goes through exploreFetchObject,
-  // whose fallback to the component route predates this change; what matters
-  // here is that a download from the list writes nothing anywhere.
-  check('the row download only reads', download.log.length > 0 &&
-    download.log.every((p) => p.indexOf('GET ') === 0), JSON.stringify(download.log));
+  check('Download job on the row checks the job out onto this device',
+    download.calls.length === 1 && download.calls[0] === 'job-yazzie',
+    JSON.stringify(download.calls));
+  check('Download job does not open a ZIP save picker', download.picked === 0, String(download.picked));
+  check('Download job returns to Customer Files',
+    download.hash === '#/' || download.hash === '', download.hash);
+  check('Download job leaves a Customer Files notice',
+    download.notices.some((n) => /Marcus Yazzie is on this device/.test(n)),
+    JSON.stringify(download.notices));
+
+  // Download job left Explorer for Customer Files — reopen for layout checks.
+  await openExplorer(page);
 
   // Desktop is unchanged: the tree files the jobs, the list does not repeat it.
   await page.setViewport({ width: 1280, height: 800, isMobile: false, hasTouch: false });
-  await page.waitForFunction(() => !document.getElementById('explorer-tree').hidden);
+  await page.waitForFunction(() => {
+    const tree = document.getElementById('explorer-tree');
+    return tree && !tree.hidden;
+  });
   const desktop = await page.evaluate(() => ({
     years: document.querySelectorAll('#explorer-list .explorer-year').length,
     rows: document.querySelectorAll('.explorer-row[data-id]').length,

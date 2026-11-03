@@ -3147,6 +3147,11 @@
   });
 
   // Shared helpers for other product-area modules (Customer File plans).
+  /** Pending notice for the Customer Files screen (e.g. Explorer Download job). */
+  function setCustomerFilesNotice(message) {
+    cabinetNotice = String(message || '');
+  }
+
   window.ToolboxApp = {
     confirmAction: confirmAction,
     registerActiveFlush: registerActiveFlush,
@@ -3154,6 +3159,7 @@
     hasInvestigationData: hasInvestigationData,
     isEmptyCustomerFileStub: isEmptyCustomerFileStub,
     customerFileLocationLabel: customerFileLocationLabel,
+    setCustomerFilesNotice: setCustomerFilesNotice,
     customerIdentity: {
       displayName: displayName,
       displayAddress: displayAddress,
