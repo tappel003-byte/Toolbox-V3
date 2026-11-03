@@ -4676,34 +4676,23 @@
       return wrap;
     }
 
+    /**
+     * Multi-view only: compact selected-view identity beneath the Floor Survey
+     * heading and above Sheet Layout|Topo. Single-view sheets omit this.
+     * Legend / H/L/Δ visibility lives in Accessories (and Contours → Display
+     * Legend); setFloorViewFor keeps views[].showLegend / showPill in lockstep.
+     */
     function buildFloorTopoIdentity(page) {
-      var wrap = document.createDocumentFragment();
       var viewsNow = floorViewsForPage(page);
       var activeView = floorViewSpec(page, floorSlot(page));
+      if (!activeView || viewsNow.length <= 1) return null;
       var srcName = floorSourceLabel(activeView, page);
       var lead = document.createElement('p');
       lead.className = 'rb-panel__lead';
       lead.setAttribute('data-rb-floor-topo-lead', '1');
-      if (!activeView) {
-        lead.textContent = 'No topo view on this sheet.';
-      } else if (viewsNow.length > 1) {
-        lead.textContent = 'Selected: View ' + (floorSlot(page) + 1) + ' of ' + viewsNow.length
-          + (srcName ? (' — ' + srcName) : '')
-          + '. Contours / Readings / Accessories apply to it.';
-      } else {
-        lead.textContent = (srcName ? (srcName + ' — ') : '')
-          + 'Contours / Readings / Accessories for this view.';
-      }
-      wrap.appendChild(lead);
-      if (viewsNow.length > 1 && activeView) {
-        wrap.appendChild(railButton(
-          activeView.showLegend ? 'Hide legend' : 'Show legend',
-          'quiet', 'data-rb-floor-view-chrome', activeView.showLegend ? 'legend-off' : 'legend-on'));
-        wrap.appendChild(railButton(
-          activeView.showPill ? 'Hide H/L/Δ' : 'Show H/L/Δ',
-          'quiet', 'data-rb-floor-view-chrome', activeView.showPill ? 'pill-off' : 'pill-on'));
-      }
-      return wrap;
+      lead.textContent = 'View ' + (floorSlot(page) + 1) + ' of ' + viewsNow.length
+        + (srcName ? (' — ' + srcName) : '');
+      return lead;
     }
 
     function syncRail(page) {
@@ -4848,10 +4837,6 @@
         return;
       }
 
-      // GPT-036: Sheet Layout | Topo peer tabs — one group in the same-width
-      // sidebar. Switching tabs changes tools only.
-      railTopEl.appendChild(buildFloorTaskTabs());
-
       var api = window.ToolboxFloorSurvey;
       var meta = page.meta || {};
       var activeSpec = floorViewSpec(page, floorSlot(page));
@@ -4860,6 +4845,15 @@
       var ctrlArea = ctrlScope === 'all' ? null : ((activeSpec && activeSpec.areaId) || meta.areaId || null);
       var key = [page.id, ctrlCanvas, ctrlArea || '', ctrlScope,
         floorSlot(page), activeSpec && activeSpec.id].join('|');
+
+      // Multi-view identity sits under "Floor Survey" and above grandparents.
+      // Nothing else may interrupt Grandparents → Parents → Siblings.
+      var topoIdentity = buildFloorTopoIdentity(page);
+      if (topoIdentity) railTopEl.appendChild(topoIdentity);
+
+      // GPT-036: Sheet Layout | Topo peer tabs — one group in the same-width
+      // sidebar. Switching tabs changes tools only.
+      railTopEl.appendChild(buildFloorTaskTabs());
 
       if (floorTaskTab === 'topo' && ctrlCanvas) {
         railTopEl.appendChild(buildFloorTopoSubtabs());
@@ -4872,11 +4866,10 @@
           railBodyEl.appendChild(buildFloorLayoutBody(page));
         }
       } else if (railBodyEl) {
-        // Rebuild identity + chrome; keep the mounted Topo host when the view
-        // key is unchanged so settings state is not torn down on every sync.
+        // Keep the mounted Topo host when the view key is unchanged so
+        // settings state is not torn down on every sync.
         var keepHost = (railControls.el && railControls.key === key) ? railControls.el : null;
         railBodyEl.textContent = '';
-        railBodyEl.appendChild(buildFloorTopoIdentity(page));
         if (!api || typeof api.mount !== 'function' || !ctrlCanvas) {
           releaseRailControls();
           var empty = document.createElement('p');
