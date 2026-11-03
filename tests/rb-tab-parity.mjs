@@ -135,7 +135,37 @@ const structure = await page.evaluate(() => {
       const bg = getComputedStyle(el).backgroundColor;
       return bg === 'rgb(197, 216, 228)' || bg === 'rgb(179, 205, 220)'; // #c5d8e4 / #b3cddc
     });
-  return { grandparents, parents, siblings, overlap, gap, blue };
+  const bar = document.querySelector('.rb-ws__task-tabs');
+  const activeGp = document.querySelector('.rb-ws__task-tab.is-active');
+  const idleGp = [...document.querySelectorAll('.rb-ws__task-tab')]
+    .find((el) => !el.classList.contains('is-active'));
+  const barCs = bar ? getComputedStyle(bar) : null;
+  const activeCs = activeGp ? getComputedStyle(activeGp) : null;
+  const idleCs = idleGp ? getComputedStyle(idleGp) : null;
+  const after = activeGp ? getComputedStyle(activeGp, '::after') : null;
+  return {
+    grandparents,
+    parents,
+    siblings,
+    overlap,
+    gap,
+    blue,
+    grandparentChrome: {
+      barBg: barCs?.backgroundColor || '',
+      barRadius: barCs ? parseFloat(barCs.borderTopLeftRadius) : null,
+      activeBg: activeCs?.backgroundColor || '',
+      activeColor: activeCs?.color || '',
+      activeWeight: activeCs?.fontWeight || '',
+      activeRadius: activeCs ? parseFloat(activeCs.borderTopLeftRadius) : null,
+      activeBorder: activeCs?.borderTopWidth || '',
+      activeMinH: activeCs ? parseFloat(activeCs.minHeight) : null,
+      idleColor: idleCs?.color || '',
+      idleBg: idleCs?.backgroundColor || '',
+      underlineH: after ? parseFloat(after.height) : null,
+      underlineBg: after?.backgroundColor || '',
+      rust: activeCs?.color === 'rgb(193, 74, 43)', // #c14a2b
+    },
+  };
 });
 
 check(
@@ -156,10 +186,28 @@ check(
 );
 check(
   'grandparents visibly separated from Contours|Readings (no overlap)',
-  !structure.overlap && structure.gap != null && structure.gap >= 8,
+  !structure.overlap && structure.gap != null && structure.gap >= 12,
   JSON.stringify({ gap: structure.gap, overlap: structure.overlap }),
 );
-check('no main blue palette on rail tabs', !structure.blue, JSON.stringify(structure));
+check('no main blue palette on rail tabs', !structure.blue, JSON.stringify({ blue: structure.blue }));
+const gp = structure.grandparentChrome || {};
+check(
+  'grandparents are one flat light-gray bar (no folder boxes / rust)',
+  gp.barBg === 'rgb(232, 236, 239)' // #e8ecef
+    && gp.barRadius === 0
+    && gp.activeBg === 'rgba(0, 0, 0, 0)'
+    && gp.activeRadius === 0
+    && gp.activeBorder === '0px'
+    && gp.activeColor === 'rgb(17, 24, 39)' // near-black #111827
+    && Number(gp.activeWeight) >= 700
+    && gp.idleColor === 'rgb(107, 114, 128)' // medium gray #6b7280
+    && gp.idleBg === 'rgba(0, 0, 0, 0)'
+    && gp.activeMinH >= 44
+    && gp.underlineH >= 2
+    && gp.underlineBg === 'rgb(17, 24, 39)'
+    && !gp.rust,
+  JSON.stringify(gp),
+);
 
 const parentStyles = await page.evaluate(() => {
   function sample(sel, active) {

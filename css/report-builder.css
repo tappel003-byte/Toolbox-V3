@@ -891,8 +891,9 @@ body.report-builder-open .canvas {
 
 /*
  * Rail tab hierarchy (Tim):
- *   Grandparents — Sheet Layout | Topo: distinct full-width gray/white header
- *                  (may differ from capture; not main’s blue band).
+ *   Grandparents — Sheet Layout | Topo: one continuous light-gray nav bar.
+ *                  Flat text + dark underline when selected. Not folder tabs,
+ *                  not rust, not blue. Clear space below before parents.
  *   Parents      — Contours | Readings: exact Floor Survey capture folder
  *                  tokens (TrialFolderTabs). Width may flex to the rail; do
  *                  not independently shrink type / height / pad / hit.
@@ -905,8 +906,8 @@ body.report-builder-open .canvas {
   background: #fff;
 }
 .rb-ws__top:has(.rb-ws__task-tabs) {
-  /* Clear break after grandparents — Contours|Readings are inset parents. */
-  gap: 12px;
+  /* Clear break after the grandparent bar — Contours|Readings stay inset. */
+  gap: 16px;
   padding-bottom: 8px;
   background: #fff;
 }
@@ -914,42 +915,43 @@ body.report-builder-open .canvas {
   padding-top: 8px;
   background: #fff;
 }
+/* One continuous light-gray bar — not individual folder buttons. */
 .rb-ws__task-tabs {
   display: flex;
-  align-items: flex-end;
-  gap: 3px;
+  align-items: stretch;
+  gap: 0;
   width: 100%;
   margin: 0;
   padding: 0;
   border: 0;
-  border-bottom: 1px solid var(--line, #dce1e4);
   border-radius: 0;
-  background: transparent;
+  background: #e8ecef;
+  box-shadow: none;
 }
 .rb-ws__task-tab {
   appearance: none;
   position: relative;
   flex: 1 1 50%;
   min-width: 0;
-  margin: 0 0 -1px;
-  border: 1px solid var(--line, #dce1e4);
-  border-bottom-color: var(--line, #dce1e4);
-  border-radius: 6px 6px 0 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
   box-shadow: none;
-  min-height: 36px;
-  padding: 6px 12px;
+  min-height: 44px;
+  padding: 10px 12px 12px;
   font: inherit;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 500;
   line-height: 1.2;
   white-space: nowrap;
   text-align: center;
-  color: var(--navy, #07283d);
-  background: #e5ebee;
+  color: #6b7280;
+  background: transparent;
   cursor: pointer;
 }
 .rb-ws__task-tab:hover:not(.is-active) {
-  background: #d9e4e9;
+  color: #4b5563;
+  background: transparent;
 }
 .rb-ws__task-tab:focus {
   outline: none;
@@ -960,14 +962,26 @@ body.report-builder-open .canvas {
 }
 .rb-ws__task-tab.is-active {
   z-index: 1;
-  background: #fff;
-  color: var(--navy, #07283d);
-  border-bottom-color: #fff;
+  background: transparent;
+  color: #111827;
+  font-weight: 700;
   box-shadow: none;
 }
-/* Sheet Layout stays gray/white; Topo active may carry rust as level cue. */
+/* Selected: dark underline on the continuous bar (not a separate button box). */
+.rb-ws__task-tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 3px;
+  background: #111827;
+  border-radius: 0;
+  pointer-events: none;
+}
+/* No rust (or any other) accent on Topo — same selected treatment as Layout. */
 .rb-ws__task-tab.is-active[data-rb-floor-task="topo"] {
-  color: #c14a2b;
+  color: #111827;
   font-weight: 700;
 }
 /*

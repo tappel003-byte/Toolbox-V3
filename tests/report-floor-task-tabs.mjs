@@ -166,7 +166,7 @@ check('Topo opens on Contours with Contours|Readings parents',
   contoursOn.panel === 'contours' && contoursOn.mode
     && contoursOn.labels === 'Contours|Readings'
     && contoursOn.active === 'contours' && !contoursOn.clipped
-    && contoursOn.gap != null && contoursOn.gap >= 8,
+    && contoursOn.gap != null && contoursOn.gap >= 12,
   JSON.stringify(contoursOn));
 await page.evaluate(() => document.querySelector('[data-rb-rail-tab="readings"]')?.click());
 await new Promise((r) => setTimeout(r, 400));
