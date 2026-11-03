@@ -102,7 +102,7 @@ await new Promise((r) => setTimeout(r, 2000));
 // Every piece of chrome, across every sheet in the deck -- not only the one
 // on show, because the flip chart walks through all of them.
 const CHROME = [
-  '[data-plan-resize]', '.rb-penlog__move', '.rb-penlog__resize',
+  '[data-plan-resize]', '.rb-penlog__resize',
   '.rb-floor-overview__remove', '.rb-cover-box__move', '.rb-cover-box__resize',
   '.rb-floor-box__resize', '.rb-floor-toolbar', '.rb-cover__contents-jump',
   '.rb-cover__overview-actions', '.rb-cover__overview-empty', '.rb-floor-empty',
