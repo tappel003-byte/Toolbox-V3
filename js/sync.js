@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  const COMPONENTS = ['customer', 'plans', 'distress', 'floor', 'diagnostics', 'report', 'trash'];
+  const COMPONENTS = ['customer', 'plans', 'distress', 'floor', 'diagnostics', 'report', 'repair', 'trash'];
   const SHELL_GUARD_COMPONENTS = { customer: true, plans: true, distress: true, floor: true };
   // Epoch sentinel: truthy so ensurePlanSetup will not backfill with "now".
   // .001Z avoids Date.parse(.000Z) === 0 colliding with missing-revision behavior.
@@ -539,6 +539,8 @@
         const report = record.reportBuilder || record.report;
         return iso(report && report.updatedAt);
       }
+      case 'repair':
+        return iso(record.planOfRepair && record.planOfRepair.updatedAt);
       case 'trash':
         return iso(record.trashUpdatedAt || record.deletedAt || '');
       default:
@@ -653,6 +655,7 @@
       floorUpdatedAt: componentRevision(record, 'floor'),
       diagnosticsUpdatedAt: componentRevision(record, 'diagnostics'),
       reportUpdatedAt: componentRevision(record, 'report'),
+      repairUpdatedAt: componentRevision(record, 'repair'),
       trashUpdatedAt: componentRevision(record, 'trash'),
       deletedAt: record.deletedAt || null,
       purgeAfter: record.purgeAfter || null,
@@ -805,6 +808,8 @@
         return record.diagnostics || null;
       case 'report':
         return record.reportBuilder || record.report || null;
+      case 'repair':
+        return record.planOfRepair || null;
       case 'trash':
         return {
           trashUpdatedAt: record.trashUpdatedAt || '',
@@ -837,6 +842,9 @@
         break;
       case 'report':
         record.reportBuilder = payload;
+        break;
+      case 'repair':
+        record.planOfRepair = payload;
         break;
       case 'trash':
         record.trashUpdatedAt = payload.trashUpdatedAt || record.trashUpdatedAt || '';
@@ -1946,6 +1954,7 @@
     floor: 'Floor Survey',
     diagnostics: 'Diagnostics',
     report: 'report pictures',
+    repair: 'Plan of Repair',
     trash: 'trash record',
   };
 
@@ -2142,6 +2151,7 @@
       case 'floor': return iso(index.floorUpdatedAt);
       case 'diagnostics': return iso(index.diagnosticsUpdatedAt);
       case 'report': return iso(index.reportUpdatedAt);
+      case 'repair': return iso(index.repairUpdatedAt);
       case 'trash': return iso(index.trashUpdatedAt);
       default: return '';
     }
@@ -2149,7 +2159,7 @@
 
   /**
    * LWW with narrow manufactured-shell guard for customer/plans/distress/floor.
-   * Trash/diagnostics/report stay pure clock comparison.
+   * Trash/diagnostics/report/repair stay pure clock comparison.
    */
   async function decideComponentAction(record, name, remote) {
     const localRev = componentRevision(record, name);
@@ -2228,7 +2238,7 @@
       let uploadBlocked = false;
       for (let i = 0; i < COMPONENTS.length; i++) {
         const name = COMPONENTS[i];
-        if ((name === 'diagnostics' || name === 'report') &&
+        if ((name === 'diagnostics' || name === 'report' || name === 'repair') &&
             !componentRevision(record, name) && !indexRev(remote, name)) {
           componentResults.push({ name: name, action: 'skip' });
           continue;
@@ -2254,8 +2264,8 @@
 
     for (let i = 0; i < COMPONENTS.length; i++) {
       const name = COMPONENTS[i];
-      // Stage A recognizes future diagnostics/report without inventing empty product data.
-      if ((name === 'diagnostics' || name === 'report') &&
+      // Stage A recognizes future diagnostics/report/repair without inventing empty product data.
+      if ((name === 'diagnostics' || name === 'report' || name === 'repair') &&
           !componentRevision(record, name) && !indexRev(remote, name)) {
         componentResults.push({ name: name, action: 'skip' });
         continue;
@@ -2697,6 +2707,7 @@
     floor: { purpose: 'floor', label: 'Floor Survey' },
     diagnostics: { purpose: 'diagnostics', label: 'Diagnostics' },
     report: { purpose: 'report', label: 'Report Builder' },
+    repair: { purpose: 'repair', label: 'Plan of Repair' },
     trash: { purpose: 'technical', label: 'Trash record' },
   };
 

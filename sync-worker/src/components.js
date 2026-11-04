@@ -56,6 +56,7 @@ const REVISION_IN_BODY = {
   floor: 'updatedAt',
   diagnostics: 'updatedAt',
   report: 'updatedAt',
+  repair: 'updatedAt',
   trash: 'trashUpdatedAt',
 };
 
@@ -203,6 +204,7 @@ export const SERVER_OWNED_REVISION_FIELDS = [
   'floorUpdatedAt',
   'diagnosticsUpdatedAt',
   'reportUpdatedAt',
+  'repairUpdatedAt',
   'trashUpdatedAt',
 ];
 

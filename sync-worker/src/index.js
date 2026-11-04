@@ -114,6 +114,7 @@ const COMPONENT_NAMES = {
   floor: true,
   diagnostics: true,
   report: true,
+  repair: true,
   trash: true,
 };
 
