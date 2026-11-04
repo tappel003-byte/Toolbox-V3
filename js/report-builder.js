@@ -7916,15 +7916,19 @@
     sheetEl.addEventListener('pointercancel', endLayoutDrag);
 
     /**
-     * Right-click in a writing area: Copy (when text is selected), Paste as
-     * formatted, Paste unformatted.
+     * Right-click in a writing area: Copy (when text is selected), Paste,
+     * Paste without formatting.
+     *
+     * Ordinary names: Paste is the formatted paste Ctrl/Cmd+V already does;
+     * Paste without formatting is the plain path. The two behaviours stay;
+     * only the labels match what people already know from Word / Docs.
      *
      * The report owns this menu because it already had to replace the system
      * one for formatted paste. That replacement used to leave Copy out, so a
      * highlighted phrase could not be copied from the menu even though
      * Ctrl/Cmd+C still worked. Copy writes the selection to the system
      * clipboard (plain + HTML) so it can land in another report field or
-     * another application. Paste options are unchanged.
+     * another application.
      *
      * Reading the clipboard for paste is something Chrome asks about the
      * first time. That prompt is the browser's, not ours; if it is refused,
@@ -7997,8 +8001,8 @@
       var failed = function () {
         pasteMenuSay('Toolbox was not allowed to write the clipboard. Ctrl+C copies the selection.');
       };
-      // Prefer both flavours so Paste as formatted inside the report, and
-      // paste into Word / Notes / a browser, all see what was copied.
+      // Prefer both flavours so Paste inside the report, and paste into
+      // Word / Notes / a browser, all see what was copied.
       if (typeof clip.write === 'function' && typeof window.ClipboardItem === 'function') {
         try {
           var parts = { 'text/plain': new Blob([payload.plain], { type: 'text/plain' }) };
@@ -8125,7 +8129,8 @@
         copySelectedTextToClipboard();
       });
       pasteMenu.appendChild(copyItem);
-      [['Paste as formatted', '1'], ['Paste unformatted', '0']].forEach(function (choice) {
+      // Paste = formatted (Ctrl/Cmd+V). Paste without formatting = plain.
+      [['Paste', '1'], ['Paste without formatting', '0']].forEach(function (choice) {
         var item = document.createElement('button');
         item.type = 'button';
         item.className = 'rb-stackmenu__item';
