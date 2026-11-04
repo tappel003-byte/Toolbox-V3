@@ -164,7 +164,7 @@ const before = await page.evaluate(() => {
     pinCount: pins.length,
     pinNums: pins.map((p) => p.text).join(','),
     overflow: getComputedStyle(plan).overflow,
-    handlesInEditor: sheet.querySelectorAll('.rb-penlog__move, .rb-penlog__resize').length,
+    handlesInEditor: sheet.querySelectorAll('.rb-penlog__resize').length,
   };
 });
 
@@ -218,20 +218,55 @@ const offPlan = await page.evaluate(() => {
 check('off-plan pin offset remains visible outside the fitted image',
   offPlan.outside === true && offPlan.visible === true, JSON.stringify(offPlan));
 
-async function dragPen(selector, dx, dy) {
-  // Hover/pick so handles display, then drag from the handle center.
-  const start = await page.evaluate((sel) => {
+async function dragPenBody(which, dx, dy) {
+  // Floor Survey rule: body click-drag moves the piece. Pick first, then
+  // drag from a quiet spot inside the box (not a pin, not a corner grip).
+  const start = await page.evaluate((id) => {
     const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
-    const box = sheet.querySelector(sel)?.closest('[data-rb-penlog-box]');
+    const box = sheet.querySelector(`[data-rb-penlog-box="${id}"]`);
     if (!box) return null;
     box.classList.add('is-picked');
     box.focus?.();
-    const g = sheet.querySelector(sel);
+    const r = box.getBoundingClientRect();
+    return { x: r.left + Math.min(48, r.width * 0.15), y: r.top + Math.min(48, r.height * 0.15) };
+  }, which);
+  if (!start) throw new Error('box missing: ' + which);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + dx, start.y + dy, { steps: 14 });
+  await page.mouse.up();
+  await new Promise((r) => setTimeout(r, 1600));
+}
+
+async function dragPenCorner(which, corner, dx, dy) {
+  // Pick via a real click so :focus-within also lights the brackets, then
+  // drag from the inward side of the corner handle (more reliable than the
+  // geometric centre when the bracket straddles the box edge).
+  const pick = await page.evaluate((id) => {
+    const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+    const box = sheet.querySelector(`[data-rb-penlog-box="${id}"]`);
+    if (!box) return null;
+    const r = box.getBoundingClientRect();
+    return { x: r.left + Math.min(48, r.width * 0.15), y: r.top + Math.min(48, r.height * 0.15) };
+  }, which);
+  if (!pick) throw new Error('box missing: ' + which);
+  await page.mouse.click(pick.x, pick.y);
+  await new Promise((r) => setTimeout(r, 250));
+  const start = await page.evaluate((id, c) => {
+    const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+    const box = sheet.querySelector(`[data-rb-penlog-box="${id}"]`);
+    const g = box && box.querySelector(`[data-rb-penlog-resize="${id}"][data-rb-penlog-corner="${c}"]`);
     if (!g) return null;
     const r = g.getBoundingClientRect();
-    return { x: r.x + r.width / 2, y: r.y + r.height / 2, shown: getComputedStyle(g).display };
-  }, selector);
-  if (!start || start.shown === 'none') throw new Error('handle not shown: ' + selector);
+    const inset = {
+      nw: { x: r.right - 4, y: r.bottom - 4 },
+      ne: { x: r.left + 4, y: r.bottom - 4 },
+      sw: { x: r.right - 4, y: r.top + 4 },
+      se: { x: r.left + 4, y: r.top + 4 },
+    }[c] || { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    return { x: inset.x, y: inset.y, shown: getComputedStyle(g).display };
+  }, which, corner);
+  if (!start || start.shown === 'none') throw new Error('corner not shown: ' + which + '/' + corner);
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   await page.mouse.move(start.x + dx, start.y + dy, { steps: 14 });
@@ -260,21 +295,90 @@ function boxes() {
 }
 
 const start = await boxes();
-await dragPen('[data-rb-penlog-move="plan"]', 70, 50);
+await dragPenBody('plan', 70, 50);
 const movedPlan = await boxes();
-check('moving the plan leaves the notes table put',
+check('body-dragging the plan leaves the notes table put',
   movedPlan.plan.x > start.plan.x + 0.25 && movedPlan.plan.y > start.plan.y + 0.2 &&
   Math.abs(movedPlan.schedule.x - start.schedule.x) < 0.15,
   JSON.stringify({ start, movedPlan }));
 
-await dragPen('[data-rb-penlog-resize="schedule"]', 80, -50);
+await dragPenCorner('schedule', 'se', 80, -50);
 const sizedNotes = await boxes();
-check('resizing the notes leaves the plan put',
+check('corner-resizing the notes leaves the plan put',
   sizedNotes.schedule.w > movedPlan.schedule.w + 0.4 &&
   sizedNotes.schedule.h < movedPlan.schedule.h - 0.25 &&
   Math.abs(sizedNotes.plan.x - movedPlan.plan.x) < 0.15 &&
   Math.abs(sizedNotes.plan.w - movedPlan.plan.w) < 0.2,
   JSON.stringify({ movedPlan, sizedNotes }));
+
+// Bring plan in front of notes, then send it back — Floor Survey stack menu.
+const zBefore = await page.evaluate(() => {
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+  const plan = sheet.querySelector('[data-rb-penlog-box="plan"]');
+  const schedule = sheet.querySelector('[data-rb-penlog-box="schedule"]');
+  return {
+    planZ: Number(getComputedStyle(plan).zIndex) || 0,
+    scheduleZ: Number(getComputedStyle(schedule).zIndex) || 0,
+  };
+});
+await page.evaluate(() => {
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+  const plan = sheet.querySelector('[data-rb-penlog-box="plan"]');
+  const r = plan.getBoundingClientRect();
+  plan.dispatchEvent(new MouseEvent('contextmenu', {
+    bubbles: true, cancelable: true,
+    clientX: r.left + 40, clientY: r.top + 40,
+  }));
+});
+await new Promise((r) => setTimeout(r, 200));
+await page.evaluate(() => {
+  const btn = [...document.querySelectorAll('.rb-stackmenu__item')]
+    .find((el) => /Bring to front/i.test(el.textContent || ''));
+  btn?.click();
+});
+await new Promise((r) => setTimeout(r, 1200));
+const zFront = await page.evaluate(() => {
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+  const plan = sheet.querySelector('[data-rb-penlog-box="plan"]');
+  const schedule = sheet.querySelector('[data-rb-penlog-box="schedule"]');
+  return {
+    planZ: Number(getComputedStyle(plan).zIndex) || 0,
+    scheduleZ: Number(getComputedStyle(schedule).zIndex) || 0,
+  };
+});
+check('Bring to front stacks the plan above the notes',
+  zFront.planZ > zFront.scheduleZ && zFront.planZ > zBefore.planZ,
+  JSON.stringify({ zBefore, zFront }));
+
+await page.evaluate(() => {
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+  const plan = sheet.querySelector('[data-rb-penlog-box="plan"]');
+  const r = plan.getBoundingClientRect();
+  plan.dispatchEvent(new MouseEvent('contextmenu', {
+    bubbles: true, cancelable: true,
+    clientX: r.left + 40, clientY: r.top + 40,
+  }));
+});
+await new Promise((r) => setTimeout(r, 200));
+await page.evaluate(() => {
+  const btn = [...document.querySelectorAll('.rb-stackmenu__item')]
+    .find((el) => /Send to back/i.test(el.textContent || ''));
+  btn?.click();
+});
+await new Promise((r) => setTimeout(r, 1200));
+const zBack = await page.evaluate(() => {
+  const sheet = document.querySelector('.rb-sheet:not(.rb-sheet--thumb)');
+  const plan = sheet.querySelector('[data-rb-penlog-box="plan"]');
+  const schedule = sheet.querySelector('[data-rb-penlog-box="schedule"]');
+  return {
+    planZ: Number(getComputedStyle(plan).zIndex) || 0,
+    scheduleZ: Number(getComputedStyle(schedule).zIndex) || 0,
+    storedZ: null,
+  };
+});
+check('Send to back stacks the plan behind the notes',
+  zBack.planZ < zBack.scheduleZ,
+  JSON.stringify({ zFront, zBack }));
 
 await page.waitForFunction(
   () => /^Saved/.test(document.querySelector('#rb-save-status')?.textContent || ''),
@@ -337,7 +441,7 @@ const present = await page.evaluate(async () => {
   if (!sheet) return { presenting: true, noPenLog: true };
   const planEl = sheet.querySelector('.rb-penlog__plan');
   const scheduleEl = sheet.querySelector('.rb-penlog__schedule');
-  const handles = sheet.querySelectorAll('.rb-penlog__move, .rb-penlog__resize').length;
+  const handles = sheet.querySelectorAll('.rb-penlog__resize').length;
   // Percent styles are the saved geometry (stable under Present scaling).
   function pct(el, prop) {
     const v = el && el.style && el.style[prop];
@@ -417,7 +521,8 @@ check('existing saved tall penLogLayout is not auto-rewritten',
 
 await writeFile(`${OUT}/rb-picloc-layout-results.json`, JSON.stringify({
   dumpedAt: new Date().toISOString(),
-  unit, before, offPlan, start, movedPlan, sizedNotes, stored, reopened, present, pdfBytes, narrow, compat, results,
+  unit, before, offPlan, start, movedPlan, sizedNotes, zBefore, zFront, zBack,
+  stored, reopened, present, pdfBytes, narrow, compat, results,
 }, null, 2));
 
 console.log('\nWrote', `${OUT}/rb-picloc-layout-results.json`);

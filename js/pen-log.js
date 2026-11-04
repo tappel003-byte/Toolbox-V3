@@ -39,15 +39,24 @@
   // Tim: "Everything here needs to be movable. I should be able to move the
   // floor plan if I want, and I want to be able to move the notes if I want."
   var LAYOUT = {
-    plan: { x: 0.4, y: 0.45, w: 8.1, h: 10.1 },
-    schedule: { x: 8.8, y: 0.45, w: 5.5, h: 10.1 },
+    plan: { x: 0.4, y: 0.45, w: 8.1, h: 10.1, z: 1 },
+    schedule: { x: 8.8, y: 0.45, w: 5.5, h: 10.1, z: 2 },
   };
 
   var SHEET_W = 17;
   var SHEET_H = 11;
+  // Same stack range Floor Survey uses. Right-click Bring to front /
+  // Send to back writes here; paint reads it as z-index on each piece.
+  var MIN_STACK = -40;
+  var MAX_STACK = 40;
 
   function defaultLayout() {
     return JSON.parse(JSON.stringify(LAYOUT));
+  }
+
+  function clampStack(raw, fallback) {
+    var n = typeof raw === 'number' && isFinite(raw) ? raw : fallback;
+    return Math.max(MIN_STACK, Math.min(MAX_STACK, Math.round(n)));
   }
 
   function clampBox(raw, fallback) {
@@ -64,6 +73,7 @@
       y: num(src.y, fb.y, 0, SHEET_H - 1.5),
       w: num(src.w, fb.w, 1.5, SHEET_W),
       h: num(src.h, fb.h, 1.5, SHEET_H),
+      z: clampStack(src.z, fb.z),
     };
     if (box.x + box.w > SHEET_W) box.w = Math.round((SHEET_W - box.x) * 1000) / 1000;
     if (box.y + box.h > SHEET_H) box.h = Math.round((SHEET_H - box.y) * 1000) / 1000;
@@ -245,6 +255,9 @@
     el.style.top = percentY(box.y) + '%';
     if (box.w) el.style.width = percentX(box.w) + '%';
     if (box.h) el.style.height = percentY(box.h) + '%';
+    if (box && typeof box.z === 'number' && isFinite(box.z)) {
+      el.style.zIndex = String(box.z);
+    }
   }
 
   /**
@@ -687,23 +700,24 @@
     place(schedule, placement.schedule);
     schedule.appendChild(buildSchedule(pins, model, false, placement.schedule));
 
-    // Each piece is moved from its top-left corner and sized from its
-    // bottom-right, both waiting until it is pointed at -- the rule every
-    // other placed thing on a sheet follows. Present / Print decks pass
-    // locked so handles never enter the deliverable DOM.
+    // Floor Survey's rule: click-drag the body to move, corner brackets to
+    // size, right-click for Bring to front / Send to back. Present / Print
+    // decks pass locked so handles never enter the deliverable DOM.
     if (!model.locked) {
       [frame, schedule].forEach(function (box) {
         var which = box.getAttribute('data-rb-penlog-box');
-        var move = document.createElement('span');
-        move.className = 'rb-penlog__move';
-        move.setAttribute('data-rb-penlog-move', which);
-        move.setAttribute('title', 'Drag to move');
-        box.appendChild(move);
-        var grip = document.createElement('span');
-        grip.className = 'rb-penlog__resize';
-        grip.setAttribute('data-rb-penlog-resize', which);
-        grip.setAttribute('title', 'Drag to size');
-        box.appendChild(grip);
+        box.setAttribute('tabindex', '0');
+        box.setAttribute('role', 'button');
+        box.setAttribute('aria-label', which === 'plan' ? 'Move plan' : 'Move notes');
+        ['nw', 'ne', 'sw', 'se'].forEach(function (corner) {
+          var grip = document.createElement('span');
+          grip.className = 'rb-penlog__resize rb-penlog__resize--' + corner;
+          grip.setAttribute('data-rb-penlog-resize', which);
+          grip.setAttribute('data-rb-penlog-corner', corner);
+          grip.setAttribute('aria-hidden', 'true');
+          grip.setAttribute('title', 'Drag to size');
+          box.appendChild(grip);
+        });
       });
     }
 
@@ -798,6 +812,8 @@
     isDefaultLayout: isDefaultLayout,
     tightPlanBox: tightPlanBox,
     resolveLayout: resolveLayout,
+    MIN_STACK: MIN_STACK,
+    MAX_STACK: MAX_STACK,
   };
 
   if (typeof window !== 'undefined') window.ToolboxPenLog = api;

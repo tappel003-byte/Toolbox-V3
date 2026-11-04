@@ -569,7 +569,7 @@ function penBoxes() {
         h: +((r.height / sr.height) * 11).toFixed(2),
       };
     };
-    const grips = [...sheet.querySelectorAll('[data-rb-penlog-move], [data-rb-penlog-resize]')];
+    const grips = [...sheet.querySelectorAll('[data-rb-penlog-resize]')];
     return {
       plan: read('plan'),
       schedule: read('schedule'),
@@ -578,31 +578,48 @@ function penBoxes() {
     };
   });
 }
-async function dragPen(selector, dx, dy) {
-  // Pick the piece first, the way the investigator does. The handles used to
-  // come out on hover; they come out when the box is highlighted now, and at
-  // no other time. Tim: the pulls "only show up when the box is highlighted,
-  // period."
-  const box = await page.evaluate((sel) => {
-    const g = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) ' + sel);
-    // Just inside the corner the handle sits on, rather than the middle of
-    // the piece: the plan's own drawing fills the centre.
-    const r = g.closest('[data-rb-penlog-box]').getBoundingClientRect();
-    const corner = /resize/.test(sel);
-    return corner
-      ? { x: r.right - 6, y: r.bottom - 6 }
-      : { x: r.left + 6, y: r.top + 6 };
-  }, selector);
+async function dragPenBody(which, dx, dy) {
+  // Floor Survey rule: body click-drag moves. Pick first, then drag from a
+  // quiet interior spot (not a pin, not a corner bracket).
+  const box = await page.evaluate((id) => {
+    const el = document.querySelector(`.rb-sheet:not(.rb-sheet--thumb) [data-rb-penlog-box="${id}"]`);
+    const r = el.getBoundingClientRect();
+    return { x: r.left + Math.min(48, r.width * 0.15), y: r.top + Math.min(48, r.height * 0.15) };
+  }, which);
   await page.mouse.move(box.x, box.y);
   await page.mouse.down();
   await page.mouse.up();
   await new Promise((r) => setTimeout(r, 300));
-  const at = await page.evaluate((sel) => {
-    const g = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) ' + sel);
+  await page.mouse.move(box.x, box.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + dx, box.y + dy, { steps: 12 });
+  await page.mouse.up();
+  await new Promise((r) => setTimeout(r, 1500));
+}
+async function dragPenCorner(which, corner, dx, dy) {
+  // Pick the piece first. Tim: the pulls "only show up when the box is
+  // highlighted, period." Click alone must not rebuild the sheet.
+  const pick = await page.evaluate((id) => {
+    const el = document.querySelector(`.rb-sheet:not(.rb-sheet--thumb) [data-rb-penlog-box="${id}"]`);
+    const r = el.getBoundingClientRect();
+    return { x: r.left + Math.min(48, r.width * 0.15), y: r.top + Math.min(48, r.height * 0.15) };
+  }, which);
+  await page.mouse.click(pick.x, pick.y);
+  await new Promise((r) => setTimeout(r, 300));
+  const at = await page.evaluate((id, c) => {
+    const g = document.querySelector(
+      `.rb-sheet:not(.rb-sheet--thumb) [data-rb-penlog-resize="${id}"][data-rb-penlog-corner="${c}"]`);
+    if (!g) return null;
     const r = g.getBoundingClientRect();
-    return { x: r.x + r.width / 2, y: r.y + r.height / 2, shown: getComputedStyle(g).display };
-  }, selector);
-  if (at.shown === 'none') throw new Error('handle did not appear once picked: ' + selector);
+    const inset = {
+      nw: { x: r.right - 4, y: r.bottom - 4 },
+      ne: { x: r.left + 4, y: r.bottom - 4 },
+      sw: { x: r.right - 4, y: r.top + 4 },
+      se: { x: r.left + 4, y: r.top + 4 },
+    }[c] || { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    return { x: inset.x, y: inset.y, shown: getComputedStyle(g).display };
+  }, which, corner);
+  if (!at || at.shown === 'none') throw new Error('handle did not appear once picked: ' + which + '/' + corner);
   await page.mouse.move(at.x, at.y);
   await page.mouse.down();
   await page.mouse.move(at.x + dx, at.y + dy, { steps: 12 });
@@ -611,17 +628,17 @@ async function dragPen(selector, dx, dy) {
 }
 
 const penStart = await penBoxes();
-check('both pieces carry handles, and show none until pointed at',
-  penStart.grips === 4 && penStart.showing === 0, JSON.stringify(penStart));
+check('both pieces carry corner handles, and show none until pointed at',
+  penStart.grips === 8 && penStart.showing === 0, JSON.stringify(penStart));
 
-await dragPen('[data-rb-penlog-move="plan"]', 60, 40);
+await dragPenBody('plan', 60, 40);
 const penMoved = await penBoxes();
 check('the floor plan goes where it is dragged',
   penMoved.plan.x > penStart.plan.x + 0.3 && penMoved.plan.y > penStart.plan.y + 0.2 &&
   Math.abs(penMoved.schedule.x - penStart.schedule.x) < 0.1,
   JSON.stringify({ penStart: penStart.plan, penMoved: penMoved.plan }));
 
-await dragPen('[data-rb-penlog-resize="schedule"]', 90, -60);
+await dragPenCorner('schedule', 'se', 90, -60);
 const penSized = await penBoxes();
 check('the notes take the size they are given, and the plan stays put',
   penSized.schedule.w > penMoved.schedule.w + 0.5 &&

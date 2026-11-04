@@ -7397,15 +7397,24 @@
       var editableTarget = event.target.closest('[data-rb-rich]');
       if (editableTarget && editableTarget.getAttribute('contenteditable') === 'true') return;
       var current = activePage();
-      var penGrip = event.target.closest('[data-rb-penlog-move], [data-rb-penlog-resize]');
-      if (penGrip) {
+      // Picture Locations: Floor Survey's rule — body drag moves, corner
+      // brackets resize. Pins keep their own offset drag; notes/photos keep
+      // theirs (button/textarea already returned above).
+      var penResize = event.target.closest('[data-rb-penlog-resize]');
+      var penBox = event.target.closest('[data-rb-penlog-box]');
+      if (penBox && !event.target.closest('.rb-penlog__pin')) {
+        if (!penResize && root.querySelector('.rb-stage--zoomed')) return;
         var penStage = stageRect('.rb-penlog');
         if (!penStage || penStage.width < 8 || penStage.height < 8) return;
         event.preventDefault();
-        var penResize = !!event.target.closest('[data-rb-penlog-resize]');
+        event.stopPropagation();
+        var penWhich = penResize
+          ? penResize.getAttribute('data-rb-penlog-resize')
+          : penBox.getAttribute('data-rb-penlog-box');
         penDrag = {
-          which: penGrip.getAttribute(penResize ? 'data-rb-penlog-resize' : 'data-rb-penlog-move'),
-          resize: penResize,
+          which: penWhich,
+          resize: !!penResize,
+          corner: penResize ? (penResize.getAttribute('data-rb-penlog-corner') || 'se') : null,
           startX: event.clientX,
           startY: event.clientY,
           // Inches, because the pen log's own model is in inches on a
@@ -7413,8 +7422,10 @@
           perInX: penStage.width / 17,
           perInY: penStage.height / 11,
           boxes: penLogBoxes(),
+          moved: false,
         };
-        try { penGrip.setPointerCapture(event.pointerId); } catch (_) {}
+        var penGrabbed = penResize || penBox;
+        try { penGrabbed.setPointerCapture(event.pointerId); } catch (_) {}
         return;
       }
       var discGrip = event.target.closest('[data-rb-disc-move], [data-rb-disc-resize]');
@@ -7561,16 +7572,26 @@
       if (penDrag) {
         var pdx = (event.clientX - penDrag.startX) / penDrag.perInX;
         var pdy = (event.clientY - penDrag.startY) / penDrag.perInY;
+        if (Math.abs(pdx) < 0.001 && Math.abs(pdy) < 0.001) return;
+        penDrag.moved = true;
         var penApi2 = window.ToolboxPenLog;
         var nextPen = JSON.parse(JSON.stringify(penDrag.boxes));
         var moving = nextPen[penDrag.which];
-        if (!moving) return;
+        var originPen = penDrag.boxes[penDrag.which];
+        if (!moving || !originPen) return;
         if (penDrag.resize) {
-          moving.w += pdx;
-          moving.h += pdy;
+          // Held corner moves; the opposite stays put — same as Floor Survey.
+          var penWest = penDrag.corner === 'nw' || penDrag.corner === 'sw';
+          var penNorth = penDrag.corner === 'nw' || penDrag.corner === 'ne';
+          var penNextW = Math.max(1.5, penWest ? originPen.w - pdx : originPen.w + pdx);
+          var penNextH = Math.max(1.5, penNorth ? originPen.h - pdy : originPen.h + pdy);
+          moving.w = penNextW;
+          moving.h = penNextH;
+          moving.x = penWest ? originPen.x + (originPen.w - penNextW) : originPen.x;
+          moving.y = penNorth ? originPen.y + (originPen.h - penNextH) : originPen.y;
         } else {
-          moving.x += pdx;
-          moving.y += pdy;
+          moving.x = originPen.x + pdx;
+          moving.y = originPen.y + pdy;
         }
         penLogBoxLayout = penApi2 && penApi2.normalizeLayout
           ? penApi2.normalizeLayout(nextPen) : nextPen;
@@ -7584,6 +7605,7 @@
           livePen.style.top = ((b.y / 11) * 100) + '%';
           livePen.style.width = ((b.w / 17) * 100) + '%';
           livePen.style.height = ((b.h / 11) * 100) + '%';
+          if (typeof b.z === 'number' && isFinite(b.z)) livePen.style.zIndex = String(b.z);
           // Plan box changed: refit the image + pins inside it so blank bands
           // do not linger mid-drag and pin registration stays live.
           if (penDrag.which === 'plan' && window.ToolboxPenLog &&
@@ -7832,12 +7854,19 @@
       clearFloorHold();
       if (penDrag) {
         var wasResize = penDrag.resize;
+        var didMove = !!penDrag.moved;
         penDrag = null;
+        // Click alone selects the piece (corner brackets stay). Floor Survey
+        // does the same — a press that never moved is not a layout write.
+        if (!didMove) return;
         markDirty();
         // A schedule given more or less room holds a different number of
         // rows, so the level is split again before the sheets are drawn.
-        if (wasResize) reflowPenLog();
-        renderPages();
+        // Moves already painted live; only a resize needs a full rebuild.
+        if (wasResize) {
+          reflowPenLog();
+          renderPages();
+        }
         flushSave().catch(function () {});
         return;
       }
@@ -8115,12 +8144,25 @@
       flushSave().catch(function () {});
     }
 
-    sheetEl.addEventListener('contextmenu', function (event) {
-      var box = event.target.closest('[data-rb-floor-box]');
-      if (!box) { closeStackMenu(); return; }
-      var page = activePage();
-      var flApi = window.ToolboxReportFloorLayout;
-      if (!page || page.type !== 'floor' || !flApi) return;
+    function restackPenLogPiece(box, toFront) {
+      var penApi = window.ToolboxPenLog;
+      if (!penApi || !isPenLogPage(activePage())) return;
+      var which = box.getAttribute('data-rb-penlog-box');
+      if (which !== 'plan' && which !== 'schedule') return;
+      var layout = penApi.normalizeLayout(penLogBoxLayout || penLogBoxes());
+      var stack = [layout.plan.z, layout.schedule.z];
+      var want = toFront
+        ? Math.max.apply(null, stack) + 1
+        : Math.min.apply(null, stack) - 1;
+      want = Math.max(penApi.MIN_STACK, Math.min(penApi.MAX_STACK, want));
+      layout[which].z = want;
+      penLogBoxLayout = penApi.normalizeLayout(layout);
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
+    }
+
+    function openStackMenu(event, onPick) {
       event.preventDefault();
       closeStackMenu();
       stackMenu = document.createElement('div');
@@ -8134,7 +8176,7 @@
         item.textContent = choice[0];
         item.addEventListener('click', function () {
           closeStackMenu();
-          restackFloorPiece(box, choice[1]);
+          onPick(choice[1]);
         });
         stackMenu.appendChild(item);
       });
@@ -8147,6 +8189,28 @@
       stackMenu.style.top = Math.max(4, Math.min(window.innerHeight - h - 4, event.clientY)) + 'px';
       document.addEventListener('pointerdown', stackMenuAway, true);
       document.addEventListener('keydown', stackMenuKey, true);
+    }
+
+    sheetEl.addEventListener('contextmenu', function (event) {
+      var floorBox = event.target.closest('[data-rb-floor-box]');
+      if (floorBox) {
+        var page = activePage();
+        var flApi = window.ToolboxReportFloorLayout;
+        if (!page || page.type !== 'floor' || !flApi) return;
+        openStackMenu(event, function (toFront) {
+          restackFloorPiece(floorBox, toFront);
+        });
+        return;
+      }
+      var penBox = event.target.closest('[data-rb-penlog-box]');
+      if (penBox) {
+        if (!isPenLogPage(activePage()) || !window.ToolboxPenLog) return;
+        openStackMenu(event, function (toFront) {
+          restackPenLogPiece(penBox, toFront);
+        });
+        return;
+      }
+      closeStackMenu();
     });
 
     if (penNoteField) {

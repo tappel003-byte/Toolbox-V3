@@ -2332,15 +2332,15 @@ body.report-builder-open .canvas {
   position: absolute;
 }
 
-/* The plan and the schedule are placed pieces. Each shows its edge and its
-   two pulls when it is pointed at and nothing before, the rule every other
-   placed thing on a sheet follows. Tim: "Everything here needs to be
-   movable. I should be able to move the floor plan if I want, and I want to
-   be able to move the notes if I want." */
+/* The plan and the schedule are placed pieces. Body drag moves them; corner
+   brackets size them; right-click stacks them — Floor Survey's rule. Tim:
+   "Everything here needs to be movable. I should be able to move the floor
+   plan if I want, and I want to be able to move the notes if I want." */
 .rb-penlog__plan,
 .rb-penlog__schedule {
   outline: none;
   outline-offset: 3px;
+  cursor: move;
 }
 
 .rb-penlog__plan:hover,
@@ -2348,46 +2348,55 @@ body.report-builder-open .canvas {
   outline: 1px dashed rgba(139, 94, 60, 0.4);
 }
 
-.rb-penlog__move,
+[data-rb-penlog-box].is-picked {
+  outline: 1px dashed rgba(139, 94, 60, 0.55);
+  outline-offset: 2px;
+}
+
+/* Same corner brackets Floor Survey uses — crop-mark corners, not filled
+   tiles — in Picture Locations copper so they match this sheet's edge. */
 .rb-penlog__resize {
   position: absolute;
   display: none;
   z-index: 6;
-  width: 14px;
-  height: 14px;
+  width: 20px;
+  height: 20px;
+  border: 0 solid var(--rb-copper, #8B5E3C);
+  background: transparent;
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
 }
 
-.rb-penlog__move {
-  left: -3px;
-  top: -3px;
-  border-left: 2px solid var(--rb-copper, #8B5E3C);
-  border-top: 2px solid var(--rb-copper, #8B5E3C);
-  cursor: move;
-}
-
-.rb-penlog__resize {
-  right: -3px;
-  bottom: -3px;
-  border-right: 2px solid var(--rb-copper, #8B5E3C);
-  border-bottom: 2px solid var(--rb-copper, #8B5E3C);
-  cursor: nwse-resize;
-}
-
-[data-rb-penlog-box].is-picked > .rb-penlog__move,
 [data-rb-penlog-box].is-picked > .rb-penlog__resize,
-[data-rb-penlog-box]:focus-within > .rb-penlog__move,
 [data-rb-penlog-box]:focus-within > .rb-penlog__resize {
   display: block;
 }
 
-.rb-sheet--thumb .rb-penlog__move,
+.rb-penlog__resize--nw {
+  left: -10px; top: -10px; cursor: nwse-resize;
+  border-top-width: 3px; border-left-width: 3px;
+}
+
+.rb-penlog__resize--ne {
+  right: -10px; top: -10px; cursor: nesw-resize;
+  border-top-width: 3px; border-right-width: 3px;
+}
+
+.rb-penlog__resize--sw {
+  left: -10px; bottom: -10px; cursor: nesw-resize;
+  border-bottom-width: 3px; border-left-width: 3px;
+}
+
+.rb-penlog__resize--se {
+  right: -10px; bottom: -10px; cursor: nwse-resize;
+  border-bottom-width: 3px; border-right-width: 3px;
+}
+
 .rb-sheet--thumb .rb-penlog__resize { display: none !important; }
 
 @media print {
-  .rb-penlog__move,
   .rb-penlog__resize { display: none !important; }
   .rb-penlog__plan,
-  .rb-penlog__schedule { outline: none !important; }
+  .rb-penlog__schedule { outline: none !important; cursor: default; }
 }
 
 .rb-penlog__image {
@@ -2484,7 +2493,9 @@ body.report-builder-open .canvas {
      from the top of a page it does not fill. */
   justify-content: center;
   box-sizing: border-box;
-  overflow: hidden;
+  /* Visible so the corner brackets (which sit just outside the box, same as
+     Floor Survey) stay hittable. The notes grid clips its own content. */
+  overflow: visible;
   background: #fff;
 }
 
@@ -3343,7 +3354,6 @@ body.report-builder-open .canvas {
  * Scoped to the deck rather than to the medium, so one rule serves the
  * printer and the flip chart and the editing sheet keeps its chrome. */
 .rb-print [data-plan-resize],
-.rb-print .rb-penlog__move,
 .rb-print .rb-penlog__resize,
 .rb-print .rb-floor-overview__remove,
 .rb-print .rb-cover-box__move,
@@ -4442,8 +4452,8 @@ body.is-presenting { overflow: hidden; }
 .rb-stage--zoomed .rb-discussion__resize,
 .rb-stage--zoomed [data-rb-disc-move],
 .rb-stage--zoomed [data-rb-disc-resize],
-.rb-stage--zoomed [data-rb-penlog-move],
-.rb-stage--zoomed [data-rb-penlog-resize] {
+.rb-stage--zoomed [data-rb-penlog-resize],
+.rb-stage--zoomed .rb-penlog__resize {
   touch-action: none;
 }
 
