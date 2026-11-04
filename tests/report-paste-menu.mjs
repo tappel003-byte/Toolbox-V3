@@ -1,5 +1,5 @@
 /**
- * Right-click in a writing area: Paste as formatted, Paste unformatted.
+ * Right-click in a writing area: Paste, Paste without formatting.
  *
  * Run: node tests/report-paste-menu.mjs   (static server on 8765)
  *
@@ -93,13 +93,13 @@ async function openMenu() {
 }
 
 const items = await openMenu();
-check('right-click in the writing area offers both pastes',
-  items.includes('Paste as formatted') && items.includes('Paste unformatted'),
+check('right-click in the writing area offers Paste and Paste without formatting',
+  items.includes('Paste') && items.includes('Paste without formatting'),
   items.join(' | '));
 
 await page.evaluate(() => {
   [...document.querySelectorAll('[data-rb-pastemenu] .rb-stackmenu__item')]
-    .find((b) => /formatted$/.test(b.textContent.trim())).click();
+    .find((b) => b.getAttribute('data-rb-paste-as') === '1').click();
 });
 await new Promise((r) => setTimeout(r, 1200));
 const formatted = await page.evaluate(() => {
@@ -109,11 +109,11 @@ const formatted = await page.evaluate(() => {
       .map((li) => getComputedStyle(li).marginLeft))].length,
     text: (f.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 50) };
 });
-check('Paste as formatted keeps the bold', formatted.bold, JSON.stringify(formatted));
+check('Paste keeps the bold', formatted.bold, JSON.stringify(formatted));
 check('and keeps the list and its nesting',
   formatted.lists > 0 && formatted.indents > 1, JSON.stringify(formatted));
 
-// And the unformatted one, into a cleared field.
+// And the plain path, into a cleared field.
 await page.evaluate(() => {
   const f = document.querySelector('.rb-stage .rb-sheet [data-rb-rich][contenteditable="true"]');
   f.innerHTML = '';
@@ -122,7 +122,7 @@ await page.evaluate(() => {
 await openMenu();
 await page.evaluate(() => {
   [...document.querySelectorAll('[data-rb-pastemenu] .rb-stackmenu__item')]
-    .find((b) => /unformatted$/.test(b.textContent.trim())).click();
+    .find((b) => b.getAttribute('data-rb-paste-as') === '0').click();
 });
 await new Promise((r) => setTimeout(r, 1200));
 const plain = await page.evaluate(() => {
@@ -131,7 +131,7 @@ const plain = await page.evaluate(() => {
     lists: f.querySelectorAll('ul, ol').length,
     text: (f.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 50) };
 });
-check('Paste unformatted brings the words', /Lead sentence/.test(plain.text),
+check('Paste without formatting brings the words', /Lead sentence/.test(plain.text),
   JSON.stringify(plain));
 check('and brings no styling or lists with them',
   !plain.styled && plain.lists === 0, JSON.stringify(plain));

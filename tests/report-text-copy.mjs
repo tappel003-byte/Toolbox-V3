@@ -151,10 +151,10 @@ if (fieldSel) {
     }));
     return { items };
   });
-  check('context menu lists Copy and both paste options',
+  check('context menu lists Copy, Paste, and Paste without formatting',
     !!menu && menu.items.some((i) => i.copy && !i.disabled) &&
-    menu.items.some((i) => i.paste === '1') &&
-    menu.items.some((i) => i.paste === '0'),
+    menu.items.some((i) => i.paste === '1' && i.text === 'Paste') &&
+    menu.items.some((i) => i.paste === '0' && /without formatting/i.test(i.text)),
     JSON.stringify(menu));
 
   await page.screenshot({ path: `${OUT}/rb-text-copy-menu.png` });
@@ -183,7 +183,7 @@ if (fieldSel) {
   check('Copy writes selection to the system clipboard',
     /BoldPhrase/i.test(clip.text), JSON.stringify(clip));
 
-  // Paste unformatted into the same field at end via menu (caret after Omega).
+  // Paste without formatting into the same field at end via menu.
   await page.evaluate((key) => {
     const field = document.querySelector(`.rb-sheet:not(.rb-sheet--thumb) [data-rb-rich="${key}"]`);
     field.focus();
@@ -209,7 +209,7 @@ if (fieldSel) {
     const field = document.querySelector(`.rb-sheet:not(.rb-sheet--thumb) [data-rb-rich="${key}"]`);
     return { text: (field && field.innerText) || '', html: (field && field.innerHTML) || '' };
   }, fieldSel);
-  check('Paste unformatted inserts clipboard text into the field',
+  check('Paste without formatting inserts clipboard text into the field',
     /BoldPhrase/i.test(afterPaste.text) && (afterPaste.text.match(/BoldPhrase/gi) || []).length >= 2,
     JSON.stringify(afterPaste));
 
