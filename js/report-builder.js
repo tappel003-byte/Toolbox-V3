@@ -7916,18 +7916,21 @@
     sheetEl.addEventListener('pointercancel', endLayoutDrag);
 
     /**
-     * Right-click in a writing area: Paste as formatted, Paste unformatted.
+     * Right-click in a writing area: Copy (when text is selected), Paste as
+     * formatted, Paste unformatted.
      *
-     * Ctrl+V already pastes formatted and Ctrl+Shift+V already pastes plain,
-     * but Tim does not want to hold a shortcut in his head: "I want to be
-     * able to right-click and click paste as formatted, or right-click paste
-     * unformatted."
+     * The report owns this menu because it already had to replace the system
+     * one for formatted paste. That replacement used to leave Copy out, so a
+     * highlighted phrase could not be copied from the menu even though
+     * Ctrl/Cmd+C still worked. Copy writes the selection to the system
+     * clipboard (plain + HTML) so it can land in another report field or
+     * another application. Paste options are unchanged.
      *
-     * A page cannot open the system menu, so this is the report's own, and
-     * reading the clipboard from script is something Chrome asks about the
+     * Reading the clipboard for paste is something Chrome asks about the
      * first time. That prompt is the browser's, not ours; if it is refused,
      * the menu says so and names the keys that always work rather than
-     * failing quietly.
+     * failing quietly. Inputs and textareas keep the browser's own menu;
+     * this only covers contenteditable report fields.
      */
     var pasteMenu = null;
     var pasteMenuField = null;
@@ -7958,6 +7961,65 @@
         pasteMenu.appendChild(note);
       }
       note.textContent = message;
+    }
+
+    /** Plain + HTML flavours of the range kept when the menu opened. */
+    function selectionClipboardPayload(range) {
+      if (!range || range.collapsed) return null;
+      var plain = String(range.toString() || '');
+      if (!plain) return null;
+      var holder = document.createElement('div');
+      try { holder.appendChild(range.cloneContents()); } catch (_) { /* empty */ }
+      var api = window.ToolboxReportText;
+      var html = '';
+      if (api && typeof api.fromElement === 'function' && typeof api.toHtml === 'function') {
+        try {
+          html = api.toHtml(api.compact(api.fromElement(holder)));
+        } catch (_) { html = ''; }
+      }
+      if (!html) html = holder.innerHTML || '';
+      return { plain: plain, html: html };
+    }
+
+    function copySelectedTextToClipboard() {
+      var payload = selectionClipboardPayload(pendingCaret);
+      if (!payload) {
+        pasteMenuSay('Select text first, then Copy. Ctrl+C also copies a selection.');
+        return;
+      }
+      var nav = window.navigator;
+      var clip = nav && nav.clipboard;
+      if (!clip) {
+        pasteMenuSay('This browser will not let a page write the clipboard. Ctrl+C copies the selection.');
+        return;
+      }
+      var done = function () { closePasteMenu(); };
+      var failed = function () {
+        pasteMenuSay('Toolbox was not allowed to write the clipboard. Ctrl+C copies the selection.');
+      };
+      // Prefer both flavours so Paste as formatted inside the report, and
+      // paste into Word / Notes / a browser, all see what was copied.
+      if (typeof clip.write === 'function' && typeof window.ClipboardItem === 'function') {
+        try {
+          var parts = { 'text/plain': new Blob([payload.plain], { type: 'text/plain' }) };
+          if (payload.html) parts['text/html'] = new Blob([payload.html], { type: 'text/html' });
+          // Some browsers want Blobs; others want Promise<Blob>. Hand both
+          // shapes by wrapping — ClipboardItem accepts either.
+          Object.keys(parts).forEach(function (type) {
+            parts[type] = Promise.resolve(parts[type]);
+          });
+          clip.write([new ClipboardItem(parts)]).then(done).catch(function () {
+            if (typeof clip.writeText === 'function') {
+              clip.writeText(payload.plain).then(done).catch(failed);
+            } else {
+              failed();
+            }
+          });
+          return;
+        } catch (_) { /* fall through to writeText */ }
+      }
+      if (typeof clip.writeText !== 'function') { failed(); return; }
+      clip.writeText(payload.plain).then(done).catch(failed);
     }
 
     function pasteFromClipboard(formatted) {
@@ -8018,9 +8080,10 @@
       }).catch(failed);
     }
 
-    // The caret has to be put back AFTER the menu goes, because removing the
-    // menu is itself a DOM change and the range kept from the right-click is
-    // the only record of where the investigator was pointing.
+    // The caret / selection has to be put back AFTER the menu goes, because
+    // removing the menu is itself a DOM change and the range kept from the
+    // right-click is the only record of what was highlighted or where the
+    // investigator was pointing.
     var pendingCaret = null;
     function restorePasteCaretInto(field) {
       if (!pendingCaret || !field) return;
@@ -8037,10 +8100,31 @@
       closeStackMenu();
       var sel = window.getSelection();
       pendingCaret = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+      // Only keep a selection that actually sits in this field. A stray range
+      // from another control must not arm Copy or steer Paste.
+      if (pendingCaret) {
+        var common = pendingCaret.commonAncestorContainer;
+        var host = common && common.nodeType === 3 ? common.parentNode : common;
+        if (!host || !field.contains(host)) pendingCaret = null;
+      }
       pasteMenuField = field;
       pasteMenu = document.createElement('div');
       pasteMenu.className = 'rb-stackmenu';
       pasteMenu.setAttribute('data-rb-pastemenu', '1');
+      var canCopy = !!(pendingCaret && !pendingCaret.collapsed && String(pendingCaret.toString() || ''));
+      var copyItem = document.createElement('button');
+      copyItem.type = 'button';
+      copyItem.className = 'rb-stackmenu__item';
+      copyItem.setAttribute('data-rb-text-copy', '1');
+      copyItem.textContent = 'Copy';
+      copyItem.disabled = !canCopy;
+      if (!canCopy) copyItem.setAttribute('aria-disabled', 'true');
+      copyItem.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        if (copyItem.disabled) return;
+        copySelectedTextToClipboard();
+      });
+      pasteMenu.appendChild(copyItem);
       [['Paste as formatted', '1'], ['Paste unformatted', '0']].forEach(function (choice) {
         var item = document.createElement('button');
         item.type = 'button';
@@ -8056,6 +8140,11 @@
       pasteMenu.style.left = Math.round(event.clientX) + 'px';
       pasteMenu.style.top = Math.round(event.clientY) + 'px';
       document.body.appendChild(pasteMenu);
+      // Keep the menu on screen when the click is near an edge.
+      var mw = pasteMenu.offsetWidth;
+      var mh = pasteMenu.offsetHeight;
+      pasteMenu.style.left = Math.max(4, Math.min(window.innerWidth - mw - 4, event.clientX)) + 'px';
+      pasteMenu.style.top = Math.max(4, Math.min(window.innerHeight - mh - 4, event.clientY)) + 'px';
       document.addEventListener('pointerdown', pasteMenuAway, true);
       document.addEventListener('keydown', pasteMenuKey, true);
     });
