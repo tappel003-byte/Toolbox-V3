@@ -4278,6 +4278,17 @@ body.is-presenting { overflow: hidden; }
   background: rgba(139, 94, 60, 0.12);
 }
 
+.rb-stackmenu__item:disabled,
+.rb-stackmenu__item[aria-disabled="true"] {
+  color: #9a8f82;
+  cursor: default;
+}
+
+.rb-stackmenu__item:disabled:hover,
+.rb-stackmenu__item[aria-disabled="true"]:hover {
+  background: none;
+}
+
 @media print {
   .rb-stackmenu { display: none !important; }
 }
