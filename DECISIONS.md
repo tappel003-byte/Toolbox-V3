@@ -7,6 +7,13 @@ Durable decisions already established in `VISION.md`, recorded here for quick re
 - **Toolbox** is the product name. "V3" is the repository/development-generation name only and must never become product branding.
 - The **Customer File** is the central organizing object inside Toolbox — the cabinet metaphor's "file."
 
+## ONLY Tim promotes (DECIDED Tim, Nov 1, 2026)
+
+- **Only Tim** may put any build in front of live users (Cloudflare Promote / Production Active / 100% traffic).
+- Cursor, `cursor[bot]`, Workers Builds auto-activate, and any agent action that makes Production Active without Tim clicking Promote are forbidden. A merge that auto-activates Production **is** promoting — do not do it.
+- Workflow remains: build → merge when Tim asked into the agreed integration branch → **Tim promotes**. Do not change the landing branch midstream. After the asked-for merge, stop.
+- Full hard list lives in `AGENTS.md` § “ONLY Tim promotes”.
+
 ## V3 vs. V2
 
 - V3 is a clean rebuild, not a bolt-on to V2. V2 is evidence/reference only, not V3's architecture.
