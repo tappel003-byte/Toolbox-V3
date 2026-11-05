@@ -16,37 +16,87 @@ body.plan-of-repair-open #app-view {
   font-weight: 700;
 }
 
-.por-panel-lead {
-  margin: 0 0 10px;
-  font-size: 13px;
-  line-height: 1.35;
-  color: #4b5563;
+/* ---- Right rail: dense Format-pane density, not fat form buttons ---- */
+
+.por-panel.rb-panel {
+  font-size: 12px;
 }
 
-.por-panel-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0 0 14px;
+.por-panel__title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
-.por-panel-actions .btn {
-  width: 100%;
-  justify-content: center;
+.por-panel__label,
+.por-panel .rb-panel__label {
+  display: block;
+  margin: 0 0 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #6b7280;
 }
 
 .por-bg-select {
   width: 100%;
-  margin: 0 0 10px;
-  min-height: 34px;
+  margin: 0 0 6px;
+  min-height: 28px;
+  padding: 3px 6px;
+  font-size: 12px;
+  border: 1px solid #c9c2b4;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.por-bg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin: 0 0 8px;
+}
+
+.por-linkbtn {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.por-linkbtn:hover {
+  text-decoration: underline;
+  color: #07283d;
+}
+
+.por-linkbtn:disabled {
+  color: #9ca3af;
+  cursor: default;
+  text-decoration: none;
 }
 
 .por-fill-toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  margin: 8px 0 0;
+  gap: 6px;
+  font-size: 12px;
+  margin: 0;
+}
+
+.por-fill-toggle--compact {
+  margin: 0 0 8px;
+  color: #4b5563;
+}
+
+.por-fill-toggle input {
+  margin: 0;
 }
 
 .por-sheet-bg {
@@ -72,10 +122,10 @@ body.plan-of-repair-open #app-view {
 
 .por-sheet-bg__empty {
   margin: 0;
-  padding: 18px 22px;
+  padding: 14px 18px;
   border: 1px dashed #b7a48a;
   color: #6b5b4a;
-  font-size: 14px;
+  font-size: 13px;
   text-align: center;
   background: rgba(255, 250, 240, 0.9);
 }
@@ -146,74 +196,155 @@ body.plan-of-repair-open #app-view {
 }
 
 .por-inspector {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #d7d2c8;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e1d8;
 }
 
 .por-inspector[hidden] {
   display: none !important;
 }
 
-.por-inspector h3 {
-  margin: 0 0 8px;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.por-inspector__row {
-  display: grid;
-  grid-template-columns: 28px 1fr 28px 1fr;
-  gap: 6px;
-  margin: 0 0 8px;
-  align-items: center;
-}
-
-.por-inspector__row label {
+.por-inspector__heading {
+  margin: 0 0 6px;
   font-size: 12px;
-  color: #4b5563;
+  font-weight: 700;
+  color: #111827;
 }
 
-.por-inspector__row input[type="number"] {
-  width: 100%;
-  min-height: 30px;
-  padding: 4px 6px;
-  border: 1px solid #c9c2b4;
-  border-radius: 4px;
-  font-size: 13px;
+.por-inspector__heading + .por-inspector__heading,
+.por-inspector__size + .por-stack,
+.por-inspector__line + .por-inspector__heading {
+  margin-top: 10px;
+}
+
+.por-inspector__line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  min-height: 22px;
+}
+
+.por-inspector__tag {
+  flex: 0 0 42px;
+  font-size: 11px;
+  color: #6b7280;
 }
 
 .por-inspector__swatches {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin: 0 0 10px;
+  gap: 4px;
+  margin: 0;
+  min-width: 0;
 }
 
 .por-inspector__swatch {
-  width: 22px;
-  height: 22px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  border: 2px solid transparent;
+  border: 1px solid rgba(0, 0, 0, 0.25);
   padding: 0;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .por-inspector__swatch.is-on {
-  border-color: #07283d;
-  box-shadow: 0 0 0 1px #fff inset;
+  outline: 2px solid #07283d;
+  outline-offset: 1px;
+  border-color: #fff;
 }
 
-.por-inspector__weights {
-  display: flex;
-  gap: 6px;
-  margin: 0 0 10px;
+.por-seg {
+  display: inline-flex;
+  border: 1px solid #c9c2b4;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #fff;
 }
 
-.por-inspector__weights .btn {
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 6px 4px;
+.por-seg__btn {
+  margin: 0;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 7px;
+  border: 0;
+  border-right: 1px solid #c9c2b4;
+  background: #fff;
+  color: #374151;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.por-seg__btn:last-child {
+  border-right: 0;
+}
+
+.por-seg__btn.is-on,
+.por-seg__btn.btn--secondary {
+  background: #07283d;
+  color: #fff;
+}
+
+.por-inspector__size {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 6px;
+  margin: 0 0 8px;
+}
+
+.por-inspector__field {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 4px;
+  align-items: center;
+  margin: 0;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.por-inspector__field input[type="number"] {
+  width: 100%;
+  min-height: 24px;
+  padding: 2px 4px;
+  border: 1px solid #c9c2b4;
+  border-radius: 3px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.por-stack {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+}
+
+.por-stack__btn {
+  margin: 0;
+  min-height: 24px;
+  padding: 3px 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+  background: #fff;
+  color: #374151;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.por-stack__btn:hover {
+  border-color: #9ca3af;
+  background: #f9fafb;
+}
+
+.por-stack__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .por-stackmenu__sep {
@@ -228,6 +359,14 @@ body.plan-of-repair-open #app-view {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #6b7280;
+}
+
+/* Toolbar fill toggle stays quiet beside zoom / print */
+.por-shell .rb-toolbar .por-fill-toggle {
+  margin: 0 8px 0 0;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #4b5563;
 }
 
 body.is-por-printing .por-shell,

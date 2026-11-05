@@ -221,46 +221,47 @@
       '      <article class="rb-sheet" id="por-sheet" aria-label="11 by 17 inch landscape drawing sheet"></article>' +
       '    </div>' +
       '  </div>' +
-      '  <aside class="rb-panel" aria-label="Toolbox">' +
+      '  <aside class="rb-panel por-panel" aria-label="Toolbox">' +
       '    <p class="eyebrow">Toolbox</p>' +
-      '    <h2>Drawing template</h2>' +
-      '    <p class="por-panel-lead">Bring in a floor plan or the black-and-white contour, then draw with the tools above. Copy and paste shapes with right-click or Ctrl/Cmd+C / V.</p>' +
-      '    <label class="rb-panel__label" for="por-canvas">Level / canvas</label>' +
+      '    <h2 class="por-panel__title">Drawing</h2>' +
+      '    <label class="por-panel__label" for="por-canvas">Level</label>' +
       '    <select id="por-canvas" class="por-bg-select" aria-label="Level or canvas"></select>' +
-      '    <div class="por-panel-actions">' +
-      '      <button type="button" class="btn btn--accent" id="por-bring-plan">Bring in floor plan</button>' +
-      '      <button type="button" class="btn btn--secondary" id="por-bring-contour">Bring in contour</button>' +
-      '      <button type="button" class="btn btn--quiet" id="por-clear-bg">Clear background</button>' +
+      '    <div class="por-bg-actions" role="group" aria-label="Background">' +
+      '      <button type="button" class="por-linkbtn" id="por-bring-plan">Floor plan</button>' +
+      '      <button type="button" class="por-linkbtn" id="por-bring-contour">Contour</button>' +
+      '      <button type="button" class="por-linkbtn" id="por-clear-bg">Clear</button>' +
       '    </div>' +
-      '    <label class="por-fill-toggle"><input type="checkbox" id="por-sandia"> Survey information by SandiaGEO</label>' +
+      '    <label class="por-fill-toggle por-fill-toggle--compact"><input type="checkbox" id="por-sandia"> SandiaGEO note</label>' +
       '    <div class="por-inspector" id="por-inspector" hidden>' +
-      '      <h3 id="por-inspector-title">Format Shape</h3>' +
-      '      <label class="por-fill-toggle"><input type="checkbox" id="por-shape-fill"> Fill</label>' +
-      '      <p class="rb-panel__label">Fill colour</p>' +
-      '      <div class="por-inspector__swatches" id="por-fill-swatches"></div>' +
-      '      <p class="rb-panel__label">Outline colour</p>' +
-      '      <div class="por-inspector__swatches" id="por-outline-swatches"></div>' +
-      '      <p class="rb-panel__label">Outline weight</p>' +
-      '      <div class="por-inspector__weights" id="por-outline-weights">' +
-      '        <button type="button" class="btn btn--quiet" data-por-thick="1">Thin</button>' +
-      '        <button type="button" class="btn btn--quiet" data-por-thick="2">Med</button>' +
-      '        <button type="button" class="btn btn--quiet" data-por-thick="3">Thick</button>' +
+      '      <h3 id="por-inspector-title" class="por-inspector__heading">Format Shape</h3>' +
+      '      <div class="por-inspector__line">' +
+      '        <label class="por-fill-toggle por-fill-toggle--compact"><input type="checkbox" id="por-shape-fill"> Fill</label>' +
+      '        <div class="por-inspector__swatches" id="por-fill-swatches" aria-label="Fill colour"></div>' +
       '      </div>' +
-      '      <h3>Size and Position</h3>' +
-      '      <div class="por-inspector__row">' +
-      '        <label for="por-size-x">X</label><input type="number" id="por-size-x" step="0.05" min="0" max="17">' +
-      '        <label for="por-size-y">Y</label><input type="number" id="por-size-y" step="0.05" min="0" max="11">' +
+      '      <div class="por-inspector__line">' +
+      '        <span class="por-inspector__tag">Line</span>' +
+      '        <div class="por-inspector__swatches" id="por-outline-swatches" aria-label="Outline colour"></div>' +
       '      </div>' +
-      '      <div class="por-inspector__row">' +
-      '        <label for="por-size-w">W</label><input type="number" id="por-size-w" step="0.05" min="0.1" max="17">' +
-      '        <label for="por-size-h">H</label><input type="number" id="por-size-h" step="0.05" min="0.1" max="11">' +
+      '      <div class="por-inspector__line">' +
+      '        <span class="por-inspector__tag">Weight</span>' +
+      '        <div class="por-seg" id="por-outline-weights" role="group" aria-label="Outline weight">' +
+      '          <button type="button" class="por-seg__btn" data-por-thick="1" title="Thin">1</button>' +
+      '          <button type="button" class="por-seg__btn" data-por-thick="2" title="Medium">2</button>' +
+      '          <button type="button" class="por-seg__btn" data-por-thick="3" title="Thick">3</button>' +
+      '        </div>' +
       '      </div>' +
-      '      <p class="por-panel-lead">Inches on the 11×17 sheet. Drag the corner and edge handles on the shape to resize.</p>' +
-      '      <div class="por-panel-actions">' +
-      '        <button type="button" class="btn btn--quiet" id="por-stack-front">Bring to Front</button>' +
-      '        <button type="button" class="btn btn--quiet" id="por-stack-forward">Bring Forward</button>' +
-      '        <button type="button" class="btn btn--quiet" id="por-stack-backward">Send Backward</button>' +
-      '        <button type="button" class="btn btn--quiet" id="por-stack-back">Send to Back</button>' +
+      '      <h3 class="por-inspector__heading">Size &amp; Position</h3>' +
+      '      <div class="por-inspector__size" aria-label="Size and position in inches">' +
+      '        <label class="por-inspector__field"><span>X</span><input type="number" id="por-size-x" step="0.05" min="0" max="17"></label>' +
+      '        <label class="por-inspector__field"><span>Y</span><input type="number" id="por-size-y" step="0.05" min="0" max="11"></label>' +
+      '        <label class="por-inspector__field"><span>W</span><input type="number" id="por-size-w" step="0.05" min="0.1" max="17"></label>' +
+      '        <label class="por-inspector__field"><span>H</span><input type="number" id="por-size-h" step="0.05" min="0.1" max="11"></label>' +
+      '      </div>' +
+      '      <div class="por-stack" role="group" aria-label="Arrange">' +
+      '        <button type="button" class="por-stack__btn" id="por-stack-front" title="Bring to Front">Front</button>' +
+      '        <button type="button" class="por-stack__btn" id="por-stack-forward" title="Bring Forward">Forward</button>' +
+      '        <button type="button" class="por-stack__btn" id="por-stack-backward" title="Send Backward">Back</button>' +
+      '        <button type="button" class="por-stack__btn" id="por-stack-back" title="Send to Back">Bottom</button>' +
       '      </div>' +
       '    </div>' +
       '  </aside>' +
@@ -757,8 +758,7 @@
       paintSwatches(root.querySelector('#por-outline-swatches'), outline, 'outline');
       root.querySelectorAll('[data-por-thick]').forEach(function (btn) {
         var level = Number(btn.getAttribute('data-por-thick'));
-        btn.classList.toggle('btn--secondary', level === item.thick);
-        btn.classList.toggle('btn--quiet', level !== item.thick);
+        btn.classList.toggle('is-on', level === item.thick);
       });
       var box = itemBounds(item);
       if (box) {
@@ -769,6 +769,9 @@
       }
       ['por-size-x', 'por-size-y', 'por-size-w', 'por-size-h'].forEach(function (id) {
         root.querySelector('#' + id).disabled = state.readOnly;
+      });
+      root.querySelectorAll('.por-stack__btn, .por-linkbtn').forEach(function (btn) {
+        btn.disabled = state.readOnly;
       });
     }
 

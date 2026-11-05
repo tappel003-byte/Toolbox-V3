@@ -131,6 +131,8 @@ const shell = await page.evaluate(() => ({
   hasToolbar: !!document.querySelector('[data-rb-format-host] .rb-format, .rb-format'),
   hasPages: !!document.querySelector('#por-page-list'),
   hasPanel: !!document.querySelector('#por-bring-plan'),
+  compactBg: !!document.querySelector('.por-bg-actions .por-linkbtn'),
+  fatBring: Array.from(document.querySelectorAll('#por-bring-plan, #por-bring-contour, #por-clear-bg')).some((b) => b.classList.contains('btn')),
   title: document.querySelector('.file-identity__name')?.textContent || '',
   tools: Array.from(document.querySelectorAll('[data-rb-tool]')).map((b) => b.getAttribute('data-rb-tool')),
 }));
@@ -139,6 +141,7 @@ check('RB-style shell title', shell.title === 'Plan of Repair');
 check('formatting/drawing toolbar mounted', shell.hasToolbar || shell.tools.length > 0);
 check('pages rail present', shell.hasPages);
 check('bring-in plan control', shell.hasPanel);
+check('compact background actions', shell.compactBg && !shell.fatBring);
 check('circle+rect tools present', shell.tools.indexOf('circle') !== -1 && shell.tools.indexOf('rect') !== -1, shell.tools.join(','));
 
 await page.click('#por-bring-plan');
@@ -237,6 +240,25 @@ const handles = await page.evaluate(() => ({
 }));
 check('eight selection handles', handles.count === 8, JSON.stringify(handles));
 check('format inspector visible', handles.inspector);
+const railDensity = await page.evaluate(() => {
+  const swatch = document.querySelector('.por-inspector__swatch');
+  const stack = document.querySelector('.por-stack__btn');
+  const seg = document.querySelector('.por-seg__btn');
+  const sr = swatch && swatch.getBoundingClientRect();
+  const sk = stack && stack.getBoundingClientRect();
+  return {
+    swatch: sr ? Math.round(sr.width) : 0,
+    stackH: sk ? Math.round(sk.height) : 0,
+    seg: !!seg,
+    stackGrid: !!document.querySelector('.por-stack'),
+  };
+});
+check(
+  'compact inspector chrome',
+  railDensity.swatch > 0 && railDensity.swatch <= 18 && railDensity.stackH > 0 && railDensity.stackH <= 32 && railDensity.seg && railDensity.stackGrid,
+  JSON.stringify(railDensity)
+);
+await page.screenshot({ path: path.join(OUT, 'por-rail-compact.png'), fullPage: true });
 
 // Wait for drawn shapes to persist, then select the rect by its ink hit box.
 await page.waitForFunction(async () => {
