@@ -1,28 +1,28 @@
-// Toolbox — Plan of Repair workspace.
+// Toolbox — Plan of Repair drawing template.
 //
-// First working version: one 11×17 repair worksheet per Customer File.
-// Authoritative document lives on record.planOfRepair and syncs as the
-// `repair` component. Report Builder insertion is deferred; do not fork a
-// second editable copy into reportBuilder in this pass.
+// Same doorway (top-bar Plan of Repair). Same Report Builder look: top tools,
+// left pages, sheet, right panel, title rail. Drawing-first: bring in a plan
+// or black-and-white contour, then use the shared pencil / rect / circle /
+// arrow / text tools, resize, and copy/paste shapes.
+//
+// Document lives on record.planOfRepair (sync component `repair`). Does not
+// write into reportBuilder.
 (function () {
   'use strict';
 
-  var SHEET_W = 1632;
-  var SHEET_H = 1056;
-  var DEFAULT_SYMBOL_SIZE = 2.4; // percent of plan frame short side
-  var PLACEHOLDER_TLS =
-    'TLS Foundations artwork is not in this repository yet — text brand mark.';
-
+  var PAPER_W = 1632;
+  var PAPER_H = 1056;
+  var TLS_MARK = 'brand/tls-foundations.jpg';
   var activeMount = null;
 
-  function isoNow() {
-    return new Date().toISOString();
-  }
+  function isoNow() { return new Date().toISOString(); }
 
   function uid(prefix) {
     return (prefix || 'por') + '-' + Date.now().toString(36) + '-' +
       Math.floor(Math.random() * 1e6).toString(36);
   }
+
+  function deepClone(v) { return JSON.parse(JSON.stringify(v)); }
 
   function clamp(n, lo, hi) {
     n = Number(n);
@@ -30,141 +30,12 @@
     return Math.max(lo, Math.min(hi, n));
   }
 
-  function deepClone(value) {
-    return JSON.parse(JSON.stringify(value));
-  }
-
-  function defaultSymbolDefs() {
-    return [
-      {
-        id: 'helical',
-        kind: 'circle',
-        label: 'Helical pier — 20-kip service load max',
-      },
-      {
-        id: 'helical-concrete',
-        kind: 'circle-in-square',
-        label: 'Helical requiring concrete removal and replacement',
-      },
-    ];
-  }
-
-  function normalizeSymbolDef(raw, fallback) {
-    var src = raw && typeof raw === 'object' ? raw : {};
-    var base = fallback || {};
-    var id = typeof src.id === 'string' && src.id ? src.id : (base.id || uid('def'));
-    var kind = src.kind === 'circle-in-square' || base.kind === 'circle-in-square'
-      ? 'circle-in-square'
-      : 'circle';
-    var label = typeof src.label === 'string' && src.label.trim()
-      ? src.label.trim()
-      : (base.label || 'Repair symbol');
-    return { id: id, kind: kind, label: label };
-  }
-
-  function normalizeDoc(raw, record) {
-    var src = raw && typeof raw === 'object' ? raw : {};
-    var defsIn = Array.isArray(src.symbolDefs) && src.symbolDefs.length
-      ? src.symbolDefs
-      : defaultSymbolDefs();
-    var defaults = defaultSymbolDefs();
-    var symbolDefs = defsIn.slice(0, 2).map(function (def, i) {
-      return normalizeSymbolDef(def, defaults[i] || defaults[0]);
-    });
-    while (symbolDefs.length < 2) {
-      symbolDefs.push(normalizeSymbolDef(null, defaults[symbolDefs.length]));
-    }
-
-    var planFrame = src.planFrame && typeof src.planFrame === 'object' ? src.planFrame : {};
-    var legend = src.legend && typeof src.legend === 'object' ? src.legend : {};
-    var rail = src.rail && typeof src.rail === 'object' ? src.rail : {};
-
-    var symbols = Array.isArray(src.symbols) ? src.symbols : [];
-    symbols = symbols.map(function (sym) {
-      if (!sym || typeof sym !== 'object') return null;
-      var defId = typeof sym.defId === 'string' ? sym.defId : symbolDefs[0].id;
-      if (!symbolDefs.some(function (d) { return d.id === defId; })) defId = symbolDefs[0].id;
-      return {
-        id: typeof sym.id === 'string' && sym.id ? sym.id : uid('sym'),
-        defId: defId,
-        x: Number(sym.x),
-        y: Number(sym.y),
-      };
-    }).filter(function (sym) {
-      return sym && isFinite(sym.x) && isFinite(sym.y);
-    });
-
-    var notes = Array.isArray(src.notes) ? src.notes : [];
-    notes = notes.map(function (note) {
-      if (!note || typeof note !== 'object') return null;
-      return {
-        id: typeof note.id === 'string' && note.id ? note.id : uid('note'),
-        x: clamp(note.x, 0, 96),
-        y: clamp(note.y, 0, 96),
-        w: clamp(note.w, 8, 70),
-        h: clamp(note.h, 4, 50),
-        text: typeof note.text === 'string' ? note.text : '',
-      };
-    }).filter(Boolean);
-
-    var canvasId = typeof src.canvasId === 'string' ? src.canvasId : '';
-    if (!canvasId && record && window.ToolboxPlanSetup) {
-      var active = window.ToolboxPlanSetup.activeCanvas
-        ? window.ToolboxPlanSetup.activeCanvas(record)
-        : null;
-      if (active && active.id) canvasId = active.id;
-    }
-
-    return {
-      updatedAt: typeof src.updatedAt === 'string' ? src.updatedAt : '',
-      canvasId: canvasId,
-      planFrame: {
-        x: clamp(planFrame.x, 1, 88),
-        y: clamp(planFrame.y, 1, 88),
-        w: clamp(planFrame.w != null ? planFrame.w : 78, 20, 96),
-        h: clamp(planFrame.h != null ? planFrame.h : 86, 20, 96),
-      },
-      symbolSize: clamp(src.symbolSize != null ? src.symbolSize : DEFAULT_SYMBOL_SIZE, 1.2, 8),
-      symbolDefs: symbolDefs,
-      symbols: symbols,
-      notes: notes,
-      legend: {
-        x: clamp(legend.x != null ? legend.x : 3, 0, 90),
-        y: clamp(legend.y != null ? legend.y : 78, 0, 90),
-        w: clamp(legend.w != null ? legend.w : 28, 12, 60),
-        h: clamp(legend.h != null ? legend.h : 16, 8, 40),
-      },
-      rail: {
-        title: typeof rail.title === 'string' && rail.title.trim()
-          ? rail.title
-          : 'Preliminary Underpinning Plan',
-        date: typeof rail.date === 'string' ? rail.date : '',
-        status: typeof rail.status === 'string' && rail.status.trim()
-          ? rail.status
-          : 'Preliminary — Subject to Structural Engineering',
-        sheetId: typeof rail.sheetId === 'string' && rail.sheetId.trim()
-          ? rail.sheetId
-          : 'POR-1',
-        northRotation: isFinite(Number(rail.northRotation)) ? Number(rail.northRotation) : 0,
-        showSandiaAttribution: !!rail.showSandiaAttribution,
-        clientOverride: typeof rail.clientOverride === 'string' ? rail.clientOverride : '',
-        addressOverride: typeof rail.addressOverride === 'string' ? rail.addressOverride : '',
-      },
-    };
-  }
-
-  function usedDefs(doc) {
-    var used = {};
-    (doc.symbols || []).forEach(function (sym) { used[sym.defId] = true; });
-    return (doc.symbolDefs || []).filter(function (def) { return used[def.id]; });
-  }
-
   function displayName(record) {
     var first = ((record && record.firstName) || '').trim();
     var last = ((record && record.lastName) || '').trim();
     var company = ((record && record.companyName) || '').trim();
     var name = (first + ' ' + last).trim();
-    if (name && /residence$/i.test(name) === false && last) return name + ' Residence';
+    if (name && last && !/residence$/i.test(name)) return name + ' Residence';
     return name || company || 'Customer File';
   }
 
@@ -172,196 +43,421 @@
     return ((record && record.propertyAddress) || '').trim();
   }
 
-  function symbolSvg(kind, sizePx) {
-    var s = Math.max(8, sizePx || 18);
-    if (kind === 'circle-in-square') {
-      return '<svg class="por-symbol__mark" viewBox="0 0 24 24" width="' + s +
-        '" height="' + s + '" aria-hidden="true">' +
-        '<rect class="por-symbol__square" x="1.5" y="1.5" width="21" height="21" rx="1.5"/>' +
-        '<circle class="por-symbol__circle" cx="12" cy="12" r="6.2"/>' +
-        '</svg>';
+  function blankPage(title) {
+    return {
+      id: uid('page'),
+      title: title || 'Drawing',
+      overlays: [],
+      background: { kind: null, canvasId: '' },
+      rail: {
+        title: 'Preliminary Underpinning Plan',
+        date: '',
+        status: 'Preliminary — Subject to Structural Engineering',
+        sheetId: '',
+      },
+    };
+  }
+
+  function migrateLegacy(raw) {
+    // Older pier-symbol document → one drawing page with circle overlays.
+    if (!raw || !Array.isArray(raw.symbols) || !raw.symbols.length) return null;
+    var page = blankPage('Plan of Repair');
+    if (raw.canvasId) page.background = { kind: 'plan', canvasId: raw.canvasId };
+    if (raw.rail) {
+      page.rail.title = raw.rail.title || page.rail.title;
+      page.rail.date = raw.rail.date || '';
+      page.rail.status = raw.rail.status || page.rail.status;
+      page.rail.sheetId = raw.rail.sheetId || '';
     }
-    return '<svg class="por-symbol__mark" viewBox="0 0 24 24" width="' + s +
-      '" height="' + s + '" aria-hidden="true">' +
-      '<circle class="por-symbol__circle" cx="12" cy="12" r="8.2"/>' +
-      '</svg>';
+    var size = clamp(raw.symbolSize != null ? raw.symbolSize : 2.4, 1.2, 8);
+    var half = size / 2;
+    (raw.symbols || []).forEach(function (sym) {
+      if (!sym || !isFinite(Number(sym.x)) || !isFinite(Number(sym.y))) return;
+      var cx = Number(sym.x) * 100 * 0.88 + 5;
+      var cy = Number(sym.y) * 100 * 0.88 + 5;
+      var def = (raw.symbolDefs || []).find(function (d) { return d && d.id === sym.defId; });
+      var filledSquare = def && def.kind === 'circle-in-square';
+      if (filledSquare) {
+        page.overlays.push({
+          id: uid('ov'),
+          kind: 'rect',
+          color: '#eab308',
+          thick: 2,
+          fill: true,
+          x0: cx - half * 1.15,
+          y0: cy - half * 1.15,
+          x1: cx + half * 1.15,
+          y1: cy + half * 1.15,
+        });
+      }
+      page.overlays.push({
+        id: uid('ov'),
+        kind: 'circle',
+        color: '#1d4ed8',
+        thick: 2,
+        fill: true,
+        x0: cx - half,
+        y0: cy - half,
+        x1: cx + half,
+        y1: cy + half,
+      });
+    });
+    return {
+      updatedAt: raw.updatedAt || '',
+      schema: 'toolbox.plan-of-repair',
+      schemaVersion: 2,
+      activePageId: page.id,
+      northRotation: (raw.rail && Number(raw.rail.northRotation)) || 0,
+      pages: [page],
+      showSandiaAttribution: !!(raw.rail && raw.rail.showSandiaAttribution),
+    };
+  }
+
+  function normalizeDoc(raw) {
+    if (raw && Array.isArray(raw.pages)) {
+      var pages = raw.pages.map(function (p, i) {
+        var page = blankPage((p && p.title) || ('Drawing ' + (i + 1)));
+        if (p && p.id) page.id = p.id;
+        page.overlays = window.ToolboxReportOverlay
+          ? window.ToolboxReportOverlay.normalize(p.overlays || [])
+          : (Array.isArray(p.overlays) ? p.overlays : []);
+        page.background = p && p.background && typeof p.background === 'object'
+          ? {
+              kind: p.background.kind === 'contour' || p.background.kind === 'plan'
+                ? p.background.kind
+                : null,
+              canvasId: typeof p.background.canvasId === 'string' ? p.background.canvasId : '',
+            }
+          : { kind: null, canvasId: '' };
+        page.rail = Object.assign(page.rail, (p && p.rail) || {});
+        if (!page.rail.sheetId) page.rail.sheetId = 'POR-' + (i + 1);
+        return page;
+      });
+      if (!pages.length) pages = [blankPage('Drawing 1')];
+      var active = typeof raw.activePageId === 'string' ? raw.activePageId : pages[0].id;
+      if (!pages.some(function (p) { return p.id === active; })) active = pages[0].id;
+      return {
+        updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : '',
+        schema: 'toolbox.plan-of-repair',
+        schemaVersion: 2,
+        activePageId: active,
+        northRotation: isFinite(Number(raw.northRotation)) ? Number(raw.northRotation) : 0,
+        pages: pages,
+        showSandiaAttribution: !!raw.showSandiaAttribution,
+      };
+    }
+    var migrated = migrateLegacy(raw);
+    if (migrated) return migrated;
+    var first = blankPage('Drawing 1');
+    first.rail.sheetId = 'POR-1';
+    return {
+      updatedAt: '',
+      schema: 'toolbox.plan-of-repair',
+      schemaVersion: 2,
+      activePageId: first.id,
+      northRotation: 0,
+      pages: [first],
+      showSandiaAttribution: false,
+    };
   }
 
   function fitScale(stageEl) {
-    if (!stageEl) return 1;
-    var wrap = stageEl.parentElement;
+    var wrap = stageEl && stageEl.querySelector
+      ? stageEl
+      : null;
     if (!wrap) return 1;
-    var pad = 8;
+    var pad = 16;
     var availW = Math.max(240, wrap.clientWidth - pad);
     var availH = Math.max(180, wrap.clientHeight - pad);
-    return Math.min(1, availW / SHEET_W, availH / SHEET_H);
-  }
-
-  function applySheetScale(sheetEl, stageEl) {
-    var scale = fitScale(stageEl);
-    sheetEl.style.transform = 'scale(' + scale + ')';
-    stageEl.style.width = (SHEET_W * scale) + 'px';
-    stageEl.style.height = (SHEET_H * scale) + 'px';
-    return scale;
+    return Math.min(1, availW / PAPER_W, availH / PAPER_H);
   }
 
   function mount(host, opts) {
     opts = opts || {};
     unmount();
-
     var customerFileId = opts.customerFileId;
     var onBack = typeof opts.onBack === 'function' ? opts.onBack : function () {};
-    var root = document.createElement('div');
-    root.className = 'por-root';
-    host.appendChild(root);
     document.body.classList.add('plan-of-repair-open');
+
+    var root = document.createElement('div');
+    root.className = 'por-shell rb-shell';
+    host.appendChild(root);
+
+    root.innerHTML =
+      '<div class="view-bar view-bar--file rb-identity">' +
+      '  <button type="button" id="por-back" class="btn btn--ghost">‹ Customer File</button>' +
+      '  <div class="file-identity">' +
+      '    <span class="file-identity__name">Plan of Repair</span>' +
+      '    <span class="file-identity__address" id="por-file-label"></span>' +
+      '  </div>' +
+      '  <span class="file-status" id="por-status">Loading…</span>' +
+      '</div>' +
+      '<div class="rb-toolbar">' +
+      '  <div class="rb-toolbar__format" data-rb-format-host></div>' +
+      '  <label class="por-fill-toggle"><input type="checkbox" id="por-fill"> Fill shape</label>' +
+      '  <div class="rb-zoom" role="group" aria-label="Page size on screen">' +
+      '    <button type="button" id="por-zoom-out" class="rb-zoom__btn" aria-label="Zoom out">−</button>' +
+      '    <button type="button" id="por-zoom-level" class="rb-zoom__level">Fit</button>' +
+      '    <button type="button" id="por-zoom-in" class="rb-zoom__btn" aria-label="Zoom in">+</button>' +
+      '  </div>' +
+      '  <button type="button" id="por-print" class="btn btn--secondary rb-print-btn">Print / PDF</button>' +
+      '</div>' +
+      '<div class="rb-workspace">' +
+      '  <aside class="rb-ws" aria-label="Drawing pages">' +
+      '    <div class="rb-rail__head">' +
+      '      <p class="eyebrow">Pages</p>' +
+      '      <strong>Drawing sheets</strong>' +
+      '      <span id="por-save-status">…</span>' +
+      '    </div>' +
+      '    <div class="rb-rail__list" id="por-page-list"></div>' +
+      '    <div class="rb-rail__actions">' +
+      '      <button type="button" id="por-add-page" class="btn btn--secondary">Add page</button>' +
+      '      <button type="button" id="por-dup-page" class="btn btn--quiet">Duplicate</button>' +
+      '      <button type="button" id="por-remove-page" class="btn btn--quiet">Remove</button>' +
+      '    </div>' +
+      '  </aside>' +
+      '  <div class="rb-stage" id="por-stage">' +
+      '    <div class="rb-stage__paper">' +
+      '      <article class="rb-sheet" id="por-sheet" aria-label="11 by 17 inch landscape drawing sheet"></article>' +
+      '    </div>' +
+      '  </div>' +
+      '  <aside class="rb-panel por-panel" aria-label="Toolbox">' +
+      '    <p class="eyebrow">Toolbox</p>' +
+      '    <h2 class="por-panel__title">Drawing</h2>' +
+      '    <label class="por-panel__label" for="por-canvas">Level</label>' +
+      '    <select id="por-canvas" class="por-bg-select" aria-label="Level or canvas"></select>' +
+      '    <div class="por-bg-actions" role="group" aria-label="Background">' +
+      '      <button type="button" class="por-linkbtn" id="por-bring-plan">Floor plan</button>' +
+      '      <button type="button" class="por-linkbtn" id="por-bring-contour">Contour</button>' +
+      '      <button type="button" class="por-linkbtn" id="por-clear-bg">Clear</button>' +
+      '    </div>' +
+      '    <label class="por-fill-toggle por-fill-toggle--compact"><input type="checkbox" id="por-sandia"> SandiaGEO note</label>' +
+      '    <div class="por-inspector" id="por-inspector" hidden>' +
+      '      <h3 id="por-inspector-title" class="por-inspector__heading">Format Shape</h3>' +
+      '      <div class="por-inspector__line">' +
+      '        <label class="por-fill-toggle por-fill-toggle--compact"><input type="checkbox" id="por-shape-fill"> Fill</label>' +
+      '        <div class="por-inspector__swatches" id="por-fill-swatches" aria-label="Fill colour"></div>' +
+      '      </div>' +
+      '      <div class="por-inspector__line">' +
+      '        <span class="por-inspector__tag">Line</span>' +
+      '        <div class="por-inspector__swatches" id="por-outline-swatches" aria-label="Outline colour"></div>' +
+      '      </div>' +
+      '      <div class="por-inspector__line">' +
+      '        <span class="por-inspector__tag">Weight</span>' +
+      '        <div class="por-seg" id="por-outline-weights" role="group" aria-label="Outline weight">' +
+      '          <button type="button" class="por-seg__btn" data-por-thick="1" title="Thin">1</button>' +
+      '          <button type="button" class="por-seg__btn" data-por-thick="2" title="Medium">2</button>' +
+      '          <button type="button" class="por-seg__btn" data-por-thick="3" title="Thick">3</button>' +
+      '        </div>' +
+      '      </div>' +
+      '      <h3 class="por-inspector__heading">Size &amp; Position</h3>' +
+      '      <div class="por-inspector__size" aria-label="Size and position in inches">' +
+      '        <label class="por-inspector__field"><span>X</span><input type="number" id="por-size-x" step="0.05" min="0" max="17"></label>' +
+      '        <label class="por-inspector__field"><span>Y</span><input type="number" id="por-size-y" step="0.05" min="0" max="11"></label>' +
+      '        <label class="por-inspector__field"><span>W</span><input type="number" id="por-size-w" step="0.05" min="0.1" max="17"></label>' +
+      '        <label class="por-inspector__field"><span>H</span><input type="number" id="por-size-h" step="0.05" min="0.1" max="11"></label>' +
+      '      </div>' +
+      '      <div class="por-stack" role="group" aria-label="Arrange">' +
+      '        <button type="button" class="por-stack__btn" id="por-stack-front" title="Bring to Front">Front</button>' +
+      '        <button type="button" class="por-stack__btn" id="por-stack-forward" title="Bring Forward">Forward</button>' +
+      '        <button type="button" class="por-stack__btn" id="por-stack-backward" title="Send Backward">Back</button>' +
+      '        <button type="button" class="por-stack__btn" id="por-stack-back" title="Send to Back">Bottom</button>' +
+      '      </div>' +
+      '    </div>' +
+      '  </aside>' +
+      '</div>';
 
     var state = {
       record: null,
-      doc: normalizeDoc(null, null),
-      planUrl: '',
-      planW: 0,
-      planH: 0,
+      doc: normalizeDoc(null),
       readOnly: false,
-      placeDefId: null,
-      selected: null, // { kind:'symbol'|'note'|'legend'|'plan', id? }
       dirty: false,
       saveTimer: null,
       undo: [],
       redo: [],
+      inkTool: null,
+      inkThick: 2,
+      inkColor: '#1d4ed8',
+      inkFill: false,
+      inkDrag: null,
+      selectedId: null,
       clipboard: null,
+      bgUrl: '',
       scale: 1,
+      zoomMode: 'fit',
+      userScale: 1,
       drag: null,
-      status: 'Loading…',
+      formatToolbar: null,
+      shapeMenu: null,
+      inspectorMode: 'format', // format | size
+      fillColor: '#eab308',
+      editSeq: 0,
     };
 
-    root.innerHTML =
-      '<div class="por-bar" role="toolbar" aria-label="Plan of Repair tools">' +
-      '  <button type="button" class="btn btn--ghost" id="por-back">‹ Customer File</button>' +
-      '  <div class="por-bar__tools" id="por-tools"></div>' +
-      '  <div class="por-bar__grow"></div>' +
-      '  <div class="por-bar__meta">' +
-      '    <label class="por-size">Symbol size <input id="por-size" type="range" min="1.2" max="8" step="0.1"></label>' +
-      '    <button type="button" class="btn btn--secondary" id="por-undo" disabled>Undo</button>' +
-      '    <button type="button" class="btn btn--secondary" id="por-redo" disabled>Redo</button>' +
-      '    <button type="button" class="btn btn--secondary" id="por-add-note">Add note</button>' +
-      '    <button type="button" class="btn btn--secondary" id="por-print">Print / PDF</button>' +
-      '    <label class="por-size"><input id="por-sandia" type="checkbox"> Survey info by SandiaGEO</label>' +
-      '    <span class="por-bar__status" id="por-status"></span>' +
-      '  </div>' +
-      '</div>' +
-      '<div class="por-stage-wrap"><div class="por-stage" id="por-stage">' +
-      '  <div class="por-sheet" id="por-sheet" aria-label="Plan of Repair worksheet, 11 by 17 inch landscape">' +
-      '    <div class="por-sheet__frame" aria-hidden="true"></div>' +
-      '    <div class="por-drawing" id="por-drawing"></div>' +
-      '    <aside class="por-rail" id="por-rail" aria-label="Drawing information"></aside>' +
-      '  </div>' +
-      '</div></div>';
-
-    var toolsEl = root.querySelector('#por-tools');
-    var stageEl = root.querySelector('#por-stage');
     var sheetEl = root.querySelector('#por-sheet');
-    var drawingEl = root.querySelector('#por-drawing');
-    var railEl = root.querySelector('#por-rail');
+    var stageEl = root.querySelector('#por-stage');
     var statusEl = root.querySelector('#por-status');
-    var sizeInput = root.querySelector('#por-size');
+    var saveEl = root.querySelector('#por-save-status');
+    var fillInput = root.querySelector('#por-fill');
     var sandiaInput = root.querySelector('#por-sandia');
+    var canvasSelect = root.querySelector('#por-canvas');
+    var inspectorEl = root.querySelector('#por-inspector');
+    var shapeFillInput = root.querySelector('#por-shape-fill');
+    var INCH_W = 17;
+    var INCH_H = 11;
+    var HANDLE_CORNERS = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
     function setStatus(text) {
-      state.status = text || '';
-      if (statusEl) statusEl.textContent = state.status;
+      if (statusEl) statusEl.textContent = text || '';
+      if (saveEl) saveEl.textContent = text || '';
     }
 
-    function snapshot() {
-      return deepClone(state.doc);
+    function activePage() {
+      var pages = state.doc.pages;
+      for (var i = 0; i < pages.length; i++) if (pages[i].id === state.doc.activePageId) return pages[i];
+      return pages[0];
     }
 
     function pushHistory() {
-      state.undo.push(snapshot());
+      state.undo.push(deepClone(state.doc));
       if (state.undo.length > 80) state.undo.shift();
       state.redo = [];
       syncHistoryButtons();
     }
 
     function syncHistoryButtons() {
-      var undoBtn = root.querySelector('#por-undo');
-      var redoBtn = root.querySelector('#por-redo');
-      if (undoBtn) undoBtn.disabled = state.readOnly || !state.undo.length;
-      if (redoBtn) redoBtn.disabled = state.readOnly || !state.redo.length;
+      if (state.formatToolbar && state.formatToolbar.setHistory) {
+        state.formatToolbar.setHistory(state.undo.length > 0, state.redo.length > 0);
+      }
+    }
+
+    function applyHistory(doc) {
+      state.doc = normalizeDoc(doc);
+      state.selectedId = null;
+      scheduleSave();
+      renderAll();
+    }
+
+    function undo() {
+      if (!state.undo.length || state.readOnly) return;
+      state.redo.push(deepClone(state.doc));
+      applyHistory(state.undo.pop());
+    }
+
+    function redo() {
+      if (!state.redo.length || state.readOnly) return;
+      state.undo.push(deepClone(state.doc));
+      applyHistory(state.redo.pop());
     }
 
     function scheduleSave() {
+      if (state.readOnly) return;
       state.dirty = true;
+      state.editSeq += 1;
+      var seq = state.editSeq;
       setStatus('Saving…');
       if (state.saveTimer) clearTimeout(state.saveTimer);
       state.saveTimer = setTimeout(function () {
         state.saveTimer = null;
-        persistNow();
-      }, 280);
+        persistNow(seq);
+      }, 320);
     }
 
-    function persistNow() {
+    function persistNow(expectedSeq) {
       if (!state.record || state.readOnly) return Promise.resolve();
-      var doc = normalizeDoc(state.doc, state.record);
+      var seq = expectedSeq != null ? expectedSeq : state.editSeq;
+      // A newer edit landed while we were waiting — that edit owns the next save.
+      if (seq !== state.editSeq) return Promise.resolve();
+      var doc = normalizeDoc(state.doc);
+      if (seq !== state.editSeq) return Promise.resolve();
       doc.updatedAt = isoNow();
       state.doc = doc;
       state.record.planOfRepair = doc;
       state.record.updatedAt = doc.updatedAt;
       return window.ToolboxDB.saveCustomerFile(state.record).then(function () {
-        state.dirty = false;
-        setStatus('Saved');
+        if (seq === state.editSeq) {
+          state.dirty = false;
+          setStatus('Saved');
+        }
       }).catch(function (err) {
-        console.error('Plan of Repair save failed', err);
+        console.error(err);
         setStatus('Save failed');
       });
     }
 
-    function symbolSizePx() {
-      var frame = state.doc.planFrame;
-      var shortSide = Math.min(
-        (frame.w / 100) * (SHEET_W * 0.88),
-        (frame.h / 100) * (SHEET_H * 0.98)
-      );
-      return Math.max(10, (state.doc.symbolSize / 100) * shortSide);
+    function overlayApi() { return window.ToolboxReportOverlay; }
+
+    function overlayList(page) {
+      if (!page.overlays) page.overlays = [];
+      return page.overlays;
     }
 
-    function defById(id) {
-      var list = state.doc.symbolDefs || [];
-      for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
-      return list[0] || null;
+    function applySheetScale() {
+      var paper = stageEl.querySelector('.rb-stage__paper');
+      var scale = state.zoomMode === 'fit'
+        ? fitScale(stageEl)
+        : clamp(state.userScale, 0.35, 2.4);
+      state.scale = scale;
+      sheetEl.style.transform = 'scale(' + scale + ')';
+      if (paper) {
+        paper.style.width = (PAPER_W * scale) + 'px';
+        paper.style.height = (PAPER_H * scale) + 'px';
+      }
+      var level = root.querySelector('#por-zoom-level');
+      if (level) level.textContent = state.zoomMode === 'fit' ? 'Fit' : Math.round(scale * 100) + '%';
     }
 
-    function renderTools() {
-      toolsEl.innerHTML = '';
-      state.doc.symbolDefs.forEach(function (def) {
+    function loadBackground() {
+      state.bgUrl = '';
+      var page = activePage();
+      var bg = page && page.background;
+      if (!bg || !bg.kind || !bg.canvasId || !state.record) return Promise.resolve();
+      var canvas = window.ToolboxPlanSetup && window.ToolboxPlanSetup.canvasById
+        ? window.ToolboxPlanSetup.canvasById(state.record, bg.canvasId)
+        : null;
+      if (!canvas) return Promise.resolve();
+      var mediaId = null;
+      if (bg.kind === 'plan' && canvas.plan && canvas.plan.id) mediaId = canvas.plan.id;
+      if (bg.kind === 'contour') {
+        var layer = window.ToolboxPlanSetup.contourLayer
+          ? window.ToolboxPlanSetup.contourLayer(canvas)
+          : (canvas.contourLayer || null);
+        if (layer && layer.id) mediaId = layer.id;
+      }
+      if (!mediaId || !window.ToolboxDB || !window.ToolboxDB.getMedia) return Promise.resolve();
+      return window.ToolboxDB.getMedia(mediaId).then(function (url) {
+        if (typeof url === 'string' && url.indexOf('data:image/') === 0) state.bgUrl = url;
+      }).catch(function () {});
+    }
+
+    function renderPageList() {
+      var list = root.querySelector('#por-page-list');
+      list.innerHTML = '';
+      state.doc.pages.forEach(function (page, index) {
         var btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'por-tool' + (state.placeDefId === def.id ? ' is-active' : '');
-        btn.title = def.label;
-        btn.setAttribute('aria-pressed', state.placeDefId === def.id ? 'true' : 'false');
-        btn.innerHTML = symbolSvg(def.kind, 18) + ' Place';
-        btn.disabled = state.readOnly;
+        btn.className = 'rb-rail__page' + (page.id === state.doc.activePageId ? ' is-active' : '');
+        btn.textContent = (index + 1) + '. ' + (page.title || 'Drawing');
         btn.addEventListener('click', function () {
-          if (state.readOnly) return;
-          state.placeDefId = state.placeDefId === def.id ? null : def.id;
-          state.selected = null;
-          renderTools();
-          renderSheet();
+          if (page.id === state.doc.activePageId) return;
+          state.doc.activePageId = page.id;
+          state.selectedId = null;
+          loadBackground().then(renderSheet);
+          renderPageList();
         });
-        toolsEl.appendChild(btn);
+        list.appendChild(btn);
       });
-      var canvasSelect = document.createElement('select');
-      canvasSelect.id = 'por-canvas';
-      canvasSelect.className = 'por-tool';
-      canvasSelect.setAttribute('aria-label', 'Plan / level');
-      canvasSelect.disabled = state.readOnly;
+    }
+
+    function renderCanvasOptions() {
+      canvasSelect.innerHTML = '';
       var canvases = (state.record && state.record.planSetup && state.record.planSetup.canvases) || [];
       canvases.forEach(function (canvas) {
         if (!window.ToolboxPlanSetup || !window.ToolboxPlanSetup.hasUsablePlan(canvas)) return;
         var opt = document.createElement('option');
         opt.value = canvas.id;
-        opt.textContent = canvas.name || 'Plan';
-        if (canvas.id === state.doc.canvasId) opt.selected = true;
+        var hasContour = !!(window.ToolboxPlanSetup.contourLayer && window.ToolboxPlanSetup.contourLayer(canvas));
+        opt.textContent = (canvas.name || 'Plan') + (hasContour ? '' : '');
         canvasSelect.appendChild(opt);
       });
       if (!canvasSelect.options.length) {
@@ -370,544 +466,701 @@
         empty.textContent = 'No plan on this file';
         canvasSelect.appendChild(empty);
       }
-      canvasSelect.addEventListener('change', function () {
-        if (state.readOnly) return;
-        pushHistory();
-        state.doc.canvasId = canvasSelect.value;
-        loadPlan().then(function () {
-          scheduleSave();
-          renderSheet();
-        });
+      var page = activePage();
+      if (page && page.background && page.background.canvasId) {
+        canvasSelect.value = page.background.canvasId;
+      }
+    }
+
+    function renderRail(page) {
+      var railApi = window.ToolboxReportRail;
+      if (!railApi || !railApi.render) return null;
+      var today = new Date();
+      var dateStr = page.rail.date || ((today.getMonth() + 1) + '/' + today.getDate() + '/' + today.getFullYear());
+      if (!page.rail.date) page.rail.date = dateStr;
+      var rail = railApi.render({
+        residence: displayName(state.record),
+        address: displayAddress(state.record),
+        title: page.rail.title || 'Preliminary Underpinning Plan',
+        surveyDate: dateStr,
+        correctedNote: page.rail.status || '',
+        figureLabel: page.rail.sheetId || 'POR',
+        northRotation: state.doc.northRotation || 0,
+        markSrc: TLS_MARK,
+        editable: !state.readOnly,
+        stats: [],
       });
-      toolsEl.appendChild(canvasSelect);
-    }
-
-    function renderRail() {
-      var rail = state.doc.rail;
-      var client = (rail.clientOverride && rail.clientOverride.trim()) || displayName(state.record);
-      var address = (rail.addressOverride && rail.addressOverride.trim()) || displayAddress(state.record);
-      var deg = rail.northRotation || 0;
-      railEl.innerHTML =
-        '<div class="por-rail__body">' +
-        '  <div class="por-rail__compass" aria-label="North orientation">' +
-        '    <svg class="por-rail__rose" viewBox="-30 -30 60 60" aria-hidden="true" focusable="false">' +
-        '      <g transform="rotate(' + deg + ')">' +
-        '        <circle cx="0" cy="0" r="26" fill="#fffaf0" stroke="#1a1a1a" stroke-width="1.5"/>' +
-        '        <path d="M 0 -22 L 11 14 L 0 5 L -11 14 Z" fill="#c14a2b"/>' +
-        '        <text x="0" y="20" fill="#1a1a1a" font-size="11" font-weight="700" text-anchor="middle" dominant-baseline="central" font-family="Georgia, \'Times New Roman\', serif">N</text>' +
-        '      </g>' +
-        '    </svg>' +
-        '  </div>' +
-        '  <header>' +
-        '    <h2 class="por-rail__client por-rt" data-por-rail="client" contenteditable="' + (!state.readOnly) + '">' + escapeHtml(client) + '</h2>' +
-        '    <address class="por-rail__address por-rt" data-por-rail="address" contenteditable="' + (!state.readOnly) + '">' + escapeHtml(address) + '</address>' +
-        '  </header>' +
-        '  <section class="por-rail__section">' +
-        '    <h3 class="por-rail__label">Drawing title</h3>' +
-        '    <p class="por-rail__title por-rt" data-por-rail="title" contenteditable="' + (!state.readOnly) + '">' + escapeHtml(rail.title) + '</p>' +
-        '  </section>' +
-        '  <section class="por-rail__section">' +
-        '    <h3 class="por-rail__label">Plan date</h3>' +
-        '    <p class="por-rail__date por-rt" data-por-rail="date" contenteditable="' + (!state.readOnly) + '">' + escapeHtml(rail.date || '') + '</p>' +
-        '  </section>' +
-        '  <section class="por-rail__section">' +
-        '    <h3 class="por-rail__label">Status</h3>' +
-        '    <p class="por-rail__status por-rt" data-por-rail="status" contenteditable="' + (!state.readOnly) + '">' + escapeHtml(rail.status) + '</p>' +
-        '  </section>' +
-        '  <section class="por-rail__section">' +
-        '    <h3 class="por-rail__label">Sheet</h3>' +
-        '    <p class="por-rail__sheet por-rt" data-por-rail="sheetId" contenteditable="' + (!state.readOnly) + '">' + escapeHtml(rail.sheetId) + '</p>' +
-        '  </section>' +
-        '</div>' +
-        '<footer class="por-rail__foot">' +
-        '  <p class="por-rail__brand" title="' + escapeAttr(PLACEHOLDER_TLS) + '">TLS Foundations<small>text brand mark</small></p>' +
-        '  <img class="por-rail__sandia' + (rail.showSandiaAttribution ? ' is-on' : '') + '" src="brand/sandia-geo.png" alt="Sandia GEO">' +
-        '  <p class="por-rail__sandia-note' + (rail.showSandiaAttribution ? ' is-on' : '') + '">Survey information by SandiaGEO</p>' +
-        '</footer>';
-
-      railEl.querySelectorAll('[data-por-rail]').forEach(function (el) {
-        el.addEventListener('focus', function () {
-          if (state.readOnly) return;
-          el.setAttribute('data-por-before', el.textContent || '');
-        });
-        el.addEventListener('blur', function () {
-          if (state.readOnly) return;
-          var key = el.getAttribute('data-por-rail');
-          var before = el.getAttribute('data-por-before') || '';
-          var next = (el.textContent || '').replace(/\u00a0/g, ' ').trim();
-          if (next === before.trim()) return;
-          pushHistory();
-          if (key === 'client') state.doc.rail.clientOverride = next;
-          else if (key === 'address') state.doc.rail.addressOverride = next;
-          else if (key === 'title') state.doc.rail.title = next || 'Preliminary Underpinning Plan';
-          else if (key === 'date') state.doc.rail.date = next;
-          else if (key === 'status') state.doc.rail.status = next || 'Preliminary — Subject to Structural Engineering';
-          else if (key === 'sheetId') state.doc.rail.sheetId = next || 'POR-1';
-          scheduleSave();
-        });
-      });
-    }
-
-    function escapeHtml(text) {
-      return String(text || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-    }
-
-    function escapeAttr(text) {
-      return escapeHtml(text).replace(/"/g, '&quot;');
+      // Retitle the survey-date section label visually via CSS isn't available;
+      // the correctedNote line carries status. Swap logo alt.
+      var logo = rail.querySelector('.rb-rail__logo');
+      if (logo) logo.alt = 'TLS Foundations';
+      if (state.doc.showSandiaAttribution) {
+        var sandia = document.createElement('img');
+        sandia.src = 'brand/sandia-geo.png';
+        sandia.alt = 'Sandia GEO';
+        sandia.className = 'rb-rail__logo';
+        sandia.style.marginTop = '6px';
+        var note = document.createElement('p');
+        note.className = 'rb-rail__note';
+        note.textContent = 'Survey information by SandiaGEO';
+        rail.querySelector('.rb-rail__foot').appendChild(sandia);
+        rail.querySelector('.rb-rail__foot').appendChild(note);
+      }
+      return rail;
     }
 
     function renderSheet() {
-      var doc = state.doc;
-      var frame = doc.planFrame;
-      drawingEl.innerHTML = '';
+      var page = activePage();
+      var api = overlayApi();
+      sheetEl.innerHTML = '';
+      sheetEl.classList.toggle('rb-sheet--inking', !!state.inkTool);
+      sheetEl.classList.toggle('rb-sheet--erasing', state.inkTool === 'eraser');
 
-      var plan = document.createElement('div');
-      plan.className = 'por-plan' +
-        (state.selected && state.selected.kind === 'plan' ? ' is-selected' : '') +
-        (state.placeDefId ? ' is-placing' : '');
-      plan.style.left = frame.x + '%';
-      plan.style.top = frame.y + '%';
-      plan.style.width = frame.w + '%';
-      plan.style.height = frame.h + '%';
-      plan.setAttribute('data-por-plan', '1');
+      var frame = document.createElement('div');
+      frame.className = 'rb-sheet__frame';
+      frame.setAttribute('aria-hidden', 'true');
+      // Reuse sheet border treatment from RB via CSS if present; otherwise a
+      // simple POR frame.
+      frame.style.cssText = 'position:absolute;inset:10px;border:1.5px solid #5c4a32;pointer-events:none;z-index:4;';
+      sheetEl.appendChild(frame);
 
-      var fit = document.createElement('div');
-      fit.className = 'por-plan__fit';
-      if (state.planUrl) {
+      var bg = document.createElement('div');
+      bg.className = 'por-sheet-bg';
+      if (state.bgUrl) {
         var img = document.createElement('img');
-        img.className = 'por-plan__image';
-        img.alt = 'Floor plan';
-        img.src = state.planUrl;
-        fit.appendChild(img);
+        img.src = state.bgUrl;
+        img.alt = page.background && page.background.kind === 'contour' ? 'Contour' : 'Floor plan';
+        bg.appendChild(img);
       } else {
-        var missing = document.createElement('div');
-        missing.className = 'por-plan__missing';
-        missing.textContent = 'Choose a Customer File plan to begin the repair worksheet.';
-        fit.appendChild(missing);
-      }
-
-      var layer = document.createElement('div');
-      layer.className = 'por-symbols';
-      var sizePx = symbolSizePx();
-      doc.symbols.forEach(function (sym) {
-        var def = defById(sym.defId);
-        if (!def) return;
-        var marker = document.createElement('div');
-        marker.className = 'por-symbol' +
-          (state.selected && state.selected.kind === 'symbol' && state.selected.id === sym.id
-            ? ' is-selected' : '');
-        marker.style.left = (sym.x * 100) + '%';
-        marker.style.top = (sym.y * 100) + '%';
-        marker.style.width = sizePx + 'px';
-        marker.style.height = sizePx + 'px';
-        marker.setAttribute('data-por-symbol', sym.id);
-        marker.innerHTML = symbolSvg(def.kind, sizePx);
-        marker.title = def.label;
-        layer.appendChild(marker);
-      });
-      fit.appendChild(layer);
-      plan.appendChild(fit);
-
-      var grip = document.createElement('span');
-      grip.className = 'por-plan__grip';
-      grip.setAttribute('data-por-plan-resize', '1');
-      plan.appendChild(grip);
-      drawingEl.appendChild(plan);
-
-      // Legend — only defs actually used on the sheet.
-      var defs = usedDefs(doc);
-      var legend = document.createElement('div');
-      legend.className = 'por-legend' +
-        (state.selected && state.selected.kind === 'legend' ? ' is-selected' : '');
-      legend.style.left = doc.legend.x + '%';
-      legend.style.top = doc.legend.y + '%';
-      legend.style.width = doc.legend.w + '%';
-      legend.setAttribute('data-por-legend', '1');
-      var legendTitle = document.createElement('p');
-      legendTitle.className = 'por-legend__title';
-      legendTitle.textContent = 'Legend';
-      legend.appendChild(legendTitle);
-      if (!defs.length) {
         var empty = document.createElement('p');
-        empty.className = 'por-legend__label';
-        empty.textContent = 'Place a repair symbol to fill the legend.';
-        legend.appendChild(empty);
-      } else {
-        defs.forEach(function (def) {
-          var row = document.createElement('div');
-          row.className = 'por-legend__row';
-          var swatch = document.createElement('div');
-          swatch.className = 'por-legend__swatch';
-          swatch.innerHTML = symbolSvg(def.kind, 22);
-          var label = document.createElement('p');
-          label.className = 'por-legend__label por-rt';
-          label.setAttribute('contenteditable', state.readOnly ? 'false' : 'true');
-          label.setAttribute('data-por-def-label', def.id);
-          label.textContent = def.label;
-          row.appendChild(swatch);
-          row.appendChild(label);
-          legend.appendChild(row);
-        });
+        empty.className = 'por-sheet-bg__empty';
+        empty.textContent = 'Bring in a floor plan or contour from the Toolbox panel.';
+        bg.appendChild(empty);
       }
-      var legendGrip = document.createElement('span');
-      legendGrip.className = 'por-box__grip';
-      legendGrip.setAttribute('data-por-legend-resize', '1');
-      legend.appendChild(legendGrip);
-      drawingEl.appendChild(legend);
+      sheetEl.appendChild(bg);
 
-      doc.notes.forEach(function (note) {
-        var box = document.createElement('div');
-        box.className = 'por-note' +
-          (state.selected && state.selected.kind === 'note' && state.selected.id === note.id
-            ? ' is-selected' : '');
-        box.style.left = note.x + '%';
-        box.style.top = note.y + '%';
-        box.style.width = note.w + '%';
-        box.setAttribute('data-por-note', note.id);
-        var text = document.createElement('p');
-        text.className = 'por-note__text por-rt';
-        text.setAttribute('contenteditable', state.readOnly ? 'false' : 'true');
-        text.setAttribute('data-por-note-text', note.id);
-        text.textContent = note.text || '';
-        box.appendChild(text);
-        var noteGrip = document.createElement('span');
-        noteGrip.className = 'por-box__grip';
-        noteGrip.setAttribute('data-por-note-resize', note.id);
-        box.appendChild(noteGrip);
-        drawingEl.appendChild(box);
-      });
+      var rail = renderRail(page);
+      if (rail) sheetEl.appendChild(rail);
 
-      renderRail();
-      wireSheetEditors();
-      state.scale = applySheetScale(sheetEl, stageEl);
-      syncHistoryButtons();
-      sizeInput.value = String(doc.symbolSize);
-      sandiaInput.checked = !!doc.rail.showSandiaAttribution;
+      if (api && typeof api.renderLayer === 'function') {
+        var layer = api.renderLayer(overlayList(page), { locked: state.readOnly });
+        if (layer) sheetEl.appendChild(layer);
+      }
+
+      if (state.selectedId) renderSelectionChrome(page);
+      applySheetScale();
+      wireRailEdits(page);
+      syncInspector();
     }
 
-    function wireSheetEditors() {
-      drawingEl.querySelectorAll('[data-por-def-label]').forEach(function (el) {
-        el.addEventListener('focus', function () {
-          el.setAttribute('data-por-before', el.textContent || '');
-        });
+    function wireRailEdits(page) {
+      sheetEl.querySelectorAll('[data-rb-rail-field]').forEach(function (el) {
         el.addEventListener('blur', function () {
           if (state.readOnly) return;
-          var id = el.getAttribute('data-por-def-label');
-          var before = el.getAttribute('data-por-before') || '';
-          var next = (el.textContent || '').replace(/\u00a0/g, ' ').trim();
-          if (!next || next === before.trim()) {
-            var def = defById(id);
-            if (def) el.textContent = def.label;
-            return;
+          var key = el.getAttribute('data-rb-rail-field');
+          var text = (el.textContent || '').replace(/\u00a0/g, ' ').trim();
+          pushHistory();
+          if (key === 'title') page.rail.title = text || 'Preliminary Underpinning Plan';
+          else if (key === 'date') page.rail.date = text;
+          else if (key === 'corrected') page.rail.status = text;
+          else if (key === 'figure') page.rail.sheetId = text || page.rail.sheetId;
+          scheduleSave();
+        });
+      });
+      var compass = sheetEl.querySelector('.rb-rail__compass');
+      if (compass && !state.readOnly) {
+        compass.style.cursor = 'grab';
+        compass.title = 'Drag sideways to rotate north';
+        compass.addEventListener('pointerdown', function (event) {
+          event.preventDefault();
+          pushHistory();
+          var startX = event.clientX;
+          var startDeg = state.doc.northRotation || 0;
+          function move(ev) {
+            state.doc.northRotation = startDeg + (ev.clientX - startX) * 0.4;
+            renderSheet();
           }
-          pushHistory();
-          var target = defById(id);
-          if (target) target.label = next;
-          scheduleSave();
-          renderSheet();
+          function up() {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            scheduleSave();
+          }
+          window.addEventListener('pointermove', move);
+          window.addEventListener('pointerup', up);
         });
-      });
-      drawingEl.querySelectorAll('[data-por-note-text]').forEach(function (el) {
-        el.addEventListener('focus', function () {
-          el.setAttribute('data-por-before', el.textContent || '');
-        });
-        el.addEventListener('blur', function () {
-          if (state.readOnly) return;
-          var id = el.getAttribute('data-por-note-text');
-          var before = el.getAttribute('data-por-before') || '';
-          var next = (el.textContent || '').replace(/\u00a0/g, ' ');
-          if (next === before) return;
-          pushHistory();
-          var note = state.doc.notes.find(function (n) { return n.id === id; });
-          if (note) note.text = next;
-          scheduleSave();
-        });
-      });
+      }
     }
 
-    function pointerToPlanNorm(clientX, clientY) {
-      var fit = drawingEl.querySelector('.por-plan__fit');
-      if (!fit) return null;
-      var rect = fit.getBoundingClientRect();
-      if (rect.width < 4 || rect.height < 4) return null;
-      return {
-        x: (clientX - rect.left) / rect.width,
-        y: (clientY - rect.top) / rect.height,
+    function itemBounds(item) {
+      if (!item) return null;
+      if (typeof item.x0 === 'number') {
+        return {
+          x: Math.min(item.x0, item.x1),
+          y: Math.min(item.y0, item.y1),
+          w: Math.abs(item.x1 - item.x0) || 1,
+          h: Math.abs(item.y1 - item.y0) || 1,
+        };
+      }
+      if (typeof item.x === 'number') {
+        return { x: item.x, y: item.y, w: item.w || 8, h: item.h || 8 };
+      }
+      if (Array.isArray(item.points) && item.points.length) {
+        var xs = item.points.map(function (p) { return p[0]; });
+        var ys = item.points.map(function (p) { return p[1]; });
+        var minX = Math.min.apply(null, xs);
+        var maxX = Math.max.apply(null, xs);
+        var minY = Math.min.apply(null, ys);
+        var maxY = Math.max.apply(null, ys);
+        return { x: minX, y: minY, w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY) };
+      }
+      return null;
+    }
+
+    function applyBounds(item, box, oldBox) {
+      if (!item || !box) return;
+      var next = {
+        x: clamp(box.x, -5, 105),
+        y: clamp(box.y, -5, 105),
+        w: clamp(box.w, 0.6, 100),
+        h: clamp(box.h, 0.6, 100),
       };
-    }
-
-    function pointerToDrawingPct(clientX, clientY) {
-      var rect = drawingEl.getBoundingClientRect();
-      if (rect.width < 4 || rect.height < 4) return null;
-      return {
-        x: ((clientX - rect.left) / rect.width) * 100,
-        y: ((clientY - rect.top) / rect.height) * 100,
-      };
-    }
-
-    function onPointerDown(event) {
-      if (state.readOnly) return;
-      if (event.button != null && event.button !== 0) return;
-      var target = event.target;
-      if (target && target.closest && target.closest('[contenteditable="true"]')) return;
-
-      var resizePlan = target.closest && target.closest('[data-por-plan-resize]');
-      var resizeLegend = target.closest && target.closest('[data-por-legend-resize]');
-      var resizeNote = target.closest && target.closest('[data-por-note-resize]');
-      var symbolEl = target.closest && target.closest('[data-por-symbol]');
-      var noteEl = target.closest && target.closest('[data-por-note]');
-      var legendEl = target.closest && target.closest('[data-por-legend]');
-      var planEl = target.closest && target.closest('[data-por-plan]');
-
-      if (state.placeDefId && planEl && !symbolEl && !resizePlan) {
-        var at = pointerToPlanNorm(event.clientX, event.clientY);
-        if (!at) return;
-        event.preventDefault();
-        pushHistory();
-        state.doc.symbols.push({
-          id: uid('sym'),
-          defId: state.placeDefId,
-          x: at.x,
-          y: at.y,
+      if (typeof item.x0 === 'number') {
+        item.x0 = next.x;
+        item.y0 = next.y;
+        item.x1 = next.x + next.w;
+        item.y1 = next.y + next.h;
+        return;
+      }
+      if (typeof item.x === 'number') {
+        item.x = next.x;
+        item.y = next.y;
+        item.w = next.w;
+        item.h = next.h;
+        return;
+      }
+      if (Array.isArray(item.points) && oldBox && oldBox.w > 0.01 && oldBox.h > 0.01) {
+        item.points = item.points.map(function (p) {
+          var rx = (p[0] - oldBox.x) / oldBox.w;
+          var ry = (p[1] - oldBox.y) / oldBox.h;
+          return [next.x + rx * next.w, next.y + ry * next.h];
         });
-        state.selected = { kind: 'symbol', id: state.doc.symbols[state.doc.symbols.length - 1].id };
-        scheduleSave();
-        renderSheet();
-        return;
       }
+    }
 
-      if (resizePlan) {
-        event.preventDefault();
-        pushHistory();
-        state.selected = { kind: 'plan' };
-        state.drag = {
-          mode: 'resize-plan',
-          startX: event.clientX,
-          startY: event.clientY,
-          orig: deepClone(state.doc.planFrame),
-        };
-        renderSheet();
-        return;
+    function resizeBoxFromHandle(origBox, corner, dx, dy) {
+      var box = { x: origBox.x, y: origBox.y, w: origBox.w, h: origBox.h };
+      var right = origBox.x + origBox.w;
+      var bottom = origBox.y + origBox.h;
+      if (corner.indexOf('w') !== -1) box.x = origBox.x + dx;
+      if (corner.indexOf('n') !== -1) box.y = origBox.y + dy;
+      if (corner.indexOf('e') !== -1) box.w = origBox.w + dx;
+      else if (corner.indexOf('w') !== -1) box.w = right - box.x;
+      if (corner.indexOf('s') !== -1) box.h = origBox.h + dy;
+      else if (corner.indexOf('n') !== -1) box.h = bottom - box.y;
+      if (box.w < 0.6) {
+        if (corner.indexOf('w') !== -1) box.x = right - 0.6;
+        box.w = 0.6;
       }
-      if (resizeLegend) {
-        event.preventDefault();
-        pushHistory();
-        state.selected = { kind: 'legend' };
-        state.drag = {
-          mode: 'resize-legend',
-          startX: event.clientX,
-          startY: event.clientY,
-          orig: deepClone(state.doc.legend),
-        };
-        renderSheet();
-        return;
+      if (box.h < 0.6) {
+        if (corner.indexOf('n') !== -1) box.y = bottom - 0.6;
+        box.h = 0.6;
       }
-      if (resizeNote) {
-        event.preventDefault();
-        var noteId = resizeNote.getAttribute('data-por-note-resize');
-        var note = state.doc.notes.find(function (n) { return n.id === noteId; });
-        if (!note) return;
-        pushHistory();
-        state.selected = { kind: 'note', id: noteId };
-        state.drag = {
-          mode: 'resize-note',
-          id: noteId,
-          startX: event.clientX,
-          startY: event.clientY,
-          orig: deepClone(note),
-        };
-        renderSheet();
-        return;
-      }
+      return box;
+    }
 
-      if (symbolEl) {
-        event.preventDefault();
-        var sid = symbolEl.getAttribute('data-por-symbol');
-        var sym = state.doc.symbols.find(function (s) { return s.id === sid; });
-        if (!sym) return;
-        pushHistory();
-        state.placeDefId = null;
-        state.selected = { kind: 'symbol', id: sid };
-        state.drag = {
-          mode: 'move-symbol',
-          id: sid,
-          grab: pointerToPlanNorm(event.clientX, event.clientY),
-          orig: { x: sym.x, y: sym.y },
-        };
-        renderTools();
-        renderSheet();
-        return;
-      }
+    function selectedItem() {
+      var page = activePage();
+      if (!page || !state.selectedId) return null;
+      return overlayList(page).find(function (o) { return o.id === state.selectedId; }) || null;
+    }
 
-      if (legendEl) {
-        event.preventDefault();
-        pushHistory();
-        state.selected = { kind: 'legend' };
-        var lp = pointerToDrawingPct(event.clientX, event.clientY);
-        state.drag = {
-          mode: 'move-legend',
-          start: lp,
-          orig: deepClone(state.doc.legend),
-        };
-        renderSheet();
-        return;
+    function applyInspectorColor(role, color) {
+      if (state.readOnly || !color || !state.selectedId) {
+        setStatus(!state.selectedId ? 'No shape selected' : 'Can’t format');
+        return false;
       }
-
-      if (noteEl) {
-        event.preventDefault();
-        var nid = noteEl.getAttribute('data-por-note');
-        var nobj = state.doc.notes.find(function (n) { return n.id === nid; });
-        if (!nobj) return;
-        pushHistory();
-        state.selected = { kind: 'note', id: nid };
-        var np = pointerToDrawingPct(event.clientX, event.clientY);
-        state.drag = {
-          mode: 'move-note',
-          id: nid,
-          start: np,
-          orig: deepClone(nobj),
-        };
-        renderSheet();
-        return;
+      var page = activePage();
+      var list = overlayList(page);
+      var index = -1;
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].id === state.selectedId) { index = i; break; }
       }
-
-      if (planEl) {
-        event.preventDefault();
-        pushHistory();
-        state.selected = { kind: 'plan' };
-        var pp = pointerToDrawingPct(event.clientX, event.clientY);
-        state.drag = {
-          mode: 'move-plan',
-          start: pp,
-          orig: deepClone(state.doc.planFrame),
-        };
-        renderSheet();
-        return;
+      if (index < 0) {
+        setStatus('No shape selected');
+        return false;
       }
-
-      state.selected = null;
-      state.placeDefId = null;
-      renderTools();
+      var item = list[index];
+      var canFill = item.kind === 'rect' || item.kind === 'circle';
+      pushHistory();
+      // Re-resolve after history snapshot — never mutate a detached copy.
+      list = overlayList(activePage());
+      item = null;
+      for (i = 0; i < list.length; i++) {
+        if (list[i].id === state.selectedId) { item = list[i]; break; }
+      }
+      if (!item) return false;
+      if (role === 'fill') {
+        if (!canFill) return false;
+        item.fill = true;
+        item.fillColor = color;
+        shapeFillInput.checked = true;
+        state.fillColor = color;
+      } else if (role === 'outline') {
+        item.color = color;
+        state.inkColor = color;
+      } else {
+        return false;
+      }
+      scheduleSave();
       renderSheet();
+      setStatus(role === 'fill' ? 'Fill updated' : 'Outline updated');
+      return true;
     }
 
-    function onPointerMove(event) {
-      if (!state.drag) return;
-      event.preventDefault();
-      var d = state.drag;
-      var drawingRect = drawingEl.getBoundingClientRect();
-      var dxPct = ((event.clientX - (d.startX || 0)) / drawingRect.width) * 100;
-      var dyPct = ((event.clientY - (d.startY || 0)) / drawingRect.height) * 100;
-
-      if (d.mode === 'move-symbol') {
-        var at = pointerToPlanNorm(event.clientX, event.clientY);
-        if (!at || !d.grab) return;
-        var sym = state.doc.symbols.find(function (s) { return s.id === d.id; });
-        if (!sym) return;
-        sym.x = d.orig.x + (at.x - d.grab.x);
-        sym.y = d.orig.y + (at.y - d.grab.y);
-        renderSheet();
-        return;
-      }
-      if (d.mode === 'move-plan' && d.start) {
-        var p = pointerToDrawingPct(event.clientX, event.clientY);
-        if (!p) return;
-        state.doc.planFrame.x = clamp(d.orig.x + (p.x - d.start.x), 0, 90);
-        state.doc.planFrame.y = clamp(d.orig.y + (p.y - d.start.y), 0, 90);
-        renderSheet();
-        return;
-      }
-      if (d.mode === 'resize-plan') {
-        state.doc.planFrame.w = clamp(d.orig.w + dxPct, 20, 96);
-        state.doc.planFrame.h = clamp(d.orig.h + dyPct, 20, 96);
-        renderSheet();
-        return;
-      }
-      if (d.mode === 'move-legend' && d.start) {
-        var l = pointerToDrawingPct(event.clientX, event.clientY);
-        if (!l) return;
-        state.doc.legend.x = clamp(d.orig.x + (l.x - d.start.x), 0, 90);
-        state.doc.legend.y = clamp(d.orig.y + (l.y - d.start.y), 0, 90);
-        renderSheet();
-        return;
-      }
-      if (d.mode === 'resize-legend') {
-        state.doc.legend.w = clamp(d.orig.w + dxPct, 12, 60);
-        state.doc.legend.h = clamp(d.orig.h + dyPct, 8, 40);
-        renderSheet();
-        return;
-      }
-      if (d.mode === 'move-note' && d.start) {
-        var npos = pointerToDrawingPct(event.clientX, event.clientY);
-        var note = state.doc.notes.find(function (n) { return n.id === d.id; });
-        if (!npos || !note) return;
-        note.x = clamp(d.orig.x + (npos.x - d.start.x), 0, 92);
-        note.y = clamp(d.orig.y + (npos.y - d.start.y), 0, 92);
-        renderSheet();
-        return;
-      }
-      if (d.mode === 'resize-note') {
-        var n2 = state.doc.notes.find(function (n) { return n.id === d.id; });
-        if (!n2) return;
-        n2.w = clamp(d.orig.w + dxPct, 8, 70);
-        n2.h = clamp(d.orig.h + dyPct, 4, 50);
-        renderSheet();
-      }
+    function paintSwatches(host, selected, role) {
+      host.innerHTML = '';
+      var colors = (overlayApi() && overlayApi().COLORS) || ['#c14a2b', '#111111', '#1d4ed8', '#16a34a', '#ea7317', '#eab308'];
+      colors.forEach(function (c) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'por-inspector__swatch' + (c === selected ? ' is-on' : '');
+        btn.style.background = c;
+        btn.title = c;
+        btn.setAttribute('data-por-swatch', role);
+        btn.setAttribute('data-por-color', c);
+        btn.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          applyInspectorColor(role, c);
+        });
+        host.appendChild(btn);
+      });
     }
 
-    function onPointerUp() {
-      if (!state.drag) return;
-      state.drag = null;
+    function syncInspector() {
+      var item = selectedItem();
+      if (!inspectorEl) return;
+      if (!item) {
+        inspectorEl.hidden = true;
+        return;
+      }
+      inspectorEl.hidden = false;
+      var title = root.querySelector('#por-inspector-title');
+      if (title) {
+        title.textContent = state.inspectorMode === 'size' ? 'Size and Position' : 'Format Shape';
+      }
+      var canFill = item.kind === 'rect' || item.kind === 'circle';
+      shapeFillInput.disabled = !canFill || state.readOnly;
+      shapeFillInput.checked = !!(item.fill && canFill);
+      var fillColor = item.fillColor || item.color || state.fillColor;
+      var outline = item.color || state.inkColor;
+      paintSwatches(root.querySelector('#por-fill-swatches'), fillColor, 'fill');
+      paintSwatches(root.querySelector('#por-outline-swatches'), outline, 'outline');
+      root.querySelectorAll('[data-por-thick]').forEach(function (btn) {
+        var level = Number(btn.getAttribute('data-por-thick'));
+        btn.classList.toggle('is-on', level === item.thick);
+      });
+      var box = itemBounds(item);
+      if (box) {
+        root.querySelector('#por-size-x').value = (box.x / 100 * INCH_W).toFixed(2);
+        root.querySelector('#por-size-y').value = (box.y / 100 * INCH_H).toFixed(2);
+        root.querySelector('#por-size-w').value = (box.w / 100 * INCH_W).toFixed(2);
+        root.querySelector('#por-size-h').value = (box.h / 100 * INCH_H).toFixed(2);
+      }
+      ['por-size-x', 'por-size-y', 'por-size-w', 'por-size-h'].forEach(function (id) {
+        root.querySelector('#' + id).disabled = state.readOnly;
+      });
+      root.querySelectorAll('.por-stack__btn, .por-linkbtn').forEach(function (btn) {
+        btn.disabled = state.readOnly;
+      });
+    }
+
+    function applySizeFields() {
+      var item = selectedItem();
+      if (!item || state.readOnly) return;
+      var old = itemBounds(item);
+      var next = {
+        x: (Number(root.querySelector('#por-size-x').value) / INCH_W) * 100,
+        y: (Number(root.querySelector('#por-size-y').value) / INCH_H) * 100,
+        w: (Number(root.querySelector('#por-size-w').value) / INCH_W) * 100,
+        h: (Number(root.querySelector('#por-size-h').value) / INCH_H) * 100,
+      };
+      if (![next.x, next.y, next.w, next.h].every(isFinite)) return;
+      pushHistory();
+      applyBounds(item, next, old);
+      var api = overlayApi();
+      if (api) activePage().overlays = api.normalize(overlayList(activePage()));
       scheduleSave();
       renderSheet();
     }
 
-    function deleteSelected() {
-      if (state.readOnly || !state.selected) return;
-      if (state.selected.kind === 'symbol') {
-        pushHistory();
-        state.doc.symbols = state.doc.symbols.filter(function (s) {
-          return s.id !== state.selected.id;
-        });
-        state.selected = null;
-        scheduleSave();
-        renderSheet();
-      } else if (state.selected.kind === 'note') {
-        pushHistory();
-        state.doc.notes = state.doc.notes.filter(function (n) {
-          return n.id !== state.selected.id;
-        });
-        state.selected = null;
-        scheduleSave();
-        renderSheet();
+    function reorderSelected(where) {
+      if (state.readOnly || !state.selectedId) return;
+      var page = activePage();
+      var list = overlayList(page).slice();
+      var index = -1;
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].id === state.selectedId) { index = i; break; }
       }
+      if (index < 0) return;
+      var item = list.splice(index, 1)[0];
+      if (where === 'front') list.push(item);
+      else if (where === 'back') list.unshift(item);
+      else if (where === 'forward') list.splice(Math.min(list.length, index + 1), 0, item);
+      else if (where === 'backward') list.splice(Math.max(0, index - 1), 0, item);
+      else return;
+      pushHistory();
+      page.overlays = list;
+      scheduleSave();
+      renderSheet();
+      setStatus(where === 'front' || where === 'forward' ? 'Brought forward' : 'Sent back');
+    }
+
+    function renderSelectionChrome(page) {
+      var item = overlayList(page).find(function (o) { return o.id === state.selectedId; });
+      var box = itemBounds(item);
+      if (!box) return;
+      var sel = document.createElement('div');
+      sel.className = 'por-sel';
+      sel.style.left = box.x + '%';
+      sel.style.top = box.y + '%';
+      sel.style.width = box.w + '%';
+      sel.style.height = box.h + '%';
+      HANDLE_CORNERS.forEach(function (corner) {
+        var handle = document.createElement('span');
+        handle.className = 'por-sel__handle por-sel__handle--' + corner;
+        handle.setAttribute('data-por-resize', state.selectedId);
+        handle.setAttribute('data-por-corner', corner);
+        sel.appendChild(handle);
+      });
+      var rot = document.createElement('span');
+      rot.className = 'por-sel__rot';
+      sel.appendChild(rot);
+      sheetEl.appendChild(sel);
+    }
+
+    function renderAll() {
+      renderPageList();
+      renderCanvasOptions();
+      fillInput.checked = !!state.inkFill;
+      sandiaInput.checked = !!state.doc.showSandiaAttribution;
+      loadBackground().then(renderSheet);
+      syncHistoryButtons();
+    }
+
+    function sheetPercent(event) {
+      var rect = sheetEl.getBoundingClientRect();
+      if (rect.width < 8 || rect.height < 8) return null;
+      return {
+        x: ((event.clientX - rect.left) / rect.width) * 100,
+        y: ((event.clientY - rect.top) / rect.height) * 100,
+      };
+    }
+
+    function setInkTool(name) {
+      state.inkTool = name || null;
+      if (state.formatToolbar && state.formatToolbar.setTool) {
+        state.formatToolbar.setTool(state.inkTool);
+      }
+      renderSheet();
+    }
+
+    function beginInk(event) {
+      var page = activePage();
+      var api = overlayApi();
+      if (!page || !api || !state.inkTool || state.inkTool === 'eraser' || state.readOnly) return;
+      var at = sheetPercent(event);
+      if (!at) return;
+      event.preventDefault();
+      pushHistory();
+      var item = {
+        id: uid('ov'),
+        kind: state.inkTool === 'pencil' ? 'path' : state.inkTool,
+        color: state.inkColor,
+        thick: state.inkThick,
+      };
+      if (state.inkFill && (item.kind === 'rect' || item.kind === 'circle')) {
+        item.fill = true;
+        item.fillColor = state.fillColor || state.inkColor;
+      }
+      if (item.kind === 'path') item.points = [[at.x, at.y]];
+      else { item.x0 = at.x; item.y0 = at.y; item.x1 = at.x; item.y1 = at.y; }
+      overlayList(page).push(item);
+      state.inkDrag = { id: item.id };
+      state.selectedId = item.id;
+      renderSheet();
+    }
+
+    function moveInk(event) {
+      if (!state.inkDrag) return;
+      var page = activePage();
+      var item = overlayList(page).find(function (o) { return o.id === state.inkDrag.id; });
+      var at = sheetPercent(event);
+      if (!item || !at) return;
+      if (item.kind === 'path') {
+        var last = item.points[item.points.length - 1];
+        if (!last || Math.hypot(at.x - last[0], at.y - last[1]) > 0.2) {
+          item.points.push([at.x, at.y]);
+        }
+      } else {
+        item.x1 = at.x;
+        item.y1 = at.y;
+      }
+      renderSheet();
+    }
+
+    function endInk() {
+      if (!state.inkDrag) return;
+      state.inkDrag = null;
+      var page = activePage();
+      var api = overlayApi();
+      if (api) page.overlays = api.normalize(overlayList(page));
+      scheduleSave();
+      renderSheet();
+    }
+
+    function eraseAt(event) {
+      var target = event.target.closest && event.target.closest('[data-rb-ov]');
+      if (!target) return;
+      var id = target.getAttribute('data-rb-ov');
+      var page = activePage();
+      pushHistory();
+      page.overlays = overlayList(page).filter(function (o) { return o.id !== id; });
+      if (state.selectedId === id) state.selectedId = null;
+      scheduleSave();
+      renderSheet();
+    }
+
+    function selectAt(event) {
+      var target = event.target.closest && event.target.closest('[data-rb-ov]');
+      if (!target) {
+        state.selectedId = null;
+        renderSheet();
+        return false;
+      }
+      state.selectedId = target.getAttribute('data-rb-ov');
+      renderSheet();
+      return true;
     }
 
     function copySelected() {
-      if (!state.selected || state.selected.kind !== 'symbol') return false;
-      var sym = state.doc.symbols.find(function (s) { return s.id === state.selected.id; });
-      if (!sym) return false;
-      state.clipboard = deepClone(sym);
-      setStatus('Symbol copied');
+      var item = selectedItem();
+      if (!item) return false;
+      state.clipboard = deepClone(item);
+      setStatus('Shape copied');
+      return true;
+    }
+
+    function cutSelected() {
+      if (state.readOnly || !selectedItem()) return false;
+      if (!copySelected()) return false;
+      deleteSelected();
+      setStatus('Shape cut');
       return true;
     }
 
     function pasteClipboard() {
       if (state.readOnly || !state.clipboard) return false;
+      var page = activePage();
       pushHistory();
       var copy = deepClone(state.clipboard);
-      copy.id = uid('sym');
-      copy.x = Number(copy.x) + 0.03;
-      copy.y = Number(copy.y) + 0.03;
-      state.doc.symbols.push(copy);
-      state.selected = { kind: 'symbol', id: copy.id };
+      copy.id = uid('ov');
+      if (typeof copy.x0 === 'number') {
+        copy.x0 += 2; copy.y0 += 2; copy.x1 += 2; copy.y1 += 2;
+      } else if (typeof copy.x === 'number') {
+        copy.x += 2; copy.y += 2;
+      } else if (Array.isArray(copy.points)) {
+        copy.points = copy.points.map(function (p) { return [p[0] + 2, p[1] + 2]; });
+      }
+      overlayList(page).push(copy);
+      state.selectedId = copy.id;
       scheduleSave();
       renderSheet();
-      setStatus('Symbol pasted');
+      setStatus('Shape pasted');
       return true;
+    }
+
+    function deleteSelected() {
+      if (state.readOnly || !state.selectedId) return;
+      var page = activePage();
+      pushHistory();
+      page.overlays = overlayList(page).filter(function (o) { return o.id !== state.selectedId; });
+      state.selectedId = null;
+      scheduleSave();
+      renderSheet();
+    }
+
+    function closeShapeMenu() {
+      if (state.shapeMenu && state.shapeMenu.parentNode) {
+        state.shapeMenu.parentNode.removeChild(state.shapeMenu);
+      }
+      state.shapeMenu = null;
+    }
+
+    function menuItem(menu, label, action, disabled) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'rb-stackmenu__item';
+      btn.textContent = label;
+      if (disabled) {
+        btn.disabled = true;
+        btn.setAttribute('aria-disabled', 'true');
+      }
+      btn.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        if (btn.disabled) return;
+        closeShapeMenu();
+        action();
+      });
+      menu.appendChild(btn);
+      return btn;
+    }
+
+    function menuSep(menu) {
+      var sep = document.createElement('div');
+      sep.className = 'por-stackmenu__sep';
+      menu.appendChild(sep);
+    }
+
+    function openShapeMenu(event, id) {
+      closeShapeMenu();
+      state.selectedId = id;
+      renderSheet();
+      var menu = document.createElement('div');
+      menu.className = 'rb-stackmenu';
+      menu.setAttribute('data-por-shapemenu', '1');
+      menuItem(menu, 'Cut', function () { cutSelected(); }, state.readOnly);
+      menuItem(menu, 'Copy', function () { copySelected(); });
+      menuItem(menu, 'Paste', function () { pasteClipboard(); }, state.readOnly || !state.clipboard);
+      menuSep(menu);
+      menuItem(menu, 'Bring to Front', function () { reorderSelected('front'); }, state.readOnly);
+      menuItem(menu, 'Bring Forward', function () { reorderSelected('forward'); }, state.readOnly);
+      menuItem(menu, 'Send Backward', function () { reorderSelected('backward'); }, state.readOnly);
+      menuItem(menu, 'Send to Back', function () { reorderSelected('back'); }, state.readOnly);
+      menuSep(menu);
+      menuItem(menu, 'Size and Position…', function () {
+        state.inspectorMode = 'size';
+        syncInspector();
+        inspectorEl.scrollIntoView({ block: 'nearest' });
+        root.querySelector('#por-size-w').focus();
+      });
+      menuItem(menu, 'Format Shape…', function () {
+        state.inspectorMode = 'format';
+        syncInspector();
+        inspectorEl.scrollIntoView({ block: 'nearest' });
+        shapeFillInput.focus();
+      });
+      menuSep(menu);
+      menuItem(menu, 'Delete', function () { deleteSelected(); }, state.readOnly);
+      menu.style.left = Math.round(event.clientX) + 'px';
+      menu.style.top = Math.round(event.clientY) + 'px';
+      document.body.appendChild(menu);
+      state.shapeMenu = menu;
+      var mw = menu.offsetWidth;
+      var mh = menu.offsetHeight;
+      menu.style.left = Math.max(4, Math.min(window.innerWidth - mw - 4, event.clientX)) + 'px';
+      menu.style.top = Math.max(4, Math.min(window.innerHeight - mh - 4, event.clientY)) + 'px';
+      setTimeout(function () {
+        document.addEventListener('pointerdown', function away(ev) {
+          if (ev.target.closest && ev.target.closest('[data-por-shapemenu]')) return;
+          closeShapeMenu();
+          document.removeEventListener('pointerdown', away, true);
+        }, true);
+      }, 0);
+    }
+
+    function onPointerDown(event) {
+      if (state.readOnly) return;
+      if (event.button != null && event.button !== 0) return;
+      if (event.target.closest && event.target.closest('[contenteditable="true"]')) return;
+      if (event.target.closest && event.target.closest('.rb-rail__rail')) return;
+
+      var resize = event.target.closest && event.target.closest('[data-por-resize]');
+      if (resize) {
+        event.preventDefault();
+        var page = activePage();
+        var item = overlayList(page).find(function (o) { return o.id === state.selectedId; });
+        if (!item) return;
+        pushHistory();
+        state.drag = {
+          mode: 'resize',
+          corner: resize.getAttribute('data-por-corner') || 'se',
+          start: sheetPercent(event),
+          orig: deepClone(item),
+          origBox: itemBounds(item),
+        };
+        return;
+      }
+
+      // An existing mark under the pointer is selected/moved even when a draw
+      // tool is armed — otherwise the next click stacks a second shape and
+      // Format Shape edits the accidental one while the first still shows.
+      var hitExisting = event.target.closest && event.target.closest('[data-rb-ov]');
+      if (state.inkTool === 'eraser') {
+        eraseAt(event);
+        return;
+      }
+      if (hitExisting) {
+        state.selectedId = hitExisting.getAttribute('data-rb-ov');
+        renderSheet();
+        var page2 = activePage();
+        var item2 = overlayList(page2).find(function (o) { return o.id === state.selectedId; });
+        if (!item2) return;
+        event.preventDefault();
+        pushHistory();
+        state.drag = {
+          mode: 'move',
+          start: sheetPercent(event),
+          orig: deepClone(item2),
+        };
+        return;
+      }
+      if (state.inkTool) {
+        beginInk(event);
+        return;
+      }
+
+      state.selectedId = null;
+      renderSheet();
+    }
+
+    function onPointerMove(event) {
+      if (state.inkDrag) { moveInk(event); return; }
+      if (!state.drag) return;
+      var at = sheetPercent(event);
+      if (!at || !state.drag.start) return;
+      var page = activePage();
+      var item = overlayList(page).find(function (o) { return o.id === state.selectedId; });
+      if (!item) return;
+      var dx = at.x - state.drag.start.x;
+      var dy = at.y - state.drag.start.y;
+      var orig = state.drag.orig;
+      if (state.drag.mode === 'move') {
+        if (typeof orig.x0 === 'number') {
+          item.x0 = orig.x0 + dx; item.y0 = orig.y0 + dy;
+          item.x1 = orig.x1 + dx; item.y1 = orig.y1 + dy;
+        } else if (typeof orig.x === 'number') {
+          item.x = orig.x + dx; item.y = orig.y + dy;
+        } else if (Array.isArray(orig.points)) {
+          item.points = orig.points.map(function (p) { return [p[0] + dx, p[1] + dy]; });
+        }
+      } else if (state.drag.mode === 'resize' && state.drag.origBox) {
+        var nextBox = resizeBoxFromHandle(state.drag.origBox, state.drag.corner || 'se', dx, dy);
+        applyBounds(item, nextBox, state.drag.origBox);
+      }
+      renderSheet();
+    }
+
+    function onPointerUp() {
+      if (state.inkDrag) endInk();
+      if (state.drag) {
+        state.drag = null;
+        var page = activePage();
+        var api = overlayApi();
+        if (api) page.overlays = api.normalize(overlayList(page));
+        scheduleSave();
+        renderSheet();
+      }
     }
 
     function onKeyDown(event) {
@@ -917,194 +1170,330 @@
         /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName)
       );
       if (event.key === 'Escape') {
-        state.placeDefId = null;
-        state.selected = null;
-        renderTools();
+        setInkTool(null);
+        state.selectedId = null;
+        closeShapeMenu();
         renderSheet();
         return;
       }
       if (typing) return;
       var mod = event.metaKey || event.ctrlKey;
-      if (mod && (event.key === 'z' || event.key === 'Z')) {
+      if (mod && event.key.toLowerCase() === 'z') {
         event.preventDefault();
-        if (event.shiftKey) redo();
-        else undo();
+        if (event.shiftKey) redo(); else undo();
         return;
       }
-      if (mod && (event.key === 'y' || event.key === 'Y')) {
+      if (mod && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); return; }
+      if (mod && event.key.toLowerCase() === 'c') { if (copySelected()) event.preventDefault(); return; }
+      if (mod && event.key.toLowerCase() === 'x') { if (cutSelected()) event.preventDefault(); return; }
+      if (mod && event.key.toLowerCase() === 'v') { if (pasteClipboard()) event.preventDefault(); return; }
+      if (mod && event.key.toLowerCase() === ']' && event.shiftKey) {
         event.preventDefault();
-        redo();
+        reorderSelected('front');
         return;
       }
-      if (mod && (event.key === 'c' || event.key === 'C')) {
-        if (copySelected()) event.preventDefault();
+      if (mod && event.key.toLowerCase() === '[' && event.shiftKey) {
+        event.preventDefault();
+        reorderSelected('back');
         return;
       }
-      if (mod && (event.key === 'v' || event.key === 'V')) {
-        if (pasteClipboard()) event.preventDefault();
-        return;
-      }
+      if (mod && event.key.toLowerCase() === ']') { event.preventDefault(); reorderSelected('forward'); return; }
+      if (mod && event.key.toLowerCase() === '[') { event.preventDefault(); reorderSelected('backward'); return; }
       if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
         deleteSelected();
       }
     }
 
-    function undo() {
-      if (state.readOnly || !state.undo.length) return;
-      state.redo.push(snapshot());
-      state.doc = normalizeDoc(state.undo.pop(), state.record);
-      scheduleSave();
-      renderTools();
-      renderSheet();
-    }
-
-    function redo() {
-      if (state.readOnly || !state.redo.length) return;
-      state.undo.push(snapshot());
-      state.doc = normalizeDoc(state.redo.pop(), state.record);
-      scheduleSave();
-      renderTools();
-      renderSheet();
-    }
-
-    function loadPlan() {
-      state.planUrl = '';
-      state.planW = 0;
-      state.planH = 0;
-      var record = state.record;
-      if (!record || !window.ToolboxPlanSetup) return Promise.resolve();
-      var canvas = window.ToolboxPlanSetup.canvasById
-        ? window.ToolboxPlanSetup.canvasById(record, state.doc.canvasId)
-        : null;
-      if (!canvas || !window.ToolboxPlanSetup.hasUsablePlan(canvas)) {
-        var usable = (record.planSetup && record.planSetup.canvases || []).find(function (c) {
-          return window.ToolboxPlanSetup.hasUsablePlan(c);
-        });
-        if (usable) {
-          state.doc.canvasId = usable.id;
-          canvas = usable;
+    function bringBackground(kind) {
+      if (state.readOnly) return;
+      var canvasId = canvasSelect.value;
+      if (!canvasId) {
+        setStatus('Add a floor plan to this Customer File first');
+        return;
+      }
+      if (kind === 'contour') {
+        var canvas = window.ToolboxPlanSetup.canvasById(state.record, canvasId);
+        var layer = window.ToolboxPlanSetup.contourLayer(canvas);
+        if (!layer) {
+          setStatus('No contour on this level yet');
+          return;
         }
       }
-      if (!canvas || !canvas.plan || !canvas.plan.id) return Promise.resolve();
-      state.planW = Number(canvas.plan.width) || 0;
-      state.planH = Number(canvas.plan.height) || 0;
-      if (!window.ToolboxDB || typeof window.ToolboxDB.getMedia !== 'function') {
-        return Promise.resolve();
-      }
-      return window.ToolboxDB.getMedia(canvas.plan.id).then(function (url) {
-        if (typeof url === 'string' && url.indexOf('data:image/') === 0) {
-          state.planUrl = url;
-        }
-      }).catch(function () {});
+      pushHistory();
+      var page = activePage();
+      page.background = { kind: kind, canvasId: canvasId };
+      scheduleSave();
+      loadBackground().then(renderSheet);
+      setStatus(kind === 'contour' ? 'Contour on sheet' : 'Floor plan on sheet');
     }
 
-    function buildPrintSheet() {
-      var clone = sheetEl.cloneNode(true);
-      clone.querySelectorAll('.por-plan__grip, .por-box__grip').forEach(function (el) {
-        el.parentNode && el.parentNode.removeChild(el);
+    function buildPrintDeck() {
+      var deck = document.createElement('div');
+      deck.className = 'por-print';
+      state.doc.pages.forEach(function (page) {
+        // Render each page into a detached sheet clone by temporarily
+        // switching active page is heavy; print the current sheet clone for
+        // v1 multi-page by walking pages.
       });
-      clone.querySelectorAll('.is-selected').forEach(function (el) {
-        el.classList.remove('is-selected');
+      var pageEl = document.createElement('div');
+      pageEl.className = 'por-print__page';
+      var clone = sheetEl.cloneNode(true);
+      clone.querySelectorAll('.por-sel, .rb-ov__resize, .rb-ov__remove').forEach(function (el) {
+        el.parentNode && el.parentNode.removeChild(el);
       });
       clone.querySelectorAll('[contenteditable]').forEach(function (el) {
         el.removeAttribute('contenteditable');
       });
       clone.style.transform = 'none';
-      return clone;
+      pageEl.appendChild(clone);
+      deck.appendChild(pageEl);
+      // Additional pages: quick static renders
+      state.doc.pages.forEach(function (page) {
+        if (page.id === state.doc.activePageId) return;
+        var extra = document.createElement('div');
+        extra.className = 'por-print__page';
+        var art = document.createElement('article');
+        art.className = 'rb-sheet';
+        art.style.width = PAPER_W + 'px';
+        art.style.height = PAPER_H + 'px';
+        art.style.position = 'relative';
+        art.style.background = '#fffaf0';
+        var label = document.createElement('p');
+        label.style.cssText = 'position:absolute;left:24px;top:24px;font:14px Georgia,serif;';
+        label.textContent = (page.title || 'Drawing') + ' — open the page to print its drawing in full.';
+        art.appendChild(label);
+        var rail = renderRail(page);
+        if (rail) art.appendChild(rail);
+        if (overlayApi()) {
+          var layer = overlayApi().renderLayer(overlayList(page), { locked: true });
+          if (layer) art.appendChild(layer);
+        }
+        extra.appendChild(art);
+        deck.appendChild(extra);
+      });
+      return deck;
     }
 
     function printPdf() {
       return persistNow().then(function () {
-        var deck = document.createElement('div');
-        deck.className = 'por-print';
-        var page = document.createElement('div');
-        page.className = 'por-print__page';
-        page.appendChild(buildPrintSheet());
-        deck.appendChild(page);
+        var deck = buildPrintDeck();
         document.body.appendChild(deck);
         document.body.classList.add('is-por-printing');
-        var priorTitle = document.title;
-        var name = displayName(state.record).replace(/[^\w\- ]+/g, '').trim() || 'Plan-of-Repair';
-        document.title = name + ' Preliminary Repair Plan';
-        var cleaned = false;
+        var prior = document.title;
+        document.title = displayName(state.record) + ' Plan of Repair';
+        var done = false;
         function cleanup() {
-          if (cleaned) return;
-          cleaned = true;
+          if (done) return;
+          done = true;
           document.body.classList.remove('is-por-printing');
           if (deck.parentNode) deck.parentNode.removeChild(deck);
-          document.title = priorTitle;
+          document.title = prior;
         }
         window.addEventListener('afterprint', cleanup, { once: true });
         setTimeout(function () {
           try { window.print(); } catch (err) { cleanup(); }
           setTimeout(cleanup, 1500);
-        }, 50);
+        }, 40);
       });
     }
 
-    function onResize() {
-      state.scale = applySheetScale(sheetEl, stageEl);
+    // Toolbar
+    if (window.ToolboxReportToolbar && window.ToolboxReportToolbar.mount) {
+      state.formatToolbar = window.ToolboxReportToolbar.mount(
+        root,
+        {
+          onTool: function (name) {
+            if (state.readOnly) return;
+            state.selectedId = null;
+            setInkTool(name);
+          },
+          onColor: function (color) {
+            if (color) {
+              state.inkColor = color;
+              if (state.inkFill) state.fillColor = color;
+              var item = selectedItem();
+              if (item && !state.readOnly) {
+                pushHistory();
+                item.color = color;
+                scheduleSave();
+                renderSheet();
+              }
+            }
+          },
+          onThick: function (level) {
+            state.inkThick = Number(level) || state.inkThick;
+          },
+          onHistory: function (which) {
+            if (which === 'undo') undo();
+            else if (which === 'redo') redo();
+          },
+          onInsert: function (kind) {
+            if (state.readOnly) return;
+            if (kind === 'text') {
+              setInkTool(null);
+              var page = activePage();
+              var api = overlayApi();
+              if (!api || !api.create) return;
+              pushHistory();
+              var item = api.create('text');
+              overlayList(page).push(item);
+              state.selectedId = item.id;
+              scheduleSave();
+              renderSheet();
+              return;
+            }
+            if (kind === 'image') {
+              setStatus('Picture insert uses Paste on the sheet for now');
+            }
+          },
+        }
+      );
     }
 
     root.querySelector('#por-back').addEventListener('click', function () {
       persistNow().then(onBack);
     });
-    root.querySelector('#por-undo').addEventListener('click', undo);
-    root.querySelector('#por-redo').addEventListener('click', redo);
-    root.querySelector('#por-add-note').addEventListener('click', function () {
+    root.querySelector('#por-print').addEventListener('click', printPdf);
+    root.querySelector('#por-add-page').addEventListener('click', function () {
       if (state.readOnly) return;
       pushHistory();
-      var note = {
-        id: uid('note'),
-        x: 8,
-        y: 8,
-        w: 18,
-        h: 10,
-        text: 'Note',
-      };
-      state.doc.notes.push(note);
-      state.selected = { kind: 'note', id: note.id };
+      var page = blankPage('Drawing ' + (state.doc.pages.length + 1));
+      page.rail.sheetId = 'POR-' + (state.doc.pages.length + 1);
+      state.doc.pages.push(page);
+      state.doc.activePageId = page.id;
+      state.selectedId = null;
+      scheduleSave();
+      renderAll();
+    });
+    root.querySelector('#por-dup-page').addEventListener('click', function () {
+      if (state.readOnly) return;
+      pushHistory();
+      var src = activePage();
+      var copy = deepClone(src);
+      copy.id = uid('page');
+      copy.title = (src.title || 'Drawing') + ' copy';
+      copy.rail.sheetId = 'POR-' + (state.doc.pages.length + 1);
+      (copy.overlays || []).forEach(function (o) { o.id = uid('ov'); });
+      state.doc.pages.push(copy);
+      state.doc.activePageId = copy.id;
+      scheduleSave();
+      renderAll();
+    });
+    root.querySelector('#por-remove-page').addEventListener('click', function () {
+      if (state.readOnly || state.doc.pages.length < 2) return;
+      pushHistory();
+      var id = state.doc.activePageId;
+      state.doc.pages = state.doc.pages.filter(function (p) { return p.id !== id; });
+      state.doc.activePageId = state.doc.pages[0].id;
+      state.selectedId = null;
+      scheduleSave();
+      renderAll();
+    });
+    root.querySelector('#por-bring-plan').addEventListener('click', function () { bringBackground('plan'); });
+    root.querySelector('#por-bring-contour').addEventListener('click', function () { bringBackground('contour'); });
+    root.querySelector('#por-clear-bg').addEventListener('click', function () {
+      if (state.readOnly) return;
+      pushHistory();
+      activePage().background = { kind: null, canvasId: '' };
+      state.bgUrl = '';
       scheduleSave();
       renderSheet();
     });
-    root.querySelector('#por-print').addEventListener('click', function () {
-      printPdf();
-    });
-    sizeInput.addEventListener('change', function () {
-      if (state.readOnly) return;
-      pushHistory();
-      state.doc.symbolSize = clamp(sizeInput.value, 1.2, 8);
-      scheduleSave();
-      renderSheet();
+    fillInput.addEventListener('change', function () {
+      state.inkFill = !!fillInput.checked;
+      if (state.inkFill) state.fillColor = state.inkColor;
     });
     sandiaInput.addEventListener('change', function () {
       if (state.readOnly) return;
       pushHistory();
-      state.doc.rail.showSandiaAttribution = !!sandiaInput.checked;
+      state.doc.showSandiaAttribution = !!sandiaInput.checked;
       scheduleSave();
       renderSheet();
     });
+    shapeFillInput.addEventListener('change', function () {
+      var item = selectedItem();
+      if (!item || state.readOnly) return;
+      if (item.kind !== 'rect' && item.kind !== 'circle') {
+        shapeFillInput.checked = false;
+        return;
+      }
+      pushHistory();
+      if (shapeFillInput.checked) {
+        item.fill = true;
+        item.fillColor = item.fillColor || item.color;
+      } else {
+        delete item.fill;
+        delete item.fillColor;
+      }
+      scheduleSave();
+      renderSheet();
+    });
+    inspectorEl.addEventListener('click', function (event) {
+      var swatch = event.target.closest && event.target.closest('[data-por-swatch]');
+      if (!swatch) return;
+      event.preventDefault();
+      applyInspectorColor(swatch.getAttribute('data-por-swatch'), swatch.getAttribute('data-por-color'));
+    });
+    root.querySelector('#por-outline-weights').addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('[data-por-thick]');
+      var item = selectedItem();
+      if (!btn || !item || state.readOnly) return;
+      pushHistory();
+      item.thick = Number(btn.getAttribute('data-por-thick')) || 2;
+      scheduleSave();
+      renderSheet();
+    });
+    ['por-size-x', 'por-size-y', 'por-size-w', 'por-size-h'].forEach(function (id) {
+      root.querySelector('#' + id).addEventListener('change', applySizeFields);
+    });
+    root.querySelector('#por-stack-front').addEventListener('click', function () { reorderSelected('front'); });
+    root.querySelector('#por-stack-forward').addEventListener('click', function () { reorderSelected('forward'); });
+    root.querySelector('#por-stack-backward').addEventListener('click', function () { reorderSelected('backward'); });
+    root.querySelector('#por-stack-back').addEventListener('click', function () { reorderSelected('back'); });
+    root.querySelector('#por-zoom-out').addEventListener('click', function () {
+      state.zoomMode = 'user';
+      state.userScale = clamp((state.scale || 1) / 1.15, 0.35, 2.4);
+      applySheetScale();
+    });
+    root.querySelector('#por-zoom-in').addEventListener('click', function () {
+      state.zoomMode = 'user';
+      state.userScale = clamp((state.scale || 1) * 1.15, 0.35, 2.4);
+      applySheetScale();
+    });
+    root.querySelector('#por-zoom-level').addEventListener('click', function () {
+      state.zoomMode = 'fit';
+      applySheetScale();
+    });
 
     sheetEl.addEventListener('pointerdown', onPointerDown);
+    sheetEl.addEventListener('contextmenu', function (event) {
+      var target = event.target.closest && event.target.closest('[data-rb-ov]');
+      if (!target && event.target.closest && event.target.closest('.por-sel') && state.selectedId) {
+        event.preventDefault();
+        openShapeMenu(event, state.selectedId);
+        return;
+      }
+      if (!target) return;
+      event.preventDefault();
+      openShapeMenu(event, target.getAttribute('data-rb-ov'));
+    });
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('resize', onResize);
+    window.addEventListener('resize', applySheetScale);
 
     activeMount = {
       root: root,
-      host: host,
       persistNow: persistNow,
       destroy: function () {
-        if (state.saveTimer) {
-          clearTimeout(state.saveTimer);
-          state.saveTimer = null;
-        }
+        if (state.saveTimer) clearTimeout(state.saveTimer);
+        closeShapeMenu();
+        if (state.formatToolbar && state.formatToolbar.destroy) state.formatToolbar.destroy();
         window.removeEventListener('pointermove', onPointerMove);
         window.removeEventListener('pointerup', onPointerUp);
         window.removeEventListener('keydown', onKeyDown);
-        window.removeEventListener('resize', onResize);
+        window.removeEventListener('resize', applySheetScale);
         document.body.classList.remove('plan-of-repair-open', 'is-por-printing');
         if (root.parentNode) root.parentNode.removeChild(root);
       },
@@ -1118,24 +1507,23 @@
       }
       if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
       state.record = record;
-      state.readOnly = !!(window.ToolboxSync &&
-        typeof window.ToolboxSync.heldElsewhere === 'function' &&
+      state.readOnly = !!(window.ToolboxSync && window.ToolboxSync.heldElsewhere &&
         window.ToolboxSync.heldElsewhere(record));
-      state.doc = normalizeDoc(record.planOfRepair, record);
-      if (!state.doc.rail.date) {
-        var today = new Date();
-        state.doc.rail.date = (today.getMonth() + 1) + '/' + today.getDate() + '/' + today.getFullYear();
-      }
-      sizeInput.disabled = state.readOnly;
+      state.doc = normalizeDoc(record.planOfRepair);
+      root.querySelector('#por-file-label').textContent =
+        displayName(record) + (displayAddress(record) ? ' · ' + displayAddress(record) : '');
+      ['por-add-page', 'por-dup-page', 'por-remove-page', 'por-bring-plan', 'por-bring-contour', 'por-clear-bg']
+        .forEach(function (id) {
+          var el = root.querySelector('#' + id);
+          if (el) el.disabled = state.readOnly;
+        });
+      fillInput.disabled = state.readOnly;
       sandiaInput.disabled = state.readOnly;
-      root.querySelector('#por-add-note').disabled = state.readOnly;
+      canvasSelect.disabled = state.readOnly;
       if (state.readOnly) setStatus('View only — checked out elsewhere');
-      return loadPlan().then(function () {
-        renderTools();
-        renderSheet();
-        if (!state.readOnly && !record.planOfRepair) scheduleSave();
-        else if (!state.readOnly) setStatus('Ready');
-      });
+      else setStatus('Ready');
+      renderAll();
+      if (!state.readOnly && !record.planOfRepair) scheduleSave();
     }).catch(function (err) {
       console.error(err);
       setStatus('Unable to open Plan of Repair');
@@ -1144,9 +1532,7 @@
 
   function unmount() {
     if (!activeMount) return;
-    try {
-      if (typeof activeMount.persistNow === 'function') activeMount.persistNow();
-    } catch (_) {}
+    try { activeMount.persistNow(); } catch (_) {}
     activeMount.destroy();
     activeMount = null;
   }
@@ -1155,9 +1541,8 @@
     mount: mount,
     unmount: unmount,
     normalizeDoc: normalizeDoc,
-    defaultSymbolDefs: defaultSymbolDefs,
-    usedDefs: usedDefs,
-    SHEET_W: SHEET_W,
-    SHEET_H: SHEET_H,
+    migrateLegacy: migrateLegacy,
+    PAPER_W: PAPER_W,
+    PAPER_H: PAPER_H,
   };
 })();
