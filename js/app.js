@@ -1658,7 +1658,7 @@
       '<div class="view-bar view-bar--file view-bar--cf-home">' +
       '  <button type="button" id="home-back" class="btn btn--ghost">‹ Cabinet</button>' +
       '  <span class="file-status" id="home-status"></span>' +
-      '  <button type="button" id="home-repair-top" class="btn btn--quiet por-open-btn">Plan of Repair</button>' +
+      '  <button type="button" id="home-repair-top" class="btn btn--accent por-open-btn">Plan of Repair</button>' +
       '  <button type="button" id="home-edit-top" class="btn btn--quiet">Edit customer</button>' +
       '</div>' +
       '<div class="cf-home" id="cf-home">' +
