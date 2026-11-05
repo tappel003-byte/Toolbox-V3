@@ -110,14 +110,17 @@ body.plan-of-repair-open #app-view {
   border: 1px solid #1d4ed8;
   border-radius: 50%;
   pointer-events: auto;
-  cursor: nwse-resize;
+  box-sizing: border-box;
 }
 
-.por-sel__handle--se {
-  left: 100%;
-  top: 100%;
-  cursor: nwse-resize;
-}
+.por-sel__handle--nw { left: 0; top: 0; cursor: nwse-resize; }
+.por-sel__handle--n  { left: 50%; top: 0; cursor: ns-resize; }
+.por-sel__handle--ne { left: 100%; top: 0; cursor: nesw-resize; }
+.por-sel__handle--e  { left: 100%; top: 50%; cursor: ew-resize; }
+.por-sel__handle--se { left: 100%; top: 100%; cursor: nwse-resize; }
+.por-sel__handle--s  { left: 50%; top: 100%; cursor: ns-resize; }
+.por-sel__handle--sw { left: 0; top: 100%; cursor: nesw-resize; }
+.por-sel__handle--w  { left: 0; top: 50%; cursor: ew-resize; }
 
 .por-sel__rot {
   position: absolute;
@@ -140,6 +143,91 @@ body.plan-of-repair-open #app-view {
   width: 1px;
   height: 10px;
   background: #64748b;
+}
+
+.por-inspector {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #d7d2c8;
+}
+
+.por-inspector[hidden] {
+  display: none !important;
+}
+
+.por-inspector h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.por-inspector__row {
+  display: grid;
+  grid-template-columns: 28px 1fr 28px 1fr;
+  gap: 6px;
+  margin: 0 0 8px;
+  align-items: center;
+}
+
+.por-inspector__row label {
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.por-inspector__row input[type="number"] {
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 6px;
+  border: 1px solid #c9c2b4;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.por-inspector__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.por-inspector__swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.por-inspector__swatch.is-on {
+  border-color: #07283d;
+  box-shadow: 0 0 0 1px #fff inset;
+}
+
+.por-inspector__weights {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.por-inspector__weights .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 4px;
+}
+
+.por-stackmenu__sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: #e5e1d8;
+}
+
+.por-stackmenu__section {
+  padding: 4px 12px 2px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7280;
 }
 
 body.is-por-printing .por-shell,

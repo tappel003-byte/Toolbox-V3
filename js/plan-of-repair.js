@@ -233,6 +233,36 @@
       '      <button type="button" class="btn btn--quiet" id="por-clear-bg">Clear background</button>' +
       '    </div>' +
       '    <label class="por-fill-toggle"><input type="checkbox" id="por-sandia"> Survey information by SandiaGEO</label>' +
+      '    <div class="por-inspector" id="por-inspector" hidden>' +
+      '      <h3 id="por-inspector-title">Format Shape</h3>' +
+      '      <label class="por-fill-toggle"><input type="checkbox" id="por-shape-fill"> Fill</label>' +
+      '      <p class="rb-panel__label">Fill colour</p>' +
+      '      <div class="por-inspector__swatches" id="por-fill-swatches"></div>' +
+      '      <p class="rb-panel__label">Outline colour</p>' +
+      '      <div class="por-inspector__swatches" id="por-outline-swatches"></div>' +
+      '      <p class="rb-panel__label">Outline weight</p>' +
+      '      <div class="por-inspector__weights" id="por-outline-weights">' +
+      '        <button type="button" class="btn btn--quiet" data-por-thick="1">Thin</button>' +
+      '        <button type="button" class="btn btn--quiet" data-por-thick="2">Med</button>' +
+      '        <button type="button" class="btn btn--quiet" data-por-thick="3">Thick</button>' +
+      '      </div>' +
+      '      <h3>Size and Position</h3>' +
+      '      <div class="por-inspector__row">' +
+      '        <label for="por-size-x">X</label><input type="number" id="por-size-x" step="0.05" min="0" max="17">' +
+      '        <label for="por-size-y">Y</label><input type="number" id="por-size-y" step="0.05" min="0" max="11">' +
+      '      </div>' +
+      '      <div class="por-inspector__row">' +
+      '        <label for="por-size-w">W</label><input type="number" id="por-size-w" step="0.05" min="0.1" max="17">' +
+      '        <label for="por-size-h">H</label><input type="number" id="por-size-h" step="0.05" min="0.1" max="11">' +
+      '      </div>' +
+      '      <p class="por-panel-lead">Inches on the 11×17 sheet. Drag the corner and edge handles on the shape to resize.</p>' +
+      '      <div class="por-panel-actions">' +
+      '        <button type="button" class="btn btn--quiet" id="por-stack-front">Bring to Front</button>' +
+      '        <button type="button" class="btn btn--quiet" id="por-stack-forward">Bring Forward</button>' +
+      '        <button type="button" class="btn btn--quiet" id="por-stack-backward">Send Backward</button>' +
+      '        <button type="button" class="btn btn--quiet" id="por-stack-back">Send to Back</button>' +
+      '      </div>' +
+      '    </div>' +
       '  </aside>' +
       '</div>';
 
@@ -258,6 +288,9 @@
       drag: null,
       formatToolbar: null,
       shapeMenu: null,
+      inspectorMode: 'format', // format | size
+      fillColor: '#eab308',
+      editSeq: 0,
     };
 
     var sheetEl = root.querySelector('#por-sheet');
@@ -267,6 +300,11 @@
     var fillInput = root.querySelector('#por-fill');
     var sandiaInput = root.querySelector('#por-sandia');
     var canvasSelect = root.querySelector('#por-canvas');
+    var inspectorEl = root.querySelector('#por-inspector');
+    var shapeFillInput = root.querySelector('#por-shape-fill');
+    var INCH_W = 17;
+    var INCH_H = 11;
+    var HANDLE_CORNERS = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
     function setStatus(text) {
       if (statusEl) statusEl.textContent = text || '';
@@ -314,24 +352,32 @@
     function scheduleSave() {
       if (state.readOnly) return;
       state.dirty = true;
+      state.editSeq += 1;
+      var seq = state.editSeq;
       setStatus('Saving…');
       if (state.saveTimer) clearTimeout(state.saveTimer);
       state.saveTimer = setTimeout(function () {
         state.saveTimer = null;
-        persistNow();
+        persistNow(seq);
       }, 320);
     }
 
-    function persistNow() {
+    function persistNow(expectedSeq) {
       if (!state.record || state.readOnly) return Promise.resolve();
+      var seq = expectedSeq != null ? expectedSeq : state.editSeq;
+      // A newer edit landed while we were waiting — that edit owns the next save.
+      if (seq !== state.editSeq) return Promise.resolve();
       var doc = normalizeDoc(state.doc);
+      if (seq !== state.editSeq) return Promise.resolve();
       doc.updatedAt = isoNow();
       state.doc = doc;
       state.record.planOfRepair = doc;
       state.record.updatedAt = doc.updatedAt;
       return window.ToolboxDB.saveCustomerFile(state.record).then(function () {
-        state.dirty = false;
-        setStatus('Saved');
+        if (seq === state.editSeq) {
+          state.dirty = false;
+          setStatus('Saved');
+        }
       }).catch(function (err) {
         console.error(err);
         setStatus('Save failed');
@@ -503,6 +549,7 @@
       if (state.selectedId) renderSelectionChrome(page);
       applySheetScale();
       wireRailEdits(page);
+      syncInspector();
     }
 
     function wireRailEdits(page) {
@@ -568,6 +615,204 @@
       return null;
     }
 
+    function applyBounds(item, box, oldBox) {
+      if (!item || !box) return;
+      var next = {
+        x: clamp(box.x, -5, 105),
+        y: clamp(box.y, -5, 105),
+        w: clamp(box.w, 0.6, 100),
+        h: clamp(box.h, 0.6, 100),
+      };
+      if (typeof item.x0 === 'number') {
+        item.x0 = next.x;
+        item.y0 = next.y;
+        item.x1 = next.x + next.w;
+        item.y1 = next.y + next.h;
+        return;
+      }
+      if (typeof item.x === 'number') {
+        item.x = next.x;
+        item.y = next.y;
+        item.w = next.w;
+        item.h = next.h;
+        return;
+      }
+      if (Array.isArray(item.points) && oldBox && oldBox.w > 0.01 && oldBox.h > 0.01) {
+        item.points = item.points.map(function (p) {
+          var rx = (p[0] - oldBox.x) / oldBox.w;
+          var ry = (p[1] - oldBox.y) / oldBox.h;
+          return [next.x + rx * next.w, next.y + ry * next.h];
+        });
+      }
+    }
+
+    function resizeBoxFromHandle(origBox, corner, dx, dy) {
+      var box = { x: origBox.x, y: origBox.y, w: origBox.w, h: origBox.h };
+      var right = origBox.x + origBox.w;
+      var bottom = origBox.y + origBox.h;
+      if (corner.indexOf('w') !== -1) box.x = origBox.x + dx;
+      if (corner.indexOf('n') !== -1) box.y = origBox.y + dy;
+      if (corner.indexOf('e') !== -1) box.w = origBox.w + dx;
+      else if (corner.indexOf('w') !== -1) box.w = right - box.x;
+      if (corner.indexOf('s') !== -1) box.h = origBox.h + dy;
+      else if (corner.indexOf('n') !== -1) box.h = bottom - box.y;
+      if (box.w < 0.6) {
+        if (corner.indexOf('w') !== -1) box.x = right - 0.6;
+        box.w = 0.6;
+      }
+      if (box.h < 0.6) {
+        if (corner.indexOf('n') !== -1) box.y = bottom - 0.6;
+        box.h = 0.6;
+      }
+      return box;
+    }
+
+    function selectedItem() {
+      var page = activePage();
+      if (!page || !state.selectedId) return null;
+      return overlayList(page).find(function (o) { return o.id === state.selectedId; }) || null;
+    }
+
+    function applyInspectorColor(role, color) {
+      if (state.readOnly || !color || !state.selectedId) {
+        setStatus(!state.selectedId ? 'No shape selected' : 'Can’t format');
+        return false;
+      }
+      var page = activePage();
+      var list = overlayList(page);
+      var index = -1;
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].id === state.selectedId) { index = i; break; }
+      }
+      if (index < 0) {
+        setStatus('No shape selected');
+        return false;
+      }
+      var item = list[index];
+      var canFill = item.kind === 'rect' || item.kind === 'circle';
+      pushHistory();
+      // Re-resolve after history snapshot — never mutate a detached copy.
+      list = overlayList(activePage());
+      item = null;
+      for (i = 0; i < list.length; i++) {
+        if (list[i].id === state.selectedId) { item = list[i]; break; }
+      }
+      if (!item) return false;
+      if (role === 'fill') {
+        if (!canFill) return false;
+        item.fill = true;
+        item.fillColor = color;
+        shapeFillInput.checked = true;
+        state.fillColor = color;
+      } else if (role === 'outline') {
+        item.color = color;
+        state.inkColor = color;
+      } else {
+        return false;
+      }
+      scheduleSave();
+      renderSheet();
+      setStatus(role === 'fill' ? 'Fill updated' : 'Outline updated');
+      return true;
+    }
+
+    function paintSwatches(host, selected, role) {
+      host.innerHTML = '';
+      var colors = (overlayApi() && overlayApi().COLORS) || ['#c14a2b', '#111111', '#1d4ed8', '#16a34a', '#ea7317', '#eab308'];
+      colors.forEach(function (c) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'por-inspector__swatch' + (c === selected ? ' is-on' : '');
+        btn.style.background = c;
+        btn.title = c;
+        btn.setAttribute('data-por-swatch', role);
+        btn.setAttribute('data-por-color', c);
+        btn.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          applyInspectorColor(role, c);
+        });
+        host.appendChild(btn);
+      });
+    }
+
+    function syncInspector() {
+      var item = selectedItem();
+      if (!inspectorEl) return;
+      if (!item) {
+        inspectorEl.hidden = true;
+        return;
+      }
+      inspectorEl.hidden = false;
+      var title = root.querySelector('#por-inspector-title');
+      if (title) {
+        title.textContent = state.inspectorMode === 'size' ? 'Size and Position' : 'Format Shape';
+      }
+      var canFill = item.kind === 'rect' || item.kind === 'circle';
+      shapeFillInput.disabled = !canFill || state.readOnly;
+      shapeFillInput.checked = !!(item.fill && canFill);
+      var fillColor = item.fillColor || item.color || state.fillColor;
+      var outline = item.color || state.inkColor;
+      paintSwatches(root.querySelector('#por-fill-swatches'), fillColor, 'fill');
+      paintSwatches(root.querySelector('#por-outline-swatches'), outline, 'outline');
+      root.querySelectorAll('[data-por-thick]').forEach(function (btn) {
+        var level = Number(btn.getAttribute('data-por-thick'));
+        btn.classList.toggle('btn--secondary', level === item.thick);
+        btn.classList.toggle('btn--quiet', level !== item.thick);
+      });
+      var box = itemBounds(item);
+      if (box) {
+        root.querySelector('#por-size-x').value = (box.x / 100 * INCH_W).toFixed(2);
+        root.querySelector('#por-size-y').value = (box.y / 100 * INCH_H).toFixed(2);
+        root.querySelector('#por-size-w').value = (box.w / 100 * INCH_W).toFixed(2);
+        root.querySelector('#por-size-h').value = (box.h / 100 * INCH_H).toFixed(2);
+      }
+      ['por-size-x', 'por-size-y', 'por-size-w', 'por-size-h'].forEach(function (id) {
+        root.querySelector('#' + id).disabled = state.readOnly;
+      });
+    }
+
+    function applySizeFields() {
+      var item = selectedItem();
+      if (!item || state.readOnly) return;
+      var old = itemBounds(item);
+      var next = {
+        x: (Number(root.querySelector('#por-size-x').value) / INCH_W) * 100,
+        y: (Number(root.querySelector('#por-size-y').value) / INCH_H) * 100,
+        w: (Number(root.querySelector('#por-size-w').value) / INCH_W) * 100,
+        h: (Number(root.querySelector('#por-size-h').value) / INCH_H) * 100,
+      };
+      if (![next.x, next.y, next.w, next.h].every(isFinite)) return;
+      pushHistory();
+      applyBounds(item, next, old);
+      var api = overlayApi();
+      if (api) activePage().overlays = api.normalize(overlayList(activePage()));
+      scheduleSave();
+      renderSheet();
+    }
+
+    function reorderSelected(where) {
+      if (state.readOnly || !state.selectedId) return;
+      var page = activePage();
+      var list = overlayList(page).slice();
+      var index = -1;
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].id === state.selectedId) { index = i; break; }
+      }
+      if (index < 0) return;
+      var item = list.splice(index, 1)[0];
+      if (where === 'front') list.push(item);
+      else if (where === 'back') list.unshift(item);
+      else if (where === 'forward') list.splice(Math.min(list.length, index + 1), 0, item);
+      else if (where === 'backward') list.splice(Math.max(0, index - 1), 0, item);
+      else return;
+      pushHistory();
+      page.overlays = list;
+      scheduleSave();
+      renderSheet();
+      setStatus(where === 'front' || where === 'forward' ? 'Brought forward' : 'Sent back');
+    }
+
     function renderSelectionChrome(page) {
       var item = overlayList(page).find(function (o) { return o.id === state.selectedId; });
       var box = itemBounds(item);
@@ -578,10 +823,13 @@
       sel.style.top = box.y + '%';
       sel.style.width = box.w + '%';
       sel.style.height = box.h + '%';
-      var handle = document.createElement('span');
-      handle.className = 'por-sel__handle por-sel__handle--se';
-      handle.setAttribute('data-por-resize', state.selectedId);
-      sel.appendChild(handle);
+      HANDLE_CORNERS.forEach(function (corner) {
+        var handle = document.createElement('span');
+        handle.className = 'por-sel__handle por-sel__handle--' + corner;
+        handle.setAttribute('data-por-resize', state.selectedId);
+        handle.setAttribute('data-por-corner', corner);
+        sel.appendChild(handle);
+      });
       var rot = document.createElement('span');
       rot.className = 'por-sel__rot';
       sel.appendChild(rot);
@@ -628,7 +876,10 @@
         color: state.inkColor,
         thick: state.inkThick,
       };
-      if (state.inkFill && (item.kind === 'rect' || item.kind === 'circle')) item.fill = true;
+      if (state.inkFill && (item.kind === 'rect' || item.kind === 'circle')) {
+        item.fill = true;
+        item.fillColor = state.fillColor || state.inkColor;
+      }
       if (item.kind === 'path') item.points = [[at.x, at.y]];
       else { item.x0 = at.x; item.y0 = at.y; item.x1 = at.x; item.y1 = at.y; }
       overlayList(page).push(item);
@@ -690,11 +941,18 @@
     }
 
     function copySelected() {
-      var page = activePage();
-      var item = overlayList(page).find(function (o) { return o.id === state.selectedId; });
+      var item = selectedItem();
       if (!item) return false;
       state.clipboard = deepClone(item);
       setStatus('Shape copied');
+      return true;
+    }
+
+    function cutSelected() {
+      if (state.readOnly || !selectedItem()) return false;
+      if (!copySelected()) return false;
+      deleteSelected();
+      setStatus('Shape cut');
       return true;
     }
 
@@ -736,6 +994,31 @@
       state.shapeMenu = null;
     }
 
+    function menuItem(menu, label, action, disabled) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'rb-stackmenu__item';
+      btn.textContent = label;
+      if (disabled) {
+        btn.disabled = true;
+        btn.setAttribute('aria-disabled', 'true');
+      }
+      btn.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        if (btn.disabled) return;
+        closeShapeMenu();
+        action();
+      });
+      menu.appendChild(btn);
+      return btn;
+    }
+
+    function menuSep(menu) {
+      var sep = document.createElement('div');
+      sep.className = 'por-stackmenu__sep';
+      menu.appendChild(sep);
+    }
+
     function openShapeMenu(event, id) {
       closeShapeMenu();
       state.selectedId = id;
@@ -743,25 +1026,37 @@
       var menu = document.createElement('div');
       menu.className = 'rb-stackmenu';
       menu.setAttribute('data-por-shapemenu', '1');
-      [['Copy', 'copy'], ['Paste', 'paste'], ['Delete', 'delete']].forEach(function (row) {
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'rb-stackmenu__item';
-        btn.textContent = row[0];
-        if (row[1] === 'paste' && !state.clipboard) btn.disabled = true;
-        btn.addEventListener('click', function (ev) {
-          ev.preventDefault();
-          closeShapeMenu();
-          if (row[1] === 'copy') copySelected();
-          else if (row[1] === 'paste') pasteClipboard();
-          else if (row[1] === 'delete') deleteSelected();
-        });
-        menu.appendChild(btn);
+      menuItem(menu, 'Cut', function () { cutSelected(); }, state.readOnly);
+      menuItem(menu, 'Copy', function () { copySelected(); });
+      menuItem(menu, 'Paste', function () { pasteClipboard(); }, state.readOnly || !state.clipboard);
+      menuSep(menu);
+      menuItem(menu, 'Bring to Front', function () { reorderSelected('front'); }, state.readOnly);
+      menuItem(menu, 'Bring Forward', function () { reorderSelected('forward'); }, state.readOnly);
+      menuItem(menu, 'Send Backward', function () { reorderSelected('backward'); }, state.readOnly);
+      menuItem(menu, 'Send to Back', function () { reorderSelected('back'); }, state.readOnly);
+      menuSep(menu);
+      menuItem(menu, 'Size and Position…', function () {
+        state.inspectorMode = 'size';
+        syncInspector();
+        inspectorEl.scrollIntoView({ block: 'nearest' });
+        root.querySelector('#por-size-w').focus();
       });
+      menuItem(menu, 'Format Shape…', function () {
+        state.inspectorMode = 'format';
+        syncInspector();
+        inspectorEl.scrollIntoView({ block: 'nearest' });
+        shapeFillInput.focus();
+      });
+      menuSep(menu);
+      menuItem(menu, 'Delete', function () { deleteSelected(); }, state.readOnly);
       menu.style.left = Math.round(event.clientX) + 'px';
       menu.style.top = Math.round(event.clientY) + 'px';
       document.body.appendChild(menu);
       state.shapeMenu = menu;
+      var mw = menu.offsetWidth;
+      var mh = menu.offsetHeight;
+      menu.style.left = Math.max(4, Math.min(window.innerWidth - mw - 4, event.clientX)) + 'px';
+      menu.style.top = Math.max(4, Math.min(window.innerHeight - mh - 4, event.clientY)) + 'px';
       setTimeout(function () {
         document.addEventListener('pointerdown', function away(ev) {
           if (ev.target.closest && ev.target.closest('[data-por-shapemenu]')) return;
@@ -786,22 +1081,25 @@
         pushHistory();
         state.drag = {
           mode: 'resize',
+          corner: resize.getAttribute('data-por-corner') || 'se',
           start: sheetPercent(event),
           orig: deepClone(item),
+          origBox: itemBounds(item),
         };
         return;
       }
 
+      // An existing mark under the pointer is selected/moved even when a draw
+      // tool is armed — otherwise the next click stacks a second shape and
+      // Format Shape edits the accidental one while the first still shows.
+      var hitExisting = event.target.closest && event.target.closest('[data-rb-ov]');
       if (state.inkTool === 'eraser') {
         eraseAt(event);
         return;
       }
-      if (state.inkTool && state.inkTool !== 'eraser') {
-        beginInk(event);
-        return;
-      }
-
-      if (selectAt(event)) {
+      if (hitExisting) {
+        state.selectedId = hitExisting.getAttribute('data-rb-ov');
+        renderSheet();
         var page2 = activePage();
         var item2 = overlayList(page2).find(function (o) { return o.id === state.selectedId; });
         if (!item2) return;
@@ -812,7 +1110,15 @@
           start: sheetPercent(event),
           orig: deepClone(item2),
         };
+        return;
       }
+      if (state.inkTool) {
+        beginInk(event);
+        return;
+      }
+
+      state.selectedId = null;
+      renderSheet();
     }
 
     function onPointerMove(event) {
@@ -835,14 +1141,9 @@
         } else if (Array.isArray(orig.points)) {
           item.points = orig.points.map(function (p) { return [p[0] + dx, p[1] + dy]; });
         }
-      } else if (state.drag.mode === 'resize') {
-        if (typeof orig.x0 === 'number') {
-          item.x1 = orig.x1 + dx;
-          item.y1 = orig.y1 + dy;
-        } else if (typeof orig.w === 'number') {
-          item.w = clamp(orig.w + dx, 2, 90);
-          item.h = clamp(orig.h + dy, 2, 90);
-        }
+      } else if (state.drag.mode === 'resize' && state.drag.origBox) {
+        var nextBox = resizeBoxFromHandle(state.drag.origBox, state.drag.corner || 'se', dx, dy);
+        applyBounds(item, nextBox, state.drag.origBox);
       }
       renderSheet();
     }
@@ -881,7 +1182,20 @@
       }
       if (mod && event.key.toLowerCase() === 'y') { event.preventDefault(); redo(); return; }
       if (mod && event.key.toLowerCase() === 'c') { if (copySelected()) event.preventDefault(); return; }
+      if (mod && event.key.toLowerCase() === 'x') { if (cutSelected()) event.preventDefault(); return; }
       if (mod && event.key.toLowerCase() === 'v') { if (pasteClipboard()) event.preventDefault(); return; }
+      if (mod && event.key.toLowerCase() === ']' && event.shiftKey) {
+        event.preventDefault();
+        reorderSelected('front');
+        return;
+      }
+      if (mod && event.key.toLowerCase() === '[' && event.shiftKey) {
+        event.preventDefault();
+        reorderSelected('back');
+        return;
+      }
+      if (mod && event.key.toLowerCase() === ']') { event.preventDefault(); reorderSelected('forward'); return; }
+      if (mod && event.key.toLowerCase() === '[') { event.preventDefault(); reorderSelected('backward'); return; }
       if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
         deleteSelected();
@@ -992,7 +1306,17 @@
             setInkTool(name);
           },
           onColor: function (color) {
-            if (color) state.inkColor = color;
+            if (color) {
+              state.inkColor = color;
+              if (state.inkFill) state.fillColor = color;
+              var item = selectedItem();
+              if (item && !state.readOnly) {
+                pushHistory();
+                item.color = color;
+                scheduleSave();
+                renderSheet();
+              }
+            }
           },
           onThick: function (level) {
             state.inkThick = Number(level) || state.inkThick;
@@ -1073,7 +1397,10 @@
       scheduleSave();
       renderSheet();
     });
-    fillInput.addEventListener('change', function () { state.inkFill = !!fillInput.checked; });
+    fillInput.addEventListener('change', function () {
+      state.inkFill = !!fillInput.checked;
+      if (state.inkFill) state.fillColor = state.inkColor;
+    });
     sandiaInput.addEventListener('change', function () {
       if (state.readOnly) return;
       pushHistory();
@@ -1081,6 +1408,46 @@
       scheduleSave();
       renderSheet();
     });
+    shapeFillInput.addEventListener('change', function () {
+      var item = selectedItem();
+      if (!item || state.readOnly) return;
+      if (item.kind !== 'rect' && item.kind !== 'circle') {
+        shapeFillInput.checked = false;
+        return;
+      }
+      pushHistory();
+      if (shapeFillInput.checked) {
+        item.fill = true;
+        item.fillColor = item.fillColor || item.color;
+      } else {
+        delete item.fill;
+        delete item.fillColor;
+      }
+      scheduleSave();
+      renderSheet();
+    });
+    inspectorEl.addEventListener('click', function (event) {
+      var swatch = event.target.closest && event.target.closest('[data-por-swatch]');
+      if (!swatch) return;
+      event.preventDefault();
+      applyInspectorColor(swatch.getAttribute('data-por-swatch'), swatch.getAttribute('data-por-color'));
+    });
+    root.querySelector('#por-outline-weights').addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('[data-por-thick]');
+      var item = selectedItem();
+      if (!btn || !item || state.readOnly) return;
+      pushHistory();
+      item.thick = Number(btn.getAttribute('data-por-thick')) || 2;
+      scheduleSave();
+      renderSheet();
+    });
+    ['por-size-x', 'por-size-y', 'por-size-w', 'por-size-h'].forEach(function (id) {
+      root.querySelector('#' + id).addEventListener('change', applySizeFields);
+    });
+    root.querySelector('#por-stack-front').addEventListener('click', function () { reorderSelected('front'); });
+    root.querySelector('#por-stack-forward').addEventListener('click', function () { reorderSelected('forward'); });
+    root.querySelector('#por-stack-backward').addEventListener('click', function () { reorderSelected('backward'); });
+    root.querySelector('#por-stack-back').addEventListener('click', function () { reorderSelected('back'); });
     root.querySelector('#por-zoom-out').addEventListener('click', function () {
       state.zoomMode = 'user';
       state.userScale = clamp((state.scale || 1) / 1.15, 0.35, 2.4);
@@ -1099,6 +1466,11 @@
     sheetEl.addEventListener('pointerdown', onPointerDown);
     sheetEl.addEventListener('contextmenu', function (event) {
       var target = event.target.closest && event.target.closest('[data-rb-ov]');
+      if (!target && event.target.closest && event.target.closest('.por-sel') && state.selectedId) {
+        event.preventDefault();
+        openShapeMenu(event, state.selectedId);
+        return;
+      }
       if (!target) return;
       event.preventDefault();
       openShapeMenu(event, target.getAttribute('data-rb-ov'));

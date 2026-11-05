@@ -78,8 +78,12 @@
       thick: THICKS[raw.thick] ? raw.thick : DEFAULT_THICK,
     };
     // Optional fill for rect/circle (PowerPoint-style pier marks). Paths and
-    // arrows stay stroke-only.
-    if ((raw.kind === 'rect' || raw.kind === 'circle') && raw.fill) item.fill = true;
+    // arrows stay stroke-only. Outline stays `color`; fill may use its own
+    // `fillColor` so a yellow square can keep a blue rim (or the reverse).
+    if ((raw.kind === 'rect' || raw.kind === 'circle') && raw.fill) {
+      item.fill = true;
+      if (HEX.test(String(raw.fillColor || ''))) item.fillColor = raw.fillColor;
+    }
     if (raw.kind === 'path') {
       var pts = [];
       (Array.isArray(raw.points) ? raw.points : []).forEach(function (p) {
@@ -349,6 +353,9 @@
     }));
 
     var filled = !!(item.fill && (item.kind === 'rect' || item.kind === 'circle'));
+    var fillPaint = filled
+      ? (HEX.test(String(item.fillColor || '')) ? item.fillColor : item.color)
+      : 'none';
     var hit = g.querySelector('.rb-ink__hit');
     if (filled && hit) {
       hit.setAttribute('fill', 'transparent');
@@ -357,7 +364,7 @@
       hit.setAttribute('d', d);
     }
     g.appendChild(svgPath(d, {
-      fill: filled ? item.color : 'none',
+      fill: fillPaint,
       stroke: item.color,
       'stroke-linecap': 'round',
       'stroke-linejoin': 'round',
