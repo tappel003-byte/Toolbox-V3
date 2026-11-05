@@ -1,6 +1,6 @@
 import { readingText } from "@/lib/reading";
 import { useEffect, useRef, useState } from "react";
-import { closedAreas } from "@/lib/areas";
+import { closedAreas, pointsInArea, withAreas } from "@/lib/areas";
 import { PlanCanvas, type CanvasTransform } from "../PlanCanvas";
 import { NumericKeypad } from "../NumericKeypad";
 import { AddTransitionSheet } from "../AddTransitionSheet";
@@ -8,15 +8,30 @@ import { AddTransitionSheet } from "../AddTransitionSheet";
 import { TransitionDetailDialog } from "../TransitionDetailDialog";
 
 import { Button } from "@/components/ui/button";
-import { Pencil, List, Trash2 } from "lucide-react";
+import { Minus, Plus, Pencil, List, Trash2, X } from "lucide-react";
 
-import type { Bp1Gps, Floor, NotePin, SurveyPoint, Transition } from "@/lib/types";
+import type { Bp1Gps, Floor, NotePin, SurveyPoint, TopoArea, Transition } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { savePoint, deletePoint, reindexFloorPoints, saveFloor, saveBp1Gps, uid } from "@/lib/db";
 import { transitionDelta, formatDelta, getChainBaselineSurface } from "@/lib/transitions";
 import { drawExclusionShape, zoneOfXY } from "@/lib/exclusions";
 import type { FloorSnapshot } from "@/lib/useFloorHistory";
-import { planLongSide, planProportionalSize } from "@/lib/screen-size";
+import { planLockedImageSize } from "@/lib/screen-size";
+import { patchCaptureSizes } from "@/lib/capture-sizes";
+import {
+  DEFAULT_STATS_CHIP_SIZE,
+  getStatsChipSize,
+  setStatsChipSize,
+  STATS_CHIP_MAX,
+  STATS_CHIP_MIN,
+  STATS_CHIP_SIZE_EVENT,
+} from "@/components/chrome/StatsChip";
+import {
+  DEFAULT_STATS_PILL_SIZE,
+  drawStatsPillAt,
+  hitStatsPill,
+  pillCenter,
+} from "@/lib/stats-pill-canvas";
 
 /** Same design-font reference as TopoTab — pad must track font size. */
 const LABEL_CHROME_REF_PX = defaultRenderSettings.pointLabelFontSize;
@@ -24,18 +39,9 @@ function labelChromeK(fontPx: number) {
   return fontPx / LABEL_CHROME_REF_PX;
 }
 
-/** Reading labels + dots: plan-proportional — size 6 is small on a fit overview. */
-function pointLabelFontImg(fontBase: number, floor: Floor) {
-  return planProportionalSize(
-    Math.max(1, fontBase),
-    planLongSide(floor.planWidth, floor.planHeight),
-  );
-}
-function pointDotRadiusImg(dotBase: number, floor: Floor) {
-  return planProportionalSize(
-    Math.max(1, dotBase),
-    planLongSide(floor.planWidth, floor.planHeight),
-  );
+/** Capture reading labels: fixed in image space from fit scale (zoom with plan). */
+function pointLabelFontImg(fontBase: number, fitScale: number) {
+  return planLockedImageSize(fontBase, fitScale);
 }
 
 
@@ -54,6 +60,15 @@ interface Props {
   pointSize: number;
   pointColor: string;
   labelFontSize: number;
+  /** Capture scope for shared H/L/Δ size (same key as Topo). */
+  customerFileId?: string;
+  /** Digits after the point — must match Topo's pill. */
+  decimals?: number;
+  /**
+   * Corrected readings for H/L/Δ (same numbers Topo uses). Capture still
+   * edits raw `points`; the pill only reads these.
+   */
+  correctedPoints?: SurveyPoint[];
   focusRequest?: { x: number; y: number; nonce: number };
   onCommit?: (snap: FloorSnapshot) => void;
 }
@@ -105,6 +120,9 @@ export function FieldTab({
   pointSize,
   pointColor,
   labelFontSize,
+  customerFileId,
+  decimals = defaultRenderSettings.decimalPlaces,
+  correctedPoints,
   focusRequest,
   onCommit,
 }: Props) {
@@ -120,6 +138,89 @@ export function FieldTab({
   const dragRef = useRef<DragState | null>(null);
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [warningDismissed, setWarningDismissed] = useState(false);
+  // H/L/Δ on the plan (same place/size as Topo). Press-and-move to place; tap for size.
+  const [statsChipLocked, setStatsChipLocked] = useState<number | null>(null);
+  const [pillDrag, setPillDrag] = useState<null | {
+    areaId: string;
+    /** Live offset while dragging (image coords). */
+    dx: number;
+    dy: number;
+    /** Offset at press. */
+    origDx: number;
+    origDy: number;
+    startPointerX: number;
+    startPointerY: number;
+    startClientX: number;
+    startClientY: number;
+    active: boolean;
+  }>(null);
+  const [pillSizeHud, setPillSizeHud] = useState<null | { clientX: number; clientY: number }>(
+    null,
+  );
+  const statsForPill = correctedPoints ?? points;
+  const statsChipSize =
+    statsChipLocked ?? getStatsChipSize(customerFileId) ?? DEFAULT_STATS_CHIP_SIZE;
+
+  useEffect(() => {
+    setStatsChipLocked(getStatsChipSize(customerFileId));
+  }, [customerFileId]);
+  useEffect(() => {
+    const onSize = (e: Event) => {
+      const detail = (e as CustomEvent<{ size: number; customerFileId?: string | null }>).detail;
+      if (!detail) return;
+      if (detail.customerFileId && customerFileId && detail.customerFileId !== customerFileId) {
+        return;
+      }
+      setStatsChipLocked(detail.size);
+    };
+    window.addEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
+    return () => window.removeEventListener(STATS_CHIP_SIZE_EVENT, onSize as EventListener);
+  }, [customerFileId]);
+  // Outside press dismisses; −/+ inside stay usable (same as Topo accessory HUD).
+  useEffect(() => {
+    if (!pillSizeHud) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (t && t.closest("[data-accessory-size-hud]")) return;
+      setPillSizeHud(null);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [pillSizeHud]);
+
+  function areaHiLo(area: TopoArea): { hi: number; lo: number } | null {
+    // Same membership as Topo / the old Data chip: inside the boundary, not in an exclusion.
+    const pts = pointsInArea(statsForPill, area).filter(
+      (p) => !zoneOfXY(p.x, p.y, floor.exclusions),
+    );
+    if (!pts.length) return null;
+    let hi = pts[0].value;
+    let lo = pts[0].value;
+    for (const p of pts) {
+      if (p.value > hi) hi = p.value;
+      if (p.value < lo) lo = p.value;
+    }
+    return { hi, lo };
+  }
+
+  function commitPillMove(areaId: string, dx: number, dy: number) {
+    const areas = closedAreas(floor).map((a) =>
+      a.id === areaId ? { ...a, pillDx: dx, pillDy: dy } : a,
+    );
+    const next = withAreas(floor, areas);
+    onFloorChange?.(next);
+    void saveFloor(next);
+  }
+
+  function bumpPillSize(delta: number) {
+    const n = Math.max(
+      STATS_CHIP_MIN,
+      Math.min(STATS_CHIP_MAX, Math.round(statsChipSize + delta)),
+    );
+    setStatsChipLocked(n);
+    setStatsChipSize(n, customerFileId);
+    if (customerFileId) patchCaptureSizes(customerFileId, { statsPillSize: n });
+  }
 
   // Notes state
   const [noteMode, setNoteMode] = useState(false);
@@ -455,16 +556,17 @@ export function FieldTab({
 
   function hitPoint(x: number, y: number): { point: SurveyPoint; on: "dot" | "label" } | null {
     const s = scaleRef.current || 1;
-    const dotHit = 14 / s;
+    const fit = fitScaleRef.current || s;
+    const markerR = planLockedImageSize(pointSize, fit);
+    const dotHit = Math.max(14 / s, markerR + 4 / s);
     for (const p of points) {
       if (Math.hypot(p.x - x, p.y - y) < dotHit) return { point: p, on: "dot" };
     }
     const fontBase = labelFontSize;
-    const fontPx = pointLabelFontImg(fontBase, floor);
+    const fontPx = pointLabelFontImg(fontBase, fit);
     const k = fontPx / fontBase;
     const chromeK = labelChromeK(fontPx);
     const pad = 4 * chromeK;
-    const markerR = pointDotRadiusImg(pointSize, floor);
     for (const p of points) {
       const text = readingText(p.value);
       const w = text.length * fontPx * 0.62;
@@ -473,6 +575,23 @@ export function FieldTab({
       const ly = p.y + markerR + 3 * k;
       if (x >= lx - pad && x <= lx + w + pad && y >= ly - pad && y <= ly + h + pad) {
         return { point: p, on: "label" };
+      }
+    }
+    return null;
+  }
+
+  function hitPill(x: number, y: number): { area: TopoArea; dx: number; dy: number } | null {
+    const fit = fitScaleRef.current || scaleRef.current || 1;
+    const h = planLockedImageSize(statsChipSize || DEFAULT_STATS_PILL_SIZE, fit);
+    const areas = closedAreas(floor);
+    for (let i = areas.length - 1; i >= 0; i--) {
+      const area = areas[i];
+      const hl = areaHiLo(area);
+      if (!hl) continue;
+      if (
+        hitStatsPill(x, y, area, h, hl.hi, hl.lo, decimals, areas.length > 1 ? area.name : null)
+      ) {
+        return { area, dx: area.pillDx ?? 0, dy: area.pillDy ?? 0 };
       }
     }
     return null;
@@ -781,6 +900,24 @@ export function FieldTab({
             }, LONG_PRESS_MS);
             return true;
           }
+          // H/L/Δ on the plan: press-and-move to place (same offsets Topo uses).
+          const pill = hitPill(x, y);
+          if (pill) {
+            setPillSizeHud(null);
+            setPillDrag({
+              areaId: pill.area.id,
+              dx: pill.dx,
+              dy: pill.dy,
+              origDx: pill.dx,
+              origDy: pill.dy,
+              startPointerX: x,
+              startPointerY: y,
+              startClientX: event.clientX,
+              startClientY: event.clientY,
+              active: false,
+            });
+            return true;
+          }
           if (noteMode) return false; // in note mode, empty taps handled via onTap
           const hit = hitPoint(x, y);
           if (!hit) return false;
@@ -861,6 +998,21 @@ export function FieldTab({
             onFloorChange?.({ ...floor, notes: next });
             return;
           }
+          if (pillDrag) {
+            const screenDist = Math.hypot(
+              event.clientX - pillDrag.startClientX,
+              event.clientY - pillDrag.startClientY,
+            );
+            if (screenDist > 6) {
+              setPillDrag({
+                ...pillDrag,
+                active: true,
+                dx: pillDrag.origDx + (x - pillDrag.startPointerX),
+                dy: pillDrag.origDy + (y - pillDrag.startPointerY),
+              });
+            }
+            return;
+          }
           const drag = dragRef.current;
           if (!drag) return;
           const screenDist = Math.hypot(
@@ -922,6 +1074,7 @@ export function FieldTab({
           }
           dragRef.current = null;
           setDragging(null);
+          setPillDrag(null);
           if (longPressTimerRef.current) {
             window.clearTimeout(longPressTimerRef.current);
             longPressTimerRef.current = null;
@@ -936,7 +1089,18 @@ export function FieldTab({
           setNoteDragTick((t) => t + 1);
         }}
 
-        onImagePointerUp={async (x, y, _event) => {
+        onImagePointerUp={async (x, y, event) => {
+          if (pillDrag) {
+            const moved = pillDrag.active;
+            const { areaId, dx, dy } = pillDrag;
+            setPillDrag(null);
+            if (moved) {
+              commitPillMove(areaId, dx, dy);
+            } else {
+              setPillSizeHud({ clientX: event.clientX, clientY: event.clientY });
+            }
+            return;
+          }
           const nd = noteDragRef.current;
           if (nd) {
             if (longPressTimerRef.current) {
@@ -1045,16 +1209,18 @@ export function FieldTab({
           for (const p of points) {
             if (p.transitionId && highlightIds.has(p.transitionId)) highlightPointIds.add(p.id);
           }
-          // Labels + dots: plan-proportional. Both zoom with the plan.
-          // Decluttering hides labels that would collide. Dots always draw.
+          // Labels and dots are plan-locked (same fit-scale rule as Topo) so
+          // Data and Topo match when the investigator switches screens.
           const s = scaleRef.current || 1;
+          const fit = fitScaleRef.current || s;
           const fontBase = labelFontSize;
-          const lblFontPx = pointLabelFontImg(fontBase, floor);
+          const lblFontPx = pointLabelFontImg(fontBase, fit);
           const k = lblFontPx / fontBase;
           const chromeK = labelChromeK(lblFontPx);
           const lblPadX = 3 * chromeK;
           const lblPadY = 2 * chromeK;
-          const markerR = pointDotRadiusImg(pointSize, floor);
+          // Dot: plan-locked from the pointSize stepper (shared with Topo).
+          const markerR = planLockedImageSize(pointSize, fit);
           const labelTextFor = (p: SurveyPoint) => {
             const lt = p.transitionId ? transitions.find((t) => t.id === p.transitionId) : null;
             return lt && !p.isTransitionAnchor
@@ -1185,6 +1351,29 @@ export function FieldTab({
 
 
 
+
+          // H / L / Δ on the plan — same offsets and size key as Topo.
+          {
+            const areas = closedAreas(floor);
+            const h = planLockedImageSize(statsChipSize || DEFAULT_STATS_PILL_SIZE, fit);
+            for (const area of areas) {
+              const hl = areaHiLo(area);
+              if (!hl) continue;
+              const live =
+                pillDrag && pillDrag.areaId === area.id
+                  ? { dx: pillDrag.dx, dy: pillDrag.dy }
+                  : null;
+              drawStatsPillAt(ctx, {
+                h,
+                label: areas.length > 1 ? area.name : null,
+                hi: hl.hi,
+                lo: hl.lo,
+                dec: decimals,
+                center: pillCenter(area, live),
+                dragging: !!(live && pillDrag?.active),
+              });
+            }
+          }
 
           // Note pins (drawn on top of points visually is fine; they're field-only)
           for (let i = 0; i < notes.length; i++) {
@@ -1425,6 +1614,50 @@ export function FieldTab({
       )}
 
 
+
+      {pillSizeHud && (() => {
+        const vw = typeof window !== "undefined" ? window.innerWidth : 360;
+        const left = Math.min(Math.max(8, pillSizeHud.clientX - 36), vw - 88);
+        // Way above the pill so move stays clear (same offset as Topo).
+        const top = Math.max(8, pillSizeHud.clientY - 112);
+        return (
+          <div
+            data-accessory-size-hud=""
+            className="fixed z-[80] flex h-7 items-stretch overflow-hidden rounded-full border shadow-md"
+            style={{ left, top, background: "#07283d", borderColor: "#07283d" }}
+            role="group"
+            aria-label="H/L/Δ size"
+          >
+            <button
+              type="button"
+              onClick={() => bumpPillSize(-2)}
+              disabled={statsChipSize <= STATS_CHIP_MIN}
+              aria-label="Decrease H/L/Δ size"
+              className="flex w-7 items-center justify-center text-white/95 hover:bg-white/10 disabled:opacity-40"
+            >
+              <Minus className="h-3 w-3" />
+            </button>
+            <span className="w-px self-stretch bg-white/25" aria-hidden />
+            <button
+              type="button"
+              onClick={() => bumpPillSize(2)}
+              disabled={statsChipSize >= STATS_CHIP_MAX}
+              aria-label="Increase H/L/Δ size"
+              className="flex w-7 items-center justify-center text-white/95 hover:bg-white/10 disabled:opacity-40"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setPillSizeHud(null)}
+              aria-label="Close size"
+              className="flex w-6 items-center justify-center border-l border-white/25 text-white/80 hover:bg-white/10"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        );
+      })()}
 
       {bpPromptOpen && pending && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

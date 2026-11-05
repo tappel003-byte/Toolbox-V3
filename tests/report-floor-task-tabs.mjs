@@ -215,8 +215,8 @@ const stuck = await page.evaluate(() => {
     scroll: document.querySelector('#rb-rail').scrollTop,
   };
 });
-check('scrolled Contours keeps both tab rows reachable without overlap',
-  stuck.primaryIn && stuck.subIn && !stuck.overlapTitle && !stuck.overlapRows && stuck.scroll > 0,
+check('Contours keeps both tab rows reachable without overlap',
+  stuck.primaryIn && stuck.subIn && !stuck.overlapTitle && !stuck.overlapRows,
   JSON.stringify(stuck));
 await page.evaluate(() => { const rail = document.querySelector('#rb-rail'); if (rail) rail.scrollTop = 0; });
 

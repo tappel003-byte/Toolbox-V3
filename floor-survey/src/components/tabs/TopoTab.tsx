@@ -17,6 +17,7 @@ import {
   patchCaptureSizes,
 } from "@/lib/capture-sizes";
 import {
+  planLockedImageSize,
   planLongSide,
   planProportionalSize,
   screenAnchoredImageSize,
@@ -27,6 +28,7 @@ import {
   POINT_SIZE_MAX,
   POINT_SIZE_MIN,
 } from "@/lib/point-style";
+import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import {
   DEFAULT_LABEL_SEAT,
   LABEL_GAP_DEFAULT,
@@ -39,7 +41,6 @@ import {
   type LabelSeatSelection,
   type LabelSide,
 } from "@/lib/label-seat";
-import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Undo2, X, SlidersHorizontal, Minus, Plus, ChevronDown, Hash, Eye, EyeOff } from "lucide-react";
@@ -236,14 +237,9 @@ interface Props {
   hostStatsPillPx?: number;
   onHostStatsPillPxChange?: (px: number) => void;
   /**
-   * Draw the H / L / delta pill on the canvas even when the level has a single
-   * boundary.
-   *
-   * In the field a lone surface uses the floating StatsChip instead, which is
-   * positioned against the browser window. A report slide is a page, not a
-   * window, so that pill has nowhere to live -- and a one-boundary level would
-   * be the only page in the book with no pill on it. With this on, one boundary
-   * is drawn exactly the way five are.
+   * Report slides: draw the H / L / Δ pill on a one-boundary page when
+   * chromeOnPage would otherwise leave the canvas bare. Field Topo already
+   * draws the pill on every surface (including a lone one).
    */
   statsPillForSingleBoundary?: boolean;
   /**
@@ -409,10 +405,10 @@ function labelAnchor(p: SurveyPoint, fontPx: number, weight: string, text: strin
 }
 
 /* ---------------------------------------------------------------------------
- * H / L / Δ stats pill — drawn on the canvas for multi-area Topo only.
- * One surface / one boundary uses the floating StatsChip instead, so the
- * same readout is not drawn twice. Sized like point labels: chosen screen
- * px holds when fit-scaled out, grows gently when zoomed in.
+ * H / L / Δ stats pill — drawn on the Topo canvas for every boundary
+ * (including a lone surface). Data draws the same pill on its canvas from
+ * the same pillDx/pillDy offsets. Plan-locked: pans/zooms with the drawing;
+ * Size −/+ sets the base (shared capture size key).
  * ------------------------------------------------------------------------- */
 
 export const DEFAULT_STATS_PILL_SIZE = 28;
@@ -426,40 +422,24 @@ export const DEFAULT_STATS_PILL_SIZE = 28;
  * as ~screen-px and not small). Point label size −/+ still scales it.
  * Legend / H/L/Δ / High/Low keep chromeSizeImg.
  */
-function pointLabelFontImg(fontBase: number, floor: Floor) {
-  return planProportionalSize(
-    Math.max(1, fontBase),
-    planLongSide(floor.planWidth, floor.planHeight),
-  );
+function pointLabelFontImg(
+  fontBase: number,
+  floor: Floor,
+  opts?: { presentation?: boolean; fitScale?: number },
+) {
+  const base = Math.max(1, fontBase);
+  if (opts?.presentation) {
+    return planProportionalSize(base, planLongSide(floor.planWidth, floor.planHeight));
+  }
+  return planLockedImg(base, opts?.fitScale && opts.fitScale > 0 ? opts.fitScale : 1);
 }
 
 /**
- * Reading-dot radius in image coordinates.
+ * Chrome height in image coordinates (legend ticks, dots, etc.).
  *
- * Always a fraction of the plan (plan-proportional), capture and report.
- * Zooms with the canvas. Point size 6 stays a small mark on a fit overview —
- * not the old label-fit formula that left ~8 CSS px blobs on a phone.
- */
-function pointDotRadiusImg(dotBase: number, floor: Floor) {
-  return planProportionalSize(
-    Math.max(1, dotBase),
-    planLongSide(floor.planWidth, floor.planHeight),
-  );
-}
-
-/**
- * The H / L / delta pill's drawn height, in image coordinates.
- *
- * Two modes, because the two surfaces genuinely want different things.
- *
- * In the field the pill is screen-anchored: you zoom into a plan to work and
- * the numbers have to stay readable on the device in your hand. That is proven
- * and it stays.
- *
- * On a page there is no screen to anchor to. A report slide, an export and a
- * PDF are pictures, so the pill is a fixed fraction of the plan -- it scales
- * with the drawing when the investigator resizes the topo, and it renders the
- * same on a phone, a desktop and on paper.
+ * Report / presentation: fixed fraction of the plan.
+ * Field: screen-anchored so working zoom keeps chrome readable — except the
+ * H/L/Δ pill and reading dots/labels, which are plan-locked (see below).
  */
 function chromeSizeImg(
   base: number,
@@ -473,13 +453,28 @@ function chromeSizeImg(
   return screenAnchoredImageSize(base, viewScale);
 }
 
+/** Image-space size that zooms with the plan (capture), from fit scale. */
+function planLockedImg(base: number, fitScale: number) {
+  return planLockedImageSize(base, fitScale);
+}
+
+/**
+ * H / L / Δ pill height in image coordinates.
+ *
+ * Plan-locked in the field and on report: pans and zooms with the drawing and
+ * stays where it was placed. Size −/+ still sets the base.
+ */
 function pillHeightImg(
   base: number,
   viewScale: number,
   presentation: boolean,
   floor: Floor,
+  fitScale?: number,
 ) {
-  return chromeSizeImg(base, viewScale, presentation, floor);
+  if (presentation) {
+    return planProportionalSize(base, planLongSide(floor.planWidth, floor.planHeight));
+  }
+  return planLockedImg(base, fitScale && fitScale > 0 ? fitScale : viewScale);
 }
 
 type PillSeg = { kind: "label" | "hi" | "lo" | "delta"; text: string; w: number };
@@ -506,9 +501,10 @@ function pillMetrics(h: number, label: string | null, hi: number, lo: number, de
 /**
  * Does the canvas carry the H / L / delta pill?
  *
- * The field app draws it per boundary when a level has more than one, and
- * leaves a lone surface to the floating StatsChip. A report slide has no
- * window to float against, so it asks for the pill on one boundary too.
+ * Topo draws the pill on the plan for every boundary (including a lone
+ * surface) so it pans, zooms, and stays where it was placed. Data mode still
+ * uses the floating StatsChip. A report slide asks for the pill on one
+ * boundary via forSingleBoundary when chromeOnPage leaves the canvas bare.
  *
  * This is one function because the drawing and the hit test must agree: when
  * they disagree, a pill is drawn where it cannot be grabbed.
@@ -516,10 +512,11 @@ function pillMetrics(h: number, label: string | null, hi: number, lo: number, de
 function statsPillOnCanvas(
   settings: RenderSettings,
   areaCount: number,
-  forSingleBoundary: boolean,
+  _forSingleBoundary: boolean,
 ): boolean {
   if (settings.showStatsPill === false) return false;
-  return areaCount > 1 || (forSingleBoundary && areaCount === 1);
+  // Field Topo: every surface, including a lone one (no floating StatsChip).
+  return areaCount >= 1;
 }
 
 function pillCenter(area: TopoArea, live?: { dx: number; dy: number } | null) {
@@ -568,9 +565,10 @@ export function TopoTab({
   resizeCorners = false,
   allowContourLayer = false,
 }: Props) {
-  // Field Control panel: Contours | Readings. Legend lives under Contours →
-  // Display; H/L/Δ and High/Low live under Readings → Accessories (they come
-  // from the readings). Report Builder keeps its own rail (controlsOnly).
+  // Field Control panel and Report Builder rail share one tree:
+  // Contours | Readings → (Contours: Display/Colors/Lines; Readings: Show/
+  // Format/Accessories). Legend under Contours → Display; H/L under Readings
+  // → Accessories. Report Builder only changes the door (rail vs pill).
   const [openCorner, setOpenCorner] = useState<TrialDoorKey | null>(null);
   /** Hide floating field chrome; Clean pill stays so chrome can return. Local only. */
   const [cleanView, setCleanView] = useState(false);
@@ -1003,7 +1001,7 @@ export function TopoTab({
 
   function hitDraggable(x: number, y: number): Hit | null {
     if (canvasStatsPill) {
-      const h = pillHeightImg(statsChipSize, viewScale, presentation, floor);
+      const h = pillHeightImg(statsChipSize, viewScale, presentation, floor, fitScale);
       const showLabel = true;
       const dec = resolved.decimalPlaces;
       for (let i = areaTopos.length - 1; i >= 0; i--) {
@@ -1055,7 +1053,10 @@ export function TopoTab({
     if (resolved.showPoints) {
       const fontBase = resolved.pointLabelFontSize;
       // Must match the drawn size exactly, or a tap lands beside the label.
-      const fontPx = pointLabelFontImg(fontBase, floor);
+      const fontPx = pointLabelFontImg(fontBase, floor, {
+        presentation,
+        fitScale,
+      });
       const dec = resolved.decimalPlaces;
       const weight = resolved.pointLabelWeight;
       const pad = 4 * labelChromeK(fontPx);
@@ -1163,7 +1164,10 @@ export function TopoTab({
   ) {
     setLabelSeat(seat);
     setLabelGapSteps(gapSteps);
-    const fontPx = pointLabelFontImg(resolved.pointLabelFontSize, floor);
+    const fontPx = pointLabelFontImg(resolved.pointLabelFontSize, floor, {
+      presentation,
+      fitScale,
+    });
     const weight = resolved.pointLabelWeight;
     const chromeK = labelChromeK(fontPx);
     const padX = 4 * chromeK;
@@ -1525,7 +1529,10 @@ export function TopoTab({
               let startDx = 0;
               let startDy = 0;
               if (hit.kind === "label") {
-                const fontPx = pointLabelFontImg(resolved.pointLabelFontSize, floor);
+                const fontPx = pointLabelFontImg(resolved.pointLabelFontSize, floor, {
+                  presentation,
+                  fitScale,
+                });
                 const text = hit.point.value.toFixed(resolved.decimalPlaces);
                 const off = labelOffsetFor(
                   hit.point,
@@ -1979,7 +1986,7 @@ export function TopoTab({
                   id: "show",
                   title: "Show",
                   body: (
-                    <div className="space-y-1">
+                    <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-2">
                         <SwitchRow
                           label="Points"
@@ -2400,13 +2407,13 @@ function TrialFolderTabs({
             aria-controls="fs-cp-panel"
             tabIndex={on ? 0 : -1}
             onClick={() => onChange(d.key)}
-            className="min-h-11 min-w-0 flex-1 whitespace-nowrap rounded-t-[6px] border px-1 text-center text-xs leading-none"
+            className="min-h-10 min-w-0 flex-1 whitespace-nowrap rounded-t-[6px] border px-1 text-center text-xs leading-none"
             style={{
               marginBottom: -1,
-              backgroundColor: on ? TRIAL_NAVY : "#e5ebee",
-              color: on ? "#fff" : "#3d5c70",
+              backgroundColor: on ? TRIAL_NAVY : "#c5d8e4",
+              color: on ? "#fff" : TRIAL_NAVY,
               fontWeight: on ? 700 : 650,
-              borderColor: on ? TRIAL_NAVY : TRIAL_LINE,
+              borderColor: TRIAL_NAVY,
               borderBottomColor: on ? TRIAL_NAVY : TRIAL_LINE,
             }}
           >
@@ -2620,8 +2627,8 @@ function TrialSectionTabs({
               className="min-h-11 min-w-min flex-1 overflow-visible whitespace-nowrap rounded-t-[6px] border px-2 text-center text-xs leading-none"
               style={{
                 marginBottom: -1,
-                backgroundColor: on ? TRIAL_NAVY : "#e5ebee",
-                color: on ? "#fff" : "#3d5c70",
+                backgroundColor: on ? TRIAL_NAVY : "#c5d8e4",
+                color: on ? "#fff" : TRIAL_NAVY,
                 fontWeight: on ? 700 : 650,
                 borderColor: on ? TRIAL_NAVY : TRIAL_LINE,
               }}
@@ -3270,7 +3277,10 @@ export function renderTopoTop(
   // report stays plan-proportional. −/+ sets the size. Legend / pill /
   // High/Low keep chromeSizeImg.
   const fontBase = resolved.pointLabelFontSize;
-  const fontPx = pointLabelFontImg(fontBase, floor);
+  const fontPx = pointLabelFontImg(fontBase, floor, {
+    presentation: !!overlay?.presentation,
+    fitScale,
+  });
   // Label box chrome (pad / radius / stroke) tracks drawn fontPx.
   const chromeK = labelChromeK(fontPx);
   const weight = resolved.pointLabelWeight;
@@ -3278,9 +3288,14 @@ export function renderTopoTop(
 
   if (resolved.showPoints) {
     ctx.globalAlpha = resolved.pointsOpacity;
-    // Dot: plan-proportional (quiet on fit overview); −/+ still owns size.
-    const dotBase = overlay?.pointSize ?? 2;
-    const dotR = pointDotRadiusImg(dotBase, floor);
+    // Dot: same anchoring as the label, but keyed to the user's dot-size
+    // stepper (pointSize) instead of font size, so the stepper actually
+    // controls what's drawn.
+    const dotBase = overlay?.pointSize ?? 6;
+    // Dots plan-lock with the labels so zoom grows/shrinks both together.
+    const dotR = overlay?.presentation
+      ? planProportionalSize(dotBase, planLongSide(floor.planWidth, floor.planHeight))
+      : planLockedImg(dotBase, fitScale);
     const dotColor = overlay?.pointColor ?? "#dc2626";
     const padX = 4 * chromeK;
     const padY = 2.5 * chromeK;
@@ -3433,14 +3448,13 @@ export function renderTopoTop(
     }
   }
 
-  // One named pill per boundary. In the field a lone surface uses the floating
-  // StatsChip instead, so H / L / Δ is not drawn twice; a report slide asks for
-  // it here so one boundary looks the same as five.
+  // One named pill per boundary on the plan (including a lone surface). Data
+  // mode still uses the floating StatsChip; Topo does not.
   if (!overlay?.chromeOnPage &&
       statsPillOnCanvas(resolved, areaTopos.length, !!overlay?.pillForSingleBoundary)) {
     const livePill = overlay?.livePill ?? null;
     const base = overlay?.pillSize ?? DEFAULT_STATS_PILL_SIZE;
-    const h = pillHeightImg(base, viewScale, !!overlay?.presentation, floor);
+    const h = pillHeightImg(base, viewScale, !!overlay?.presentation, floor, fitScale);
     for (const at of areaTopos) {
       const live = livePill && livePill.id === at.area.id ? livePill : null;
       drawStatsPill(
