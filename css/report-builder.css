@@ -27,13 +27,28 @@ body.report-builder-open .canvas {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 12px;
+  gap: 8px 14px;
   width: 100%;
   min-width: 0;
   padding: 6px 12px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
   box-sizing: border-box;
+}
+
+.rb-toolbar__view,
+.rb-toolbar__out {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* Output actions keep their own lane so they don't interleave with formatting. */
+.rb-toolbar__out {
+  margin-left: auto;
 }
 
 .rb-toolbar__lead {
@@ -46,10 +61,12 @@ body.report-builder-open .canvas {
 }
 
 .rb-export,
-.rb-share-lookbook-btn {
+.rb-share-lookbook-btn,
+.rb-print-btn,
+.rb-draft-btn {
   flex: 0 0 auto;
   min-height: 32px;
-  padding: 4px 12px;
+  padding: 4px 10px;
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
@@ -66,6 +83,20 @@ body.report-builder-open .canvas {
 
 .rb-ai-status:empty {
   display: none;
+}
+
+@media (max-width: 1100px) {
+  .rb-toolbar__out {
+    margin-left: 0;
+    flex: 1 1 100%;
+    justify-content: flex-end;
+    padding-top: 2px;
+    border-top: 1px solid var(--line);
+  }
+
+  .rb-toolbar__view {
+    margin-left: auto;
+  }
 }
 
 .rb-workspace {
@@ -3060,7 +3091,7 @@ body.report-builder-open .canvas {
  * PowerPoint Home ribbon is. Pages left, canvas centre, Toolbox right.
  * ------------------------------------------------------------------ */
 
-/* The formatting bar takes whatever room is left beside Print and Export,
+/* The formatting bar takes whatever room is left beside view + output,
    rather than asking for its content width and pushing them onto a second
    row. With a basis of auto the toolbar was two rows tall while the hint was
    showing and one row once it went, so the whole sheet jumped nineteen
