@@ -81,6 +81,24 @@ check('collects pictures-page photographs with captions',
   photos.length === 2 && photos[0].title === 'Crack at corner' &&
   photos[0].dataUrl.indexOf('data:image/') === 0);
 
+const svg = api.buildForeignObjectSvg(
+  '<div class="rb-print__page"><img src="data:image/jpeg;base64,xx" alt=""></div>',
+  '.rb-print .rb-sheet{width:100%}',
+  1632,
+  1056,
+  0.5,
+  816,
+  528,
+);
+check('foreignObject SVG wraps paper in .rb-print for print CSS',
+  svg.includes('class="rb-print"') &&
+  svg.includes('foreignObject') &&
+  svg.includes('.rb-print .rb-sheet{width:100%}') &&
+  svg.includes('rb-print__page'));
+check('foreignObject SVG scales to lookbook still size',
+  svg.includes('width="816"') && svg.includes('height="528"') &&
+  svg.includes('transform:scale(0.5)'));
+
 const failed = results.filter((r) => !r.ok);
 console.log('\n' + (results.length - failed.length) + '/' + results.length + ' passed');
 if (failed.length) process.exit(1);

@@ -126,56 +126,246 @@
     }));
   }
 
+  function paperSize(paper) {
+    return {
+      w: Math.max(1, Math.round(paper.offsetWidth || paper.scrollWidth || 1632)),
+      h: Math.max(1, Math.round(paper.offsetHeight || paper.scrollHeight || 1056)),
+    };
+  }
+
+  function copyPrintCssVars(fromEl, toEl) {
+    if (!fromEl || !toEl || !fromEl.style) return;
+    ['--rb-print-sheet-w', '--rb-print-sheet-h', '--rb-print-scale-x', '--rb-print-scale-y']
+      .forEach(function (name) {
+        var value = '';
+        try { value = fromEl.style.getPropertyValue(name); } catch (_) { value = ''; }
+        if (!value && fromEl.parentElement && fromEl.parentElement.style) {
+          try { value = fromEl.parentElement.style.getPropertyValue(name); } catch (_) { value = ''; }
+        }
+        if (value) toEl.style.setProperty(name, value);
+      });
+  }
+
+  /**
+   * Downscale data-URL images inside a clone so SVG foreignObject capture
+   * stays under browser data-URL size limits (Floor topo stills are large).
+   */
+  function shrinkCloneImages(root, maxEdge) {
+    var limit = Math.max(320, Number(maxEdge) || STILL_MAX_W);
+    var imgs = [].slice.call(root.querySelectorAll('img'));
+    return Promise.all(imgs.map(function (img) {
+      var src = img.getAttribute('src') || '';
+      if (src.indexOf('data:image/') !== 0) return Promise.resolve();
+      return loadImage(src).then(function (full) {
+        var nw = full.naturalWidth || 0;
+        var nh = full.naturalHeight || 0;
+        if (!(nw > limit || nh > limit)) return;
+        var scale = Math.min(limit / nw, limit / nh);
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(nw * scale));
+        canvas.height = Math.max(1, Math.round(nh * scale));
+        var ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(full, 0, 0, canvas.width, canvas.height);
+        var next = canvas.toDataURL('image/jpeg', STILL_JPEG_Q);
+        if (next && next.indexOf('data:image/') === 0) img.setAttribute('src', next);
+      }).catch(function () {});
+    }));
+  }
+
+  function buildForeignObjectSvg(paperHtml, cssText, w, h, scale, outW, outH) {
+    // Wrap in .rb-print so report-builder rules scoped under the print deck
+    // still match (chrome-hide, sheet size, topo bleed, etc.).
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="' + outW + '" height="' + outH + '">' +
+      '<foreignObject width="100%" height="100%" x="0" y="0">' +
+      '<div xmlns="http://www.w3.org/1999/xhtml" class="rb-print" style="width:' + w +
+      'px;height:' + h + 'px;transform:scale(' + scale +
+      ');transform-origin:0 0;background:#fff;position:relative;left:0;top:0;">' +
+      '<style>' + String(cssText || '').replace(/<\/style/gi, '<\\/style') + '</style>' +
+      paperHtml +
+      '</div></foreignObject></svg>';
+  }
+
+  function rasterizeSvgMarkup(svgMarkup, outW, outH) {
+    return new Promise(function (resolve) {
+      var url = '';
+      var revoke = function () {};
+      try {
+        // Blob URLs avoid the data: URL length ceiling that kills Floor sheets
+        // (embedded topo JPEGs make encodeURIComponent SVGs enormous).
+        var blob = new Blob([svgMarkup], { type: 'image/svg+xml;charset=utf-8' });
+        url = URL.createObjectURL(blob);
+        revoke = function () {
+          try { URL.revokeObjectURL(url); } catch (_) {}
+        };
+      } catch (_) {
+        try {
+          url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgMarkup);
+        } catch (__) {
+          resolve('');
+          return;
+        }
+      }
+      var img = new Image();
+      var finish = function (dataUrl) {
+        revoke();
+        resolve(dataUrl || '');
+      };
+      img.onload = function () {
+        try {
+          var canvas = document.createElement('canvas');
+          canvas.width = outW;
+          canvas.height = outH;
+          var ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(0, 0, outW, outH);
+          ctx.drawImage(img, 0, 0, outW, outH);
+          finish(canvas.toDataURL('image/jpeg', STILL_JPEG_Q));
+        } catch (_) {
+          finish('');
+        }
+      };
+      img.onerror = function () { finish(''); };
+      img.src = url;
+    });
+  }
+
+  /**
+   * Fallback when SVG foreignObject fails: paint every image already on the
+   * print paper (Floor topo stills, legends, photos) onto a white sheet.
+   * Keeps the lookbook from shipping empty Floor pages.
+   */
+  function capturePaperImageComposite(paper) {
+    var size = paperSize(paper);
+    var scale = Math.min(1, STILL_MAX_W / size.w);
+    var outW = Math.max(1, Math.round(size.w * scale));
+    var outH = Math.max(1, Math.round(size.h * scale));
+    var paperRect = paper.getBoundingClientRect();
+    var imgs = [].slice.call(paper.querySelectorAll('img')).filter(function (img) {
+      return img && (img.naturalWidth > 0 || (img.getAttribute('src') || '').indexOf('data:image/') === 0);
+    });
+    if (!imgs.length) return Promise.resolve('');
+
+    var canvas = document.createElement('canvas');
+    canvas.width = outW;
+    canvas.height = outH;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return Promise.resolve('');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, outW, outH);
+
+    return Promise.all(imgs.map(function (img) {
+      var src = img.currentSrc || img.getAttribute('src') || '';
+      if (!src) return Promise.resolve(null);
+      return loadImage(src).then(function (full) {
+        var rect = img.getBoundingClientRect();
+        return {
+          img: full,
+          x: (rect.left - paperRect.left) * scale,
+          y: (rect.top - paperRect.top) * scale,
+          w: Math.max(1, rect.width * scale),
+          h: Math.max(1, rect.height * scale),
+        };
+      }).catch(function () { return null; });
+    })).then(function (pieces) {
+      var drew = 0;
+      pieces.forEach(function (piece) {
+        if (!piece || !piece.img) return;
+        try {
+          ctx.drawImage(piece.img, piece.x, piece.y, piece.w, piece.h);
+          drew += 1;
+        } catch (_) {}
+      });
+      if (!drew) return '';
+      try { return canvas.toDataURL('image/jpeg', STILL_JPEG_Q); } catch (_) { return ''; }
+    });
+  }
+
+  /**
+   * Last-resort Floor still: use composeFloorStills data already on the page
+   * model when the print paper itself could not be rasterized.
+   */
+  function captureFromPrintTopo(page) {
+    if (!page || page.type !== 'floor' || !page._printTopo) return Promise.resolve('');
+    var shots = page._printTopo;
+    var keys = Object.keys(shots).filter(function (k) {
+      return shots[k] && String(shots[k]).indexOf('data:image/') === 0;
+    });
+    if (!keys.length) return Promise.resolve('');
+    keys.sort(function (a, b) { return Number(a) - Number(b); });
+    return loadImage(shots[keys[0]]).then(function (img) {
+      var nw = img.naturalWidth || STILL_MAX_W;
+      var nh = img.naturalHeight || Math.round(STILL_MAX_W * 0.65);
+      var scale = Math.min(1, STILL_MAX_W / nw);
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(nw * scale));
+      canvas.height = Math.max(1, Math.round(nh * scale));
+      var ctx = canvas.getContext('2d');
+      if (!ctx) return '';
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      // Multi-view: draw remaining slots in a row under/beside the first.
+      if (keys.length > 1) {
+        var slotW = Math.floor(canvas.width / keys.length);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        return Promise.all(keys.map(function (key) { return loadImage(shots[key]); })).then(function (images) {
+          images.forEach(function (slotImg, index) {
+            if (!slotImg) return;
+            var s = Math.min(slotW / slotImg.naturalWidth, canvas.height / slotImg.naturalHeight);
+            var dw = Math.max(1, Math.round(slotImg.naturalWidth * s));
+            var dh = Math.max(1, Math.round(slotImg.naturalHeight * s));
+            var dx = index * slotW + Math.floor((slotW - dw) / 2);
+            var dy = Math.floor((canvas.height - dh) / 2);
+            ctx.drawImage(slotImg, dx, dy, dw, dh);
+          });
+          return canvas.toDataURL('image/jpeg', STILL_JPEG_Q);
+        });
+      }
+      return canvas.toDataURL('image/jpeg', STILL_JPEG_Q);
+    }).catch(function () { return ''; });
+  }
+
   /**
    * Rasterize one print paper into a JPEG data URL.
-   * Uses SVG foreignObject + inlined report-builder CSS. Failures return ''.
+   * Primary: SVG foreignObject + inlined report-builder CSS (Blob URL).
+   * Fallbacks: image composite from the paper, then Floor `_printTopo`.
    */
-  function capturePaperStill(paper, cssText) {
+  function capturePaperStill(paper, cssText, pageModel) {
     replaceCanvasesWithImages(paper);
     return waitImages(paper).then(function () {
-      var w = Math.max(1, Math.round(paper.offsetWidth || paper.scrollWidth || 1632));
-      var h = Math.max(1, Math.round(paper.offsetHeight || paper.scrollHeight || 1056));
+      var size = paperSize(paper);
+      var w = size.w;
+      var h = size.h;
       var scale = Math.min(1, STILL_MAX_W / w);
       var outW = Math.max(1, Math.round(w * scale));
       var outH = Math.max(1, Math.round(h * scale));
       var clone = paper.cloneNode(true);
       clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
-      var serializer = new XMLSerializer();
-      var bodyHtml;
-      try {
-        bodyHtml = serializer.serializeToString(clone);
-      } catch (_) {
+      copyPrintCssVars(paper, clone);
+      return shrinkCloneImages(clone, STILL_MAX_W).then(function () {
+        var serializer = new XMLSerializer();
+        var bodyHtml;
+        try {
+          bodyHtml = serializer.serializeToString(clone);
+        } catch (_) {
+          bodyHtml = '';
+        }
+        if (bodyHtml) {
+          bodyHtml = bodyHtml.replace(/<script[\s\S]*?<\/script>/gi, '');
+          var svg = buildForeignObjectSvg(bodyHtml, cssText, w, h, scale, outW, outH);
+          return rasterizeSvgMarkup(svg, outW, outH);
+        }
         return '';
-      }
-      // Strip scripts; keep markup + styles.
-      bodyHtml = bodyHtml.replace(/<script[\s\S]*?<\/script>/gi, '');
-      var svg =
-        '<svg xmlns="http://www.w3.org/2000/svg" width="' + outW + '" height="' + outH + '">' +
-        '<foreignObject width="100%" height="100%" x="0" y="0">' +
-        '<div xmlns="http://www.w3.org/1999/xhtml" style="width:' + w + 'px;height:' + h +
-        'px;transform:scale(' + scale + ');transform-origin:0 0;background:#fff;">' +
-        '<style>' + String(cssText || '').replace(/<\/style/gi, '<\\/style') + '</style>' +
-        bodyHtml +
-        '</div></foreignObject></svg>';
-      var svgUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-      return new Promise(function (resolve) {
-        var img = new Image();
-        img.onload = function () {
-          try {
-            var canvas = document.createElement('canvas');
-            canvas.width = outW;
-            canvas.height = outH;
-            var ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(0, 0, outW, outH);
-            ctx.drawImage(img, 0, 0, outW, outH);
-            resolve(canvas.toDataURL('image/jpeg', STILL_JPEG_Q));
-          } catch (_) {
-            resolve('');
-          }
-        };
-        img.onerror = function () { resolve(''); };
-        img.src = svgUrl;
+      }).then(function (still) {
+        if (still && still.indexOf('data:image/') === 0) return still;
+        return capturePaperImageComposite(paper);
+      }).then(function (still) {
+        if (still && still.indexOf('data:image/') === 0) return still;
+        return captureFromPrintTopo(pageModel);
       });
     });
   }
@@ -293,7 +483,7 @@
     progress('Capturing report sheets…');
     for (var i = 0; i < papers.length; i += 1) {
       progress('Capturing sheet ' + (i + 1) + ' of ' + papers.length + '…');
-      var still = await capturePaperStill(papers[i], cssText);
+      var still = await capturePaperStill(papers[i], cssText, pageModels[i]);
       var title = (pageModels[i] && (pageModels[i].railLabel || pageModels[i].title)) ||
         ('Sheet ' + (i + 1));
       var stillPath = '';
@@ -619,5 +809,7 @@
     shareFromReport: shareFromReport,
     lookbookIndexHtml: lookbookIndexHtml,
     collectPhotoEntries: collectPhotoEntries,
+    // Test hooks for capture markup (no DOM rasterize).
+    buildForeignObjectSvg: buildForeignObjectSvg,
   };
 })();
