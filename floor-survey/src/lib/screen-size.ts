@@ -30,14 +30,18 @@ export function screenAnchoredImageSize(
 }
 
 /**
- * @deprecated Capture reading labels and dots both use planProportionalSize.
- * Kept for any leftover callers / tests during the Nov 1 sizing correction.
+ * Image-space size that pans and zooms with the plan (capture).
+ *
+ * Sized from the fit-to-viewport scale so a phone fit lands near ~72% of the
+ * old screen-anchored CSS size; pinch-in grows the drawing and this chrome
+ * together. Data and Topo must use the same helper so a size set on one
+ * screen matches the other.
  */
-export const CAPTURE_PLAN_ZOOM_FIT_FACTOR = 0.72;
+export const PLAN_LOCK_FIT_FACTOR = 0.72;
 
-export function capturePlanZoomImageSize(base: number, fitScale: number): number {
+export function planLockedImageSize(base: number, fitScale: number): number {
   const fit = fitScale > 0 ? fitScale : 1;
-  return (Math.max(1, base) * CAPTURE_PLAN_ZOOM_FIT_FACTOR) / fit;
+  return (Math.max(1, base) * PLAN_LOCK_FIT_FACTOR) / fit;
 }
 
 /**

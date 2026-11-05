@@ -950,6 +950,9 @@ body.report-builder-open .canvas {
   background: transparent;
   cursor: pointer;
 }
+.rb-ws__task-tab + .rb-ws__task-tab {
+  border-left-width: 0;
+}
 .rb-ws__task-tab:hover:not(.is-active) {
   color: #4b5563;
   background: transparent;
@@ -958,8 +961,8 @@ body.report-builder-open .canvas {
   outline: none;
 }
 .rb-ws__task-tab:focus-visible {
-  outline: 2px solid var(--navy, #07283d);
-  outline-offset: -3px;
+  outline: 2px solid #fff;
+  outline-offset: -4px;
 }
 .rb-ws__task-tab.is-active {
   z-index: 1;
@@ -1023,7 +1026,7 @@ body.report-builder-open .canvas {
   cursor: pointer;
 }
 .rb-ws__subtab:hover:not(.is-active) {
-  background: #d9e4e9;
+  background: #b3cddc;
 }
 .rb-ws__subtab:focus {
   outline: none;
@@ -4464,6 +4467,7 @@ body.is-presenting { overflow: hidden; }
 .rb-stage--zoomed .rb-discussion__resize,
 .rb-stage--zoomed [data-rb-disc-move],
 .rb-stage--zoomed [data-rb-disc-resize],
+.rb-stage--zoomed [data-rb-penlog-move],
 .rb-stage--zoomed [data-rb-penlog-resize],
 .rb-stage--zoomed .rb-penlog__resize {
   touch-action: none;

@@ -50,7 +50,7 @@ export type ReportTopoWorkspaceProps = {
   camera?: PlanCamera | null;
   /** The book's render settings, if any have been set. */
   settings?: Partial<RenderSettings> | null;
-  /** Report rail: which control group is on screen. */
+  /** Report rail parent: Contours | Readings (accessories/legendhl → Readings child). */
   railGroup?: "contours" | "readings" | "accessories" | "legendhl";
   /** Locked slides are shown, not steered. */
   locked?: boolean;
