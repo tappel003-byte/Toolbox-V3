@@ -1,0 +1,430 @@
+/* Plan of Repair — Report Builder look, drawing-template workspace. */
+
+body.plan-of-repair-open #app-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.por-shell.rb-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.por-shell .rb-identity .file-identity__name {
+  font-weight: 700;
+}
+
+/* ---- Right rail: dense Format-pane density, not fat form buttons ---- */
+
+.por-panel.rb-panel {
+  font-size: 12px;
+}
+
+.por-panel__title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.por-panel__label,
+.por-panel .rb-panel__label {
+  display: block;
+  margin: 0 0 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.por-bg-select {
+  width: 100%;
+  margin: 0 0 6px;
+  min-height: 28px;
+  padding: 3px 6px;
+  font-size: 12px;
+  border: 1px solid #c9c2b4;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.por-bg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin: 0 0 8px;
+}
+
+.por-linkbtn {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.por-linkbtn:hover {
+  text-decoration: underline;
+  color: #07283d;
+}
+
+.por-linkbtn:disabled {
+  color: #9ca3af;
+  cursor: default;
+  text-decoration: none;
+}
+
+.por-fill-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin: 0;
+}
+
+.por-fill-toggle--compact {
+  margin: 0 0 8px;
+  color: #4b5563;
+}
+
+.por-fill-toggle input {
+  margin: 0;
+}
+
+.por-sheet-bg {
+  position: absolute;
+  inset: 10px 12% 10px 10px;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.por-sheet-bg img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.por-sheet-bg__empty {
+  margin: 0;
+  padding: 14px 18px;
+  border: 1px dashed #b7a48a;
+  color: #6b5b4a;
+  font-size: 13px;
+  text-align: center;
+  background: rgba(255, 250, 240, 0.9);
+}
+
+.por-shell .rb-sheet {
+  position: relative;
+}
+
+.por-shell .rb-rail__rail {
+  z-index: 3;
+}
+
+.por-shell .rb-ov-layer,
+.por-shell .rb-ov-layer__ink {
+  z-index: 2;
+}
+
+.por-sel {
+  position: absolute;
+  border: 1px solid #1d4ed8;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.por-sel__handle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin: -4px 0 0 -4px;
+  background: #fff;
+  border: 1px solid #1d4ed8;
+  border-radius: 50%;
+  pointer-events: auto;
+  box-sizing: border-box;
+}
+
+.por-sel__handle--nw { left: 0; top: 0; cursor: nwse-resize; }
+.por-sel__handle--n  { left: 50%; top: 0; cursor: ns-resize; }
+.por-sel__handle--ne { left: 100%; top: 0; cursor: nesw-resize; }
+.por-sel__handle--e  { left: 100%; top: 50%; cursor: ew-resize; }
+.por-sel__handle--se { left: 100%; top: 100%; cursor: nwse-resize; }
+.por-sel__handle--s  { left: 50%; top: 100%; cursor: ns-resize; }
+.por-sel__handle--sw { left: 0; top: 100%; cursor: nesw-resize; }
+.por-sel__handle--w  { left: 0; top: 50%; cursor: ew-resize; }
+
+.por-sel__rot {
+  position: absolute;
+  left: 50%;
+  top: -22px;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border: 1px solid #64748b;
+  border-radius: 50%;
+  background: #fff;
+  pointer-events: none;
+}
+
+.por-sel__rot::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 12px;
+  width: 1px;
+  height: 10px;
+  background: #64748b;
+}
+
+.por-inspector {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e1d8;
+}
+
+.por-inspector[hidden] {
+  display: none !important;
+}
+
+.por-inspector__heading {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.por-inspector__heading + .por-inspector__heading,
+.por-inspector__size + .por-stack,
+.por-inspector__line + .por-inspector__heading {
+  margin-top: 10px;
+}
+
+.por-inspector__line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  min-height: 22px;
+}
+
+.por-inspector__tag {
+  flex: 0 0 42px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.por-inspector__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  min-width: 0;
+}
+
+.por-inspector__swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  padding: 0;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.por-inspector__swatch.is-on {
+  outline: 2px solid #07283d;
+  outline-offset: 1px;
+  border-color: #fff;
+}
+
+.por-seg {
+  display: inline-flex;
+  border: 1px solid #c9c2b4;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.por-seg__btn {
+  margin: 0;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 7px;
+  border: 0;
+  border-right: 1px solid #c9c2b4;
+  background: #fff;
+  color: #374151;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.por-seg__btn:last-child {
+  border-right: 0;
+}
+
+.por-seg__btn.is-on,
+.por-seg__btn.btn--secondary {
+  background: #07283d;
+  color: #fff;
+}
+
+.por-inspector__size {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 6px;
+  margin: 0 0 8px;
+}
+
+.por-inspector__field {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 4px;
+  align-items: center;
+  margin: 0;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.por-inspector__field input[type="number"] {
+  width: 100%;
+  min-height: 24px;
+  padding: 2px 4px;
+  border: 1px solid #c9c2b4;
+  border-radius: 3px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.por-stack {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+}
+
+.por-stack__btn {
+  margin: 0;
+  min-height: 24px;
+  padding: 3px 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+  background: #fff;
+  color: #374151;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.por-stack__btn:hover {
+  border-color: #9ca3af;
+  background: #f9fafb;
+}
+
+.por-stack__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.por-stackmenu__sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: #e5e1d8;
+}
+
+.por-stackmenu__section {
+  padding: 4px 12px 2px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+/* Toolbar fill toggle stays quiet beside zoom / print */
+.por-shell .rb-toolbar .por-fill-toggle {
+  margin: 0 8px 0 0;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+body.is-por-printing .por-shell,
+body.is-por-printing .view-bar {
+  display: none !important;
+}
+
+body.is-por-printing .por-print {
+  display: block !important;
+}
+
+.por-print {
+  display: none;
+}
+
+.por-print__page {
+  width: 1632px;
+  height: 1056px;
+  background: #fff;
+}
+
+.por-print .por-sel,
+.por-print .rb-ov__resize,
+.por-print .rb-ov__remove {
+  display: none !important;
+}
+
+@media print {
+  @page {
+    size: 17in 11in;
+    margin: 0;
+  }
+
+  html, body {
+    margin: 0 !important;
+    background: #fff !important;
+  }
+
+  body.is-por-printing * {
+    visibility: hidden;
+  }
+
+  body.is-por-printing .por-print,
+  body.is-por-printing .por-print * {
+    visibility: visible;
+  }
+
+  body.is-por-printing .por-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+
+  body.is-por-printing .por-print__page,
+  body.is-por-printing .rb-sheet {
+    width: 17in !important;
+    height: 11in !important;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+}

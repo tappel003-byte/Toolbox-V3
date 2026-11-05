@@ -224,6 +224,14 @@ export interface RenderSettings {
   pointLabelFontSize: number;
   pointLabelColor: string;
   pointLabelWeight: "normal" | "bold";
+  /**
+   * Reading-dot size on a report slide (CSS px radius base). Capture uses
+   * device prefs (`dpp-size`); report keeps its own so a field tweak does not
+   * rewrite the deliverable.
+   */
+  readingPointSize: number;
+  /** Reading-dot colour on a report slide. Capture uses `dpp-color`. */
+  readingPointColor: string;
   highLowPinSize: number;
   showLegend: boolean;
   legendX: number;
@@ -259,6 +267,8 @@ export const defaultRenderSettings: RenderSettings = {
   pointLabelFontSize: 11,
   pointLabelColor: "#17130e",
   pointLabelWeight: "bold",
+  readingPointSize: 2,
+  readingPointColor: "#dc2626",
   highLowPinSize: 11,
   showLegend: true,
   legendX: 24,

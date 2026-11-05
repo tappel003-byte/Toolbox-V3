@@ -6,12 +6,12 @@
  * for fixed Report Builder slots — not baked at field chrome positions.
  */
 import { reportPointStyle } from "./point-style";
+import { DEFAULT_LABEL_SEAT, labelSeatOffset } from "@/lib/label-seat";
 import { closedAreas, pointsInArea } from "@/lib/areas";
 import { withCorrectedValues } from "@/lib/transitions";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { contourThresholds, type Grid } from "@/lib/topo";
-import { DEFAULT_LABEL_SEAT, labelSeatOffset } from "@/lib/label-seat";
 import {
   buildAreaTopos,
   paletteColor,
@@ -379,9 +379,9 @@ export async function composeReportTopoFigure(options: {
   // made a report topo look nothing like the same drawing in Floor Survey.
   //
   // The figure is seen about REPORT_REFERENCE_WIDTH across, so that is the
-  // scale it is drawn for. Dot size is the report sheet default — never
+  // scale it is drawn for. Dot size comes from report settings — never
   // capture dpp-size, or a field adjustment rewrites the print.
-  const pointStyle = reportPointStyle();
+  const pointStyle = reportPointStyle(settings);
   // The live canvas's three passes, in its order.
   renderTopoBase(ctx, floor, settings, areaTopos);
   drawPlanOver();

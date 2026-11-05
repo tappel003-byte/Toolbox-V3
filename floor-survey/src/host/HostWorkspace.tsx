@@ -565,6 +565,8 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
             customerFileId={id}
             pointSize={pointSize}
             pointColor={pointColor}
+            onPointSizeChange={setPointSize}
+            onPointColorChange={setPointColor}
             excludedIds={topoExcludedIds}
             onExcludedIdsChange={setTopoExcludedIds}
             selectedAreaId={topoAreaId}

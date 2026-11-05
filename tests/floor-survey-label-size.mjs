@@ -112,11 +112,13 @@ async function openDataPanel() {
   await page.waitForFunction(() => document.querySelector('[aria-label="Smaller label"]'), { timeout: 15000 });
 }
 
-/** The px figure printed between a pair of − / + buttons. */
+/** The size figure printed between a pair of − / + buttons (unitless plan size). */
 const sizeBeside = (label) => page.evaluate((aria) => {
   const btn = document.querySelector(`[aria-label="${aria}"]`);
   if (!btn) return null;
-  const span = [...btn.parentElement.querySelectorAll('span')].find((n) => /px$/.test(n.textContent.trim()));
+  const span = [...btn.parentElement.querySelectorAll('span')].find((n) =>
+    /^\d+$/.test(n.textContent.trim()),
+  );
   return span ? span.textContent.trim() : null;
 }, label);
 
@@ -129,26 +131,33 @@ const press = async (aria, times) => {
 
 await openDataPanel();
 const started = { text: await sizeBeside('Larger label'), dot: await sizeBeside('Larger dot') };
-check('the panel opens on the defaults', started.text === '11px' && started.dot === '2px',
+// Phone viewport uses screen-class capture default label 10 (not the 11 sheet default).
+check('the panel opens on the defaults', started.text === '10' && started.dot === '2',
   JSON.stringify(started));
 
 await press('Smaller label', 3);
 await press('Larger dot', 2);
 const set = { text: await sizeBeside('Larger label'), dot: await sizeBeside('Larger dot') };
-check('the controls move', set.text === '8px' && set.dot === '4px', JSON.stringify(set));
+check('the controls move', set.text === '7' && set.dot === '4', JSON.stringify(set));
 
 await openDataPanel();
 const reopened = { text: await sizeBeside('Larger label'), dot: await sizeBeside('Larger dot') };
 check('the label size is still what it was set to, as the dot size already was',
-  reopened.text === '8px' && reopened.dot === '4px', JSON.stringify(reopened));
+  reopened.text === '7' && reopened.dot === '4', JSON.stringify(reopened));
 
 // The labels on the plan are drawn at the size the panel reports, so a size
 // that only survived in the panel would be no use.
 const drawn = await page.evaluate(() => {
   const raw = localStorage.getItem('dpp-font:cf-label-size');
-  return raw == null ? null : Number(raw);
+  const blob = localStorage.getItem('fs-capture-sizes:cf-label-size');
+  const fromBlob = blob ? Number(JSON.parse(blob).pointLabelFontSize) : null;
+  return { dpp: raw == null ? null : Number(raw), blob: fromBlob };
 });
-check('the size is stored against this Customer File', drawn === 8, String(drawn));
+check(
+  'the size is stored against this Customer File',
+  drawn.dpp === 7 || drawn.blob === 7,
+  JSON.stringify(drawn),
+);
 
 await browser.close();
 const failed = results.filter((r) => !r.ok);

@@ -192,7 +192,7 @@ if (await openSheet('Picture Locations')) {
     const shownIn = (which) => {
       const box = sheet.querySelector('[data-rb-penlog-box="' + which + '"]');
       if (!box) return null;
-      return [...box.querySelectorAll('.rb-penlog__move, .rb-penlog__resize')]
+      return [...box.querySelectorAll('.rb-penlog__resize')]
         .some((el) => getComputedStyle(el).display !== 'none');
     };
     return { plan: shownIn('plan'), schedule: shownIn('schedule') };
@@ -209,7 +209,7 @@ await page.waitForFunction(() => !!document.querySelector('.rb-print .rb-sheet')
 await new Promise((r) => setTimeout(r, 1500));
 const printed = await page.evaluate(() => [...document.querySelectorAll(
   '.rb-print .rb-floor-box__resize, .rb-print .rb-cover-box__resize, ' +
-  '.rb-print .rb-penlog__resize, .rb-print .rb-penlog__move, ' +
+  '.rb-print .rb-penlog__resize, ' +
   '.rb-print .rb-cover-box__move, .rb-print [data-plan-resize]')]
   .map((el) => getComputedStyle(el).display !== 'none'));
 check('and not one pull is drawn on the printed deck',

@@ -21,7 +21,10 @@
   // Distress Survey's five. A shape drawn on a report slide can sit on the page
   // next to a photograph circled in the field, so these have to be the same ink
   // -- its red is #c14a2b, not the #c0392b this used to offer.
-  var COLORS = ['#c14a2b', '#111111', '#1d4ed8', '#16a34a', '#ea7317'];
+  // Yellow is for filled pier squares and similar marks on Plan of Repair
+  // drawing sheets; the five Distress colours stay first so field/report ink
+  // still matches by default.
+  var COLORS = ['#c14a2b', '#111111', '#1d4ed8', '#16a34a', '#ea7317', '#eab308'];
   var DEFAULT_COLOR = COLORS[0];
   var HEX = /^#[0-9a-fA-F]{6}$/;
 
@@ -74,6 +77,13 @@
       color: HEX.test(String(raw.color || '')) ? raw.color : DEFAULT_COLOR,
       thick: THICKS[raw.thick] ? raw.thick : DEFAULT_THICK,
     };
+    // Optional fill for rect/circle (PowerPoint-style pier marks). Paths and
+    // arrows stay stroke-only. Outline stays `color`; fill may use its own
+    // `fillColor` so a yellow square can keep a blue rim (or the reverse).
+    if ((raw.kind === 'rect' || raw.kind === 'circle') && raw.fill) {
+      item.fill = true;
+      if (HEX.test(String(raw.fillColor || ''))) item.fillColor = raw.fillColor;
+    }
     if (raw.kind === 'path') {
       var pts = [];
       (Array.isArray(raw.points) ? raw.points : []).forEach(function (p) {
@@ -342,14 +352,25 @@
       class: 'rb-ink__hit',
     }));
 
+    var filled = !!(item.fill && (item.kind === 'rect' || item.kind === 'circle'));
+    var fillPaint = filled
+      ? (HEX.test(String(item.fillColor || '')) ? item.fillColor : item.color)
+      : 'none';
+    var hit = g.querySelector('.rb-ink__hit');
+    if (filled && hit) {
+      hit.setAttribute('fill', 'transparent');
+      hit.setAttribute('stroke', 'none');
+      hit.setAttribute('pointer-events', 'fill');
+      hit.setAttribute('d', d);
+    }
     g.appendChild(svgPath(d, {
-      fill: 'none',
+      fill: fillPaint,
       stroke: item.color,
       'stroke-linecap': 'round',
       'stroke-linejoin': 'round',
       'vector-effect': 'non-scaling-stroke',
       'pointer-events': 'none',
-      class: 'rb-ink rb-ink--t' + item.thick,
+      class: 'rb-ink rb-ink--t' + item.thick + (filled ? ' rb-ink--fill' : ''),
     }));
 
     if (item.kind === 'arrow') {

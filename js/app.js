@@ -269,6 +269,7 @@
   // #/file/:id/edit     → edit contact + plans
   // #/file/:id/plan     → redirect to edit (legacy)
   // #/file/:id/report   → Report Builder workspace shell
+  // #/file/:id/repair   → Plan of Repair worksheet
   // #/file/:id/diagnostics → existing Floor Survey 3D view
   // #/file/:id/<app>    → connected workspace, or a not-yet-connected stub
 
@@ -281,7 +282,7 @@
     const exploreMatch = hash.match(/^#\/explore\/([^/]+)$/);
     if (exploreMatch) return { view: 'explore', id: decodeURIComponent(exploreMatch[1]) };
     if (hash === '#/import') return { view: 'import', id: null, allowDestinationChoice: true };
-    const match = hash.match(/^#\/file\/([^/]+)(?:\/(edit|plan|import|distress|floor|diagnostics|report))?(?:\/(customer|contacts|plans))?$/);
+    const match = hash.match(/^#\/file\/([^/]+)(?:\/(edit|plan|import|distress|floor|diagnostics|report|repair))?(?:\/(customer|contacts|plans))?$/);
     if (match) {
       const id = decodeURIComponent(match[1]);
       const sub = match[2] || null;
@@ -299,6 +300,9 @@
       }
       if (sub === 'report') {
         return { view: 'report', id: id };
+      }
+      if (sub === 'repair') {
+        return { view: 'repair', id: id };
       }
       if (sub === 'diagnostics') {
         return { view: 'diagnostics', id: id };
@@ -339,6 +343,25 @@
         window.ToolboxReportBuilder.unmount();
       }
     }
+    if (route.view !== 'repair') {
+      document.body.classList.remove('plan-of-repair-open');
+      if (window.ToolboxPlanOfRepair && typeof window.ToolboxPlanOfRepair.unmount === 'function') {
+        window.ToolboxPlanOfRepair.unmount();
+      }
+    }
+    // Photo folders / shared photo viewer are visit chrome. Close when leaving
+    // the owning Customer File hub or switching files — not on same-hub redraw.
+    if (window.ToolboxRecoveredPhotos) {
+      try {
+        if (route.view !== 'home' || !route.id) {
+          if (typeof window.ToolboxRecoveredPhotos.close === 'function') {
+            window.ToolboxRecoveredPhotos.close();
+          }
+        } else if (typeof window.ToolboxRecoveredPhotos.closeUnlessFile === 'function') {
+          window.ToolboxRecoveredPhotos.closeUnlessFile(route.id);
+        }
+      } catch (_) {}
+    }
     if (route.legacyPlan) {
       window.location.replace('#/file/' + encodeURIComponent(route.id) + '/edit/plans');
       return;
@@ -357,6 +380,8 @@
       renderCustomerFileImport(app, route.id, { allowDestinationChoice: !!route.allowDestinationChoice });
     } else if (route.view === 'report') {
       renderReportBuilder(app, route.id);
+    } else if (route.view === 'repair') {
+      renderPlanOfRepair(app, route.id);
     } else if (route.view === 'diagnostics') {
       renderDiagnostics(app, route.id);
     } else if (route.view === 'app-stub') {
@@ -502,8 +527,8 @@
    */
   function isMutatingRoute(view) {
     return view === 'edit' || view === 'floor' || view === 'distress' ||
-      view === 'import' || view === 'report' || view === 'diagnostics' ||
-      view === 'app-stub';
+      view === 'import' || view === 'report' || view === 'repair' ||
+      view === 'diagnostics' || view === 'app-stub';
   }
 
   function customerFileLocationLabel(kind, record) {
@@ -1633,6 +1658,7 @@
       '<div class="view-bar view-bar--file view-bar--cf-home">' +
       '  <button type="button" id="home-back" class="btn btn--ghost">‹ Cabinet</button>' +
       '  <span class="file-status" id="home-status"></span>' +
+      '  <button type="button" id="home-repair-top" class="btn btn--accent por-open-btn">Plan of Repair</button>' +
       '  <button type="button" id="home-edit-top" class="btn btn--quiet">Edit customer</button>' +
       '</div>' +
       '<div class="cf-home" id="cf-home">' +
@@ -1679,6 +1705,7 @@
     const importBtn = app.querySelector('#home-import');
     const deleteBtn = app.querySelector('#home-delete');
     const editTopBtn = app.querySelector('#home-edit-top');
+    const repairTopBtn = app.querySelector('#home-repair-top');
     const planCta = app.querySelector('#home-plan-cta');
     const planCallout = app.querySelector('#home-plan-callout');
     const statusEl = app.querySelector('#home-status');
@@ -1707,6 +1734,7 @@
         : '') || 'Checked out on another device';
       statusEl.textContent = label;
       editTopBtn.hidden = true;
+      if (repairTopBtn) repairTopBtn.hidden = true;
       importBtn.disabled = true;
       planCta.disabled = true;
       planCallout.hidden = true;
@@ -1729,6 +1757,17 @@
       window.location.hash = '#/file/' + encodeURIComponent(id) + '/import';
     });
     editTopBtn.addEventListener('click', function () { editFile('customer'); });
+    if (repairTopBtn) {
+      repairTopBtn.addEventListener('click', function () {
+        if (homeLocked) return;
+        if (!currentRecord) return;
+        if (!planReadiness(currentRecord).hasPlan) {
+          editFile('plans');
+          return;
+        }
+        window.location.hash = '#/file/' + encodeURIComponent(id) + '/repair';
+      });
+    }
     if (deleteBtn) {
       deleteBtn.addEventListener('click', function () {
         if (homeLocked || !currentRecord || cabinetTrashPending(currentRecord)) return;
@@ -2122,7 +2161,7 @@
 
   function renderReportBuilder(app, id) {
     registerActiveFlush(null);
-    document.body.classList.remove('floor-survey-open', 'distress-survey-open', 'diagnostics-open');
+    document.body.classList.remove('floor-survey-open', 'distress-survey-open', 'diagnostics-open', 'plan-of-repair-open');
     document.body.classList.add('report-builder-open');
     app.classList.remove('canvas--floor-survey', 'canvas--distress-survey');
     if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
@@ -2130,6 +2169,9 @@
     }
     if (window.ToolboxDistress && typeof window.ToolboxDistress.unmount === 'function') {
       window.ToolboxDistress.unmount();
+    }
+    if (window.ToolboxPlanOfRepair && typeof window.ToolboxPlanOfRepair.unmount === 'function') {
+      window.ToolboxPlanOfRepair.unmount();
     }
     app.innerHTML = '';
 
@@ -2161,6 +2203,44 @@
       },
     });
     reportDesktopNotice(app, id);
+  }
+
+  function renderPlanOfRepair(app, id) {
+    registerActiveFlush(null);
+    document.body.classList.remove('floor-survey-open', 'distress-survey-open', 'diagnostics-open', 'report-builder-open');
+    document.body.classList.add('plan-of-repair-open');
+    app.classList.remove('canvas--floor-survey', 'canvas--distress-survey');
+    if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
+      window.ToolboxFloorSurvey.unmount();
+    }
+    if (window.ToolboxDistress && typeof window.ToolboxDistress.unmount === 'function') {
+      window.ToolboxDistress.unmount();
+    }
+    if (window.ToolboxReportBuilder && typeof window.ToolboxReportBuilder.unmount === 'function') {
+      window.ToolboxReportBuilder.unmount();
+    }
+    app.innerHTML = '';
+
+    function leave() {
+      window.location.hash = '#/file/' + encodeURIComponent(id);
+    }
+
+    if (!window.ToolboxPlanOfRepair || typeof window.ToolboxPlanOfRepair.mount !== 'function') {
+      document.body.classList.remove('plan-of-repair-open');
+      app.innerHTML =
+        '<div class="cf-stub">' +
+        '  <h2 class="cf-stub__title">Plan of Repair</h2>' +
+        '  <p class="cf-stub__msg">Plan of Repair failed to load.</p>' +
+        '  <button type="button" id="por-fail-back" class="btn btn--accent">Back to Customer File</button>' +
+        '</div>';
+      app.querySelector('#por-fail-back').addEventListener('click', leave);
+      return;
+    }
+
+    window.ToolboxPlanOfRepair.mount(app, {
+      customerFileId: id,
+      onBack: leave,
+    });
   }
 
   function renderAppStub(app, id, appKey) {

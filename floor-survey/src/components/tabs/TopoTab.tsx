@@ -22,6 +22,12 @@ import {
   planProportionalSize,
   screenAnchoredImageSize,
 } from "@/lib/screen-size";
+import {
+  clampPointSize,
+  POINT_COLOR_PRESETS,
+  POINT_SIZE_MAX,
+  POINT_SIZE_MIN,
+} from "@/lib/point-style";
 import { STATS_PILL_COLORS, statsPillFont, statsPillPad, statsPillText } from "@/lib/stats-pill";
 import {
   DEFAULT_LABEL_SEAT,
@@ -148,6 +154,10 @@ interface Props {
   onSettingsChange: (s: RenderSettings) => void;
   pointSize?: number;
   pointColor?: string;
+  /** Field capture: same store as Data entry Dot size. */
+  onPointSizeChange?: (n: number) => void;
+  /** Field capture: same store as Data entry Dot color. */
+  onPointColorChange?: (c: string) => void;
   excludedIds?: Set<string>;
   onExcludedIdsChange?: (ids: Set<string>) => void;
   /**
@@ -407,11 +417,10 @@ export const DEFAULT_STATS_PILL_SIZE = 28;
 /**
  * Reading label font in image coordinates.
  *
- * Capture: fixed in image space so labels zoom with the plan (quieter fit
- * overview; pinch-in grows them). Sized from the fit scale so a phone fit
- * lands near ~72% of the old screen-anchored CSS size — a realistic drop that
- * stays readable; Point label size −/+ still scales it. Report slides keep
- * plan-proportional sizing. Legend / H/L/Δ / High/Low keep chromeSizeImg.
+ * Capture and report: plan-proportional — zooms with the plan. Size 6 is a
+ * small mark on a fit overview (the old fit-anchored formula left 6 reading
+ * as ~screen-px and not small). Point label size −/+ still scales it.
+ * Legend / H/L/Δ / High/Low keep chromeSizeImg.
  */
 function pointLabelFontImg(
   fontBase: number,
@@ -526,8 +535,10 @@ export function TopoTab({
   onFloorChange,
   settings,
   onSettingsChange,
-  pointSize = 6,
+  pointSize = 2,
   pointColor = "#dc2626",
+  onPointSizeChange,
+  onPointColorChange,
   excludedIds: excludedIdsProp,
   onExcludedIdsChange,
   selectedAreaId = null,
@@ -918,10 +929,28 @@ export function TopoTab({
   const update = (patch: Partial<RenderSettings>) =>
     onSettingsChange(resolveSettings({ ...resolved, ...patch }));
 
+  /** Dot size: capture callbacks, else report readingPoint* on settings. */
+  const commitPointSize = (n: number) => {
+    const next = clampPointSize(n);
+    if (onPointSizeChange) onPointSizeChange(next);
+    else update({ readingPointSize: next });
+  };
+  const commitPointColor = (c: string) => {
+    if (onPointColorChange) onPointColorChange(c);
+    else update({ readingPointColor: c });
+  };
+  const pointMarkSize = onPointSizeChange
+    ? pointSize
+    : clampPointSize(resolved.readingPointSize ?? pointSize);
+  const pointMarkColor = onPointColorChange
+    ? pointColor
+    : resolved.readingPointColor || pointColor;
+
   /** Last Points/Labels state before a field “Readings” hide — restore on show. */
   const readingsPrevRef = useRef<{ showPoints: boolean; showLabels: boolean } | null>(null);
   const readingsOn = resolved.showPoints || resolved.showLabels;
-  const LABEL_SIZE_MIN = 6;
+  // Floor was 6 and Tim could not get readings small on a fit overview.
+  const LABEL_SIZE_MIN = 2;
   const LABEL_SIZE_MAX = 28;
   function toggleReadings() {
     if (readingsOn) {
@@ -955,9 +984,6 @@ export function TopoTab({
       onCleanViewChange?.(false);
     };
   }, [onCleanViewChange]);
-
-  // High / Low of the focused area (used for pin hit-testing / dragging).
-  const hiLo = soloTopo ? { hi: soloTopo.hi, lo: soloTopo.lo } : null;
 
   // Whether the canvas carries the H / L / delta pill. One definition, used by
   // both the drawing and the hit test: when those two disagreed about where a
@@ -993,23 +1019,35 @@ export function TopoTab({
         };
       }
     }
-    // Pins next — they sit above the point dot and are visually on top.
-    if (resolved.showHighLow && hiLo && gridAndContours?.grid && resolved.mode !== "points-only") {
-      const check = (kind: "pin-high" | "pin-low", pt: SurveyPoint, dx: number, dy: number) => {
-        const fontPx = pinFontPx(resolved, floor);
+    // High/Low — hit every surface the canvas draws (not solo-only). Report
+    // Builder and field both press-and-move these like other presentation
+    // chrome; nudges live on the floor and travel with the plan.
+    if (resolved.showHighLow && areaTopos.length > 0 && resolved.mode !== "points-only") {
+      const fontPx = pinFontPx(resolved, floor);
+      const hDx = floor.highPinDx ?? 0;
+      const hDy = floor.highPinDy ?? 0;
+      const lDx = floor.lowPinDx ?? 0;
+      const lDy = floor.lowPinDy ?? 0;
+      const hitsPin = (
+        kind: "pin-high" | "pin-low",
+        pt: SurveyPoint,
+        dx: number,
+        dy: number,
+      ) => {
         const w = pinWidth(kind === "pin-high" ? "High" : "Low", fontPx);
         const cx = pt.x + dx;
         const top = pt.y + pinTopOffset(fontPx) + dy;
         return x >= cx - w / 2 && x <= cx + w / 2 && y >= top && y <= top + pinHeight(fontPx);
       };
-      const hDx = floor.highPinDx ?? 0;
-      const hDy = floor.highPinDy ?? 0;
-      const lDx = floor.lowPinDx ?? 0;
-      const lDy = floor.lowPinDy ?? 0;
-      if (check("pin-high", hiLo.hi, hDx, hDy))
-        return { kind: "pin-high", point: hiLo.hi, dx: hDx, dy: hDy };
-      if (check("pin-low", hiLo.lo, lDx, lDy))
-        return { kind: "pin-low", point: hiLo.lo, dx: lDx, dy: lDy };
+      for (let i = areaTopos.length - 1; i >= 0; i--) {
+        const at = areaTopos[i];
+        if (hitsPin("pin-high", at.hi, hDx, hDy)) {
+          return { kind: "pin-high", point: at.hi, dx: hDx, dy: hDy };
+        }
+        if (hitsPin("pin-low", at.lo, lDx, lDy)) {
+          return { kind: "pin-low", point: at.lo, dx: lDx, dy: lDy };
+        }
+      }
     }
     // Point-number labels
     if (resolved.showPoints) {
@@ -1698,6 +1736,7 @@ export function TopoTab({
           >
             <TrialSectionTabs
               label="Contours"
+              stickyTabs={controlsOnly}
               openId={trialSectionByDoor.contours ?? "display"}
               onChange={(id) => setTrialSection("contours", id)}
               lead={
@@ -1939,6 +1978,7 @@ export function TopoTab({
           >
             <TrialSectionTabs
               label="Readings"
+              stickyTabs={controlsOnly}
               openId={trialSectionByDoor.readings ?? "show"}
               onChange={(id) => setTrialSection("readings", id)}
               items={[
@@ -2058,12 +2098,15 @@ export function TopoTab({
                       <StepperControl
                         label="Point label size"
                         value={resolved.pointLabelFontSize}
-                        min={6}
-                        max={28}
+                        min={LABEL_SIZE_MIN}
+                        max={LABEL_SIZE_MAX}
                         step={1}
                         onChange={(v) =>
                           update({
-                            pointLabelFontSize: Math.max(6, Math.min(28, Math.round(v))),
+                            pointLabelFontSize: Math.max(
+                              LABEL_SIZE_MIN,
+                              Math.min(LABEL_SIZE_MAX, Math.round(v)),
+                            ),
                           })
                         }
                       />
@@ -2134,6 +2177,16 @@ export function TopoTab({
                           })
                         }
                       />
+                      {controlsOnly ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={resetAllLabelPositions}
+                          className="mt-1 w-full h-8"
+                        >
+                          Reset label positions
+                        </Button>
+                      ) : null}
                     </div>
                   ),
                 },
@@ -2141,40 +2194,120 @@ export function TopoTab({
                   id: "accessories",
                   title: "Accessories",
                   body: (
-                    <div className="space-y-4">
-                      <p className="text-[10px] text-muted-foreground">
-                        Summary pill and High/Low markers come from these readings.
-                        Press and move to place. Tap for size −/+.
-                      </p>
-                      <div className="flex flex-col gap-3">
-                        <StepperControl
-                          label="H/L/Δ size"
-                          value={statsChipSize}
-                          min={STATS_CHIP_MIN}
-                          max={STATS_CHIP_MAX}
-                          step={2}
-                          unitless
-                          onChange={(v) => commitStatsPillSize(v)}
-                        />
-                        <StepperControl
-                          label="High/Low size"
-                          value={resolved.highLowPinSize}
-                          min={7}
-                          max={28}
-                          step={1}
-                          unitless
-                          onChange={(v) =>
-                            update({
-                              highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
-                            })
-                          }
-                        />
-                      </div>
-                      <SwitchRow
-                        label="High / low"
-                        checked={resolved.showHighLow}
-                        onChange={(v) => update({ showHighLow: v })}
+                    // Full-width rows with real gaps — stacking a label above a
+                    // compact −|+ still looked packed on the phone panel even
+                    // after a tall stack. One control per row, label left /
+                    // control right, same rhythm as the High / low switch.
+                    // Capture keeps this layout. Report Builder adds the
+                    // visibility switches that lived on the old segmented strip.
+                    <div className="flex flex-col gap-6" data-fs-accessories-air>
+                      <PointMarkStyleControls
+                        pointSize={pointMarkSize}
+                        pointColor={pointMarkColor}
+                        onPointSizeChange={commitPointSize}
+                        onPointColorChange={commitPointColor}
                       />
+                      {controlsOnly ? (
+                        <div className="flex flex-col gap-5 border-t border-border/70 pt-5">
+                          <p className="text-[10px] leading-relaxed text-muted-foreground">
+                            Summary pill and High/Low markers come from these readings.
+                            Press and move to place. Tap for size −/+.
+                          </p>
+                          <div className="flex flex-wrap items-end justify-between gap-2">
+                            <SwitchRow
+                              label="Legend"
+                              checked={resolved.showLegend}
+                              onChange={(v) => update({ showLegend: v })}
+                            />
+                            <StepperControl
+                              label="Legend size"
+                              value={Math.round((resolved.legendScale ?? 1) * 10) / 10}
+                              min={0.4}
+                              max={4}
+                              step={0.1}
+                              unitless
+                              onChange={(v) =>
+                                update({
+                                  legendScale: Math.max(
+                                    0.4,
+                                    Math.min(4, Math.round(v * 10) / 10),
+                                  ),
+                                })
+                              }
+                            />
+                          </div>
+                          <div className="flex flex-wrap items-end justify-between gap-2">
+                            <SwitchRow
+                              label="H/L/Δ pill"
+                              checked={resolved.showStatsPill !== false}
+                              onChange={(v) => update({ showStatsPill: v })}
+                            />
+                            <StepperControl
+                              label="H/L/Δ size"
+                              value={statsChipSize}
+                              min={STATS_CHIP_MIN}
+                              max={STATS_CHIP_MAX}
+                              step={2}
+                              unitless
+                              onChange={(v) => commitStatsPillSize(v)}
+                            />
+                          </div>
+                          <div className="flex flex-wrap items-end justify-between gap-2">
+                            <SwitchRow
+                              label="High / low"
+                              checked={resolved.showHighLow}
+                              onChange={(v) => update({ showHighLow: v })}
+                            />
+                            <StepperControl
+                              label="High/Low size"
+                              value={resolved.highLowPinSize}
+                              min={7}
+                              max={28}
+                              step={1}
+                              unitless
+                              onChange={(v) =>
+                                update({
+                                  highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-5 border-t border-border/70 pt-5">
+                          <p className="text-[10px] leading-relaxed text-muted-foreground">
+                            Summary pill and High/Low markers come from these readings.
+                            Press and move to place. Tap for size −/+.
+                          </p>
+                          <StepperControl
+                            label="H/L/Δ size"
+                            value={statsChipSize}
+                            min={STATS_CHIP_MIN}
+                            max={STATS_CHIP_MAX}
+                            step={2}
+                            unitless
+                            onChange={(v) => commitStatsPillSize(v)}
+                          />
+                          <StepperControl
+                            label="High/Low size"
+                            value={resolved.highLowPinSize}
+                            min={7}
+                            max={28}
+                            step={1}
+                            unitless
+                            onChange={(v) =>
+                              update({
+                                highLowPinSize: Math.max(7, Math.min(28, Math.round(v))),
+                              })
+                            }
+                          />
+                          <SwitchRow
+                            label="High / low"
+                            checked={resolved.showHighLow}
+                            onChange={(v) => update({ showHighLow: v })}
+                          />
+                        </div>
+                      )}
                     </div>
                   ),
                 },
@@ -2342,9 +2475,11 @@ function TrialPanel({
     <div
       data-fs-cp={tabbed ? "panel" : undefined}
       className={
+        // Above the floating H/L/Δ StatsChip (z-40) and its size HUD (z-50) so
+        // Accessories controls are never covered by the pill.
         tabbed
-          ? "absolute z-30 right-[max(0.5rem,env(safe-area-inset-right))] top-2 flex w-[280px] max-w-[calc(100%-1rem)] max-h-[min(32rem,calc(100%-env(safe-area-inset-bottom)-0.75rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg landscape-short:top-2"
-          : "absolute z-30 top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg backdrop-blur landscape-short:top-2"
+          ? "absolute z-[60] right-[max(0.5rem,env(safe-area-inset-right))] top-2 flex w-[280px] max-w-[calc(100%-1rem)] max-h-[min(32rem,calc(100%-env(safe-area-inset-bottom)-0.75rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg landscape-short:top-2"
+          : "absolute z-[60] top-12 right-2 flex w-72 max-h-[min(32rem,calc(100%-5.5rem))] flex-col overflow-hidden rounded-xl border bg-white shadow-lg backdrop-blur landscape-short:top-2"
       }
       style={{ borderColor: TRIAL_LINE }}
     >
@@ -2431,12 +2566,16 @@ function TrialSectionTabs({
   onChange,
   items,
   lead,
+  stickyTabs = false,
 }: {
   label: string;
   openId: string;
   onChange: (id: string) => void;
   items: { id: string; title: string; body: React.ReactNode }[];
   lead?: React.ReactNode;
+  /** Report rail: keep Show|Format|Accessories (and Contours siblings) under
+   *  the sticky Contours|Readings header while the rail scrolls. */
+  stickyTabs?: boolean;
 }) {
   const active = items.find((item) => item.id === openId) ?? items[0];
   return (
@@ -2444,8 +2583,15 @@ function TrialSectionTabs({
       <div
         role="tablist"
         aria-label={label}
-        className="flex shrink-0 items-end gap-1 border-b bg-white px-1.5 pt-1"
-        style={{ borderColor: TRIAL_LINE }}
+        data-rb-section-tabs-sticky={stickyTabs ? "1" : undefined}
+        className={
+          "flex shrink-0 items-end gap-1.5 border-b bg-white px-2 pt-1" +
+          (stickyTabs ? " sticky z-[2]" : "")
+        }
+        style={{
+          borderColor: TRIAL_LINE,
+          ...(stickyTabs ? { top: "var(--rb-ws-sticky-h, 0px)" } : null),
+        }}
         onKeyDown={(event) => {
           const idx = Math.max(0, items.findIndex((item) => item.id === active?.id));
           let next = idx;
@@ -2475,7 +2621,10 @@ function TrialSectionTabs({
               aria-controls="fs-cp-section-panel"
               tabIndex={on ? 0 : -1}
               onClick={() => onChange(item.id)}
-              className="min-h-[26px] min-w-0 flex-1 whitespace-nowrap rounded-t-[5px] border px-1.5 text-center text-[11px] leading-none"
+              // min-w-min keeps long labels (Accessories) from shrinking under
+              // neighbors; px-2 gives the navy active fill room so it does not
+              // sit on Format.
+              className="min-h-11 min-w-min flex-1 overflow-visible whitespace-nowrap rounded-t-[6px] border px-2 text-center text-xs leading-none"
               style={{
                 marginBottom: -1,
                 backgroundColor: on ? TRIAL_NAVY : "#c5d8e4",
@@ -2556,7 +2705,7 @@ function SwitchRow({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex min-h-10 items-center justify-between gap-2">
+    <div className="flex min-h-12 items-center justify-between gap-3 py-1">
       <Label className="text-xs">{label}</Label>
       <Switch checked={checked} onCheckedChange={onChange} />
     </div>
@@ -2758,6 +2907,56 @@ function AccessorySizeHud({
   );
 }
 
+/** Reading-dot size + colour for Accessories (field back door / report Points). */
+function PointMarkStyleControls({
+  pointSize,
+  pointColor,
+  onPointSizeChange,
+  onPointColorChange,
+}: {
+  pointSize: number;
+  pointColor: string;
+  onPointSizeChange: (n: number) => void;
+  onPointColorChange: (c: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-5" data-point-mark-style>
+      <StepperControl
+        label="Point size"
+        value={pointSize}
+        min={POINT_SIZE_MIN}
+        max={POINT_SIZE_MAX}
+        step={1}
+        unitless
+        onChange={onPointSizeChange}
+      />
+      <div className="flex flex-col gap-2.5">
+        <Label className="text-xs">Point color</Label>
+        <div
+          className="flex flex-wrap gap-2"
+          role="group"
+          aria-label="Point color"
+        >
+          {POINT_COLOR_PRESETS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => onPointColorChange(c)}
+              className={
+                "h-6 w-6 rounded-full border-2 " +
+                (c === pointColor ? "border-foreground" : "border-transparent")
+              }
+              style={{ backgroundColor: c }}
+              aria-label={"Point color " + c}
+              aria-pressed={c === pointColor}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StepperControl({
   label,
   value,
@@ -2779,14 +2978,14 @@ function StepperControl({
   onChange: (v: number) => void;
 }) {
   const display = unitless ? "" : format ? format(value) : `${value}px`;
-  // Unitless size: a tight −|+ pill like the field Readings control — the old
-  // full-width "− / +" middle was empty chrome once px left the face.
+  // Unitless size: label left, −|+ right — one clear row, not a stacked
+  // label-over-pill that packs against the next control on a phone panel.
   if (unitless) {
     return (
-      <div>
+      <div className="flex min-h-12 items-center justify-between gap-3 py-1">
         <Label className="text-xs">{label}</Label>
         <div
-          className="mt-1 inline-flex h-9 items-stretch overflow-hidden rounded-full border border-input bg-background"
+          className="inline-flex h-9 shrink-0 items-stretch overflow-hidden rounded-full border border-input bg-background"
           role="group"
           aria-label={label}
         >
@@ -3074,8 +3273,9 @@ export function renderTopoTop(
   const liveLegend = overlay?.liveLegend ?? null;
   const viewScale = overlay?.viewScale || 1;
   const fitScale = overlay?.fitScale || viewScale || 1;
-  // Reading labels: plan-scaled in capture (zoom with the drawing); report
-  // stays plan-proportional. −/+ sets the size. Other chrome keeps chromeSizeImg.
+  // Reading labels + dots: plan-scaled in capture (zoom with the drawing);
+  // report stays plan-proportional. −/+ sets the size. Legend / pill /
+  // High/Low keep chromeSizeImg.
   const fontBase = resolved.pointLabelFontSize;
   const fontPx = pointLabelFontImg(fontBase, floor, {
     presentation: !!overlay?.presentation,

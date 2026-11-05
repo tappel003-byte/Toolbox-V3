@@ -682,7 +682,106 @@
     return pages.length;
   }
 
-  function reconcileReportPages(savedPages, freshPages, photos) {
+  /**
+   * Floor Survey page identity for reconcile / output — not the title.
+   *
+   * Page ids embed epochId, so stamping floorSurvey.id after pages were saved
+   * under "current" used to mint a second Combined / boundary set. Source keys
+   * stay stable across that transition when we remap current/empty → floor.id.
+   * Remap (and remapped coverage / output specs) only when the canvas still
+   * resolves under the working Floor Survey. Unresolvable refs keep their raw
+   * epoch and remain explicit failures — never title match or silent substitute.
+   */
+  function floorLayerResolves(record, canvasId) {
+    if (!record || !canvasId) return false;
+    var floor = record.floorSurvey;
+    return !!(floor && floor.byCanvasId && floor.byCanvasId[canvasId]);
+  }
+
+  function normalizeFloorEpochId(epochId, floorSurveyId, canvasResolves) {
+    if (floorSurveyId == null || floorSurveyId === '') {
+      return epochId == null || epochId === '' ? null : String(epochId);
+    }
+    if (canvasResolves && (epochId == null || epochId === '' || epochId === 'current')) {
+      return String(floorSurveyId);
+    }
+    if (epochId == null || epochId === '') return null;
+    return String(epochId);
+  }
+
+  function floorSourceKeyParts(canvasId, epochId, scope, areaId, floorSurveyId, record) {
+    var resolves = floorLayerResolves(record, canvasId);
+    var ep = normalizeFloorEpochId(epochId, floorSurveyId, resolves) || '';
+    var cv = canvasId ? String(canvasId) : '';
+    var sc = scope === 'area' ? 'area' : 'all';
+    var area = sc === 'all' ? 'all' : (areaId ? String(areaId) : '');
+    return [ep, cv, sc, area].join('|');
+  }
+
+  function floorPageSourceKeys(page, floorSurveyId, record) {
+    if (!page || page.type !== 'floor') return [];
+    var meta = page.meta || {};
+    if (meta.reserved) return [];
+    var keys = [];
+    var views = Array.isArray(meta.views) ? meta.views : null;
+    if (views && views.length) {
+      views.forEach(function (view) {
+        if (!view) return;
+        keys.push(floorSourceKeyParts(
+          view.canvasId || meta.canvasId,
+          view.epochId != null ? view.epochId : meta.epochId,
+          view.scope || meta.scope || 'all',
+          view.scope === 'all' ? null : (view.areaId || meta.areaId),
+          floorSurveyId,
+          record
+        ));
+      });
+      return keys;
+    }
+    keys.push(floorSourceKeyParts(
+      meta.canvasId,
+      meta.epochId,
+      meta.scope || 'all',
+      meta.scope === 'all' ? null : meta.areaId,
+      floorSurveyId,
+      record
+    ));
+    return keys;
+  }
+
+  /** Guarded current/empty → floor.id only when the canvas layer still resolves. */
+  function remapFloorEpochOnPages(pages, floorSurveyId, record) {
+    if (!floorSurveyId) return false;
+    var changed = false;
+    (pages || []).forEach(function (page) {
+      if (!page || page.type !== 'floor' || !page.meta || page.meta.reserved) return;
+      var meta = page.meta;
+      if (floorLayerResolves(record, meta.canvasId)) {
+        var nextEpoch = normalizeFloorEpochId(meta.epochId, floorSurveyId, true);
+        if (nextEpoch && nextEpoch !== meta.epochId) {
+          meta.epochId = nextEpoch;
+          changed = true;
+        }
+      }
+      if (Array.isArray(meta.views)) {
+        meta.views.forEach(function (view) {
+          if (!view) return;
+          var cv = view.canvasId || meta.canvasId;
+          if (!floorLayerResolves(record, cv)) return;
+          var ve = normalizeFloorEpochId(view.epochId, floorSurveyId, true);
+          if (ve && ve !== view.epochId) {
+            view.epochId = ve;
+            changed = true;
+          }
+        });
+      }
+    });
+    return changed;
+  }
+
+  function reconcileReportPages(savedPages, freshPages, photos, options) {
+    var floorSurveyId = options && options.floorSurveyId ? String(options.floorSurveyId) : '';
+    var record = options && options.record ? options.record : null;
     var pages = (savedPages || []).map(function (page) {
       return {
         id: page.id,
@@ -713,8 +812,18 @@
       if (page.type === 'diagnostics') return false;
       return true;
     });
+    // Epoch remap runs on the caller's saved clones before reconcile when
+    // needed; still normalize here (canvas-resolved only) so coverage keys
+    // match fresh assemble ids without laundering unresolvable refs.
+    remapFloorEpochOnPages(pages, floorSurveyId, record);
     var byId = {};
-    pages.forEach(function (page) { byId[page.id] = true; });
+    var coveredFloorKeys = Object.create(null);
+    pages.forEach(function (page) {
+      byId[page.id] = true;
+      floorPageSourceKeys(page, floorSurveyId, record).forEach(function (key) {
+        if (key) coveredFloorKeys[key] = true;
+      });
+    });
     if (!pages.some(function (page) { return page.type === 'section' && page.meta && page.meta.sectionId === 'discussion'; })) {
       var discussionFresh = (freshPages || []).find(function (page) {
         return page && page.type === 'section' && page.meta && page.meta.sectionId === 'discussion';
@@ -748,6 +857,14 @@
         if (!fresh || fresh.type !== type) return;
         if (fresh.meta && fresh.meta.reserved) return;
         if (byId[fresh.id]) return;
+        // Floor: same survey source already on a saved page — do not accumulate
+        // a second Combined / boundary set after epoch stamp or id-stable rename.
+        // New area ids (recreate / recovery replace) still add. Titles never match.
+        if (type === 'floor') {
+          var freshKeys = floorPageSourceKeys(fresh, floorSurveyId, record);
+          var covered = freshKeys.some(function (key) { return key && coveredFloorKeys[key]; });
+          if (covered) return;
+        }
         additions.push({
           id: fresh.id,
           type: fresh.type,
@@ -763,6 +880,11 @@
           evidence: null,
         });
         byId[fresh.id] = true;
+        if (type === 'floor') {
+          floorPageSourceKeys(additions[additions.length - 1], floorSurveyId, record).forEach(function (key) {
+            if (key) coveredFloorKeys[key] = true;
+          });
+        }
       });
       if (!additions.length) return;
       var anchor = lastIndexOfType(pages, type);
@@ -1219,11 +1341,13 @@
     }
   }
 
-  function renderPicturesPage(page) {
+  function renderPicturesPage(page, opts) {
     var meta = page.meta || {};
     var evidence = page.evidence || {};
     var captions = (page.reportText && page.reportText.captions) || {};
     var photos = Array.isArray(evidence.photos) ? evidence.photos : [];
+    // View is editor chrome only — never Present, Print/PDF, or rail thumbs.
+    var showView = !!(opts && opts.showView);
     var root = document.createElement('div');
     root.className = 'rb-pictures-page';
 
@@ -1252,6 +1376,15 @@
       frame.className = 'rb-pictures-page__frame';
       if (!evidenceImage(frame, photo.dataUrl, 'rb-pictures-page__image', photoLabel(photo.displayNumber))) {
         addLine(frame, 'rb-sheet__note', 'Photo not on this device');
+      }
+      if (showView) {
+        var viewBtn = document.createElement('button');
+        viewBtn.type = 'button';
+        viewBtn.className = 'rb-pictures-page__view';
+        viewBtn.setAttribute('data-rb-photo-view', photo.key || '');
+        viewBtn.setAttribute('aria-label', 'View ' + photoLabel(photo.displayNumber));
+        viewBtn.textContent = 'View';
+        frame.appendChild(viewBtn);
       }
       cell.appendChild(frame);
       var label = document.createElement('figcaption');
@@ -2126,7 +2259,8 @@
       plan: (page.evidence && page.evidence.plan) || {},
       contour: penLogContour(page),
       layout: page._penLogLayout || null,
-      locked: !!thumb,
+      // Thumbs and Present/Print decks: no move/resize chrome in the DOM.
+      locked: !!thumb || !!(sheet && sheet.classList && sheet.classList.contains('rb-sheet--print')),
       // Present / Print deck: static notes, not textareas (Chrome print mush).
       printable: !!(sheet && sheet.classList && sheet.classList.contains('rb-sheet--print')),
       pins: shown,
@@ -2657,7 +2791,9 @@
       margin.appendChild(rows);
     } else if (page.type === 'pictures') {
       margin.classList.add('rb-sheet__margin--pictures');
-      margin.appendChild(renderPicturesPage(page));
+      // Output decks (print / Present) and rail thumbs must not carry View.
+      var output = !!(opts && opts.output);
+      margin.appendChild(renderPicturesPage(page, { showView: !thumb && !output }));
       // Measured once the sheet has a width, like the cover's street. Never
       // on a stamp: a thumbnail is too small to read either way, and there
       // are as many of them as there are pages.
@@ -3902,7 +4038,24 @@
     // hands it the way to clear them. Measured before this: a job with twelve
     // photographs cost about a megabyte every time Report Builder was opened
     // and left, with a whole screen's worth of elements retained each time.
+    // This mount's visit. Viewer restore callbacks check it so an overlay
+    // closed after leave cannot rewrite an expired report session.
+    var visitAlive = true;
     mountCleanup = function () {
+      visitAlive = false;
+      if (window.ToolboxPhotoViewer && typeof window.ToolboxPhotoViewer.close === 'function') {
+        try { window.ToolboxPhotoViewer.close({ discard: true }); } catch (_) {}
+      }
+      try { if (typeof closePresentation === 'function') closePresentation(); } catch (_) {}
+      try { if (typeof clearPrintDeck === 'function') clearPrintDeck(); } catch (_) {}
+      // Belt: Present/Print decks append to document.body and must not survive
+      // a Customer File leave if close helpers were not yet bound.
+      try {
+        document.querySelectorAll('.rb-print, .rb-present-bar').forEach(function (el) {
+          if (el && el.parentNode) el.parentNode.removeChild(el);
+        });
+        document.body.classList.remove('is-presenting', 'is-printing');
+      } catch (_) {}
       Object.keys(thumbCache).forEach(function (key) { delete thumbCache[key]; });
       Object.keys(floorShots).forEach(function (key) { delete floorShots[key]; });
       if (floorShotTimer) {
@@ -4401,6 +4554,25 @@
     var railBodyEl = root.querySelector('[data-rb-rail-body]');
     var railFootEl = root.querySelector('[data-rb-rail-foot]');
     var railControls = { el: null, key: '', api: null };
+    // Sibling tabs (Show|Format|Accessories) stick under Contours|Readings.
+    // Offset = current sticky header height so they do not cover grandparents.
+    var railStickyObserver = null;
+    function syncRailStickyOffset() {
+      if (!railEl) return;
+      var sticky = railEl.querySelector('.rb-ws__sticky');
+      if (!sticky) return;
+      railEl.style.setProperty('--rb-ws-sticky-h', sticky.offsetHeight + 'px');
+    }
+    function ensureRailStickyObserver() {
+      if (!railEl || typeof ResizeObserver === 'undefined') return;
+      var sticky = railEl.querySelector('.rb-ws__sticky');
+      if (!sticky) return;
+      if (!railStickyObserver) {
+        railStickyObserver = new ResizeObserver(function () { syncRailStickyOffset(); });
+        railStickyObserver.observe(sticky);
+      }
+      syncRailStickyOffset();
+    }
 
     function releaseRailControls() {
       if (railControls.api && typeof railControls.api.unmount === 'function') {
@@ -4646,34 +4818,23 @@
       return wrap;
     }
 
+    /**
+     * Multi-view only: compact selected-view identity beneath the Floor Survey
+     * heading and above Sheet Layout|Topo. Single-view sheets omit this.
+     * Legend / H/L/Δ visibility lives in Accessories (and Contours → Display
+     * Legend); setFloorViewFor keeps views[].showLegend / showPill in lockstep.
+     */
     function buildFloorTopoIdentity(page) {
-      var wrap = document.createDocumentFragment();
       var viewsNow = floorViewsForPage(page);
       var activeView = floorViewSpec(page, floorSlot(page));
+      if (!activeView || viewsNow.length <= 1) return null;
       var srcName = floorSourceLabel(activeView, page);
       var lead = document.createElement('p');
       lead.className = 'rb-panel__lead';
       lead.setAttribute('data-rb-floor-topo-lead', '1');
-      if (!activeView) {
-        lead.textContent = 'No topo view on this sheet.';
-      } else if (viewsNow.length > 1) {
-        lead.textContent = 'Selected: View ' + (floorSlot(page) + 1) + ' of ' + viewsNow.length
-          + (srcName ? (' — ' + srcName) : '')
-          + '. Contours / Readings apply to it.';
-      } else {
-        lead.textContent = (srcName ? (srcName + ' — ') : '')
-          + 'Contours / Readings for this view.';
-      }
-      wrap.appendChild(lead);
-      if (viewsNow.length > 1 && activeView) {
-        wrap.appendChild(railButton(
-          activeView.showLegend ? 'Hide legend' : 'Show legend',
-          'quiet', 'data-rb-floor-view-chrome', activeView.showLegend ? 'legend-off' : 'legend-on'));
-        wrap.appendChild(railButton(
-          activeView.showPill ? 'Hide H/L/Δ' : 'Show H/L/Δ',
-          'quiet', 'data-rb-floor-view-chrome', activeView.showPill ? 'pill-off' : 'pill-on'));
-      }
-      return wrap;
+      lead.textContent = 'View ' + (floorSlot(page) + 1) + ' of ' + viewsNow.length
+        + (srcName ? (' — ' + srcName) : '');
+      return lead;
     }
 
     function syncRail(page) {
@@ -4818,10 +4979,6 @@
         return;
       }
 
-      // GPT-036: Sheet Layout | Topo peer tabs — one group in the same-width
-      // sidebar. Switching tabs changes tools only.
-      railTopEl.appendChild(buildFloorTaskTabs());
-
       var api = window.ToolboxFloorSurvey;
       var meta = page.meta || {};
       var activeSpec = floorViewSpec(page, floorSlot(page));
@@ -4831,9 +4988,15 @@
       var key = [page.id, ctrlCanvas, ctrlArea || '', ctrlScope,
         floorSlot(page), activeSpec && activeSpec.id].join('|');
 
-      // Contours | Readings: Control-panel parents under Topo — inset folder
-      // tabs with a clear break after Sheet|Topo, not a second full-bleed
-      // page-chrome row (same lesson as the field Control panel hierarchy).
+      // Multi-view identity sits under "Floor Survey" and above grandparents.
+      // Nothing else may interrupt Grandparents → Parents → Siblings.
+      var topoIdentity = buildFloorTopoIdentity(page);
+      if (topoIdentity) railTopEl.appendChild(topoIdentity);
+
+      // GPT-036: Sheet Layout | Topo peer tabs — one group in the same-width
+      // sidebar. Switching tabs changes tools only.
+      railTopEl.appendChild(buildFloorTaskTabs());
+
       if (floorTaskTab === 'topo' && ctrlCanvas) {
         railTopEl.appendChild(buildFloorTopoSubtabs());
       }
@@ -4845,11 +5008,10 @@
           railBodyEl.appendChild(buildFloorLayoutBody(page));
         }
       } else if (railBodyEl) {
-        // Rebuild identity + chrome; keep the mounted Topo host when the view
-        // key is unchanged so settings state is not torn down on every sync.
+        // Keep the mounted Topo host when the view key is unchanged so
+        // settings state is not torn down on every sync.
         var keepHost = (railControls.el && railControls.key === key) ? railControls.el : null;
         railBodyEl.textContent = '';
-        railBodyEl.appendChild(buildFloorTopoIdentity(page));
         if (!api || typeof api.mount !== 'function' || !ctrlCanvas) {
           releaseRailControls();
           var empty = document.createElement('p');
@@ -4913,6 +5075,9 @@
       }
 
       setRailFootSource('floor');
+      ensureRailStickyObserver();
+      // Sibling sticky offset after React paints Show|Format|Accessories.
+      requestAnimationFrame(function () { syncRailStickyOffset(); });
     }
 
     // The rail's buttons are built per slide, so they are handled by
@@ -6340,7 +6505,25 @@
      */
     function penLogBoxes() {
       var api = window.ToolboxPenLog;
-      return api && api.normalizeLayout
+      if (!api) return penLogBoxLayout || {};
+      // Match what renderPage shows: missing layout tightens to the plan
+      // aspect (+ pin pad). Dragging from the tall LAYOUT slot while the
+      // sheet showed the tight box made the plan jump on the first move.
+      var page = activePage();
+      var plan = page && page.evidence && page.evidence.plan;
+      var pw = plan && Number(plan.width);
+      var ph = plan && Number(plan.height);
+      if (!(pw > 0) || !(ph > 0)) {
+        var live = sheetEl && sheetEl.querySelector('.rb-penlog__plan');
+        if (live) {
+          pw = Number(live.getAttribute('data-plan-width')) || pw;
+          ph = Number(live.getAttribute('data-plan-height')) || ph;
+        }
+      }
+      if (typeof api.resolveLayout === 'function') {
+        return api.resolveLayout(penLogBoxLayout, pw, ph);
+      }
+      return api.normalizeLayout
         ? api.normalizeLayout(penLogBoxLayout)
         : (penLogBoxLayout || {});
     }
@@ -6717,6 +6900,91 @@
       // As it is typed, so the writer sees what will print.
       fitCaption(field);
       markDirty();
+    });
+
+    // Shared read-only photo viewer (Report Builder Pictures). Local bytes
+    // only; report-wide order; does not write captions/layout/checkout.
+    function listReportViewerPhotos() {
+      var items = [];
+      pages.forEach(function (page) {
+        if (!page || page.type !== 'pictures') return;
+        var photos = (page.evidence && Array.isArray(page.evidence.photos))
+          ? page.evidence.photos : [];
+        var captions = (page.reportText && page.reportText.captions) || {};
+        photos.forEach(function (photo) {
+          if (!photo) return;
+          var key = photo.key || photo.id || '';
+          var hasSrc = typeof photo.dataUrl === 'string' && photo.dataUrl.indexOf('data:image/') === 0;
+          items.push({
+            id: key,
+            title: photoLabel(photo.displayNumber),
+            caption: typeof captions[key] === 'string'
+              ? captions[key]
+              : (photo.seedText || ''),
+            src: hasSrc ? photo.dataUrl : null,
+            missing: !!(photo.missing || !hasSrc),
+          });
+        });
+      });
+      return items;
+    }
+
+    function openReportPhotoViewer(photoKey) {
+      var api = window.ToolboxPhotoViewer;
+      if (!api || typeof api.open !== 'function') return;
+      if (presentDeck) return;
+      if (inkTool) return;
+      var items = listReportViewerPhotos();
+      if (!items.length) return;
+      var index = 0;
+      if (photoKey) {
+        for (var i = 0; i < items.length; i += 1) {
+          if (items[i].id === photoKey) { index = i; break; }
+        }
+      }
+      var stage = root.querySelector('.rb-stage');
+      var restore = {
+        activeId: activeId,
+        scrollTop: stage ? stage.scrollTop : 0,
+        scrollLeft: stage ? stage.scrollLeft : 0,
+      };
+      api.open(items, {
+        index: index,
+        onClose: function () {
+          // Teardown discarded the visit — do not touch an expired report.
+          if (!visitAlive) return;
+          if (restore.activeId && restore.activeId !== activeId) {
+            activeId = restore.activeId;
+            renderPages();
+          }
+          var stageNow = root.querySelector('.rb-stage');
+          if (stageNow) {
+            stageNow.scrollTop = restore.scrollTop;
+            stageNow.scrollLeft = restore.scrollLeft;
+          }
+        },
+      });
+    }
+
+    sheetEl.addEventListener('dblclick', function (event) {
+      if (presentDeck || inkTool) return;
+      if (event.target.closest('[data-rb-caption]')) return;
+      if (event.target.closest('.rb-pictures-page__view')) return;
+      var img = event.target.closest('.rb-pictures-page__image');
+      if (!img) return;
+      var cell = img.closest('[data-photo-key]');
+      if (!cell) return;
+      event.preventDefault();
+      openReportPhotoViewer(cell.getAttribute('data-photo-key') || '');
+    });
+
+    sheetEl.addEventListener('click', function (event) {
+      var viewBtn = event.target.closest('[data-rb-photo-view]');
+      if (!viewBtn) return;
+      if (presentDeck || inkTool) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openReportPhotoViewer(viewBtn.getAttribute('data-rb-photo-view') || '');
     });
 
     /**
@@ -7129,15 +7397,24 @@
       var editableTarget = event.target.closest('[data-rb-rich]');
       if (editableTarget && editableTarget.getAttribute('contenteditable') === 'true') return;
       var current = activePage();
-      var penGrip = event.target.closest('[data-rb-penlog-move], [data-rb-penlog-resize]');
-      if (penGrip) {
+      // Picture Locations: Floor Survey's rule — body drag moves, corner
+      // brackets resize. Pins keep their own offset drag; notes/photos keep
+      // theirs (button/textarea already returned above).
+      var penResize = event.target.closest('[data-rb-penlog-resize]');
+      var penBox = event.target.closest('[data-rb-penlog-box]');
+      if (penBox && !event.target.closest('.rb-penlog__pin')) {
+        if (!penResize && root.querySelector('.rb-stage--zoomed')) return;
         var penStage = stageRect('.rb-penlog');
         if (!penStage || penStage.width < 8 || penStage.height < 8) return;
         event.preventDefault();
-        var penResize = !!event.target.closest('[data-rb-penlog-resize]');
+        event.stopPropagation();
+        var penWhich = penResize
+          ? penResize.getAttribute('data-rb-penlog-resize')
+          : penBox.getAttribute('data-rb-penlog-box');
         penDrag = {
-          which: penGrip.getAttribute(penResize ? 'data-rb-penlog-resize' : 'data-rb-penlog-move'),
-          resize: penResize,
+          which: penWhich,
+          resize: !!penResize,
+          corner: penResize ? (penResize.getAttribute('data-rb-penlog-corner') || 'se') : null,
           startX: event.clientX,
           startY: event.clientY,
           // Inches, because the pen log's own model is in inches on a
@@ -7145,8 +7422,10 @@
           perInX: penStage.width / 17,
           perInY: penStage.height / 11,
           boxes: penLogBoxes(),
+          moved: false,
         };
-        try { penGrip.setPointerCapture(event.pointerId); } catch (_) {}
+        var penGrabbed = penResize || penBox;
+        try { penGrabbed.setPointerCapture(event.pointerId); } catch (_) {}
         return;
       }
       var discGrip = event.target.closest('[data-rb-disc-move], [data-rb-disc-resize]');
@@ -7293,16 +7572,26 @@
       if (penDrag) {
         var pdx = (event.clientX - penDrag.startX) / penDrag.perInX;
         var pdy = (event.clientY - penDrag.startY) / penDrag.perInY;
+        if (Math.abs(pdx) < 0.001 && Math.abs(pdy) < 0.001) return;
+        penDrag.moved = true;
         var penApi2 = window.ToolboxPenLog;
         var nextPen = JSON.parse(JSON.stringify(penDrag.boxes));
         var moving = nextPen[penDrag.which];
-        if (!moving) return;
+        var originPen = penDrag.boxes[penDrag.which];
+        if (!moving || !originPen) return;
         if (penDrag.resize) {
-          moving.w += pdx;
-          moving.h += pdy;
+          // Held corner moves; the opposite stays put — same as Floor Survey.
+          var penWest = penDrag.corner === 'nw' || penDrag.corner === 'sw';
+          var penNorth = penDrag.corner === 'nw' || penDrag.corner === 'ne';
+          var penNextW = Math.max(1.5, penWest ? originPen.w - pdx : originPen.w + pdx);
+          var penNextH = Math.max(1.5, penNorth ? originPen.h - pdy : originPen.h + pdy);
+          moving.w = penNextW;
+          moving.h = penNextH;
+          moving.x = penWest ? originPen.x + (originPen.w - penNextW) : originPen.x;
+          moving.y = penNorth ? originPen.y + (originPen.h - penNextH) : originPen.y;
         } else {
-          moving.x += pdx;
-          moving.y += pdy;
+          moving.x = originPen.x + pdx;
+          moving.y = originPen.y + pdy;
         }
         penLogBoxLayout = penApi2 && penApi2.normalizeLayout
           ? penApi2.normalizeLayout(nextPen) : nextPen;
@@ -7316,6 +7605,14 @@
           livePen.style.top = ((b.y / 11) * 100) + '%';
           livePen.style.width = ((b.w / 17) * 100) + '%';
           livePen.style.height = ((b.h / 11) * 100) + '%';
+          if (typeof b.z === 'number' && isFinite(b.z)) livePen.style.zIndex = String(b.z);
+          // Plan box changed: refit the image + pins inside it so blank bands
+          // do not linger mid-drag and pin registration stays live.
+          if (penDrag.which === 'plan' && window.ToolboxPenLog &&
+              typeof window.ToolboxPenLog.layoutPlans === 'function') {
+            var penRoot = livePen.closest('.rb-penlog');
+            if (penRoot) window.ToolboxPenLog.layoutPlans(penRoot);
+          }
         }
         return;
       }
@@ -7557,12 +7854,19 @@
       clearFloorHold();
       if (penDrag) {
         var wasResize = penDrag.resize;
+        var didMove = !!penDrag.moved;
         penDrag = null;
+        // Click alone selects the piece (corner brackets stay). Floor Survey
+        // does the same — a press that never moved is not a layout write.
+        if (!didMove) return;
         markDirty();
         // A schedule given more or less room holds a different number of
         // rows, so the level is split again before the sheets are drawn.
-        if (wasResize) reflowPenLog();
-        renderPages();
+        // Moves already painted live; only a resize needs a full rebuild.
+        if (wasResize) {
+          reflowPenLog();
+          renderPages();
+        }
         flushSave().catch(function () {});
         return;
       }
@@ -7612,18 +7916,25 @@
     sheetEl.addEventListener('pointercancel', endLayoutDrag);
 
     /**
-     * Right-click in a writing area: Paste as formatted, Paste unformatted.
+     * Right-click in a writing area: Copy (when text is selected), Paste,
+     * Paste without formatting.
      *
-     * Ctrl+V already pastes formatted and Ctrl+Shift+V already pastes plain,
-     * but Tim does not want to hold a shortcut in his head: "I want to be
-     * able to right-click and click paste as formatted, or right-click paste
-     * unformatted."
+     * Ordinary names: Paste is the formatted paste Ctrl/Cmd+V already does;
+     * Paste without formatting is the plain path. The two behaviours stay;
+     * only the labels match what people already know from Word / Docs.
      *
-     * A page cannot open the system menu, so this is the report's own, and
-     * reading the clipboard from script is something Chrome asks about the
+     * The report owns this menu because it already had to replace the system
+     * one for formatted paste. That replacement used to leave Copy out, so a
+     * highlighted phrase could not be copied from the menu even though
+     * Ctrl/Cmd+C still worked. Copy writes the selection to the system
+     * clipboard (plain + HTML) so it can land in another report field or
+     * another application.
+     *
+     * Reading the clipboard for paste is something Chrome asks about the
      * first time. That prompt is the browser's, not ours; if it is refused,
      * the menu says so and names the keys that always work rather than
-     * failing quietly.
+     * failing quietly. Inputs and textareas keep the browser's own menu;
+     * this only covers contenteditable report fields.
      */
     var pasteMenu = null;
     var pasteMenuField = null;
@@ -7654,6 +7965,65 @@
         pasteMenu.appendChild(note);
       }
       note.textContent = message;
+    }
+
+    /** Plain + HTML flavours of the range kept when the menu opened. */
+    function selectionClipboardPayload(range) {
+      if (!range || range.collapsed) return null;
+      var plain = String(range.toString() || '');
+      if (!plain) return null;
+      var holder = document.createElement('div');
+      try { holder.appendChild(range.cloneContents()); } catch (_) { /* empty */ }
+      var api = window.ToolboxReportText;
+      var html = '';
+      if (api && typeof api.fromElement === 'function' && typeof api.toHtml === 'function') {
+        try {
+          html = api.toHtml(api.compact(api.fromElement(holder)));
+        } catch (_) { html = ''; }
+      }
+      if (!html) html = holder.innerHTML || '';
+      return { plain: plain, html: html };
+    }
+
+    function copySelectedTextToClipboard() {
+      var payload = selectionClipboardPayload(pendingCaret);
+      if (!payload) {
+        pasteMenuSay('Select text first, then Copy. Ctrl+C also copies a selection.');
+        return;
+      }
+      var nav = window.navigator;
+      var clip = nav && nav.clipboard;
+      if (!clip) {
+        pasteMenuSay('This browser will not let a page write the clipboard. Ctrl+C copies the selection.');
+        return;
+      }
+      var done = function () { closePasteMenu(); };
+      var failed = function () {
+        pasteMenuSay('Toolbox was not allowed to write the clipboard. Ctrl+C copies the selection.');
+      };
+      // Prefer both flavours so Paste inside the report, and paste into
+      // Word / Notes / a browser, all see what was copied.
+      if (typeof clip.write === 'function' && typeof window.ClipboardItem === 'function') {
+        try {
+          var parts = { 'text/plain': new Blob([payload.plain], { type: 'text/plain' }) };
+          if (payload.html) parts['text/html'] = new Blob([payload.html], { type: 'text/html' });
+          // Some browsers want Blobs; others want Promise<Blob>. Hand both
+          // shapes by wrapping — ClipboardItem accepts either.
+          Object.keys(parts).forEach(function (type) {
+            parts[type] = Promise.resolve(parts[type]);
+          });
+          clip.write([new ClipboardItem(parts)]).then(done).catch(function () {
+            if (typeof clip.writeText === 'function') {
+              clip.writeText(payload.plain).then(done).catch(failed);
+            } else {
+              failed();
+            }
+          });
+          return;
+        } catch (_) { /* fall through to writeText */ }
+      }
+      if (typeof clip.writeText !== 'function') { failed(); return; }
+      clip.writeText(payload.plain).then(done).catch(failed);
     }
 
     function pasteFromClipboard(formatted) {
@@ -7714,9 +8084,10 @@
       }).catch(failed);
     }
 
-    // The caret has to be put back AFTER the menu goes, because removing the
-    // menu is itself a DOM change and the range kept from the right-click is
-    // the only record of where the investigator was pointing.
+    // The caret / selection has to be put back AFTER the menu goes, because
+    // removing the menu is itself a DOM change and the range kept from the
+    // right-click is the only record of what was highlighted or where the
+    // investigator was pointing.
     var pendingCaret = null;
     function restorePasteCaretInto(field) {
       if (!pendingCaret || !field) return;
@@ -7733,11 +8104,33 @@
       closeStackMenu();
       var sel = window.getSelection();
       pendingCaret = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+      // Only keep a selection that actually sits in this field. A stray range
+      // from another control must not arm Copy or steer Paste.
+      if (pendingCaret) {
+        var common = pendingCaret.commonAncestorContainer;
+        var host = common && common.nodeType === 3 ? common.parentNode : common;
+        if (!host || !field.contains(host)) pendingCaret = null;
+      }
       pasteMenuField = field;
       pasteMenu = document.createElement('div');
       pasteMenu.className = 'rb-stackmenu';
       pasteMenu.setAttribute('data-rb-pastemenu', '1');
-      [['Paste as formatted', '1'], ['Paste unformatted', '0']].forEach(function (choice) {
+      var canCopy = !!(pendingCaret && !pendingCaret.collapsed && String(pendingCaret.toString() || ''));
+      var copyItem = document.createElement('button');
+      copyItem.type = 'button';
+      copyItem.className = 'rb-stackmenu__item';
+      copyItem.setAttribute('data-rb-text-copy', '1');
+      copyItem.textContent = 'Copy';
+      copyItem.disabled = !canCopy;
+      if (!canCopy) copyItem.setAttribute('aria-disabled', 'true');
+      copyItem.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        if (copyItem.disabled) return;
+        copySelectedTextToClipboard();
+      });
+      pasteMenu.appendChild(copyItem);
+      // Paste = formatted (Ctrl/Cmd+V). Paste without formatting = plain.
+      [['Paste', '1'], ['Paste without formatting', '0']].forEach(function (choice) {
         var item = document.createElement('button');
         item.type = 'button';
         item.className = 'rb-stackmenu__item';
@@ -7752,6 +8145,11 @@
       pasteMenu.style.left = Math.round(event.clientX) + 'px';
       pasteMenu.style.top = Math.round(event.clientY) + 'px';
       document.body.appendChild(pasteMenu);
+      // Keep the menu on screen when the click is near an edge.
+      var mw = pasteMenu.offsetWidth;
+      var mh = pasteMenu.offsetHeight;
+      pasteMenu.style.left = Math.max(4, Math.min(window.innerWidth - mw - 4, event.clientX)) + 'px';
+      pasteMenu.style.top = Math.max(4, Math.min(window.innerHeight - mh - 4, event.clientY)) + 'px';
       document.addEventListener('pointerdown', pasteMenuAway, true);
       document.addEventListener('keydown', pasteMenuKey, true);
     });
@@ -7840,12 +8238,25 @@
       flushSave().catch(function () {});
     }
 
-    sheetEl.addEventListener('contextmenu', function (event) {
-      var box = event.target.closest('[data-rb-floor-box]');
-      if (!box) { closeStackMenu(); return; }
-      var page = activePage();
-      var flApi = window.ToolboxReportFloorLayout;
-      if (!page || page.type !== 'floor' || !flApi) return;
+    function restackPenLogPiece(box, toFront) {
+      var penApi = window.ToolboxPenLog;
+      if (!penApi || !isPenLogPage(activePage())) return;
+      var which = box.getAttribute('data-rb-penlog-box');
+      if (which !== 'plan' && which !== 'schedule') return;
+      var layout = penApi.normalizeLayout(penLogBoxLayout || penLogBoxes());
+      var stack = [layout.plan.z, layout.schedule.z];
+      var want = toFront
+        ? Math.max.apply(null, stack) + 1
+        : Math.min.apply(null, stack) - 1;
+      want = Math.max(penApi.MIN_STACK, Math.min(penApi.MAX_STACK, want));
+      layout[which].z = want;
+      penLogBoxLayout = penApi.normalizeLayout(layout);
+      markDirty();
+      renderPages();
+      flushSave().catch(function () {});
+    }
+
+    function openStackMenu(event, onPick) {
       event.preventDefault();
       closeStackMenu();
       stackMenu = document.createElement('div');
@@ -7859,7 +8270,7 @@
         item.textContent = choice[0];
         item.addEventListener('click', function () {
           closeStackMenu();
-          restackFloorPiece(box, choice[1]);
+          onPick(choice[1]);
         });
         stackMenu.appendChild(item);
       });
@@ -7872,6 +8283,28 @@
       stackMenu.style.top = Math.max(4, Math.min(window.innerHeight - h - 4, event.clientY)) + 'px';
       document.addEventListener('pointerdown', stackMenuAway, true);
       document.addEventListener('keydown', stackMenuKey, true);
+    }
+
+    sheetEl.addEventListener('contextmenu', function (event) {
+      var floorBox = event.target.closest('[data-rb-floor-box]');
+      if (floorBox) {
+        var page = activePage();
+        var flApi = window.ToolboxReportFloorLayout;
+        if (!page || page.type !== 'floor' || !flApi) return;
+        openStackMenu(event, function (toFront) {
+          restackFloorPiece(floorBox, toFront);
+        });
+        return;
+      }
+      var penBox = event.target.closest('[data-rb-penlog-box]');
+      if (penBox) {
+        if (!isPenLogPage(activePage()) || !window.ToolboxPenLog) return;
+        openStackMenu(event, function (toFront) {
+          restackPenLogPiece(penBox, toFront);
+        });
+        return;
+      }
+      closeStackMenu();
     });
 
     if (penNoteField) {
@@ -8246,81 +8679,228 @@
       };
     }
 
-    function composeFloorStills() {
-      var api = window.ToolboxFloorSurvey;
-      if (!api || typeof api.composeReportTopoFigureForPage !== 'function' || !workingRecord) {
-        return Promise.resolve(0);
+    /**
+     * Resolve the Floor Survey layer the way compose does (no title guessing).
+     * Mirrors floor-survey findLayer so Present/Print can name the failure
+     * before a still is attempted — including slides with empty canvasId that
+     * used to be skipped and still printed as "unavailable".
+     */
+    function findFloorLayerForOutput(record, epochId, canvasId) {
+      var floor = record && record.floorSurvey;
+      if (!floor || !canvasId) return null;
+      var ep = epochId == null || epochId === '' ? '' : String(epochId);
+      if ((floor.id || 'current') === ep && floor.byCanvasId) {
+        return floor.byCanvasId[canvasId] || null;
       }
-      var getMedia = window.ToolboxDB && window.ToolboxDB.getMedia
-        ? window.ToolboxDB.getMedia.bind(window.ToolboxDB)
-        : null;
-      var wanted = [];
-      pages.forEach(function (page) {
+      var groups = ['epochs', 'sessions', 'surveys'];
+      for (var g = 0; g < groups.length; g += 1) {
+        var list = floor[groups[g]];
+        if (!Array.isArray(list)) continue;
+        for (var i = 0; i < list.length; i += 1) {
+          var entry = list[i];
+          if (!entry || entry.id !== ep) continue;
+          return (entry.byCanvasId && entry.byCanvasId[canvasId]) || null;
+        }
+      }
+      if (floor.byCanvasId && floor.byCanvasId[canvasId] && (ep === 'current' || !ep)) {
+        return floor.byCanvasId[canvasId];
+      }
+      return null;
+    }
+
+    function floorOutputViewJobs() {
+      var jobs = [];
+      (pages || []).forEach(function (page) {
         if (!page || page.type !== 'floor') return;
         var meta = page.meta || {};
         if (meta.reserved) return;
         floorViewsForPage(page);
-        var slots = floorSlotsForPage(page);
-        var anySource = false;
+        var slots = Math.max(1, floorSlotsForPage(page));
         for (var slot = 0; slot < slots; slot += 1) {
-          var vs = floorViewSpec(page, slot);
-          if ((vs && vs.canvasId) || meta.canvasId) {
-            anySource = true;
-            wanted.push({ page: page, slot: slot, view: vs });
+          jobs.push({ page: page, slot: slot, view: floorViewSpec(page, slot) });
+        }
+      });
+      return jobs;
+    }
+
+    function floorOutputJobSpec(job) {
+      var meta = (job.page && job.page.meta) || {};
+      var view = job.view;
+      var floorSurveyId = workingRecord && workingRecord.floorSurvey && workingRecord.floorSurvey.id
+        ? String(workingRecord.floorSurvey.id)
+        : '';
+      var canvasId = (view && view.canvasId) || meta.canvasId || '';
+      var epochRaw = (view && view.epochId != null) ? view.epochId : meta.epochId;
+      // Same canvas-resolution guard as reconcile: do not rewrite current/empty
+      // onto floor.id when the layer is gone — leave the unresolved epoch explicit.
+      var epochId = normalizeFloorEpochId(
+        epochRaw,
+        floorSurveyId,
+        floorLayerResolves(workingRecord, canvasId)
+      );
+      var scope = (view && view.scope) || meta.scope || 'all';
+      var areaId = scope === 'all'
+        ? null
+        : ((view && view.areaId) || meta.areaId || null);
+      return {
+        canvasId: canvasId,
+        epochId: epochId,
+        areaId: areaId,
+        scope: scope,
+        canvasResolves: floorLayerResolves(workingRecord, canvasId),
+      };
+    }
+
+    function describeFloorOutputFailure(job, reason) {
+      var title = (job.page && (job.page.title || job.page.railLabel)) || 'Floor Survey';
+      var slot = Number(job.slot) || 0;
+      var slotBit = (floorSlotsForPage(job.page) > 1) ? (' · view ' + (slot + 1)) : '';
+      return title + slotBit + ': ' + reason;
+    }
+
+    /**
+     * Every included Floor Survey view must be resolvable before Present/Print.
+     * Fail closed with slide-specific reasons — never an apparently complete PDF
+     * with unavailable drawings.
+     */
+    function preflightFloorOutput() {
+      var failures = [];
+      if (!workingRecord) {
+        return Promise.reject(new Error('Customer File is not loaded for Present/Print.'));
+      }
+      var jobs = floorOutputViewJobs();
+      jobs.forEach(function (job) {
+        var spec = floorOutputJobSpec(job);
+        if (!spec.canvasId) {
+          failures.push(describeFloorOutputFailure(job, 'no canvasId (unresolved survey source)'));
+          return;
+        }
+        var canvas = canvasById(workingRecord, spec.canvasId);
+        if (!canvas) {
+          failures.push(describeFloorOutputFailure(job, 'canvas is not on this Customer File'));
+          return;
+        }
+        var layer = findFloorLayerForOutput(workingRecord, spec.epochId, spec.canvasId);
+        if (!layer) {
+          failures.push(describeFloorOutputFailure(job, 'Floor Survey layer not found for this epoch/canvas'));
+          return;
+        }
+        if (spec.scope === 'area' && spec.areaId) {
+          var areas = Array.isArray(layer.areas) ? layer.areas : [];
+          var found = areas.some(function (area) { return area && area.id === spec.areaId; });
+          if (!found) {
+            failures.push(describeFloorOutputFailure(job, 'boundary id is not on this Floor Survey layer'));
           }
         }
-        if (!anySource && meta.canvasId) wanted.push({ page: page, slot: 0, view: null });
       });
-      if (!wanted.length) return Promise.resolve(0);
+      if (failures.length) {
+        var err = new Error('Floor Survey output blocked');
+        err.floorOutputFailures = failures;
+        return Promise.reject(err);
+      }
+      return Promise.resolve(jobs);
+    }
 
-      var painted = 0;
-      return wanted.reduce(function (chain, job) {
-        return chain.then(function () {
-          var meta = job.page.meta || {};
-          var view = job.view;
-          var canvasId = (view && view.canvasId) || meta.canvasId;
-          var epochId = (view && view.epochId) || meta.epochId;
-          var areaId = view
-            ? (view.scope === 'all' ? null : (view.areaId || null))
-            : (meta.scope === 'all' ? null : (meta.areaId || null));
-          var scope = (view && view.scope) || meta.scope || 'all';
-          var fallbackExtent = null;
-          var extentPromise = (typeof api.reportTopoExtentForPage === 'function')
-            ? api.reportTopoExtentForPage(workingRecord, {
-              canvasId: canvasId,
-              epochId: epochId,
-              areaId: areaId,
-              scope: scope,
-              settings: floorViewFor(job.page, job.slot) || null,
-            }).catch(function () { return null; })
-            : Promise.resolve(null);
-          return extentPromise.then(function (extent) {
-            fallbackExtent = extent || null;
-            return api.composeReportTopoFigureForPage(workingRecord, {
-              canvasId: canvasId,
-              epochId: epochId,
-              areaId: areaId,
-              scope: scope,
-              settings: floorViewFor(job.page, job.slot) || null,
-              extent: cameraExtentFor(job.page, fallbackExtent, job.slot),
-            }, getMedia).then(function (composed) {
-              if (!composed || !composed.dataUrl) {
-                throw new Error('Floor still compose returned no image for slot ' + job.slot);
-              }
-              job.page._printTopo = job.page._printTopo || {};
-              job.page._printTopo[job.slot] = composed.dataUrl;
-              painted += 1;
-            }).catch(function (err) {
-              console.error('Floor slide could not be painted for print', canvasId, err);
-              throw err;
+    function formatFloorOutputFailures(err) {
+      var list = err && Array.isArray(err.floorOutputFailures) ? err.floorOutputFailures : null;
+      if (!list || !list.length) {
+        return (err && err.message) || 'a floor figure could not be composed';
+      }
+      var shown = list.slice(0, 4);
+      var more = list.length > shown.length ? (' (+' + (list.length - shown.length) + ' more)') : '';
+      return shown.join('; ') + more;
+    }
+
+    function composeFloorStills() {
+      if (!workingRecord) {
+        return Promise.reject(new Error('Customer File is not loaded for Present/Print.'));
+      }
+      // Reports with no Floor Survey figures must Present/Print without the
+      // Floor Survey composer — cover, Discussion, Pictures only.
+      var pendingJobs = floorOutputViewJobs();
+      if (!pendingJobs.length) return Promise.resolve(0);
+      var api = window.ToolboxFloorSurvey;
+      if (!api || typeof api.composeReportTopoFigureForPage !== 'function') {
+        return Promise.reject(new Error('Floor Survey compose is not available in this session.'));
+      }
+      var getMedia = window.ToolboxDB && window.ToolboxDB.getMedia
+        ? window.ToolboxDB.getMedia.bind(window.ToolboxDB)
+        : null;
+      return preflightFloorOutput().then(function (wanted) {
+        if (!wanted.length) return 0;
+        var painted = 0;
+        return wanted.reduce(function (chain, job) {
+          return chain.then(function () {
+            var spec = floorOutputJobSpec(job);
+            var fallbackExtent = null;
+            var extentPromise = (typeof api.reportTopoExtentForPage === 'function')
+              ? api.reportTopoExtentForPage(workingRecord, {
+                canvasId: spec.canvasId,
+                epochId: spec.epochId,
+                areaId: spec.areaId,
+                scope: spec.scope,
+                settings: floorViewFor(job.page, job.slot) || null,
+              }).catch(function () { return null; })
+              : Promise.resolve(null);
+            return extentPromise.then(function (extent) {
+              fallbackExtent = extent || null;
+              return api.composeReportTopoFigureForPage(workingRecord, {
+                canvasId: spec.canvasId,
+                epochId: spec.epochId,
+                areaId: spec.areaId,
+                scope: spec.scope,
+                settings: floorViewFor(job.page, job.slot) || null,
+                extent: cameraExtentFor(job.page, fallbackExtent, job.slot),
+              }, getMedia).then(function (composed) {
+                if (!composed || !composed.dataUrl) {
+                  var miss = new Error(describeFloorOutputFailure(job, 'compose returned no drawing'));
+                  miss.floorOutputFailures = [miss.message];
+                  throw miss;
+                }
+                job.page._printTopo = job.page._printTopo || {};
+                job.page._printTopo[job.slot] = composed.dataUrl;
+                // Same resolved source as the still: print/Present readings
+                // must not fall back to stale import evidence from another view.
+                var liveStats = Array.isArray(composed.stats) ? composed.stats : [];
+                job.page._viewStats = job.page._viewStats || {};
+                job.page._viewStats[job.slot] = liveStats;
+                if (job.slot === 0 || floorSlotsForPage(job.page) === 1) {
+                  job.page._liveStats = liveStats;
+                } else if (job.slot === floorActiveSlotForPage(job.page)) {
+                  job.page._liveStats = liveStats;
+                }
+                painted += 1;
+              }).catch(function (err) {
+                if (err && err.floorOutputFailures) throw err;
+                console.error('Floor slide could not be painted for print', spec.canvasId, err);
+                var wrapped = new Error(describeFloorOutputFailure(job,
+                  (err && err.message) ? err.message : 'compose failed'));
+                wrapped.floorOutputFailures = [wrapped.message];
+                throw wrapped;
+              });
             });
           });
+        }, Promise.resolve()).then(function () {
+          if (painted < wanted.length) {
+            var incomplete = new Error('Floor still compose incomplete: ' + painted + '/' + wanted.length);
+            incomplete.floorOutputFailures = [incomplete.message];
+            throw incomplete;
+          }
+          // Multi-view: rail Relative Readings list every resolved view's stats,
+          // in slot order — same sources the stills just painted.
+          (pages || []).forEach(function (page) {
+            if (!page || page.type !== 'floor' || !page._viewStats) return;
+            var slotCount = floorSlotsForPage(page);
+            if (slotCount <= 1) return;
+            var merged = [];
+            for (var s = 0; s < slotCount; s += 1) {
+              var part = page._viewStats[s];
+              if (Array.isArray(part) && part.length) merged = merged.concat(part);
+            }
+            if (merged.length) page._liveStats = merged;
+          });
+          return painted;
         });
-      }, Promise.resolve()).then(function () {
-        if (painted < wanted.length) {
-          throw new Error('Floor still compose incomplete: ' + painted + '/' + wanted.length);
-        }
-        return painted;
       });
     }
 
@@ -8386,7 +8966,9 @@
         var liveMount = page._mountTopo;
         page._mountTopo = null;
         try {
-          renderSheet(sheet, page, pages);
+          // Present reuses this print deck. Mark as output so View chrome
+          // never lands in Present or Print/PDF.
+          renderSheet(sheet, page, pages, { output: true });
         } catch (err) {
           // A sheet that could not be built says so ON the sheet.
           //
@@ -8478,10 +9060,10 @@
             });
           });
         }).catch(function (err) {
-          // GPT-027: do not hand a silently incomplete PDF when a still fails.
-          console.error('Print/PDF could not compose floor stills', err);
+          // Fail closed: never hand an apparently complete PDF with unavailable drawings.
+          console.error('Print/PDF blocked', err && err.floorOutputFailures ? err.floorOutputFailures : err);
           clearPrintDeck();
-          setSaveStatus('Print failed — a floor figure could not be composed');
+          setSaveStatus('Print blocked — ' + formatFloorOutputFailures(err));
         });
       });
     }
@@ -8719,9 +9301,9 @@
           showPresentSheet(0);
         });
       }).catch(function (err) {
-        // GPT-027: surface incomplete still compose instead of a blank Present deck.
-        console.error('Presentation could not be opened', err);
-        setSaveStatus('Presentation failed — a floor figure could not be composed');
+        // Fail closed with slide-specific reasons — no Present deck of holes.
+        console.error('Presentation blocked', err && err.floorOutputFailures ? err.floorOutputFailures : err);
+        setSaveStatus('Present blocked — ' + formatFloorOutputFailures(err));
         closePresentation();
       }).then(function () {
         if (presentBtn) {
@@ -8954,14 +9536,23 @@
       if (savedDoc && savedDoc.floorFramed) floorFramed = true;
       var saved = savedReportPages(record);
       if (saved) {
+        var floorSurveyId = record.floorSurvey && record.floorSurvey.id
+          ? String(record.floorSurvey.id)
+          : '';
+        var remappedEpoch = remapFloorEpochOnPages(saved.pages, floorSurveyId, record);
         var before = saved.pages.map(function (page) {
           return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',') +
-            ':' + !!(page.meta && page.meta.imported);
+            ':' + !!(page.meta && page.meta.imported) +
+            ':' + ((page.meta && page.meta.epochId) || '');
         }).join('|');
-        pages = reconcileReportPages(saved.pages, freshPages, photoList);
+        pages = reconcileReportPages(saved.pages, freshPages, photoList, {
+          floorSurveyId: floorSurveyId,
+          record: record,
+        });
         var after = pages.map(function (page) {
           return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',') +
-            ':' + !!(page.meta && page.meta.imported);
+            ':' + !!(page.meta && page.meta.imported) +
+            ':' + ((page.meta && page.meta.epochId) || '');
         }).join('|');
         var restored = restoreReturnPage();
         if (!restored) {
@@ -8971,7 +9562,10 @@
         }
         pageSeq = pages.length;
         lastSavedAt = saved.updatedAt || '';
-        return { assembledFresh: false, reconciled: before !== after };
+        return {
+          assembledFresh: false,
+          reconciled: before !== after || remappedEpoch,
+        };
       }
       pages = freshPages;
       activeId = pages[0] ? pages[0].id : '';
@@ -9245,8 +9839,17 @@
     var source = api ? api.read(record) : null;
     var fresh = api ? withProperty(api.assemble(source), source) : { pages: [] };
     var saved = savedReportPages(record);
+    var floorSurveyId = record.floorSurvey && record.floorSurvey.id
+      ? String(record.floorSurvey.id)
+      : '';
+    if (saved) remapFloorEpochOnPages(saved.pages, floorSurveyId, record);
     var pages = saved
-      ? reconcileReportPages(saved.pages, ensurePicturesInFreshPages(fresh.pages.slice(), photoList), photoList)
+      ? reconcileReportPages(
+        saved.pages,
+        ensurePicturesInFreshPages(fresh.pages.slice(), photoList),
+        photoList,
+        { floorSurveyId: floorSurveyId, record: record }
+      )
       : ensurePicturesInFreshPages(fresh.pages.slice(), photoList);
     var firstPictures = null;
     for (var i = 0; i < pages.length; i += 1) {

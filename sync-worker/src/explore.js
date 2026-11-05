@@ -455,6 +455,7 @@ const STORED_FILE = {
   'floor.json': { purpose: 'floor', label: 'Floor Survey' },
   'diagnostics.json': { purpose: 'diagnostics', label: 'Diagnostics' },
   'report.json': { purpose: 'report', label: 'Report Builder' },
+  'repair.json': { purpose: 'repair', label: 'Plan of Repair' },
   'trash.json': { purpose: 'technical', label: 'Trash record' },
   [JOB_TEXT_LEAF]: { purpose: 'job-text', label: 'Job text' },
 };
@@ -466,6 +467,7 @@ const COMPONENT_LABEL = {
   floor: 'Floor Survey',
   diagnostics: 'Diagnostics',
   report: 'Report Builder',
+  repair: 'Plan of Repair',
   trash: 'Trash record',
 };
 

@@ -36,7 +36,7 @@ function storedLabelFontSize(id: string): number {
   try {
     const raw = localStorage.getItem(`dpp-font:${id}`);
     const n = raw ? Number(raw) : NaN;
-    return Number.isFinite(n) && n >= 6 && n <= 28 ? n : defaultRenderSettings.pointLabelFontSize;
+    return Number.isFinite(n) && n >= 2 && n <= 28 ? n : defaultRenderSettings.pointLabelFontSize;
   } catch {
     return defaultRenderSettings.pointLabelFontSize;
   }
@@ -443,6 +443,8 @@ function ProjectWorkspace() {
             onSettingsChange={setSettings}
             pointSize={pointSize}
             pointColor={pointColor}
+            onPointSizeChange={setPointSize}
+            onPointColorChange={setPointColor}
             excludedIds={topoExcludedIds}
             onExcludedIdsChange={setTopoExcludedIds}
             selectedAreaId={topoAreaId}

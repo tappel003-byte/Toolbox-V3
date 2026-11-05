@@ -40,7 +40,7 @@ export const JOB_TEXT_LEAF = 'search.txt';
 export const MAX_BUILDS_PER_SEARCH = 20;
 const MAX_HITS_PER_JOB = 3;
 
-const COMPONENTS = ['customer', 'plans', 'distress', 'floor', 'report', 'diagnostics'];
+const COMPONENTS = ['customer', 'plans', 'distress', 'floor', 'report', 'diagnostics', 'repair'];
 
 export function jobTextKey(id) {
   return 'cf/' + id + '/' + JOB_TEXT_LEAF;

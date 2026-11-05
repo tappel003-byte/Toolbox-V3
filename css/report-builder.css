@@ -891,40 +891,31 @@ body.report-builder-open .canvas {
 
 /*
  * Rail tab hierarchy (Tim):
- *   Grandparents — Sheet Layout | Topo: edge-to-edge equal halves only
- *   Parents      — Contours | Readings: downstream in the Topo body (inset
- *                  folder tabs, like the field Control panel — not a second
- *                  Sheet|Topo chrome row)
- *   Siblings     — Display… / Show…: compact under parents (TopoTab)
- * Active = navy. Inactive = light blue (not gray). No rust on these tabs.
+ *   Grandparents — Sheet Layout | Topo: one continuous light-gray nav bar.
+ *                  Flat text + dark underline when selected. Not folder tabs,
+ *                  not rust, not blue. Clear space below before parents.
+ *   Parents      — Contours | Readings: exact Floor Survey capture folder
+ *                  tokens (TrialFolderTabs). Width may flex to the rail; do
+ *                  not independently shrink type / height / pad / hit.
+ *   Siblings     — Display… / Show…: TrialSectionTabs in TopoTab (same chrome).
+ * Active parent = navy fill. Inactive = cool gray. No blue palette.
  */
 .rb-ws__sticky:has(.rb-ws__task-tabs) {
-  /* Sheet|Topo full-bleed; parents stay inset inside padded top. */
-  margin-left: -8px;
-  margin-right: -8px;
-  padding-left: 0;
-  padding-right: 0;
-  width: calc(100% + 16px);
   gap: 0;
   margin-bottom: 0;
   background: #fff;
 }
 .rb-ws__top:has(.rb-ws__task-tabs) {
-  /* Clear break after grandparents — Control-panel parents, not chrome row 2. */
+  /* Clear break after the grandparent bar — Contours|Readings stay inset. */
   gap: 16px;
-  padding: 0 8px 8px;
+  padding-bottom: 8px;
   background: #fff;
 }
 .rb-ws__sticky:has(.rb-ws__task-tabs) + .rb-ws__body {
   padding-top: 8px;
   background: #fff;
 }
-/* Grandparents alone bleed edge-to-edge; undo the top’s side pad for them. */
-.rb-ws__top:has(.rb-ws__task-tabs) > .rb-ws__task-tabs {
-  margin-left: -8px;
-  margin-right: -8px;
-  width: calc(100% + 16px);
-}
+/* One continuous light-gray bar — not individual folder buttons. */
 .rb-ws__task-tabs {
   display: flex;
   align-items: stretch;
@@ -933,38 +924,37 @@ body.report-builder-open .canvas {
   margin: 0;
   padding: 0;
   border: 0;
-  border-bottom: 1px solid var(--navy, #07283d);
   border-radius: 0;
-  background: transparent;
+  background: #e8ecef;
+  box-shadow: none;
 }
 .rb-ws__task-tab {
   appearance: none;
   position: relative;
   flex: 1 1 50%;
-  width: 50%;
   min-width: 0;
   margin: 0;
-  border: 1px solid var(--navy, #07283d);
-  border-bottom: 0;
+  border: 0;
   border-radius: 0;
   box-shadow: none;
   min-height: 44px;
-  padding: 10px 8px;
+  padding: 10px 12px 12px;
   font: inherit;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 500;
   line-height: 1.2;
   white-space: nowrap;
   text-align: center;
-  color: var(--navy, #07283d);
-  background: #c5d8e4;
+  color: #6b7280;
+  background: transparent;
   cursor: pointer;
 }
 .rb-ws__task-tab + .rb-ws__task-tab {
   border-left-width: 0;
 }
 .rb-ws__task-tab:hover:not(.is-active) {
-  background: #b3cddc;
+  color: #4b5563;
+  background: transparent;
 }
 .rb-ws__task-tab:focus {
   outline: none;
@@ -975,14 +965,31 @@ body.report-builder-open .canvas {
 }
 .rb-ws__task-tab.is-active {
   z-index: 1;
-  background: var(--navy, #07283d);
-  color: #fff;
-  border-color: var(--navy, #07283d);
+  background: transparent;
+  color: #111827;
+  font-weight: 700;
   box-shadow: none;
 }
+/* Selected: dark underline on the continuous bar (not a separate button box). */
+.rb-ws__task-tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 3px;
+  background: #111827;
+  border-radius: 0;
+  pointer-events: none;
+}
+/* No rust (or any other) accent on Topo — same selected treatment as Layout. */
+.rb-ws__task-tab.is-active[data-rb-floor-task="topo"] {
+  color: #111827;
+  font-weight: 700;
+}
 /*
- * Parents: field Control panel language — rounded folder tabs, inset, gap
- * under Sheet|Topo. Taller than siblings. Not a second full-bleed chrome row.
+ * Parents: same tokens as capture TrialFolderTabs / TrialSectionTabs.
+ * #e5ebee / #3d5c70 / #c9d0d5 inactive; #07283d fill + white text active.
  */
 .rb-ws__subtabs {
   display: flex;
@@ -992,7 +999,7 @@ body.report-builder-open .canvas {
   margin: 0;
   padding: 0;
   border: 0;
-  border-bottom: 1px solid var(--line, #c9d0d5);
+  border-bottom: 1px solid var(--line-strong, #c9d0d5);
   border-radius: 0;
   background: transparent;
 }
@@ -1001,18 +1008,18 @@ body.report-builder-open .canvas {
   position: relative;
   flex: 1 1 0;
   min-width: 0;
-  min-height: 36px;
+  min-height: 44px;
   margin: 0 0 -1px;
-  padding: 7px 8px;
-  border: 1px solid var(--navy, #07283d);
+  padding: 0 4px;
+  border: 1px solid var(--line-strong, #c9d0d5);
   border-radius: 6px 6px 0 0;
-  background: #c5d8e4;
+  background: #e5ebee;
   box-shadow: none;
-  color: var(--navy, #07283d);
+  color: #3d5c70;
   font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.2;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
   white-space: nowrap;
   text-align: center;
   cursor: pointer;
@@ -1031,9 +1038,18 @@ body.report-builder-open .canvas {
   z-index: 1;
   background: var(--navy, #07283d);
   color: #fff;
+  font-weight: 700;
   border-color: var(--navy, #07283d);
   border-bottom-color: var(--navy, #07283d);
   box-shadow: none;
+}
+/* Sibling tabs (Show|Format|Accessories) stick under Contours|Readings while
+   the rail scrolls. Offset comes from --rb-ws-sticky-h on #rb-rail. */
+.rb-ws [data-rb-section-tabs-sticky="1"] {
+  position: sticky;
+  top: var(--rb-ws-sticky-h, 0px);
+  z-index: 2;
+  background: #fff;
 }
 .rb-ws__section-label {
   margin: 4px 0 0;
@@ -2176,6 +2192,7 @@ body.report-builder-open .canvas {
      at the FOOT of it, so the caption is directly under the photograph and
      whatever is left over falls above -- and the pictures along a row line
      up on their bottom edge. */
+  position: relative;
   flex: 1 1 auto;
   width: 100%;
   height: auto;
@@ -2208,6 +2225,33 @@ body.report-builder-open .canvas {
      and a wide one are each framed to their own edge. */
   border: 0.12cqh solid #1a1a1a;
   box-sizing: border-box;
+}
+
+/* Visible View control for touch; desktop can also double-click the image. */
+.rb-pictures-page__view {
+  position: absolute;
+  top: 0.35em;
+  right: 0.35em;
+  z-index: 2;
+  appearance: none;
+  margin: 0;
+  padding: 0.28em 0.55em;
+  border: 1px solid rgba(7, 40, 61, 0.55);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--navy, #07283d);
+  font: inherit;
+  font-size: clamp(10px, 1.2cqb, 12px);
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.rb-pictures-page__view:hover,
+.rb-pictures-page__view:focus-visible {
+  background: #fff;
+  outline: 2px solid var(--navy, #07283d);
+  outline-offset: 1px;
 }
 
 /* One line, always: "Photograph 12" wrapping in one cell and not in the next
@@ -2291,15 +2335,15 @@ body.report-builder-open .canvas {
   position: absolute;
 }
 
-/* The plan and the schedule are placed pieces. Each shows its edge and its
-   two pulls when it is pointed at and nothing before, the rule every other
-   placed thing on a sheet follows. Tim: "Everything here needs to be
-   movable. I should be able to move the floor plan if I want, and I want to
-   be able to move the notes if I want." */
+/* The plan and the schedule are placed pieces. Body drag moves them; corner
+   brackets size them; right-click stacks them — Floor Survey's rule. Tim:
+   "Everything here needs to be movable. I should be able to move the floor
+   plan if I want, and I want to be able to move the notes if I want." */
 .rb-penlog__plan,
 .rb-penlog__schedule {
   outline: none;
   outline-offset: 3px;
+  cursor: move;
 }
 
 .rb-penlog__plan:hover,
@@ -2307,46 +2351,55 @@ body.report-builder-open .canvas {
   outline: 1px dashed rgba(139, 94, 60, 0.4);
 }
 
-.rb-penlog__move,
+[data-rb-penlog-box].is-picked {
+  outline: 1px dashed rgba(139, 94, 60, 0.55);
+  outline-offset: 2px;
+}
+
+/* Same corner brackets Floor Survey uses — crop-mark corners, not filled
+   tiles — in Picture Locations copper so they match this sheet's edge. */
 .rb-penlog__resize {
   position: absolute;
   display: none;
   z-index: 6;
-  width: 14px;
-  height: 14px;
+  width: 20px;
+  height: 20px;
+  border: 0 solid var(--rb-copper, #8B5E3C);
+  background: transparent;
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
 }
 
-.rb-penlog__move {
-  left: -3px;
-  top: -3px;
-  border-left: 2px solid var(--rb-copper, #8B5E3C);
-  border-top: 2px solid var(--rb-copper, #8B5E3C);
-  cursor: move;
-}
-
-.rb-penlog__resize {
-  right: -3px;
-  bottom: -3px;
-  border-right: 2px solid var(--rb-copper, #8B5E3C);
-  border-bottom: 2px solid var(--rb-copper, #8B5E3C);
-  cursor: nwse-resize;
-}
-
-[data-rb-penlog-box].is-picked > .rb-penlog__move,
 [data-rb-penlog-box].is-picked > .rb-penlog__resize,
-[data-rb-penlog-box]:focus-within > .rb-penlog__move,
 [data-rb-penlog-box]:focus-within > .rb-penlog__resize {
   display: block;
 }
 
-.rb-sheet--thumb .rb-penlog__move,
+.rb-penlog__resize--nw {
+  left: -10px; top: -10px; cursor: nwse-resize;
+  border-top-width: 3px; border-left-width: 3px;
+}
+
+.rb-penlog__resize--ne {
+  right: -10px; top: -10px; cursor: nesw-resize;
+  border-top-width: 3px; border-right-width: 3px;
+}
+
+.rb-penlog__resize--sw {
+  left: -10px; bottom: -10px; cursor: nesw-resize;
+  border-bottom-width: 3px; border-left-width: 3px;
+}
+
+.rb-penlog__resize--se {
+  right: -10px; bottom: -10px; cursor: nwse-resize;
+  border-bottom-width: 3px; border-right-width: 3px;
+}
+
 .rb-sheet--thumb .rb-penlog__resize { display: none !important; }
 
 @media print {
-  .rb-penlog__move,
   .rb-penlog__resize { display: none !important; }
   .rb-penlog__plan,
-  .rb-penlog__schedule { outline: none !important; }
+  .rb-penlog__schedule { outline: none !important; cursor: default; }
 }
 
 .rb-penlog__image {
@@ -2443,7 +2496,9 @@ body.report-builder-open .canvas {
      from the top of a page it does not fill. */
   justify-content: center;
   box-sizing: border-box;
-  overflow: hidden;
+  /* Visible so the corner brackets (which sit just outside the box, same as
+     Floor Survey) stay hittable. The notes grid clips its own content. */
+  overflow: visible;
   background: #fff;
 }
 
@@ -3302,7 +3357,6 @@ body.report-builder-open .canvas {
  * Scoped to the deck rather than to the medium, so one rule serves the
  * printer and the flip chart and the editing sheet keeps its chrome. */
 .rb-print [data-plan-resize],
-.rb-print .rb-penlog__move,
 .rb-print .rb-penlog__resize,
 .rb-print .rb-floor-overview__remove,
 .rb-print .rb-cover-box__move,
@@ -3329,6 +3383,9 @@ body.report-builder-open .canvas {
 .rb-print .rb-cover-box,
 .rb-print .rb-floor-box,
 .rb-print .rb-discussion__box,
+.rb-print .rb-penlog__plan,
+.rb-print .rb-penlog__schedule,
+.rb-print [data-rb-penlog-box],
 .rb-print [data-rb-rich] {
   outline: none !important;
 }
@@ -4224,6 +4281,17 @@ body.is-presenting { overflow: hidden; }
   background: rgba(139, 94, 60, 0.12);
 }
 
+.rb-stackmenu__item:disabled,
+.rb-stackmenu__item[aria-disabled="true"] {
+  color: #9a8f82;
+  cursor: default;
+}
+
+.rb-stackmenu__item:disabled:hover,
+.rb-stackmenu__item[aria-disabled="true"]:hover {
+  background: none;
+}
+
 @media print {
   .rb-stackmenu { display: none !important; }
 }
@@ -4399,7 +4467,8 @@ body.is-presenting { overflow: hidden; }
 .rb-stage--zoomed [data-rb-disc-move],
 .rb-stage--zoomed [data-rb-disc-resize],
 .rb-stage--zoomed [data-rb-penlog-move],
-.rb-stage--zoomed [data-rb-penlog-resize] {
+.rb-stage--zoomed [data-rb-penlog-resize],
+.rb-stage--zoomed .rb-penlog__resize {
   touch-action: none;
 }
 

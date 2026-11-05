@@ -220,6 +220,108 @@ check('moved chrome positions are stored in floorLayout.overlays',
     Math.abs(pillSaved.x - pillAfter.leftPct) < 2,
   JSON.stringify({ savedSingle, legAfter, pillAfter }));
 
+// --- High/Low pins: press-and-move on the report canvas (same as field) ---
+// Find the drawn High pin (#b51d16) on the live canvas, then drag its center.
+// Report sheets CSS-scale the host; screen coords must include hostScale
+// (inverse of PlanCanvas.toImage). Geometry guesses miss when legend/pill
+// HTML overlays sit nearby or the fit transform letterboxes the plan.
+const pinMove = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  const layer = Object.values(rec.floorSurvey.byCanvasId || {})[0];
+  const before = {
+    hx: layer.highPinDx ?? 0,
+    hy: layer.highPinDy ?? 0,
+  };
+  const pts = layer.points || [];
+  let hi = pts[0];
+  for (const p of pts) if (p && (!hi || p.value > hi.value)) hi = p;
+  const live = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-live]');
+  if (!live) return { ok: false, reason: 'no-live' };
+  const viewport = live.querySelector('[data-floor-viewport]');
+  const canvas = live.querySelector('canvas');
+  if (!viewport || !canvas || !hi) return { ok: false, reason: 'no-viewport-or-hi' };
+  const scale = Number(viewport.getAttribute('data-canvas-scale'));
+  const tx = Number(viewport.getAttribute('data-canvas-tx'));
+  const ty = Number(viewport.getAttribute('data-canvas-ty'));
+  if (!(scale > 0)) return { ok: false, reason: 'bad-transform', scale, tx, ty };
+  const rect = viewport.getBoundingClientRect();
+  const hostScale = rect.width / (viewport.offsetWidth || rect.width);
+  if (!(hostScale > 0)) return { ok: false, reason: 'bad-hostScale', hostScale };
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return { ok: false, reason: 'no-ctx' };
+  const x0 = Math.max(0, Math.floor((tx + (hi.x + before.hx - 50) * scale) * canvas.width / canvas.offsetWidth));
+  const x1 = Math.min(canvas.width - 1, Math.ceil((tx + (hi.x + before.hx + 50) * scale) * canvas.width / canvas.offsetWidth));
+  const y0 = Math.max(0, Math.floor((ty + (hi.y + before.hy - 60) * scale) * canvas.height / canvas.offsetHeight));
+  const y1 = Math.min(canvas.height - 1, Math.ceil((ty + (hi.y + before.hy + 20) * scale) * canvas.height / canvas.offsetHeight));
+  const w = Math.max(1, x1 - x0);
+  const h = Math.max(1, y1 - y0);
+  let img;
+  try { img = ctx.getImageData(x0, y0, w, h); }
+  catch (e) { return { ok: false, reason: 'getImageData', error: String(e) }; }
+  let minx = 1e9, miny = 1e9, maxx = -1, maxy = -1, count = 0;
+  for (let y = 0; y < img.height; y++) {
+    for (let x = 0; x < img.width; x++) {
+      const i = (y * img.width + x) * 4;
+      const r = img.data[i], g = img.data[i + 1], b = img.data[i + 2];
+      // High pin fill #b51d16
+      if (Math.abs(r - 181) < 25 && Math.abs(g - 29) < 25 && Math.abs(b - 22) < 25) {
+        count++;
+        if (x < minx) minx = x;
+        if (y < miny) miny = y;
+        if (x > maxx) maxx = x;
+        if (y > maxy) maxy = y;
+      }
+    }
+  }
+  if (!count) {
+    return {
+      ok: false, reason: 'no-high-pin-pixels', before,
+      hi: { x: hi.x, y: hi.y, value: hi.value },
+      transform: { scale, tx, ty, hostScale },
+    };
+  }
+  const cxBmp = x0 + (minx + maxx) / 2;
+  const cyBmp = y0 + (miny + maxy) / 2;
+  const lx = cxBmp * canvas.offsetWidth / canvas.width;
+  const ly = cyBmp * canvas.offsetHeight / canvas.height;
+  const sx = rect.left + lx * hostScale;
+  const sy = rect.top + ly * hostScale;
+  return {
+    ok: true,
+    before,
+    hi: { x: hi.x, y: hi.y, value: hi.value },
+    screen: { x: sx, y: sy },
+    pinPixels: count,
+    transform: { scale, tx, ty, hostScale },
+  };
+}, FILE);
+check('report topo canvas is present for High pin drag', !!pinMove.ok, JSON.stringify(pinMove));
+
+if (pinMove.ok) {
+  await page.mouse.move(pinMove.screen.x, pinMove.screen.y);
+  await page.mouse.down();
+  await page.mouse.move(pinMove.screen.x + 70, pinMove.screen.y + 50, { steps: 10 });
+  await page.mouse.up();
+  await new Promise((r) => setTimeout(r, 1000));
+  const afterPin = await page.evaluate(async (id) => {
+    const rec = await window.ToolboxDB.getCustomerFile(id);
+    const layer = Object.values(rec.floorSurvey.byCanvasId || {})[0];
+    return {
+      hx: layer.highPinDx ?? 0,
+      hy: layer.highPinDy ?? 0,
+      lx: layer.lowPinDx ?? 0,
+      ly: layer.lowPinDy ?? 0,
+    };
+  }, FILE);
+  const moved =
+    Math.abs(afterPin.hx - pinMove.before.hx) > 2 ||
+    Math.abs(afterPin.hy - pinMove.before.hy) > 2;
+  check('High marker moves on the report slide (highPinDx/Dy change)',
+    moved,
+    JSON.stringify({ before: pinMove.before, afterPin, hi: pinMove.hi }));
+}
+
 // --- Multi-view: Add view, enable chrome on selected view, drag view-scoped ids ---
 await openTask('layout');
 await page.evaluate(() => document.querySelector('[data-rb-floor-view="add"]')?.click());
@@ -324,41 +426,6 @@ check('multi-view chrome ids persist in overlays after drag',
     Math.abs(mLegSaved.x - mLegAfter.leftPct) < 2 &&
     Math.abs(mPillSaved.x - mPillAfter.leftPct) < 2,
   JSON.stringify({ savedMulti, mLegAfter, mPillAfter }));
-
-// --- High/Low pins: immediate drag on report canvas (chromeOnPage) ---
-const pinMove = await page.evaluate(async (id) => {
-  const rec = await window.ToolboxDB.getCustomerFile(id);
-  const layer = Object.values(rec.floorSurvey.byCanvasId || {})[0];
-  const before = { hx: layer.highPinDx, hy: layer.highPinDy };
-  // Drive pin offset through the live host if exposed; otherwise poke storage
-  // and confirm the report host can commit via pointer on the canvas.
-  const live = document.querySelector('.rb-sheet:not(.rb-sheet--thumb) [data-rb-topo-live]');
-  if (!live) return { ok: false, reason: 'no-live' };
-  const canvas = live.querySelector('canvas');
-  if (!canvas) return { ok: false, reason: 'no-canvas' };
-  const r = canvas.getBoundingClientRect();
-  // Rough center-left where High/Low often sit after topo render
-  return { ok: true, before, canvas: { x: r.left + r.width * 0.35, y: r.top + r.height * 0.35, w: r.width, h: r.height } };
-}, FILE);
-check('report topo canvas is present for pin drag', !!pinMove.ok, JSON.stringify(pinMove));
-
-if (pinMove.ok) {
-  // Try a short drag on the canvas; host should accept pin grab without long-press.
-  await page.mouse.move(pinMove.canvas.x, pinMove.canvas.y);
-  await page.mouse.down();
-  await page.mouse.move(pinMove.canvas.x + 60, pinMove.canvas.y + 40, { steps: 8 });
-  await page.mouse.up();
-  await new Promise((r) => setTimeout(r, 900));
-  const afterPin = await page.evaluate(async (id) => {
-    const rec = await window.ToolboxDB.getCustomerFile(id);
-    const layer = Object.values(rec.floorSurvey.byCanvasId || {})[0];
-    return { hx: layer.highPinDx, hy: layer.highPinDy, lx: layer.lowPinDx, ly: layer.lowPinDy };
-  }, FILE);
-  // Soft check: either a pin offset changed, or we at least did not crash.
-  // Exact hit depends on contour layout; assert host remains healthy.
-  const hostOk = await page.evaluate(() => !!document.querySelector('[data-rb-topo-live] canvas'));
-  check('High/Low pin drag on report does not break the live host', hostOk, JSON.stringify({ afterPin }));
-}
 
 await page.screenshot({ path: `${OUT}/rb-chrome-move-multi.png`, fullPage: false });
 await browser.close();

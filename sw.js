@@ -15,7 +15,7 @@
 // sw.js file's own bytes change; a precached static asset edited without
 // bumping this stays served from the stale cache indefinitely on already
 // installed devices, invisibly, no matter how many times it's redeployed.
-const CACHE_NAME = 'toolbox-shell-v415';
+const CACHE_NAME = 'toolbox-shell-v437';
 const OFFLINE_DOCUMENT = '/index.html';
 const DISTRESS_DOCUMENT = '/distress-survey/survey.html';
 
@@ -31,6 +31,7 @@ const UNCACHED_TIMEOUT_MS = 30000;
 const STATIC_SHELL = [
   '/css/styles.css',
   '/css/report-builder.css',
+  '/css/plan-of-repair.css',
   '/js/sw-register.js',
   '/js/db.js',
   '/js/config.js',
@@ -44,6 +45,7 @@ const STATIC_SHELL = [
   '/js/vendor/jspdf.umd.min.js',
   '/js/customer-file-import.js',
   '/js/recovered-photos.js',
+  '/js/photo-viewer.js',
   '/js/distress-survey/mount.js',
   '/js/floor-survey/floor-survey.js',
   '/js/floor-survey/floor-survey.css',
@@ -67,6 +69,7 @@ const STATIC_SHELL = [
   '/js/report-cover-layout.js',
   '/js/pen-log.js',
   '/js/report-builder.js',
+  '/js/plan-of-repair.js',
   '/js/app.js',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
@@ -76,6 +79,7 @@ const STATIC_SHELL = [
   '/icons/Diagnostics.png',
   '/icons/report-builder.png',
   '/brand/sandia-geo.png',
+  '/brand/tls-foundations.jpg',
 ];
 
 /** fetch with a deadline, so a dead link fails instead of waiting. */

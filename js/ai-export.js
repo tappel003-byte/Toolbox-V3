@@ -907,6 +907,9 @@
     section('Report Builder');
     lines.push('status: ' + inventory.components.reportBuilder.status);
     lines.push('');
+    section('Plan of Repair');
+    lines.push('status: ' + ((inventory.components.planOfRepair && inventory.components.planOfRepair.status) || 'absent'));
+    lines.push('');
     section('Provenance');
     lines.push('recovery imports: ' + inventory.components.provenance.recoveryImportCount);
     lines.push('observations left out of recovery: ' + (inventory.components.provenance.excludedObservationCount || 0));
@@ -1156,6 +1159,13 @@
       extractDataUrls(reportDocument, binaries, 'report-builder/images');
     }
 
+    var repairRaw = source.planOfRepair && typeof source.planOfRepair === 'object' ? source.planOfRepair : null;
+    var repairPresent = containerPresent(repairRaw);
+    var repairDocument = repairPresent
+      ? stripSecrets(clone(repairRaw), 'planOfRepair', omitted)
+      : { status: 'absent', note: 'No Plan of Repair worksheet is stored on this Customer File.' };
+    if (repairPresent) repairDocument.status = 'present';
+
     var imports = Array.isArray(source.recoveryImports) ? source.recoveryImports : [];
     var provenance = stripSecrets(clone(imports), 'recoveryImports', omitted);
     var leftOutCount = 0;
@@ -1247,6 +1257,7 @@
         },
         diagnostics: { status: diagnosticsPresent ? 'present' : 'absent' },
         reportBuilder: { status: reportPresent ? 'present' : 'absent' },
+        planOfRepair: { status: repairPresent ? 'present' : 'absent' },
         provenance: {
           recoveryImportCount: imports.length,
           excludedObservationCount: leftOutCount,
@@ -1264,6 +1275,7 @@
     textFiles.push({ path: 'photos/index.json', text: JSON.stringify(photoIndex, null, 2) });
     textFiles.push({ path: 'diagnostics/diagnostics.json', text: JSON.stringify(diagnosticsDocument, null, 2) });
     textFiles.push({ path: 'report-builder/state.json', text: JSON.stringify(reportDocument, null, 2) });
+    textFiles.push({ path: 'plan-of-repair/state.json', text: JSON.stringify(repairDocument, null, 2) });
     textFiles.push({ path: 'provenance/recovery-imports.json', text: JSON.stringify(provenance, null, 2) });
 
     var inventoryText = renderInventory(inventory);
@@ -1294,6 +1306,7 @@
         photos: inventory.components.photos,
         diagnostics: inventory.components.diagnostics,
         reportBuilder: inventory.components.reportBuilder,
+        planOfRepair: inventory.components.planOfRepair,
         provenance: inventory.components.provenance,
         gaps: inventory.gaps,
       },
