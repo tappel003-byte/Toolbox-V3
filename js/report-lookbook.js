@@ -1,11 +1,9 @@
 // Toolbox — Report Builder engineer lookbook packager.
 //
-// Builds a read-only lookbook package (sheet stills + photographs) that can:
-//   1. Upload to the Sync Worker as a 30-day tokenized link
-//   2. Download as a self-contained ZIP that keeps working offline forever
-//
-// Not a Customer File editor. PDF hardcopy remains the durable emailed deliverable;
-// Save as PDF inside the lookbook uses the browser print dialog.
+// Builds a read-only lookbook package (sheet stills + photographs) and uploads
+// it to the Sync Worker as a 30-day tokenized link. Share is link-first only —
+// no ZIP download (Tim, Nov 5, 2026). PDF hardcopy remains the durable emailed
+// deliverable; Save as PDF inside the lookbook uses the browser print dialog.
 
 (function () {
   'use strict';
@@ -516,23 +514,26 @@
     closeDialog(document.querySelector('.rb-lookbook-dialog'));
     var root = document.createElement('div');
     root.className = 'rb-lookbook-dialog';
+    var hasLink = !!(result && result.url);
     root.innerHTML =
-      '<div class="rb-lookbook-card" role="dialog" aria-modal="true" aria-label="Lookbook ready">' +
-      '  <h2>Lookbook ready</h2>' +
-      '  <p>Send the PDF hardcopy as usual. The link lets an engineer browse the report and open photographs full screen for 30 days. The downloaded ZIP keeps working on their computer with no expiry.</p>' +
-      (result.url
-        ? ('  <label for="rb-lookbook-url">30-day link</label>' +
+      '<div class="rb-lookbook-card" role="dialog" aria-modal="true" aria-label="' +
+      (hasLink ? 'Lookbook link ready' : 'Lookbook link failed') + '">' +
+      (hasLink
+        ? ('  <h2>Lookbook link ready</h2>' +
+           '  <p>Send the PDF hardcopy as usual. This link lets an engineer browse the report and open photographs full screen for 30 days. They can Save as PDF from the lookbook.</p>' +
+           '  <label for="rb-lookbook-url">30-day link</label>' +
            '  <div class="rb-lookbook-linkrow">' +
            '    <input id="rb-lookbook-url" type="text" readonly value="' + escapeHtml(result.url) + '">' +
            '    <button type="button" class="btn btn--accent" data-lb-copy>Copy</button>' +
            '  </div>' +
            '  <p class="rb-lookbook-expiry">Available until ' +
-           escapeHtml((result.expiresAt || '').slice(0, 10) || '30 days from now') +
-           '. They can Save as PDF from the lookbook.</p>')
-        : '  <p class="rb-lookbook-expiry">Online link was not created. The downloaded lookbook still works offline.</p>') +
-      (result.zipName
-        ? ('  <p class="rb-lookbook-status">Downloaded ' + escapeHtml(result.zipName) + '.</p>')
-        : '') +
+           escapeHtml((result.expiresAt || '').slice(0, 10) || '30 days from now') + '.</p>')
+        : ('  <h2>Could not create the link</h2>' +
+           '  <p class="rb-lookbook-expiry">' +
+           escapeHtml(result && result.error
+             ? result.error
+             : 'Sync sign-in is required to create the lookbook link.') +
+           '</p>')) +
       '  <div class="rb-lookbook-actions">' +
       '    <button type="button" class="btn btn--secondary" data-lb-close>Close</button>' +
       '  </div>' +
@@ -565,6 +566,7 @@
 
   /**
    * Run from Report Builder Share control.
+   * Creates the 30-day engineer link. No ZIP download — the link is the share.
    * options.prepareDeck() -> Promise<{ printDeck, pages, record, title, residence, address, cleanup }>
    */
   async function shareFromReport(options) {
@@ -573,7 +575,7 @@
     if (typeof prepare !== 'function') throw new Error('prepareDeck is required');
     var setStatus = typeof opts.onStatus === 'function' ? opts.onStatus : function () {};
 
-    setStatus('Preparing lookbook…');
+    setStatus('Preparing lookbook link…');
     var prepared = await prepare();
     try {
       var pkg = await buildPackage({
@@ -586,36 +588,23 @@
         onProgress: setStatus,
       });
 
-      var zipResult = null;
-      try {
-        setStatus('Downloading lookbook package…');
-        zipResult = await downloadZip(pkg);
-      } catch (zipErr) {
-        console.warn('Lookbook ZIP download failed', zipErr);
-      }
-
-      var published = null;
-      try {
-        published = await publishOnline(pkg, { onProgress: setStatus });
-      } catch (pubErr) {
-        console.warn('Lookbook online publish failed', pubErr);
-        setStatus(pubErr && pubErr.message ? pubErr.message : 'Online share failed');
+      var published = await publishOnline(pkg, { onProgress: setStatus });
+      if (!published || !published.url) {
+        throw new Error('Lookbook create did not return a link.');
       }
 
       openResultDialog({
-        url: published && published.url,
-        expiresAt: published && published.expiresAt,
-        zipName: zipResult && zipResult.filename,
+        url: published.url,
+        expiresAt: published.expiresAt,
       });
-
-      if (published && published.url) {
-        setStatus('Lookbook link ready — expires in 30 days.');
-      } else if (zipResult) {
-        setStatus('Lookbook downloaded. Online link needs Sync sign-in.');
-      } else {
-        throw new Error('Could not create a lookbook link or download.');
-      }
-      return { published: published, zip: zipResult };
+      setStatus('Lookbook link ready — expires in 30 days.');
+      return { published: published };
+    } catch (err) {
+      console.warn('Lookbook share failed', err);
+      var message = err && err.message ? err.message : 'Could not create the lookbook link.';
+      openResultDialog({ error: message });
+      setStatus(message);
+      throw err;
     } finally {
       if (prepared && typeof prepared.cleanup === 'function') {
         try { prepared.cleanup(); } catch (_) {}
