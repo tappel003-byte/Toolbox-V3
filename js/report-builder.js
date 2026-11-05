@@ -9476,7 +9476,15 @@
     function loadPagesFromRecord(record) {
       fileLabelEl.textContent = record ? fileLabel(record) : 'Customer File not on this device';
       var api = sourceApi();
-      if (!api) return { assembledFresh: false, reconciled: false };
+      var floorOpen = { migratedFloorLayout: false, stripSlideFloorLayouts: false };
+      if (!api) {
+        return {
+          assembledFresh: false,
+          reconciled: false,
+          migratedFloorLayout: false,
+          stripSlideFloorLayouts: false,
+        };
+      }
       var photoList = window.ToolboxReportEvidence &&
         typeof window.ToolboxReportEvidence.listDistressPhotos === 'function'
         ? window.ToolboxReportEvidence.listDistressPhotos(record)
@@ -9489,12 +9497,9 @@
       // placed takes the template -- otherwise setting a new default would
       // reach back and move every book already written.
       var template = storedTemplate();
-      // A report arranged before there was one record kept its placement on
-      // the SLIDES, and the renderer read a slide's own copy BEFORE the
-      // book's -- so a slide copy is what was actually on screen. Take it, or
-      // opening an older report under one record would quietly throw the
-      // arrangement away and fall back to the book's stale copy. The first
-      // floor slide that carries one is the one that was being worked on.
+      // Older reports kept placement on the slides (meta.layout). That copy is
+      // only a fallback when the book has no floorLayout yet. When both exist,
+      // the book record wins — see floorSeed below.
       var legacyFloor = null;
       if (savedDoc && Array.isArray(savedDoc.pages)) {
         for (var lf = 0; lf < savedDoc.pages.length; lf += 1) {
@@ -9523,7 +9528,14 @@
         draftStamp = savedDoc.draftStamp;
         syncDraftButton();
       }
-      var floorSeed = legacyFloor || (savedDoc && savedDoc.floorLayout) || template.floorLayout;
+      // Book floorLayout is the authority when present. A slide meta.layout is
+      // only consulted for reports that never got a book record — preferring
+      // the slide when both exist quietly overwrote the saved placement on
+      // open and autosave (reproduced Nov 5, 2026).
+      var bookFloor = savedDoc && savedDoc.floorLayout;
+      var floorSeed = bookFloor || legacyFloor || template.floorLayout;
+      floorOpen.migratedFloorLayout = !bookFloor && !!legacyFloor;
+      floorOpen.stripSlideFloorLayouts = !!(bookFloor && legacyFloor);
       if (floorSeed && window.ToolboxReportFloorLayout) {
         floorLayout = window.ToolboxReportFloorLayout.normalizeLayout(floorSeed);
       }
@@ -9629,13 +9641,20 @@
         return {
           assembledFresh: false,
           reconciled: before !== after || remappedEpoch,
+          migratedFloorLayout: floorOpen.migratedFloorLayout,
+          stripSlideFloorLayouts: floorOpen.stripSlideFloorLayouts,
         };
       }
       pages = freshPages;
       activeId = pages[0] ? pages[0].id : '';
       pageSeq = pages.length;
       restoreReturnPage();
-      return { assembledFresh: true, reconciled: false };
+      return {
+        assembledFresh: true,
+        reconciled: false,
+        migratedFloorLayout: floorOpen.migratedFloorLayout,
+        stripSlideFloorLayouts: floorOpen.stripSlideFloorLayouts,
+      };
     }
 
     if (window.ToolboxApp && typeof window.ToolboxApp.registerActiveFlush === 'function') {
@@ -9668,7 +9687,7 @@
         fitSheet(root);
         // Persist a missing pinScale once so reopen / other devices keep sheet default.
         var needSave = loaded.assembledFresh || loaded.reconciled || !penLogPinScaleSeeded ||
-          coverOverviewDropped;
+          coverOverviewDropped || loaded.migratedFloorLayout || loaded.stripSlideFloorLayouts;
         coverOverviewDropped = false;
         if (!penLogPinScaleSeeded) penLogPinScaleSeeded = true;
         if (needSave) {
@@ -9735,31 +9754,32 @@
       '  </div>' +
       '  <div class="rb-toolbar">' +
       '    <div class="rb-toolbar__format" data-rb-format-host></div>' +
-      '    <div class="rb-zoom" role="group" aria-label="Page size on screen">' +
-      '      <button type="button" id="rb-zoom-out" class="rb-zoom__btn"' +
+      '    <div class="rb-toolbar__view" role="group" aria-label="Page view">' +
+      '      <div class="rb-zoom" role="group" aria-label="Page size on screen">' +
+      '        <button type="button" id="rb-zoom-out" class="rb-zoom__btn"' +
       ' title="Zoom out" aria-label="Zoom out">\u2212</button>' +
-      '      <button type="button" id="rb-zoom-level" class="rb-zoom__level">Fit</button>' +
-      '      <button type="button" id="rb-zoom-in" class="rb-zoom__btn"' +
+      '        <button type="button" id="rb-zoom-level" class="rb-zoom__level">Fit</button>' +
+      '        <button type="button" id="rb-zoom-in" class="rb-zoom__btn"' +
       ' title="Zoom in" aria-label="Zoom in">+</button>' +
-      '    </div>' +
-      '    <button type="button" id="rb-draft" class="btn btn--quiet rb-draft-btn" aria-pressed="false">Draft stamp</button>' +
-      // A screen, not a word. PowerPoint puts the views on glyphs and the
-      // name belongs to the view, not the verb: this opens Presentation
-      // view. The name is on the button for anyone who cannot see the
-      // glyph, and on the tooltip for anyone who can.
-      '    <button type="button" id="rb-present" class="btn btn--secondary rb-present-btn"' +
+      '      </div>' +
+      // Presentation sits with Fit — both are how you look at the sheet,
+      // not how you ship it.
+      '      <button type="button" id="rb-present" class="btn btn--secondary rb-present-btn"' +
       ' title="Presentation view" aria-label="Presentation view">' +
-      '      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
-      '        <rect x="2.6" y="4" width="18.8" height="12.4" rx="1.6"></rect>' +
-      '        <path d="M9 20.6h6"></path>' +
-      '        <path d="M12 16.4v4.2"></path>' +
-      '      </svg>' +
-      '    </button>' +
-      '    <button type="button" id="rb-print" class="btn btn--secondary rb-print-btn">Print / PDF</button>' +
-      '    <button type="button" id="rb-share-lookbook" class="btn btn--secondary rb-share-lookbook-btn"' +
-      ' title="Create a 30-day engineer link and download a lookbook that keeps working offline">' +
-      'Share lookbook</button>' +
-      '    <button type="button" id="rb-export-ai" class="btn btn--accent rb-export">Export for AI</button>' +
+      '        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+      '          <rect x="2.6" y="4" width="18.8" height="12.4" rx="1.6"></rect>' +
+      '          <path d="M9 20.6h6"></path>' +
+      '          <path d="M12 16.4v4.2"></path>' +
+      '        </svg>' +
+      '      </button>' +
+      '    </div>' +
+      '    <div class="rb-toolbar__out" role="group" aria-label="Report output">' +
+      '      <button type="button" id="rb-draft" class="btn btn--quiet rb-draft-btn" aria-pressed="false">Draft stamp</button>' +
+      '      <button type="button" id="rb-print" class="btn btn--secondary rb-print-btn">Print / PDF</button>' +
+      '      <button type="button" id="rb-share-lookbook" class="btn btn--secondary rb-share-lookbook-btn"' +
+      ' title="Create a 30-day engineer lookbook link">Share lookbook</button>' +
+      '      <button type="button" id="rb-export-ai" class="btn btn--accent rb-export">Export for AI</button>' +
+      '    </div>' +
       '    <p class="rb-ai-status" id="rb-ai-status" aria-live="polite"></p>' +
       '  </div>' +
       '  <div class="rb-workspace">' +
