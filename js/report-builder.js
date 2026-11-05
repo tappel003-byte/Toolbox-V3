@@ -9366,6 +9366,70 @@
       });
     });
 
+    var shareLookbookBtn = root.querySelector('#rb-share-lookbook');
+    if (shareLookbookBtn) {
+      shareLookbookBtn.addEventListener('click', function () {
+        if (!window.ToolboxReportLookbook ||
+            typeof window.ToolboxReportLookbook.shareFromReport !== 'function') {
+          setSaveStatus('Lookbook sharing is not available in this session.');
+          return;
+        }
+        shareLookbookBtn.disabled = true;
+        setSaveStatus('Preparing lookbook…');
+        if (exportStatus) exportStatus.textContent = 'Preparing lookbook…';
+        window.ToolboxReportLookbook.shareFromReport({
+          onStatus: function (msg) {
+            setSaveStatus(msg || '');
+            if (exportStatus) exportStatus.textContent = msg || '';
+          },
+          prepareDeck: function () {
+            return flushSave().catch(function () {}).then(function () {
+              return composeFloorStills();
+            }).then(function () {
+              var deck = buildPrintDeck();
+              deck.removeAttribute('aria-hidden');
+              [].slice.call(deck.querySelectorAll('[contenteditable]')).forEach(function (el) {
+                el.setAttribute('contenteditable', 'false');
+              });
+              document.body.appendChild(deck);
+              return deckReady(deck).then(function () {
+                settlePrintDeck(deck);
+                return shrinkPrintImages(deck).then(function () {
+                  var residence = '';
+                  var address = '';
+                  try {
+                    residence = workingRecord
+                      ? ((workingRecord.firstName || '') + ' ' + (workingRecord.lastName || '')).trim()
+                      : '';
+                    address = fullAddress(workingRecord || {}) || '';
+                  } catch (_) {}
+                  return {
+                    printDeck: deck,
+                    pages: pages.slice(),
+                    record: workingRecord || {},
+                    title: residence ? (residence + ' — Report lookbook') : 'Report lookbook',
+                    residence: residence,
+                    address: address,
+                    cleanup: function () {
+                      if (deck && deck.parentNode) deck.parentNode.removeChild(deck);
+                    },
+                  };
+                });
+              });
+            });
+          },
+        }).catch(function (err) {
+          console.error('Share lookbook failed', err);
+          setSaveStatus(err && err.message ? err.message : 'Lookbook share failed');
+          if (exportStatus) {
+            exportStatus.textContent = err && err.message ? err.message : 'Lookbook share failed';
+          }
+        }).then(function () {
+          shareLookbookBtn.disabled = false;
+        });
+      });
+    }
+
     setSaveStatus('Loading…');
     renderPages();
     watchSheet(root);
@@ -9692,6 +9756,9 @@
       '      </svg>' +
       '    </button>' +
       '    <button type="button" id="rb-print" class="btn btn--secondary rb-print-btn">Print / PDF</button>' +
+      '    <button type="button" id="rb-share-lookbook" class="btn btn--secondary rb-share-lookbook-btn"' +
+      ' title="Create a 30-day engineer link and download a lookbook that keeps working offline">' +
+      'Share lookbook</button>' +
       '    <button type="button" id="rb-export-ai" class="btn btn--accent rb-export">Export for AI</button>' +
       '    <p class="rb-ai-status" id="rb-ai-status" aria-live="polite"></p>' +
       '  </div>' +
