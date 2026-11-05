@@ -3718,6 +3718,42 @@
     }
   }
 
+  /**
+   * Engineer lookbook share — Access-gated create/upload/finalize.
+   * Public GET /lookbook/{token}/ is served without a JWT (Access path bypass).
+   */
+  async function createLookbook(meta) {
+    const response = await apiFetch('/lookbook', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(meta || {}),
+    });
+    return response.json();
+  }
+
+  async function uploadLookbookFile(token, relativePath, body, contentType) {
+    const path = '/lookbook/' + encodeURIComponent(token) + '/files/' +
+      String(relativePath || '').split('/').map(encodeURIComponent).join('/');
+    const response = await apiFetch(path, {
+      method: 'PUT',
+      headers: {
+        'content-type': contentType || 'application/octet-stream',
+        'x-toolbox-encoding': 'raw',
+      },
+      body: body,
+    });
+    return response.json();
+  }
+
+  async function finalizeLookbook(token, payload) {
+    const response = await apiFetch('/lookbook/' + encodeURIComponent(token) + '/finalize', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload || {}),
+    });
+    return response.json();
+  }
+
   window.ToolboxSync = {
     COMPONENTS: COMPONENTS,
     REMOTE_PULL_EPOCH: REMOTE_PULL_EPOCH,
@@ -3787,6 +3823,9 @@
     fetchAccessIdentity: fetchAccessIdentity,
     ensureAccessSession: ensureAccessSession,
     probeAccessSession: probeAccessSession,
+    createLookbook: createLookbook,
+    uploadLookbookFile: uploadLookbookFile,
+    finalizeLookbook: finalizeLookbook,
     deleteRemoteCustomerFile: deleteRemoteCustomerFile,
     exploreListFiles: exploreListFiles,
     exploreListCustomerFile: exploreListCustomerFile,

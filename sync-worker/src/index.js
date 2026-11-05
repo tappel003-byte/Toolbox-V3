@@ -29,6 +29,18 @@ import {
   stampAuthority,
   authorityOf,
 } from './components.js';
+import {
+  newLookbookToken,
+  lookbookRoot,
+  lookbookManifestKey,
+  lookbookObjectKey,
+  isExpired,
+  buildManifest,
+  lookbookIndexHtml,
+  sanitizeLookbookRelativePath,
+  lookbookContentType,
+} from './lookbook.js';
+import { LOOKBOOK_STATIC_CSS, LOOKBOOK_STATIC_JS } from './lookbook-assets.js';
 
 /** PWA origin only — Access cookie sync uses credentials:include (no *). */
 const ALLOWED_ORIGINS = {
@@ -1148,6 +1160,15 @@ export default {
       });
     }
 
+    // Engineer lookbook — public read for a 30-day tokenized package.
+    // Cloudflare Access on this hostname MUST path-bypass lookbook/* so an
+    // engineer can open the link without Tim/Lee credentials. Create/upload
+    // /finalize stay Access-gated below.
+    {
+      const lookbookGet = await servePublicLookbook(request, env, path);
+      if (lookbookGet) return lookbookGet;
+    }
+
     if (path === 'me' && request.method === 'GET') {
       const identityResult = await requireIdentity(request, env);
       if (identityResult.errorResponse) return identityResult.errorResponse;
@@ -1450,6 +1471,205 @@ export default {
       }
     }
 
+    // ---- Engineer lookbook create / upload / finalize (Access-gated) ----
+    if (path === 'lookbook' && request.method === 'POST') {
+      return createLookbook(request, env);
+    }
+
+    match = /^lookbook\/([^/]+)\/files\/(.+)$/.exec(path);
+    if (match && request.method === 'PUT') {
+      return uploadLookbookFile(request, env, decodeURIComponent(match[1]), decodeURIComponent(match[2]));
+    }
+
+    match = /^lookbook\/([^/]+)\/finalize$/.exec(path);
+    if (match && request.method === 'POST') {
+      return finalizeLookbook(request, env, decodeURIComponent(match[1]));
+    }
+
     return notFound(request);
   },
 };
+
+const LOOKBOOK_TOKEN_RE = /^[a-f0-9]{36}$/;
+const LOOKBOOK_MAX_UPLOAD_BYTES = 28 * 1024 * 1024;
+
+function lookbookPublicUrl(request, token) {
+  const url = new URL(request.url);
+  return url.origin + '/lookbook/' + token + '/';
+}
+
+async function readLookbookManifest(env, token) {
+  const got = await env.CABINET.get(lookbookManifestKey(token));
+  if (!got) return null;
+  try {
+    return await got.json();
+  } catch (_) {
+    return null;
+  }
+}
+
+async function servePublicLookbook(request, env, path) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') return null;
+  let match = /^lookbook\/([a-f0-9]{36})\/?$/.exec(path);
+  let token = match ? match[1] : '';
+  let relative = '';
+  if (!match) {
+    match = /^lookbook\/([a-f0-9]{36})\/(.+)$/.exec(path);
+    if (!match) return null;
+    token = match[1];
+    relative = sanitizeLookbookRelativePath(decodeURIComponent(match[2]));
+    if (!relative) return badRequest(request, 'Invalid lookbook path');
+  } else {
+    relative = 'index.html';
+  }
+
+  const manifest = await readLookbookManifest(env, token);
+  if (!manifest) return notFound(request);
+  if (manifest.status !== 'live') return notFound(request);
+  if (isExpired(manifest)) {
+    return text(request, 'This lookbook link has expired.', 410);
+  }
+
+  // Never serve the raw draft/live manifest JSON publicly under a guessable
+  // name that is not part of the packaged viewer.
+  if (relative === 'manifest.json') return notFound(request);
+
+  const key = lookbookObjectKey(token, relative);
+  if (!key) return badRequest(request, 'Invalid lookbook path');
+  const got = await env.CABINET.get(key);
+  if (!got) return notFound(request);
+  const headers = corsHeaders(request);
+  headers['content-type'] = (got.httpMetadata && got.httpMetadata.contentType) || lookbookContentType(relative);
+  headers['cache-control'] = 'private, max-age=300';
+  headers['x-robots-tag'] = 'noindex, nofollow';
+  if (request.method === 'HEAD') {
+    return new Response(null, { status: 200, headers: headers });
+  }
+  return new Response(got.body, { status: 200, headers: headers });
+}
+
+async function createLookbook(request, env) {
+  const identityResult = await requireIdentity(request, env);
+  if (identityResult.errorResponse) return identityResult.errorResponse;
+  let body;
+  try {
+    body = await request.json();
+  } catch (_) {
+    return badRequest(request, 'Invalid JSON');
+  }
+  const token = newLookbookToken();
+  if (!LOOKBOOK_TOKEN_RE.test(token)) {
+    return text(request, 'Could not allocate lookbook token', 500);
+  }
+  const manifest = buildManifest({
+    token: token,
+    status: 'draft',
+    customerFileId: trimStr(body && body.customerFileId),
+    title: trimStr(body && body.title) || 'Report lookbook',
+    residence: trimStr(body && body.residence),
+    address: trimStr(body && body.address),
+    createdBy: identityResult.email || '',
+    pages: [],
+    photos: [],
+  });
+  await env.CABINET.put(lookbookManifestKey(token), JSON.stringify(manifest), {
+    httpMetadata: { contentType: 'application/json; charset=utf-8' },
+  });
+  return json(request, {
+    ok: true,
+    token: token,
+    expiresAt: manifest.expiresAt,
+    ttlDays: 30,
+    url: lookbookPublicUrl(request, token),
+    prefix: lookbookRoot(token),
+  });
+}
+
+async function uploadLookbookFile(request, env, token, relativePath) {
+  const identityResult = await requireIdentity(request, env);
+  if (identityResult.errorResponse) return identityResult.errorResponse;
+  if (!LOOKBOOK_TOKEN_RE.test(token)) return badRequest(request, 'Invalid lookbook token');
+  const relative = sanitizeLookbookRelativePath(relativePath);
+  if (!relative) return badRequest(request, 'Invalid lookbook file path');
+  // Reserved viewer filenames are written only on finalize.
+  if (relative === 'index.html' || relative === 'lookbook.css' || relative === 'lookbook.js' || relative === 'manifest.json') {
+    return badRequest(request, 'Reserved lookbook filename');
+  }
+  const manifest = await readLookbookManifest(env, token);
+  if (!manifest) return notFound(request);
+  if (manifest.status === 'live') return conflict(request, 'Lookbook is already finalized');
+  if (isExpired(manifest)) return text(request, 'This lookbook draft has expired.', 410);
+
+  const bytes = await request.arrayBuffer();
+  if (!bytes || bytes.byteLength === 0) return badRequest(request, 'Empty upload');
+  if (bytes.byteLength > LOOKBOOK_MAX_UPLOAD_BYTES) {
+    return badRequest(request, 'Lookbook file exceeds size limit');
+  }
+  const key = lookbookObjectKey(token, relative);
+  if (!key) return badRequest(request, 'Invalid lookbook file path');
+  const contentType = request.headers.get('content-type') || lookbookContentType(relative);
+  await env.CABINET.put(key, bytes, {
+    httpMetadata: { contentType: contentType },
+  });
+  return json(request, { ok: true, path: relative, bytes: bytes.byteLength });
+}
+
+async function finalizeLookbook(request, env, token) {
+  const identityResult = await requireIdentity(request, env);
+  if (identityResult.errorResponse) return identityResult.errorResponse;
+  if (!LOOKBOOK_TOKEN_RE.test(token)) return badRequest(request, 'Invalid lookbook token');
+  let body;
+  try {
+    body = await request.json();
+  } catch (_) {
+    return badRequest(request, 'Invalid JSON');
+  }
+  const existing = await readLookbookManifest(env, token);
+  if (!existing) return notFound(request);
+  if (existing.status === 'live') {
+    return json(request, {
+      ok: true,
+      alreadyFinalized: true,
+      token: token,
+      expiresAt: existing.expiresAt,
+      url: lookbookPublicUrl(request, token),
+    });
+  }
+  if (isExpired(existing)) return text(request, 'This lookbook draft has expired.', 410);
+
+  const pages = Array.isArray(body && body.pages) ? body.pages : [];
+  const photos = Array.isArray(body && body.photos) ? body.photos : [];
+  const manifest = Object.assign({}, existing, {
+    status: 'live',
+    title: trimStr(body && body.title) || existing.title || 'Report lookbook',
+    residence: trimStr(body && body.residence) || existing.residence || '',
+    address: trimStr(body && body.address) || existing.address || '',
+    pages: pages,
+    photos: photos,
+    finalizedAt: new Date().toISOString(),
+    finalizedBy: identityResult.email || '',
+  });
+
+  await env.CABINET.put(lookbookObjectKey(token, 'lookbook.css'), LOOKBOOK_STATIC_CSS, {
+    httpMetadata: { contentType: 'text/css; charset=utf-8' },
+  });
+  await env.CABINET.put(lookbookObjectKey(token, 'lookbook.js'), LOOKBOOK_STATIC_JS, {
+    httpMetadata: { contentType: 'application/javascript; charset=utf-8' },
+  });
+  await env.CABINET.put(lookbookObjectKey(token, 'index.html'), lookbookIndexHtml(manifest), {
+    httpMetadata: { contentType: 'text/html; charset=utf-8' },
+  });
+  await env.CABINET.put(lookbookManifestKey(token), JSON.stringify(manifest), {
+    httpMetadata: { contentType: 'application/json; charset=utf-8' },
+  });
+
+  return json(request, {
+    ok: true,
+    token: token,
+    expiresAt: manifest.expiresAt,
+    ttlDays: 30,
+    url: lookbookPublicUrl(request, token),
+    pageCount: pages.length,
+    photoCount: photos.length,
+  });
+}

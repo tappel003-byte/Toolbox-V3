@@ -45,7 +45,8 @@ body.report-builder-open .canvas {
   line-height: 1.35;
 }
 
-.rb-export {
+.rb-export,
+.rb-share-lookbook-btn {
   flex: 0 0 auto;
   min-height: 32px;
   padding: 4px 12px;
