@@ -14,6 +14,11 @@ Durable decisions already established in `VISION.md`, recorded here for quick re
 - Proven field behavior is presumed correct and carries a high burden of proof before it changes.
 - The standalone repositories (`field-reporter-pro`, `floorplan-topo-maker`) remain untouched, permanent field fallbacks — not just historical reference.
 
+## Shipping / branches (DECIDED Tim, Nov 1–6, 2026)
+
+- **Integration branch:** `claude/milestone-1-customer-file-qv5ybf`. Ordinary feature PRs merge there. Not `main`.
+- **Only Tim promotes** to live Production. Agents merge when asked; they never promote, never deploy Access, and never treat merge-to-`main` as a safe “merge only” step — Nov 5 confirmed bot merges to `main` can publish live.
+- Bring-to-`main` happens only when Tim explicitly asks for promote-prep, after the work is on the integration branch.
 
 ## One layout record (CHANGED by Tim, Oct 22, 2026)
 
