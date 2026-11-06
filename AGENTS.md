@@ -53,27 +53,55 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
 
 ## Shipping is Tim's trigger, not the implementer's
 
-- **The implementer merges to `main`. Tim promotes.** Those are two different
-  acts and only the second is his (CHANGED by Tim, Oct 23, 2026: "I can't merge
-  I need you to merge just like always I can only promote"). He cannot merge;
-  asking him to is asking him to do something he has no way of doing, and the
-  work simply stops there.
-- What must not happen is the implementer deciding *when the thing ships*.
-  Merging brings `main` level with the branch. Promoting puts a build in front
-  of him. Keep those apart and the rule below still holds.
-- This was drifted from in the other direction once. Work went to the branch
-  alone from Oct 10 to Oct 20; then the implementer started merging every pull
-  request to `main`, `main` builds deployed themselves, and the promote Tim had
-  been doing quietly became a no-op — without him choosing that (Tim, Oct 22,
-  2026: "Go back to where I do the promotes do you understand"). That was wrong
-  because it took the *promote* away, not because the merge happened.
-- So: never deploy, never promote, and never merge work he has not asked to be
-  merged. If merging would publish by itself — which depends on the Cloudflare
-  build configuration and has not been verified — say so and stop.
+### Integration branch (named — stop guessing)
+
+- **Agreed integration branch right now:** `claude/milestone-1-customer-file-qv5ybf`
+- Feature work branches off that branch. Authorized merges go **into that
+  branch**. Full stop. Do not open ordinary feature PRs against `main`.
+- Tim promotes. Promote puts a build in front of live users. Only Tim does that
+  (DECIDED Tim, Nov 1, 2026; restated Nov 5–6, 2026).
+- **Verified Nov 5, 2026:** a bot merge into `main` published live
+  (`toolbox-shell-v439` on production without Tim promoting). Treat merge-to-
+  `main` as a promote risk. Do not merge to `main` unless Tim explicitly asked
+  for a bring-to-main / promote-prep merge **and** you have warned that it may
+  publish. If it would publish by itself: **say so and stop.**
+
+### ONLY Tim promotes — hard list (DECIDED Tim, Nov 1, 2026)
+
+**The only person who may put any build in front of live users is Tim.**
+Not Cursor. Not `cursor[bot]`. Not Cloudflare auto-activate. Not any agent.
+
+**Never:**
+
+1. Click Promote / Activate / Rollback (or otherwise change Production Active)
+   in Cloudflare.
+2. Merge or push in a way that auto-publishes Production (including merges to
+   `main` when builds go live by themselves). That *is* promoting.
+3. Treat “merge so Tim can promote,” CI green, or PR base=`main` as permission
+   to put live traffic on a build.
+4. Invent a different landing branch midstream to “help” ship.
+5. After the authorized merge into the integration branch, push more updates
+   that churn Production unless Tim explicitly asked for that next change.
+
+**Do:**
+
+1. Build on a feature branch off `claude/milestone-1-customer-file-qv5ybf`.
+2. Merge only when Tim asked, and only into that integration branch.
+3. Stop when that merge is done. Leave Promote to Tim.
+4. If unclear whether a merge would publish: **say so and stop. Do not merge.**
+
+### Merge vs promote (still two acts)
+
+- Tim cannot merge in GitHub the way the implementer can; the implementer
+  merges when he asks (CHANGED by Tim, Oct 23, 2026: "I can't merge I need you
+  to merge just like always I can only promote"). Asking him to merge is asking
+  him to do something he has no way of doing.
+- Never merge work he has not asked to be merged.
+- Never deploy Sync Worker / Cloudflare infra / Access rules without explicit
+  product-owner authorization (see Cross-device synchronization).
 - **A hook never outranks Tim.** Uncommitted work he did not ask for does not
   get committed because a tooling reminder asked for it. Say it is sitting
-  there and leave it. This happened the one time he interrupted to ask a
-  question and the stop hook then asked for a commit (Oct 22, 2026).
+  there and leave it (Oct 22, 2026).
 
 ## Proven behavior
 
