@@ -86,6 +86,39 @@
     return addr.split('\n')[0].trim() || 'No property address yet';
   }
 
+  /**
+   * The address as it is written on an envelope: the street, then the city,
+   * state and ZIP on the line below. Tim, Nov 7, 2026: "if we need to go to
+   * two lines ... then it needs to be formatted like a proper address." An
+   * address typed on two lines keeps its own break; one written on one line
+   * breaks at its first comma, which is where the street ends.
+   */
+  function addressLines(record) {
+    const addr = String((record && record.propertyAddress) || '').trim();
+    if (!addr) return null;
+    const lines = addr.split('\n').map(function (line) { return line.trim(); }).filter(Boolean);
+    if (lines.length > 1) return { street: lines[0], locality: lines.slice(1).join(', ') };
+    const comma = addr.indexOf(',');
+    if (comma <= 0) return { street: addr, locality: '' };
+    return { street: addr.slice(0, comma).trim(), locality: addr.slice(comma + 1).trim() };
+  }
+
+  function fillAddress(el, record) {
+    const parts = addressLines(record);
+    el.textContent = '';
+    if (!parts) {
+      el.textContent = 'No property address yet';
+      return;
+    }
+    [parts.street, parts.locality].forEach(function (text) {
+      if (!text) return;
+      const line = document.createElement('span');
+      line.className = 'address-line';
+      line.textContent = text;
+      el.appendChild(line);
+    });
+  }
+
   function formatUpdated(iso) {
     if (!iso) return '';
     const d = new Date(iso);
@@ -1136,7 +1169,7 @@
 
     const addr = document.createElement('span');
     addr.className = 'cabinet-row__address';
-    addr.textContent = displayAddress(record);
+    fillAddress(addr, record);
 
     main.appendChild(name);
     main.appendChild(addr);
@@ -1903,7 +1936,7 @@
       const hasName = !!((record.firstName || '').trim() || (record.lastName || '').trim());
       const hasAddress = !!(record.propertyAddress || '').trim();
       cardName.textContent = displayName(record);
-      cardAddress.textContent = displayAddress(record);
+      fillAddress(cardAddress, record);
       contactBadge.textContent = hasName && hasAddress ? 'Customer details ready' : 'Customer details started';
       contactBadge.classList.toggle('is-ready', hasName && hasAddress);
       planBadge.textContent = readiness.hasPlan ? planSummaryText(record) : 'Floor plan required';
