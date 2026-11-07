@@ -154,6 +154,34 @@
   }
 
   /**
+   * Field capture that gates list-row Delete (Tim, Nov 7, 2026).
+   * Distress pin locations with pictures, or Floor Survey points.
+   * A floor plan alone is not this bar — plans may still delete locally
+   * from the On-this-device ••• menu.
+   */
+  function hasFieldCaptureCustomerData(record) {
+    if (!record) return false;
+    const distress = record.distress || {};
+    const pins = Array.isArray(distress.pins) ? distress.pins : [];
+    for (let i = 0; i < pins.length; i++) {
+      const photos = pins[i] && Array.isArray(pins[i].photos) ? pins[i].photos : [];
+      if (photos.length) return true;
+    }
+    if (Array.isArray(distress.quickCapture) && distress.quickCapture.length) return true;
+    if (distress.photoSources && typeof distress.photoSources === 'object' &&
+        Object.keys(distress.photoSources).length) {
+      return true;
+    }
+    const floor = record.floorSurvey || {};
+    const layers = floor.byCanvasId && typeof floor.byCanvasId === 'object'
+      ? Object.values(floor.byCanvasId)
+      : [];
+    return layers.some(function (layer) {
+      return !!(layer && Array.isArray(layer.points) && layer.points.length);
+    });
+  }
+
+  /**
    * A positive no-remote result may delete on this device.
    * An empty stub asks once. A file with customer or survey information
    * asks once, then deletes locally. Unknown cabinet status is not this path.
@@ -1167,13 +1195,15 @@
       return shell;
     }
 
-    // One action, on every local file. Tim, after a morning of pressing the
-    // wrong one of two: "it is definite that the only options we need are to
-    // check it out and to check it in. Period." Send to File Cabinet is gone;
-    // Check In covers the file that was never checked out as well, because
-    // filing it means the same thing either way -- put the work in the
-    // Cabinet, give up the lease, clear this device.
+    // Check In stays on every local file (Tim: checkout/checkin are the list
+    // actions). Nov 7, 2026: the same ••• also gatekeeps Delete — local delete
+    // when there are no Distress pin photos and no Floor Survey points; otherwise
+    // a note that deletion goes through Explorer because the file has customer data.
+    // A floor plan alone does not count as that bar.
     void cabinetBacked;
+    const panel = document.createElement('div');
+    panel.className = 'cabinet-row-menu__panel';
+
     const checkInBtn = document.createElement('button');
     checkInBtn.type = 'button';
     checkInBtn.className = 'cabinet-row-menu__action';
@@ -1183,8 +1213,37 @@
       menu.classList.remove('is-open');
       requestCheckInCustomerFile(record);
     });
+    panel.appendChild(checkInBtn);
+
+    if (hasFieldCaptureCustomerData(record)) {
+      const note = document.createElement('p');
+      note.className = 'cabinet-row-menu__note';
+      note.textContent =
+        'This file can only be deleted from Explorer because it has customer data.';
+      panel.appendChild(note);
+    } else {
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'cabinet-row-menu__action cabinet-row-menu__action--danger';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.addEventListener('click', function (event) {
+        event.stopPropagation();
+        menu.classList.remove('is-open');
+        requestCustomerFileRemoval(record).then(function (result) {
+          if (!result) return;
+          cabinetNotice = result;
+          render();
+        }).catch(function (err) {
+          console.error('Could not remove Customer File:', err);
+          cabinetNotice = 'Could not remove that Customer File. Try again.';
+          render();
+        });
+      });
+      panel.appendChild(deleteBtn);
+    }
+
     menu.appendChild(menuToggle);
-    menu.appendChild(checkInBtn);
+    menu.appendChild(panel);
 
     shell.appendChild(row);
     shell.appendChild(menu);
@@ -3219,6 +3278,7 @@
     registerActiveFlush: registerActiveFlush,
     blankCustomerFile: blankCustomerFile,
     hasInvestigationData: hasInvestigationData,
+    hasFieldCaptureCustomerData: hasFieldCaptureCustomerData,
     isEmptyCustomerFileStub: isEmptyCustomerFileStub,
     customerFileLocationLabel: customerFileLocationLabel,
     customerIdentity: {

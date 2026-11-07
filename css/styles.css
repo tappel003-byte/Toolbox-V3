@@ -2365,6 +2365,57 @@ button.local-trash-recovery[hidden] {
   background: #fbeeea;
 }
 
+/* On-this-device ••• panel: Check In + Delete or Explorer note stacked cleanly. */
+.cabinet-row-menu__panel {
+  display: none;
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  z-index: 3;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: min(220px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+}
+
+.cabinet-row-menu.is-open .cabinet-row-menu__panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.cabinet-row-menu__panel .cabinet-row-menu__action {
+  position: static;
+  top: auto;
+  right: auto;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.cabinet-row-menu__panel .cabinet-row-menu__action:last-child {
+  border-bottom: 0;
+  border-radius: 0;
+}
+
+.cabinet-row-menu__note {
+  margin: 0;
+  padding: 10px 13px 12px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
 /* Customer File Trash */
 .trash-view {
   width: 100%;
