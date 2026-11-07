@@ -516,6 +516,7 @@ Found by tracing Check In and Check Out end to end after a Check Out failed repe
 - **A cloud-only job can be moved to Trash from the Cabinet.** The capability existed and had no way in: the only route to Trash ran through a device's own working copy, so a job you did not want on the device — an empty one, a mistake — could not be deleted at all. Check Out first, then delete, and an empty job may not even check out.
 - **It is the Trash the Cabinet already has, not a permanent delete.** Restore and Delete permanently both live in that Trash and the 120-day retention intent stands. The action is drawn only where the move is allowed — no copy on this device, no lease on it, not already trashed — so it never offers something that will be refused.
 - **It sits behind the row's own ••• menu, not beside Check Out.** Two buttons on one row wrapped the address and the date on a phone; the working surface comes before the chrome. Same menu the Customer Files rows already use.
+- **On-this-device ••• Delete gate (DECIDED Tim, Nov 7, 2026).** List ••• still centers on Check In. It also gatekeeps delete: if the file has **no** Distress pin locations with pictures and **no** Floor Survey points, **Delete** removes it locally from that menu. If it has either, the menu shows a short note that the file can only be deleted from Explorer because it has customer data. A floor plan alone is **not** that bar.
 - **File Explorer stays read-only** and now says where deleting happens, so looking for it there is no longer a dead end.
 
 ---

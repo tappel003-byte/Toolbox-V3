@@ -10,8 +10,8 @@ This does **not** replace authority docs. Read order for rules and vision:
 4. `DECISIONS.md`
 5. **This file** — current working picture
 
-Last updated: **Nov 6, 2026** (America/Denver)  
-Updated by: Cursor agent (Toolbox V3 continued) after Tim authorized a durable session-state doc.
+Last updated: **Nov 7, 2026** (America/Denver)  
+Updated by: Cursor agent — On-this-device ••• Delete gate (field capture).
 
 ---
 
@@ -67,6 +67,7 @@ Always re-check with `git fetch` before claiming tip SHAs.
 | Plan of Repair as RB-style drawing template | On milestone; earlier bring-to-main for promote |
 | Engineer lookbook packager + Worker routes in repo | In tree; floor sheet capture fix #195 on milestone |
 | Lookbook product intent | **Keep it.** Tim does not think it’s a bad idea. Gap is ops/Access, not the idea. |
+| On-this-device ••• Delete gate | Authorized Nov 7: no DS pin-photos and no FS points → local Delete on •••; otherwise Explorer note. Floor plan alone does not block. Shell `v441`. |
 
 ---
 
