@@ -217,6 +217,10 @@ body {
   overflow-wrap: anywhere;
 }
 
+.address-line {
+  display: block;
+}
+
 .cabinet-row__address {
   font-size: 13px;
   color: var(--ink-soft);
