@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 7, 2026** (America/Denver)  
-Updated by: Cursor agent — On-this-device ••• Delete gate (field capture).
+Updated by: Cursor agent — repair handoff after #199 (library address two lines).
 
 ---
 
@@ -42,6 +42,7 @@ Long chats cost more tokens and do **not** give the model continuous human-like 
 - Never deploy Sync Worker, change Access, or promote without Tim’s explicit go.
 - Discussion is not a work order. “Go” / “do it” / “build it” = authorization. Describing UI is not authorization.
 - Never tell Tim what to do with his time.
+- When Tim says “Merge I promote,” that is merge to the **integration** branch only. Promote is still Tim. Prefer the agent Tim is talking to for the merge when that is clear; the merge itself is still valid if another authorized agent lands it on the right branch and Tim accepts the result.
 
 ---
 
@@ -49,8 +50,8 @@ Long chats cost more tokens and do **not** give the model continuous human-like 
 
 | Branch | Tip (approx) | Notes |
 |--------|----------------|-------|
-| `claude/milestone-1-customer-file-qv5ybf` | `ff424f2` | **Integration tip.** Includes floor/share/toolbar (#194), lookbook floor stills (#195), shipping-doc naming (#196). |
-| `main` | `a4336df` | Has #193 floor/share/toolbar; **behind** milestone on #195 stills + #196 docs. Live site already had `v439` from the main merge. |
+| `claude/milestone-1-customer-file-qv5ybf` | `f055fed` | **Integration tip.** Merge of #199 (library address two lines). Includes #198 delete gate, #197 SESSION_STATE, #196 shipping-doc naming, #195 lookbook stills, #194 floor/share/toolbar. |
+| `main` | `a4336df` | Has #193 floor/share/toolbar; **behind** milestone on #195–#199. Live site already had `v439` from the main merge of #193. |
 
 Always re-check with `git fetch` before claiming tip SHAs.
 
@@ -67,7 +68,8 @@ Always re-check with `git fetch` before claiming tip SHAs.
 | Plan of Repair as RB-style drawing template | On milestone; earlier bring-to-main for promote |
 | Engineer lookbook packager + Worker routes in repo | In tree; floor sheet capture fix #195 on milestone |
 | Lookbook product intent | **Keep it.** Tim does not think it’s a bad idea. Gap is ops/Access, not the idea. |
-| On-this-device ••• Delete gate | Authorized Nov 7: no DS pin-photos and no FS points → local Delete on •••; otherwise Explorer note. Floor plan alone does not block. Shell `v441`. |
+| On-this-device ••• Delete gate | Done — #198. No DS pin-photos and no FS points → local Delete on •••; otherwise Explorer note. Floor plan alone does not block. Was shell `v441`; tip now `v442`. |
+| Library / home card address on two lines | Done — #199 (`1e786f8`, merge `f055fed`). Street on line 1; city/state/ZIP on line 2 (envelope style). Display only — does not rewrite `propertyAddress`. Shell `toolbox-shell-v442`. Built by Claude Code; Tim accepted (“good”); Cursor repairing this handoff. |
 
 ---
 
@@ -75,14 +77,14 @@ Always re-check with `git fetch` before claiming tip SHAs.
 
 1. **Cloudflare Access path bypass for `lookbook/*`** on `sync.sandiageotoolbox.com`  
    - Without this, engineer (and private-window) opens hit Cloudflare login.  
-   - Tim’s ops action. He planned to do it later (as of Nov 6 morning).  
+   - Tim’s ops action.  
    - Create/upload/finalize stay Access-gated; only public GET needs the bypass.
 
 2. **Confirm Sync Worker deploy has lookbook create routes**  
    - If Share still shows **“Not found”**, `POST /lookbook` is not on the live Worker.  
    - Deploy (when Tim authorizes / from an authenticated machine):  
      `npx wrangler@4 deploy --config sync-worker/wrangler.toml`  
-   - Cursor agents often lack `CLOUDFLARE_API_TOKEN` in an already-running VM; a new agent with the secret, or Tim’s logged-in machine, can deploy.
+   - Runtime secrets attach when an agent **starts**. An already-running VM may not see `CLOUDFLARE_API_TOKEN` even when it is set in Cursor Secrets.
 
 3. **Discussed, not authorized to build yet**  
    - GitHub protection so bots cannot merge to `main` (“can we put bots cannot merge?” — Tim asked; waiting on “go” to implement).
@@ -100,7 +102,7 @@ Always re-check with `git fetch` before claiming tip SHAs.
 2. `git fetch origin claude/milestone-1-customer-file-qv5ybf` and branch from that tip.
 3. Open PRs with **base = `claude/milestone-1-customer-file-qv5ybf`**. Merge there when Tim asks. Do **not** promote. Do **not** merge to `main` unless Tim explicitly asked for promote-prep **and** you warned about publish risk.
 4. Do not scrap lookbook. Finish Access bypass (Tim) + confirm Worker if Share 404s.
-5. After meaningful progress, **update this file** (date, tips, done/outstanding) in the same PR or a small follow-up — so the next handoff stays true.
+5. After meaningful progress, **update this file** (date, tips, done/outstanding) in the same PR or a small follow-up — so the next handoff stays true. #199 landed without that update; that gap is what this repair closes.
 
 ---
 
