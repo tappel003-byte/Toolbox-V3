@@ -322,7 +322,7 @@ Plan of Repair is a **workspace of its own inside the Customer File** — a desk
 6. **Inherited chrome.** The toolbar host, page list, title rail and zoom came from Report Builder. Some of it earns its place (pages, the rail on the printed sheet, print). Any Report Builder control that does nothing for drawing is chrome fighting the surface.
 7. **The background is a live reference.** Each page stores `{ kind, canvasId }` (`:51, :1225`), not a copy. Marks are stored as sheet percentages. If a level's plan is replaced with one of a different shape, or the contour is redrawn with a different extent, the drawing moves under the marks and the sketch is wrong while looking right. A risk, not yet seen.
 
-**C. Questions the code can't answer.** Who authors a POR and whose name is on it — the rail carries a TLS Foundations logo (`:15, :494`) and a SandiaGEO checkbox. And where a finished POR goes: into the report, to a client or engineer as its own PDF, or only kept on file.
+**C. Not settled by the code.** Authorship and branding: the rail carries a TLS Foundations logo (`:15, :494`) and a SandiaGEO checkbox. Destination: nothing in the code says whether a finished POR goes into the report, out as its own PDF, or stays on file.
 
 ### Slices
 
@@ -371,21 +371,6 @@ A stamp is a preset that creates **ordinary overlays** at a set size, colour and
 5. **Dashed lines and pictures are not polish.** Cursor puts them in E. Proposed-vs-existing is usually drawn dashed vs solid, so dashed belongs with the line tool. Pictures depend on Tim's answer; if yes, they are cheap because the model already draws images.
 6. **Keep what the printed sheet needs.** Agree the always-on panel should shrink, but the title rail is on the paper, and its status line — “Preliminary — Subject to Structural Engineering” — reads like a liability line. Quieting the editor shouldn't remove it from the print.
 7. **Background risk (B7)** isn't on Cursor's list; it should be on someone's.
-
-### Questions for Tim
-
-1. Doorway: a fifth workspace tile, or paired with Report Builder as the “desk” tools?
-2. Colour and line style: does red/dashed mean “proposed” and black/solid “existing”, or is it free?
-3. Piers: which marks go on every job? Numbered? Typed by hand or counted? (Counting is the line between a stamp and a database.)
-4. After drawing a pier, does the tool stay armed (Paint) or return to Select (PowerPoint)?
-5. Do photos belong on a POR sheet, or does it stay plan-only?
-6. Background: plan, contour, or plan with the contour faint underneath?
-7. If a level's plan is replaced after sketching: follow, warn, or start over?
-8. Where a finished POR goes: into the report, its own PDF to a client/engineer, or kept on file?
-9. Whose name and logo are on it? (TLS Foundations today, plus a SandiaGEO note.)
-10. Scale: ever a real distance (“piers at 6 ft o.c.”), or always “not to scale” with a note?
-11. Pages: one sheet per level, or detail sheets too (a section through a pier)?
-12. Rotation: rotated shapes, or only straight lines at any angle?
 
 ### Refusals (Claude Code)
 
