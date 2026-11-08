@@ -145,7 +145,7 @@
         fileName: fileName,
         detail: [when, [latitude, longitude].filter(Boolean).join(', ')].filter(Boolean).join(' · '),
         pin: '',
-        description: '',
+        description: item.description ? String(item.description) : '',
         timestamp: when,
         latitude: latitude,
         longitude: longitude,

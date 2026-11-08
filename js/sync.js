@@ -713,7 +713,8 @@
   }
 
   function collectDistressPhotoId(ids, id) {
-    if (typeof id === 'string' && id.indexOf('ph_') === 0) ids.push(id);
+    if (typeof id !== 'string') return;
+    if (id.indexOf('ph_') === 0 || id.indexOf('vm_') === 0) ids.push(id);
   }
 
   function distressPhotoIds(record) {
@@ -726,6 +727,9 @@
     });
     const quick = Array.isArray(distress.quickCapture) ? distress.quickCapture : [];
     quick.forEach(function (item) { collectDistressPhotoId(ids, item && item.id); });
+    const walk = distress.jobWalk && typeof distress.jobWalk === 'object' ? distress.jobWalk : null;
+    const notes = walk && Array.isArray(walk.notes) ? walk.notes : [];
+    notes.forEach(function (note) { collectDistressPhotoId(ids, note && note.audioId); });
     return Array.from(new Set(ids));
   }
 
@@ -784,12 +788,27 @@
     return Array.from(new Set(ids));
   }
 
+  function repairMediaIds(record) {
+    const doc = record && record.planOfRepair;
+    const pages = doc && Array.isArray(doc.pages) ? doc.pages : [];
+    const ids = [];
+    pages.forEach(function (page) {
+      const bg = page && page.background;
+      if (bg && bg.kind === 'import' && typeof bg.mediaId === 'string' &&
+          bg.mediaId.indexOf('porimp_') === 0) {
+        ids.push(bg.mediaId);
+      }
+    });
+    return Array.from(new Set(ids));
+  }
+
   function mediaIdsForComponent(record, name) {
     if (name === 'plans') return planMediaIds(record);
     if (name === 'distress') return distressPhotoIds(record);
     if (name === 'diagnostics') return diagnosticsFigureMediaIds(record);
     if (name === 'floor') return recoveryPdfIdsFromFloor(record && record.floorSurvey);
     if (name === 'report') return reportMediaIds(record);
+    if (name === 'repair') return repairMediaIds(record);
     return [];
   }
 
@@ -992,11 +1011,26 @@
       });
       const quick = Array.isArray(payload.quickCapture) ? payload.quickCapture : [];
       quick.forEach(function (item) { collectDistressPhotoId(ids, item && item.id); });
+      const walk = payload.jobWalk && typeof payload.jobWalk === 'object' ? payload.jobWalk : null;
+      const notes = walk && Array.isArray(walk.notes) ? walk.notes : [];
+      notes.forEach(function (note) { collectDistressPhotoId(ids, note && note.audioId); });
       return Array.from(new Set(ids));
     }
     if (name === 'diagnostics') return diagnosticsFigureMediaIds(payload);
     if (name === 'floor') return recoveryPdfIdsFromFloor(payload);
     if (name === 'report') return reportMediaIds(payload);
+    if (name === 'repair') {
+      const pages = Array.isArray(payload.pages) ? payload.pages : [];
+      const ids = [];
+      pages.forEach(function (page) {
+        const bg = page && page.background;
+        if (bg && bg.kind === 'import' && typeof bg.mediaId === 'string' &&
+            bg.mediaId.indexOf('porimp_') === 0) {
+          ids.push(bg.mediaId);
+        }
+      });
+      return Array.from(new Set(ids));
+    }
     return [];
   }
 

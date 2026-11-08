@@ -123,12 +123,14 @@
           : (Array.isArray(p.overlays) ? p.overlays : []);
         page.background = p && p.background && typeof p.background === 'object'
           ? {
-              kind: p.background.kind === 'contour' || p.background.kind === 'plan'
+              kind: p.background.kind === 'contour' || p.background.kind === 'plan' ||
+                p.background.kind === 'import'
                 ? p.background.kind
                 : null,
               canvasId: typeof p.background.canvasId === 'string' ? p.background.canvasId : '',
+              mediaId: typeof p.background.mediaId === 'string' ? p.background.mediaId : '',
             }
-          : { kind: null, canvasId: '' };
+          : { kind: null, canvasId: '', mediaId: '' };
         page.rail = Object.assign(page.rail, (p && p.rail) || {});
         if (!page.rail.sheetId) page.rail.sheetId = 'POR-' + (i + 1);
         return page;
@@ -185,7 +187,7 @@
 
     root.innerHTML =
       '<div class="view-bar view-bar--file rb-identity">' +
-      '  <button type="button" id="por-back" class="btn btn--ghost">‹ Customer File</button>' +
+      '  <button type="button" id="por-back" class="btn btn--ghost">‹ TLS</button>' +
       '  <div class="file-identity">' +
       '    <span class="file-identity__name">Plan of Repair</span>' +
       '    <span class="file-identity__address" id="por-file-label"></span>' +
@@ -229,7 +231,9 @@
       '    <div class="por-bg-actions" role="group" aria-label="Background">' +
       '      <button type="button" class="por-linkbtn" id="por-bring-plan">Floor plan</button>' +
       '      <button type="button" class="por-linkbtn" id="por-bring-contour">Contour</button>' +
+      '      <button type="button" class="por-linkbtn" id="por-import-bg">Import drawing</button>' +
       '      <button type="button" class="por-linkbtn" id="por-clear-bg">Clear</button>' +
+      '      <input type="file" id="por-import-file" accept="image/*" hidden>' +
       '    </div>' +
       '    <label class="por-fill-toggle por-fill-toggle--compact"><input type="checkbox" id="por-sandia"> SandiaGEO note</label>' +
       '    <div class="por-inspector" id="por-inspector" hidden>' +
@@ -407,15 +411,38 @@
       if (level) level.textContent = state.zoomMode === 'fit' ? 'Fit' : Math.round(scale * 100) + '%';
     }
 
+    function acceptBgUrl(url) {
+      return typeof url === 'string' && url && (
+        url.indexOf('data:image/') === 0 ||
+        url.indexOf('blob:') === 0 ||
+        url.indexOf('http') === 0
+      );
+    }
+
     function loadBackground() {
       state.bgUrl = '';
+      state.bgMissing = false;
       var page = activePage();
       var bg = page && page.background;
-      if (!bg || !bg.kind || !bg.canvasId || !state.record) return Promise.resolve();
+      if (!bg || !bg.kind || !state.record) return Promise.resolve();
+      if (bg.kind === 'import') {
+        if (!bg.mediaId || !window.ToolboxDB || !window.ToolboxDB.getMedia) {
+          state.bgMissing = true;
+          return Promise.resolve();
+        }
+        return window.ToolboxDB.getMedia(bg.mediaId).then(function (url) {
+          if (acceptBgUrl(url)) state.bgUrl = url;
+          else state.bgMissing = true;
+        }).catch(function () { state.bgMissing = true; });
+      }
+      if (!bg.canvasId) return Promise.resolve();
       var canvas = window.ToolboxPlanSetup && window.ToolboxPlanSetup.canvasById
         ? window.ToolboxPlanSetup.canvasById(state.record, bg.canvasId)
         : null;
-      if (!canvas) return Promise.resolve();
+      if (!canvas) {
+        state.bgMissing = true;
+        return Promise.resolve();
+      }
       var mediaId = null;
       if (bg.kind === 'plan' && canvas.plan && canvas.plan.id) mediaId = canvas.plan.id;
       if (bg.kind === 'contour') {
@@ -424,10 +451,14 @@
           : (canvas.contourLayer || null);
         if (layer && layer.id) mediaId = layer.id;
       }
-      if (!mediaId || !window.ToolboxDB || !window.ToolboxDB.getMedia) return Promise.resolve();
+      if (!mediaId || !window.ToolboxDB || !window.ToolboxDB.getMedia) {
+        state.bgMissing = true;
+        return Promise.resolve();
+      }
       return window.ToolboxDB.getMedia(mediaId).then(function (url) {
-        if (typeof url === 'string' && url.indexOf('data:image/') === 0) state.bgUrl = url;
-      }).catch(function () {});
+        if (acceptBgUrl(url)) state.bgUrl = url;
+        else state.bgMissing = true;
+      }).catch(function () { state.bgMissing = true; });
     }
 
     function renderPageList() {
@@ -529,12 +560,16 @@
       if (state.bgUrl) {
         var img = document.createElement('img');
         img.src = state.bgUrl;
-        img.alt = page.background && page.background.kind === 'contour' ? 'Contour' : 'Floor plan';
+        img.alt = page.background && page.background.kind === 'contour'
+          ? 'Contour'
+          : (page.background && page.background.kind === 'import' ? 'Imported drawing' : 'Floor plan');
         bg.appendChild(img);
       } else {
         var empty = document.createElement('p');
         empty.className = 'por-sheet-bg__empty';
-        empty.textContent = 'Bring in a floor plan or contour from the Toolbox panel.';
+        empty.textContent = state.bgMissing
+          ? 'Referenced background is missing or changed — review before print.'
+          : 'Blank sheet, or bring in a floor plan, contour, or imported drawing.';
         bg.appendChild(empty);
       }
       sheetEl.appendChild(bg);
@@ -550,6 +585,7 @@
       if (state.selectedId) renderSelectionChrome(page);
       applySheetScale();
       wireRailEdits(page);
+      wireOverlayText(page);
       syncInspector();
     }
 
@@ -915,8 +951,41 @@
       var page = activePage();
       var api = overlayApi();
       if (api) page.overlays = api.normalize(overlayList(page));
+      // One-shot draw: return to Select so the next click adjusts, not stacks.
+      if (state.inkTool && state.inkTool !== 'pencil' && state.inkTool !== 'eraser') {
+        setInkTool(null);
+      }
       scheduleSave();
       renderSheet();
+    }
+
+    function commitOverlayText(field) {
+      if (!field || state.readOnly) return false;
+      var ovId = field.getAttribute('data-rb-ov-field');
+      if (!ovId) return false;
+      var page = activePage();
+      var list = overlayList(page);
+      var item = list.find(function (o) { return o.id === ovId; });
+      if (!item || item.kind !== 'text') return false;
+      var textApi = window.ToolboxReportText;
+      var next = textApi && typeof textApi.fromElement === 'function'
+        ? (textApi.compact ? textApi.compact(textApi.fromElement(field)) : textApi.fromElement(field))
+        : (field.textContent || '');
+      if (item.text === next) return false;
+      pushHistory();
+      item.text = next;
+      scheduleSave();
+      return true;
+    }
+
+    function wireOverlayText(page) {
+      sheetEl.querySelectorAll('[data-rb-ov-field]').forEach(function (field) {
+        if (field.getAttribute('data-por-text-wired') === '1') return;
+        field.setAttribute('data-por-text-wired', '1');
+        field.addEventListener('blur', function () {
+          commitOverlayText(field);
+        });
+      });
     }
 
     function eraseAt(event) {
@@ -1187,6 +1256,33 @@
       if (mod && event.key.toLowerCase() === 'c') { if (copySelected()) event.preventDefault(); return; }
       if (mod && event.key.toLowerCase() === 'x') { if (cutSelected()) event.preventDefault(); return; }
       if (mod && event.key.toLowerCase() === 'v') { if (pasteClipboard()) event.preventDefault(); return; }
+      if (mod && event.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        if (copySelected()) pasteClipboard();
+        return;
+      }
+      if (!mod && (event.key === 'ArrowUp' || event.key === 'ArrowDown' ||
+          event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        var nudgeItem = selectedItem();
+        if (!nudgeItem || state.readOnly) return;
+        event.preventDefault();
+        var step = event.shiftKey ? 1 : 0.25;
+        var dx = event.key === 'ArrowLeft' ? -step : (event.key === 'ArrowRight' ? step : 0);
+        var dy = event.key === 'ArrowUp' ? -step : (event.key === 'ArrowDown' ? step : 0);
+        pushHistory();
+        if (nudgeItem.points) {
+          nudgeItem.points = nudgeItem.points.map(function (p) { return [p[0] + dx, p[1] + dy]; });
+        } else if (nudgeItem.x0 != null) {
+          nudgeItem.x0 += dx; nudgeItem.x1 += dx;
+          nudgeItem.y0 += dy; nudgeItem.y1 += dy;
+        } else if (nudgeItem.x != null) {
+          nudgeItem.x = clamp(nudgeItem.x + dx, 0, 100);
+          nudgeItem.y = clamp(nudgeItem.y + dy, 0, 100);
+        }
+        scheduleSave();
+        renderSheet();
+        return;
+      }
       if (mod && event.key.toLowerCase() === ']' && event.shiftKey) {
         event.preventDefault();
         reorderSelected('front');
@@ -1228,56 +1324,59 @@
       setStatus(kind === 'contour' ? 'Contour on sheet' : 'Floor plan on sheet');
     }
 
-    function buildPrintDeck() {
-      var deck = document.createElement('div');
-      deck.className = 'por-print';
-      state.doc.pages.forEach(function (page) {
-        // Render each page into a detached sheet clone by temporarily
-        // switching active page is heavy; print the current sheet clone for
-        // v1 multi-page by walking pages.
-      });
-      var pageEl = document.createElement('div');
-      pageEl.className = 'por-print__page';
-      var clone = sheetEl.cloneNode(true);
-      clone.querySelectorAll('.por-sel, .rb-ov__resize, .rb-ov__remove').forEach(function (el) {
+    function stripPrintChrome(node) {
+      node.querySelectorAll('.por-sel, .rb-ov__resize, .rb-ov__remove').forEach(function (el) {
         el.parentNode && el.parentNode.removeChild(el);
       });
-      clone.querySelectorAll('[contenteditable]').forEach(function (el) {
+      node.querySelectorAll('[contenteditable]').forEach(function (el) {
         el.removeAttribute('contenteditable');
       });
-      clone.style.transform = 'none';
-      pageEl.appendChild(clone);
-      deck.appendChild(pageEl);
-      // Additional pages: quick static renders
-      state.doc.pages.forEach(function (page) {
-        if (page.id === state.doc.activePageId) return;
-        var extra = document.createElement('div');
-        extra.className = 'por-print__page';
-        var art = document.createElement('article');
-        art.className = 'rb-sheet';
-        art.style.width = PAPER_W + 'px';
-        art.style.height = PAPER_H + 'px';
-        art.style.position = 'relative';
-        art.style.background = '#fffaf0';
-        var label = document.createElement('p');
-        label.style.cssText = 'position:absolute;left:24px;top:24px;font:14px Georgia,serif;';
-        label.textContent = (page.title || 'Drawing') + ' — open the page to print its drawing in full.';
-        art.appendChild(label);
-        var rail = renderRail(page);
-        if (rail) art.appendChild(rail);
-        if (overlayApi()) {
-          var layer = overlayApi().renderLayer(overlayList(page), { locked: true });
-          if (layer) art.appendChild(layer);
-        }
-        extra.appendChild(art);
-        deck.appendChild(extra);
+      node.style.transform = 'none';
+    }
+
+    function buildPrintDeck() {
+      var priorActive = state.doc.activePageId;
+      var priorSelected = state.selectedId;
+      var deck = document.createElement('div');
+      deck.className = 'por-print';
+      var chain = Promise.resolve();
+      state.doc.pages.forEach(function (page, index) {
+        chain = chain.then(function () {
+          state.doc.activePageId = page.id;
+          state.selectedId = null;
+          return loadBackground().then(function () {
+            renderSheet();
+            var pageEl = document.createElement('div');
+            pageEl.className = 'por-print__page';
+            if (state.bgMissing && page.background && page.background.kind) {
+              pageEl.setAttribute('data-por-missing-bg', '1');
+              var warn = document.createElement('p');
+              warn.className = 'por-print__warn';
+              warn.textContent = 'Sheet ' + (index + 1) + ': referenced background missing or changed.';
+              pageEl.appendChild(warn);
+            }
+            var clone = sheetEl.cloneNode(true);
+            stripPrintChrome(clone);
+            pageEl.appendChild(clone);
+            deck.appendChild(pageEl);
+          });
+        });
       });
-      return deck;
+      return chain.then(function () {
+        state.doc.activePageId = priorActive;
+        state.selectedId = priorSelected;
+        return loadBackground().then(function () {
+          renderSheet();
+          return deck;
+        });
+      });
     }
 
     function printPdf() {
+      setStatus('Preparing print…');
       return persistNow().then(function () {
-        var deck = buildPrintDeck();
+        return buildPrintDeck();
+      }).then(function (deck) {
         document.body.appendChild(deck);
         document.body.classList.add('is-por-printing');
         var prior = document.title;
@@ -1289,12 +1388,16 @@
           document.body.classList.remove('is-por-printing');
           if (deck.parentNode) deck.parentNode.removeChild(deck);
           document.title = prior;
+          setStatus('Ready');
         }
         window.addEventListener('afterprint', cleanup, { once: true });
         setTimeout(function () {
           try { window.print(); } catch (err) { cleanup(); }
           setTimeout(cleanup, 1500);
         }, 40);
+      }).catch(function (err) {
+        console.error(err);
+        setStatus('Print failed');
       });
     }
 
@@ -1309,17 +1412,19 @@
             setInkTool(name);
           },
           onColor: function (color) {
-            if (color) {
-              state.inkColor = color;
-              if (state.inkFill) state.fillColor = color;
-              var item = selectedItem();
-              if (item && !state.readOnly) {
-                pushHistory();
-                item.color = color;
-                scheduleSave();
-                renderSheet();
-              }
+            if (!color) return;
+            var item = selectedItem();
+            if (item && !state.readOnly) {
+              // Selected-object style only — do not redefine the next tool default.
+              pushHistory();
+              item.color = color;
+              if (item.fill) item.fillColor = color;
+              scheduleSave();
+              renderSheet();
+              return;
             }
+            state.inkColor = color;
+            if (state.inkFill) state.fillColor = color;
           },
           onThick: function (level) {
             state.inkThick = Number(level) || state.inkThick;
@@ -1392,6 +1497,35 @@
     });
     root.querySelector('#por-bring-plan').addEventListener('click', function () { bringBackground('plan'); });
     root.querySelector('#por-bring-contour').addEventListener('click', function () { bringBackground('contour'); });
+    root.querySelector('#por-import-bg').addEventListener('click', function () {
+      if (state.readOnly) return;
+      root.querySelector('#por-import-file').click();
+    });
+    root.querySelector('#por-import-file').addEventListener('change', function (event) {
+      var file = event.target.files && event.target.files[0];
+      event.target.value = '';
+      if (!file || state.readOnly) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        var dataUrl = reader.result;
+        if (typeof dataUrl !== 'string') return;
+        var mediaId = 'porimp_' + uid('bg');
+        window.ToolboxDB.putMedia(mediaId, dataUrl).then(function () {
+          pushHistory();
+          var page = activePage();
+          page.background = { kind: 'import', canvasId: '', mediaId: mediaId };
+          scheduleSave();
+          return loadBackground().then(renderSheet);
+        }).then(function () {
+          setStatus('Imported drawing on sheet');
+        }).catch(function (err) {
+          console.error(err);
+          setStatus('Could not import drawing');
+        });
+      };
+      reader.onerror = function () { setStatus('Could not read that file'); };
+      reader.readAsDataURL(file);
+    });
     root.querySelector('#por-clear-bg').addEventListener('click', function () {
       if (state.readOnly) return;
       pushHistory();

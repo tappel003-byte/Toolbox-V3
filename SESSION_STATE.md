@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 8, 2026** (America/Denver)  
-Updated by: Cursor agent — drop “bots cannot merge main” from outstanding (not the path).
+Updated by: Cursor agent — TLS workspace integrated build (awaiting Claude Code QA + ChatGPT vision).
 
 ---
 
@@ -76,18 +76,20 @@ Always re-check with `git fetch` before claiming tip SHAs.
 
 ## Outstanding — real open work
 
-1. **Cloudflare Access path bypass for `lookbook/*`** on `sync.sandiageotoolbox.com`  
+1. **TLS workspace integrated build** — Cursor implementation on feature branch; Claude Code independent QA, then ChatGPT vision sign-off, then merge to integration when Tim’s process completes. See `docs/tls-build-and-review-brief.md` and `VISION.md` §4a. Do **not** merge until both reviews pass on the same SHA.
+
+2. **Cloudflare Access path bypass for `lookbook/*`** on `sync.sandiageotoolbox.com`  
    - Without this, engineer (and private-window) opens hit Cloudflare login.  
    - Tim’s ops action.  
    - Create/upload/finalize stay Access-gated; only public GET needs the bypass.
 
-2. **Confirm Sync Worker deploy has lookbook create routes**  
+3. **Confirm Sync Worker deploy has lookbook create routes**  
    - If Share still shows **“Not found”**, `POST /lookbook` is not on the live Worker.  
    - Deploy (when Tim authorizes / from an authenticated machine):  
      `npx wrangler@4 deploy --config sync-worker/wrangler.toml`  
    - Runtime secrets attach when an agent **starts**. An already-running VM may not see `CLOUDFLARE_API_TOKEN` even when it is set in Cursor Secrets.
 
-3. **Stale / unrelated open PRs** (don’t confuse with current tip)  
+4. **Stale / unrelated open PRs** (don’t confuse with current tip)  
    - #165 older promote-rules docs (intent largely covered by #196)  
    - #151, #139, #120, and older main-based #97 / #86 / #85  
    - Triage when Tim wants; not blockers for lookbook Access.
