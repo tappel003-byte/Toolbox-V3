@@ -1,5 +1,58 @@
 /* Plan of Repair — Report Builder look, drawing-template workspace. */
 
+.por-view-frame {
+  position: absolute;
+  overflow: hidden;
+  border: 1.5px solid #0b1f33;
+  background: #fff;
+  box-sizing: border-box;
+  z-index: 2;
+}
+
+.por-view-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #f7f0e6;
+}
+
+.por-view-frame__label {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  padding: 1px 6px;
+  font: 600 10px/1.3 system-ui, sans-serif;
+  background: rgba(11, 31, 51, 0.85);
+  color: #f7f0e6;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.por-source-banner {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 12px;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 4px;
+  font: 13px/1.35 system-ui, sans-serif;
+  color: #9a3412;
+}
+
+.por-print__warn {
+  display: none;
+}
+
+
 body.plan-of-repair-open #app-view {
   display: flex;
   flex-direction: column;
@@ -171,29 +224,6 @@ body.plan-of-repair-open #app-view {
 .por-sel__handle--s  { left: 50%; top: 100%; cursor: ns-resize; }
 .por-sel__handle--sw { left: 0; top: 100%; cursor: nesw-resize; }
 .por-sel__handle--w  { left: 0; top: 50%; cursor: ew-resize; }
-
-.por-sel__rot {
-  position: absolute;
-  left: 50%;
-  top: -22px;
-  width: 12px;
-  height: 12px;
-  margin-left: -6px;
-  border: 1px solid #64748b;
-  border-radius: 50%;
-  background: #fff;
-  pointer-events: none;
-}
-
-.por-sel__rot::before {
-  content: '';
-  position: absolute;
-  left: 5px;
-  top: 12px;
-  width: 1px;
-  height: 10px;
-  background: #64748b;
-}
 
 .por-inspector {
   margin-top: 6px;

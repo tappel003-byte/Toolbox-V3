@@ -48,7 +48,8 @@
       id: uid('page'),
       title: title || 'Drawing',
       overlays: [],
-      background: { kind: null, canvasId: '' },
+      background: { kind: null, canvasId: '', mediaId: '', source: null, sourceStatus: null },
+      meta: {},
       rail: {
         title: 'Preliminary Underpinning Plan',
         date: '',
@@ -56,6 +57,18 @@
         sheetId: '',
       },
     };
+  }
+
+  function probeImageSize(url) {
+    return new Promise(function (resolve) {
+      if (!url) { resolve(null); return; }
+      var img = new Image();
+      img.onload = function () {
+        resolve({ width: img.naturalWidth || img.width || 0, height: img.naturalHeight || img.height || 0 });
+      };
+      img.onerror = function () { resolve(null); };
+      img.src = url;
+    });
   }
 
   function migrateLegacy(raw) {
@@ -129,8 +142,19 @@
                 : null,
               canvasId: typeof p.background.canvasId === 'string' ? p.background.canvasId : '',
               mediaId: typeof p.background.mediaId === 'string' ? p.background.mediaId : '',
+              source: p.background.source && typeof p.background.source === 'object'
+                ? {
+                    mediaId: typeof p.background.source.mediaId === 'string' ? p.background.source.mediaId : '',
+                    width: Number(p.background.source.width) || 0,
+                    height: Number(p.background.source.height) || 0,
+                  }
+                : null,
+              sourceStatus: p.background.sourceStatus === 'changed' || p.background.sourceStatus === 'accepted'
+                ? p.background.sourceStatus
+                : null,
             }
-          : { kind: null, canvasId: '', mediaId: '' };
+          : { kind: null, canvasId: '', mediaId: '', source: null, sourceStatus: null };
+        page.meta = p && p.meta && typeof p.meta === 'object' ? Object.assign({}, p.meta) : {};
         page.rail = Object.assign(page.rail, (p && p.rail) || {});
         if (!page.rail.sheetId) page.rail.sheetId = 'POR-' + (i + 1);
         return page;
@@ -234,6 +258,10 @@
       '      <button type="button" class="por-linkbtn" id="por-import-bg">Import drawing</button>' +
       '      <button type="button" class="por-linkbtn" id="por-clear-bg">Clear</button>' +
       '      <input type="file" id="por-import-file" accept="image/*" hidden>' +
+      '    </div>' +
+      '    <div class="por-bg-actions" role="group" aria-label="Views on this sheet">' +
+      '      <button type="button" class="por-linkbtn" id="por-add-view">Add detail view</button>' +
+      '      <button type="button" class="por-linkbtn" id="por-remove-view">Remove detail</button>' +
       '    </div>' +
       '    <label class="por-fill-toggle por-fill-toggle--compact"><input type="checkbox" id="por-sandia"> SandiaGEO note</label>' +
       '    <div class="por-inspector" id="por-inspector" hidden>' +
@@ -419,46 +447,86 @@
       );
     }
 
+    function resolveBackgroundMediaId(page) {
+      var bg = page && page.background;
+      if (!bg || !bg.kind || !state.record) return null;
+      if (bg.kind === 'import') return bg.mediaId || null;
+      if (!bg.canvasId) return null;
+      var canvas = window.ToolboxPlanSetup && window.ToolboxPlanSetup.canvasById
+        ? window.ToolboxPlanSetup.canvasById(state.record, bg.canvasId)
+        : null;
+      if (!canvas) return null;
+      if (bg.kind === 'plan' && canvas.plan && canvas.plan.id) return canvas.plan.id;
+      if (bg.kind === 'contour') {
+        var layer = window.ToolboxPlanSetup.contourLayer
+          ? window.ToolboxPlanSetup.contourLayer(canvas)
+          : (canvas.contourLayer || null);
+        if (layer && layer.id) return layer.id;
+      }
+      return null;
+    }
+
+    function applySourceProbe(page, mediaId, url) {
+      return probeImageSize(url).then(function (size) {
+        if (!page.background) return;
+        var next = {
+          mediaId: mediaId || '',
+          width: size && size.width || 0,
+          height: size && size.height || 0,
+        };
+        var prev = page.background.source;
+        if (!prev || !prev.mediaId) {
+          page.background.source = next;
+          if (page.background.sourceStatus === 'changed') page.background.sourceStatus = null;
+          return;
+        }
+        var changed = prev.mediaId !== next.mediaId ||
+          (prev.width && next.width && prev.width !== next.width) ||
+          (prev.height && next.height && prev.height !== next.height);
+        if (changed) {
+          if (page.background.sourceStatus !== 'accepted') {
+            page.background.sourceStatus = 'changed';
+          }
+          // Keep prev.source until Tim accepts, but track live id for accept.
+          page.background._liveSource = next;
+        } else {
+          page.background.source = next;
+          page.background.sourceStatus = null;
+          delete page.background._liveSource;
+        }
+      });
+    }
+
     function loadBackground() {
       state.bgUrl = '';
       state.bgMissing = false;
       var page = activePage();
       var bg = page && page.background;
       if (!bg || !bg.kind || !state.record) return Promise.resolve();
-      if (bg.kind === 'import') {
-        if (!bg.mediaId || !window.ToolboxDB || !window.ToolboxDB.getMedia) {
-          state.bgMissing = true;
-          return Promise.resolve();
-        }
-        return window.ToolboxDB.getMedia(bg.mediaId).then(function (url) {
-          if (acceptBgUrl(url)) state.bgUrl = url;
-          else state.bgMissing = true;
-        }).catch(function () { state.bgMissing = true; });
-      }
-      if (!bg.canvasId) return Promise.resolve();
-      var canvas = window.ToolboxPlanSetup && window.ToolboxPlanSetup.canvasById
-        ? window.ToolboxPlanSetup.canvasById(state.record, bg.canvasId)
-        : null;
-      if (!canvas) {
-        state.bgMissing = true;
-        return Promise.resolve();
-      }
-      var mediaId = null;
-      if (bg.kind === 'plan' && canvas.plan && canvas.plan.id) mediaId = canvas.plan.id;
-      if (bg.kind === 'contour') {
-        var layer = window.ToolboxPlanSetup.contourLayer
-          ? window.ToolboxPlanSetup.contourLayer(canvas)
-          : (canvas.contourLayer || null);
-        if (layer && layer.id) mediaId = layer.id;
-      }
+      var mediaId = resolveBackgroundMediaId(page);
       if (!mediaId || !window.ToolboxDB || !window.ToolboxDB.getMedia) {
-        state.bgMissing = true;
+        state.bgMissing = !!bg.kind;
         return Promise.resolve();
       }
       return window.ToolboxDB.getMedia(mediaId).then(function (url) {
-        if (acceptBgUrl(url)) state.bgUrl = url;
-        else state.bgMissing = true;
+        if (acceptBgUrl(url)) {
+          state.bgUrl = url;
+          return applySourceProbe(page, mediaId, url);
+        }
+        state.bgMissing = true;
       }).catch(function () { state.bgMissing = true; });
+    }
+
+    function acceptSourceReplacement(page) {
+      if (!page || !page.background) return;
+      if (page.background._liveSource) {
+        page.background.source = page.background._liveSource;
+        delete page.background._liveSource;
+      }
+      page.background.sourceStatus = null;
+      scheduleSave();
+      renderSheet();
+      setStatus('Replacement accepted for this sheet');
     }
 
     function renderPageList() {
@@ -557,22 +625,62 @@
 
       var bg = document.createElement('div');
       bg.className = 'por-sheet-bg';
-      if (state.bgUrl) {
+      var viewsApi = window.ToolboxReportFloorViews;
+      var views = (viewsApi && page.meta) ? viewsApi.viewsFor(page) : [];
+      var multi = views && views.length > 1;
+      if (state.bgUrl && multi && !state.printMode) {
+        views.forEach(function (view, vi) {
+          var frame = view && view.frame ? view.frame : { x: 5, y: 5, w: 40, h: 40 };
+          var host = document.createElement('div');
+          host.className = 'por-view-frame';
+          host.setAttribute('data-por-view', String(vi));
+          host.style.left = frame.x + '%';
+          host.style.top = frame.y + '%';
+          host.style.width = frame.w + '%';
+          host.style.height = frame.h + '%';
+          var img = document.createElement('img');
+          img.src = state.bgUrl;
+          img.alt = 'View ' + (vi + 1);
+          host.appendChild(img);
+          var label = document.createElement('span');
+          label.className = 'por-view-frame__label';
+          label.textContent = vi === 0 ? 'Overall' : ('Detail ' + vi);
+          host.appendChild(label);
+          bg.appendChild(host);
+        });
+      } else if (state.bgUrl) {
         var img = document.createElement('img');
         img.src = state.bgUrl;
         img.alt = page.background && page.background.kind === 'contour'
           ? 'Contour'
           : (page.background && page.background.kind === 'import' ? 'Imported drawing' : 'Floor plan');
         bg.appendChild(img);
-      } else {
+      } else if (!state.printMode) {
         var empty = document.createElement('p');
         empty.className = 'por-sheet-bg__empty';
         empty.textContent = state.bgMissing
-          ? 'Referenced background is missing or changed — review before print.'
+          ? 'Referenced background is missing — review before print.'
           : 'Blank sheet, or bring in a floor plan, contour, or imported drawing.';
         bg.appendChild(empty);
       }
       sheetEl.appendChild(bg);
+
+      if (!state.printMode && page.background && page.background.sourceStatus === 'changed') {
+        var banner = document.createElement('div');
+        banner.className = 'por-source-banner';
+        banner.innerHTML =
+          '<span>Background source changed under this drawing.</span>' +
+          '<button type="button" class="btn btn--secondary" data-por-accept-source="1">Review / accept replacement</button>';
+        var acceptBtn = banner.querySelector('[data-por-accept-source]');
+        if (acceptBtn) {
+          acceptBtn.addEventListener('click', function () {
+            if (state.readOnly) return;
+            pushHistory();
+            acceptSourceReplacement(page);
+          });
+        }
+        sheetEl.appendChild(banner);
+      }
 
       var rail = renderRail(page);
       if (rail) sheetEl.appendChild(rail);
@@ -869,9 +977,6 @@
         handle.setAttribute('data-por-corner', corner);
         sel.appendChild(handle);
       });
-      var rot = document.createElement('span');
-      rot.className = 'por-sel__rot';
-      sel.appendChild(rot);
       sheetEl.appendChild(sel);
     }
 
@@ -1318,9 +1423,24 @@
       }
       pushHistory();
       var page = activePage();
-      page.background = { kind: kind, canvasId: canvasId };
+      page.background = {
+        kind: kind,
+        canvasId: canvasId,
+        mediaId: '',
+        source: null,
+        sourceStatus: null,
+      };
       scheduleSave();
-      loadBackground().then(renderSheet);
+      loadBackground().then(function () {
+        // Fresh place: stamp whatever we just loaded as the sheet source.
+        if (page.background && page.background._liveSource) {
+          page.background.source = page.background._liveSource;
+          delete page.background._liveSource;
+        }
+        page.background.sourceStatus = null;
+        scheduleSave();
+        renderSheet();
+      });
       setStatus(kind === 'contour' ? 'Contour on sheet' : 'Floor plan on sheet');
     }
 
@@ -1331,7 +1451,22 @@
       node.querySelectorAll('[contenteditable]').forEach(function (el) {
         el.removeAttribute('contenteditable');
       });
+      node.querySelectorAll('.por-sheet-bg__empty, .por-source-banner, .por-print__warn').forEach(function (el) {
+        el.parentNode && el.parentNode.removeChild(el);
+      });
       node.style.transform = 'none';
+    }
+
+    function sheetsNeedingSourceReview() {
+      var issues = [];
+      state.doc.pages.forEach(function (page, index) {
+        var bg = page && page.background;
+        if (!bg || !bg.kind) return;
+        if (bg.sourceStatus === 'changed') {
+          issues.push({ index: index + 1, title: page.title || ('Drawing ' + (index + 1)), reason: 'changed' });
+        }
+      });
+      return issues;
     }
 
     function buildPrintDeck() {
@@ -1340,7 +1475,8 @@
       var deck = document.createElement('div');
       deck.className = 'por-print';
       var chain = Promise.resolve();
-      state.doc.pages.forEach(function (page, index) {
+      state.printMode = true;
+      state.doc.pages.forEach(function (page) {
         chain = chain.then(function () {
           state.doc.activePageId = page.id;
           state.selectedId = null;
@@ -1348,13 +1484,6 @@
             renderSheet();
             var pageEl = document.createElement('div');
             pageEl.className = 'por-print__page';
-            if (state.bgMissing && page.background && page.background.kind) {
-              pageEl.setAttribute('data-por-missing-bg', '1');
-              var warn = document.createElement('p');
-              warn.className = 'por-print__warn';
-              warn.textContent = 'Sheet ' + (index + 1) + ': referenced background missing or changed.';
-              pageEl.appendChild(warn);
-            }
             var clone = sheetEl.cloneNode(true);
             stripPrintChrome(clone);
             pageEl.appendChild(clone);
@@ -1363,20 +1492,65 @@
         });
       });
       return chain.then(function () {
+        state.printMode = false;
         state.doc.activePageId = priorActive;
         state.selectedId = priorSelected;
         return loadBackground().then(function () {
           renderSheet();
           return deck;
         });
+      }).catch(function (err) {
+        state.printMode = false;
+        throw err;
       });
     }
 
     function printPdf() {
       setStatus('Preparing print…');
       return persistNow().then(function () {
+        // Probe every sheet so sourceStatus is current before we warn.
+        var prior = state.doc.activePageId;
+        var chain = Promise.resolve();
+        state.doc.pages.forEach(function (page) {
+          chain = chain.then(function () {
+            state.doc.activePageId = page.id;
+            return loadBackground();
+          });
+        });
+        return chain.then(function () {
+          state.doc.activePageId = prior;
+          return loadBackground();
+        });
+      }).then(function () {
+        var issues = sheetsNeedingSourceReview();
+        var missing = [];
+        state.doc.pages.forEach(function (page, index) {
+          var bg = page && page.background;
+          if (!bg || !bg.kind) return;
+          if (!resolveBackgroundMediaId(page)) {
+            missing.push((index + 1) + '. ' + (page.title || 'Drawing'));
+          }
+        });
+        if (issues.length || missing.length) {
+          var lines = [];
+          if (missing.length) {
+            lines.push('Missing background on:\n' + missing.join('\n'));
+          }
+          if (issues.length) {
+            lines.push('Changed source on:\n' + issues.map(function (i) {
+              return i.index + '. ' + i.title;
+            }).join('\n'));
+          }
+          lines.push('\nPrint will keep every sheet intact (marks, frame, title block). Review or accept replacements on those sheets when you are ready.');
+          if (!window.confirm(lines.join('\n'))) {
+            setStatus('Print cancelled');
+            return null;
+          }
+        }
         return buildPrintDeck();
       }).then(function (deck) {
+        if (!deck) return;
+
         document.body.appendChild(deck);
         document.body.classList.add('is-por-printing');
         var prior = document.title;
@@ -1449,7 +1623,7 @@
               return;
             }
             if (kind === 'image') {
-              setStatus('Picture insert uses Paste on the sheet for now');
+              setStatus('Use Import drawing in the Toolbox panel to place a picture on the sheet');
             }
           },
         }
@@ -1513,9 +1687,23 @@
         window.ToolboxDB.putMedia(mediaId, dataUrl).then(function () {
           pushHistory();
           var page = activePage();
-          page.background = { kind: 'import', canvasId: '', mediaId: mediaId };
+          page.background = {
+            kind: 'import',
+            canvasId: '',
+            mediaId: mediaId,
+            source: null,
+            sourceStatus: null,
+          };
           scheduleSave();
-          return loadBackground().then(renderSheet);
+          return loadBackground().then(function () {
+            if (page.background && page.background._liveSource) {
+              page.background.source = page.background._liveSource;
+              delete page.background._liveSource;
+            }
+            page.background.sourceStatus = null;
+            scheduleSave();
+            renderSheet();
+          });
         }).then(function () {
           setStatus('Imported drawing on sheet');
         }).catch(function (err) {
@@ -1526,11 +1714,46 @@
       reader.onerror = function () { setStatus('Could not read that file'); };
       reader.readAsDataURL(file);
     });
+    root.querySelector('#por-add-view').addEventListener('click', function () {
+      if (state.readOnly) return;
+      var page = activePage();
+      if (!page.meta) page.meta = {};
+      var api = window.ToolboxReportFloorViews;
+      if (!api || typeof api.addView !== 'function') {
+        setStatus('View controls unavailable');
+        return;
+      }
+      pushHistory();
+      api.ensurePageViews(page);
+      api.addView(page, 0);
+      scheduleSave();
+      renderSheet();
+      setStatus('Detail view added — arrange overall and detail on this sheet');
+    });
+    root.querySelector('#por-remove-view').addEventListener('click', function () {
+      if (state.readOnly) return;
+      var page = activePage();
+      var api = window.ToolboxReportFloorViews;
+      if (!api || typeof api.removeView !== 'function') return;
+      pushHistory();
+      api.ensurePageViews(page);
+      if ((api.viewsFor(page) || []).length <= 1) {
+        setStatus('Only one view on this sheet');
+        return;
+      }
+      api.removeView(page, (api.viewsFor(page).length - 1));
+      scheduleSave();
+      renderSheet();
+      setStatus('Detail view removed');
+    });
     root.querySelector('#por-clear-bg').addEventListener('click', function () {
       if (state.readOnly) return;
       pushHistory();
-      activePage().background = { kind: null, canvasId: '' };
+      activePage().background = {
+        kind: null, canvasId: '', mediaId: '', source: null, sourceStatus: null,
+      };
       state.bgUrl = '';
+      state.bgMissing = false;
       scheduleSave();
       renderSheet();
     });

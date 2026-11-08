@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 8, 2026** (America/Denver)  
-Updated by: Cursor agent — TLS workspace integrated build (awaiting Claude Code QA + ChatGPT vision).
+Updated by: Cursor agent — TLS workspace QA/QC corrections on `cursor/tls-workspace-2ac5` (Claude Code recheck next; do not merge).
 
 ---
 
@@ -76,7 +76,7 @@ Always re-check with `git fetch` before claiming tip SHAs.
 
 ## Outstanding — real open work
 
-1. **TLS workspace integrated build** — Cursor implementation on feature branch; Claude Code independent QA, then ChatGPT vision sign-off, then merge to integration when Tim’s process completes. See `docs/tls-build-and-review-brief.md` and `VISION.md` §4a. Do **not** merge until both reviews pass on the same SHA.
+1. **TLS workspace integrated build** — PR #204 on `cursor/tls-workspace-2ac5`. First build `1adaf3b`; Claude Code QA found B1–H4 / M1–M3 / lows. Cursor applied corrections (Job Walk media as JPEG/`data:` URLs + sync restore test, recording race, POR print/source/views, Geo visit notes, POR test TLS entry, maps choice, shell `v444`). **Claude Code recheck on the new tip**, then ChatGPT vision, then merge to integration only when Tim’s process completes. See `docs/tls-build-and-review-brief.md` and `VISION.md` §4a. Do **not** merge until both reviews pass on the same SHA.
 
 2. **Cloudflare Access path bypass for `lookbook/*`** on `sync.sandiageotoolbox.com`  
    - Without this, engineer (and private-window) opens hit Cloudflare login.  

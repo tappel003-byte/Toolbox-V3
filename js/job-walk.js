@@ -1,14 +1,17 @@
 // Toolbox — Job Walk (TLS).
 //
 // Phone-friendly capture on an open Customer File with or without a plan.
-// Photos reuse Distress Quick Capture (shared both sides). Visit notes and
-// optional audio live on record.distress.jobWalk so they travel with the
-// distress component. Drawing freedom and POR stay separate.
+// Photos reuse Distress Quick Capture (shared both sides) as JPEG data URLs
+// in pgg_photos_v1 — the same transferable form Sync / Geo Photo folders /
+// Report evidence require. Visit notes and audio live on
+// record.distress.jobWalk (audio also as data URL strings).
 (function () {
   'use strict';
 
   var DISTRESS_DB = 'pgg_photos_v1';
   var DISTRESS_STORE = 'photos';
+  var MAX_PHOTO_DIM = 1600;
+  var JPEG_QUALITY = 0.88;
   var activeMount = null;
 
   function isoNow() { return new Date().toISOString(); }
@@ -49,18 +52,18 @@
     });
   }
 
-  function putDistressBlob(id, blob) {
+  function putDistressValue(id, value) {
     return openDistressDb().then(function (db) {
       return new Promise(function (resolve, reject) {
         var tx = db.transaction(DISTRESS_STORE, 'readwrite');
-        tx.objectStore(DISTRESS_STORE).put(blob, id);
+        tx.objectStore(DISTRESS_STORE).put(value, id);
         tx.oncomplete = function () { db.close(); resolve(id); };
         tx.onerror = function () { db.close(); reject(tx.error); };
       });
     });
   }
 
-  function getDistressBlob(id) {
+  function getDistressValue(id) {
     return openDistressDb().then(function (db) {
       return new Promise(function (resolve, reject) {
         var tx = db.transaction(DISTRESS_STORE, 'readonly');
@@ -74,9 +77,55 @@
     });
   }
 
-  function blobUrl(blob) {
-    if (!blob) return Promise.resolve('');
-    return Promise.resolve(URL.createObjectURL(blob));
+  function readFileAsDataUrl(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(reader.result); };
+      reader.onerror = function () { reject(reader.error || new Error('Could not read file')); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function blobToDataUrl(blob) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(reader.result); };
+      reader.onerror = function () { reject(reader.error || new Error('Could not read recording')); };
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  /** Match Distress Quick Capture: JPEG data URL capped at MAX_PHOTO_DIM. */
+  function fileToJpegDataUrl(file) {
+    return readFileAsDataUrl(file).then(function (raw) {
+      return new Promise(function (resolve, reject) {
+        var img = new Image();
+        img.onload = function () {
+          var w = img.naturalWidth || img.width;
+          var h = img.naturalHeight || img.height;
+          if (!w || !h) {
+            reject(new Error('Could not read image size'));
+            return;
+          }
+          var scale = Math.min(1, MAX_PHOTO_DIM / Math.max(w, h));
+          var nw = Math.max(1, Math.round(w * scale));
+          var nh = Math.max(1, Math.round(h * scale));
+          var c = document.createElement('canvas');
+          c.width = nw;
+          c.height = nh;
+          c.getContext('2d').drawImage(img, 0, 0, nw, nh);
+          resolve(c.toDataURL('image/jpeg', JPEG_QUALITY));
+        };
+        img.onerror = function () { reject(new Error('Could not decode image')); };
+        img.src = raw;
+      });
+    });
+  }
+
+  function mediaSrc(value) {
+    if (typeof value === 'string' && value.indexOf('data:') === 0) return value;
+    if (value instanceof Blob) return URL.createObjectURL(value);
+    return '';
   }
 
   function unmount() {
@@ -212,10 +261,11 @@
         img.alt = item.description || 'Job Walk photo';
         img.className = 'jw-card__img';
         card.appendChild(img);
-        getDistressBlob(item.id).then(blobUrl).then(function (url) {
-          if (!url) return;
-          state.objectUrls.push(url);
-          img.src = url;
+        getDistressValue(item.id).then(function (value) {
+          var src = mediaSrc(value);
+          if (!src) return;
+          if (src.indexOf('blob:') === 0) state.objectUrls.push(src);
+          img.src = src;
         }).catch(function () {});
         var desc = document.createElement('textarea');
         desc.className = 'jw-card__desc';
@@ -261,10 +311,11 @@
           var audio = document.createElement('audio');
           audio.controls = true;
           audio.className = 'jw-note__audio';
-          getDistressBlob(note.audioId).then(blobUrl).then(function (url) {
-            if (!url) return;
-            state.objectUrls.push(url);
-            audio.src = url;
+          getDistressValue(note.audioId).then(function (value) {
+            var src = mediaSrc(value);
+            if (!src) return;
+            if (src.indexOf('blob:') === 0) state.objectUrls.push(src);
+            audio.src = src;
           }).catch(function () {});
           row.appendChild(audio);
         }
@@ -287,13 +338,15 @@
       files.forEach(function (file) {
         chain = chain.then(function () {
           var id = 'ph_' + uid('jw');
-          return putDistressBlob(id, file).then(function () {
-            ensureDistress(state.record).quickCapture.push({
-              id: id,
-              ts: isoNow(),
-              folder: 'Job Walk',
-              description: '',
-              sourceName: file.name || '',
+          return fileToJpegDataUrl(file).then(function (dataUrl) {
+            return putDistressValue(id, dataUrl).then(function () {
+              ensureDistress(state.record).quickCapture.push({
+                id: id,
+                ts: isoNow(),
+                folder: 'Job Walk',
+                description: '',
+                sourceName: file.name || '',
+              });
             });
           });
         });
@@ -348,7 +401,6 @@
       var speaker = root.querySelector('#jw-speaker').value === 'homeowner'
         ? 'homeowner'
         : 'investigator';
-      var typed = (root.querySelector('#jw-note-text').value || '').trim();
       navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
         state.stream = stream;
         state.chunks = [];
@@ -361,19 +413,30 @@
           return;
         }
         state.recorder = recorder;
-        state.recordingFor = { speaker: speaker, text: typed };
+        state.recordingFor = { speaker: speaker, text: '' };
         recorder.ondataavailable = function (ev) {
           if (ev.data && ev.data.size) state.chunks.push(ev.data);
         };
         recorder.onstop = function () {
-          var blob = new Blob(state.chunks, { type: recorder.mimeType || 'audio/webm' });
+          // Capture locals before any async work; text at Stop time includes
+          // anything typed while the mic was rolling.
+          var savedSpeaker = (state.recordingFor && state.recordingFor.speaker) || 'investigator';
+          var savedText = (root.querySelector('#jw-note-text').value || '').trim();
+          var chunks = state.chunks.slice();
+          var mime = recorder.mimeType || 'audio/webm';
+          state.recorder = null;
+          state.chunks = [];
+          state.recordingFor = null;
+          var blob = new Blob(chunks, { type: mime });
           var audioId = 'vm_' + uid('jw');
-          putDistressBlob(audioId, blob).then(function () {
+          blobToDataUrl(blob).then(function (dataUrl) {
+            return putDistressValue(audioId, dataUrl);
+          }).then(function () {
             ensureDistress(state.record).jobWalk.notes.push({
               id: uid('note'),
               at: isoNow(),
-              text: (state.recordingFor && state.recordingFor.text) || '',
-              speaker: (state.recordingFor && state.recordingFor.speaker) || 'investigator',
+              text: savedText,
+              speaker: savedSpeaker,
               audioId: audioId,
             });
             root.querySelector('#jw-note-text').value = '';
@@ -382,9 +445,6 @@
             console.error(err);
             setStatus('Could not save recording — typed notes still work');
           });
-          state.recorder = null;
-          state.chunks = [];
-          state.recordingFor = null;
         };
         recorder.start();
         recBtn.hidden = true;
@@ -440,5 +500,13 @@
   window.ToolboxJobWalk = {
     mount: mount,
     unmount: unmount,
+    // Test/helpers: same compression path Distress Quick Capture uses.
+    _test: {
+      fileToJpegDataUrl: fileToJpegDataUrl,
+      blobToDataUrl: blobToDataUrl,
+      putDistressValue: putDistressValue,
+      getDistressValue: getDistressValue,
+      MAX_PHOTO_DIM: MAX_PHOTO_DIM,
+    },
   };
 })();

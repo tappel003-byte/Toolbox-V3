@@ -92,10 +92,51 @@ check('Job Walk saves typed visit note', true);
 
 await page.click('#jw-back');
 await page.waitForSelector('.cf-home--tls');
+
+// Seed after leaving Job Walk so its persist-on-back cannot overwrite the row.
+const photoSeed = await page.evaluate(async () => {
+  const id = 'ph_jw-smoke-photo';
+  const canvas = document.createElement('canvas');
+  canvas.width = 120;
+  canvas.height = 80;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#c45c26';
+  ctx.fillRect(0, 0, 120, 80);
+  ctx.fillStyle = '#fff';
+  ctx.font = '16px sans-serif';
+  ctx.fillText('JW', 40, 48);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+  await window.ToolboxJobWalk._test.putDistressValue(id, dataUrl);
+  const rec = await window.ToolboxDB.getCustomerFile('tls-smoke-1');
+  if (!rec.distress) rec.distress = { pins: [], quickCapture: [], jobWalk: { notes: [] } };
+  if (!Array.isArray(rec.distress.quickCapture)) rec.distress.quickCapture = [];
+  rec.distress.quickCapture.push({
+    id: id,
+    ts: new Date().toISOString(),
+    folder: 'Job Walk',
+    description: 'Smoke porch',
+    sourceName: 'jw-smoke.jpg',
+  });
+  rec.distress.updatedAt = new Date().toISOString();
+  await window.ToolboxDB.saveCustomerFile(rec);
+  const stored = await window.ToolboxJobWalk._test.getDistressValue(id);
+  return {
+    id,
+    isDataUrl: typeof stored === 'string' && stored.indexOf('data:image/jpeg') === 0,
+  };
+});
+check('Job Walk photo stored as JPEG data URL', photoSeed.isDataUrl, JSON.stringify(photoSeed));
+
 await page.click('[data-tls-app="job-walk"]');
 await page.waitForSelector('.jw-note__text');
 const noteText = await page.$eval('.jw-note__text', (el) => el.textContent);
 check('Job Walk note survives reopen', /front door sticks/.test(noteText));
+await page.waitForSelector('.jw-card__img');
+const jwImgOk = await page.waitForFunction(() => {
+  const img = document.querySelector('.jw-card__img');
+  return img && img.naturalWidth > 0 && /^data:image\//.test(img.src);
+}, { timeout: 5000 }).then(() => true).catch(() => false);
+check('Job Walk photo renders in Job Walk grid', jwImgOk);
 
 const shared = await page.evaluate(async () => {
   const rec = await window.ToolboxDB.getCustomerFile('tls-smoke-1');
@@ -130,6 +171,29 @@ const onGeo = await page.evaluate(() =>
   !document.body.classList.contains('tls-side')
 );
 check('Geo side shows same customer', /TLS Smoke/.test(name) && onGeo, name);
+
+await page.waitForSelector('#home-visit-notes:not([hidden])');
+check('Geo Visit notes control present', !!(await page.$('#home-visit-notes:not([hidden])')));
+await page.click('#home-visit-notes');
+await page.waitForSelector('#visit-notes-reader .jw-note__text');
+const geoNote = await page.$eval('#visit-notes-reader .jw-note__text', (el) => el.textContent);
+check('Geo side can read Job Walk visit notes', /front door sticks/.test(geoNote), geoNote);
+await page.click('#visit-notes-reader .btn');
+
+await page.waitForSelector('#home-photo-folders');
+await page.click('#home-photo-folders');
+await page.waitForSelector('.photo-folders__card img');
+const folderImg = await page.waitForFunction(() => {
+  const imgs = Array.from(document.querySelectorAll('.photo-folders__card img'));
+  return imgs.some((img) => img.naturalWidth > 0 && /^data:image\//.test(img.currentSrc || img.src));
+}, { timeout: 5000 }).then(() => true).catch(() => false);
+check('Job Walk photo renders in Geo Photo folders', folderImg);
+await page.screenshot({ path: `${OUT}/tls-geo-photo-folders.png`, fullPage: true });
+await page.evaluate(() => {
+  if (window.ToolboxRecoveredPhotos && typeof window.ToolboxRecoveredPhotos.close === 'function') {
+    window.ToolboxRecoveredPhotos.close();
+  }
+});
 
 // Open in TLS from cabinet •••
 await page.goto(BASE + '#/', { waitUntil: 'networkidle0' });

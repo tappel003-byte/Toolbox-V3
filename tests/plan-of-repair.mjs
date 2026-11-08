@@ -109,20 +109,33 @@ check('yellow in overlay palette', boot.colors.indexOf('#eab308') !== -1, boot.c
 check('repair sync component', boot.components.indexOf('repair') !== -1);
 
 await page.goto(BASE + '#/file/por-draw', { waitUntil: 'networkidle0' });
-await page.waitForSelector('#home-repair-top');
-const home = await page.evaluate(() => {
-  const btn = document.querySelector('#home-repair-top');
+await page.waitForSelector('#home-side-geo.is-active, #home-card-name');
+const geoHome = await page.evaluate(() => {
+  const geoRepair = document.querySelector('#home-repair-top');
   return {
-    label: btn ? btn.textContent.trim() : '',
-    accent: btn ? btn.classList.contains('btn--accent') : false,
-    apps: Array.from(document.querySelectorAll('.cf-app-btn')).map((b) => b.getAttribute('data-app')),
+    geoHidden: !geoRepair || geoRepair.hidden === true ||
+      getComputedStyle(geoRepair).display === 'none',
+    apps: Array.from(document.querySelectorAll('.cf-app-btn[data-app]'))
+      .map((b) => b.getAttribute('data-app')),
   };
 });
-check('Plan of Repair button present', home.label === 'Plan of Repair');
-check('Plan of Repair button more pronounced', home.accent);
-check('four workspace cards unchanged', home.apps.join(',') === 'distress,floor,diagnostics,report');
+check('Geo Plan of Repair shortcut hidden', geoHome.geoHidden);
+check('four workspace cards unchanged', geoHome.apps.join(',') === 'distress,floor,diagnostics,report');
 
-await page.click('#home-repair-top');
+// POR opens from the TLS side.
+await page.click('#home-side-tls');
+await page.waitForSelector('.cf-home--tls [data-tls-app="repair"]');
+const tlsHome = await page.evaluate(() => {
+  const tlsBtn = document.querySelector('.cf-home--tls [data-tls-app="repair"]');
+  return {
+    label: tlsBtn
+      ? ((tlsBtn.querySelector('.cf-app-btn__name') || tlsBtn).textContent || '').trim()
+      : '',
+  };
+});
+check('Plan of Repair on TLS side', tlsHome.label === 'Plan of Repair', tlsHome.label);
+
+await page.click('.cf-home--tls [data-tls-app="repair"]');
 await page.waitForSelector('.por-shell .rb-sheet');
 await page.waitForFunction(() => /Ready|Saved/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 8000 }).catch(() => {});
 

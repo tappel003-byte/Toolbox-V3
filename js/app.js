@@ -354,41 +354,155 @@
     } catch (err) { /* ignore */ }
   }
 
-  function mapsPreference() {
-    return window.ToolboxDB && typeof window.ToolboxDB.getSetting === 'function'
-      ? window.ToolboxDB.getSetting('mapsPreference')
-      : Promise.resolve(null);
+  function mapsPreferenceSync() {
+    try {
+      const v = localStorage.getItem('toolbox.mapsPreference');
+      return v === 'apple' || v === 'google' ? v : null;
+    } catch (err) {
+      return null;
+    }
   }
 
   function rememberMapsPreference(value) {
-    if (!window.ToolboxDB || typeof window.ToolboxDB.putSetting !== 'function') {
-      return Promise.resolve();
+    try {
+      localStorage.setItem('toolbox.mapsPreference', value);
+    } catch (err) { /* ignore */ }
+    if (window.ToolboxDB && typeof window.ToolboxDB.putSetting === 'function') {
+      window.ToolboxDB.putSetting('mapsPreference', value).catch(function () {});
     }
-    return window.ToolboxDB.putSetting('mapsPreference', value);
   }
 
+  function openMapsUrl(kind, address) {
+    const encoded = encodeURIComponent(String(address || '').trim());
+    if (!encoded) return;
+    if (kind === 'apple') {
+      window.open('https://maps.apple.com/?daddr=' + encoded, '_blank', 'noopener');
+      return;
+    }
+    window.open('https://www.google.com/maps/dir/?api=1&destination=' + encoded, '_blank', 'noopener');
+  }
+
+  function openVisitNotesReader(record) {
+    const notes = record && record.distress && record.distress.jobWalk &&
+      Array.isArray(record.distress.jobWalk.notes)
+      ? record.distress.jobWalk.notes.slice().reverse()
+      : [];
+    const existing = document.getElementById('visit-notes-reader');
+    if (existing) existing.parentNode.removeChild(existing);
+    const overlay = document.createElement('div');
+    overlay.id = 'visit-notes-reader';
+    overlay.className = 'maps-choice';
+    const card = document.createElement('div');
+    card.className = 'maps-choice__card';
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-label', 'Visit notes');
+    const title = document.createElement('p');
+    title.className = 'maps-choice__title';
+    title.textContent = 'Visit notes';
+    card.appendChild(title);
+    const list = document.createElement('div');
+    list.className = 'jw-notes';
+    if (!notes.length) {
+      const empty = document.createElement('p');
+      empty.className = 'jw-empty';
+      empty.textContent = 'No visit notes on this Customer File.';
+      list.appendChild(empty);
+    } else {
+      notes.forEach(function (note) {
+        const article = document.createElement('article');
+        article.className = 'jw-note';
+        const head = document.createElement('header');
+        head.className = 'jw-note__head';
+        const who = note.speaker === 'homeowner' ? 'Homeowner' : 'Investigator';
+        const when = note.at ? new Date(note.at).toLocaleString() : '';
+        head.textContent = who + (when ? ' · ' + when : '');
+        article.appendChild(head);
+        if (note.text) {
+          const text = document.createElement('p');
+          text.className = 'jw-note__text';
+          text.textContent = note.text;
+          article.appendChild(text);
+        }
+        if (note.audioId) {
+          const audio = document.createElement('audio');
+          audio.controls = true;
+          audio.preload = 'none';
+          audio.className = 'jw-note__audio';
+          var getAudio = window.ToolboxJobWalk && window.ToolboxJobWalk._test &&
+            typeof window.ToolboxJobWalk._test.getDistressValue === 'function'
+            ? window.ToolboxJobWalk._test.getDistressValue
+            : null;
+          if (getAudio) {
+            getAudio(note.audioId).then(function (value) {
+              if (typeof value === 'string' && value.indexOf('data:') === 0) {
+                audio.src = value;
+              } else if (value instanceof Blob) {
+                audio.src = URL.createObjectURL(value);
+              }
+            }).catch(function () {});
+          }
+          article.appendChild(audio);
+        }
+        list.appendChild(article);
+      });
+    }
+    card.appendChild(list);
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn btn--secondary';
+    closeBtn.textContent = 'Close';
+    closeBtn.addEventListener('click', function () {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    });
+    card.appendChild(closeBtn);
+    overlay.appendChild(card);
+    overlay.addEventListener('click', function (event) {
+      if (event.target === overlay) {
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      }
+    });
+    document.body.appendChild(overlay);
+  }
+
+  /** Must run inside the user tap — no async before window.open (iPhone Safari). */
   function openPropertyDirections(address) {
     const dest = String(address || '').trim();
     if (!dest) return;
-    mapsPreference().then(function (pref) {
-      function go(kind) {
-        const encoded = encodeURIComponent(dest);
-        if (kind === 'apple') {
-          window.open('https://maps.apple.com/?daddr=' + encoded, '_blank', 'noopener');
-          return;
-        }
-        window.open('https://www.google.com/maps/dir/?api=1&destination=' + encoded, '_blank', 'noopener');
+    const pref = mapsPreferenceSync();
+    if (pref === 'apple' || pref === 'google') {
+      openMapsUrl(pref, dest);
+      return;
+    }
+    const existing = document.getElementById('maps-choice');
+    if (existing) existing.parentNode.removeChild(existing);
+    const overlay = document.createElement('div');
+    overlay.id = 'maps-choice';
+    overlay.className = 'maps-choice';
+    overlay.innerHTML =
+      '<div class="maps-choice__card" role="dialog" aria-label="Directions app">' +
+      '  <p class="maps-choice__title">Open directions with</p>' +
+      '  <button type="button" class="btn btn--accent" data-maps="apple">Apple Maps</button>' +
+      '  <button type="button" class="btn btn--secondary" data-maps="google">Google Maps</button>' +
+      '  <button type="button" class="btn btn--quiet" data-maps="cancel">Cancel</button>' +
+      '</div>';
+    overlay.addEventListener('click', function (event) {
+      const btn = event.target.closest('[data-maps]');
+      if (!btn) return;
+      const kind = btn.getAttribute('data-maps');
+      if (kind === 'apple' || kind === 'google') {
+        rememberMapsPreference(kind);
+        openMapsUrl(kind, dest);
       }
-      if (pref === 'apple' || pref === 'google') {
-        go(pref);
-        return;
-      }
-      const choice = window.confirm(
-        'Open directions in Apple Maps?\n\nOK = Apple Maps\nCancel = Google Maps\n\nYour choice is remembered on this device.'
-      );
-      const kind = choice ? 'apple' : 'google';
-      rememberMapsPreference(kind).then(function () { go(kind); }, function () { go(kind); });
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
     });
+    document.body.appendChild(overlay);
+  }
+
+  function changeMapsPreference() {
+    try { localStorage.removeItem('toolbox.mapsPreference'); } catch (err) { /* ignore */ }
+    if (window.ToolboxDB && typeof window.ToolboxDB.putSetting === 'function') {
+      window.ToolboxDB.putSetting('mapsPreference', '').catch(function () {});
+    }
   }
 
   function parseRoute() {
@@ -1874,7 +1988,11 @@
       (tls ? '      <img class="cf-home__brandmark" src="brand/tls-foundations.jpg" alt="TLS Foundations">' : '') +
       '      <h1 class="cf-home__name" id="home-card-name"></h1>' +
       '      <p class="cf-home__address" id="home-card-address"></p>' +
-      '      <button type="button" class="cf-directions" id="home-directions" hidden>Directions</button>' +
+      '      <div class="cf-home__dir-row">' +
+      '        <button type="button" class="cf-directions" id="home-directions" hidden>Directions</button>' +
+      '        <button type="button" class="cf-directions-change" id="home-directions-pref" hidden>Change maps app</button>' +
+      '        <button type="button" class="cf-visit-notes-btn" id="home-visit-notes" hidden>Visit notes</button>' +
+      '      </div>' +
       '      <div class="cf-home__badges">' +
       '        <span class="status-badge" id="home-contact-badge">Customer details</span>' +
       '        <span class="status-badge" id="home-plan-badge">Checking plans…</span>' +
@@ -1932,6 +2050,8 @@
     const cardName = app.querySelector('#home-card-name');
     const cardAddress = app.querySelector('#home-card-address');
     const directionsBtn = app.querySelector('#home-directions');
+    const directionsPrefBtn = app.querySelector('#home-directions-pref');
+    const visitNotesBtn = app.querySelector('#home-visit-notes');
     const cardMeta = app.querySelector('#home-card-meta');
     const contactBadge = app.querySelector('#home-contact-badge');
     const planBadge = app.querySelector('#home-plan-badge');
@@ -1987,6 +2107,18 @@
       directionsBtn.addEventListener('click', function () {
         if (!currentRecord) return;
         openPropertyDirections(currentRecord.propertyAddress);
+      });
+    }
+    if (directionsPrefBtn) {
+      directionsPrefBtn.addEventListener('click', function () {
+        changeMapsPreference();
+        if (currentRecord) openPropertyDirections(currentRecord.propertyAddress);
+      });
+    }
+    if (visitNotesBtn) {
+      visitNotesBtn.addEventListener('click', function () {
+        if (!currentRecord) return;
+        openVisitNotesReader(currentRecord);
       });
     }
     function editFile(section) {
@@ -2097,6 +2229,19 @@
       if (directionsBtn) {
         directionsBtn.hidden = !hasAddress;
         directionsBtn.disabled = !hasAddress;
+      }
+      if (directionsPrefBtn) {
+        directionsPrefBtn.hidden = !hasAddress;
+      }
+      if (visitNotesBtn) {
+        const notes = record.distress && record.distress.jobWalk &&
+          Array.isArray(record.distress.jobWalk.notes)
+          ? record.distress.jobWalk.notes
+          : [];
+        visitNotesBtn.hidden = !notes.length;
+        if (notes.length) {
+          visitNotesBtn.textContent = 'Visit notes (' + notes.length + ')';
+        }
       }
       contactBadge.textContent = hasName && hasAddress ? 'Customer details ready' : 'Customer details started';
       contactBadge.classList.toggle('is-ready', hasName && hasAddress);

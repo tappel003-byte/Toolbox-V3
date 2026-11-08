@@ -88,10 +88,15 @@ function cabinet(seed) {
       etag: etagOf(found.body),
       httpEtag: '"' + etagOf(found.body) + '"',
       size: found.body.length,
-      httpMetadata: { contentType: 'application/json' },
+      httpMetadata: {
+        contentType: found.contentType || 'application/json',
+      },
       async json() { return JSON.parse(found.body); },
       async text() { return found.body; },
-      async arrayBuffer() { return new TextEncoder().encode(found.body).buffer; },
+      async arrayBuffer() {
+        // Media PUTs store binary via Buffer.toString('binary'); decode the same way.
+        return Buffer.from(found.body, 'binary').buffer;
+      },
     };
   };
   return {
@@ -107,9 +112,15 @@ function cabinet(seed) {
       const noneMatch = only && typeof only.get === 'function'
         ? only.get('If-None-Match') : null;
       if (noneMatch === '*' && found) return null;
-      const body = typeof value === 'string' ? value
-        : (value instanceof ArrayBuffer ? Buffer.from(value).toString('binary') : String(value));
-      store.set(key, { body });
+      let body;
+      if (typeof value === 'string') body = value;
+      else if (value instanceof ArrayBuffer) body = Buffer.from(value).toString('binary');
+      else if (ArrayBuffer.isView(value)) body = Buffer.from(value.buffer, value.byteOffset, value.byteLength).toString('binary');
+      else body = String(value);
+      const contentType = opts && opts.httpMetadata && opts.httpMetadata.contentType
+        ? opts.httpMetadata.contentType
+        : 'application/json';
+      store.set(key, { body, contentType });
       return { key, etag: etagOf(body) };
     },
     async delete(key) { store.delete(key); },
@@ -129,11 +140,52 @@ function cabinet(seed) {
  * this call is about. Nothing between them reimplements a route, a status
  * code or a conditional write.
  */
+/** Minimal IndexedDB so distress photos (pgg_photos_v1) round-trip in Node. */
+function makeFakeIndexedDB(photos) {
+  return {
+    open(name) {
+      const request = { result: null, error: null, onupgradeneeded: null, onsuccess: null, onerror: null };
+      queueMicrotask(() => {
+        if (name !== 'pgg_photos_v1') {
+          request.error = new Error('unexpected db ' + name);
+          if (request.onerror) request.onerror();
+          return;
+        }
+        const db = {
+          objectStoreNames: { contains: (n) => n === 'photos' },
+          close() {},
+          transaction() {
+            const tx = { oncomplete: null, onerror: null, error: null };
+            tx.objectStore = () => ({
+              get(id) {
+                const req = { result: photos.has(id) ? photos.get(id) : null, onsuccess: null, onerror: null };
+                queueMicrotask(() => { if (req.onsuccess) req.onsuccess(); });
+                return req;
+              },
+              put(value, id) {
+                photos.set(id, value);
+                return { onsuccess: null, onerror: null };
+              },
+            });
+            queueMicrotask(() => { if (tx.oncomplete) tx.oncomplete(); });
+            return tx;
+          },
+        };
+        request.result = db;
+        if (request.onupgradeneeded) request.onupgradeneeded();
+        if (request.onsuccess) request.onsuccess();
+      });
+      return request;
+    },
+  };
+}
+
 function loadClient(bucket, deviceId, envOverrides) {
   const code = readFileSync(new URL('../js/sync.js', import.meta.url), 'utf8');
   const localStore = new Map([['toolbox.deviceId', deviceId]]);
   const files = new Map();
   const media = new Map();
+  const distressPhotos = new Map();
   const workerEnv = Object.assign({}, accessEnv, envOverrides || {});
   const sandbox = {
     console,
@@ -141,12 +193,16 @@ function loadClient(bucket, deviceId, envOverrides) {
     btoa: (s) => Buffer.from(s, 'binary').toString('base64'),
     setTimeout,
     clearTimeout,
+    queueMicrotask,
     AbortController,
     Request,
     Response,
     Headers,
     TextEncoder,
     TextDecoder,
+    Uint8Array,
+    ArrayBuffer,
+    Buffer,
     crypto,
     navigator: { onLine: true },
     requests: [],
@@ -157,6 +213,8 @@ function loadClient(bucket, deviceId, envOverrides) {
     },
     files,
     media,
+    distressPhotos,
+    indexedDB: makeFakeIndexedDB(distressPhotos),
   };
   sandbox.window = sandbox;
   sandbox.self = sandbox;
@@ -565,6 +623,92 @@ const readIndex = (bucket) => {
       rev: after.floorUpdatedAt, key: after.components.floor.key,
       wantedRev: floorRev, wantedKey: floorKey,
     }));
+}
+
+// ========== Job Walk photo + audio note sync as transferable data URLs
+//
+// Job Walk stores both as data URL strings in pgg_photos_v1 (same form as
+// Distress Quick Capture). A Blob would throw "Media is not in a transferable
+// form" and block Sync Now / Check In / Check Out / quiet mirror for the whole
+// Customer File. Device B must restore both bytes.
+{
+  const PHOTO_ID = 'ph_jw-sync-photo';
+  const AUDIO_ID = 'vm_jw-sync-audio';
+  // Tiny JPEG (1×1) and a tiny audio data URL — transferable strings.
+  const PHOTO_DATA = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGfAP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAQUCf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQMBAT8Bf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQIBAT8Bf//Z';
+  const AUDIO_DATA = 'data:audio/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAHTEU2bdLpNu4tTq4QVSalmU6yBoUuwAAAAAAAAGF13';
+
+  const bucket = cabinet({});
+  const first = loadClient(bucket, 'device-jw-a');
+  const withWalk = record();
+  withWalk.distress = {
+    updatedAt: '2026-10-23T09:20:00.000Z',
+    pins: [],
+    mode: 'internal',
+    quickCapture: [{
+      id: PHOTO_ID,
+      ts: '2026-10-23T09:15:00.000Z',
+      folder: 'Job Walk',
+      description: 'Front porch',
+      sourceName: 'jw-front.jpg',
+    }],
+    jobWalk: {
+      updatedAt: '2026-10-23T09:18:00.000Z',
+      notes: [{
+        id: 'note-jw-1',
+        at: '2026-10-23T09:18:00.000Z',
+        text: 'Homeowner said the crack opened last winter',
+        speaker: 'homeowner',
+        audioId: AUDIO_ID,
+      }],
+    },
+  };
+  await first.Sync._test.putLocalMedia(PHOTO_ID, PHOTO_DATA, 'distress');
+  await first.Sync._test.putLocalMedia(AUDIO_ID, AUDIO_DATA, 'distress');
+  first.sandbox.requests.length = 0;
+  let syncErr = null;
+  let result;
+  try {
+    result = await first.Sync._test.syncOneRecord(withWalk, null, {});
+  } catch (err) {
+    syncErr = err;
+  }
+  check('Job Walk photo+audio sync does not throw transferable-form error',
+    !syncErr, syncErr ? String(syncErr.message || syncErr) : '');
+  check('Job Walk media pushed with the Customer File',
+    !!result && result.changed === true &&
+    first.sandbox.requests.every((r) => r.status < 400),
+    JSON.stringify({
+      changed: result && result.changed,
+      refused: first.sandbox.requests.filter((r) => r.status >= 400),
+    }));
+  check('remote Cabinet holds both Job Walk media objects',
+    bucket.store.has('media/' + PHOTO_ID) && bucket.store.has('media/' + AUDIO_ID),
+    [...bucket.store.keys()].filter((k) => k.indexOf('media/') === 0).join(','));
+
+  const second = loadClient(bucket, 'device-jw-b');
+  const remote = await (await second.sandbox.fetch(
+    'https://sync.example/files/' + ID + '/index')).json();
+  const shell = second.Sync._test.shellForRemotePull(ID, remote);
+  await second.Sync._test.syncOneRecord(shell, remote, {});
+  const landed = await second.sandbox.ToolboxDB.getCustomerFile(ID);
+  const photoLocal = second.sandbox.distressPhotos.get(PHOTO_ID);
+  const audioLocal = second.sandbox.distressPhotos.get(AUDIO_ID);
+  check('second device restores Job Walk quickCapture + visit note metadata',
+    !!landed && !!landed.distress &&
+    (landed.distress.quickCapture || []).some((q) => q.id === PHOTO_ID && q.folder === 'Job Walk') &&
+    landed.distress.jobWalk &&
+    (landed.distress.jobWalk.notes || []).some((n) => n.audioId === AUDIO_ID && /crack/.test(n.text || '')),
+    JSON.stringify(landed && landed.distress && {
+      quick: landed.distress.quickCapture,
+      notes: landed.distress.jobWalk && landed.distress.jobWalk.notes,
+    }));
+  check('second device restores Job Walk photo as a JPEG data URL',
+    typeof photoLocal === 'string' && photoLocal.indexOf('data:image/jpeg') === 0,
+    typeof photoLocal === 'string' ? photoLocal.slice(0, 40) : String(photoLocal));
+  check('second device restores Job Walk audio as a data URL string',
+    typeof audioLocal === 'string' && audioLocal.indexOf('data:audio/') === 0,
+    typeof audioLocal === 'string' ? audioLocal.slice(0, 40) : String(audioLocal));
 }
 
 globalThis.fetch = realFetch;
