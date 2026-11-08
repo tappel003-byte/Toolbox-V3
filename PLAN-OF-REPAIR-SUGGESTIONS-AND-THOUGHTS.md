@@ -137,17 +137,166 @@ On a real Customer File, with a real plan/contour: place marks, move them, nudge
 6. Is Print/PDF “good enough” export for now if editing feel is fixed?
 7. Any mark types that must look identical to legacy pier symbols from migrated docs?
 
+### Cursor cut-and-paste prompt (for Joyce / ChatGPT / other models)
+
+Tim shares this packet so other models can notate Cursor’s position without rewriting it. Paste the fenced block below as-is into ChatGPT / Joyce (or give Claude Code the same text).
+
+````
+ROLE FOR YOU (ChatGPT / Joyce)
+You are a notation and synthesis aide. Tim will collect suggestions from several AI models (Cursor, Claude Code, ChatGPT, etc.) about Toolbox’s Plan of Repair. Your job in this pass is to NOTATE and preserve Cursor’s position clearly so it can be compared later with the others. Do not rewrite Cursor’s recommendations into a different product. Do not start implementing code. Summarize, label, and keep distinctions sharp.
+
+When you output, use a section titled:
+## Cursor’s position (as given)
+Then optionally:
+## Neutral restatement (no new ideas)
+## Open questions this raises for Tim
+Do not merge in other models’ ideas in this pass unless Tim pastes them in the same message.
+
+────────────────────────────────
+CURSOR’S POSITION — PLAN OF REPAIR
+(Copy this whole section as the source of truth for what Cursor said.)
+
+### Product sentence
+Plan of Repair is the Customer File’s standalone drawing app for repair / underpinning sketches on a floor plan or contour.
+It is NOT a Report Builder template with ink tools glued on.
+
+Same doorway (Customer File → Plan of Repair). Same save home (`record.planOfRepair`, sync component `repair`). Different job: maneuverability on a drawing surface — not layout fidelity to Report Builder.
+
+### What it SHOULD be
+- A drawing-first workspace inside an open Customer File
+- Feel closer to Microsoft Paint + PowerPoint than to CAD, forms, or report composition
+- Big working surface; plan or contour as background; marks/overlays Tim can put down, move, nudge, resize, rotate, copy, stack, undo
+- Desktop-first professional sketching for preliminary repair plans
+- Local-first; offline-capable with the Customer File; does not require cloud to draw
+- Small, reusable stamps for marks Tim actually uses (pier circle, circle-in-square, arrow, note) — not a pier database product
+- Print/PDF when needed, but print chrome must not define the editing experience
+
+### What it should NOT be
+- A Report Builder–style “drawing template” whose success metric is matching RB chrome
+- A second Report Builder (must not write into `reportBuilder`)
+- A redesign of Distress, Floor Survey, Customer File, or sync
+- CAD / engineering analysis software
+- A phone-layout project
+- Live collaboration / CRDT / new cloud services for drawing
+- A heavy symbol library or pier catalog product
+- More permanent Format-panel chrome when the real gap is moving marks on the plan
+
+### Diagnosis — what’s broken / what’s wrong with the current focus
+Cursor’s diagnosis (honest, from the current implementation direction):
+
+1. Wrong north star
+   Shipping framed POR as “RB-style drawing template” (#188 → #189). That pulled effort toward inherited shell: RB identity bar, format-tool host, title rail, dense Format/Drawing panel, page chrome that reads like report composition. Tim’s need is functionality and maneuverability, not template likeness.
+
+2. Drawing loop friction (the core product failure)
+   Tool-arming / selection is fiddly. Tools can stay armed and stack accidental shapes; Format then edits the wrong object. PowerPoint/Paint succeed because select → manipulate → draw next is fluid. Until that loop is fixed, new shape types and more inspector fields won’t feel like a drawing app.
+
+3. Chrome competes with the canvas
+   Permanent right-hand form density and RB-like ribbon structure fight “just a drawing page.” Toolbox rule: protect the working surface. POR currently protects the template metaphor instead.
+
+4. Capability gaps that matter for maneuverability (not an exhaustive feature wishlist)
+   - Weak pan/zoom ownership of the sheet (Fit/−/+ is not PowerPoint canvas navigation)
+   - No reliable one-shot draw / auto-return to Select
+   - No arrow-key nudge (and likely weak Shift-constrain habits)
+   - No rotate of selected shapes (compass/north exists; shape rotate does not)
+   - Limited stamp/mark vocabulary for real repair sketching (legacy pier symbols were migrated to circles — the workflow wasn’t replaced with a good stamp strip)
+   - Multi-select / group / align are absent (PowerPoint jump — important, but after the basic loop)
+   - Picture insert is stubby
+   - Text boxes are thinner than PowerPoint text objects
+   - Duplicate-in-place / paste-in-place habits may be weak vs offset paste only
+
+5. What is NOT the main problem
+   Missing a thousand shape types is not the main problem.
+   Not looking enough like Report Builder is not the problem — looking too much like it is.
+   Sync architecture is not the blocker for “feels like a drawing app.”
+
+### How Cursor would fix it (ordered path)
+Principle: each slice must prove maneuverability on a real Customer File after merge/promote. No chrome-only passes. No “closer to RB.”
+
+SLICE A — Interaction loop (do first)
+- After finishing a shape, return to Select (or true one-shot tools)
+- Click empty sheet clears selection; clicking a shape selects without starting a new draw
+- Kill the accidental stacked-shape failure mode
+User-visible win: “I can place a mark and adjust it without the tool fighting me.”
+
+SLICE B — Maneuver basics
+- Arrow-key nudge (Shift = larger step)
+- Shift-constrain move/resize where natural
+- Rotate selected shape (simple angle or handle)
+- Stronger sheet navigation: pan + zoom that feels owned (still keep Fit)
+User-visible win: “I can get this pier exactly on the footing.”
+
+SLICE C — Stamp strip (drawing-first, tiny)
+- 4–6 fixed stamps Tim actually uses (filled circle, circle-in-square, straight arrow, note/callout, maybe dimension line)
+- Click stamp → click plan to place; then Select
+- Same overlay model; no pier database; no RB write
+User-visible win: “I sketch a preliminary underpinning plan in minutes.”
+
+SLICE D — PowerPoint jumps (only after A–C)
+- Multi-select + Group/Ungroup
+- Align/distribute
+- Ctrl+D duplicate; paste-in-place option
+- Better in-place text editing
+User-visible win: “I can arrange a cluster of marks like a slide.”
+
+SLICE E — Later / optional
+- Guides / light snap
+- Dashed lines / arrowhead styles / opacity
+- Image paste as first-class sheet objects
+- Quieter shell pass: inspector only when something is selected; strip anything that only exists to mimic RB
+User-visible win: polish — not the definition of done for “drawing app.”
+
+### Explicit refusals (Cursor)
+- Do not merge POR into Report Builder
+- Do not rebuild POR as another report template pass
+- Do not start with a giant symbol library
+- Do not add cloud/collab/CAD scope to “make it better”
+- Do not spend the next slice on title-rail visual fidelity
+
+### Success test (how Tim should judge a slice)
+On a real Customer File, with a real plan/contour:
+- Place marks, move them, nudge them, undo, copy a cluster, adjust without accidental extra shapes
+- If that feels like a small drawing app, the slice worked
+- If it only looks more like Report Builder, the slice failed even if tests pass
+
+### Reframe table (Cursor)
+| Old lens | New lens |
+|---|---|
+| RB-style drawing template | Standalone drawing app inside Customer File |
+| Match RB chrome | Borrow code only when it helps drawing |
+| Sheet + rail as product | Maneuverability as product |
+| Format panel always on | Tools/inspector when drawing/editing |
+| “Looks like a report page” | “I can sketch a repair on this plan” |
+
+### Questions Cursor wants Tim to answer before the next build
+1. Confirm product sentence: standalone drawing app inside Customer File — not RB template?
+2. Slice A (select/draw loop) first — yes or different first slice?
+3. Which 4–6 stamps are the real set for v1?
+4. Must shape rotate ship with nudge, or can rotate follow?
+5. How much RB chrome can leave POR (title rail density, permanent Format panel) without breaking print needs?
+6. Is Print/PDF “good enough” export for now if editing feel is fixed?
+7. Any mark types that must look identical to legacy pier symbols from the migrated docs?
+
+END OF CURSOR’S POSITION
+────────────────────────────────
+
+INSTRUCTIONS TO YOU AGAIN
+1. Notate Cursor’s position under ## Cursor’s position (as given) — preserve the product sentence, should/should-not, diagnosis, slices A–E, refusals, success test, and questions.
+2. Add a short ## Neutral restatement with no new recommendations.
+3. List ## Conflicts to watch for when other models’ suggestions arrive (e.g. “more template fidelity” vs “maneuverability first”; “big symbol library” vs “tiny stamp strip”; “chrome redesign first” vs “interaction loop first”).
+4. Stop. Wait for Tim to paste other models’ suggestions for a later synthesis pass.
+````
+
 ---
 
 ## Claude Code’s position
 
-*Paste Claude Code’s audit / suggestions here (dated).*
+*Paste Claude Code’s audit / suggestions here (dated). After this doc is on the integration tip, Claude Code adds its section the same way Cursor did.*
 
 ---
 
 ## ChatGPT’s position
 
-*Paste ChatGPT’s audit / suggestions here (dated).*
+*Paste ChatGPT’s audit / suggestions here (dated). After this doc is on the integration tip, ChatGPT / Joyce adds its section (and may use Cursor’s cut-and-paste prompt above for notation).*
 
 ---
 
