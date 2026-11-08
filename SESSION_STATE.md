@@ -10,8 +10,8 @@ This does **not** replace authority docs. Read order for rules and vision:
 4. `DECISIONS.md`
 5. **This file** — current working picture
 
-Last updated: **Nov 7, 2026** (America/Denver)  
-Updated by: Cursor agent — repair handoff after #199 (library address two lines).
+Last updated: **Nov 8, 2026** (America/Denver)  
+Updated by: Cursor agent — drop “bots cannot merge main” from outstanding (not the path).
 
 ---
 
@@ -43,6 +43,7 @@ Long chats cost more tokens and do **not** give the model continuous human-like 
 - Discussion is not a work order. “Go” / “do it” / “build it” = authorization. Describing UI is not authorization.
 - Never tell Tim what to do with his time.
 - When Tim says “Merge I promote,” that is merge to the **integration** branch only. Promote is still Tim. Prefer the agent Tim is talking to for the merge when that is clear; the merge itself is still valid if another authorized agent lands it on the right branch and Tim accepts the result.
+- **Not the path (closed Nov 8, 2026):** GitHub protection so “bots cannot merge `main`.” Tim: that is not the correct path. Do not reopen it as outstanding work. The shipping table above is the path — merge to integration only; Tim promotes.
 
 ---
 
@@ -50,8 +51,8 @@ Long chats cost more tokens and do **not** give the model continuous human-like 
 
 | Branch | Tip (approx) | Notes |
 |--------|----------------|-------|
-| `claude/milestone-1-customer-file-qv5ybf` | `f055fed` | **Integration tip.** Merge of #199 (library address two lines). Includes #198 delete gate, #197 SESSION_STATE, #196 shipping-doc naming, #195 lookbook stills, #194 floor/share/toolbar. |
-| `main` | `a4336df` | Has #193 floor/share/toolbar; **behind** milestone on #195–#199. Live site already had `v439` from the main merge of #193. |
+| `claude/milestone-1-customer-file-qv5ybf` | `1a4e672` | **Integration tip.** Includes #200 SESSION_STATE repair, #199 address two lines, #198 delete gate, #197–#194 prior. |
+| `main` | `a4336df` | Has #193 floor/share/toolbar; **behind** milestone on #195–#200. Live site already had `v439` from the main merge of #193. |
 
 Always re-check with `git fetch` before claiming tip SHAs.
 
@@ -86,10 +87,7 @@ Always re-check with `git fetch` before claiming tip SHAs.
      `npx wrangler@4 deploy --config sync-worker/wrangler.toml`  
    - Runtime secrets attach when an agent **starts**. An already-running VM may not see `CLOUDFLARE_API_TOKEN` even when it is set in Cursor Secrets.
 
-3. **Discussed, not authorized to build yet**  
-   - GitHub protection so bots cannot merge to `main` (“can we put bots cannot merge?” — Tim asked; waiting on “go” to implement).
-
-4. **Stale / unrelated open PRs** (don’t confuse with current tip)  
+3. **Stale / unrelated open PRs** (don’t confuse with current tip)  
    - #165 older promote-rules docs (intent largely covered by #196)  
    - #151, #139, #120, and older main-based #97 / #86 / #85  
    - Triage when Tim wants; not blockers for lookbook Access.
