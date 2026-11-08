@@ -1,12 +1,18 @@
 # Toolbox — Product Vision
 
+## Executive summary
+
+**One Customer File, two sides.** Toolbox is the file cabinet. The Customer File holds the information for the customer and property. The information belongs to the customer and is available from both the Sandia Geo and TLS sides. The tools, branding, and authored deliverables reflect the side where the work is done. The two sides organize the tools and leave the order of work up to the person doing the job.
+
+Sandia Geo is the familiar investigation workspace. TLS has **Job Walk**, which can capture photos, descriptions, and homeowner notes before a floor plan exists, and **Plan of Repair**, a desktop drawing workspace built on the familiar Report Builder layout and drawing controls. The visual reference for the TLS side is [TLS Foundations](https://www.tlsfoundations.com/). Carry its wordmark, deep navy, gold accents, and warm sand surfaces into the TLS chrome. Keep the Toolbox workspace patterns and give the drawing canvas room to work.
+
 ## Status and Authority
 
 This document is the durable product vision for **Toolbox**.
 
 **"Toolbox-V3"** is the repository / development-generation name only. It must never become product branding. The product itself, as it will be known to the people who use it, is **Toolbox**.
 
-The **Customer File** is the central organizing object inside Toolbox. Toolbox is the file cabinet. A Customer File is the customer/job file inside that cabinet. Distress Survey, Floor Survey, Diagnostics, and Report Builder are the specialized workspaces that operate inside an already-open Customer File.
+The **Customer File** is the central organizing object inside Toolbox. Toolbox is the file cabinet. A Customer File is the customer/job file inside that cabinet. Distress Survey, Floor Survey, Diagnostics, and Report Builder are the Sandia Geo workspaces. Job Walk and Plan of Repair are the first TLS workspaces. All operate inside an already-open Customer File.
 
 The product owner and final decision-maker is Tim. This document exists so the product vision does not depend on any one conversation, developer, or AI model.
 
@@ -85,7 +91,7 @@ The central object inside Toolbox is the **Customer File**. The working metaphor
 
 Each Customer File is a **job container**. Inside it are sub-files/components: Customer Information, Plans/Canvases, Distress Survey, Floor Survey, Diagnostics, and Report Builder. Plans, photos, and other media belong to or are referenced by the appropriate component. The Customer File is not one undifferentiated blob of job data. All of those components obey the same lifecycle (§10). Diagnostics and Report Builder integration is underway in the repository; they are not wholly future work, and they are not a separate sync model.
 
-The four principal workspaces are:
+The four existing Sandia Geo workspaces are:
 
 1. **Distress Survey**
 2. **Floor Survey**
@@ -94,7 +100,7 @@ The four principal workspaces are:
 
 The user opens the Customer File first. Every workspace entered from that Customer File already knows which customer/job it belongs to — the user never selects a workspace and then has to locate or recreate the customer inside it.
 
-The long-term system should feel like **one professional instrument with four specialized workspaces**, not four unrelated applications connected by export buttons.
+Toolbox is one instrument with specialized workspaces on two company sides of the same Customer File. Plans and evidence are available in place as the user changes tools or sides.
 
 ---
 
@@ -109,7 +115,7 @@ The Customer File is the central persistent object. Contact/job information and 
 
 There is no Plan Setup gatekeeper and no standalone Plan Setup workspace in the product model. Implementation modules for plan editing may exist for maintainability; they are not a separate product.
 
-After the Customer File is set up, the Customer File home provides independent access to the four applications. Applications pull what they need from the Customer File. They do not own or duplicate its plans.
+The Customer File home provides independent access to its workspaces. A Customer File can exist before any plan is available. Applications pull what they need from the Customer File. They do not own or duplicate its plans.
 
 When multiple levels exist (for example Basement, Ground Level, Second Floor), each may have its own plan image on the Customer File. Applications may switch among those same plans; switching applications does not copy plans.
 
@@ -119,6 +125,25 @@ When multiple levels exist (for example Basement, Ground Level, Second Floor), e
 
 ---
 
+
+## 4a. Sandia Geo and TLS inside the Customer File
+
+### DECIDED DIRECTION (Tim, Nov 8, 2026)
+
+- **Shared intake.** Name, property address, and phone number are enough to start a Customer File. The address opens directions in the user's preferred maps app.
+- **Entry.** Normal opening leads to the familiar Sandia Geo home. **Open in TLS** in the Customer File's three-dot menu opens the TLS side of that same file. A labeled company switch on the file home's top rail is a candidate for moving between sides once inside the job.
+- **Shared job information.** Quick Capture photos, homeowner history, site notes, plans, structural and plot documents, and survey evidence are available from either side. Add them as they become available. A first visit may be where a plan is obtained. A side switch carries the current Customer File with it.
+- **Job Walk.** Phone-friendly capture of photos, descriptions, and visit notes, with no floor plan required. Use the shared Quick Capture collection. The Visit Notes area should support typed notes and recording audio with the homeowner's permission, with playback from the same file. Distinguish the homeowner's account from the investigator's observations.
+- **Plan of Repair.** The desktop drawing counterpart to Sandia Geo Report Builder. Use the existing POR workspace and familiar slides, canvas and Fit/zoom, right rail, and drawing controls. It can have one or several sheets and, where useful, multiple views on a sheet. Draw from a job plan or contour, from an imported drawing, or on a blank sheet. Make placing, selecting, moving, copying, resizing, annotating, and repeating marks dependable. Preserve separate repair authorship within the Customer File. The finished sheet is **11 × 17, landscape**, with a TLS title block and preliminary status.
+- **Independent tools.** Job Walk, investigation, and repair drawing can each stand on their own. A customer may need any combination in any order. A TLS-only file uses the same Customer File model.
+
+### LATER POSSIBILITIES
+
+Exporting the customer details to the existing Excel proposal is a future TLS capability. A web proposal tool, takeoff, and other TLS apps can be considered when there is a concrete use for them.
+
+The first implementation and review scope is in [TLS build and review brief](docs/tls-build-and-review-brief.md).
+
+---
 
 ## 5. Distress Survey Layers on Shared Canvases
 
@@ -526,6 +551,8 @@ The working roles are:
 - **Primary implementation engineer:** Claude Code.
 - **Project consultant / technical-writing and UX sounding board:** Grok.
 - **Common source of truth:** the GitHub repository.
+
+For the TLS work described in §4a, **Cursor implements, Claude Code independently reviews, and ChatGPT helps Tim define and maintain the product vision**. Tim makes the product decisions.
 
 These are practical working roles, not a statement that one AI model is inherently superior to another. The product owner remains the authority. Cross-checking is encouraged: any collaborator may challenge assumptions, identify contradictions or missing requirements, propose better methods, or point out risks. No model's idea automatically outranks another's.
 
