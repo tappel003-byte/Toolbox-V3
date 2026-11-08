@@ -384,9 +384,24 @@ A stamp is a preset that creates **ordinary overlays** at a set size, colour and
 
 ---
 
-## ChatGPT’s position
+## ChatGPT’s position (Nov 8, 2026)
 
-*Paste ChatGPT’s audit / suggestions here (dated). After this doc is on the integration tip, ChatGPT / Joyce adds its section (and may use Cursor’s cut-and-paste prompt above for notation).*
+Reviewed against integration tip `ffd9017`. The POR drawing source is unchanged since my review at `4351719`. These are product recommendations. Tim owns the consensus.
+
+**Product direction.** POR is a dedicated Toolbox drawing workspace inside the Customer File. A TLS job can start with a plan alone. A Sandia Geo investigation can supply the plan or contour for a distinct TLS preliminary repair drawing. Keep `record.planOfRepair` and the existing `repair` sync component. Keep local save and reopen with locally available plan media. The 11 × 17 landscape title block and preliminary status belong on the finished sheet. Use the current doorway for the first drawing demo and judge a workspace tile separately.
+
+**Where I differ from Cursor and Claude Code.** The active tool should own the gesture. The existing pointer handler checks for an object hit before it starts drawing, so a drag across an existing mark can move the mark. In Select, clicking an object selects it and dragging moves it. In Draw, dragging over ink draws. A one-shot shape returns to Select with the new shape selected. Pencil and an explicitly chosen repeat stamp can stay armed. Escape cancels the current action or returns to Select. A selection click or canceled gesture should consume no Undo step. Keep the selected object's style separate from the defaults for the next mark. See `js/plan-of-repair.js:677`, `:912`, and `:1072`.
+
+**Order I recommend.**
+
+1. **Make the pointer predictable.** Draw across an existing pier, select and move the new mark, change its style, and undo the move in one step. This is the first slice for the drawing-app redesign. Hide the dead rotate grip and the misleading picture action until each works.
+2. **Make notes and PDF dependable.** Treat them as separately reviewable defects. The shared text renderer creates an editable box, but POR lacks the edit-to-save handler. A note should survive redraw, local reopen, and print. Claude Code is right that the multi-sheet PDF defect can reach a recipient today. If POR is already being used for multi-sheet delivery, fix that first as a maintenance slice. Print a plan sheet and contour sheet from the second page and verify both backgrounds, marks, notes, and title blocks in page-list order. Report missing backgrounds by sheet. See `js/report-overlay.js:245` and `js/plan-of-repair.js:1231` and `:1331`.
+3. **Make a run of piers fast.** Start with one TLS pier mark that places repeatedly and stays editable, plus Duplicate, arrow-key nudge, a straight line or arrow with endpoint handles, and enough zoom and pan to work along a wall. Try it on a real Customer File. Add Shift-click multi-select if moving the run together is a bottleneck. Add a second symbol when a real drawing needs to distinguish two marks. A composite stamp should behave like one object. Skip a stamp database, quantities, and automatic spacing.
+4. **Let real drawings drive the rest.** Bring the formatting swatches close to the canvas and keep exact size, position, and stacking available on demand. Collapse panels that have no current job. Add general rotation, image paste, dashed lines, or align/distribute in the order actual sketches need them. A dashed proposed-work line can ship with the straight line if that distinction belongs on the first sheet.
+
+**Background integrity.** Today the sheet resolves the current plan or contour by canvas ID while marks use sheet coordinates. If replacement media has different framing, the marks can point at the wrong place. The intended behavior is to flag a changed source and let the investigator review and accept a replacement. Check whether existing media retention can keep the original background before promising that option. A source change should never silently shift the meaning of an already drawn mark. See `js/plan-of-repair.js:410` and `:1208`.
+
+**First complete demo.** On a real Customer File, open a plan, place and adjust a run of piers, draw a leader or arrow, add a note, reopen the file, and produce the TLS preliminary sheet. Judge the drawing by how little time is spent managing tools and the PDF by whether it matches the saved sheet. Keep the scope within POR and its existing storage. CAD, engineering calculations, capture redesign, and a separate job store are outside this proposal.
 
 ---
 
@@ -402,14 +417,14 @@ Use this table as suggestions arrive. Do not treat filled cells as consensus.
 
 | Topic | Cursor | Claude Code | ChatGPT | Tim lean |
 |-------|--------|-------------|---------|----------|
-| Product identity (app vs template) | Standalone drawing app in CF | Own workspace inside CF, level with RB/Diagnostics; desk-only | | |
-| First slice | A — select/draw loop | 0 — print every page (defect), then select/draw loop | | |
-| Stamps vs symbol library | Tiny stamp strip | Tiny stamp strip; plain overlays, nothing counted | | |
-| RB chrome | Borrow only if it helps drawing | Same; keep what the printed sheet needs (rail, status line) | | |
-| Doorway | Same doorway | Workspace entry; top-bar button goes | | |
-| Rotate shapes | Slice B | Remove dead grip now; rotate only if Tim needs it | | |
-| Multi-select / group | Slice D (after basics) | Slice 4 (after basics); group later | | |
-| CAD / cloud / collab | Refuse | Refuse | | |
+| Product identity (app vs template) | Standalone drawing app in CF | Own workspace inside CF, level with RB/Diagnostics; desk-only | Dedicated drawing workspace inside CF | |
+| First slice | A — select/draw loop | 0 — print every page (defect), then select/draw loop | Select/draw first for UX; PDF first if already used for multi-sheet delivery | |
+| Stamps vs symbol library | Tiny stamp strip | Tiny stamp strip; plain overlays, nothing counted | One editable pier stamp to prove the workflow | |
+| RB chrome | Borrow only if it helps drawing | Same; keep what the printed sheet needs (rail, status line) | Canvas first; compact format controls and a printed title block | |
+| Doorway | Same doorway | Workspace entry; top-bar button goes | Keep for first demo; assess workspace tile separately | |
+| Rotate shapes | Slice B | Remove dead grip now; rotate only if Tim needs it | Hide dead grip; add rotation when a drawing needs it | |
+| Multi-select / group | Slice D (after basics) | Slice 4 (after basics); group later | Shift-click when a real run needs it; grouping later | |
+| CAD / cloud / collab | Refuse | Refuse | Out of scope | |
 
 ---
 
