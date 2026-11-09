@@ -21,7 +21,7 @@ Updated by: Cursor agent — POR drawing-page tip finished on `cursor/tls-worksp
 |-------|--------|
 | **Has the ball** | **Claude Code** (independent recheck of POR drawing-page tip) |
 | Next after Claude finishes | **Tim** (accept / ChatGPT vision / merge call) |
-| Branch / tip | `cursor/tls-workspace-2ac5` @ `7c10826` (POR drawing-page `c16e6e2` + Ball tip; shell `v446`) |
+| Branch / tip | `cursor/tls-workspace-2ac5` — drawing-page build `c16e6e2`, shell `v446` (use `git rev-parse` for exact head) |
 | Do not merge | until Tim says so |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
