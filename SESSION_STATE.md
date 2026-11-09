@@ -1,6 +1,7 @@
 # Toolbox — Session State
 
-**Living handoff.** Update this file when the working picture changes so Tim, Cursor, or Claude Code can open it and know where things are — without depending on one long chat’s memory.
+**Living handoff — how Cursor and Claude Code communicate in the repo.**  
+Update this file when the working picture changes so Tim, Cursor, or Claude Code can open it and know where things are — without depending on one long chat’s memory. Put Ball, tip SHAs, done/outstanding, and process lessons here. Do not revive multi-model council logs.
 
 This does **not** replace authority docs. Read order for rules and vision:
 
@@ -8,10 +9,10 @@ This does **not** replace authority docs. Read order for rules and vision:
 2. `AGENTS.md`
 3. `MILESTONE.md`
 4. `DECISIONS.md`
-5. **This file** — current working picture
+5. **This file** — current working picture / agent-to-agent handoff
 
 Last updated: **Nov 9, 2026** (America/Denver)  
-Updated by: Cursor agent — Tim: merge correctly → PR #204 into integration `7f778d6`.
+Updated by: Cursor agent — docs cleanup; confirm Cursor↔CC talk via this file.
 
 ---
 
@@ -19,25 +20,24 @@ Updated by: Cursor agent — Tim: merge correctly → PR #204 into integration `
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** (promote when ready) |
-| Integration merge | **Done.** PR #204 → `claude/milestone-1-customer-file-qv5ybf` @ `7f778d6` (TLS Job Walk + POR Paint/PPT + Job Walk media; shell `v449`). |
+| **Has the ball** | **Tim** (promote when ready; docs-cleanup PR open until Tim merges) |
+| Integration tip | `claude/milestone-1-customer-file-qv5ybf` includes #204 @ `7f778d6` / handoff `803abf9` (TLS Job Walk + POR; shell `v449`). |
 | Not done | **Promote / live Production** — Tim only. Not merged to `main`. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
 ---
 
-## Review loop (Tim, Nov 9, 2026)
+## How Cursor and Claude Code talk (Tim, Nov 9, 2026)
 
-**ChatGPT is out — permanently for this work.** Tim’s ChatGPT workspace/chat glitched and is not workable. Do not reopen that thread, hand it work, or wait on it.
+**Yes — through this file (`SESSION_STATE.md`).** Cursor builds; Claude Code checks; Tim decides and promotes. ChatGPT is out (workspace glitched / not workable). No third-voice council docs.
 
 | Role | Who |
 |------|-----|
 | Build | **Cursor** |
 | Check | **Claude Code (CC)** |
 | Decide and promote | **Tim** |
-
-This is a **Cursor + Claude Code** build. Cursor builds; Claude Code independently reviews; Tim decides and promotes. No third voice.
+| Day-to-day agent handoff | **`SESSION_STATE.md` (this file)** |
 
 ---
 
@@ -47,10 +47,10 @@ This is a **Cursor + Claude Code** build. Cursor builds; Claude Code independent
 |------|--------|
 | Product owner | Tim (`tappel003`) |
 | Active Cursor thread | https://cursor.com/agents/bc-eddcce18-c57b-423f-b2f4-6f17f8662ac5 — “Toolbox V3 continued” |
-| Claude Code | Independent check when the Ball says so |
-| ChatGPT | **Dead path.** Workspace glitched; chat not workable. Do not use. |
+| Claude Code | Independent check when the Ball says so; read/write this file for handoff |
+| ChatGPT | **Dead path.** Do not use. |
 
-Long chats cost more tokens and do **not** give the model continuous human-like memory. Durable facts belong here and in the authority docs.
+Long chats cost more tokens and do **not** give continuous memory. Durable facts belong here and in the authority docs.
 
 ---
 
@@ -101,6 +101,7 @@ Always re-check with `git fetch` before claiming tip SHAs.
 | POR Paint/PPT toolbar + view-pan fix | Done on integration via #204. Shell `v449` (with Job Walk media). |
 | Job Walk media (delete photo/audio; Take Video + Delete; Sync `vid_`) | Done on integration via #205 → TLS branch → #204. |
 | TLS workspace integrated build | Done — #204 merged to `claude/milestone-1-customer-file-qv5ybf` @ `7f778d6`. Cursor + CC loop; ChatGPT dead path. |
+| Docs cleanup (council / AI review log / old RB audits) | On `cursor/docs-cleanup-2ac5` — removed stale multi-model docs; handoff is `SESSION_STATE.md`. |
 
 ---
 
@@ -108,18 +109,20 @@ Always re-check with `git fetch` before claiming tip SHAs.
 
 1. **Promote** — Tim only. Integration has #204; live Production does not until Tim promotes. Do **not** merge to `main` unless Tim asks promote-prep.
 
-2. **Cloudflare Access path bypass for `lookbook/*`** on `sync.sandiageotoolbox.com`  
+2. **Docs cleanup PR** — merge `cursor/docs-cleanup-2ac5` into integration when Tim is ready (this branch).
+
+3. **Cloudflare Access path bypass for `lookbook/*`** on `sync.sandiageotoolbox.com`  
    - Without this, engineer (and private-window) opens hit Cloudflare login.  
    - Tim’s ops action.  
    - Create/upload/finalize stay Access-gated; only public GET needs the bypass.
 
-3. **Confirm Sync Worker deploy has lookbook create routes**  
+4. **Confirm Sync Worker deploy has lookbook create routes**  
    - If Share still shows **“Not found”**, `POST /lookbook` is not on the live Worker.  
    - Deploy (when Tim authorizes / from an authenticated machine):  
      `npx wrangler@4 deploy --config sync-worker/wrangler.toml`  
    - Runtime secrets attach when an agent **starts**. An already-running VM may not see `CLOUDFLARE_API_TOKEN` even when it is set in Cursor Secrets.
 
-4. **Stale / unrelated open PRs** (don’t confuse with current tip)  
+5. **Stale / unrelated open PRs** (don’t confuse with current tip)  
    - #165 older promote-rules docs (intent largely covered by #196)  
    - #151, #139, #120, and older main-based #97 / #86 / #85  
    - Triage when Tim wants; not blockers for lookbook Access.

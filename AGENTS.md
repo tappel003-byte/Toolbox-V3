@@ -6,7 +6,7 @@ Operational guardrails for anyone (human or AI) implementing Toolbox. This is en
 
 - Read `VISION.md` before doing work. If code, a milestone, or any other document conflicts with `VISION.md`, **VISION.md wins** — unless the product owner explicitly changes the Vision.
 - Work only on the current `MILESTONE.md`. Do not implement future milestones early, even when the work is already understood conceptually.
-- Read **`SESSION_STATE.md`** for the current working picture (branches tip, what’s done, what’s blocked, handoff for Cursor / Claude Code / ChatGPT). It does not replace these rules; update it when the picture changes.
+- Read **`SESSION_STATE.md`** for the current working picture (Ball, branch tips, what’s done, what’s open). That file is how **Cursor and Claude Code** hand off to each other — who has the ball, what landed, what is next. It does not replace these rules; update it when the picture changes. ChatGPT is out of this loop.
 
 ## Implementation prompt protocol
 
