@@ -22,7 +22,7 @@ Updated by: Cursor agent — Job Walk media repair (delete photo/audio + add/del
 | **Has the ball** | **Claude Code** (independent recheck of Job Walk media repair) |
 | Next after Claude finishes | **Tim** (accept / merge call) |
 | POR look check | Still open on `cursor/tls-workspace-2ac5` @ `73f8c29` / shell `v448` — Tim side-by-side Paint/PPT when ready. Not blocked by this Job Walk slice. |
-| Branch / tip | `cursor/job-walk-media-2ac5` off TLS workspace — Job Walk delete photo/audio + Take Video/delete; shell `v449` |
+| Branch / tip | `cursor/job-walk-media-2ac5` @ `f7510f0` — Job Walk delete photo/audio + Take Video/delete; shell `v449` |
 | Do not merge | until Tim says so |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
