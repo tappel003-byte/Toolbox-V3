@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 9, 2026** (America/Denver)  
-Updated by: Cursor agent — Job Walk media repair (delete photo/audio + add/delete video) on `cursor/job-walk-media-2ac5`.
+Updated by: Cursor agent — Tim clarified Job Walk media check was his, not Claude; no merge.
 
 ---
 
@@ -19,10 +19,10 @@ Updated by: Cursor agent — Job Walk media repair (delete photo/audio + add/del
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** (independent recheck of Job Walk media repair) |
-| Next after Claude finishes | **Tim** (accept / merge call) |
-| POR look check | Still open on `cursor/tls-workspace-2ac5` @ `73f8c29` / shell `v448` — Tim side-by-side Paint/PPT when ready. Not blocked by this Job Walk slice. |
-| Branch / tip | `cursor/job-walk-media-2ac5` @ `f7510f0` — Job Walk delete photo/audio + Take Video/delete; shell `v449` |
+| **Has the ball** | **Tim** |
+| Job Walk media (`cursor/job-walk-media-2ac5`) | Tim checked it himself. **Not** a Claude Code recheck, and **not** a merge go-ahead. |
+| POR look check | Still open on `cursor/tls-workspace-2ac5` @ `73f8c29` / shell `v448` — Tim side-by-side Paint/PPT when ready. |
+| Branch / tip | `cursor/job-walk-media-2ac5` @ `f7510f0` (head `bfed0c9`); shell `v449`; CI green |
 | Do not merge | until Tim says so |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
@@ -107,7 +107,7 @@ Always re-check with `git fetch` before claiming tip SHAs.
 
 ## Outstanding — real open work
 
-1. **Job Walk media repair** — `cursor/job-walk-media-2ac5`: Delete on photos and visit notes/audio; Take Video + Delete for walk-around clips; Sync `vid_` media; shell `v449`. **Claude Code rechecks**; Tim decides. Do **not** merge until Tim says so.
+1. **Job Walk media repair** — `cursor/job-walk-media-2ac5` / PR #205: Delete on photos and visit notes/audio; Take Video + Delete for walk-around clips; Sync `vid_` media; shell `v449`. Tim checked it himself (not Claude). Do **not** merge until Tim says so.
 
 2. **TLS workspace / POR Paint-PPT look check** — PR #204 on `cursor/tls-workspace-2ac5`. Claude technical pass on `73f8c29`. Tim side-by-side vs Paint/PowerPoint when ready. Do **not** merge until Tim says so.
 
