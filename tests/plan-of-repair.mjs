@@ -140,34 +140,45 @@ await page.waitForSelector('.por-shell .rb-sheet');
 await page.waitForFunction(() => /Ready|Saved/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 8000 }).catch(() => {});
 
 const shell = await page.evaluate(() => {
-  const toolbar = document.querySelector('.rb-toolbar');
+  const toolbar = document.querySelector('.por-toolbar');
   const printBtn = document.querySelector('#por-print');
-  const formatHost = document.querySelector('[data-rb-format-host] .rb-format, .rb-format');
+  const textStrip = document.querySelector('#por-text-format');
   let printSameRow = false;
-  if (toolbar && printBtn && formatHost) {
+  if (toolbar && printBtn) {
     const t = toolbar.getBoundingClientRect();
     const p = printBtn.getBoundingClientRect();
-    // Print stays on the first toolbar band (not shoved under by text controls).
-    printSameRow = p.top < t.top + 52;
+    printSameRow = p.top < t.top + 48;
   }
+  const wordTools = Array.from(document.querySelectorAll('.por-toolbar__tools .por-iconbtn'))
+    .map((b) => (b.textContent || '').replace(/\s+/g, ' ').trim())
+    .filter((t) => /Pencil|Rect|Circle|Eraser|Arrow/.test(t));
   return {
     hash: location.hash,
-    hasToolbar: !!formatHost,
+    hasToolbar: !!toolbar,
     hasPages: !!document.querySelector('#por-page-list'),
     hasPanel: !!document.querySelector('#por-bring-plan'),
     compactBg: !!document.querySelector('.por-bg-actions .por-linkbtn'),
     fatBring: Array.from(document.querySelectorAll('#por-bring-plan, #por-bring-contour, #por-clear-bg')).some((b) => b.classList.contains('btn')),
+    hasOutlinePicker: !!document.querySelector('#por-outline-btn'),
+    hasFillPicker: !!document.querySelector('#por-fill-btn'),
+    hasWeightPicker: !!document.querySelector('#por-weight-btn'),
+    textHidden: !!(textStrip && textStrip.hidden),
+    noWordToolLabels: wordTools.length === 0,
     printSameRow,
     title: document.querySelector('.file-identity__name')?.textContent || '',
     tools: Array.from(document.querySelectorAll('[data-rb-tool]')).map((b) => b.getAttribute('data-rb-tool')),
+    hasSelect: !!document.querySelector('[data-por-tool="select"]'),
   };
 });
 check('opens repair route', shell.hash === '#/file/por-draw/repair');
-check('RB-style shell title', shell.title === 'Plan of Repair');
-check('formatting/drawing toolbar mounted', shell.hasToolbar || shell.tools.length > 0);
+check('drawing-page shell title', shell.title === 'Plan of Repair');
+check('Paint/PPT icon toolbar mounted', shell.hasToolbar && shell.tools.length > 0 && shell.hasSelect);
 check('pages rail present', shell.hasPages);
 check('bring-in plan control', shell.hasPanel);
 check('compact background actions', shell.compactBg && !shell.fatBring);
+check('outline/fill/weight pickers', shell.hasOutlinePicker && shell.hasFillPicker && shell.hasWeightPicker);
+check('tools are icons not word buttons', shell.noWordToolLabels);
+check('text format hidden until text edit', shell.textHidden);
 check('Print stays with toolbar (not second row)', shell.printSameRow);
 check('circle+rect tools present', shell.tools.indexOf('circle') !== -1 && shell.tools.indexOf('rect') !== -1, shell.tools.join(','));
 
@@ -239,6 +250,60 @@ check(
   !!(overallFrame && multiEditor.detailFrame) &&
     Number(multiEditor.detailFrame.x) >= Number(overallFrame.x) + Number(overallFrame.w) - 0.5,
   JSON.stringify({ overall: overallFrame, detail: multiEditor.detailFrame })
+);
+
+// View pan must move camera proportionally — detached-host bug flung cx to 1.
+const panProbe = await page.evaluate(async () => {
+  const host = document.querySelector('.por-view-frame[data-por-view="1"]');
+  if (!host) return { ok: false, reason: 'no-host' };
+  const before = await window.ToolboxDB.getCustomerFile('por-draw');
+  const pageBefore = before.planOfRepair.pages.find((p) => p.id === before.planOfRepair.activePageId)
+    || before.planOfRepair.pages[0];
+  const cam0 = (pageBefore.meta.views[1] && pageBefore.meta.views[1].camera) || { cx: 0.5, cy: 0.5, zoom: 1 };
+  const r = host.getBoundingClientRect();
+  const start = { x: r.left + r.width * 0.5, y: r.top + r.height * 0.5 };
+  const dx = 5;
+  return { cam0, start, dx, fw: r.width, zoom: Number(cam0.zoom) || 1 };
+});
+const cxBefore = Number(panProbe.cam0.cx);
+await page.mouse.move(panProbe.start.x, panProbe.start.y);
+await page.mouse.down();
+await page.mouse.move(panProbe.start.x + panProbe.dx, panProbe.start.y, { steps: 2 });
+await page.mouse.up();
+await page.waitForFunction(() => /Saved|Ready/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 4000 }).catch(() => {});
+await new Promise((r) => setTimeout(r, 350));
+const panAfter = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId)
+    || record.planOfRepair.pages[0];
+  return page.meta.views[1].camera;
+});
+const expectedDelta = panProbe.dx / (panProbe.fw * panProbe.zoom);
+const actualDelta = cxBefore - Number(panAfter.cx);
+check(
+  'small pan moves camera proportionally (not to edge)',
+  Number.isFinite(actualDelta) &&
+    Math.abs(actualDelta - expectedDelta) < 0.025 &&
+    Math.abs(Number(panAfter.cx) - 1) > 0.05 &&
+    Math.abs(Number(panAfter.cx) - 0) > 0.05,
+  JSON.stringify({ expectedDelta, actualDelta, after: panAfter, before: panProbe.cam0, fw: panProbe.fw })
+);
+await page.mouse.move(panProbe.start.x + panProbe.dx, panProbe.start.y);
+await page.mouse.down();
+await page.mouse.move(panProbe.start.x, panProbe.start.y, { steps: 2 });
+await page.mouse.up();
+await page.waitForFunction(() => /Saved|Ready/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 4000 }).catch(() => {});
+await new Promise((r) => setTimeout(r, 350));
+const panBack = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId)
+    || record.planOfRepair.pages[0];
+  return page.meta.views[1].camera;
+});
+check(
+  'reverse pan returns camera near start',
+  Math.abs(Number(panBack.cx) - cxBefore) < 0.04,
+  JSON.stringify({ start: cxBefore, back: panBack })
 );
 await page.waitForFunction(() => {
   const imgs = Array.from(document.querySelectorAll('.por-view-frame img'));
@@ -417,7 +482,8 @@ await page.mouse.up();
 
 // Clear selection so colour sets the next tool default (not the just-drawn circle).
 await page.keyboard.press('Escape');
-await page.click('[data-rb-ov-color="#eab308"]');
+await page.click('#por-outline-btn');
+await page.click('#por-outline-pop [data-por-outline="#eab308"]');
 await page.click('[data-rb-tool="rect"]');
 await page.mouse.move(box.x + box.w * 0.55, box.y + box.h * 0.55);
 await page.mouse.down();

@@ -1,6 +1,6 @@
 # Toolbox — Session State
 
-**Living handoff.** Update this file when the working picture changes so Tim, Cursor, Claude Code, or ChatGPT can open it and know where things are — without depending on one long chat’s memory.
+**Living handoff.** Update this file when the working picture changes so Tim, Cursor, or Claude Code can open it and know where things are — without depending on one long chat’s memory.
 
 This does **not** replace authority docs. Read order for rules and vision:
 
@@ -10,8 +10,8 @@ This does **not** replace authority docs. Read order for rules and vision:
 4. `DECISIONS.md`
 5. **This file** — current working picture
 
-Last updated: **Nov 8, 2026** (America/Denver)  
-Updated by: Claude Code — recheck of `3f16ddd`: view pan blocker; Ball to Cursor.
+Last updated: **Nov 9, 2026** (America/Denver)  
+Updated by: Cursor agent — Paint/PPT POR toolbar + view-pan fix on `cursor/tls-workspace-2ac5`.
 
 ---
 
@@ -19,13 +19,27 @@ Updated by: Claude Code — recheck of `3f16ddd`: view pan blocker; Ball to Curs
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Cursor** — fix view pan in Plan of Repair (Claude Code recheck of `3f16ddd`). |
-| Next | **Claude Code** rechecks the fix, then **ChatGPT** vision check. Not a merge go-ahead. |
-| Claude Code result (`3f16ddd`) | Everything else holds: RB-familiar toolbar, Print/PDF stays on row one while text is edited, detail view side by side with overall (no overlap, all controls reachable, Move works), text + undo/redo, reopen, one page per sheet, 4-sheet PDF from sheet 2 in order with TLS title blocks, missing/changed warnings, Job Walk, sync; 53 suites, only failures also fail on base. **Blocker:** dragging inside a view throws its framing to the edge (5 px drag: cx 0.5 → 1) — pointerdown stores `host: viewHost` then calls renderSheet(), so the stored host is detached (clientWidth 0 → fw 1). Present since `46a88c0`; earlier Claude passes missed it. |
-| Branch / tip | `cursor/tls-workspace-2ac5` — POR RB-familiar `3f16ddd` after `c16e6e2`; shell `v447` |
+| **Has the ball** | **Claude Code** (independent recheck of Paint/PPT POR + pan fix) |
+| Next after Claude finishes | **Tim** (accept / merge call / promote) |
+| Prior Claude (`3f16ddd`) | Technical pass except **view-pan blocker** (detached host after renderSheet). Fixed in this tip. |
+| Branch / tip | `cursor/tls-workspace-2ac5` — Paint/PPT `cbedf8b`; shell `v448` |
 | Do not merge | until Tim says so |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
+
+---
+
+## Review loop (Tim, Nov 9, 2026)
+
+**ChatGPT is out of this loop.** Two voices from here:
+
+| Role | Who |
+|------|-----|
+| Build | **Cursor** |
+| Check | **Claude Code** |
+| Decide and promote | **Tim** |
+
+Do not hand vision checks to ChatGPT for this TLS / POR work. Cursor builds, Claude Code independently reviews, Tim decides and promotes.
 
 ---
 
@@ -90,7 +104,7 @@ Always re-check with `git fetch` before claiming tip SHAs.
 
 ## Outstanding — real open work
 
-1. **TLS workspace integrated build** — PR #204 on `cursor/tls-workspace-2ac5`. Builds: `1adaf3b` → QA `09b6879` → `46a88c0` → `c16e6e2` (custom POR chrome; Claude technical pass, ChatGPT held vision) → **POR RB-familiar correction** (restore Report Builder toolbar/rail/link actions; fix Print row + detail-over-overall; keep draw/print/sync; shell `v447`). **Claude Code has the ball** for recheck of this revised tip, then ChatGPT vision. Do **not** merge until both checks pass on the same SHA.
+1. **TLS workspace integrated build** — PR #204 on `cursor/tls-workspace-2ac5`. Tip chain: `c16e6e2` (drawing-first) → `3f16ddd` (wrong RB text ribbon; Tim rejected) → **Paint/PPT icon toolbar + view-pan fix** (shell `v448`). Claude found the pan blocker on `3f16ddd`; this tip fixes it and replaces the ribbon. **Claude Code rechecks**; Tim decides. Do **not** merge until Tim says so.
 
 2. **Cloudflare Access path bypass for `lookbook/*`** on `sync.sandiageotoolbox.com`  
    - Without this, engineer (and private-window) opens hit Cloudflare login.  
@@ -110,19 +124,20 @@ Always re-check with `git fetch` before claiming tip SHAs.
 
 ---
 
-## How any new agent (Cursor / Claude Code / ChatGPT) should start
+## How any new agent (Cursor / Claude Code) should start
 
 1. Read `VISION.md` → `AGENTS.md` → `MILESTONE.md` → `DECISIONS.md` → **`SESSION_STATE.md`**.
 2. `git fetch origin claude/milestone-1-customer-file-qv5ybf` and branch from that tip.
 3. Open PRs with **base = `claude/milestone-1-customer-file-qv5ybf`**. Merge there when Tim asks. Do **not** promote. Do **not** merge to `main` unless Tim explicitly asked for promote-prep **and** you warned about publish risk.
 4. Do not scrap lookbook. Finish Access bypass (Tim) + confirm Worker if Share 404s.
-5. After meaningful progress, **update this file** (date, tips, done/outstanding) in the same PR or a small follow-up — so the next handoff stays true. #199 landed without that update; that gap is what this repair closes.
+5. After meaningful progress, **update this file** (date, tips, done/outstanding, Ball) in the same PR or a small follow-up — so the next handoff stays true.
 
 ---
 
 ## Update checklist (when you change this file)
 
 - [ ] Date / timezone label  
+- [ ] Ball table  
 - [ ] Integration + `main` tip SHAs (after fetch)  
 - [ ] Done vs outstanding still accurate  
 - [ ] Lookbook / Access / Worker status  

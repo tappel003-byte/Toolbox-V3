@@ -211,8 +211,38 @@
     root.className = 'por-shell rb-shell';
     host.appendChild(root);
 
-    // Familiar Report Builder chrome: format host + Fit/zoom + Print lane,
-    // slides left, sheet center, Toolbox right rail (compact link actions).
+    var inkColors = (window.ToolboxReportOverlay && window.ToolboxReportOverlay.COLORS) ||
+      ['#c14a2b', '#111111', '#1d4ed8', '#16a34a', '#ea7317', '#eab308'];
+
+    function svgIcon(body) {
+      return '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" ' +
+        'stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
+        body + '</svg>';
+    }
+
+    var ICONS = {
+      select: svgIcon('<path d="M5 3l6 16 2-6 6-2z"/>'),
+      undo: svgIcon('<path d="M8 9h7.5a4.5 4.5 0 1 1 0 9H10"/><path d="M11 5.5 7 9l4 3.5"/>'),
+      redo: svgIcon('<path d="M16 9H8.5a4.5 4.5 0 1 0 0 9H14"/><path d="M13 5.5 17 9l-4 3.5"/>'),
+      pencil: svgIcon('<path d="M4 20l1-4.2L15.2 5.6a2 2 0 0 1 2.8 0l1.4 1.4a2 2 0 0 1 0 2.8L9.2 19.8 5 21z"/><path d="M13.6 7.2l3.2 3.2"/>'),
+      arrow: svgIcon('<path d="M5 19 18.5 5.5"/><path d="M11.5 5.5h7v7"/>'),
+      rect: svgIcon('<rect x="3.5" y="5.5" width="17" height="13" rx="1"/>'),
+      circle: svgIcon('<circle cx="12" cy="12" r="8.5"/>'),
+      text: svgIcon('<path d="M5 6h14M12 6v12M8 18h8"/>'),
+      eraser: svgIcon('<path d="M8.6 19.5H5.4a1.6 1.6 0 0 1-1.1-2.7L13.9 7a2 2 0 0 1 2.8 0l3 3a2 2 0 0 1 0 2.8l-6.6 6.6z"/><path d="M8.6 19.5h11.9"/>'),
+      weight: svgIcon('<path d="M4 8h16M4 12h16M4 16h16" stroke-width="1.2"/><path d="M4 12h16" stroke-width="3"/>'),
+    };
+
+    function colorGrid(attr) {
+      return inkColors.map(function (c) {
+        return '<button type="button" class="por-swatch" ' + attr + '="' + c + '" ' +
+          'style="--por-swatch:' + c + '" title="' + c + '" aria-label="Colour ' + c + '"></button>';
+      }).join('');
+    }
+
+    // Paint / PowerPoint drawing-first chrome: compact icon strip, colour/weight
+    // pickers, pages left, canvas center, compact Toolbox rail. Print stays in
+    // its own slot so text B/I/U never wraps it.
     root.innerHTML =
       '<div class="view-bar view-bar--file rb-identity">' +
       '  <button type="button" id="por-back" class="btn btn--ghost">‹ TLS</button>' +
@@ -222,17 +252,56 @@
       '  </div>' +
       '  <span class="file-status" id="por-status">Loading…</span>' +
       '</div>' +
-      '<div class="rb-toolbar">' +
-      '  <div class="rb-toolbar__format" data-rb-format-host></div>' +
-      '  <label class="por-fill-toggle"><input type="checkbox" id="por-fill"> Fill shape</label>' +
-      '  <div class="rb-toolbar__view" role="group" aria-label="Page view">' +
-      '    <div class="rb-zoom" role="group" aria-label="Page size on screen">' +
-      '      <button type="button" id="por-zoom-out" class="rb-zoom__btn" aria-label="Zoom out">−</button>' +
-      '      <button type="button" id="por-zoom-level" class="rb-zoom__level">Fit</button>' +
-      '      <button type="button" id="por-zoom-in" class="rb-zoom__btn" aria-label="Zoom in">+</button>' +
+      '<div class="por-toolbar" role="toolbar" aria-label="Drawing tools">' +
+      '  <div class="por-toolbar__group" role="group" aria-label="History">' +
+      '    <button type="button" class="por-iconbtn" id="por-undo" title="Undo (Ctrl+Z)" aria-label="Undo">' + ICONS.undo + '</button>' +
+      '    <button type="button" class="por-iconbtn" id="por-redo" title="Redo" aria-label="Redo">' + ICONS.redo + '</button>' +
+      '  </div>' +
+      '  <div class="por-toolbar__group por-toolbar__tools" role="group" aria-label="Tools">' +
+      '    <button type="button" class="por-iconbtn is-on" data-por-tool="select" title="Select" aria-label="Select">' + ICONS.select + '</button>' +
+      '    <button type="button" class="por-iconbtn" data-rb-tool="pencil" title="Pencil" aria-label="Pencil">' + ICONS.pencil + '</button>' +
+      '    <button type="button" class="por-iconbtn" data-rb-tool="arrow" title="Line / arrow" aria-label="Arrow">' + ICONS.arrow + '</button>' +
+      '    <button type="button" class="por-iconbtn" data-rb-tool="rect" title="Rectangle" aria-label="Rectangle">' + ICONS.rect + '</button>' +
+      '    <button type="button" class="por-iconbtn" data-rb-tool="circle" title="Circle" aria-label="Circle">' + ICONS.circle + '</button>' +
+      '    <button type="button" class="por-iconbtn" id="por-insert-text" title="Text box" aria-label="Text">' + ICONS.text + '</button>' +
+      '    <button type="button" class="por-iconbtn" data-rb-tool="eraser" title="Eraser" aria-label="Eraser">' + ICONS.eraser + '</button>' +
+      '  </div>' +
+      '  <div class="por-toolbar__group" role="group" aria-label="Style">' +
+      '    <div class="por-picker" data-por-picker="outline">' +
+      '      <button type="button" class="por-picker__btn por-picker__btn--swatch" id="por-outline-btn" title="Outline colour" aria-label="Outline colour" aria-haspopup="true" aria-expanded="false">' +
+      '        <span class="por-picker__chip" id="por-outline-chip"></span>' +
+      '      </button>' +
+      '      <div class="por-picker__pop" id="por-outline-pop" hidden role="listbox" aria-label="Outline colours">' + colorGrid('data-por-outline') + '</div>' +
+      '    </div>' +
+      '    <label class="por-fill-toggle por-fill-toggle--tool" title="Fill shapes"><input type="checkbox" id="por-fill" aria-label="Fill shapes"></label>' +
+      '    <div class="por-picker" data-por-picker="fill">' +
+      '      <button type="button" class="por-picker__btn por-picker__btn--swatch" id="por-fill-btn" title="Fill colour" aria-label="Fill colour" aria-haspopup="true" aria-expanded="false">' +
+      '        <span class="por-picker__chip" id="por-fill-chip"></span>' +
+      '      </button>' +
+      '      <div class="por-picker__pop" id="por-fill-pop" hidden role="listbox" aria-label="Fill colours">' + colorGrid('data-por-fill') + '</div>' +
+      '    </div>' +
+      '    <div class="por-picker" data-por-picker="weight">' +
+      '      <button type="button" class="por-picker__btn por-picker__btn--icon" id="por-weight-btn" title="Line weight" aria-label="Line weight" aria-haspopup="true" aria-expanded="false">' +
+      ICONS.weight + '</button>' +
+      '      <div class="por-picker__pop por-picker__pop--weight" id="por-weight-pop" hidden role="listbox" aria-label="Line weight">' +
+      '        <button type="button" class="por-weight" data-por-thick="1" title="Thin" aria-label="Thin"><span class="por-weight__bar" style="height:1.5px"></span></button>' +
+      '        <button type="button" class="por-weight" data-por-thick="2" title="Medium" aria-label="Medium"><span class="por-weight__bar" style="height:3px"></span></button>' +
+      '        <button type="button" class="por-weight" data-por-thick="3" title="Thick" aria-label="Thick"><span class="por-weight__bar" style="height:5px"></span></button>' +
+      '      </div>' +
       '    </div>' +
       '  </div>' +
-      '  <div class="rb-toolbar__out" role="group" aria-label="Drawing output">' +
+      '  <div class="por-toolbar__group por-toolbar__text" id="por-text-format" hidden role="group" aria-label="Text formatting">' +
+      '    <button type="button" class="por-iconbtn" data-por-text="bold" title="Bold" aria-label="Bold"><b>B</b></button>' +
+      '    <button type="button" class="por-iconbtn" data-por-text="italic" title="Italic" aria-label="Italic"><i>I</i></button>' +
+      '    <button type="button" class="por-iconbtn" data-por-text="underline" title="Underline" aria-label="Underline"><u>U</u></button>' +
+      '  </div>' +
+      '  <div class="por-toolbar__spacer"></div>' +
+      '  <div class="por-toolbar__view" role="group" aria-label="Page view">' +
+      '    <button type="button" id="por-zoom-out" class="por-iconbtn" aria-label="Zoom out" title="Zoom out">−</button>' +
+      '    <button type="button" id="por-zoom-level" class="por-zoom-level" title="Fit page">Fit</button>' +
+      '    <button type="button" id="por-zoom-in" class="por-iconbtn" aria-label="Zoom in" title="Zoom in">+</button>' +
+      '  </div>' +
+      '  <div class="por-toolbar__out" role="group" aria-label="Drawing output">' +
       '    <button type="button" id="por-print" class="btn btn--secondary rb-print-btn">Print / PDF</button>' +
       '  </div>' +
       '</div>' +
@@ -264,7 +333,7 @@
       '      <button type="button" class="por-linkbtn" id="por-bring-plan">Floor plan</button>' +
       '      <button type="button" class="por-linkbtn" id="por-bring-contour">Contour</button>' +
       '      <button type="button" class="por-linkbtn" id="por-import-bg">Import drawing</button>' +
-      '      <button type="button" class="por-linkbtn" id="por-clear-bg">Clear</button>' +
+      '      <button type="button" class="por-linkbtn" id="por-clear-bg">Blank</button>' +
       '      <input type="file" id="por-import-file" accept="image/*" hidden>' +
       '    </div>' +
       '    <div class="por-bg-actions" role="group" aria-label="Views on this sheet">' +
@@ -333,9 +402,10 @@
       selectedViewIndex: null,
       formatToolbar: null,
       shapeMenu: null,
-      inspectorMode: 'format', // format | size
+      inspectorMode: 'format',
       fillColor: '#eab308',
       editSeq: 0,
+      editingText: false,
     };
 
     var sheetEl = root.querySelector('#por-sheet');
@@ -370,12 +440,90 @@
     }
 
     function syncHistoryButtons() {
-      if (state.formatToolbar && state.formatToolbar.setHistory) {
-        state.formatToolbar.setHistory(state.undo.length > 0, state.redo.length > 0);
+      var undoBtn = root.querySelector('#por-undo');
+      var redoBtn = root.querySelector('#por-redo');
+      if (undoBtn) undoBtn.disabled = state.undo.length === 0 || state.readOnly;
+      if (redoBtn) redoBtn.disabled = state.redo.length === 0 || state.readOnly;
+      root.querySelectorAll('[data-rb-tool]').forEach(function (btn) {
+        btn.classList.toggle('is-on', btn.getAttribute('data-rb-tool') === state.inkTool);
+      });
+      root.querySelectorAll('[data-por-tool="select"]').forEach(function (btn) {
+        btn.classList.toggle('is-on', !state.inkTool);
+      });
+      var outlineChip = root.querySelector('#por-outline-chip');
+      if (outlineChip) outlineChip.style.background = state.inkColor;
+      var fillChip = root.querySelector('#por-fill-chip');
+      if (fillChip) fillChip.style.background = state.fillColor;
+      var textStrip = root.querySelector('#por-text-format');
+      if (textStrip) {
+        var showText = state.editingText || (selectedItem() && selectedItem().kind === 'text');
+        textStrip.hidden = !showText;
       }
-      if (state.formatToolbar && state.formatToolbar.setTool) {
-        state.formatToolbar.setTool(state.inkTool);
+    }
+
+    function closePickers() {
+      root.querySelectorAll('.por-picker__pop').forEach(function (pop) { pop.hidden = true; });
+      root.querySelectorAll('.por-picker__btn').forEach(function (btn) {
+        btn.setAttribute('aria-expanded', 'false');
+      });
+    }
+
+    function togglePicker(which) {
+      var pop = root.querySelector('#por-' + which + '-pop');
+      var btn = root.querySelector('#por-' + which + '-btn');
+      if (!pop || !btn) return;
+      var open = pop.hidden;
+      closePickers();
+      if (open) {
+        pop.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
       }
+    }
+
+    function applyOutlineColor(color) {
+      if (!color) return;
+      var item = selectedItem();
+      if (item && !state.readOnly) {
+        pushHistory();
+        item.color = color;
+        scheduleSave();
+        renderSheet();
+        return;
+      }
+      state.inkColor = color;
+      syncHistoryButtons();
+    }
+
+    function applyFillColor(color) {
+      if (!color) return;
+      var item = selectedItem();
+      if (item && !state.readOnly && (item.kind === 'rect' || item.kind === 'circle')) {
+        pushHistory();
+        item.fill = true;
+        item.fillColor = color;
+        scheduleSave();
+        renderSheet();
+        syncInspector();
+        return;
+      }
+      state.fillColor = color;
+      state.inkFill = true;
+      if (fillInput) fillInput.checked = true;
+      syncHistoryButtons();
+    }
+
+    function applyWeight(level) {
+      level = Number(level) || 2;
+      var item = selectedItem();
+      if (item && !state.readOnly) {
+        pushHistory();
+        item.thick = level;
+        scheduleSave();
+        renderSheet();
+        return;
+      }
+      state.inkThick = level;
+      syncHistoryButtons();
     }
 
     function clampFrameToDrawArea(frame) {
@@ -1238,8 +1386,16 @@
       sheetEl.querySelectorAll('[data-rb-ov-field]').forEach(function (field) {
         if (field.getAttribute('data-por-text-wired') === '1') return;
         field.setAttribute('data-por-text-wired', '1');
+        field.addEventListener('focus', function () {
+          state.editingText = true;
+          var host = field.closest('[data-rb-ov]');
+          if (host) state.selectedId = host.getAttribute('data-rb-ov');
+          syncHistoryButtons();
+        });
         field.addEventListener('blur', function () {
           commitOverlayText(field);
+          state.editingText = false;
+          syncHistoryButtons();
         });
       });
     }
@@ -1260,11 +1416,16 @@
       var target = event.target.closest && event.target.closest('[data-rb-ov]');
       if (!target) {
         state.selectedId = null;
+        state.editingText = false;
         renderSheet();
+        syncHistoryButtons();
         return false;
       }
       state.selectedId = target.getAttribute('data-rb-ov');
+      var item = selectedItem();
+      state.editingText = !!(item && item.kind === 'text');
       renderSheet();
+      syncHistoryButtons();
       return true;
     }
 
@@ -1462,11 +1623,15 @@
         if (!pView.camera || typeof pView.camera !== 'object') {
           pView.camera = defaultViewCamera(1);
         }
+        // Capture live frame size BEFORE renderSheet() — storing the host node
+        // and reading clientWidth after re-render yields 0 (detached) and flings
+        // the camera to the edge (fw/fh fall back to 1).
         state.drag = {
           mode: 'view-pan',
           viewIndex: pVi,
           startClient: { x: event.clientX, y: event.clientY },
-          host: viewHost,
+          hostW: Math.max(1, viewHost.clientWidth || 0),
+          hostH: Math.max(1, viewHost.clientHeight || 0),
           origCamera: deepClone(viewCamera(pView)),
         };
         renderSheet();
@@ -1561,12 +1726,12 @@
       }
 
       if (state.drag.mode === 'view-pan') {
-        var host = state.drag.host;
         var views2 = activeViews();
         var view2 = views2[state.drag.viewIndex];
-        if (!view2 || !host) return;
-        var fw = host.clientWidth || 1;
-        var fh = host.clientHeight || 1;
+        if (!view2) return;
+        var liveHost = sheetEl.querySelector('[data-por-view="' + state.drag.viewIndex + '"]');
+        var fw = state.drag.hostW || (liveHost && liveHost.clientWidth) || 1;
+        var fh = state.drag.hostH || (liveHost && liveHost.clientHeight) || 1;
         var cam = state.drag.origCamera || defaultViewCamera(1);
         var zoom = Number(cam.zoom) > 0 ? Number(cam.zoom) : 1;
         // Dragging right reveals content to the left (cx decreases).
@@ -1579,8 +1744,9 @@
           rel: true,
         };
         view2.camera = nextCam;
-        var img = host.querySelector('img');
-        applyViewCamera(img, host, nextCam);
+        if (liveHost) {
+          applyViewCamera(liveHost.querySelector('img'), liveHost, nextCam);
+        }
         return;
       }
 
@@ -1887,60 +2053,83 @@
       });
     }
 
-    // Same Report Builder format/draw toolbar — Print stays in rb-toolbar__out
-    // so text controls expanding the format host do not shove it onto a new row.
-    if (window.ToolboxReportToolbar && window.ToolboxReportToolbar.mount) {
-      state.formatToolbar = window.ToolboxReportToolbar.mount(
-        root,
-        {
-          onTool: function (name) {
-            if (state.readOnly) return;
-            state.selectedId = null;
-            setInkTool(name);
-          },
-          onColor: function (color) {
-            if (!color) return;
-            var item = selectedItem();
-            if (item && !state.readOnly) {
-              pushHistory();
-              item.color = color;
-              if (item.fill) item.fillColor = color;
-              scheduleSave();
-              renderSheet();
-              return;
-            }
-            state.inkColor = color;
-            if (state.inkFill) state.fillColor = color;
-          },
-          onThick: function (level) {
-            state.inkThick = Number(level) || state.inkThick;
-          },
-          onHistory: function (which) {
-            if (which === 'undo') undo();
-            else if (which === 'redo') redo();
-          },
-          onInsert: function (kind) {
-            if (state.readOnly) return;
-            if (kind === 'text') {
-              setInkTool(null);
-              var page = activePage();
-              var api = overlayApi();
-              if (!api || !api.create) return;
-              pushHistory();
-              var item = api.create('text');
-              overlayList(page).push(item);
-              state.selectedId = item.id;
-              scheduleSave();
-              renderSheet();
-              return;
-            }
-            if (kind === 'image') {
-              setStatus('Use Import drawing in the Toolbox panel to place a picture on the sheet');
-            }
-          },
-        }
-      );
-    }
+    // Paint / PowerPoint icon toolbar (not the RB text ribbon).
+    root.querySelector('#por-undo').addEventListener('click', function () { undo(); });
+    root.querySelector('#por-redo').addEventListener('click', function () { redo(); });
+    root.querySelectorAll('[data-por-tool="select"]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        state.selectedId = null;
+        state.editingText = false;
+        setInkTool(null);
+      });
+    });
+    root.querySelectorAll('[data-rb-tool]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (state.readOnly) return;
+        var want = btn.getAttribute('data-rb-tool');
+        state.selectedId = null;
+        state.editingText = false;
+        closePickers();
+        setInkTool(state.inkTool === want ? null : want);
+      });
+    });
+    root.querySelector('#por-insert-text').addEventListener('click', function () {
+      if (state.readOnly) return;
+      closePickers();
+      setInkTool(null);
+      var page = activePage();
+      var api = overlayApi();
+      if (!api || !api.create) return;
+      pushHistory();
+      var item = api.create('text');
+      overlayList(page).push(item);
+      state.selectedId = item.id;
+      state.editingText = true;
+      scheduleSave();
+      renderSheet();
+      syncHistoryButtons();
+    });
+    root.querySelector('#por-outline-btn').addEventListener('click', function (event) {
+      event.stopPropagation();
+      togglePicker('outline');
+    });
+    root.querySelector('#por-fill-btn').addEventListener('click', function (event) {
+      event.stopPropagation();
+      togglePicker('fill');
+    });
+    root.querySelector('#por-weight-btn').addEventListener('click', function (event) {
+      event.stopPropagation();
+      togglePicker('weight');
+    });
+    root.querySelector('#por-outline-pop').addEventListener('click', function (event) {
+      var sw = event.target.closest && event.target.closest('[data-por-outline]');
+      if (!sw) return;
+      applyOutlineColor(sw.getAttribute('data-por-outline'));
+      closePickers();
+    });
+    root.querySelector('#por-fill-pop').addEventListener('click', function (event) {
+      var sw = event.target.closest && event.target.closest('[data-por-fill]');
+      if (!sw) return;
+      applyFillColor(sw.getAttribute('data-por-fill'));
+      closePickers();
+    });
+    root.querySelector('#por-weight-pop').addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('[data-por-thick]');
+      if (!btn) return;
+      applyWeight(btn.getAttribute('data-por-thick'));
+      closePickers();
+    });
+    root.querySelectorAll('[data-por-text]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var cmd = btn.getAttribute('data-por-text');
+        try { document.execCommand(cmd, false, null); } catch (err) { /* ignore */ }
+      });
+    });
+    document.addEventListener('pointerdown', function (event) {
+      if (!root.contains(event.target)) return;
+      if (event.target.closest && event.target.closest('.por-picker')) return;
+      closePickers();
+    });
     syncHistoryButtons();
 
     root.querySelector('#por-back').addEventListener('click', function () {
