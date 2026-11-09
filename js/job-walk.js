@@ -1,10 +1,9 @@
 // Toolbox — Job Walk (TLS).
 //
 // Phone-friendly capture on an open Customer File with or without a plan.
-// Photos reuse Distress Quick Capture (shared both sides) as JPEG data URLs
-// in pgg_photos_v1 — the same transferable form Sync / Geo Photo folders /
-// Report evidence require. Visit notes, audio, and video live on
-// record.distress.jobWalk (audio/video also as data URL strings).
+// Photos reuse Distress Quick Capture (JPEG data URLs). Videos are stored as
+// raw Blobs and upload only on "Upload videos" (Tim, Nov 9, 2026) — they do
+// not ride Check Out. Visit notes + audio still travel with the Customer File.
 (function () {
   'use strict';
 
@@ -12,6 +11,9 @@
   var DISTRESS_STORE = 'photos';
   var MAX_PHOTO_DIM = 1600;
   var JPEG_QUALITY = 0.88;
+  /** Per-clip cap — clear message when exceeded (Tim, Nov 9, 2026). */
+  var MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+  var MAX_VIDEO_LABEL = '100 MB';
   var activeMount = null;
 
   function isoNow() { return new Date().toISOString(); }
@@ -150,6 +152,8 @@
       if (value == null) return null;
       if (typeof value === 'string' && value.indexOf('data:') === 0) return value;
       if (!(value instanceof Blob)) return value;
+      // Videos stay Blobs. Legacy photo/audio Blobs convert once to data URLs.
+      if (typeof id === 'string' && id.indexOf('vid_') === 0) return value;
       return blobToDataUrl(value).then(function (dataUrl) {
         return putDistressValue(id, dataUrl).then(function () { return dataUrl; });
       });
@@ -205,9 +209,11 @@
       '  </section>' +
       '  <section class="jw-panel">' +
       '    <h2 class="jw-panel__title">Videos</h2>' +
-      '    <p class="jw-panel__hint">Walk-around clips stay on this Customer File.</p>' +
+      '    <p class="jw-panel__hint">Walk-around clips stay on this phone until you upload them to the File Cabinet. Max ' + MAX_VIDEO_LABEL + ' each. They do not travel with Check Out.</p>' +
       '    <div class="jw-photo-actions">' +
       '      <button type="button" id="jw-take-video" class="btn btn--accent">Take Video</button>' +
+      '      <button type="button" id="jw-upload-videos" class="btn btn--secondary">Upload videos</button>' +
+      '      <span class="jw-video-wait" id="jw-video-wait" hidden></span>' +
       '      <input type="file" id="jw-video-file" accept="video/*" capture="environment" multiple hidden>' +
       '    </div>' +
       '    <div class="jw-grid jw-grid--video" id="jw-videos"></div>' +
@@ -287,6 +293,29 @@
       return ensureDistress(state.record).jobWalk.videos.slice();
     }
 
+    function videosWaitingUpload() {
+      return jobWalkVideos().filter(function (clip) {
+        return clip && clip.id && !clip.cabinetUploadedAt;
+      });
+    }
+
+    function updateVideoWaitBadge() {
+      var el = root.querySelector('#jw-video-wait');
+      var btn = root.querySelector('#jw-upload-videos');
+      if (!el) return;
+      var waiting = videosWaitingUpload().length;
+      if (waiting) {
+        el.hidden = false;
+        el.textContent = waiting === 1
+          ? '1 video waiting to upload'
+          : waiting + ' videos waiting to upload';
+      } else {
+        el.hidden = true;
+        el.textContent = '';
+      }
+      if (btn) btn.disabled = state.readOnly || waiting === 0;
+    }
+
     function makeDeleteButton(label, onClick) {
       var btn = document.createElement('button');
       btn.type = 'button';
@@ -333,12 +362,50 @@
           });
         }));
         card.appendChild(mediaWrap);
+        var photoMeta = document.createElement('p');
+        photoMeta.className = 'jw-card__meta';
+        photoMeta.textContent = '';
+        card.appendChild(photoMeta);
+        function thumbKey(id) {
+          return window.ToolboxSync && typeof window.ToolboxSync.thumbMediaKey === 'function'
+            ? window.ToolboxSync.thumbMediaKey(id)
+            : ('thumb:' + id);
+        }
+        function openExplorerFor(mediaId) {
+          if (typeof location !== 'undefined') {
+            location.hash = '#/explorer' +
+              (state.record && state.record.id ? '/' + state.record.id : '');
+          }
+          setStatus(mediaId
+            ? 'In the File Cabinet — open File Explorer to view this photo.'
+            : 'Open File Explorer to view Cabinet photos.');
+        }
         getStoredMedia(item.id).then(function (value) {
           var src = mediaSrc(value);
-          if (!src) return;
-          if (src.indexOf('blob:') === 0) state.objectUrls.push(src);
-          img.src = src;
-        }).catch(function () {});
+          if (src) {
+            if (src.indexOf('blob:') === 0) state.objectUrls.push(src);
+            img.src = src;
+            photoMeta.textContent = item.localFull === false ? 'Downloaded' : 'On this device';
+            return getStoredMedia(thumbKey(item.id)).then(function () { return true; });
+          }
+          return getStoredMedia(thumbKey(item.id)).then(function (thumb) {
+            var thumbSrc = mediaSrc(thumb);
+            if (thumbSrc) {
+              img.src = thumbSrc;
+              photoMeta.textContent = 'In the File Cabinet';
+              card.classList.add('jw-card--cabinet');
+              card.addEventListener('click', function (event) {
+                if (event.target.closest('.jw-delete') || event.target.closest('textarea')) return;
+                openExplorerFor(item.id);
+              });
+            } else {
+              photoMeta.textContent = 'In the File Cabinet';
+              card.classList.add('jw-card--cabinet');
+            }
+          });
+        }).catch(function () {
+          photoMeta.textContent = 'In the File Cabinet';
+        });
         var desc = document.createElement('textarea');
         desc.className = 'jw-card__desc';
         desc.rows = 2;
@@ -388,9 +455,20 @@
           });
         }));
         card.appendChild(mediaWrap);
+        var meta = document.createElement('p');
+        meta.className = 'jw-card__meta';
+        meta.textContent = item.cabinetUploadedAt
+          ? 'In File Cabinet (kept on this phone)'
+          : 'On this phone — waiting to upload';
+        card.appendChild(meta);
         getStoredMedia(item.id).then(function (value) {
           var src = mediaSrc(value);
-          if (!src) return;
+          if (!src) {
+            meta.textContent = item.cabinetUploadedAt
+              ? 'In the File Cabinet — open File Explorer to play'
+              : 'Video bytes missing on this device';
+            return;
+          }
           if (src.indexOf('blob:') === 0) state.objectUrls.push(src);
           video.src = src;
         }).catch(function () {});
@@ -407,6 +485,7 @@
         card.appendChild(desc);
         videosEl.appendChild(card);
       });
+      updateVideoWaitBadge();
     }
 
     function renderNotes() {
@@ -493,6 +572,7 @@
                 folder: 'Job Walk',
                 description: '',
                 sourceName: file.name || '',
+                localFull: true,
               });
             });
           });
@@ -514,24 +594,60 @@
       var chain = Promise.resolve();
       files.forEach(function (file) {
         chain = chain.then(function () {
+          if (file.size > MAX_VIDEO_BYTES) {
+            setStatus('Video too large — max ' + MAX_VIDEO_LABEL + ' per clip (' +
+              (file.name || 'clip') + ' is about ' +
+              Math.round(file.size / (1024 * 1024)) + ' MB)');
+            return;
+          }
           var id = 'vid_' + uid('jw');
-          return readFileAsDataUrl(file).then(function (dataUrl) {
-            return putDistressValue(id, dataUrl).then(function () {
-              ensureDistress(state.record).jobWalk.videos.push({
-                id: id,
-                ts: isoNow(),
-                description: '',
-                sourceName: file.name || '',
-              });
+          // Keep the raw file as a Blob — never inflate to a data URL.
+          return putDistressValue(id, file).then(function () {
+            ensureDistress(state.record).jobWalk.videos.push({
+              id: id,
+              ts: isoNow(),
+              description: '',
+              sourceName: file.name || '',
+              byteLength: file.size,
+              mimeType: file.type || 'video/*',
             });
           });
         });
       });
       return chain.then(function () {
         return persist();
-      }).then(renderVideos).catch(function (err) {
+      }).then(function () {
+        renderVideos();
+        updateVideoWaitBadge();
+      }).catch(function (err) {
         console.error(err);
         setStatus('Could not save video');
+      });
+    }
+
+    function uploadVideos() {
+      if (state.readOnly) return;
+      if (!window.ToolboxSync || typeof window.ToolboxSync.uploadJobWalkVideos !== 'function') {
+        setStatus('Upload is not available');
+        return;
+      }
+      var waiting = videosWaitingUpload().length;
+      if (!waiting) {
+        setStatus('No videos waiting to upload');
+        return;
+      }
+      setStatus('Uploading videos to File Cabinet…');
+      window.ToolboxSync.uploadJobWalkVideos(state.record.id).then(function (result) {
+        if (result && result.record) state.record = result.record;
+        setStatus(result && result.uploaded
+          ? ('Uploaded ' + result.uploaded + ' video' + (result.uploaded === 1 ? '' : 's') +
+            ' to the File Cabinet')
+          : 'Nothing to upload');
+        renderVideos();
+        updateVideoWaitBadge();
+      }).catch(function (err) {
+        console.error(err);
+        setStatus((err && err.message) || 'Could not upload videos');
       });
     }
 
@@ -649,6 +765,7 @@
       if (state.readOnly) return;
       videoInput.click();
     });
+    root.querySelector('#jw-upload-videos').addEventListener('click', uploadVideos);
     videoInput.addEventListener('change', function () {
       addVideos(videoInput.files);
       videoInput.value = '';
@@ -671,6 +788,7 @@
       if (state.readOnly) {
         root.querySelector('#jw-take').disabled = true;
         root.querySelector('#jw-take-video').disabled = true;
+        root.querySelector('#jw-upload-videos').disabled = true;
         root.querySelector('#jw-note-save').disabled = true;
         root.querySelector('#jw-note-text').disabled = true;
         recBtn.disabled = true;
@@ -679,6 +797,7 @@
         setStatus('Ready');
       }
       renderAll();
+      updateVideoWaitBadge();
     });
   }
 
@@ -697,6 +816,7 @@
       deleteDistressValue: deleteDistressValue,
       getStoredMedia: getStoredMedia,
       MAX_PHOTO_DIM: MAX_PHOTO_DIM,
+      MAX_VIDEO_BYTES: MAX_VIDEO_BYTES,
     },
   };
 })();

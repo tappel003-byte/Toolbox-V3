@@ -1935,6 +1935,37 @@
         });
       });
     });
+    // Downloaded Quick Capture photos (tagged + localFull) sit in ToolboxDB
+    // media by id; keys are qc:<id>. They are not Distress pin photos.
+    if (window.ToolboxReportEvidence &&
+        typeof window.ToolboxReportEvidence.listLocalQuickCapturePhotos === 'function') {
+      var qcList = window.ToolboxReportEvidence.listLocalQuickCapturePhotos(record) || [];
+      for (var qci = 0; qci < qcList.length; qci += 1) {
+        var qc = qcList[qci];
+        if (!qc || !qc.key || !qc.id) continue;
+        var qcUrl = null;
+        if (window.ToolboxDB && typeof window.ToolboxDB.getMedia === 'function') {
+          try {
+            qcUrl = await window.ToolboxDB.getMedia(qc.id);
+          } catch (err) {
+            qcUrl = null;
+          }
+        }
+        photoByKey[qc.key] = {
+          key: String(qc.key),
+          id: qc.id,
+          displayNumber: null,
+          dataUrl: qcUrl || null,
+          seedText: qc.seedText || '',
+          location: '',
+          pinId: null,
+          pinNumber: null,
+          canvasId: null,
+          quickCapture: true,
+          missing: !qcUrl,
+        };
+      }
+    }
     var diagnostics = window.ToolboxDiagnostics && window.ToolboxDiagnostics.listReportFigures
       ? window.ToolboxDiagnostics.listReportFigures(record) : [];
     var result = [];
@@ -9489,6 +9520,12 @@
         typeof window.ToolboxReportEvidence.listDistressPhotos === 'function'
         ? window.ToolboxReportEvidence.listDistressPhotos(record)
         : [];
+      if (window.ToolboxReportEvidence &&
+          typeof window.ToolboxReportEvidence.listLocalQuickCapturePhotos === 'function') {
+        photoList = photoList.concat(
+          window.ToolboxReportEvidence.listLocalQuickCapturePhotos(record) || []
+        );
+      }
       var source = api.read(record || null);
       var fresh = withProperty(api.assemble(source), source);
       var freshPages = ensurePicturesInFreshPages(fresh.pages.slice(), photoList);
@@ -9919,6 +9956,12 @@
       typeof window.ToolboxReportEvidence.listDistressPhotos === 'function'
       ? window.ToolboxReportEvidence.listDistressPhotos(record)
       : [];
+    if (window.ToolboxReportEvidence &&
+        typeof window.ToolboxReportEvidence.listLocalQuickCapturePhotos === 'function') {
+      photoList = photoList.concat(
+        window.ToolboxReportEvidence.listLocalQuickCapturePhotos(record) || []
+      );
+    }
     if (!photoList.length) {
       return Promise.reject(new Error('No Distress photographs to put on the report.'));
     }

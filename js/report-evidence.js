@@ -550,6 +550,33 @@
     return photos;
   }
 
+  /**
+   * Quick Capture photos that have full local bytes (tagged + downloaded).
+   * These may be placed on Pictures pages; Cabinet-only thumbs are excluded.
+   */
+  function listLocalQuickCapturePhotos(record) {
+    var distress = record && record.distress && typeof record.distress === 'object' ? record.distress : {};
+    var quick = Array.isArray(distress.quickCapture) ? distress.quickCapture : [];
+    return quick.filter(function (item) {
+      // Downloaded (or captured-on-this-device) full bytes only.
+      // Tagged-but-not-downloaded stay Cabinet-side until Download tagged.
+      return item && item.id && item.localFull === true;
+    }).map(function (item, index) {
+      return {
+        key: 'qc:' + item.id,
+        id: item.id,
+        displayNumber: null,
+        pinId: null,
+        pinNumber: null,
+        seedText: trim(item.description) || trim(item.sourceName) || ('Quick Capture ' + (index + 1)),
+        location: '',
+        canvasId: null,
+        quickCapture: true,
+        folder: item.folder || '',
+      };
+    });
+  }
+
   async function assemble(record, deps) {
     var options = Object.assign({
       getMedia: defaultGetMedia,
@@ -569,6 +596,7 @@
       floor: floor,
       pages: pages,
       photos: listDistressPhotos(record),
+      quickCapturePhotos: listLocalQuickCapturePhotos(record),
     };
   }
 
@@ -577,6 +605,7 @@
     NUMBERING_NOTE: NUMBERING_NOTE,
     FLOOR_MISSING_NOTE: FLOOR_MISSING_NOTE,
     listDistressPhotos: listDistressPhotos,
+    listLocalQuickCapturePhotos: listLocalQuickCapturePhotos,
     assemble: assemble,
   };
 })();

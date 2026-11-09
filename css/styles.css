@@ -3054,6 +3054,41 @@ button.cf-home__delete[hidden] {
   color: var(--ink-soft);
 }
 
+.photo-folders__card--cabinet {
+  border-style: dashed;
+  background: #f7f4ef;
+}
+
+.photo-folders__cabinet-badge {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.photo-folders__tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  color: var(--navy);
+}
+
+.photo-folders__tagged {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.photo-folders__viewer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
 .photo-folders__empty {
   margin: 8px 0 16px;
   color: var(--ink-soft);

@@ -139,6 +139,7 @@ const jwImgOk = await page.waitForFunction(() => {
 check('Job Walk photo renders in Job Walk grid', jwImgOk);
 check('Job Walk photo has Delete control', !!(await page.$('.jw-card .jw-delete')));
 check('Job Walk Take Video control', !!(await page.$('#jw-take-video')));
+check('Job Walk Upload videos control', !!(await page.$('#jw-upload-videos')));
 
 page.once('dialog', async (dialog) => { await dialog.accept(); });
 await page.click('.jw-card .jw-delete');
@@ -160,8 +161,14 @@ await page.waitForSelector('.cf-home--tls');
 // Seed after leaving Job Walk so persist-on-back cannot overwrite the row.
 const videoSeed = await page.evaluate(async () => {
   const id = 'vid_jw-smoke-video';
-  const dataUrl = 'data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAHTEU2bdLpNu4tTq4QVSalmU6yBoUuwAAAAAAAAGF13';
-  await window.ToolboxJobWalk._test.putDistressValue(id, dataUrl);
+  const bytes = Uint8Array.from(atob(
+    'GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAHTEU2bdLpNu4tTq4QVSalmU6yBoUuwAAAAAAAAGF13'
+  ), (c) => c.charCodeAt(0));
+  // Raw Blob — not a data URL (Tim Nov 9 Cabinet rule).
+  await window.ToolboxJobWalk._test.putDistressValue(
+    id,
+    new Blob([bytes], { type: 'video/webm' })
+  );
   await window.ToolboxJobWalk._test.putDistressValue(
     'vm_jw-smoke-audio',
     'data:audio/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAHTEU2bdLpNu4tTq4QVSalmU6yBoUuwAAAAAAAAGF13'
@@ -176,6 +183,8 @@ const videoSeed = await page.evaluate(async () => {
     ts: new Date().toISOString(),
     description: 'Walk around',
     sourceName: 'jw-smoke.webm',
+    byteLength: bytes.length,
+    mimeType: 'video/webm',
   });
   rec.distress.jobWalk.notes.push({
     id: 'note-jw-audio-smoke',
@@ -193,6 +202,25 @@ await page.waitForSelector('.jw-card--video');
 check('Job Walk video card renders', !!(await page.$('.jw-card--video video')));
 check('Job Walk video has Delete control', !!(await page.$('.jw-card--video .jw-delete')));
 check('Job Walk audio note has Delete control', !!(await page.$('.jw-note .jw-delete')));
+const waitBadge = await page.evaluate(() => {
+  const el = document.querySelector('#jw-video-wait');
+  const btn = document.querySelector('#jw-upload-videos');
+  return {
+    text: el ? el.textContent : '',
+    hidden: el ? !!el.hidden : true,
+    uploadDisabled: btn ? !!btn.disabled : true,
+  };
+});
+check('Job Walk shows videos waiting to upload',
+  !waitBadge.hidden && /1 video waiting/.test(waitBadge.text) && !waitBadge.uploadDisabled,
+  JSON.stringify(waitBadge));
+const sizeLimit = await page.evaluate(() => {
+  const hints = Array.from(document.querySelectorAll('.jw-panel__hint'));
+  const videoHint = hints.find((el) => /100 MB|walk-around|Upload/i.test(el.textContent || ''));
+  return videoHint ? videoHint.textContent : hints.map((h) => h.textContent).join(' | ');
+});
+check('Job Walk states the 100 MB video size limit',
+  /100 MB/.test(sizeLimit), sizeLimit);
 
 page.once('dialog', async (dialog) => { await dialog.accept(); });
 await page.click('.jw-card--video .jw-delete');
