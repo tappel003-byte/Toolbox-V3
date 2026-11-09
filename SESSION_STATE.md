@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 9, 2026** (America/Denver)  
-Updated by: Cursor agent — Quick Capture + Job Walk video Cabinet media build ready for CC check.
+Updated by: Claude Code — check of `1152eeb`: Cabinet rules work; report + video fixes needed; Ball to Cursor.
 
 ---
 
@@ -19,7 +19,8 @@ Updated by: Cursor agent — Quick Capture + Job Walk video Cabinet media build 
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** (check PR `cursor/qc-cabinet-media-2ac5`) |
+| **Has the ball** | **Cursor** — fix Claude Code findings on `1152eeb` (Quick Capture / video Cabinet media): QC on report (untagged auto-placed; image not found; "Photo 00" labels), Download video missing, Worker video upload buffering, thumbnail fallback, stale import test. |
+| Next | **Claude Code** rechecks, then **Tim** (merge). |
 | Integration merge | Not yet. Open PR into `claude/milestone-1-customer-file-qv5ybf` (base `803abf9`). Do **not** merge until Tim says. |
 | Not done | CC review → Tim merge to integration → Tim promote. |
 
