@@ -216,11 +216,11 @@ check('Job Walk shows videos waiting to upload',
   JSON.stringify(waitBadge));
 const sizeLimit = await page.evaluate(() => {
   const hints = Array.from(document.querySelectorAll('.jw-panel__hint'));
-  const videoHint = hints.find((el) => /100 MB|walk-around|Upload/i.test(el.textContent || ''));
+  const videoHint = hints.find((el) => /90 MB|walk-around|Upload/i.test(el.textContent || ''));
   return videoHint ? videoHint.textContent : hints.map((h) => h.textContent).join(' | ');
 });
-check('Job Walk states the 100 MB video size limit',
-  /100 MB/.test(sizeLimit), sizeLimit);
+check('Job Walk states the 90 MB video size limit',
+  /90 MB/.test(sizeLimit), sizeLimit);
 
 page.once('dialog', async (dialog) => { await dialog.accept(); });
 await page.click('.jw-card--video .jw-delete');

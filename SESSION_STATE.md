@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 9, 2026** (America/Denver)  
-Updated by: Claude Code — recheck of `6cfaefb` (#208): behavior passes; three small items; Ball to Cursor.
+Updated by: Cursor — three small CC items on #208; Ball to Claude Code.
 
 ---
 
@@ -19,11 +19,11 @@ Updated by: Claude Code — recheck of `6cfaefb` (#208): behavior passes; three 
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Cursor** — last small items on PR #208 (CC recheck of `6cfaefb`): update stale Photo folders note assertion in tests/customer-file-import.mjs; set video clip limit with headroom under the Workers 100 MB request limit; state that the streaming media PUT needs a Sync Worker deploy (Tim). |
-| CC result (`6cfaefb`) | Passes on behavior: report places only tagged + downloaded QC (image loads, labelled Quick Capture); Download video works and stores a raw Blob; Worker streams raw media; thumbnails shrink on the client. Suites: 57 run, only failures are customer-file-import (stale note text, 3) plus the two that also fail on base. |
-| Next | **Claude Code** quick recheck, then **Tim** (merge). |
+| **Has the ball** | **Claude Code** |
+| Check this | **PR #208** — https://github.com/tappel003-byte/Toolbox-V3/pull/208 |
+| Branch / tip | `cursor/qc-cabinet-media-2ac5` (shell `v452`). Tip SHA in latest commit on the branch. |
 | Base | `claude/milestone-1-customer-file-qv5ybf` @ `803abf9`. Do **not** merge until Tim says. |
-| Not done | CC recheck → Tim merge to integration → Tim promote. |
+| Not done | CC quick recheck → Tim merge to integration → Tim promote. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -80,8 +80,8 @@ Long chats cost more tokens and do **not** give the model continuous human-like 
 
 | Branch | Tip (approx) | Notes |
 |--------|----------------|-------|
-| `claude/milestone-1-customer-file-qv5ybf` | `803abf9` | **Integration tip** (includes #204 + SESSION_STATE #206). |
-| `cursor/qc-cabinet-media-2ac5` | (this push) | **PR #208** for CC recheck. Shell `v451`. |
+| `claude/milestone-1-customer-file-qv5ybf` | `803abf9` | **Integration tip** |
+| `cursor/qc-cabinet-media-2ac5` | (this push) | **PR #208** — three small CC items done; shell `v452`. |
 | `main` | re-check | Behind milestone. Do not merge here unless Tim asks promote-prep. |
 
 Always re-check with `git fetch` before claiming tip SHAs.
@@ -93,16 +93,17 @@ Always re-check with `git fetch` before claiming tip SHAs.
 | Item | State |
 |------|--------|
 | Floor open seed / lookbook / RB toolbar / POR / TLS / Job Walk media | Done on integration via #204 @ tip `803abf9`. |
-| **QC + Job Walk video → File Cabinet (not Check Out)** | **PR #208** — Cursor fixed CC findings (report QC tag-only + distress-store media + Photo label; Download video; Worker streamed raw PUT; client thumb shrink when Images absent). Awaiting CC recheck. Shell `v451`. |
+| **QC + Job Walk video → File Cabinet (not Check Out)** | **PR #208** — behavior verified on `6cfaefb`; three small follow-ups landed for CC. Shell `v452`. |
 
-### CC findings addressed (from `8b51433` bounce)
+### Ops note — Sync Worker deploy (Tim)
 
-1. Untagged `localFull` QC no longer auto-places on Pictures — requires **tagged + localFull**.
-2. QC images resolve from `pgg_photos_v1` (distress store), not only `ToolboxDB.getMedia`.
-3. Labels: no more “Photo 00” for QC — shows **Quick Capture**.
-4. Job Walk **Download video** when clip is Cabinet-only on this device.
-5. Worker media PUT with `x-toolbox-encoding: raw` **streams** into R2 (no full `arrayBuffer` buffer).
-6. Thumbnail fallback: when Worker returns original (`x-toolbox-thumb: original`) or a large body, client shrinks to JPEG thumb.
+The **streaming** media PUT in `sync-worker/src/index.js` (`x-toolbox-encoding: raw` → R2 body stream) takes effect **only after Tim authorises a Sync Worker deploy**. Until then, live uploads still use the old buffered Worker path. That is fine for smaller clips; the client clip limit is now **90 MB** so a clip stays under the Workers 100 MB request-body ceiling even on the buffered path.
+
+### Three small CC items (this push)
+
+1. `tests/customer-file-import.mjs` Photo folders note assertion matches Cabinet wording (not “not placed on the plan”).
+2. Job Walk video cap **90 MB** (headroom under Workers 100 MB).
+3. SESSION_STATE + PR state the Worker-deploy dependency for streaming PUT (above).
 
 ---
 
@@ -116,11 +117,13 @@ Always re-check with `git fetch` before claiming tip SHAs.
 
 3. **Promote** — Tim only.
 
-4. **Cloudflare Access path bypass for `lookbook/*`** — Tim’s ops action.
+4. **Sync Worker deploy** (when Tim authorises) — picks up streaming media PUT + any other Worker changes on this branch.
 
-5. **Confirm Sync Worker deploy** has lookbook create routes if Share still 404s.
+5. **Cloudflare Access path bypass for `lookbook/*`** — Tim’s ops action.
 
-6. **Stale / unrelated open PRs** — triage when Tim wants; not blockers.
+6. **Confirm Sync Worker deploy** has lookbook create routes if Share still 404s.
+
+7. **Stale / unrelated open PRs** — triage when Tim wants; not blockers.
 
 ---
 

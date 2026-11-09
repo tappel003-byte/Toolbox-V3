@@ -314,7 +314,7 @@ try {
       onBack: function () {},
     });
     const hints = Array.from(host.querySelectorAll('.jw-panel__hint'));
-    const videoHint = hints.find((el) => /100 MB|walk-around|File Cabinet/i.test(el.textContent || ''));
+    const videoHint = hints.find((el) => /90 MB|walk-around|File Cabinet/i.test(el.textContent || ''));
     const upload = host.querySelector('#jw-upload-videos');
     const wait = host.querySelector('#jw-video-wait');
     return {
@@ -327,8 +327,8 @@ try {
   });
   check('Job Walk mounts Upload videos control',
     jw.mounted && jw.hasUpload, JSON.stringify(jw));
-  check('Job Walk size limit message is 100 MB',
-    jw.mounted && /100 MB/.test(jw.hint || ''), jw.hint || '');
+  check('Job Walk size limit message is 90 MB',
+    jw.mounted && /90 MB/.test(jw.hint || ''), jw.hint || '');
   check('Upload videos disabled when none waiting',
     jw.mounted && jw.uploadDisabled && jw.waitHidden, JSON.stringify(jw));
 

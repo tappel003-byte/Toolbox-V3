@@ -11,9 +11,12 @@
   var DISTRESS_STORE = 'photos';
   var MAX_PHOTO_DIM = 1600;
   var JPEG_QUALITY = 0.88;
-  /** Per-clip cap — clear message when exceeded (Tim, Nov 9, 2026). */
-  var MAX_VIDEO_BYTES = 100 * 1024 * 1024;
-  var MAX_VIDEO_LABEL = '100 MB';
+  /**
+   * Per-clip cap with headroom under the Cloudflare Workers request-body
+   * limit (100 MB on Free/Pro). 90 MB stated clearly when exceeded.
+   */
+  var MAX_VIDEO_BYTES = 90 * 1024 * 1024;
+  var MAX_VIDEO_LABEL = '90 MB';
   var activeMount = null;
 
   function isoNow() { return new Date().toISOString(); }

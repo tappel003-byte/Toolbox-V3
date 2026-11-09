@@ -2117,7 +2117,8 @@ async function shootFolders(width, height, name) {
     state.cards[0].includes('photo-01.jpg') &&
       state.cards[0].includes('Pin 1') &&
       state.cards.length === 3 &&
-      /not placed on the plan/.test(state.note) &&
+      /File Cabinet/.test(state.note) &&
+      /Download tagged/.test(state.note) &&
       state.oneLabel === 'Download' &&
       !state.overflow &&
       state.closeInside &&
