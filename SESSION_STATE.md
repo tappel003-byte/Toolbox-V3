@@ -22,7 +22,7 @@ Updated by: Cursor agent — POR corrected back to Report Builder–familiar chr
 | **Has the ball** | **Claude Code** (independent recheck of POR RB-familiar correction) |
 | Next after Claude finishes | **Tim** / ChatGPT vision / merge call |
 | Prior Claude result (`c16e6e2`) | Technical pass; Tim held vision (“less like Paint/PowerPoint”). Lows fixed in this tip: detail covering overall; Print dropping a toolbar row. |
-| Branch / tip | `cursor/tls-workspace-2ac5` — POR RB-familiar `633b5a3` after `c16e6e2`; shell `v447` |
+| Branch / tip | `cursor/tls-workspace-2ac5` — POR RB-familiar `3f16ddd` after `c16e6e2`; shell `v447` |
 | Do not merge | until Tim says so |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
