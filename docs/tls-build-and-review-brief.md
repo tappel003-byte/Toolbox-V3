@@ -25,10 +25,11 @@ Use [TLS Foundations](https://www.tlsfoundations.com/) as the visual reference f
 
 ### Job Walk
 
-- Phone-friendly capture for an open Customer File with or without a plan. Put **Take Photos**, a photo grid, and **Visit Notes** on the screen. Allow a description on a photo and a dated note for the visit. Make it easy to distinguish what the homeowner said from what the investigator saw.
-- Reuse the shared Quick Capture collection and existing photo persistence. Both sides can open the same photos and descriptions. Preserve the link between Distress photos and their pins and preserve existing numbering.
+- Phone-friendly capture for an open Customer File with or without a plan. Put **Take Photos**, a photo grid, **Videos** (Take Video + clips), and **Visit Notes** on the screen. Allow a description on a photo or video and a dated note for the visit. Make it easy to distinguish what the homeowner said from what the investigator saw.
+- Reuse the shared Quick Capture collection and existing photo persistence. Both sides can open the same photos and descriptions. Videos stay on `distress.jobWalk.videos` (not Quick Capture). Preserve the link between Distress photos and their pins and preserve existing numbering.
+- Delete controls on photos, visit notes/audio clips, and videos remove the metadata and the stored media bytes.
 - In Visit Notes, support typing and audio recording with the homeowner's permission. Make recording status and Stop visible. Allow playback from the saved visit. Handle permission refusal and recording failure with clear feedback and keep typed notes available. Reuse the existing voice memo path where it fits. Verify actual local persistence, media transfer, and playback before calling recording complete. Transcription can follow later.
-- Keep visit context with the shared Customer File. Verify photo and audio capture survive leaving, reopening, and the existing check-in/check-out transfer. Apply the existing edit authority and missing-media behavior.
+- Keep visit context with the shared Customer File. Verify photo, audio, and video capture survive leaving, reopening, and the existing check-in/check-out transfer. Apply the existing edit authority and missing-media behavior.
 
 ### Plan of Repair
 
@@ -45,7 +46,7 @@ Claude Code reviews the implementation and reports blockers against the followin
 | Case | Evidence |
 |---|---|
 | Shared job and both doors | Create a file with name/address/phone. Open normally and via **Open in TLS**. Verify the same identity, side switch, shared information, and directions action. |
-| TLS with no plan | On a phone, take and describe photos, enter a visit note, record and play audio, then reopen. Find the same material on the Sandia Geo side. Exercise denied microphone permission. |
+| TLS with no plan | On a phone, take and describe photos, take and delete a walk-around video, enter a visit note, record and play audio, delete a photo and an audio clip, then reopen. Find the same material on the Sandia Geo side. Exercise denied microphone permission. |
 | TLS with a plan | On desktop, build a drawing of the user's choosing over a plan with ordinary editable marks and text. Duplicate, nudge, move, resize, and undo marks, then reopen. Zoom and Fit preserve the saved drawing. |
 | Drawing flexibility | Open a blank drawing, import an outside drawing, and compose an overall plan with a detail view. Use another sheet with a contour. Verify source changes are surfaced. |
 | Professional output | From the second sheet, generate and visually inspect the complete PDF in page-list order. Check backgrounds, views, marks, text, and TLS title blocks. |

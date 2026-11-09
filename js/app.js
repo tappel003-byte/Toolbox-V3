@@ -205,6 +205,13 @@
         Object.keys(distress.photoSources).length) {
       return true;
     }
+    const walk = distress.jobWalk && typeof distress.jobWalk === 'object' ? distress.jobWalk : null;
+    if (walk && Array.isArray(walk.videos) && walk.videos.length) return true;
+    if (walk && Array.isArray(walk.notes) && walk.notes.some(function (note) {
+      return !!(note && (note.audioId || (typeof note.text === 'string' && note.text.trim())));
+    })) {
+      return true;
+    }
     const floor = record.floorSurvey || {};
     const layers = floor.byCanvasId && typeof floor.byCanvasId === 'object'
       ? Object.values(floor.byCanvasId)

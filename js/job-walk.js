@@ -3,8 +3,8 @@
 // Phone-friendly capture on an open Customer File with or without a plan.
 // Photos reuse Distress Quick Capture (shared both sides) as JPEG data URLs
 // in pgg_photos_v1 — the same transferable form Sync / Geo Photo folders /
-// Report evidence require. Visit notes and audio live on
-// record.distress.jobWalk (audio also as data URL strings).
+// Report evidence require. Visit notes, audio, and video live on
+// record.distress.jobWalk (audio/video also as data URL strings).
 (function () {
   'use strict';
 
@@ -32,9 +32,10 @@
     if (!record.distress || typeof record.distress !== 'object') record.distress = {};
     if (!Array.isArray(record.distress.quickCapture)) record.distress.quickCapture = [];
     if (!record.distress.jobWalk || typeof record.distress.jobWalk !== 'object') {
-      record.distress.jobWalk = { updatedAt: '', notes: [] };
+      record.distress.jobWalk = { updatedAt: '', notes: [], videos: [] };
     }
     if (!Array.isArray(record.distress.jobWalk.notes)) record.distress.jobWalk.notes = [];
+    if (!Array.isArray(record.distress.jobWalk.videos)) record.distress.jobWalk.videos = [];
     return record.distress;
   }
 
@@ -73,6 +74,18 @@
           resolve(get.result || null);
         };
         get.onerror = function () { db.close(); reject(get.error); };
+      });
+    });
+  }
+
+  function deleteDistressValue(id) {
+    if (!id) return Promise.resolve();
+    return openDistressDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(DISTRESS_STORE, 'readwrite');
+        tx.objectStore(DISTRESS_STORE).delete(id);
+        tx.oncomplete = function () { db.close(); resolve(); };
+        tx.onerror = function () { db.close(); reject(tx.error); };
       });
     });
   }
@@ -191,6 +204,15 @@
       '    <div class="jw-grid" id="jw-grid"></div>' +
       '  </section>' +
       '  <section class="jw-panel">' +
+      '    <h2 class="jw-panel__title">Videos</h2>' +
+      '    <p class="jw-panel__hint">Walk-around clips stay on this Customer File.</p>' +
+      '    <div class="jw-photo-actions">' +
+      '      <button type="button" id="jw-take-video" class="btn btn--accent">Take Video</button>' +
+      '      <input type="file" id="jw-video-file" accept="video/*" capture="environment" multiple hidden>' +
+      '    </div>' +
+      '    <div class="jw-grid jw-grid--video" id="jw-videos"></div>' +
+      '  </section>' +
+      '  <section class="jw-panel">' +
       '    <h2 class="jw-panel__title">Visit Notes</h2>' +
       '    <div class="jw-note-compose">' +
       '      <label class="jw-speaker">' +
@@ -227,8 +249,10 @@
     var statusEl = root.querySelector('#jw-status');
     var labelEl = root.querySelector('#jw-file-label');
     var gridEl = root.querySelector('#jw-grid');
+    var videosEl = root.querySelector('#jw-videos');
     var notesEl = root.querySelector('#jw-notes');
     var fileInput = root.querySelector('#jw-file');
+    var videoInput = root.querySelector('#jw-video-file');
     var recBtn = root.querySelector('#jw-rec');
     var stopBtn = root.querySelector('#jw-stop');
     var recStatus = root.querySelector('#jw-rec-status');
@@ -259,6 +283,25 @@
       });
     }
 
+    function jobWalkVideos() {
+      return ensureDistress(state.record).jobWalk.videos.slice();
+    }
+
+    function makeDeleteButton(label, onClick) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn--quiet jw-delete';
+      btn.textContent = label;
+      btn.disabled = state.readOnly;
+      btn.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (state.readOnly) return;
+        onClick();
+      });
+      return btn;
+    }
+
     function renderGrid() {
       gridEl.innerHTML = '';
       var items = jobWalkPhotos();
@@ -272,10 +315,24 @@
       items.forEach(function (item) {
         var card = document.createElement('article');
         card.className = 'jw-card';
+        var mediaWrap = document.createElement('div');
+        mediaWrap.className = 'jw-card__media';
         var img = document.createElement('img');
         img.alt = item.description || 'Job Walk photo';
         img.className = 'jw-card__img';
-        card.appendChild(img);
+        mediaWrap.appendChild(img);
+        mediaWrap.appendChild(makeDeleteButton('Delete', function () {
+          if (!window.confirm('Delete this photo?')) return;
+          var distress = ensureDistress(state.record);
+          distress.quickCapture = (distress.quickCapture || []).filter(function (entry) {
+            return !(entry && entry.id === item.id);
+          });
+          deleteDistressValue(item.id).then(persist).then(renderGrid).catch(function (err) {
+            console.error(err);
+            setStatus('Could not delete photo');
+          });
+        }));
+        card.appendChild(mediaWrap);
         getStoredMedia(item.id).then(function (value) {
           var src = mediaSrc(value);
           if (!src) return;
@@ -294,6 +351,61 @@
         });
         card.appendChild(desc);
         gridEl.appendChild(card);
+      });
+    }
+
+    function renderVideos() {
+      videosEl.innerHTML = '';
+      var items = jobWalkVideos();
+      if (!items.length) {
+        var empty = document.createElement('p');
+        empty.className = 'jw-empty';
+        empty.textContent = 'No Job Walk videos yet.';
+        videosEl.appendChild(empty);
+        return;
+      }
+      items.forEach(function (item) {
+        var card = document.createElement('article');
+        card.className = 'jw-card jw-card--video';
+        var mediaWrap = document.createElement('div');
+        mediaWrap.className = 'jw-card__media';
+        var video = document.createElement('video');
+        video.className = 'jw-card__video';
+        video.controls = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+        mediaWrap.appendChild(video);
+        mediaWrap.appendChild(makeDeleteButton('Delete', function () {
+          if (!window.confirm('Delete this video?')) return;
+          var videos = ensureDistress(state.record).jobWalk.videos;
+          var idx = videos.findIndex(function (entry) {
+            return entry && entry.id === item.id;
+          });
+          if (idx >= 0) videos.splice(idx, 1);
+          deleteDistressValue(item.id).then(persist).then(renderVideos).catch(function (err) {
+            console.error(err);
+            setStatus('Could not delete video');
+          });
+        }));
+        card.appendChild(mediaWrap);
+        getStoredMedia(item.id).then(function (value) {
+          var src = mediaSrc(value);
+          if (!src) return;
+          if (src.indexOf('blob:') === 0) state.objectUrls.push(src);
+          video.src = src;
+        }).catch(function () {});
+        var desc = document.createElement('textarea');
+        desc.className = 'jw-card__desc';
+        desc.rows = 2;
+        desc.placeholder = 'Video description';
+        desc.value = item.description || '';
+        desc.disabled = state.readOnly;
+        desc.addEventListener('change', function () {
+          item.description = (desc.value || '').trim();
+          persist();
+        });
+        card.appendChild(desc);
+        videosEl.appendChild(card);
       });
     }
 
@@ -334,6 +446,25 @@
           }).catch(function () {});
           row.appendChild(audio);
         }
+        row.appendChild(makeDeleteButton(
+          note.audioId ? 'Delete audio note' : 'Delete note',
+          function () {
+            var label = note.audioId ? 'Delete this audio clip?' : 'Delete this note?';
+            if (!window.confirm(label)) return;
+            var list = ensureDistress(state.record).jobWalk.notes;
+            var idx = list.findIndex(function (entry) {
+              return entry && entry.id === note.id;
+            });
+            if (idx >= 0) list.splice(idx, 1);
+            var cleanup = note.audioId
+              ? deleteDistressValue(note.audioId)
+              : Promise.resolve();
+            cleanup.then(persist).then(renderNotes).catch(function (err) {
+              console.error(err);
+              setStatus('Could not delete note');
+            });
+          }
+        ));
         notesEl.appendChild(row);
       });
     }
@@ -341,6 +472,7 @@
     function renderAll() {
       labelEl.textContent = displayName(state.record);
       renderGrid();
+      renderVideos();
       renderNotes();
     }
 
@@ -371,6 +503,35 @@
       }).then(renderGrid).catch(function (err) {
         console.error(err);
         setStatus('Could not save photo');
+      });
+    }
+
+    function addVideos(fileList) {
+      if (state.readOnly) return;
+      var files = Array.prototype.slice.call(fileList || []);
+      if (!files.length) return;
+      setStatus('Saving videos…');
+      var chain = Promise.resolve();
+      files.forEach(function (file) {
+        chain = chain.then(function () {
+          var id = 'vid_' + uid('jw');
+          return readFileAsDataUrl(file).then(function (dataUrl) {
+            return putDistressValue(id, dataUrl).then(function () {
+              ensureDistress(state.record).jobWalk.videos.push({
+                id: id,
+                ts: isoNow(),
+                description: '',
+                sourceName: file.name || '',
+              });
+            });
+          });
+        });
+      });
+      return chain.then(function () {
+        return persist();
+      }).then(renderVideos).catch(function (err) {
+        console.error(err);
+        setStatus('Could not save video');
       });
     }
 
@@ -484,6 +645,14 @@
       addPhotos(fileInput.files);
       fileInput.value = '';
     });
+    root.querySelector('#jw-take-video').addEventListener('click', function () {
+      if (state.readOnly) return;
+      videoInput.click();
+    });
+    videoInput.addEventListener('change', function () {
+      addVideos(videoInput.files);
+      videoInput.value = '';
+    });
     root.querySelector('#jw-note-save').addEventListener('click', saveTypedNote);
     recBtn.addEventListener('click', startRecording);
     stopBtn.addEventListener('click', stopRecording);
@@ -501,6 +670,7 @@
       ensureDistress(record);
       if (state.readOnly) {
         root.querySelector('#jw-take').disabled = true;
+        root.querySelector('#jw-take-video').disabled = true;
         root.querySelector('#jw-note-save').disabled = true;
         root.querySelector('#jw-note-text').disabled = true;
         recBtn.disabled = true;
@@ -524,6 +694,7 @@
       blobToDataUrl: blobToDataUrl,
       putDistressValue: putDistressValue,
       getDistressValue: getDistressValue,
+      deleteDistressValue: deleteDistressValue,
       getStoredMedia: getStoredMedia,
       MAX_PHOTO_DIM: MAX_PHOTO_DIM,
     },

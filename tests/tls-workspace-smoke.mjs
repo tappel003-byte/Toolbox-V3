@@ -137,6 +137,99 @@ const jwImgOk = await page.waitForFunction(() => {
   return img && img.naturalWidth > 0 && /^data:image\//.test(img.src);
 }, { timeout: 5000 }).then(() => true).catch(() => false);
 check('Job Walk photo renders in Job Walk grid', jwImgOk);
+check('Job Walk photo has Delete control', !!(await page.$('.jw-card .jw-delete')));
+check('Job Walk Take Video control', !!(await page.$('#jw-take-video')));
+
+page.once('dialog', async (dialog) => { await dialog.accept(); });
+await page.click('.jw-card .jw-delete');
+await page.waitForFunction(() => !document.querySelector('.jw-card__img'));
+const photoGone = await page.evaluate(async () => {
+  const rec = await window.ToolboxDB.getCustomerFile('tls-smoke-1');
+  const quick = rec && rec.distress && rec.distress.quickCapture;
+  const stored = await window.ToolboxJobWalk._test.getDistressValue('ph_jw-smoke-photo');
+  return {
+    noQuick: !Array.isArray(quick) || !quick.some((q) => q && q.id === 'ph_jw-smoke-photo'),
+    mediaGone: stored == null,
+  };
+});
+check('Job Walk photo Delete removes quickCapture entry', photoGone.noQuick, JSON.stringify(photoGone));
+check('Job Walk photo Delete removes media bytes', photoGone.mediaGone, JSON.stringify(photoGone));
+
+await page.click('#jw-back');
+await page.waitForSelector('.cf-home--tls');
+// Seed after leaving Job Walk so persist-on-back cannot overwrite the row.
+const videoSeed = await page.evaluate(async () => {
+  const id = 'vid_jw-smoke-video';
+  const dataUrl = 'data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAHTEU2bdLpNu4tTq4QVSalmU6yBoUuwAAAAAAAAGF13';
+  await window.ToolboxJobWalk._test.putDistressValue(id, dataUrl);
+  await window.ToolboxJobWalk._test.putDistressValue(
+    'vm_jw-smoke-audio',
+    'data:audio/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAHTEU2bdLpNu4tTq4QVSalmU6yBoUuwAAAAAAAAGF13'
+  );
+  const rec = await window.ToolboxDB.getCustomerFile('tls-smoke-1');
+  if (!rec.distress) rec.distress = { pins: [], quickCapture: [], jobWalk: { notes: [], videos: [] } };
+  if (!rec.distress.jobWalk) rec.distress.jobWalk = { notes: [], videos: [] };
+  if (!Array.isArray(rec.distress.jobWalk.videos)) rec.distress.jobWalk.videos = [];
+  if (!Array.isArray(rec.distress.jobWalk.notes)) rec.distress.jobWalk.notes = [];
+  rec.distress.jobWalk.videos.push({
+    id: id,
+    ts: new Date().toISOString(),
+    description: 'Walk around',
+    sourceName: 'jw-smoke.webm',
+  });
+  rec.distress.jobWalk.notes.push({
+    id: 'note-jw-audio-smoke',
+    at: new Date().toISOString(),
+    text: 'Audio clip note',
+    speaker: 'homeowner',
+    audioId: 'vm_jw-smoke-audio',
+  });
+  rec.distress.updatedAt = new Date().toISOString();
+  await window.ToolboxDB.saveCustomerFile(rec);
+  return id;
+});
+await page.click('[data-tls-app="job-walk"]');
+await page.waitForSelector('.jw-card--video');
+check('Job Walk video card renders', !!(await page.$('.jw-card--video video')));
+check('Job Walk video has Delete control', !!(await page.$('.jw-card--video .jw-delete')));
+check('Job Walk audio note has Delete control', !!(await page.$('.jw-note .jw-delete')));
+
+page.once('dialog', async (dialog) => { await dialog.accept(); });
+await page.click('.jw-card--video .jw-delete');
+await page.waitForFunction(() => !document.querySelector('.jw-card--video'));
+const videoGone = await page.evaluate(async (id) => {
+  const rec = await window.ToolboxDB.getCustomerFile('tls-smoke-1');
+  const videos = rec && rec.distress && rec.distress.jobWalk && rec.distress.jobWalk.videos;
+  const stored = await window.ToolboxJobWalk._test.getDistressValue(id);
+  return {
+    noVideo: !Array.isArray(videos) || !videos.some((v) => v && v.id === id),
+    mediaGone: stored == null,
+  };
+}, videoSeed);
+check('Job Walk video Delete removes metadata', videoGone.noVideo, JSON.stringify(videoGone));
+check('Job Walk video Delete removes media bytes', videoGone.mediaGone, JSON.stringify(videoGone));
+
+page.once('dialog', async (dialog) => { await dialog.accept(); });
+await page.evaluate(() => {
+  const deletes = Array.from(document.querySelectorAll('.jw-note .jw-delete'));
+  const audioDelete = deletes.find((btn) => /audio/i.test(btn.textContent || ''));
+  if (audioDelete) audioDelete.click();
+});
+await page.waitForFunction(() => {
+  const notes = Array.from(document.querySelectorAll('.jw-note'));
+  return !notes.some((n) => /Audio clip note/.test(n.textContent || ''));
+});
+const audioGone = await page.evaluate(async () => {
+  const rec = await window.ToolboxDB.getCustomerFile('tls-smoke-1');
+  const notes = rec && rec.distress && rec.distress.jobWalk && rec.distress.jobWalk.notes;
+  const stored = await window.ToolboxJobWalk._test.getDistressValue('vm_jw-smoke-audio');
+  return {
+    noteGone: !Array.isArray(notes) || !notes.some((n) => n && n.audioId === 'vm_jw-smoke-audio'),
+    mediaGone: stored == null,
+  };
+});
+check('Job Walk audio Delete removes note', audioGone.noteGone, JSON.stringify(audioGone));
+check('Job Walk audio Delete removes media bytes', audioGone.mediaGone, JSON.stringify(audioGone));
 
 const shared = await page.evaluate(async () => {
   const rec = await window.ToolboxDB.getCustomerFile('tls-smoke-1');
@@ -149,6 +242,32 @@ await page.screenshot({ path: `${OUT}/tls-job-walk.png`, fullPage: true });
 
 await page.click('#jw-back');
 await page.waitForSelector('.cf-home--tls');
+
+// Re-seed a Job Walk photo for later Geo Photo folders coverage (after leave).
+await page.evaluate(async () => {
+  const id = 'ph_jw-smoke-photo-2';
+  const canvas = document.createElement('canvas');
+  canvas.width = 120;
+  canvas.height = 80;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#0b1f33';
+  ctx.fillRect(0, 0, 120, 80);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+  await window.ToolboxJobWalk._test.putDistressValue(id, dataUrl);
+  const rec = await window.ToolboxDB.getCustomerFile('tls-smoke-1');
+  if (!rec.distress) rec.distress = { pins: [], quickCapture: [], jobWalk: { notes: [], videos: [] } };
+  if (!Array.isArray(rec.distress.quickCapture)) rec.distress.quickCapture = [];
+  rec.distress.quickCapture.push({
+    id: id,
+    ts: new Date().toISOString(),
+    folder: 'Job Walk',
+    description: 'Smoke porch keep',
+    sourceName: 'jw-smoke-2.jpg',
+  });
+  rec.distress.updatedAt = new Date().toISOString();
+  await window.ToolboxDB.saveCustomerFile(rec);
+});
+
 await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 1 });
 await page.click('[data-tls-app="repair"]');
 await page.waitForSelector('#por-sheet');
