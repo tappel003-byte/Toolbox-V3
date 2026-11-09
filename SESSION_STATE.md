@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 9, 2026** (America/Denver)  
-Updated by: Cursor agent — Tim clarified Job Walk media check was his, not Claude; no merge.
+Updated by: Cursor agent — Tim said merge; #205 merged into TLS workspace branch.
 
 ---
 
@@ -20,10 +20,10 @@ Updated by: Cursor agent — Tim clarified Job Walk media check was his, not Cla
 | Field | Value |
 |-------|--------|
 | **Has the ball** | **Tim** |
-| Job Walk media (`cursor/job-walk-media-2ac5`) | Tim checked it himself. **Not** a Claude Code recheck, and **not** a merge go-ahead. |
-| POR look check | Still open on `cursor/tls-workspace-2ac5` @ `73f8c29` / shell `v448` — Tim side-by-side Paint/PPT when ready. |
-| Branch / tip | `cursor/job-walk-media-2ac5` @ `f7510f0` (head `bfed0c9`); shell `v449`; CI green |
-| Do not merge | until Tim says so |
+| Job Walk media | **Merged** — PR #205 into `cursor/tls-workspace-2ac5` @ `2b3f788` (Tim’s check + merge). Shell `v449`. |
+| POR / TLS → integration | PR #204 still open on `cursor/tls-workspace-2ac5` → `claude/milestone-1-customer-file-qv5ybf`. Not merged to integration; not promoted. |
+| Branch / tip | `cursor/tls-workspace-2ac5` @ `2b3f788` — POR Paint/PPT + Job Walk media |
+| Do not merge to integration / `main` | until Tim says so |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -107,9 +107,9 @@ Always re-check with `git fetch` before claiming tip SHAs.
 
 ## Outstanding — real open work
 
-1. **Job Walk media repair** — `cursor/job-walk-media-2ac5` / PR #205: Delete on photos and visit notes/audio; Take Video + Delete for walk-around clips; Sync `vid_` media; shell `v449`. Tim checked it himself (not Claude). Do **not** merge until Tim says so.
+1. **Job Walk media repair** — **Done on TLS branch.** PR #205 merged into `cursor/tls-workspace-2ac5` (`2b3f788`). Delete photo/audio; Take Video + Delete; Sync `vid_`; shell `v449`.
 
-2. **TLS workspace / POR Paint-PPT look check** — PR #204 on `cursor/tls-workspace-2ac5`. Claude technical pass on `73f8c29`. Tim side-by-side vs Paint/PowerPoint when ready. Do **not** merge until Tim says so.
+2. **TLS workspace → integration** — PR #204 still open (`cursor/tls-workspace-2ac5` → milestone). Includes POR Paint/PPT + now Job Walk media. Do **not** merge to integration / promote until Tim says so.
 
 3. **Cloudflare Access path bypass for `lookbook/*`** on `sync.sandiageotoolbox.com`  
    - Without this, engineer (and private-window) opens hit Cloudflare login.  
