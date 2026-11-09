@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 9, 2026** (America/Denver)  
-Updated by: Cursor agent — Paint/PPT POR toolbar + view-pan fix on `cursor/tls-workspace-2ac5`.
+Updated by: Claude Code — recheck of `73f8c29` passed; Ball to Tim for the look check.
 
 ---
 
@@ -19,9 +19,9 @@ Updated by: Cursor agent — Paint/PPT POR toolbar + view-pan fix on `cursor/tls
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** (independent recheck of Paint/PPT POR + pan fix) |
-| Next after Claude finishes | **Tim** (accept / merge call / promote) |
-| Prior Claude (`3f16ddd`) | Technical pass except **view-pan blocker** (detached host after renderSheet). Fixed in this tip. |
+| **Has the ball** | **Tim** — look check of Plan of Repair against MS Paint / PowerPoint (side-by-side screenshots when Tim has them). |
+| Next | **Claude Code** builds the side-by-side comparison from Tim's screenshots; **Cursor** only if that finds changes. Not a merge go-ahead. |
+| Claude Code result (`73f8c29`) | Technical pass. Icon tool strip (no RB ribbon, one row), Outline/Fill/weight pickers style next shape and restyle selected without changing defaults, B/I/U only while editing (bold saves and prints), Print/PDF stays on row one, overall + detail side by side with all controls reachable, view pan proportional and reversible (5 px ≈ 0.004 cx; reverse returns), undo/redo, reopen, one page per sheet, 4-sheet PDF from sheet 2 in order with TLS title blocks, missing/changed warnings; 53 suites, only failures also fail on base. Lows: right-rail Format Shape still shows dot rows and 1/2/3 weight (duplicates the pickers) and also appears for text boxes; fill on/off checkbox has no label. |
 | Branch / tip | `cursor/tls-workspace-2ac5` — Paint/PPT `73f8c29`; shell `v448` |
 | Do not merge | until Tim says so |
 
