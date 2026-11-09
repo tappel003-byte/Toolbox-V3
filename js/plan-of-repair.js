@@ -211,18 +211,10 @@
     root.className = 'por-shell rb-shell';
     host.appendChild(root);
 
-    var inkColors = (window.ToolboxReportOverlay && window.ToolboxReportOverlay.COLORS) ||
-      ['#c14a2b', '#111111', '#1d4ed8', '#16a34a', '#ea7317', '#eab308'];
-
-    function colorButtons(attr) {
-      return inkColors.map(function (c) {
-        return '<button type="button" class="por-color" ' + attr + '="' + c + '" ' +
-          'style="--por-swatch:' + c + '" title="' + c + '" aria-label="Colour ' + c + '"></button>';
-      }).join('');
-    }
-
+    // Familiar Report Builder chrome: format host + Fit/zoom + Print lane,
+    // slides left, sheet center, Toolbox right rail (compact link actions).
     root.innerHTML =
-      '<div class="view-bar view-bar--file por-identity">' +
+      '<div class="view-bar view-bar--file rb-identity">' +
       '  <button type="button" id="por-back" class="btn btn--ghost">‹ TLS</button>' +
       '  <div class="file-identity">' +
       '    <span class="file-identity__name">Plan of Repair</span>' +
@@ -230,98 +222,72 @@
       '  </div>' +
       '  <span class="file-status" id="por-status">Loading…</span>' +
       '</div>' +
-      '<div class="por-toolbar" role="toolbar" aria-label="Drawing tools">' +
-      '  <div class="por-toolbar__group" role="group" aria-label="History">' +
-      '    <button type="button" class="por-toolbtn" id="por-undo" title="Undo (Ctrl+Z)">Undo</button>' +
-      '    <button type="button" class="por-toolbtn" id="por-redo" title="Redo">Redo</button>' +
+      '<div class="rb-toolbar">' +
+      '  <div class="rb-toolbar__format" data-rb-format-host></div>' +
+      '  <label class="por-fill-toggle"><input type="checkbox" id="por-fill"> Fill shape</label>' +
+      '  <div class="rb-toolbar__view" role="group" aria-label="Page view">' +
+      '    <div class="rb-zoom" role="group" aria-label="Page size on screen">' +
+      '      <button type="button" id="por-zoom-out" class="rb-zoom__btn" aria-label="Zoom out">−</button>' +
+      '      <button type="button" id="por-zoom-level" class="rb-zoom__level">Fit</button>' +
+      '      <button type="button" id="por-zoom-in" class="rb-zoom__btn" aria-label="Zoom in">+</button>' +
+      '    </div>' +
       '  </div>' +
-      '  <div class="por-toolbar__group por-toolbar__tools" role="group" aria-label="Draw">' +
-      '    <button type="button" class="por-toolbtn por-toolbtn--draw" data-rb-tool="pencil" title="Pencil">Pencil</button>' +
-      '    <button type="button" class="por-toolbtn por-toolbtn--draw" data-rb-tool="rect" title="Rectangle">Rect</button>' +
-      '    <button type="button" class="por-toolbtn por-toolbtn--draw" data-rb-tool="circle" title="Circle">Circle</button>' +
-      '    <button type="button" class="por-toolbtn por-toolbtn--draw" data-rb-tool="arrow" title="Arrow">Arrow</button>' +
-      '    <button type="button" class="por-toolbtn por-toolbtn--draw" id="por-insert-text" title="Text box">Text</button>' +
-      '    <button type="button" class="por-toolbtn por-toolbtn--draw" data-rb-tool="eraser" title="Eraser">Eraser</button>' +
+      '  <div class="rb-toolbar__out" role="group" aria-label="Drawing output">' +
+      '    <button type="button" id="por-print" class="btn btn--secondary rb-print-btn">Print / PDF</button>' +
       '  </div>' +
-      '  <div class="por-toolbar__group" role="group" aria-label="Outline colour">' +
-      '    <span class="por-toolbar__label">Outline</span>' +
-      colorButtons('data-por-outline') +
-      '  </div>' +
-      '  <div class="por-toolbar__group" role="group" aria-label="Fill">' +
-      '    <label class="por-fill-toggle"><input type="checkbox" id="por-fill"> Fill</label>' +
-      colorButtons('data-por-fill') +
-      '  </div>' +
-      '  <div class="por-toolbar__group" role="group" aria-label="Line weight">' +
-      '    <span class="por-toolbar__label">Weight</span>' +
-      '    <button type="button" class="por-toolbtn por-seg__btn" data-por-thick="1" title="Thin">Thin</button>' +
-      '    <button type="button" class="por-toolbtn por-seg__btn" data-por-thick="2" title="Medium">Med</button>' +
-      '    <button type="button" class="por-toolbtn por-seg__btn" data-por-thick="3" title="Thick">Thick</button>' +
-      '  </div>' +
-      '  <div class="por-toolbar__group por-toolbar__text" id="por-text-format" hidden role="group" aria-label="Text formatting">' +
-      '    <span class="por-toolbar__label">Text</span>' +
-      '    <button type="button" class="por-toolbtn" data-por-text="bold" title="Bold"><b>B</b></button>' +
-      '    <button type="button" class="por-toolbtn" data-por-text="italic" title="Italic"><i>I</i></button>' +
-      '    <button type="button" class="por-toolbtn" data-por-text="underline" title="Underline"><u>U</u></button>' +
-      '  </div>' +
-      '  <div class="por-toolbar__spacer"></div>' +
-      '  <div class="por-toolbar__group" role="group" aria-label="Page size on screen">' +
-      '    <button type="button" id="por-zoom-out" class="por-toolbtn" aria-label="Zoom out">−</button>' +
-      '    <button type="button" id="por-zoom-level" class="por-toolbtn por-zoom-level">Fit</button>' +
-      '    <button type="button" id="por-zoom-in" class="por-toolbtn" aria-label="Zoom in">+</button>' +
-      '  </div>' +
-      '  <button type="button" id="por-print" class="btn btn--secondary">Print / PDF</button>' +
       '</div>' +
-      '<div class="por-workspace rb-workspace">' +
-      '  <aside class="por-pages rb-rail" aria-label="Drawing pages">' +
-      '    <div class="por-pages__head rb-rail__head">' +
-      '      <strong>Sheets</strong>' +
+      '<div class="rb-workspace">' +
+      '  <aside class="rb-ws" aria-label="Drawing pages">' +
+      '    <div class="rb-rail__head">' +
+      '      <p class="eyebrow">Pages</p>' +
+      '      <strong>Drawing sheets</strong>' +
       '      <span id="por-save-status">…</span>' +
       '    </div>' +
-      '    <div class="por-pages__list rb-rail__list" id="por-page-list"></div>' +
-      '    <div class="por-pages__actions rb-rail__actions">' +
-      '      <button type="button" id="por-add-page" class="btn btn--secondary">Add</button>' +
+      '    <div class="rb-rail__list" id="por-page-list"></div>' +
+      '    <div class="rb-rail__actions">' +
+      '      <button type="button" id="por-add-page" class="btn btn--secondary">Add page</button>' +
       '      <button type="button" id="por-dup-page" class="btn btn--quiet">Duplicate</button>' +
       '      <button type="button" id="por-remove-page" class="btn btn--quiet">Remove</button>' +
       '    </div>' +
       '  </aside>' +
-      '  <div class="por-stage rb-stage" id="por-stage">' +
+      '  <div class="rb-stage" id="por-stage">' +
       '    <div class="rb-stage__paper">' +
       '      <article class="rb-sheet por-sheet" id="por-sheet" aria-label="11 by 17 inch landscape drawing sheet"></article>' +
       '    </div>' +
       '  </div>' +
-      '  <aside class="por-panel rb-panel" aria-label="Insert">' +
-      '    <h2 class="por-panel__title">Insert</h2>' +
-      '    <p class="por-panel__hint">Place pictures on the sheet. Drag and resize like slides.</p>' +
+      '  <aside class="rb-panel por-panel" aria-label="Toolbox">' +
+      '    <p class="eyebrow">Toolbox</p>' +
+      '    <h2 class="por-panel__title">Drawing</h2>' +
       '    <label class="por-panel__label" for="por-canvas">Level</label>' +
       '    <select id="por-canvas" class="por-bg-select" aria-label="Level or canvas"></select>' +
-      '    <div class="por-insert" role="group" aria-label="Background">' +
-      '      <button type="button" class="por-insert__card" id="por-bring-plan"><strong>Floor plan</strong><span>From this level</span></button>' +
-      '      <button type="button" class="por-insert__card" id="por-bring-contour"><strong>Contour</strong><span>Black-and-white layer</span></button>' +
-      '      <button type="button" class="por-insert__card" id="por-import-bg"><strong>Import</strong><span>Outside drawing</span></button>' +
-      '      <button type="button" class="por-insert__card" id="por-clear-bg"><strong>Blank</strong><span>Clear background</span></button>' +
+      '    <div class="por-bg-actions" role="group" aria-label="Background">' +
+      '      <button type="button" class="por-linkbtn" id="por-bring-plan">Floor plan</button>' +
+      '      <button type="button" class="por-linkbtn" id="por-bring-contour">Contour</button>' +
+      '      <button type="button" class="por-linkbtn" id="por-import-bg">Import drawing</button>' +
+      '      <button type="button" class="por-linkbtn" id="por-clear-bg">Clear</button>' +
       '      <input type="file" id="por-import-file" accept="image/*" hidden>' +
       '    </div>' +
-      '    <div class="por-insert" role="group" aria-label="Views">' +
-      '      <button type="button" class="por-insert__card" id="por-add-view"><strong>Detail view</strong><span>Overall + cropped detail</span></button>' +
-      '      <button type="button" class="por-insert__card" id="por-remove-view"><strong>Remove detail</strong><span>One view again</span></button>' +
+      '    <div class="por-bg-actions" role="group" aria-label="Views on this sheet">' +
+      '      <button type="button" class="por-linkbtn" id="por-add-view">Add detail view</button>' +
+      '      <button type="button" class="por-linkbtn" id="por-remove-view">Remove detail</button>' +
       '    </div>' +
-      '    <label class="por-fill-toggle por-fill-toggle--compact"><input type="checkbox" id="por-sandia"> SandiaGEO note on print</label>' +
+      '    <label class="por-fill-toggle por-fill-toggle--compact"><input type="checkbox" id="por-sandia"> SandiaGEO note</label>' +
       '    <div class="por-inspector" id="por-inspector" hidden>' +
-      '      <h3 id="por-inspector-title" class="por-inspector__heading">Selected</h3>' +
+      '      <h3 id="por-inspector-title" class="por-inspector__heading">Format Shape</h3>' +
       '      <div class="por-inspector__line">' +
       '        <label class="por-fill-toggle por-fill-toggle--compact"><input type="checkbox" id="por-shape-fill"> Fill</label>' +
       '        <div class="por-inspector__swatches" id="por-fill-swatches" aria-label="Fill colour"></div>' +
       '      </div>' +
       '      <div class="por-inspector__line">' +
-      '        <span class="por-inspector__tag">Outline</span>' +
+      '        <span class="por-inspector__tag">Line</span>' +
       '        <div class="por-inspector__swatches" id="por-outline-swatches" aria-label="Outline colour"></div>' +
       '      </div>' +
       '      <div class="por-inspector__line">' +
       '        <span class="por-inspector__tag">Weight</span>' +
       '        <div class="por-seg" id="por-outline-weights" role="group" aria-label="Outline weight">' +
-      '          <button type="button" class="por-seg__btn" data-por-thick="1" title="Thin">Thin</button>' +
-      '          <button type="button" class="por-seg__btn" data-por-thick="2" title="Medium">Med</button>' +
-      '          <button type="button" class="por-seg__btn" data-por-thick="3" title="Thick">Thick</button>' +
+      '          <button type="button" class="por-seg__btn" data-por-thick="1" title="Thin">1</button>' +
+      '          <button type="button" class="por-seg__btn" data-por-thick="2" title="Medium">2</button>' +
+      '          <button type="button" class="por-seg__btn" data-por-thick="3" title="Thick">3</button>' +
       '        </div>' +
       '      </div>' +
       '      <h3 class="por-inspector__heading">Size &amp; Position</h3>' +
@@ -365,12 +331,11 @@
       userScale: 1,
       drag: null,
       selectedViewIndex: null,
-      formatToolbar: null, // unused — POR uses its own drawing toolbar
+      formatToolbar: null,
       shapeMenu: null,
       inspectorMode: 'format', // format | size
       fillColor: '#eab308',
       editSeq: 0,
-      editingText: false,
     };
 
     var sheetEl = root.querySelector('#por-sheet');
@@ -405,26 +370,11 @@
     }
 
     function syncHistoryButtons() {
-      var undoBtn = root.querySelector('#por-undo');
-      var redoBtn = root.querySelector('#por-redo');
-      if (undoBtn) undoBtn.disabled = state.undo.length === 0 || state.readOnly;
-      if (redoBtn) redoBtn.disabled = state.redo.length === 0 || state.readOnly;
-      root.querySelectorAll('[data-rb-tool]').forEach(function (btn) {
-        btn.classList.toggle('is-on', btn.getAttribute('data-rb-tool') === state.inkTool);
-      });
-      root.querySelectorAll('[data-por-outline]').forEach(function (btn) {
-        btn.classList.toggle('is-on', btn.getAttribute('data-por-outline') === state.inkColor);
-      });
-      root.querySelectorAll('[data-por-fill]').forEach(function (btn) {
-        btn.classList.toggle('is-on', btn.getAttribute('data-por-fill') === state.fillColor);
-      });
-      root.querySelectorAll('.por-toolbar [data-por-thick]').forEach(function (btn) {
-        btn.classList.toggle('is-on', Number(btn.getAttribute('data-por-thick')) === state.inkThick);
-      });
-      var textStrip = root.querySelector('#por-text-format');
-      if (textStrip) {
-        var showText = state.editingText || (selectedItem() && selectedItem().kind === 'text');
-        textStrip.hidden = !showText;
+      if (state.formatToolbar && state.formatToolbar.setHistory) {
+        state.formatToolbar.setHistory(state.undo.length > 0, state.redo.length > 0);
+      }
+      if (state.formatToolbar && state.formatToolbar.setTool) {
+        state.formatToolbar.setTool(state.inkTool);
       }
     }
 
@@ -435,6 +385,29 @@
       var x = Math.max(0, Math.min(DRAW_MAX_RIGHT - w, Number(f.x) || 0));
       var y = Math.max(0, Math.min(100 - h, Number(f.y) || 0));
       return { x: x, y: y, w: w, h: h, z: isFinite(Number(f.z)) ? Number(f.z) : 1 };
+    }
+
+    /** Side-by-side within the draw area so a new detail never covers overall. */
+    function layoutPorViews(views) {
+      if (!views || !views.length) return;
+      var gutter = 2;
+      var avail = DRAW_MAX_RIGHT;
+      if (views.length === 1) {
+        views[0].frame = clampFrameToDrawArea({ x: 0, y: 0, w: avail, h: 100, z: 1 });
+        return;
+      }
+      var n = views.length;
+      var share = (avail - gutter * (n - 1)) / n;
+      views.forEach(function (v, i) {
+        if (!v) return;
+        v.frame = clampFrameToDrawArea({
+          x: i * (share + gutter),
+          y: 0,
+          w: share,
+          h: 100,
+          z: i + 1,
+        });
+      });
     }
 
     function applyHistory(doc) {
@@ -807,10 +780,16 @@
           host.appendChild(img);
           var label = document.createElement('span');
           label.className = 'por-view-frame__label';
-          label.setAttribute('data-por-view-move', String(vi));
           label.textContent = vi === 0 ? 'Overall' : ('Detail ' + vi);
           host.appendChild(label);
           if (!state.printMode && !state.readOnly) {
+            var move = document.createElement('button');
+            move.type = 'button';
+            move.className = 'por-view-frame__move';
+            move.setAttribute('data-por-view-move', String(vi));
+            move.title = 'Drag to move this view frame';
+            move.textContent = 'Move';
+            host.appendChild(move);
             ['nw', 'ne', 'se', 'sw'].forEach(function (corner) {
               var handle = document.createElement('span');
               handle.className = 'por-view-frame__handle por-view-frame__handle--' + corner;
@@ -857,13 +836,7 @@
       }
 
       var rail = renderRail(page);
-      if (rail) {
-        // Dim the title block while drawing so the sheet (not the rail) leads.
-        if (!state.printMode && (state.inkTool || state.editingText)) {
-          rail.classList.add('por-rail--dim');
-        }
-        sheetEl.appendChild(rail);
-      }
+      if (rail) sheetEl.appendChild(rail);
 
       if (api && typeof api.renderLayer === 'function') {
         var layer = api.renderLayer(overlayList(page), { locked: state.readOnly });
@@ -1094,7 +1067,7 @@
       ['por-size-x', 'por-size-y', 'por-size-w', 'por-size-h'].forEach(function (id) {
         root.querySelector('#' + id).disabled = state.readOnly;
       });
-      root.querySelectorAll('.por-stack__btn, .por-insert__card').forEach(function (btn) {
+      root.querySelectorAll('.por-stack__btn, .por-linkbtn').forEach(function (btn) {
         btn.disabled = state.readOnly;
       });
     }
@@ -1265,17 +1238,8 @@
       sheetEl.querySelectorAll('[data-rb-ov-field]').forEach(function (field) {
         if (field.getAttribute('data-por-text-wired') === '1') return;
         field.setAttribute('data-por-text-wired', '1');
-        field.addEventListener('focus', function () {
-          state.editingText = true;
-          state.selectedId = field.closest('[data-rb-ov]')
-            ? field.closest('[data-rb-ov]').getAttribute('data-rb-ov')
-            : state.selectedId;
-          syncHistoryButtons();
-        });
         field.addEventListener('blur', function () {
           commitOverlayText(field);
-          state.editingText = false;
-          syncHistoryButtons();
         });
       });
     }
@@ -1296,16 +1260,11 @@
       var target = event.target.closest && event.target.closest('[data-rb-ov]');
       if (!target) {
         state.selectedId = null;
-        state.editingText = false;
         renderSheet();
-        syncHistoryButtons();
         return false;
       }
       state.selectedId = target.getAttribute('data-rb-ov');
-      var item = selectedItem();
-      state.editingText = !!(item && item.kind === 'text');
       renderSheet();
-      syncHistoryButtons();
       return true;
     }
 
@@ -1928,90 +1887,60 @@
       });
     }
 
-    // Drawing toolbar (Paint/PowerPoint style — tools first, not a text editor ribbon).
-    root.querySelector('#por-undo').addEventListener('click', function () { undo(); });
-    root.querySelector('#por-redo').addEventListener('click', function () { redo(); });
-    root.querySelectorAll('[data-rb-tool]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        if (state.readOnly) return;
-        var want = btn.getAttribute('data-rb-tool');
-        state.selectedId = null;
-        state.editingText = false;
-        setInkTool(state.inkTool === want ? null : want);
-      });
-    });
-    root.querySelector('#por-insert-text').addEventListener('click', function () {
-      if (state.readOnly) return;
-      setInkTool(null);
-      var page = activePage();
-      var api = overlayApi();
-      if (!api || !api.create) return;
-      pushHistory();
-      var item = api.create('text');
-      overlayList(page).push(item);
-      state.selectedId = item.id;
-      state.editingText = true;
-      scheduleSave();
-      renderSheet();
-      syncHistoryButtons();
-    });
-    root.querySelectorAll('[data-por-outline]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var color = btn.getAttribute('data-por-outline');
-        if (!color) return;
-        var item = selectedItem();
-        if (item && !state.readOnly) {
-          pushHistory();
-          item.color = color;
-          scheduleSave();
-          renderSheet();
-          return;
+    // Same Report Builder format/draw toolbar — Print stays in rb-toolbar__out
+    // so text controls expanding the format host do not shove it onto a new row.
+    if (window.ToolboxReportToolbar && window.ToolboxReportToolbar.mount) {
+      state.formatToolbar = window.ToolboxReportToolbar.mount(
+        root,
+        {
+          onTool: function (name) {
+            if (state.readOnly) return;
+            state.selectedId = null;
+            setInkTool(name);
+          },
+          onColor: function (color) {
+            if (!color) return;
+            var item = selectedItem();
+            if (item && !state.readOnly) {
+              pushHistory();
+              item.color = color;
+              if (item.fill) item.fillColor = color;
+              scheduleSave();
+              renderSheet();
+              return;
+            }
+            state.inkColor = color;
+            if (state.inkFill) state.fillColor = color;
+          },
+          onThick: function (level) {
+            state.inkThick = Number(level) || state.inkThick;
+          },
+          onHistory: function (which) {
+            if (which === 'undo') undo();
+            else if (which === 'redo') redo();
+          },
+          onInsert: function (kind) {
+            if (state.readOnly) return;
+            if (kind === 'text') {
+              setInkTool(null);
+              var page = activePage();
+              var api = overlayApi();
+              if (!api || !api.create) return;
+              pushHistory();
+              var item = api.create('text');
+              overlayList(page).push(item);
+              state.selectedId = item.id;
+              scheduleSave();
+              renderSheet();
+              return;
+            }
+            if (kind === 'image') {
+              setStatus('Use Import drawing in the Toolbox panel to place a picture on the sheet');
+            }
+          },
         }
-        state.inkColor = color;
-        syncHistoryButtons();
-      });
-    });
-    root.querySelectorAll('[data-por-fill]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var color = btn.getAttribute('data-por-fill');
-        if (!color) return;
-        var item = selectedItem();
-        if (item && !state.readOnly && (item.kind === 'rect' || item.kind === 'circle')) {
-          pushHistory();
-          item.fill = true;
-          item.fillColor = color;
-          scheduleSave();
-          renderSheet();
-          syncInspector();
-          return;
-        }
-        state.fillColor = color;
-        state.inkFill = true;
-        fillInput.checked = true;
-        syncHistoryButtons();
-      });
-    });
-    root.querySelectorAll('.por-toolbar [data-por-thick]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var level = Number(btn.getAttribute('data-por-thick')) || 2;
-        var item = selectedItem();
-        if (item && !state.readOnly) {
-          pushHistory();
-          item.thick = level;
-          scheduleSave();
-          renderSheet();
-          return;
-        }
-        state.inkThick = level;
-        syncHistoryButtons();
-      });
-    });
-    root.querySelectorAll('[data-por-text]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var cmd = btn.getAttribute('data-por-text');
-        try { document.execCommand(cmd, false, null); } catch (err) { /* ignore */ }
-      });
-    });
+      );
+    }
     syncHistoryButtons();
 
     root.querySelector('#por-back').addEventListener('click', function () {
@@ -2116,22 +2045,18 @@
         if (!v) return;
         v.linkGroup = null;
       });
-      if (views[0]) {
-        views[0].camera = defaultViewCamera(1);
-        views[0].frame = clampFrameToDrawArea(views[0].frame);
-      }
+      // Lay out side-by-side inside the draw area (left of title block) so the
+      // new detail does not cover the overall — RB defaultFrame is full-width.
+      layoutPorViews(views);
+      if (views[0]) views[0].camera = defaultViewCamera(1);
       if (views.length > 1) {
         var detail = views[views.length - 1];
-        // Detail starts zoomed so overall and detail are visibly different.
         detail.camera = defaultViewCamera(2.4);
-        detail.frame = clampFrameToDrawArea(detail.frame || {
-          x: 48, y: 48, w: 34, h: 42, z: 2,
-        });
         state.selectedViewIndex = views.length - 1;
       }
       scheduleSave();
       renderSheet();
-      setStatus('Detail view added — drag the label to place; drag inside to pan; scroll to zoom');
+      setStatus('Detail view added — drag Move to place; drag inside to pan; scroll to zoom');
     });
     root.querySelector('#por-remove-view').addEventListener('click', function () {
       if (state.readOnly) return;
@@ -2145,6 +2070,7 @@
         return;
       }
       api.removeView(page, (api.viewsFor(page).length - 1));
+      layoutPorViews(api.viewsFor(page) || []);
       scheduleSave();
       renderSheet();
       setStatus('Detail view removed');
@@ -2250,6 +2176,7 @@
       destroy: function () {
         if (state.saveTimer) clearTimeout(state.saveTimer);
         closeShapeMenu();
+        if (state.formatToolbar && state.formatToolbar.destroy) state.formatToolbar.destroy();
         window.removeEventListener('pointermove', onPointerMove);
         window.removeEventListener('pointerup', onPointerUp);
         window.removeEventListener('keydown', onKeyDown);
@@ -2273,15 +2200,11 @@
       state.doc = normalizeDoc(record.planOfRepair);
       root.querySelector('#por-file-label').textContent =
         displayName(record) + (displayAddress(record) ? ' · ' + displayAddress(record) : '');
-      ['por-add-page', 'por-dup-page', 'por-remove-page', 'por-bring-plan', 'por-bring-contour',
-        'por-clear-bg', 'por-import-bg', 'por-add-view', 'por-remove-view', 'por-insert-text',
-        'por-undo', 'por-redo', 'por-print']
+      ['por-add-page', 'por-dup-page', 'por-remove-page', 'por-bring-plan', 'por-bring-contour', 'por-clear-bg']
         .forEach(function (id) {
           var el = root.querySelector('#' + id);
           if (el) el.disabled = state.readOnly;
         });
-      root.querySelectorAll('[data-rb-tool], [data-por-outline], [data-por-fill], .por-toolbar [data-por-thick]')
-        .forEach(function (el) { el.disabled = state.readOnly; });
       fillInput.disabled = state.readOnly;
       sandiaInput.disabled = state.readOnly;
       canvasSelect.disabled = state.readOnly;

@@ -1,155 +1,38 @@
-/* Plan of Repair — Paint/PowerPoint-style drawing page (not an RB text ribbon). */
+/* Plan of Repair — Report Builder familiar chrome (slides / sheet / Toolbox). */
 
-.por-toolbar {
-  flex: 0 0 auto;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  width: 100%;
-  min-width: 0;
-  padding: 6px 12px;
-  background: var(--panel, #fffdf8);
-  border-bottom: 1px solid var(--line, #e5e1d8);
-  box-sizing: border-box;
-}
-
-.por-toolbar__group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-
-.por-toolbar__label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #6b7280;
-  margin-right: 2px;
-}
-
-.por-toolbar__spacer {
-  flex: 1 1 12px;
-  min-width: 8px;
-}
-
-.por-toolbtn {
-  min-height: 30px;
-  padding: 4px 9px;
-  border: 1px solid #c9c2b4;
-  border-radius: 3px;
-  background: #fff;
-  color: #0b1f33;
-  font: 600 12px/1.2 system-ui, sans-serif;
-  cursor: pointer;
-}
-
-.por-toolbtn:hover:not(:disabled) {
-  border-color: #1d4ed8;
-  color: #1d4ed8;
-}
-
-.por-toolbtn.is-on {
-  border-color: #1d4ed8;
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-
-.por-toolbtn:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.por-color {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 2px solid transparent;
-  border-radius: 3px;
-  background: var(--por-swatch, #ccc);
-  cursor: pointer;
-  box-sizing: border-box;
-}
-
-.por-color.is-on {
-  border-color: #0b1f33;
-  box-shadow: 0 0 0 1px #fff inset;
-}
-
-.por-zoom-level {
-  min-width: 3.2em;
-}
-
-.por-workspace {
-  /* inherits .rb-workspace grid when both classes are present */
-}
-
-.por-pages__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.por-panel__hint {
-  margin: 0 0 10px;
-  font-size: 12px;
-  line-height: 1.35;
-  color: #6b7280;
-}
-
-.por-insert {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  margin: 0 0 10px;
-}
-
-.por-insert__card {
-  display: flex;
-  flex-direction: column;
+/* Keep Print / Fit in their own toolbar lanes even when the format host
+   grows with text controls (same pattern as Report Builder). */
+.por-shell .rb-toolbar {
+  flex-wrap: nowrap;
   align-items: flex-start;
-  gap: 2px;
-  margin: 0;
-  padding: 8px 9px;
-  border: 1px solid #c9c2b4;
-  border-radius: 4px;
-  background: #fff;
-  color: #0b1f33;
-  text-align: left;
-  cursor: pointer;
-  font: inherit;
 }
 
-.por-insert__card strong {
-  font-size: 12px;
-  font-weight: 700;
+.por-shell .rb-toolbar__format {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
-.por-insert__card span {
-  font-size: 11px;
-  color: #6b7280;
-  line-height: 1.3;
+.por-shell .rb-toolbar__view,
+.por-shell .rb-toolbar__out {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  margin-top: 2px;
 }
 
-.por-insert__card:hover:not(:disabled) {
-  border-color: #1d4ed8;
+.por-shell .rb-toolbar__out {
+  margin-left: 8px;
 }
 
-.por-insert__card:disabled {
-  opacity: 0.45;
-  cursor: default;
+.por-shell .por-fill-toggle {
+  flex: 0 0 auto;
+  margin-top: 4px;
+  white-space: nowrap;
 }
 
-/* Title block yields while drawing tools are active. */
-.por-rail--dim.rb-rail__rail,
-.rb-rail__rail.por-rail--dim {
-  opacity: 0.42;
-  pointer-events: none;
-  filter: grayscale(0.15);
+@media (max-width: 1100px) {
+  .por-shell .rb-toolbar {
+    flex-wrap: wrap;
+  }
 }
 
 .por-view-frame {

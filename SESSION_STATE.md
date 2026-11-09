@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 8, 2026** (America/Denver)  
-Updated by: Claude Code — technical recheck of POR drawing-page build `c16e6e2` finished; Ball to ChatGPT for the vision check.
+Updated by: Cursor agent — POR corrected back to Report Builder–familiar chrome after Tim’s vision hold on `c16e6e2`; Ball → Claude Code.
 
 ---
 
@@ -19,10 +19,10 @@ Updated by: Claude Code — technical recheck of POR drawing-page build `c16e6e2
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **ChatGPT** — vision check of PR #204 against VISION.md, the brief and Tim's direction. Tim, Nov 9, on the drawing page: it "looks less like MS Paint and PowerPoint now". |
-| Next | **Tim**, after ChatGPT's vision verdict. Not a merge go-ahead. |
-| Claude Code result (`c16e6e2`) | Technical pass: drawing, text + B/I/U save and print, views left of title block, one page per sheet, missing/changed warnings, Job Walk, sync. 53 suites: only failures also fail on base. Two lows: new detail view covers right half of the overall view; toolbar wraps (Print/PDF drops a row) while text controls show. |
-| Branch / tip | `cursor/tls-workspace-2ac5` — drawing-page build `c16e6e2`, shell `v446` (use `git rev-parse` for exact head) |
+| **Has the ball** | **Claude Code** (independent recheck of POR RB-familiar correction) |
+| Next after Claude finishes | **Tim** / ChatGPT vision / merge call |
+| Prior Claude result (`c16e6e2`) | Technical pass; Tim held vision (“less like Paint/PowerPoint”). Lows fixed in this tip: detail covering overall; Print dropping a toolbar row. |
+| Branch / tip | `cursor/tls-workspace-2ac5` — POR RB-familiar `633b5a3` after `c16e6e2`; shell `v447` |
 | Do not merge | until Tim says so |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
@@ -90,7 +90,7 @@ Always re-check with `git fetch` before claiming tip SHAs.
 
 ## Outstanding — real open work
 
-1. **TLS workspace integrated build** — PR #204 on `cursor/tls-workspace-2ac5`. Builds: `1adaf3b` → QA `09b6879` → second recheck `46a88c0` (H4/N1/lows, shell `v445`) → **POR drawing-page rework** (Paint/PPT toolbar, Insert cards, dim title block, print blank-page fix, shell `v446`). **Claude Code has the ball** for independent recheck on this tip, then ChatGPT vision, then merge to integration only when Tim’s process completes. See `docs/tls-build-and-review-brief.md` and `VISION.md` §4a. Do **not** merge until both reviews pass on the same SHA. Handoff: `/opt/cursor/artifacts/CLAUDE-CODE-HANDOFF-POR-DRAWING.md` (also summarized in the PR).
+1. **TLS workspace integrated build** — PR #204 on `cursor/tls-workspace-2ac5`. Builds: `1adaf3b` → QA `09b6879` → `46a88c0` → `c16e6e2` (custom POR chrome; Claude technical pass, ChatGPT held vision) → **POR RB-familiar correction** (restore Report Builder toolbar/rail/link actions; fix Print row + detail-over-overall; keep draw/print/sync; shell `v447`). **Claude Code has the ball** for recheck of this revised tip, then ChatGPT vision. Do **not** merge until both checks pass on the same SHA.
 
 2. **Cloudflare Access path bypass for `lookbook/*`** on `sync.sandiageotoolbox.com`  
    - Without this, engineer (and private-window) opens hit Cloudflare login.  
