@@ -133,7 +133,7 @@ When multiple levels exist (for example Basement, Ground Level, Second Floor), e
 - **Shared intake.** Name, property address, and phone number are enough to start a Customer File. The address opens directions in the user's preferred maps app.
 - **Entry.** Normal opening leads to the familiar Sandia Geo home. **Open in TLS** in the Customer File's three-dot menu opens the TLS side of that same file. A labeled company switch on the file home's top rail is a candidate for moving between sides once inside the job.
 - **Shared job information.** Quick Capture photos, homeowner history, site notes, plans, structural and plot documents, and survey evidence are available from either side. Add them as they become available. A first visit may be where a plan is obtained. A side switch carries the current Customer File with it.
-- **Job Walk.** Phone-friendly capture of photos, descriptions, and visit notes, with no floor plan required. Use the shared Quick Capture collection. The Visit Notes area should support typed notes and recording audio with the homeowner's permission, with playback from the same file. Distinguish the homeowner's account from the investigator's observations.
+- **Job Walk.** Phone-friendly capture of photos, descriptions, visit notes, and walk-around video clips, with no floor plan required. Use the shared Quick Capture collection for photos. Videos stay on the Job Walk record. Photos, audio notes, and videos can be deleted from Job Walk. The Visit Notes area supports typed notes and recording audio with the homeowner's permission, with playback from the same file. Distinguish the homeowner's account from the investigator's observations.
 - **Plan of Repair.** The desktop drawing counterpart to Sandia Geo Report Builder. Use the existing POR workspace and familiar slides, canvas and Fit/zoom, right rail, and drawing controls. It can have one or several sheets and, where useful, multiple views on a sheet. Draw from a job plan or contour, from an imported drawing, or on a blank sheet. Make placing, selecting, moving, copying, resizing, annotating, and repeating marks dependable. Preserve separate repair authorship within the Customer File. The finished sheet is **11 × 17, landscape**, with a TLS title block and preliminary status.
 - **Independent tools.** Job Walk, investigation, and repair drawing can each stand on their own. A customer may need any combination in any order. A TLS-only file uses the same Customer File model.
 
@@ -547,12 +547,11 @@ Do not build infrastructure for a future workspace merely because it may someday
 The working roles are:
 
 - **Product owner / field authority / final decision-maker:** Tim.
-- **Project manager / architect / vision keeper / code reviewer:** ChatGPT.
-- **Primary implementation engineer:** Claude Code.
-- **Project consultant / technical-writing and UX sounding board:** Grok.
-- **Common source of truth:** the GitHub repository.
+- **Build:** Cursor.
+- **Independent check:** Claude Code (CC).
+- **Common source of truth:** the GitHub repository (`SESSION_STATE.md` for Ball / current tip).
 
-For the TLS work described in §4a, **Cursor implements, Claude Code independently reviews, and ChatGPT helps Tim define and maintain the product vision**. Tim makes the product decisions.
+**CHANGED (Tim, Nov 9, 2026):** ChatGPT is out of the active build loop. Tim’s ChatGPT workspace/chat glitched and is not workable — do not hand it work or wait on it. For current Toolbox work, including TLS / Job Walk / Plan of Repair: **Cursor builds, Claude Code independently reviews, Tim decides and promotes.**
 
 These are practical working roles, not a statement that one AI model is inherently superior to another. The product owner remains the authority. Cross-checking is encouraged: any collaborator may challenge assumptions, identify contradictions or missing requirements, propose better methods, or point out risks. No model's idea automatically outranks another's.
 

@@ -52,6 +52,12 @@ await mkdir(OUT, { recursive: true });
     }
     if (Array.isArray(distress.quickCapture) && distress.quickCapture.length) return true;
     if (distress.photoSources && Object.keys(distress.photoSources).length) return true;
+    const walk = distress.jobWalk && typeof distress.jobWalk === 'object' ? distress.jobWalk : null;
+    if (walk && Array.isArray(walk.videos) && walk.videos.length) return true;
+    if (walk && Array.isArray(walk.notes) && walk.notes.some((note) =>
+      note && (note.audioId || (typeof note.text === 'string' && note.text.trim())))) {
+      return true;
+    }
     const layers = Object.values((record.floorSurvey && record.floorSurvey.byCanvasId) || {});
     return layers.some((layer) => layer && Array.isArray(layer.points) && layer.points.length);
   }
@@ -59,6 +65,14 @@ await mkdir(OUT, { recursive: true });
   check('detector: pin with photo is field capture', hasField(withPinPhoto));
   check('detector: FS points are field capture', hasField(withPoints));
   check('detector: pin without photos is not field capture', !hasField(pinNoPhoto));
+  check('detector: Job Walk video is field capture', hasField({
+    distress: { pins: [], jobWalk: { videos: [{ id: 'vid_1' }], notes: [] } },
+    floorSurvey: {},
+  }));
+  check('detector: Job Walk audio note is field capture', hasField({
+    distress: { pins: [], jobWalk: { videos: [], notes: [{ id: 'n1', audioId: 'vm_1' }] } },
+    floorSurvey: {},
+  }));
 }
 
 const browser = await puppeteer.launch({

@@ -109,44 +109,364 @@ check('yellow in overlay palette', boot.colors.indexOf('#eab308') !== -1, boot.c
 check('repair sync component', boot.components.indexOf('repair') !== -1);
 
 await page.goto(BASE + '#/file/por-draw', { waitUntil: 'networkidle0' });
-await page.waitForSelector('#home-repair-top');
-const home = await page.evaluate(() => {
-  const btn = document.querySelector('#home-repair-top');
+await page.waitForSelector('#home-side-geo.is-active, #home-card-name');
+const geoHome = await page.evaluate(() => {
+  const geoRepair = document.querySelector('#home-repair-top');
   return {
-    label: btn ? btn.textContent.trim() : '',
-    accent: btn ? btn.classList.contains('btn--accent') : false,
-    apps: Array.from(document.querySelectorAll('.cf-app-btn')).map((b) => b.getAttribute('data-app')),
+    geoHidden: !geoRepair || geoRepair.hidden === true ||
+      getComputedStyle(geoRepair).display === 'none',
+    apps: Array.from(document.querySelectorAll('.cf-app-btn[data-app]'))
+      .map((b) => b.getAttribute('data-app')),
   };
 });
-check('Plan of Repair button present', home.label === 'Plan of Repair');
-check('Plan of Repair button more pronounced', home.accent);
-check('four workspace cards unchanged', home.apps.join(',') === 'distress,floor,diagnostics,report');
+check('Geo Plan of Repair shortcut hidden', geoHome.geoHidden);
+check('four workspace cards unchanged', geoHome.apps.join(',') === 'distress,floor,diagnostics,report');
 
-await page.click('#home-repair-top');
+// POR opens from the TLS side.
+await page.click('#home-side-tls');
+await page.waitForSelector('.cf-home--tls [data-tls-app="repair"]');
+const tlsHome = await page.evaluate(() => {
+  const tlsBtn = document.querySelector('.cf-home--tls [data-tls-app="repair"]');
+  return {
+    label: tlsBtn
+      ? ((tlsBtn.querySelector('.cf-app-btn__name') || tlsBtn).textContent || '').trim()
+      : '',
+  };
+});
+check('Plan of Repair on TLS side', tlsHome.label === 'Plan of Repair', tlsHome.label);
+
+await page.click('.cf-home--tls [data-tls-app="repair"]');
 await page.waitForSelector('.por-shell .rb-sheet');
 await page.waitForFunction(() => /Ready|Saved/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 8000 }).catch(() => {});
 
-const shell = await page.evaluate(() => ({
-  hash: location.hash,
-  hasToolbar: !!document.querySelector('[data-rb-format-host] .rb-format, .rb-format'),
-  hasPages: !!document.querySelector('#por-page-list'),
-  hasPanel: !!document.querySelector('#por-bring-plan'),
-  compactBg: !!document.querySelector('.por-bg-actions .por-linkbtn'),
-  fatBring: Array.from(document.querySelectorAll('#por-bring-plan, #por-bring-contour, #por-clear-bg')).some((b) => b.classList.contains('btn')),
-  title: document.querySelector('.file-identity__name')?.textContent || '',
-  tools: Array.from(document.querySelectorAll('[data-rb-tool]')).map((b) => b.getAttribute('data-rb-tool')),
-}));
+const shell = await page.evaluate(() => {
+  const toolbar = document.querySelector('.por-toolbar');
+  const printBtn = document.querySelector('#por-print');
+  const textStrip = document.querySelector('#por-text-format');
+  let printSameRow = false;
+  if (toolbar && printBtn) {
+    const t = toolbar.getBoundingClientRect();
+    const p = printBtn.getBoundingClientRect();
+    printSameRow = p.top < t.top + 48;
+  }
+  const wordTools = Array.from(document.querySelectorAll('.por-toolbar__tools .por-iconbtn'))
+    .map((b) => (b.textContent || '').replace(/\s+/g, ' ').trim())
+    .filter((t) => /Pencil|Rect|Circle|Eraser|Arrow/.test(t));
+  return {
+    hash: location.hash,
+    hasToolbar: !!toolbar,
+    hasPages: !!document.querySelector('#por-page-list'),
+    hasPanel: !!document.querySelector('#por-bring-plan'),
+    compactBg: !!document.querySelector('.por-bg-actions .por-linkbtn'),
+    fatBring: Array.from(document.querySelectorAll('#por-bring-plan, #por-bring-contour, #por-clear-bg')).some((b) => b.classList.contains('btn')),
+    hasOutlinePicker: !!document.querySelector('#por-outline-btn'),
+    hasFillPicker: !!document.querySelector('#por-fill-btn'),
+    hasWeightPicker: !!document.querySelector('#por-weight-btn'),
+    textHidden: !!(textStrip && textStrip.hidden),
+    noWordToolLabels: wordTools.length === 0,
+    printSameRow,
+    title: document.querySelector('.file-identity__name')?.textContent || '',
+    tools: Array.from(document.querySelectorAll('[data-rb-tool]')).map((b) => b.getAttribute('data-rb-tool')),
+    hasSelect: !!document.querySelector('[data-por-tool="select"]'),
+  };
+});
 check('opens repair route', shell.hash === '#/file/por-draw/repair');
-check('RB-style shell title', shell.title === 'Plan of Repair');
-check('formatting/drawing toolbar mounted', shell.hasToolbar || shell.tools.length > 0);
+check('drawing-page shell title', shell.title === 'Plan of Repair');
+check('Paint/PPT icon toolbar mounted', shell.hasToolbar && shell.tools.length > 0 && shell.hasSelect);
 check('pages rail present', shell.hasPages);
 check('bring-in plan control', shell.hasPanel);
 check('compact background actions', shell.compactBg && !shell.fatBring);
+check('outline/fill/weight pickers', shell.hasOutlinePicker && shell.hasFillPicker && shell.hasWeightPicker);
+check('tools are icons not word buttons', shell.noWordToolLabels);
+check('text format hidden until text edit', shell.textHidden);
+check('Print stays with toolbar (not second row)', shell.printSameRow);
 check('circle+rect tools present', shell.tools.indexOf('circle') !== -1 && shell.tools.indexOf('rect') !== -1, shell.tools.join(','));
 
 await page.click('#por-bring-plan');
 await page.waitForFunction(() => !!document.querySelector('.por-sheet-bg img'), { timeout: 5000 });
 check('floor plan on sheet', await page.evaluate(() => !!document.querySelector('.por-sheet-bg img')));
+
+// Overall + detail views: frame a region in the live editor, then print matches.
+await page.click('#por-add-view');
+await page.waitForFunction(() => document.querySelectorAll('.por-view-frame').length >= 2, { timeout: 5000 });
+await page.waitForFunction(() => {
+  const imgs = Array.from(document.querySelectorAll('.por-view-frame img'));
+  return imgs.length >= 2 && imgs.every((img) => img.complete && img.naturalWidth > 0 && parseFloat(img.style.width || '0') > 0);
+}, { timeout: 8000 });
+// Zoom + pan the detail view so its camera differs from overall.
+const detailBox = await page.$eval('.por-view-frame[data-por-view="1"]', (el) => {
+  const r = el.getBoundingClientRect();
+  return { x: r.left, y: r.top, w: r.width, h: r.height };
+});
+await page.mouse.move(detailBox.x + detailBox.w * 0.5, detailBox.y + detailBox.h * 0.5);
+for (let i = 0; i < 6; i += 1) await page.mouse.wheel({ deltaY: -180 });
+await page.mouse.down();
+await page.mouse.move(detailBox.x + detailBox.w * 0.35, detailBox.y + detailBox.h * 0.35, { steps: 8 });
+await page.mouse.up();
+// Shrink/move the detail frame with its SE handle so layout differs too.
+const se = await page.$eval('.por-view-frame[data-por-view="1"] [data-por-corner="se"]', (el) => {
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+});
+await page.mouse.move(se.x, se.y);
+await page.mouse.down();
+await page.mouse.move(se.x - 80, se.y - 60, { steps: 10 });
+await page.mouse.up();
+await page.waitForFunction(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const pages = record && record.planOfRepair && record.planOfRepair.pages;
+  if (!pages || !pages.length) return false;
+  const page = pages.find((p) => p.id === record.planOfRepair.activePageId) || pages[0];
+  const views = (page.meta && page.meta.views) || [];
+  return views.length >= 2 && views[1] && views[1].camera && Number(views[1].camera.zoom) > 1.05;
+}, { timeout: 8000 });
+const multiEditor = await page.evaluate(async () => {
+  const frames = Array.from(document.querySelectorAll('.por-view-frame'));
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId) ||
+    record.planOfRepair.pages[0];
+  const views = (page.meta && page.meta.views) || [];
+  return {
+    frameCount: frames.length,
+    viewCount: views.length,
+    detailZoom: views[1] && views[1].camera && views[1].camera.zoom,
+    overallZoom: views[0] && views[0].camera && views[0].camera.zoom,
+    detailFrame: views[1] && views[1].frame,
+  };
+});
+check(
+  'detail view added with own camera',
+  multiEditor.frameCount >= 2 && multiEditor.viewCount >= 2 && multiEditor.detailZoom > 1.05,
+  JSON.stringify(multiEditor)
+);
+const overallFrame = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId) ||
+    record.planOfRepair.pages[0];
+  return page.meta && page.meta.views && page.meta.views[0] && page.meta.views[0].frame;
+});
+check(
+  'new detail does not cover overall',
+  !!(overallFrame && multiEditor.detailFrame) &&
+    Number(multiEditor.detailFrame.x) >= Number(overallFrame.x) + Number(overallFrame.w) - 0.5,
+  JSON.stringify({ overall: overallFrame, detail: multiEditor.detailFrame })
+);
+
+// View pan must move camera proportionally — detached-host bug flung cx to 1.
+const panProbe = await page.evaluate(async () => {
+  const host = document.querySelector('.por-view-frame[data-por-view="1"]');
+  if (!host) return { ok: false, reason: 'no-host' };
+  const before = await window.ToolboxDB.getCustomerFile('por-draw');
+  const pageBefore = before.planOfRepair.pages.find((p) => p.id === before.planOfRepair.activePageId)
+    || before.planOfRepair.pages[0];
+  const cam0 = (pageBefore.meta.views[1] && pageBefore.meta.views[1].camera) || { cx: 0.5, cy: 0.5, zoom: 1 };
+  const r = host.getBoundingClientRect();
+  const start = { x: r.left + r.width * 0.5, y: r.top + r.height * 0.5 };
+  const dx = 5;
+  return { cam0, start, dx, fw: r.width, zoom: Number(cam0.zoom) || 1 };
+});
+const cxBefore = Number(panProbe.cam0.cx);
+await page.mouse.move(panProbe.start.x, panProbe.start.y);
+await page.mouse.down();
+await page.mouse.move(panProbe.start.x + panProbe.dx, panProbe.start.y, { steps: 2 });
+await page.mouse.up();
+await page.waitForFunction(() => /Saved|Ready/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 4000 }).catch(() => {});
+await new Promise((r) => setTimeout(r, 350));
+const panAfter = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId)
+    || record.planOfRepair.pages[0];
+  return page.meta.views[1].camera;
+});
+const expectedDelta = panProbe.dx / (panProbe.fw * panProbe.zoom);
+const actualDelta = cxBefore - Number(panAfter.cx);
+check(
+  'small pan moves camera proportionally (not to edge)',
+  Number.isFinite(actualDelta) &&
+    Math.abs(actualDelta - expectedDelta) < 0.025 &&
+    Math.abs(Number(panAfter.cx) - 1) > 0.05 &&
+    Math.abs(Number(panAfter.cx) - 0) > 0.05,
+  JSON.stringify({ expectedDelta, actualDelta, after: panAfter, before: panProbe.cam0, fw: panProbe.fw })
+);
+await page.mouse.move(panProbe.start.x + panProbe.dx, panProbe.start.y);
+await page.mouse.down();
+await page.mouse.move(panProbe.start.x, panProbe.start.y, { steps: 2 });
+await page.mouse.up();
+await page.waitForFunction(() => /Saved|Ready/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 4000 }).catch(() => {});
+await new Promise((r) => setTimeout(r, 350));
+const panBack = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId)
+    || record.planOfRepair.pages[0];
+  return page.meta.views[1].camera;
+});
+check(
+  'reverse pan returns camera near start',
+  Math.abs(Number(panBack.cx) - cxBefore) < 0.04,
+  JSON.stringify({ start: cxBefore, back: panBack })
+);
+await page.waitForFunction(() => {
+  const imgs = Array.from(document.querySelectorAll('.por-view-frame img'));
+  if (imgs.length < 2) return false;
+  return imgs[0].style.width !== imgs[1].style.width || imgs[0].style.left !== imgs[1].style.left;
+}, { timeout: 5000 }).catch(() => {});
+const multiPrint = await page.evaluate(() => {
+  const editor = Array.from(document.querySelectorAll('.por-view-frame')).map((host) => {
+    const img = host.querySelector('img');
+    return {
+      left: host.style.left,
+      top: host.style.top,
+      width: host.style.width,
+      height: host.style.height,
+      imgLeft: img ? img.style.left : '',
+      imgTop: img ? img.style.top : '',
+      imgW: img ? img.style.width : '',
+      imgH: img ? img.style.height : '',
+    };
+  });
+  const sheet = document.querySelector('#por-sheet');
+  const clone = sheet.cloneNode(true);
+  clone.querySelectorAll('.por-view-frame__handle, .por-view-frame__move, .por-sel').forEach((el) => el.remove());
+  const printed = Array.from(clone.querySelectorAll('.por-view-frame')).map((host) => {
+    const img = host.querySelector('img');
+    return {
+      left: host.style.left,
+      top: host.style.top,
+      width: host.style.width,
+      height: host.style.height,
+      imgLeft: img ? img.style.left : '',
+      imgTop: img ? img.style.top : '',
+      imgW: img ? img.style.width : '',
+      imgH: img ? img.style.height : '',
+      hasImg: !!(img && img.getAttribute('src')),
+    };
+  });
+  const detailDifferent = editor.length >= 2 && (
+    editor[0].imgW !== editor[1].imgW ||
+    editor[0].imgLeft !== editor[1].imgLeft ||
+    editor[0].width !== editor[1].width
+  );
+  return {
+    editorCount: editor.length,
+    printCount: printed.length,
+    detailDifferent,
+    match: editor.length >= 2 && printed.length === editor.length &&
+      editor.every((e, i) =>
+        printed[i] &&
+        printed[i].left === e.left &&
+        printed[i].top === e.top &&
+        printed[i].width === e.width &&
+        printed[i].height === e.height &&
+        printed[i].imgLeft === e.imgLeft &&
+        printed[i].imgTop === e.imgTop &&
+        printed[i].imgW === e.imgW &&
+        printed[i].hasImg
+      ),
+    editor,
+    printed,
+  };
+});
+check(
+  'print deck keeps both framed views matching editor',
+  multiPrint.match && multiPrint.detailDifferent,
+  JSON.stringify({
+    editorCount: multiPrint.editorCount,
+    printCount: multiPrint.printCount,
+    detailDifferent: multiPrint.detailDifferent,
+    editor: multiPrint.editor,
+  })
+);
+await page.pdf({
+  path: path.join(OUT, 'por-multiview-evidence.pdf'),
+  width: '17in',
+  height: '11in',
+  printBackground: true,
+  margin: { top: 0, right: 0, bottom: 0, left: 0 },
+});
+check(
+  'multiview PDF written',
+  fs.existsSync(path.join(OUT, 'por-multiview-evidence.pdf')) &&
+    fs.statSync(path.join(OUT, 'por-multiview-evidence.pdf')).size > 800
+);
+await page.screenshot({ path: path.join(OUT, 'por-multiview-editor.png'), fullPage: true });
+
+// N1: leave POR first so persistNow cannot overwrite the seed.
+await page.click('#por-back');
+await page.waitForSelector('.cf-home--tls, #home-side-tls');
+const missingImport = await page.evaluate(async () => {
+  const tiny = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  await window.ToolboxDB.putMedia('por-import-missing', tiny);
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page = {
+    id: 'por-missing-page',
+    title: 'Import gone',
+    overlays: [],
+    background: {
+      kind: 'import',
+      canvasId: '',
+      mediaId: 'por-import-missing',
+      source: { mediaId: 'por-import-missing', width: 1, height: 1 },
+      sourceStatus: null,
+    },
+    meta: {},
+    rail: { title: 'Preliminary', date: '', status: 'Preliminary', sheetId: 'POR-X' },
+  };
+  record.planOfRepair.pages.push(page);
+  record.planOfRepair.activePageId = page.id;
+  record.planOfRepair.updatedAt = new Date().toISOString();
+  await window.ToolboxDB.saveCustomerFile(record);
+  await window.ToolboxDB.deleteMedia('por-import-missing');
+  const gone = await window.ToolboxDB.getMedia('por-import-missing');
+  return { seeded: true, mediaGone: gone == null };
+});
+check('seeded missing import sheet', missingImport.seeded && missingImport.mediaGone, JSON.stringify(missingImport));
+await page.goto(BASE + '#/file/por-draw/repair', { waitUntil: 'networkidle0' });
+await page.waitForSelector('.por-shell .rb-sheet');
+await page.waitForFunction(
+  () => /missing/i.test((document.querySelector('.por-sheet-bg__empty') || {}).textContent || ''),
+  { timeout: 8000 }
+);
+const missingNamed = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const pages = record.planOfRepair.pages || [];
+  const results = [];
+  for (let i = 0; i < pages.length; i += 1) {
+    const page = pages[i];
+    const bg = page.background;
+    if (!bg || !bg.kind) continue;
+    let mediaId = null;
+    if (bg.kind === 'import') mediaId = bg.mediaId || null;
+    else if (bg.kind === 'plan' || bg.kind === 'contour') {
+      const canvas = (record.planSetup.canvases || []).find((c) => c.id === bg.canvasId);
+      if (bg.kind === 'plan') mediaId = canvas && canvas.plan && canvas.plan.id;
+      if (bg.kind === 'contour') mediaId = canvas && canvas.contourLayer && canvas.contourLayer.id;
+    }
+    const url = mediaId ? await window.ToolboxDB.getMedia(mediaId) : null;
+    const loadFailed = !(typeof url === 'string' && (
+      url.indexOf('data:image/') === 0 || url.indexOf('blob:') === 0 || url.indexOf('http') === 0
+    ));
+    if (loadFailed || !mediaId) {
+      results.push((i + 1) + '. ' + (page.title || 'Drawing'));
+    }
+  }
+  const emptyText = (document.querySelector('.por-sheet-bg__empty') || {}).textContent || '';
+  return {
+    named: results.some((line) => /Import gone/.test(line)),
+    results,
+    emptyText,
+  };
+});
+check(
+  'missing imported drawing named for print warning',
+  missingNamed.named && /missing/i.test(missingNamed.emptyText),
+  JSON.stringify(missingNamed)
+);
+// Return to the first drawing page for the remaining mark tests.
+await page.evaluate(() => {
+  const first = document.querySelector('#por-page-list .rb-rail__page');
+  if (first) first.click();
+});
+await page.waitForFunction(() => document.querySelectorAll('.por-view-frame').length >= 2 || document.querySelector('.por-sheet-bg img'), { timeout: 5000 }).catch(() => {});
 
 // Draw a filled circle
 await page.click('#por-fill');
@@ -160,7 +480,10 @@ await page.mouse.down();
 await page.mouse.move(box.x + box.w * 0.42, box.y + box.h * 0.48);
 await page.mouse.up();
 
-await page.click('[data-rb-ov-color="#eab308"]');
+// Clear selection so colour sets the next tool default (not the just-drawn circle).
+await page.keyboard.press('Escape');
+await page.click('#por-outline-btn');
+await page.click('#por-outline-pop [data-por-outline="#eab308"]');
 await page.click('[data-rb-tool="rect"]');
 await page.mouse.move(box.x + box.w * 0.55, box.y + box.h * 0.55);
 await page.mouse.down();

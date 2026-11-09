@@ -12,6 +12,8 @@
 
   var PAPER_W = 1632;
   var PAPER_H = 1056;
+  /** Drawing area stays left of the TLS title block (~12.5% rail). */
+  var DRAW_MAX_RIGHT = 84;
   var TLS_MARK = 'brand/tls-foundations.jpg';
   var activeMount = null;
 
@@ -48,7 +50,8 @@
       id: uid('page'),
       title: title || 'Drawing',
       overlays: [],
-      background: { kind: null, canvasId: '' },
+      background: { kind: null, canvasId: '', mediaId: '', source: null, sourceStatus: null },
+      meta: {},
       rail: {
         title: 'Preliminary Underpinning Plan',
         date: '',
@@ -56,6 +59,18 @@
         sheetId: '',
       },
     };
+  }
+
+  function probeImageSize(url) {
+    return new Promise(function (resolve) {
+      if (!url) { resolve(null); return; }
+      var img = new Image();
+      img.onload = function () {
+        resolve({ width: img.naturalWidth || img.width || 0, height: img.naturalHeight || img.height || 0 });
+      };
+      img.onerror = function () { resolve(null); };
+      img.src = url;
+    });
   }
 
   function migrateLegacy(raw) {
@@ -123,12 +138,25 @@
           : (Array.isArray(p.overlays) ? p.overlays : []);
         page.background = p && p.background && typeof p.background === 'object'
           ? {
-              kind: p.background.kind === 'contour' || p.background.kind === 'plan'
+              kind: p.background.kind === 'contour' || p.background.kind === 'plan' ||
+                p.background.kind === 'import'
                 ? p.background.kind
                 : null,
               canvasId: typeof p.background.canvasId === 'string' ? p.background.canvasId : '',
+              mediaId: typeof p.background.mediaId === 'string' ? p.background.mediaId : '',
+              source: p.background.source && typeof p.background.source === 'object'
+                ? {
+                    mediaId: typeof p.background.source.mediaId === 'string' ? p.background.source.mediaId : '',
+                    width: Number(p.background.source.width) || 0,
+                    height: Number(p.background.source.height) || 0,
+                  }
+                : null,
+              sourceStatus: p.background.sourceStatus === 'changed' || p.background.sourceStatus === 'accepted'
+                ? p.background.sourceStatus
+                : null,
             }
-          : { kind: null, canvasId: '' };
+          : { kind: null, canvasId: '', mediaId: '', source: null, sourceStatus: null };
+        page.meta = p && p.meta && typeof p.meta === 'object' ? Object.assign({}, p.meta) : {};
         page.rail = Object.assign(page.rail, (p && p.rail) || {});
         if (!page.rail.sheetId) page.rail.sheetId = 'POR-' + (i + 1);
         return page;
@@ -183,24 +211,99 @@
     root.className = 'por-shell rb-shell';
     host.appendChild(root);
 
+    var inkColors = (window.ToolboxReportOverlay && window.ToolboxReportOverlay.COLORS) ||
+      ['#c14a2b', '#111111', '#1d4ed8', '#16a34a', '#ea7317', '#eab308'];
+
+    function svgIcon(body) {
+      return '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" ' +
+        'stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
+        body + '</svg>';
+    }
+
+    var ICONS = {
+      select: svgIcon('<path d="M5 3l6 16 2-6 6-2z"/>'),
+      undo: svgIcon('<path d="M8 9h7.5a4.5 4.5 0 1 1 0 9H10"/><path d="M11 5.5 7 9l4 3.5"/>'),
+      redo: svgIcon('<path d="M16 9H8.5a4.5 4.5 0 1 0 0 9H14"/><path d="M13 5.5 17 9l-4 3.5"/>'),
+      pencil: svgIcon('<path d="M4 20l1-4.2L15.2 5.6a2 2 0 0 1 2.8 0l1.4 1.4a2 2 0 0 1 0 2.8L9.2 19.8 5 21z"/><path d="M13.6 7.2l3.2 3.2"/>'),
+      arrow: svgIcon('<path d="M5 19 18.5 5.5"/><path d="M11.5 5.5h7v7"/>'),
+      rect: svgIcon('<rect x="3.5" y="5.5" width="17" height="13" rx="1"/>'),
+      circle: svgIcon('<circle cx="12" cy="12" r="8.5"/>'),
+      text: svgIcon('<path d="M5 6h14M12 6v12M8 18h8"/>'),
+      eraser: svgIcon('<path d="M8.6 19.5H5.4a1.6 1.6 0 0 1-1.1-2.7L13.9 7a2 2 0 0 1 2.8 0l3 3a2 2 0 0 1 0 2.8l-6.6 6.6z"/><path d="M8.6 19.5h11.9"/>'),
+      weight: svgIcon('<path d="M4 8h16M4 12h16M4 16h16" stroke-width="1.2"/><path d="M4 12h16" stroke-width="3"/>'),
+    };
+
+    function colorGrid(attr) {
+      return inkColors.map(function (c) {
+        return '<button type="button" class="por-swatch" ' + attr + '="' + c + '" ' +
+          'style="--por-swatch:' + c + '" title="' + c + '" aria-label="Colour ' + c + '"></button>';
+      }).join('');
+    }
+
+    // Paint / PowerPoint drawing-first chrome: compact icon strip, colour/weight
+    // pickers, pages left, canvas center, compact Toolbox rail. Print stays in
+    // its own slot so text B/I/U never wraps it.
     root.innerHTML =
       '<div class="view-bar view-bar--file rb-identity">' +
-      '  <button type="button" id="por-back" class="btn btn--ghost">‹ Customer File</button>' +
+      '  <button type="button" id="por-back" class="btn btn--ghost">‹ TLS</button>' +
       '  <div class="file-identity">' +
       '    <span class="file-identity__name">Plan of Repair</span>' +
       '    <span class="file-identity__address" id="por-file-label"></span>' +
       '  </div>' +
       '  <span class="file-status" id="por-status">Loading…</span>' +
       '</div>' +
-      '<div class="rb-toolbar">' +
-      '  <div class="rb-toolbar__format" data-rb-format-host></div>' +
-      '  <label class="por-fill-toggle"><input type="checkbox" id="por-fill"> Fill shape</label>' +
-      '  <div class="rb-zoom" role="group" aria-label="Page size on screen">' +
-      '    <button type="button" id="por-zoom-out" class="rb-zoom__btn" aria-label="Zoom out">−</button>' +
-      '    <button type="button" id="por-zoom-level" class="rb-zoom__level">Fit</button>' +
-      '    <button type="button" id="por-zoom-in" class="rb-zoom__btn" aria-label="Zoom in">+</button>' +
+      '<div class="por-toolbar" role="toolbar" aria-label="Drawing tools">' +
+      '  <div class="por-toolbar__group" role="group" aria-label="History">' +
+      '    <button type="button" class="por-iconbtn" id="por-undo" title="Undo (Ctrl+Z)" aria-label="Undo">' + ICONS.undo + '</button>' +
+      '    <button type="button" class="por-iconbtn" id="por-redo" title="Redo" aria-label="Redo">' + ICONS.redo + '</button>' +
       '  </div>' +
-      '  <button type="button" id="por-print" class="btn btn--secondary rb-print-btn">Print / PDF</button>' +
+      '  <div class="por-toolbar__group por-toolbar__tools" role="group" aria-label="Tools">' +
+      '    <button type="button" class="por-iconbtn is-on" data-por-tool="select" title="Select" aria-label="Select">' + ICONS.select + '</button>' +
+      '    <button type="button" class="por-iconbtn" data-rb-tool="pencil" title="Pencil" aria-label="Pencil">' + ICONS.pencil + '</button>' +
+      '    <button type="button" class="por-iconbtn" data-rb-tool="arrow" title="Line / arrow" aria-label="Arrow">' + ICONS.arrow + '</button>' +
+      '    <button type="button" class="por-iconbtn" data-rb-tool="rect" title="Rectangle" aria-label="Rectangle">' + ICONS.rect + '</button>' +
+      '    <button type="button" class="por-iconbtn" data-rb-tool="circle" title="Circle" aria-label="Circle">' + ICONS.circle + '</button>' +
+      '    <button type="button" class="por-iconbtn" id="por-insert-text" title="Text box" aria-label="Text">' + ICONS.text + '</button>' +
+      '    <button type="button" class="por-iconbtn" data-rb-tool="eraser" title="Eraser" aria-label="Eraser">' + ICONS.eraser + '</button>' +
+      '  </div>' +
+      '  <div class="por-toolbar__group" role="group" aria-label="Style">' +
+      '    <div class="por-picker" data-por-picker="outline">' +
+      '      <button type="button" class="por-picker__btn por-picker__btn--swatch" id="por-outline-btn" title="Outline colour" aria-label="Outline colour" aria-haspopup="true" aria-expanded="false">' +
+      '        <span class="por-picker__chip" id="por-outline-chip"></span>' +
+      '      </button>' +
+      '      <div class="por-picker__pop" id="por-outline-pop" hidden role="listbox" aria-label="Outline colours">' + colorGrid('data-por-outline') + '</div>' +
+      '    </div>' +
+      '    <label class="por-fill-toggle por-fill-toggle--tool" title="Fill shapes"><input type="checkbox" id="por-fill" aria-label="Fill shapes"></label>' +
+      '    <div class="por-picker" data-por-picker="fill">' +
+      '      <button type="button" class="por-picker__btn por-picker__btn--swatch" id="por-fill-btn" title="Fill colour" aria-label="Fill colour" aria-haspopup="true" aria-expanded="false">' +
+      '        <span class="por-picker__chip" id="por-fill-chip"></span>' +
+      '      </button>' +
+      '      <div class="por-picker__pop" id="por-fill-pop" hidden role="listbox" aria-label="Fill colours">' + colorGrid('data-por-fill') + '</div>' +
+      '    </div>' +
+      '    <div class="por-picker" data-por-picker="weight">' +
+      '      <button type="button" class="por-picker__btn por-picker__btn--icon" id="por-weight-btn" title="Line weight" aria-label="Line weight" aria-haspopup="true" aria-expanded="false">' +
+      ICONS.weight + '</button>' +
+      '      <div class="por-picker__pop por-picker__pop--weight" id="por-weight-pop" hidden role="listbox" aria-label="Line weight">' +
+      '        <button type="button" class="por-weight" data-por-thick="1" title="Thin" aria-label="Thin"><span class="por-weight__bar" style="height:1.5px"></span></button>' +
+      '        <button type="button" class="por-weight" data-por-thick="2" title="Medium" aria-label="Medium"><span class="por-weight__bar" style="height:3px"></span></button>' +
+      '        <button type="button" class="por-weight" data-por-thick="3" title="Thick" aria-label="Thick"><span class="por-weight__bar" style="height:5px"></span></button>' +
+      '      </div>' +
+      '    </div>' +
+      '  </div>' +
+      '  <div class="por-toolbar__group por-toolbar__text" id="por-text-format" hidden role="group" aria-label="Text formatting">' +
+      '    <button type="button" class="por-iconbtn" data-por-text="bold" title="Bold" aria-label="Bold"><b>B</b></button>' +
+      '    <button type="button" class="por-iconbtn" data-por-text="italic" title="Italic" aria-label="Italic"><i>I</i></button>' +
+      '    <button type="button" class="por-iconbtn" data-por-text="underline" title="Underline" aria-label="Underline"><u>U</u></button>' +
+      '  </div>' +
+      '  <div class="por-toolbar__spacer"></div>' +
+      '  <div class="por-toolbar__view" role="group" aria-label="Page view">' +
+      '    <button type="button" id="por-zoom-out" class="por-iconbtn" aria-label="Zoom out" title="Zoom out">−</button>' +
+      '    <button type="button" id="por-zoom-level" class="por-zoom-level" title="Fit page">Fit</button>' +
+      '    <button type="button" id="por-zoom-in" class="por-iconbtn" aria-label="Zoom in" title="Zoom in">+</button>' +
+      '  </div>' +
+      '  <div class="por-toolbar__out" role="group" aria-label="Drawing output">' +
+      '    <button type="button" id="por-print" class="btn btn--secondary rb-print-btn">Print / PDF</button>' +
+      '  </div>' +
       '</div>' +
       '<div class="rb-workspace">' +
       '  <aside class="rb-ws" aria-label="Drawing pages">' +
@@ -218,7 +321,7 @@
       '  </aside>' +
       '  <div class="rb-stage" id="por-stage">' +
       '    <div class="rb-stage__paper">' +
-      '      <article class="rb-sheet" id="por-sheet" aria-label="11 by 17 inch landscape drawing sheet"></article>' +
+      '      <article class="rb-sheet por-sheet" id="por-sheet" aria-label="11 by 17 inch landscape drawing sheet"></article>' +
       '    </div>' +
       '  </div>' +
       '  <aside class="rb-panel por-panel" aria-label="Toolbox">' +
@@ -229,7 +332,13 @@
       '    <div class="por-bg-actions" role="group" aria-label="Background">' +
       '      <button type="button" class="por-linkbtn" id="por-bring-plan">Floor plan</button>' +
       '      <button type="button" class="por-linkbtn" id="por-bring-contour">Contour</button>' +
-      '      <button type="button" class="por-linkbtn" id="por-clear-bg">Clear</button>' +
+      '      <button type="button" class="por-linkbtn" id="por-import-bg">Import drawing</button>' +
+      '      <button type="button" class="por-linkbtn" id="por-clear-bg">Blank</button>' +
+      '      <input type="file" id="por-import-file" accept="image/*" hidden>' +
+      '    </div>' +
+      '    <div class="por-bg-actions" role="group" aria-label="Views on this sheet">' +
+      '      <button type="button" class="por-linkbtn" id="por-add-view">Add detail view</button>' +
+      '      <button type="button" class="por-linkbtn" id="por-remove-view">Remove detail</button>' +
       '    </div>' +
       '    <label class="por-fill-toggle por-fill-toggle--compact"><input type="checkbox" id="por-sandia"> SandiaGEO note</label>' +
       '    <div class="por-inspector" id="por-inspector" hidden>' +
@@ -283,15 +392,20 @@
       selectedId: null,
       clipboard: null,
       bgUrl: '',
+      bgMissing: false,
+      bgMissingByPageId: {},
+      printMode: false,
       scale: 1,
       zoomMode: 'fit',
       userScale: 1,
       drag: null,
+      selectedViewIndex: null,
       formatToolbar: null,
       shapeMenu: null,
-      inspectorMode: 'format', // format | size
+      inspectorMode: 'format',
       fillColor: '#eab308',
       editSeq: 0,
+      editingText: false,
     };
 
     var sheetEl = root.querySelector('#por-sheet');
@@ -326,9 +440,122 @@
     }
 
     function syncHistoryButtons() {
-      if (state.formatToolbar && state.formatToolbar.setHistory) {
-        state.formatToolbar.setHistory(state.undo.length > 0, state.redo.length > 0);
+      var undoBtn = root.querySelector('#por-undo');
+      var redoBtn = root.querySelector('#por-redo');
+      if (undoBtn) undoBtn.disabled = state.undo.length === 0 || state.readOnly;
+      if (redoBtn) redoBtn.disabled = state.redo.length === 0 || state.readOnly;
+      root.querySelectorAll('[data-rb-tool]').forEach(function (btn) {
+        btn.classList.toggle('is-on', btn.getAttribute('data-rb-tool') === state.inkTool);
+      });
+      root.querySelectorAll('[data-por-tool="select"]').forEach(function (btn) {
+        btn.classList.toggle('is-on', !state.inkTool);
+      });
+      var outlineChip = root.querySelector('#por-outline-chip');
+      if (outlineChip) outlineChip.style.background = state.inkColor;
+      var fillChip = root.querySelector('#por-fill-chip');
+      if (fillChip) fillChip.style.background = state.fillColor;
+      var textStrip = root.querySelector('#por-text-format');
+      if (textStrip) {
+        var showText = state.editingText || (selectedItem() && selectedItem().kind === 'text');
+        textStrip.hidden = !showText;
       }
+    }
+
+    function closePickers() {
+      root.querySelectorAll('.por-picker__pop').forEach(function (pop) { pop.hidden = true; });
+      root.querySelectorAll('.por-picker__btn').forEach(function (btn) {
+        btn.setAttribute('aria-expanded', 'false');
+      });
+    }
+
+    function togglePicker(which) {
+      var pop = root.querySelector('#por-' + which + '-pop');
+      var btn = root.querySelector('#por-' + which + '-btn');
+      if (!pop || !btn) return;
+      var open = pop.hidden;
+      closePickers();
+      if (open) {
+        pop.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+      }
+    }
+
+    function applyOutlineColor(color) {
+      if (!color) return;
+      var item = selectedItem();
+      if (item && !state.readOnly) {
+        pushHistory();
+        item.color = color;
+        scheduleSave();
+        renderSheet();
+        return;
+      }
+      state.inkColor = color;
+      syncHistoryButtons();
+    }
+
+    function applyFillColor(color) {
+      if (!color) return;
+      var item = selectedItem();
+      if (item && !state.readOnly && (item.kind === 'rect' || item.kind === 'circle')) {
+        pushHistory();
+        item.fill = true;
+        item.fillColor = color;
+        scheduleSave();
+        renderSheet();
+        syncInspector();
+        return;
+      }
+      state.fillColor = color;
+      state.inkFill = true;
+      if (fillInput) fillInput.checked = true;
+      syncHistoryButtons();
+    }
+
+    function applyWeight(level) {
+      level = Number(level) || 2;
+      var item = selectedItem();
+      if (item && !state.readOnly) {
+        pushHistory();
+        item.thick = level;
+        scheduleSave();
+        renderSheet();
+        return;
+      }
+      state.inkThick = level;
+      syncHistoryButtons();
+    }
+
+    function clampFrameToDrawArea(frame) {
+      var f = frame && typeof frame === 'object' ? frame : { x: 0, y: 0, w: 40, h: 40 };
+      var w = Math.max(18, Math.min(DRAW_MAX_RIGHT, Number(f.w) || 40));
+      var h = Math.max(20, Math.min(100, Number(f.h) || 40));
+      var x = Math.max(0, Math.min(DRAW_MAX_RIGHT - w, Number(f.x) || 0));
+      var y = Math.max(0, Math.min(100 - h, Number(f.y) || 0));
+      return { x: x, y: y, w: w, h: h, z: isFinite(Number(f.z)) ? Number(f.z) : 1 };
+    }
+
+    /** Side-by-side within the draw area so a new detail never covers overall. */
+    function layoutPorViews(views) {
+      if (!views || !views.length) return;
+      var gutter = 2;
+      var avail = DRAW_MAX_RIGHT;
+      if (views.length === 1) {
+        views[0].frame = clampFrameToDrawArea({ x: 0, y: 0, w: avail, h: 100, z: 1 });
+        return;
+      }
+      var n = views.length;
+      var share = (avail - gutter * (n - 1)) / n;
+      views.forEach(function (v, i) {
+        if (!v) return;
+        v.frame = clampFrameToDrawArea({
+          x: i * (share + gutter),
+          y: 0,
+          w: share,
+          h: 100,
+          z: i + 1,
+        });
+      });
     }
 
     function applyHistory(doc) {
@@ -407,27 +634,179 @@
       if (level) level.textContent = state.zoomMode === 'fit' ? 'Fit' : Math.round(scale * 100) + '%';
     }
 
-    function loadBackground() {
-      state.bgUrl = '';
-      var page = activePage();
+    function acceptBgUrl(url) {
+      return typeof url === 'string' && url && (
+        url.indexOf('data:image/') === 0 ||
+        url.indexOf('blob:') === 0 ||
+        url.indexOf('http') === 0
+      );
+    }
+
+    function resolveBackgroundMediaId(page) {
       var bg = page && page.background;
-      if (!bg || !bg.kind || !bg.canvasId || !state.record) return Promise.resolve();
+      if (!bg || !bg.kind || !state.record) return null;
+      if (bg.kind === 'import') return bg.mediaId || null;
+      if (!bg.canvasId) return null;
       var canvas = window.ToolboxPlanSetup && window.ToolboxPlanSetup.canvasById
         ? window.ToolboxPlanSetup.canvasById(state.record, bg.canvasId)
         : null;
-      if (!canvas) return Promise.resolve();
-      var mediaId = null;
-      if (bg.kind === 'plan' && canvas.plan && canvas.plan.id) mediaId = canvas.plan.id;
+      if (!canvas) return null;
+      if (bg.kind === 'plan' && canvas.plan && canvas.plan.id) return canvas.plan.id;
       if (bg.kind === 'contour') {
         var layer = window.ToolboxPlanSetup.contourLayer
           ? window.ToolboxPlanSetup.contourLayer(canvas)
           : (canvas.contourLayer || null);
-        if (layer && layer.id) mediaId = layer.id;
+        if (layer && layer.id) return layer.id;
       }
-      if (!mediaId || !window.ToolboxDB || !window.ToolboxDB.getMedia) return Promise.resolve();
+      return null;
+    }
+
+    function applySourceProbe(page, mediaId, url) {
+      return probeImageSize(url).then(function (size) {
+        if (!page.background) return;
+        var next = {
+          mediaId: mediaId || '',
+          width: size && size.width || 0,
+          height: size && size.height || 0,
+        };
+        var prev = page.background.source;
+        if (!prev || !prev.mediaId) {
+          page.background.source = next;
+          if (page.background.sourceStatus === 'changed') page.background.sourceStatus = null;
+          return;
+        }
+        var changed = prev.mediaId !== next.mediaId ||
+          (prev.width && next.width && prev.width !== next.width) ||
+          (prev.height && next.height && prev.height !== next.height);
+        if (changed) {
+          if (page.background.sourceStatus !== 'accepted') {
+            page.background.sourceStatus = 'changed';
+          }
+          // Keep prev.source until Tim accepts, but track live id for accept.
+          page.background._liveSource = next;
+        } else {
+          page.background.source = next;
+          page.background.sourceStatus = null;
+          delete page.background._liveSource;
+        }
+      });
+    }
+
+    function markBgMissing(page, missing) {
+      state.bgMissing = !!missing;
+      if (page && page.id) state.bgMissingByPageId[page.id] = !!missing;
+    }
+
+    function loadBackground() {
+      state.bgUrl = '';
+      state.bgMissing = false;
+      var page = activePage();
+      var bg = page && page.background;
+      if (!bg || !bg.kind || !state.record) {
+        if (page && page.id) state.bgMissingByPageId[page.id] = false;
+        return Promise.resolve();
+      }
+      var mediaId = resolveBackgroundMediaId(page);
+      if (!mediaId || !window.ToolboxDB || !window.ToolboxDB.getMedia) {
+        markBgMissing(page, !!bg.kind);
+        return Promise.resolve();
+      }
       return window.ToolboxDB.getMedia(mediaId).then(function (url) {
-        if (typeof url === 'string' && url.indexOf('data:image/') === 0) state.bgUrl = url;
-      }).catch(function () {});
+        if (acceptBgUrl(url)) {
+          state.bgUrl = url;
+          markBgMissing(page, false);
+          return applySourceProbe(page, mediaId, url);
+        }
+        markBgMissing(page, true);
+      }).catch(function () { markBgMissing(page, true); });
+    }
+
+    function defaultViewCamera(zoom) {
+      return { cx: 0.5, cy: 0.5, zoom: Number(zoom) > 0 ? Number(zoom) : 1, rel: true };
+    }
+
+    function viewCamera(view) {
+      if (view && view.camera && typeof view.camera === 'object' && Number(view.camera.zoom) > 0) {
+        return {
+          cx: isFinite(Number(view.camera.cx)) ? Number(view.camera.cx) : 0.5,
+          cy: isFinite(Number(view.camera.cy)) ? Number(view.camera.cy) : 0.5,
+          zoom: Number(view.camera.zoom),
+          rel: true,
+        };
+      }
+      return defaultViewCamera(1);
+    }
+
+    /** Position the background image inside a view frame from a relative camera. */
+    function applyViewCamera(img, host, camera) {
+      if (!img || !host) return;
+      var tries = 0;
+      function layout() {
+        var fw = host.clientWidth;
+        var fh = host.clientHeight;
+        var iw = img.naturalWidth || 0;
+        var ih = img.naturalHeight || 0;
+        if ((fw < 2 || fh < 2 || iw < 1 || ih < 1) && tries < 20) {
+          tries += 1;
+          requestAnimationFrame(layout);
+          return;
+        }
+        if (fw < 2 || fh < 2 || iw < 1 || ih < 1) return;
+        var cam = camera || defaultViewCamera(1);
+        var zoom = Number(cam.zoom) > 0 ? Number(cam.zoom) : 1;
+        var cx = isFinite(Number(cam.cx)) ? Number(cam.cx) : 0.5;
+        var cy = isFinite(Number(cam.cy)) ? Number(cam.cy) : 0.5;
+        var base = Math.min(fw / iw, fh / ih);
+        var scale = base * zoom;
+        var dispW = iw * scale;
+        var dispH = ih * scale;
+        img.style.position = 'absolute';
+        img.style.width = dispW + 'px';
+        img.style.height = dispH + 'px';
+        img.style.maxWidth = 'none';
+        img.style.objectFit = 'fill';
+        img.style.left = (fw / 2 - cx * dispW) + 'px';
+        img.style.top = (fh / 2 - cy * dispH) + 'px';
+      }
+      if (img.complete && img.naturalWidth) layout();
+      else {
+        img.addEventListener('load', layout, { once: true });
+        img.addEventListener('error', layout, { once: true });
+      }
+    }
+
+    function waitForSheetImages() {
+      var imgs = sheetEl.querySelectorAll('.por-view-frame img, .por-sheet-bg > img');
+      return Promise.all(Array.prototype.map.call(imgs, function (img) {
+        if (img.complete) return Promise.resolve();
+        return new Promise(function (resolve) {
+          img.addEventListener('load', resolve, { once: true });
+          img.addEventListener('error', resolve, { once: true });
+        });
+      })).then(function () {
+        var page = activePage();
+        var viewsApi = window.ToolboxReportFloorViews;
+        var views = (viewsApi && page && page.meta) ? viewsApi.viewsFor(page) : [];
+        if (views && views.length > 1) {
+          sheetEl.querySelectorAll('.por-view-frame').forEach(function (host) {
+            var vi = Number(host.getAttribute('data-por-view'));
+            var img = host.querySelector('img');
+            applyViewCamera(img, host, viewCamera(views[vi]));
+          });
+        }
+      });
+    }
+
+    function acceptSourceReplacement(page) {
+      if (!page || !page.background) return;
+      if (page.background._liveSource) {
+        page.background.source = page.background._liveSource;
+        delete page.background._liveSource;
+      }
+      page.background.sourceStatus = null;
+      scheduleSave();
+      renderSheet();
+      setStatus('Replacement accepted for this sheet');
     }
 
     function renderPageList() {
@@ -526,18 +905,83 @@
 
       var bg = document.createElement('div');
       bg.className = 'por-sheet-bg';
-      if (state.bgUrl) {
+      var viewsApi = window.ToolboxReportFloorViews;
+      var views = (viewsApi && page.meta) ? viewsApi.viewsFor(page) : [];
+      var multi = views && views.length > 1;
+      if (state.bgUrl && multi) {
+        views.forEach(function (view, vi) {
+          var frame = clampFrameToDrawArea(view && view.frame);
+          if (view) view.frame = frame;
+          var host = document.createElement('div');
+          host.className = 'por-view-frame' +
+            (!state.printMode && state.selectedViewIndex === vi ? ' is-selected' : '');
+          host.setAttribute('data-por-view', String(vi));
+          host.style.left = frame.x + '%';
+          host.style.top = frame.y + '%';
+          host.style.width = frame.w + '%';
+          host.style.height = frame.h + '%';
+          host.style.zIndex = String((frame.z || 1) + 1);
+          var img = document.createElement('img');
+          img.src = state.bgUrl;
+          img.alt = 'View ' + (vi + 1);
+          img.draggable = false;
+          host.appendChild(img);
+          var label = document.createElement('span');
+          label.className = 'por-view-frame__label';
+          label.textContent = vi === 0 ? 'Overall' : ('Detail ' + vi);
+          host.appendChild(label);
+          if (!state.printMode && !state.readOnly) {
+            var move = document.createElement('button');
+            move.type = 'button';
+            move.className = 'por-view-frame__move';
+            move.setAttribute('data-por-view-move', String(vi));
+            move.title = 'Drag to move this view frame';
+            move.textContent = 'Move';
+            host.appendChild(move);
+            ['nw', 'ne', 'se', 'sw'].forEach(function (corner) {
+              var handle = document.createElement('span');
+              handle.className = 'por-view-frame__handle por-view-frame__handle--' + corner;
+              handle.setAttribute('data-por-view-resize', String(vi));
+              handle.setAttribute('data-por-corner', corner);
+              host.appendChild(handle);
+            });
+          }
+          bg.appendChild(host);
+          applyViewCamera(img, host, viewCamera(view));
+        });
+      } else if (state.bgUrl) {
         var img = document.createElement('img');
         img.src = state.bgUrl;
-        img.alt = page.background && page.background.kind === 'contour' ? 'Contour' : 'Floor plan';
+        img.alt = page.background && page.background.kind === 'contour'
+          ? 'Contour'
+          : (page.background && page.background.kind === 'import' ? 'Imported drawing' : 'Floor plan');
         bg.appendChild(img);
-      } else {
+      } else if (!state.printMode) {
         var empty = document.createElement('p');
         empty.className = 'por-sheet-bg__empty';
-        empty.textContent = 'Bring in a floor plan or contour from the Toolbox panel.';
+        empty.textContent = state.bgMissing
+          ? 'Referenced background is missing — review before print.'
+          : 'Blank sheet, or bring in a floor plan, contour, or imported drawing.';
         bg.appendChild(empty);
       }
       sheetEl.appendChild(bg);
+
+      if (!state.printMode && page.background && page.background.sourceStatus === 'changed') {
+        var banner = document.createElement('div');
+        banner.className = 'por-source-banner';
+        banner.innerHTML =
+          '<span>Background source changed under this drawing.</span>' +
+          '<button type="button" class="btn btn--secondary" data-por-accept-source="1">Review / accept replacement</button>';
+        var acceptBtn = banner.querySelector('[data-por-accept-source]');
+        if (acceptBtn) {
+          acceptBtn.addEventListener('click', function () {
+            if (state.readOnly) return;
+            pushHistory();
+            acceptSourceReplacement(page);
+          });
+        }
+        sheetEl.appendChild(banner);
+      }
 
       var rail = renderRail(page);
       if (rail) sheetEl.appendChild(rail);
@@ -550,6 +994,7 @@
       if (state.selectedId) renderSelectionChrome(page);
       applySheetScale();
       wireRailEdits(page);
+      wireOverlayText(page);
       syncInspector();
     }
 
@@ -833,9 +1278,6 @@
         handle.setAttribute('data-por-corner', corner);
         sel.appendChild(handle);
       });
-      var rot = document.createElement('span');
-      rot.className = 'por-sel__rot';
-      sel.appendChild(rot);
       sheetEl.appendChild(sel);
     }
 
@@ -859,9 +1301,7 @@
 
     function setInkTool(name) {
       state.inkTool = name || null;
-      if (state.formatToolbar && state.formatToolbar.setTool) {
-        state.formatToolbar.setTool(state.inkTool);
-      }
+      syncHistoryButtons();
       renderSheet();
     }
 
@@ -915,8 +1355,49 @@
       var page = activePage();
       var api = overlayApi();
       if (api) page.overlays = api.normalize(overlayList(page));
+      // One-shot draw: return to Select so the next click adjusts, not stacks.
+      if (state.inkTool && state.inkTool !== 'pencil' && state.inkTool !== 'eraser') {
+        setInkTool(null);
+      }
       scheduleSave();
       renderSheet();
+    }
+
+    function commitOverlayText(field) {
+      if (!field || state.readOnly) return false;
+      var ovId = field.getAttribute('data-rb-ov-field');
+      if (!ovId) return false;
+      var page = activePage();
+      var list = overlayList(page);
+      var item = list.find(function (o) { return o.id === ovId; });
+      if (!item || item.kind !== 'text') return false;
+      var textApi = window.ToolboxReportText;
+      var next = textApi && typeof textApi.fromElement === 'function'
+        ? (textApi.compact ? textApi.compact(textApi.fromElement(field)) : textApi.fromElement(field))
+        : (field.textContent || '');
+      if (item.text === next) return false;
+      pushHistory();
+      item.text = next;
+      scheduleSave();
+      return true;
+    }
+
+    function wireOverlayText(page) {
+      sheetEl.querySelectorAll('[data-rb-ov-field]').forEach(function (field) {
+        if (field.getAttribute('data-por-text-wired') === '1') return;
+        field.setAttribute('data-por-text-wired', '1');
+        field.addEventListener('focus', function () {
+          state.editingText = true;
+          var host = field.closest('[data-rb-ov]');
+          if (host) state.selectedId = host.getAttribute('data-rb-ov');
+          syncHistoryButtons();
+        });
+        field.addEventListener('blur', function () {
+          commitOverlayText(field);
+          state.editingText = false;
+          syncHistoryButtons();
+        });
+      });
     }
 
     function eraseAt(event) {
@@ -935,11 +1416,16 @@
       var target = event.target.closest && event.target.closest('[data-rb-ov]');
       if (!target) {
         state.selectedId = null;
+        state.editingText = false;
         renderSheet();
+        syncHistoryButtons();
         return false;
       }
       state.selectedId = target.getAttribute('data-rb-ov');
+      var item = selectedItem();
+      state.editingText = !!(item && item.kind === 'text');
       renderSheet();
+      syncHistoryButtons();
       return true;
     }
 
@@ -1069,11 +1555,88 @@
       }, 0);
     }
 
+    function activeViews() {
+      var page = activePage();
+      var api = window.ToolboxReportFloorViews;
+      return (api && page && page.meta) ? (api.viewsFor(page) || []) : [];
+    }
+
     function onPointerDown(event) {
       if (state.readOnly) return;
       if (event.button != null && event.button !== 0) return;
       if (event.target.closest && event.target.closest('[contenteditable="true"]')) return;
       if (event.target.closest && event.target.closest('.rb-rail__rail')) return;
+
+      var viewResize = event.target.closest && event.target.closest('[data-por-view-resize]');
+      if (viewResize) {
+        event.preventDefault();
+        event.stopPropagation();
+        var rVi = Number(viewResize.getAttribute('data-por-view-resize'));
+        var rViews = activeViews();
+        var rView = rViews[rVi];
+        if (!rView) return;
+        pushHistory();
+        state.selectedViewIndex = rVi;
+        state.selectedId = null;
+        state.drag = {
+          mode: 'view-resize',
+          viewIndex: rVi,
+          corner: viewResize.getAttribute('data-por-corner') || 'se',
+          start: sheetPercent(event),
+          origFrame: deepClone(rView.frame || { x: 0, y: 0, w: 49, h: 100 }),
+        };
+        renderSheet();
+        return;
+      }
+
+      var viewMove = event.target.closest && event.target.closest('[data-por-view-move]');
+      if (viewMove) {
+        event.preventDefault();
+        event.stopPropagation();
+        var mVi = Number(viewMove.getAttribute('data-por-view-move'));
+        var mViews = activeViews();
+        var mView = mViews[mVi];
+        if (!mView) return;
+        pushHistory();
+        state.selectedViewIndex = mVi;
+        state.selectedId = null;
+        state.drag = {
+          mode: 'view-move',
+          viewIndex: mVi,
+          start: sheetPercent(event),
+          origFrame: deepClone(mView.frame || { x: 0, y: 0, w: 49, h: 100 }),
+        };
+        renderSheet();
+        return;
+      }
+
+      var viewHost = event.target.closest && event.target.closest('[data-por-view]');
+      if (viewHost && !state.inkTool) {
+        event.preventDefault();
+        var pVi = Number(viewHost.getAttribute('data-por-view'));
+        var pViews = activeViews();
+        var pView = pViews[pVi];
+        if (!pView) return;
+        pushHistory();
+        state.selectedViewIndex = pVi;
+        state.selectedId = null;
+        if (!pView.camera || typeof pView.camera !== 'object') {
+          pView.camera = defaultViewCamera(1);
+        }
+        // Capture live frame size BEFORE renderSheet() — storing the host node
+        // and reading clientWidth after re-render yields 0 (detached) and flings
+        // the camera to the edge (fw/fh fall back to 1).
+        state.drag = {
+          mode: 'view-pan',
+          viewIndex: pVi,
+          startClient: { x: event.clientX, y: event.clientY },
+          hostW: Math.max(1, viewHost.clientWidth || 0),
+          hostH: Math.max(1, viewHost.clientHeight || 0),
+          origCamera: deepClone(viewCamera(pView)),
+        };
+        renderSheet();
+        return;
+      }
 
       var resize = event.target.closest && event.target.closest('[data-por-resize]');
       if (resize) {
@@ -1102,6 +1665,7 @@
       }
       if (hitExisting) {
         state.selectedId = hitExisting.getAttribute('data-rb-ov');
+        state.selectedViewIndex = null;
         renderSheet();
         var page2 = activePage();
         var item2 = overlayList(page2).find(function (o) { return o.id === state.selectedId; });
@@ -1121,31 +1685,89 @@
       }
 
       state.selectedId = null;
+      state.selectedViewIndex = null;
       renderSheet();
     }
 
     function onPointerMove(event) {
       if (state.inkDrag) { moveInk(event); return; }
       if (!state.drag) return;
-      var at = sheetPercent(event);
-      if (!at || !state.drag.start) return;
       var page = activePage();
+      var viewsApi = window.ToolboxReportFloorViews;
+
+      if (state.drag.mode === 'view-move' || state.drag.mode === 'view-resize') {
+        var at = sheetPercent(event);
+        if (!at || !state.drag.start) return;
+        var views = activeViews();
+        var view = views[state.drag.viewIndex];
+        if (!view) return;
+        var dx = at.x - state.drag.start.x;
+        var dy = at.y - state.drag.start.y;
+        var orig = state.drag.origFrame || { x: 0, y: 0, w: 49, h: 100 };
+        var next;
+        if (state.drag.mode === 'view-move') {
+          next = {
+            x: orig.x + dx,
+            y: orig.y + dy,
+            w: orig.w,
+            h: orig.h,
+            z: orig.z || 1,
+          };
+        } else {
+          next = resizeBoxFromHandle(orig, state.drag.corner || 'se', dx, dy);
+          next.z = orig.z || 1;
+        }
+        if (viewsApi && typeof viewsApi.normalizeFrame === 'function') {
+          next = viewsApi.normalizeFrame(next);
+        }
+        view.frame = clampFrameToDrawArea(next);
+        renderSheet();
+        return;
+      }
+
+      if (state.drag.mode === 'view-pan') {
+        var views2 = activeViews();
+        var view2 = views2[state.drag.viewIndex];
+        if (!view2) return;
+        var liveHost = sheetEl.querySelector('[data-por-view="' + state.drag.viewIndex + '"]');
+        var fw = state.drag.hostW || (liveHost && liveHost.clientWidth) || 1;
+        var fh = state.drag.hostH || (liveHost && liveHost.clientHeight) || 1;
+        var cam = state.drag.origCamera || defaultViewCamera(1);
+        var zoom = Number(cam.zoom) > 0 ? Number(cam.zoom) : 1;
+        // Dragging right reveals content to the left (cx decreases).
+        var ndx = (event.clientX - state.drag.startClient.x) / fw;
+        var ndy = (event.clientY - state.drag.startClient.y) / fh;
+        var nextCam = {
+          cx: Math.max(0, Math.min(1, cam.cx - ndx / zoom)),
+          cy: Math.max(0, Math.min(1, cam.cy - ndy / zoom)),
+          zoom: zoom,
+          rel: true,
+        };
+        view2.camera = nextCam;
+        if (liveHost) {
+          applyViewCamera(liveHost.querySelector('img'), liveHost, nextCam);
+        }
+        return;
+      }
+
+      var at2 = sheetPercent(event);
+      if (!at2 || !state.drag.start) return;
       var item = overlayList(page).find(function (o) { return o.id === state.selectedId; });
       if (!item) return;
-      var dx = at.x - state.drag.start.x;
-      var dy = at.y - state.drag.start.y;
-      var orig = state.drag.orig;
+      var dx2 = at2.x - state.drag.start.x;
+      var dy2 = at2.y - state.drag.start.y;
+      var orig2 = state.drag.orig;
       if (state.drag.mode === 'move') {
-        if (typeof orig.x0 === 'number') {
-          item.x0 = orig.x0 + dx; item.y0 = orig.y0 + dy;
-          item.x1 = orig.x1 + dx; item.y1 = orig.y1 + dy;
-        } else if (typeof orig.x === 'number') {
-          item.x = orig.x + dx; item.y = orig.y + dy;
-        } else if (Array.isArray(orig.points)) {
-          item.points = orig.points.map(function (p) { return [p[0] + dx, p[1] + dy]; });
+        if (typeof orig2.x0 === 'number') {
+          item.x0 = orig2.x0 + dx2; item.y0 = orig2.y0 + dy2;
+          item.x1 = orig2.x1 + dx2; item.y1 = orig2.y1 + dy2;
+        } else if (typeof orig2.x === 'number') {
+          item.x = orig2.x + dx2; item.y = orig2.y + dy2;
+        } else if (Array.isArray(orig2.points)) {
+          item.points = orig2.points.map(function (p) { return [p[0] + dx2, p[1] + dy2]; });
         }
       } else if (state.drag.mode === 'resize' && state.drag.origBox) {
-        var nextBox = resizeBoxFromHandle(state.drag.origBox, state.drag.corner || 'se', dx, dy);
+        var nextBox = resizeBoxFromHandle(state.drag.origBox, state.drag.corner || 'se', dx2, dy2);
         applyBounds(item, nextBox, state.drag.origBox);
       }
       renderSheet();
@@ -1154,13 +1776,34 @@
     function onPointerUp() {
       if (state.inkDrag) endInk();
       if (state.drag) {
+        var wasView = state.drag.mode && String(state.drag.mode).indexOf('view-') === 0;
         state.drag = null;
         var page = activePage();
-        var api = overlayApi();
-        if (api) page.overlays = api.normalize(overlayList(page));
+        if (!wasView) {
+          var api = overlayApi();
+          if (api) page.overlays = api.normalize(overlayList(page));
+        }
         scheduleSave();
         renderSheet();
       }
+    }
+
+    function onViewWheel(event) {
+      if (state.readOnly || state.printMode) return;
+      var host = event.target.closest && event.target.closest('[data-por-view]');
+      if (!host) return;
+      event.preventDefault();
+      var vi = Number(host.getAttribute('data-por-view'));
+      var views = activeViews();
+      var view = views[vi];
+      if (!view) return;
+      var cam = viewCamera(view);
+      var factor = event.deltaY > 0 ? (1 / 1.12) : 1.12;
+      var nextZoom = Math.max(1, Math.min(8, cam.zoom * factor));
+      view.camera = { cx: cam.cx, cy: cam.cy, zoom: nextZoom, rel: true };
+      state.selectedViewIndex = vi;
+      applyViewCamera(host.querySelector('img'), host, view.camera);
+      scheduleSave();
     }
 
     function onKeyDown(event) {
@@ -1187,6 +1830,33 @@
       if (mod && event.key.toLowerCase() === 'c') { if (copySelected()) event.preventDefault(); return; }
       if (mod && event.key.toLowerCase() === 'x') { if (cutSelected()) event.preventDefault(); return; }
       if (mod && event.key.toLowerCase() === 'v') { if (pasteClipboard()) event.preventDefault(); return; }
+      if (mod && event.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        if (copySelected()) pasteClipboard();
+        return;
+      }
+      if (!mod && (event.key === 'ArrowUp' || event.key === 'ArrowDown' ||
+          event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        var nudgeItem = selectedItem();
+        if (!nudgeItem || state.readOnly) return;
+        event.preventDefault();
+        var step = event.shiftKey ? 1 : 0.25;
+        var dx = event.key === 'ArrowLeft' ? -step : (event.key === 'ArrowRight' ? step : 0);
+        var dy = event.key === 'ArrowUp' ? -step : (event.key === 'ArrowDown' ? step : 0);
+        pushHistory();
+        if (nudgeItem.points) {
+          nudgeItem.points = nudgeItem.points.map(function (p) { return [p[0] + dx, p[1] + dy]; });
+        } else if (nudgeItem.x0 != null) {
+          nudgeItem.x0 += dx; nudgeItem.x1 += dx;
+          nudgeItem.y0 += dy; nudgeItem.y1 += dy;
+        } else if (nudgeItem.x != null) {
+          nudgeItem.x = clamp(nudgeItem.x + dx, 0, 100);
+          nudgeItem.y = clamp(nudgeItem.y + dy, 0, 100);
+        }
+        scheduleSave();
+        renderSheet();
+        return;
+      }
       if (mod && event.key.toLowerCase() === ']' && event.shiftKey) {
         event.preventDefault();
         reorderSelected('front');
@@ -1222,62 +1892,143 @@
       }
       pushHistory();
       var page = activePage();
-      page.background = { kind: kind, canvasId: canvasId };
+      page.background = {
+        kind: kind,
+        canvasId: canvasId,
+        mediaId: '',
+        source: null,
+        sourceStatus: null,
+      };
       scheduleSave();
-      loadBackground().then(renderSheet);
+      loadBackground().then(function () {
+        // Fresh place: stamp whatever we just loaded as the sheet source.
+        if (page.background && page.background._liveSource) {
+          page.background.source = page.background._liveSource;
+          delete page.background._liveSource;
+        }
+        page.background.sourceStatus = null;
+        scheduleSave();
+        renderSheet();
+      });
       setStatus(kind === 'contour' ? 'Contour on sheet' : 'Floor plan on sheet');
     }
 
-    function buildPrintDeck() {
-      var deck = document.createElement('div');
-      deck.className = 'por-print';
-      state.doc.pages.forEach(function (page) {
-        // Render each page into a detached sheet clone by temporarily
-        // switching active page is heavy; print the current sheet clone for
-        // v1 multi-page by walking pages.
-      });
-      var pageEl = document.createElement('div');
-      pageEl.className = 'por-print__page';
-      var clone = sheetEl.cloneNode(true);
-      clone.querySelectorAll('.por-sel, .rb-ov__resize, .rb-ov__remove').forEach(function (el) {
+    function stripPrintChrome(node) {
+      node.querySelectorAll(
+        '.por-sel, .rb-ov__resize, .rb-ov__remove, .por-view-frame__handle, .por-view-frame__move'
+      ).forEach(function (el) {
         el.parentNode && el.parentNode.removeChild(el);
       });
-      clone.querySelectorAll('[contenteditable]').forEach(function (el) {
+      node.querySelectorAll('[contenteditable]').forEach(function (el) {
         el.removeAttribute('contenteditable');
       });
-      clone.style.transform = 'none';
-      pageEl.appendChild(clone);
-      deck.appendChild(pageEl);
-      // Additional pages: quick static renders
-      state.doc.pages.forEach(function (page) {
-        if (page.id === state.doc.activePageId) return;
-        var extra = document.createElement('div');
-        extra.className = 'por-print__page';
-        var art = document.createElement('article');
-        art.className = 'rb-sheet';
-        art.style.width = PAPER_W + 'px';
-        art.style.height = PAPER_H + 'px';
-        art.style.position = 'relative';
-        art.style.background = '#fffaf0';
-        var label = document.createElement('p');
-        label.style.cssText = 'position:absolute;left:24px;top:24px;font:14px Georgia,serif;';
-        label.textContent = (page.title || 'Drawing') + ' — open the page to print its drawing in full.';
-        art.appendChild(label);
-        var rail = renderRail(page);
-        if (rail) art.appendChild(rail);
-        if (overlayApi()) {
-          var layer = overlayApi().renderLayer(overlayList(page), { locked: true });
-          if (layer) art.appendChild(layer);
-        }
-        extra.appendChild(art);
-        deck.appendChild(extra);
+      node.querySelectorAll('.por-sheet-bg__empty, .por-source-banner, .por-print__warn').forEach(function (el) {
+        el.parentNode && el.parentNode.removeChild(el);
       });
-      return deck;
+      node.querySelectorAll('.por-view-frame.is-selected').forEach(function (el) {
+        el.classList.remove('is-selected');
+      });
+      node.style.transform = 'none';
+    }
+
+    function sheetsNeedingSourceReview() {
+      var issues = [];
+      state.doc.pages.forEach(function (page, index) {
+        var bg = page && page.background;
+        if (!bg || !bg.kind) return;
+        if (bg.sourceStatus === 'changed') {
+          issues.push({ index: index + 1, title: page.title || ('Drawing ' + (index + 1)), reason: 'changed' });
+        }
+      });
+      return issues;
+    }
+
+    function buildPrintDeck() {
+      var priorActive = state.doc.activePageId;
+      var priorSelected = state.selectedId;
+      var deck = document.createElement('div');
+      deck.className = 'por-print';
+      var chain = Promise.resolve();
+      state.printMode = true;
+      state.doc.pages.forEach(function (page) {
+        chain = chain.then(function () {
+          state.doc.activePageId = page.id;
+          state.selectedId = null;
+          return loadBackground().then(function () {
+            renderSheet();
+            return waitForSheetImages().then(function () {
+              var pageEl = document.createElement('div');
+              pageEl.className = 'por-print__page';
+              var clone = sheetEl.cloneNode(true);
+              stripPrintChrome(clone);
+              pageEl.appendChild(clone);
+              deck.appendChild(pageEl);
+            });
+          });
+        });
+      });
+      return chain.then(function () {
+        state.printMode = false;
+        state.doc.activePageId = priorActive;
+        state.selectedId = priorSelected;
+        return loadBackground().then(function () {
+          renderSheet();
+          return deck;
+        });
+      }).catch(function (err) {
+        state.printMode = false;
+        throw err;
+      });
     }
 
     function printPdf() {
+      setStatus('Preparing print…');
       return persistNow().then(function () {
-        var deck = buildPrintDeck();
+        // Probe every sheet so sourceStatus is current before we warn.
+        var prior = state.doc.activePageId;
+        var chain = Promise.resolve();
+        state.doc.pages.forEach(function (page) {
+          chain = chain.then(function () {
+            state.doc.activePageId = page.id;
+            return loadBackground();
+          });
+        });
+        return chain.then(function () {
+          state.doc.activePageId = prior;
+          return loadBackground();
+        });
+      }).then(function () {
+        var issues = sheetsNeedingSourceReview();
+        var missing = [];
+        state.doc.pages.forEach(function (page, index) {
+          var bg = page && page.background;
+          if (!bg || !bg.kind) return;
+          // Prefer the actual load result (imported media can keep a stale mediaId).
+          var loadFailed = !!state.bgMissingByPageId[page.id];
+          if (loadFailed || !resolveBackgroundMediaId(page)) {
+            missing.push((index + 1) + '. ' + (page.title || 'Drawing'));
+          }
+        });
+        if (issues.length || missing.length) {
+          var lines = [];
+          if (missing.length) {
+            lines.push('Missing background on:\n' + missing.join('\n'));
+          }
+          if (issues.length) {
+            lines.push('Changed source on:\n' + issues.map(function (i) {
+              return i.index + '. ' + i.title;
+            }).join('\n'));
+          }
+          lines.push('\nPrint will keep every sheet intact (marks, frame, title block). Review or accept replacements on those sheets when you are ready.');
+          if (!window.confirm(lines.join('\n'))) {
+            setStatus('Print cancelled');
+            return null;
+          }
+        }
+        return buildPrintDeck();
+      }).then(function (deck) {
+        if (!deck) return;
+
         document.body.appendChild(deck);
         document.body.classList.add('is-por-printing');
         var prior = document.title;
@@ -1289,67 +2040,97 @@
           document.body.classList.remove('is-por-printing');
           if (deck.parentNode) deck.parentNode.removeChild(deck);
           document.title = prior;
+          setStatus('Ready');
         }
         window.addEventListener('afterprint', cleanup, { once: true });
         setTimeout(function () {
           try { window.print(); } catch (err) { cleanup(); }
           setTimeout(cleanup, 1500);
         }, 40);
+      }).catch(function (err) {
+        console.error(err);
+        setStatus('Print failed');
       });
     }
 
-    // Toolbar
-    if (window.ToolboxReportToolbar && window.ToolboxReportToolbar.mount) {
-      state.formatToolbar = window.ToolboxReportToolbar.mount(
-        root,
-        {
-          onTool: function (name) {
-            if (state.readOnly) return;
-            state.selectedId = null;
-            setInkTool(name);
-          },
-          onColor: function (color) {
-            if (color) {
-              state.inkColor = color;
-              if (state.inkFill) state.fillColor = color;
-              var item = selectedItem();
-              if (item && !state.readOnly) {
-                pushHistory();
-                item.color = color;
-                scheduleSave();
-                renderSheet();
-              }
-            }
-          },
-          onThick: function (level) {
-            state.inkThick = Number(level) || state.inkThick;
-          },
-          onHistory: function (which) {
-            if (which === 'undo') undo();
-            else if (which === 'redo') redo();
-          },
-          onInsert: function (kind) {
-            if (state.readOnly) return;
-            if (kind === 'text') {
-              setInkTool(null);
-              var page = activePage();
-              var api = overlayApi();
-              if (!api || !api.create) return;
-              pushHistory();
-              var item = api.create('text');
-              overlayList(page).push(item);
-              state.selectedId = item.id;
-              scheduleSave();
-              renderSheet();
-              return;
-            }
-            if (kind === 'image') {
-              setStatus('Picture insert uses Paste on the sheet for now');
-            }
-          },
-        }
-      );
-    }
+    // Paint / PowerPoint icon toolbar (not the RB text ribbon).
+    root.querySelector('#por-undo').addEventListener('click', function () { undo(); });
+    root.querySelector('#por-redo').addEventListener('click', function () { redo(); });
+    root.querySelectorAll('[data-por-tool="select"]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        state.selectedId = null;
+        state.editingText = false;
+        setInkTool(null);
+      });
+    });
+    root.querySelectorAll('[data-rb-tool]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (state.readOnly) return;
+        var want = btn.getAttribute('data-rb-tool');
+        state.selectedId = null;
+        state.editingText = false;
+        closePickers();
+        setInkTool(state.inkTool === want ? null : want);
+      });
+    });
+    root.querySelector('#por-insert-text').addEventListener('click', function () {
+      if (state.readOnly) return;
+      closePickers();
+      setInkTool(null);
+      var page = activePage();
+      var api = overlayApi();
+      if (!api || !api.create) return;
+      pushHistory();
+      var item = api.create('text');
+      overlayList(page).push(item);
+      state.selectedId = item.id;
+      state.editingText = true;
+      scheduleSave();
+      renderSheet();
+      syncHistoryButtons();
+    });
+    root.querySelector('#por-outline-btn').addEventListener('click', function (event) {
+      event.stopPropagation();
+      togglePicker('outline');
+    });
+    root.querySelector('#por-fill-btn').addEventListener('click', function (event) {
+      event.stopPropagation();
+      togglePicker('fill');
+    });
+    root.querySelector('#por-weight-btn').addEventListener('click', function (event) {
+      event.stopPropagation();
+      togglePicker('weight');
+    });
+    root.querySelector('#por-outline-pop').addEventListener('click', function (event) {
+      var sw = event.target.closest && event.target.closest('[data-por-outline]');
+      if (!sw) return;
+      applyOutlineColor(sw.getAttribute('data-por-outline'));
+      closePickers();
+    });
+    root.querySelector('#por-fill-pop').addEventListener('click', function (event) {
+      var sw = event.target.closest && event.target.closest('[data-por-fill]');
+      if (!sw) return;
+      applyFillColor(sw.getAttribute('data-por-fill'));
+      closePickers();
+    });
+    root.querySelector('#por-weight-pop').addEventListener('click', function (event) {
+      var btn = event.target.closest && event.target.closest('[data-por-thick]');
+      if (!btn) return;
+      applyWeight(btn.getAttribute('data-por-thick'));
+      closePickers();
+    });
+    root.querySelectorAll('[data-por-text]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var cmd = btn.getAttribute('data-por-text');
+        try { document.execCommand(cmd, false, null); } catch (err) { /* ignore */ }
+      });
+    });
+    document.addEventListener('pointerdown', function (event) {
+      if (!root.contains(event.target)) return;
+      if (event.target.closest && event.target.closest('.por-picker')) return;
+      closePickers();
+    });
+    syncHistoryButtons();
 
     root.querySelector('#por-back').addEventListener('click', function () {
       persistNow().then(onBack);
@@ -1392,11 +2173,105 @@
     });
     root.querySelector('#por-bring-plan').addEventListener('click', function () { bringBackground('plan'); });
     root.querySelector('#por-bring-contour').addEventListener('click', function () { bringBackground('contour'); });
+    root.querySelector('#por-import-bg').addEventListener('click', function () {
+      if (state.readOnly) return;
+      root.querySelector('#por-import-file').click();
+    });
+    root.querySelector('#por-import-file').addEventListener('change', function (event) {
+      var file = event.target.files && event.target.files[0];
+      event.target.value = '';
+      if (!file || state.readOnly) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        var dataUrl = reader.result;
+        if (typeof dataUrl !== 'string') return;
+        var mediaId = 'porimp_' + uid('bg');
+        window.ToolboxDB.putMedia(mediaId, dataUrl).then(function () {
+          pushHistory();
+          var page = activePage();
+          page.background = {
+            kind: 'import',
+            canvasId: '',
+            mediaId: mediaId,
+            source: null,
+            sourceStatus: null,
+          };
+          scheduleSave();
+          return loadBackground().then(function () {
+            if (page.background && page.background._liveSource) {
+              page.background.source = page.background._liveSource;
+              delete page.background._liveSource;
+            }
+            page.background.sourceStatus = null;
+            scheduleSave();
+            renderSheet();
+          });
+        }).then(function () {
+          setStatus('Imported drawing on sheet');
+        }).catch(function (err) {
+          console.error(err);
+          setStatus('Could not import drawing');
+        });
+      };
+      reader.onerror = function () { setStatus('Could not read that file'); };
+      reader.readAsDataURL(file);
+    });
+    root.querySelector('#por-add-view').addEventListener('click', function () {
+      if (state.readOnly) return;
+      var page = activePage();
+      if (!page.meta) page.meta = {};
+      var api = window.ToolboxReportFloorViews;
+      if (!api || typeof api.addView !== 'function') {
+        setStatus('View controls unavailable');
+        return;
+      }
+      pushHistory();
+      api.ensurePageViews(page);
+      api.addView(page, 0);
+      var views = api.viewsFor(page) || [];
+      // POR overall/detail frames move independently; cameras are per-view.
+      views.forEach(function (v) {
+        if (!v) return;
+        v.linkGroup = null;
+      });
+      // Lay out side-by-side inside the draw area (left of title block) so the
+      // new detail does not cover the overall — RB defaultFrame is full-width.
+      layoutPorViews(views);
+      if (views[0]) views[0].camera = defaultViewCamera(1);
+      if (views.length > 1) {
+        var detail = views[views.length - 1];
+        detail.camera = defaultViewCamera(2.4);
+        state.selectedViewIndex = views.length - 1;
+      }
+      scheduleSave();
+      renderSheet();
+      setStatus('Detail view added — drag Move to place; drag inside to pan; scroll to zoom');
+    });
+    root.querySelector('#por-remove-view').addEventListener('click', function () {
+      if (state.readOnly) return;
+      var page = activePage();
+      var api = window.ToolboxReportFloorViews;
+      if (!api || typeof api.removeView !== 'function') return;
+      pushHistory();
+      api.ensurePageViews(page);
+      if ((api.viewsFor(page) || []).length <= 1) {
+        setStatus('Only one view on this sheet');
+        return;
+      }
+      api.removeView(page, (api.viewsFor(page).length - 1));
+      layoutPorViews(api.viewsFor(page) || []);
+      scheduleSave();
+      renderSheet();
+      setStatus('Detail view removed');
+    });
     root.querySelector('#por-clear-bg').addEventListener('click', function () {
       if (state.readOnly) return;
       pushHistory();
-      activePage().background = { kind: null, canvasId: '' };
+      activePage().background = {
+        kind: null, canvasId: '', mediaId: '', source: null, sourceStatus: null,
+      };
       state.bgUrl = '';
+      state.bgMissing = false;
       scheduleSave();
       renderSheet();
     });
@@ -1467,6 +2342,7 @@
     });
 
     sheetEl.addEventListener('pointerdown', onPointerDown);
+    sheetEl.addEventListener('wheel', onViewWheel, { passive: false });
     sheetEl.addEventListener('contextmenu', function (event) {
       var target = event.target.closest && event.target.closest('[data-rb-ov]');
       if (!target && event.target.closest && event.target.closest('.por-sel') && state.selectedId) {
@@ -1494,6 +2370,7 @@
         window.removeEventListener('pointerup', onPointerUp);
         window.removeEventListener('keydown', onKeyDown);
         window.removeEventListener('resize', applySheetScale);
+        sheetEl.removeEventListener('wheel', onViewWheel);
         document.body.classList.remove('plan-of-repair-open', 'is-por-printing');
         if (root.parentNode) root.parentNode.removeChild(root);
       },

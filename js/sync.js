@@ -713,7 +713,10 @@
   }
 
   function collectDistressPhotoId(ids, id) {
-    if (typeof id === 'string' && id.indexOf('ph_') === 0) ids.push(id);
+    if (typeof id !== 'string') return;
+    if (id.indexOf('ph_') === 0 || id.indexOf('vm_') === 0 || id.indexOf('vid_') === 0) {
+      ids.push(id);
+    }
   }
 
   function distressPhotoIds(record) {
@@ -726,6 +729,11 @@
     });
     const quick = Array.isArray(distress.quickCapture) ? distress.quickCapture : [];
     quick.forEach(function (item) { collectDistressPhotoId(ids, item && item.id); });
+    const walk = distress.jobWalk && typeof distress.jobWalk === 'object' ? distress.jobWalk : null;
+    const notes = walk && Array.isArray(walk.notes) ? walk.notes : [];
+    notes.forEach(function (note) { collectDistressPhotoId(ids, note && note.audioId); });
+    const videos = walk && Array.isArray(walk.videos) ? walk.videos : [];
+    videos.forEach(function (clip) { collectDistressPhotoId(ids, clip && clip.id); });
     return Array.from(new Set(ids));
   }
 
@@ -784,12 +792,27 @@
     return Array.from(new Set(ids));
   }
 
+  function repairMediaIds(record) {
+    const doc = record && record.planOfRepair;
+    const pages = doc && Array.isArray(doc.pages) ? doc.pages : [];
+    const ids = [];
+    pages.forEach(function (page) {
+      const bg = page && page.background;
+      if (bg && bg.kind === 'import' && typeof bg.mediaId === 'string' &&
+          bg.mediaId.indexOf('porimp_') === 0) {
+        ids.push(bg.mediaId);
+      }
+    });
+    return Array.from(new Set(ids));
+  }
+
   function mediaIdsForComponent(record, name) {
     if (name === 'plans') return planMediaIds(record);
     if (name === 'distress') return distressPhotoIds(record);
     if (name === 'diagnostics') return diagnosticsFigureMediaIds(record);
     if (name === 'floor') return recoveryPdfIdsFromFloor(record && record.floorSurvey);
     if (name === 'report') return reportMediaIds(record);
+    if (name === 'repair') return repairMediaIds(record);
     return [];
   }
 
@@ -992,11 +1015,28 @@
       });
       const quick = Array.isArray(payload.quickCapture) ? payload.quickCapture : [];
       quick.forEach(function (item) { collectDistressPhotoId(ids, item && item.id); });
+      const walk = payload.jobWalk && typeof payload.jobWalk === 'object' ? payload.jobWalk : null;
+      const notes = walk && Array.isArray(walk.notes) ? walk.notes : [];
+      notes.forEach(function (note) { collectDistressPhotoId(ids, note && note.audioId); });
+      const videos = walk && Array.isArray(walk.videos) ? walk.videos : [];
+      videos.forEach(function (clip) { collectDistressPhotoId(ids, clip && clip.id); });
       return Array.from(new Set(ids));
     }
     if (name === 'diagnostics') return diagnosticsFigureMediaIds(payload);
     if (name === 'floor') return recoveryPdfIdsFromFloor(payload);
     if (name === 'report') return reportMediaIds(payload);
+    if (name === 'repair') {
+      const pages = Array.isArray(payload.pages) ? payload.pages : [];
+      const ids = [];
+      pages.forEach(function (page) {
+        const bg = page && page.background;
+        if (bg && bg.kind === 'import' && typeof bg.mediaId === 'string' &&
+            bg.mediaId.indexOf('porimp_') === 0) {
+          ids.push(bg.mediaId);
+        }
+      });
+      return Array.from(new Set(ids));
+    }
     return [];
   }
 
@@ -1066,8 +1106,9 @@
 
   async function getDistressPhoto(id) {
     const db = await openDistressPhotosDb();
+    let value;
     try {
-      return await new Promise(function (resolve, reject) {
+      value = await new Promise(function (resolve, reject) {
         const tx = db.transaction('photos', 'readonly');
         const req = tx.objectStore('photos').get(id);
         req.onsuccess = function () { resolve(req.result || null); };
@@ -1076,6 +1117,24 @@
     } finally {
       db.close();
     }
+    // Early TLS Job Walk builds stored raw Blobs. Convert once so Sync and
+    // viewers that require data URLs keep working for those devices.
+    if (value && typeof value !== 'string' && typeof Blob === 'function' && value instanceof Blob) {
+      try {
+        let dataUrl = null;
+        if (typeof FileReader === 'function') {
+          dataUrl = await blobToDataUrl(value);
+        } else if (typeof value.arrayBuffer === 'function') {
+          const buf = await value.arrayBuffer();
+          dataUrl = bytesToDataUrl(new Uint8Array(buf), value.type || 'application/octet-stream');
+        }
+        if (typeof dataUrl === 'string' && dataUrl.indexOf('data:') === 0) {
+          await putDistressPhoto(id, dataUrl);
+          return dataUrl;
+        }
+      } catch (_) { /* leave the Blob; ensureRemoteMedia will still refuse it */ }
+    }
+    return value;
   }
 
   async function putDistressPhoto(id, value) {
@@ -2799,6 +2858,27 @@
         item.id,
         'quick-capture',
         sourceName ? 'Quick Capture photo — ' + sourceName : 'Quick Capture photo',
+      );
+    });
+    const walk = distress && distress.jobWalk && typeof distress.jobWalk === 'object'
+      ? distress.jobWalk
+      : null;
+    const walkNotes = walk && Array.isArray(walk.notes) ? walk.notes : [];
+    walkNotes.forEach(function (note) {
+      if (!note || typeof note.audioId !== 'string' || note.audioId.indexOf('vm_') !== 0) return;
+      exploreConsiderMedia(refs, notes, 'distress.json', note.audioId, 'job-walk-audio', 'Job Walk audio note');
+    });
+    const walkVideos = walk && Array.isArray(walk.videos) ? walk.videos : [];
+    walkVideos.forEach(function (clip) {
+      if (!clip || typeof clip.id !== 'string' || clip.id.indexOf('vid_') !== 0) return;
+      const sourceName = trimStr(clip.sourceName);
+      exploreConsiderMedia(
+        refs,
+        notes,
+        'distress.json',
+        clip.id,
+        'job-walk-video',
+        sourceName ? 'Job Walk video — ' + sourceName : 'Job Walk video',
       );
     });
     explorePushPhotoCollection(refs, notes, 'distress.json', distress && distress.unassignedPhotos, 'unassigned-photo', 'Unassigned photo');

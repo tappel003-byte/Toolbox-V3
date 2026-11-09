@@ -205,6 +205,13 @@
         Object.keys(distress.photoSources).length) {
       return true;
     }
+    const walk = distress.jobWalk && typeof distress.jobWalk === 'object' ? distress.jobWalk : null;
+    if (walk && Array.isArray(walk.videos) && walk.videos.length) return true;
+    if (walk && Array.isArray(walk.notes) && walk.notes.some(function (note) {
+      return !!(note && (note.audioId || (typeof note.text === 'string' && note.text.trim())));
+    })) {
+      return true;
+    }
     const floor = record.floorSurvey || {};
     const layers = floor.byCanvasId && typeof floor.byCanvasId === 'object'
       ? Object.values(floor.byCanvasId)
@@ -326,13 +333,184 @@
 
   // ---- Routing ----------------------------------------------------------
   //
-  // #/file/:id          → Customer File home (hub)
+  // #/file/:id          → Customer File home (hub; Sandia Geo or TLS side)
+  // #/file/:id/tls      → TLS side of the same Customer File
+  // #/file/:id/job-walk → Job Walk (TLS)
   // #/file/:id/edit     → edit contact + plans
   // #/file/:id/plan     → redirect to edit (legacy)
   // #/file/:id/report   → Report Builder workspace shell
   // #/file/:id/repair   → Plan of Repair worksheet
   // #/file/:id/diagnostics → existing Floor Survey 3D view
   // #/file/:id/<app>    → connected workspace, or a not-yet-connected stub
+
+  function fileSideKey(id) {
+    return 'toolbox.cf.side.' + String(id || '');
+  }
+
+  function getFileSide(id) {
+    try {
+      return sessionStorage.getItem(fileSideKey(id)) === 'tls' ? 'tls' : 'geo';
+    } catch (err) {
+      return 'geo';
+    }
+  }
+
+  function setFileSide(id, side) {
+    try {
+      sessionStorage.setItem(fileSideKey(id), side === 'tls' ? 'tls' : 'geo');
+    } catch (err) { /* ignore */ }
+  }
+
+  function mapsPreferenceSync() {
+    try {
+      const v = localStorage.getItem('toolbox.mapsPreference');
+      return v === 'apple' || v === 'google' ? v : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function rememberMapsPreference(value) {
+    try {
+      localStorage.setItem('toolbox.mapsPreference', value);
+    } catch (err) { /* ignore */ }
+    if (window.ToolboxDB && typeof window.ToolboxDB.putSetting === 'function') {
+      window.ToolboxDB.putSetting('mapsPreference', value).catch(function () {});
+    }
+  }
+
+  function openMapsUrl(kind, address) {
+    const encoded = encodeURIComponent(String(address || '').trim());
+    if (!encoded) return;
+    if (kind === 'apple') {
+      window.open('https://maps.apple.com/?daddr=' + encoded, '_blank', 'noopener');
+      return;
+    }
+    window.open('https://www.google.com/maps/dir/?api=1&destination=' + encoded, '_blank', 'noopener');
+  }
+
+  function openVisitNotesReader(record) {
+    const notes = record && record.distress && record.distress.jobWalk &&
+      Array.isArray(record.distress.jobWalk.notes)
+      ? record.distress.jobWalk.notes.slice().reverse()
+      : [];
+    const existing = document.getElementById('visit-notes-reader');
+    if (existing) existing.parentNode.removeChild(existing);
+    const overlay = document.createElement('div');
+    overlay.id = 'visit-notes-reader';
+    overlay.className = 'maps-choice';
+    const card = document.createElement('div');
+    card.className = 'maps-choice__card';
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-label', 'Visit notes');
+    const title = document.createElement('p');
+    title.className = 'maps-choice__title';
+    title.textContent = 'Visit notes';
+    card.appendChild(title);
+    const list = document.createElement('div');
+    list.className = 'jw-notes';
+    if (!notes.length) {
+      const empty = document.createElement('p');
+      empty.className = 'jw-empty';
+      empty.textContent = 'No visit notes on this Customer File.';
+      list.appendChild(empty);
+    } else {
+      notes.forEach(function (note) {
+        const article = document.createElement('article');
+        article.className = 'jw-note';
+        const head = document.createElement('header');
+        head.className = 'jw-note__head';
+        const who = note.speaker === 'homeowner' ? 'Homeowner' : 'Investigator';
+        const when = note.at ? new Date(note.at).toLocaleString() : '';
+        head.textContent = who + (when ? ' · ' + when : '');
+        article.appendChild(head);
+        if (note.text) {
+          const text = document.createElement('p');
+          text.className = 'jw-note__text';
+          text.textContent = note.text;
+          article.appendChild(text);
+        }
+        if (note.audioId) {
+          const audio = document.createElement('audio');
+          audio.controls = true;
+          audio.preload = 'none';
+          audio.className = 'jw-note__audio';
+          var getAudio = window.ToolboxJobWalk &&
+            typeof window.ToolboxJobWalk.getStoredMedia === 'function'
+            ? window.ToolboxJobWalk.getStoredMedia
+            : null;
+          if (getAudio) {
+            getAudio(note.audioId).then(function (value) {
+              if (typeof value === 'string' && value.indexOf('data:') === 0) {
+                audio.src = value;
+              } else if (value instanceof Blob) {
+                audio.src = URL.createObjectURL(value);
+              }
+            }).catch(function () {});
+          }
+          article.appendChild(audio);
+        }
+        list.appendChild(article);
+      });
+    }
+    card.appendChild(list);
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn btn--secondary';
+    closeBtn.textContent = 'Close';
+    closeBtn.addEventListener('click', function () {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    });
+    card.appendChild(closeBtn);
+    overlay.appendChild(card);
+    overlay.addEventListener('click', function (event) {
+      if (event.target === overlay) {
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      }
+    });
+    document.body.appendChild(overlay);
+  }
+
+  /** Must run inside the user tap — no async before window.open (iPhone Safari). */
+  function openPropertyDirections(address) {
+    const dest = String(address || '').trim();
+    if (!dest) return;
+    const pref = mapsPreferenceSync();
+    if (pref === 'apple' || pref === 'google') {
+      openMapsUrl(pref, dest);
+      return;
+    }
+    const existing = document.getElementById('maps-choice');
+    if (existing) existing.parentNode.removeChild(existing);
+    const overlay = document.createElement('div');
+    overlay.id = 'maps-choice';
+    overlay.className = 'maps-choice';
+    overlay.innerHTML =
+      '<div class="maps-choice__card" role="dialog" aria-label="Directions app">' +
+      '  <p class="maps-choice__title">Open directions with</p>' +
+      '  <button type="button" class="btn btn--accent" data-maps="apple">Apple Maps</button>' +
+      '  <button type="button" class="btn btn--secondary" data-maps="google">Google Maps</button>' +
+      '  <button type="button" class="btn btn--quiet" data-maps="cancel">Cancel</button>' +
+      '</div>';
+    overlay.addEventListener('click', function (event) {
+      const btn = event.target.closest('[data-maps]');
+      if (!btn) return;
+      const kind = btn.getAttribute('data-maps');
+      if (kind === 'apple' || kind === 'google') {
+        rememberMapsPreference(kind);
+        openMapsUrl(kind, dest);
+      }
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    });
+    document.body.appendChild(overlay);
+  }
+
+  function changeMapsPreference() {
+    try { localStorage.removeItem('toolbox.mapsPreference'); } catch (err) { /* ignore */ }
+    if (window.ToolboxDB && typeof window.ToolboxDB.putSetting === 'function') {
+      window.ToolboxDB.putSetting('mapsPreference', '').catch(function () {});
+    }
+  }
 
   function parseRoute() {
     const hash = window.location.hash || '#/';
@@ -343,7 +521,7 @@
     const exploreMatch = hash.match(/^#\/explore\/([^/]+)$/);
     if (exploreMatch) return { view: 'explore', id: decodeURIComponent(exploreMatch[1]) };
     if (hash === '#/import') return { view: 'import', id: null, allowDestinationChoice: true };
-    const match = hash.match(/^#\/file\/([^/]+)(?:\/(edit|plan|import|distress|floor|diagnostics|report|repair))?(?:\/(customer|contacts|plans))?$/);
+    const match = hash.match(/^#\/file\/([^/]+)(?:\/(edit|plan|import|distress|floor|diagnostics|report|repair|tls|job-walk))?(?:\/(customer|contacts|plans))?$/);
     if (match) {
       const id = decodeURIComponent(match[1]);
       const sub = match[2] || null;
@@ -363,12 +541,19 @@
         return { view: 'report', id: id };
       }
       if (sub === 'repair') {
-        return { view: 'repair', id: id };
+        return { view: 'repair', id: id, side: 'tls' };
+      }
+      if (sub === 'job-walk') {
+        return { view: 'job-walk', id: id, side: 'tls' };
+      }
+      if (sub === 'tls') {
+        return { view: 'home', id: id, side: 'tls' };
       }
       if (sub === 'diagnostics') {
         return { view: 'diagnostics', id: id };
       }
-      return { view: 'home', id: id };
+      // Normal open is always Sandia Geo. TLS is only via /tls or Open in TLS.
+      return { view: 'home', id: id, side: 'geo' };
     }
     return { view: 'cabinet' };
   }
@@ -410,6 +595,17 @@
         window.ToolboxPlanOfRepair.unmount();
       }
     }
+    if (route.view !== 'job-walk') {
+      document.body.classList.remove('job-walk-open');
+      if (window.ToolboxJobWalk && typeof window.ToolboxJobWalk.unmount === 'function') {
+        window.ToolboxJobWalk.unmount();
+      }
+    }
+    const onTlsSide = route.side === 'tls' ||
+      route.view === 'repair' ||
+      route.view === 'job-walk' ||
+      (route.view === 'home' && route.side === 'tls');
+    document.body.classList.toggle('tls-side', !!onTlsSide);
     // Photo folders / shared photo viewer are visit chrome. Close when leaving
     // the owning Customer File hub or switching files — not on same-hub redraw.
     if (window.ToolboxRecoveredPhotos) {
@@ -432,7 +628,12 @@
     } else if (route.view === 'edit') {
       renderFileEdit(app, route.id, route.section);
     } else if (route.view === 'home') {
-      renderFileHome(app, route.id);
+      const side = route.side === 'tls' ? 'tls' : 'geo';
+      setFileSide(route.id, side);
+      renderFileHome(app, route.id, side);
+    } else if (route.view === 'job-walk') {
+      setFileSide(route.id, 'tls');
+      renderJobWalk(app, route.id);
     } else if (route.view === 'floor') {
       renderFloorSurvey(app, route.id);
     } else if (route.view === 'distress') {
@@ -442,6 +643,7 @@
     } else if (route.view === 'report') {
       renderReportBuilder(app, route.id);
     } else if (route.view === 'repair') {
+      setFileSide(route.id, 'tls');
       renderPlanOfRepair(app, route.id);
     } else if (route.view === 'diagnostics') {
       renderDiagnostics(app, route.id);
@@ -1248,6 +1450,18 @@
     });
     panel.appendChild(checkInBtn);
 
+    const openTlsBtn = document.createElement('button');
+    openTlsBtn.type = 'button';
+    openTlsBtn.className = 'cabinet-row-menu__action';
+    openTlsBtn.textContent = 'Open in TLS';
+    openTlsBtn.addEventListener('click', function (event) {
+      event.stopPropagation();
+      menu.classList.remove('is-open');
+      setFileSide(record.id, 'tls');
+      window.location.hash = '#/file/' + encodeURIComponent(record.id) + '/tls';
+    });
+    panel.appendChild(openTlsBtn);
+
     if (hasFieldCaptureCustomerData(record)) {
       const note = document.createElement('p');
       note.className = 'cabinet-row-menu__note';
@@ -1744,20 +1958,48 @@
     return canvases.length + ' levels · ' + withPlan.length + ' with plans';
   }
 
-  function renderFileHome(app, id) {
+  function tlsAppTileHtml(key, label, detail) {
+    return (
+      '<button type="button" class="cf-app-btn" data-tls-app="' + key + '" aria-label="' + label + '">' +
+      '  <span class="cf-app-btn__art"><img src="brand/tls-foundations.jpg" alt="" loading="eager"></span>' +
+      '  <span class="cf-app-btn__copy">' +
+      '    <span class="cf-app-btn__name">' + label + '</span>' +
+      '    <span class="cf-app-btn__sub">' + detail + '</span>' +
+      '    <span class="cf-app-btn__state"></span>' +
+      '  </span>' +
+      '</button>'
+    );
+  }
+
+  function renderFileHome(app, id, side) {
     registerActiveFlush(null);
+    const tls = side === 'tls';
+    setFileSide(id, tls ? 'tls' : 'geo');
+    document.body.classList.toggle('tls-side', tls);
     app.innerHTML =
       '<div class="view-bar view-bar--file view-bar--cf-home">' +
       '  <button type="button" id="home-back" class="btn btn--ghost">‹ Cabinet</button>' +
+      '  <div class="cf-side-switch" role="group" aria-label="Company side">' +
+      '    <button type="button" class="cf-side-switch__btn' + (tls ? '' : ' is-active') + '" id="home-side-geo">Sandia Geo</button>' +
+      '    <button type="button" class="cf-side-switch__btn' + (tls ? ' is-active' : '') + '" id="home-side-tls">TLS</button>' +
+      '  </div>' +
       '  <span class="file-status" id="home-status"></span>' +
-      '  <button type="button" id="home-repair-top" class="btn btn--accent por-open-btn">Plan of Repair</button>' +
+      (tls
+        ? '  <button type="button" id="home-repair-top" class="btn btn--accent por-open-btn">Plan of Repair</button>'
+        : '  <button type="button" id="home-repair-top" class="btn btn--accent por-open-btn" hidden>Plan of Repair</button>') +
       '  <button type="button" id="home-edit-top" class="btn btn--quiet">Edit customer</button>' +
       '</div>' +
-      '<div class="cf-home" id="cf-home">' +
+      '<div class="cf-home' + (tls ? ' cf-home--tls' : '') + '" id="cf-home">' +
       '  <section class="cf-home__hero">' +
       '    <div class="cf-home__summary">' +
+      (tls ? '      <img class="cf-home__brandmark" src="brand/tls-foundations.jpg" alt="TLS Foundations">' : '') +
       '      <h1 class="cf-home__name" id="home-card-name"></h1>' +
       '      <p class="cf-home__address" id="home-card-address"></p>' +
+      '      <div class="cf-home__dir-row">' +
+      '        <button type="button" class="cf-directions" id="home-directions" hidden>Directions</button>' +
+      '        <button type="button" class="cf-directions-change" id="home-directions-pref" hidden>Change maps app</button>' +
+      '        <button type="button" class="cf-visit-notes-btn" id="home-visit-notes" hidden>Visit notes</button>' +
+      '      </div>' +
       '      <div class="cf-home__badges">' +
       '        <span class="status-badge" id="home-contact-badge">Customer details</span>' +
       '        <span class="status-badge" id="home-plan-badge">Checking plans…</span>' +
@@ -1774,18 +2016,29 @@
       '  </section>' +
       '  <div class="cf-home__section-head">' +
       '    <div>' +
-      '      <p class="eyebrow">Workspaces</p>' +
-      '      <h2>Choose where to work</h2>' +
+      '      <p class="eyebrow">' + (tls ? 'TLS workspaces' : 'Workspaces') + '</p>' +
+      '      <h2>' + (tls ? 'Job Walk and Plan of Repair' : 'Choose where to work') + '</h2>' +
       '    </div>' +
       '    <span class="cf-home__meta" id="home-card-meta"></span>' +
       '  </div>' +
       '  <div class="cf-home__apps" id="home-apps">' +
-      appTileHtml('distress') +
-      appTileHtml('floor') +
-      appTileHtml('diagnostics') +
-      appTileHtml('report') +
+      (tls
+        ? (
+          tlsAppTileHtml('job-walk', 'Job Walk', 'Photos, descriptions, and visit notes — no plan required') +
+          tlsAppTileHtml('repair', 'Plan of Repair', 'Flexible desktop drawing for preliminary repair sheets')
+        )
+        : (
+          appTileHtml('distress') +
+          appTileHtml('floor') +
+          appTileHtml('diagnostics') +
+          appTileHtml('report')
+        )) +
       '  </div>' +
-      '  <p class="cf-home__hint">Each workspace opens with this Customer File. They are independent—not required steps.</p>' +
+      '  <p class="cf-home__hint">' +
+      (tls
+        ? 'TLS tools use this Customer File. Job Walk and Plan of Repair work independently and in any order.'
+        : 'Each workspace opens with this Customer File. They are independent—not required steps.') +
+      '</p>' +
       '  <div class="cf-home__file-actions">' +
       '    <button type="button" id="home-import" class="btn btn--secondary">Import standalone export</button>' +
       '    <button type="button" id="home-delete" class="btn btn--secondary cf-home__delete" hidden>Delete this Customer File</button>' +
@@ -1803,9 +2056,14 @@
     const statusEl = app.querySelector('#home-status');
     const cardName = app.querySelector('#home-card-name');
     const cardAddress = app.querySelector('#home-card-address');
+    const directionsBtn = app.querySelector('#home-directions');
+    const directionsPrefBtn = app.querySelector('#home-directions-pref');
+    const visitNotesBtn = app.querySelector('#home-visit-notes');
     const cardMeta = app.querySelector('#home-card-meta');
     const contactBadge = app.querySelector('#home-contact-badge');
     const planBadge = app.querySelector('#home-plan-badge');
+    const sideGeoBtn = app.querySelector('#home-side-geo');
+    const sideTlsBtn = app.querySelector('#home-side-tls');
     let currentRecord = null;
     let homeLocked = false;
 
@@ -1840,6 +2098,36 @@
     backBtn.addEventListener('click', function () {
       window.location.hash = '#/';
     });
+    if (sideGeoBtn) {
+      sideGeoBtn.addEventListener('click', function () {
+        setFileSide(id, 'geo');
+        window.location.hash = '#/file/' + encodeURIComponent(id);
+      });
+    }
+    if (sideTlsBtn) {
+      sideTlsBtn.addEventListener('click', function () {
+        setFileSide(id, 'tls');
+        window.location.hash = '#/file/' + encodeURIComponent(id) + '/tls';
+      });
+    }
+    if (directionsBtn) {
+      directionsBtn.addEventListener('click', function () {
+        if (!currentRecord) return;
+        openPropertyDirections(currentRecord.propertyAddress);
+      });
+    }
+    if (directionsPrefBtn) {
+      directionsPrefBtn.addEventListener('click', function () {
+        changeMapsPreference();
+        if (currentRecord) openPropertyDirections(currentRecord.propertyAddress);
+      });
+    }
+    if (visitNotesBtn) {
+      visitNotesBtn.addEventListener('click', function () {
+        if (!currentRecord) return;
+        openVisitNotesReader(currentRecord);
+      });
+    }
     function editFile(section) {
       if (homeLocked) return;
       window.location.hash = '#/file/' + encodeURIComponent(id) + '/edit' + (section ? '/' + section : '');
@@ -1853,7 +2141,8 @@
       repairTopBtn.addEventListener('click', function () {
         if (homeLocked) return;
         if (!currentRecord) return;
-        if (!planReadiness(currentRecord).hasPlan) {
+        // TLS Plan of Repair works without a plan; Geo shortcut still nudges setup.
+        if (!tls && !planReadiness(currentRecord).hasPlan) {
           editFile('plans');
           return;
         }
@@ -1891,7 +2180,7 @@
       });
     }
     planCta.addEventListener('click', function () { editFile('plans'); });
-    app.querySelectorAll('.cf-app-btn').forEach(function (btn) {
+    app.querySelectorAll('.cf-app-btn[data-app]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         if (homeLocked) return;
         if (!currentRecord) return;
@@ -1900,6 +2189,13 @@
           return;
         }
         const appKey = btn.getAttribute('data-app');
+        window.location.hash = '#/file/' + encodeURIComponent(id) + '/' + appKey;
+      });
+    });
+    app.querySelectorAll('.cf-app-btn[data-tls-app]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (homeLocked) return;
+        const appKey = btn.getAttribute('data-tls-app');
         window.location.hash = '#/file/' + encodeURIComponent(id) + '/' + appKey;
       });
     });
@@ -1937,17 +2233,42 @@
       const hasAddress = !!(record.propertyAddress || '').trim();
       cardName.textContent = displayName(record);
       fillAddress(cardAddress, record);
+      if (directionsBtn) {
+        directionsBtn.hidden = !hasAddress;
+        directionsBtn.disabled = !hasAddress;
+      }
+      if (directionsPrefBtn) {
+        directionsPrefBtn.hidden = !hasAddress;
+      }
+      if (visitNotesBtn) {
+        const notes = record.distress && record.distress.jobWalk &&
+          Array.isArray(record.distress.jobWalk.notes)
+          ? record.distress.jobWalk.notes
+          : [];
+        visitNotesBtn.hidden = !notes.length;
+        if (notes.length) {
+          visitNotesBtn.textContent = 'Visit notes (' + notes.length + ')';
+        }
+      }
       contactBadge.textContent = hasName && hasAddress ? 'Customer details ready' : 'Customer details started';
       contactBadge.classList.toggle('is-ready', hasName && hasAddress);
-      planBadge.textContent = readiness.hasPlan ? planSummaryText(record) : 'Floor plan required';
+      planBadge.textContent = readiness.hasPlan
+        ? planSummaryText(record)
+        : (tls ? 'No floor plan yet — Job Walk still works' : 'Floor plan required');
       planBadge.classList.toggle('is-ready', readiness.hasPlan);
-      planCallout.hidden = readiness.hasPlan;
+      // Geo field apps need a plan; TLS Job Walk / POR do not.
+      planCallout.hidden = tls || readiness.hasPlan;
       cardMeta.textContent = record.updatedAt ? 'Updated ' + formatUpdated(record.updatedAt) : '';
-      app.querySelectorAll('.cf-app-btn').forEach(function (btn) {
+      app.querySelectorAll('.cf-app-btn[data-app]').forEach(function (btn) {
         const state = btn.querySelector('.cf-app-btn__state');
         btn.classList.toggle('is-locked', !readiness.hasPlan);
         // Ready tiles stay quiet; locked tiles still say why they need a plan.
         state.textContent = readiness.hasPlan ? '' : 'Add a floor plan first';
+      });
+      app.querySelectorAll('.cf-app-btn[data-tls-app]').forEach(function (btn) {
+        btn.classList.remove('is-locked');
+        const state = btn.querySelector('.cf-app-btn__state');
+        if (state) state.textContent = '';
       });
       if (window.ToolboxRecoveredPhotos && window.ToolboxRecoveredPhotos.hasAny(record)) {
         const actions = app.querySelector('.cf-home__file-actions');
@@ -2314,7 +2635,8 @@
     app.innerHTML = '';
 
     function leave() {
-      window.location.hash = '#/file/' + encodeURIComponent(id);
+      setFileSide(id, 'tls');
+      window.location.hash = '#/file/' + encodeURIComponent(id) + '/tls';
     }
 
     if (!window.ToolboxPlanOfRepair || typeof window.ToolboxPlanOfRepair.mount !== 'function') {
@@ -2323,13 +2645,46 @@
         '<div class="cf-stub">' +
         '  <h2 class="cf-stub__title">Plan of Repair</h2>' +
         '  <p class="cf-stub__msg">Plan of Repair failed to load.</p>' +
-        '  <button type="button" id="por-fail-back" class="btn btn--accent">Back to Customer File</button>' +
+        '  <button type="button" id="por-fail-back" class="btn btn--accent">Back to TLS</button>' +
         '</div>';
       app.querySelector('#por-fail-back').addEventListener('click', leave);
       return;
     }
 
     window.ToolboxPlanOfRepair.mount(app, {
+      customerFileId: id,
+      onBack: leave,
+    });
+  }
+
+  function renderJobWalk(app, id) {
+    registerActiveFlush(null);
+    document.body.classList.remove(
+      'floor-survey-open', 'distress-survey-open', 'diagnostics-open',
+      'report-builder-open', 'plan-of-repair-open'
+    );
+    if (window.ToolboxJobWalk && typeof window.ToolboxJobWalk.unmount === 'function') {
+      window.ToolboxJobWalk.unmount();
+    }
+    app.innerHTML = '';
+
+    function leave() {
+      setFileSide(id, 'tls');
+      window.location.hash = '#/file/' + encodeURIComponent(id) + '/tls';
+    }
+
+    if (!window.ToolboxJobWalk || typeof window.ToolboxJobWalk.mount !== 'function') {
+      app.innerHTML =
+        '<div class="cf-stub">' +
+        '  <h2 class="cf-stub__title">Job Walk</h2>' +
+        '  <p class="cf-stub__msg">Job Walk failed to load.</p>' +
+        '  <button type="button" id="jw-fail-back" class="btn btn--accent">Back to TLS</button>' +
+        '</div>';
+      app.querySelector('#jw-fail-back').addEventListener('click', leave);
+      return;
+    }
+
+    window.ToolboxJobWalk.mount(app, {
       customerFileId: id,
       onBack: leave,
     });
