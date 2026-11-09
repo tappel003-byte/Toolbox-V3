@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 9, 2026** (America/Denver)  
-Updated by: Claude Code — recheck of `73f8c29` passed; Ball to Tim for the look check.
+Updated by: Cursor agent — Job Walk media repair (delete photo/audio + add/delete video) on `cursor/job-walk-media-2ac5`.
 
 ---
 
@@ -19,10 +19,10 @@ Updated by: Claude Code — recheck of `73f8c29` passed; Ball to Tim for the loo
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — look check of Plan of Repair against MS Paint / PowerPoint (side-by-side screenshots when Tim has them). |
-| Next | **Claude Code** builds the side-by-side comparison from Tim's screenshots; **Cursor** only if that finds changes. Not a merge go-ahead. |
-| Claude Code result (`73f8c29`) | Technical pass. Icon tool strip (no RB ribbon, one row), Outline/Fill/weight pickers style next shape and restyle selected without changing defaults, B/I/U only while editing (bold saves and prints), Print/PDF stays on row one, overall + detail side by side with all controls reachable, view pan proportional and reversible (5 px ≈ 0.004 cx; reverse returns), undo/redo, reopen, one page per sheet, 4-sheet PDF from sheet 2 in order with TLS title blocks, missing/changed warnings; 53 suites, only failures also fail on base. Lows: right-rail Format Shape still shows dot rows and 1/2/3 weight (duplicates the pickers) and also appears for text boxes; fill on/off checkbox has no label. |
-| Branch / tip | `cursor/tls-workspace-2ac5` — Paint/PPT `73f8c29`; shell `v448` |
+| **Has the ball** | **Claude Code** (independent recheck of Job Walk media repair) |
+| Next after Claude finishes | **Tim** (accept / merge call) |
+| POR look check | Still open on `cursor/tls-workspace-2ac5` @ `73f8c29` / shell `v448` — Tim side-by-side Paint/PPT when ready. Not blocked by this Job Walk slice. |
+| Branch / tip | `cursor/job-walk-media-2ac5` off TLS workspace — Job Walk delete photo/audio + Take Video/delete; shell `v449` |
 | Do not merge | until Tim says so |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
@@ -79,8 +79,10 @@ Long chats cost more tokens and do **not** give the model continuous human-like 
 
 | Branch | Tip (approx) | Notes |
 |--------|----------------|-------|
-| `claude/milestone-1-customer-file-qv5ybf` | `1a4e672` | **Integration tip.** Includes #200 SESSION_STATE repair, #199 address two lines, #198 delete gate, #197–#194 prior. |
-| `main` | `a4336df` | Has #193 floor/share/toolbar; **behind** milestone on #195–#200. Live site already had `v439` from the main merge of #193. |
+| `claude/milestone-1-customer-file-qv5ybf` | `ec1b55e` | **Integration tip.** Re-check with fetch before claiming. |
+| `cursor/tls-workspace-2ac5` | `e1f7bb9` | TLS + POR Paint/PPT; Claude technical pass; Tim look check. Shell `v448`. |
+| `cursor/job-walk-media-2ac5` | (this slice) | Job Walk delete + video; shell `v449`. Stacked conceptually on TLS Job Walk. |
+| `main` | re-check | Behind milestone on several merges. |
 
 Always re-check with `git fetch` before claiming tip SHAs.
 
@@ -99,25 +101,28 @@ Always re-check with `git fetch` before claiming tip SHAs.
 | Lookbook product intent | **Keep it.** Tim does not think it’s a bad idea. Gap is ops/Access, not the idea. |
 | On-this-device ••• Delete gate | Done — #198. No DS pin-photos and no FS points → local Delete on •••; otherwise Explorer note. Floor plan alone does not block. Was shell `v441`; tip now `v442`. |
 | Library / home card address on two lines | Done — #199 (`1e786f8`, merge `f055fed`). Street on line 1; city/state/ZIP on line 2 (envelope style). Display only — does not rewrite `propertyAddress`. Shell `toolbox-shell-v442`. Built by Claude Code; Tim accepted (“good”); Cursor repairing this handoff. |
+| POR Paint/PPT toolbar + view-pan fix | On `cursor/tls-workspace-2ac5` — Claude technical pass; Tim look check. Shell `v448`. |
 
 ---
 
 ## Outstanding — real open work
 
-1. **TLS workspace integrated build** — PR #204 on `cursor/tls-workspace-2ac5`. Tip chain: `c16e6e2` (drawing-first) → `3f16ddd` (wrong RB text ribbon; Tim rejected) → **Paint/PPT icon toolbar + view-pan fix** (shell `v448`). Claude found the pan blocker on `3f16ddd`; this tip fixes it and replaces the ribbon. **Claude Code rechecks**; Tim decides. Do **not** merge until Tim says so.
+1. **Job Walk media repair** — `cursor/job-walk-media-2ac5`: Delete on photos and visit notes/audio; Take Video + Delete for walk-around clips; Sync `vid_` media; shell `v449`. **Claude Code rechecks**; Tim decides. Do **not** merge until Tim says so.
 
-2. **Cloudflare Access path bypass for `lookbook/*`** on `sync.sandiageotoolbox.com`  
+2. **TLS workspace / POR Paint-PPT look check** — PR #204 on `cursor/tls-workspace-2ac5`. Claude technical pass on `73f8c29`. Tim side-by-side vs Paint/PowerPoint when ready. Do **not** merge until Tim says so.
+
+3. **Cloudflare Access path bypass for `lookbook/*`** on `sync.sandiageotoolbox.com`  
    - Without this, engineer (and private-window) opens hit Cloudflare login.  
    - Tim’s ops action.  
    - Create/upload/finalize stay Access-gated; only public GET needs the bypass.
 
-3. **Confirm Sync Worker deploy has lookbook create routes**  
+4. **Confirm Sync Worker deploy has lookbook create routes**  
    - If Share still shows **“Not found”**, `POST /lookbook` is not on the live Worker.  
    - Deploy (when Tim authorizes / from an authenticated machine):  
      `npx wrangler@4 deploy --config sync-worker/wrangler.toml`  
    - Runtime secrets attach when an agent **starts**. An already-running VM may not see `CLOUDFLARE_API_TOKEN` even when it is set in Cursor Secrets.
 
-4. **Stale / unrelated open PRs** (don’t confuse with current tip)  
+5. **Stale / unrelated open PRs** (don’t confuse with current tip)  
    - #165 older promote-rules docs (intent largely covered by #196)  
    - #151, #139, #120, and older main-based #97 / #86 / #85  
    - Triage when Tim wants; not blockers for lookbook Access.

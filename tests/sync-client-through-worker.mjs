@@ -626,18 +626,20 @@ const readIndex = (bucket) => {
     }));
 }
 
-// ========== Job Walk photo + audio note sync as transferable data URLs
+// ========== Job Walk photo + audio + video sync as transferable data URLs
 //
-// Job Walk stores both as data URL strings in pgg_photos_v1 (same form as
+// Job Walk stores media as data URL strings in pgg_photos_v1 (same form as
 // Distress Quick Capture). A Blob would throw "Media is not in a transferable
 // form" and block Sync Now / Check In / Check Out / quiet mirror for the whole
-// Customer File. Device B must restore both bytes.
+// Customer File. Device B must restore the bytes.
 {
   const PHOTO_ID = 'ph_jw-sync-photo';
   const AUDIO_ID = 'vm_jw-sync-audio';
-  // Tiny JPEG (1×1) and a tiny audio data URL — transferable strings.
+  const VIDEO_ID = 'vid_jw-sync-video';
+  // Tiny JPEG (1×1), tiny audio, and tiny video data URLs — transferable strings.
   const PHOTO_DATA = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGfAP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAQUCf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQMBAT8Bf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQIBAT8Bf//Z';
   const AUDIO_DATA = 'data:audio/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAHTEU2bdLpNu4tTq4QVSalmU6yBoUuwAAAAAAAAGF13';
+  const VIDEO_DATA = 'data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAHTEU2bdLpNu4tTq4QVSalmU6yBoUuwAAAAAAAAGF13';
 
   const bucket = cabinet({});
   const first = loadClient(bucket, 'device-jw-a');
@@ -662,10 +664,17 @@ const readIndex = (bucket) => {
         speaker: 'homeowner',
         audioId: AUDIO_ID,
       }],
+      videos: [{
+        id: VIDEO_ID,
+        ts: '2026-10-23T09:19:00.000Z',
+        description: 'Walk around house',
+        sourceName: 'jw-walk.webm',
+      }],
     },
   };
   await first.Sync._test.putLocalMedia(PHOTO_ID, PHOTO_DATA, 'distress');
   await first.Sync._test.putLocalMedia(AUDIO_ID, AUDIO_DATA, 'distress');
+  await first.Sync._test.putLocalMedia(VIDEO_ID, VIDEO_DATA, 'distress');
   first.sandbox.requests.length = 0;
   let syncErr = null;
   let result;
@@ -674,7 +683,7 @@ const readIndex = (bucket) => {
   } catch (err) {
     syncErr = err;
   }
-  check('Job Walk photo+audio sync does not throw transferable-form error',
+  check('Job Walk photo+audio+video sync does not throw transferable-form error',
     !syncErr, syncErr ? String(syncErr.message || syncErr) : '');
   check('Job Walk media pushed with the Customer File',
     !!result && result.changed === true &&
@@ -683,8 +692,10 @@ const readIndex = (bucket) => {
       changed: result && result.changed,
       refused: first.sandbox.requests.filter((r) => r.status >= 400),
     }));
-  check('remote Cabinet holds both Job Walk media objects',
-    bucket.store.has('media/' + PHOTO_ID) && bucket.store.has('media/' + AUDIO_ID),
+  check('remote Cabinet holds Job Walk photo, audio, and video',
+    bucket.store.has('media/' + PHOTO_ID) &&
+    bucket.store.has('media/' + AUDIO_ID) &&
+    bucket.store.has('media/' + VIDEO_ID),
     [...bucket.store.keys()].filter((k) => k.indexOf('media/') === 0).join(','));
 
   const second = loadClient(bucket, 'device-jw-b');
@@ -695,14 +706,17 @@ const readIndex = (bucket) => {
   const landed = await second.sandbox.ToolboxDB.getCustomerFile(ID);
   const photoLocal = second.sandbox.distressPhotos.get(PHOTO_ID);
   const audioLocal = second.sandbox.distressPhotos.get(AUDIO_ID);
-  check('second device restores Job Walk quickCapture + visit note metadata',
+  const videoLocal = second.sandbox.distressPhotos.get(VIDEO_ID);
+  check('second device restores Job Walk quickCapture + visit note + video metadata',
     !!landed && !!landed.distress &&
     (landed.distress.quickCapture || []).some((q) => q.id === PHOTO_ID && q.folder === 'Job Walk') &&
     landed.distress.jobWalk &&
-    (landed.distress.jobWalk.notes || []).some((n) => n.audioId === AUDIO_ID && /crack/.test(n.text || '')),
+    (landed.distress.jobWalk.notes || []).some((n) => n.audioId === AUDIO_ID && /crack/.test(n.text || '')) &&
+    (landed.distress.jobWalk.videos || []).some((v) => v.id === VIDEO_ID),
     JSON.stringify(landed && landed.distress && {
       quick: landed.distress.quickCapture,
       notes: landed.distress.jobWalk && landed.distress.jobWalk.notes,
+      videos: landed.distress.jobWalk && landed.distress.jobWalk.videos,
     }));
   check('second device restores Job Walk photo as a JPEG data URL',
     typeof photoLocal === 'string' && photoLocal.indexOf('data:image/jpeg') === 0,
@@ -710,6 +724,9 @@ const readIndex = (bucket) => {
   check('second device restores Job Walk audio as a data URL string',
     typeof audioLocal === 'string' && audioLocal.indexOf('data:audio/') === 0,
     typeof audioLocal === 'string' ? audioLocal.slice(0, 40) : String(audioLocal));
+  check('second device restores Job Walk video as a data URL string',
+    typeof videoLocal === 'string' && videoLocal.indexOf('data:video/') === 0,
+    typeof videoLocal === 'string' ? videoLocal.slice(0, 40) : String(videoLocal));
 }
 
 // ========== legacy Job Walk Blob is converted on read so Sync can transfer it

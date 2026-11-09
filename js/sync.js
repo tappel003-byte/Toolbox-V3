@@ -714,7 +714,9 @@
 
   function collectDistressPhotoId(ids, id) {
     if (typeof id !== 'string') return;
-    if (id.indexOf('ph_') === 0 || id.indexOf('vm_') === 0) ids.push(id);
+    if (id.indexOf('ph_') === 0 || id.indexOf('vm_') === 0 || id.indexOf('vid_') === 0) {
+      ids.push(id);
+    }
   }
 
   function distressPhotoIds(record) {
@@ -730,6 +732,8 @@
     const walk = distress.jobWalk && typeof distress.jobWalk === 'object' ? distress.jobWalk : null;
     const notes = walk && Array.isArray(walk.notes) ? walk.notes : [];
     notes.forEach(function (note) { collectDistressPhotoId(ids, note && note.audioId); });
+    const videos = walk && Array.isArray(walk.videos) ? walk.videos : [];
+    videos.forEach(function (clip) { collectDistressPhotoId(ids, clip && clip.id); });
     return Array.from(new Set(ids));
   }
 
@@ -1014,6 +1018,8 @@
       const walk = payload.jobWalk && typeof payload.jobWalk === 'object' ? payload.jobWalk : null;
       const notes = walk && Array.isArray(walk.notes) ? walk.notes : [];
       notes.forEach(function (note) { collectDistressPhotoId(ids, note && note.audioId); });
+      const videos = walk && Array.isArray(walk.videos) ? walk.videos : [];
+      videos.forEach(function (clip) { collectDistressPhotoId(ids, clip && clip.id); });
       return Array.from(new Set(ids));
     }
     if (name === 'diagnostics') return diagnosticsFigureMediaIds(payload);
@@ -2852,6 +2858,27 @@
         item.id,
         'quick-capture',
         sourceName ? 'Quick Capture photo — ' + sourceName : 'Quick Capture photo',
+      );
+    });
+    const walk = distress && distress.jobWalk && typeof distress.jobWalk === 'object'
+      ? distress.jobWalk
+      : null;
+    const walkNotes = walk && Array.isArray(walk.notes) ? walk.notes : [];
+    walkNotes.forEach(function (note) {
+      if (!note || typeof note.audioId !== 'string' || note.audioId.indexOf('vm_') !== 0) return;
+      exploreConsiderMedia(refs, notes, 'distress.json', note.audioId, 'job-walk-audio', 'Job Walk audio note');
+    });
+    const walkVideos = walk && Array.isArray(walk.videos) ? walk.videos : [];
+    walkVideos.forEach(function (clip) {
+      if (!clip || typeof clip.id !== 'string' || clip.id.indexOf('vid_') !== 0) return;
+      const sourceName = trimStr(clip.sourceName);
+      exploreConsiderMedia(
+        refs,
+        notes,
+        'distress.json',
+        clip.id,
+        'job-walk-video',
+        sourceName ? 'Job Walk video — ' + sourceName : 'Job Walk video',
       );
     });
     explorePushPhotoCollection(refs, notes, 'distress.json', distress && distress.unassignedPhotos, 'unassigned-photo', 'Unassigned photo');

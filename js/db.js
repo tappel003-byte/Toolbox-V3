@@ -190,7 +190,10 @@ function planMediaIds(record) {
 }
 
 function collectDistressPhotoId(ids, id) {
-  if (typeof id === 'string' && id.indexOf('ph_') === 0) ids.push(id);
+  if (typeof id !== 'string') return;
+  if (id.indexOf('ph_') === 0 || id.indexOf('vm_') === 0 || id.indexOf('vid_') === 0) {
+    ids.push(id);
+  }
 }
 
 function distressPhotoIds(record) {
@@ -203,6 +206,11 @@ function distressPhotoIds(record) {
   });
   const quick = Array.isArray(distress.quickCapture) ? distress.quickCapture : [];
   quick.forEach((item) => collectDistressPhotoId(ids, item && item.id));
+  const walk = distress.jobWalk && typeof distress.jobWalk === 'object' ? distress.jobWalk : null;
+  const notes = walk && Array.isArray(walk.notes) ? walk.notes : [];
+  notes.forEach((note) => collectDistressPhotoId(ids, note && note.audioId));
+  const videos = walk && Array.isArray(walk.videos) ? walk.videos : [];
+  videos.forEach((clip) => collectDistressPhotoId(ids, clip && clip.id));
   return ids;
 }
 

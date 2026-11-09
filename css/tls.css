@@ -242,11 +242,36 @@ body.job-walk-open #app-view {
   flex-direction: column;
 }
 
-.jw-card__img {
+.jw-card__media {
+  position: relative;
+  background: #e8dfd2;
+}
+
+.jw-card__img,
+.jw-card__video {
   width: 100%;
   aspect-ratio: 1;
   object-fit: cover;
+  display: block;
   background: #e8dfd2;
+}
+
+.jw-card--video .jw-card__video {
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #0b1f33;
+}
+
+.jw-card__media .jw-delete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: rgba(255, 253, 248, 0.94);
+  border: 1px solid rgba(11, 31, 51, 0.18);
+  color: #0b1f33;
 }
 
 .jw-card__desc {
@@ -312,6 +337,13 @@ body.job-walk-open #app-view {
 .jw-note__audio {
   width: 100%;
   margin-top: 6px;
+}
+
+.jw-note .jw-delete {
+  margin-top: 8px;
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
 }
 
 .jw-empty {
