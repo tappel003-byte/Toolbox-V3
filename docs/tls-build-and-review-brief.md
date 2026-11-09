@@ -4,7 +4,7 @@ Read the entire current Toolbox-V3 repository before changing anything. Read VIS
 
 ## Delivery
 
-Tim wants **one integrated build** of the TLS side, Job Walk, and Plan of Repair, followed by one review of the complete result. Cursor owns implementation. Claude Code independently reviews the actual diff and tests. ChatGPT keeps the work aligned with the product vision. Tim owns product decisions and promotion.
+Tim wants **one integrated build** of the TLS side, Job Walk, and Plan of Repair, followed by one review of the complete result. **Cursor builds. Claude Code (CC) independently reviews the actual diff and tests. Tim owns product decisions and promotion.** ChatGPT is out of this loop (Tim, Nov 9, 2026 — that workspace/chat is not workable).
 
 Cursor can sequence implementation, tests, and fixes internally. Deliver the capabilities below together. Resolve routine implementation choices without asking Tim to approve individual screens, controls, or fixes. Bring a material product conflict to Tim in a single focused question if it blocks a decision. Use the milestone integration branch as the base and follow its existing shipping rules.
 

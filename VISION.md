@@ -547,12 +547,11 @@ Do not build infrastructure for a future workspace merely because it may someday
 The working roles are:
 
 - **Product owner / field authority / final decision-maker:** Tim.
-- **Project manager / architect / vision keeper / code reviewer:** ChatGPT.
-- **Primary implementation engineer:** Claude Code.
-- **Project consultant / technical-writing and UX sounding board:** Grok.
-- **Common source of truth:** the GitHub repository.
+- **Build:** Cursor.
+- **Independent check:** Claude Code (CC).
+- **Common source of truth:** the GitHub repository (`SESSION_STATE.md` for Ball / current tip).
 
-For the TLS work described in §4a, **Cursor implements, Claude Code independently reviews, and ChatGPT helps Tim define and maintain the product vision**. Tim makes the product decisions.
+**CHANGED (Tim, Nov 9, 2026):** ChatGPT is out of the active build loop. Tim’s ChatGPT workspace/chat glitched and is not workable — do not hand it work or wait on it. For current Toolbox work, including TLS / Job Walk / Plan of Repair: **Cursor builds, Claude Code independently reviews, Tim decides and promotes.**
 
 These are practical working roles, not a statement that one AI model is inherently superior to another. The product owner remains the authority. Cross-checking is encouraged: any collaborator may challenge assumptions, identify contradictions or missing requirements, propose better methods, or point out risks. No model's idea automatically outranks another's.
 

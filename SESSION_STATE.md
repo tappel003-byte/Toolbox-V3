@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 9, 2026** (America/Denver)  
-Updated by: Cursor agent — Tim said merge; #205 merged into TLS workspace branch.
+Updated by: Cursor agent — Tim: ChatGPT workspace unusable; build loop is Cursor + Claude Code only.
 
 ---
 
@@ -22,7 +22,7 @@ Updated by: Cursor agent — Tim said merge; #205 merged into TLS workspace bran
 | **Has the ball** | **Tim** |
 | Job Walk media | **Merged** — PR #205 into `cursor/tls-workspace-2ac5` @ `2b3f788` (Tim’s check + merge). Shell `v449`. |
 | POR / TLS → integration | PR #204 still open on `cursor/tls-workspace-2ac5` → `claude/milestone-1-customer-file-qv5ybf`. Not merged to integration; not promoted. |
-| Branch / tip | `cursor/tls-workspace-2ac5` @ `2b3f788` — POR Paint/PPT + Job Walk media |
+| Branch / tip | `cursor/tls-workspace-2ac5` @ `6ef7679` — POR Paint/PPT + Job Walk media |
 | Do not merge to integration / `main` | until Tim says so |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
@@ -31,15 +31,15 @@ When an agent finishes its turn of work, it **must** update this table to name w
 
 ## Review loop (Tim, Nov 9, 2026)
 
-**ChatGPT is out of this loop.** Two voices from here:
+**ChatGPT is out — permanently for this work.** Tim’s ChatGPT workspace/chat glitched and is not workable. Do not reopen that thread, hand it work, or wait on it.
 
 | Role | Who |
 |------|-----|
 | Build | **Cursor** |
-| Check | **Claude Code** |
+| Check | **Claude Code (CC)** |
 | Decide and promote | **Tim** |
 
-Do not hand vision checks to ChatGPT for this TLS / POR work. Cursor builds, Claude Code independently reviews, Tim decides and promotes.
+This is a **Cursor + Claude Code** build. Cursor builds; Claude Code independently reviews; Tim decides and promotes. No third voice.
 
 ---
 
@@ -48,8 +48,9 @@ Do not hand vision checks to ChatGPT for this TLS / POR work. Cursor builds, Cla
 | Role | Detail |
 |------|--------|
 | Product owner | Tim (`tappel003`) |
-| Long Cursor thread (archive + continuity) | https://cursor.com/agents/bc-eddcce18-c57b-423f-b2f4-6f17f8662ac5 — “Toolbox V3 continued” |
-| Preference | Stay with Cursor; Tim wants less fighting over process. Other idle side-agents are optional; one good working context is enough. |
+| Active Cursor thread | https://cursor.com/agents/bc-eddcce18-c57b-423f-b2f4-6f17f8662ac5 — “Toolbox V3 continued” |
+| Claude Code | Independent check when the Ball says so |
+| ChatGPT | **Dead path.** Workspace glitched; chat not workable. Do not use. |
 
 Long chats cost more tokens and do **not** give the model continuous human-like memory. Durable facts belong here and in the authority docs.
 
@@ -80,8 +81,7 @@ Long chats cost more tokens and do **not** give the model continuous human-like 
 | Branch | Tip (approx) | Notes |
 |--------|----------------|-------|
 | `claude/milestone-1-customer-file-qv5ybf` | `ec1b55e` | **Integration tip.** Re-check with fetch before claiming. |
-| `cursor/tls-workspace-2ac5` | `e1f7bb9` | TLS + POR Paint/PPT; Claude technical pass; Tim look check. Shell `v448`. |
-| `cursor/job-walk-media-2ac5` | (this slice) | Job Walk delete + video; shell `v449`. Stacked conceptually on TLS Job Walk. |
+| `cursor/tls-workspace-2ac5` | `6ef7679` | TLS + POR Paint/PPT + Job Walk media (#205). Shell `v449`. PR #204 → integration. |
 | `main` | re-check | Behind milestone on several merges. |
 
 Always re-check with `git fetch` before claiming tip SHAs.
