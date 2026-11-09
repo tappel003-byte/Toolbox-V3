@@ -11,7 +11,20 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 8, 2026** (America/Denver)  
-Updated by: Cursor agent — TLS workspace QA/QC corrections on `cursor/tls-workspace-2ac5` (Claude Code recheck next; do not merge).
+Updated by: Cursor agent — POR drawing-page tip finished on `cursor/tls-workspace-2ac5`; Ball flipped to Claude Code.
+
+---
+
+## Ball (ask “who has the ball?”)
+
+| Field | Value |
+|-------|--------|
+| **Has the ball** | **Claude Code** (independent recheck of POR drawing-page tip) |
+| Next after Claude finishes | **Tim** (accept / ChatGPT vision / merge call) |
+| Branch / tip | `cursor/tls-workspace-2ac5` — tip SHA after this commit (POR drawing-page + shell `v446`) |
+| Do not merge | until Tim says so |
+
+When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
 ---
 
@@ -76,7 +89,7 @@ Always re-check with `git fetch` before claiming tip SHAs.
 
 ## Outstanding — real open work
 
-1. **TLS workspace integrated build** — PR #204 on `cursor/tls-workspace-2ac5`. Builds: `1adaf3b` → QA fix `09b6879` → second recheck fixes (H4 multi-view frame/pan/zoom + print match, N1 missing import print warn, Job Walk `getStoredMedia`, Blob→dataURL on read, shell `v445`). **Claude Code recheck on the newest tip**, then ChatGPT vision, then merge to integration only when Tim’s process completes. See `docs/tls-build-and-review-brief.md` and `VISION.md` §4a. Do **not** merge until both reviews pass on the same SHA.
+1. **TLS workspace integrated build** — PR #204 on `cursor/tls-workspace-2ac5`. Builds: `1adaf3b` → QA `09b6879` → second recheck `46a88c0` (H4/N1/lows, shell `v445`) → **POR drawing-page rework** (Paint/PPT toolbar, Insert cards, dim title block, print blank-page fix, shell `v446`). **Claude Code has the ball** for independent recheck on this tip, then ChatGPT vision, then merge to integration only when Tim’s process completes. See `docs/tls-build-and-review-brief.md` and `VISION.md` §4a. Do **not** merge until both reviews pass on the same SHA. Handoff: `/opt/cursor/artifacts/CLAUDE-CODE-HANDOFF-POR-DRAWING.md` (also summarized in the PR).
 
 2. **Cloudflare Access path bypass for `lookbook/*`** on `sync.sandiageotoolbox.com`  
    - Without this, engineer (and private-window) opens hit Cloudflare login.  

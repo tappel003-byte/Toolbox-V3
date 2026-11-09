@@ -141,20 +141,23 @@ await page.waitForFunction(() => /Ready|Saved/.test((document.querySelector('#po
 
 const shell = await page.evaluate(() => ({
   hash: location.hash,
-  hasToolbar: !!document.querySelector('[data-rb-format-host] .rb-format, .rb-format'),
+  hasToolbar: !!document.querySelector('.por-toolbar'),
   hasPages: !!document.querySelector('#por-page-list'),
   hasPanel: !!document.querySelector('#por-bring-plan'),
-  compactBg: !!document.querySelector('.por-bg-actions .por-linkbtn'),
-  fatBring: Array.from(document.querySelectorAll('#por-bring-plan, #por-bring-contour, #por-clear-bg')).some((b) => b.classList.contains('btn')),
+  insertCards: document.querySelectorAll('.por-insert__card').length,
+  outlineSwatches: document.querySelectorAll('.por-toolbar [data-por-outline]').length,
+  textStripHidden: !!(document.querySelector('#por-text-format') && document.querySelector('#por-text-format').hidden),
   title: document.querySelector('.file-identity__name')?.textContent || '',
   tools: Array.from(document.querySelectorAll('[data-rb-tool]')).map((b) => b.getAttribute('data-rb-tool')),
 }));
 check('opens repair route', shell.hash === '#/file/por-draw/repair');
-check('RB-style shell title', shell.title === 'Plan of Repair');
-check('formatting/drawing toolbar mounted', shell.hasToolbar || shell.tools.length > 0);
+check('drawing-page shell title', shell.title === 'Plan of Repair');
+check('drawing toolbar mounted', shell.hasToolbar && shell.tools.length > 0);
 check('pages rail present', shell.hasPages);
 check('bring-in plan control', shell.hasPanel);
-check('compact background actions', shell.compactBg && !shell.fatBring);
+check('insert cards (slide-style)', shell.insertCards >= 4, String(shell.insertCards));
+check('outline colour swatches', shell.outlineSwatches >= 4, String(shell.outlineSwatches));
+check('text format hidden until text edit', shell.textStripHidden);
 check('circle+rect tools present', shell.tools.indexOf('circle') !== -1 && shell.tools.indexOf('rect') !== -1, shell.tools.join(','));
 
 await page.click('#por-bring-plan');
@@ -389,7 +392,9 @@ await page.mouse.down();
 await page.mouse.move(box.x + box.w * 0.42, box.y + box.h * 0.48);
 await page.mouse.up();
 
-await page.click('[data-rb-ov-color="#eab308"]');
+// Clear selection so outline sets the next tool colour (not the just-drawn circle).
+await page.keyboard.press('Escape');
+await page.click('.por-toolbar [data-por-outline="#eab308"]');
 await page.click('[data-rb-tool="rect"]');
 await page.mouse.move(box.x + box.w * 0.55, box.y + box.h * 0.55);
 await page.mouse.down();
