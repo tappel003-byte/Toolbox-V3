@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 8, 2026** (America/Denver)  
-Updated by: Cursor agent — POR drawing-page tip finished on `cursor/tls-workspace-2ac5`; Ball flipped to Claude Code.
+Updated by: Claude Code — technical recheck of POR drawing-page build `c16e6e2` finished; Ball to Tim.
 
 ---
 
@@ -19,8 +19,9 @@ Updated by: Cursor agent — POR drawing-page tip finished on `cursor/tls-worksp
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** (independent recheck of POR drawing-page tip) |
-| Next after Claude finishes | **Tim** (accept / ChatGPT vision / merge call) |
+| **Has the ball** | **Tim** — look decision on Plan of Repair. Tim, Nov 9: it "looks less like MS Paint and PowerPoint now". |
+| Next | **ChatGPT** vision check with Tim, or **Cursor** rework if Tim sends it back. Not a merge go-ahead. |
+| Claude Code result (`c16e6e2`) | Technical pass: drawing, text + B/I/U save and print, views left of title block, one page per sheet, missing/changed warnings, Job Walk, sync. 53 suites: only failures also fail on base. Two lows: new detail view covers right half of the overall view; toolbar wraps (Print/PDF drops a row) while text controls show. |
 | Branch / tip | `cursor/tls-workspace-2ac5` — drawing-page build `c16e6e2`, shell `v446` (use `git rev-parse` for exact head) |
 | Do not merge | until Tim says so |
 
