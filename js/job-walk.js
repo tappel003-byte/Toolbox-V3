@@ -128,6 +128,21 @@
     return '';
   }
 
+  /**
+   * Read a Job Walk / Distress media value, converting legacy Blobs written by
+   * early TLS builds into transferable data URL strings and rewriting them.
+   */
+  function getStoredMedia(id) {
+    return getDistressValue(id).then(function (value) {
+      if (value == null) return null;
+      if (typeof value === 'string' && value.indexOf('data:') === 0) return value;
+      if (!(value instanceof Blob)) return value;
+      return blobToDataUrl(value).then(function (dataUrl) {
+        return putDistressValue(id, dataUrl).then(function () { return dataUrl; });
+      });
+    });
+  }
+
   function unmount() {
     if (activeMount && activeMount.root && activeMount.root.parentNode) {
       activeMount.root.parentNode.removeChild(activeMount.root);
@@ -261,7 +276,7 @@
         img.alt = item.description || 'Job Walk photo';
         img.className = 'jw-card__img';
         card.appendChild(img);
-        getDistressValue(item.id).then(function (value) {
+        getStoredMedia(item.id).then(function (value) {
           var src = mediaSrc(value);
           if (!src) return;
           if (src.indexOf('blob:') === 0) state.objectUrls.push(src);
@@ -311,7 +326,7 @@
           var audio = document.createElement('audio');
           audio.controls = true;
           audio.className = 'jw-note__audio';
-          getDistressValue(note.audioId).then(function (value) {
+          getStoredMedia(note.audioId).then(function (value) {
             var src = mediaSrc(value);
             if (!src) return;
             if (src.indexOf('blob:') === 0) state.objectUrls.push(src);
@@ -500,12 +515,16 @@
   window.ToolboxJobWalk = {
     mount: mount,
     unmount: unmount,
+    /** Public media read — converts legacy Blobs to data URLs for Sync/UI. */
+    getStoredMedia: getStoredMedia,
+    putStoredMedia: putDistressValue,
     // Test/helpers: same compression path Distress Quick Capture uses.
     _test: {
       fileToJpegDataUrl: fileToJpegDataUrl,
       blobToDataUrl: blobToDataUrl,
       putDistressValue: putDistressValue,
       getDistressValue: getDistressValue,
+      getStoredMedia: getStoredMedia,
       MAX_PHOTO_DIM: MAX_PHOTO_DIM,
     },
   };

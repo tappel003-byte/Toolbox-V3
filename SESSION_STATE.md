@@ -76,7 +76,7 @@ Always re-check with `git fetch` before claiming tip SHAs.
 
 ## Outstanding — real open work
 
-1. **TLS workspace integrated build** — PR #204 on `cursor/tls-workspace-2ac5`. First build `1adaf3b`; Claude Code QA found B1–H4 / M1–M3 / lows. Cursor applied corrections (Job Walk media as JPEG/`data:` URLs + sync restore test, recording race, POR print/source/views, Geo visit notes, POR test TLS entry, maps choice, shell `v444`). **Claude Code recheck on the new tip**, then ChatGPT vision, then merge to integration only when Tim’s process completes. See `docs/tls-build-and-review-brief.md` and `VISION.md` §4a. Do **not** merge until both reviews pass on the same SHA.
+1. **TLS workspace integrated build** — PR #204 on `cursor/tls-workspace-2ac5`. Builds: `1adaf3b` → QA fix `09b6879` → second recheck fixes (H4 multi-view frame/pan/zoom + print match, N1 missing import print warn, Job Walk `getStoredMedia`, Blob→dataURL on read, shell `v445`). **Claude Code recheck on the newest tip**, then ChatGPT vision, then merge to integration only when Tim’s process completes. See `docs/tls-build-and-review-brief.md` and `VISION.md` §4a. Do **not** merge until both reviews pass on the same SHA.
 
 2. **Cloudflare Access path bypass for `lookbook/*`** on `sync.sandiageotoolbox.com`  
    - Without this, engineer (and private-window) opens hit Cloudflare login.  

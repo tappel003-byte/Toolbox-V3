@@ -203,6 +203,7 @@ function loadClient(bucket, deviceId, envOverrides) {
     Uint8Array,
     ArrayBuffer,
     Buffer,
+    Blob,
     crypto,
     navigator: { onLine: true },
     requests: [],
@@ -709,6 +710,52 @@ const readIndex = (bucket) => {
   check('second device restores Job Walk audio as a data URL string',
     typeof audioLocal === 'string' && audioLocal.indexOf('data:audio/') === 0,
     typeof audioLocal === 'string' ? audioLocal.slice(0, 40) : String(audioLocal));
+}
+
+// ========== legacy Job Walk Blob is converted on read so Sync can transfer it
+{
+  const BLOB_ID = 'ph_jw-legacy-blob';
+  const bucket = cabinet({});
+  const client = loadClient(bucket, 'device-jw-blob');
+  // Tiny JPEG bytes as a Blob (what 1adaf3b Job Walk wrote).
+  const jpegBytes = Buffer.from(
+    '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGfAP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAQUCf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQMBAT8Bf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQIBAT8Bf//Z',
+    'base64'
+  );
+  // Node 18+ Blob
+  client.sandbox.distressPhotos.set(BLOB_ID, new Blob([jpegBytes], { type: 'image/jpeg' }));
+  // Also expose Blob constructor inside the sync sandbox for instanceof checks.
+  client.sandbox.Blob = Blob;
+  const converted = await client.Sync._test.putLocalMedia
+    ? await (async () => {
+      // Force a get through getLocalMedia path used by ensureRemoteMedia.
+      const withWalk = record();
+      withWalk.distress = {
+        updatedAt: '2026-10-23T09:20:00.000Z',
+        pins: [],
+        mode: 'internal',
+        quickCapture: [{ id: BLOB_ID, ts: '2026-10-23T09:15:00.000Z', folder: 'Job Walk' }],
+        jobWalk: { updatedAt: '2026-10-23T09:18:00.000Z', notes: [] },
+      };
+      let err = null;
+      try {
+        await client.Sync._test.syncOneRecord(withWalk, null, {});
+      } catch (e) { err = e; }
+      return {
+        err: err && String(err.message || err),
+        stored: client.sandbox.distressPhotos.get(BLOB_ID),
+        remote: bucket.store.has('media/' + BLOB_ID),
+      };
+    })()
+    : { err: 'no putLocalMedia', stored: null, remote: false };
+  check('legacy Job Walk Blob converts and syncs without transferable-form error',
+    !converted.err && converted.remote &&
+    typeof converted.stored === 'string' && converted.stored.indexOf('data:image/jpeg') === 0,
+    JSON.stringify({
+      err: converted.err,
+      remote: converted.remote,
+      stored: typeof converted.stored === 'string' ? converted.stored.slice(0, 32) : typeof converted.stored,
+    }));
 }
 
 globalThis.fetch = realFetch;

@@ -428,9 +428,9 @@
           audio.controls = true;
           audio.preload = 'none';
           audio.className = 'jw-note__audio';
-          var getAudio = window.ToolboxJobWalk && window.ToolboxJobWalk._test &&
-            typeof window.ToolboxJobWalk._test.getDistressValue === 'function'
-            ? window.ToolboxJobWalk._test.getDistressValue
+          var getAudio = window.ToolboxJobWalk &&
+            typeof window.ToolboxJobWalk.getStoredMedia === 'function'
+            ? window.ToolboxJobWalk.getStoredMedia
             : null;
           if (getAudio) {
             getAudio(note.audioId).then(function (value) {

@@ -161,6 +161,222 @@ await page.click('#por-bring-plan');
 await page.waitForFunction(() => !!document.querySelector('.por-sheet-bg img'), { timeout: 5000 });
 check('floor plan on sheet', await page.evaluate(() => !!document.querySelector('.por-sheet-bg img')));
 
+// Overall + detail views: frame a region in the live editor, then print matches.
+await page.click('#por-add-view');
+await page.waitForFunction(() => document.querySelectorAll('.por-view-frame').length >= 2, { timeout: 5000 });
+await page.waitForFunction(() => {
+  const imgs = Array.from(document.querySelectorAll('.por-view-frame img'));
+  return imgs.length >= 2 && imgs.every((img) => img.complete && img.naturalWidth > 0 && parseFloat(img.style.width || '0') > 0);
+}, { timeout: 8000 });
+// Zoom + pan the detail view so its camera differs from overall.
+const detailBox = await page.$eval('.por-view-frame[data-por-view="1"]', (el) => {
+  const r = el.getBoundingClientRect();
+  return { x: r.left, y: r.top, w: r.width, h: r.height };
+});
+await page.mouse.move(detailBox.x + detailBox.w * 0.5, detailBox.y + detailBox.h * 0.5);
+for (let i = 0; i < 6; i += 1) await page.mouse.wheel({ deltaY: -180 });
+await page.mouse.down();
+await page.mouse.move(detailBox.x + detailBox.w * 0.35, detailBox.y + detailBox.h * 0.35, { steps: 8 });
+await page.mouse.up();
+// Shrink/move the detail frame with its SE handle so layout differs too.
+const se = await page.$eval('.por-view-frame[data-por-view="1"] [data-por-corner="se"]', (el) => {
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+});
+await page.mouse.move(se.x, se.y);
+await page.mouse.down();
+await page.mouse.move(se.x - 80, se.y - 60, { steps: 10 });
+await page.mouse.up();
+await page.waitForFunction(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const pages = record && record.planOfRepair && record.planOfRepair.pages;
+  if (!pages || !pages.length) return false;
+  const page = pages.find((p) => p.id === record.planOfRepair.activePageId) || pages[0];
+  const views = (page.meta && page.meta.views) || [];
+  return views.length >= 2 && views[1] && views[1].camera && Number(views[1].camera.zoom) > 1.05;
+}, { timeout: 8000 });
+const multiEditor = await page.evaluate(async () => {
+  const frames = Array.from(document.querySelectorAll('.por-view-frame'));
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId) ||
+    record.planOfRepair.pages[0];
+  const views = (page.meta && page.meta.views) || [];
+  return {
+    frameCount: frames.length,
+    viewCount: views.length,
+    detailZoom: views[1] && views[1].camera && views[1].camera.zoom,
+    overallZoom: views[0] && views[0].camera && views[0].camera.zoom,
+    detailFrame: views[1] && views[1].frame,
+  };
+});
+check(
+  'detail view added with own camera',
+  multiEditor.frameCount >= 2 && multiEditor.viewCount >= 2 && multiEditor.detailZoom > 1.05,
+  JSON.stringify(multiEditor)
+);
+await page.waitForFunction(() => {
+  const imgs = Array.from(document.querySelectorAll('.por-view-frame img'));
+  if (imgs.length < 2) return false;
+  return imgs[0].style.width !== imgs[1].style.width || imgs[0].style.left !== imgs[1].style.left;
+}, { timeout: 5000 }).catch(() => {});
+const multiPrint = await page.evaluate(() => {
+  const editor = Array.from(document.querySelectorAll('.por-view-frame')).map((host) => {
+    const img = host.querySelector('img');
+    return {
+      left: host.style.left,
+      top: host.style.top,
+      width: host.style.width,
+      height: host.style.height,
+      imgLeft: img ? img.style.left : '',
+      imgTop: img ? img.style.top : '',
+      imgW: img ? img.style.width : '',
+      imgH: img ? img.style.height : '',
+    };
+  });
+  const sheet = document.querySelector('#por-sheet');
+  const clone = sheet.cloneNode(true);
+  clone.querySelectorAll('.por-view-frame__handle, .por-view-frame__move, .por-sel').forEach((el) => el.remove());
+  const printed = Array.from(clone.querySelectorAll('.por-view-frame')).map((host) => {
+    const img = host.querySelector('img');
+    return {
+      left: host.style.left,
+      top: host.style.top,
+      width: host.style.width,
+      height: host.style.height,
+      imgLeft: img ? img.style.left : '',
+      imgTop: img ? img.style.top : '',
+      imgW: img ? img.style.width : '',
+      imgH: img ? img.style.height : '',
+      hasImg: !!(img && img.getAttribute('src')),
+    };
+  });
+  const detailDifferent = editor.length >= 2 && (
+    editor[0].imgW !== editor[1].imgW ||
+    editor[0].imgLeft !== editor[1].imgLeft ||
+    editor[0].width !== editor[1].width
+  );
+  return {
+    editorCount: editor.length,
+    printCount: printed.length,
+    detailDifferent,
+    match: editor.length >= 2 && printed.length === editor.length &&
+      editor.every((e, i) =>
+        printed[i] &&
+        printed[i].left === e.left &&
+        printed[i].top === e.top &&
+        printed[i].width === e.width &&
+        printed[i].height === e.height &&
+        printed[i].imgLeft === e.imgLeft &&
+        printed[i].imgTop === e.imgTop &&
+        printed[i].imgW === e.imgW &&
+        printed[i].hasImg
+      ),
+    editor,
+    printed,
+  };
+});
+check(
+  'print deck keeps both framed views matching editor',
+  multiPrint.match && multiPrint.detailDifferent,
+  JSON.stringify({
+    editorCount: multiPrint.editorCount,
+    printCount: multiPrint.printCount,
+    detailDifferent: multiPrint.detailDifferent,
+    editor: multiPrint.editor,
+  })
+);
+await page.pdf({
+  path: path.join(OUT, 'por-multiview-evidence.pdf'),
+  width: '17in',
+  height: '11in',
+  printBackground: true,
+  margin: { top: 0, right: 0, bottom: 0, left: 0 },
+});
+check(
+  'multiview PDF written',
+  fs.existsSync(path.join(OUT, 'por-multiview-evidence.pdf')) &&
+    fs.statSync(path.join(OUT, 'por-multiview-evidence.pdf')).size > 800
+);
+await page.screenshot({ path: path.join(OUT, 'por-multiview-editor.png'), fullPage: true });
+
+// N1: leave POR first so persistNow cannot overwrite the seed.
+await page.click('#por-back');
+await page.waitForSelector('.cf-home--tls, #home-side-tls');
+const missingImport = await page.evaluate(async () => {
+  const tiny = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  await window.ToolboxDB.putMedia('por-import-missing', tiny);
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page = {
+    id: 'por-missing-page',
+    title: 'Import gone',
+    overlays: [],
+    background: {
+      kind: 'import',
+      canvasId: '',
+      mediaId: 'por-import-missing',
+      source: { mediaId: 'por-import-missing', width: 1, height: 1 },
+      sourceStatus: null,
+    },
+    meta: {},
+    rail: { title: 'Preliminary', date: '', status: 'Preliminary', sheetId: 'POR-X' },
+  };
+  record.planOfRepair.pages.push(page);
+  record.planOfRepair.activePageId = page.id;
+  record.planOfRepair.updatedAt = new Date().toISOString();
+  await window.ToolboxDB.saveCustomerFile(record);
+  await window.ToolboxDB.deleteMedia('por-import-missing');
+  const gone = await window.ToolboxDB.getMedia('por-import-missing');
+  return { seeded: true, mediaGone: gone == null };
+});
+check('seeded missing import sheet', missingImport.seeded && missingImport.mediaGone, JSON.stringify(missingImport));
+await page.goto(BASE + '#/file/por-draw/repair', { waitUntil: 'networkidle0' });
+await page.waitForSelector('.por-shell .rb-sheet');
+await page.waitForFunction(
+  () => /missing/i.test((document.querySelector('.por-sheet-bg__empty') || {}).textContent || ''),
+  { timeout: 8000 }
+);
+const missingNamed = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const pages = record.planOfRepair.pages || [];
+  const results = [];
+  for (let i = 0; i < pages.length; i += 1) {
+    const page = pages[i];
+    const bg = page.background;
+    if (!bg || !bg.kind) continue;
+    let mediaId = null;
+    if (bg.kind === 'import') mediaId = bg.mediaId || null;
+    else if (bg.kind === 'plan' || bg.kind === 'contour') {
+      const canvas = (record.planSetup.canvases || []).find((c) => c.id === bg.canvasId);
+      if (bg.kind === 'plan') mediaId = canvas && canvas.plan && canvas.plan.id;
+      if (bg.kind === 'contour') mediaId = canvas && canvas.contourLayer && canvas.contourLayer.id;
+    }
+    const url = mediaId ? await window.ToolboxDB.getMedia(mediaId) : null;
+    const loadFailed = !(typeof url === 'string' && (
+      url.indexOf('data:image/') === 0 || url.indexOf('blob:') === 0 || url.indexOf('http') === 0
+    ));
+    if (loadFailed || !mediaId) {
+      results.push((i + 1) + '. ' + (page.title || 'Drawing'));
+    }
+  }
+  const emptyText = (document.querySelector('.por-sheet-bg__empty') || {}).textContent || '';
+  return {
+    named: results.some((line) => /Import gone/.test(line)),
+    results,
+    emptyText,
+  };
+});
+check(
+  'missing imported drawing named for print warning',
+  missingNamed.named && /missing/i.test(missingNamed.emptyText),
+  JSON.stringify(missingNamed)
+);
+// Return to the first drawing page for the remaining mark tests.
+await page.evaluate(() => {
+  const first = document.querySelector('#por-page-list .rb-rail__page');
+  if (first) first.click();
+});
+await page.waitForFunction(() => document.querySelectorAll('.por-view-frame').length >= 2 || document.querySelector('.por-sheet-bg img'), { timeout: 5000 }).catch(() => {});
+
 // Draw a filled circle
 await page.click('#por-fill');
 await page.click('[data-rb-tool="circle"]');

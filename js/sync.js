@@ -1100,8 +1100,9 @@
 
   async function getDistressPhoto(id) {
     const db = await openDistressPhotosDb();
+    let value;
     try {
-      return await new Promise(function (resolve, reject) {
+      value = await new Promise(function (resolve, reject) {
         const tx = db.transaction('photos', 'readonly');
         const req = tx.objectStore('photos').get(id);
         req.onsuccess = function () { resolve(req.result || null); };
@@ -1110,6 +1111,24 @@
     } finally {
       db.close();
     }
+    // Early TLS Job Walk builds stored raw Blobs. Convert once so Sync and
+    // viewers that require data URLs keep working for those devices.
+    if (value && typeof value !== 'string' && typeof Blob === 'function' && value instanceof Blob) {
+      try {
+        let dataUrl = null;
+        if (typeof FileReader === 'function') {
+          dataUrl = await blobToDataUrl(value);
+        } else if (typeof value.arrayBuffer === 'function') {
+          const buf = await value.arrayBuffer();
+          dataUrl = bytesToDataUrl(new Uint8Array(buf), value.type || 'application/octet-stream');
+        }
+        if (typeof dataUrl === 'string' && dataUrl.indexOf('data:') === 0) {
+          await putDistressPhoto(id, dataUrl);
+          return dataUrl;
+        }
+      } catch (_) { /* leave the Blob; ensureRemoteMedia will still refuse it */ }
+    }
+    return value;
   }
 
   async function putDistressPhoto(id, value) {

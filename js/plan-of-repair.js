@@ -315,10 +315,14 @@
       selectedId: null,
       clipboard: null,
       bgUrl: '',
+      bgMissing: false,
+      bgMissingByPageId: {},
+      printMode: false,
       scale: 1,
       zoomMode: 'fit',
       userScale: 1,
       drag: null,
+      selectedViewIndex: null,
       formatToolbar: null,
       shapeMenu: null,
       inspectorMode: 'format', // format | size
@@ -497,24 +501,109 @@
       });
     }
 
+    function markBgMissing(page, missing) {
+      state.bgMissing = !!missing;
+      if (page && page.id) state.bgMissingByPageId[page.id] = !!missing;
+    }
+
     function loadBackground() {
       state.bgUrl = '';
       state.bgMissing = false;
       var page = activePage();
       var bg = page && page.background;
-      if (!bg || !bg.kind || !state.record) return Promise.resolve();
+      if (!bg || !bg.kind || !state.record) {
+        if (page && page.id) state.bgMissingByPageId[page.id] = false;
+        return Promise.resolve();
+      }
       var mediaId = resolveBackgroundMediaId(page);
       if (!mediaId || !window.ToolboxDB || !window.ToolboxDB.getMedia) {
-        state.bgMissing = !!bg.kind;
+        markBgMissing(page, !!bg.kind);
         return Promise.resolve();
       }
       return window.ToolboxDB.getMedia(mediaId).then(function (url) {
         if (acceptBgUrl(url)) {
           state.bgUrl = url;
+          markBgMissing(page, false);
           return applySourceProbe(page, mediaId, url);
         }
-        state.bgMissing = true;
-      }).catch(function () { state.bgMissing = true; });
+        markBgMissing(page, true);
+      }).catch(function () { markBgMissing(page, true); });
+    }
+
+    function defaultViewCamera(zoom) {
+      return { cx: 0.5, cy: 0.5, zoom: Number(zoom) > 0 ? Number(zoom) : 1, rel: true };
+    }
+
+    function viewCamera(view) {
+      if (view && view.camera && typeof view.camera === 'object' && Number(view.camera.zoom) > 0) {
+        return {
+          cx: isFinite(Number(view.camera.cx)) ? Number(view.camera.cx) : 0.5,
+          cy: isFinite(Number(view.camera.cy)) ? Number(view.camera.cy) : 0.5,
+          zoom: Number(view.camera.zoom),
+          rel: true,
+        };
+      }
+      return defaultViewCamera(1);
+    }
+
+    /** Position the background image inside a view frame from a relative camera. */
+    function applyViewCamera(img, host, camera) {
+      if (!img || !host) return;
+      var tries = 0;
+      function layout() {
+        var fw = host.clientWidth;
+        var fh = host.clientHeight;
+        var iw = img.naturalWidth || 0;
+        var ih = img.naturalHeight || 0;
+        if ((fw < 2 || fh < 2 || iw < 1 || ih < 1) && tries < 20) {
+          tries += 1;
+          requestAnimationFrame(layout);
+          return;
+        }
+        if (fw < 2 || fh < 2 || iw < 1 || ih < 1) return;
+        var cam = camera || defaultViewCamera(1);
+        var zoom = Number(cam.zoom) > 0 ? Number(cam.zoom) : 1;
+        var cx = isFinite(Number(cam.cx)) ? Number(cam.cx) : 0.5;
+        var cy = isFinite(Number(cam.cy)) ? Number(cam.cy) : 0.5;
+        var base = Math.min(fw / iw, fh / ih);
+        var scale = base * zoom;
+        var dispW = iw * scale;
+        var dispH = ih * scale;
+        img.style.position = 'absolute';
+        img.style.width = dispW + 'px';
+        img.style.height = dispH + 'px';
+        img.style.maxWidth = 'none';
+        img.style.objectFit = 'fill';
+        img.style.left = (fw / 2 - cx * dispW) + 'px';
+        img.style.top = (fh / 2 - cy * dispH) + 'px';
+      }
+      if (img.complete && img.naturalWidth) layout();
+      else {
+        img.addEventListener('load', layout, { once: true });
+        img.addEventListener('error', layout, { once: true });
+      }
+    }
+
+    function waitForSheetImages() {
+      var imgs = sheetEl.querySelectorAll('.por-view-frame img, .por-sheet-bg > img');
+      return Promise.all(Array.prototype.map.call(imgs, function (img) {
+        if (img.complete) return Promise.resolve();
+        return new Promise(function (resolve) {
+          img.addEventListener('load', resolve, { once: true });
+          img.addEventListener('error', resolve, { once: true });
+        });
+      })).then(function () {
+        var page = activePage();
+        var viewsApi = window.ToolboxReportFloorViews;
+        var views = (viewsApi && page && page.meta) ? viewsApi.viewsFor(page) : [];
+        if (views && views.length > 1) {
+          sheetEl.querySelectorAll('.por-view-frame').forEach(function (host) {
+            var vi = Number(host.getAttribute('data-por-view'));
+            var img = host.querySelector('img');
+            applyViewCamera(img, host, viewCamera(views[vi]));
+          });
+        }
+      });
     }
 
     function acceptSourceReplacement(page) {
@@ -628,25 +717,46 @@
       var viewsApi = window.ToolboxReportFloorViews;
       var views = (viewsApi && page.meta) ? viewsApi.viewsFor(page) : [];
       var multi = views && views.length > 1;
-      if (state.bgUrl && multi && !state.printMode) {
+      if (state.bgUrl && multi) {
         views.forEach(function (view, vi) {
           var frame = view && view.frame ? view.frame : { x: 5, y: 5, w: 40, h: 40 };
           var host = document.createElement('div');
-          host.className = 'por-view-frame';
+          host.className = 'por-view-frame' +
+            (!state.printMode && state.selectedViewIndex === vi ? ' is-selected' : '');
           host.setAttribute('data-por-view', String(vi));
           host.style.left = frame.x + '%';
           host.style.top = frame.y + '%';
           host.style.width = frame.w + '%';
           host.style.height = frame.h + '%';
+          host.style.zIndex = String((frame.z || 1) + 1);
           var img = document.createElement('img');
           img.src = state.bgUrl;
           img.alt = 'View ' + (vi + 1);
+          img.draggable = false;
           host.appendChild(img);
           var label = document.createElement('span');
           label.className = 'por-view-frame__label';
+          label.setAttribute('data-por-view-move', String(vi));
           label.textContent = vi === 0 ? 'Overall' : ('Detail ' + vi);
           host.appendChild(label);
+          if (!state.printMode && !state.readOnly) {
+            var move = document.createElement('button');
+            move.type = 'button';
+            move.className = 'por-view-frame__move';
+            move.setAttribute('data-por-view-move', String(vi));
+            move.title = 'Drag to move this view frame';
+            move.textContent = 'Move';
+            host.appendChild(move);
+            ['nw', 'ne', 'se', 'sw'].forEach(function (corner) {
+              var handle = document.createElement('span');
+              handle.className = 'por-view-frame__handle por-view-frame__handle--' + corner;
+              handle.setAttribute('data-por-view-resize', String(vi));
+              handle.setAttribute('data-por-corner', corner);
+              host.appendChild(handle);
+            });
+          }
           bg.appendChild(host);
+          applyViewCamera(img, host, viewCamera(view));
         });
       } else if (state.bgUrl) {
         var img = document.createElement('img');
@@ -1243,11 +1353,84 @@
       }, 0);
     }
 
+    function activeViews() {
+      var page = activePage();
+      var api = window.ToolboxReportFloorViews;
+      return (api && page && page.meta) ? (api.viewsFor(page) || []) : [];
+    }
+
     function onPointerDown(event) {
       if (state.readOnly) return;
       if (event.button != null && event.button !== 0) return;
       if (event.target.closest && event.target.closest('[contenteditable="true"]')) return;
       if (event.target.closest && event.target.closest('.rb-rail__rail')) return;
+
+      var viewResize = event.target.closest && event.target.closest('[data-por-view-resize]');
+      if (viewResize) {
+        event.preventDefault();
+        event.stopPropagation();
+        var rVi = Number(viewResize.getAttribute('data-por-view-resize'));
+        var rViews = activeViews();
+        var rView = rViews[rVi];
+        if (!rView) return;
+        pushHistory();
+        state.selectedViewIndex = rVi;
+        state.selectedId = null;
+        state.drag = {
+          mode: 'view-resize',
+          viewIndex: rVi,
+          corner: viewResize.getAttribute('data-por-corner') || 'se',
+          start: sheetPercent(event),
+          origFrame: deepClone(rView.frame || { x: 0, y: 0, w: 49, h: 100 }),
+        };
+        renderSheet();
+        return;
+      }
+
+      var viewMove = event.target.closest && event.target.closest('[data-por-view-move]');
+      if (viewMove) {
+        event.preventDefault();
+        event.stopPropagation();
+        var mVi = Number(viewMove.getAttribute('data-por-view-move'));
+        var mViews = activeViews();
+        var mView = mViews[mVi];
+        if (!mView) return;
+        pushHistory();
+        state.selectedViewIndex = mVi;
+        state.selectedId = null;
+        state.drag = {
+          mode: 'view-move',
+          viewIndex: mVi,
+          start: sheetPercent(event),
+          origFrame: deepClone(mView.frame || { x: 0, y: 0, w: 49, h: 100 }),
+        };
+        renderSheet();
+        return;
+      }
+
+      var viewHost = event.target.closest && event.target.closest('[data-por-view]');
+      if (viewHost && !state.inkTool) {
+        event.preventDefault();
+        var pVi = Number(viewHost.getAttribute('data-por-view'));
+        var pViews = activeViews();
+        var pView = pViews[pVi];
+        if (!pView) return;
+        pushHistory();
+        state.selectedViewIndex = pVi;
+        state.selectedId = null;
+        if (!pView.camera || typeof pView.camera !== 'object') {
+          pView.camera = defaultViewCamera(1);
+        }
+        state.drag = {
+          mode: 'view-pan',
+          viewIndex: pVi,
+          startClient: { x: event.clientX, y: event.clientY },
+          host: viewHost,
+          origCamera: deepClone(viewCamera(pView)),
+        };
+        renderSheet();
+        return;
+      }
 
       var resize = event.target.closest && event.target.closest('[data-por-resize]');
       if (resize) {
@@ -1276,6 +1459,7 @@
       }
       if (hitExisting) {
         state.selectedId = hitExisting.getAttribute('data-rb-ov');
+        state.selectedViewIndex = null;
         renderSheet();
         var page2 = activePage();
         var item2 = overlayList(page2).find(function (o) { return o.id === state.selectedId; });
@@ -1295,31 +1479,93 @@
       }
 
       state.selectedId = null;
+      state.selectedViewIndex = null;
       renderSheet();
     }
 
     function onPointerMove(event) {
       if (state.inkDrag) { moveInk(event); return; }
       if (!state.drag) return;
-      var at = sheetPercent(event);
-      if (!at || !state.drag.start) return;
       var page = activePage();
+      var viewsApi = window.ToolboxReportFloorViews;
+
+      if (state.drag.mode === 'view-move' || state.drag.mode === 'view-resize') {
+        var at = sheetPercent(event);
+        if (!at || !state.drag.start) return;
+        var views = activeViews();
+        var view = views[state.drag.viewIndex];
+        if (!view) return;
+        var dx = at.x - state.drag.start.x;
+        var dy = at.y - state.drag.start.y;
+        var orig = state.drag.origFrame || { x: 0, y: 0, w: 49, h: 100 };
+        var next;
+        if (state.drag.mode === 'view-move') {
+          next = {
+            x: orig.x + dx,
+            y: orig.y + dy,
+            w: orig.w,
+            h: orig.h,
+            z: orig.z || 1,
+          };
+        } else {
+          next = resizeBoxFromHandle(orig, state.drag.corner || 'se', dx, dy);
+          next.z = orig.z || 1;
+        }
+        if (viewsApi && typeof viewsApi.normalizeFrame === 'function') {
+          next = viewsApi.normalizeFrame(next);
+        } else {
+          next.w = Math.max(18, Math.min(100, next.w));
+          next.h = Math.max(25, Math.min(100, next.h));
+          next.x = Math.max(0, Math.min(100 - next.w, next.x));
+          next.y = Math.max(0, Math.min(100 - next.h, next.y));
+        }
+        view.frame = next;
+        renderSheet();
+        return;
+      }
+
+      if (state.drag.mode === 'view-pan') {
+        var host = state.drag.host;
+        var views2 = activeViews();
+        var view2 = views2[state.drag.viewIndex];
+        if (!view2 || !host) return;
+        var fw = host.clientWidth || 1;
+        var fh = host.clientHeight || 1;
+        var cam = state.drag.origCamera || defaultViewCamera(1);
+        var zoom = Number(cam.zoom) > 0 ? Number(cam.zoom) : 1;
+        // Dragging right reveals content to the left (cx decreases).
+        var ndx = (event.clientX - state.drag.startClient.x) / fw;
+        var ndy = (event.clientY - state.drag.startClient.y) / fh;
+        var nextCam = {
+          cx: Math.max(0, Math.min(1, cam.cx - ndx / zoom)),
+          cy: Math.max(0, Math.min(1, cam.cy - ndy / zoom)),
+          zoom: zoom,
+          rel: true,
+        };
+        view2.camera = nextCam;
+        var img = host.querySelector('img');
+        applyViewCamera(img, host, nextCam);
+        return;
+      }
+
+      var at2 = sheetPercent(event);
+      if (!at2 || !state.drag.start) return;
       var item = overlayList(page).find(function (o) { return o.id === state.selectedId; });
       if (!item) return;
-      var dx = at.x - state.drag.start.x;
-      var dy = at.y - state.drag.start.y;
-      var orig = state.drag.orig;
+      var dx2 = at2.x - state.drag.start.x;
+      var dy2 = at2.y - state.drag.start.y;
+      var orig2 = state.drag.orig;
       if (state.drag.mode === 'move') {
-        if (typeof orig.x0 === 'number') {
-          item.x0 = orig.x0 + dx; item.y0 = orig.y0 + dy;
-          item.x1 = orig.x1 + dx; item.y1 = orig.y1 + dy;
-        } else if (typeof orig.x === 'number') {
-          item.x = orig.x + dx; item.y = orig.y + dy;
-        } else if (Array.isArray(orig.points)) {
-          item.points = orig.points.map(function (p) { return [p[0] + dx, p[1] + dy]; });
+        if (typeof orig2.x0 === 'number') {
+          item.x0 = orig2.x0 + dx2; item.y0 = orig2.y0 + dy2;
+          item.x1 = orig2.x1 + dx2; item.y1 = orig2.y1 + dy2;
+        } else if (typeof orig2.x === 'number') {
+          item.x = orig2.x + dx2; item.y = orig2.y + dy2;
+        } else if (Array.isArray(orig2.points)) {
+          item.points = orig2.points.map(function (p) { return [p[0] + dx2, p[1] + dy2]; });
         }
       } else if (state.drag.mode === 'resize' && state.drag.origBox) {
-        var nextBox = resizeBoxFromHandle(state.drag.origBox, state.drag.corner || 'se', dx, dy);
+        var nextBox = resizeBoxFromHandle(state.drag.origBox, state.drag.corner || 'se', dx2, dy2);
         applyBounds(item, nextBox, state.drag.origBox);
       }
       renderSheet();
@@ -1328,13 +1574,34 @@
     function onPointerUp() {
       if (state.inkDrag) endInk();
       if (state.drag) {
+        var wasView = state.drag.mode && String(state.drag.mode).indexOf('view-') === 0;
         state.drag = null;
         var page = activePage();
-        var api = overlayApi();
-        if (api) page.overlays = api.normalize(overlayList(page));
+        if (!wasView) {
+          var api = overlayApi();
+          if (api) page.overlays = api.normalize(overlayList(page));
+        }
         scheduleSave();
         renderSheet();
       }
+    }
+
+    function onViewWheel(event) {
+      if (state.readOnly || state.printMode) return;
+      var host = event.target.closest && event.target.closest('[data-por-view]');
+      if (!host) return;
+      event.preventDefault();
+      var vi = Number(host.getAttribute('data-por-view'));
+      var views = activeViews();
+      var view = views[vi];
+      if (!view) return;
+      var cam = viewCamera(view);
+      var factor = event.deltaY > 0 ? (1 / 1.12) : 1.12;
+      var nextZoom = Math.max(1, Math.min(8, cam.zoom * factor));
+      view.camera = { cx: cam.cx, cy: cam.cy, zoom: nextZoom, rel: true };
+      state.selectedViewIndex = vi;
+      applyViewCamera(host.querySelector('img'), host, view.camera);
+      scheduleSave();
     }
 
     function onKeyDown(event) {
@@ -1445,7 +1712,9 @@
     }
 
     function stripPrintChrome(node) {
-      node.querySelectorAll('.por-sel, .rb-ov__resize, .rb-ov__remove').forEach(function (el) {
+      node.querySelectorAll(
+        '.por-sel, .rb-ov__resize, .rb-ov__remove, .por-view-frame__handle, .por-view-frame__move'
+      ).forEach(function (el) {
         el.parentNode && el.parentNode.removeChild(el);
       });
       node.querySelectorAll('[contenteditable]').forEach(function (el) {
@@ -1453,6 +1722,9 @@
       });
       node.querySelectorAll('.por-sheet-bg__empty, .por-source-banner, .por-print__warn').forEach(function (el) {
         el.parentNode && el.parentNode.removeChild(el);
+      });
+      node.querySelectorAll('.por-view-frame.is-selected').forEach(function (el) {
+        el.classList.remove('is-selected');
       });
       node.style.transform = 'none';
     }
@@ -1482,12 +1754,14 @@
           state.selectedId = null;
           return loadBackground().then(function () {
             renderSheet();
-            var pageEl = document.createElement('div');
-            pageEl.className = 'por-print__page';
-            var clone = sheetEl.cloneNode(true);
-            stripPrintChrome(clone);
-            pageEl.appendChild(clone);
-            deck.appendChild(pageEl);
+            return waitForSheetImages().then(function () {
+              var pageEl = document.createElement('div');
+              pageEl.className = 'por-print__page';
+              var clone = sheetEl.cloneNode(true);
+              stripPrintChrome(clone);
+              pageEl.appendChild(clone);
+              deck.appendChild(pageEl);
+            });
           });
         });
       });
@@ -1527,7 +1801,9 @@
         state.doc.pages.forEach(function (page, index) {
           var bg = page && page.background;
           if (!bg || !bg.kind) return;
-          if (!resolveBackgroundMediaId(page)) {
+          // Prefer the actual load result (imported media can keep a stale mediaId).
+          var loadFailed = !!state.bgMissingByPageId[page.id];
+          if (loadFailed || !resolveBackgroundMediaId(page)) {
             missing.push((index + 1) + '. ' + (page.title || 'Drawing'));
           }
         });
@@ -1726,9 +2002,22 @@
       pushHistory();
       api.ensurePageViews(page);
       api.addView(page, 0);
+      var views = api.viewsFor(page) || [];
+      // POR overall/detail frames move independently; cameras are per-view.
+      views.forEach(function (v) {
+        if (!v) return;
+        v.linkGroup = null;
+      });
+      if (views[0]) views[0].camera = defaultViewCamera(1);
+      if (views.length > 1) {
+        var detail = views[views.length - 1];
+        // Detail starts zoomed so overall and detail are visibly different.
+        detail.camera = defaultViewCamera(2.4);
+        state.selectedViewIndex = views.length - 1;
+      }
       scheduleSave();
       renderSheet();
-      setStatus('Detail view added — arrange overall and detail on this sheet');
+      setStatus('Detail view added — drag Move to place; drag inside to pan; scroll to zoom');
     });
     root.querySelector('#por-remove-view').addEventListener('click', function () {
       if (state.readOnly) return;
@@ -1824,6 +2113,7 @@
     });
 
     sheetEl.addEventListener('pointerdown', onPointerDown);
+    sheetEl.addEventListener('wheel', onViewWheel, { passive: false });
     sheetEl.addEventListener('contextmenu', function (event) {
       var target = event.target.closest && event.target.closest('[data-rb-ov]');
       if (!target && event.target.closest && event.target.closest('.por-sel') && state.selectedId) {
@@ -1851,6 +2141,7 @@
         window.removeEventListener('pointerup', onPointerUp);
         window.removeEventListener('keydown', onKeyDown);
         window.removeEventListener('resize', applySheetScale);
+        sheetEl.removeEventListener('wheel', onViewWheel);
         document.body.classList.remove('plan-of-repair-open', 'is-por-printing');
         if (root.parentNode) root.parentNode.removeChild(root);
       },
