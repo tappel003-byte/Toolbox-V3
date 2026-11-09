@@ -21,7 +21,7 @@ Updated by: Cursor — three small CC items on #208; Ball to Claude Code.
 |-------|--------|
 | **Has the ball** | **Claude Code** |
 | Check this | **PR #208** — https://github.com/tappel003-byte/Toolbox-V3/pull/208 |
-| Branch / tip | `cursor/qc-cabinet-media-2ac5` @ `9676a1f` (shell `v452`). |
+| Branch / tip | `cursor/qc-cabinet-media-2ac5` @ `39bf075` (shell `v452`). |
 | Base | `claude/milestone-1-customer-file-qv5ybf` @ `803abf9`. Do **not** merge until Tim says. |
 | Not done | CC quick recheck → Tim merge to integration → Tim promote. |
 
@@ -81,7 +81,7 @@ Long chats cost more tokens and do **not** give the model continuous human-like 
 | Branch | Tip (approx) | Notes |
 |--------|----------------|-------|
 | `claude/milestone-1-customer-file-qv5ybf` | `803abf9` | **Integration tip** |
-| `cursor/qc-cabinet-media-2ac5` | `9676a1f` | **PR #208** — three small CC items done; shell `v452`. |
+| `cursor/qc-cabinet-media-2ac5` | `39bf075` | **PR #208** — three small CC items done; shell `v452`. |
 | `main` | re-check | Behind milestone. Do not merge here unless Tim asks promote-prep. |
 
 Always re-check with `git fetch` before claiming tip SHAs.
