@@ -156,6 +156,15 @@ try {
           localFull: true,
           tagged: true,
         },
+        {
+          id: 'ph_qc_untagged_local',
+          ts: Date.now(),
+          folder: 'Exterior',
+          description: 'Captured but not tagged',
+          sourceName: 'untagged.jpg',
+          localFull: true,
+          tagged: false,
+        },
       ],
       jobWalk: { notes: [], videos: [] },
       updatedAt: new Date().toISOString(),
@@ -183,6 +192,7 @@ try {
     };
     await put('ph_pin_local', tiny);
     await put('ph_qc_local', tiny);
+    await put('ph_qc_untagged_local', tiny);
     await put(ToolboxSync.thumbMediaKey('ph_qc_cabinet'), tiny);
   });
 
@@ -199,10 +209,13 @@ try {
   });
   check('Report Evidence lists Distress pin photos',
     evidence.distressCount === 1, JSON.stringify(evidence));
-  check('Report Evidence lists only localFull Quick Capture for Pictures',
+  check('Report Evidence lists only tagged+localFull Quick Capture for Pictures',
     evidence.qcIds.length === 1 && evidence.qcIds[0] === 'ph_qc_local' &&
     evidence.qcKeys[0] === 'qc:ph_qc_local',
     JSON.stringify(evidence));
+  check('Untagged localFull Quick Capture is not auto-listed for Pictures',
+    evidence.qcIds.indexOf('ph_qc_untagged_local') < 0,
+    JSON.stringify(evidence.qcIds));
 
   // Open Photo folders and confirm cabinet badge + tag + download tagged.
   await page.evaluate(async () => {
@@ -279,7 +292,7 @@ try {
       qc: qc.map((p) => ({ key: p.key, id: p.id, seed: p.seedText })),
     };
   });
-  check('Downloaded Quick Capture can sit beside Distress photos for Pictures',
+  check('Downloaded tagged Quick Capture can sit beside Distress photos for Pictures',
     pictures.total === 2 && pictures.qc.length === 1 &&
     pictures.qc[0].key === 'qc:ph_qc_local',
     JSON.stringify(pictures));

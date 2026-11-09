@@ -558,13 +558,15 @@
     var distress = record && record.distress && typeof record.distress === 'object' ? record.distress : {};
     var quick = Array.isArray(distress.quickCapture) ? distress.quickCapture : [];
     return quick.filter(function (item) {
-      // Downloaded (or captured-on-this-device) full bytes only.
-      // Tagged-but-not-downloaded stay Cabinet-side until Download tagged.
-      return item && item.id && item.localFull === true;
+      // Tag + download: only tagged photos with full local bytes go on reports.
+      // Captured-on-device localFull without a tag must not auto-place.
+      return item && item.id && item.localFull === true &&
+        (item.tagged === true || item.reportTag === true);
     }).map(function (item, index) {
       return {
         key: 'qc:' + item.id,
         id: item.id,
+        // No Distress pin number — labels say Quick Capture, not "Photo 00".
         displayNumber: null,
         pinId: null,
         pinNumber: null,
@@ -573,6 +575,7 @@
         canvasId: null,
         quickCapture: true,
         folder: item.folder || '',
+        label: 'Quick Capture',
       };
     });
   }
@@ -606,6 +609,7 @@
     FLOOR_MISSING_NOTE: FLOOR_MISSING_NOTE,
     listDistressPhotos: listDistressPhotos,
     listLocalQuickCapturePhotos: listLocalQuickCapturePhotos,
+    readDistressMedia: readDistressMedia,
     assemble: assemble,
   };
 })();

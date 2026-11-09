@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 9, 2026** (America/Denver)  
-Updated by: Claude Code — check of `1152eeb`: Cabinet rules work; report + video fixes needed; Ball to Cursor.
+Updated by: Cursor — fixed CC findings on #208; push for CC recheck.
 
 ---
 
@@ -19,10 +19,11 @@ Updated by: Claude Code — check of `1152eeb`: Cabinet rules work; report + vid
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Cursor** — fix Claude Code findings on `1152eeb` (Quick Capture / video Cabinet media): QC on report (untagged auto-placed; image not found; "Photo 00" labels), Download video missing, Worker video upload buffering, thumbnail fallback, stale import test. |
-| Next | **Claude Code** rechecks, then **Tim** (merge). |
-| Integration merge | Not yet. Open PR into `claude/milestone-1-customer-file-qv5ybf` (base `803abf9`). Do **not** merge until Tim says. |
-| Not done | CC review → Tim merge to integration → Tim promote. |
+| **Has the ball** | **Claude Code** |
+| Check this | **PR #208** — https://github.com/tappel003-byte/Toolbox-V3/pull/208 |
+| Branch / tip | `cursor/qc-cabinet-media-2ac5` (shell `v451`). |
+| Base | `claude/milestone-1-customer-file-qv5ybf` @ `803abf9`. Do **not** merge until Tim says. |
+| Not done | CC recheck → Tim merge to integration → Tim promote. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -79,8 +80,8 @@ Long chats cost more tokens and do **not** give the model continuous human-like 
 
 | Branch | Tip (approx) | Notes |
 |--------|----------------|-------|
-| `claude/milestone-1-customer-file-qv5ybf` | `803abf9` | **Integration tip** (includes #204 + SESSION_STATE #206). Shell `v449` on tip; this PR bumps to `v450`. |
-| `cursor/qc-cabinet-media-2ac5` | (this PR) | Quick Capture + Job Walk video live in File Cabinet, not on Check Out. |
+| `claude/milestone-1-customer-file-qv5ybf` | `803abf9` | **Integration tip** (includes #204 + SESSION_STATE #206). |
+| `cursor/qc-cabinet-media-2ac5` | (this push) | **PR #208** for CC recheck. Shell `v451`. |
 | `main` | re-check | Behind milestone. Do not merge here unless Tim asks promote-prep. |
 
 Always re-check with `git fetch` before claiming tip SHAs.
@@ -91,30 +92,31 @@ Always re-check with `git fetch` before claiming tip SHAs.
 
 | Item | State |
 |------|--------|
-| Floor open seed: prefer book `reportBuilder.floorLayout`; legacy slide `meta.layout` only if book absent | Done — #194 on milestone. Also on `main` via #193 (that merge published). |
-| Share lookbook = **link only** (no ZIP download) | Done on milestone |
-| RB toolbar regroup: format \| Fit+Present \| Draft/Print/Share/Export | Done on milestone |
-| Plan of Repair as RB-style drawing template | On milestone |
-| On-this-device ••• Delete gate | Done — #198 |
-| Library / home card address on two lines | Done — #199 |
-| POR Paint/PPT toolbar + view-pan fix | Done on integration via #204. Shell `v449` (with Job Walk media). |
-| Job Walk media (delete photo/audio; Take Video + Delete; Sync `vid_`) | Done on integration via #205 → TLS → #204. |
-| TLS workspace integrated build | Done — #204 @ `7f778d6` / tip `803abf9`. |
-| **QC + Job Walk video → File Cabinet (not Check Out)** | **Built on `cursor/qc-cabinet-media-2ac5` — awaiting CC.** Decisions 1–6 in `DECISIONS.md` (Tim Nov 9). Shell `v450`. |
+| Floor open seed / lookbook / RB toolbar / POR / TLS / Job Walk media | Done on integration via #204 @ tip `803abf9`. |
+| **QC + Job Walk video → File Cabinet (not Check Out)** | **PR #208** — Cursor fixed CC findings (report QC tag-only + distress-store media + Photo label; Download video; Worker streamed raw PUT; client thumb shrink when Images absent). Awaiting CC recheck. Shell `v451`. |
+
+### CC findings addressed (from `8b51433` bounce)
+
+1. Untagged `localFull` QC no longer auto-places on Pictures — requires **tagged + localFull**.
+2. QC images resolve from `pgg_photos_v1` (distress store), not only `ToolboxDB.getMedia`.
+3. Labels: no more “Photo 00” for QC — shows **Quick Capture**.
+4. Job Walk **Download video** when clip is Cabinet-only on this device.
+5. Worker media PUT with `x-toolbox-encoding: raw` **streams** into R2 (no full `arrayBuffer` buffer).
+6. Thumbnail fallback: when Worker returns original (`x-toolbox-thumb: original`) or a large body, client shrinks to JPEG thumb.
 
 ---
 
 ## Outstanding — real open work
 
-1. **CC check then Tim merge** of `cursor/qc-cabinet-media-2ac5` into integration. Do not merge to `main`.
+1. **CC recheck then Tim merge** of `cursor/qc-cabinet-media-2ac5` (#208) into integration. Do not merge to `main`.
 
 2. **Open product items (safer defaults shipped; Tim has not decided):**
    - After a video uploads: **keep** the clip on the phone (default) vs clear to free space.
    - Job Walk **audio** notes: still travel with the file like typed notes (default) vs treat like photos/video.
 
-3. **Promote** — Tim only. Live Production does not get this until Tim promotes after integration merge.
+3. **Promote** — Tim only.
 
-4. **Cloudflare Access path bypass for `lookbook/*`** on `sync.sandiageotoolbox.com` — Tim’s ops action.
+4. **Cloudflare Access path bypass for `lookbook/*`** — Tim’s ops action.
 
 5. **Confirm Sync Worker deploy** has lookbook create routes if Share still 404s.
 

@@ -116,7 +116,20 @@ function cabinet(seed) {
       if (typeof value === 'string') body = value;
       else if (value instanceof ArrayBuffer) body = Buffer.from(value).toString('binary');
       else if (ArrayBuffer.isView(value)) body = Buffer.from(value.buffer, value.byteOffset, value.byteLength).toString('binary');
-      else body = String(value);
+      else if (value && typeof value.arrayBuffer === 'function') {
+        // Blob or Response-like body.
+        body = Buffer.from(await value.arrayBuffer()).toString('binary');
+      } else if (value && typeof value.getReader === 'function') {
+        // ReadableStream from raw media PUT (Job Walk video).
+        const reader = value.getReader();
+        const chunks = [];
+        for (;;) {
+          const step = await reader.read();
+          if (step.done) break;
+          chunks.push(Buffer.from(step.value));
+        }
+        body = Buffer.concat(chunks).toString('binary');
+      } else body = String(value);
       const contentType = opts && opts.httpMetadata && opts.httpMetadata.contentType
         ? opts.httpMetadata.contentType
         : 'application/json';
@@ -806,6 +819,12 @@ const readIndex = (bucket) => {
 
   // On-demand video download.
   const vdl = await second.Sync._test.downloadJobWalkVideo(ID, VIDEO_ID);
+    const remoteVideo = bucket.store.get('media/' + VIDEO_ID);
+  check('Upload videos stores raw video bytes (streamed PUT, not a placeholder)',
+    !!remoteVideo && remoteVideo.body && remoteVideo.body.length === videoBytes.length &&
+    remoteVideo.contentType === 'video/webm',
+    JSON.stringify(remoteVideo && { len: remoteVideo.body && remoteVideo.body.length, type: remoteVideo.contentType }));
+
   check('Download video fetches one clip on request',
     vdl && vdl.id === VIDEO_ID && second.sandbox.distressPhotos.has(VIDEO_ID),
     JSON.stringify(vdl));

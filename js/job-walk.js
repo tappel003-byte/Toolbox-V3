@@ -461,17 +461,44 @@
           ? 'In File Cabinet (kept on this phone)'
           : 'On this phone — waiting to upload';
         card.appendChild(meta);
+        var downloadBtn = document.createElement('button');
+        downloadBtn.type = 'button';
+        downloadBtn.className = 'btn btn--secondary jw-download-video';
+        downloadBtn.textContent = 'Download video';
+        downloadBtn.hidden = true;
+        downloadBtn.addEventListener('click', function () {
+          if (!window.ToolboxSync || typeof window.ToolboxSync.downloadJobWalkVideo !== 'function') {
+            setStatus('Download video is not available');
+            return;
+          }
+          setStatus('Downloading video…');
+          window.ToolboxSync.downloadJobWalkVideo(state.record.id, item.id).then(function () {
+            setStatus('Video downloaded to this device');
+            renderVideos();
+          }).catch(function (err) {
+            console.error(err);
+            setStatus((err && err.message) || 'Could not download video');
+          });
+        });
+        card.appendChild(downloadBtn);
         getStoredMedia(item.id).then(function (value) {
           var src = mediaSrc(value);
           if (!src) {
             meta.textContent = item.cabinetUploadedAt
-              ? 'In the File Cabinet — open File Explorer to play'
+              ? 'In the File Cabinet — tap Download video'
               : 'Video bytes missing on this device';
+            if (item.cabinetUploadedAt) downloadBtn.hidden = false;
             return;
           }
           if (src.indexOf('blob:') === 0) state.objectUrls.push(src);
           video.src = src;
-        }).catch(function () {});
+          // Still offer download when Cabinet has it and local is missing a refresh path.
+          if (item.cabinetUploadedAt && !state.readOnly) {
+            // Keep local after upload (open item); no forced re-download.
+          }
+        }).catch(function () {
+          if (item.cabinetUploadedAt) downloadBtn.hidden = false;
+        });
         var desc = document.createElement('textarea');
         desc.className = 'jw-card__desc';
         desc.rows = 2;

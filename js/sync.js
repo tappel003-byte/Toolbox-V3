@@ -2063,6 +2063,46 @@
    * Store a few-KB JPEG (or original fallback) per Quick Capture so Check Out
    * lists browse offline without full photo bytes.
    */
+  /**
+   * Shrink a full/original image to a few-KB JPEG when the Worker has no
+   * Images binding (x-toolbox-thumb: original) or returns a large body.
+   */
+  function shrinkImageBlobToThumb(blob, edge) {
+    edge = edge || 320;
+    if (!blob || typeof createImageBitmap !== 'function') {
+      return blobToDataUrl(blob);
+    }
+    return createImageBitmap(blob).then(function (bitmap) {
+      try {
+        const w = bitmap.width || edge;
+        const h = bitmap.height || edge;
+        const scale = Math.min(1, edge / Math.max(w, h));
+        const tw = Math.max(1, Math.round(w * scale));
+        const th = Math.max(1, Math.round(h * scale));
+        if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+          if (typeof bitmap.close === 'function') bitmap.close();
+          return blobToDataUrl(blob);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = tw;
+        canvas.height = th;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          if (typeof bitmap.close === 'function') bitmap.close();
+          return blobToDataUrl(blob);
+        }
+        ctx.drawImage(bitmap, 0, 0, tw, th);
+        if (typeof bitmap.close === 'function') bitmap.close();
+        return canvas.toDataURL('image/jpeg', 0.72);
+      } catch (_) {
+        if (bitmap && typeof bitmap.close === 'function') bitmap.close();
+        return blobToDataUrl(blob);
+      }
+    }).catch(function () {
+      return blobToDataUrl(blob);
+    });
+  }
+
   async function storeQuickCaptureThumbnail(mediaId) {
     if (!mediaId) return false;
     try {
@@ -2070,7 +2110,11 @@
       if (!response || !response.ok) return false;
       const blob = await response.blob();
       if (!blob || !blob.size) return false;
-      const dataUrl = await blobToDataUrl(blob);
+      const thumbKind = (response.headers && response.headers.get('x-toolbox-thumb')) || '';
+      // When Images is absent the Worker returns the original — shrink here.
+      const dataUrl = (thumbKind === 'original' || blob.size > 80 * 1024)
+        ? await shrinkImageBlobToThumb(blob, 320)
+        : await blobToDataUrl(blob);
       if (typeof dataUrl !== 'string' || dataUrl.indexOf('data:') !== 0) return false;
       await putDistressPhoto(thumbMediaKey(mediaId), dataUrl);
       return true;
