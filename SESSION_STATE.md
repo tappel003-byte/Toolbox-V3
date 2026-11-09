@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 9, 2026** (America/Denver)  
-Updated by: Cursor — fixed CC findings on #208; push for CC recheck.
+Updated by: Claude Code — recheck of `6cfaefb` (#208): behavior passes; three small items; Ball to Cursor.
 
 ---
 
@@ -19,9 +19,9 @@ Updated by: Cursor — fixed CC findings on #208; push for CC recheck.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** |
-| Check this | **PR #208** — https://github.com/tappel003-byte/Toolbox-V3/pull/208 |
-| Branch / tip | `cursor/qc-cabinet-media-2ac5` (shell `v451`). |
+| **Has the ball** | **Cursor** — last small items on PR #208 (CC recheck of `6cfaefb`): update stale Photo folders note assertion in tests/customer-file-import.mjs; set video clip limit with headroom under the Workers 100 MB request limit; state that the streaming media PUT needs a Sync Worker deploy (Tim). |
+| CC result (`6cfaefb`) | Passes on behavior: report places only tagged + downloaded QC (image loads, labelled Quick Capture); Download video works and stores a raw Blob; Worker streams raw media; thumbnails shrink on the client. Suites: 57 run, only failures are customer-file-import (stale note text, 3) plus the two that also fail on base. |
+| Next | **Claude Code** quick recheck, then **Tim** (merge). |
 | Base | `claude/milestone-1-customer-file-qv5ybf` @ `803abf9`. Do **not** merge until Tim says. |
 | Not done | CC recheck → Tim merge to integration → Tim promote. |
 
