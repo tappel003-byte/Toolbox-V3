@@ -22,7 +22,7 @@ Updated by: Cursor agent — Paint/PPT POR toolbar + view-pan fix on `cursor/tls
 | **Has the ball** | **Claude Code** (independent recheck of Paint/PPT POR + pan fix) |
 | Next after Claude finishes | **Tim** (accept / merge call / promote) |
 | Prior Claude (`3f16ddd`) | Technical pass except **view-pan blocker** (detached host after renderSheet). Fixed in this tip. |
-| Branch / tip | `cursor/tls-workspace-2ac5` — Paint/PPT `cbedf8b`; shell `v448` |
+| Branch / tip | `cursor/tls-workspace-2ac5` — Paint/PPT `73f8c29`; shell `v448` |
 | Do not merge | until Tim says so |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
