@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 8, 2026** (America/Denver)  
-Updated by: Cursor agent — POR corrected back to Report Builder–familiar chrome after Tim’s vision hold on `c16e6e2`; Ball → Claude Code.
+Updated by: Claude Code — recheck of `3f16ddd`: view pan blocker; Ball to Cursor.
 
 ---
 
@@ -19,9 +19,9 @@ Updated by: Cursor agent — POR corrected back to Report Builder–familiar chr
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** (independent recheck of POR RB-familiar correction) |
-| Next after Claude finishes | **Tim** / ChatGPT vision / merge call |
-| Prior Claude result (`c16e6e2`) | Technical pass; Tim held vision (“less like Paint/PowerPoint”). Lows fixed in this tip: detail covering overall; Print dropping a toolbar row. |
+| **Has the ball** | **Cursor** — fix view pan in Plan of Repair (Claude Code recheck of `3f16ddd`). |
+| Next | **Claude Code** rechecks the fix, then **ChatGPT** vision check. Not a merge go-ahead. |
+| Claude Code result (`3f16ddd`) | Everything else holds: RB-familiar toolbar, Print/PDF stays on row one while text is edited, detail view side by side with overall (no overlap, all controls reachable, Move works), text + undo/redo, reopen, one page per sheet, 4-sheet PDF from sheet 2 in order with TLS title blocks, missing/changed warnings, Job Walk, sync; 53 suites, only failures also fail on base. **Blocker:** dragging inside a view throws its framing to the edge (5 px drag: cx 0.5 → 1) — pointerdown stores `host: viewHost` then calls renderSheet(), so the stored host is detached (clientWidth 0 → fw 1). Present since `46a88c0`; earlier Claude passes missed it. |
 | Branch / tip | `cursor/tls-workspace-2ac5` — POR RB-familiar `3f16ddd` after `c16e6e2`; shell `v447` |
 | Do not merge | until Tim says so |
 
