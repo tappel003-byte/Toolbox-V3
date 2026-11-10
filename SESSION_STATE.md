@@ -20,7 +20,7 @@ Updated by: Cursor — merge all into integration; Ball stays with Tim.
 | Field | Value |
 |-------|--------|
 | **Has the ball** | **Tim** — Sync Worker **deployed** Nov 10 (version `9f211d74-bc47-45c1-bda9-1904e884c214`). Open https://sync.sandiageotoolbox.com/health and do one Sync Now; then app promote when ready. |
-| Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `2cff965` (shell `v452`). Merged this turn: #209, #207, #165. Closed as already-on-tip / superseded: #151, #139. Left open against `main` (not merged — Tim promote): #97, #86, #85. |
+| Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `d4d1054` (shell `v452`). Merged this turn: #209, #207, #165. Closed as already-on-tip / superseded: #151, #139. Left open against `main` (not merged — Tim promote): #97, #86, #85. |
 | Not done | Tim browser check of live Worker → app **promote** (Tim). Not merged to `main`. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
