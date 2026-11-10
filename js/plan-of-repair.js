@@ -128,14 +128,45 @@
     };
   }
 
+  var POR_OVERLAY_KINDS = {
+    path: 1, rect: 1, roundRect: 1, circle: 1, triangle: 1,
+    line: 1, arrow: 1, text: 1, image: 1, group: 1, ellipse: 1,
+  };
+
+  function normalizePorOverlays(list) {
+    var out = [];
+    (Array.isArray(list) ? list : []).forEach(function (raw) {
+      if (!raw || typeof raw !== 'object') return;
+      var kind = POR_OVERLAY_KINDS[raw.kind] ? raw.kind : null;
+      if (!kind) {
+        // Legacy / foreign — let RB normalize handle placed boxes only.
+        if (window.ToolboxReportOverlay && window.ToolboxReportOverlay.normalize) {
+          var one = window.ToolboxReportOverlay.normalize([raw])[0];
+          if (one) out.push(one);
+        }
+        return;
+      }
+      // Shallow clone keeps Fabric fields (bold, fontSize, members, angle, mediaId…).
+      var item = Object.assign({}, raw);
+      item.kind = kind;
+      if (!item.id) item.id = uid('ov');
+      if (kind === 'group' && Array.isArray(raw.members)) {
+        item.members = normalizePorOverlays(raw.members);
+      }
+      out.push(item);
+    });
+    return out;
+  }
+
   function normalizeDoc(raw) {
     if (raw && Array.isArray(raw.pages)) {
       var pages = raw.pages.map(function (p, i) {
         var page = blankPage((p && p.title) || ('Drawing ' + (i + 1)));
         if (p && p.id) page.id = p.id;
-        page.overlays = window.ToolboxReportOverlay
-          ? window.ToolboxReportOverlay.normalize(p.overlays || [])
-          : (Array.isArray(p.overlays) ? p.overlays : []);
+        // Fabric POR overlays carry fields RB normalize strips (bold, roundRect,
+        // line, group, triangle, angle…). Keep a POR-aware pass; do not run
+        // ToolboxReportOverlay.normalize on schema-v3 drawings.
+        page.overlays = normalizePorOverlays(p.overlays || []);
         page.background = p && p.background && typeof p.background === 'object'
           ? {
               kind: p.background.kind === 'contour' || p.background.kind === 'plan' ||
@@ -947,46 +978,46 @@
         if (!state.keepTool) setInkTool(null);
         else canvas.isDrawingMode = state.inkTool === 'pencil';
       });
+      // Before Fabric starts a marquee selection, claim empty-space drags over a
+      // view frame as view-pan (Fabric sits above the plan images).
+      canvas.on('mouse:down:before', function (opt) {
+        if (state.readOnly || state.printMode || state.inkTool) return;
+        if (opt.target || !opt.e || opt.e.button === 2) return;
+        var pe = opt.e;
+        if (!sheetEl) return;
+        var frames = sheetEl.querySelectorAll('.por-view-frame');
+        for (var fi = 0; fi < frames.length; fi++) {
+          var frameEl = frames[fi];
+          if (!frameEl || typeof frameEl.getBoundingClientRect !== 'function') continue;
+          var fr = frameEl.getBoundingClientRect();
+          if (pe.clientX >= fr.left && pe.clientX <= fr.right &&
+              pe.clientY >= fr.top && pe.clientY <= fr.bottom) {
+            var vi = Number(frameEl.getAttribute('data-por-view'));
+            var views = activeViews();
+            var view = views[vi];
+            if (!view) return;
+            pushHistory();
+            state.drag = {
+              mode: 'view-pan',
+              viewIndex: vi,
+              startClient: { x: pe.clientX, y: pe.clientY },
+              hostW: Math.max(1, fr.width),
+              hostH: Math.max(1, fr.height),
+              origCamera: deepClone(viewCamera(view)),
+            };
+            state.selectedViewIndex = vi;
+            canvas.selection = false;
+            canvas.discardActiveObject();
+            return;
+          }
+        }
+      });
       canvas.on('mouse:down', function (opt) {
         if (state.readOnly || state.printMode) return;
         if (opt.e && opt.e.button === 2) return;
         var tool = state.inkTool;
-        // Empty-space drag over a view frame pans that view (Fabric sits above views).
-        // Must complete pan on Fabric mouse:move/up — Puppeteer and browsers deliver
-        // mouse events to the upper canvas, not window pointermove.
-        if (!opt.target && !tool) {
-          var pe = opt.e;
-          if (pe && sheetEl) {
-            var frames = sheetEl.querySelectorAll('.por-view-frame');
-            for (var fi = 0; fi < frames.length; fi++) {
-              var frameEl = frames[fi];
-              if (!frameEl || typeof frameEl.getBoundingClientRect !== 'function') continue;
-              var fr = frameEl.getBoundingClientRect();
-              if (pe.clientX >= fr.left && pe.clientX <= fr.right &&
-                  pe.clientY >= fr.top && pe.clientY <= fr.bottom) {
-                var vi = Number(frameEl.getAttribute('data-por-view'));
-                var views = activeViews();
-                var view = views[vi];
-                if (!view) break;
-                // Capture live frame size BEFORE any re-render (detached-host bug).
-                pushHistory();
-                state.drag = {
-                  mode: 'view-pan',
-                  viewIndex: vi,
-                  startClient: { x: pe.clientX, y: pe.clientY },
-                  hostW: Math.max(1, fr.width),
-                  hostH: Math.max(1, fr.height),
-                  origCamera: deepClone(viewCamera(view)),
-                };
-                state.selectedViewIndex = vi;
-                canvas.selection = false;
-                canvas.discardActiveObject();
-                canvas.requestRenderAll();
-                return;
-              }
-            }
-          }
-        }
+        // View-pan already claimed in mouse:down:before.
+        if (state.drag && state.drag.mode === 'view-pan') return;
         if (!tool || tool === 'pencil' || tool === 'eraser') return;
         if (opt.target && tool !== 'eraser') return;
         var pointer = canvas.getPointer(opt.e);
@@ -1118,10 +1149,13 @@
         }, common));
       }
       if (tool === 'line' || tool === 'arrow') {
+        var isArrow = tool === 'arrow' || state.inkArrowEnd === 'triangle';
         var line = new f.Line([x0, y0, x1, y1], Object.assign({}, common, {
           fill: '',
-          porArrow: tool === 'arrow' || state.inkArrowEnd === 'triangle',
+          porArrow: isArrow,
+          porKind: isArrow ? 'arrow' : 'line',
         }));
+        if (isArrow && PorFab.decorateArrow) PorFab.decorateArrow(line);
         return line;
       }
       return null;
@@ -2852,6 +2886,14 @@
       if (event.button != null && event.button !== 0) return;
       if (event.target.closest && event.target.closest('[contenteditable="true"]')) return;
       if (event.target.closest && event.target.closest('.rb-rail__rail')) return;
+      // Fabric owns drawing/selection on its canvas. Intercepting pointerdown here
+      // (beginInk → preventDefault / renderSheet) stopped real mouse events from
+      // reaching Fabric — tests only passed with synthetic MouseEvents.
+      if (event.target.closest && event.target.closest(
+        '.por-fabric-host, .canvas-container, .upper-canvas, .lower-canvas'
+      )) {
+        return;
+      }
 
       var viewResize = event.target.closest && event.target.closest('[data-por-view-resize]');
       if (viewResize) {
@@ -2966,12 +3008,20 @@
         return;
       }
       if (state.inkTool) {
-        beginInk(event);
+        // Legacy DOM ink path only when Fabric is not mounted.
+        if (!state.fabricCanvas) beginInk(event);
         return;
       }
 
       state.selectedId = null;
       state.selectedViewIndex = null;
+      if (state.fabricCanvas) {
+        state.fabricCanvas.discardActiveObject();
+        state.fabricCanvas.requestRenderAll();
+        syncHistoryButtons();
+        syncSelectionPane();
+        return;
+      }
       renderSheet();
     }
 

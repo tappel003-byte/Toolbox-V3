@@ -258,6 +258,22 @@ check(
 );
 
 // View pan must move camera proportionally — detached-host bug flung cx to 1.
+// Reset detail camera in IndexedDB and reopen POR so in-memory state matches.
+await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId)
+    || record.planOfRepair.pages[0];
+  if (page0.meta && page0.meta.views && page0.meta.views[1]) {
+    page0.meta.views[1].camera = { cx: 0.5, cy: 0.5, zoom: 2.4, rel: true };
+    record.planOfRepair.updatedAt = new Date().toISOString();
+    await window.ToolboxDB.saveCustomerFile(record);
+  }
+});
+await page.click('#por-back');
+await page.waitForSelector('#home-repair-top');
+await page.click('#home-repair-top');
+await page.waitForSelector('.por-view-frame[data-por-view="1"]', { timeout: 8000 });
+await new Promise((r) => setTimeout(r, 400));
 const panProbe = await page.evaluate(async () => {
   const host = document.querySelector('.por-view-frame[data-por-view="1"]');
   if (!host) return { ok: false, reason: 'no-host' };
@@ -948,6 +964,130 @@ check(
   JSON.stringify(picInsert)
 );
 await page.screenshot({ path: path.join(OUT, 'por-stage4-picture.png'), fullPage: true });
+
+// CC blockers: real mouse draw, no drift, arrowheads, bold, Print visible.
+await page.keyboard.press('Escape');
+await page.click('[data-rb-tool="triangle"]');
+const sheetBox2 = await page.$eval('.rb-sheet', (el) => {
+  const r = el.getBoundingClientRect();
+  return { x: r.left, y: r.top, w: r.width, h: r.height };
+});
+const beforeReal = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId)
+    || record.planOfRepair.pages[0];
+  return (page0.overlays || []).length;
+});
+await page.mouse.move(sheetBox2.x + sheetBox2.w * 0.2, sheetBox2.y + sheetBox2.h * 0.25);
+await page.mouse.down();
+await page.mouse.move(sheetBox2.x + sheetBox2.w * 0.28, sheetBox2.y + sheetBox2.h * 0.35, { steps: 4 });
+await page.mouse.up();
+await new Promise((r) => setTimeout(r, 500));
+const afterReal = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId)
+    || record.planOfRepair.pages[0];
+  const kinds = (page0.overlays || []).map((o) => o.kind);
+  return { n: (page0.overlays || []).length, kinds };
+});
+check(
+  'real mouse draws a mark (not only synthetic)',
+  afterReal.n > beforeReal && afterReal.kinds.indexOf('triangle') !== -1,
+  JSON.stringify({ beforeReal, afterReal })
+);
+
+const drift = await page.evaluate(() => {
+  const canvas = document.querySelector('.por-fabric-host')._porCanvas;
+  const rect = canvas.getObjects().find((o) => o.porKind === 'rect' || o.type === 'rect');
+  if (!rect) return { ok: false, reason: 'no-rect' };
+  const before = {
+    x0: window.ToolboxPorFabric.xToPct(rect.left),
+    y0: window.ToolboxPorFabric.yToPct(rect.top),
+    w: window.ToolboxPorFabric.xToPct(rect.width * (rect.scaleX || 1)),
+    h: window.ToolboxPorFabric.yToPct(rect.height * (rect.scaleY || 1)),
+  };
+  const overlays = window.ToolboxPorFabric.canvasToOverlays(canvas);
+  window.ToolboxPorFabric.overlaysToCanvas(canvas, overlays, { readOnly: false });
+  const again = canvas.getObjects().find((o) => o.porId === rect.porId) ||
+    canvas.getObjects().find((o) => o.porKind === 'rect' || o.type === 'rect');
+  const after = {
+    x0: window.ToolboxPorFabric.xToPct(again.left),
+    y0: window.ToolboxPorFabric.yToPct(again.top),
+    w: window.ToolboxPorFabric.xToPct(again.width * (again.scaleX || 1)),
+    h: window.ToolboxPorFabric.yToPct(again.height * (again.scaleY || 1)),
+  };
+  return {
+    ok: Math.abs(before.x0 - after.x0) < 0.15 && Math.abs(before.y0 - after.y0) < 0.15 &&
+      Math.abs(before.w - after.w) < 0.2 && Math.abs(before.h - after.h) < 0.2,
+    before, after,
+  };
+});
+check('shapes do not drift on overlay round-trip', drift.ok, JSON.stringify(drift));
+
+const arrowRound = await page.evaluate(() => {
+  const canvas = document.querySelector('.por-fabric-host')._porCanvas;
+  const line = new window.fabric.Line([100, 100, 220, 160], {
+    stroke: '#1d4ed8', strokeWidth: 3, porArrow: true, porKind: 'arrow', porId: 'ov-arrow-test',
+  });
+  window.ToolboxPorFabric.decorateArrow(line);
+  canvas.add(line);
+  const overlays = window.ToolboxPorFabric.canvasToOverlays(canvas);
+  const saved = overlays.find((o) => o.id === 'ov-arrow-test' || o.kind === 'arrow');
+  window.ToolboxPorFabric.overlaysToCanvas(canvas, overlays, { readOnly: false });
+  const loaded = canvas.getObjects().find((o) => o.porId === 'ov-arrow-test' || o.porKind === 'arrow');
+  return {
+    savedKind: saved && saved.kind,
+    loadedArrow: !!(loaded && (loaded.porArrow || loaded.porKind === 'arrow')),
+    decorated: !!(loaded && loaded.__porArrowDecorated),
+  };
+});
+check(
+  'arrow keeps arrowhead through save/load',
+  arrowRound.savedKind === 'arrow' && arrowRound.loadedArrow && arrowRound.decorated,
+  JSON.stringify(arrowRound)
+);
+
+const boldRound = await page.evaluate(() => {
+  const doc = window.ToolboxPlanOfRepair.normalizeDoc({
+    schema: 'toolbox.plan-of-repair',
+    schemaVersion: 3,
+    engine: 'fabric',
+    activePageId: 'p1',
+    pages: [{
+      id: 'p1',
+      title: 'T',
+      overlays: [{
+        id: 'ov-bold', kind: 'text', text: 'Bold me', bold: true, fontSize: 22,
+        x: 10, y: 10, w: 20, h: 8, color: '#111111',
+      }],
+      background: { kind: null },
+      meta: {},
+      rail: {},
+    }],
+  });
+  const ov = doc.pages[0].overlays[0];
+  return { bold: !!(ov && ov.bold), fontSize: ov && ov.fontSize, kind: ov && ov.kind };
+});
+check(
+  'normalize keeps text bold/fontSize',
+  boldRound.bold && boldRound.fontSize === 22 && boldRound.kind === 'text',
+  JSON.stringify(boldRound)
+);
+
+const printVisible = await page.evaluate(() => {
+  const btn = document.querySelector('#por-print');
+  if (!btn) return { ok: false };
+  const r = btn.getBoundingClientRect();
+  const toolbar = document.querySelector('.por-toolbar');
+  const tr = toolbar.getBoundingClientRect();
+  return {
+    ok: r.width > 20 && r.height > 10 && r.right <= tr.right + 2 && r.top >= tr.top - 2,
+    r: { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
+    tr: { left: tr.left, right: tr.right, top: tr.top, bottom: tr.bottom },
+  };
+});
+check('Print button stays on toolbar', printVisible.ok, JSON.stringify(printVisible));
+await page.screenshot({ path: path.join(OUT, 'por-cc-blockers-fixed.png'), fullPage: true });
 
 await page.screenshot({ path: path.join(OUT, 'por-shape-inspector.png'), fullPage: true });
 

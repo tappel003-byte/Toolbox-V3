@@ -121,15 +121,12 @@
         {
           strokeLineCap: 'round',
           porArrow: item.kind === 'arrow',
+          porKind: item.kind === 'arrow' ? 'arrow' : 'line',
         }
       );
       applyCommon(obj, item);
-      obj.set({ fill: '' });
-      if (item.kind === 'arrow') {
-        obj.set({
-          strokeDashArray: null,
-        });
-      }
+      obj.set({ fill: '', porKind: item.kind === 'arrow' ? 'arrow' : 'line' });
+      if (item.kind === 'arrow') decorateArrow(obj);
     } else if (item.kind === 'text' || item.kind === 'ellipse' && item.text != null) {
       // Placed text box (RB-style x,y,w,h) or drawn text.
       var left; var top; var width;
@@ -188,6 +185,53 @@
       return null;
     }
     return styleControls(obj);
+  }
+
+  // Draw a filled arrowhead at the line's end without changing stored geometry.
+  function decorateArrow(line) {
+    if (!line || line.__porArrowDecorated) return line;
+    line.__porArrowDecorated = true;
+    line.porArrow = true;
+    line.porKind = 'arrow';
+    var baseRender = line._render;
+    line._render = function (ctx) {
+      baseRender.call(this, ctx);
+      var x1 = this.x1;
+      var y1 = this.y1;
+      var x2 = this.x2;
+      var y2 = this.y2;
+      var angle = Math.atan2(y2 - y1, x2 - x1);
+      var head = 10 + (Number(this.strokeWidth) || 2) * 1.8;
+      ctx.save();
+      ctx.fillStyle = this.stroke || '#1d4ed8';
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(
+        x2 - head * Math.cos(angle - Math.PI / 7),
+        y2 - head * Math.sin(angle - Math.PI / 7)
+      );
+      ctx.lineTo(
+        x2 - head * Math.cos(angle + Math.PI / 7),
+        y2 - head * Math.sin(angle + Math.PI / 7)
+      );
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    };
+    return line;
+  }
+
+  // Object-space box without stroke padding — getBoundingRect grows shapes each save.
+  function boxFromObject(obj) {
+    var w = Math.abs((Number(obj.width) || 0) * (Number(obj.scaleX) || 1));
+    var h = Math.abs((Number(obj.height) || 0) * (Number(obj.scaleY) || 1));
+    var left = Number(obj.left) || 0;
+    var top = Number(obj.top) || 0;
+    if (obj.originX === 'center') left -= w / 2;
+    if (obj.originY === 'center') top -= h / 2;
+    if (obj.originX === 'right') left -= w;
+    if (obj.originY === 'bottom') top -= h;
+    return { left: left, top: top, w: w, h: h };
   }
 
   function styleFromObject(obj, kindHint) {
@@ -263,12 +307,12 @@
       itemT.color = HEX.test(String(child.fill || '')) ? child.fill : '#111111';
       return itemT;
     }
-    var br = child.getBoundingRect(true, true);
+    var boxB = boxFromObject(child);
     var itemB = styleFromObject(child);
-    itemB.x0 = xToPct(br.left);
-    itemB.y0 = yToPct(br.top);
-    itemB.x1 = xToPct(br.left + br.width);
-    itemB.y1 = yToPct(br.top + br.height);
+    itemB.x0 = xToPct(boxB.left);
+    itemB.y0 = yToPct(boxB.top);
+    itemB.x1 = xToPct(boxB.left + boxB.w);
+    itemB.y1 = yToPct(boxB.top + boxB.h);
     if (itemB.kind === 'path') {
       itemB.points = [
         [itemB.x0, itemB.y0],
@@ -369,12 +413,12 @@
       item.x1 = xToPct(x2); item.y1 = yToPct(y2);
       return item;
     }
-    // Rect / ellipse / triangle from bounding box in object space.
-    var br = obj.getBoundingRect(true, true);
-    item.x0 = xToPct(br.left);
-    item.y0 = yToPct(br.top);
-    item.x1 = xToPct(br.left + br.width);
-    item.y1 = yToPct(br.top + br.height);
+    // Rect / ellipse / triangle from object geometry (not stroke-inflated AABB).
+    var box = boxFromObject(obj);
+    item.x0 = xToPct(box.left);
+    item.y0 = yToPct(box.top);
+    item.x1 = xToPct(box.left + box.w);
+    item.y1 = yToPct(box.top + box.h);
     if (item.kind === 'roundRect') item.kind = 'roundRect';
     return item;
   }
@@ -484,6 +528,11 @@
       cornerSize: 12,
       rotatingPointOffset: 28,
     });
+    // Re-decorate arrows after canvas load / enliven.
+    canvas.on('object:added', function (opt) {
+      var t = opt && opt.target;
+      if (t && (t.porArrow || t.porKind === 'arrow') && t.type === 'line') decorateArrow(t);
+    });
     return canvas;
   }
 
@@ -505,6 +554,7 @@
     overlayToObject: overlayToObject,
     objectToOverlay: objectToOverlay,
     styleControls: styleControls,
+    decorateArrow: decorateArrow,
     snapshotCanvas: snapshotCanvas,
     replaceWithImage: replaceWithImage,
     uid: uid,
