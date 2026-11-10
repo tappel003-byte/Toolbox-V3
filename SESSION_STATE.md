@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 10, 2026** (America/Denver)  
-Updated by: Cursor — POR Fabric CC2 fixes (`ab7e903`); Ball to Claude Code.
+Updated by: Claude Code — recheck of POR Fabric `ab7e903`: style-save and undo broken; Ball to Cursor.
 
 ---
 
@@ -19,7 +19,7 @@ Updated by: Cursor — POR Fabric CC2 fixes (`ab7e903`); Ball to Claude Code.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** — recheck POR Fabric CC2 tip `ab7e903` on `cursor/por-fabric-stages-2ac5` (shell `v456`). Prior open items addressed: (1) multi-select align/group absolute sheet coords; (2) arrow open/close exact + no dirty save when unchanged; (3) legacy rich-text bold kept; (4) Insert Text edit-mode typing saves; (5) arrowhead pixel check on screen/print. |
+| **Has the ball** | **Cursor** — CC recheck of `ab7e903`: multi-select align/group coords, arrow round-trip, legacy bold, Insert Text typing all fixed. Still open: (1) style changes on a selected shape (outline colour, dash) are not saved; (2) Undo/Redo (Ctrl+Z, Ctrl+Y, toolbar) do nothing to the drawing; (3) Print/PDF wraps to a second toolbar row at 1440 px. Next: Claude Code recheck, then Tim. |
 | Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (pre-POR-Fabric). Feature PR bases there; not merged. |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
