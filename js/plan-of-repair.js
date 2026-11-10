@@ -1,12 +1,10 @@
-// Toolbox — Plan of Repair drawing template.
+// Toolbox — Plan of Repair drawing workspace (Fabric.js drawing surface).
 //
-// Same doorway (top-bar Plan of Repair). Same Report Builder look: top tools,
-// left pages, sheet, right panel, title rail. Drawing-first: bring in a plan
-// or black-and-white contour, then use the shared pencil / rect / circle /
-// arrow / text tools, resize, and copy/paste shapes.
+// TLS doorway. Pages / backgrounds / views / TLS title block / Print unchanged
+// in role. Drawing marks run on vendored Fabric.js (see js/por-fabric.js).
+// Report Builder and js/report-overlay.js are not modified.
 //
-// Document lives on record.planOfRepair (sync component `repair`). Does not
-// write into reportBuilder.
+// Document lives on record.planOfRepair (sync component `repair`).
 (function () {
   'use strict';
 
@@ -120,7 +118,9 @@
     return {
       updatedAt: raw.updatedAt || '',
       schema: 'toolbox.plan-of-repair',
-      schemaVersion: 2,
+      schemaVersion: 3,
+      engine: 'fabric',
+      fabricVersion: (window.ToolboxPorFabric && window.ToolboxPorFabric.VERSION) || '5.3.0',
       activePageId: page.id,
       northRotation: (raw.rail && Number(raw.rail.northRotation)) || 0,
       pages: [page],
@@ -167,7 +167,10 @@
       return {
         updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : '',
         schema: 'toolbox.plan-of-repair',
-        schemaVersion: 2,
+        // v3 = Fabric-backed drawing surface (Tim, Nov 10, 2026).
+        schemaVersion: 3,
+        engine: 'fabric',
+        fabricVersion: (window.ToolboxPorFabric && window.ToolboxPorFabric.VERSION) || '5.3.0',
         activePageId: active,
         northRotation: isFinite(Number(raw.northRotation)) ? Number(raw.northRotation) : 0,
         pages: pages,
@@ -175,13 +178,20 @@
       };
     }
     var migrated = migrateLegacy(raw);
-    if (migrated) return migrated;
+    if (migrated) {
+      migrated.schemaVersion = 3;
+      migrated.engine = 'fabric';
+      migrated.fabricVersion = (window.ToolboxPorFabric && window.ToolboxPorFabric.VERSION) || '5.3.0';
+      return migrated;
+    }
     var first = blankPage('Drawing 1');
     first.rail.sheetId = 'POR-1';
     return {
       updatedAt: '',
       schema: 'toolbox.plan-of-repair',
-      schemaVersion: 2,
+      schemaVersion: 3,
+      engine: 'fabric',
+      fabricVersion: (window.ToolboxPorFabric && window.ToolboxPorFabric.VERSION) || '5.3.0',
       activePageId: first.id,
       northRotation: 0,
       pages: [first],
@@ -260,11 +270,19 @@
       '  <div class="por-toolbar__group por-toolbar__tools" role="group" aria-label="Tools">' +
       '    <button type="button" class="por-iconbtn is-on" data-por-tool="select" title="Select" aria-label="Select">' + ICONS.select + '</button>' +
       '    <button type="button" class="por-iconbtn" data-rb-tool="pencil" title="Pencil" aria-label="Pencil">' + ICONS.pencil + '</button>' +
-      '    <button type="button" class="por-iconbtn" data-rb-tool="arrow" title="Line / arrow" aria-label="Arrow">' + ICONS.arrow + '</button>' +
+      '    <button type="button" class="por-iconbtn" data-rb-tool="line" title="Line" aria-label="Line">' +
+            svgIcon('<path d="M5 19 19 5"/>') + '</button>' +
+      '    <button type="button" class="por-iconbtn" data-rb-tool="arrow" title="Arrow" aria-label="Arrow">' + ICONS.arrow + '</button>' +
       '    <button type="button" class="por-iconbtn" data-rb-tool="rect" title="Rectangle" aria-label="Rectangle">' + ICONS.rect + '</button>' +
-      '    <button type="button" class="por-iconbtn" data-rb-tool="circle" title="Circle" aria-label="Circle">' + ICONS.circle + '</button>' +
+      '    <button type="button" class="por-iconbtn" data-rb-tool="roundRect" title="Rounded rectangle" aria-label="Rounded rectangle">' +
+            svgIcon('<rect x="3.5" y="5.5" width="17" height="13" rx="4"/>') + '</button>' +
+      '    <button type="button" class="por-iconbtn" data-rb-tool="circle" title="Circle / oval" aria-label="Circle">' + ICONS.circle + '</button>' +
+      '    <button type="button" class="por-iconbtn" data-rb-tool="triangle" title="Triangle" aria-label="Triangle">' +
+            svgIcon('<path d="M12 4 20 19H4z"/>') + '</button>' +
       '    <button type="button" class="por-iconbtn" id="por-insert-text" title="Text box" aria-label="Text">' + ICONS.text + '</button>' +
       '    <button type="button" class="por-iconbtn" data-rb-tool="eraser" title="Eraser" aria-label="Eraser">' + ICONS.eraser + '</button>' +
+      '    <button type="button" class="por-iconbtn" id="por-keep-tool" title="Keep tool on for many marks" aria-label="Keep tool on" aria-pressed="false">' +
+            svgIcon('<path d="M7 7h10v10H7z"/><path d="M9 3v2M15 3v2M9 19v2M15 19v2M3 9h2M3 15h2M19 9h2M19 15h2"/>') + '</button>' +
       '  </div>' +
       '  <div class="por-toolbar__group" role="group" aria-label="Style">' +
       '    <div class="por-picker" data-por-picker="outline">' +
@@ -385,6 +403,7 @@
       undo: [],
       redo: [],
       inkTool: null,
+      keepTool: false,
       inkThick: 2,
       inkColor: '#1d4ed8',
       inkFill: false,
@@ -406,7 +425,13 @@
       fillColor: '#eab308',
       editSeq: 0,
       editingText: false,
+      fabricCanvas: null,
+      fabricHost: null,
+      fabricWired: false,
+      convertingLegacy: false,
+      shapeDraft: null,
     };
+    var PorFab = window.ToolboxPorFabric;
 
     var sheetEl = root.querySelector('#por-sheet');
     var stageEl = root.querySelector('#por-stage');
@@ -482,6 +507,26 @@
 
     function applyOutlineColor(color) {
       if (!color) return;
+      if (state.fabricCanvas && !state.readOnly) {
+        var active = state.fabricCanvas.getActiveObject();
+        if (active) {
+          pushHistory();
+          if (active.type === 'activeSelection') {
+            active.forEachObject(function (o) {
+              if (o.type === 'textbox' || o.type === 'i-text') o.set('fill', color);
+              else o.set('stroke', color);
+            });
+          } else if (active.type === 'textbox' || active.type === 'i-text') {
+            active.set('fill', color);
+          } else {
+            active.set('stroke', color);
+          }
+          state.fabricCanvas.requestRenderAll();
+          syncOverlaysFromFabric();
+          scheduleSave();
+          return;
+        }
+      }
       var item = selectedItem();
       if (item && !state.readOnly) {
         pushHistory();
@@ -492,12 +537,31 @@
       }
       state.inkColor = color;
       syncHistoryButtons();
+      applyFabricToolMode();
     }
 
     function applyFillColor(color) {
       if (!color) return;
+      if (state.fabricCanvas && !state.readOnly) {
+        var active = state.fabricCanvas.getActiveObject();
+        if (active && active.type !== 'line' && active.type !== 'path') {
+          pushHistory();
+          if (active.type === 'activeSelection') {
+            active.forEachObject(function (o) {
+              if (o.type !== 'line' && o.type !== 'path') o.set('fill', color);
+            });
+          } else {
+            active.set('fill', color);
+          }
+          state.fabricCanvas.requestRenderAll();
+          syncOverlaysFromFabric();
+          scheduleSave();
+          return;
+        }
+      }
       var item = selectedItem();
-      if (item && !state.readOnly && (item.kind === 'rect' || item.kind === 'circle')) {
+      if (item && !state.readOnly && (item.kind === 'rect' || item.kind === 'circle' ||
+          item.kind === 'roundRect' || item.kind === 'triangle')) {
         pushHistory();
         item.fill = true;
         item.fillColor = color;
@@ -514,6 +578,22 @@
 
     function applyWeight(level) {
       level = Number(level) || 2;
+      if (state.fabricCanvas && !state.readOnly) {
+        var active = state.fabricCanvas.getActiveObject();
+        if (active) {
+          pushHistory();
+          var sw = PorFab.strokeWidthFromThick(level);
+          if (active.type === 'activeSelection') {
+            active.forEachObject(function (o) { o.set('strokeWidth', sw); });
+          } else {
+            active.set('strokeWidth', sw);
+          }
+          state.fabricCanvas.requestRenderAll();
+          syncOverlaysFromFabric();
+          scheduleSave();
+          return;
+        }
+      }
       var item = selectedItem();
       if (item && !state.readOnly) {
         pushHistory();
@@ -524,6 +604,7 @@
       }
       state.inkThick = level;
       syncHistoryButtons();
+      applyFabricToolMode();
     }
 
     function clampFrameToDrawArea(frame) {
@@ -605,10 +686,26 @@
         if (seq === state.editSeq) {
           state.dirty = false;
           setStatus('Saved');
+          // Conversion complete: drop retained pre-Fabric overlay bytes.
+          if (state.convertingLegacy) {
+            state.doc.pages.forEach(function (p) {
+              if (p) delete p._legacyOverlays;
+            });
+            state.convertingLegacy = false;
+          }
         }
       }).catch(function (err) {
         console.error(err);
         setStatus('Save failed');
+        // Restore legacy overlays if conversion save failed.
+        if (state.convertingLegacy) {
+          state.doc.pages.forEach(function (p) {
+            if (p && p._legacyOverlays) {
+              p.overlays = deepClone(p._legacyOverlays);
+              delete p._fabricConverted;
+            }
+          });
+        }
       });
     }
 
@@ -617,6 +714,358 @@
     function overlayList(page) {
       if (!page.overlays) page.overlays = [];
       return page.overlays;
+    }
+
+    function destroyFabric() {
+      if (state.fabricCanvas) {
+        try {
+          // Drop listeners before dispose — in-flight mouse events otherwise hit a
+          // torn-down upper canvas and throw getBoundingClientRect on undefined.
+          state.fabricCanvas.off();
+          state.fabricCanvas.dispose();
+        } catch (_) {}
+      }
+      state.fabricCanvas = null;
+      state.fabricHost = null;
+      state.fabricWired = false;
+      state.shapeDraft = null;
+      if (state.drag && state.drag.mode === 'view-pan') state.drag = null;
+    }
+
+    function syncOverlaysFromFabric() {
+      if (!state.fabricCanvas || !PorFab) return;
+      var page = activePage();
+      if (!page) return;
+      // Keep pre-conversion overlay bytes until the first successful save after convert.
+      if (!page._legacyOverlays && Array.isArray(page.overlays) && page.overlays.length &&
+          state.convertingLegacy) {
+        page._legacyOverlays = deepClone(page.overlays);
+      }
+      page.overlays = PorFab.canvasToOverlays(state.fabricCanvas);
+      var active = state.fabricCanvas.getActiveObject();
+      state.selectedId = active && active.porId ? active.porId : null;
+    }
+
+    function wireFabricEvents(canvas) {
+      if (!canvas || state.fabricWired) return;
+      state.fabricWired = true;
+      var pushAndSync = function () {
+        if (state.readOnly || state.printMode) return;
+        pushHistory();
+        syncOverlaysFromFabric();
+        scheduleSave();
+        syncHistoryButtons();
+      };
+      canvas.on('object:modified', pushAndSync);
+      canvas.on('object:removed', function () {
+        if (state.readOnly || state.printMode) return;
+        syncOverlaysFromFabric();
+        scheduleSave();
+      });
+      canvas.on('selection:created', function (opt) {
+        var t = opt && opt.selected && opt.selected[0];
+        state.selectedId = t && t.porId ? t.porId : null;
+        syncInspector();
+      });
+      canvas.on('selection:updated', function (opt) {
+        var t = opt && opt.selected && opt.selected[0];
+        state.selectedId = t && t.porId ? t.porId : null;
+        syncInspector();
+      });
+      canvas.on('selection:cleared', function () {
+        state.selectedId = null;
+        state.editingText = false;
+        syncInspector();
+        syncHistoryButtons();
+      });
+      canvas.on('path:created', function (opt) {
+        if (state.readOnly) return;
+        var path = opt && opt.path;
+        if (path) {
+          path.set({
+            porId: PorFab.uid('ov'),
+            porKind: 'path',
+            stroke: state.inkColor,
+            strokeWidth: PorFab.strokeWidthFromThick(state.inkThick),
+            fill: '',
+          });
+          PorFab.styleControls(path);
+        }
+        pushHistory();
+        syncOverlaysFromFabric();
+        scheduleSave();
+        if (!state.keepTool) setInkTool(null);
+        else canvas.isDrawingMode = state.inkTool === 'pencil';
+      });
+      canvas.on('mouse:down', function (opt) {
+        if (state.readOnly || state.printMode) return;
+        if (opt.e && opt.e.button === 2) return;
+        var tool = state.inkTool;
+        // Empty-space drag over a view frame pans that view (Fabric sits above views).
+        // Must complete pan on Fabric mouse:move/up — Puppeteer and browsers deliver
+        // mouse events to the upper canvas, not window pointermove.
+        if (!opt.target && !tool) {
+          var pe = opt.e;
+          if (pe && sheetEl) {
+            var frames = sheetEl.querySelectorAll('.por-view-frame');
+            for (var fi = 0; fi < frames.length; fi++) {
+              var frameEl = frames[fi];
+              if (!frameEl || typeof frameEl.getBoundingClientRect !== 'function') continue;
+              var fr = frameEl.getBoundingClientRect();
+              if (pe.clientX >= fr.left && pe.clientX <= fr.right &&
+                  pe.clientY >= fr.top && pe.clientY <= fr.bottom) {
+                var vi = Number(frameEl.getAttribute('data-por-view'));
+                var views = activeViews();
+                var view = views[vi];
+                if (!view) break;
+                // Capture live frame size BEFORE any re-render (detached-host bug).
+                pushHistory();
+                state.drag = {
+                  mode: 'view-pan',
+                  viewIndex: vi,
+                  startClient: { x: pe.clientX, y: pe.clientY },
+                  hostW: Math.max(1, fr.width),
+                  hostH: Math.max(1, fr.height),
+                  origCamera: deepClone(viewCamera(view)),
+                };
+                state.selectedViewIndex = vi;
+                canvas.selection = false;
+                canvas.discardActiveObject();
+                canvas.requestRenderAll();
+                return;
+              }
+            }
+          }
+        }
+        if (!tool || tool === 'pencil' || tool === 'eraser') return;
+        if (opt.target && tool !== 'eraser') return;
+        var pointer = canvas.getPointer(opt.e);
+        if (tool === 'text') return;
+        state.shapeDraft = {
+          tool: tool,
+          x: pointer.x,
+          y: pointer.y,
+          shift: !!(opt.e && opt.e.shiftKey),
+        };
+      });
+      canvas.on('mouse:move', function (opt) {
+        if (state.drag && state.drag.mode === 'view-pan') {
+          applyViewPanFromClient(opt.e);
+          return;
+        }
+        if (!state.shapeDraft || !state.inkTool) return;
+        var pointer = canvas.getPointer(opt.e);
+        var d = state.shapeDraft;
+        var shift = !!(opt.e && opt.e.shiftKey) || d.shift;
+        if (d.obj) canvas.remove(d.obj);
+        d.obj = makeDraftShape(d.tool, d.x, d.y, pointer.x, pointer.y, shift);
+        if (d.obj) {
+          d.obj.set({ selectable: false, evented: false, excludeFromExport: true });
+          canvas.add(d.obj);
+          canvas.requestRenderAll();
+        }
+      });
+      canvas.on('mouse:up', function (opt) {
+        if (state.drag && state.drag.mode === 'view-pan') {
+          applyViewPanFromClient(opt && opt.e);
+          state.drag = null;
+          if (state.fabricCanvas) state.fabricCanvas.selection = !state.readOnly;
+          scheduleSave();
+          return;
+        }
+        if (!state.shapeDraft) return;
+        var d = state.shapeDraft;
+        state.shapeDraft = null;
+        if (d.obj) canvas.remove(d.obj);
+        var pointer = canvas.getPointer(opt.e);
+        var shift = !!(opt.e && opt.e.shiftKey) || d.shift;
+        if (Math.abs(pointer.x - d.x) < 3 && Math.abs(pointer.y - d.y) < 3) return;
+        var shape = makeDraftShape(d.tool, d.x, d.y, pointer.x, pointer.y, shift);
+        if (!shape) return;
+        PorFab.styleControls(shape);
+        shape.set({
+          porId: PorFab.uid('ov'),
+          porKind: d.tool === 'arrow' ? 'arrow' : d.tool,
+          selectable: true,
+          evented: true,
+          excludeFromExport: false,
+        });
+        pushHistory();
+        canvas.add(shape);
+        canvas.setActiveObject(shape);
+        canvas.requestRenderAll();
+        syncOverlaysFromFabric();
+        scheduleSave();
+        if (!state.keepTool) setInkTool(null);
+      });
+      canvas.on('mouse:dblclick', function (opt) {
+        if (opt.target && (opt.target.type === 'textbox' || opt.target.type === 'i-text')) {
+          state.editingText = true;
+          syncHistoryButtons();
+        }
+      });
+      canvas.on('mouse:down', function (opt) {
+        if (!opt.e || opt.e.button !== 2) return;
+        if (!opt.target || state.readOnly) return;
+        opt.e.preventDefault();
+        var id = opt.target.porId;
+        if (!id) return;
+        state.selectedId = id;
+        canvas.setActiveObject(opt.target);
+        canvas.requestRenderAll();
+        openShapeMenu(opt.e, id);
+      });
+    }
+
+    function makeDraftShape(tool, x0, y0, x1, y1, shift) {
+      if (!PorFab || !window.fabric) return null;
+      var f = window.fabric;
+      var left = Math.min(x0, x1); var top = Math.min(y0, y1);
+      var w = Math.abs(x1 - x0); var h = Math.abs(y1 - y0);
+      if (shift) {
+        if (tool === 'line' || tool === 'arrow') {
+          var dx = x1 - x0; var dy = y1 - y0;
+          var ang = Math.atan2(dy, dx);
+          var snap = Math.round(ang / (Math.PI / 4)) * (Math.PI / 4);
+          var len = Math.sqrt(dx * dx + dy * dy);
+          x1 = x0 + Math.cos(snap) * len;
+          y1 = y0 + Math.sin(snap) * len;
+          left = Math.min(x0, x1); top = Math.min(y0, y1);
+          w = Math.abs(x1 - x0); h = Math.abs(y1 - y0);
+        } else {
+          var side = Math.max(w, h);
+          w = side; h = side;
+          if (x1 < x0) left = x0 - side;
+          if (y1 < y0) top = y0 - side;
+        }
+      }
+      var stroke = state.inkColor;
+      var fill = state.inkFill
+        ? state.fillColor
+        : 'rgba(0,0,0,0)';
+      var sw = PorFab.strokeWidthFromThick(state.inkThick);
+      if (tool === 'rect' || tool === 'roundRect') {
+        return new f.Rect({
+          left: left, top: top, width: Math.max(2, w), height: Math.max(2, h),
+          rx: tool === 'roundRect' ? 12 : 0, ry: tool === 'roundRect' ? 12 : 0,
+          stroke: stroke, strokeWidth: sw, fill: fill,
+        });
+      }
+      if (tool === 'circle') {
+        return new f.Ellipse({
+          left: left, top: top,
+          rx: Math.max(1, w / 2), ry: Math.max(1, (shift ? w : h) / 2),
+          stroke: stroke, strokeWidth: sw, fill: fill,
+        });
+      }
+      if (tool === 'triangle') {
+        return new f.Triangle({
+          left: left, top: top, width: Math.max(2, w), height: Math.max(2, h),
+          stroke: stroke, strokeWidth: sw, fill: fill,
+        });
+      }
+      if (tool === 'line' || tool === 'arrow') {
+        var line = new f.Line([x0, y0, x1, y1], {
+          stroke: stroke, strokeWidth: sw, fill: '',
+          porArrow: tool === 'arrow',
+        });
+        return line;
+      }
+      return null;
+    }
+
+    function ensureFabricOnSheet() {
+      if (!PorFab || !PorFab.ready()) return null;
+      if (state.printMode) return null;
+      var host = document.createElement('div');
+      host.className = 'por-fabric-host';
+      host.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;z-index:5;';
+      var canvasEl = document.createElement('canvas');
+      canvasEl.id = 'por-fabric-canvas';
+      host.appendChild(canvasEl);
+      sheetEl.appendChild(host);
+      state.fabricHost = host;
+      state.fabricWired = false;
+      state.fabricCanvas = PorFab.createCanvas(canvasEl, {
+        width: PAPER_W,
+        height: PAPER_H,
+        readOnly: state.readOnly,
+      });
+      // Match CSS box of the sheet so pointer hits land correctly.
+      var sheetBox = sheetEl && typeof sheetEl.getBoundingClientRect === 'function'
+        ? sheetEl.getBoundingClientRect()
+        : { width: 0, height: 0 };
+      if (sheetBox.width > 0 && sheetBox.height > 0) {
+        state.fabricCanvas.setDimensions({
+          width: sheetBox.width,
+          height: sheetBox.height,
+        });
+        // Keep logical drawing space at paper pixels via viewport transform.
+        var sx = sheetBox.width / PAPER_W;
+        var sy = sheetBox.height / PAPER_H;
+        state.fabricCanvas.setViewportTransform([sx, 0, 0, sy, 0, 0]);
+      }
+      wireFabricEvents(state.fabricCanvas);
+      host._porCanvas = state.fabricCanvas;
+      // First open of a pre-Fabric drawing: keep originals until save succeeds.
+      var page = activePage();
+      if (page && page.overlays && page.overlays.length && !page._fabricConverted) {
+        state.convertingLegacy = true;
+        page._legacyOverlays = deepClone(page.overlays);
+        page._fabricConverted = true;
+      }
+      PorFab.overlaysToCanvas(state.fabricCanvas, overlayList(page), {
+        readOnly: state.readOnly,
+      });
+      applyFabricToolMode();
+      return state.fabricCanvas;
+    }
+
+    function applyFabricToolMode() {
+      var canvas = state.fabricCanvas;
+      if (!canvas) return;
+      var tool = state.inkTool;
+      canvas.isDrawingMode = tool === 'pencil' && !state.readOnly;
+      canvas.selection = !tool || tool === null;
+      canvas.defaultCursor = tool && tool !== 'eraser' ? 'crosshair' : 'default';
+      canvas.forEachObject(function (o) {
+        o.selectable = !tool || tool === 'eraser';
+        o.evented = !tool || tool === 'eraser';
+      });
+      if (tool === 'pencil') {
+        canvas.freeDrawingBrush.color = state.inkColor;
+        canvas.freeDrawingBrush.width = PorFab.strokeWidthFromThick(state.inkThick);
+      }
+      canvas.requestRenderAll();
+    }
+
+    function groupSelection() {
+      var canvas = state.fabricCanvas;
+      if (!canvas || state.readOnly) return;
+      var active = canvas.getActiveObject();
+      if (!active || active.type !== 'activeSelection') return;
+      pushHistory();
+      active.toGroup();
+      var g = canvas.getActiveObject();
+      if (g) {
+        g.set({ porId: PorFab.uid('grp'), porKind: 'group' });
+        PorFab.styleControls(g);
+      }
+      canvas.requestRenderAll();
+      syncOverlaysFromFabric();
+      scheduleSave();
+    }
+
+    function ungroupSelection() {
+      var canvas = state.fabricCanvas;
+      if (!canvas || state.readOnly) return;
+      var active = canvas.getActiveObject();
+      if (!active || active.type !== 'group') return;
+      pushHistory();
+      active.toActiveSelection();
+      canvas.requestRenderAll();
+      syncOverlaysFromFabric();
+      scheduleSave();
     }
 
     function applySheetScale() {
@@ -891,6 +1340,11 @@
     function renderSheet() {
       var page = activePage();
       var api = overlayApi();
+      // Sync marks out before tearing down the Fabric canvas.
+      if (state.fabricCanvas && !state.printMode) {
+        try { syncOverlaysFromFabric(); } catch (_) {}
+      }
+      destroyFabric();
       sheetEl.innerHTML = '';
       sheetEl.classList.toggle('rb-sheet--inking', !!state.inkTool);
       sheetEl.classList.toggle('rb-sheet--erasing', state.inkTool === 'eraser');
@@ -986,15 +1440,36 @@
       var rail = renderRail(page);
       if (rail) sheetEl.appendChild(rail);
 
-      if (api && typeof api.renderLayer === 'function') {
+      // Fabric drawing surface (Stage 1). Overlays persist; Fabric is the editor.
+      if (!state.printMode && PorFab && PorFab.ready()) {
+        ensureFabricOnSheet();
+      } else if (state.printMode && PorFab && PorFab.ready()) {
+        // Print: paint marks as a flat PNG so paper has no editor chrome.
+        var printHost = document.createElement('div');
+        printHost.className = 'por-fabric-host por-fabric-host--print';
+        printHost.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;z-index:5;pointer-events:none;';
+        var tmpCanvas = document.createElement('canvas');
+        printHost.appendChild(tmpCanvas);
+        sheetEl.appendChild(printHost);
+        var tmp = PorFab.createCanvas(tmpCanvas, { width: PAPER_W, height: PAPER_H, readOnly: true });
+        PorFab.overlaysToCanvas(tmp, overlayList(page), { readOnly: true });
+        var url = PorFab.snapshotCanvas(tmp);
+        try { tmp.dispose(); } catch (_) {}
+        printHost.innerHTML = '';
+        var img = document.createElement('img');
+        img.src = url;
+        img.alt = '';
+        img.style.cssText = 'width:100%;height:100%;display:block;';
+        printHost.appendChild(img);
+      } else if (api && typeof api.renderLayer === 'function') {
+        // Fallback if Fabric failed to load — keep prior overlay renderer.
         var layer = api.renderLayer(overlayList(page), { locked: state.readOnly });
         if (layer) sheetEl.appendChild(layer);
+        if (state.selectedId) renderSelectionChrome(page);
       }
 
-      if (state.selectedId) renderSelectionChrome(page);
       applySheetScale();
       wireRailEdits(page);
-      wireOverlayText(page);
       syncInspector();
     }
 
@@ -1240,7 +1715,23 @@
     }
 
     function reorderSelected(where) {
-      if (state.readOnly || !state.selectedId) return;
+      if (state.readOnly) return;
+      if (state.fabricCanvas) {
+        var active = state.fabricCanvas.getActiveObject();
+        if (!active) return;
+        pushHistory();
+        if (where === 'front') state.fabricCanvas.bringToFront(active);
+        else if (where === 'back') state.fabricCanvas.sendToBack(active);
+        else if (where === 'forward') state.fabricCanvas.bringForward(active);
+        else if (where === 'backward') state.fabricCanvas.sendBackwards(active);
+        else return;
+        state.fabricCanvas.requestRenderAll();
+        syncOverlaysFromFabric();
+        scheduleSave();
+        setStatus(where === 'front' || where === 'forward' ? 'Brought forward' : 'Sent back');
+        return;
+      }
+      if (!state.selectedId) return;
       var page = activePage();
       var list = overlayList(page).slice();
       var index = -1;
@@ -1290,7 +1781,36 @@
       syncHistoryButtons();
     }
 
+    function applyViewPanFromClient(event) {
+      if (!state.drag || state.drag.mode !== 'view-pan' || !event) return;
+      if (typeof event.clientX !== 'number' || typeof event.clientY !== 'number') return;
+      var views2 = activeViews();
+      var view2 = views2[state.drag.viewIndex];
+      if (!view2) return;
+      var liveHost = sheetEl && sheetEl.querySelector
+        ? sheetEl.querySelector('[data-por-view="' + state.drag.viewIndex + '"]')
+        : null;
+      var fw = state.drag.hostW || (liveHost && liveHost.clientWidth) || 1;
+      var fh = state.drag.hostH || (liveHost && liveHost.clientHeight) || 1;
+      var cam = state.drag.origCamera || defaultViewCamera(1);
+      var zoom = Number(cam.zoom) > 0 ? Number(cam.zoom) : 1;
+      // Dragging right reveals content to the left (cx decreases).
+      var ndx = (event.clientX - state.drag.startClient.x) / fw;
+      var ndy = (event.clientY - state.drag.startClient.y) / fh;
+      var nextCam = {
+        cx: Math.max(0, Math.min(1, cam.cx - ndx / zoom)),
+        cy: Math.max(0, Math.min(1, cam.cy - ndy / zoom)),
+        zoom: zoom,
+        rel: true,
+      };
+      view2.camera = nextCam;
+      if (liveHost) {
+        applyViewCamera(liveHost.querySelector('img'), liveHost, nextCam);
+      }
+    }
+
     function sheetPercent(event) {
+      if (!sheetEl || typeof sheetEl.getBoundingClientRect !== 'function') return null;
       var rect = sheetEl.getBoundingClientRect();
       if (rect.width < 8 || rect.height < 8) return null;
       return {
@@ -1301,8 +1821,11 @@
 
     function setInkTool(name) {
       state.inkTool = name || null;
+      sheetEl.classList.toggle('rb-sheet--inking', !!state.inkTool);
+      sheetEl.classList.toggle('rb-sheet--erasing', state.inkTool === 'eraser');
+      if (state.fabricCanvas) applyFabricToolMode();
+      else syncHistoryButtons();
       syncHistoryButtons();
-      renderSheet();
     }
 
     function beginInk(event) {
@@ -1430,6 +1953,15 @@
     }
 
     function copySelected() {
+      if (state.fabricCanvas) {
+        var active = state.fabricCanvas.getActiveObject();
+        if (!active) return false;
+        state.clipboard = active.toObject([
+          'porId', 'porKind', 'porArrow',
+        ]);
+        setStatus('Shape copied');
+        return true;
+      }
       var item = selectedItem();
       if (!item) return false;
       state.clipboard = deepClone(item);
@@ -1438,7 +1970,7 @@
     }
 
     function cutSelected() {
-      if (state.readOnly || !selectedItem()) return false;
+      if (state.readOnly) return false;
       if (!copySelected()) return false;
       deleteSelected();
       setStatus('Shape cut');
@@ -1447,6 +1979,26 @@
 
     function pasteClipboard() {
       if (state.readOnly || !state.clipboard) return false;
+      if (state.fabricCanvas && state.clipboard && state.clipboard.type) {
+        pushHistory();
+        window.fabric.util.enlivenObjects([state.clipboard], function (objects) {
+          var obj = objects[0];
+          if (!obj) return;
+          obj.set({
+            left: (obj.left || 0) + 24,
+            top: (obj.top || 0) + 24,
+            porId: PorFab.uid('ov'),
+          });
+          PorFab.styleControls(obj);
+          state.fabricCanvas.add(obj);
+          state.fabricCanvas.setActiveObject(obj);
+          state.fabricCanvas.requestRenderAll();
+          syncOverlaysFromFabric();
+          scheduleSave();
+          setStatus('Shape pasted');
+        });
+        return true;
+      }
       var page = activePage();
       pushHistory();
       var copy = deepClone(state.clipboard);
@@ -1467,7 +2019,23 @@
     }
 
     function deleteSelected() {
-      if (state.readOnly || !state.selectedId) return;
+      if (state.readOnly) return;
+      if (state.fabricCanvas) {
+        var active = state.fabricCanvas.getActiveObject();
+        if (!active) return;
+        pushHistory();
+        if (active.type === 'activeSelection') {
+          active.forEachObject(function (o) { state.fabricCanvas.remove(o); });
+        }
+        state.fabricCanvas.remove(active);
+        state.fabricCanvas.discardActiveObject();
+        state.fabricCanvas.requestRenderAll();
+        state.selectedId = null;
+        syncOverlaysFromFabric();
+        scheduleSave();
+        return;
+      }
+      if (!state.selectedId) return;
       var page = activePage();
       pushHistory();
       page.overlays = overlayList(page).filter(function (o) { return o.id !== state.selectedId; });
@@ -1726,27 +2294,7 @@
       }
 
       if (state.drag.mode === 'view-pan') {
-        var views2 = activeViews();
-        var view2 = views2[state.drag.viewIndex];
-        if (!view2) return;
-        var liveHost = sheetEl.querySelector('[data-por-view="' + state.drag.viewIndex + '"]');
-        var fw = state.drag.hostW || (liveHost && liveHost.clientWidth) || 1;
-        var fh = state.drag.hostH || (liveHost && liveHost.clientHeight) || 1;
-        var cam = state.drag.origCamera || defaultViewCamera(1);
-        var zoom = Number(cam.zoom) > 0 ? Number(cam.zoom) : 1;
-        // Dragging right reveals content to the left (cx decreases).
-        var ndx = (event.clientX - state.drag.startClient.x) / fw;
-        var ndy = (event.clientY - state.drag.startClient.y) / fh;
-        var nextCam = {
-          cx: Math.max(0, Math.min(1, cam.cx - ndx / zoom)),
-          cy: Math.max(0, Math.min(1, cam.cy - ndy / zoom)),
-          zoom: zoom,
-          rel: true,
-        };
-        view2.camera = nextCam;
-        if (liveHost) {
-          applyViewCamera(liveHost.querySelector('img'), liveHost, nextCam);
-        }
+        applyViewPanFromClient(event);
         return;
       }
 
@@ -1777,13 +2325,17 @@
       if (state.inkDrag) endInk();
       if (state.drag) {
         var wasView = state.drag.mode && String(state.drag.mode).indexOf('view-') === 0;
+        var wasViewPan = state.drag.mode === 'view-pan';
         state.drag = null;
+        if (wasViewPan && state.fabricCanvas) state.fabricCanvas.selection = !state.readOnly;
         var page = activePage();
         if (!wasView) {
           var api = overlayApi();
           if (api) page.overlays = api.normalize(overlayList(page));
         }
         scheduleSave();
+        // View-pan already applied live camera CSS; avoid a full re-render wipe.
+        if (wasViewPan) return;
         renderSheet();
       }
     }
@@ -1815,8 +2367,15 @@
       if (event.key === 'Escape') {
         setInkTool(null);
         state.selectedId = null;
+        state.editingText = false;
         closeShapeMenu();
-        renderSheet();
+        if (state.fabricCanvas) {
+          state.fabricCanvas.discardActiveObject();
+          state.fabricCanvas.requestRenderAll();
+          syncHistoryButtons();
+        } else {
+          renderSheet();
+        }
         return;
       }
       if (typing) return;
@@ -1835,8 +2394,40 @@
         if (copySelected()) pasteClipboard();
         return;
       }
+      if (mod && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        if (state.fabricCanvas && !state.readOnly) {
+          var objs = state.fabricCanvas.getObjects().filter(function (o) { return o.selectable !== false; });
+          if (objs.length) {
+            var sel = new window.fabric.ActiveSelection(objs, { canvas: state.fabricCanvas });
+            state.fabricCanvas.setActiveObject(sel);
+            state.fabricCanvas.requestRenderAll();
+          }
+        }
+        return;
+      }
+      if (mod && event.key.toLowerCase() === 'g') {
+        event.preventDefault();
+        if (event.shiftKey) ungroupSelection();
+        else groupSelection();
+        return;
+      }
       if (!mod && (event.key === 'ArrowUp' || event.key === 'ArrowDown' ||
           event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        if (state.fabricCanvas && state.fabricCanvas.getActiveObject()) {
+          event.preventDefault();
+          var active = state.fabricCanvas.getActiveObject();
+          var stepPx = event.shiftKey ? 16 : 4;
+          var dxPx = event.key === 'ArrowLeft' ? -stepPx : (event.key === 'ArrowRight' ? stepPx : 0);
+          var dyPx = event.key === 'ArrowUp' ? -stepPx : (event.key === 'ArrowDown' ? stepPx : 0);
+          pushHistory();
+          active.set({ left: (active.left || 0) + dxPx, top: (active.top || 0) + dyPx });
+          active.setCoords();
+          state.fabricCanvas.requestRenderAll();
+          syncOverlaysFromFabric();
+          scheduleSave();
+          return;
+        }
         var nudgeItem = selectedItem();
         if (!nudgeItem || state.readOnly) return;
         event.preventDefault();
@@ -1915,7 +2506,7 @@
 
     function stripPrintChrome(node) {
       node.querySelectorAll(
-        '.por-sel, .rb-ov__resize, .rb-ov__remove, .por-view-frame__handle, .por-view-frame__move'
+        '.por-sel, .rb-ov__resize, .rb-ov__remove, .por-view-frame__handle, .por-view-frame__move, .upper-canvas, .canvas-container'
       ).forEach(function (el) {
         el.parentNode && el.parentNode.removeChild(el);
       });
@@ -2077,6 +2668,28 @@
       if (state.readOnly) return;
       closePickers();
       setInkTool(null);
+      if (state.fabricCanvas && window.fabric) {
+        pushHistory();
+        var tb = new window.fabric.Textbox('Text', {
+          left: PAPER_W * 0.08,
+          top: PAPER_H * 0.68,
+          width: PAPER_W * 0.22,
+          fontSize: 18,
+          fontFamily: 'Calibri, Arial, sans-serif',
+          fill: '#111111',
+          porId: PorFab.uid('ov'),
+          porKind: 'text',
+        });
+        PorFab.styleControls(tb);
+        state.fabricCanvas.add(tb);
+        state.fabricCanvas.setActiveObject(tb);
+        state.fabricCanvas.requestRenderAll();
+        state.editingText = true;
+        syncOverlaysFromFabric();
+        scheduleSave();
+        syncHistoryButtons();
+        return;
+      }
       var page = activePage();
       var api = overlayApi();
       if (!api || !api.create) return;
@@ -2089,6 +2702,14 @@
       renderSheet();
       syncHistoryButtons();
     });
+    var keepBtn = root.querySelector('#por-keep-tool');
+    if (keepBtn) {
+      keepBtn.addEventListener('click', function () {
+        state.keepTool = !state.keepTool;
+        keepBtn.classList.toggle('is-on', state.keepTool);
+        keepBtn.setAttribute('aria-pressed', state.keepTool ? 'true' : 'false');
+      });
+    }
     root.querySelector('#por-outline-btn').addEventListener('click', function (event) {
       event.stopPropagation();
       togglePicker('outline');
@@ -2364,6 +2985,8 @@
       persistNow: persistNow,
       destroy: function () {
         if (state.saveTimer) clearTimeout(state.saveTimer);
+        try { syncOverlaysFromFabric(); } catch (_) {}
+        destroyFabric();
         closeShapeMenu();
         if (state.formatToolbar && state.formatToolbar.destroy) state.formatToolbar.destroy();
         window.removeEventListener('pointermove', onPointerMove);
@@ -2421,5 +3044,6 @@
     migrateLegacy: migrateLegacy,
     PAPER_W: PAPER_W,
     PAPER_H: PAPER_H,
+    FABRIC_VERSION: (window.ToolboxPorFabric && window.ToolboxPorFabric.VERSION) || '5.3.0',
   };
 })();

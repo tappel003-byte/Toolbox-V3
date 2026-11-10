@@ -705,3 +705,31 @@ body.is-por-printing .por-print {
     transform: none !important;
   }
 }
+
+/* Fabric.js drawing surface (Stage 1). */
+.por-fabric-host,
+.por-fabric-host .canvas-container {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 5;
+}
+.por-fabric-host canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+.por-fabric-host--print {
+  pointer-events: none;
+}
+/* View chrome stays clickable above the Fabric layer. */
+.por-view-frame__handle,
+.por-view-frame__move,
+.por-view-frame__label {
+  z-index: 8;
+  pointer-events: auto;
+}
+.por-view-frame__label {
+  pointer-events: none;
+}

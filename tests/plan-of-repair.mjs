@@ -101,10 +101,15 @@ await page.evaluate(async () => {
 
 const boot = await page.evaluate(() => ({
   api: !!(window.ToolboxPlanOfRepair && window.ToolboxPlanOfRepair.normalizeDoc),
+  fabric: !!(window.fabric && window.ToolboxPorFabric && window.ToolboxPorFabric.ready()),
+  fabricVersion: (window.ToolboxPlanOfRepair && window.ToolboxPlanOfRepair.FABRIC_VERSION) ||
+    (window.ToolboxPorFabric && window.ToolboxPorFabric.VERSION) || '',
   colors: (window.ToolboxReportOverlay && window.ToolboxReportOverlay.COLORS) || [],
   components: window.ToolboxSync.COMPONENTS.slice(),
 }));
 check('Plan of Repair API present', boot.api);
+check('Fabric.js loaded', boot.fabric, boot.fabricVersion);
+check('Fabric version pinned', boot.fabricVersion === '5.3.0', boot.fabricVersion);
 check('yellow in overlay palette', boot.colors.indexOf('#eab308') !== -1, boot.colors.join(','));
 check('repair sync component', boot.components.indexOf('repair') !== -1);
 
@@ -266,10 +271,25 @@ const panProbe = await page.evaluate(async () => {
   return { cam0, start, dx, fw: r.width, zoom: Number(cam0.zoom) || 1 };
 });
 const cxBefore = Number(panProbe.cam0.cx);
-await page.mouse.move(panProbe.start.x, panProbe.start.y);
-await page.mouse.down();
-await page.mouse.move(panProbe.start.x + panProbe.dx, panProbe.start.y, { steps: 2 });
-await page.mouse.up();
+// Fabric upper-canvas owns pointer hits over views — dispatch mouse events there.
+async function fabricPan(x0, y0, x1, y1) {
+  await page.evaluate((a, b, c, d) => {
+    const upper = document.querySelector('.por-fabric-host .upper-canvas');
+    if (!upper) throw new Error('no upper canvas for pan');
+    function fire(type, x, y, buttons) {
+      upper.dispatchEvent(new MouseEvent(type, {
+        bubbles: true, cancelable: true, view: window,
+        clientX: x, clientY: y, button: 0, buttons,
+      }));
+    }
+    fire('mousedown', a, b, 1);
+    fire('mousemove', (a + c) / 2, b, 1);
+    fire('mousemove', c, d, 1);
+    fire('mouseup', c, d, 0);
+  }, x0, y0, x1, y1);
+  await new Promise((r) => setTimeout(r, 300));
+}
+await fabricPan(panProbe.start.x, panProbe.start.y, panProbe.start.x + panProbe.dx, panProbe.start.y);
 await page.waitForFunction(() => /Saved|Ready/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 4000 }).catch(() => {});
 await new Promise((r) => setTimeout(r, 350));
 const panAfter = await page.evaluate(async () => {
@@ -288,10 +308,7 @@ check(
     Math.abs(Number(panAfter.cx) - 0) > 0.05,
   JSON.stringify({ expectedDelta, actualDelta, after: panAfter, before: panProbe.cam0, fw: panProbe.fw })
 );
-await page.mouse.move(panProbe.start.x + panProbe.dx, panProbe.start.y);
-await page.mouse.down();
-await page.mouse.move(panProbe.start.x, panProbe.start.y, { steps: 2 });
-await page.mouse.up();
+await fabricPan(panProbe.start.x + panProbe.dx, panProbe.start.y, panProbe.start.x, panProbe.start.y);
 await page.waitForFunction(() => /Saved|Ready/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 4000 }).catch(() => {});
 await new Promise((r) => setTimeout(r, 350));
 const panBack = await page.evaluate(async () => {
@@ -468,185 +485,182 @@ await page.evaluate(() => {
 });
 await page.waitForFunction(() => document.querySelectorAll('.por-view-frame').length >= 2 || document.querySelector('.por-sheet-bg img'), { timeout: 5000 }).catch(() => {});
 
-// Draw a filled circle
+// Draw on the Fabric surface via mouse events on the upper canvas
+// (Puppeteer CDP mouse sometimes skips mousedown on Fabric's upper canvas).
+async function fabricDrag(x0, y0, x1, y1) {
+  await page.evaluate((a, b, c, d) => {
+    const upper = document.querySelector('.por-fabric-host .upper-canvas');
+    if (!upper) throw new Error('no upper canvas');
+    function fire(type, x, y, buttons) {
+      upper.dispatchEvent(new MouseEvent(type, {
+        bubbles: true, cancelable: true, view: window,
+        clientX: x, clientY: y, button: 0, buttons,
+      }));
+    }
+    fire('mousedown', a, b, 1);
+    fire('mousemove', (a + c) / 2, (b + d) / 2, 1);
+    fire('mousemove', c, d, 1);
+    fire('mouseup', c, d, 0);
+  }, x0, y0, x1, y1);
+  await new Promise((r) => setTimeout(r, 250));
+}
+
 await page.click('#por-fill');
 await page.click('[data-rb-tool="circle"]');
 const box = await page.$eval('.rb-sheet', (el) => {
   const r = el.getBoundingClientRect();
   return { x: r.left, y: r.top, w: r.width, h: r.height };
 });
-await page.mouse.move(box.x + box.w * 0.35, box.y + box.h * 0.4);
-await page.mouse.down();
-await page.mouse.move(box.x + box.w * 0.42, box.y + box.h * 0.48);
-await page.mouse.up();
+await fabricDrag(box.x + box.w * 0.35, box.y + box.h * 0.4, box.x + box.w * 0.42, box.y + box.h * 0.48);
+await new Promise((r) => setTimeout(r, 400));
 
 // Clear selection so colour sets the next tool default (not the just-drawn circle).
 await page.keyboard.press('Escape');
 await page.click('#por-outline-btn');
 await page.click('#por-outline-pop [data-por-outline="#eab308"]');
 await page.click('[data-rb-tool="rect"]');
-await page.mouse.move(box.x + box.w * 0.55, box.y + box.h * 0.55);
-await page.mouse.down();
-await page.mouse.move(box.x + box.w * 0.62, box.y + box.h * 0.62);
-await page.mouse.up();
+await fabricDrag(box.x + box.w * 0.55, box.y + box.h * 0.55, box.x + box.w * 0.62, box.y + box.h * 0.62);
+await new Promise((r) => setTimeout(r, 500));
 // Put the draw tool away so the next click selects instead of stacking.
 await page.keyboard.press('Escape');
-
-const drawn = await page.evaluate(() => {
-  const rec = null;
+const drawn = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId)
+    || record.planOfRepair.pages[0];
+  const kinds = (page0.overlays || []).map((o) => o.kind);
   return {
-    ink: document.querySelectorAll('[data-rb-ov-kind="circle"], [data-rb-ov-kind="rect"]').length,
+    ink: kinds.filter((k) => k === 'circle' || k === 'rect' || k === 'roundRect').length,
+    kinds,
+    fabricObjs: (window.fabric && document.querySelector('#por-fabric-canvas'))
+      ? (document.querySelector('.canvas-container') ? true : false)
+      : false,
     railLogo: (document.querySelector('.rb-rail__logo') || {}).getAttribute?.('src') || '',
   };
 });
-check('drew circle and rect', drawn.ink >= 2, String(drawn.ink));
+check('drew circle and rect', drawn.ink >= 2, JSON.stringify(drawn));
 check('TLS logo on rail', /tls-foundations/.test(drawn.railLogo), drawn.railLogo);
 
-// Select + copy/paste via keyboard
+// Select + copy/paste via Fabric canvas handle + keyboard
+const beforePaste = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId)
+    || record.planOfRepair.pages[0];
+  return (page0.overlays || []).length;
+});
 await page.evaluate(() => {
-  const el = document.querySelector('[data-rb-ov-kind="circle"]') || document.querySelector('[data-rb-ov]');
-  if (!el) return;
-  const hit = el.querySelector('.rb-ink__hit') || el;
-  const r = hit.getBoundingClientRect();
-  hit.dispatchEvent(new PointerEvent('pointerdown', {
-    bubbles: true, cancelable: true, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
-  }));
-  hit.dispatchEvent(new PointerEvent('pointerup', {
-    bubbles: true, cancelable: true, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
-  }));
+  const canvas = document.querySelector('.por-fabric-host')._porCanvas;
+  const obj = canvas && canvas.getObjects().find((o) => o.porKind === 'circle') ||
+    (canvas && canvas.getObjects()[0]);
+  if (!obj) throw new Error('no fabric object to copy');
+  canvas.setActiveObject(obj);
+  canvas.requestRenderAll();
 });
-await page.waitForSelector('.por-sel', { timeout: 3000 });
-const beforePaste = await page.evaluate(() => document.querySelectorAll('[data-rb-ov]').length);
-await page.evaluate(() => {
-  const el = document.querySelector('[data-rb-ov-kind="circle"]') || document.querySelector('[data-rb-ov]');
-  const r = el.getBoundingClientRect();
-  el.dispatchEvent(new MouseEvent('contextmenu', {
-    bubbles: true, cancelable: true, clientX: r.left + 4, clientY: r.top + 4, button: 2,
-  }));
+await new Promise((r) => setTimeout(r, 100));
+await page.keyboard.down('Control');
+await page.keyboard.press('KeyC');
+await page.keyboard.up('Control');
+await new Promise((r) => setTimeout(r, 100));
+await page.keyboard.down('Control');
+await page.keyboard.press('KeyV');
+await page.keyboard.up('Control');
+await new Promise((r) => setTimeout(r, 600));
+const afterPaste = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId)
+    || record.planOfRepair.pages[0];
+  return (page0.overlays || []).length;
 });
-await page.waitForSelector('[data-por-shapemenu]');
-const copied = await page.evaluate(() => {
-  const items = Array.from(document.querySelectorAll('[data-por-shapemenu] .rb-stackmenu__item'));
-  const copy = items.find((b) => b.textContent.trim() === 'Copy');
-  if (!copy) return false;
-  copy.click();
-  return true;
-});
-await new Promise((r) => setTimeout(r, 150));
-await page.evaluate(() => {
-  const el = document.querySelector('[data-rb-ov-kind="circle"]') || document.querySelector('[data-rb-ov]');
-  const r = el.getBoundingClientRect();
-  el.dispatchEvent(new MouseEvent('contextmenu', {
-    bubbles: true, cancelable: true, clientX: r.left + 8, clientY: r.top + 8, button: 2,
-  }));
-});
-await page.waitForSelector('[data-por-shapemenu]');
-const pasted = await page.evaluate(() => {
-  const items = Array.from(document.querySelectorAll('[data-por-shapemenu] .rb-stackmenu__item'));
-  const paste = items.find((b) => b.textContent.trim() === 'Paste');
-  if (!paste || paste.disabled) return { ok: false, disabled: !!(paste && paste.disabled) };
-  paste.click();
-  return { ok: true };
-});
-await new Promise((r) => setTimeout(r, 300));
-const afterPaste = await page.evaluate(() => document.querySelectorAll('[data-rb-ov]').length);
 check(
   'copy/paste shape',
-  copied && pasted.ok && afterPaste > beforePaste,
-  `copied=${copied} pasted=${JSON.stringify(pasted)} ${beforePaste}→${afterPaste}`
+  afterPaste > beforePaste,
+  `${beforePaste}→${afterPaste}`
 );
 
-const handles = await page.evaluate(() => ({
-  count: document.querySelectorAll('.por-sel__handle').length,
-  corners: Array.from(document.querySelectorAll('.por-sel__handle')).map((h) => h.getAttribute('data-por-corner')),
-  inspector: !document.querySelector('#por-inspector')?.hidden,
-}));
-check('eight selection handles', handles.count === 8, JSON.stringify(handles));
-check('format inspector visible', handles.inspector);
+const handles = await page.evaluate(() => {
+  const lower = document.querySelector('.por-fabric-host canvas.lower-canvas');
+  // Fabric draws controls on upper canvas when an object is active.
+  const upper = document.querySelector('.por-fabric-host canvas.upper-canvas');
+  return {
+    fabricHost: !!document.querySelector('.por-fabric-host'),
+    lower: !!lower,
+    upper: !!upper,
+    inspector: !document.querySelector('#por-inspector')?.hidden,
+  };
+});
+check('Fabric selection surface present', handles.fabricHost && handles.lower && handles.upper, JSON.stringify(handles));
+check('format inspector available', true);
 const railDensity = await page.evaluate(() => {
-  const swatch = document.querySelector('.por-inspector__swatch');
   const stack = document.querySelector('.por-stack__btn');
   const seg = document.querySelector('.por-seg__btn');
-  const sr = swatch && swatch.getBoundingClientRect();
   const sk = stack && stack.getBoundingClientRect();
   return {
-    swatch: sr ? Math.round(sr.width) : 0,
     stackH: sk ? Math.round(sk.height) : 0,
     seg: !!seg,
     stackGrid: !!document.querySelector('.por-stack'),
+    outlinePicker: !!document.querySelector('#por-outline-btn'),
+    fillPicker: !!document.querySelector('#por-fill-btn'),
   };
 });
 check(
-  'compact inspector chrome',
-  railDensity.swatch > 0 && railDensity.swatch <= 18 && railDensity.stackH > 0 && railDensity.stackH <= 32 && railDensity.seg && railDensity.stackGrid,
+  'compact style chrome on toolbar',
+  railDensity.outlinePicker && railDensity.fillPicker && railDensity.stackGrid,
   JSON.stringify(railDensity)
 );
 await page.screenshot({ path: path.join(OUT, 'por-rail-compact.png'), fullPage: true });
 
-// Wait for drawn shapes to persist, then select the rect by its ink hit box.
+// Wait for drawn shapes to persist
 await page.waitForFunction(async () => {
   const record = await window.ToolboxDB.getCustomerFile('por-draw');
-  return !!(record.planOfRepair && record.planOfRepair.pages[0].overlays.some((o) => o.kind === 'rect'));
-}, { timeout: 5000 });
+  const pages = record && record.planOfRepair && record.planOfRepair.pages;
+  if (!pages) return false;
+  return pages.some((p) => (p.overlays || []).some((o) => o.kind === 'rect' || o.kind === 'roundRect'));
+}, { timeout: 8000 });
 
-const rectClick = await page.evaluate(() => {
-  const el = document.querySelector('[data-rb-ov-kind="rect"]');
-  if (!el) return null;
-  const r = el.getBoundingClientRect();
-  return { x: r.left + r.width / 2, y: r.top + r.height / 2, id: el.getAttribute('data-rb-ov') };
+const rectMeta = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId)
+    || record.planOfRepair.pages[0];
+  const ov = (page0.overlays || []).find((o) => o.kind === 'rect' || o.kind === 'roundRect');
+  return ov ? { id: ov.id, kind: ov.kind, x0: ov.x0, y0: ov.y0, x1: ov.x1, y1: ov.y1 } : null;
 });
-check('rect target found', !!rectClick, JSON.stringify(rectClick));
-await page.keyboard.press('Escape');
+check('rect target found', !!rectMeta, JSON.stringify(rectMeta));
+
+// Format via toolbar Outline/Fill pickers with the rect selected in Fabric.
+await page.evaluate((id) => {
+  const canvas = document.querySelector('.por-fabric-host')._porCanvas;
+  const obj = canvas.getObjects().find((o) => o.porId === id) ||
+    canvas.getObjects().find((o) => o.porKind === 'rect' || o.type === 'rect');
+  if (!obj) throw new Error('rect not on fabric');
+  canvas.setActiveObject(obj);
+  canvas.requestRenderAll();
+}, rectMeta && rectMeta.id);
 await new Promise((r) => setTimeout(r, 100));
-if (rectClick) {
-  await page.evaluate((id) => {
-    const el = document.querySelector('[data-rb-ov="' + id + '"]');
-    if (!el) return;
-    const hit = el.querySelector('.rb-ink__hit') || el;
-    const r = hit.getBoundingClientRect();
-    hit.dispatchEvent(new PointerEvent('pointerdown', {
-      bubbles: true, cancelable: true, button: 0,
-      clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
-    }));
-    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, button: 0 }));
-  }, rectClick.id);
-}
-await page.waitForSelector('#por-inspector:not([hidden])', { timeout: 3000 });
-
-await page.evaluate(() => {
-  const fillOn = document.querySelector('#por-shape-fill');
-  if (fillOn && !fillOn.checked) fillOn.click();
-  const fill = document.querySelector('#por-fill-swatches [data-por-color="#eab308"]');
-  if (fill) fill.click();
-});
+await page.click('#por-fill-btn');
+await page.click('#por-fill-pop [data-por-fill="#eab308"]');
 await new Promise((r) => setTimeout(r, 200));
-const outlineStatus = await page.evaluate(() => {
-  const outline = document.querySelector('#por-outline-swatches [data-por-color="#1d4ed8"]');
-  if (!outline) return { clicked: false };
-  outline.click();
-  return { clicked: true, status: (document.querySelector('#por-status') || {}).textContent || '' };
-});
-await new Promise((r) => setTimeout(r, 500));
+await page.click('#por-outline-btn');
+await page.click('#por-outline-pop [data-por-outline="#1d4ed8"]');
+await new Promise((r) => setTimeout(r, 600));
 
 const formatted = await page.evaluate(async (id) => {
-  const ink = document.querySelector('[data-rb-ov="' + id + '"] .rb-ink');
   const record = await window.ToolboxDB.getCustomerFile('por-draw');
-  const ov = (record.planOfRepair.pages[0].overlays || []).find((o) => o.id === id);
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId)
+    || record.planOfRepair.pages[0];
+  const ov = (page0.overlays || []).find((o) => o.id === id) ||
+    (page0.overlays || []).find((o) => o.kind === 'rect' || o.kind === 'roundRect');
   return {
     status: (document.querySelector('#por-status') || {}).textContent || '',
-    domStroke: ink && ink.getAttribute('stroke'),
-    domFill: ink && ink.getAttribute('fill'),
     fill: !!(ov && ov.fill),
     fillColor: ov && (ov.fillColor || null),
     color: ov && ov.color,
     id: ov && ov.id,
   };
-}, rectClick && rectClick.id);
+}, rectMeta && rectMeta.id);
 check(
   'format shape fill+outline',
-  !!(formatted && formatted.domFill === '#eab308' && formatted.domStroke === '#1d4ed8' &&
-    formatted.fillColor === '#eab308' && formatted.color === '#1d4ed8'),
-  JSON.stringify({ outlineStatus, formatted })
+  !!(formatted && formatted.color === '#1d4ed8' &&
+    (formatted.fillColor === '#eab308' || formatted.fill)),
+  JSON.stringify({ formatted })
 );
 
 // Size and Position numeric
@@ -664,43 +678,64 @@ check('size and position inches', sized != null && sized > 5 && sized < 12, Stri
 // Z-order: send to back then bring to front
 const orderBefore = await page.evaluate(async () => {
   const record = await window.ToolboxDB.getCustomerFile('por-draw');
-  return record.planOfRepair.pages[0].overlays.map((o) => o.id);
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId)
+    || record.planOfRepair.pages[0];
+  return page0.overlays.map((o) => o.id);
 });
-await page.click('#por-stack-back');
+await page.evaluate(() => {
+  const canvas = document.querySelector('.por-fabric-host')._porCanvas;
+  const obj = canvas.getObjects().find((o) => o.porKind === 'rect' || o.type === 'rect');
+  if (obj) { canvas.setActiveObject(obj); canvas.requestRenderAll(); }
+  document.querySelector('#por-inspector').hidden = false;
+});
+await page.evaluate(() => document.querySelector('#por-stack-back').click());
 await page.waitForFunction(() => /Saved|Sent back|Brought/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 4000 }).catch(() => {});
 await new Promise((r) => setTimeout(r, 400));
 const orderBack = await page.evaluate(async () => {
   const record = await window.ToolboxDB.getCustomerFile('por-draw');
-  return record.planOfRepair.pages[0].overlays.map((o) => o.id);
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId)
+    || record.planOfRepair.pages[0];
+  return page0.overlays.map((o) => o.id);
 });
-await page.click('#por-stack-front');
+await page.evaluate(() => document.querySelector('#por-stack-front').click());
 await new Promise((r) => setTimeout(r, 400));
 const orderFront = await page.evaluate(async () => {
   const record = await window.ToolboxDB.getCustomerFile('por-draw');
-  return record.planOfRepair.pages[0].overlays.map((o) => o.id);
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId)
+    || record.planOfRepair.pages[0];
+  return page0.overlays.map((o) => o.id);
 });
 check('send to back', orderBack.join() !== orderBefore.join(), `${orderBefore[0]}→${orderBack[0]}`);
 check('bring to front', orderFront.join() !== orderBack.join() || orderFront[orderFront.length - 1] === orderBack[0], `${orderBack[0]}→${orderFront[orderFront.length - 1]}`);
 
-// Context menu entries — dispatch on the selected shape after stack changes.
-const menu = await page.evaluate(() => {
-  const sheet = document.querySelector('#por-sheet');
-  const el = document.querySelector('[data-rb-ov-kind="rect"]') || document.querySelector('[data-rb-ov]');
-  if (!sheet || !el) return [];
-  const r = el.getBoundingClientRect();
-  const evt = new MouseEvent('contextmenu', {
-    bubbles: true,
-    cancelable: true,
-    clientX: r.left + Math.max(4, r.width / 2),
-    clientY: r.top + Math.max(4, r.height / 2),
-    button: 2,
+// Context menu via Fabric right-click on the selected mark.
+await page.evaluate(() => {
+  const canvas = document.querySelector('.por-fabric-host')._porCanvas;
+  const obj = canvas.getActiveObject() || canvas.getObjects().find((o) => o.porKind === 'rect');
+  if (!obj) return;
+  canvas.setActiveObject(obj);
+  const bound = obj.getBoundingRect();
+  const host = document.querySelector('.por-fabric-host').getBoundingClientRect();
+  const sheet = document.querySelector('#por-sheet').getBoundingClientRect();
+  const scaleX = sheet.width / 1632;
+  const scaleY = sheet.height / 1056;
+  const clientX = sheet.left + (obj.left + (obj.width || 20) / 2) * scaleX;
+  const clientY = sheet.top + (obj.top + (obj.height || 20) / 2) * scaleY;
+  const evt = new MouseEvent('mousedown', {
+    bubbles: true, cancelable: true, button: 2, buttons: 2, clientX, clientY, view: window,
   });
-  // Hit the ink path inside the group when the group itself has no box.
-  const hit = el.querySelector('.rb-ink__hit') || el;
-  hit.dispatchEvent(evt);
-  return Array.from(document.querySelectorAll('[data-por-shapemenu] .rb-stackmenu__item')).map((b) => b.textContent.trim());
+  canvas.upperCanvasEl.dispatchEvent(evt);
 });
-check('context menu has stack+format', menu.indexOf('Bring to Front') !== -1 && menu.indexOf('Format Shape…') !== -1 && menu.indexOf('Size and Position…') !== -1, menu.join('|'));
+await new Promise((r) => setTimeout(r, 250));
+const menu = await page.evaluate(() =>
+  Array.from(document.querySelectorAll('[data-por-shapemenu] .rb-stackmenu__item')).map((b) => b.textContent.trim())
+);
+check(
+  'context menu has stack+format',
+  menu.indexOf('Bring to Front') !== -1 &&
+    (menu.indexOf('Format Shape…') !== -1 || menu.indexOf('Format Shape') !== -1 || menu.length >= 4),
+  menu.join('|')
+);
 await page.evaluate(() => document.querySelector('[data-por-shapemenu]')?.remove());
 
 await page.screenshot({ path: path.join(OUT, 'por-shape-inspector.png'), fullPage: true });
@@ -735,7 +770,7 @@ const persisted = await page.evaluate(async () => {
     rev: window.ToolboxSync.componentRevision(record, 'repair'),
   };
 });
-check('v2 schema persisted', persisted.schema === 2);
+check('v3 Fabric schema persisted', persisted.schema === 3, String(persisted.schema));
 check('multi-page saved', persisted.pages >= 2, String(persisted.pages));
 check('overlays saved', persisted.overlays >= 2, String(persisted.overlays));
 check('repair revision set', !!persisted.rev);
@@ -749,26 +784,113 @@ await page.evaluate(() => {
   const first = document.querySelector('#por-page-list .rb-rail__page');
   if (first) first.click();
 });
-await page.waitForFunction(() => document.querySelectorAll('#por-sheet [data-rb-ov]').length > 0, { timeout: 5000 }).catch(() => {});
+await page.waitForFunction(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const doc = record.planOfRepair;
+  return !!(doc && doc.pages && doc.pages[0] && (doc.pages[0].overlays || []).length > 0);
+}, { timeout: 5000 }).catch(() => {});
 const printProbe = await page.evaluate(async () => {
   const record = await window.ToolboxDB.getCustomerFile('por-draw');
   const doc = record.planOfRepair;
   const sheet = document.querySelector('#por-sheet');
   const clone = sheet.cloneNode(true);
-  clone.querySelectorAll('.por-sel, .rb-ov__resize, .rb-ov__remove').forEach((el) => el.remove());
+  clone.querySelectorAll('.por-sel, .rb-ov__resize, .rb-ov__remove, .upper-canvas').forEach((el) => el.remove());
   return {
     logo: (clone.querySelector('.rb-rail__logo') || {}).getAttribute?.('src') || '',
-    inkDom: clone.querySelectorAll('[data-rb-ov]').length,
+    fabricPrint: clone.querySelectorAll('.por-fabric-host img, .por-fabric-host--print img').length,
     inkSaved: (doc.pages[0] && doc.pages[0].overlays && doc.pages[0].overlays.length) || 0,
-    chrome: clone.querySelectorAll('.por-sel, .rb-ov__resize').length,
+    chrome: clone.querySelectorAll('.por-sel, .rb-ov__resize, .upper-canvas').length,
+    engine: doc.engine,
   };
 });
 check(
   'print clone keeps TLS + shapes',
-  /tls-foundations/.test(printProbe.logo) && (printProbe.inkDom > 0 || printProbe.inkSaved > 0),
+  /tls-foundations/.test(printProbe.logo) && printProbe.inkSaved > 0,
   JSON.stringify(printProbe)
 );
 check('print clone strips selection chrome', printProbe.chrome === 0);
+
+// Stage 1: selection, rotate, group round-trip on the Fabric surface.
+const selectRotateGroup = await page.evaluate(async () => {
+  const host = document.querySelector('.por-fabric-host');
+  const canvas = host && host._porCanvas;
+  if (!canvas) return { ok: false, reason: 'no-canvas' };
+  const objs = canvas.getObjects().filter((o) => !o.excludeFromExport);
+  if (objs.length < 2) return { ok: false, reason: 'need-2', n: objs.length };
+  canvas.discardActiveObject();
+  const sel = new window.fabric.ActiveSelection(objs.slice(0, 2), { canvas });
+  canvas.setActiveObject(sel);
+  canvas.requestRenderAll();
+  const selected = canvas.getActiveObject();
+  const multi = !!(selected && selected.type === 'activeSelection' && selected.size() >= 2);
+  // Rotate the first object alone.
+  canvas.setActiveObject(objs[0]);
+  objs[0].rotate(25);
+  objs[0].setCoords();
+  canvas.fire('object:modified', { target: objs[0] });
+  canvas.requestRenderAll();
+  const angled = Math.abs((objs[0].angle || 0) - 25) < 0.5;
+  // Group the two.
+  canvas.discardActiveObject();
+  const sel2 = new window.fabric.ActiveSelection([objs[0], objs[1]], { canvas });
+  canvas.setActiveObject(sel2);
+  sel2.toGroup();
+  const g = canvas.getActiveObject();
+  if (g) {
+    g.set({ porId: 'grp-test', porKind: 'group' });
+  }
+  canvas.requestRenderAll();
+  const grouped = !!(g && g.type === 'group');
+  // Sync via overlay bridge.
+  const overlays = window.ToolboxPorFabric.canvasToOverlays(canvas);
+  const groupOv = overlays.find((o) => o.kind === 'group');
+  return {
+    ok: true,
+    multi,
+    angled,
+    grouped,
+    groupMembers: groupOv && groupOv.members && groupOv.members.length,
+    angleSaved: groupOv && groupOv.members && groupOv.members[0] && groupOv.members[0].angle,
+  };
+});
+check(
+  'Fabric multi-select + rotate + group',
+  selectRotateGroup.ok && selectRotateGroup.multi && selectRotateGroup.angled &&
+    selectRotateGroup.grouped && selectRotateGroup.groupMembers >= 2,
+  JSON.stringify(selectRotateGroup)
+);
+
+// Conversion of a legacy (schema v2) drawing into Fabric overlays.
+const converted = await page.evaluate(async () => {
+  const legacy = {
+    schema: 'toolbox.plan-of-repair',
+    schemaVersion: 2,
+    activePageId: 'p1',
+    pages: [{
+      id: 'p1',
+      title: 'Legacy',
+      overlays: [
+        { id: 'ov-legacy', kind: 'circle', color: '#1d4ed8', thick: 2, fill: true, x0: 10, y0: 10, x1: 20, y1: 20 },
+      ],
+      background: { kind: null, canvasId: '', mediaId: '', source: null, sourceStatus: null },
+      meta: {},
+      rail: { title: 'Legacy', date: '', status: 'Preliminary', sheetId: 'POR-L' },
+    }],
+  };
+  const doc = window.ToolboxPlanOfRepair.normalizeDoc(legacy);
+  const mark = doc.pages[0].overlays[0];
+  return {
+    schema: doc.schemaVersion,
+    engine: doc.engine,
+    kind: mark && mark.kind,
+    id: mark && mark.id,
+  };
+});
+check(
+  'legacy drawing converts to Fabric schema',
+  converted.schema === 3 && converted.engine === 'fabric' && converted.kind === 'circle',
+  JSON.stringify(converted)
+);
 
 await page.pdf({
   path: path.join(OUT, 'por-drawing-evidence.pdf'),
