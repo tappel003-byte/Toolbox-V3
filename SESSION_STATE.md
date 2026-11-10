@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 10, 2026** (America/Denver)  
-Updated by: Cursor — merge all into integration; Ball stays with Tim.
+Updated by: Cursor — Plan of Repair Fabric.js Stages 1–4; Ball to Claude Code.
 
 ---
 
@@ -19,9 +19,11 @@ Updated by: Cursor — merge all into integration; Ball stays with Tim.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — Sync Worker **deployed** Nov 10 (version `9f211d74-bc47-45c1-bda9-1904e884c214`). Open https://sync.sandiageotoolbox.com/health and do one Sync Now; then app promote when ready. |
-| Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `623913a` (shell `v452`). Merged this turn: #209, #207, #165. Closed as already-on-tip / superseded: #151, #139. Left open against `main` (not merged — Tim promote): #97, #86, #85. |
-| Not done | Tim browser check of live Worker → app **promote** (Tim). Not merged to `main`. |
+| **Has the ball** | **Claude Code** — check Plan of Repair Fabric Stages 1–4 on `cursor/por-fabric-stages-2ac5` (tip `b151d54`, shell `v454`). |
+| Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (pre-POR-Fabric). Feature PR bases there; not merged. |
+| Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 / branch tip `b151d54` |
+| Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
+| Not done | CC check → Tim decide/merge into integration. Do not merge to `main`. Do not deploy/promote. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -52,6 +54,25 @@ Hard fact: merge to `main` can publish live. Do not merge to `main` unless Tim a
 
 ---
 
+## Plan of Repair on Fabric.js (Nov 10, 2026)
+
+Tim decided: rebuild Plan of Repair drawing like PowerPoint on vendored Fabric.js (not hand-built behaviours). Scope: Plan of Repair only — Report Builder / `js/report-overlay.js` untouched.
+
+Branch: `cursor/por-fabric-stages-2ac5` → PR into `claude/milestone-1-customer-file-qv5ybf`.
+
+| Stage | SHA | What |
+|-------|-----|------|
+| 1 | `dcf590e` | Fabric engine swap at parity: selection, group/rotate, shapes, view-pan, print PNG, legacy→schemaVersion 3 |
+| 2 | `60298d8` | Format/text: shade grid, custom/recent, opacity, dash, Format Painter, set-default, mini toolbar, text strip |
+| 3 | `b6318df` | Align/distribute, snap guides, grid/rulers, zoom slider + Ctrl+wheel, hand/Space pan, selection pane |
+| 4 | `b151d54` | Page thumbs + drag reorder, insert/paste picture (`porimg_*` repair media), export selection/page, colour hover preview |
+
+Tests: `node tests/plan-of-repair.mjs` → **61/61**. Also TLS smoke 33/33, report-drawing-tools 12/12, sync-component-acceptance-model 55/55.
+
+Artifacts under `/opt/cursor/artifacts/`: blank sheet, multi-select, stage2 text, stage3 align+grid, stage4 picture, multiview + 11×17 PDFs.
+
+---
+
 ## Sync Worker deploy — done Nov 10, 2026
 
 - Deployed by Claude Code with Tim's Cloudflare API token (saved as a network secret on Tim's Default cloud environment).
@@ -65,29 +86,13 @@ Hard fact: merge to `main` can publish live. Do not merge to `main` unless Tim a
 
 ## Outstanding — open only
 
-1. **Sync Worker** — deployed (`9f211d74`). Tim's browser check of `/health` + one Sync Now.
-2. **App promote** — Tim only. Not `main` unless Tim asks promote-prep.
-3. **Plan of Repair look check** vs MS Paint / PowerPoint (Tim’s screenshots).
-4. **POR lows** — right-rail Format Shape duplicates the pickers and shows for text boxes; fill checkbox has no label.
-5. **Open against `main` (not merged):** #97 topo figure pages, #86 Diagnostics ribbon, #85 RB drafts/print — leave until Tim asks promote-prep / bring-to-main.
-
-Open product (safer defaults already shipped; Tim has not decided): keep video on phone after upload; Job Walk audio still travels with the file.
-
-### Merge-all Nov 10 (Cursor)
-
-| PR | Result |
-|----|--------|
-| #209 SESSION_STATE Worker deploy | Merged earlier (`671978d`) |
-| #207 docs cleanup | Merged (`c30aa0f`); kept tip SESSION_STATE |
-| #165 Tim-only promote hard list | Merged (`2cff965`); kept named integration branch |
-| #151 RB finish | Closed — identical patches already on tip (cherry-picked earlier) |
-| #139 Excel secondary topo tabs | Closed — superseded by later Excel tab work on tip |
-| #97 / #86 / #85 | Left open on `main` — do not merge (promote risk) |
+1. **CC check** of POR Fabric Stages 1–4 (`cursor/por-fabric-stages-2ac5` @ `b151d54`).
+2. **Tim decide/merge** into integration when ready. Not `main`. No deploy/promote.
+3. **Sync Worker** — deployed (`9f211d74`). Tim's browser check of `/health` + one Sync Now still open from earlier.
+4. **Open against `main` (not merged):** #97 topo figure pages, #86 Diagnostics ribbon, #85 RB drafts/print — leave until Tim asks promote-prep / bring-to-main.
 
 ---
 
 ## How any new agent should start
 
-1. Read `VISION.md` → `AGENTS.md` → `MILESTONE.md` → `DECISIONS.md` → **`SESSION_STATE.md`**.
-2. Branch from `claude/milestone-1-customer-file-qv5ybf`.
-3. PRs base = that branch. Merge there when Tim asks. Do not promote. Do not deploy Sync Worker without Tim’s go (this deploy was authorised; auth was the blocker).
+Read `VISION.md` → `AGENTS.md` → `MILESTONE.md` → `DECISIONS.md` → this file. Work only the current milestone. Ball is named above.
