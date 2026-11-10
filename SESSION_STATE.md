@@ -10,8 +10,8 @@ This does **not** replace authority docs. Read order for rules and vision:
 4. `DECISIONS.md`
 5. **This file** — current working picture
 
-Last updated: **Nov 9, 2026** (America/Denver)  
-Updated by: Cursor — Tim said Merge → #208 into integration; Ball to Tim for promote.
+Last updated: **Nov 10, 2026** (America/Denver)  
+Updated by: Cursor — Tim authorised Sync Worker deploy; this agent has no Cloudflare auth. Ball with Tim to run the deploy (or attach `CLOUDFLARE_API_TOKEN`).
 
 ---
 
@@ -19,9 +19,9 @@ Updated by: Cursor — Tim said Merge → #208 into integration; Ball to Tim for
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** (promote when ready; Sync Worker deploy is a separate Tim call) |
-| Integration merge | **Done.** PR #208 → `claude/milestone-1-customer-file-qv5ybf` (QC + Job Walk video Cabinet; shell `v452`). |
-| Not done | **Promote / live Production** — Tim only. **Not** merged to `main`. Sync Worker deploy still Tim-only when he wants streaming media PUT live. |
+| **Has the ball** | **Tim** — Sync Worker deploy authorised but **not run** (no Cloudflare token / `wrangler whoami` unauthenticated). After Tim deploys, Ball → Claude Code to confirm the live Worker. |
+| Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `08e154c` (includes #208 merge `706176f`; shell `v452`). |
+| Not done | Sync Worker deploy → CC confirm live Worker → app **promote** (Tim). Not merged to `main`. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -29,7 +29,7 @@ When an agent finishes its turn of work, it **must** update this table to name w
 
 ## Review loop (Tim, Nov 9, 2026)
 
-**ChatGPT is out — permanently for this work.** Tim’s ChatGPT workspace/chat glitched and is not workable. Do not reopen that thread, hand it work, or wait on it.
+**ChatGPT is out — permanently for this work.** Do not use ChatGPT for this build.
 
 | Role | Who |
 |------|-----|
@@ -37,101 +37,66 @@ When an agent finishes its turn of work, it **must** update this table to name w
 | Check | **Claude Code (CC)** |
 | Decide and promote | **Tim** |
 
-This is a **Cursor + Claude Code** build. Cursor builds; Claude Code independently reviews; Tim decides and promotes. No third voice.
-
 ---
 
-## Who is working / which chat
-
-| Role | Detail |
-|------|--------|
-| Product owner | Tim (`tappel003`) |
-| Active Cursor thread | https://cursor.com/agents/bc-eddcce18-c57b-423f-b2f4-6f17f8662ac5 — “Toolbox V3 continued” |
-| Claude Code | Independent check when the Ball says so |
-| ChatGPT | **Dead path.** Workspace glitched; chat not workable. Do not use. |
-
-Long chats cost more tokens and do **not** give the model continuous human-like memory. Durable facts belong here and in the authority docs.
-
----
-
-## Shipping — same page for every agent
+## Shipping
 
 | Act | Who | Where |
 |-----|-----|--------|
-| Build | Implementer (agent) | Feature branch off the integration branch |
-| Merge | Implementer, **only when Tim asks** | **`claude/milestone-1-customer-file-qv5ybf`** |
+| Build | Implementer | Feature branch off integration |
+| Merge | When Tim asks | **`claude/milestone-1-customer-file-qv5ybf`** |
 | Promote / live Production | **Tim only** | Cloudflare |
+| Sync Worker deploy | **Tim only** (or agent with `CLOUDFLARE_API_TOKEN`) | `npx wrangler@4 deploy --config sync-worker/wrangler.toml` |
 
-**Hard facts (do not re-litigate):**
-
-- Integration branch name is fixed in `AGENTS.md` / `DECISIONS.md` (merged #196, tip includes `ff424f2`).
-- Bot merge into `main` **can publish live** (verified Nov 5, 2026 — `toolbox-shell-v439` went live without Tim promoting). Treat merge-to-`main` as promote risk. Warn and stop if it would publish.
-- Never deploy Sync Worker, change Access, or promote without Tim’s explicit go.
-- Discussion is not a work order. “Go” / “do it” / “build it” = authorization. Describing UI is not authorization.
-- Never tell Tim what to do with his time.
-- When Tim says “Merge I promote,” that is merge to the **integration** branch only. Promote is still Tim. Prefer the agent Tim is talking to for the merge when that is clear; the merge itself is still valid if another authorized agent lands it on the right branch and Tim accepts the result.
-- **Not the path (closed Nov 8, 2026):** GitHub protection so “bots cannot merge `main`.” Tim: that is not the correct path. Do not reopen it as outstanding work. The shipping table above is the path — merge to integration only; Tim promotes.
+Hard fact: merge to `main` can publish live. Do not merge to `main` unless Tim asks promote-prep.
 
 ---
 
-## Branch tips (as of last update)
+## Sync Worker deploy (authorised Nov 10 — blocked here)
 
-| Branch | Tip (approx) | Notes |
-|--------|----------------|-------|
-| `claude/milestone-1-customer-file-qv5ybf` | `f03d374` | **Integration tip.** Includes #208 QC Cabinet media. Shell `v452`. |
-| `cursor/qc-cabinet-media-2ac5` | `549b12d` | Merged via #208. |
-| `main` | re-check | Behind milestone. Do not merge here unless Tim asks promote-prep. |
+Tim authorised deploy from integration tip (includes #208). This Cloud Agent:
 
-Always re-check with `git fetch` before claiming tip SHAs.
+- Has **no** `CLOUDFLARE_API_TOKEN` / `CF_API_TOKEN` in the environment
+- `npx wrangler@4 whoami --config sync-worker/wrangler.toml` → **You are not authenticated**
 
----
+**What the deploy would bring live** (Worker files changed on integration since pre-#208, tip includes these):
 
-## Recently finished (code on integration branch unless noted)
+1. `sync-worker/src/index.js` (`6cfaefb`) — raw media PUT streams into R2 when `x-toolbox-encoding: raw` (Job Walk video); no full `arrayBuffer` buffer first.
+2. `sync-worker/src/explore.js` (`1152eeb`) — File Explorer lists Job Walk audio (`vm_`) and video (`vid_`) from distress `jobWalk`.
 
-| Item | State |
-|------|--------|
-| Floor open seed / lookbook / RB toolbar / POR / TLS / Job Walk media | Done on integration via #204. |
-| **QC + Job Walk video → File Cabinet (not Check Out)** | **Merged** — #208 into integration. Shell `v452`. CC passed at `8d1b503`. |
+Bindings declared in `sync-worker/wrangler.toml` (must stay on deploy): R2 `CABINET` → `toolbox-cabinet`; Images `IMAGES`.
 
-### Ops note — Sync Worker deploy (Tim)
+**Tim’s steps (from repo root, authenticated machine):**
 
-The **streaming** media PUT in `sync-worker/src/index.js` takes effect **only after Tim authorises a Sync Worker deploy**. Until then, live uploads still use the old buffered Worker path. Client clip limit is **90 MB**.
+```bash
+git fetch origin claude/milestone-1-customer-file-qv5ybf
+git checkout claude/milestone-1-customer-file-qv5ybf
+git pull origin claude/milestone-1-customer-file-qv5ybf
+npx wrangler@4 deploy --config sync-worker/wrangler.toml
+npx wrangler@4 deployments list --config sync-worker/wrangler.toml   # note version id
+curl -sS https://sync.sandiageotoolbox.com/health   # imagesBinding true
+```
 
----
+Optional verify: PUT a tiny body to `/media/vid_deploy-test-…` with `x-toolbox-encoding: raw`, GET it back, then DELETE if the API allows (or leave a clearly named test object and remove from R2). Confirm Sync Now / File Explorer still read.
 
-## Outstanding — real open work
-
-1. **Promote** — Tim only. Integration has #208; live Production does not until Tim promotes. Do **not** merge to `main` unless Tim asks promote-prep.
-
-2. **Sync Worker deploy** (when Tim authorises) — streaming media PUT + Worker explore video listing.
-
-3. **Open product items (safer defaults shipped; Tim has not decided):**
-   - After a video uploads: **keep** the clip on the phone (default) vs clear to free space.
-   - Job Walk **audio** notes: still travel with the file like typed notes (default) vs treat like photos/video.
-
-4. **Cloudflare Access path bypass for `lookbook/*`** — Tim’s ops action.
-
-5. **Confirm Sync Worker deploy** has lookbook create routes if Share still 404s.
-
-6. **Stale / unrelated open PRs** — triage when Tim wants; not blockers.
+After a successful deploy: update this file with version id / time / commit, then **Ball → Claude Code** to confirm the live Worker.
 
 ---
 
-## How any new agent (Cursor / Claude Code) should start
+## Outstanding — open only
+
+1. **Sync Worker deploy** — Tim (or re-run agent after `CLOUDFLARE_API_TOKEN` is available). Then CC confirm live.
+2. **PR #207** docs cleanup — still open for Tim merge after CC if needed.
+3. **Plan of Repair look check** vs MS Paint / PowerPoint (Tim’s screenshots).
+4. **POR lows** — right-rail Format Shape duplicates the pickers and shows for text boxes; fill checkbox has no label.
+5. **App promote** — Tim only. Not `main` unless Tim asks promote-prep.
+
+Open product (safer defaults already shipped; Tim has not decided): keep video on phone after upload; Job Walk audio still travels with the file.
+
+---
+
+## How any new agent should start
 
 1. Read `VISION.md` → `AGENTS.md` → `MILESTONE.md` → `DECISIONS.md` → **`SESSION_STATE.md`**.
-2. `git fetch origin claude/milestone-1-customer-file-qv5ybf` and branch from that tip.
-3. Open PRs with **base = `claude/milestone-1-customer-file-qv5ybf`**. Merge there when Tim asks. Do **not** promote. Do **not** merge to `main` unless Tim explicitly asked for promote-prep **and** you warned about publish risk.
-4. Do not scrap lookbook. Finish Access bypass (Tim) + confirm Worker if Share 404s.
-5. After meaningful progress, **update this file** (date, tips, done/outstanding, Ball) in the same PR or a small follow-up — so the next handoff stays true.
-
----
-
-## Update checklist (when you change this file)
-
-- [x] Date / timezone label  
-- [x] Ball table  
-- [x] Integration + `main` tip SHAs (after fetch)  
-- [x] Done vs outstanding still accurate  
-- [x] Lookbook / Access / Worker status  
-- [x] Any new “do not repeat” process lesson Tim just enforced  
+2. Branch from `claude/milestone-1-customer-file-qv5ybf`.
+3. PRs base = that branch. Merge there when Tim asks. Do not promote. Do not deploy Sync Worker without Tim’s go (this deploy was authorised; auth was the blocker).
