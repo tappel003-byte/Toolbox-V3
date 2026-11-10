@@ -116,7 +116,20 @@ function cabinet(seed) {
       if (typeof value === 'string') body = value;
       else if (value instanceof ArrayBuffer) body = Buffer.from(value).toString('binary');
       else if (ArrayBuffer.isView(value)) body = Buffer.from(value.buffer, value.byteOffset, value.byteLength).toString('binary');
-      else body = String(value);
+      else if (value && typeof value.arrayBuffer === 'function') {
+        // Blob or Response-like body.
+        body = Buffer.from(await value.arrayBuffer()).toString('binary');
+      } else if (value && typeof value.getReader === 'function') {
+        // ReadableStream from raw media PUT (Job Walk video).
+        const reader = value.getReader();
+        const chunks = [];
+        for (;;) {
+          const step = await reader.read();
+          if (step.done) break;
+          chunks.push(Buffer.from(step.value));
+        }
+        body = Buffer.concat(chunks).toString('binary');
+      } else body = String(value);
       const contentType = opts && opts.httpMetadata && opts.httpMetadata.contentType
         ? opts.httpMetadata.contentType
         : 'application/json';
@@ -626,27 +639,52 @@ const readIndex = (bucket) => {
     }));
 }
 
-// ========== Job Walk photo + audio + video sync as transferable data URLs
+// ========== Quick Capture + Job Walk video live in the Cabinet (Tim Nov 9)
 //
-// Job Walk stores media as data URL strings in pgg_photos_v1 (same form as
-// Distress Quick Capture). A Blob would throw "Media is not in a transferable
-// form" and block Sync Now / Check In / Check Out / quiet mirror for the whole
-// Customer File. Device B must restore the bytes.
+// QC photos upload from the capturing device on Sync Now / quiet mirror.
+// Videos do NOT — only Upload videos. Check Out / Sync pull bring travel
+// media (pin photos + Job Walk audio) and QC metadata + optional thumbs,
+// never full QC photos or videos.
 {
   const PHOTO_ID = 'ph_jw-sync-photo';
+  const PIN_ID = 'ph_pin-travel';
   const AUDIO_ID = 'vm_jw-sync-audio';
   const VIDEO_ID = 'vid_jw-sync-video';
-  // Tiny JPEG (1×1), tiny audio, and tiny video data URLs — transferable strings.
   const PHOTO_DATA = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGfAP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAQUCf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQMBAT8Bf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQIBAT8Bf//Z';
   const AUDIO_DATA = 'data:audio/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAHTEU2bdLpNu4tTq4QVSalmU6yBoUuwAAAAAAAAGF13';
-  const VIDEO_DATA = 'data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAHTEU2bdLpNu4tTq4QVSalmU6yBoUuwAAAAAAAAGF13';
+  const videoBytes = Buffer.from(
+    'GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAHTEU2bdLpNu4tTq4QVSalmU6yBoUuwAAAAAAAAGF13',
+    'base64'
+  );
 
   const bucket = cabinet({});
   const first = loadClient(bucket, 'device-jw-a');
+  // FileReader for downloadTagged / getRemoteMediaDataUrl in the sandbox.
+  first.sandbox.FileReader = class {
+    constructor() { this.result = null; this.onload = null; this.onerror = null; this.error = null; }
+    readAsDataURL(blob) {
+      Promise.resolve(blob.arrayBuffer()).then((buf) => {
+        const type = blob.type || 'application/octet-stream';
+        this.result = 'data:' + type + ';base64,' + Buffer.from(buf).toString('base64');
+        if (this.onload) this.onload();
+      }).catch((err) => {
+        this.error = err;
+        if (this.onerror) this.onerror();
+      });
+    }
+  };
   const withWalk = record();
   withWalk.distress = {
     updatedAt: '2026-10-23T09:20:00.000Z',
-    pins: [],
+    pins: [{
+      id: 'pin-1',
+      canvasId: 'cv1',
+      x: 0.2,
+      y: 0.3,
+      photos: [PIN_ID],
+      location: 'Living room',
+      description: 'Crack',
+    }],
     mode: 'internal',
     quickCapture: [{
       id: PHOTO_ID,
@@ -654,6 +692,7 @@ const readIndex = (bucket) => {
       folder: 'Job Walk',
       description: 'Front porch',
       sourceName: 'jw-front.jpg',
+      localFull: true,
     }],
     jobWalk: {
       updatedAt: '2026-10-23T09:18:00.000Z',
@@ -669,12 +708,19 @@ const readIndex = (bucket) => {
         ts: '2026-10-23T09:19:00.000Z',
         description: 'Walk around house',
         sourceName: 'jw-walk.webm',
+        byteLength: videoBytes.length,
+        mimeType: 'video/webm',
       }],
     },
   };
   await first.Sync._test.putLocalMedia(PHOTO_ID, PHOTO_DATA, 'distress');
+  await first.Sync._test.putLocalMedia(PIN_ID, PHOTO_DATA, 'distress');
   await first.Sync._test.putLocalMedia(AUDIO_ID, AUDIO_DATA, 'distress');
-  await first.Sync._test.putLocalMedia(VIDEO_ID, VIDEO_DATA, 'distress');
+  await first.Sync._test.putLocalMedia(
+    VIDEO_ID,
+    new Blob([videoBytes], { type: 'video/webm' }),
+    'distress'
+  );
   first.sandbox.requests.length = 0;
   let syncErr = null;
   let result;
@@ -683,31 +729,48 @@ const readIndex = (bucket) => {
   } catch (err) {
     syncErr = err;
   }
-  check('Job Walk photo+audio+video sync does not throw transferable-form error',
+  check('Job Walk Sync Now does not throw (video Blob stays out of ordinary sync)',
     !syncErr, syncErr ? String(syncErr.message || syncErr) : '');
-  check('Job Walk media pushed with the Customer File',
+  check('Sync Now pushed QC photo + pin photo + audio, not the waiting video',
     !!result && result.changed === true &&
-    first.sandbox.requests.every((r) => r.status < 400),
-    JSON.stringify({
-      changed: result && result.changed,
-      refused: first.sandbox.requests.filter((r) => r.status >= 400),
-    }));
-  check('remote Cabinet holds Job Walk photo, audio, and video',
     bucket.store.has('media/' + PHOTO_ID) &&
+    bucket.store.has('media/' + PIN_ID) &&
     bucket.store.has('media/' + AUDIO_ID) &&
-    bucket.store.has('media/' + VIDEO_ID),
-    [...bucket.store.keys()].filter((k) => k.indexOf('media/') === 0).join(','));
+    !bucket.store.has('media/' + VIDEO_ID),
+    JSON.stringify({
+      keys: [...bucket.store.keys()].filter((k) => k.indexOf('media/') === 0),
+      changed: result && result.changed,
+    }));
 
+  // Deliberate Upload videos button.
+  first.sandbox.requests.length = 0;
+  await first.sandbox.ToolboxDB.saveCustomerFile(withWalk);
+  const upload = await first.Sync._test.uploadJobWalkVideos(ID);
+  check('Upload videos streams the raw Blob into the Cabinet',
+    upload && upload.uploaded === 1 &&
+    bucket.store.has('media/' + VIDEO_ID),
+    JSON.stringify(upload && { uploaded: upload.uploaded, remaining: upload.remaining }));
+  const afterUpload = await first.sandbox.ToolboxDB.getCustomerFile(ID);
+  check('uploaded clip keeps cabinetUploadedAt and stays local',
+    !!(afterUpload && afterUpload.distress && afterUpload.distress.jobWalk &&
+      (afterUpload.distress.jobWalk.videos || []).some((v) =>
+        v.id === VIDEO_ID && v.cabinetUploadedAt)) &&
+    first.sandbox.distressPhotos.has(VIDEO_ID),
+    JSON.stringify(afterUpload && afterUpload.distress && afterUpload.distress.jobWalk));
+
+  // Second device pulls like Check Out / Sync — travel media only.
   const second = loadClient(bucket, 'device-jw-b');
+  second.sandbox.FileReader = first.sandbox.FileReader;
   const remote = await (await second.sandbox.fetch(
     'https://sync.example/files/' + ID + '/index')).json();
   const shell = second.Sync._test.shellForRemotePull(ID, remote);
   await second.Sync._test.syncOneRecord(shell, remote, {});
   const landed = await second.sandbox.ToolboxDB.getCustomerFile(ID);
   const photoLocal = second.sandbox.distressPhotos.get(PHOTO_ID);
+  const pinLocal = second.sandbox.distressPhotos.get(PIN_ID);
   const audioLocal = second.sandbox.distressPhotos.get(AUDIO_ID);
   const videoLocal = second.sandbox.distressPhotos.get(VIDEO_ID);
-  check('second device restores Job Walk quickCapture + visit note + video metadata',
+  check('second device restores QC + visit note + video metadata',
     !!landed && !!landed.distress &&
     (landed.distress.quickCapture || []).some((q) => q.id === PHOTO_ID && q.folder === 'Job Walk') &&
     landed.distress.jobWalk &&
@@ -718,15 +781,53 @@ const readIndex = (bucket) => {
       notes: landed.distress.jobWalk && landed.distress.jobWalk.notes,
       videos: landed.distress.jobWalk && landed.distress.jobWalk.videos,
     }));
-  check('second device restores Job Walk photo as a JPEG data URL',
-    typeof photoLocal === 'string' && photoLocal.indexOf('data:image/jpeg') === 0,
+  check('Check Out / Sync pull does NOT download Quick Capture full bytes',
+    photoLocal == null || photoLocal === '',
     typeof photoLocal === 'string' ? photoLocal.slice(0, 40) : String(photoLocal));
-  check('second device restores Job Walk audio as a data URL string',
+  check('Check Out / Sync pull still downloads Distress pin photos',
+    typeof pinLocal === 'string' && pinLocal.indexOf('data:image/jpeg') === 0,
+    typeof pinLocal === 'string' ? pinLocal.slice(0, 40) : String(pinLocal));
+  check('Check Out / Sync pull still downloads Job Walk audio',
     typeof audioLocal === 'string' && audioLocal.indexOf('data:audio/') === 0,
     typeof audioLocal === 'string' ? audioLocal.slice(0, 40) : String(audioLocal));
-  check('second device restores Job Walk video as a data URL string',
-    typeof videoLocal === 'string' && videoLocal.indexOf('data:video/') === 0,
-    typeof videoLocal === 'string' ? videoLocal.slice(0, 40) : String(videoLocal));
+  check('Check Out / Sync pull does NOT download Job Walk video',
+    videoLocal == null || videoLocal === '',
+    typeof videoLocal);
+  check('pull media id list is travel-only (no QC, no video)',
+    JSON.stringify(second.Sync._test.distressMediaIdsForPull(landed).sort()) ===
+    JSON.stringify([AUDIO_ID, PIN_ID].sort()) &&
+    second.Sync._test.distressMediaIdsForPush(landed).indexOf(PHOTO_ID) >= 0 &&
+    second.Sync._test.distressMediaIdsForPush(landed).indexOf(VIDEO_ID) < 0,
+    JSON.stringify({
+      pull: second.Sync._test.distressMediaIdsForPull(landed),
+      push: second.Sync._test.distressMediaIdsForPush(landed),
+    }));
+
+  // Tag + download only the tagged Quick Capture.
+  const taggedRecord = await second.sandbox.ToolboxDB.getCustomerFile(ID);
+  taggedRecord.distress.quickCapture[0].tagged = true;
+  taggedRecord.distress.quickCapture[0].reportTag = true;
+  await second.sandbox.ToolboxDB.saveCustomerFile(taggedRecord);
+  const dl = await second.Sync._test.downloadTaggedQuickCapture(ID);
+  const afterDl = second.sandbox.distressPhotos.get(PHOTO_ID);
+  const afterMeta = await second.sandbox.ToolboxDB.getCustomerFile(ID);
+  check('tag-and-download fetches only the tagged Quick Capture at full size',
+    dl && dl.downloaded === 1 &&
+    typeof afterDl === 'string' && afterDl.indexOf('data:image/') === 0 &&
+    afterMeta.distress.quickCapture[0].localFull === true,
+    JSON.stringify(dl));
+
+  // On-demand video download.
+  const vdl = await second.Sync._test.downloadJobWalkVideo(ID, VIDEO_ID);
+    const remoteVideo = bucket.store.get('media/' + VIDEO_ID);
+  check('Upload videos stores raw video bytes (streamed PUT, not a placeholder)',
+    !!remoteVideo && remoteVideo.body && remoteVideo.body.length === videoBytes.length &&
+    remoteVideo.contentType === 'video/webm',
+    JSON.stringify(remoteVideo && { len: remoteVideo.body && remoteVideo.body.length, type: remoteVideo.contentType }));
+
+  check('Download video fetches one clip on request',
+    vdl && vdl.id === VIDEO_ID && second.sandbox.distressPhotos.has(VIDEO_ID),
+    JSON.stringify(vdl));
 }
 
 // ========== legacy Job Walk Blob is converted on read so Sync can transfer it

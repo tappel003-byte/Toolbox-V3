@@ -6973,6 +6973,8 @@ async function qcCaptureFrame(){
       folder: _qc.folder || '',
       lat: _qc.gps ? _qc.gps.lat : null,
       lng: _qc.gps ? _qc.gps.lng : null,
+      // Captured on this device — full bytes are local (Tim Nov 9 Cabinet rule).
+      localFull: true,
     });
     saveProject();
     _qc.sessionCount++;

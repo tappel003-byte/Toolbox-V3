@@ -149,8 +149,30 @@
         timestamp: when,
         latitude: latitude,
         longitude: longitude,
+        tagged: !!(item.tagged || item.reportTag),
+        localFull: !!item.localFull,
+        raw: item,
       };
     });
+  }
+
+  function thumbKey(id) {
+    return window.ToolboxSync && typeof window.ToolboxSync.thumbMediaKey === 'function'
+      ? window.ToolboxSync.thumbMediaKey(id)
+      : ('thumb:' + id);
+  }
+
+  async function resolvePhotoSrc(db, id) {
+    const full = await readPhoto(db, id);
+    // Full local bytes win — including legacy captures that predate localFull.
+    if (typeof full === 'string' && full.indexOf('data:image/') === 0) {
+      return { src: full, cabinetOnly: false };
+    }
+    const thumb = await readPhoto(db, thumbKey(id));
+    if (typeof thumb === 'string' && thumb.indexOf('data:image/') === 0) {
+      return { src: thumb, cabinetOnly: true };
+    }
+    return { src: '', cabinetOnly: true };
   }
 
   function allItems(record) {
@@ -387,13 +409,22 @@
       selectedId = items.length ? items[0].id : '';
     }
     const selected = items.find(function (item) { return item.id === selectedId; }) || null;
+    const isQuick = activeFolder === 'quick';
     const viewer = selected
       ? '<figure class="photo-folders__viewer"><img alt="' + escapeHtml(selected.title) + '" data-photo-id="' + escapeHtml(selected.id) + '">' +
         '<figcaption><strong>' + escapeHtml(selected.title) + '</strong>' +
         (selected.detail ? '<span>' + escapeHtml(selected.detail) + '</span>' : '') +
+        '<span class="photo-folders__cabinet-state" data-cabinet-state="' + escapeHtml(selected.id) + '"></span>' +
         '<div class="photo-folders__viewer-actions">' +
+        (isQuick
+          ? '<label class="photo-folders__tag"><input type="checkbox" id="photo-folders-tag"' +
+            (selected.tagged ? ' checked' : '') + '> Tag for download / report</label>'
+          : '') +
         '<button type="button" class="btn btn--secondary" id="photo-folders-view-one">View</button>' +
         '<button type="button" class="btn btn--secondary" id="photo-folders-download-one">Download</button>' +
+        (isQuick
+          ? '<button type="button" class="btn btn--secondary" id="photo-folders-open-explorer">Open in File Explorer</button>'
+          : '') +
         '</div>' +
         '</figcaption></figure>'
       : '';
@@ -404,6 +435,8 @@
           '<img alt="" data-photo-id="' + escapeHtml(item.id) + '">' +
           '<span class="photo-folders__name">' + escapeHtml(item.title) + '</span>' +
           (item.detail ? '<span class="photo-folders__detail">' + escapeHtml(item.detail) + '</span>' : '') +
+          '<span class="photo-folders__cabinet-state" data-cabinet-state="' + escapeHtml(item.id) + '"></span>' +
+          (item.tagged ? '<span class="photo-folders__tagged">Tagged</span>' : '') +
           '</button>';
       }).join('')
       : '<p class="photo-folders__empty">' +
@@ -414,8 +447,12 @@
     body.innerHTML = viewer + '<div class="photo-folders__grid">' + cards + '</div>';
     body.querySelectorAll('img[data-photo-id]').forEach(function (img) {
       const id = img.getAttribute('data-photo-id');
-      readPhoto(photoDb, id).then(function (value) {
-        if (overlay && typeof value === 'string' && value.indexOf('data:image/') === 0) img.src = value;
+      resolvePhotoSrc(photoDb, id).then(function (resolved) {
+        if (!overlay) return;
+        if (resolved.src) img.src = resolved.src;
+        body.querySelectorAll('[data-cabinet-state="' + id + '"]').forEach(function (el) {
+          el.textContent = resolved.cabinetOnly ? 'In the File Cabinet' : '';
+        });
       }).catch(function () {});
     });
     body.querySelectorAll('.photo-folders__card').forEach(function (card) {
@@ -429,9 +466,81 @@
     const viewOne = body.querySelector('#photo-folders-view-one');
     if (viewOne) {
       viewOne.addEventListener('click', function () {
+        const item = items.find(function (entry) { return entry.id === selectedId; });
+        if (item && item.folder === 'quick') {
+          resolvePhotoSrc(photoDb, selectedId).then(function (resolved) {
+            if (resolved.cabinetOnly) {
+              openInExplorer(selectedId);
+              return;
+            }
+            openFolderViewer(selectedId);
+          });
+          return;
+        }
         openFolderViewer(selectedId);
       });
     }
+    const tag = body.querySelector('#photo-folders-tag');
+    if (tag) {
+      tag.addEventListener('change', function () {
+        toggleTag(selectedId, tag.checked);
+      });
+    }
+    const explorerBtn = body.querySelector('#photo-folders-open-explorer');
+    if (explorerBtn) {
+      explorerBtn.addEventListener('click', function () {
+        openInExplorer(selectedId);
+      });
+    }
+  }
+
+  async function toggleTag(id, on) {
+    if (!ownerFileId || !id) return;
+    const record = await window.ToolboxDB.getCustomerFile(ownerFileId);
+    const quick = record && record.distress && Array.isArray(record.distress.quickCapture)
+      ? record.distress.quickCapture
+      : [];
+    const item = quick.find(function (entry) { return entry && entry.id === id; });
+    if (!item) return;
+    item.tagged = !!on;
+    item.reportTag = !!on;
+    record.distress.updatedAt = new Date().toISOString();
+    record.updatedAt = record.distress.updatedAt;
+    await window.ToolboxDB.saveCustomerFile(record);
+    currentItems = allItems(record);
+    renderBody();
+  }
+
+  async function downloadTagged() {
+    if (!ownerFileId || !window.ToolboxSync ||
+        typeof window.ToolboxSync.downloadTaggedQuickCapture !== 'function') {
+      setStatus('Download tagged is not available.');
+      return;
+    }
+    setStatus('Downloading tagged Quick Capture photos…');
+    try {
+      const result = await window.ToolboxSync.downloadTaggedQuickCapture(ownerFileId);
+      if (result && result.record) currentItems = allItems(result.record);
+      setStatus(result && result.downloaded
+        ? ('Downloaded ' + result.downloaded + ' tagged photo' +
+          (result.downloaded === 1 ? '' : 's') + ' at full size.')
+        : (result && result.tagged
+          ? 'Tagged photos are already on this device.'
+          : 'No tagged Quick Capture photos.'));
+      renderBody();
+    } catch (err) {
+      setStatus((err && err.message) || 'Could not download tagged photos.');
+    }
+  }
+
+  function openInExplorer(mediaId) {
+    close();
+    if (typeof location !== 'undefined') {
+      location.hash = '#/explorer' + (ownerFileId ? '/' + ownerFileId : '');
+    }
+    setStatus(mediaId
+      ? 'Open File Explorer — Quick Capture stays in the Cabinet until tagged and downloaded.'
+      : '');
   }
 
   function openFolderViewer(startId) {
@@ -553,12 +662,22 @@
       '    <button type="button" data-photo-folder="pins" aria-pressed="' + (activeFolder === 'pins' ? 'true' : 'false') + '">Distress photos<span>' + pinCount + '</span></button>' +
       '    <button type="button" data-photo-folder="quick" aria-pressed="' + (activeFolder === 'quick' ? 'true' : 'false') + '">Quick Capture<span>' + quickCount + '</span></button>' +
       '  </div>' +
-      '  <p class="photo-folders__note">Distress photos stay linked to their pins. Quick Capture stays in its own folder and is not placed on the plan. Download copies the stored files and does not change them.</p>' +
+      '  <p class="photo-folders__note">Distress photos stay linked to their pins and travel with Check Out. Quick Capture lives in the File Cabinet — this device may show a thumbnail only. Tag photos and use Download tagged for full-size local copies (e.g. for a report). Tapping a Cabinet-only photo opens File Explorer.</p>' +
       '  <p class="photo-folders__status" id="photo-folders-status" role="status"></p>' +
       '  <div class="photo-folders__body"></div>' +
       '</div>';
     document.body.appendChild(overlay);
     overlay.querySelector('#photo-folders-close').addEventListener('click', close);
+    const actions = overlay.querySelector('.photo-folders__actions');
+    if (actions) {
+      const taggedBtn = document.createElement('button');
+      taggedBtn.type = 'button';
+      taggedBtn.className = 'btn btn--secondary';
+      taggedBtn.id = 'photo-folders-download-tagged';
+      taggedBtn.textContent = 'Download tagged';
+      actions.insertBefore(taggedBtn, actions.firstChild);
+      taggedBtn.addEventListener('click', function () { downloadTagged(); });
+    }
     overlay.querySelector('#photo-folders-download-all').addEventListener('click', function () {
       downloadAll();
     });

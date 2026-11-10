@@ -361,7 +361,12 @@
     };
   }
 
-  function photoLabel(displayNumber) {
+  function photoLabel(displayNumber, photo) {
+    if (photo && photo.quickCapture) {
+      return (photo.label && String(photo.label).trim()) || 'Quick Capture';
+    }
+    // Number(null) is 0 in JS — do not invent "Photo 00" for QC / missing nums.
+    if (displayNumber == null || displayNumber === '') return 'Photo';
     var n = Number(displayNumber);
     if (!isFinite(n)) return 'Photo';
     var raw = String(Math.round(n));
@@ -1374,7 +1379,7 @@
       cell.setAttribute('data-photo-key', photo.key || '');
       var frame = document.createElement('div');
       frame.className = 'rb-pictures-page__frame';
-      if (!evidenceImage(frame, photo.dataUrl, 'rb-pictures-page__image', photoLabel(photo.displayNumber))) {
+      if (!evidenceImage(frame, photo.dataUrl, 'rb-pictures-page__image', photoLabel(photo.displayNumber, photo))) {
         addLine(frame, 'rb-sheet__note', 'Photo not on this device');
       }
       if (showView) {
@@ -1382,19 +1387,19 @@
         viewBtn.type = 'button';
         viewBtn.className = 'rb-pictures-page__view';
         viewBtn.setAttribute('data-rb-photo-view', photo.key || '');
-        viewBtn.setAttribute('aria-label', 'View ' + photoLabel(photo.displayNumber));
+        viewBtn.setAttribute('aria-label', 'View ' + photoLabel(photo.displayNumber, photo));
         viewBtn.textContent = 'View';
         frame.appendChild(viewBtn);
       }
       cell.appendChild(frame);
       var label = document.createElement('figcaption');
       label.className = 'rb-pictures-page__label';
-      label.textContent = photoLabel(photo.displayNumber);
+      label.textContent = photoLabel(photo.displayNumber, photo);
       cell.appendChild(label);
       var caption = document.createElement('textarea');
       caption.className = 'rb-pictures-page__caption';
       caption.setAttribute('data-rb-caption', photo.key || '');
-      caption.setAttribute('aria-label', photoLabel(photo.displayNumber) + ' description');
+      caption.setAttribute('aria-label', photoLabel(photo.displayNumber, photo) + ' description');
       caption.rows = 3;
       caption.value = typeof captions[photo.key] === 'string'
         ? captions[photo.key]
@@ -1935,6 +1940,53 @@
         });
       });
     });
+    // Tagged + downloaded Quick Capture photos live in pgg_photos_v1 (same
+    // store as Distress pin photos), keyed by id. Keys on the page are qc:<id>.
+    if (window.ToolboxReportEvidence &&
+        typeof window.ToolboxReportEvidence.listLocalQuickCapturePhotos === 'function') {
+      var qcList = window.ToolboxReportEvidence.listLocalQuickCapturePhotos(record) || [];
+      var getDistress = (typeof api.readDistressMedia === 'function')
+        ? api.readDistressMedia.bind(api)
+        : null;
+      for (var qci = 0; qci < qcList.length; qci += 1) {
+        var qc = qcList[qci];
+        if (!qc || !qc.key || !qc.id) continue;
+        var qcUrl = null;
+        if (getDistress) {
+          try { qcUrl = await getDistress(qc.id); } catch (err) { qcUrl = null; }
+        }
+        if (!qcUrl && window.ToolboxDB && typeof window.ToolboxDB.getMedia === 'function') {
+          try { qcUrl = await window.ToolboxDB.getMedia(qc.id); } catch (err2) { qcUrl = null; }
+        }
+        if (qcUrl && typeof qcUrl !== 'string') {
+          // Blob in the distress store — convert for the sheet.
+          try {
+            qcUrl = await new Promise(function (resolve, reject) {
+              var reader = new FileReader();
+              reader.onload = function () { resolve(String(reader.result || '')); };
+              reader.onerror = function () { reject(reader.error || new Error('read failed')); };
+              reader.readAsDataURL(qcUrl);
+            });
+          } catch (err3) {
+            qcUrl = null;
+          }
+        }
+        photoByKey[qc.key] = {
+          key: String(qc.key),
+          id: qc.id,
+          displayNumber: null,
+          dataUrl: typeof qcUrl === 'string' ? qcUrl : null,
+          seedText: qc.seedText || '',
+          location: '',
+          pinId: null,
+          pinNumber: null,
+          canvasId: null,
+          quickCapture: true,
+          label: qc.label || 'Quick Capture',
+          missing: !(typeof qcUrl === 'string' && qcUrl.indexOf('data:image/') === 0),
+        };
+      }
+    }
     var diagnostics = window.ToolboxDiagnostics && window.ToolboxDiagnostics.listReportFigures
       ? window.ToolboxDiagnostics.listReportFigures(record) : [];
     var result = [];
@@ -6917,7 +6969,7 @@
           var hasSrc = typeof photo.dataUrl === 'string' && photo.dataUrl.indexOf('data:image/') === 0;
           items.push({
             id: key,
-            title: photoLabel(photo.displayNumber),
+            title: photoLabel(photo.displayNumber, photo),
             caption: typeof captions[key] === 'string'
               ? captions[key]
               : (photo.seedText || ''),
@@ -9489,6 +9541,12 @@
         typeof window.ToolboxReportEvidence.listDistressPhotos === 'function'
         ? window.ToolboxReportEvidence.listDistressPhotos(record)
         : [];
+      if (window.ToolboxReportEvidence &&
+          typeof window.ToolboxReportEvidence.listLocalQuickCapturePhotos === 'function') {
+        photoList = photoList.concat(
+          window.ToolboxReportEvidence.listLocalQuickCapturePhotos(record) || []
+        );
+      }
       var source = api.read(record || null);
       var fresh = withProperty(api.assemble(source), source);
       var freshPages = ensurePicturesInFreshPages(fresh.pages.slice(), photoList);
@@ -9919,6 +9977,12 @@
       typeof window.ToolboxReportEvidence.listDistressPhotos === 'function'
       ? window.ToolboxReportEvidence.listDistressPhotos(record)
       : [];
+    if (window.ToolboxReportEvidence &&
+        typeof window.ToolboxReportEvidence.listLocalQuickCapturePhotos === 'function') {
+      photoList = photoList.concat(
+        window.ToolboxReportEvidence.listLocalQuickCapturePhotos(record) || []
+      );
+    }
     if (!photoList.length) {
       return Promise.reject(new Error('No Distress photographs to put on the report.'));
     }

@@ -19,6 +19,8 @@
     const ct = String(contentType || '').toLowerCase().split(';')[0].trim();
     if (!ct || ct === 'application/octet-stream') return '';
     if (ct.indexOf('image/') === 0) return 'image';
+    if (ct.indexOf('video/') === 0) return 'video';
+    if (ct.indexOf('audio/') === 0) return 'audio';
     if (ct === 'application/pdf') return 'pdf';
     if (ct === 'application/json' || ct.slice(-5) === '+json' || ct.indexOf('text/') === 0) return 'text';
     return '';
@@ -28,6 +30,8 @@
     const type = String(contentType || '').toLowerCase().split(';')[0].trim();
     if (type === 'application/pdf') return 'PDF';
     if (type.indexOf('image/') === 0) return 'Image';
+    if (type.indexOf('video/') === 0) return 'Video';
+    if (type.indexOf('audio/') === 0) return 'Audio';
     if (type === 'application/json' || type.slice(-5) === '+json') return 'File data';
     if (type.indexOf('text/') === 0) return 'Text';
     return type ? 'File' : '';
@@ -52,6 +56,7 @@
     { id: 'plans', title: 'Plans and canvases' },
     { id: 'distress', title: 'Distress Survey' },
     { id: 'quick-capture', title: 'Quick Capture' },
+    { id: 'job-walk-videos', title: 'Job Walk videos' },
     { id: 'other-photos', title: 'Other photos' },
     { id: 'floor', title: 'Floor Survey' },
     { id: 'diagnostics', title: 'Diagnostics' },
@@ -168,6 +173,7 @@
   function groupIdFor(purpose) {
     if (purpose === 'plan') return 'plans';
     if (purpose === 'distress-photo') return 'distress';
+    if (purpose === 'job-walk-video' || purpose === 'job-walk-audio') return 'job-walk-videos';
     if (purpose === 'unassigned-photo' || purpose === 'general-photo') return 'other-photos';
     if (purpose === 'floor-pdf' || purpose === 'floor-figure') return 'floor';
     if (purpose === 'diagnostics-figure') return 'diagnostics';
@@ -2752,6 +2758,14 @@
           img.alt = label;
           img.src = previewUrl;
           panel.appendChild(img);
+        } else if (kind === 'video' || kind === 'audio') {
+          previewUrl = URL.createObjectURL(loaded.blob);
+          const media = document.createElement(kind === 'video' ? 'video' : 'audio');
+          media.className = kind === 'video' ? 'explorer-preview__video' : 'explorer-preview__audio';
+          media.controls = true;
+          media.playsInline = true;
+          media.src = previewUrl;
+          panel.appendChild(media);
         } else if (kind === 'pdf') {
           previewUrl = URL.createObjectURL(loaded.blob);
           const frame = document.createElement('iframe');

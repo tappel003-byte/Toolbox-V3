@@ -237,6 +237,27 @@ function mediaRefsFromDistress(payload, notes) {
       '',
     );
   });
+  const walk = payload.jobWalk && typeof payload.jobWalk === 'object' ? payload.jobWalk : null;
+  const walkNotes = walk && Array.isArray(walk.notes) ? walk.notes : [];
+  walkNotes.forEach(function (note) {
+    if (!note || typeof note.audioId !== 'string' || note.audioId.indexOf('vm_') !== 0) return;
+    considerMedia(refs, notes, 'distress.json', note.audioId, 'job-walk-audio', 'Job Walk audio note', '');
+  });
+  const walkVideos = walk && Array.isArray(walk.videos) ? walk.videos : [];
+  walkVideos.forEach(function (clip) {
+    if (!clip || typeof clip.id !== 'string' || clip.id.indexOf('vid_') !== 0) return;
+    // List in Explorer once uploaded (or always list so Tim can see pending Cabinet state).
+    const sourceName = trimmed(clip.sourceName);
+    considerMedia(
+      refs,
+      notes,
+      'distress.json',
+      clip.id,
+      'job-walk-video',
+      sourceName ? 'Job Walk video — ' + sourceName : 'Job Walk video',
+      '',
+    );
+  });
   pushPhotoCollection(refs, notes, 'distress.json', payload.unassignedPhotos, 'unassigned-photo', 'Unassigned photo');
   pushPhotoCollection(refs, notes, 'distress.json', payload.generalPhotos, 'general-photo', 'General photo');
   return refs;

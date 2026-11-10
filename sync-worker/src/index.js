@@ -1463,6 +1463,15 @@ export default {
       }
       if (request.method === 'PUT') {
         const contentType = request.headers.get('content-type') || 'application/octet-stream';
+        const encoding = (request.headers.get('x-toolbox-encoding') || '').toLowerCase();
+        // Raw Blob uploads (Job Walk video): stream the body into R2 — do not
+        // arrayBuffer() a multi-hundred-MB clip into Worker memory first.
+        if (encoding === 'raw' && request.body) {
+          await env.CABINET.put(mediaKey(mediaId), request.body, {
+            httpMetadata: { contentType: contentType },
+          });
+          return json(request, { ok: true, streamed: true });
+        }
         const bytes = await request.arrayBuffer();
         await env.CABINET.put(mediaKey(mediaId), bytes, {
           httpMetadata: { contentType: contentType },

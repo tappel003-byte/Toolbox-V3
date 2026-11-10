@@ -719,22 +719,74 @@
     }
   }
 
-  function distressPhotoIds(record) {
-    const distress = record && record.distress ? record.distress : {};
+  function thumbMediaKey(id) {
+    return 'thumb:' + id;
+  }
+
+  /**
+   * Tim Nov 9, 2026: Quick Capture photos + Job Walk videos live in the File
+   * Cabinet, not on Check Out. Pin photos and Job Walk audio still travel.
+   */
+  function quickCaptureMediaIds(recordOrDistress) {
+    const distress = recordOrDistress && recordOrDistress.distress
+      ? recordOrDistress.distress
+      : (recordOrDistress || {});
+    const quick = Array.isArray(distress.quickCapture) ? distress.quickCapture : [];
+    const ids = [];
+    quick.forEach(function (item) { collectDistressPhotoId(ids, item && item.id); });
+    return Array.from(new Set(ids));
+  }
+
+  function jobWalkVideoMediaIds(recordOrDistress) {
+    const distress = recordOrDistress && recordOrDistress.distress
+      ? recordOrDistress.distress
+      : (recordOrDistress || {});
+    const walk = distress.jobWalk && typeof distress.jobWalk === 'object' ? distress.jobWalk : null;
+    const videos = walk && Array.isArray(walk.videos) ? walk.videos : [];
+    const ids = [];
+    videos.forEach(function (clip) { collectDistressPhotoId(ids, clip && clip.id); });
+    return Array.from(new Set(ids));
+  }
+
+  /** Pin photos + Job Walk audio — required on Check Out / Sync pull. */
+  function travelDistressMediaIds(recordOrDistress) {
+    const distress = recordOrDistress && recordOrDistress.distress
+      ? recordOrDistress.distress
+      : (recordOrDistress || {});
     const pins = Array.isArray(distress.pins) ? distress.pins : [];
     const ids = [];
     pins.forEach(function (pin) {
       const photos = pin && Array.isArray(pin.photos) ? pin.photos : [];
       photos.forEach(function (id) { collectDistressPhotoId(ids, id); });
     });
-    const quick = Array.isArray(distress.quickCapture) ? distress.quickCapture : [];
-    quick.forEach(function (item) { collectDistressPhotoId(ids, item && item.id); });
     const walk = distress.jobWalk && typeof distress.jobWalk === 'object' ? distress.jobWalk : null;
     const notes = walk && Array.isArray(walk.notes) ? walk.notes : [];
     notes.forEach(function (note) { collectDistressPhotoId(ids, note && note.audioId); });
-    const videos = walk && Array.isArray(walk.videos) ? walk.videos : [];
-    videos.forEach(function (clip) { collectDistressPhotoId(ids, clip && clip.id); });
     return Array.from(new Set(ids));
+  }
+
+  /**
+   * All distress-store media ids (legacy name). Prefer travel / quick / video
+   * helpers for sync direction.
+   */
+  function distressPhotoIds(record) {
+    return Array.from(new Set(
+      travelDistressMediaIds(record)
+        .concat(quickCaptureMediaIds(record))
+        .concat(jobWalkVideoMediaIds(record))
+    ));
+  }
+
+  /** Push from capturing device: travel + Quick Capture. Videos upload only on button. */
+  function distressMediaIdsForPush(record) {
+    return Array.from(new Set(
+      travelDistressMediaIds(record).concat(quickCaptureMediaIds(record))
+    ));
+  }
+
+  /** Pull / Check Out required bytes: travel only. */
+  function distressMediaIdsForPull(payloadOrRecord) {
+    return travelDistressMediaIds(payloadOrRecord);
   }
 
   function diagnosticsFigureMediaIds(source) {
@@ -808,7 +860,7 @@
 
   function mediaIdsForComponent(record, name) {
     if (name === 'plans') return planMediaIds(record);
-    if (name === 'distress') return distressPhotoIds(record);
+    if (name === 'distress') return distressMediaIdsForPush(record);
     if (name === 'diagnostics') return diagnosticsFigureMediaIds(record);
     if (name === 'floor') return recoveryPdfIdsFromFloor(record && record.floorSurvey);
     if (name === 'report') return reportMediaIds(record);
@@ -1005,22 +1057,9 @@
       return ids;
     }
     if (name === 'distress') {
-      const pins = Array.isArray(payload.pins) ? payload.pins : [];
-      const ids = [];
-      pins.forEach(function (pin) {
-        const photos = pin && Array.isArray(pin.photos) ? pin.photos : [];
-        photos.forEach(function (id) {
-          if (typeof id === 'string' && id.indexOf('ph_') === 0) ids.push(id);
-        });
-      });
-      const quick = Array.isArray(payload.quickCapture) ? payload.quickCapture : [];
-      quick.forEach(function (item) { collectDistressPhotoId(ids, item && item.id); });
-      const walk = payload.jobWalk && typeof payload.jobWalk === 'object' ? payload.jobWalk : null;
-      const notes = walk && Array.isArray(walk.notes) ? walk.notes : [];
-      notes.forEach(function (note) { collectDistressPhotoId(ids, note && note.audioId); });
-      const videos = walk && Array.isArray(walk.videos) ? walk.videos : [];
-      videos.forEach(function (clip) { collectDistressPhotoId(ids, clip && clip.id); });
-      return Array.from(new Set(ids));
+      // Check Out / Sync pull: travel media only (pins + Job Walk audio).
+      // Quick Capture and videos stay in the Cabinet (Tim, Nov 9, 2026).
+      return distressMediaIdsForPull(payload);
     }
     if (name === 'diagnostics') return diagnosticsFigureMediaIds(payload);
     if (name === 'floor') return recoveryPdfIdsFromFloor(payload);
@@ -1117,9 +1156,11 @@
     } finally {
       db.close();
     }
-    // Early TLS Job Walk builds stored raw Blobs. Convert once so Sync and
-    // viewers that require data URLs keep working for those devices.
+    // Job Walk videos stay as Blobs (Tim Nov 9, 2026) — do not inflate to data URLs.
     if (value && typeof value !== 'string' && typeof Blob === 'function' && value instanceof Blob) {
+      if (typeof id === 'string' && id.indexOf('vid_') === 0) return value;
+      // Early TLS Job Walk builds stored photo/audio Blobs. Convert once so Sync
+      // and viewers that require data URLs keep working for those devices.
       try {
         let dataUrl = null;
         if (typeof FileReader === 'function') {
@@ -1516,13 +1557,15 @@
           throw new SyncError('incomplete', 'Required plan media missing after Check Out.');
         }
       }
-      const photoIds = distressPhotoIds(saved);
+      const photoIds = distressMediaIdsForPull(saved);
       for (let i = 0; i < photoIds.length; i++) {
         const media = await getLocalMedia(photoIds[i], 'distress');
         if (media == null || media === '') {
           throw new SyncError('incomplete', 'Required Distress media missing after Check Out.');
         }
       }
+      // Quick Capture: thumbnails only — full bytes stay in the Cabinet.
+      await materializeQuickCaptureThumbs(saved);
       saved = await ensureCheckedOutFromCabinetMarker(saved);
       return {
         ok: true,
@@ -1640,8 +1683,21 @@
     }
     await verifyMediaPresent(planMediaIds(record), 'Checking plans',
       'Cabinet verification failed: plan media missing remotely.');
-    await verifyMediaPresent(distressPhotoIds(record), 'Checking Distress photographs',
+    // Travel media + Quick Capture that this device still holds must be in the
+    // Cabinet. Videos are verified only when already marked uploaded.
+    await verifyMediaPresent(travelDistressMediaIds(record), 'Checking Distress photographs',
       'Cabinet verification failed: Distress media missing remotely.');
+    await verifyMediaPresent(quickCaptureMediaIds(record), 'Checking Quick Capture photographs',
+      'Cabinet verification failed: Quick Capture media missing remotely.');
+    const uploadedVideos = (function () {
+      const walk = record.distress && record.distress.jobWalk;
+      const videos = walk && Array.isArray(walk.videos) ? walk.videos : [];
+      return videos.filter(function (clip) {
+        return clip && clip.id && clip.cabinetUploadedAt;
+      }).map(function (clip) { return clip.id; });
+    })();
+    await verifyMediaPresent(uploadedVideos, 'Checking Job Walk videos',
+      'Cabinet verification failed: uploaded Job Walk video missing remotely.');
     await verifyMediaPresent(recoveryPdfIdsFromFloor(record.floorSurvey),
       'Checking Floor Survey recovery',
       'Cabinet verification failed: Floor Survey recovery PDF missing remotely.');
@@ -1906,7 +1962,20 @@
     }
   }
 
-  async function putRemoteMedia(mediaId, dataUrl) {
+  async function putRemoteMedia(mediaId, value) {
+    // Prefer streaming a Blob (Job Walk video) over a data URL.
+    if (typeof Blob === 'function' && value instanceof Blob) {
+      await apiFetch('/media/' + encodeURIComponent(mediaId), {
+        method: 'PUT',
+        headers: {
+          'content-type': value.type || 'application/octet-stream',
+          'x-toolbox-encoding': 'raw',
+        },
+        body: value,
+      });
+      return;
+    }
+    const dataUrl = value;
     const head = typeof dataUrl === 'string'
       ? /^data:([^;,]+)?(;base64)?,/.exec(dataUrl) : null;
     const blob = head ? await dataUrlToBlob(dataUrl) : null;
@@ -1972,11 +2041,179 @@
     if (local == null) {
       throw new SyncError('sync', 'Missing local media required for sync: ' + mediaId);
     }
+    if (typeof Blob === 'function' && local instanceof Blob) {
+      await putRemoteMedia(mediaId, local);
+      return;
+    }
     const asDataUrl = typeof local === 'string' ? local : null;
     if (!asDataUrl) {
       throw new SyncError('sync', 'Media is not in a transferable form: ' + mediaId);
     }
     await putRemoteMedia(mediaId, asDataUrl);
+  }
+
+  async function getRemoteMediaBlob(mediaId) {
+    const response = await apiFetch('/media/' + encodeURIComponent(mediaId));
+    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    const blob = await response.blob();
+    return blob.type ? blob : new Blob([blob], { type: contentType });
+  }
+
+  /**
+   * Store a few-KB JPEG (or original fallback) per Quick Capture so Check Out
+   * lists browse offline without full photo bytes.
+   */
+  /**
+   * Shrink a full/original image to a few-KB JPEG when the Worker has no
+   * Images binding (x-toolbox-thumb: original) or returns a large body.
+   */
+  function shrinkImageBlobToThumb(blob, edge) {
+    edge = edge || 320;
+    if (!blob || typeof createImageBitmap !== 'function') {
+      return blobToDataUrl(blob);
+    }
+    return createImageBitmap(blob).then(function (bitmap) {
+      try {
+        const w = bitmap.width || edge;
+        const h = bitmap.height || edge;
+        const scale = Math.min(1, edge / Math.max(w, h));
+        const tw = Math.max(1, Math.round(w * scale));
+        const th = Math.max(1, Math.round(h * scale));
+        if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+          if (typeof bitmap.close === 'function') bitmap.close();
+          return blobToDataUrl(blob);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = tw;
+        canvas.height = th;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          if (typeof bitmap.close === 'function') bitmap.close();
+          return blobToDataUrl(blob);
+        }
+        ctx.drawImage(bitmap, 0, 0, tw, th);
+        if (typeof bitmap.close === 'function') bitmap.close();
+        return canvas.toDataURL('image/jpeg', 0.72);
+      } catch (_) {
+        if (bitmap && typeof bitmap.close === 'function') bitmap.close();
+        return blobToDataUrl(blob);
+      }
+    }).catch(function () {
+      return blobToDataUrl(blob);
+    });
+  }
+
+  async function storeQuickCaptureThumbnail(mediaId) {
+    if (!mediaId) return false;
+    try {
+      const response = await exploreFetchThumb(mediaId, 320);
+      if (!response || !response.ok) return false;
+      const blob = await response.blob();
+      if (!blob || !blob.size) return false;
+      const thumbKind = (response.headers && response.headers.get('x-toolbox-thumb')) || '';
+      // When Images is absent the Worker returns the original — shrink here.
+      const dataUrl = (thumbKind === 'original' || blob.size > 80 * 1024)
+        ? await shrinkImageBlobToThumb(blob, 320)
+        : await blobToDataUrl(blob);
+      if (typeof dataUrl !== 'string' || dataUrl.indexOf('data:') !== 0) return false;
+      await putDistressPhoto(thumbMediaKey(mediaId), dataUrl);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function materializeQuickCaptureThumbs(record) {
+    const ids = quickCaptureMediaIds(record);
+    const missing = [];
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      const full = await getLocalMedia(id, 'distress');
+      if (full != null && full !== '') continue;
+      const ok = await storeQuickCaptureThumbnail(id);
+      if (!ok) missing.push(id);
+    }
+    return missing;
+  }
+
+  /** Upload Job Walk videos that are still only on this device. */
+  async function uploadJobWalkVideos(customerFileId) {
+    const record = await window.ToolboxDB.getCustomerFile(customerFileId);
+    if (!record) throw new SyncError('sync', 'Customer File missing.');
+    const walk = record.distress && record.distress.jobWalk;
+    const videos = walk && Array.isArray(walk.videos) ? walk.videos : [];
+    let uploaded = 0;
+    let waiting = 0;
+    for (let i = 0; i < videos.length; i++) {
+      const clip = videos[i];
+      if (!clip || typeof clip.id !== 'string') continue;
+      if (clip.cabinetUploadedAt) continue;
+      waiting += 1;
+      const local = await getLocalMedia(clip.id, 'distress');
+      if (local == null) {
+        throw new SyncError('sync', 'Video bytes missing locally: ' + clip.id);
+      }
+      await ensureRemoteMedia(clip.id, 'distress');
+      clip.cabinetUploadedAt = new Date().toISOString();
+      uploaded += 1;
+    }
+    if (uploaded) {
+      const now = new Date().toISOString();
+      if (record.distress) record.distress.updatedAt = now;
+      if (walk) walk.updatedAt = now;
+      record.updatedAt = now;
+      await window.ToolboxDB.saveCustomerFile(record);
+      // Push the stamped distress so Cabinet / Explorer see cabinetUploadedAt.
+      try {
+        const remote = await getRemoteIndex(record.id);
+        await syncOneRecord(record, remote, {});
+      } catch (err) {
+        noteLocalSave(record.id);
+        throw err;
+      }
+    }
+    return { uploaded: uploaded, remaining: Math.max(0, waiting - uploaded), record: record };
+  }
+
+  /** Download full-size tagged Quick Capture photos into the local store. */
+  async function downloadTaggedQuickCapture(customerFileId) {
+    const record = await window.ToolboxDB.getCustomerFile(customerFileId);
+    if (!record) throw new SyncError('sync', 'Customer File missing.');
+    const quick = record.distress && Array.isArray(record.distress.quickCapture)
+      ? record.distress.quickCapture
+      : [];
+    const tagged = quick.filter(function (item) {
+      return item && item.id && (item.tagged === true || item.reportTag === true);
+    });
+    let downloaded = 0;
+    for (let i = 0; i < tagged.length; i++) {
+      const id = tagged[i].id;
+      const local = await getLocalMedia(id, 'distress');
+      if (typeof local === 'string' && local.indexOf('data:image/') === 0) {
+        tagged[i].localFull = true;
+        continue;
+      }
+      const dataUrl = await getRemoteMediaDataUrl(id);
+      await putLocalMedia(id, dataUrl, 'distress');
+      tagged[i].localFull = true;
+      downloaded += 1;
+    }
+    if (downloaded) {
+      const now = new Date().toISOString();
+      if (record.distress) record.distress.updatedAt = now;
+      record.updatedAt = now;
+      await window.ToolboxDB.saveCustomerFile(record);
+      noteLocalSave(record.id);
+    }
+    return { downloaded: downloaded, tagged: tagged.length, record: record };
+  }
+
+  async function downloadJobWalkVideo(customerFileId, videoId) {
+    const record = await window.ToolboxDB.getCustomerFile(customerFileId);
+    if (!record) throw new SyncError('sync', 'Customer File missing.');
+    const blob = await getRemoteMediaBlob(videoId);
+    await putLocalMedia(videoId, blob, 'distress');
+    return { id: videoId, size: blob.size, type: blob.type };
   }
 
   /**
@@ -3849,6 +4086,23 @@
     mediaIdsForComponent: mediaIdsForComponent,
     planMediaIds: planMediaIds,
     distressPhotoIds: distressPhotoIds,
+    travelDistressMediaIds: travelDistressMediaIds,
+    quickCaptureMediaIds: quickCaptureMediaIds,
+    jobWalkVideoMediaIds: jobWalkVideoMediaIds,
+    distressMediaIdsForPush: distressMediaIdsForPush,
+    distressMediaIdsForPull: distressMediaIdsForPull,
+    thumbMediaKey: thumbMediaKey,
+    uploadJobWalkVideos: function (id) {
+      return enqueueSyncWork(function () { return uploadJobWalkVideos(id); });
+    },
+    downloadTaggedQuickCapture: function (id) {
+      return enqueueSyncWork(function () { return downloadTaggedQuickCapture(id); });
+    },
+    downloadJobWalkVideo: function (customerFileId, videoId) {
+      return enqueueSyncWork(function () { return downloadJobWalkVideo(customerFileId, videoId); });
+    },
+    storeQuickCaptureThumbnail: storeQuickCaptureThumbnail,
+    materializeQuickCaptureThumbs: materializeQuickCaptureThumbs,
     reportMediaIds: reportMediaIds,
     SyncError: SyncError,
     syncNow: function (options) {
@@ -3945,6 +4199,11 @@
       decideComponentAction: decideComponentAction,
       compareInventories: compareInventories,
       mediaIdsFromPayload: mediaIdsFromPayload,
+      distressMediaIdsForPush: distressMediaIdsForPush,
+      distressMediaIdsForPull: distressMediaIdsForPull,
+      travelDistressMediaIds: travelDistressMediaIds,
+      quickCaptureMediaIds: quickCaptureMediaIds,
+      jobWalkVideoMediaIds: jobWalkVideoMediaIds,
       stampComponentRevision: stampComponentRevision,
       isDefaultCustomerShellFields: isDefaultCustomerShellFields,
       isDefaultPlansShellPayload: isDefaultPlansShellPayload,
@@ -3958,6 +4217,12 @@
       fieldWorkSurveyDate: fieldWorkSurveyDate,
       CABINET_SEARCH_FIELDS: CABINET_SEARCH_FIELDS,
       syncOneRecord: syncOneRecord,
+      uploadJobWalkVideos: uploadJobWalkVideos,
+      downloadTaggedQuickCapture: downloadTaggedQuickCapture,
+      downloadJobWalkVideo: downloadJobWalkVideo,
+      materializeQuickCaptureThumbs: materializeQuickCaptureThumbs,
+      thumbMediaKey: thumbMediaKey,
+      ensureRemoteMedia: ensureRemoteMedia,
     },
   };
 })();

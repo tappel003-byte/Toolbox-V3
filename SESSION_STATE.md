@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 9, 2026** (America/Denver)  
-Updated by: Cursor agent — Tim: merge correctly → PR #204 into integration `7f778d6`.
+Updated by: Claude Code — recheck of `8d1b503` (#208) passed; Ball to Tim.
 
 ---
 
@@ -19,9 +19,11 @@ Updated by: Cursor agent — Tim: merge correctly → PR #204 into integration `
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** (promote when ready) |
-| Integration merge | **Done.** PR #204 → `claude/milestone-1-customer-file-qv5ybf` @ `7f778d6` (TLS Job Walk + POR Paint/PPT + Job Walk media; shell `v449`). |
-| Not done | **Promote / live Production** — Tim only. Not merged to `main`. |
+| **Has the ball** | **Tim** — PR #208 passed Claude Code recheck at code tip `8d1b503` (merge to integration when Tim says; Sync Worker deploy is a separate Tim call). |
+| Check this | **PR #208** — https://github.com/tappel003-byte/Toolbox-V3/pull/208 |
+| Branch / tip | `cursor/qc-cabinet-media-2ac5` — code `8d1b503`, branch HEAD on push (shell `v452`). |
+| Base | `claude/milestone-1-customer-file-qv5ybf` @ `803abf9`. Do **not** merge until Tim says. |
+| Not done | CC quick recheck → Tim merge to integration → Tim promote. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -78,7 +80,8 @@ Long chats cost more tokens and do **not** give the model continuous human-like 
 
 | Branch | Tip (approx) | Notes |
 |--------|----------------|-------|
-| `claude/milestone-1-customer-file-qv5ybf` | `7f778d6` | **Integration tip.** Includes #204 TLS workspace. Shell `v449`. |
+| `claude/milestone-1-customer-file-qv5ybf` | `803abf9` | **Integration tip** |
+| `cursor/qc-cabinet-media-2ac5` | `8d1b503`+ | **PR #208** — three small CC items (`8d1b503`); shell `v452`. |
 | `main` | re-check | Behind milestone. Do not merge here unless Tim asks promote-prep. |
 
 Always re-check with `git fetch` before claiming tip SHAs.
@@ -89,40 +92,38 @@ Always re-check with `git fetch` before claiming tip SHAs.
 
 | Item | State |
 |------|--------|
-| Floor open seed: prefer book `reportBuilder.floorLayout`; legacy slide `meta.layout` only if book absent | Done — #194 on milestone. Also on `main` via #193 (that merge published). |
-| Verification: both / legacy-only / neither; H/L offsets unchanged | Passed (`tests/report-floor-legacy-vs-book.mjs`) |
-| Share lookbook = **link only** (no ZIP download) | Done on milestone |
-| RB toolbar regroup: format \| Fit+Present \| Draft/Print/Share/Export | Done on milestone |
-| Plan of Repair as RB-style drawing template | On milestone; earlier bring-to-main for promote |
-| Engineer lookbook packager + Worker routes in repo | In tree; floor sheet capture fix #195 on milestone |
-| Lookbook product intent | **Keep it.** Tim does not think it’s a bad idea. Gap is ops/Access, not the idea. |
-| On-this-device ••• Delete gate | Done — #198. No DS pin-photos and no FS points → local Delete on •••; otherwise Explorer note. Floor plan alone does not block. Was shell `v441`; tip now `v442`. |
-| Library / home card address on two lines | Done — #199 (`1e786f8`, merge `f055fed`). Street on line 1; city/state/ZIP on line 2 (envelope style). Display only — does not rewrite `propertyAddress`. Shell `toolbox-shell-v442`. Built by Claude Code; Tim accepted (“good”); Cursor repairing this handoff. |
-| POR Paint/PPT toolbar + view-pan fix | Done on integration via #204. Shell `v449` (with Job Walk media). |
-| Job Walk media (delete photo/audio; Take Video + Delete; Sync `vid_`) | Done on integration via #205 → TLS branch → #204. |
-| TLS workspace integrated build | Done — #204 merged to `claude/milestone-1-customer-file-qv5ybf` @ `7f778d6`. Cursor + CC loop; ChatGPT dead path. |
+| Floor open seed / lookbook / RB toolbar / POR / TLS / Job Walk media | Done on integration via #204 @ tip `803abf9`. |
+| **QC + Job Walk video → File Cabinet (not Check Out)** | **PR #208** — behavior verified on `6cfaefb`; three small follow-ups landed for CC. Shell `v452`. |
+
+### Ops note — Sync Worker deploy (Tim)
+
+The **streaming** media PUT in `sync-worker/src/index.js` (`x-toolbox-encoding: raw` → R2 body stream) takes effect **only after Tim authorises a Sync Worker deploy**. Until then, live uploads still use the old buffered Worker path. That is fine for smaller clips; the client clip limit is now **90 MB** so a clip stays under the Workers 100 MB request-body ceiling even on the buffered path.
+
+### Three small CC items (this push)
+
+1. `tests/customer-file-import.mjs` Photo folders note assertion matches Cabinet wording (not “not placed on the plan”).
+2. Job Walk video cap **90 MB** (headroom under Workers 100 MB).
+3. SESSION_STATE + PR state the Worker-deploy dependency for streaming PUT (above).
 
 ---
 
 ## Outstanding — real open work
 
-1. **Promote** — Tim only. Integration has #204; live Production does not until Tim promotes. Do **not** merge to `main` unless Tim asks promote-prep.
+1. **CC recheck then Tim merge** of `cursor/qc-cabinet-media-2ac5` (#208) into integration. Do not merge to `main`.
 
-2. **Cloudflare Access path bypass for `lookbook/*`** on `sync.sandiageotoolbox.com`  
-   - Without this, engineer (and private-window) opens hit Cloudflare login.  
-   - Tim’s ops action.  
-   - Create/upload/finalize stay Access-gated; only public GET needs the bypass.
+2. **Open product items (safer defaults shipped; Tim has not decided):**
+   - After a video uploads: **keep** the clip on the phone (default) vs clear to free space.
+   - Job Walk **audio** notes: still travel with the file like typed notes (default) vs treat like photos/video.
 
-3. **Confirm Sync Worker deploy has lookbook create routes**  
-   - If Share still shows **“Not found”**, `POST /lookbook` is not on the live Worker.  
-   - Deploy (when Tim authorizes / from an authenticated machine):  
-     `npx wrangler@4 deploy --config sync-worker/wrangler.toml`  
-   - Runtime secrets attach when an agent **starts**. An already-running VM may not see `CLOUDFLARE_API_TOKEN` even when it is set in Cursor Secrets.
+3. **Promote** — Tim only.
 
-4. **Stale / unrelated open PRs** (don’t confuse with current tip)  
-   - #165 older promote-rules docs (intent largely covered by #196)  
-   - #151, #139, #120, and older main-based #97 / #86 / #85  
-   - Triage when Tim wants; not blockers for lookbook Access.
+4. **Sync Worker deploy** (when Tim authorises) — picks up streaming media PUT + any other Worker changes on this branch.
+
+5. **Cloudflare Access path bypass for `lookbook/*`** — Tim’s ops action.
+
+6. **Confirm Sync Worker deploy** has lookbook create routes if Share still 404s.
+
+7. **Stale / unrelated open PRs** — triage when Tim wants; not blockers.
 
 ---
 
@@ -138,9 +139,9 @@ Always re-check with `git fetch` before claiming tip SHAs.
 
 ## Update checklist (when you change this file)
 
-- [ ] Date / timezone label  
-- [ ] Ball table  
-- [ ] Integration + `main` tip SHAs (after fetch)  
-- [ ] Done vs outstanding still accurate  
-- [ ] Lookbook / Access / Worker status  
-- [ ] Any new “do not repeat” process lesson Tim just enforced  
+- [x] Date / timezone label  
+- [x] Ball table  
+- [x] Integration + `main` tip SHAs (after fetch)  
+- [x] Done vs outstanding still accurate  
+- [x] Lookbook / Access / Worker status  
+- [x] Any new “do not repeat” process lesson Tim just enforced  

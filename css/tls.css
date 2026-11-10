@@ -357,3 +357,26 @@ body.job-walk-open #app-view {
   color: #b45309;
   font-weight: 600;
 }
+
+.jw-video-wait {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0b1f33;
+}
+
+.jw-card__meta {
+  margin: 0;
+  padding: 4px 8px 0;
+  font-size: 11px;
+  color: #5b6470;
+}
+
+.jw-card--cabinet {
+  border-style: dashed;
+  cursor: pointer;
+}
+
+.jw-card--cabinet .jw-card__meta {
+  font-weight: 700;
+  color: #5b6470;
+}
