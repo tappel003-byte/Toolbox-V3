@@ -826,6 +826,63 @@ check(
 );
 await page.screenshot({ path: path.join(OUT, 'por-stage2-text-format.png'), fullPage: true });
 
+// Stage 3: align, selection pane, grid, zoom slider.
+const stage3Chrome = await page.evaluate(() => ({
+  align: document.querySelectorAll('[data-por-align-marks]').length,
+  distribute: document.querySelectorAll('[data-por-distribute]').length,
+  grid: !!document.querySelector('#por-toggle-grid'),
+  rulers: !!document.querySelector('#por-toggle-rulers'),
+  hand: !!document.querySelector('#por-hand'),
+  slider: !!document.querySelector('#por-zoom-slider'),
+  selpane: !!document.querySelector('#por-selpane-list'),
+}));
+check(
+  'Stage 3 arrange chrome present',
+  stage3Chrome.align >= 6 && stage3Chrome.distribute >= 2 && stage3Chrome.grid &&
+    stage3Chrome.rulers && stage3Chrome.hand && stage3Chrome.slider && stage3Chrome.selpane,
+  JSON.stringify(stage3Chrome)
+);
+
+await page.evaluate(() => {
+  document.querySelector('#por-toggle-grid')?.click();
+  document.querySelector('#por-toggle-rulers')?.click();
+});
+await page.waitForSelector('.por-grid', { timeout: 4000 });
+await page.waitForSelector('.por-fabric-host', { timeout: 4000 });
+await new Promise((r) => setTimeout(r, 400));
+const gridOn = await page.evaluate(() => ({
+  grid: !!document.querySelector('.por-grid'),
+  rulers: document.querySelectorAll('.por-ruler').length,
+  items: document.querySelectorAll('#por-selpane-list .por-selpane__item').length,
+}));
+check(
+  'grid rulers and selection pane',
+  gridOn.grid && gridOn.rulers >= 2 && gridOn.items >= 2,
+  JSON.stringify(gridOn)
+);
+
+const alignResult = await page.evaluate(() => {
+  const host = document.querySelector('.por-fabric-host');
+  const canvas = host && host._porCanvas;
+  if (!canvas) return { ok: false, reason: 'no-canvas' };
+  const objs = canvas.getObjects().filter((o) => !o.excludeFromExport && (o.type === 'rect' || o.porKind === 'rect' || o.type === 'ellipse' || o.porKind === 'circle'));
+  if (objs.length < 2) return { ok: false, reason: 'need-2', n: objs.length };
+  // Offset one mark so align has work to do.
+  objs[1].set({ left: (objs[1].left || 0) + 40 });
+  objs[1].setCoords();
+  const sel = new window.fabric.ActiveSelection([objs[0], objs[1]], { canvas });
+  canvas.setActiveObject(sel);
+  canvas.requestRenderAll();
+  document.querySelector('[data-por-align-marks="left"]')?.click();
+  const kids = (canvas.getActiveObject() && canvas.getActiveObject().type === 'activeSelection')
+    ? canvas.getActiveObject().getObjects()
+    : [objs[0], objs[1]];
+  const lefts = kids.map((o) => Math.round(o.getBoundingRect(true, true).left));
+  return { ok: Math.abs(lefts[0] - lefts[1]) <= 2, lefts, n: kids.length };
+});
+check('align left snaps marks together', alignResult.ok, JSON.stringify(alignResult));
+await page.screenshot({ path: path.join(OUT, 'por-stage3-align-grid.png'), fullPage: true });
+
 await page.screenshot({ path: path.join(OUT, 'por-shape-inspector.png'), fullPage: true });
 
 await page.click('#por-add-page');

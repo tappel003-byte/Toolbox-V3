@@ -376,9 +376,24 @@
       '    <button type="button" class="por-iconbtn" data-por-align="right" title="Align right" aria-label="Align right">⫸</button>' +
       '    <button type="button" class="por-iconbtn" data-por-text="bullet" title="Bullets" aria-label="Bullets">•</button>' +
       '  </div>' +
+      '  <div class="por-toolbar__group" role="group" aria-label="Arrange">' +
+      '    <button type="button" class="por-iconbtn" data-por-align-marks="left" title="Align left" aria-label="Align left">⫷</button>' +
+      '    <button type="button" class="por-iconbtn" data-por-align-marks="center" title="Align center" aria-label="Align center">☰</button>' +
+      '    <button type="button" class="por-iconbtn" data-por-align-marks="right" title="Align right" aria-label="Align right">⫸</button>' +
+      '    <button type="button" class="por-iconbtn" data-por-align-marks="top" title="Align top" aria-label="Align top">⬆</button>' +
+      '    <button type="button" class="por-iconbtn" data-por-align-marks="middle" title="Align middle" aria-label="Align middle">↕</button>' +
+      '    <button type="button" class="por-iconbtn" data-por-align-marks="bottom" title="Align bottom" aria-label="Align bottom">⬇</button>' +
+      '    <button type="button" class="por-iconbtn" data-por-distribute="h" title="Distribute horizontally" aria-label="Distribute horizontally"> ↔ </button>' +
+      '    <button type="button" class="por-iconbtn" data-por-distribute="v" title="Distribute vertically" aria-label="Distribute vertically"> ↕ </button>' +
+      '    <button type="button" class="por-iconbtn" id="por-toggle-grid" title="Show grid" aria-label="Show grid" aria-pressed="false">▦</button>' +
+      '    <button type="button" class="por-iconbtn" id="por-toggle-rulers" title="Show rulers" aria-label="Show rulers" aria-pressed="false">▤</button>' +
+      '    <button type="button" class="por-iconbtn" id="por-hand" title="Hand / pan sheet (Space)" aria-label="Hand tool" aria-pressed="false">' +
+            svgIcon('<path d="M8 11V6.5a1.5 1.5 0 0 1 3 0V11"/><path d="M11 10V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M14 10.5V7a1.5 1.5 0 0 1 3 0v8.5a4.5 4.5 0 0 1-4.5 4.5H12a5 5 0 0 1-5-5V11a1.5 1.5 0 0 1 3 0"/>') + '</button>' +
+      '  </div>' +
       '  <div class="por-toolbar__spacer"></div>' +
       '  <div class="por-toolbar__view" role="group" aria-label="Page view">' +
       '    <button type="button" id="por-zoom-out" class="por-iconbtn" aria-label="Zoom out" title="Zoom out">−</button>' +
+      '    <input type="range" id="por-zoom-slider" class="por-zoom-slider" min="35" max="240" value="100" aria-label="Zoom">' +
       '    <button type="button" id="por-zoom-level" class="por-zoom-level" title="Fit page">Fit</button>' +
       '    <button type="button" id="por-zoom-in" class="por-iconbtn" aria-label="Zoom in" title="Zoom in">+</button>' +
       '  </div>' +
@@ -422,6 +437,10 @@
       '      <button type="button" class="por-linkbtn" id="por-remove-view">Remove detail</button>' +
       '    </div>' +
       '    <label class="por-fill-toggle por-fill-toggle--compact"><input type="checkbox" id="por-sandia"> SandiaGEO note</label>' +
+      '    <div class="por-selpane" id="por-selpane">' +
+      '      <h3 class="por-inspector__heading">Selection</h3>' +
+      '      <ul class="por-selpane__list" id="por-selpane-list" aria-label="Marks on this sheet"></ul>' +
+      '    </div>' +
       '    <div class="por-inspector" id="por-inspector" hidden>' +
       '      <h3 id="por-inspector-title" class="por-inspector__heading">Format Shape</h3>' +
       '      <div class="por-inspector__line">' +
@@ -501,6 +520,13 @@
       fabricWired: false,
       convertingLegacy: false,
       shapeDraft: null,
+      showGrid: false,
+      showRulers: false,
+      handTool: false,
+      spaceDown: false,
+      sheetPan: null,
+      guides: [],
+      snapGuides: [],
     };
     var PorFab = window.ToolboxPorFabric;
 
@@ -829,11 +855,19 @@
         scheduleSave();
         syncHistoryButtons();
       };
-      canvas.on('object:modified', pushAndSync);
+      canvas.on('object:modified', function () {
+        clearSnapGuides();
+        pushAndSync();
+        syncSelectionPane();
+      });
+      canvas.on('object:moving', function (opt) {
+        if (opt && opt.target) snapMovingObject(opt.target);
+      });
       canvas.on('object:removed', function () {
         if (state.readOnly || state.printMode) return;
         syncOverlaysFromFabric();
         scheduleSave();
+        syncSelectionPane();
       });
       canvas.on('selection:created', function (opt) {
         var active = canvas.getActiveObject();
@@ -853,6 +887,7 @@
         state.editingText = isText;
         syncInspector();
         syncHistoryButtons();
+        syncSelectionPane();
       });
       canvas.on('selection:updated', function (opt) {
         var active = canvas.getActiveObject();
@@ -870,12 +905,14 @@
         state.editingText = !!(active && (active.type === 'textbox' || active.type === 'i-text'));
         syncInspector();
         syncHistoryButtons();
+        syncSelectionPane();
       });
       canvas.on('selection:cleared', function () {
         state.selectedId = null;
         state.editingText = false;
         syncInspector();
         syncHistoryButtons();
+        syncSelectionPane();
       });
       canvas.on('text:editing:entered', function () {
         state.editingText = true;
@@ -1168,6 +1205,236 @@
       scheduleSave();
     }
 
+    function selectionTargets() {
+      var canvas = state.fabricCanvas;
+      if (!canvas) return [];
+      var active = canvas.getActiveObject();
+      if (!active) return [];
+      if (active.type === 'activeSelection') {
+        return typeof active.getObjects === 'function' ? active.getObjects() : (active._objects || []);
+      }
+      return [active];
+    }
+
+    function alignMarks(mode) {
+      var canvas = state.fabricCanvas;
+      if (!canvas || state.readOnly) return;
+      var targets = selectionTargets();
+      if (!targets.length) return;
+      pushHistory();
+      var boxes = targets.map(function (o) {
+        var b = o.getBoundingRect(true, true);
+        return { o: o, b: b };
+      });
+      var useSheet = boxes.length < 2;
+      var minL = useSheet ? 0 : Math.min.apply(null, boxes.map(function (x) { return x.b.left; }));
+      var maxR = useSheet ? PAPER_W : Math.max.apply(null, boxes.map(function (x) { return x.b.left + x.b.width; }));
+      var minT = useSheet ? 0 : Math.min.apply(null, boxes.map(function (x) { return x.b.top; }));
+      var maxB = useSheet ? PAPER_H : Math.max.apply(null, boxes.map(function (x) { return x.b.top + x.b.height; }));
+      var midX = (minL + maxR) / 2;
+      var midY = (minT + maxB) / 2;
+      boxes.forEach(function (x) {
+        var o = x.o;
+        var b = x.b;
+        var dx = 0;
+        var dy = 0;
+        if (mode === 'left') dx = minL - b.left;
+        else if (mode === 'center') dx = midX - (b.left + b.width / 2);
+        else if (mode === 'right') dx = maxR - (b.left + b.width);
+        else if (mode === 'top') dy = minT - b.top;
+        else if (mode === 'middle') dy = midY - (b.top + b.height / 2);
+        else if (mode === 'bottom') dy = maxB - (b.top + b.height);
+        o.set({ left: (o.left || 0) + dx, top: (o.top || 0) + dy });
+        o.setCoords();
+      });
+      canvas.requestRenderAll();
+      syncOverlaysFromFabric();
+      scheduleSave();
+      setStatus('Aligned ' + mode);
+    }
+
+    function distributeMarks(axis) {
+      var canvas = state.fabricCanvas;
+      if (!canvas || state.readOnly) return;
+      var targets = selectionTargets();
+      if (targets.length < 3) {
+        setStatus('Select three or more marks to distribute');
+        return;
+      }
+      pushHistory();
+      var boxes = targets.map(function (o) {
+        return { o: o, b: o.getBoundingRect(true, true) };
+      });
+      boxes.sort(function (a, b) {
+        return axis === 'h'
+          ? (a.b.left + a.b.width / 2) - (b.b.left + b.b.width / 2)
+          : (a.b.top + a.b.height / 2) - (b.b.top + b.b.height / 2);
+      });
+      var first = boxes[0];
+      var last = boxes[boxes.length - 1];
+      if (axis === 'h') {
+        var span = (last.b.left + last.b.width / 2) - (first.b.left + first.b.width / 2);
+        var step = span / (boxes.length - 1);
+        boxes.forEach(function (x, i) {
+          var want = (first.b.left + first.b.width / 2) + step * i;
+          var cur = x.b.left + x.b.width / 2;
+          x.o.set({ left: (x.o.left || 0) + (want - cur) });
+          x.o.setCoords();
+        });
+      } else {
+        var spanV = (last.b.top + last.b.height / 2) - (first.b.top + first.b.height / 2);
+        var stepV = spanV / (boxes.length - 1);
+        boxes.forEach(function (x, i) {
+          var want = (first.b.top + first.b.height / 2) + stepV * i;
+          var cur = x.b.top + x.b.height / 2;
+          x.o.set({ top: (x.o.top || 0) + (want - cur) });
+          x.o.setCoords();
+        });
+      }
+      canvas.requestRenderAll();
+      syncOverlaysFromFabric();
+      scheduleSave();
+      setStatus('Distributed ' + (axis === 'h' ? 'horizontally' : 'vertically'));
+    }
+
+    function syncSelectionPane() {
+      var list = root.querySelector('#por-selpane-list');
+      if (!list) return;
+      list.innerHTML = '';
+      var canvas = state.fabricCanvas;
+      if (!canvas) return;
+      var objs = canvas.getObjects().filter(function (o) { return !o.excludeFromExport; }).slice().reverse();
+      objs.forEach(function (obj, index) {
+        var li = document.createElement('li');
+        li.className = 'por-selpane__item' + (canvas.getActiveObject() === obj ? ' is-on' : '');
+        li.setAttribute('data-por-sel', obj.porId || '');
+        var name = obj.porName || obj.porKind || obj.type || ('Mark ' + (index + 1));
+        var vis = document.createElement('button');
+        vis.type = 'button';
+        vis.className = 'por-selpane__vis';
+        vis.title = obj.visible === false ? 'Show' : 'Hide';
+        vis.textContent = obj.visible === false ? '○' : '●';
+        vis.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          obj.visible = obj.visible === false;
+          canvas.requestRenderAll();
+          syncOverlaysFromFabric();
+          scheduleSave();
+          syncSelectionPane();
+        });
+        var label = document.createElement('button');
+        label.type = 'button';
+        label.className = 'por-selpane__name';
+        label.textContent = name;
+        label.addEventListener('click', function () {
+          canvas.setActiveObject(obj);
+          canvas.requestRenderAll();
+          state.selectedId = obj.porId || null;
+          syncSelectionPane();
+        });
+        label.addEventListener('dblclick', function () {
+          var next = window.prompt('Rename mark', name);
+          if (!next) return;
+          obj.porName = next;
+          syncOverlaysFromFabric();
+          scheduleSave();
+          syncSelectionPane();
+        });
+        var up = document.createElement('button');
+        up.type = 'button';
+        up.className = 'por-selpane__order';
+        up.title = 'Bring forward';
+        up.textContent = '↑';
+        up.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          canvas.bringForward(obj);
+          canvas.requestRenderAll();
+          syncOverlaysFromFabric();
+          scheduleSave();
+          syncSelectionPane();
+        });
+        var down = document.createElement('button');
+        down.type = 'button';
+        down.className = 'por-selpane__order';
+        down.title = 'Send backward';
+        down.textContent = '↓';
+        down.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          canvas.sendBackwards(obj);
+          canvas.requestRenderAll();
+          syncOverlaysFromFabric();
+          scheduleSave();
+          syncSelectionPane();
+        });
+        li.appendChild(vis);
+        li.appendChild(label);
+        li.appendChild(up);
+        li.appendChild(down);
+        list.appendChild(li);
+      });
+    }
+
+    function clearSnapGuides() {
+      state.snapGuides = [];
+      var layer = sheetEl && sheetEl.querySelector('.por-guides');
+      if (layer) layer.innerHTML = '';
+    }
+
+    function drawSnapGuides(guides) {
+      state.snapGuides = guides || [];
+      var layer = sheetEl && sheetEl.querySelector('.por-guides');
+      if (!layer) return;
+      layer.innerHTML = '';
+      state.snapGuides.forEach(function (g) {
+        var el = document.createElement('div');
+        el.className = 'por-guide por-guide--' + g.axis;
+        if (g.axis === 'x') el.style.left = g.pos + '%';
+        else el.style.top = g.pos + '%';
+        layer.appendChild(el);
+      });
+    }
+
+    function snapMovingObject(obj) {
+      if (!obj || !state.fabricCanvas) return;
+      var thresh = 8;
+      var b = obj.getBoundingRect(true, true);
+      var cx = b.left + b.width / 2;
+      var cy = b.top + b.height / 2;
+      var others = state.fabricCanvas.getObjects().filter(function (o) {
+        return o !== obj && !o.excludeFromExport && o.visible !== false;
+      });
+      var snapsX = [0, PAPER_W / 2, PAPER_W];
+      var snapsY = [0, PAPER_H / 2, PAPER_H];
+      others.forEach(function (o) {
+        var ob = o.getBoundingRect(true, true);
+        snapsX.push(ob.left, ob.left + ob.width / 2, ob.left + ob.width);
+        snapsY.push(ob.top, ob.top + ob.height / 2, ob.top + ob.height);
+      });
+      state.guides.forEach(function (g) {
+        if (g.axis === 'x') snapsX.push(g.pos / 100 * PAPER_W);
+        else snapsY.push(g.pos / 100 * PAPER_H);
+      });
+      var dx = 0;
+      var dy = 0;
+      var guides = [];
+      function near(value, snaps, axis) {
+        for (var i = 0; i < snaps.length; i++) {
+          if (Math.abs(value - snaps[i]) <= thresh) {
+            guides.push({ axis: axis, pos: snaps[i] / (axis === 'x' ? PAPER_W : PAPER_H) * 100 });
+            return snaps[i] - value;
+          }
+        }
+        return 0;
+      }
+      dx = near(b.left, snapsX, 'x') || near(cx, snapsX, 'x') || near(b.left + b.width, snapsX, 'x');
+      dy = near(b.top, snapsY, 'y') || near(cy, snapsY, 'y') || near(b.top + b.height, snapsY, 'y');
+      if (dx || dy) {
+        obj.set({ left: (obj.left || 0) + dx, top: (obj.top || 0) + dy });
+        obj.setCoords();
+      }
+      drawSnapGuides(guides);
+    }
+
     function ungroupSelection() {
       var canvas = state.fabricCanvas;
       if (!canvas || state.readOnly) return;
@@ -1193,6 +1460,26 @@
       }
       var level = root.querySelector('#por-zoom-level');
       if (level) level.textContent = state.zoomMode === 'fit' ? 'Fit' : Math.round(scale * 100) + '%';
+      var slider = root.querySelector('#por-zoom-slider');
+      if (slider && document.activeElement !== slider) {
+        slider.value = String(Math.round(scale * 100));
+      }
+    }
+
+    function zoomAtPointer(factor, clientX, clientY) {
+      var rect = stageEl.getBoundingClientRect();
+      var before = state.scale || 1;
+      state.zoomMode = 'user';
+      state.userScale = clamp(before * factor, 0.35, 2.4);
+      applySheetScale();
+      // Keep the pointer's sheet point under the cursor after scale.
+      if (typeof clientX === 'number' && typeof clientY === 'number' && stageEl.scrollWidth) {
+        var mx = clientX - rect.left + stageEl.scrollLeft;
+        var my = clientY - rect.top + stageEl.scrollTop;
+        var ratio = state.scale / before;
+        stageEl.scrollLeft = mx * ratio - (clientX - rect.left);
+        stageEl.scrollTop = my * ratio - (clientY - rect.top);
+      }
     }
 
     function acceptBgUrl(url) {
@@ -1532,6 +1819,42 @@
       }
       sheetEl.appendChild(bg);
 
+      if (!state.printMode) {
+        var guides = document.createElement('div');
+        guides.className = 'por-guides';
+        guides.setAttribute('aria-hidden', 'true');
+        sheetEl.appendChild(guides);
+        if (state.showGrid) {
+          var grid = document.createElement('div');
+          grid.className = 'por-grid';
+          grid.setAttribute('aria-hidden', 'true');
+          sheetEl.appendChild(grid);
+        }
+        if (state.showRulers) {
+          var rulerX = document.createElement('div');
+          rulerX.className = 'por-ruler por-ruler--x';
+          var rulerY = document.createElement('div');
+          rulerY.className = 'por-ruler por-ruler--y';
+          sheetEl.appendChild(rulerX);
+          sheetEl.appendChild(rulerY);
+          rulerX.addEventListener('pointerdown', function (ev) {
+            if (state.readOnly) return;
+            var rect = sheetEl.getBoundingClientRect();
+            var y = ((ev.clientY - rect.top) / rect.height) * 100;
+            state.guides.push({ axis: 'y', pos: Math.max(0, Math.min(100, y)) });
+            drawSnapGuides(state.guides.map(function (g) { return g; }));
+          });
+          rulerY.addEventListener('pointerdown', function (ev) {
+            if (state.readOnly) return;
+            var rect = sheetEl.getBoundingClientRect();
+            var x = ((ev.clientX - rect.left) / rect.width) * 100;
+            state.guides.push({ axis: 'x', pos: Math.max(0, Math.min(100, x)) });
+            drawSnapGuides(state.guides.map(function (g) { return g; }));
+          });
+        }
+        if (state.guides.length) drawSnapGuides(state.guides.slice());
+      }
+
       if (!state.printMode && page.background && page.background.sourceStatus === 'changed') {
         var banner = document.createElement('div');
         banner.className = 'por-source-banner';
@@ -1555,6 +1878,7 @@
       // Fabric drawing surface (Stage 1). Overlays persist; Fabric is the editor.
       if (!state.printMode && PorFab && PorFab.ready()) {
         ensureFabricOnSheet();
+        syncSelectionPane();
       } else if (state.printMode && PorFab && PorFab.ready()) {
         // Print: paint marks as a flat PNG so paper has no editor chrome.
         var printHost = document.createElement('div');
@@ -2628,6 +2952,7 @@
         state.selectedId = null;
         state.editingText = false;
         closeShapeMenu();
+        clearSnapGuides();
         if (state.fabricCanvas) {
           state.fabricCanvas.discardActiveObject();
           state.fabricCanvas.requestRenderAll();
@@ -2635,6 +2960,14 @@
         } else {
           renderSheet();
         }
+        return;
+      }
+      if (event.code === 'Space' && !typing) {
+        if (!state.spaceDown) {
+          state.spaceDown = true;
+          stageEl.classList.add('por-stage--hand');
+        }
+        event.preventDefault();
         return;
       }
       if (typing) return;
@@ -3387,6 +3720,75 @@
       state.zoomMode = 'fit';
       applySheetScale();
     });
+    var zoomSlider = root.querySelector('#por-zoom-slider');
+    if (zoomSlider) {
+      zoomSlider.addEventListener('input', function () {
+        state.zoomMode = 'user';
+        state.userScale = clamp(Number(zoomSlider.value) / 100, 0.35, 2.4);
+        applySheetScale();
+      });
+    }
+    root.querySelectorAll('[data-por-align-marks]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        alignMarks(btn.getAttribute('data-por-align-marks'));
+      });
+    });
+    root.querySelectorAll('[data-por-distribute]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        distributeMarks(btn.getAttribute('data-por-distribute'));
+      });
+    });
+    var gridBtn = root.querySelector('#por-toggle-grid');
+    if (gridBtn) {
+      gridBtn.addEventListener('click', function () {
+        state.showGrid = !state.showGrid;
+        gridBtn.classList.toggle('is-on', state.showGrid);
+        gridBtn.setAttribute('aria-pressed', state.showGrid ? 'true' : 'false');
+        renderSheet();
+      });
+    }
+    var rulersBtn = root.querySelector('#por-toggle-rulers');
+    if (rulersBtn) {
+      rulersBtn.addEventListener('click', function () {
+        state.showRulers = !state.showRulers;
+        rulersBtn.classList.toggle('is-on', state.showRulers);
+        rulersBtn.setAttribute('aria-pressed', state.showRulers ? 'true' : 'false');
+        renderSheet();
+      });
+    }
+    var handBtn = root.querySelector('#por-hand');
+    if (handBtn) {
+      handBtn.addEventListener('click', function () {
+        state.handTool = !state.handTool;
+        handBtn.classList.toggle('is-on', state.handTool);
+        handBtn.setAttribute('aria-pressed', state.handTool ? 'true' : 'false');
+        stageEl.classList.toggle('por-stage--hand', state.handTool || state.spaceDown);
+        setInkTool(null);
+      });
+    }
+    stageEl.addEventListener('wheel', function (event) {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      zoomAtPointer(event.deltaY > 0 ? (1 / 1.12) : 1.12, event.clientX, event.clientY);
+    }, { passive: false });
+    stageEl.addEventListener('pointerdown', function (event) {
+      if (!(state.handTool || state.spaceDown) || event.button !== 0) return;
+      event.preventDefault();
+      state.sheetPan = {
+        x: event.clientX,
+        y: event.clientY,
+        left: stageEl.scrollLeft,
+        top: stageEl.scrollTop,
+      };
+      stageEl.setPointerCapture(event.pointerId);
+    });
+    stageEl.addEventListener('pointermove', function (event) {
+      if (!state.sheetPan) return;
+      stageEl.scrollLeft = state.sheetPan.left - (event.clientX - state.sheetPan.x);
+      stageEl.scrollTop = state.sheetPan.top - (event.clientY - state.sheetPan.y);
+    });
+    stageEl.addEventListener('pointerup', function () { state.sheetPan = null; });
+    stageEl.addEventListener('pointercancel', function () { state.sheetPan = null; });
 
     sheetEl.addEventListener('pointerdown', onPointerDown);
     sheetEl.addEventListener('wheel', onViewWheel, { passive: false });
@@ -3401,9 +3803,16 @@
       event.preventDefault();
       openShapeMenu(event, target.getAttribute('data-rb-ov'));
     });
+    function onKeyUp(event) {
+      if (event.code !== 'Space') return;
+      state.spaceDown = false;
+      if (!state.handTool) stageEl.classList.remove('por-stage--hand');
+    }
+
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
     window.addEventListener('resize', applySheetScale);
 
     activeMount = {
@@ -3418,6 +3827,7 @@
         window.removeEventListener('pointermove', onPointerMove);
         window.removeEventListener('pointerup', onPointerUp);
         window.removeEventListener('keydown', onKeyDown);
+        window.removeEventListener('keyup', onKeyUp);
         window.removeEventListener('resize', applySheetScale);
         sheetEl.removeEventListener('wheel', onViewWheel);
         document.body.classList.remove('plan-of-repair-open', 'is-por-printing');

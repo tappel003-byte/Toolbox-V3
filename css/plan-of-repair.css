@@ -877,3 +877,149 @@ body.is-por-printing .por-print {
   margin: 0;
   border-radius: 0 0 4px 4px;
 }
+
+/* Stage 3 — arrange / guides / selection pane / zoom */
+.por-zoom-slider {
+  width: 84px;
+  vertical-align: middle;
+}
+
+.por-stage--hand,
+.por-stage--hand .por-fabric-host,
+.por-stage--hand .upper-canvas {
+  cursor: grab !important;
+}
+
+.por-stage--hand:active,
+.por-stage--hand:active .upper-canvas {
+  cursor: grabbing !important;
+}
+
+.por-grid {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(29, 78, 216, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(29, 78, 216, 0.08) 1px, transparent 1px);
+  background-size: calc(100% / 17) calc(100% / 11);
+}
+
+.por-guides {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.por-guide {
+  position: absolute;
+  background: #f59e0b;
+  opacity: 0.85;
+}
+
+.por-guide--x {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.por-guide--y {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.por-ruler {
+  position: absolute;
+  z-index: 7;
+  background: #f8fafc;
+  border: 1px solid #d1d5db;
+}
+
+.por-ruler--x {
+  left: 18px;
+  right: 0;
+  top: 0;
+  height: 16px;
+  cursor: row-resize;
+  background-image: repeating-linear-gradient(
+    to right,
+    #cbd5e1 0,
+    #cbd5e1 1px,
+    transparent 1px,
+    transparent 24px
+  );
+}
+
+.por-ruler--y {
+  top: 16px;
+  bottom: 0;
+  left: 0;
+  width: 16px;
+  cursor: col-resize;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    #cbd5e1 0,
+    #cbd5e1 1px,
+    transparent 1px,
+    transparent 24px
+  );
+}
+
+.por-selpane {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e1d8;
+}
+
+.por-selpane__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.por-selpane__item {
+  display: grid;
+  grid-template-columns: 22px 1fr 22px 22px;
+  gap: 2px;
+  align-items: center;
+  margin: 0 0 2px;
+}
+
+.por-selpane__item.is-on .por-selpane__name {
+  background: #eff6ff;
+  border-color: #1d4ed8;
+  color: #1d4ed8;
+}
+
+.por-selpane__vis,
+.por-selpane__order,
+.por-selpane__name {
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.por-selpane__name {
+  text-align: left;
+  padding: 3px 6px;
+  border-color: #e5e1d8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.por-selpane__vis,
+.por-selpane__order {
+  width: 22px;
+  height: 22px;
+  color: #4b5563;
+}

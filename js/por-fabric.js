@@ -40,6 +40,7 @@
     obj.set({
       porId: item.id || uid('ov'),
       porKind: item.kind || 'rect',
+      porName: item.name || '',
       stroke: HEX.test(String(item.color || '')) ? item.color : '#1d4ed8',
       strokeWidth: strokeWidthFromThick(item.thick),
       fill: item.fill
@@ -47,6 +48,7 @@
         : 'rgba(0,0,0,0)',
       opacity: item.opacity != null ? Number(item.opacity) : 1,
       angle: Number(item.angle) || 0,
+      visible: item.hidden ? false : true,
       selectable: true,
       evented: true,
       objectCaching: false,
@@ -182,12 +184,14 @@
         : kind === 'line' ? (obj.porArrow ? 'arrow' : 'line')
         : kind === 'textbox' || kind === 'i-text' || kind === 'text' ? 'text'
         : (obj.porKind || 'rect'),
+      name: obj.porName || '',
       color: (obj.stroke && HEX.test(obj.stroke) ? obj.stroke : null) ||
         (obj.fill && HEX.test(String(obj.fill)) ? obj.fill : '#1d4ed8'),
       thick: thickFromStroke(obj.strokeWidth),
       angle: obj.angle || 0,
       opacity: obj.opacity != null ? obj.opacity : 1,
     };
+    if (obj.visible === false) item.hidden = true;
     if (obj.fill && obj.fill !== 'rgba(0,0,0,0)' && obj.fill !== '' &&
         item.kind !== 'path' && item.kind !== 'line' && item.kind !== 'arrow' && item.kind !== 'text') {
       item.fill = true;
