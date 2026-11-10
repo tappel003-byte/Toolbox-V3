@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 10, 2026** (America/Denver)  
-Updated by: Cursor — Tim authorised Sync Worker deploy; this agent has no Cloudflare auth. Ball with Tim to run the deploy (or attach `CLOUDFLARE_API_TOKEN`).
+Updated by: Claude Code — Sync Worker deployed (token added by Tim); Ball to Tim.
 
 ---
 
@@ -19,7 +19,7 @@ Updated by: Cursor — Tim authorised Sync Worker deploy; this agent has no Clou
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — Sync Worker deploy authorised but **not run** (no Cloudflare token / `wrangler whoami` unauthenticated). After Tim deploys, Ball → Claude Code to confirm the live Worker. |
+| **Has the ball** | **Tim** — Sync Worker **deployed** Nov 10 by Claude Code (version `9f211d74-bc47-45c1-bda9-1904e884c214`, from integration `08e154c`). Tim: open https://sync.sandiageotoolbox.com/health in a browser and do one Sync Now; then app promote when ready. |
 | Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `08e154c` (includes #208 merge `706176f`; shell `v452`). |
 | Not done | Sync Worker deploy → CC confirm live Worker → app **promote** (Tim). Not merged to `main`. |
 
@@ -52,40 +52,20 @@ Hard fact: merge to `main` can publish live. Do not merge to `main` unless Tim a
 
 ---
 
-## Sync Worker deploy (authorised Nov 10 — blocked here)
+## Sync Worker deploy — done Nov 10, 2026
 
-Tim authorised deploy from integration tip (includes #208). This Cloud Agent:
-
-- Has **no** `CLOUDFLARE_API_TOKEN` / `CF_API_TOKEN` in the environment
-- `npx wrangler@4 whoami --config sync-worker/wrangler.toml` → **You are not authenticated**
-
-**What the deploy would bring live** (Worker files changed on integration since pre-#208, tip includes these):
-
-1. `sync-worker/src/index.js` (`6cfaefb`) — raw media PUT streams into R2 when `x-toolbox-encoding: raw` (Job Walk video); no full `arrayBuffer` buffer first.
-2. `sync-worker/src/explore.js` (`1152eeb`) — File Explorer lists Job Walk audio (`vm_`) and video (`vid_`) from distress `jobWalk`.
-
-Bindings declared in `sync-worker/wrangler.toml` (must stay on deploy): R2 `CABINET` → `toolbox-cabinet`; Images `IMAGES`.
-
-**Tim’s steps (from repo root, authenticated machine):**
-
-```bash
-git fetch origin claude/milestone-1-customer-file-qv5ybf
-git checkout claude/milestone-1-customer-file-qv5ybf
-git pull origin claude/milestone-1-customer-file-qv5ybf
-npx wrangler@4 deploy --config sync-worker/wrangler.toml
-npx wrangler@4 deployments list --config sync-worker/wrangler.toml   # note version id
-curl -sS https://sync.sandiageotoolbox.com/health   # imagesBinding true
-```
-
-Optional verify: PUT a tiny body to `/media/vid_deploy-test-…` with `x-toolbox-encoding: raw`, GET it back, then DELETE if the API allows (or leave a clearly named test object and remove from R2). Confirm Sync Now / File Explorer still read.
-
-After a successful deploy: update this file with version id / time / commit, then **Ball → Claude Code** to confirm the live Worker.
+- Deployed by Claude Code with Tim's Cloudflare API token (saved as a network secret on Tim's Default cloud environment).
+- Version `9f211d74-bc47-45c1-bda9-1904e884c214` from `claude/milestone-1-customer-file-qv5ybf` @ `08e154c`. Previous version `b7ddc1af-d896-4f2c-bf82-e1e11ca968b0` (rollback target).
+- Live now: streaming raw media PUT (Job Walk video); File Explorer lists Job Walk audio + video. Confirmed in the live script.
+- Bindings unchanged after deploy: R2 `CABINET` → `toolbox-cabinet`, `IMAGES`, secret `CF_ACCESS_AUD`, var `CF_ACCESS_TEAM_DOMAIN`. Custom domain `sync.sandiageotoolbox.com` still attached.
+- **Always deploy with `--config sync-worker/wrangler.toml`.** Run from inside `sync-worker/` without it, wrangler picked up the app's root `wrangler.jsonc` (the toolbox-v3 app — that is a promote) and only failed because `publish/` was missing.
+- Not verified from the agent (its network cannot reach the host): `/health` and a live Sync Now — Tim's browser check.
 
 ---
 
 ## Outstanding — open only
 
-1. **Sync Worker deploy** — Tim (or re-run agent after `CLOUDFLARE_API_TOKEN` is available). Then CC confirm live.
+1. **Sync Worker deploy** — done (`9f211d74`). Tim's browser check of `/health` + one Sync Now.
 2. **PR #207** docs cleanup — still open for Tim merge after CC if needed.
 3. **Plan of Repair look check** vs MS Paint / PowerPoint (Tim’s screenshots).
 4. **POR lows** — right-rail Format Shape duplicates the pickers and shows for text boxes; fill checkbox has no label.
