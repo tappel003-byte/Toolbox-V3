@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 10, 2026** (America/Denver)  
-Updated by: Claude Code — Sync Worker deployed (token added by Tim); Ball to Tim.
+Updated by: Cursor — merge all into integration; Ball stays with Tim.
 
 ---
 
@@ -19,9 +19,9 @@ Updated by: Claude Code — Sync Worker deployed (token added by Tim); Ball to T
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — Sync Worker **deployed** Nov 10 by Claude Code (version `9f211d74-bc47-45c1-bda9-1904e884c214`, from integration `08e154c`). Tim: open https://sync.sandiageotoolbox.com/health in a browser and do one Sync Now; then app promote when ready. |
-| Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `08e154c` (includes #208 merge `706176f`; shell `v452`). |
-| Not done | Sync Worker deploy → CC confirm live Worker → app **promote** (Tim). Not merged to `main`. |
+| **Has the ball** | **Tim** — Sync Worker **deployed** Nov 10 (version `9f211d74-bc47-45c1-bda9-1904e884c214`). Open https://sync.sandiageotoolbox.com/health and do one Sync Now; then app promote when ready. |
+| Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `2cff965` (shell `v452`). Merged this turn: #209, #207, #165. Closed as already-on-tip / superseded: #151, #139. Left open against `main` (not merged — Tim promote): #97, #86, #85. |
+| Not done | Tim browser check of live Worker → app **promote** (Tim). Not merged to `main`. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -65,13 +65,24 @@ Hard fact: merge to `main` can publish live. Do not merge to `main` unless Tim a
 
 ## Outstanding — open only
 
-1. **Sync Worker deploy** — done (`9f211d74`). Tim's browser check of `/health` + one Sync Now.
-2. **PR #207** docs cleanup — still open for Tim merge after CC if needed.
+1. **Sync Worker** — deployed (`9f211d74`). Tim's browser check of `/health` + one Sync Now.
+2. **App promote** — Tim only. Not `main` unless Tim asks promote-prep.
 3. **Plan of Repair look check** vs MS Paint / PowerPoint (Tim’s screenshots).
 4. **POR lows** — right-rail Format Shape duplicates the pickers and shows for text boxes; fill checkbox has no label.
-5. **App promote** — Tim only. Not `main` unless Tim asks promote-prep.
+5. **Open against `main` (not merged):** #97 topo figure pages, #86 Diagnostics ribbon, #85 RB drafts/print — leave until Tim asks promote-prep / bring-to-main.
 
 Open product (safer defaults already shipped; Tim has not decided): keep video on phone after upload; Job Walk audio still travels with the file.
+
+### Merge-all Nov 10 (Cursor)
+
+| PR | Result |
+|----|--------|
+| #209 SESSION_STATE Worker deploy | Merged earlier (`671978d`) |
+| #207 docs cleanup | Merged (`c30aa0f`); kept tip SESSION_STATE |
+| #165 Tim-only promote hard list | Merged (`2cff965`); kept named integration branch |
+| #151 RB finish | Closed — identical patches already on tip (cherry-picked earlier) |
+| #139 Excel secondary topo tabs | Closed — superseded by later Excel tab work on tip |
+| #97 / #86 / #85 | Left open on `main` — do not merge (promote risk) |
 
 ---
 
