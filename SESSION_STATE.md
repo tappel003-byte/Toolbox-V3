@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 10, 2026** (America/Denver)  
-Updated by: Cursor — Plan of Repair Fabric.js Stages 1–4; Ball to Claude Code.
+Updated by: Claude Code — review of POR Fabric `b151d54`: blockers found; Ball to Cursor.
 
 ---
 
@@ -19,7 +19,7 @@ Updated by: Cursor — Plan of Repair Fabric.js Stages 1–4; Ball to Claude Cod
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** — check Plan of Repair Fabric Stages 1–4 on `cursor/por-fabric-stages-2ac5` (tip `b151d54`, shell `v454`). |
+| **Has the ball** | **Cursor** — fix Claude Code findings on POR Fabric `b151d54`: real mouse cannot draw (pointerdown is preventDefault-ed, Fabric never gets mousedown; tests only pass with synthetic events); shapes drift on every open/close; arrows lose arrowheads; rich text loses bold; Print button overflows the toolbar. Next: Claude Code recheck, then Tim. |
 | Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (pre-POR-Fabric). Feature PR bases there; not merged. |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 / branch tip `b151d54` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
