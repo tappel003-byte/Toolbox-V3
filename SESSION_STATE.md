@@ -10,8 +10,8 @@ This does **not** replace authority docs. Read order for rules and vision:
 4. `DECISIONS.md`
 5. **This file** — current working picture
 
-Last updated: **Nov 9, 2026** (America/Denver)  
-Updated by: Cursor — Tim said Merge → #208 into integration; Ball to Tim for promote.
+Last updated: **Nov 10, 2026** (America/Denver)  
+Updated by: Claude Code — Sync Worker deployed (token added by Tim); Ball to Tim.
 
 ---
 
@@ -19,9 +19,9 @@ Updated by: Cursor — Tim said Merge → #208 into integration; Ball to Tim for
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** (promote when ready; Sync Worker deploy is a separate Tim call) |
-| Integration merge | **Done.** PR #208 → `claude/milestone-1-customer-file-qv5ybf` (QC + Job Walk video Cabinet; shell `v452`). |
-| Not done | **Promote / live Production** — Tim only. **Not** merged to `main`. Sync Worker deploy still Tim-only when he wants streaming media PUT live. |
+| **Has the ball** | **Tim** — Sync Worker **deployed** Nov 10 by Claude Code (version `9f211d74-bc47-45c1-bda9-1904e884c214`, from integration `08e154c`). Tim: open https://sync.sandiageotoolbox.com/health in a browser and do one Sync Now; then app promote when ready. |
+| Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `08e154c` (includes #208 merge `706176f`; shell `v452`). |
+| Not done | Sync Worker deploy → CC confirm live Worker → app **promote** (Tim). Not merged to `main`. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -29,7 +29,7 @@ When an agent finishes its turn of work, it **must** update this table to name w
 
 ## Review loop (Tim, Nov 9, 2026)
 
-**ChatGPT is out — permanently for this work.** Tim’s ChatGPT workspace/chat glitched and is not workable. Do not reopen that thread, hand it work, or wait on it.
+**ChatGPT is out — permanently for this work.** Do not use ChatGPT for this build.
 
 | Role | Who |
 |------|-----|
@@ -37,101 +37,46 @@ When an agent finishes its turn of work, it **must** update this table to name w
 | Check | **Claude Code (CC)** |
 | Decide and promote | **Tim** |
 
-This is a **Cursor + Claude Code** build. Cursor builds; Claude Code independently reviews; Tim decides and promotes. No third voice.
-
 ---
 
-## Who is working / which chat
-
-| Role | Detail |
-|------|--------|
-| Product owner | Tim (`tappel003`) |
-| Active Cursor thread | https://cursor.com/agents/bc-eddcce18-c57b-423f-b2f4-6f17f8662ac5 — “Toolbox V3 continued” |
-| Claude Code | Independent check when the Ball says so |
-| ChatGPT | **Dead path.** Workspace glitched; chat not workable. Do not use. |
-
-Long chats cost more tokens and do **not** give the model continuous human-like memory. Durable facts belong here and in the authority docs.
-
----
-
-## Shipping — same page for every agent
+## Shipping
 
 | Act | Who | Where |
 |-----|-----|--------|
-| Build | Implementer (agent) | Feature branch off the integration branch |
-| Merge | Implementer, **only when Tim asks** | **`claude/milestone-1-customer-file-qv5ybf`** |
+| Build | Implementer | Feature branch off integration |
+| Merge | When Tim asks | **`claude/milestone-1-customer-file-qv5ybf`** |
 | Promote / live Production | **Tim only** | Cloudflare |
+| Sync Worker deploy | **Tim only** (or agent with `CLOUDFLARE_API_TOKEN`) | `npx wrangler@4 deploy --config sync-worker/wrangler.toml` |
 
-**Hard facts (do not re-litigate):**
-
-- Integration branch name is fixed in `AGENTS.md` / `DECISIONS.md` (merged #196, tip includes `ff424f2`).
-- Bot merge into `main` **can publish live** (verified Nov 5, 2026 — `toolbox-shell-v439` went live without Tim promoting). Treat merge-to-`main` as promote risk. Warn and stop if it would publish.
-- Never deploy Sync Worker, change Access, or promote without Tim’s explicit go.
-- Discussion is not a work order. “Go” / “do it” / “build it” = authorization. Describing UI is not authorization.
-- Never tell Tim what to do with his time.
-- When Tim says “Merge I promote,” that is merge to the **integration** branch only. Promote is still Tim. Prefer the agent Tim is talking to for the merge when that is clear; the merge itself is still valid if another authorized agent lands it on the right branch and Tim accepts the result.
-- **Not the path (closed Nov 8, 2026):** GitHub protection so “bots cannot merge `main`.” Tim: that is not the correct path. Do not reopen it as outstanding work. The shipping table above is the path — merge to integration only; Tim promotes.
+Hard fact: merge to `main` can publish live. Do not merge to `main` unless Tim asks promote-prep.
 
 ---
 
-## Branch tips (as of last update)
+## Sync Worker deploy — done Nov 10, 2026
 
-| Branch | Tip (approx) | Notes |
-|--------|----------------|-------|
-| `claude/milestone-1-customer-file-qv5ybf` | `f03d374` | **Integration tip.** Includes #208 QC Cabinet media. Shell `v452`. |
-| `cursor/qc-cabinet-media-2ac5` | `549b12d` | Merged via #208. |
-| `main` | re-check | Behind milestone. Do not merge here unless Tim asks promote-prep. |
-
-Always re-check with `git fetch` before claiming tip SHAs.
-
----
-
-## Recently finished (code on integration branch unless noted)
-
-| Item | State |
-|------|--------|
-| Floor open seed / lookbook / RB toolbar / POR / TLS / Job Walk media | Done on integration via #204. |
-| **QC + Job Walk video → File Cabinet (not Check Out)** | **Merged** — #208 into integration. Shell `v452`. CC passed at `8d1b503`. |
-
-### Ops note — Sync Worker deploy (Tim)
-
-The **streaming** media PUT in `sync-worker/src/index.js` takes effect **only after Tim authorises a Sync Worker deploy**. Until then, live uploads still use the old buffered Worker path. Client clip limit is **90 MB**.
+- Deployed by Claude Code with Tim's Cloudflare API token (saved as a network secret on Tim's Default cloud environment).
+- Version `9f211d74-bc47-45c1-bda9-1904e884c214` from `claude/milestone-1-customer-file-qv5ybf` @ `08e154c`. Previous version `b7ddc1af-d896-4f2c-bf82-e1e11ca968b0` (rollback target).
+- Live now: streaming raw media PUT (Job Walk video); File Explorer lists Job Walk audio + video. Confirmed in the live script.
+- Bindings unchanged after deploy: R2 `CABINET` → `toolbox-cabinet`, `IMAGES`, secret `CF_ACCESS_AUD`, var `CF_ACCESS_TEAM_DOMAIN`. Custom domain `sync.sandiageotoolbox.com` still attached.
+- **Always deploy with `--config sync-worker/wrangler.toml`.** Run from inside `sync-worker/` without it, wrangler picked up the app's root `wrangler.jsonc` (the toolbox-v3 app — that is a promote) and only failed because `publish/` was missing.
+- Not verified from the agent (its network cannot reach the host): `/health` and a live Sync Now — Tim's browser check.
 
 ---
 
-## Outstanding — real open work
+## Outstanding — open only
 
-1. **Promote** — Tim only. Integration has #208; live Production does not until Tim promotes. Do **not** merge to `main` unless Tim asks promote-prep.
+1. **Sync Worker deploy** — done (`9f211d74`). Tim's browser check of `/health` + one Sync Now.
+2. **PR #207** docs cleanup — still open for Tim merge after CC if needed.
+3. **Plan of Repair look check** vs MS Paint / PowerPoint (Tim’s screenshots).
+4. **POR lows** — right-rail Format Shape duplicates the pickers and shows for text boxes; fill checkbox has no label.
+5. **App promote** — Tim only. Not `main` unless Tim asks promote-prep.
 
-2. **Sync Worker deploy** (when Tim authorises) — streaming media PUT + Worker explore video listing.
-
-3. **Open product items (safer defaults shipped; Tim has not decided):**
-   - After a video uploads: **keep** the clip on the phone (default) vs clear to free space.
-   - Job Walk **audio** notes: still travel with the file like typed notes (default) vs treat like photos/video.
-
-4. **Cloudflare Access path bypass for `lookbook/*`** — Tim’s ops action.
-
-5. **Confirm Sync Worker deploy** has lookbook create routes if Share still 404s.
-
-6. **Stale / unrelated open PRs** — triage when Tim wants; not blockers.
+Open product (safer defaults already shipped; Tim has not decided): keep video on phone after upload; Job Walk audio still travels with the file.
 
 ---
 
-## How any new agent (Cursor / Claude Code) should start
+## How any new agent should start
 
 1. Read `VISION.md` → `AGENTS.md` → `MILESTONE.md` → `DECISIONS.md` → **`SESSION_STATE.md`**.
-2. `git fetch origin claude/milestone-1-customer-file-qv5ybf` and branch from that tip.
-3. Open PRs with **base = `claude/milestone-1-customer-file-qv5ybf`**. Merge there when Tim asks. Do **not** promote. Do **not** merge to `main` unless Tim explicitly asked for promote-prep **and** you warned about publish risk.
-4. Do not scrap lookbook. Finish Access bypass (Tim) + confirm Worker if Share 404s.
-5. After meaningful progress, **update this file** (date, tips, done/outstanding, Ball) in the same PR or a small follow-up — so the next handoff stays true.
-
----
-
-## Update checklist (when you change this file)
-
-- [x] Date / timezone label  
-- [x] Ball table  
-- [x] Integration + `main` tip SHAs (after fetch)  
-- [x] Done vs outstanding still accurate  
-- [x] Lookbook / Access / Worker status  
-- [x] Any new “do not repeat” process lesson Tim just enforced  
+2. Branch from `claude/milestone-1-customer-file-qv5ybf`.
+3. PRs base = that branch. Merge there when Tim asks. Do not promote. Do not deploy Sync Worker without Tim’s go (this deploy was authorised; auth was the blocker).
