@@ -78,7 +78,7 @@ Long chats cost more tokens and do **not** give the model continuous human-like 
 
 | Branch | Tip (approx) | Notes |
 |--------|----------------|-------|
-| `claude/milestone-1-customer-file-qv5ybf` | `bba6f46` | **Integration tip.** Includes #208 QC Cabinet media. Shell `v452`. |
+| `claude/milestone-1-customer-file-qv5ybf` | `f03d374` | **Integration tip.** Includes #208 QC Cabinet media. Shell `v452`. |
 | `cursor/qc-cabinet-media-2ac5` | `549b12d` | Merged via #208. |
 | `main` | re-check | Behind milestone. Do not merge here unless Tim asks promote-prep. |
 
