@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 10, 2026** (America/Denver)  
-Updated by: Claude Code — recheck of POR Fabric `63584a9`: four items; Ball to Cursor.
+Updated by: Cursor — POR Fabric CC2 fixes (`ab7e903`); Ball to Claude Code.
 
 ---
 
@@ -19,9 +19,9 @@ Updated by: Claude Code — recheck of POR Fabric `63584a9`: four items; Ball to
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Cursor** — CC recheck of `63584a9`: real-mouse draw, rect/circle drift, Print overflow, right-click mini toolbar OK. Still open: (1) align/group with several selected saves marks off the sheet (negative coords); (2) arrows still drift 0.09/0.14 per open/close; (3) old bold text still saved as plain; (4) typing right after Insert Text is not captured. Next: Claude Code recheck, then Tim. |
+| **Has the ball** | **Claude Code** — recheck POR Fabric CC2 tip `ab7e903` on `cursor/por-fabric-stages-2ac5` (shell `v456`). Prior open items addressed: (1) multi-select align/group absolute sheet coords; (2) arrow open/close exact + no dirty save when unchanged; (3) legacy rich-text bold kept; (4) Insert Text edit-mode typing saves; (5) arrowhead pixel check on screen/print. |
 | Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (pre-POR-Fabric). Feature PR bases there; not merged. |
-| Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` |
+| Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Not done | CC recheck → Tim decide/merge into integration. Do not merge to `main`. Do not deploy/promote. |
 
@@ -66,16 +66,17 @@ Branch: `cursor/por-fabric-stages-2ac5` → PR #210 into `claude/milestone-1-cus
 | 2 | `60298d8` | Format/text |
 | 3 | `b6318df` | Arrange / guides / zoom / selection pane |
 | 4 | `b151d54` | Page thumbs, pictures, export |
-| CC fix | `63584a9` | Real mouse draw; no geometry drift; arrowheads; bold kept; Print visible |
+| CC fix | `63584a9` | Real mouse draw; rect/circle no drift; arrowheads; bold flag; Print visible |
+| CC2 | `ab7e903` | Absolute multi-select save; arrow pin; rich bold; Insert Text typing; arrowhead pixels |
 
-**CC blockers fixed (this turn):**
-1. Sheet `pointerdown` no longer `preventDefault`s over the Fabric host — real mouse draws.
-2. Overlay serialize uses object geometry (not stroke-inflated AABB) — no open/close drift.
-3. `decorateArrow` draws/restores arrowheads; `porKind: 'arrow'` round-trips.
-4. POR-aware `normalizePorOverlays` keeps bold/fontSize (RB normalize was stripping them).
-5. Toolbar wraps; Print stays on-screen (`flex-shrink: 0`).
+**CC2 fixed (this turn):**
+1. Multi-select align/group/distribute/nudge save absolute sheet coords (discard ActiveSelection before serialize; move via `setPositionByOrigin`).
+2. Line/arrow `porPctEnds` pin — open/close exact; sync skips rewrite when unchanged.
+3. Legacy `{paragraphs:[{runs:[{bold:true}]}]}` → Fabric bold + plain text.
+4. Insert Text enters edit mode with placeholder selected; typed text saves.
+5. Arrowhead ink verified on lower canvas + print snapshot size.
 
-Tests: `node tests/plan-of-repair.mjs` → **66/66** (includes real-mouse, drift, arrow, bold, Print checks).
+Tests: `node tests/plan-of-repair.mjs` → **73/73** (real mouse/keyboard for CC2 cases).
 
 ---
 
@@ -89,7 +90,7 @@ Tests: `node tests/plan-of-repair.mjs` → **66/66** (includes real-mouse, drift
 
 ## Outstanding — open only
 
-1. **CC recheck** of POR Fabric tip on `cursor/por-fabric-stages-2ac5`.
+1. **CC recheck** of POR Fabric tip `ab7e903` on `cursor/por-fabric-stages-2ac5`.
 2. **Tim decide/merge** into integration when ready. Not `main`. No deploy/promote.
 3. **Open against `main` (not merged):** #97 / #86 / #85 — leave until Tim asks promote-prep.
 
