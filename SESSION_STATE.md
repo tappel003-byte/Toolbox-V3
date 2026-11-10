@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 9, 2026** (America/Denver)  
-Updated by: Cursor — three small CC items on #208; Ball to Claude Code.
+Updated by: Claude Code — recheck of `8d1b503` (#208) passed; Ball to Tim.
 
 ---
 
@@ -19,7 +19,7 @@ Updated by: Cursor — three small CC items on #208; Ball to Claude Code.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** |
+| **Has the ball** | **Tim** — PR #208 passed Claude Code recheck at code tip `8d1b503` (merge to integration when Tim says; Sync Worker deploy is a separate Tim call). |
 | Check this | **PR #208** — https://github.com/tappel003-byte/Toolbox-V3/pull/208 |
 | Branch / tip | `cursor/qc-cabinet-media-2ac5` — code `8d1b503`, branch HEAD on push (shell `v452`). |
 | Base | `claude/milestone-1-customer-file-qv5ybf` @ `803abf9`. Do **not** merge until Tim says. |
