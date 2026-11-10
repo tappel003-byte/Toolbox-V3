@@ -37,8 +37,7 @@ is open is Tim's acceptance of each one on a real job.
   continuation sheets, a DRAFT stamp. Waiting on Tim's acceptance.
 - ~~The chevrons in the contents~~ — gone by decision
   (`tests/report-cover-contents.mjs`). The empty dashed site-overview box never
-  prints; whether it shows on Tim's own cover is the open question in
-  `REPORT-BUILDER-PLAN.md` §1.
+  prints; whether it shows on Tim's own cover is still Tim's call.
 - ~~Bringing the colour scale, the H/L/Δ pill and the High/Low markers back
   onto an imported Floor Survey slide.~~ All three are back. The scale and the
   pill are pieces on the page; the markers are drawn with the drawing, at the
@@ -300,11 +299,10 @@ completed." Things land here until Report Builder is finished.
 
 ## Report Builder — flexible survey views on a sheet
 
-**Design target recorded with Tim, Oct 25, 2026. Implementation is not authorized by this entry.**
-Keep this entry with the [read-only code audit](REPORT-BUILDER-VIEWS-WORKFLOW-AUDIT.md).
-That audit inspected `b6aea91f151adf3e187f532afbfaa0e6415329eb`; it read code/test
-sources and did not run tests. The audit describes the existing implementation;
-this entry preserves the intended experience. Do not confuse the two.
+**Design target recorded with Tim, Oct 25, 2026.** Flexible compose landed (#133);
+Tim's acceptance on a real job remains. The old read-only workflow audit file
+was removed in the Nov 9 docs cleanup — durable outcomes live in `DECISIONS.md`
+and the code.
 
 ### What it should look and feel like
 
@@ -388,13 +386,12 @@ selection, a shared report camera, whole-page duplication, shared placement
 and a per-slide placement exception, and a still-composition print path.
 These are reusable capabilities, not proof that arbitrary compose is built.
 
-Completed: merged in #133 (flexible compose finish; `docs/AI-REVIEW-LOG.md`
-CURSOR handoff after GPT-029 / PR #132). Verified by
+Completed: merged in #133 (flexible compose finish). Verified by
 `report-floor-flex-compose`, `report-floor-slide-own-layout` and
-`report-floor-flex-finish-acceptance`. Oct 29 (CLAUDE-017) fixed three things
-behind it: a one-view sheet drew the colour scale twice, the drawing could not
-be sent behind the scale, and High/Low were missing from Present and the PDF.
-Tim's acceptance on a real job is what remains. The checklist as it stood:
+`report-floor-flex-finish-acceptance`. Oct 29 fixed three things behind it: a
+one-view sheet drew the colour scale twice, the drawing could not be sent
+behind the scale, and High/Low were missing from Present and the PDF. Tim's
+acceptance on a real job is what remains. The checklist as it stood:
 
 - [x] Individual view selection/source/copy: choose the floor and rendition
   for each view, mix floors on a sheet, and add beyond the current two slots.
