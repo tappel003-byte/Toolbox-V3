@@ -153,6 +153,20 @@
       if (kind === 'group' && Array.isArray(raw.members)) {
         item.members = normalizePorOverlays(raw.members);
       }
+      // Legacy rich text {paragraphs:[{runs:[{bold:true}]}]} → Fabric bold flag.
+      if (kind === 'text' && item.text && typeof item.text === 'object') {
+        var rich = (window.ToolboxPorFabric && window.ToolboxPorFabric.richTextPlainAndBold)
+          ? window.ToolboxPorFabric.richTextPlainAndBold(item)
+          : null;
+        if (rich) {
+          if (rich.bold) item.bold = true;
+          if (rich.italic) item.italic = true;
+          if (rich.underline) item.underline = true;
+          if (rich.strike) item.strike = true;
+          if (rich.fontSize != null && item.fontSize == null) item.fontSize = rich.fontSize;
+          item.text = rich.text;
+        }
+      }
       out.push(item);
     });
     return out;
@@ -866,18 +880,30 @@
       if (state.drag && state.drag.mode === 'view-pan') state.drag = null;
     }
 
+    function overlaysFingerprint(list) {
+      try { return JSON.stringify(list || []); } catch (_) { return ''; }
+    }
+
     function syncOverlaysFromFabric() {
-      if (!state.fabricCanvas || !PorFab) return;
+      if (!state.fabricCanvas || !PorFab) return false;
       var page = activePage();
-      if (!page) return;
+      if (!page) return false;
       // Keep pre-conversion overlay bytes until the first successful save after convert.
       if (!page._legacyOverlays && Array.isArray(page.overlays) && page.overlays.length &&
           state.convertingLegacy) {
         page._legacyOverlays = deepClone(page.overlays);
       }
-      page.overlays = PorFab.canvasToOverlays(state.fabricCanvas);
+      var next = PorFab.canvasToOverlays(state.fabricCanvas);
       var active = state.fabricCanvas.getActiveObject();
       state.selectedId = active && active.porId ? active.porId : null;
+      // Nothing changed → do not rewrite overlays or dirty the file on open/close.
+      if (overlaysFingerprint(next) === overlaysFingerprint(page.overlays)) return false;
+      page.overlays = next;
+      return true;
+    }
+
+    function syncAndSave() {
+      if (syncOverlaysFromFabric()) scheduleSave();
     }
 
     function wireFabricEvents(canvas) {
@@ -886,8 +912,7 @@
       var pushAndSync = function () {
         if (state.readOnly || state.printMode) return;
         pushHistory();
-        syncOverlaysFromFabric();
-        scheduleSave();
+        syncAndSave();
         syncHistoryButtons();
       };
       canvas.on('object:modified', function () {
@@ -1072,12 +1097,29 @@
           excludeFromExport: false,
         });
         pushHistory();
+        if (shape.type === 'line' || shape.porKind === 'line' || shape.porKind === 'arrow') {
+          try { PorFab.captureLineEnds(shape); } catch (_) {}
+          // Fresh draw: pin the just-captured ends as pct so the first save is exact.
+          if (shape.porEnds) {
+            shape.porPctEnds = {
+              x0: PorFab.xToPct(shape.porEnds.x0),
+              y0: PorFab.yToPct(shape.porEnds.y0),
+              x1: PorFab.xToPct(shape.porEnds.x1),
+              y1: PorFab.yToPct(shape.porEnds.y1),
+            };
+          }
+        }
         canvas.add(shape);
         canvas.setActiveObject(shape);
         canvas.requestRenderAll();
-        syncOverlaysFromFabric();
-        scheduleSave();
+        syncAndSave();
         if (!state.keepTool) setInkTool(null);
+      });
+      canvas.on('editing:exited', function (opt) {
+        if (state.readOnly || state.printMode) return;
+        state.editingText = false;
+        syncAndSave();
+        syncHistoryButtons();
       });
       canvas.on('mouse:dblclick', function (opt) {
         if (opt.target && (opt.target.type === 'textbox' || opt.target.type === 'i-text')) {
@@ -1291,6 +1333,81 @@
       canvas.requestRenderAll();
     }
 
+    function selectionTargets() {
+      var canvas = state.fabricCanvas;
+      if (!canvas) return [];
+      var active = canvas.getActiveObject();
+      if (!active) return [];
+      if (active.type === 'activeSelection') {
+        return typeof active.getObjects === 'function' ? active.getObjects() : (active._objects || []);
+      }
+      return [active];
+    }
+
+    // Move a Fabric object by a canvas-space delta even when it lives inside an
+    // ActiveSelection (child left/top are group-relative — never add sheet dx/dy
+    // to those). setPositionByOrigin always takes absolute sheet points.
+    function moveObjectBy(obj, dx, dy) {
+      if (!obj || (!dx && !dy)) return;
+      var center = typeof obj.getCenterPoint === 'function'
+        ? obj.getCenterPoint()
+        : { x: obj.left || 0, y: obj.top || 0 };
+      if (typeof obj.setPositionByOrigin === 'function' && window.fabric && window.fabric.Point) {
+        obj.setPositionByOrigin(
+          new window.fabric.Point(center.x + dx, center.y + dy),
+          'center',
+          'center'
+        );
+      } else {
+        obj.set({ left: (obj.left || 0) + dx, top: (obj.top || 0) + dy });
+      }
+      obj.setCoords();
+      if (obj.type === 'line' || obj.porKind === 'line' || obj.porKind === 'arrow') {
+        obj.porPctEnds = null;
+        try { PorFab.captureLineEnds(obj); } catch (_) {}
+      }
+    }
+
+    // Flatten ActiveSelection to absolute objects, run work, sync overlays while
+    // absolute, then optionally restore the multi-selection.
+    function runOnAbsoluteSelection(work) {
+      var canvas = state.fabricCanvas;
+      if (!canvas) return false;
+      var active = canvas.getActiveObject();
+      if (!active) return false;
+      var targets;
+      if (active.type === 'activeSelection') {
+        targets = (typeof active.getObjects === 'function'
+          ? active.getObjects()
+          : (active._objects || [])).slice();
+        // discardActiveObject restores child left/top to canvas space once —
+        // do not also call _restoreObjectsState (that double-applies the lift).
+        canvas.discardActiveObject();
+        targets.forEach(function (o) {
+          try {
+            if (o.group) o.group = undefined;
+            o.setCoords();
+          } catch (_) {}
+        });
+      } else {
+        targets = [active];
+      }
+      if (!targets.length) return false;
+      work(targets);
+      // Persist while left/top are absolute — before re-wrapping in ActiveSelection.
+      syncAndSave();
+      if (targets.length > 1) {
+        try {
+          var sel = new window.fabric.ActiveSelection(targets, { canvas: canvas });
+          canvas.setActiveObject(sel);
+        } catch (_) {}
+      } else if (targets.length === 1) {
+        try { canvas.setActiveObject(targets[0]); } catch (_) {}
+      }
+      canvas.requestRenderAll();
+      return true;
+    }
+
     function groupSelection() {
       var canvas = state.fabricCanvas;
       if (!canvas || state.readOnly) return;
@@ -1304,99 +1421,89 @@
         PorFab.styleControls(g);
       }
       canvas.requestRenderAll();
-      syncOverlaysFromFabric();
-      scheduleSave();
-    }
-
-    function selectionTargets() {
-      var canvas = state.fabricCanvas;
-      if (!canvas) return [];
-      var active = canvas.getActiveObject();
-      if (!active) return [];
-      if (active.type === 'activeSelection') {
-        return typeof active.getObjects === 'function' ? active.getObjects() : (active._objects || []);
-      }
-      return [active];
+      syncAndSave();
     }
 
     function alignMarks(mode) {
       var canvas = state.fabricCanvas;
       if (!canvas || state.readOnly) return;
-      var targets = selectionTargets();
-      if (!targets.length) return;
+      if (!selectionTargets().length) return;
       pushHistory();
-      var boxes = targets.map(function (o) {
-        var b = o.getBoundingRect(true, true);
-        return { o: o, b: b };
+      runOnAbsoluteSelection(function (targets) {
+        var boxes = targets.map(function (o) {
+          // Prefer stroke-free absolute box so align matches saved geometry.
+          var abs = null;
+          try {
+            if (typeof o.getPointByOrigin === 'function') {
+              var pt = o.getPointByOrigin('left', 'top');
+              var w = Math.abs((o.width || 0) * (o.scaleX || 1));
+              var h = Math.abs((o.height || 0) * (o.scaleY || 1));
+              abs = { left: pt.x, top: pt.y, width: w, height: h };
+            }
+          } catch (_) { abs = null; }
+          var b = abs || o.getBoundingRect(true, true);
+          return { o: o, b: b };
+        });
+        var useSheet = boxes.length < 2;
+        var minL = useSheet ? 0 : Math.min.apply(null, boxes.map(function (x) { return x.b.left; }));
+        var maxR = useSheet ? PAPER_W : Math.max.apply(null, boxes.map(function (x) { return x.b.left + x.b.width; }));
+        var minT = useSheet ? 0 : Math.min.apply(null, boxes.map(function (x) { return x.b.top; }));
+        var maxB = useSheet ? PAPER_H : Math.max.apply(null, boxes.map(function (x) { return x.b.top + x.b.height; }));
+        var midX = (minL + maxR) / 2;
+        var midY = (minT + maxB) / 2;
+        boxes.forEach(function (x) {
+          var b = x.b;
+          var dx = 0;
+          var dy = 0;
+          if (mode === 'left') dx = minL - b.left;
+          else if (mode === 'center') dx = midX - (b.left + b.width / 2);
+          else if (mode === 'right') dx = maxR - (b.left + b.width);
+          else if (mode === 'top') dy = minT - b.top;
+          else if (mode === 'middle') dy = midY - (b.top + b.height / 2);
+          else if (mode === 'bottom') dy = maxB - (b.top + b.height);
+          moveObjectBy(x.o, dx, dy);
+        });
       });
-      var useSheet = boxes.length < 2;
-      var minL = useSheet ? 0 : Math.min.apply(null, boxes.map(function (x) { return x.b.left; }));
-      var maxR = useSheet ? PAPER_W : Math.max.apply(null, boxes.map(function (x) { return x.b.left + x.b.width; }));
-      var minT = useSheet ? 0 : Math.min.apply(null, boxes.map(function (x) { return x.b.top; }));
-      var maxB = useSheet ? PAPER_H : Math.max.apply(null, boxes.map(function (x) { return x.b.top + x.b.height; }));
-      var midX = (minL + maxR) / 2;
-      var midY = (minT + maxB) / 2;
-      boxes.forEach(function (x) {
-        var o = x.o;
-        var b = x.b;
-        var dx = 0;
-        var dy = 0;
-        if (mode === 'left') dx = minL - b.left;
-        else if (mode === 'center') dx = midX - (b.left + b.width / 2);
-        else if (mode === 'right') dx = maxR - (b.left + b.width);
-        else if (mode === 'top') dy = minT - b.top;
-        else if (mode === 'middle') dy = midY - (b.top + b.height / 2);
-        else if (mode === 'bottom') dy = maxB - (b.top + b.height);
-        o.set({ left: (o.left || 0) + dx, top: (o.top || 0) + dy });
-        o.setCoords();
-      });
-      canvas.requestRenderAll();
-      syncOverlaysFromFabric();
-      scheduleSave();
       setStatus('Aligned ' + mode);
     }
 
     function distributeMarks(axis) {
       var canvas = state.fabricCanvas;
       if (!canvas || state.readOnly) return;
-      var targets = selectionTargets();
-      if (targets.length < 3) {
+      if (selectionTargets().length < 3) {
         setStatus('Select three or more marks to distribute');
         return;
       }
       pushHistory();
-      var boxes = targets.map(function (o) {
-        return { o: o, b: o.getBoundingRect(true, true) };
-      });
-      boxes.sort(function (a, b) {
-        return axis === 'h'
-          ? (a.b.left + a.b.width / 2) - (b.b.left + b.b.width / 2)
-          : (a.b.top + a.b.height / 2) - (b.b.top + b.b.height / 2);
-      });
-      var first = boxes[0];
-      var last = boxes[boxes.length - 1];
-      if (axis === 'h') {
-        var span = (last.b.left + last.b.width / 2) - (first.b.left + first.b.width / 2);
-        var step = span / (boxes.length - 1);
-        boxes.forEach(function (x, i) {
-          var want = (first.b.left + first.b.width / 2) + step * i;
-          var cur = x.b.left + x.b.width / 2;
-          x.o.set({ left: (x.o.left || 0) + (want - cur) });
-          x.o.setCoords();
+      runOnAbsoluteSelection(function (targets) {
+        var boxes = targets.map(function (o) {
+          return { o: o, b: o.getBoundingRect(true, true) };
         });
-      } else {
-        var spanV = (last.b.top + last.b.height / 2) - (first.b.top + first.b.height / 2);
-        var stepV = spanV / (boxes.length - 1);
-        boxes.forEach(function (x, i) {
-          var want = (first.b.top + first.b.height / 2) + stepV * i;
-          var cur = x.b.top + x.b.height / 2;
-          x.o.set({ top: (x.o.top || 0) + (want - cur) });
-          x.o.setCoords();
+        boxes.sort(function (a, b) {
+          return axis === 'h'
+            ? (a.b.left + a.b.width / 2) - (b.b.left + b.b.width / 2)
+            : (a.b.top + a.b.height / 2) - (b.b.top + b.b.height / 2);
         });
-      }
-      canvas.requestRenderAll();
-      syncOverlaysFromFabric();
-      scheduleSave();
+        var first = boxes[0];
+        var last = boxes[boxes.length - 1];
+        if (axis === 'h') {
+          var span = (last.b.left + last.b.width / 2) - (first.b.left + first.b.width / 2);
+          var step = span / (boxes.length - 1);
+          boxes.forEach(function (x, i) {
+            var want = (first.b.left + first.b.width / 2) + step * i;
+            var cur = x.b.left + x.b.width / 2;
+            moveObjectBy(x.o, want - cur, 0);
+          });
+        } else {
+          var spanV = (last.b.top + last.b.height / 2) - (first.b.top + first.b.height / 2);
+          var stepV = spanV / (boxes.length - 1);
+          boxes.forEach(function (x, i) {
+            var want = (first.b.top + first.b.height / 2) + stepV * i;
+            var cur = x.b.top + x.b.height / 2;
+            moveObjectBy(x.o, 0, want - cur);
+          });
+        }
+      });
       setStatus('Distributed ' + (axis === 'h' ? 'horizontally' : 'vertically'));
     }
 
@@ -1545,9 +1652,22 @@
       if (!active || active.type !== 'group') return;
       pushHistory();
       active.toActiveSelection();
+      // Flatten ActiveSelection immediately so saved coords stay absolute.
+      var sel = canvas.getActiveObject();
+      var members = sel && sel.type === 'activeSelection'
+        ? (typeof sel.getObjects === 'function' ? sel.getObjects() : (sel._objects || [])).slice()
+        : [];
+      if (members.length) {
+        canvas.discardActiveObject();
+        members.forEach(function (o) { try { o.setCoords(); } catch (_) {} });
+        if (members.length > 1) {
+          canvas.setActiveObject(new window.fabric.ActiveSelection(members, { canvas: canvas }));
+        } else if (members.length === 1) {
+          canvas.setActiveObject(members[0]);
+        }
+      }
       canvas.requestRenderAll();
-      syncOverlaysFromFabric();
-      scheduleSave();
+      syncAndSave();
     }
 
     function applySheetScale() {
@@ -3193,16 +3313,27 @@
           event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
         if (state.fabricCanvas && state.fabricCanvas.getActiveObject()) {
           event.preventDefault();
-          var active = state.fabricCanvas.getActiveObject();
+          var activeNudge = state.fabricCanvas.getActiveObject();
+          // Don't steal arrow keys while typing into a text box.
+          if (activeNudge.isEditing) return;
           var stepPx = event.shiftKey ? 16 : 4;
           var dxPx = event.key === 'ArrowLeft' ? -stepPx : (event.key === 'ArrowRight' ? stepPx : 0);
           var dyPx = event.key === 'ArrowUp' ? -stepPx : (event.key === 'ArrowDown' ? stepPx : 0);
           pushHistory();
-          active.set({ left: (active.left || 0) + dxPx, top: (active.top || 0) + dyPx });
-          active.setCoords();
+          // Nudge the ActiveSelection (or single object) as a unit — Fabric keeps
+          // children consistent; canvasToOverlays discards selection for absolute save.
+          activeNudge.set({
+            left: (activeNudge.left || 0) + dxPx,
+            top: (activeNudge.top || 0) + dyPx,
+          });
+          activeNudge.setCoords();
+          if (activeNudge.type === 'line' || activeNudge.porKind === 'arrow' ||
+              activeNudge.porKind === 'line') {
+            activeNudge.porPctEnds = null;
+            try { PorFab.captureLineEnds(activeNudge); } catch (_) {}
+          }
           state.fabricCanvas.requestRenderAll();
-          syncOverlaysFromFabric();
-          scheduleSave();
+          syncAndSave();
           return;
         }
         var nudgeItem = selectedItem();
@@ -3462,8 +3593,15 @@
         state.fabricCanvas.setActiveObject(tb);
         state.fabricCanvas.requestRenderAll();
         state.editingText = true;
-        syncOverlaysFromFabric();
-        scheduleSave();
+        // PowerPoint feel: new text box is in edit mode with placeholder selected
+        // so the next keystrokes replace "Text" instead of being ignored.
+        try {
+          if (typeof tb.enterEditing === 'function') {
+            tb.enterEditing();
+            if (typeof tb.selectAll === 'function') tb.selectAll();
+          }
+        } catch (_) {}
+        syncAndSave();
         syncHistoryButtons();
         return;
       }

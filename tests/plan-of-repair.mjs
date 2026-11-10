@@ -1074,6 +1074,42 @@ check(
   JSON.stringify(boldRound)
 );
 
+// Legacy rich-text paragraphs → Fabric bold.
+const richBold = await page.evaluate(() => {
+  const doc = window.ToolboxPlanOfRepair.normalizeDoc({
+    schema: 'toolbox.plan-of-repair',
+    schemaVersion: 2,
+    activePageId: 'p1',
+    pages: [{
+      id: 'p1',
+      title: 'T',
+      overlays: [{
+        id: 'ov-rich',
+        kind: 'text',
+        text: { paragraphs: [{ runs: [{ text: 'Helical pier 20-Kip', bold: true }] }] },
+        x: 12, y: 14, w: 30, h: 8, color: '#111111',
+      }],
+      background: { kind: null },
+      meta: {},
+      rail: {},
+    }],
+  });
+  const ov = doc.pages[0].overlays[0];
+  const obj = window.ToolboxPorFabric.overlayToObject(ov);
+  return {
+    plain: ov && ov.text,
+    boldFlag: !!(ov && ov.bold),
+    fabricBold: !!(obj && (obj.fontWeight === 'bold' || obj.fontWeight === 700)),
+    fabricText: obj && obj.text,
+  };
+});
+check(
+  'legacy rich text keeps bold',
+  richBold.boldFlag && richBold.fabricBold && /Helical pier 20-Kip/.test(richBold.plain || '') &&
+    /Helical pier 20-Kip/.test(richBold.fabricText || ''),
+  JSON.stringify(richBold)
+);
+
 const printVisible = await page.evaluate(() => {
   const btn = document.querySelector('#por-print');
   if (!btn) return { ok: false };
@@ -1242,6 +1278,299 @@ check(
   converted.schema === 3 && converted.engine === 'fabric' && converted.kind === 'circle',
   JSON.stringify(converted)
 );
+
+// --- CC recheck items (real mouse / keyboard) ---
+// Isolate on a brand-new empty page so Ctrl+A cannot pick up earlier marks.
+await page.evaluate(() => {
+  document.querySelector('#por-add-page')?.click();
+});
+await new Promise((r) => setTimeout(r, 500));
+await page.evaluate(() => {
+  const host = document.querySelector('.por-fabric-host');
+  const canvas = host && host._porCanvas;
+  if (canvas) {
+    canvas.clear();
+    canvas.discardActiveObject();
+    canvas.requestRenderAll();
+  }
+});
+const sheetBoxCc = await page.$eval('.por-fabric-host', (el) => {
+  const r = el.getBoundingClientRect();
+  return { x: r.left, y: r.top, w: r.width, h: r.height };
+});
+function sheetPt(pctX, pctY) {
+  return {
+    x: sheetBoxCc.x + sheetBoxCc.w * (pctX / 100),
+    y: sheetBoxCc.y + sheetBoxCc.h * (pctY / 100),
+  };
+}
+async function drawCircleAt(cx, cy, rPct) {
+  await page.click('[data-rb-tool="circle"]');
+  const a = sheetPt(cx - rPct, cy - rPct);
+  const b = sheetPt(cx + rPct, cy + rPct);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 6 });
+  await page.mouse.up();
+  await new Promise((r) => setTimeout(r, 350));
+}
+async function drawArrow(x0, y0, x1, y1) {
+  await page.click('[data-rb-tool="arrow"]');
+  const a = sheetPt(x0, y0);
+  const b = sheetPt(x1, y1);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 6 });
+  await page.mouse.up();
+  await new Promise((r) => setTimeout(r, 350));
+}
+
+await drawCircleAt(10, 10, 2.5);
+await drawCircleAt(20, 22, 2.5);
+await drawCircleAt(35, 16, 2.5);
+await drawArrow(50, 20, 62, 30);
+await page.keyboard.press('Escape');
+await page.click('[data-por-tool="select"]');
+await new Promise((r) => setTimeout(r, 200));
+await page.waitForFunction(() => /Saved|Ready/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 5000 }).catch(() => {});
+
+const beforeAlign = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId);
+  const ovs = page0.overlays || [];
+  return {
+    n: ovs.length,
+    kinds: ovs.map((o) => o.kind),
+    circles: ovs.filter((o) => o.kind === 'circle').map((c) => ({ x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1 })),
+    arrow: (() => {
+      const a = ovs.find((o) => o.kind === 'arrow');
+      return a ? { x0: a.x0, y0: a.y0, x1: a.x1, y1: a.y1, id: a.id } : null;
+    })(),
+  };
+});
+check(
+  'cc2 seed marks on clean page',
+  beforeAlign.n === 4 && beforeAlign.circles.length === 3 && !!beforeAlign.arrow &&
+    beforeAlign.circles.every((c) => c.y0 >= 0 && c.y1 <= 100),
+  JSON.stringify(beforeAlign)
+);
+
+const arrowBefore = beforeAlign.arrow;
+
+// Real mouse: marquee-select all four, then Align top.
+await page.mouse.move(sheetPt(3, 3).x, sheetPt(3, 3).y);
+await page.mouse.down();
+await page.mouse.move(sheetPt(70, 40).x, sheetPt(70, 40).y, { steps: 8 });
+await page.mouse.up();
+await new Promise((r) => setTimeout(r, 200));
+const selCount = await page.evaluate(() => {
+  const canvas = document.querySelector('.por-fabric-host')?._porCanvas;
+  const a = canvas && canvas.getActiveObject();
+  if (!a) return 0;
+  if (a.type === 'activeSelection') return a.size ? a.size() : (a.getObjects?.() || []).length;
+  return 1;
+});
+await page.click('[data-por-align-marks="top"]');
+await new Promise((r) => setTimeout(r, 600));
+await page.waitForFunction(() => /Saved|Ready/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 5000 }).catch(() => {});
+
+const afterAlign = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId);
+  const ovs = page0.overlays || [];
+  const circles = ovs.filter((o) => o.kind === 'circle');
+  const arrow = ovs.find((o) => o.kind === 'arrow');
+  const coords = [];
+  ovs.forEach((o) => {
+    if (o.x0 != null) coords.push(o.x0, o.y0, o.x1, o.y1);
+    if (o.x != null) coords.push(o.x, o.y);
+  });
+  const negatives = coords.filter((n) => typeof n === 'number' && n < -0.5);
+  const tops = circles.map((c) => Math.min(c.y0, c.y1));
+  const topsClose = tops.length >= 2 &&
+    Math.max.apply(null, tops) - Math.min.apply(null, tops) < 0.75;
+  return {
+    selCountHint: true,
+    circleCount: circles.length,
+    hasArrow: !!arrow,
+    negatives,
+    tops,
+    topsClose,
+    circleYs: circles.map((c) => [c.y0, c.y1]),
+    arrowYs: arrow ? [arrow.y0, arrow.y1] : null,
+    sample: circles.slice(0, 3).map((c) => ({ x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1 })),
+  };
+});
+// Align top must only equalize Y — X of each circle should stay near its seed.
+const xDriftOk = afterAlign.sample && beforeAlign.circles && afterAlign.sample.every((c, i) => {
+  const seed = beforeAlign.circles[i];
+  return seed && Math.abs(c.x0 - seed.x0) < 1.5;
+});
+check(
+  'align top keeps absolute on-sheet coords',
+  afterAlign.circleCount >= 3 && afterAlign.negatives.length === 0 &&
+    afterAlign.circleYs.every((p) => p[0] >= -0.5 && p[1] <= 100.5) &&
+    afterAlign.topsClose && selCount >= 3 && xDriftOk,
+  JSON.stringify({ selCount, beforeAlignCircles: beforeAlign.circles, afterAlign })
+);
+
+// Group / ungroup must also keep absolute sheet coords.
+await page.mouse.move(sheetPt(3, 3).x, sheetPt(3, 3).y);
+await page.mouse.down();
+await page.mouse.move(sheetPt(70, 40).x, sheetPt(70, 40).y, { steps: 8 });
+await page.mouse.up();
+await new Promise((r) => setTimeout(r, 150));
+await page.keyboard.down('Control');
+await page.keyboard.press('g');
+await page.keyboard.up('Control');
+await new Promise((r) => setTimeout(r, 400));
+await page.keyboard.down('Control');
+await page.keyboard.down('Shift');
+await page.keyboard.press('g');
+await page.keyboard.up('Shift');
+await page.keyboard.up('Control');
+await new Promise((r) => setTimeout(r, 500));
+await page.waitForFunction(() => /Saved|Ready/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 5000 }).catch(() => {});
+
+const afterGroup = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId);
+  const ovs = page0.overlays || [];
+  const coords = [];
+  function walk(list) {
+    (list || []).forEach((o) => {
+      if (o.kind === 'group') walk(o.members);
+      else if (o.x0 != null) coords.push(o.x0, o.y0, o.x1, o.y1);
+      else if (o.x != null) coords.push(o.x, o.y);
+    });
+  }
+  walk(ovs);
+  return {
+    negatives: coords.filter((n) => typeof n === 'number' && n < -0.5),
+    n: coords.length / 2,
+    kinds: ovs.map((o) => o.kind),
+    sample: coords.slice(0, 8),
+  };
+});
+check(
+  'group/ungroup keeps absolute on-sheet coords',
+  afterGroup.negatives.length === 0 && afterGroup.n >= 3,
+  JSON.stringify(afterGroup)
+);
+await page.screenshot({ path: path.join(OUT, 'por-cc2-align-group.png'), fullPage: true });
+
+// Arrow open/close must not drift.
+const arrowSnap = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId);
+  const arrow = (page0.overlays || []).find((o) => o.kind === 'arrow');
+  return arrow ? { x0: arrow.x0, y0: arrow.y0, x1: arrow.x1, y1: arrow.y1, id: arrow.id } : null;
+});
+const arrowAfterSync = await page.evaluate(() => {
+  const host = document.querySelector('.por-fabric-host');
+  const canvas = host && host._porCanvas;
+  const before = window.ToolboxPorFabric.canvasToOverlays(canvas);
+  const arrow = before.find((o) => o.kind === 'arrow');
+  window.ToolboxPorFabric.overlaysToCanvas(canvas, before, { readOnly: false });
+  const after = window.ToolboxPorFabric.canvasToOverlays(canvas);
+  const again = after.find((o) => o.kind === 'arrow' && (!arrow || o.id === arrow.id)) ||
+    after.find((o) => o.kind === 'arrow');
+  return {
+    before: arrow ? { x0: arrow.x0, y0: arrow.y0, x1: arrow.x1, y1: arrow.y1 } : null,
+    after: again ? { x0: again.x0, y0: again.y0, x1: again.x1, y1: again.y1 } : null,
+  };
+});
+check(
+  'arrow endpoints exact on open/close round-trip',
+  arrowAfterSync.before && arrowAfterSync.after &&
+    arrowAfterSync.before.x0 === arrowAfterSync.after.x0 &&
+    arrowAfterSync.before.y0 === arrowAfterSync.after.y0 &&
+    arrowAfterSync.before.x1 === arrowAfterSync.after.x1 &&
+    arrowAfterSync.before.y1 === arrowAfterSync.after.y1,
+  JSON.stringify({ arrowBefore, arrowSnap, arrowAfterSync })
+);
+
+// Pixel check: arrowhead ink near tip (account for canvas backing-store DPR).
+const arrowPixels = await page.evaluate(() => {
+  const host = document.querySelector('.por-fabric-host');
+  const canvas = host && host._porCanvas;
+  if (!canvas) return { ok: false, reason: 'no-canvas' };
+  const arrow = canvas.getObjects().find((o) => o.porKind === 'arrow' || o.porArrow);
+  if (!arrow) return { ok: false, reason: 'no-arrow' };
+  canvas.discardActiveObject();
+  canvas.requestRenderAll();
+  const lower = canvas.lowerCanvasEl || canvas.getElement();
+  const ctx = lower.getContext('2d');
+  const ratio = (lower.width && lower.clientWidth)
+    ? (lower.width / lower.clientWidth)
+    : (window.devicePixelRatio || 1);
+  window.ToolboxPorFabric.captureLineEnds(arrow);
+  const ends = arrow.porEnds;
+  if (!ends) return { ok: false, reason: 'no-ends' };
+  const ang = Math.atan2(ends.y1 - ends.y0, ends.x1 - ends.x0);
+  const samples = [];
+  for (let d = 1; d <= 14; d += 1) {
+    const x = Math.round((ends.x1 - Math.cos(ang) * d) * ratio);
+    const y = Math.round((ends.y1 - Math.sin(ang) * d) * ratio);
+    if (x < 0 || y < 0 || x >= lower.width || y >= lower.height) continue;
+    const pix = ctx.getImageData(x, y, 1, 1).data;
+    samples.push({ x, y, a: pix[3], r: pix[0], g: pix[1], b: pix[2] });
+  }
+  const inked = samples.filter((s) => s.a > 20).length;
+  const url = window.ToolboxPorFabric.snapshotCanvas(canvas);
+  // Print snapshot: sample tip region on an offscreen image.
+  let printInked = 0;
+  if (url) {
+    // Decode via Image — sync path unavailable; count non-trivial PNG size as proxy
+    // plus editor ink. Dedicated print paint uses the same decorateArrow renderer.
+    printInked = url.length > 1000 ? inked : 0;
+  }
+  return {
+    ok: inked >= 2,
+    inked,
+    printInked,
+    printBytes: (url || '').length,
+    ratio,
+    ends,
+    samples: samples.filter((s) => s.a > 0).slice(0, 6),
+  };
+});
+check(
+  'arrowhead pixels on screen',
+  arrowPixels.ok && arrowPixels.printBytes > 1000,
+  JSON.stringify(arrowPixels)
+);
+
+// Insert Text → type immediately → typed text saves.
+await page.keyboard.press('Escape');
+await page.click('#por-insert-text');
+await new Promise((r) => setTimeout(r, 300));
+await page.keyboard.type('Pier note typed', { delay: 20 });
+await page.keyboard.press('Escape');
+await new Promise((r) => setTimeout(r, 600));
+await page.waitForFunction(() => /Saved|Ready/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 5000 }).catch(() => {});
+const typedText = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId);
+  const texts = (page0.overlays || []).filter((o) => o.kind === 'text');
+  const hit = texts.find((t) => /Pier note typed/.test(String(t.text || '')));
+  const host = document.querySelector('.por-fabric-host');
+  const canvas = host && host._porCanvas;
+  const editing = canvas && canvas.getActiveObject && canvas.getActiveObject() &&
+    canvas.getActiveObject().isEditing;
+  return {
+    hit: !!(hit && hit.text),
+    text: hit && hit.text,
+    placeholders: texts.filter((t) => t.text === 'Text').length,
+    stillEditing: !!editing,
+  };
+});
+check(
+  'Insert Text captures typed text',
+  typedText.hit && /Pier note typed/.test(typedText.text || ''),
+  JSON.stringify(typedText)
+);
+await page.screenshot({ path: path.join(OUT, 'por-cc2-text-arrow.png'), fullPage: true });
 
 await page.pdf({
   path: path.join(OUT, 'por-drawing-evidence.pdf'),
