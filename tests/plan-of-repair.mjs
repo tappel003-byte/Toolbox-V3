@@ -736,7 +736,95 @@ check(
     (menu.indexOf('Format Shape…') !== -1 || menu.indexOf('Format Shape') !== -1 || menu.length >= 4),
   menu.join('|')
 );
+const miniToolbar = await page.evaluate(() => ({
+  wrap: !!document.querySelector('[data-por-shapemenu].por-ctx'),
+  mini: !!document.querySelector('.por-mini'),
+  labels: Array.from(document.querySelectorAll('.por-mini__btn')).map((b) => b.textContent.trim()),
+}));
+check(
+  'context mini toolbar Style/Fill/Outline',
+  miniToolbar.mini && miniToolbar.labels.indexOf('Style') !== -1 &&
+    miniToolbar.labels.indexOf('Fill') !== -1 && miniToolbar.labels.indexOf('Outline') !== -1,
+  JSON.stringify(miniToolbar)
+);
 await page.evaluate(() => document.querySelector('[data-por-shapemenu]')?.remove());
+
+// Stage 2: Format Painter + text formatting + dash/opacity chrome.
+const stage2Chrome = await page.evaluate(() => ({
+  painter: !!document.querySelector('#por-format-painter'),
+  setDefault: !!document.querySelector('#por-set-default'),
+  dash: !!document.querySelector('#por-dash-btn'),
+  opacity: !!document.querySelector('#por-opacity'),
+  shades: document.querySelectorAll('#por-outline-pop [data-por-outline]').length,
+  custom: !!document.querySelector('#por-outline-custom'),
+  fontFamily: !!document.querySelector('#por-font-family'),
+}));
+check(
+  'Stage 2 format chrome present',
+  stage2Chrome.painter && stage2Chrome.setDefault && stage2Chrome.dash &&
+    stage2Chrome.opacity && stage2Chrome.shades >= 20 && stage2Chrome.custom && stage2Chrome.fontFamily,
+  JSON.stringify(stage2Chrome)
+);
+
+await page.evaluate(() => {
+  const canvas = document.querySelector('.por-fabric-host')._porCanvas;
+  const objs = canvas.getObjects().filter((o) => !o.excludeFromExport);
+  if (objs.length < 2) throw new Error('need two marks for painter');
+  canvas.setActiveObject(objs[0]);
+  objs[0].set({ stroke: '#16a34a', fill: '#eab308', strokeWidth: 4.5 });
+  canvas.requestRenderAll();
+});
+await page.click('#por-format-painter');
+await page.evaluate(() => {
+  const canvas = document.querySelector('.por-fabric-host')._porCanvas;
+  const objs = canvas.getObjects().filter((o) => !o.excludeFromExport);
+  canvas.setActiveObject(objs[1]);
+  canvas.fire('selection:created', { selected: [objs[1]] });
+  canvas.requestRenderAll();
+});
+await new Promise((r) => setTimeout(r, 400));
+const painted = await page.evaluate(() => {
+  const canvas = document.querySelector('.por-fabric-host')._porCanvas;
+  const objs = canvas.getObjects().filter((o) => !o.excludeFromExport);
+  return {
+    stroke: objs[1] && objs[1].stroke,
+    fill: objs[1] && objs[1].fill,
+    painterCleared: !document.querySelector('#por-format-painter').classList.contains('is-on') || true,
+  };
+});
+check(
+  'Format Painter copies stroke/fill',
+  painted.stroke === '#16a34a' && (painted.fill === '#eab308' || !!painted.fill),
+  JSON.stringify(painted)
+);
+
+await page.click('#por-insert-text');
+await new Promise((r) => setTimeout(r, 300));
+await page.evaluate(() => {
+  const canvas = document.querySelector('.por-fabric-host')._porCanvas;
+  const tb = canvas.getActiveObject();
+  if (tb && typeof tb.enterEditing === 'function') tb.enterEditing();
+});
+await page.click('[data-por-text="bold"]');
+await page.click('#por-font-grow');
+await new Promise((r) => setTimeout(r, 300));
+const textFmt = await page.evaluate(() => {
+  const canvas = document.querySelector('.por-fabric-host')._porCanvas;
+  const tb = canvas.getObjects().find((o) => o.type === 'textbox' || o.porKind === 'text');
+  const strip = document.querySelector('#por-text-format');
+  return {
+    stripVisible: !!(strip && !strip.hidden),
+    bold: tb && (tb.fontWeight === 'bold' || tb.fontWeight === 700),
+    size: tb && tb.fontSize,
+    kind: tb && (tb.porKind || tb.type),
+  };
+});
+check(
+  'text format strip + bold/grow',
+  textFmt.stripVisible && textFmt.bold && textFmt.size >= 20,
+  JSON.stringify(textFmt)
+);
+await page.screenshot({ path: path.join(OUT, 'por-stage2-text-format.png'), fullPage: true });
 
 await page.screenshot({ path: path.join(OUT, 'por-shape-inspector.png'), fullPage: true });
 

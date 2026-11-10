@@ -243,11 +243,32 @@
       weight: svgIcon('<path d="M4 8h16M4 12h16M4 16h16" stroke-width="1.2"/><path d="M4 12h16" stroke-width="3"/>'),
     };
 
-    function colorGrid(attr) {
-      return inkColors.map(function (c) {
-        return '<button type="button" class="por-swatch" ' + attr + '="' + c + '" ' +
-          'style="--por-swatch:' + c + '" title="' + c + '" aria-label="Colour ' + c + '"></button>';
+    function shadeHex(hex, factor) {
+      var h = String(hex || '#000000').replace('#', '');
+      if (h.length !== 6) return hex;
+      var r = Math.round(parseInt(h.slice(0, 2), 16) * factor);
+      var g = Math.round(parseInt(h.slice(2, 4), 16) * factor);
+      var b = Math.round(parseInt(h.slice(4, 6), 16) * factor);
+      r = Math.max(0, Math.min(255, r));
+      g = Math.max(0, Math.min(255, g));
+      b = Math.max(0, Math.min(255, b));
+      return '#' + [r, g, b].map(function (n) {
+        return ('0' + n.toString(16)).slice(-2);
       }).join('');
+    }
+
+    function colorGrid(attr) {
+      var cells = [];
+      inkColors.forEach(function (c) {
+        [1.35, 1.15, 1, 0.75, 0.5].forEach(function (f) {
+          var shade = f === 1 ? c : shadeHex(c, f);
+          cells.push(
+            '<button type="button" class="por-swatch" ' + attr + '="' + shade + '" ' +
+            'style="--por-swatch:' + shade + '" title="' + shade + '" aria-label="Colour ' + shade + '"></button>'
+          );
+        });
+      });
+      return '<div class="por-swatch-grid">' + cells.join('') + '</div>';
     }
 
     // Paint / PowerPoint drawing-first chrome: compact icon strip, colour/weight
@@ -289,29 +310,71 @@
       '      <button type="button" class="por-picker__btn por-picker__btn--swatch" id="por-outline-btn" title="Outline colour" aria-label="Outline colour" aria-haspopup="true" aria-expanded="false">' +
       '        <span class="por-picker__chip" id="por-outline-chip"></span>' +
       '      </button>' +
-      '      <div class="por-picker__pop" id="por-outline-pop" hidden role="listbox" aria-label="Outline colours">' + colorGrid('data-por-outline') + '</div>' +
+      '      <div class="por-picker__pop por-picker__pop--colors" id="por-outline-pop" hidden role="listbox" aria-label="Outline colours">' +
+            colorGrid('data-por-outline') +
+      '        <div class="por-picker__extras">' +
+      '          <label class="por-picker__custom">Custom <input type="color" id="por-outline-custom" value="#1d4ed8"></label>' +
+      '          <div class="por-picker__recent" id="por-outline-recent" aria-label="Recent outline colours"></div>' +
+      '        </div>' +
+      '      </div>' +
       '    </div>' +
       '    <label class="por-fill-toggle por-fill-toggle--tool" title="Fill shapes"><input type="checkbox" id="por-fill" aria-label="Fill shapes"></label>' +
       '    <div class="por-picker" data-por-picker="fill">' +
       '      <button type="button" class="por-picker__btn por-picker__btn--swatch" id="por-fill-btn" title="Fill colour" aria-label="Fill colour" aria-haspopup="true" aria-expanded="false">' +
       '        <span class="por-picker__chip" id="por-fill-chip"></span>' +
       '      </button>' +
-      '      <div class="por-picker__pop" id="por-fill-pop" hidden role="listbox" aria-label="Fill colours">' + colorGrid('data-por-fill') + '</div>' +
+      '      <div class="por-picker__pop por-picker__pop--colors" id="por-fill-pop" hidden role="listbox" aria-label="Fill colours">' +
+            colorGrid('data-por-fill') +
+      '        <div class="por-picker__extras">' +
+      '          <label class="por-picker__custom">Custom <input type="color" id="por-fill-custom" value="#eab308"></label>' +
+      '          <div class="por-picker__recent" id="por-fill-recent" aria-label="Recent fill colours"></div>' +
+      '        </div>' +
+      '      </div>' +
       '    </div>' +
       '    <div class="por-picker" data-por-picker="weight">' +
       '      <button type="button" class="por-picker__btn por-picker__btn--icon" id="por-weight-btn" title="Line weight" aria-label="Line weight" aria-haspopup="true" aria-expanded="false">' +
       ICONS.weight + '</button>' +
       '      <div class="por-picker__pop por-picker__pop--weight" id="por-weight-pop" hidden role="listbox" aria-label="Line weight">' +
-      '        <button type="button" class="por-weight" data-por-thick="1" title="Thin" aria-label="Thin"><span class="por-weight__bar" style="height:1.5px"></span></button>' +
-      '        <button type="button" class="por-weight" data-por-thick="2" title="Medium" aria-label="Medium"><span class="por-weight__bar" style="height:3px"></span></button>' +
-      '        <button type="button" class="por-weight" data-por-thick="3" title="Thick" aria-label="Thick"><span class="por-weight__bar" style="height:5px"></span></button>' +
+      '        <button type="button" class="por-weight" data-por-pt="0.75" data-por-thick="1" title="0.75 pt" aria-label="0.75 pt"><span class="por-weight__bar" style="height:1.5px"></span><span class="por-weight__label">0.75</span></button>' +
+      '        <button type="button" class="por-weight" data-por-pt="1.5" data-por-thick="2" title="1.5 pt" aria-label="1.5 pt"><span class="por-weight__bar" style="height:3px"></span><span class="por-weight__label">1.5</span></button>' +
+      '        <button type="button" class="por-weight" data-por-pt="3" data-por-thick="3" title="3 pt" aria-label="3 pt"><span class="por-weight__bar" style="height:5px"></span><span class="por-weight__label">3</span></button>' +
+      '        <button type="button" class="por-weight" data-por-pt="4.5" data-por-thick="3" title="4.5 pt" aria-label="4.5 pt"><span class="por-weight__bar" style="height:7px"></span><span class="por-weight__label">4.5</span></button>' +
       '      </div>' +
       '    </div>' +
+      '    <div class="por-picker" data-por-picker="dash">' +
+      '      <button type="button" class="por-picker__btn por-picker__btn--icon" id="por-dash-btn" title="Dash style" aria-label="Dash style" aria-haspopup="true" aria-expanded="false">' +
+            svgIcon('<path d="M4 12h3M10 12h3M16 12h4"/>') + '</button>' +
+      '      <div class="por-picker__pop" id="por-dash-pop" hidden role="listbox" aria-label="Dash styles">' +
+      '        <button type="button" class="por-dash" data-por-dash="solid" title="Solid">────</button>' +
+      '        <button type="button" class="por-dash" data-por-dash="dashed" title="Dashed">- - -</button>' +
+      '        <button type="button" class="por-dash" data-por-dash="dotted" title="Dotted">· · ·</button>' +
+      '      </div>' +
+      '    </div>' +
+      '    <label class="por-opacity" title="Transparency"><span>T</span><input type="range" id="por-opacity" min="0" max="100" value="100" aria-label="Opacity"></label>' +
+      '    <button type="button" class="por-iconbtn" id="por-format-painter" title="Format Painter" aria-label="Format Painter">' +
+            svgIcon('<path d="M7 3h7l3 3v4H7z"/><path d="M9 10v8a2 2 0 0 0 4 0v-2"/>') + '</button>' +
+      '    <button type="button" class="por-iconbtn" id="por-set-default" title="Set as default for new shapes" aria-label="Set as default">' +
+            svgIcon('<path d="M12 3l2.2 4.5 5 .7-3.6 3.5.9 5.1L12 14.8 7.5 16.8l.9-5.1L4.8 8.2l5-.7z"/>') + '</button>' +
       '  </div>' +
       '  <div class="por-toolbar__group por-toolbar__text" id="por-text-format" hidden role="group" aria-label="Text formatting">' +
+      '    <select id="por-font-family" class="por-font-select" aria-label="Font">' +
+      '      <option value="Calibri, Arial, sans-serif">Calibri</option>' +
+      '      <option value="Arial, sans-serif">Arial</option>' +
+      '      <option value="Georgia, serif">Georgia</option>' +
+      '      <option value="Times New Roman, serif">Times</option>' +
+      '      <option value="Courier New, monospace">Courier</option>' +
+      '    </select>' +
+      '    <input type="number" id="por-font-size" class="por-font-size" min="8" max="96" value="18" aria-label="Font size">' +
+      '    <button type="button" class="por-iconbtn" id="por-font-grow" title="Grow font" aria-label="Grow font">A+</button>' +
+      '    <button type="button" class="por-iconbtn" id="por-font-shrink" title="Shrink font" aria-label="Shrink font">A−</button>' +
       '    <button type="button" class="por-iconbtn" data-por-text="bold" title="Bold" aria-label="Bold"><b>B</b></button>' +
       '    <button type="button" class="por-iconbtn" data-por-text="italic" title="Italic" aria-label="Italic"><i>I</i></button>' +
       '    <button type="button" class="por-iconbtn" data-por-text="underline" title="Underline" aria-label="Underline"><u>U</u></button>' +
+      '    <button type="button" class="por-iconbtn" data-por-text="strike" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>' +
+      '    <button type="button" class="por-iconbtn" data-por-align="left" title="Align left" aria-label="Align left">⫷</button>' +
+      '    <button type="button" class="por-iconbtn" data-por-align="center" title="Align center" aria-label="Align center">☰</button>' +
+      '    <button type="button" class="por-iconbtn" data-por-align="right" title="Align right" aria-label="Align right">⫸</button>' +
+      '    <button type="button" class="por-iconbtn" data-por-text="bullet" title="Bullets" aria-label="Bullets">•</button>' +
       '  </div>' +
       '  <div class="por-toolbar__spacer"></div>' +
       '  <div class="por-toolbar__view" role="group" aria-label="Page view">' +
@@ -422,7 +485,15 @@
       formatToolbar: null,
       shapeMenu: null,
       inspectorMode: 'format',
+      inspectorOpen: false,
       fillColor: '#eab308',
+      recentColors: [],
+      inkOpacity: 1,
+      inkDash: 'solid',
+      inkArrowStart: 'none',
+      inkArrowEnd: 'none',
+      formatPainter: null,
+      styleDefaults: null,
       editSeq: 0,
       editingText: false,
       fabricCanvas: null,
@@ -507,6 +578,7 @@
 
     function applyOutlineColor(color) {
       if (!color) return;
+      rememberColor(color);
       if (state.fabricCanvas && !state.readOnly) {
         var active = state.fabricCanvas.getActiveObject();
         if (active) {
@@ -542,6 +614,7 @@
 
     function applyFillColor(color) {
       if (!color) return;
+      rememberColor(color);
       if (state.fabricCanvas && !state.readOnly) {
         var active = state.fabricCanvas.getActiveObject();
         if (active && active.type !== 'line' && active.type !== 'path') {
@@ -763,19 +836,55 @@
         scheduleSave();
       });
       canvas.on('selection:created', function (opt) {
-        var t = opt && opt.selected && opt.selected[0];
+        var active = canvas.getActiveObject();
+        var t = active || (opt && opt.selected && opt.selected[0]);
         state.selectedId = t && t.porId ? t.porId : null;
+        if (state.formatPainter && active && !state.readOnly) {
+          pushHistory();
+          applyStyleToFabricTarget(active, state.formatPainter);
+          canvas.requestRenderAll();
+          syncOverlaysFromFabric();
+          scheduleSave();
+          state.formatPainter = null;
+          setStatus('Style painted');
+          syncHistoryButtons();
+        }
+        var isText = !!(active && (active.type === 'textbox' || active.type === 'i-text'));
+        state.editingText = isText;
         syncInspector();
+        syncHistoryButtons();
       });
       canvas.on('selection:updated', function (opt) {
-        var t = opt && opt.selected && opt.selected[0];
+        var active = canvas.getActiveObject();
+        var t = active || (opt && opt.selected && opt.selected[0]);
         state.selectedId = t && t.porId ? t.porId : null;
+        if (state.formatPainter && active && !state.readOnly) {
+          pushHistory();
+          applyStyleToFabricTarget(active, state.formatPainter);
+          canvas.requestRenderAll();
+          syncOverlaysFromFabric();
+          scheduleSave();
+          state.formatPainter = null;
+          setStatus('Style painted');
+        }
+        state.editingText = !!(active && (active.type === 'textbox' || active.type === 'i-text'));
         syncInspector();
+        syncHistoryButtons();
       });
       canvas.on('selection:cleared', function () {
         state.selectedId = null;
         state.editingText = false;
         syncInspector();
+        syncHistoryButtons();
+      });
+      canvas.on('text:editing:entered', function () {
+        state.editingText = true;
+        syncHistoryButtons();
+      });
+      canvas.on('text:editing:exited', function () {
+        state.editingText = false;
+        syncOverlaysFromFabric();
+        scheduleSave();
         syncHistoryButtons();
       });
       canvas.on('path:created', function (opt) {
@@ -939,36 +1048,39 @@
           if (y1 < y0) top = y0 - side;
         }
       }
-      var stroke = state.inkColor;
-      var fill = state.inkFill
-        ? state.fillColor
+      var defs = state.styleDefaults || {};
+      var stroke = defs.stroke || state.inkColor;
+      var fill = state.inkFill || defs.fill
+        ? (defs.fillColor || state.fillColor)
         : 'rgba(0,0,0,0)';
-      var sw = PorFab.strokeWidthFromThick(state.inkThick);
+      if (defs.fill && defs.fill !== 'rgba(0,0,0,0)' && defs.fill !== '') fill = defs.fill;
+      var sw = defs.strokeWidth != null ? defs.strokeWidth : PorFab.strokeWidthFromThick(state.inkThick);
+      var opacity = state.inkOpacity != null ? state.inkOpacity : 1;
+      var dash = dashArrayFor(state.inkDash, state.inkThick);
+      if (defs.strokeDashArray) dash = defs.strokeDashArray;
+      var common = { stroke: stroke, strokeWidth: sw, fill: fill, opacity: opacity, strokeDashArray: dash };
       if (tool === 'rect' || tool === 'roundRect') {
-        return new f.Rect({
+        return new f.Rect(Object.assign({
           left: left, top: top, width: Math.max(2, w), height: Math.max(2, h),
           rx: tool === 'roundRect' ? 12 : 0, ry: tool === 'roundRect' ? 12 : 0,
-          stroke: stroke, strokeWidth: sw, fill: fill,
-        });
+        }, common));
       }
       if (tool === 'circle') {
-        return new f.Ellipse({
+        return new f.Ellipse(Object.assign({
           left: left, top: top,
           rx: Math.max(1, w / 2), ry: Math.max(1, (shift ? w : h) / 2),
-          stroke: stroke, strokeWidth: sw, fill: fill,
-        });
+        }, common));
       }
       if (tool === 'triangle') {
-        return new f.Triangle({
+        return new f.Triangle(Object.assign({
           left: left, top: top, width: Math.max(2, w), height: Math.max(2, h),
-          stroke: stroke, strokeWidth: sw, fill: fill,
-        });
+        }, common));
       }
       if (tool === 'line' || tool === 'arrow') {
-        var line = new f.Line([x0, y0, x1, y1], {
-          stroke: stroke, strokeWidth: sw, fill: '',
-          porArrow: tool === 'arrow',
-        });
+        var line = new f.Line([x0, y0, x1, y1], Object.assign({}, common, {
+          fill: '',
+          porArrow: tool === 'arrow' || state.inkArrowEnd === 'triangle',
+        }));
         return line;
       }
       return null;
@@ -1595,9 +1707,37 @@
     }
 
     function applyInspectorColor(role, color) {
-      if (state.readOnly || !color || !state.selectedId) {
-        setStatus(!state.selectedId ? 'No shape selected' : 'Can’t format');
+      if (state.readOnly || !color) {
+        setStatus('Can’t format');
         return false;
+      }
+      rememberColor(color);
+      var target = fabricActive();
+      if (state.fabricCanvas && target) {
+        pushHistory();
+        if (role === 'fill') {
+          applyStyleToFabricTarget(target, { fill: color });
+          state.fillColor = color;
+          state.inkFill = true;
+          if (fillInput) fillInput.checked = true;
+        } else if (role === 'outline') {
+          applyStyleToFabricTarget(target, { stroke: color });
+          state.inkColor = color;
+        } else {
+          return false;
+        }
+        state.fabricCanvas.requestRenderAll();
+        syncOverlaysFromFabric();
+        scheduleSave();
+        syncHistoryButtons();
+        setStatus(role === 'fill' ? 'Fill updated' : 'Outline updated');
+        return true;
+      }
+      if (!state.selectedId) {
+        if (role === 'fill') { state.fillColor = color; state.inkFill = true; if (fillInput) fillInput.checked = true; }
+        else state.inkColor = color;
+        syncHistoryButtons();
+        return true;
       }
       var page = activePage();
       var list = overlayList(page);
@@ -1610,9 +1750,9 @@
         return false;
       }
       var item = list[index];
-      var canFill = item.kind === 'rect' || item.kind === 'circle';
+      var canFill = item.kind === 'rect' || item.kind === 'circle' || item.kind === 'roundRect' ||
+        item.kind === 'triangle';
       pushHistory();
-      // Re-resolve after history snapshot — never mutate a detached copy.
       list = overlayList(activePage());
       item = null;
       for (i = 0; i < list.length; i++) {
@@ -1657,10 +1797,76 @@
       });
     }
 
+    function rememberColor(color) {
+      if (!color || !/^#[0-9a-fA-F]{6}$/.test(color)) return;
+      state.recentColors = [color].concat(state.recentColors.filter(function (c) {
+        return c !== color;
+      })).slice(0, 8);
+      ['por-outline-recent', 'por-fill-recent'].forEach(function (id) {
+        var host = root.querySelector('#' + id);
+        if (!host) return;
+        host.innerHTML = state.recentColors.map(function (c) {
+          return '<button type="button" class="por-swatch" data-por-recent="' + c + '" style="--por-swatch:' + c + '" title="' + c + '"></button>';
+        }).join('');
+      });
+    }
+
+    function fabricActive() {
+      return state.fabricCanvas && state.fabricCanvas.getActiveObject
+        ? state.fabricCanvas.getActiveObject()
+        : null;
+    }
+
+    function applyStyleToFabricTarget(target, style) {
+      if (!target || !style) return;
+      if (target.type === 'activeSelection' || target.type === 'group') {
+        var kids = typeof target.getObjects === 'function' ? target.getObjects() : (target._objects || []);
+        kids.forEach(function (child) { applyStyleToFabricTarget(child, style); });
+        return;
+      }
+      if (style.stroke) target.set('stroke', style.stroke);
+      if (style.strokeWidth != null) target.set('strokeWidth', style.strokeWidth);
+      if (style.fill !== undefined) target.set('fill', style.fill);
+      if (style.opacity != null) target.set('opacity', style.opacity);
+      if (style.strokeDashArray !== undefined) target.set('strokeDashArray', style.strokeDashArray);
+      if (style.porArrow != null) target.set('porArrow', style.porArrow);
+      target.setCoords();
+    }
+
+    function dashArrayFor(name, thick) {
+      if (name === 'dashed') return [10, 6];
+      if (name === 'dotted') return [2, 4];
+      return null;
+    }
+
+    function captureStyleFromTarget(target) {
+      if (!target) return null;
+      return {
+        stroke: target.stroke,
+        strokeWidth: target.strokeWidth,
+        fill: target.fill,
+        opacity: target.opacity,
+        strokeDashArray: target.strokeDashArray || null,
+        porArrow: !!target.porArrow,
+      };
+    }
+
+    function openInspector(mode) {
+      state.inspectorMode = mode || 'format';
+      state.inspectorOpen = true;
+      syncInspector();
+      if (inspectorEl) inspectorEl.scrollIntoView({ block: 'nearest' });
+    }
+
+    function closeInspector() {
+      state.inspectorOpen = false;
+      if (inspectorEl) inspectorEl.hidden = true;
+    }
+
     function syncInspector() {
       var item = selectedItem();
       if (!inspectorEl) return;
-      if (!item) {
+      if (!item || !state.inspectorOpen) {
         inspectorEl.hidden = true;
         return;
       }
@@ -1669,7 +1875,8 @@
       if (title) {
         title.textContent = state.inspectorMode === 'size' ? 'Size and Position' : 'Format Shape';
       }
-      var canFill = item.kind === 'rect' || item.kind === 'circle';
+      var canFill = item.kind === 'rect' || item.kind === 'circle' || item.kind === 'roundRect' ||
+        item.kind === 'triangle' || item.kind === 'ellipse';
       shapeFillInput.disabled = !canFill || state.readOnly;
       shapeFillInput.checked = !!(item.fill && canFill);
       var fillColor = item.fillColor || item.color || state.fillColor;
@@ -2079,13 +2286,67 @@
     function openShapeMenu(event, id) {
       closeShapeMenu();
       state.selectedId = id;
-      renderSheet();
+      // Do not re-render the sheet — that tears down the Fabric canvas mid-gesture.
+      var wrap = document.createElement('div');
+      wrap.className = 'por-ctx';
+      wrap.setAttribute('data-por-shapemenu', '1');
+
+      var mini = document.createElement('div');
+      mini.className = 'por-mini';
+      mini.setAttribute('role', 'toolbar');
+      mini.setAttribute('aria-label', 'Quick format');
+      function miniBtn(label, title, fn) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'por-mini__btn';
+        b.textContent = label;
+        b.title = title;
+        b.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          closeShapeMenu();
+          fn();
+        });
+        mini.appendChild(b);
+      }
+      miniBtn('Style', 'Format Painter from this mark', function () {
+        var t = fabricActive();
+        state.formatPainter = captureStyleFromTarget(t);
+        setStatus(state.formatPainter ? 'Format Painter ready — click a mark' : 'Nothing to copy');
+        syncHistoryButtons();
+      });
+      miniBtn('Fill', 'Fill colour', function () {
+        openInspector('format');
+        root.querySelector('#por-fill-btn').click();
+      });
+      miniBtn('Outline', 'Outline colour', function () {
+        openInspector('format');
+        root.querySelector('#por-outline-btn').click();
+      });
+      wrap.appendChild(mini);
+
       var menu = document.createElement('div');
-      menu.className = 'rb-stackmenu';
-      menu.setAttribute('data-por-shapemenu', '1');
+      menu.className = 'rb-stackmenu por-ctx__menu';
       menuItem(menu, 'Cut', function () { cutSelected(); }, state.readOnly);
       menuItem(menu, 'Copy', function () { copySelected(); });
       menuItem(menu, 'Paste', function () { pasteClipboard(); }, state.readOnly || !state.clipboard);
+      menuSep(menu);
+      var active = fabricActive();
+      var isText = !!(active && (active.type === 'textbox' || active.type === 'i-text' || active.porKind === 'text'));
+      var isGroup = !!(active && active.type === 'group');
+      var isMulti = !!(active && active.type === 'activeSelection');
+      menuItem(menu, 'Edit Text', function () {
+        if (!active || state.readOnly) return;
+        if (isText && typeof active.enterEditing === 'function') {
+          active.enterEditing();
+          active.selectAll();
+          state.editingText = true;
+          syncHistoryButtons();
+        } else {
+          setStatus('Select a text box to edit');
+        }
+      }, state.readOnly || !isText);
+      menuItem(menu, 'Group', function () { groupSelection(); }, state.readOnly || !isMulti);
+      menuItem(menu, 'Ungroup', function () { ungroupSelection(); }, state.readOnly || !isGroup);
       menuSep(menu);
       menuItem(menu, 'Bring to Front', function () { reorderSelected('front'); }, state.readOnly);
       menuItem(menu, 'Bring Forward', function () { reorderSelected('forward'); }, state.readOnly);
@@ -2093,27 +2354,25 @@
       menuItem(menu, 'Send to Back', function () { reorderSelected('back'); }, state.readOnly);
       menuSep(menu);
       menuItem(menu, 'Size and Position…', function () {
-        state.inspectorMode = 'size';
-        syncInspector();
-        inspectorEl.scrollIntoView({ block: 'nearest' });
+        openInspector('size');
         root.querySelector('#por-size-w').focus();
       });
       menuItem(menu, 'Format Shape…', function () {
-        state.inspectorMode = 'format';
-        syncInspector();
-        inspectorEl.scrollIntoView({ block: 'nearest' });
+        openInspector('format');
         shapeFillInput.focus();
       });
       menuSep(menu);
       menuItem(menu, 'Delete', function () { deleteSelected(); }, state.readOnly);
-      menu.style.left = Math.round(event.clientX) + 'px';
-      menu.style.top = Math.round(event.clientY) + 'px';
-      document.body.appendChild(menu);
-      state.shapeMenu = menu;
-      var mw = menu.offsetWidth;
-      var mh = menu.offsetHeight;
-      menu.style.left = Math.max(4, Math.min(window.innerWidth - mw - 4, event.clientX)) + 'px';
-      menu.style.top = Math.max(4, Math.min(window.innerHeight - mh - 4, event.clientY)) + 'px';
+      wrap.appendChild(menu);
+
+      wrap.style.left = Math.round(event.clientX) + 'px';
+      wrap.style.top = Math.round(event.clientY) + 'px';
+      document.body.appendChild(wrap);
+      state.shapeMenu = wrap;
+      var mw = wrap.offsetWidth;
+      var mh = wrap.offsetHeight;
+      wrap.style.left = Math.max(4, Math.min(window.innerWidth - mw - 4, event.clientX)) + 'px';
+      wrap.style.top = Math.max(4, Math.min(window.innerHeight - mh - 4, event.clientY - 36)) + 'px';
       setTimeout(function () {
         document.addEventListener('pointerdown', function away(ev) {
           if (ev.target.closest && ev.target.closest('[data-por-shapemenu]')) return;
@@ -2722,30 +2981,197 @@
       event.stopPropagation();
       togglePicker('weight');
     });
+    var dashBtn = root.querySelector('#por-dash-btn');
+    if (dashBtn) {
+      dashBtn.addEventListener('click', function (event) {
+        event.stopPropagation();
+        togglePicker('dash');
+      });
+    }
     root.querySelector('#por-outline-pop').addEventListener('click', function (event) {
+      var recent = event.target.closest && event.target.closest('[data-por-recent]');
+      if (recent) {
+        applyOutlineColor(recent.getAttribute('data-por-recent'));
+        closePickers();
+        return;
+      }
       var sw = event.target.closest && event.target.closest('[data-por-outline]');
       if (!sw) return;
       applyOutlineColor(sw.getAttribute('data-por-outline'));
       closePickers();
     });
     root.querySelector('#por-fill-pop').addEventListener('click', function (event) {
+      var recent = event.target.closest && event.target.closest('[data-por-recent]');
+      if (recent) {
+        applyFillColor(recent.getAttribute('data-por-recent'));
+        closePickers();
+        return;
+      }
       var sw = event.target.closest && event.target.closest('[data-por-fill]');
       if (!sw) return;
       applyFillColor(sw.getAttribute('data-por-fill'));
       closePickers();
     });
+    var outlineCustom = root.querySelector('#por-outline-custom');
+    if (outlineCustom) {
+      outlineCustom.addEventListener('input', function () {
+        applyOutlineColor(outlineCustom.value);
+      });
+    }
+    var fillCustom = root.querySelector('#por-fill-custom');
+    if (fillCustom) {
+      fillCustom.addEventListener('input', function () {
+        applyFillColor(fillCustom.value);
+      });
+    }
     root.querySelector('#por-weight-pop').addEventListener('click', function (event) {
       var btn = event.target.closest && event.target.closest('[data-por-thick]');
       if (!btn) return;
       applyWeight(btn.getAttribute('data-por-thick'));
       closePickers();
     });
+    var dashPop = root.querySelector('#por-dash-pop');
+    if (dashPop) {
+      dashPop.addEventListener('click', function (event) {
+        var btn = event.target.closest && event.target.closest('[data-por-dash]');
+        if (!btn) return;
+        state.inkDash = btn.getAttribute('data-por-dash') || 'solid';
+        var active = fabricActive();
+        if (active && !state.readOnly) {
+          pushHistory();
+          applyStyleToFabricTarget(active, { strokeDashArray: dashArrayFor(state.inkDash) });
+          state.fabricCanvas.requestRenderAll();
+          syncOverlaysFromFabric();
+          scheduleSave();
+        }
+        closePickers();
+        setStatus('Dash: ' + state.inkDash);
+      });
+    }
+    var opacityInput = root.querySelector('#por-opacity');
+    if (opacityInput) {
+      opacityInput.addEventListener('input', function () {
+        state.inkOpacity = Math.max(0, Math.min(1, Number(opacityInput.value) / 100));
+        var active = fabricActive();
+        if (active && !state.readOnly) {
+          applyStyleToFabricTarget(active, { opacity: state.inkOpacity });
+          state.fabricCanvas.requestRenderAll();
+          syncOverlaysFromFabric();
+          scheduleSave();
+        }
+      });
+    }
+    var painterBtn = root.querySelector('#por-format-painter');
+    if (painterBtn) {
+      painterBtn.addEventListener('click', function () {
+        var active = fabricActive();
+        if (!active) {
+          setStatus('Select a mark first');
+          return;
+        }
+        state.formatPainter = captureStyleFromTarget(active);
+        painterBtn.classList.add('is-on');
+        setStatus('Format Painter ready — click a mark');
+      });
+    }
+    var defaultBtn = root.querySelector('#por-set-default');
+    if (defaultBtn) {
+      defaultBtn.addEventListener('click', function () {
+        var active = fabricActive();
+        if (!active) {
+          setStatus('Select a mark first');
+          return;
+        }
+        state.styleDefaults = captureStyleFromTarget(active);
+        if (state.styleDefaults.stroke) state.inkColor = state.styleDefaults.stroke;
+        if (state.styleDefaults.fill && state.styleDefaults.fill !== 'rgba(0,0,0,0)') {
+          state.fillColor = state.styleDefaults.fill;
+          state.inkFill = true;
+          if (fillInput) fillInput.checked = true;
+        }
+        setStatus('Default style set for new shapes');
+        syncHistoryButtons();
+      });
+    }
+    function applyTextProp(mutator) {
+      var active = fabricActive();
+      if (!active || state.readOnly) return;
+      var targets = [];
+      if (active.type === 'activeSelection') {
+        active.forEachObject(function (o) {
+          if (o.type === 'textbox' || o.type === 'i-text') targets.push(o);
+        });
+      } else if (active.type === 'textbox' || active.type === 'i-text') {
+        targets.push(active);
+      }
+      if (!targets.length) return;
+      pushHistory();
+      targets.forEach(mutator);
+      state.fabricCanvas.requestRenderAll();
+      syncOverlaysFromFabric();
+      scheduleSave();
+    }
     root.querySelectorAll('[data-por-text]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var cmd = btn.getAttribute('data-por-text');
-        try { document.execCommand(cmd, false, null); } catch (err) { /* ignore */ }
+        applyTextProp(function (t) {
+          if (cmd === 'bold') {
+            t.set('fontWeight', t.fontWeight === 'bold' || t.fontWeight === 700 ? 'normal' : 'bold');
+          } else if (cmd === 'italic') {
+            t.set('fontStyle', t.fontStyle === 'italic' ? 'normal' : 'italic');
+          } else if (cmd === 'underline') {
+            t.set('underline', !t.underline);
+          } else if (cmd === 'strike') {
+            t.set('linethrough', !t.linethrough);
+          } else if (cmd === 'bullet') {
+            var lines = String(t.text || '').split('\n').map(function (line) {
+              return /^\s*•\s/.test(line) ? line.replace(/^\s*•\s/, '') : ('• ' + line);
+            });
+            t.set('text', lines.join('\n'));
+          }
+        });
+        try { document.execCommand(cmd === 'strike' ? 'strikeThrough' : cmd, false, null); } catch (err) { /* ignore */ }
       });
     });
+    root.querySelectorAll('[data-por-align]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var align = btn.getAttribute('data-por-align');
+        applyTextProp(function (t) { t.set('textAlign', align); });
+      });
+    });
+    var fontFamily = root.querySelector('#por-font-family');
+    if (fontFamily) {
+      fontFamily.addEventListener('change', function () {
+        applyTextProp(function (t) { t.set('fontFamily', fontFamily.value); });
+      });
+    }
+    var fontSize = root.querySelector('#por-font-size');
+    if (fontSize) {
+      fontSize.addEventListener('change', function () {
+        var size = Math.max(8, Math.min(96, Number(fontSize.value) || 18));
+        applyTextProp(function (t) { t.set('fontSize', size); });
+      });
+    }
+    var grow = root.querySelector('#por-font-grow');
+    if (grow) {
+      grow.addEventListener('click', function () {
+        applyTextProp(function (t) {
+          var next = Math.min(96, (t.fontSize || 18) + 2);
+          t.set('fontSize', next);
+          if (fontSize) fontSize.value = String(next);
+        });
+      });
+    }
+    var shrink = root.querySelector('#por-font-shrink');
+    if (shrink) {
+      shrink.addEventListener('click', function () {
+        applyTextProp(function (t) {
+          var next = Math.max(8, (t.fontSize || 18) - 2);
+          t.set('fontSize', next);
+          if (fontSize) fontSize.value = String(next);
+        });
+      });
+    }
     document.addEventListener('pointerdown', function (event) {
       if (!root.contains(event.target)) return;
       if (event.target.closest && event.target.closest('.por-picker')) return;

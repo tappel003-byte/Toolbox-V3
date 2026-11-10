@@ -733,3 +733,147 @@ body.is-por-printing .por-print {
 .por-view-frame__label {
   pointer-events: none;
 }
+
+/* Stage 2 — format / text / context mini toolbar */
+.por-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 18px);
+  gap: 3px;
+  padding: 6px;
+}
+
+.por-picker__pop--colors {
+  min-width: 140px;
+  max-width: 220px;
+}
+
+.por-picker__extras {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px 8px;
+  border-top: 1px solid #e5e1d8;
+}
+
+.por-picker__custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #4b5563;
+}
+
+.por-picker__custom input[type="color"] {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #c9c2b4;
+  background: #fff;
+}
+
+.por-picker__recent {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-height: 16px;
+}
+
+.por-dash {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 6px 10px;
+  border: 0;
+  border-bottom: 1px solid #eee;
+  background: #fff;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.por-dash:hover {
+  background: #f3f4f6;
+}
+
+.por-weight__label {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  color: #6b7280;
+}
+
+.por-opacity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 2px;
+  font-size: 11px;
+  color: #4b5563;
+}
+
+.por-opacity input[type="range"] {
+  width: 56px;
+}
+
+.por-font-select,
+.por-font-size {
+  height: 28px;
+  border: 1px solid #c9c2b4;
+  border-radius: 3px;
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+}
+
+.por-font-select {
+  max-width: 110px;
+}
+
+.por-font-size {
+  width: 48px;
+  padding: 0 4px;
+}
+
+.por-ctx {
+  position: fixed;
+  z-index: 10050;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  filter: drop-shadow(0 8px 18px rgba(15, 23, 42, 0.18));
+}
+
+.por-mini {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid #c9c2b4;
+  border-radius: 4px 4px 0 0;
+  background: #fffdf8;
+}
+
+.por-mini__btn {
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #0b1f33;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.por-mini__btn:hover {
+  border-color: #c9c2b4;
+  background: #fff;
+}
+
+.por-ctx__menu {
+  position: static !important;
+  margin: 0;
+  border-radius: 0 0 4px 4px;
+}
