@@ -3,28 +3,43 @@
 .por-toolbar {
   flex: 0 0 auto;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 6px 8px;
+  gap: 4px 6px;
   width: 100%;
   min-width: 0;
-  padding: 5px 10px;
+  padding: 4px 8px;
   background: var(--panel, #fffdf8);
   border-bottom: 1px solid var(--line, #e5e1d8);
   box-sizing: border-box;
+  /* Do not set overflow-x:auto here — CSS forces overflow-y to clip too, and
+     colour/dash pops that extend below the bar never receive clicks. */
+  overflow: visible;
+  /* Above the scaled sheet stacking context so colour/dash pops receive clicks. */
+  position: relative;
+  z-index: 200;
+  isolation: isolate;
+}
+
+/* Keep the stage below the toolbar stacking context (sheet uses transform:scale). */
+.por-shell > .rb-workspace,
+.por-shell .rb-stage,
+.por-shell .rb-stage__paper {
+  position: relative;
+  z-index: 1;
 }
 
 .por-toolbar__group {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   flex: 0 0 auto;
   min-width: 0;
 }
 
 .por-toolbar__spacer {
-  flex: 1 1 8px;
-  min-width: 4px;
+  flex: 1 1 4px;
+  min-width: 2px;
 }
 
 .por-toolbar__view,
@@ -46,8 +61,8 @@
 }
 
 .por-toolbar__group[aria-label="Arrange"] {
-  flex-wrap: wrap;
-  max-width: 100%;
+  flex-wrap: nowrap;
+  max-width: none;
 }
 
 .por-toolbar__text[hidden] {
@@ -135,7 +150,7 @@
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
-  z-index: 40;
+  z-index: 90;
   display: grid;
   grid-template-columns: repeat(3, 22px);
   gap: 4px;
@@ -754,8 +769,12 @@ body.is-por-printing .por-print {
 }
 
 .por-picker__pop--colors {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   min-width: 140px;
   max-width: 220px;
+  grid-template-columns: none;
 }
 
 .por-picker__extras {

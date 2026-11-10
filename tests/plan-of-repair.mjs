@@ -1572,6 +1572,254 @@ check(
 );
 await page.screenshot({ path: path.join(OUT, 'por-cc2-text-arrow.png'), fullPage: true });
 
+// --- CC3: style save, undo/redo, Print on first toolbar row ---
+await page.evaluate(() => { document.querySelector('#por-add-page')?.click(); });
+await new Promise((r) => setTimeout(r, 500));
+await page.evaluate(() => {
+  const canvas = document.querySelector('.por-fabric-host')?._porCanvas;
+  if (canvas) { canvas.clear(); canvas.discardActiveObject(); canvas.requestRenderAll(); }
+});
+const sheetBoxStyle = await page.$eval('.por-fabric-host', (el) => {
+  const r = el.getBoundingClientRect();
+  return { x: r.left, y: r.top, w: r.width, h: r.height };
+});
+function stylePt(px, py) {
+  return { x: sheetBoxStyle.x + sheetBoxStyle.w * (px / 100), y: sheetBoxStyle.y + sheetBoxStyle.h * (py / 100) };
+}
+
+// Fill on + draw rect with real mouse.
+await page.evaluate(() => {
+  const cb = document.querySelector('#por-fill');
+  if (cb && !cb.checked) cb.click();
+});
+await page.click('[data-rb-tool="rect"]');
+const r0 = stylePt(40, 40);
+const r1 = stylePt(55, 55);
+await page.mouse.move(r0.x, r0.y);
+await page.mouse.down();
+await page.mouse.move(r1.x, r1.y, { steps: 6 });
+await page.mouse.up();
+await new Promise((r) => setTimeout(r, 400));
+await page.keyboard.press('Escape');
+await page.click('[data-por-tool="select"]');
+await new Promise((r) => setTimeout(r, 150));
+// Click empty then rect centre (CC repro).
+await page.mouse.click(stylePt(10, 10).x, stylePt(10, 10).y);
+await new Promise((r) => setTimeout(r, 100));
+await page.mouse.click(stylePt(47.5, 47.5).x, stylePt(47.5, 47.5).y);
+await new Promise((r) => setTimeout(r, 200));
+
+await page.click('#por-outline-btn');
+await new Promise((r) => setTimeout(r, 150));
+const outlineSwatch = await page.evaluate(() => {
+  const sw = Array.from(document.querySelectorAll('#por-outline-pop [data-por-outline]')).find(
+    (b) => b.getAttribute('data-por-outline') === '#c14a2b'
+  );
+  if (!sw) return null;
+  const r = sw.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2, open: !document.querySelector('#por-outline-pop')?.hidden };
+});
+check('outline swatch visible', !!(outlineSwatch && outlineSwatch.open), JSON.stringify(outlineSwatch));
+// Re-read swatch after fixed positioning, then real mouse click.
+const outlineHit = await page.evaluate(() => {
+  const sw = Array.from(document.querySelectorAll('#por-outline-pop [data-por-outline]')).find(
+    (b) => b.getAttribute('data-por-outline') === '#c14a2b'
+  );
+  if (!sw) return null;
+  const r = sw.getBoundingClientRect();
+  const x = r.left + r.width / 2;
+  const y = r.top + r.height / 2;
+  const el = document.elementFromPoint(x, y);
+  return {
+    x, y,
+    hitSwatch: !!(el && (el === sw || sw.contains(el))),
+    hitCls: el && String(el.className || '').slice(0, 60),
+  };
+});
+check('outline swatch is topmost at click point', !!(outlineHit && outlineHit.hitSwatch), JSON.stringify(outlineHit));
+if (outlineHit) {
+  await page.mouse.move(outlineHit.x, outlineHit.y, { steps: 3 });
+  await page.mouse.down();
+  await page.mouse.up();
+}
+await new Promise((r) => setTimeout(r, 800));
+await page.waitForFunction(() => /Saved/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 5000 }).catch(() => {});
+
+const outlineSaved = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId);
+  const rect = (page0.overlays || []).find((o) => o.kind === 'rect' || o.kind === 'roundRect');
+  const canvas = document.querySelector('.por-fabric-host')?._porCanvas;
+  const obj = canvas && rect && canvas.getObjects().find((o) => o.porId === rect.id);
+  return {
+    color: rect && rect.color,
+    fabricStroke: obj && obj.stroke,
+    id: rect && rect.id,
+    n: (page0.overlays || []).length,
+  };
+});
+check(
+  'outline colour saves on selected shape',
+  outlineSaved.color === '#c14a2b',
+  JSON.stringify(outlineSaved)
+);
+
+await page.mouse.click(stylePt(47.5, 47.5).x, stylePt(47.5, 47.5).y);
+await new Promise((r) => setTimeout(r, 100));
+await page.click('#por-dash-btn');
+await new Promise((r) => setTimeout(r, 150));
+const dashSwatch = await page.evaluate(() => {
+  const sw = document.querySelector('#por-dash-pop [data-por-dash="dashed"]');
+  if (!sw) return null;
+  const r = sw.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2, open: !document.querySelector('#por-dash-pop')?.hidden };
+});
+if (dashSwatch) await page.mouse.click(dashSwatch.x, dashSwatch.y);
+await new Promise((r) => setTimeout(r, 700));
+await page.waitForFunction(() => /Saved/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 5000 }).catch(() => {});
+
+const dashSaved = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId);
+  const rect = (page0.overlays || []).find((o) => o.kind === 'rect' || o.kind === 'roundRect');
+  const canvas = document.querySelector('.por-fabric-host')?._porCanvas;
+  const obj = canvas && canvas.getObjects().find((o) => o.porId === (rect && rect.id));
+  return {
+    dash: rect && rect.dash,
+    fabricDash: obj && obj.strokeDashArray,
+    color: rect && rect.color,
+  };
+});
+check(
+  'dash style saves on selected shape',
+  dashSaved.dash === 'dashed' && Array.isArray(dashSaved.fabricDash) && dashSaved.fabricDash.length >= 2,
+  JSON.stringify(dashSaved)
+);
+
+// Undo/redo with real keyboard after drawing another shape.
+const beforeUndoN = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId);
+  return (page0.overlays || []).length;
+});
+await page.click('[data-rb-tool="circle"]');
+const c0 = stylePt(70, 40);
+const c1 = stylePt(80, 52);
+await page.mouse.move(c0.x, c0.y);
+await page.mouse.down();
+await page.mouse.move(c1.x, c1.y, { steps: 5 });
+await page.mouse.up();
+await new Promise((r) => setTimeout(r, 500));
+await page.waitForFunction(() => /Saved|Ready/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 5000 }).catch(() => {});
+const afterDrawN = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId);
+  return {
+    n: (page0.overlays || []).length,
+    fabricN: (document.querySelector('.por-fabric-host')?._porCanvas?.getObjects() || []).length,
+  };
+});
+await page.keyboard.down('Control');
+await page.keyboard.press('z');
+await page.keyboard.up('Control');
+await new Promise((r) => setTimeout(r, 700));
+await page.waitForFunction(() => /Saved|Ready/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 5000 }).catch(() => {});
+const afterUndo = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId);
+  return {
+    n: (page0.overlays || []).length,
+    fabricN: (document.querySelector('.por-fabric-host')?._porCanvas?.getObjects() || []).length,
+    kinds: (page0.overlays || []).map((o) => o.kind),
+  };
+});
+check(
+  'Ctrl+Z undoes draw on canvas and overlays',
+  afterDrawN.n > beforeUndoN && afterUndo.n === beforeUndoN && afterUndo.fabricN === beforeUndoN,
+  JSON.stringify({ beforeUndoN, afterDrawN, afterUndo })
+);
+
+await page.click('#por-undo'); // may be disabled if stack empty after Ctrl+Z — draw then toolbar undo
+await page.click('[data-rb-tool="triangle"]');
+const t0 = stylePt(20, 60);
+const t1 = stylePt(30, 75);
+await page.mouse.move(t0.x, t0.y);
+await page.mouse.down();
+await page.mouse.move(t1.x, t1.y, { steps: 5 });
+await page.mouse.up();
+await new Promise((r) => setTimeout(r, 500));
+const midN = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId);
+  return (page0.overlays || []).length;
+});
+await page.click('#por-undo');
+await new Promise((r) => setTimeout(r, 700));
+const afterToolbarUndo = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId);
+  return {
+    n: (page0.overlays || []).length,
+    fabricN: (document.querySelector('.por-fabric-host')?._porCanvas?.getObjects() || []).length,
+  };
+});
+check(
+  'toolbar Undo removes last shape',
+  midN > afterToolbarUndo.n && afterToolbarUndo.n === afterToolbarUndo.fabricN,
+  JSON.stringify({ midN, afterToolbarUndo })
+);
+
+await page.click('#por-redo');
+await new Promise((r) => setTimeout(r, 700));
+const afterRedo = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('por-draw');
+  const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId);
+  return {
+    n: (page0.overlays || []).length,
+    fabricN: (document.querySelector('.por-fabric-host')?._porCanvas?.getObjects() || []).length,
+  };
+});
+check(
+  'toolbar Redo restores shape',
+  afterRedo.n === midN && afterRedo.fabricN === midN,
+  JSON.stringify({ midN, afterRedo })
+);
+
+// Print stays on first toolbar row at 1440 and 1280.
+async function toolbarPrintRow(width) {
+  await page.setViewport({ width, height: 960 });
+  await new Promise((r) => setTimeout(r, 200));
+  return page.evaluate(() => {
+    const toolbar = document.querySelector('.por-toolbar');
+    const printBtn = document.querySelector('#por-print');
+    if (!toolbar || !printBtn) return { ok: false };
+    const tr = toolbar.getBoundingClientRect();
+    const pr = printBtn.getBoundingClientRect();
+    const undo = document.querySelector('#por-undo')?.getBoundingClientRect();
+    return {
+      ok: pr.top < (undo ? undo.bottom + 8 : tr.top + 40) && pr.bottom <= tr.bottom + 1,
+      toolbarH: tr.height,
+      printTop: pr.top,
+      undoBottom: undo ? undo.bottom : null,
+      width: window.innerWidth,
+    };
+  });
+}
+const print1440 = await toolbarPrintRow(1440);
+check(
+  'Print stays on first toolbar row at 1440',
+  print1440.ok && print1440.toolbarH <= 48,
+  JSON.stringify(print1440)
+);
+const print1280 = await toolbarPrintRow(1280);
+check(
+  'Print stays on first toolbar row at 1280',
+  print1280.ok && print1280.toolbarH <= 48,
+  JSON.stringify(print1280)
+);
+await page.setViewport({ width: 1440, height: 960 });
+await page.screenshot({ path: path.join(OUT, 'por-cc3-style-undo.png'), fullPage: true });
+
 await page.pdf({
   path: path.join(OUT, 'por-drawing-evidence.pdf'),
   width: '17in',

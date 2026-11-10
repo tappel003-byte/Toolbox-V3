@@ -36,6 +36,21 @@
     return 2;
   }
 
+  function dashArrayFromName(name) {
+    if (name === 'dashed') return [10, 6];
+    if (name === 'dotted') return [2, 4];
+    return null;
+  }
+
+  function dashNameFromArray(arr) {
+    if (!arr || !arr.length) return 'solid';
+    var a = Number(arr[0]) || 0;
+    var b = Number(arr[1]) || 0;
+    if (a <= 3 && b >= 2) return 'dotted';
+    if (a >= 6) return 'dashed';
+    return 'solid';
+  }
+
   function applyCommon(obj, item) {
     obj.set({
       porId: item.id || uid('ov'),
@@ -52,6 +67,9 @@
       selectable: true,
       evented: true,
       objectCaching: false,
+      strokeDashArray: item.dash
+        ? dashArrayFromName(item.dash)
+        : (Array.isArray(item.strokeDashArray) ? item.strokeDashArray : null),
     });
     if (item.lockUniScaling) obj.set({ lockUniScaling: true });
     return obj;
@@ -317,8 +335,22 @@
     };
   }
 
+  function toHexColor(c) {
+    if (!c && c !== 0) return null;
+    var s = String(c).trim();
+    if (HEX.test(s)) return s.toLowerCase();
+    var m = s.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    if (!m) return null;
+    return '#' + [m[1], m[2], m[3]].map(function (n) {
+      var h = Number(n).toString(16);
+      return h.length < 2 ? '0' + h : h;
+    }).join('');
+  }
+
   function styleFromObject(obj, kindHint) {
     var kind = kindHint || obj.porKind || (obj.type === 'textbox' || obj.type === 'i-text' ? 'text' : obj.type);
+    var strokeHex = toHexColor(obj.stroke);
+    var fillHex = toHexColor(obj.fill);
     var item = {
       id: obj.porId || uid('ov'),
       kind: kind === 'path' ? 'path'
@@ -329,12 +361,13 @@
         : kind === 'textbox' || kind === 'i-text' || kind === 'text' ? 'text'
         : (obj.porKind || 'rect'),
       name: obj.porName || '',
-      color: (obj.stroke && HEX.test(obj.stroke) ? obj.stroke : null) ||
-        (obj.fill && HEX.test(String(obj.fill)) ? obj.fill : '#1d4ed8'),
+      color: strokeHex || fillHex || '#1d4ed8',
       thick: thickFromStroke(obj.strokeWidth),
       angle: obj.angle || 0,
       opacity: obj.opacity != null ? obj.opacity : 1,
     };
+    var dashName = dashNameFromArray(obj.strokeDashArray);
+    if (dashName && dashName !== 'solid') item.dash = dashName;
     if (obj.visible === false) item.hidden = true;
     if (item.kind === 'image' || obj.porKind === 'image') {
       item.kind = 'image';
@@ -349,7 +382,7 @@
     if (obj.fill && obj.fill !== 'rgba(0,0,0,0)' && obj.fill !== '' &&
         item.kind !== 'path' && item.kind !== 'line' && item.kind !== 'arrow' && item.kind !== 'text') {
       item.fill = true;
-      if (HEX.test(String(obj.fill))) item.fillColor = obj.fill;
+      if (fillHex) item.fillColor = fillHex;
     }
     return item;
   }
@@ -386,7 +419,7 @@
       itemT.underline = !!child.underline;
       itemT.strike = !!child.linethrough;
       itemT.align = child.textAlign || 'left';
-      itemT.color = HEX.test(String(child.fill || '')) ? child.fill : '#111111';
+      itemT.color = toHexColor(child.fill) || '#111111';
       return itemT;
     }
     var boxB = boxFromObject(child);
@@ -442,7 +475,7 @@
       item.underline = !!obj.underline;
       item.strike = !!obj.linethrough;
       item.align = obj.textAlign || 'left';
-      item.color = HEX.test(String(obj.fill || '')) ? obj.fill : '#111111';
+      item.color = toHexColor(obj.fill) || '#111111';
       return item;
     }
     if (item.kind === 'path') {
@@ -669,6 +702,9 @@
     decorateArrow: decorateArrow,
     captureLineEnds: captureLineEnds,
     richTextPlainAndBold: richTextPlainAndBold,
+    toHexColor: toHexColor,
+    dashArrayFromName: dashArrayFromName,
+    dashNameFromArray: dashNameFromArray,
     snapshotCanvas: snapshotCanvas,
     replaceWithImage: replaceWithImage,
     uid: uid,

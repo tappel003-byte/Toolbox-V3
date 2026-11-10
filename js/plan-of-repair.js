@@ -540,6 +540,7 @@
       inkFill: false,
       inkDrag: null,
       selectedId: null,
+      lastStyleTargetId: null,
       clipboard: null,
       bgUrl: '',
       bgMissing: false,
@@ -639,6 +640,18 @@
       });
     }
 
+    function placePickerPop(pop, btn) {
+      if (!pop || !btn) return;
+      // Fixed positioning escapes the toolbar/sheet stacking fight so swatches
+      // receive real mouse clicks even when the pop hangs over the Fabric host.
+      var rect = btn.getBoundingClientRect();
+      pop.style.position = 'fixed';
+      pop.style.left = Math.max(8, Math.min(window.innerWidth - 220, rect.left)) + 'px';
+      pop.style.top = (rect.bottom + 4) + 'px';
+      pop.style.right = 'auto';
+      pop.style.zIndex = '10060';
+    }
+
     function togglePicker(which) {
       var pop = root.querySelector('#por-' + which + '-pop');
       var btn = root.querySelector('#por-' + which + '-btn');
@@ -646,43 +659,100 @@
       var open = pop.hidden;
       closePickers();
       if (open) {
+        placePickerPop(pop, btn);
         pop.hidden = false;
         btn.setAttribute('aria-expanded', 'true');
       }
     }
 
+    function findFabricByPorId(id) {
+      if (!state.fabricCanvas || !id) return null;
+      var found = null;
+      state.fabricCanvas.getObjects().forEach(function (o) {
+        if (!found && o && o.porId === id) found = o;
+      });
+      return found;
+    }
+
+    // Active Fabric object, or the last selected mark (toolbar pickers clear activeObject).
+    function styleTarget() {
+      if (!state.fabricCanvas || state.readOnly) return null;
+      var active = state.fabricCanvas.getActiveObject();
+      if (active) return active;
+      var id = state.selectedId || state.lastStyleTargetId;
+      var obj = findFabricByPorId(id);
+      if (obj) {
+        try {
+          state.fabricCanvas.setActiveObject(obj);
+          state.selectedId = obj.porId || state.selectedId;
+          if (obj.porId) state.lastStyleTargetId = obj.porId;
+        } catch (_) {}
+      }
+      return obj;
+    }
+
+    function patchOverlayStyle(itemId, patch) {
+      if (!itemId || !patch) return;
+      var page = activePage();
+      if (!page || !Array.isArray(page.overlays)) return;
+      page.overlays.forEach(function (ov) {
+        if (!ov) return;
+        if (ov.id === itemId) Object.assign(ov, patch);
+        if (ov.kind === 'group' && Array.isArray(ov.members)) {
+          ov.members.forEach(function (m) {
+            if (m && m.id === itemId) Object.assign(m, patch);
+          });
+        }
+      });
+    }
+
     function applyOutlineColor(color) {
       if (!color) return;
       rememberColor(color);
+      var hex = (PorFab && PorFab.toHexColor ? PorFab.toHexColor(color) : null) || color;
       if (state.fabricCanvas && !state.readOnly) {
-        var active = state.fabricCanvas.getActiveObject();
+        var active = styleTarget();
         if (active) {
           pushHistory();
           if (active.type === 'activeSelection') {
             active.forEachObject(function (o) {
-              if (o.type === 'textbox' || o.type === 'i-text') o.set('fill', color);
-              else o.set('stroke', color);
+              if (o.type === 'textbox' || o.type === 'i-text') o.set('fill', hex);
+              else o.set('stroke', hex);
+              if (o.porId) patchOverlayStyle(o.porId, { color: hex });
             });
           } else if (active.type === 'textbox' || active.type === 'i-text') {
-            active.set('fill', color);
+            active.set('fill', hex);
+            if (active.porId) patchOverlayStyle(active.porId, { color: hex });
           } else {
-            active.set('stroke', color);
+            active.set('stroke', hex);
+            if (active.porId) patchOverlayStyle(active.porId, { color: hex });
           }
           state.fabricCanvas.requestRenderAll();
           syncOverlaysFromFabric();
+          if (active.type !== 'activeSelection' && active.porId) {
+            patchOverlayStyle(active.porId, { color: hex });
+          }
           scheduleSave();
+          syncHistoryButtons();
           return;
         }
       }
       var item = selectedItem();
       if (item && !state.readOnly) {
         pushHistory();
-        item.color = color;
+        item.color = hex;
+        var fab = findFabricByPorId(item.id);
+        if (fab) {
+          if (fab.type === 'textbox' || fab.type === 'i-text') fab.set('fill', hex);
+          else fab.set('stroke', hex);
+          if (state.fabricCanvas) state.fabricCanvas.requestRenderAll();
+        }
         scheduleSave();
-        renderSheet();
+        syncInspector();
+        syncHistoryButtons();
         return;
       }
-      state.inkColor = color;
+      state.inkColor = hex;
       syncHistoryButtons();
       applyFabricToolMode();
     }
@@ -690,20 +760,27 @@
     function applyFillColor(color) {
       if (!color) return;
       rememberColor(color);
+      var hex = (PorFab && PorFab.toHexColor ? PorFab.toHexColor(color) : null) || color;
       if (state.fabricCanvas && !state.readOnly) {
-        var active = state.fabricCanvas.getActiveObject();
+        var active = styleTarget();
         if (active && active.type !== 'line' && active.type !== 'path') {
           pushHistory();
           if (active.type === 'activeSelection') {
             active.forEachObject(function (o) {
-              if (o.type !== 'line' && o.type !== 'path') o.set('fill', color);
+              if (o.type !== 'line' && o.type !== 'path') {
+                o.set('fill', hex);
+                if (o.porId) patchOverlayStyle(o.porId, { fill: true, fillColor: hex });
+              }
             });
           } else {
-            active.set('fill', color);
+            active.set('fill', hex);
+            if (active.porId) patchOverlayStyle(active.porId, { fill: true, fillColor: hex });
           }
           state.fabricCanvas.requestRenderAll();
           syncOverlaysFromFabric();
+          if (active.porId) patchOverlayStyle(active.porId, { fill: true, fillColor: hex });
           scheduleSave();
+          syncHistoryButtons();
           return;
         }
       }
@@ -712,13 +789,18 @@
           item.kind === 'roundRect' || item.kind === 'triangle')) {
         pushHistory();
         item.fill = true;
-        item.fillColor = color;
+        item.fillColor = hex;
+        var fabFill = findFabricByPorId(item.id);
+        if (fabFill) {
+          fabFill.set('fill', hex);
+          if (state.fabricCanvas) state.fabricCanvas.requestRenderAll();
+        }
         scheduleSave();
-        renderSheet();
         syncInspector();
+        syncHistoryButtons();
         return;
       }
-      state.fillColor = color;
+      state.fillColor = hex;
       state.inkFill = true;
       if (fillInput) fillInput.checked = true;
       syncHistoryButtons();
@@ -727,18 +809,24 @@
     function applyWeight(level) {
       level = Number(level) || 2;
       if (state.fabricCanvas && !state.readOnly) {
-        var active = state.fabricCanvas.getActiveObject();
+        var active = styleTarget();
         if (active) {
           pushHistory();
           var sw = PorFab.strokeWidthFromThick(level);
           if (active.type === 'activeSelection') {
-            active.forEachObject(function (o) { o.set('strokeWidth', sw); });
+            active.forEachObject(function (o) {
+              o.set('strokeWidth', sw);
+              if (o.porId) patchOverlayStyle(o.porId, { thick: level });
+            });
           } else {
             active.set('strokeWidth', sw);
+            if (active.porId) patchOverlayStyle(active.porId, { thick: level });
           }
           state.fabricCanvas.requestRenderAll();
           syncOverlaysFromFabric();
+          if (active.porId) patchOverlayStyle(active.porId, { thick: level });
           scheduleSave();
+          syncHistoryButtons();
           return;
         }
       }
@@ -746,8 +834,14 @@
       if (item && !state.readOnly) {
         pushHistory();
         item.thick = level;
+        var fabW = findFabricByPorId(item.id);
+        if (fabW && PorFab) {
+          fabW.set('strokeWidth', PorFab.strokeWidthFromThick(level));
+          if (state.fabricCanvas) state.fabricCanvas.requestRenderAll();
+        }
         scheduleSave();
-        renderSheet();
+        syncInspector();
+        syncHistoryButtons();
         return;
       }
       state.inkThick = level;
@@ -788,6 +882,9 @@
     }
 
     function applyHistory(doc) {
+      // Tear down Fabric WITHOUT syncing — otherwise the live canvas overwrites
+      // the restored doc and Undo/Redo appear to do nothing.
+      destroyFabric();
       state.doc = normalizeDoc(doc);
       state.selectedId = null;
       scheduleSave();
@@ -933,6 +1030,7 @@
         var active = canvas.getActiveObject();
         var t = active || (opt && opt.selected && opt.selected[0]);
         state.selectedId = t && t.porId ? t.porId : null;
+        if (state.selectedId) state.lastStyleTargetId = state.selectedId;
         if (state.formatPainter && active && !state.readOnly) {
           pushHistory();
           applyStyleToFabricTarget(active, state.formatPainter);
@@ -953,6 +1051,7 @@
         var active = canvas.getActiveObject();
         var t = active || (opt && opt.selected && opt.selected[0]);
         state.selectedId = t && t.porId ? t.porId : null;
+        if (state.selectedId) state.lastStyleTargetId = state.selectedId;
         if (state.formatPainter && active && !state.readOnly) {
           pushHistory();
           applyStyleToFabricTarget(active, state.formatPainter);
@@ -968,7 +1067,10 @@
         syncSelectionPane();
       });
       canvas.on('selection:cleared', function () {
-        state.selectedId = null;
+        // Keep lastStyleTargetId so outline/fill/dash toolbar clicks still style
+        // the shape the investigator just selected (Fabric clears activeObject
+        // when focus moves to the picker).
+        state.selectedId = state.lastStyleTargetId || null;
         state.editingText = false;
         syncInspector();
         syncHistoryButtons();
@@ -3645,7 +3747,8 @@
       });
     }
     function previewColor(role, color) {
-      var active = fabricActive();
+      if (state._previewLocked) return;
+      var active = styleTarget() || fabricActive();
       if (!active || !color) return;
       if (!state._previewStyle) state._previewStyle = captureStyleFromTarget(active);
       if (role === 'fill') applyStyleToFabricTarget(active, { fill: color });
@@ -3653,23 +3756,34 @@
       state.fabricCanvas.requestRenderAll();
     }
     function restorePreview() {
-      var active = fabricActive();
+      // After a swatch click we lock preview so mouseleave cannot paint the old
+      // colour back over the committed style before autosave lands.
+      if (state._previewLocked) {
+        state._previewStyle = null;
+        return;
+      }
+      var active = styleTarget() || fabricActive();
       if (!active || !state._previewStyle) return;
       applyStyleToFabricTarget(active, state._previewStyle);
       state.fabricCanvas.requestRenderAll();
       state._previewStyle = null;
     }
+    function lockPreviewCommit() {
+      state._previewLocked = true;
+      state._previewStyle = null;
+      setTimeout(function () { state._previewLocked = false; }, 400);
+    }
     root.querySelector('#por-outline-pop').addEventListener('click', function (event) {
       var recent = event.target.closest && event.target.closest('[data-por-recent]');
       if (recent) {
-        state._previewStyle = null;
+        lockPreviewCommit();
         applyOutlineColor(recent.getAttribute('data-por-recent'));
         closePickers();
         return;
       }
       var sw = event.target.closest && event.target.closest('[data-por-outline]');
       if (!sw) return;
-      state._previewStyle = null;
+      lockPreviewCommit();
       applyOutlineColor(sw.getAttribute('data-por-outline'));
       closePickers();
     });
@@ -3682,14 +3796,14 @@
     root.querySelector('#por-fill-pop').addEventListener('click', function (event) {
       var recent = event.target.closest && event.target.closest('[data-por-recent]');
       if (recent) {
-        state._previewStyle = null;
+        lockPreviewCommit();
         applyFillColor(recent.getAttribute('data-por-recent'));
         closePickers();
         return;
       }
       var sw = event.target.closest && event.target.closest('[data-por-fill]');
       if (!sw) return;
-      state._previewStyle = null;
+      lockPreviewCommit();
       applyFillColor(sw.getAttribute('data-por-fill'));
       closePickers();
     });
@@ -3723,27 +3837,65 @@
         var btn = event.target.closest && event.target.closest('[data-por-dash]');
         if (!btn) return;
         state.inkDash = btn.getAttribute('data-por-dash') || 'solid';
-        var active = fabricActive();
+        var active = styleTarget() || fabricActive();
         if (active && !state.readOnly) {
           pushHistory();
           applyStyleToFabricTarget(active, { strokeDashArray: dashArrayFor(state.inkDash) });
+          if (active.type === 'activeSelection') {
+            active.forEachObject(function (o) {
+              if (o.porId) {
+                patchOverlayStyle(o.porId, state.inkDash === 'solid'
+                  ? { dash: undefined } : { dash: state.inkDash });
+              }
+            });
+          } else if (active.porId) {
+            if (state.inkDash === 'solid') {
+              var pageD = activePage();
+              (pageD && pageD.overlays || []).forEach(function (ov) {
+                if (ov && ov.id === active.porId) delete ov.dash;
+              });
+            } else {
+              patchOverlayStyle(active.porId, { dash: state.inkDash });
+            }
+          }
           state.fabricCanvas.requestRenderAll();
           syncOverlaysFromFabric();
+          // Re-assert dash after sync (serialization must keep non-solid dashes).
+          if (active.type !== 'activeSelection' && active.porId && state.inkDash !== 'solid') {
+            patchOverlayStyle(active.porId, { dash: state.inkDash });
+          }
           scheduleSave();
+        } else {
+          var itemD = selectedItem();
+          if (itemD && !state.readOnly) {
+            pushHistory();
+            if (state.inkDash === 'solid') delete itemD.dash;
+            else itemD.dash = state.inkDash;
+            var fabD = findFabricByPorId(itemD.id);
+            if (fabD) {
+              applyStyleToFabricTarget(fabD, { strokeDashArray: dashArrayFor(state.inkDash) });
+              if (state.fabricCanvas) state.fabricCanvas.requestRenderAll();
+            }
+            scheduleSave();
+          }
         }
         closePickers();
         setStatus('Dash: ' + state.inkDash);
+        syncHistoryButtons();
       });
     }
     var opacityInput = root.querySelector('#por-opacity');
     if (opacityInput) {
       opacityInput.addEventListener('input', function () {
         state.inkOpacity = Math.max(0, Math.min(1, Number(opacityInput.value) / 100));
-        var active = fabricActive();
+        var active = styleTarget() || fabricActive();
         if (active && !state.readOnly) {
+          pushHistory();
           applyStyleToFabricTarget(active, { opacity: state.inkOpacity });
+          if (active.porId) patchOverlayStyle(active.porId, { opacity: state.inkOpacity });
           state.fabricCanvas.requestRenderAll();
           syncOverlaysFromFabric();
+          if (active.porId) patchOverlayStyle(active.porId, { opacity: state.inkOpacity });
           scheduleSave();
         }
       });
