@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 9, 2026** (America/Denver)  
-Updated by: Claude Code — recheck of `8d1b503` (#208) passed; Ball to Tim.
+Updated by: Cursor — Tim said Merge → #208 into integration; Ball to Tim for promote.
 
 ---
 
@@ -19,11 +19,9 @@ Updated by: Claude Code — recheck of `8d1b503` (#208) passed; Ball to Tim.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — PR #208 passed Claude Code recheck at code tip `8d1b503` (merge to integration when Tim says; Sync Worker deploy is a separate Tim call). |
-| Check this | **PR #208** — https://github.com/tappel003-byte/Toolbox-V3/pull/208 |
-| Branch / tip | `cursor/qc-cabinet-media-2ac5` — code `8d1b503`, branch HEAD on push (shell `v452`). |
-| Base | `claude/milestone-1-customer-file-qv5ybf` @ `803abf9`. Do **not** merge until Tim says. |
-| Not done | CC quick recheck → Tim merge to integration → Tim promote. |
+| **Has the ball** | **Tim** (promote when ready; Sync Worker deploy is a separate Tim call) |
+| Integration merge | **Done.** PR #208 → `claude/milestone-1-customer-file-qv5ybf` (QC + Job Walk video Cabinet; shell `v452`). |
+| Not done | **Promote / live Production** — Tim only. **Not** merged to `main`. Sync Worker deploy still Tim-only when he wants streaming media PUT live. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -80,8 +78,8 @@ Long chats cost more tokens and do **not** give the model continuous human-like 
 
 | Branch | Tip (approx) | Notes |
 |--------|----------------|-------|
-| `claude/milestone-1-customer-file-qv5ybf` | `803abf9` | **Integration tip** |
-| `cursor/qc-cabinet-media-2ac5` | `8d1b503`+ | **PR #208** — three small CC items (`8d1b503`); shell `v452`. |
+| `claude/milestone-1-customer-file-qv5ybf` | `bba6f46` | **Integration tip.** Includes #208 QC Cabinet media. Shell `v452`. |
+| `cursor/qc-cabinet-media-2ac5` | `549b12d` | Merged via #208. |
 | `main` | re-check | Behind milestone. Do not merge here unless Tim asks promote-prep. |
 
 Always re-check with `git fetch` before claiming tip SHAs.
@@ -92,38 +90,30 @@ Always re-check with `git fetch` before claiming tip SHAs.
 
 | Item | State |
 |------|--------|
-| Floor open seed / lookbook / RB toolbar / POR / TLS / Job Walk media | Done on integration via #204 @ tip `803abf9`. |
-| **QC + Job Walk video → File Cabinet (not Check Out)** | **PR #208** — behavior verified on `6cfaefb`; three small follow-ups landed for CC. Shell `v452`. |
+| Floor open seed / lookbook / RB toolbar / POR / TLS / Job Walk media | Done on integration via #204. |
+| **QC + Job Walk video → File Cabinet (not Check Out)** | **Merged** — #208 into integration. Shell `v452`. CC passed at `8d1b503`. |
 
 ### Ops note — Sync Worker deploy (Tim)
 
-The **streaming** media PUT in `sync-worker/src/index.js` (`x-toolbox-encoding: raw` → R2 body stream) takes effect **only after Tim authorises a Sync Worker deploy**. Until then, live uploads still use the old buffered Worker path. That is fine for smaller clips; the client clip limit is now **90 MB** so a clip stays under the Workers 100 MB request-body ceiling even on the buffered path.
-
-### Three small CC items (this push)
-
-1. `tests/customer-file-import.mjs` Photo folders note assertion matches Cabinet wording (not “not placed on the plan”).
-2. Job Walk video cap **90 MB** (headroom under Workers 100 MB).
-3. SESSION_STATE + PR state the Worker-deploy dependency for streaming PUT (above).
+The **streaming** media PUT in `sync-worker/src/index.js` takes effect **only after Tim authorises a Sync Worker deploy**. Until then, live uploads still use the old buffered Worker path. Client clip limit is **90 MB**.
 
 ---
 
 ## Outstanding — real open work
 
-1. **CC recheck then Tim merge** of `cursor/qc-cabinet-media-2ac5` (#208) into integration. Do not merge to `main`.
+1. **Promote** — Tim only. Integration has #208; live Production does not until Tim promotes. Do **not** merge to `main` unless Tim asks promote-prep.
 
-2. **Open product items (safer defaults shipped; Tim has not decided):**
+2. **Sync Worker deploy** (when Tim authorises) — streaming media PUT + Worker explore video listing.
+
+3. **Open product items (safer defaults shipped; Tim has not decided):**
    - After a video uploads: **keep** the clip on the phone (default) vs clear to free space.
    - Job Walk **audio** notes: still travel with the file like typed notes (default) vs treat like photos/video.
 
-3. **Promote** — Tim only.
+4. **Cloudflare Access path bypass for `lookbook/*`** — Tim’s ops action.
 
-4. **Sync Worker deploy** (when Tim authorises) — picks up streaming media PUT + any other Worker changes on this branch.
+5. **Confirm Sync Worker deploy** has lookbook create routes if Share still 404s.
 
-5. **Cloudflare Access path bypass for `lookbook/*`** — Tim’s ops action.
-
-6. **Confirm Sync Worker deploy** has lookbook create routes if Share still 404s.
-
-7. **Stale / unrelated open PRs** — triage when Tim wants; not blockers.
+6. **Stale / unrelated open PRs** — triage when Tim wants; not blockers.
 
 ---
 
