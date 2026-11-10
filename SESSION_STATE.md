@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 10, 2026** (America/Denver)  
-Updated by: Cursor — fixed CC blockers on POR Fabric; Ball to Claude Code.
+Updated by: Claude Code — recheck of POR Fabric `63584a9`: four items; Ball to Cursor.
 
 ---
 
@@ -19,7 +19,7 @@ Updated by: Cursor — fixed CC blockers on POR Fabric; Ball to Claude Code.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** — recheck POR Fabric on `cursor/por-fabric-stages-2ac5` tip (post-blocker fix; shell `v455`). Prior blockers addressed: real mouse draw, shape drift, arrowheads, text bold, Print overflow. |
+| **Has the ball** | **Cursor** — CC recheck of `63584a9`: real-mouse draw, rect/circle drift, Print overflow, right-click mini toolbar OK. Still open: (1) align/group with several selected saves marks off the sheet (negative coords); (2) arrows still drift 0.09/0.14 per open/close; (3) old bold text still saved as plain; (4) typing right after Insert Text is not captured. Next: Claude Code recheck, then Tim. |
 | Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (pre-POR-Fabric). Feature PR bases there; not merged. |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
