@@ -844,16 +844,31 @@
     return Array.from(new Set(ids));
   }
 
+  function isRepairMediaId(id) {
+    return typeof id === 'string' &&
+      (id.indexOf('porimp_') === 0 || id.indexOf('porimg_') === 0);
+  }
+
+  function collectRepairOverlayMedia(overlays, ids) {
+    (overlays || []).forEach(function (ov) {
+      if (!ov) return;
+      if (ov.kind === 'image' && isRepairMediaId(ov.mediaId)) ids.push(ov.mediaId);
+      if (ov.kind === 'group' && Array.isArray(ov.members)) {
+        collectRepairOverlayMedia(ov.members, ids);
+      }
+    });
+  }
+
   function repairMediaIds(record) {
     const doc = record && record.planOfRepair;
     const pages = doc && Array.isArray(doc.pages) ? doc.pages : [];
     const ids = [];
     pages.forEach(function (page) {
       const bg = page && page.background;
-      if (bg && bg.kind === 'import' && typeof bg.mediaId === 'string' &&
-          bg.mediaId.indexOf('porimp_') === 0) {
+      if (bg && bg.kind === 'import' && isRepairMediaId(bg.mediaId)) {
         ids.push(bg.mediaId);
       }
+      collectRepairOverlayMedia(page && page.overlays, ids);
     });
     return Array.from(new Set(ids));
   }
@@ -1069,10 +1084,10 @@
       const ids = [];
       pages.forEach(function (page) {
         const bg = page && page.background;
-        if (bg && bg.kind === 'import' && typeof bg.mediaId === 'string' &&
-            bg.mediaId.indexOf('porimp_') === 0) {
+        if (bg && bg.kind === 'import' && isRepairMediaId(bg.mediaId)) {
           ids.push(bg.mediaId);
         }
+        collectRepairOverlayMedia(page && page.overlays, ids);
       });
       return Array.from(new Set(ids));
     }

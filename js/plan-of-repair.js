@@ -431,6 +431,10 @@
       '      <button type="button" class="por-linkbtn" id="por-import-bg">Import drawing</button>' +
       '      <button type="button" class="por-linkbtn" id="por-clear-bg">Blank</button>' +
       '      <input type="file" id="por-import-file" accept="image/*" hidden>' +
+      '      <button type="button" class="por-linkbtn" id="por-insert-pic">Insert picture</button>' +
+      '      <input type="file" id="por-pic-file" accept="image/*" hidden>' +
+      '      <button type="button" class="por-linkbtn" id="por-export-selection">Save selection as picture</button>' +
+      '      <button type="button" class="por-linkbtn" id="por-export-page">Save page as picture</button>' +
       '    </div>' +
       '    <div class="por-bg-actions" role="group" aria-label="Views on this sheet">' +
       '      <button type="button" class="por-linkbtn" id="por-add-view">Add detail view</button>' +
@@ -1165,9 +1169,74 @@
       }
       PorFab.overlaysToCanvas(state.fabricCanvas, overlayList(page), {
         readOnly: state.readOnly,
+        loadMedia: function (mediaId) {
+          return window.ToolboxDB.getMedia(mediaId).then(function (row) {
+            return row && (row.dataUrl || row.data || row);
+          });
+        },
       });
       applyFabricToolMode();
       return state.fabricCanvas;
+    }
+
+    function insertPictureFromDataUrl(dataUrl, name) {
+      if (!dataUrl || state.readOnly || !state.fabricCanvas || !PorFab) return Promise.resolve(false);
+      var mediaId = 'porimg_' + uid('pic');
+      return window.ToolboxDB.putMedia(mediaId, dataUrl).then(function () {
+        pushHistory();
+        window.fabric.Image.fromURL(dataUrl, function (img) {
+          if (!img) return;
+          var maxW = PAPER_W * 0.35;
+          if (img.width > maxW) img.scaleToWidth(maxW);
+          img.set({
+            left: PAPER_W * 0.12,
+            top: PAPER_H * 0.18,
+            porId: PorFab.uid('ov'),
+            porKind: 'image',
+            porMediaId: mediaId,
+            porName: name || 'Picture',
+            objectCaching: false,
+          });
+          PorFab.styleControls(img);
+          state.fabricCanvas.add(img);
+          state.fabricCanvas.setActiveObject(img);
+          state.fabricCanvas.requestRenderAll();
+          syncOverlaysFromFabric();
+          scheduleSave();
+          syncSelectionPane();
+          setStatus('Picture inserted');
+        }, { crossOrigin: 'anonymous' });
+        return true;
+      });
+    }
+
+    function exportActiveAsPicture() {
+      if (!state.fabricCanvas) return;
+      var active = state.fabricCanvas.getActiveObject();
+      if (!active) {
+        setStatus('Select marks to save as a picture');
+        return;
+      }
+      state.fabricCanvas.discardActiveObject();
+      var dataUrl = active.toDataURL({ format: 'png', multiplier: 2 });
+      state.fabricCanvas.setActiveObject(active);
+      state.fabricCanvas.requestRenderAll();
+      var a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = 'por-selection.png';
+      a.click();
+      setStatus('Selection saved as picture');
+    }
+
+    function exportPageAsPicture() {
+      if (!state.fabricCanvas || !PorFab) return;
+      var url = PorFab.snapshotCanvas(state.fabricCanvas);
+      if (!url) return;
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = (activePage().title || 'drawing') + '.png';
+      a.click();
+      setStatus('Page saved as picture');
     }
 
     function applyFabricToolMode() {
@@ -1657,20 +1726,86 @@
       setStatus('Replacement accepted for this sheet');
     }
 
+    function pageThumbDataUrl(page) {
+      if (!PorFab || !PorFab.ready() || !page) return '';
+      try {
+        var tmp = document.createElement('canvas');
+        var c = PorFab.createCanvas(tmp, { width: 204, height: 132, readOnly: true });
+        PorFab.overlaysToCanvas(c, overlayList(page), { readOnly: true });
+        var url = c.toDataURL({ format: 'png', multiplier: 0.25 });
+        try { c.dispose(); } catch (_) {}
+        return url;
+      } catch (_) {
+        return '';
+      }
+    }
+
+    function reorderPages(fromId, toId) {
+      if (!fromId || !toId || fromId === toId || state.readOnly) return;
+      var pages = state.doc.pages;
+      var from = -1;
+      var to = -1;
+      pages.forEach(function (p, i) {
+        if (p.id === fromId) from = i;
+        if (p.id === toId) to = i;
+      });
+      if (from < 0 || to < 0) return;
+      pushHistory();
+      var moved = pages.splice(from, 1)[0];
+      pages.splice(to, 0, moved);
+      scheduleSave();
+      renderPageList();
+    }
+
     function renderPageList() {
       var list = root.querySelector('#por-page-list');
       list.innerHTML = '';
       state.doc.pages.forEach(function (page, index) {
         var btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'rb-rail__page' + (page.id === state.doc.activePageId ? ' is-active' : '');
-        btn.textContent = (index + 1) + '. ' + (page.title || 'Drawing');
+        btn.className = 'rb-rail__page por-page' + (page.id === state.doc.activePageId ? ' is-active' : '');
+        btn.draggable = !state.readOnly;
+        btn.setAttribute('data-por-page', page.id);
+        var thumb = document.createElement('img');
+        thumb.className = 'por-page__thumb';
+        thumb.alt = '';
+        var dataUrl = pageThumbDataUrl(page);
+        if (dataUrl) thumb.src = dataUrl;
+        else thumb.classList.add('is-empty');
+        var label = document.createElement('span');
+        label.className = 'por-page__label';
+        label.textContent = (index + 1) + '. ' + (page.title || 'Drawing');
+        btn.appendChild(thumb);
+        btn.appendChild(label);
         btn.addEventListener('click', function () {
           if (page.id === state.doc.activePageId) return;
           state.doc.activePageId = page.id;
           state.selectedId = null;
           loadBackground().then(renderSheet);
           renderPageList();
+        });
+        btn.addEventListener('dragstart', function (ev) {
+          if (state.readOnly) return;
+          ev.dataTransfer.setData('text/por-page', page.id);
+          ev.dataTransfer.effectAllowed = 'move';
+          btn.classList.add('is-dragging');
+        });
+        btn.addEventListener('dragend', function () {
+          btn.classList.remove('is-dragging');
+        });
+        btn.addEventListener('dragover', function (ev) {
+          if (state.readOnly) return;
+          ev.preventDefault();
+          btn.classList.add('is-drop');
+        });
+        btn.addEventListener('dragleave', function () {
+          btn.classList.remove('is-drop');
+        });
+        btn.addEventListener('drop', function (ev) {
+          ev.preventDefault();
+          btn.classList.remove('is-drop');
+          var fromId = ev.dataTransfer.getData('text/por-page');
+          reorderPages(fromId, page.id);
         });
         list.appendChild(btn);
       });
@@ -3321,30 +3456,61 @@
         togglePicker('dash');
       });
     }
+    function previewColor(role, color) {
+      var active = fabricActive();
+      if (!active || !color) return;
+      if (!state._previewStyle) state._previewStyle = captureStyleFromTarget(active);
+      if (role === 'fill') applyStyleToFabricTarget(active, { fill: color });
+      else applyStyleToFabricTarget(active, { stroke: color });
+      state.fabricCanvas.requestRenderAll();
+    }
+    function restorePreview() {
+      var active = fabricActive();
+      if (!active || !state._previewStyle) return;
+      applyStyleToFabricTarget(active, state._previewStyle);
+      state.fabricCanvas.requestRenderAll();
+      state._previewStyle = null;
+    }
     root.querySelector('#por-outline-pop').addEventListener('click', function (event) {
       var recent = event.target.closest && event.target.closest('[data-por-recent]');
       if (recent) {
+        state._previewStyle = null;
         applyOutlineColor(recent.getAttribute('data-por-recent'));
         closePickers();
         return;
       }
       var sw = event.target.closest && event.target.closest('[data-por-outline]');
       if (!sw) return;
+      state._previewStyle = null;
       applyOutlineColor(sw.getAttribute('data-por-outline'));
       closePickers();
     });
+    root.querySelector('#por-outline-pop').addEventListener('mouseover', function (event) {
+      var sw = event.target.closest && event.target.closest('[data-por-outline], [data-por-recent]');
+      if (!sw) return;
+      previewColor('outline', sw.getAttribute('data-por-outline') || sw.getAttribute('data-por-recent'));
+    });
+    root.querySelector('#por-outline-pop').addEventListener('mouseleave', restorePreview);
     root.querySelector('#por-fill-pop').addEventListener('click', function (event) {
       var recent = event.target.closest && event.target.closest('[data-por-recent]');
       if (recent) {
+        state._previewStyle = null;
         applyFillColor(recent.getAttribute('data-por-recent'));
         closePickers();
         return;
       }
       var sw = event.target.closest && event.target.closest('[data-por-fill]');
       if (!sw) return;
+      state._previewStyle = null;
       applyFillColor(sw.getAttribute('data-por-fill'));
       closePickers();
     });
+    root.querySelector('#por-fill-pop').addEventListener('mouseover', function (event) {
+      var sw = event.target.closest && event.target.closest('[data-por-fill], [data-por-recent]');
+      if (!sw) return;
+      previewColor('fill', sw.getAttribute('data-por-fill') || sw.getAttribute('data-por-recent'));
+    });
+    root.querySelector('#por-fill-pop').addEventListener('mouseleave', restorePreview);
     var outlineCustom = root.querySelector('#por-outline-custom');
     if (outlineCustom) {
       outlineCustom.addEventListener('input', function () {
@@ -3556,6 +3722,40 @@
     root.querySelector('#por-import-bg').addEventListener('click', function () {
       if (state.readOnly) return;
       root.querySelector('#por-import-file').click();
+    });
+    root.querySelector('#por-insert-pic').addEventListener('click', function () {
+      if (state.readOnly) return;
+      root.querySelector('#por-pic-file').click();
+    });
+    root.querySelector('#por-pic-file').addEventListener('change', function (event) {
+      var file = event.target.files && event.target.files[0];
+      event.target.value = '';
+      if (!file || state.readOnly) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        if (typeof reader.result === 'string') insertPictureFromDataUrl(reader.result, file.name || 'Picture');
+      };
+      reader.readAsDataURL(file);
+    });
+    root.querySelector('#por-export-selection').addEventListener('click', exportActiveAsPicture);
+    root.querySelector('#por-export-page').addEventListener('click', exportPageAsPicture);
+    root.addEventListener('paste', function (event) {
+      if (state.readOnly || !state.fabricCanvas) return;
+      var items = event.clipboardData && event.clipboardData.items;
+      if (!items) return;
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.indexOf('image/') === 0) {
+          event.preventDefault();
+          var blob = items[i].getAsFile();
+          if (!blob) return;
+          var reader = new FileReader();
+          reader.onload = function () {
+            if (typeof reader.result === 'string') insertPictureFromDataUrl(reader.result, 'Pasted picture');
+          };
+          reader.readAsDataURL(blob);
+          return;
+        }
+      }
     });
     root.querySelector('#por-import-file').addEventListener('change', function (event) {
       var file = event.target.files && event.target.files[0];

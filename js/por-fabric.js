@@ -164,9 +164,26 @@
       });
       styleControls(obj);
       return obj;
-    } else if (item.kind === 'image' && item.mediaId) {
-      // Stage 4 loads media; Stage 1 keeps placeholder geometry if present.
-      return null;
+    } else if (item.kind === 'image') {
+      // Placeholder geometry; async image fill happens via overlaysToCanvas.
+      var ix0 = item.x0 != null ? Math.min(item.x0, item.x1) : (item.x || 10);
+      var iy0 = item.y0 != null ? Math.min(item.y0, item.y1) : (item.y || 10);
+      var iw = item.x1 != null ? Math.abs(item.x1 - item.x0) : (item.w || 20);
+      var ih = item.y1 != null ? Math.abs(item.y1 - item.y0) : (item.h || 15);
+      obj = new f.Rect({
+        left: pctToX(ix0),
+        top: pctToY(iy0),
+        width: Math.max(8, pctToX(iw)),
+        height: Math.max(8, pctToY(ih)),
+        fill: 'rgba(148,163,184,0.25)',
+        stroke: '#64748b',
+        strokeWidth: 1,
+        porId: item.id || uid('ov'),
+        porKind: 'image',
+        porMediaId: item.mediaId || '',
+        porName: item.name || 'Picture',
+      });
+      return styleControls(obj);
     } else {
       return null;
     }
@@ -192,6 +209,16 @@
       opacity: obj.opacity != null ? obj.opacity : 1,
     };
     if (obj.visible === false) item.hidden = true;
+    if (item.kind === 'image' || obj.porKind === 'image') {
+      item.kind = 'image';
+      item.mediaId = obj.porMediaId || item.mediaId || '';
+      var brImg = obj.getBoundingRect(true, true);
+      item.x0 = xToPct(brImg.left);
+      item.y0 = yToPct(brImg.top);
+      item.x1 = xToPct(brImg.left + brImg.width);
+      item.y1 = yToPct(brImg.top + brImg.height);
+      return item;
+    }
     if (obj.fill && obj.fill !== 'rgba(0,0,0,0)' && obj.fill !== '' &&
         item.kind !== 'path' && item.kind !== 'line' && item.kind !== 'arrow' && item.kind !== 'text') {
       item.fill = true;
@@ -352,6 +379,32 @@
     return item;
   }
 
+  function replaceWithImage(canvas, placeholder, dataUrl) {
+    if (!canvas || !placeholder || !dataUrl || !fabricReady()) return;
+    window.fabric.Image.fromURL(dataUrl, function (img) {
+      if (!img) return;
+      var w = placeholder.width * (placeholder.scaleX || 1);
+      var h = placeholder.height * (placeholder.scaleY || 1);
+      img.set({
+        left: placeholder.left,
+        top: placeholder.top,
+        angle: placeholder.angle || 0,
+        opacity: placeholder.opacity != null ? placeholder.opacity : 1,
+        porId: placeholder.porId,
+        porKind: 'image',
+        porMediaId: placeholder.porMediaId,
+        porName: placeholder.porName || 'Picture',
+        objectCaching: false,
+      });
+      if (img.width > 0) img.scaleToWidth(Math.max(8, w));
+      if (img.getScaledHeight() > h && img.height > 0) img.scaleToHeight(Math.max(8, h));
+      styleControls(img);
+      canvas.remove(placeholder);
+      canvas.add(img);
+      canvas.requestRenderAll();
+    }, { crossOrigin: 'anonymous' });
+  }
+
   function overlaysToCanvas(canvas, overlays, opts) {
     opts = opts || {};
     if (!canvas || !fabricReady()) return;
@@ -375,7 +428,13 @@
         return;
       }
       var obj = overlayToObject(item);
-      if (obj) canvas.add(obj);
+      if (!obj) return;
+      canvas.add(obj);
+      if (item && item.kind === 'image' && item.mediaId && typeof opts.loadMedia === 'function') {
+        opts.loadMedia(item.mediaId).then(function (url) {
+          if (url) replaceWithImage(canvas, obj, url);
+        }).catch(function () { /* keep placeholder */ });
+      }
     });
     canvas.renderAll();
     if (opts.readOnly) {
@@ -447,6 +506,7 @@
     objectToOverlay: objectToOverlay,
     styleControls: styleControls,
     snapshotCanvas: snapshotCanvas,
+    replaceWithImage: replaceWithImage,
     uid: uid,
     pctToX: pctToX,
     pctToY: pctToY,

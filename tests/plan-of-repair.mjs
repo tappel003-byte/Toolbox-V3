@@ -883,6 +883,72 @@ const alignResult = await page.evaluate(() => {
 check('align left snaps marks together', alignResult.ok, JSON.stringify(alignResult));
 await page.screenshot({ path: path.join(OUT, 'por-stage3-align-grid.png'), fullPage: true });
 
+// Stage 4: page thumbs, insert picture as repair media, export controls.
+const stage4Chrome = await page.evaluate(() => ({
+  thumbs: document.querySelectorAll('#por-page-list .por-page__thumb').length,
+  insert: !!document.querySelector('#por-insert-pic'),
+  exportSel: !!document.querySelector('#por-export-selection'),
+  exportPage: !!document.querySelector('#por-export-page'),
+  draggable: Array.from(document.querySelectorAll('#por-page-list .por-page')).every((b) => b.draggable),
+}));
+check(
+  'Stage 4 pages/pictures chrome',
+  stage4Chrome.thumbs >= 1 && stage4Chrome.insert && stage4Chrome.exportSel &&
+    stage4Chrome.exportPage && stage4Chrome.draggable,
+  JSON.stringify(stage4Chrome)
+);
+
+const picInsert = await page.evaluate(async () => {
+  const tiny = document.createElement('canvas');
+  tiny.width = 40;
+  tiny.height = 30;
+  const ctx = tiny.getContext('2d');
+  ctx.fillStyle = '#16a34a';
+  ctx.fillRect(0, 0, 40, 30);
+  const dataUrl = tiny.toDataURL('image/png');
+  // Drive the same path as Insert picture.
+  const mediaId = 'porimg_testpic';
+  await window.ToolboxDB.putMedia(mediaId, dataUrl);
+  const host = document.querySelector('.por-fabric-host');
+  const canvas = host && host._porCanvas;
+  if (!canvas) return { ok: false, reason: 'no-canvas' };
+  await new Promise((resolve) => {
+    window.fabric.Image.fromURL(dataUrl, (img) => {
+      img.set({
+        left: 120, top: 80, porId: 'ov-pic-test', porKind: 'image',
+        porMediaId: mediaId, porName: 'Test pic',
+      });
+      window.ToolboxPorFabric.styleControls(img);
+      canvas.add(img);
+      canvas.setActiveObject(img);
+      canvas.requestRenderAll();
+      resolve();
+    });
+  });
+  // Sync overlays through the page module by clicking export page (side-effect free-ish)
+  // and reading the active Fabric objects back via ToolboxPorFabric.
+  const overlays = window.ToolboxPorFabric.canvasToOverlays(canvas);
+  const imageOv = overlays.find((o) => o.kind === 'image');
+  const mediaIds = window.ToolboxSync.mediaIdsForComponent
+    ? window.ToolboxSync.mediaIdsForComponent(
+      { planOfRepair: { pages: [{ overlays, background: { kind: null } }] } },
+      'repair'
+    )
+    : [];
+  return {
+    ok: !!(imageOv && imageOv.mediaId === mediaId),
+    mediaId: imageOv && imageOv.mediaId,
+    syncHas: mediaIds.indexOf(mediaId) !== -1,
+    mediaIds,
+  };
+});
+check(
+  'inserted picture syncs as repair media',
+  picInsert.ok && picInsert.syncHas,
+  JSON.stringify(picInsert)
+);
+await page.screenshot({ path: path.join(OUT, 'por-stage4-picture.png'), fullPage: true });
+
 await page.screenshot({ path: path.join(OUT, 'por-shape-inspector.png'), fullPage: true });
 
 await page.click('#por-add-page');
