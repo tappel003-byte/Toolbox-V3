@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 10, 2026** (America/Denver)  
-Updated by: Claude Code — recheck of POR Fabric `ab7e903`: style-save and undo broken; Ball to Cursor.
+Updated by: Cursor — POR Fabric CC3 fixes (`5c4d240`); Ball to Claude Code.
 
 ---
 
@@ -19,9 +19,9 @@ Updated by: Claude Code — recheck of POR Fabric `ab7e903`: style-save and undo
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Cursor** — CC recheck of `ab7e903`: multi-select align/group coords, arrow round-trip, legacy bold, Insert Text typing all fixed. Still open: (1) style changes on a selected shape (outline colour, dash) are not saved; (2) Undo/Redo (Ctrl+Z, Ctrl+Y, toolbar) do nothing to the drawing; (3) Print/PDF wraps to a second toolbar row at 1440 px. Next: Claude Code recheck, then Tim. |
+| **Has the ball** | **Claude Code** — recheck POR Fabric CC3 tip `5c4d240` on `cursor/por-fabric-stages-2ac5` (shell `v457`). Open items from `ab7e903` recheck addressed: (1) outline/dash/style save with real mouse; (2) Undo/Redo restore overlays + canvas; (3) Print on first toolbar row at 1440 and 1280. |
 | Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (pre-POR-Fabric). Feature PR bases there; not merged. |
-| Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` |
+| Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Not done | CC recheck → Tim decide/merge into integration. Do not merge to `main`. Do not deploy/promote. |
 
@@ -68,15 +68,14 @@ Branch: `cursor/por-fabric-stages-2ac5` → PR #210 into `claude/milestone-1-cus
 | 4 | `b151d54` | Page thumbs, pictures, export |
 | CC fix | `63584a9` | Real mouse draw; rect/circle no drift; arrowheads; bold flag; Print visible |
 | CC2 | `ab7e903` | Absolute multi-select save; arrow pin; rich bold; Insert Text typing; arrowhead pixels |
+| CC3 | `5c4d240` | Style save; undo/redo; Print first row; colour pop hit-testing |
 
-**CC2 fixed (this turn):**
-1. Multi-select align/group/distribute/nudge save absolute sheet coords (discard ActiveSelection before serialize; move via `setPositionByOrigin`).
-2. Line/arrow `porPctEnds` pin — open/close exact; sync skips rewrite when unchanged.
-3. Legacy `{paragraphs:[{runs:[{bold:true}]}]}` → Fabric bold + plain text.
-4. Insert Text enters edit mode with placeholder selected; typed text saves.
-5. Arrowhead ink verified on lower canvas + print snapshot size.
+**CC3 fixed (this turn):**
+1. Outline/fill/weight/dash save on the selected shape (lastStyleTarget + overlay patch + dash serialize; colour pop fixed/flex so real mouse hits swatches; preview lock so mouseleave cannot revert).
+2. Undo/Redo destroy Fabric before applying history so renderSheet cannot sync the live canvas over the restored doc.
+3. Toolbar nowrap; Print on first row at 1440 and 1280 (height ~41).
 
-Tests: `node tests/plan-of-repair.mjs` → **73/73** (real mouse/keyboard for CC2 cases).
+Tests: `node tests/plan-of-repair.mjs` → **82/82**.
 
 ---
 
@@ -90,7 +89,7 @@ Tests: `node tests/plan-of-repair.mjs` → **73/73** (real mouse/keyboard for CC
 
 ## Outstanding — open only
 
-1. **CC recheck** of POR Fabric tip `ab7e903` on `cursor/por-fabric-stages-2ac5`.
+1. **CC recheck** of POR Fabric tip `5c4d240` on `cursor/por-fabric-stages-2ac5`.
 2. **Tim decide/merge** into integration when ready. Not `main`. No deploy/promote.
 3. **Open against `main` (not merged):** #97 / #86 / #85 — leave until Tim asks promote-prep.
 
