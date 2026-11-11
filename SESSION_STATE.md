@@ -20,7 +20,7 @@ Updated by: Cursor — Initial Visit schedule on integration. POR icons discussi
 | Field | Value |
 |-------|--------|
 | **Has the ball** | **Tim** — Initial Visit schedule on `claude/milestone-1-customer-file-qv5ybf`. POR icons talk next; nothing stripped. Not on `main`. |
-| Integration tip | filled after merge |
+| Integration tip | `258cc3b` (`258cc3b272c2f94bd181d8ddcc60f71788d24009`) |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Shell | `toolbox-shell-v462` |
