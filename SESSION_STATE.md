@@ -20,7 +20,7 @@ Updated by: Cursor — CC-check fixes merged (IV phone + POR Fluent ribbon). Bal
 | Field | Value |
 |-------|--------|
 | **Has the ball** | **Claude Code** — re-check tip below vs Tim’s PowerPoint screenshots and IV phone cards. Nothing stripped. Not on `main`. |
-| Integration tip | `77dfb6f` (`77dfb6f3fa720bd21d1086617cee96050c15287a`) |
+| Integration tip | `089869b` (`089869bd4a1064f86d0a8e09531f30cea09de97c`) — CC-fix merge; shell v466. Latest push includes SESSION_STATE. |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Shell | `toolbox-shell-v466` |
