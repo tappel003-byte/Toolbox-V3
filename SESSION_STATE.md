@@ -10,8 +10,8 @@ This does **not** replace authority docs. Read order for rules and vision:
 4. `DECISIONS.md`
 5. **This file** — current working picture
 
-Last updated: **Nov 10, 2026** (America/Denver)  
-Updated by: Cursor — merge all into integration; Ball stays with Tim.
+Last updated: **Nov 11, 2026** (America/Denver)  
+Updated by: Cursor — triage+clear `customer-file-trash` and `customer-file-cross-record` (both A); Ball → Claude Code.
 
 ---
 
@@ -19,9 +19,10 @@ Updated by: Cursor — merge all into integration; Ball stays with Tim.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — Sync Worker **deployed** Nov 10 (version `9f211d74-bc47-45c1-bda9-1904e884c214`). Open https://sync.sandiageotoolbox.com/health and do one Sync Now; then app promote when ready. |
-| Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `623913a` (shell `v452`). Merged this turn: #209, #207, #165. Closed as already-on-tip / superseded: #151, #139. Left open against `main` (not merged — Tim promote): #97, #86, #85. |
-| Not done | Tim browser check of live Worker → app **promote** (Tim). Not merged to `main`. |
+| **Has the ball** | **Claude Code** — check red-suite A fixes on `cursor/clear-red-suites-2ac5` (tip filled after push). |
+| Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (unchanged; not merged). |
+| Feature branch | `cursor/clear-red-suites-2ac5` — stale-test updates for trash menu + cross-record Floor Survey path. |
+| Not done | Remaining **16** red suites (floor-survey / report-floor / report-highlow / sizing / sw-update-ready). CC check of these two A clears. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -63,13 +64,28 @@ Hard fact: merge to `main` can publish live. Do not merge to `main` unless Tim a
 
 ---
 
+## Red suites triage (Nov 11, 2026)
+
+Full suite on base `da63c08`: **142** suites, **18** red (CC confirmed; all 18 also red on POR tip — not caused by POR).
+
+| Suite | Outcome | What changed | Evidence |
+|-------|---------|--------------|----------|
+| `customer-file-trash` | **A** (cleared) | Assert menu has Check In + Open in TLS + Delete for empty stub; still forbids Send | DECISIONS.md Nov 7 Delete gate; VISION/TLS Open in TLS; `customer-file-row-delete-gate.mjs` owns the gate |
+| `customer-file-cross-record` | **A** (cleared) | `openInspectionDate`: More → **Boundary & exclusions** (was Setup → Topo boundary) | Live Floor Survey More menu; `#fs-inspection-date` still there; isolation intent unchanged |
+| 16 floor-survey / report-floor / report-highlow / sizing / sw-update-ready | still open | — | Separate clear-red pass; symptoms: Legend & H/L, High/Low size, Update ready banner |
+
+After this branch: **16** red of 142 expected (these two green).
+
+---
+
 ## Outstanding — open only
 
-1. **Sync Worker** — deployed (`9f211d74`). Tim's browser check of `/health` + one Sync Now.
-2. **App promote** — Tim only. Not `main` unless Tim asks promote-prep.
-3. **Plan of Repair look check** vs MS Paint / PowerPoint (Tim’s screenshots).
-4. **POR lows** — right-rail Format Shape duplicates the pickers and shows for text boxes; fill checkbox has no label.
-5. **Open against `main` (not merged):** #97 topo figure pages, #86 Diagnostics ribbon, #85 RB drafts/print — leave until Tim asks promote-prep / bring-to-main.
+1. **Red suites** — 16 remaining (see table). Two A clears on `cursor/clear-red-suites-2ac5`.
+2. **Sync Worker** — deployed (`9f211d74`). Tim's browser check of `/health` + one Sync Now.
+3. **App promote** — Tim only. Not `main` unless Tim asks promote-prep.
+4. **Plan of Repair look check** vs MS Paint / PowerPoint (Tim’s screenshots).
+5. **POR lows** — right-rail Format Shape duplicates the pickers and shows for text boxes; fill checkbox has no label.
+6. **Open against `main` (not merged):** #97 topo figure pages, #86 Diagnostics ribbon, #85 RB drafts/print — leave until Tim asks promote-prep / bring-to-main.
 
 Open product (safer defaults already shipped; Tim has not decided): keep video on phone after upload; Job Walk audio still travels with the file.
 

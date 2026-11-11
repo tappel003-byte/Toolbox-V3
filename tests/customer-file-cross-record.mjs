@@ -158,18 +158,17 @@ async function openInspectionDate(customerFileId) {
     window.location.hash = '#/file/' + id + '/floor';
   }, customerFileId);
   await page.waitForFunction(() => !/Loading Floor Survey/.test(document.body.innerText), { timeout: 8000 });
+  // Floor Survey chrome: More → Boundary & exclusions (was "Setup" → Topo
+  // boundary). Imported surveys with a boundary land on field Data/Topo, so
+  // the inspection-date control is behind that More path.
+  await page.waitForSelector('[aria-label="More"]', { timeout: 8000 });
+  await page.click('[aria-label="More"]');
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('button')].some((b) =>
+      (b.textContent || '').trim() === 'Boundary & exclusions'));
   await page.evaluate(() => {
-    const more = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'More');
-    if (more) more.click();
-  });
-  await page.waitForFunction(() => [...document.querySelectorAll('button')].some((b) => (b.textContent || '').trim() === 'Setup'));
-  await page.evaluate(() => {
-    const setup = [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Setup');
-    if (setup) setup.click();
-  });
-  await page.waitForFunction(() => [...document.querySelectorAll('button')].some((b) => /Topo boundary/.test(b.textContent || '')));
-  await page.evaluate(() => {
-    const boundary = [...document.querySelectorAll('button')].find((b) => /Topo boundary/.test(b.textContent || ''));
+    const boundary = [...document.querySelectorAll('button')]
+      .find((b) => (b.textContent || '').trim() === 'Boundary & exclusions');
     if (boundary) boundary.click();
   });
   await page.waitForSelector('#fs-inspection-date', { timeout: 8000 });
