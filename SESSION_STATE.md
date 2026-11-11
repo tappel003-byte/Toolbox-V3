@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 11, 2026** (America/Denver)  
-Updated by: Cursor — POR PowerPoint icon visual match (no strip). Ball → Tim. (Workers Builds trigger.)
+Updated by: Cursor — IV panel reorder + POR PPT chrome look. Ball → Tim.
 
 ---
 
@@ -19,11 +19,11 @@ Updated by: Cursor — POR PowerPoint icon visual match (no strip). Ball → Tim
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — POR icon visual match on integration for look. Nothing stripped. Not on `main`. |
+| **Has the ball** | **Tim** — IV reorder + POR PowerPoint chrome on integration. Nothing stripped. Not on `main`. |
 | Integration tip | `32308d4` (`32308d4fd7cebe573be5b3dd9ef55d78bfd25c89`) |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Shell | `toolbox-shell-v463` |
+| Shell | `toolbox-shell-v464` |
 | Not done | Do not merge to `main`. Do not deploy Sync Worker. Do not promote. Do not strip POR/Report Builder controls. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
@@ -98,6 +98,8 @@ Authorized by Tim: "do the thing we added to the to-do list today." Merged into 
 2. Phone not on the card
 3. No gap above the Visits heading
 4. Wording of the offline cause
+
+**IV panel order (Nov 11, Tim):** Schedule → Visit Notes → Take Photos / Videos / record → Outcome + Make Customer File at bottom.
 
 **Schedule reminder (Nov 11, Tim):** Visits are also appointments. Create + visit card have Date and Time; Visits list shows calendar/clock for the scheduled slot (not `updatedAt`). Editable anytime on the visit. Initial Visit tile removed from TLS Customer File home — Visits live on Toolbox home only. Shell `v462`.
 

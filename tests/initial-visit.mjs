@@ -272,7 +272,23 @@ const visitId = await page.evaluate(() => {
 });
 check('Offline create opens Initial Visit card', !!visitId && !!(await page.$('.jw-shell')));
 check('Visit meta (date/outcomes/Make CF) visible on visit card',
-  !!(await page.$('#jw-make-cf')) && !!(await page.$('[data-jw-outcome="callBack"]')));
+  !!(await page.$('#jw-make-cf')) && !!(await page.$('[data-jw-outcome="callBack"]')) &&
+  !!(await page.$('#jw-visit-outcome:not([hidden])')));
+const panelOrder = await page.evaluate(() => {
+  const body = document.querySelector('.jw-body');
+  if (!body) return [];
+  return [...body.querySelectorAll(':scope > .jw-panel')].map((panel) => {
+    const title = panel.querySelector('.jw-panel__title');
+    return (title && title.textContent.trim()) || panel.id || '';
+  });
+});
+check('Visit panels ordered Schedule → Notes → Photos → Videos → Outcome',
+  panelOrder[0] === 'Schedule' &&
+  panelOrder[1] === 'Visit Notes' &&
+  panelOrder[2] === 'Take Photos' &&
+  panelOrder[3] === 'Videos' &&
+  panelOrder[4] === 'Outcome',
+  JSON.stringify(panelOrder));
 const scheduleOnCard = await page.evaluate(() => {
   const dateEl = document.querySelector('#jw-visit-date');
   const timeEl = document.querySelector('#jw-visit-time');
@@ -502,6 +518,11 @@ await page.waitForSelector('#jw-make-cf');
 const countBefore = await page.evaluate(async () =>
   (await window.ToolboxDB.getAllCustomerFiles()).length);
 
+await page.evaluate(() => {
+  const btn = document.querySelector('#jw-make-cf');
+  if (btn) btn.scrollIntoView({ block: 'center' });
+});
+await new Promise((r) => setTimeout(r, 200));
 const makeBtn = await page.$('#jw-make-cf');
 const makeBox = await makeBtn.boundingBox();
 await page.mouse.click(makeBox.x + makeBox.width / 2, makeBox.y + makeBox.height / 2);
@@ -595,6 +616,10 @@ await page.evaluate(async () => {
 });
 await page.goto(`${base}#/file/iv-distress-route/job-walk`, { waitUntil: 'networkidle0' });
 await page.waitForSelector('#jw-make-cf');
+await page.evaluate(() => {
+  const btn = document.querySelector('#jw-make-cf');
+  if (btn) btn.scrollIntoView({ block: 'center' });
+});
 await page.click('#jw-make-cf');
 await page.waitForFunction(() => /\/distress/.test(location.hash), { timeout: 10000 });
 const distressHash = await page.evaluate(() => location.hash);
@@ -610,6 +635,10 @@ await page.evaluate(async () => {
 });
 await page.goto(`${base}#/file/iv-home-route/job-walk`, { waitUntil: 'networkidle0' });
 await page.waitForSelector('#jw-make-cf');
+await page.evaluate(() => {
+  const btn = document.querySelector('#jw-make-cf');
+  if (btn) btn.scrollIntoView({ block: 'center' });
+});
 await page.click('#jw-make-cf');
 await page.waitForFunction(() => location.hash === '#/file/iv-home-route', { timeout: 10000 });
 const homeHash = await page.evaluate(() => location.hash);

@@ -230,6 +230,7 @@
       '  <span class="file-status" id="jw-status">Loading…</span>' +
       '</div>' +
       '<div class="jw-body">' +
+      // Order (Tim Nov 11): Schedule → homeowner/visit notes → photos/video/record → Outcome at bottom.
       '  <section class="jw-panel jw-panel--visit" id="jw-visit-meta" hidden>' +
       '    <h2 class="jw-panel__title">Schedule</h2>' +
       '    <div class="jw-visit-fields">' +
@@ -240,18 +241,26 @@
       '      <label class="jw-field"><span>Follow-up date</span>' +
       '        <input type="date" id="jw-follow-up"></label>' +
       '    </div>' +
-      '    <fieldset class="jw-outcomes">' +
-      '      <legend>Outcome</legend>' +
-      '      <label class="jw-check"><input type="checkbox" id="jw-out-none" data-jw-outcome="noProblems"> No problems seen</label>' +
-      '      <label class="jw-check"><input type="checkbox" id="jw-out-floor" data-jw-outcome="recommendFloor"> Recommended floor survey</label>' +
-      '      <label class="jw-check"><input type="checkbox" id="jw-out-distress" data-jw-outcome="recommendDistress"> Recommended distress survey</label>' +
-      '      <label class="jw-check"><input type="checkbox" id="jw-out-quote" data-jw-outcome="wantsQuote"> Wants a repair quote</label>' +
-      '      <label class="jw-check"><input type="checkbox" id="jw-out-callback" data-jw-outcome="callBack"> Told them to call back</label>' +
-      '    </fieldset>' +
-      '    <div class="jw-visit-actions">' +
-      '      <button type="button" id="jw-make-cf" class="btn btn--accent">Make Customer File</button>' +
-      '      <p class="jw-panel__hint">Moves this visit into Customer Files — same record, no copy.</p>' +
+      '  </section>' +
+      '  <section class="jw-panel">' +
+      '    <h2 class="jw-panel__title">Visit Notes</h2>' +
+      '    <div class="jw-note-compose">' +
+      '      <label class="jw-speaker">' +
+      '        <span>Who said this</span>' +
+      '        <select id="jw-speaker">' +
+      '          <option value="homeowner">Homeowner</option>' +
+      '          <option value="investigator">Investigator</option>' +
+      '        </select>' +
+      '      </label>' +
+      '      <textarea id="jw-note-text" rows="3" placeholder="Visit note…"></textarea>' +
+      '      <div class="jw-note-actions">' +
+      '        <button type="button" id="jw-note-save" class="btn btn--secondary">Save note</button>' +
+      '        <button type="button" id="jw-rec" class="btn btn--quiet">Record audio</button>' +
+      '        <button type="button" id="jw-stop" class="btn btn--quiet" hidden>Stop</button>' +
+      '        <span class="jw-rec-status" id="jw-rec-status" hidden></span>' +
+      '      </div>' +
       '    </div>' +
+      '    <div class="jw-notes" id="jw-notes"></div>' +
       '  </section>' +
       '  <section class="jw-panel">' +
       '    <h2 class="jw-panel__title">Take Photos</h2>' +
@@ -273,25 +282,20 @@
       '    </div>' +
       '    <div class="jw-grid jw-grid--video" id="jw-videos"></div>' +
       '  </section>' +
-      '  <section class="jw-panel">' +
-      '    <h2 class="jw-panel__title">Visit Notes</h2>' +
-      '    <div class="jw-note-compose">' +
-      '      <label class="jw-speaker">' +
-      '        <span>Who said this</span>' +
-      '        <select id="jw-speaker">' +
-      '          <option value="homeowner">Homeowner</option>' +
-      '          <option value="investigator">Investigator</option>' +
-      '        </select>' +
-      '      </label>' +
-      '      <textarea id="jw-note-text" rows="3" placeholder="Visit note…"></textarea>' +
-      '      <div class="jw-note-actions">' +
-      '        <button type="button" id="jw-note-save" class="btn btn--secondary">Save note</button>' +
-      '        <button type="button" id="jw-rec" class="btn btn--quiet">Record audio</button>' +
-      '        <button type="button" id="jw-stop" class="btn btn--quiet" hidden>Stop</button>' +
-      '        <span class="jw-rec-status" id="jw-rec-status" hidden></span>' +
-      '      </div>' +
+      '  <section class="jw-panel jw-panel--visit-outcome" id="jw-visit-outcome" hidden>' +
+      '    <h2 class="jw-panel__title">Outcome</h2>' +
+      '    <fieldset class="jw-outcomes">' +
+      '      <legend class="jw-sr-only">Outcome</legend>' +
+      '      <label class="jw-check"><input type="checkbox" id="jw-out-none" data-jw-outcome="noProblems"> No problems seen</label>' +
+      '      <label class="jw-check"><input type="checkbox" id="jw-out-floor" data-jw-outcome="recommendFloor"> Recommended floor survey</label>' +
+      '      <label class="jw-check"><input type="checkbox" id="jw-out-distress" data-jw-outcome="recommendDistress"> Recommended distress survey</label>' +
+      '      <label class="jw-check"><input type="checkbox" id="jw-out-quote" data-jw-outcome="wantsQuote"> Wants a repair quote</label>' +
+      '      <label class="jw-check"><input type="checkbox" id="jw-out-callback" data-jw-outcome="callBack"> Told them to call back</label>' +
+      '    </fieldset>' +
+      '    <div class="jw-visit-actions">' +
+      '      <button type="button" id="jw-make-cf" class="btn btn--accent">Make Customer File</button>' +
+      '      <p class="jw-panel__hint">Moves this visit into Customer Files — same record, no copy.</p>' +
       '    </div>' +
-      '    <div class="jw-notes" id="jw-notes"></div>' +
       '  </section>' +
       '</div>';
 
@@ -633,9 +637,11 @@
     function syncVisitFields() {
       var visit = isVisitRecord(state.record);
       var meta = root.querySelector('#jw-visit-meta');
+      var outcome = root.querySelector('#jw-visit-outcome');
       var title = root.querySelector('#jw-title');
-      if (title) title.textContent = visit ? 'Initial Visit' : 'Initial Visit';
+      if (title) title.textContent = 'Initial Visit';
       if (meta) meta.hidden = !visit;
+      if (outcome) outcome.hidden = !visit;
       if (!visit) return;
       var walk = ensureDistress(state.record).jobWalk;
       var dateEl = root.querySelector('#jw-visit-date');

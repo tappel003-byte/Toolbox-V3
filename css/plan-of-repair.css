@@ -17,8 +17,9 @@
   width: 100%;
   min-width: 0;
   padding: 4px 8px 2px;
-  background: linear-gradient(180deg, #f8f7f4 0%, #f0eee8 100%);
-  border-bottom: 1px solid #c9c2b4;
+  /* PowerPoint ribbon: flat cool gray, not warm cream */
+  background: #f3f2f1;
+  border-bottom: 1px solid #c8c6c4;
   box-sizing: border-box;
   overflow: visible;
   position: relative;
@@ -46,8 +47,8 @@
   gap: 0;
   margin-left: 4px;
   padding-left: 4px;
-  border-left: 1px solid #d4cec2;
-  background: linear-gradient(180deg, #f8f7f4 0%, #f0eee8 100%);
+  border-left: 1px solid #c8c6c4;
+  background: #f3f2f1;
   position: relative;
   z-index: 3;
 }
@@ -71,8 +72,8 @@
 }
 
 .por-ribbon__collapse-btn:hover {
-  border-color: #c9c2b4;
-  background: #fff;
+  border-color: #c8c6c4;
+  background: #edebe9;
 }
 
 .por-ribbon__group--collapsible.is-collapsed > .por-ribbon__collapse-btn {
@@ -89,10 +90,10 @@
   align-items: flex-start;
   gap: 4px;
   padding: 8px;
-  border: 1px solid #c9c2b4;
-  border-radius: 4px;
-  background: #fffdf8;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+  border: 1px solid #c8c6c4;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14);
 }
 
 .por-ribbon__group--collapsible.is-collapsed.is-open > .por-ribbon__body .por-ribbon__label {
@@ -141,7 +142,7 @@
 .por-ribbon__label {
   font-size: 10px;
   line-height: 1;
-  color: #6b7280;
+  color: #616161;
   letter-spacing: 0.01em;
   user-select: none;
   white-space: nowrap;
@@ -151,7 +152,7 @@
   width: 1px;
   align-self: stretch;
   margin: 4px 2px 14px;
-  background: #d4cec2;
+  background: #c8c6c4;
   flex: 0 0 auto;
 }
 
@@ -239,8 +240,8 @@
 .por-shapes__btn:hover,
 .por-picker__btn--label:hover,
 .por-picker__btn--shape:hover {
-  border-color: #c9c2b4;
-  background: #fff;
+  border-color: #c8c6c4;
+  background: #edebe9;
 }
 
 .por-shapes__chev {
@@ -454,21 +455,21 @@
   height: 30px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: 2px;
   background: transparent;
-  color: #0b1f33;
+  color: #424242;
   cursor: pointer;
 }
 
 .por-iconbtn:hover:not(:disabled) {
-  border-color: #c9c2b4;
-  background: #fff;
+  border-color: #c8c6c4;
+  background: #edebe9;
 }
 
 .por-iconbtn.is-on {
-  border-color: #1d4ed8;
-  background: #eff6ff;
-  color: #1d4ed8;
+  border-color: #8cb8e0;
+  background: #c7e0f4;
+  color: #185abd;
 }
 
 .por-iconbtn:disabled {
