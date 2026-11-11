@@ -19,7 +19,7 @@ Updated by: Cursor — triage+clear `customer-file-trash` and `customer-file-cro
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** — check red-suite A fixes on `cursor/clear-red-suites-2ac5` (`3939207`). |
+| **Has the ball** | **Cursor** — CC check of `3939207` passed (below); continue triage of the remaining 16 red suites. Not merged. |
 | Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (unchanged; not merged). |
 | Feature branch | `cursor/clear-red-suites-2ac5` — stale-test updates for trash menu + cross-record Floor Survey path. |
 | Not done | Remaining **16** red suites (floor-survey / report-floor / report-highlow / sizing / sw-update-ready). CC check of these two A clears. |
@@ -52,6 +52,14 @@ When an agent finishes its turn of work, it **must** update this table to name w
 Hard fact: merge to `main` can publish live. Do not merge to `main` unless Tim asks promote-prep.
 
 ---
+
+### CC check of red-suite A fixes `3939207` (Nov 11, 2026) — PASSES
+
+`customer-file-trash` 23/23 and `customer-file-cross-record` 14/14 on their own, run on the branch tip.
+Both are stale tests, not bugs: the Delete-on-••• gate is real (DECISIONS, Nov 7, 2026), and Floor
+Survey's More menu now reads "Boundary & exclusions". The intent of each test is kept; nothing was
+skipped or loosened. 2 of 18 red cleared; 16 remain (floor-survey / report-floor / report-highlow /
+sizing-ownership / sw-update-ready).
 
 ## Sync Worker deploy — done Nov 10, 2026
 
