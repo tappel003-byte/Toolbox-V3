@@ -3828,7 +3828,7 @@ button.cf-home__delete[hidden] {
 
   .cabinet-hero__actions {
     width: 100%;
-    flex-direction: column-reverse;
+    flex-direction: column;
   }
 
   .cabinet-hero__actions .btn {
@@ -5522,18 +5522,16 @@ html.tb-refresh-locked .canvas {
 }
 
 @media (max-width: 560px) {
+  /* Tim / CC: New (primary) → Initial Visit → Import. DOM order; no reverse. */
   .customer-files .cabinet-hero__actions {
-    flex-wrap: wrap;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
   }
-  /* Keep + New and + Initial Visit as a paired create row; Import full-width. */
   .customer-files .cabinet-hero__actions .cabinet-new,
-  .customer-files .cabinet-hero__actions .cabinet-visit {
-    flex: 1 1 calc(50% - 6px);
-    min-width: 0;
-    padding-left: 10px;
-    padding-right: 10px;
-  }
+  .customer-files .cabinet-hero__actions .cabinet-visit,
   .customer-files .cabinet-hero__actions #cabinet-import {
-    flex: 1 1 100%;
+    flex: 0 0 auto;
+    width: 100%;
   }
 }

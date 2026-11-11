@@ -269,72 +269,62 @@
     var inkColors = (window.ToolboxReportOverlay && window.ToolboxReportOverlay.COLORS) ||
       ['#c14a2b', '#111111', '#1d4ed8', '#16a34a', '#ea7317', '#eab308'];
 
-    // PowerPoint / Fluent thin-line look (Tim screenshots Nov 11). Visual match only —
-    // do not remove toolbar/menu controls when editing these paths.
+    // Microsoft Fluent UI System Icons (MIT), regular weight — vendored in
+    // js/vendor/fluent-icons.js + icons/fluent/*.svg. Add/restyle only; never strip controls.
     function svgIcon(body) {
       return '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" ' +
         'stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' +
         body + '</svg>';
     }
 
+    function fluentIcon(name, cls) {
+      var api = window.ToolboxFluentIcons;
+      if (api && typeof api.icon === 'function') {
+        var html = api.icon(name, cls || '');
+        if (html) return html;
+      }
+      return '';
+    }
+
     var ICONS = {
-      select: svgIcon('<path d="M5.5 3.5 11.2 20l2-6.2L19.5 11.8z"/>'),
-      undo: svgIcon('<path d="M8.5 9.5h7a4 4 0 1 1 0 8H11"/><path d="M11.5 6.5 8 9.5l3.5 3"/>'),
-      redo: svgIcon('<path d="M15.5 9.5h-7a4 4 0 1 0 0 8H13"/><path d="M12.5 6.5 16 9.5l-3.5 3"/>'),
-      pencil: svgIcon('<path d="M4.5 19.5 5.8 15.2 15.5 5.5a1.8 1.8 0 0 1 2.5 0l.5.5a1.8 1.8 0 0 1 0 2.5L9.3 17.7 4.5 19.5z"/><path d="M14 7l3 3"/>'),
-      arrow: svgIcon('<path d="M5 19 18 6"/><path d="M11 6h7v7"/>'),
-      rect: svgIcon('<rect x="4" y="6" width="16" height="12" rx="1"/>'),
-      circle: svgIcon('<circle cx="12" cy="12" r="7.5"/>'),
-      text: svgIcon('<path d="M5.5 6.5h13M12 6.5v11M8.5 17.5h7"/>'),
-      eraser: svgIcon('<path d="M8.2 19H5.6a1.4 1.4 0 0 1-1-2.4L14 7.2a1.8 1.8 0 0 1 2.5 0l2.2 2.2a1.8 1.8 0 0 1 0 2.5L12.2 18.4"/><path d="M8.2 19h10.3"/>'),
-      weight: svgIcon('<path d="M4 8.5h16M4 12h16M4 15.5h16" stroke-width="1.1"/><path d="M4 12h16" stroke-width="2.6"/>'),
-      cut: svgIcon('<circle cx="6.2" cy="7.2" r="2.2"/><circle cx="6.2" cy="16.8" r="2.2"/><path d="M7.8 8.6 18.5 4.2"/><path d="M7.8 15.4 18.5 19.8"/>'),
-      copy: svgIcon('<rect x="8.5" y="7.5" width="10" height="12" rx="1"/><path d="M5.5 14.5V5.5a1 1 0 0 1 1-1h8"/>'),
-      paste: svgIcon('<path d="M9 3.8h6v2.6H9z"/><rect x="6" y="5.5" width="12" height="14.2" rx="1.2"/><path d="M9.5 11.5h5M9.5 14.5h5"/>'),
-      // Shape Fill — paint bucket + orange drip (Office mini-toolbar)
-      fillBucket: svgIcon(
-        '<path d="M4.5 13.5 12 6l5.5 5.5-7.5 7.5H4.5z"/>' +
-        '<path d="M14.2 8.8 17 6a1.6 1.6 0 0 1 2.2 2.2l-2.6 2.6"/>' +
-        '<path d="M9.2 20.2c0 0 1.4 1.6 2.6 0s-1.2-2.4-1.2-2.4" fill="#d87d31" stroke="#d87d31"/>'
-      ),
-      // Shape Outline — pen + colour underline
-      outlinePen: svgIcon(
-        '<path d="M4.5 19.5 5.8 15.2 15.6 5.4a1.7 1.7 0 0 1 2.4 0l.5.5a1.7 1.7 0 0 1 0 2.4L9.3 17.7 4.5 19.5z"/>' +
-        '<path d="M14 7.2l3 3"/>' +
-        '<path d="M5 21h9" stroke="#1d4ed8" stroke-width="2"/>'
-      ),
-      // Style / Format Painter brush
-      styleBrush: svgIcon(
-        '<path d="M7.5 3.5h6.5l2.8 2.8v3.4H7.5z"/>' +
-        '<path d="M9.5 9.7v7.2a2 2 0 0 0 4 0v-1.6"/>'
-      ),
-      // Arrange group (PPT orange/tan overlapping squares)
-      bringForward: svgIcon(
-        '<rect x="8.5" y="4.5" width="10" height="10" rx="1" fill="#f0c48a" stroke="#5b6470"/>' +
-        '<rect x="4.5" y="8.5" width="10" height="10" rx="1" fill="#d87d31" stroke="#5b6470"/>' +
-        '<path d="M7.2 16.8 10.5 13.5" stroke="#5b6470"/><path d="M8.8 13.5h1.7v1.7" stroke="#5b6470"/>'
-      ),
-      sendBackward: svgIcon(
-        '<rect x="4.5" y="8.5" width="10" height="10" rx="1" fill="#d87d31" stroke="#5b6470"/>' +
-        '<rect x="8.5" y="4.5" width="10" height="10" rx="1" fill="#f0c48a" stroke="#5b6470"/>' +
-        '<path d="M15.5 7.2 12.2 10.5" stroke="#5b6470"/><path d="M12.2 8.8v1.7h1.7" stroke="#5b6470"/>'
-      ),
-      selectionPane: svgIcon(
-        '<rect x="5" y="5" width="10" height="10" rx="1" fill="#fff" stroke="#5b6470"/>' +
-        '<rect x="9" y="9" width="10" height="10" rx="1" fill="#d87d31" stroke="#5b6470"/>' +
-        '<path d="M7.5 8.5 10 14l1.2-3.2L14.5 9.5z" fill="#5b6470" stroke="none"/>'
-      ),
-      align: svgIcon('<path d="M5 5.5v13"/><path d="M8 7.5h10M8 12h7M8 16.5h10"/>'),
-      group: svgIcon(
-        '<rect x="4.5" y="4.5" width="9" height="9" rx="1" stroke-dasharray="2 1.5"/>' +
-        '<rect x="10.5" y="10.5" width="9" height="9" rx="1" stroke-dasharray="2 1.5"/>'
-      ),
-      rotate: svgIcon(
-        '<path d="M7 16.5 16.5 7"/><path d="M7 7v9.5h9.5"/>' +
-        '<path d="M14.5 5.5a7 7 0 0 1 4 9.2" stroke="#1d4ed8"/>' +
-        '<path d="M17.2 5.2h2.2v2.2" stroke="#1d4ed8"/>'
-      ),
-      textBox: svgIcon('<rect x="4" y="6" width="16" height="12" rx="1"/><path d="M8 10h8M8 14h5"/>'),
+      select: fluentIcon('cursor', 'fluent-icon--accent') || svgIcon('<path d="M5.5 3.5 11.2 20l2-6.2L19.5 11.8z"/>'),
+      undo: fluentIcon('arrow_undo') || svgIcon('<path d="M8.5 9.5h7a4 4 0 1 1 0 8H11"/><path d="M11.5 6.5 8 9.5l3.5 3"/>'),
+      redo: fluentIcon('arrow_redo') || svgIcon('<path d="M15.5 9.5h-7a4 4 0 1 0 0 8H13"/><path d="M12.5 6.5 16 9.5l-3.5 3"/>'),
+      pencil: fluentIcon('pen') || svgIcon('<path d="M4.5 19.5 5.8 15.2 15.5 5.5a1.8 1.8 0 0 1 2.5 0l.5.5a1.8 1.8 0 0 1 0 2.5L9.3 17.7 4.5 19.5z"/><path d="M14 7l3 3"/>'),
+      arrow: fluentIcon('arrow_up_right') || svgIcon('<path d="M5 19 18 6"/><path d="M11 6h7v7"/>'),
+      rect: fluentIcon('rectangle') || svgIcon('<rect x="4" y="6" width="16" height="12" rx="1"/>'),
+      circle: fluentIcon('circle') || svgIcon('<circle cx="12" cy="12" r="7.5"/>'),
+      text: fluentIcon('textbox') || svgIcon('<path d="M5.5 6.5h13M12 6.5v11M8.5 17.5h7"/>'),
+      eraser: fluentIcon('eraser') || svgIcon('<path d="M8.2 19H5.6a1.4 1.4 0 0 1-1-2.4L14 7.2a1.8 1.8 0 0 1 2.5 0l2.2 2.2a1.8 1.8 0 0 1 0 2.5L12.2 18.4"/><path d="M8.2 19h10.3"/>'),
+      weight: fluentIcon('line') || svgIcon('<path d="M4 8.5h16M4 12h16M4 15.5h16" stroke-width="1.1"/><path d="M4 12h16" stroke-width="2.6"/>'),
+      cut: fluentIcon('cut') || svgIcon('<circle cx="6.2" cy="7.2" r="2.2"/><circle cx="6.2" cy="16.8" r="2.2"/><path d="M7.8 8.6 18.5 4.2"/><path d="M7.8 15.4 18.5 19.8"/>'),
+      copy: fluentIcon('copy') || svgIcon('<rect x="8.5" y="7.5" width="10" height="12" rx="1"/><path d="M5.5 14.5V5.5a1 1 0 0 1 1-1h8"/>'),
+      paste: fluentIcon('clipboard_paste', 'fluent-icon--paste') || svgIcon('<path d="M9 3.8h6v2.6H9z"/><rect x="6" y="5.5" width="12" height="14.2" rx="1.2"/><path d="M9.5 11.5h5M9.5 14.5h5"/>'),
+      fillBucket: fluentIcon('paint_bucket', 'fluent-icon--fill') || svgIcon('<path d="M4.5 13.5 12 6l5.5 5.5-7.5 7.5H4.5z"/>'),
+      outlinePen: fluentIcon('pen', 'fluent-icon--outline') || svgIcon('<path d="M4.5 19.5 5.8 15.2 15.6 5.4a1.7 1.7 0 0 1 2.4 0l.5.5a1.7 1.7 0 0 1 0 2.4L9.3 17.7 4.5 19.5z"/>'),
+      styleBrush: fluentIcon('paint_brush', 'fluent-icon--style') || svgIcon('<path d="M7.5 3.5h6.5l2.8 2.8v3.4H7.5z"/><path d="M9.5 9.7v7.2a2 2 0 0 0 4 0v-1.6"/>'),
+      bringForward: fluentIcon('layer', 'fluent-icon--arrange') || svgIcon('<rect x="8.5" y="4.5" width="10" height="10" rx="1"/><rect x="4.5" y="8.5" width="10" height="10" rx="1"/>'),
+      sendBackward: fluentIcon('layer_diagonal', 'fluent-icon--arrange') || fluentIcon('layer', 'fluent-icon--arrange') || svgIcon('<rect x="4.5" y="8.5" width="10" height="10" rx="1"/><rect x="8.5" y="4.5" width="10" height="10" rx="1"/>'),
+      selectionPane: fluentIcon('apps_list') || svgIcon('<rect x="5" y="5" width="10" height="10" rx="1"/><rect x="9" y="9" width="10" height="10" rx="1"/>'),
+      align: fluentIcon('align_left') || svgIcon('<path d="M5 5.5v13"/><path d="M8 7.5h10M8 12h7M8 16.5h10"/>'),
+      group: fluentIcon('group') || svgIcon('<rect x="4.5" y="4.5" width="9" height="9" rx="1" stroke-dasharray="2 1.5"/><rect x="10.5" y="10.5" width="9" height="9" rx="1" stroke-dasharray="2 1.5"/>'),
+      rotate: fluentIcon('rotate') || svgIcon('<path d="M7 16.5 16.5 7"/><path d="M7 7v9.5h9.5"/>'),
+      textBox: fluentIcon('textbox') || svgIcon('<rect x="4" y="6" width="16" height="12" rx="1"/><path d="M8 10h8M8 14h5"/>'),
+      shapes: fluentIcon('shapes') || svgIcon('<rect x="4" y="6" width="16" height="12" rx="1"/>'),
+      effects: fluentIcon('effects', 'fluent-icon--effects') || fluentIcon('sparkle', 'fluent-icon--effects') || svgIcon('<path d="M12 3l2.2 4.5 5 .7-3.6 3.5.9 5.1L12 14.8 7.5 16.8l.9-5.1L4.8 8.2l5-.7z"/>'),
+      star: fluentIcon('star', 'fluent-icon--star') || svgIcon('<path d="M12 3l2.2 4.5 5 .7-3.6 3.5.9 5.1L12 14.8 7.5 16.8l.9-5.1L4.8 8.2l5-.7z"/>'),
+      bold: fluentIcon('text_bold') || '<b>B</b>',
+      italic: fluentIcon('text_italic') || '<i>I</i>',
+      underline: fluentIcon('text_underline') || '<u>U</u>',
+      strike: fluentIcon('text_strikethrough') || '<s>S</s>',
+      fontColor: fluentIcon('text_color') || '<span class="por-font-color__glyph">A</span>',
+      fontGrow: fluentIcon('text_font_size') || 'A+',
+      bullet: fluentIcon('bullet_list') || '•',
+      grid: fluentIcon('grid') || '▦',
+      hand: fluentIcon('hand') || svgIcon('<path d="M8 11V6.5a1.5 1.5 0 0 1 3 0V11"/>'),
+      triangle: fluentIcon('triangle') || svgIcon('<path d="M12 4 20 19H4z"/>'),
+      line: fluentIcon('line') || svgIcon('<path d="M5 19 19 5"/>'),
+      square: fluentIcon('square') || svgIcon('<rect x="5" y="5" width="14" height="14" rx="1"/>'),
     };
 
     function shadeHex(hex, factor) {
@@ -377,41 +367,56 @@
       '  </div>' +
       '  <span class="file-status" id="por-status">Loading…</span>' +
       '</div>' +
+      '<div class="por-tabs" role="tablist" aria-label="Plan of Repair tabs">' +
+      '  <button type="button" class="por-tabs__tab" data-por-tab="file" disabled>File</button>' +
+      '  <button type="button" class="por-tabs__tab is-active" data-por-tab="home" aria-selected="true">Home</button>' +
+      '  <button type="button" class="por-tabs__tab" data-por-tab="insert" id="por-tab-insert">Insert</button>' +
+      '  <button type="button" class="por-tabs__tab" data-por-tab="draw" disabled>Draw</button>' +
+      '  <button type="button" class="por-tabs__tab" data-por-tab="design" disabled>Design</button>' +
+      '  <button type="button" class="por-tabs__tab" data-por-tab="view" disabled>View</button>' +
+      '</div>' +
       '<div class="por-toolbar por-ribbon" role="toolbar" aria-label="Drawing tools">' +
       '<div class="por-ribbon__scroll">' +
       '  <div class="por-ribbon__group por-ribbon__group--collapsible" data-por-collapse="clipboard" role="group" aria-label="Clipboard">' +
-      '    <div class="por-ribbon__row">' +
-      '      <button type="button" class="por-iconbtn" id="por-paste" title="Paste (Ctrl+V)" aria-label="Paste">' + ICONS.paste + '</button>' +
-      '      <button type="button" class="por-iconbtn" id="por-cut" title="Cut (Ctrl+X)" aria-label="Cut">' + ICONS.cut + '</button>' +
-      '      <button type="button" class="por-iconbtn" id="por-copy" title="Copy (Ctrl+C)" aria-label="Copy">' + ICONS.copy + '</button>' +
-      '      <button type="button" class="por-iconbtn" id="por-format-painter" title="Format Painter" aria-label="Format Painter">' +
-            ICONS.styleBrush + '</button>' +
+      '    <div class="por-ribbon__row por-ribbon__row--clipboard">' +
+      '      <button type="button" class="por-ribbon__large" id="por-paste" title="Paste (Ctrl+V)" aria-label="Paste">' +
+              ICONS.paste + '<span class="por-ribbon__large-label">Paste</span></button>' +
+      '      <div class="por-ribbon__stack">' +
+      '        <button type="button" class="por-iconbtn" id="por-cut" title="Cut (Ctrl+X)" aria-label="Cut">' + ICONS.cut + '</button>' +
+      '        <button type="button" class="por-iconbtn" id="por-copy" title="Copy (Ctrl+C)" aria-label="Copy">' + ICONS.copy + '</button>' +
+      '        <button type="button" class="por-iconbtn" id="por-format-painter" title="Format Painter" aria-label="Format Painter">' +
+                ICONS.styleBrush + '</button>' +
+      '      </div>' +
       '    </div>' +
       '    <span class="por-ribbon__label">Clipboard</span>' +
       '  </div>' +
       '  <div class="por-ribbon__sep" aria-hidden="true"></div>' +
-      '  <div class="por-ribbon__group por-toolbar__text por-ribbon__group--collapsible" data-por-collapse="font" id="por-text-format" role="group" aria-label="Font">' +
-      '    <div class="por-ribbon__row por-ribbon__row--wrap">' +
-      '      <select id="por-font-family" class="por-font-select" title="Font" aria-label="Font">' +
-      '        <option value="Calibri, Arial, sans-serif">Calibri</option>' +
-      '        <option value="Arial, sans-serif">Arial</option>' +
-      '        <option value="Georgia, serif">Georgia</option>' +
-      '        <option value="Times New Roman, serif">Times</option>' +
-      '        <option value="Courier New, monospace">Courier</option>' +
-      '      </select>' +
-      '      <input type="number" id="por-font-size" class="por-font-size" min="8" max="96" value="18" title="Font size" aria-label="Font size">' +
-      '      <button type="button" class="por-iconbtn" id="por-font-grow" title="Increase Font Size" aria-label="Grow font">A+</button>' +
-      '      <button type="button" class="por-iconbtn" id="por-font-shrink" title="Decrease Font Size" aria-label="Shrink font">A−</button>' +
-      '      <button type="button" class="por-iconbtn" data-por-text="bold" title="Bold" aria-label="Bold"><b>B</b></button>' +
-      '      <button type="button" class="por-iconbtn" data-por-text="italic" title="Italic" aria-label="Italic"><i>I</i></button>' +
-      '      <button type="button" class="por-iconbtn" data-por-text="underline" title="Underline" aria-label="Underline"><u>U</u></button>' +
-      '      <button type="button" class="por-iconbtn" data-por-text="strike" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>' +
-      '      <div class="por-picker" data-por-picker="font-color">' +
-      '        <button type="button" class="por-picker__btn por-picker__btn--font" id="por-font-color-btn" title="Font Color" aria-label="Font colour" aria-haspopup="true" aria-expanded="false">' +
-      '          <span class="por-font-color__glyph">A</span><span class="por-picker__chip" id="por-font-color-chip"></span>' +
-      '        </button>' +
-      '        <div class="por-picker__pop por-picker__pop--colors" id="por-font-color-pop" hidden role="listbox" aria-label="Font colours">' +
-              colorGrid('data-por-font-color') +
+      '  <div class="por-ribbon__group por-toolbar__text por-ribbon__group--collapsible por-ribbon__group--font" data-por-collapse="font" id="por-text-format" role="group" aria-label="Font">' +
+      '    <div class="por-ribbon__font">' +
+      '      <div class="por-ribbon__row">' +
+      '        <select id="por-font-family" class="por-font-select" title="Font" aria-label="Font">' +
+      '          <option value="Calibri, Arial, sans-serif">Calibri</option>' +
+      '          <option value="Arial, sans-serif">Arial</option>' +
+      '          <option value="Georgia, serif">Georgia</option>' +
+      '          <option value="Times New Roman, serif">Times</option>' +
+      '          <option value="Courier New, monospace">Courier</option>' +
+      '        </select>' +
+      '        <input type="number" id="por-font-size" class="por-font-size" min="8" max="96" value="18" title="Font size" aria-label="Font size">' +
+      '        <button type="button" class="por-iconbtn" id="por-font-grow" title="Increase Font Size" aria-label="Grow font">' + ICONS.fontGrow + '</button>' +
+      '        <button type="button" class="por-iconbtn" id="por-font-shrink" title="Decrease Font Size" aria-label="Shrink font">A−</button>' +
+      '      </div>' +
+      '      <div class="por-ribbon__row">' +
+      '        <button type="button" class="por-iconbtn" data-por-text="bold" title="Bold" aria-label="Bold">' + ICONS.bold + '</button>' +
+      '        <button type="button" class="por-iconbtn" data-por-text="italic" title="Italic" aria-label="Italic">' + ICONS.italic + '</button>' +
+      '        <button type="button" class="por-iconbtn" data-por-text="underline" title="Underline" aria-label="Underline">' + ICONS.underline + '</button>' +
+      '        <button type="button" class="por-iconbtn" data-por-text="strike" title="Strikethrough" aria-label="Strikethrough">' + ICONS.strike + '</button>' +
+      '        <div class="por-picker" data-por-picker="font-color">' +
+      '          <button type="button" class="por-picker__btn por-picker__btn--font" id="por-font-color-btn" title="Font Color" aria-label="Font colour" aria-haspopup="true" aria-expanded="false">' +
+      '            ' + ICONS.fontColor + '<span class="por-picker__chip" id="por-font-color-chip"></span>' +
+      '          </button>' +
+      '          <div class="por-picker__pop por-picker__pop--colors" id="por-font-color-pop" hidden role="listbox" aria-label="Font colours">' +
+                colorGrid('data-por-font-color') +
+      '          </div>' +
       '        </div>' +
       '      </div>' +
       '    </div>' +
@@ -420,33 +425,33 @@
       '  <div class="por-ribbon__sep" aria-hidden="true"></div>' +
       '  <div class="por-ribbon__group por-ribbon__group--collapsible" data-por-collapse="paragraph" role="group" aria-label="Paragraph">' +
       '    <div class="por-ribbon__row">' +
-      '      <button type="button" class="por-iconbtn" data-por-align="left" title="Align Left" aria-label="Align left">⫷</button>' +
-      '      <button type="button" class="por-iconbtn" data-por-align="center" title="Center" aria-label="Align center">☰</button>' +
-      '      <button type="button" class="por-iconbtn" data-por-align="right" title="Align Right" aria-label="Align right">⫸</button>' +
-      '      <button type="button" class="por-iconbtn" data-por-text="bullet" title="Bullets" aria-label="Bullets">•</button>' +
+      '      <button type="button" class="por-iconbtn" data-por-align="left" title="Align Left" aria-label="Align left">' + (fluentIcon('align_left') || '⫷') + '</button>' +
+      '      <button type="button" class="por-iconbtn" data-por-align="center" title="Center" aria-label="Align center">' + (fluentIcon('align_center') || '☰') + '</button>' +
+      '      <button type="button" class="por-iconbtn" data-por-align="right" title="Align Right" aria-label="Align right">' + (fluentIcon('align_right') || '⫸') + '</button>' +
+      '      <button type="button" class="por-iconbtn" data-por-text="bullet" title="Bullets" aria-label="Bullets">' + ICONS.bullet + '</button>' +
       '      <button type="button" class="por-iconbtn" id="por-line-spacing" title="Line Spacing" aria-label="Line spacing" disabled>≡</button>' +
       '    </div>' +
       '    <span class="por-ribbon__label">Paragraph</span>' +
       '  </div>' +
       '  <div class="por-ribbon__sep" aria-hidden="true"></div>' +
       '  <div class="por-ribbon__group por-ribbon__group--collapsible" data-por-collapse="drawing" role="group" aria-label="Drawing">' +
-      '    <div class="por-ribbon__row">' +
-      '      <div class="por-picker por-shapes" data-por-picker="shapes">' +
-      '        <button type="button" class="por-picker__btn por-shapes__btn" id="por-shapes-btn" title="Shapes" aria-label="Shapes" aria-haspopup="true" aria-expanded="false">' +
-                ICONS.rect + '<span class="por-shapes__chev">▾</span>' +
-      '        </button>' +
-      '        <div class="por-picker__pop por-shapes__pop" id="por-shapes-pop" hidden role="menu" aria-label="Shapes">' +
+      '    <div class="por-ribbon__row por-ribbon__row--drawing">' +
+      '      <div class="por-picker por-shapes por-shapes--docked" data-por-picker="shapes">' +
+      '        <div class="por-shapes__head">' +
+      '          <button type="button" class="por-picker__btn por-shapes__btn" id="por-shapes-btn" title="Shapes" aria-label="Shapes" aria-haspopup="true" aria-expanded="true">' +
+                    ICONS.shapes + '<span class="por-shapes__btn-label">Shapes</span><span class="por-shapes__chev">▾</span>' +
+      '          </button>' +
+      '        </div>' +
+      '        <div class="por-picker__pop por-shapes__pop por-shapes__pop--docked" id="por-shapes-pop" role="menu" aria-label="Shapes">' +
       '          <div class="por-shapes__grid por-toolbar__tools">' +
       '            <button type="button" class="por-iconbtn is-on" data-por-tool="select" title="Select" aria-label="Select">' + ICONS.select + '</button>' +
-      '            <button type="button" class="por-iconbtn" data-rb-tool="line" title="Line" aria-label="Line">' +
-                      svgIcon('<path d="M5 19 19 5"/>') + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="line" title="Line" aria-label="Line">' + ICONS.line + '</button>' +
       '            <button type="button" class="por-iconbtn" data-rb-tool="arrow" title="Arrow" aria-label="Arrow">' + ICONS.arrow + '</button>' +
       '            <button type="button" class="por-iconbtn" data-rb-tool="rect" title="Rectangle" aria-label="Rectangle">' + ICONS.rect + '</button>' +
       '            <button type="button" class="por-iconbtn" data-rb-tool="roundRect" title="Rounded Rectangle" aria-label="Rounded rectangle">' +
-                      svgIcon('<rect x="3.5" y="5.5" width="17" height="13" rx="4"/>') + '</button>' +
+                      (fluentIcon('square') || svgIcon('<rect x="3.5" y="5.5" width="17" height="13" rx="4"/>')) + '</button>' +
       '            <button type="button" class="por-iconbtn" data-rb-tool="circle" title="Oval" aria-label="Circle">' + ICONS.circle + '</button>' +
-      '            <button type="button" class="por-iconbtn" data-rb-tool="triangle" title="Triangle" aria-label="Triangle">' +
-                      svgIcon('<path d="M12 4 20 19H4z"/>') + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="triangle" title="Triangle" aria-label="Triangle">' + ICONS.triangle + '</button>' +
       '            <button type="button" class="por-iconbtn" id="por-insert-text" title="Text Box" aria-label="Text">' + ICONS.textBox + '</button>' +
       '            <button type="button" class="por-iconbtn" data-rb-tool="pencil" title="Freeform" aria-label="Pencil">' + ICONS.pencil + '</button>' +
       '            <button type="button" class="por-iconbtn" data-rb-tool="eraser" title="Eraser" aria-label="Eraser">' + ICONS.eraser + '</button>' +
@@ -455,99 +460,132 @@
       '          </div>' +
       '        </div>' +
       '      </div>' +
-      '      <div class="por-picker" data-por-picker="arrange">' +
-      '        <button type="button" class="por-picker__btn por-picker__btn--label" id="por-arrange-btn" title="Arrange" aria-label="Arrange" aria-haspopup="true" aria-expanded="false">' +
-                ICONS.bringForward + ' Arrange <span class="por-shapes__chev">▾</span>' +
-      '        </button>' +
-      '        <div class="por-picker__pop por-arrange__pop" id="por-arrange-pop" hidden role="menu" aria-label="Arrange">' +
-      '          <button type="button" class="por-menu-item" data-por-stack="front" title="Bring to Front">' +
-                  ICONS.bringForward + '<span>Bring to Front</span></button>' +
-      '          <button type="button" class="por-menu-item" data-por-stack="forward" title="Bring Forward">' +
-                  ICONS.bringForward + '<span>Bring Forward</span></button>' +
-      '          <button type="button" class="por-menu-item" data-por-stack="backward" title="Send Backward">' +
-                  ICONS.sendBackward + '<span>Send Backward</span></button>' +
-      '          <button type="button" class="por-menu-item" data-por-stack="back" title="Send to Back">' +
-                  ICONS.sendBackward + '<span>Send to Back</span></button>' +
-      '          <div class="por-stackmenu__sep"></div>' +
-      '          <button type="button" class="por-menu-item" data-por-align-marks="left" title="Align Left">' +
-                  ICONS.align + '<span>Align Left</span></button>' +
-      '          <button type="button" class="por-menu-item" data-por-align-marks="center" title="Align Center">' +
-                  ICONS.align + '<span>Align Center</span></button>' +
-      '          <button type="button" class="por-menu-item" data-por-align-marks="right" title="Align Right">' +
-                  ICONS.align + '<span>Align Right</span></button>' +
-      '          <button type="button" class="por-menu-item" data-por-align-marks="top" title="Align Top">' +
-                  ICONS.align + '<span>Align Top</span></button>' +
-      '          <button type="button" class="por-menu-item" data-por-align-marks="middle" title="Align Middle">' +
-                  ICONS.align + '<span>Align Middle</span></button>' +
-      '          <button type="button" class="por-menu-item" data-por-align-marks="bottom" title="Align Bottom">' +
-                  ICONS.align + '<span>Align Bottom</span></button>' +
-      '          <div class="por-stackmenu__sep"></div>' +
-      '          <button type="button" class="por-menu-item" data-por-distribute="h" title="Distribute Horizontally">' +
-                  ICONS.align + '<span>Distribute Horizontally</span></button>' +
-      '          <button type="button" class="por-menu-item" data-por-distribute="v" title="Distribute Vertically">' +
-                  ICONS.align + '<span>Distribute Vertically</span></button>' +
-      '          <div class="por-stackmenu__sep"></div>' +
-      '          <button type="button" class="por-menu-item" id="por-group-btn" title="Group">' +
-                  ICONS.group + '<span>Group</span></button>' +
-      '          <button type="button" class="por-menu-item" id="por-ungroup-btn" title="Ungroup">' +
-                  ICONS.group + '<span>Ungroup</span></button>' +
+      '      <div class="por-ribbon__stack por-ribbon__stack--labelled">' +
+      '        <div class="por-picker" data-por-picker="arrange">' +
+      '          <button type="button" class="por-ribbon__large" id="por-arrange-btn" title="Arrange" aria-label="Arrange" aria-haspopup="true" aria-expanded="false">' +
+                    ICONS.bringForward + '<span class="por-ribbon__large-label">Arrange</span><span class="por-shapes__chev">▾</span>' +
+      '          </button>' +
+      '          <div class="por-picker__pop por-arrange__pop" id="por-arrange-pop" hidden role="menu" aria-label="Arrange">' +
+      '            <button type="button" class="por-menu-item" data-por-stack="front" title="Bring to Front">' +
+                      ICONS.bringForward + '<span>Bring to Front</span></button>' +
+      '            <button type="button" class="por-menu-item" data-por-stack="forward" title="Bring Forward">' +
+                      ICONS.bringForward + '<span>Bring Forward</span></button>' +
+      '            <button type="button" class="por-menu-item" data-por-stack="backward" title="Send Backward">' +
+                      ICONS.sendBackward + '<span>Send Backward</span></button>' +
+      '            <button type="button" class="por-menu-item" data-por-stack="back" title="Send to Back">' +
+                      ICONS.sendBackward + '<span>Send to Back</span></button>' +
+      '            <div class="por-stackmenu__sep"></div>' +
+      '            <button type="button" class="por-menu-item" data-por-align-marks="left" title="Align Left">' +
+                      ICONS.align + '<span>Align Left</span></button>' +
+      '            <button type="button" class="por-menu-item" data-por-align-marks="center" title="Align Center">' +
+                      ICONS.align + '<span>Align Center</span></button>' +
+      '            <button type="button" class="por-menu-item" data-por-align-marks="right" title="Align Right">' +
+                      ICONS.align + '<span>Align Right</span></button>' +
+      '            <button type="button" class="por-menu-item" data-por-align-marks="top" title="Align Top">' +
+                      ICONS.align + '<span>Align Top</span></button>' +
+      '            <button type="button" class="por-menu-item" data-por-align-marks="middle" title="Align Middle">' +
+                      ICONS.align + '<span>Align Middle</span></button>' +
+      '            <button type="button" class="por-menu-item" data-por-align-marks="bottom" title="Align Bottom">' +
+                      ICONS.align + '<span>Align Bottom</span></button>' +
+      '            <div class="por-stackmenu__sep"></div>' +
+      '            <button type="button" class="por-menu-item" data-por-distribute="h" title="Distribute Horizontally">' +
+                      ICONS.align + '<span>Distribute Horizontally</span></button>' +
+      '            <button type="button" class="por-menu-item" data-por-distribute="v" title="Distribute Vertically">' +
+                      ICONS.align + '<span>Distribute Vertically</span></button>' +
+      '            <div class="por-stackmenu__sep"></div>' +
+      '            <button type="button" class="por-menu-item" id="por-group-btn" title="Group">' +
+                      ICONS.group + '<span>Group</span></button>' +
+      '            <button type="button" class="por-menu-item" id="por-ungroup-btn" title="Ungroup">' +
+                      ICONS.group + '<span>Ungroup</span></button>' +
+      '          </div>' +
       '        </div>' +
-      '      </div>' +
-      '      <label class="por-fill-toggle por-fill-toggle--tool" title="Fill shapes when drawing"><input type="checkbox" id="por-fill" aria-label="Fill shapes"><span class="por-fill-toggle__text">Fill</span></label>' +
-      '      <div class="por-picker" data-por-picker="fill">' +
-      '        <button type="button" class="por-picker__btn por-picker__btn--shape" id="por-fill-btn" title="Shape Fill" aria-label="Fill colour" aria-haspopup="true" aria-expanded="false">' +
-      '          <span class="por-shape-fill__icon" aria-hidden="true">' + ICONS.fillBucket + '</span>' +
-      '          <span class="por-picker__chip" id="por-fill-chip"></span>' +
-      '          <span class="por-shapes__chev">▾</span>' +
-      '        </button>' +
-      '        <div class="por-picker__pop por-picker__pop--colors" id="por-fill-pop" hidden role="listbox" aria-label="Fill colours">' +
-              colorGrid('data-por-fill') +
-      '          <div class="por-picker__extras">' +
-      '            <label class="por-picker__custom">Custom <input type="color" id="por-fill-custom" value="#eab308"></label>' +
-      '            <div class="por-picker__recent" id="por-fill-recent" aria-label="Recent fill colours"></div>' +
+      '        <div class="por-picker" data-por-picker="styles">' +
+      '          <button type="button" class="por-ribbon__large" id="por-styles-btn" title="Quick Styles" aria-label="Quick Styles" aria-haspopup="true" aria-expanded="false">' +
+                    ICONS.styleBrush + '<span class="por-ribbon__large-label">Quick Styles</span><span class="por-shapes__chev">▾</span>' +
+      '          </button>' +
+      '          <div class="por-picker__pop por-styles__pop" id="por-styles-pop" hidden role="menu" aria-label="Quick Styles">' +
+      '            <button type="button" class="por-menu-item" data-por-quick-style="#eab308" title="Gold fill">Gold</button>' +
+      '            <button type="button" class="por-menu-item" data-por-quick-style="#1d4ed8" title="Blue fill">Blue</button>' +
+      '            <button type="button" class="por-menu-item" data-por-quick-style="#c14a2b" title="Terra fill">Terra</button>' +
+      '            <button type="button" class="por-menu-item" data-por-quick-style="#16a34a" title="Green fill">Green</button>' +
+      '            <button type="button" class="por-menu-item" data-por-quick-style="#111111" title="Black fill">Black</button>' +
       '          </div>' +
       '        </div>' +
       '      </div>' +
-      '      <div class="por-picker" data-por-picker="outline">' +
-      '        <button type="button" class="por-picker__btn por-picker__btn--shape" id="por-outline-btn" title="Shape Outline" aria-label="Outline colour" aria-haspopup="true" aria-expanded="false">' +
-      '          <span class="por-shape-outline__icon" aria-hidden="true">' + ICONS.outlinePen + '</span>' +
-      '          <span class="por-picker__chip" id="por-outline-chip"></span>' +
-      '          <span class="por-shapes__chev">▾</span>' +
-      '        </button>' +
-      '        <div class="por-picker__pop por-picker__pop--colors" id="por-outline-pop" hidden role="listbox" aria-label="Outline colours">' +
-              colorGrid('data-por-outline') +
-      '          <div class="por-picker__extras">' +
-      '            <label class="por-picker__custom">Custom <input type="color" id="por-outline-custom" value="#1d4ed8"></label>' +
-      '            <div class="por-picker__recent" id="por-outline-recent" aria-label="Recent outline colours"></div>' +
+      '      <div class="por-ribbon__stack por-ribbon__stack--shape-style">' +
+      '        <div class="por-picker" data-por-picker="fill">' +
+      '          <button type="button" class="por-picker__btn por-picker__btn--shape por-picker__btn--labelled" id="por-fill-btn" title="Shape Fill" aria-label="Fill colour" aria-haspopup="true" aria-expanded="false">' +
+      '            <span class="por-shape-fill__icon" aria-hidden="true">' + ICONS.fillBucket + '</span>' +
+      '            <span class="por-picker__text">Shape Fill</span>' +
+      '            <span class="por-picker__chip" id="por-fill-chip"></span>' +
+      '            <span class="por-shapes__chev">▾</span>' +
+      '          </button>' +
+      '          <div class="por-picker__pop por-picker__pop--colors" id="por-fill-pop" hidden role="listbox" aria-label="Fill colours">' +
+                colorGrid('data-por-fill') +
+      '            <div class="por-picker__extras">' +
+      '              <label class="por-picker__custom">Custom <input type="color" id="por-fill-custom" value="#eab308"></label>' +
+      '              <div class="por-picker__recent" id="por-fill-recent" aria-label="Recent fill colours"></div>' +
+      '            </div>' +
+      '          </div>' +
+      '        </div>' +
+      '        <div class="por-picker" data-por-picker="outline">' +
+      '          <button type="button" class="por-picker__btn por-picker__btn--shape por-picker__btn--labelled" id="por-outline-btn" title="Shape Outline" aria-label="Outline colour" aria-haspopup="true" aria-expanded="false">' +
+      '            <span class="por-shape-outline__icon" aria-hidden="true">' + ICONS.outlinePen + '</span>' +
+      '            <span class="por-picker__text">Shape Outline</span>' +
+      '            <span class="por-picker__chip" id="por-outline-chip"></span>' +
+      '            <span class="por-shapes__chev">▾</span>' +
+      '          </button>' +
+      '          <div class="por-picker__pop por-picker__pop--colors" id="por-outline-pop" hidden role="listbox" aria-label="Outline colours">' +
+                colorGrid('data-por-outline') +
+      '            <div class="por-picker__extras">' +
+      '              <label class="por-picker__custom">Custom <input type="color" id="por-outline-custom" value="#1d4ed8"></label>' +
+      '              <div class="por-picker__recent" id="por-outline-recent" aria-label="Recent outline colours"></div>' +
+      '            </div>' +
+      '          </div>' +
+      '        </div>' +
+      '        <div class="por-picker" data-por-picker="effects">' +
+      '          <button type="button" class="por-picker__btn por-picker__btn--shape por-picker__btn--labelled" id="por-effects-btn" title="Shape Effects" aria-label="Shape Effects" aria-haspopup="true" aria-expanded="false">' +
+      '            <span aria-hidden="true">' + ICONS.effects + '</span>' +
+      '            <span class="por-picker__text">Shape Effects</span>' +
+      '            <span class="por-shapes__chev">▾</span>' +
+      '          </button>' +
+      '          <div class="por-picker__pop" id="por-effects-pop" hidden role="menu" aria-label="Shape Effects">' +
+      '            <button type="button" class="por-menu-item" data-por-effect="none" title="No effect">No Effect</button>' +
+      '            <button type="button" class="por-menu-item" data-por-effect="shadow" title="Shadow">Shadow</button>' +
       '          </div>' +
       '        </div>' +
       '      </div>' +
-      '      <div class="por-picker" data-por-picker="weight">' +
-      '        <button type="button" class="por-picker__btn por-picker__btn--icon" id="por-weight-btn" title="Weight" aria-label="Line weight" aria-haspopup="true" aria-expanded="false">' +
-                ICONS.weight + '</button>' +
-      '        <div class="por-picker__pop por-picker__pop--weight" id="por-weight-pop" hidden role="listbox" aria-label="Line weight">' +
-      '          <button type="button" class="por-weight" data-por-pt="0.75" data-por-thick="1" title="0.75 pt" aria-label="0.75 pt"><span class="por-weight__bar" style="height:1.5px"></span><span class="por-weight__label">0.75</span></button>' +
-      '          <button type="button" class="por-weight" data-por-pt="1.5" data-por-thick="2" title="1.5 pt" aria-label="1.5 pt"><span class="por-weight__bar" style="height:3px"></span><span class="por-weight__label">1.5</span></button>' +
-      '          <button type="button" class="por-weight" data-por-pt="3" data-por-thick="3" title="3 pt" aria-label="3 pt"><span class="por-weight__bar" style="height:5px"></span><span class="por-weight__label">3</span></button>' +
-      '          <button type="button" class="por-weight" data-por-pt="4.5" data-por-thick="3" title="4.5 pt" aria-label="4.5 pt"><span class="por-weight__bar" style="height:7px"></span><span class="por-weight__label">4.5</span></button>' +
+      '      <div class="por-ribbon__stack por-ribbon__stack--extras">' +
+      '        <label class="por-fill-toggle por-fill-toggle--tool" title="Fill shapes when drawing"><input type="checkbox" id="por-fill" aria-label="Fill shapes"><span class="por-fill-toggle__text">Fill</span></label>' +
+      '        <label class="por-opacity" title="Transparency"><span class="por-opacity__label">Transp.</span><input type="range" id="por-opacity" min="0" max="100" value="100" aria-label="Transparency"></label>' +
+      '        <div class="por-ribbon__row">' +
+      '          <div class="por-picker" data-por-picker="weight">' +
+      '            <button type="button" class="por-picker__btn por-picker__btn--icon" id="por-weight-btn" title="Weight" aria-label="Line weight" aria-haspopup="true" aria-expanded="false">' +
+                      ICONS.weight + '</button>' +
+      '            <div class="por-picker__pop por-picker__pop--weight" id="por-weight-pop" hidden role="listbox" aria-label="Line weight">' +
+      '              <button type="button" class="por-weight" data-por-pt="0.75" data-por-thick="1" title="0.75 pt" aria-label="0.75 pt"><span class="por-weight__bar" style="height:1.5px"></span><span class="por-weight__label">0.75</span></button>' +
+      '              <button type="button" class="por-weight" data-por-pt="1.5" data-por-thick="2" title="1.5 pt" aria-label="1.5 pt"><span class="por-weight__bar" style="height:3px"></span><span class="por-weight__label">1.5</span></button>' +
+      '              <button type="button" class="por-weight" data-por-pt="3" data-por-thick="3" title="3 pt" aria-label="3 pt"><span class="por-weight__bar" style="height:5px"></span><span class="por-weight__label">3</span></button>' +
+      '              <button type="button" class="por-weight" data-por-pt="4.5" data-por-thick="3" title="4.5 pt" aria-label="4.5 pt"><span class="por-weight__bar" style="height:7px"></span><span class="por-weight__label">4.5</span></button>' +
+      '            </div>' +
+      '          </div>' +
+      '          <div class="por-picker" data-por-picker="dash">' +
+      '            <button type="button" class="por-picker__btn por-picker__btn--icon" id="por-dash-btn" title="Dashes" aria-label="Dash style" aria-haspopup="true" aria-expanded="false">' +
+                      svgIcon('<path d="M4 12h3M10 12h3M16 12h4"/>') + '</button>' +
+      '            <div class="por-picker__pop" id="por-dash-pop" hidden role="listbox" aria-label="Dash styles">' +
+      '              <button type="button" class="por-dash" data-por-dash="solid" title="Solid">────</button>' +
+      '              <button type="button" class="por-dash" data-por-dash="dashed" title="Dashed">- - -</button>' +
+      '              <button type="button" class="por-dash" data-por-dash="dotted" title="Dotted">· · ·</button>' +
+      '            </div>' +
+      '          </div>' +
+      '          <button type="button" class="por-iconbtn" id="por-set-default" title="Set as Default" aria-label="Set as default">' +
+                    ICONS.star + '</button>' +
       '        </div>' +
       '      </div>' +
-      '      <div class="por-picker" data-por-picker="dash">' +
-      '        <button type="button" class="por-picker__btn por-picker__btn--icon" id="por-dash-btn" title="Dashes" aria-label="Dash style" aria-haspopup="true" aria-expanded="false">' +
-                svgIcon('<path d="M4 12h3M10 12h3M16 12h4"/>') + '</button>' +
-      '        <div class="por-picker__pop" id="por-dash-pop" hidden role="listbox" aria-label="Dash styles">' +
-      '          <button type="button" class="por-dash" data-por-dash="solid" title="Solid">────</button>' +
-      '          <button type="button" class="por-dash" data-por-dash="dashed" title="Dashed">- - -</button>' +
-      '          <button type="button" class="por-dash" data-por-dash="dotted" title="Dotted">· · ·</button>' +
-      '        </div>' +
-      '      </div>' +
-      '      <label class="por-opacity" title="Transparency"><span class="por-opacity__label">Transp.</span><input type="range" id="por-opacity" min="0" max="100" value="100" aria-label="Transparency"></label>' +
-      '      <button type="button" class="por-iconbtn" id="por-set-default" title="Set as Default" aria-label="Set as default">' +
-              svgIcon('<path d="M12 3l2.2 4.5 5 .7-3.6 3.5.9 5.1L12 14.8 7.5 16.8l.9-5.1L4.8 8.2l5-.7z"/>') + '</button>' +
       '    </div>' +
       '    <span class="por-ribbon__label">Drawing</span>' +
       '  </div>' +
-      '  <div class="por-ribbon__sep" aria-hidden="true"></div>' +
+'  <div class="por-ribbon__sep" aria-hidden="true"></div>' +
       '</div>' +
 
       // Insert + Print stay pinned outside the scroll so Floor plan / Contour
@@ -556,8 +594,8 @@
       '    <div class="por-ribbon__group" role="group" aria-label="Editing">' +
       '      <div class="por-ribbon__row">' +
       '        <div class="por-picker" data-por-picker="select-menu">' +
-      '          <button type="button" class="por-picker__btn por-picker__btn--label" id="por-select-menu-btn" title="Select" aria-label="Select menu" aria-haspopup="true" aria-expanded="false">' +
-                    ICONS.select + ' Select <span class="por-shapes__chev">▾</span>' +
+      '          <button type="button" class="por-ribbon__large" id="por-select-menu-btn" title="Select" aria-label="Select menu" aria-haspopup="true" aria-expanded="false">' +
+                    ICONS.select + '<span class="por-ribbon__large-label">Select</span><span class="por-shapes__chev">▾</span>' +
       '          </button>' +
       '          <div class="por-picker__pop" id="por-select-menu-pop" hidden role="menu" aria-label="Select">' +
       '            <button type="button" class="por-menu-item" id="por-select-all" title="Select All">Select All</button>' +
@@ -847,7 +885,10 @@
         }
       });
       void scroll.offsetWidth;
-      var order = ['font', 'paragraph', 'clipboard', 'drawing'];
+      // Tim/CC: Font (B/I/U/colours) always visible at 1280 and 1440 — never fold into "Font ▾".
+      var order = window.innerWidth >= 1280
+        ? ['paragraph', 'clipboard', 'drawing']
+        : ['paragraph', 'clipboard', 'drawing', 'font'];
       var i = 0;
       while (scroll.scrollWidth > scroll.clientWidth + 1 && i < order.length) {
         var g = scroll.querySelector('[data-por-collapse="' + order[i] + '"]');
@@ -941,8 +982,16 @@
     }
 
     function closePickers() {
-      root.querySelectorAll('.por-picker__pop').forEach(function (pop) { pop.hidden = true; });
-      root.querySelectorAll('.por-picker__btn').forEach(function (btn) {
+      root.querySelectorAll('.por-picker__pop').forEach(function (pop) {
+        // PowerPoint Drawing gallery stays docked in the ribbon.
+        if (pop.id === 'por-shapes-pop' && pop.classList.contains('por-shapes__pop--docked')) return;
+        pop.hidden = true;
+      });
+      root.querySelectorAll('.por-picker__btn, .por-ribbon__large').forEach(function (btn) {
+        if (btn.id === 'por-shapes-btn') {
+          btn.setAttribute('aria-expanded', 'true');
+          return;
+        }
         btn.setAttribute('aria-expanded', 'false');
       });
     }
@@ -4327,22 +4376,84 @@
       });
     }
     // PowerPoint ribbon: shape gallery, Arrange, Select, Clipboard, Format pane.
-    ['shapes', 'arrange', 'select-menu', 'font-color', 'insert'].forEach(function (which) {
+    ['shapes', 'arrange', 'select-menu', 'font-color', 'insert', 'styles', 'effects'].forEach(function (which) {
       var b = root.querySelector('#por-' + which + '-btn');
       if (!b) return;
       b.addEventListener('click', function (event) {
         event.stopPropagation();
+        if (which === 'shapes') {
+          // Docked gallery is always visible; button is a visual affordance.
+          var shapesPop = root.querySelector('#por-shapes-pop');
+          if (shapesPop) shapesPop.hidden = false;
+          b.setAttribute('aria-expanded', 'true');
+          return;
+        }
         togglePicker(which);
       });
     });
+    // Quick Styles — apply fill colour presets (add-only).
+    root.querySelectorAll('[data-por-quick-style]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var color = btn.getAttribute('data-por-quick-style');
+        var fillCb = root.querySelector('#por-fill');
+        if (fillCb && !fillCb.checked) {
+          fillCb.checked = true;
+          fillCb.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        var sw = root.querySelector('#por-fill-pop [data-por-fill="' + color + '"]');
+        if (sw) sw.click();
+        closePickers();
+      });
+    });
+    root.querySelectorAll('[data-por-effect]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var kind = btn.getAttribute('data-por-effect');
+        var target = styleTarget();
+        if (target && state.fabricCanvas) {
+          try {
+            if (kind === 'shadow') {
+              target.set('shadow', new window.fabric.Shadow({ color: 'rgba(0,0,0,0.35)', blur: 8, offsetX: 2, offsetY: 2 }));
+            } else {
+              target.set('shadow', null);
+            }
+            state.fabricCanvas.requestRenderAll();
+            scheduleSave();
+          } catch (_) {}
+        }
+        closePickers();
+      });
+    });
+    var tabInsert = root.querySelector('#por-tab-insert');
+    if (tabInsert) {
+      tabInsert.addEventListener('click', function () {
+        root.querySelectorAll('.por-tabs__tab').forEach(function (t) {
+          t.classList.toggle('is-active', t === tabInsert);
+          t.setAttribute('aria-selected', t === tabInsert ? 'true' : 'false');
+        });
+        var insertBtn = root.querySelector('#por-insert-btn');
+        if (insertBtn) insertBtn.click();
+      });
+    }
+    var tabHome = root.querySelector('.por-tabs__tab[data-por-tab="home"]');
+    if (tabHome) {
+      tabHome.addEventListener('click', function () {
+        root.querySelectorAll('.por-tabs__tab').forEach(function (t) {
+          var on = t.getAttribute('data-por-tab') === 'home';
+          t.classList.toggle('is-active', on);
+          t.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        closePickers();
+      });
+    }
     // Dismiss Insert menu after choosing an action.
     root.querySelectorAll('#por-insert-pop .por-linkbtn').forEach(function (btn) {
       btn.addEventListener('click', function () { closePickers(); });
     });
     root.querySelectorAll('[data-rb-tool], [data-por-tool="select"], #por-insert-text').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        // Close the shapes gallery after picking a tool (PowerPoint dismisses it).
         var shapesPop = root.querySelector('#por-shapes-pop');
+        // Docked gallery stays open; floating gallery still dismisses.
+        if (shapesPop && shapesPop.classList.contains('por-shapes__pop--docked')) return;
         if (shapesPop && !shapesPop.hidden && btn.closest && btn.closest('#por-shapes-pop')) {
           closePickers();
         }

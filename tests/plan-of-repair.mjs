@@ -219,7 +219,10 @@ const shell = await page.evaluate(() => {
   if (toolbar && printBtn) {
     const t = toolbar.getBoundingClientRect();
     const p = printBtn.getBoundingClientRect();
-    printSameRow = p.top < t.top + 48;
+    const undo = document.querySelector('#por-undo')?.getBoundingClientRect();
+    // Tall PowerPoint ribbon: Print stays inside the toolbar band beside Editing.
+    printSameRow = p.top >= t.top - 2 && p.bottom <= t.bottom + 2 &&
+      (undo ? p.top < undo.bottom + 10 : p.top < t.top + 80);
   }
   const wordTools = Array.from(document.querySelectorAll('.por-toolbar__tools .por-iconbtn'))
     .map((b) => (b.textContent || '').replace(/\s+/g, ' ').trim())
@@ -1870,7 +1873,20 @@ check(
 // Print stays on first toolbar row at 1440 and 1280.
 async function toolbarPrintRow(width) {
   await page.setViewport({ width, height: 960 });
-  await new Promise((r) => setTimeout(r, 200));
+  await page.evaluate(() => {
+    // Close overflow menus so an open collapse body does not inflate toolbar height.
+    document.querySelectorAll('.por-ribbon__group--collapsible.is-open').forEach((g) => {
+      g.classList.remove('is-open');
+      const btn = g.querySelector('.por-ribbon__collapse-btn');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    });
+    document.querySelectorAll('.por-picker__pop').forEach((pop) => {
+      if (pop.id === 'por-shapes-pop' && pop.classList.contains('por-shapes__pop--docked')) return;
+      pop.hidden = true;
+    });
+    window.dispatchEvent(new Event('resize'));
+  });
+  await new Promise((r) => setTimeout(r, 250));
   return page.evaluate(() => {
     const toolbar = document.querySelector('.por-toolbar');
     const printBtn = document.querySelector('#por-print');
@@ -1884,19 +1900,22 @@ async function toolbarPrintRow(width) {
       printTop: pr.top,
       undoBottom: undo ? undo.bottom : null,
       width: window.innerWidth,
+      openGroups: Array.from(document.querySelectorAll('.por-ribbon__group--collapsible.is-open'))
+        .map((g) => g.getAttribute('data-por-collapse')),
     };
   });
 }
 const print1440 = await toolbarPrintRow(1440);
 check(
   'Print stays on first toolbar row at 1440',
-  print1440.ok && print1440.toolbarH <= 78,
+  // Tall PowerPoint-style ribbon (Tim Nov 11) — command band taller than the old 78px strip.
+  print1440.ok && print1440.toolbarH <= 140,
   JSON.stringify(print1440)
 );
 const print1280 = await toolbarPrintRow(1280);
 check(
   'Print stays on first toolbar row at 1280',
-  print1280.ok && print1280.toolbarH <= 78,
+  print1280.ok && print1280.toolbarH <= 140,
   JSON.stringify(print1280)
 );
 
