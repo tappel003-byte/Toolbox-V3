@@ -20,7 +20,7 @@ Updated by: Cursor — Claude Code handoff prompt after IV reorder + POR chrome.
 | Field | Value |
 |-------|--------|
 | **Has the ball** | **Claude Code** — check tip below (IV schedule + panel order + POR PPT chrome/icons). Report what matches Tim’s PowerPoint screenshots and what still does not. Do not strip. Not on `main`. |
-| Integration tip | filled after merge |
+| Integration tip | `f1ba197` (`f1ba19763e13fff81ee80aca7d9ff01ecaa5bfc3`) |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Shell | `toolbox-shell-v464` |
