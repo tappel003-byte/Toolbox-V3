@@ -439,7 +439,7 @@ const lists = await page.evaluate(() => {
       .map((el) => el.textContent.trim()),
   };
 });
-check('Visits heading shown under On this device',
+check('Visits heading shown under Customer Files',
   lists.visitsHeading === 'Visits', JSON.stringify(lists));
 check('Visit appears under Visits, not under Customer Files jobs',
   lists.visitRows.includes(visitId) && !lists.jobRows.includes(visitId) &&
