@@ -547,6 +547,8 @@ function copyIdentity(target, value) {
   if (survey) target.fieldWorkDate = survey;
   if (created) target.createdAt = created;
   if (trimmed(value.deletedAt)) target.deletedAt = trimmed(value.deletedAt);
+  // Initial Visit mark (Tim, Nov 11, 2026). Absent on ordinary Customer Files.
+  if (value.status === 'visit') target.status = 'visit';
   const place = placeOf(value.propertyAddressLat, value.propertyAddressLon);
   if (place) {
     target.propertyAddressLat = place.lat;

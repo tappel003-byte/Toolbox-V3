@@ -75,9 +75,47 @@
     };
   }
 
+  /** Initial Visit mark. Absent on ordinary Customer Files (must stay as today). */
+  function isVisitRecord(record) {
+    return !!(record && record.status === 'visit');
+  }
+
+  function todayIsoDate() {
+    const d = new Date();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + m + '-' + day;
+  }
+
+  function blankInitialVisit(id) {
+    const record = blankCustomerFile(id);
+    record.status = 'visit';
+    record.distress = {
+      updatedAt: new Date().toISOString(),
+      pins: [],
+      quickCapture: [],
+      jobWalk: {
+        updatedAt: '',
+        notes: [],
+        videos: [],
+        visitDate: todayIsoDate(),
+        followUpDate: '',
+        outcomes: {
+          noProblems: false,
+          recommendFloor: false,
+          recommendDistress: false,
+          wantsQuote: false,
+          callBack: false,
+        },
+      },
+    };
+    return record;
+  }
+
   function displayName(record) {
     const name = ((record.firstName || '') + ' ' + (record.lastName || '')).trim();
-    return name || 'New Customer File';
+    if (name) return name;
+    return isVisitRecord(record) ? 'New Initial Visit' : 'New Customer File';
   }
 
   function displayAddress(record) {
@@ -628,9 +666,20 @@
     } else if (route.view === 'edit') {
       renderFileEdit(app, route.id, route.section);
     } else if (route.view === 'home') {
-      const side = route.side === 'tls' ? 'tls' : 'geo';
-      setFileSide(route.id, side);
-      renderFileHome(app, route.id, side);
+      // Visits open the visit card, not Sandia Geo / TLS home.
+      window.ToolboxDB.getCustomerFile(route.id).then(function (rec) {
+        if (rec && isVisitRecord(rec) && route.side !== 'tls') {
+          window.location.replace('#/file/' + encodeURIComponent(route.id) + '/job-walk');
+          return;
+        }
+        const side = route.side === 'tls' ? 'tls' : 'geo';
+        setFileSide(route.id, side);
+        renderFileHome(app, route.id, side);
+      }).catch(function () {
+        const side = route.side === 'tls' ? 'tls' : 'geo';
+        setFileSide(route.id, side);
+        renderFileHome(app, route.id, side);
+      });
     } else if (route.view === 'job-walk') {
       setFileSide(route.id, 'tls');
       renderJobWalk(app, route.id);
@@ -680,14 +729,17 @@
       '    <h1>Customer Files</h1>' +
       '  </div>' +
       '  <div class="cabinet-hero__actions">' +
-      '    <button type="button" id="cabinet-import" class="btn btn--secondary">Import standalone export</button>' +
       '    <button type="button" id="cabinet-new" class="btn btn--accent cabinet-new">+ New Customer File</button>' +
+      '    <button type="button" id="cabinet-visit" class="btn btn--secondary cabinet-visit">+ Initial Visit</button>' +
+      '    <button type="button" id="cabinet-import" class="btn btn--secondary">Import standalone export</button>' +
       '  </div>' +
       '  <p class="cabinet-hero__lead">Open a job or create a file. Customer details and plans stay together.</p>' +
       '</section>' +
       '<p class="cabinet-notice" id="cabinet-notice" hidden></p>' +
       '<h2 class="cabinet-section-title">On this device</h2>' +
       '<div class="cabinet-list" id="cabinet-list"></div>' +
+      '<h2 class="cabinet-section-title" id="cabinet-visits-title" hidden>Visits</h2>' +
+      '<div class="cabinet-list" id="cabinet-visits-list" hidden></div>' +
       '<button type="button" id="local-trash-recovery" class="local-trash-recovery" hidden>Recover files saved only on this device</button>' +
       '<button type="button" class="file-cabinet-entry" id="open-file-cabinet" aria-label="Open File Cabinet">' +
       '  <div class="file-cabinet-entry__main">' +
@@ -699,7 +751,10 @@
       '</div>';
 
     const listEl = app.querySelector('#cabinet-list');
+    const visitsEl = app.querySelector('#cabinet-visits-list');
+    const visitsTitle = app.querySelector('#cabinet-visits-title');
     const newBtn = app.querySelector('#cabinet-new');
+    const visitBtn = app.querySelector('#cabinet-visit');
     const importBtn = app.querySelector('#cabinet-import');
     const localTrashLink = app.querySelector('#local-trash-recovery');
     const notice = app.querySelector('#cabinet-notice');
@@ -714,6 +769,11 @@
     newBtn.addEventListener('click', function () {
       window.location.hash = '#/file/' + generateId() + '/edit';
     });
+    if (visitBtn) {
+      visitBtn.addEventListener('click', function () {
+        openInitialVisitDialog();
+      });
+    }
     importBtn.addEventListener('click', function () {
       window.location.hash = '#/import';
     });
@@ -742,16 +802,31 @@
 
       function paintRows() {
         listEl.innerHTML = '';
-        if (records.length === 0) {
+        if (visitsEl) visitsEl.innerHTML = '';
+        const jobs = records.filter(function (r) { return !isVisitRecord(r); });
+        const visits = records.filter(isVisitRecord);
+        if (jobs.length === 0) {
           const p = document.createElement('p');
           p.className = 'cabinet-empty';
           p.textContent = 'No Customer Files on this device yet.';
           listEl.appendChild(p);
-          return;
+        } else {
+          jobs.forEach(function (record) {
+            listEl.appendChild(cabinetRowNode(record));
+          });
         }
-        records.forEach(function (record) {
-          listEl.appendChild(cabinetRowNode(record));
-        });
+        if (visitsTitle && visitsEl) {
+          if (visits.length) {
+            visitsTitle.hidden = false;
+            visitsEl.hidden = false;
+            visits.forEach(function (record) {
+              visitsEl.appendChild(cabinetRowNode(record));
+            });
+          } else {
+            visitsTitle.hidden = true;
+            visitsEl.hidden = true;
+          }
+        }
       }
 
       paintRows();
@@ -791,7 +866,7 @@
   function isMutatingRoute(view) {
     return view === 'edit' || view === 'floor' || view === 'distress' ||
       view === 'import' || view === 'report' || view === 'repair' ||
-      view === 'diagnostics' || view === 'app-stub';
+      view === 'diagnostics' || view === 'app-stub' || view === 'job-walk';
   }
 
   function customerFileLocationLabel(kind, record) {
@@ -999,10 +1074,34 @@
         listEl.appendChild(p);
         return;
       }
-      filtered.sort(compareCabinetEntries);
-      filtered.forEach(function (entry) {
-        listEl.appendChild(cabinetCloudRowNode(entry, app));
-      });
+      const jobs = filtered.filter(function (entry) { return entry.status !== 'visit'; });
+      const visits = filtered.filter(function (entry) { return entry.status === 'visit'; });
+      jobs.sort(compareCabinetEntries);
+      visits.sort(compareCabinetEntries);
+      if (jobs.length) {
+        const h = document.createElement('h2');
+        h.className = 'cabinet-section-title';
+        h.textContent = 'Customer Files';
+        listEl.appendChild(h);
+        jobs.forEach(function (entry) {
+          listEl.appendChild(cabinetCloudRowNode(entry, app));
+        });
+      }
+      if (visits.length) {
+        const h = document.createElement('h2');
+        h.className = 'cabinet-section-title';
+        h.textContent = 'Visits';
+        listEl.appendChild(h);
+        visits.forEach(function (entry) {
+          listEl.appendChild(cabinetCloudRowNode(entry, app));
+        });
+      }
+      if (!jobs.length && !visits.length) {
+        const p = document.createElement('p');
+        p.className = 'cabinet-empty';
+        p.textContent = 'No Customer Files match that search.';
+        listEl.appendChild(p);
+      }
     }
 
     searchInput.addEventListener('input', paintList);
@@ -1345,13 +1444,76 @@
     });
   }
 
+  function openInitialVisitDialog() {
+    const existing = document.getElementById('initial-visit-dialog');
+    if (existing) existing.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'initial-visit-dialog';
+    overlay.className = 'iv-dialog';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'New Initial Visit');
+    overlay.innerHTML =
+      '<form class="iv-dialog__panel" id="iv-form">' +
+      '  <h2 class="iv-dialog__title">Initial Visit</h2>' +
+      '  <p class="iv-dialog__lead">Name, phone, and address — then photos and notes. No plan required.</p>' +
+      '  <label class="iv-field"><span>First name</span><input type="text" id="iv-first" autocomplete="given-name"></label>' +
+      '  <label class="iv-field"><span>Last name</span><input type="text" id="iv-last" autocomplete="family-name"></label>' +
+      '  <label class="iv-field"><span>Phone</span><input type="tel" id="iv-phone" autocomplete="tel"></label>' +
+      '  <label class="iv-field"><span>Address</span>' +
+      '    <textarea id="iv-address" rows="2" placeholder="Street address, city, state, ZIP" autocomplete="street-address"></textarea>' +
+      '  </label>' +
+      '  <div class="iv-dialog__actions">' +
+      '    <button type="button" class="btn btn--quiet" id="iv-cancel">Cancel</button>' +
+      '    <button type="submit" class="btn btn--accent" id="iv-start">Start visit</button>' +
+      '  </div>' +
+      '</form>';
+    document.body.appendChild(overlay);
+    const first = overlay.querySelector('#iv-first');
+    if (first) first.focus();
+    function close() { overlay.remove(); }
+    overlay.querySelector('#iv-cancel').addEventListener('click', close);
+    overlay.addEventListener('click', function (event) {
+      if (event.target === overlay) close();
+    });
+    overlay.querySelector('#iv-form').addEventListener('submit', function (event) {
+      event.preventDefault();
+      const id = generateId();
+      const record = blankInitialVisit(id);
+      record.firstName = (overlay.querySelector('#iv-first').value || '').trim();
+      record.lastName = (overlay.querySelector('#iv-last').value || '').trim();
+      record.cellPhone = (overlay.querySelector('#iv-phone').value || '').trim();
+      record.propertyAddress = (overlay.querySelector('#iv-address').value || '').trim();
+      record.customerUpdatedAt = new Date().toISOString();
+      record.updatedAt = record.customerUpdatedAt;
+      if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
+      const startBtn = overlay.querySelector('#iv-start');
+      if (startBtn) {
+        startBtn.disabled = true;
+        startBtn.textContent = 'Saving…';
+      }
+      window.ToolboxDB.saveCustomerFile(record).then(function () {
+        close();
+        window.location.hash = '#/file/' + encodeURIComponent(id) + '/job-walk';
+      }).catch(function (err) {
+        console.error(err);
+        if (startBtn) {
+          startBtn.disabled = false;
+          startBtn.textContent = 'Start visit';
+        }
+        window.alert('Could not save Initial Visit offline — try again.');
+      });
+    });
+  }
+
   function cabinetRowNode(record) {
     const lockedLabel = window.ToolboxSync &&
       typeof window.ToolboxSync.foreignCheckoutLabel === 'function'
       ? window.ToolboxSync.foreignCheckoutLabel(record.id)
       : '';
     const shell = document.createElement('div');
-    shell.className = 'cabinet-row-shell' + (lockedLabel ? ' is-checked-out-elsewhere' : '');
+    shell.className = 'cabinet-row-shell' + (lockedLabel ? ' is-checked-out-elsewhere' : '') +
+      (isVisitRecord(record) ? ' cabinet-row-shell--visit' : '');
     shell.dataset.customerFileId = record.id;
     if (lockedLabel) shell.dataset.checkoutLock = lockedLabel;
 
@@ -1359,6 +1521,10 @@
     row.type = 'button';
     row.className = 'cabinet-row';
     row.addEventListener('click', function () {
+      if (isVisitRecord(record)) {
+        window.location.hash = '#/file/' + encodeURIComponent(record.id) + '/job-walk';
+        return;
+      }
       window.location.hash = '#/file/' + encodeURIComponent(record.id);
     });
 
@@ -1382,9 +1548,14 @@
     const readiness = planReadiness(record);
     const planState = document.createElement('span');
     planState.className = 'cabinet-row__plan-state' + (readiness.hasPlan ? ' is-ready' : '');
-    planState.textContent = readiness.hasPlan
-      ? readiness.ready.length + (readiness.ready.length === 1 ? ' plan ready' : ' plans ready')
-      : 'Plan needed';
+    if (isVisitRecord(record)) {
+      planState.textContent = 'Initial Visit';
+      planState.classList.add('is-visit');
+    } else {
+      planState.textContent = readiness.hasPlan
+        ? readiness.ready.length + (readiness.ready.length === 1 ? ' plan ready' : ' plans ready')
+        : 'Plan needed';
+    }
     const updated = document.createElement('span');
     updated.textContent = formatUpdated(record.updatedAt);
     meta.appendChild(planState);
@@ -2017,14 +2188,16 @@
       '  <div class="cf-home__section-head">' +
       '    <div>' +
       '      <p class="eyebrow">' + (tls ? 'TLS workspaces' : 'Workspaces') + '</p>' +
-      '      <h2>' + (tls ? 'Job Walk and Plan of Repair' : 'Choose where to work') + '</h2>' +
+      '      <h2>' + (tls ? 'Initial Visit and Plan of Repair' : 'Choose where to work') + '</h2>' +
       '    </div>' +
       '    <span class="cf-home__meta" id="home-card-meta"></span>' +
       '  </div>' +
       '  <div class="cf-home__apps" id="home-apps">' +
       (tls
         ? (
-          tlsAppTileHtml('job-walk', 'Job Walk', 'Photos, descriptions, and visit notes — no plan required') +
+          // Tile filled after record load: hide Initial Visit once a plan exists
+          // unless prior Job Walk / visit capture data must still open.
+          '<div id="home-tls-visit-slot"></div>' +
           tlsAppTileHtml('repair', 'Plan of Repair', 'Flexible desktop drawing for preliminary repair sheets')
         )
         : (
@@ -2036,7 +2209,7 @@
       '  </div>' +
       '  <p class="cf-home__hint">' +
       (tls
-        ? 'TLS tools use this Customer File. Job Walk and Plan of Repair work independently and in any order.'
+        ? 'TLS tools use this Customer File. Initial Visit is for the walk-around before a plan; Distress Survey takes over once a plan is in.'
         : 'Each workspace opens with this Customer File. They are independent—not required steps.') +
       '</p>' +
       '  <div class="cf-home__file-actions">' +
@@ -2192,13 +2365,18 @@
         window.location.hash = '#/file/' + encodeURIComponent(id) + '/' + appKey;
       });
     });
-    app.querySelectorAll('.cf-app-btn[data-tls-app]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
+    // Delegate: Initial Visit tile is injected after the record loads.
+    const homeApps = app.querySelector('#home-apps');
+    if (homeApps) {
+      homeApps.addEventListener('click', function (event) {
+        const btn = event.target.closest && event.target.closest('.cf-app-btn[data-tls-app]');
+        if (!btn || !homeApps.contains(btn)) return;
         if (homeLocked) return;
         const appKey = btn.getAttribute('data-tls-app');
+        if (!appKey) return;
         window.location.hash = '#/file/' + encodeURIComponent(id) + '/' + appKey;
       });
-    });
+    }
 
     statusEl.textContent = 'Loading…';
     window.ToolboxDB.getCustomerFile(id).then(function (existing) {
@@ -2254,11 +2432,34 @@
       contactBadge.classList.toggle('is-ready', hasName && hasAddress);
       planBadge.textContent = readiness.hasPlan
         ? planSummaryText(record)
-        : (tls ? 'No floor plan yet — Job Walk still works' : 'Floor plan required');
+        : (tls ? 'No floor plan yet — Initial Visit still works' : 'Floor plan required');
       planBadge.classList.toggle('is-ready', readiness.hasPlan);
-      // Geo field apps need a plan; TLS Job Walk / POR do not.
+      // Geo field apps need a plan; TLS Initial Visit / POR do not.
       planCallout.hidden = tls || readiness.hasPlan;
       cardMeta.textContent = record.updatedAt ? 'Updated ' + formatUpdated(record.updatedAt) : '';
+      if (tls) {
+        const slot = app.querySelector('#home-tls-visit-slot');
+        if (slot) {
+          const walk = record.distress && record.distress.jobWalk;
+          const hasWalkData = !!(walk && (
+            (Array.isArray(walk.notes) && walk.notes.length) ||
+            (Array.isArray(walk.videos) && walk.videos.length)
+          ));
+          const hasVisitPhotos = !!(record.distress && Array.isArray(record.distress.quickCapture) &&
+            record.distress.quickCapture.some(function (item) {
+              return item && item.folder === 'Job Walk';
+            }));
+          // Once a plan is in, Distress Survey is the capture tool — keep the
+          // tile only when prior Job Walk / visit material must still open.
+          const showVisit = !readiness.hasPlan || hasWalkData || hasVisitPhotos || isVisitRecord(record);
+          slot.innerHTML = showVisit
+            ? tlsAppTileHtml('job-walk', 'Initial Visit',
+              readiness.hasPlan
+                ? 'Open prior visit photos and notes'
+                : 'Photos, descriptions, and visit notes — no plan required')
+            : '';
+        }
+      }
       app.querySelectorAll('.cf-app-btn[data-app]').forEach(function (btn) {
         const state = btn.querySelector('.cf-app-btn__state');
         btn.classList.toggle('is-locked', !readiness.hasPlan);
@@ -2676,8 +2877,8 @@
     if (!window.ToolboxJobWalk || typeof window.ToolboxJobWalk.mount !== 'function') {
       app.innerHTML =
         '<div class="cf-stub">' +
-        '  <h2 class="cf-stub__title">Job Walk</h2>' +
-        '  <p class="cf-stub__msg">Job Walk failed to load.</p>' +
+        '  <h2 class="cf-stub__title">Initial Visit</h2>' +
+        '  <p class="cf-stub__msg">Initial Visit failed to load. Reopen Toolbox while online once so the offline shell can install.</p>' +
         '  <button type="button" id="jw-fail-back" class="btn btn--accent">Back to TLS</button>' +
         '</div>';
       app.querySelector('#jw-fail-back').addEventListener('click', leave);
@@ -3665,6 +3866,8 @@
     confirmAction: confirmAction,
     registerActiveFlush: registerActiveFlush,
     blankCustomerFile: blankCustomerFile,
+    blankInitialVisit: blankInitialVisit,
+    isVisitRecord: isVisitRecord,
     hasInvestigationData: hasInvestigationData,
     hasFieldCaptureCustomerData: hasFieldCaptureCustomerData,
     isEmptyCustomerFileStub: isEmptyCustomerFileStub,

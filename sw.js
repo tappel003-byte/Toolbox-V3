@@ -15,8 +15,10 @@
 // sw.js file's own bytes change; a precached static asset edited without
 // bumping this stays served from the stale cache indefinitely on already
 // installed devices, invisibly, no matter how many times it's redeployed.
-const CACHE_NAME = 'toolbox-shell-v452';
+const CACHE_NAME = 'toolbox-shell-v455';
 const OFFLINE_DOCUMENT = '/index.html';
+/** PWA start_url is "/" — must resolve offline to the same shell as index.html. */
+const OFFLINE_ROOT = '/';
 const DISTRESS_DOCUMENT = '/distress-survey/survey.html';
 
 // HTML navigations that must be stored as fresh, non-redirected Responses.
@@ -131,6 +133,12 @@ async function cacheOfflineDocuments(cache) {
   for (let i = 0; i < CLEAN_DOCUMENTS.length; i += 1) {
     await cacheCleanDocument(cache, CLEAN_DOCUMENTS[i], UNCACHED_TIMEOUT_MS);
   }
+  // Mirror the shell under "/" so a cold PWA start (manifest start_url) works
+  // offline without waiting on the network-first navigate timeout.
+  const indexCached = await cache.match(OFFLINE_DOCUMENT);
+  if (indexCached) {
+    await cache.put(OFFLINE_ROOT, indexCached.clone());
+  }
 }
 
 self.addEventListener('install', (event) => {
@@ -196,7 +204,15 @@ self.addEventListener('fetch', (event) => {
     }
 
     event.respondWith(
-      fetchWithin(req, NAVIGATE_TIMEOUT_MS).catch(() => caches.match(OFFLINE_DOCUMENT))
+      fetchWithin(req, NAVIGATE_TIMEOUT_MS).catch(async () => {
+        // Prefer an exact match for "/", then the canonical index shell.
+        if (url.pathname === OFFLINE_ROOT || url.pathname === '') {
+          return (await caches.match(OFFLINE_ROOT)) ||
+            (await caches.match(OFFLINE_DOCUMENT));
+        }
+        return (await caches.match(OFFLINE_DOCUMENT)) ||
+          (await caches.match(OFFLINE_ROOT));
+      })
     );
     return;
   }

@@ -10,8 +10,8 @@ This does **not** replace authority docs. Read order for rules and vision:
 4. `DECISIONS.md`
 5. **This file** — current working picture
 
-Last updated: **Nov 10, 2026** (America/Denver)  
-Updated by: Cursor — merge all into integration; Ball stays with Tim.
+Last updated: **Nov 11, 2026** (America/Denver)  
+Updated by: Cursor — Initial Visit build on `cursor/initial-visit-2ac5`; Ball → Claude Code.
 
 ---
 
@@ -19,9 +19,10 @@ Updated by: Cursor — merge all into integration; Ball stays with Tim.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — Sync Worker **deployed** Nov 10 (version `9f211d74-bc47-45c1-bda9-1904e884c214`). Open https://sync.sandiageotoolbox.com/health and do one Sync Now; then app promote when ready. |
-| Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `623913a` (shell `v452`). Merged this turn: #209, #207, #165. Closed as already-on-tip / superseded: #151, #139. Left open against `main` (not merged — Tim promote): #97, #86, #85. |
-| Not done | Tim browser check of live Worker → app **promote** (Tim). Not merged to `main`. |
+| **Has the ball** | **Claude Code** — check Initial Visit on `cursor/initial-visit-2ac5` (shell `v455`). Tip SHA filled after push. |
+| Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (unchanged; not merged). |
+| Feature branch | `cursor/initial-visit-2ac5` — Initial Visit (Job Walk rename + visit mark + Visits lists + Make CF move + offline `/` shell). |
+| Not done | CC check → Tim decide merge. Do **not** merge, promote, or deploy Sync Worker from this branch unless Tim asks. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -52,42 +53,35 @@ Hard fact: merge to `main` can publish live. Do not merge to `main` unless Tim a
 
 ---
 
-## Sync Worker deploy — done Nov 10, 2026
+## This turn — Initial Visit (Nov 11, 2026)
 
-- Deployed by Claude Code with Tim's Cloudflare API token (saved as a network secret on Tim's Default cloud environment).
-- Version `9f211d74-bc47-45c1-bda9-1904e884c214` from `claude/milestone-1-customer-file-qv5ybf` @ `08e154c`. Previous version `b7ddc1af-d896-4f2c-bf82-e1e11ca968b0` (rollback target).
-- Live now: streaming raw media PUT (Job Walk video); File Explorer lists Job Walk audio + video. Confirmed in the live script.
-- Bindings unchanged after deploy: R2 `CABINET` → `toolbox-cabinet`, `IMAGES`, secret `CF_ACCESS_AUD`, var `CF_ACCESS_TEAM_DOMAIN`. Custom domain `sync.sandiageotoolbox.com` still attached.
-- **Always deploy with `--config sync-worker/wrangler.toml`.** Run from inside `sync-worker/` without it, wrangler picked up the app's root `wrangler.jsonc` (the toolbox-v3 app — that is a promote) and only failed because `publish/` was missing.
-- Not verified from the agent (its network cannot reach the host): `/health` and a live Sync Now — Tim's browser check.
+Authorized by Tim: "do the thing we added to the to-do list today."
+
+- Same Customer File container with `status: 'visit'` (absent on ordinary files).
+- Home `+ Initial Visit` → name/phone/address → visit card (`js/job-walk.js` UI renamed).
+- Visits lists: device heading, File Cabinet group, File Explorer Visits folder.
+- Make Customer File: MOVE same id; landing floor / distress / home from outcomes.
+- Offline: SW mirrors `/` as well as `/index.html` (PWA `start_url`); `job-walk` is a mutating route.
+- Tests: `tests/initial-visit.mjs` (22/22). TLS smoke still 33/33.
+- Sync Worker source: `copyIdentity` passes `status` (not deployed this turn).
+
+**Offline root cause (Nov 10 Job Walk):** PWA `start_url` is `/`, but the shell only cached `/index.html`. Cold offline open of `/` waited on network-first navigate and had no `/` cache mirror, so the yard open failed even though `js/job-walk.js` was in `STATIC_SHELL`.
 
 ---
 
 ## Outstanding — open only
 
-1. **Sync Worker** — deployed (`9f211d74`). Tim's browser check of `/health` + one Sync Now.
-2. **App promote** — Tim only. Not `main` unless Tim asks promote-prep.
-3. **Plan of Repair look check** vs MS Paint / PowerPoint (Tim’s screenshots).
-4. **POR lows** — right-rail Format Shape duplicates the pickers and shows for text boxes; fill checkbox has no label.
-5. **Open against `main` (not merged):** #97 topo figure pages, #86 Diagnostics ribbon, #85 RB drafts/print — leave until Tim asks promote-prep / bring-to-main.
+1. **Initial Visit** — CC check on `cursor/initial-visit-2ac5`, then Tim merge decision.
+2. **Sync Worker** — deployed (`9f211d74`). Tim's browser check of `/health` + one Sync Now. Redeploy later if Cabinet Explorer should receive `status` from Worker `copyIdentity` (client already handles index.status).
+3. **App promote** — Tim only. Not `main` unless Tim asks promote-prep.
+4. **Plan of Repair look check** vs MS Paint / PowerPoint (Tim’s screenshots).
+5. **POR lows** — right-rail Format Shape duplicates the pickers and shows for text boxes; fill checkbox has no label.
+6. **Open against `main` (not merged):** #97 topo figure pages, #86 Diagnostics ribbon, #85 RB drafts/print — leave until Tim asks promote-prep / bring-to-main.
 
-Open product (safer defaults already shipped; Tim has not decided): keep video on phone after upload; Job Walk audio still travels with the file.
-
-### Merge-all Nov 10 (Cursor)
-
-| PR | Result |
-|----|--------|
-| #209 SESSION_STATE Worker deploy | Merged earlier (`671978d`) |
-| #207 docs cleanup | Merged (`c30aa0f`); kept tip SESSION_STATE |
-| #165 Tim-only promote hard list | Merged (`2cff965`); kept named integration branch |
-| #151 RB finish | Closed — identical patches already on tip (cherry-picked earlier) |
-| #139 Excel secondary topo tabs | Closed — superseded by later Excel tab work on tip |
-| #97 / #86 / #85 | Left open on `main` — do not merge (promote risk) |
+Open product: video after visit→Customer File (Distress has no video); follow-up date as reminder — not decided.
 
 ---
 
 ## How any new agent should start
 
-1. Read `VISION.md` → `AGENTS.md` → `MILESTONE.md` → `DECISIONS.md` → **`SESSION_STATE.md`**.
-2. Branch from `claude/milestone-1-customer-file-qv5ybf`.
-3. PRs base = that branch. Merge there when Tim asks. Do not promote. Do not deploy Sync Worker without Tim’s go (this deploy was authorised; auth was the blocker).
+Read `VISION.md` → `AGENTS.md` → `MILESTONE.md` → `DECISIONS.md` → this file. Work only the current milestone. Push the branch; do not merge to `main`; do not deploy the Sync Worker unless Tim authorizes.

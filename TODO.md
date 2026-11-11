@@ -61,6 +61,20 @@ to use it."
 - **Stats pill size**, behind the sliders icon in Topo.
 - **Send to File Cabinet and Check In**, inside the three-dot menu.
 
+## Initial Visit — shipped (branch `cursor/initial-visit-2ac5`)
+
+Built Nov 11, 2026 (authorized Tim: "do the thing we added to the to-do list
+today"). Job Walk UI is Initial Visit; `+ Initial Visit` on Customer Files;
+same CF container with `status: 'visit'`; Visits lists on device / Cabinet /
+Explorer; Make Customer File moves the same id; offline shell mirrors `/`
+(`toolbox-shell-v454`). Tests: `tests/initial-visit.mjs`.
+
+**Still open (not this slice).**
+
+- Video after a visit becomes a Customer File: Distress has no video; either
+  Distress gains video or the visit card stays open for clips. Not decided.
+- Follow-up date as a reminder / calendar — separate decision if it comes up.
+
 ## The File Explorer list
 
 Decided with Tim, Oct 18, 2026, looking at an opened job on his phone. The

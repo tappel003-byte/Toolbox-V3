@@ -1,9 +1,12 @@
-// Toolbox — Job Walk (TLS).
+// Toolbox — Initial Visit (TLS), formerly Job Walk.
 //
-// Phone-friendly capture on an open Customer File with or without a plan.
-// Photos reuse Distress Quick Capture (JPEG data URLs). Videos are stored as
-// raw Blobs and upload only on "Upload videos" (Tim, Nov 9, 2026) — they do
-// not ride Check Out. Visit notes + audio still travel with the Customer File.
+// Phone-friendly capture on an open Customer File / visit with or without a
+// plan. Photos reuse Distress Quick Capture (JPEG data URLs). Videos are
+// stored as raw Blobs and upload only on "Upload videos" (Tim, Nov 9, 2026) —
+// they do not ride Check Out. Visit notes + audio still travel with the file.
+// When record.status === 'visit', this is an Initial Visit card (outcomes,
+// follow-up, Make Customer File). Existing jobWalk data on ordinary files
+// still opens here.
 (function () {
   'use strict';
 
@@ -33,6 +36,17 @@
     return (first + ' ' + last).trim() || company || 'Customer File';
   }
 
+  function isVisitRecord(record) {
+    return !!(record && record.status === 'visit');
+  }
+
+  function todayIsoDate() {
+    var d = new Date();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + m + '-' + day;
+  }
+
   function ensureDistress(record) {
     if (!record.distress || typeof record.distress !== 'object') record.distress = {};
     if (!Array.isArray(record.distress.quickCapture)) record.distress.quickCapture = [];
@@ -41,6 +55,20 @@
     }
     if (!Array.isArray(record.distress.jobWalk.notes)) record.distress.jobWalk.notes = [];
     if (!Array.isArray(record.distress.jobWalk.videos)) record.distress.jobWalk.videos = [];
+    var walk = record.distress.jobWalk;
+    if (!walk.outcomes || typeof walk.outcomes !== 'object') {
+      walk.outcomes = {
+        noProblems: false,
+        recommendFloor: false,
+        recommendDistress: false,
+        wantsQuote: false,
+        callBack: false,
+      };
+    }
+    if (typeof walk.visitDate !== 'string' || !walk.visitDate) {
+      walk.visitDate = todayIsoDate();
+    }
+    if (typeof walk.followUpDate !== 'string') walk.followUpDate = '';
     return record.distress;
   }
 
@@ -195,15 +223,36 @@
       '<div class="view-bar view-bar--file jw-bar">' +
       '  <button type="button" id="jw-back" class="btn btn--ghost">‹ TLS</button>' +
       '  <div class="file-identity">' +
-      '    <span class="file-identity__name">Job Walk</span>' +
+      '    <span class="file-identity__name" id="jw-title">Initial Visit</span>' +
       '    <span class="file-identity__address" id="jw-file-label"></span>' +
       '  </div>' +
       '  <span class="file-status" id="jw-status">Loading…</span>' +
       '</div>' +
       '<div class="jw-body">' +
+      '  <section class="jw-panel jw-panel--visit" id="jw-visit-meta" hidden>' +
+      '    <h2 class="jw-panel__title">Visit</h2>' +
+      '    <div class="jw-visit-fields">' +
+      '      <label class="jw-field"><span>Date of visit</span>' +
+      '        <input type="date" id="jw-visit-date"></label>' +
+      '      <label class="jw-field"><span>Follow-up date</span>' +
+      '        <input type="date" id="jw-follow-up"></label>' +
+      '    </div>' +
+      '    <fieldset class="jw-outcomes">' +
+      '      <legend>Outcome</legend>' +
+      '      <label class="jw-check"><input type="checkbox" id="jw-out-none" data-jw-outcome="noProblems"> No problems seen</label>' +
+      '      <label class="jw-check"><input type="checkbox" id="jw-out-floor" data-jw-outcome="recommendFloor"> Recommended floor survey</label>' +
+      '      <label class="jw-check"><input type="checkbox" id="jw-out-distress" data-jw-outcome="recommendDistress"> Recommended distress survey</label>' +
+      '      <label class="jw-check"><input type="checkbox" id="jw-out-quote" data-jw-outcome="wantsQuote"> Wants a repair quote</label>' +
+      '      <label class="jw-check"><input type="checkbox" id="jw-out-callback" data-jw-outcome="callBack"> Told them to call back</label>' +
+      '    </fieldset>' +
+      '    <div class="jw-visit-actions">' +
+      '      <button type="button" id="jw-make-cf" class="btn btn--accent">Make Customer File</button>' +
+      '      <p class="jw-panel__hint">Moves this visit into Customer Files — same record, no copy.</p>' +
+      '    </div>' +
+      '  </section>' +
       '  <section class="jw-panel">' +
       '    <h2 class="jw-panel__title">Take Photos</h2>' +
-      '    <p class="jw-panel__hint">No floor plan required. Photos stay on this Customer File for both sides.</p>' +
+      '    <p class="jw-panel__hint">No floor plan required. Photos stay on this file for both sides.</p>' +
       '    <div class="jw-photo-actions">' +
       '      <button type="button" id="jw-take" class="btn btn--accent">Take Photos</button>' +
       '      <input type="file" id="jw-file" accept="image/*" capture="environment" multiple hidden>' +
@@ -340,7 +389,7 @@
       if (!items.length) {
         var empty = document.createElement('p');
         empty.className = 'jw-empty';
-        empty.textContent = 'No Job Walk photos yet.';
+        empty.textContent = 'No visit photos yet.';
         gridEl.appendChild(empty);
         return;
       }
@@ -350,7 +399,7 @@
         var mediaWrap = document.createElement('div');
         mediaWrap.className = 'jw-card__media';
         var img = document.createElement('img');
-        img.alt = item.description || 'Job Walk photo';
+        img.alt = item.description || 'Visit photo';
         img.className = 'jw-card__img';
         mediaWrap.appendChild(img);
         mediaWrap.appendChild(makeDeleteButton('Delete', function () {
@@ -430,7 +479,7 @@
       if (!items.length) {
         var empty = document.createElement('p');
         empty.className = 'jw-empty';
-        empty.textContent = 'No Job Walk videos yet.';
+        empty.textContent = 'No visit videos yet.';
         videosEl.appendChild(empty);
         return;
       }
@@ -578,11 +627,61 @@
       });
     }
 
+    function syncVisitFields() {
+      var visit = isVisitRecord(state.record);
+      var meta = root.querySelector('#jw-visit-meta');
+      var title = root.querySelector('#jw-title');
+      if (title) title.textContent = visit ? 'Initial Visit' : 'Initial Visit';
+      if (meta) meta.hidden = !visit;
+      if (!visit) return;
+      var walk = ensureDistress(state.record).jobWalk;
+      var dateEl = root.querySelector('#jw-visit-date');
+      var followEl = root.querySelector('#jw-follow-up');
+      if (dateEl) dateEl.value = walk.visitDate || todayIsoDate();
+      if (followEl) followEl.value = walk.followUpDate || '';
+      root.querySelectorAll('[data-jw-outcome]').forEach(function (input) {
+        var key = input.getAttribute('data-jw-outcome');
+        input.checked = !!(walk.outcomes && walk.outcomes[key]);
+        input.disabled = state.readOnly;
+      });
+      if (dateEl) dateEl.disabled = state.readOnly;
+      if (followEl) followEl.disabled = state.readOnly;
+      var makeBtn = root.querySelector('#jw-make-cf');
+      if (makeBtn) makeBtn.disabled = state.readOnly;
+    }
+
     function renderAll() {
       labelEl.textContent = displayName(state.record);
+      syncVisitFields();
       renderGrid();
       renderVideos();
       renderNotes();
+    }
+
+    function makeCustomerFile() {
+      if (!state.record || state.readOnly || !isVisitRecord(state.record)) return;
+      var walk = ensureDistress(state.record).jobWalk;
+      var outcomes = walk.outcomes || {};
+      // MOVE, not copy: drop the visit mark on the same id, then navigate.
+      delete state.record.status;
+      state.record.customerUpdatedAt = isoNow();
+      state.record.updatedAt = isoNow();
+      setStatus('Saving…');
+      return persist().then(function () {
+        var id = state.record.id;
+        var hash;
+        if (outcomes.recommendFloor) {
+          hash = '#/file/' + encodeURIComponent(id) + '/floor';
+        } else if (outcomes.recommendDistress) {
+          hash = '#/file/' + encodeURIComponent(id) + '/distress';
+        } else {
+          hash = '#/file/' + encodeURIComponent(id);
+        }
+        window.location.hash = hash;
+      }).catch(function (err) {
+        console.error(err);
+        setStatus('Could not make Customer File');
+      });
     }
 
     function addPhotos(fileList) {
@@ -781,7 +880,13 @@
 
     root.querySelector('#jw-back').addEventListener('click', function () {
       stopRecording();
-      persist().then(onBack);
+      persist().then(function () {
+        if (isVisitRecord(state.record)) {
+          window.location.hash = '#/';
+          return;
+        }
+        onBack();
+      });
     });
     root.querySelector('#jw-take').addEventListener('click', function () {
       if (state.readOnly) return;
@@ -803,6 +908,33 @@
     root.querySelector('#jw-note-save').addEventListener('click', saveTypedNote);
     recBtn.addEventListener('click', startRecording);
     stopBtn.addEventListener('click', stopRecording);
+    var makeCfBtn = root.querySelector('#jw-make-cf');
+    if (makeCfBtn) makeCfBtn.addEventListener('click', makeCustomerFile);
+    var visitDateEl = root.querySelector('#jw-visit-date');
+    if (visitDateEl) {
+      visitDateEl.addEventListener('change', function () {
+        if (!state.record || state.readOnly) return;
+        ensureDistress(state.record).jobWalk.visitDate = visitDateEl.value || todayIsoDate();
+        persist();
+      });
+    }
+    var followEl = root.querySelector('#jw-follow-up');
+    if (followEl) {
+      followEl.addEventListener('change', function () {
+        if (!state.record || state.readOnly) return;
+        ensureDistress(state.record).jobWalk.followUpDate = followEl.value || '';
+        persist();
+      });
+    }
+    root.querySelectorAll('[data-jw-outcome]').forEach(function (input) {
+      input.addEventListener('change', function () {
+        if (!state.record || state.readOnly) return;
+        var key = input.getAttribute('data-jw-outcome');
+        var walk = ensureDistress(state.record).jobWalk;
+        walk.outcomes[key] = !!input.checked;
+        persist();
+      });
+    });
 
     setStatus('Loading…');
     return window.ToolboxDB.getCustomerFile(customerFileId).then(function (record) {
@@ -815,6 +947,11 @@
         typeof window.ToolboxSync.heldElsewhere === 'function' &&
         window.ToolboxSync.heldElsewhere(record));
       ensureDistress(record);
+      // Visit cards go back to the cabinet Visits list, not TLS home.
+      if (isVisitRecord(record)) {
+        var back = root.querySelector('#jw-back');
+        if (back) back.textContent = '‹ Visits';
+      }
       if (state.readOnly) {
         root.querySelector('#jw-take').disabled = true;
         root.querySelector('#jw-take-video').disabled = true;
@@ -834,6 +971,7 @@
   window.ToolboxJobWalk = {
     mount: mount,
     unmount: unmount,
+    isVisitRecord: isVisitRecord,
     /** Public media read — converts legacy Blobs to data URLs for Sync/UI. */
     getStoredMedia: getStoredMedia,
     putStoredMedia: putDistressValue,
@@ -847,6 +985,7 @@
       getStoredMedia: getStoredMedia,
       MAX_PHOTO_DIM: MAX_PHOTO_DIM,
       MAX_VIDEO_BYTES: MAX_VIDEO_BYTES,
+      todayIsoDate: todayIsoDate,
     },
   };
 })();

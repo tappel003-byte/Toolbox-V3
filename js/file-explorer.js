@@ -791,10 +791,39 @@
 
     /** The month the tree has open, if any. */
     function inOpenMonth(row) {
+      // Visits live only under the Visits folder — not mixed into job months.
+      if (openMonth === 'visits') return !!(row && row.status === 'visit');
+      if (row && row.status === 'visit') return false;
       if (!openMonth) return true;
       const when = yearMonthOf(row);
       if (openMonth === 'undated') return !when;
       return !!when && when.monthKey === openMonth;
+    }
+
+    function searchFilteredRoot(includeVisits) {
+      const query = searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
+      let files = rootFiles.slice();
+      if (!includeVisits) {
+        files = files.filter(function (row) {
+          return !(row && row.status === 'visit');
+        });
+      }
+      files.sort(function (a, b) {
+        const nameA = String(a && a.displayName || a && a.propertyAddress || '').toLowerCase();
+        const nameB = String(b && b.displayName || b && b.propertyAddress || '').toLowerCase();
+        if (nameA < nameB) return -1;
+        if (nameA > nameB) return 1;
+        return String(a && a.key || '') < String(b && b.key || '') ? -1 : 1;
+      });
+      if (!query) return files;
+      return files.filter(function (row) {
+        const hay = [
+          row && row.displayName,
+          row && row.propertyAddress,
+          usefulDate(row),
+        ].join('\n').toLowerCase();
+        return hay.indexOf(query) !== -1;
+      });
     }
 
     function filteredRoot() {
@@ -865,7 +894,13 @@
       const years = Object.create(null);
       const order = [];
       const undated = [];
+      const visits = [];
       files.forEach(function (row) {
+        // Initial Visits stay out of the job year tree (Tim, Nov 11, 2026).
+        if (row && row.status === 'visit') {
+          visits.push(row);
+          return;
+        }
         const when = yearMonthOf(row);
         if (!when) { undated.push(row); return; }
         if (!years[when.year]) {
@@ -884,7 +919,11 @@
       order.forEach(function (key) {
         years[key].order.sort(function (a, b) { return a < b ? 1 : -1; });
       });
-      return { years: order.map(function (key) { return years[key]; }), undated: undated };
+      return {
+        years: order.map(function (key) { return years[key]; }),
+        undated: undated,
+        visits: visits,
+      };
     }
 
     /** Which month the list is narrowed to, or '' for everything. */
@@ -908,8 +947,11 @@
       const all = document.createElement('button');
       all.type = 'button';
       all.className = 'explorer-tree__row' + (openMonth ? '' : ' is-on');
+      const jobCount = rootFiles.filter(function (row) {
+        return !(row && row.status === 'visit');
+      }).length;
       all.innerHTML = '<span class="explorer-tree__label">All jobs</span>' +
-        '<span class="explorer-tree__n">' + rootFiles.length + '</span>';
+        '<span class="explorer-tree__n">' + jobCount + '</span>';
       all.addEventListener('click', function () {
         openMonth = '';
         paintTree();
@@ -959,6 +1001,21 @@
           '<span class="explorer-tree__n">' + groups.undated.length + '</span>';
         row.addEventListener('click', function () {
           openMonth = openMonth === 'undated' ? '' : 'undated';
+          paintTree();
+          paintRoot();
+        });
+        treeEl.appendChild(row);
+      }
+
+      if (groups.visits && groups.visits.length) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'explorer-tree__row explorer-tree__row--l2' +
+          (openMonth === 'visits' ? ' is-on' : '');
+        row.innerHTML = '<span class="explorer-tree__label">Visits</span>' +
+          '<span class="explorer-tree__n">' + groups.visits.length + '</span>';
+        row.addEventListener('click', function () {
+          openMonth = openMonth === 'visits' ? '' : 'visits';
           paintTree();
           paintRoot();
         });
@@ -1360,8 +1417,11 @@
       }
       // A phone has no tree, so the list carries the years and months
       // itself, newest first -- the same filing the desktop tree shows.
+      // When showing everything, feed the full (search-filtered) set so
+      // Visits can render as its own block; month filters stay visit-free.
       if (!wideEnoughForPanes()) {
-        paintRootByMonth(files);
+        const phoneFiles = openMonth ? files : searchFilteredRoot(true);
+        paintRootByMonth(phoneFiles);
         return;
       }
       files.forEach(function (row) {
@@ -1409,6 +1469,22 @@
         head.appendChild(count);
         listEl.appendChild(head);
         groups.undated.forEach(function (row) {
+          listEl.appendChild(rootRow(row));
+        });
+      }
+      if (groups.visits && groups.visits.length) {
+        const head = document.createElement('h2');
+        head.className = 'explorer-year';
+        const label = document.createElement('span');
+        label.className = 'explorer-year__label';
+        label.textContent = 'Visits';
+        const count = document.createElement('span');
+        count.className = 'explorer-year__n';
+        count.textContent = groups.visits.length === 1 ? '1 visit' : groups.visits.length + ' visits';
+        head.appendChild(label);
+        head.appendChild(count);
+        listEl.appendChild(head);
+        groups.visits.forEach(function (row) {
           listEl.appendChild(rootRow(row));
         });
       }
