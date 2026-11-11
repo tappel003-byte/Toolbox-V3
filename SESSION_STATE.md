@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 11, 2026** (America/Denver)  
-Updated by: Cursor — IV panel reorder + POR PPT chrome look. Ball → Tim.
+Updated by: Cursor — Claude Code handoff prompt after IV reorder + POR chrome. Ball → Claude Code.
 
 ---
 
@@ -19,12 +19,12 @@ Updated by: Cursor — IV panel reorder + POR PPT chrome look. Ball → Tim.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — IV reorder + POR PowerPoint chrome on integration. Nothing stripped. Not on `main`. |
-| Integration tip | `95bc99d` (`95bc99d94be4bc67e7136f656f029089444aec90`) |
+| **Has the ball** | **Claude Code** — check tip below (IV schedule + panel order + POR PPT chrome/icons). Report what matches Tim’s PowerPoint screenshots and what still does not. Do not strip. Not on `main`. |
+| Integration tip | filled after merge |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Shell | `toolbox-shell-v464` |
-| Not done | Do not merge to `main`. Do not deploy Sync Worker. Do not promote. Do not strip POR/Report Builder controls. |
+| Not done | Do not merge to `main`. Do not deploy Sync Worker. Do not promote. **Do not strip POR or Report Builder controls or icons.** |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -99,11 +99,46 @@ Authorized by Tim: "do the thing we added to the to-do list today." Merged into 
 3. No gap above the Visits heading
 4. Wording of the offline cause
 
-**IV panel order (Nov 11, Tim):** Schedule → Visit Notes → Take Photos / Videos / record → Outcome + Make Customer File at bottom.
+**IV panel order (Nov 11, Tim — done on tip):** Schedule → Visit Notes → Take Photos / Videos / record → Outcome + Make Customer File at bottom.
 
-**Schedule reminder (Nov 11, Tim):** Visits are also appointments. Create + visit card have Date and Time; Visits list shows calendar/clock for the scheduled slot (not `updatedAt`). Editable anytime on the visit. Initial Visit tile removed from TLS Customer File home — Visits live on Toolbox home only. Shell `v462`.
+**Schedule reminder (Nov 11, Tim — done on tip):** Visits are also appointments. Create + visit card have Date and Time; Visits list shows calendar/clock for the scheduled slot (not `updatedAt`). Editable anytime on the visit. Initial Visit tile removed from TLS Customer File home — Visits live on Toolbox home only.
 
-**POR / PowerPoint icons (Nov 11, Tim):** Visual match pass on Plan of Repair icons only (Fluent thin-line + Office accent colours on Fill/Arrange). **No controls removed.** Report Builder untouched. Further Shape Format capabilities still open. Initial Visit reorder still waiting on Tim’s go.
+**POR / PowerPoint chrome + icons (Nov 11, Tim — on tip, needs CC eye):** Plan of Repair ribbon cool-gray Office look + Fluent/PPT-style icon glyphs (Fill drip, Outline bar, Arrange orange/tan). **No controls removed. Report Builder untouched.** Tim’s rule: match PowerPoint look/feel; **add** Shape Format capabilities he named; **never strip** existing icons or functionality. An earlier agent pass that narrowed/stripped from a “scope honesty” aside was wrong and was reverted — that must not happen again.
+
+### Working agreement with Tim (Nov 11, 2026) — read before acting
+
+1. Tim sees work only when it is on **`claude/milestone-1-customer-file-qv5ybf`** (Workers Builds → he promotes). Feature-branch-only work is invisible to him.
+2. “I need you to…” / “go” / “merge it” = build or merge. Design talk (“I think…”, “understood”, “let’s talk”) = words only until he says go.
+3. PowerPoint screenshots = **target look** and **capabilities to add**. They are not permission to delete Report Builder or POR controls.
+4. Clear short orders beat long scope essays. If unsure, **stop and ask** — do not invent cuts.
+5. ChatGPT is out. Cursor builds; Claude Code checks; Tim decides and promotes.
+
+---
+
+## Claude Code — pasteable check prompt (Nov 11, 2026)
+
+```
+Toolbox-V3 — Claude Code check (Tim, Nov 11, 2026)
+
+Read VISION.md → AGENTS.md → MILESTONE.md → DECISIONS.md → SESSION_STATE.md.
+Work from integration tip of claude/milestone-1-customer-file-qv5ybf (shell toolbox-shell-v464).
+Do NOT merge to main. Do NOT deploy Sync Worker. Do NOT promote. Do NOT strip any Plan of Repair or Report Builder controls or icons.
+
+What landed for Tim to look at (Cursor today):
+1) Initial Visit as scheduling: date+time on create and visit card; Visits list shows calendar/clock for the scheduled slot (not updatedAt); editable on the visit; Initial Visit removed from TLS Customer File home.
+2) Initial Visit panel order: Schedule → Visit Notes → Take Photos / Videos → Outcome + Make Customer File at bottom.
+3) Plan of Repair: PowerPoint-equivalent icon glyphs + cool-gray ribbon chrome. Same buttons/menus as before — visual match only. Report Builder not touched.
+
+Earlier mistake (do not repeat): an agent treated Tim’s “honest about scope / maybe we don’t need all shapes” talk as license to strip or narrow POR/Report Builder. Tim corrected: he wants PowerPoint look AND those Shape Format capabilities added (Arrange forward/back, Selection Pane, rotate, text box, more shapes as needed). Never remove existing functionality.
+
+Your job — CHECK, not redesign:
+A) On a phone-width viewport, open an Initial Visit and confirm panel order and schedule date/time + Visits list reminder.
+B) Open Plan of Repair on desktop and compare chrome/icons to Tim’s PowerPoint screenshots (Shape Format ribbon, context mini Style/Fill/Outline, Arrange). Say what matches and what still does not — specifically, without removing anything.
+C) Run tests/initial-visit.mjs and tests/plan-of-repair.mjs; report pass/fail.
+D) Update SESSION_STATE.md: Ball → Tim (or Cursor if a concrete fix is authorized). List exact findings. Commit on a branch off integration; Tim merges when he asks.
+
+If Tim later authorizes icon/capability fixes from your findings: add or restyle only — never strip.
+```
 
 ---
 
@@ -123,12 +158,13 @@ Merged `cursor/clear-red-suites-2ac5` into integration this turn. Triage A clear
 
 ## Outstanding — open only
 
-1. **Initial Visit CC polish** — four small defects + schedule look check after Tim reviews `v462`.
-2. **POR PowerPoint icons** — Tim’s screenshots; add missing capabilities; never strip existing controls. Waiting on Tim’s exact go.
-3. **Red suites** — 16 remaining after clear-red A clears of trash + cross-record (floor-survey / report-floor / report-highlow / sizing / sw-update-ready).
-4. **Sync Worker** — Tim's browser check of `/health` + one Sync Now. Redeploy later if Cabinet Explorer needs Worker `copyIdentity` status passthrough.
-5. **App promote** — Tim only. Not `main` unless Tim asks promote-prep.
-6. **Open against `main` (not merged):** #97 / #86 / #85 — leave until Tim asks promote-prep.
+1. **Claude Code check** of tip `v464` — IV schedule/order + POR PPT chrome/icons vs Tim’s screenshots (prompt in this file).
+2. **Initial Visit CC polish** — four small defects (button order, phone on card, Visits heading gap, offline wording) still open after check.
+3. **POR Shape Format capabilities** — add what Tim named (never strip). After CC says what still fails the look.
+4. **Red suites** — 16 remaining (floor-survey / report-floor / report-highlow / sizing / sw-update-ready).
+5. **Sync Worker** — Tim's browser check of `/health` + one Sync Now.
+6. **App promote** — Tim only. Not `main` unless Tim asks promote-prep.
+7. **Open against `main` (not merged):** #97 / #86 / #85 — leave until Tim asks promote-prep.
 
 ---
 
