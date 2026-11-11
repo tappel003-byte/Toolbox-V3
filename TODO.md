@@ -65,7 +65,8 @@ to use it."
 
 Talked through with Tim, Nov 11, 2026, looking at the Customer Files screen on
 his phone. Design agreed in conversation; **not authorized to build.** The
-name is not settled (see the end).
+name is **Initial Visit** (Tim, Nov 11: "Initial visit fits the way that we do
+this now").
 
 **What it is.** Tim often goes to a house with only a name, a phone number and
 an address, walks around, and tells the owner to call back for a survey. Maybe
@@ -97,20 +98,29 @@ maybe boxes to check.
   are already in it; the visit stays inside as the first entry in the job's
   history. Nothing is retyped.
 
-**Where Job Walk fits.** Job Walk is the same kind of work: walk the house,
-notes and photos, no plan needed. So it is the front door to a house, ahead of
-both the Sandia Geo side and the TLS side, not a TLS-only tool. Toolbox stays
-one app with one Customer File; a separate TLS sign-in is only a question on
-the day someone other than Tim and Lee needs in, and is not part of this.
+**How Tim works, in his words.** He usually goes to a house first, scans it,
+and drops a floor plan afterwards, then goes back. On that first visit he can
+take pictures and notes. If it turns into something, it becomes the level
+survey. If he already knows it is a Sandia Geo job, he skips the visit and
+makes the Customer File directly.
+
+**Job Walk becomes Initial Visit.** One tool, one name, one place: the
+Customer Files screen, before there is a job. Once the house is a Customer
+File with a plan, Distress Survey is the capture tool (pinned photos and Quick
+Capture), so no second walk-around tool is needed inside a file. The line
+between them is the plan: no plan yet, Initial Visit; plan in, Distress
+Survey. Toolbox stays one app with one Customer File; a separate TLS sign-in
+is only a question on the day someone other than Tim and Lee needs in, and is
+not part of this.
 
 **Keep it a card and a folder.** No pipeline, reminders, email or calendar.
 The follow-up date becoming a reminder is a separate decision if it comes up.
 
 **Open.**
 
-- The name. Tim leaned to "Initial Visit" over "Quick Visit", then left it
-  open. Also open: whether Job Walk keeps its own name inside a file or takes
-  the same name.
+- Video. Clips are taken only in Job Walk today; Distress Survey has no
+  video. Once a visit is a Customer File, either Distress Survey gains video
+  or the visit stays open for adding clips. Not decided.
 - Job Walk did not work offline for Tim on Nov 10. `js/job-walk.js` is in the
   offline shell list, so the cause is not a missing file. Not yet tested with
   the network off. This has to hold before a visit card can be trusted in a
