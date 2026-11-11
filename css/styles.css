@@ -5406,11 +5406,17 @@ html.tb-refresh-locked .canvas {
 .cabinet-row__schedule {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 6px 10px;
+  margin-top: 5px;
   color: #5b6470;
   font-size: 12px;
   font-weight: 600;
+}
+
+.cabinet-row__main > .cabinet-row__schedule {
+  /* Keep schedule under the address on phone and desktop — meta is hidden on phone. */
+  width: 100%;
 }
 
 .cabinet-row__schedule.is-unset {

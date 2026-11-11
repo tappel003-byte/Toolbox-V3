@@ -426,9 +426,17 @@ check('Ordinary file without visit mark stays a job row',
 const scheduleOnList = await page.evaluate((id) => {
   const row = document.querySelector('#cabinet-visits-list [data-customer-file-id="' + id + '"]');
   const schedule = row && row.querySelector('.cabinet-row__schedule');
+  const main = row && row.querySelector('.cabinet-row__main');
+  const meta = row && row.querySelector('.cabinet-row__meta');
   const text = schedule ? schedule.textContent.replace(/\s+/g, ' ').trim() : '';
+  const scheduleStyle = schedule ? getComputedStyle(schedule) : null;
+  const metaStyle = meta ? getComputedStyle(meta) : null;
   return {
     hasSchedule: !!schedule,
+    inMain: !!(main && schedule && main.contains(schedule)),
+    notInMeta: !!(meta && schedule && !meta.contains(schedule)),
+    scheduleDisplay: scheduleStyle ? scheduleStyle.display : '',
+    metaDisplay: metaStyle ? metaStyle.display : '',
     hasDateIco: !!(schedule && schedule.querySelector('.cabinet-row__when--date')),
     hasTimeIco: !!(schedule && schedule.querySelector('.cabinet-row__when--time')),
     text,
@@ -437,6 +445,10 @@ const scheduleOnList = await page.evaluate((id) => {
 check('Visits list card shows calendar/clock schedule reminder',
   scheduleOnList.hasSchedule && scheduleOnList.hasDateIco && scheduleOnList.hasTimeIco &&
   /9:30/.test(scheduleOnList.text) && /Nov/.test(scheduleOnList.text),
+  JSON.stringify(scheduleOnList));
+check('Visit schedule stays in main column so phone can see it',
+  scheduleOnList.inMain && scheduleOnList.notInMeta &&
+  scheduleOnList.scheduleDisplay !== 'none' && scheduleOnList.metaDisplay === 'none',
   JSON.stringify(scheduleOnList));
 
 await page.screenshot({ path: `${OUT}/initial-visit-visits-list-phone.png`, fullPage: true });
