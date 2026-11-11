@@ -20,7 +20,7 @@ Updated by: Cursor — POR PowerPoint icon visual match (no strip). Ball → Tim
 | Field | Value |
 |-------|--------|
 | **Has the ball** | **Tim** — POR icon visual match on integration for look. Nothing stripped. Not on `main`. |
-| Integration tip | `c296f9f` (`c296f9fc356855d44b281fee9a6421ecbeb77032`) |
+| Integration tip | `32308d4` (`32308d4fd7cebe573be5b3dd9ef55d78bfd25c89`) |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Shell | `toolbox-shell-v463` |
