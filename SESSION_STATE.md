@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 11, 2026** (America/Denver)  
-Updated by: Cursor — POR chrome ribbon collapse + height fit; Ball to Claude Code.
+Updated by: Cursor — merged `cursor/por-fabric-stages-2ac5` into integration @ `60c3cf0`.
 
 ---
 
@@ -19,8 +19,8 @@ Updated by: Cursor — POR chrome ribbon collapse + height fit; Ball to Claude C
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — Plan of Repair chrome `e423a01` passed CC's check (function + layout); Tim decides merge into integration. Not merged. |
-| Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (pre-POR-Fabric). Feature PR bases there; not merged. |
+| **Has the ball** | **Tim** — POR Fabric merged to integration @ `60c3cf0`. Not on `main`. Promote when ready. Sync Worker not deployed.
+| Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `60c3cf0` (POR Fabric stages merged).
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Not done | Merge into integration when Tim asks (shell version will clash with Initial Visit `v455`: second merge bumps). Do not merge to `main`. Do not deploy/promote. |
