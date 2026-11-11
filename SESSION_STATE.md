@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 11, 2026** (America/Denver)  
-Updated by: Cursor — phone Visits schedule visible; tip ready for Tim / Claude Code prompt.
+Updated by: Cursor — CC-check fixes merged (IV phone + POR Fluent ribbon). Ball → Claude Code.
 
 ---
 
@@ -19,11 +19,11 @@ Updated by: Cursor — phone Visits schedule visible; tip ready for Tim / Claude
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — tip has phone Visits schedule fix; waiting on his Claude Code prompt. Not on `main`. |
-| Integration tip | `f6510f5` (`f6510f5f7e2ebf2fabe4c54599352ff2d130d457`) |
+| **Has the ball** | **Claude Code** — re-check tip below vs Tim’s PowerPoint screenshots and IV phone cards. Nothing stripped. Not on `main`. |
+| Integration tip | `c9a22de` (`c9a22de82c1c53d1dd86d0e7821c3426ad5149ce`) |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Shell | `toolbox-shell-v465` |
+| Shell | `toolbox-shell-v466` |
 | Not done | Do not merge to `main`. Do not deploy Sync Worker. Do not promote. **Do not strip POR or Report Builder controls or icons.** |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
@@ -103,7 +103,13 @@ Authorized by Tim: "do the thing we added to the to-do list today." Merged into 
 
 **Schedule reminder (Nov 11, Tim — done on tip):** Visits are also appointments. Create + visit card have Date and Time; Visits list shows calendar/clock for the scheduled slot (not `updatedAt`). Editable anytime on the visit. Initial Visit tile removed from TLS Customer File home — Visits live on Toolbox home only.
 
-**Phone Visits schedule (Nov 11, Tim — on tip `f6510f5` / shell v465):** Schedule lived in `.cabinet-row__meta`, which phone CSS hides — so Martin’s date/time did not show. Schedule now sits under the address in `.cabinet-row__main`. `tests/initial-visit.mjs` 26/26 including phone-visible assertion.
+**Phone Visits schedule (Nov 11, Tim — on tip):** Schedule under the address in `.cabinet-row__main` (meta stays hidden on phone).
+
+**CC-check fixes (Nov 11, Tim authorized — on tip `c9a22de` / shell v466):**
+1. Home buttons at 390: **+ New Customer File** → **+ Initial Visit** → **Import**.
+2. Visits list schedule visible on phone (main column).
+3. Visit card shows phone (`tel:`) + address read-only above Schedule.
+4. POR tall PPT-style ribbon + Fluent icons vendored (`icons/fluent`, `js/vendor/fluent-icons.js`); Font never collapses at 1280/1440; docked shapes gallery + Shape Fill/Outline/Effects; Fill + Transp. labelled. **Nothing stripped.** Remaining visual gaps listed in `/opt/cursor/artifacts/por-remaining-differences.md` on the agent run.
 
 **POR / PowerPoint chrome + icons (Nov 11, Tim — on tip, needs CC eye):** Plan of Repair ribbon cool-gray Office look + Fluent/PPT-style icon glyphs (Fill drip, Outline bar, Arrange orange/tan). **No controls removed. Report Builder untouched.** Tim’s rule: match PowerPoint look/feel; **add** Shape Format capabilities he named; **never strip** existing icons or functionality. An earlier agent pass that narrowed/stripped from a “scope honesty” aside was wrong and was reverted — that must not happen again.
 
@@ -160,9 +166,9 @@ Merged `cursor/clear-red-suites-2ac5` into integration this turn. Triage A clear
 
 ## Outstanding — open only
 
-1. **Claude Code check** of tip `v465` / `f6510f5` — IV schedule/order (incl. phone Visits reminder) + POR PPT chrome/icons vs Tim’s screenshots (prompt in this file; Tim may replace with a fixed CC prompt).
-2. **Initial Visit CC polish** — four small defects (button order, phone on card, Visits heading gap, offline wording) still open after check.
-3. **POR Shape Format capabilities** — add what Tim named (never strip). After CC says what still fails the look.
+1. **Claude Code re-check** of tip `v466` / `c9a22de` — IV phone order/schedule/contact + POR Fluent ribbon vs Tim’s screenshots (remaining diffs noted in agent artifacts).
+2. **Initial Visit polish left** — Visits heading gap + offline wording (button order / phone-on-card / schedule-on-phone done this tip).
+3. **POR Shape Format capabilities** — continue adding what Tim named from remaining diffs (never strip).
 4. **Red suites** — 16 remaining (floor-survey / report-floor / report-highlow / sizing / sw-update-ready).
 5. **Sync Worker** — Tim's browser check of `/health` + one Sync Now.
 6. **App promote** — Tim only. Not `main` unless Tim asks promote-prep.
