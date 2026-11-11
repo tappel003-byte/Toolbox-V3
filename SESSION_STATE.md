@@ -19,11 +19,11 @@ Updated by: Cursor — POR chrome ribbon collapse + height fit; Ball to Claude C
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** — recheck chrome layout tip below (every visible ribbon/status control reachable via `elementFromPoint` at 1280/1440/1920; `document` height = window height; Insert→Floor plan via `page.mouse` at 1280). Function KEEP must stay green. Not merged. |
+| **Has the ball** | **Tim** — Plan of Repair chrome `e423a01` passed CC's check (function + layout); Tim decides merge into integration. Not merged. |
 | Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (pre-POR-Fabric). Feature PR bases there; not merged. |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Not done | CC recheck (incl. full suite) → Tim decide/merge into integration. Do not merge to `main`. Do not deploy/promote. |
+| Not done | Merge into integration when Tim asks (shell version will clash with Initial Visit `v455`: second merge bumps). Do not merge to `main`. Do not deploy/promote. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
