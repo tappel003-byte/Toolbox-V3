@@ -199,16 +199,20 @@ async function openRowMenuById(id) {
 
 await openRowMenuById('trash-empty');
 const emptyMenu = await page.evaluate(() => ({
-  danger: document.querySelectorAll('.cabinet-row-menu__danger').length,
-  actions: [...document.querySelectorAll('.cabinet-row-menu.is-open button')].map((node) => node.textContent),
+  actions: [...document.querySelectorAll('.cabinet-row-menu.is-open button')]
+    .map((node) => (node.textContent || '').trim())
+    .filter(Boolean),
 }));
-// Two words, not three. Tim: "it is definite that the only options we need
-// are to check it out and to check it in. Period." Send to File Cabinet was
-// the same action under a second name, and is gone.
+// Check In stays (Tim: checkout/checkin are the list actions). "Send to File
+// Cabinet" is gone — it was the same action under a second name.
+// Nov 7, 2026 DECISIONS: empty stubs also get Delete on ••• (gated). VISION /
+// TLS brief: Open in TLS lives on the same menu. customer-file-row-delete-gate
+// covers the gate itself; this suite only needs the empty-stub menu shape.
 check(
-  'On this device menu has Check In and no Delete chip',
-  emptyMenu.danger === 0 && emptyMenu.actions.includes('Check In') &&
-  !emptyMenu.actions.some((label) => /Delete/i.test(label)) &&
+  'On this device menu has Check In, Open in TLS, and Delete for empty stub',
+  emptyMenu.actions.includes('Check In') &&
+  emptyMenu.actions.includes('Open in TLS') &&
+  emptyMenu.actions.includes('Delete') &&
   !emptyMenu.actions.some((label) => /Send/i.test(label)),
   JSON.stringify(emptyMenu),
 );

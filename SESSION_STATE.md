@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 11, 2026** (America/Denver)  
-Updated by: Cursor — merge Initial Visit + clear-red into integration (in progress).
+Updated by: Cursor — merge-everything into integration (Initial Visit + clear-red). Ball → Tim.
 
 ---
 
@@ -19,8 +19,8 @@ Updated by: Cursor — merge Initial Visit + clear-red into integration (in prog
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — merge-everything in progress; tip filled when merges finish. Not on `main`. |
-| Integration tip | `claude/milestone-1-customer-file-qv5ybf` — POR already in; Initial Visit merging; clear-red next. |
+| **Has the ball** | **Tim** — merge-everything landed on `claude/milestone-1-customer-file-qv5ybf`. Promote when ready. Not on `main`. |
+| Integration tip | filled after commit |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Shell | `toolbox-shell-v461` |
@@ -82,7 +82,7 @@ Real mouse at 1280×800 and 1440×900: every ribbon and status-bar control reach
 
 ## Initial Visit (Nov 11, 2026)
 
-Authorized by Tim: "do the thing we added to the to-do list today." Merging into integration this turn.
+Authorized by Tim: "do the thing we added to the to-do list today." Merged into integration this turn (`cursor/initial-visit-2ac5`).
 
 - Same Customer File container with `status: 'visit'` (absent on ordinary files).
 - Home `+ Initial Visit` → name/phone/address → visit card (`js/job-walk.js` UI renamed).
@@ -93,7 +93,17 @@ Authorized by Tim: "do the thing we added to the to-do list today." Merging into
 
 **Offline root cause (Nov 10 Job Walk):** PWA `start_url` is `/`, but the shell only cached `/index.html`. Cold offline open of `/` waited on network-first navigate and had no `/` cache mirror, so the yard open failed even though `js/job-walk.js` was in `STATIC_SHELL`.
 
-**CC found four small defects (fix after this merge on a new branch):** button order on the home screen; phone not on the card; no gap above the Visits heading; wording of the offline cause.
+**CC found four small defects (fix on a new branch off integration — do not hold this merge):**
+1. Button order on the home screen
+2. Phone not on the card
+3. No gap above the Visits heading
+4. Wording of the offline cause
+
+---
+
+## Clear-red suites A (Nov 11, 2026)
+
+Merged `cursor/clear-red-suites-2ac5` into integration this turn. Triage A clears: `tests/customer-file-trash.mjs` + `tests/customer-file-cross-record.mjs` (Floor Survey path). CC checked the A tip; remaining 16 red suites are still open (floor-survey / report-floor / report-highlow / sizing / sw-update-ready).
 
 ---
 
