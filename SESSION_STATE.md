@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 10, 2026** (America/Denver)  
-Updated by: Cursor — POR Fabric CC3 fixes (`5c4d240`); Ball to Claude Code.
+Updated by: Claude Code — recheck of POR Fabric `5c4d240` passed on function; Ball to Tim for the look.
 
 ---
 
@@ -19,7 +19,7 @@ Updated by: Cursor — POR Fabric CC3 fixes (`5c4d240`); Ball to Claude Code.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** — recheck POR Fabric CC3 tip `5c4d240` on `cursor/por-fabric-stages-2ac5` (shell `v457`). Open items from `ab7e903` recheck addressed: (1) outline/dash/style save with real mouse; (2) Undo/Redo restore overlays + canvas; (3) Print on first toolbar row at 1440 and 1280. |
+| **Has the ball** | **Tim** — look check. CC recheck of `5c4d240` passed on function: style changes save, undo/redo work, Print on row one, plus earlier fixes (real-mouse draw, exact round-trip, align/group coords, bold, Insert Text). Tim is not sure it looks like PowerPoint; CC's look notes: handles cover small marks, right-click mini toolbar is text-only, toolbar icons unlabeled, right panel always on, page thumbnails blank. Not merged. |
 | Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (pre-POR-Fabric). Feature PR bases there; not merged. |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
