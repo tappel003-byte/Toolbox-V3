@@ -10,8 +10,8 @@ This does **not** replace authority docs. Read order for rules and vision:
 4. `DECISIONS.md`
 5. **This file** — current working picture
 
-Last updated: **Nov 10, 2026** (America/Denver)  
-Updated by: Claude Code — recheck of POR Fabric `5c4d240` passed on function; Ball to Tim for the look.
+Last updated: **Nov 11, 2026** (America/Denver)  
+Updated by: Cursor — POR PowerPoint chrome pass; Ball to Claude Code.
 
 ---
 
@@ -19,11 +19,11 @@ Updated by: Claude Code — recheck of POR Fabric `5c4d240` passed on function; 
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — look check. CC recheck of `5c4d240` passed on function: style changes save, undo/redo work, Print on row one, plus earlier fixes (real-mouse draw, exact round-trip, align/group coords, bold, Insert Text). Tim is not sure it looks like PowerPoint; CC's look notes: handles cover small marks, right-click mini toolbar is text-only, toolbar icons unlabeled, right panel always on, page thumbnails blank. Not merged. |
+| **Has the ball** | **Claude Code** — look/chrome recheck of tip below. Function KEEP from `5c4d240` must stay green; chrome is the pass under test. Not merged. |
 | Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (pre-POR-Fabric). Feature PR bases there; not merged. |
-| Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` |
+| Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · **Chrome** `14bd97e` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Not done | CC recheck → Tim decide/merge into integration. Do not merge to `main`. Do not deploy/promote. |
+| Not done | CC chrome recheck → Tim decide/merge into integration. Do not merge to `main`. Do not deploy/promote. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -54,7 +54,7 @@ Hard fact: merge to `main` can publish live. Do not merge to `main` unless Tim a
 
 ---
 
-## Plan of Repair on Fabric.js (Nov 10, 2026)
+## Plan of Repair on Fabric.js (Nov 10–11, 2026)
 
 Tim decided: rebuild Plan of Repair drawing on vendored Fabric.js 5.3.0 (MIT), PowerPoint-style. Scope: Plan of Repair only — Report Builder / `js/report-overlay.js` untouched.
 
@@ -69,13 +69,22 @@ Branch: `cursor/por-fabric-stages-2ac5` → PR #210 into `claude/milestone-1-cus
 | CC fix | `63584a9` | Real mouse draw; rect/circle no drift; arrowheads; bold flag; Print visible |
 | CC2 | `ab7e903` | Absolute multi-select save; arrow pin; rich bold; Insert Text typing; arrowhead pixels |
 | CC3 | `5c4d240` | Style save; undo/redo; Print first row; colour pop hit-testing |
+| **Chrome** | `14bd97e` | PowerPoint look-and-feel: handles, mini toolbar icons, ribbon, shape gallery, request-only panes, page thumbs, status bar, cursors |
 
-**CC3 fixed (this turn):**
-1. Outline/fill/weight/dash save on the selected shape (lastStyleTarget + overlay patch + dash serialize; colour pop fixed/flex so real mouse hits swatches; preview lock so mouseleave cannot revert).
-2. Undo/Redo destroy Fabric before applying history so renderSheet cannot sync the live canvas over the restored doc.
-3. Toolbar nowrap; Print on first row at 1440 and 1280 (height ~41).
+**Chrome pass (Tim, Nov 11 — look only; saved format / sync / print / tool behaviour unchanged):**
+1. Selection handles — small white circles, thin grey outline, padding 14 so pier dots stay visible, fixed 8px corner size, rotate stem.
+2. Right-click mini toolbar — Style / Fill / Outline icon buttons with colour bars + chevrons (not plain words).
+3. Right-click menu — icons, PowerPoint order/wording, Group and Bring/Send submenus, disabled items greyed.
+4. Ribbon — Clipboard / Font / Paragraph / Drawing / Editing / Insert labels; Shape Fill/Outline show current colour; Print pinned; groups scroll if needed at 1280.
+5. Shape gallery grid instead of a permanent tool row.
+6. Format Shape + Selection panes open on request only (X to close); Insert dropdown holds Floor plan / Contour / etc.
+7. Page thumbs render a small picture of the sheet; numbered; current outlined; thumb context menu New/Duplicate/Delete.
+8. Status bar — “N of M” left; zoom slider / % / Fit right.
+9. Cursors — move on selected, crosshair when drawing, text I-beam when editing text.
 
-Tests: `node tests/plan-of-repair.mjs` → **82/82**.
+Tests: `node tests/plan-of-repair.mjs` → **86/86**; `tests/tls-workspace-smoke.mjs` → **33/33**; `tests/sync-client-through-worker.mjs` → **50/50**.
+
+Screenshots (Tim’s PPT refs were not in-repo; ours for side-by-side): `/opt/cursor/artifacts/por-ppt-*.png`.
 
 ---
 
@@ -89,12 +98,4 @@ Tests: `node tests/plan-of-repair.mjs` → **82/82**.
 
 ## Outstanding — open only
 
-1. **CC recheck** of POR Fabric tip `5c4d240` on `cursor/por-fabric-stages-2ac5`.
-2. **Tim decide/merge** into integration when ready. Not `main`. No deploy/promote.
-3. **Open against `main` (not merged):** #97 / #86 / #85 — leave until Tim asks promote-prep.
-
----
-
-## How any new agent should start
-
-Read `VISION.md` → `AGENTS.md` → `MILESTONE.md` → `DECISIONS.md` → this file. Work only the current milestone. Ball is named above.
+(unchanged from prior handoff unless Tim says otherwise)
