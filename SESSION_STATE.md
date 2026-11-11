@@ -19,7 +19,7 @@ Updated by: Cursor — CC-check fixes merged (IV phone + POR Fluent ribbon). Bal
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** — re-check tip below vs Tim’s PowerPoint screenshots and IV phone cards. Nothing stripped. Not on `main`. |
+| **Has the ball** | **Cursor** — second look pass on Plan of Repair ribbon (CC re-check of `089869b` below). Initial Visit is clear. Add/restyle only; nothing stripped. Not on `main`. |
 | Integration tip | `089869b` (`089869bd4a1064f86d0a8e09531f30cea09de97c`) — CC-fix merge; shell v466. Latest push includes SESSION_STATE. |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
@@ -155,6 +155,30 @@ If Tim later authorizes icon/capability fixes from your findings: add or restyle
 Merged `cursor/clear-red-suites-2ac5` into integration this turn. Triage A clears: `tests/customer-file-trash.mjs` + `tests/customer-file-cross-record.mjs` (Floor Survey path). CC checked the A tip; remaining 16 red suites are still open (floor-survey / report-floor / report-highlow / sizing / sw-update-ready).
 
 ---
+
+### CC re-check of integration `089869b` (shell v466) — Nov 11, 2026
+
+`tests/initial-visit.mjs` **28/28**, `tests/plan-of-repair.mjs` **93/93**. Real mouse and keyboard.
+
+**Initial Visit: all three defects fixed.** "+ New Customer File" is first; the scheduled date/time
+("Sat, Nov 14 · 2:15 PM") shows on the phone Visits row; phone (tap-to-call) and address are on the card.
+
+**Plan of Repair: a big step toward PowerPoint, with layout defects.** Now has the File / Home / Insert /
+Draw / Design / View tab row, large Paste / Arrange / Quick Styles / Select buttons and coloured icons;
+right-click mini bar has coloured Fill/Outline icons. Function holds (draw, restyle, move, undo/redo, arrow,
+reopen identical). Fix these, add/restyle only:
+1. **1440 wide: Shape Fill / Shape Outline / Shape Effects overlap and clip each other** (labels cut off,
+   "Shape Effects" label collides with the buttons above it).
+2. **1440 wide: the shapes gallery is clipped** (third row cut off) and sits on top of the "Shapes ▾" button.
+3. **Paragraph is collapsed to a bare "Paragraph ▾" at 1440** although there is room; alignment and bullets
+   are hidden. Keep it expanded at 1440; collapse only when it will not fit.
+4. **1280 wide: Clipboard, Paragraph and Drawing collapse to dropdowns with a large empty band above the
+   labels.** Everything is reachable after opening a dropdown (shapes, fill, outline, weight, dash, arrange
+   checked), but Paste / Cut / Copy are hidden, and the band looks unfinished. Collapse tidier (label centred,
+   no empty band).
+5. **Draw, Design, View and File tabs are greyed.** Either make them do something or hide them; a greyed tab
+   reads as broken.
+Not checked: whether the icons are Fluent (no icon set is vendored in `js/vendor`).
 
 ## Sync Worker deploy — done Nov 10, 2026
 
