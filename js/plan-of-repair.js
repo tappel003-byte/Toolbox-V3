@@ -336,7 +336,7 @@
       '</div>' +
       '<div class="por-toolbar por-ribbon" role="toolbar" aria-label="Drawing tools">' +
       '<div class="por-ribbon__scroll">' +
-      '  <div class="por-ribbon__group" role="group" aria-label="Clipboard">' +
+      '  <div class="por-ribbon__group por-ribbon__group--collapsible" data-por-collapse="clipboard" role="group" aria-label="Clipboard">' +
       '    <div class="por-ribbon__row">' +
       '      <button type="button" class="por-iconbtn" id="por-paste" title="Paste (Ctrl+V)" aria-label="Paste">' + ICONS.paste + '</button>' +
       '      <button type="button" class="por-iconbtn" id="por-cut" title="Cut (Ctrl+X)" aria-label="Cut">' + ICONS.cut + '</button>' +
@@ -347,7 +347,7 @@
       '    <span class="por-ribbon__label">Clipboard</span>' +
       '  </div>' +
       '  <div class="por-ribbon__sep" aria-hidden="true"></div>' +
-      '  <div class="por-ribbon__group por-toolbar__text" id="por-text-format" role="group" aria-label="Font">' +
+      '  <div class="por-ribbon__group por-toolbar__text por-ribbon__group--collapsible" data-por-collapse="font" id="por-text-format" role="group" aria-label="Font">' +
       '    <div class="por-ribbon__row por-ribbon__row--wrap">' +
       '      <select id="por-font-family" class="por-font-select" title="Font" aria-label="Font">' +
       '        <option value="Calibri, Arial, sans-serif">Calibri</option>' +
@@ -375,7 +375,7 @@
       '    <span class="por-ribbon__label">Font</span>' +
       '  </div>' +
       '  <div class="por-ribbon__sep" aria-hidden="true"></div>' +
-      '  <div class="por-ribbon__group" role="group" aria-label="Paragraph">' +
+      '  <div class="por-ribbon__group por-ribbon__group--collapsible" data-por-collapse="paragraph" role="group" aria-label="Paragraph">' +
       '    <div class="por-ribbon__row">' +
       '      <button type="button" class="por-iconbtn" data-por-align="left" title="Align Left" aria-label="Align left">⫷</button>' +
       '      <button type="button" class="por-iconbtn" data-por-align="center" title="Center" aria-label="Align center">☰</button>' +
@@ -386,7 +386,7 @@
       '    <span class="por-ribbon__label">Paragraph</span>' +
       '  </div>' +
       '  <div class="por-ribbon__sep" aria-hidden="true"></div>' +
-      '  <div class="por-ribbon__group" role="group" aria-label="Drawing">' +
+      '  <div class="por-ribbon__group por-ribbon__group--collapsible" data-por-collapse="drawing" role="group" aria-label="Drawing">' +
       '    <div class="por-ribbon__row">' +
       '      <div class="por-picker por-shapes" data-por-picker="shapes">' +
       '        <button type="button" class="por-picker__btn por-shapes__btn" id="por-shapes-btn" title="Shapes" aria-label="Shapes" aria-haspopup="true" aria-expanded="false">' +
@@ -491,30 +491,31 @@
       '    <span class="por-ribbon__label">Drawing</span>' +
       '  </div>' +
       '  <div class="por-ribbon__sep" aria-hidden="true"></div>' +
-      '  <div class="por-ribbon__group" role="group" aria-label="Editing">' +
-      '    <div class="por-ribbon__row">' +
-      '      <div class="por-picker" data-por-picker="select-menu">' +
-      '        <button type="button" class="por-picker__btn por-picker__btn--label" id="por-select-menu-btn" title="Select" aria-label="Select menu" aria-haspopup="true" aria-expanded="false">' +
-                  ICONS.select + ' Select <span class="por-shapes__chev">▾</span>' +
-      '        </button>' +
-      '        <div class="por-picker__pop" id="por-select-menu-pop" hidden role="menu" aria-label="Select">' +
-      '          <button type="button" class="por-menu-item" id="por-select-all" title="Select All">Select All</button>' +
-      '          <button type="button" class="por-menu-item" id="por-open-selpane" title="Selection Pane">Selection Pane…</button>' +
-      '        </div>' +
-      '      </div>' +
-      '      <button type="button" class="por-iconbtn" id="por-undo" title="Undo (Ctrl+Z)" aria-label="Undo">' + ICONS.undo + '</button>' +
-      '      <button type="button" class="por-iconbtn" id="por-redo" title="Redo" aria-label="Redo">' + ICONS.redo + '</button>' +
-      '      <button type="button" class="por-iconbtn" id="por-toggle-grid" title="Show Grid" aria-label="Show grid" aria-pressed="false">▦</button>' +
-      '      <button type="button" class="por-iconbtn" id="por-toggle-rulers" title="Show Rulers" aria-label="Show rulers" aria-pressed="false">▤</button>' +
-      '      <button type="button" class="por-iconbtn" id="por-hand" title="Hand / Pan (Space)" aria-label="Hand tool" aria-pressed="false">' +
-              svgIcon('<path d="M8 11V6.5a1.5 1.5 0 0 1 3 0V11"/><path d="M11 10V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M14 10.5V7a1.5 1.5 0 0 1 3 0v8.5a4.5 4.5 0 0 1-4.5 4.5H12a5 5 0 0 1-5-5V11a1.5 1.5 0 0 1 3 0"/>') + '</button>' +
-      '    </div>' +
-      '    <span class="por-ribbon__label">Editing</span>' +
-      '  </div>' +
       '</div>' +
+
       // Insert + Print stay pinned outside the scroll so Floor plan / Contour
       // remain reachable at 1440 and 1280 (CC: Insert was under Print / off-screen).
       '  <div class="por-ribbon__end" role="group" aria-label="Insert and output">' +
+      '    <div class="por-ribbon__group" role="group" aria-label="Editing">' +
+      '      <div class="por-ribbon__row">' +
+      '        <div class="por-picker" data-por-picker="select-menu">' +
+      '          <button type="button" class="por-picker__btn por-picker__btn--label" id="por-select-menu-btn" title="Select" aria-label="Select menu" aria-haspopup="true" aria-expanded="false">' +
+                    ICONS.select + ' Select <span class="por-shapes__chev">▾</span>' +
+      '          </button>' +
+      '          <div class="por-picker__pop" id="por-select-menu-pop" hidden role="menu" aria-label="Select">' +
+      '            <button type="button" class="por-menu-item" id="por-select-all" title="Select All">Select All</button>' +
+      '            <button type="button" class="por-menu-item" id="por-open-selpane" title="Selection Pane">Selection Pane…</button>' +
+      '          </div>' +
+      '        </div>' +
+      '        <button type="button" class="por-iconbtn" id="por-undo" title="Undo (Ctrl+Z)" aria-label="Undo">' + ICONS.undo + '</button>' +
+      '        <button type="button" class="por-iconbtn" id="por-redo" title="Redo" aria-label="Redo">' + ICONS.redo + '</button>' +
+      '        <button type="button" class="por-iconbtn" id="por-toggle-grid" title="Show Grid" aria-label="Show grid" aria-pressed="false">▦</button>' +
+      '        <button type="button" class="por-iconbtn" id="por-toggle-rulers" title="Show Rulers" aria-label="Show rulers" aria-pressed="false">▤</button>' +
+      '        <button type="button" class="por-iconbtn" id="por-hand" title="Hand / Pan (Space)" aria-label="Hand tool" aria-pressed="false">' +
+                svgIcon('<path d="M8 11V6.5a1.5 1.5 0 0 1 3 0V11"/><path d="M11 10V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M14 10.5V7a1.5 1.5 0 0 1 3 0v8.5a4.5 4.5 0 0 1-4.5 4.5H12a5 5 0 0 1-5-5V11a1.5 1.5 0 0 1 3 0"/>') + '</button>' +
+      '      </div>' +
+      '      <span class="por-ribbon__label">Editing</span>' +
+      '    </div>' +
       '    <div class="por-ribbon__group" role="group" aria-label="Insert">' +
       '      <div class="por-ribbon__row">' +
       '        <div class="por-picker" data-por-picker="insert">' +
@@ -724,18 +725,127 @@
       root.querySelectorAll('[data-por-tool="select"]').forEach(function (btn) {
         btn.classList.toggle('is-on', !state.inkTool);
       });
+      // Colour bars follow the selected shape when one is active; otherwise the
+      // tool defaults (CC: outline chip stayed blue after a red outline apply).
+      var chipOutline = state.inkColor;
+      var chipFill = state.fillColor;
+      var activeChip = null;
+      try { activeChip = state.fabricCanvas && state.fabricCanvas.getActiveObject(); } catch (_) {}
+      if (activeChip) {
+        if (activeChip.stroke) chipOutline = activeChip.stroke;
+        if (activeChip.fill && activeChip.fill !== 'transparent') chipFill = activeChip.fill;
+      } else {
+        var sel = selectedItem();
+        if (sel) {
+          if (sel.color) chipOutline = sel.color;
+          if (sel.fillColor) chipFill = sel.fillColor;
+        }
+      }
       var outlineChip = root.querySelector('#por-outline-chip');
-      if (outlineChip) outlineChip.style.background = state.inkColor;
+      if (outlineChip) outlineChip.style.background = chipOutline;
       var fillChip = root.querySelector('#por-fill-chip');
-      if (fillChip) fillChip.style.background = state.fillColor;
+      if (fillChip) fillChip.style.background = chipFill;
       var fontChip = root.querySelector('#por-font-color-chip');
-      if (fontChip) fontChip.style.background = state.inkColor;
-      // PowerPoint Font group stays visible; text controls apply when a text mark
-      // is selected or being edited.
+      if (fontChip) fontChip.style.background = chipOutline;
       var textStrip = root.querySelector('#por-text-format');
       if (textStrip) textStrip.hidden = false;
       syncStatusBar();
       syncSheetCursor();
+    }
+
+    function closeRibbonCollapsePops() {
+      root.querySelectorAll('.por-ribbon__group--collapsible.is-open').forEach(function (g) {
+        g.classList.remove('is-open');
+        var btn = g.querySelector('.por-ribbon__collapse-btn');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+        var body = g.querySelector('.por-ribbon__body');
+        if (body) {
+          body.style.position = '';
+          body.style.left = '';
+          body.style.top = '';
+          body.style.right = '';
+          body.style.zIndex = '';
+        }
+      });
+    }
+
+    function fitRibbon() {
+      var scroll = root.querySelector('.por-ribbon__scroll');
+      if (!scroll) return;
+      var groups = Array.prototype.slice.call(
+        scroll.querySelectorAll('.por-ribbon__group--collapsible')
+      );
+      // Expand all, then collapse Font → Paragraph → Clipboard → Drawing until
+      // the scroll fits (PowerPoint ribbon overflow). Drawing last so tools stay.
+      groups.forEach(function (g) {
+        g.classList.remove('is-collapsed', 'is-open');
+        var body = g.querySelector('.por-ribbon__body');
+        if (body) {
+          body.style.position = '';
+          body.style.left = '';
+          body.style.top = '';
+          body.style.right = '';
+          body.style.zIndex = '';
+        }
+      });
+      void scroll.offsetWidth;
+      var order = ['font', 'paragraph', 'clipboard', 'drawing'];
+      var i = 0;
+      while (scroll.scrollWidth > scroll.clientWidth + 1 && i < order.length) {
+        var g = scroll.querySelector('[data-por-collapse="' + order[i] + '"]');
+        if (g) g.classList.add('is-collapsed');
+        i += 1;
+        void scroll.offsetWidth;
+      }
+    }
+
+    function enhanceRibbonCollapse() {
+      root.querySelectorAll('.por-ribbon__group--collapsible').forEach(function (group) {
+        if (group.querySelector('.por-ribbon__collapse-btn')) return;
+        var label = group.getAttribute('aria-label') || 'Group';
+        var body = document.createElement('div');
+        body.className = 'por-ribbon__body';
+        while (group.firstChild) body.appendChild(group.firstChild);
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'por-ribbon__collapse-btn';
+        btn.setAttribute('aria-haspopup', 'true');
+        btn.setAttribute('aria-expanded', 'false');
+        btn.setAttribute('aria-label', label);
+        btn.title = label;
+        btn.innerHTML = label + ' <span class="por-shapes__chev">▾</span>';
+        btn.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          var open = group.classList.contains('is-open');
+          closeRibbonCollapsePops();
+          closePickers();
+          if (!open) {
+            group.classList.add('is-open');
+            btn.setAttribute('aria-expanded', 'true');
+            placePickerPop(body, btn);
+          }
+        });
+        group.appendChild(btn);
+        group.appendChild(body);
+      });
+      document.addEventListener('pointerdown', function (ev) {
+        if (ev.target.closest && ev.target.closest('.por-ribbon__group--collapsible.is-open')) return;
+        closeRibbonCollapsePops();
+      }, true);
+      fitRibbon();
+    }
+
+    /** Expand a collapsed ribbon group that contains sel so tests/UI can click it. */
+    function ensureRibbonControl(sel) {
+      var el = typeof sel === 'string' ? root.querySelector(sel) : sel;
+      if (!el) return null;
+      var group = el.closest && el.closest('.por-ribbon__group--collapsible');
+      if (group && group.classList.contains('is-collapsed') && !group.classList.contains('is-open')) {
+        var btn = group.querySelector('.por-ribbon__collapse-btn');
+        if (btn) btn.click();
+      }
+      return el;
     }
 
     function syncStatusBar() {
@@ -1918,6 +2028,17 @@
       syncAndSave();
     }
 
+    function parkFabricTextarea() {
+      // Fabric appends IText's hidden textarea on document.body; absolute top
+      // after edit can push document.scrollHeight past the window.
+      document.querySelectorAll('body > textarea').forEach(function (ta) {
+        if (document.activeElement === ta) return;
+        ta.style.top = '0px';
+        ta.style.left = '0px';
+        ta.style.paddingTop = '0px';
+      });
+    }
+
     function applySheetScale() {
       var paper = stageEl.querySelector('.rb-stage__paper');
       var scale = state.zoomMode === 'fit'
@@ -1937,6 +2058,7 @@
       }
       var pct = root.querySelector('#por-zoom-pct');
       if (pct) pct.textContent = Math.round(scale * 100) + '%';
+      parkFabricTextarea();
     }
 
     function zoomAtPointer(factor, clientX, clientY) {
@@ -2463,13 +2585,19 @@
           : (page.background && page.background.kind === 'import' ? 'Imported drawing' : 'Floor plan');
         bg.appendChild(img);
       } else if (!state.printMode) {
+        // Hint only on a truly blank sheet (no marks). Missing-bg warning stays
+        // until a background resolves; never enter the print DOM (printMode).
         var hasMarks = overlayList(page).length > 0;
-        if (state.bgMissing || !hasMarks) {
+        if (state.bgMissing) {
+          var missing = document.createElement('p');
+          missing.className = 'por-sheet-bg__empty por-sheet-bg__empty--warn';
+          missing.textContent = 'Referenced background is missing — review before print.';
+          bg.appendChild(missing);
+        } else if (!hasMarks) {
           var empty = document.createElement('p');
           empty.className = 'por-sheet-bg__empty';
-          empty.textContent = state.bgMissing
-            ? 'Referenced background is missing — review before print.'
-            : 'Blank sheet, or bring in a floor plan, contour, or imported drawing.';
+          empty.setAttribute('aria-hidden', 'true');
+          empty.textContent = 'Blank sheet, or bring in a floor plan, contour, or imported drawing.';
           bg.appendChild(empty);
         }
       }
@@ -2850,6 +2978,8 @@
         if (selpane) selpane.hidden = true;
         openInspector(which === 'size' ? 'size' : 'format');
       }
+      // Sheet column shrinks when the pane opens — re-fit so title block stays visible.
+      requestAnimationFrame(function () { applySheetScale(); fitRibbon(); });
     }
 
     function closePanel() {
@@ -2858,6 +2988,7 @@
       if (panel) panel.hidden = true;
       if (selpane) selpane.hidden = true;
       closeInspector();
+      requestAnimationFrame(function () { applySheetScale(); fitRibbon(); });
     }
 
     function openInspector(mode) {
@@ -2871,6 +3002,7 @@
       if (pt) pt.textContent = mode === 'size' ? 'Size and Position' : 'Format Shape';
       syncInspector();
       if (inspectorEl) inspectorEl.scrollIntoView({ block: 'nearest' });
+      requestAnimationFrame(function () { applySheetScale(); fitRibbon(); });
     }
 
     function closeInspector() {
@@ -4508,8 +4640,11 @@
     document.addEventListener('pointerdown', function (event) {
       if (!root.contains(event.target)) return;
       if (event.target.closest && event.target.closest('.por-picker')) return;
+      if (event.target.closest && event.target.closest('.por-ribbon__group--collapsible.is-open')) return;
       closePickers();
+      closeRibbonCollapsePops();
     });
+    enhanceRibbonCollapse();
     syncHistoryButtons();
 
     root.querySelector('#por-back').addEventListener('click', function () {
@@ -4847,7 +4982,11 @@
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('resize', applySheetScale);
+    function onRibbonResize() {
+      applySheetScale();
+      fitRibbon();
+    }
+    window.addEventListener('resize', onRibbonResize);
 
     activeMount = {
       root: root,
@@ -4862,7 +5001,7 @@
         window.removeEventListener('pointerup', onPointerUp);
         window.removeEventListener('keydown', onKeyDown);
         window.removeEventListener('keyup', onKeyUp);
-        window.removeEventListener('resize', applySheetScale);
+        window.removeEventListener('resize', onRibbonResize);
         sheetEl.removeEventListener('wheel', onViewWheel);
         document.body.classList.remove('plan-of-repair-open', 'is-por-printing');
         if (root.parentNode) root.parentNode.removeChild(root);
@@ -4893,6 +5032,7 @@
       if (state.readOnly) setStatus('View only — checked out elsewhere');
       else setStatus('Ready');
       renderAll();
+      requestAnimationFrame(function () { fitRibbon(); });
       if (!state.readOnly && !record.planOfRepair) scheduleSave();
     }).catch(function (err) {
       console.error(err);

@@ -52,6 +52,62 @@
   z-index: 3;
 }
 
+/* PowerPoint-style collapse: group becomes a single labelled dropdown when
+   the ribbon scroll would otherwise overflow under Insert/Print. */
+.por-ribbon__collapse-btn {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #0b1f33;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.por-ribbon__collapse-btn:hover {
+  border-color: #c9c2b4;
+  background: #fff;
+}
+
+.por-ribbon__group--collapsible.is-collapsed > .por-ribbon__collapse-btn {
+  display: inline-flex;
+}
+
+.por-ribbon__group--collapsible.is-collapsed > .por-ribbon__body {
+  display: none;
+}
+
+.por-ribbon__group--collapsible.is-collapsed.is-open > .por-ribbon__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid #c9c2b4;
+  border-radius: 4px;
+  background: #fffdf8;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+}
+
+.por-ribbon__group--collapsible.is-collapsed.is-open > .por-ribbon__body .por-ribbon__label {
+  display: none;
+}
+
+.por-ribbon__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+
 /* Keep the stage below the toolbar stacking context (sheet uses transform:scale). */
 .por-shell > .rb-workspace,
 .por-shell .rb-stage,
@@ -642,8 +698,12 @@
 
 /* Fit under the fixed 56px app-bar — min-height:100vh here made the page
    56px taller than the window (CC: status bar / Delete below the fold). */
+html:has(body.plan-of-repair-open),
 body.plan-of-repair-open {
   overflow: hidden;
+  height: 100%;
+  max-height: 100vh;
+  max-height: 100dvh;
 }
 
 body.plan-of-repair-open #app-view {
@@ -655,6 +715,29 @@ body.plan-of-repair-open #app-view {
   max-height: calc(100dvh - 56px);
   min-height: 0;
   overflow: hidden;
+}
+
+/* Zoomed paper scrolls inside the stage only — never grow the document.
+   Transformed sheets can let Fabric's IText <textarea> contribute to
+   document.scrollHeight; contain:paint keeps that inside the stage. */
+body.plan-of-repair-open .por-shell .rb-stage {
+  overflow: auto;
+  overscroll-behavior: contain;
+  contain: paint;
+}
+
+/* Fabric appends its IText hidden <textarea> on document.body (not the
+   canvas). Absolute top can sit below the fold and inflate scrollHeight
+   (CC: 933 vs 800). Park when idle; leave :focus alone for IME. */
+body.plan-of-repair-open > textarea:not(:focus) {
+  top: 0 !important;
+  left: 0 !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 .por-shell.rb-shell {
@@ -780,6 +863,13 @@ body.plan-of-repair-open #app-view {
   font-size: 13px;
   text-align: center;
   background: rgba(255, 250, 240, 0.9);
+}
+
+/* Blank-sheet hint is screen-only; never print (CC smaller #5). */
+@media print {
+  .por-sheet-bg__empty {
+    display: none !important;
+  }
 }
 
 .por-shell .rb-sheet {

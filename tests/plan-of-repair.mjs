@@ -24,15 +24,31 @@ function check(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
 }
 
+/** Expand a collapsed ribbon group so a control inside it is clickable. */
+async function ensureRibbonControl(sel) {
+  await page.evaluate((selector) => {
+    const el = document.querySelector(selector);
+    if (!el) return;
+    const group = el.closest('.por-ribbon__group--collapsible');
+    if (group && group.classList.contains('is-collapsed') && !group.classList.contains('is-open')) {
+      const btn = group.querySelector('.por-ribbon__collapse-btn');
+      if (btn) btn.click();
+    }
+  }, sel);
+  await new Promise((r) => setTimeout(r, 80));
+}
+
 /** Open the PowerPoint-style Shapes gallery if needed, then click a tool. */
 async function armPorTool(sel) {
   const needsGallery = /data-rb-tool|por-insert-text|data-por-tool/.test(sel);
+  await ensureRibbonControl(needsGallery ? '#por-shapes-btn' : sel);
   if (needsGallery) {
     const open = await page.evaluate(() => {
       const pop = document.querySelector('#por-shapes-pop');
       return !!(pop && !pop.hidden);
     });
     if (!open) {
+      await ensureRibbonControl('#por-shapes-btn');
       await page.click('#por-shapes-btn');
       await page.waitForFunction(() => {
         const pop = document.querySelector('#por-shapes-pop');
@@ -843,6 +859,7 @@ await page.evaluate(() => {
   objs[0].set({ stroke: '#16a34a', fill: '#eab308', strokeWidth: 4.5 });
   canvas.requestRenderAll();
 });
+await ensureRibbonControl('#por-format-painter');
 await page.click('#por-format-painter');
 await page.evaluate(() => {
   const canvas = document.querySelector('.por-fabric-host')._porCanvas;
@@ -874,7 +891,9 @@ await page.evaluate(() => {
   const tb = canvas.getActiveObject();
   if (tb && typeof tb.enterEditing === 'function') tb.enterEditing();
 });
+await ensureRibbonControl('[data-por-text="bold"]');
 await page.click('[data-por-text="bold"]');
+await ensureRibbonControl('#por-font-grow');
 await page.click('#por-font-grow');
 await new Promise((r) => setTimeout(r, 300));
 const textFmt = await page.evaluate(() => {
@@ -1713,8 +1732,18 @@ const outlineSaved = await page.evaluate(async () => {
 });
 check(
   'outline colour saves on selected shape',
-  outlineSaved.color === '#c14a2b',
+  outlineSaved.color === '#c14a2b' && outlineSaved.fabricStroke === '#c14a2b',
   JSON.stringify(outlineSaved)
+);
+const outlineChipSync = await page.evaluate(() => {
+  const chip = document.querySelector('#por-outline-chip');
+  const bg = (chip && (chip.style.background || getComputedStyle(chip).backgroundColor)) || '';
+  return { bg, matches: /c14a2b|193,\s*74,\s*43/i.test(bg) };
+});
+check(
+  'outline chip shows selected shape colour',
+  outlineChipSync.matches,
+  JSON.stringify(outlineChipSync)
 );
 
 await page.mouse.click(stylePt(47.5, 47.5).x, stylePt(47.5, 47.5).y);
@@ -1903,48 +1932,163 @@ check(
   JSON.stringify(chromeAtRest)
 );
 
-// CC chrome blockers: Insert must be mouse-reachable (elementFromPoint) at 1440/1280;
-// status bar must sit in the window (no document overflow under the app-bar).
+// CC chrome blockers: every *visible* ribbon + status-bar control must be
+// inside the viewport and top-at-centre (elementFromPoint). Document height
+// equals window height. Collapse groups may hide Font/Clipboard bodies —
+// their collapse buttons must still be reachable.
 async function layoutReachable(width, height) {
   await page.setViewport({ width, height });
-  await new Promise((r) => setTimeout(r, 250));
-  // Close any open pops so elementFromPoint is clean.
+  await new Promise((r) => setTimeout(r, 300));
   await page.evaluate(() => {
     document.querySelectorAll('.por-picker__pop').forEach((p) => { p.hidden = true; });
+    document.querySelectorAll('.por-ribbon__group--collapsible.is-open').forEach((g) => {
+      g.classList.remove('is-open');
+    });
     document.querySelector('[data-por-shapemenu]')?.remove();
+    // Exit any IText edit so Fabric's hidden textarea is idle (parked by CSS).
+    try {
+      const host = document.querySelector('.por-fabric-host');
+      const canvas = host && host._porCanvas;
+      const active = canvas && canvas.getActiveObject && canvas.getActiveObject();
+      if (active && typeof active.exitEditing === 'function') active.exitEditing();
+      if (canvas && canvas.discardActiveObject) {
+        canvas.discardActiveObject();
+        canvas.requestRenderAll();
+      }
+    } catch (_) {}
+    document.querySelectorAll('body > textarea').forEach((ta) => {
+      if (document.activeElement === ta) ta.blur();
+      ta.style.top = '0px';
+      ta.style.left = '0px';
+      ta.style.paddingTop = '0px';
+    });
+    // Fit mode: whole sheet in the stage; document must not page-scroll.
+    const fit = document.querySelector('#por-zoom-level');
+    if (fit) fit.click();
+    window.dispatchEvent(new Event('resize'));
   });
+  await new Promise((r) => setTimeout(r, 250));
   return page.evaluate(() => {
-    const insert = document.querySelector('#por-insert-btn');
-    const print = document.querySelector('#por-print');
+    const bad = [];
+    function isVisible(el) {
+      if (!el) return false;
+      const cs = getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0.5 && r.height > 0.5;
+    }
+    function checkEl(el, name) {
+      if (!isVisible(el)) return;
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const inView = cx >= 0 && cy >= 0 && cx <= window.innerWidth && cy <= window.innerHeight;
+      const hit = inView ? document.elementFromPoint(cx, cy) : null;
+      const top = !!(hit && (hit === el || el.contains(hit) ||
+        (el.id && hit.closest && hit.closest('#' + CSS.escape(el.id)))));
+      if (!inView || !top) {
+        bad.push({
+          name,
+          inView,
+          top,
+          x: Math.round(r.left),
+          y: Math.round(r.top),
+          hit: hit && (hit.id || String(hit.className).slice(0, 40)),
+        });
+      }
+    }
+    const ribbonIds = [
+      'por-paste', 'por-cut', 'por-copy', 'por-format-painter',
+      'por-shapes-btn', 'por-fill', 'por-fill-btn', 'por-outline-btn',
+      'por-weight-btn', 'por-dash-btn', 'por-opacity', 'por-set-default',
+      'por-select-menu-btn', 'por-undo', 'por-redo', 'por-toggle-grid',
+      'por-toggle-rulers', 'por-hand', 'por-insert-btn', 'por-print',
+      'por-arrange-btn',
+    ];
+    ribbonIds.forEach((id) => checkEl(document.getElementById(id), id));
+    document.querySelectorAll('.por-ribbon__collapse-btn').forEach((btn, i) => {
+      checkEl(btn, 'collapse-' + i + '-' + (btn.getAttribute('aria-label') || ''));
+    });
+    const statusIds = [
+      'por-page-indicator', 'por-zoom-out', 'por-zoom-slider',
+      'por-zoom-pct', 'por-zoom-level', 'por-zoom-in',
+    ];
+    statusIds.forEach((id) => checkEl(document.getElementById(id), id));
+    checkEl(document.querySelector('.por-statusbar'), 'statusbar');
+    const docH = document.documentElement.scrollHeight;
+    const winH = window.innerHeight;
+    const heightOk = Math.abs(docH - winH) <= 1;
     const status = document.querySelector('.por-statusbar');
     const app = document.querySelector('#app-view');
-    if (!insert || !print || !status || !app) return { ok: false, reason: 'missing' };
-    const ir = insert.getBoundingClientRect();
-    const pr = print.getBoundingClientRect();
-    const sr = status.getBoundingClientRect();
-    const ar = app.getBoundingClientRect();
-    const hit = document.elementFromPoint(ir.left + ir.width / 2, ir.top + ir.height / 2);
-    const insertOk = !!(hit && (hit.id === 'por-insert-btn' || hit.closest?.('#por-insert-btn')));
-    // Status bar and app-view bottom must sit in the window (CC: 56px taller than window).
-    const statusOk = sr.bottom <= window.innerHeight + 1 && ar.bottom <= window.innerHeight + 1;
+    const statusOk = !!(status && app &&
+      status.getBoundingClientRect().bottom <= winH + 1 &&
+      app.getBoundingClientRect().bottom <= winH + 1);
+    const collapsed = Array.from(
+      document.querySelectorAll('.por-ribbon__group--collapsible.is-collapsed')
+    ).map((g) => g.getAttribute('data-por-collapse'));
     return {
-      ok: insertOk && statusOk && ir.right <= pr.left + 2,
-      insertOk,
+      ok: bad.length === 0 && heightOk && statusOk,
+      bad,
+      heightOk,
       statusOk,
-      insertRight: Math.round(ir.right),
-      printLeft: Math.round(pr.left),
-      statusBottom: Math.round(sr.bottom),
-      appBottom: Math.round(ar.bottom),
-      vh: window.innerHeight,
-      hit: hit && (hit.id || hit.className),
+      docH,
+      winH,
+      collapsed,
       width: window.innerWidth,
     };
   });
 }
-const layout1440 = await layoutReachable(1440, 900);
-check('Insert reachable + no overflow at 1440', layout1440.ok, JSON.stringify(layout1440));
 const layout1280 = await layoutReachable(1280, 800);
-check('Insert reachable + no overflow at 1280', layout1280.ok, JSON.stringify(layout1280));
+check('ribbon+status reachable, height fits at 1280×800', layout1280.ok, JSON.stringify(layout1280));
+const layout1440 = await layoutReachable(1440, 900);
+check('ribbon+status reachable, height fits at 1440×900', layout1440.ok, JSON.stringify(layout1440));
+const layout1920 = await layoutReachable(1920, 1080);
+check('ribbon+status reachable, height fits at 1920×1080', layout1920.ok, JSON.stringify(layout1920));
+
+// Open Insert → Floor plan with page.mouse at 1280×800 (page.click can pierce covers).
+await page.setViewport({ width: 1280, height: 800 });
+await new Promise((r) => setTimeout(r, 200));
+await page.evaluate(() => {
+  document.querySelectorAll('.por-picker__pop').forEach((p) => { p.hidden = true; });
+  document.querySelectorAll('.por-ribbon__group--collapsible.is-open').forEach((g) => {
+    g.classList.remove('is-open');
+  });
+});
+const insertMouse = await page.evaluate(() => {
+  const btn = document.querySelector('#por-insert-btn');
+  if (!btn) return null;
+  const r = btn.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+});
+check('Insert centre known at 1280', !!insertMouse, JSON.stringify(insertMouse));
+if (insertMouse) {
+  await page.mouse.click(insertMouse.x, insertMouse.y);
+  await page.waitForFunction(() => {
+    const pop = document.querySelector('#por-insert-pop');
+    return pop && !pop.hidden;
+  }, { timeout: 2500 }).catch(() => {});
+  const planTarget = await page.evaluate(() => {
+    const plan = document.querySelector('#por-bring-plan');
+    if (!plan) return null;
+    const r = plan.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return {
+      x: r.left + r.width / 2,
+      y: r.top + r.height / 2,
+      top: !!(hit && (hit.id === 'por-bring-plan' || hit.closest?.('#por-bring-plan'))),
+    };
+  });
+  check('Floor plan item top-at-centre after Insert mouse open', !!(planTarget && planTarget.top), JSON.stringify(planTarget));
+  if (planTarget && planTarget.top) {
+    await page.mouse.click(planTarget.x, planTarget.y);
+    await new Promise((r) => setTimeout(r, 600));
+  }
+  const afterPlan = await page.evaluate(() => ({
+    bg: !!document.querySelector('.por-sheet-bg img'),
+    popClosed: !!(document.querySelector('#por-insert-pop')?.hidden),
+  }));
+  check('Insert→Floor plan via page.mouse at 1280', afterPlan.bg, JSON.stringify(afterPlan));
+}
 await page.setViewport({ width: 1440, height: 900 });
 await new Promise((r) => setTimeout(r, 200));
 
