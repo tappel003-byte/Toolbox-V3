@@ -286,6 +286,12 @@
       text: svgIcon('<path d="M5 6h14M12 6v12M8 18h8"/>'),
       eraser: svgIcon('<path d="M8.6 19.5H5.4a1.6 1.6 0 0 1-1.1-2.7L13.9 7a2 2 0 0 1 2.8 0l3 3a2 2 0 0 1 0 2.8l-6.6 6.6z"/><path d="M8.6 19.5h11.9"/>'),
       weight: svgIcon('<path d="M4 8h16M4 12h16M4 16h16" stroke-width="1.2"/><path d="M4 12h16" stroke-width="3"/>'),
+      cut: svgIcon('<path d="M8 8a2.5 2.5 0 1 1-3.5 3.5"/><path d="M8 16a2.5 2.5 0 1 0-3.5-3.5"/><path d="M6.5 9.5 19 4"/><path d="M6.5 14.5 19 20"/>'),
+      copy: svgIcon('<rect x="8" y="8" width="11" height="12" rx="1"/><path d="M5 15V5a1 1 0 0 1 1-1h9"/>'),
+      paste: svgIcon('<path d="M9 4h6v3H9z"/><rect x="6" y="6" width="12" height="14" rx="1"/><path d="M9 12h6M9 15h6"/>'),
+      fillBucket: svgIcon('<path d="M4 14l7-7 5 5-7 7H4z"/><path d="M14 9l3.5-3.5a2 2 0 0 1 2.8 2.8L17 11"/><path d="M3 20h8"/>'),
+      outlinePen: svgIcon('<path d="M4 20l1.2-4.4L15 5.8a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8L9.4 17.8 5 19z"/><path d="M13.5 7.2l3.3 3.3"/>'),
+      styleBrush: svgIcon('<path d="M7 3h7l3 3v4H7z"/><path d="M9 10v8a2 2 0 0 0 4 0v-2"/>'),
     };
 
     function shadeHex(hex, factor) {
@@ -316,9 +322,9 @@
       return '<div class="por-swatch-grid">' + cells.join('') + '</div>';
     }
 
-    // Paint / PowerPoint drawing-first chrome: compact icon strip, colour/weight
-    // pickers, pages left, canvas center, compact Toolbox rail. Print stays in
-    // its own slot so text B/I/U never wraps it.
+    // PowerPoint chrome: labeled ribbon groups, shape gallery, request-only
+    // Format Shape / Selection panes, page thumbs left, status bar bottom.
+    // Saved drawing format / sync / print behaviour unchanged.
     root.innerHTML =
       '<div class="view-bar view-bar--file rb-identity">' +
       '  <button type="button" id="por-back" class="btn btn--ghost">‹ TLS</button>' +
@@ -328,136 +334,228 @@
       '  </div>' +
       '  <span class="file-status" id="por-status">Loading…</span>' +
       '</div>' +
-      '<div class="por-toolbar" role="toolbar" aria-label="Drawing tools">' +
-      '  <div class="por-toolbar__group" role="group" aria-label="History">' +
-      '    <button type="button" class="por-iconbtn" id="por-undo" title="Undo (Ctrl+Z)" aria-label="Undo">' + ICONS.undo + '</button>' +
-      '    <button type="button" class="por-iconbtn" id="por-redo" title="Redo" aria-label="Redo">' + ICONS.redo + '</button>' +
-      '  </div>' +
-      '  <div class="por-toolbar__group por-toolbar__tools" role="group" aria-label="Tools">' +
-      '    <button type="button" class="por-iconbtn is-on" data-por-tool="select" title="Select" aria-label="Select">' + ICONS.select + '</button>' +
-      '    <button type="button" class="por-iconbtn" data-rb-tool="pencil" title="Pencil" aria-label="Pencil">' + ICONS.pencil + '</button>' +
-      '    <button type="button" class="por-iconbtn" data-rb-tool="line" title="Line" aria-label="Line">' +
-            svgIcon('<path d="M5 19 19 5"/>') + '</button>' +
-      '    <button type="button" class="por-iconbtn" data-rb-tool="arrow" title="Arrow" aria-label="Arrow">' + ICONS.arrow + '</button>' +
-      '    <button type="button" class="por-iconbtn" data-rb-tool="rect" title="Rectangle" aria-label="Rectangle">' + ICONS.rect + '</button>' +
-      '    <button type="button" class="por-iconbtn" data-rb-tool="roundRect" title="Rounded rectangle" aria-label="Rounded rectangle">' +
-            svgIcon('<rect x="3.5" y="5.5" width="17" height="13" rx="4"/>') + '</button>' +
-      '    <button type="button" class="por-iconbtn" data-rb-tool="circle" title="Circle / oval" aria-label="Circle">' + ICONS.circle + '</button>' +
-      '    <button type="button" class="por-iconbtn" data-rb-tool="triangle" title="Triangle" aria-label="Triangle">' +
-            svgIcon('<path d="M12 4 20 19H4z"/>') + '</button>' +
-      '    <button type="button" class="por-iconbtn" id="por-insert-text" title="Text box" aria-label="Text">' + ICONS.text + '</button>' +
-      '    <button type="button" class="por-iconbtn" data-rb-tool="eraser" title="Eraser" aria-label="Eraser">' + ICONS.eraser + '</button>' +
-      '    <button type="button" class="por-iconbtn" id="por-keep-tool" title="Keep tool on for many marks" aria-label="Keep tool on" aria-pressed="false">' +
-            svgIcon('<path d="M7 7h10v10H7z"/><path d="M9 3v2M15 3v2M9 19v2M15 19v2M3 9h2M3 15h2M19 9h2M19 15h2"/>') + '</button>' +
-      '  </div>' +
-      '  <div class="por-toolbar__group" role="group" aria-label="Style">' +
-      '    <div class="por-picker" data-por-picker="outline">' +
-      '      <button type="button" class="por-picker__btn por-picker__btn--swatch" id="por-outline-btn" title="Outline colour" aria-label="Outline colour" aria-haspopup="true" aria-expanded="false">' +
-      '        <span class="por-picker__chip" id="por-outline-chip"></span>' +
-      '      </button>' +
-      '      <div class="por-picker__pop por-picker__pop--colors" id="por-outline-pop" hidden role="listbox" aria-label="Outline colours">' +
-            colorGrid('data-por-outline') +
-      '        <div class="por-picker__extras">' +
-      '          <label class="por-picker__custom">Custom <input type="color" id="por-outline-custom" value="#1d4ed8"></label>' +
-      '          <div class="por-picker__recent" id="por-outline-recent" aria-label="Recent outline colours"></div>' +
-      '        </div>' +
-      '      </div>' +
-      '    </div>' +
-      '    <label class="por-fill-toggle por-fill-toggle--tool" title="Fill shapes"><input type="checkbox" id="por-fill" aria-label="Fill shapes"></label>' +
-      '    <div class="por-picker" data-por-picker="fill">' +
-      '      <button type="button" class="por-picker__btn por-picker__btn--swatch" id="por-fill-btn" title="Fill colour" aria-label="Fill colour" aria-haspopup="true" aria-expanded="false">' +
-      '        <span class="por-picker__chip" id="por-fill-chip"></span>' +
-      '      </button>' +
-      '      <div class="por-picker__pop por-picker__pop--colors" id="por-fill-pop" hidden role="listbox" aria-label="Fill colours">' +
-            colorGrid('data-por-fill') +
-      '        <div class="por-picker__extras">' +
-      '          <label class="por-picker__custom">Custom <input type="color" id="por-fill-custom" value="#eab308"></label>' +
-      '          <div class="por-picker__recent" id="por-fill-recent" aria-label="Recent fill colours"></div>' +
-      '        </div>' +
-      '      </div>' +
-      '    </div>' +
-      '    <div class="por-picker" data-por-picker="weight">' +
-      '      <button type="button" class="por-picker__btn por-picker__btn--icon" id="por-weight-btn" title="Line weight" aria-label="Line weight" aria-haspopup="true" aria-expanded="false">' +
-      ICONS.weight + '</button>' +
-      '      <div class="por-picker__pop por-picker__pop--weight" id="por-weight-pop" hidden role="listbox" aria-label="Line weight">' +
-      '        <button type="button" class="por-weight" data-por-pt="0.75" data-por-thick="1" title="0.75 pt" aria-label="0.75 pt"><span class="por-weight__bar" style="height:1.5px"></span><span class="por-weight__label">0.75</span></button>' +
-      '        <button type="button" class="por-weight" data-por-pt="1.5" data-por-thick="2" title="1.5 pt" aria-label="1.5 pt"><span class="por-weight__bar" style="height:3px"></span><span class="por-weight__label">1.5</span></button>' +
-      '        <button type="button" class="por-weight" data-por-pt="3" data-por-thick="3" title="3 pt" aria-label="3 pt"><span class="por-weight__bar" style="height:5px"></span><span class="por-weight__label">3</span></button>' +
-      '        <button type="button" class="por-weight" data-por-pt="4.5" data-por-thick="3" title="4.5 pt" aria-label="4.5 pt"><span class="por-weight__bar" style="height:7px"></span><span class="por-weight__label">4.5</span></button>' +
-      '      </div>' +
-      '    </div>' +
-      '    <div class="por-picker" data-por-picker="dash">' +
-      '      <button type="button" class="por-picker__btn por-picker__btn--icon" id="por-dash-btn" title="Dash style" aria-label="Dash style" aria-haspopup="true" aria-expanded="false">' +
-            svgIcon('<path d="M4 12h3M10 12h3M16 12h4"/>') + '</button>' +
-      '      <div class="por-picker__pop" id="por-dash-pop" hidden role="listbox" aria-label="Dash styles">' +
-      '        <button type="button" class="por-dash" data-por-dash="solid" title="Solid">────</button>' +
-      '        <button type="button" class="por-dash" data-por-dash="dashed" title="Dashed">- - -</button>' +
-      '        <button type="button" class="por-dash" data-por-dash="dotted" title="Dotted">· · ·</button>' +
-      '      </div>' +
-      '    </div>' +
-      '    <label class="por-opacity" title="Transparency"><span>T</span><input type="range" id="por-opacity" min="0" max="100" value="100" aria-label="Opacity"></label>' +
-      '    <button type="button" class="por-iconbtn" id="por-format-painter" title="Format Painter" aria-label="Format Painter">' +
+      '<div class="por-toolbar por-ribbon" role="toolbar" aria-label="Drawing tools">' +
+      '<div class="por-ribbon__scroll">' +
+      '  <div class="por-ribbon__group" role="group" aria-label="Clipboard">' +
+      '    <div class="por-ribbon__row">' +
+      '      <button type="button" class="por-iconbtn" id="por-paste" title="Paste (Ctrl+V)" aria-label="Paste">' + ICONS.paste + '</button>' +
+      '      <button type="button" class="por-iconbtn" id="por-cut" title="Cut (Ctrl+X)" aria-label="Cut">' + ICONS.cut + '</button>' +
+      '      <button type="button" class="por-iconbtn" id="por-copy" title="Copy (Ctrl+C)" aria-label="Copy">' + ICONS.copy + '</button>' +
+      '      <button type="button" class="por-iconbtn" id="por-format-painter" title="Format Painter" aria-label="Format Painter">' +
             svgIcon('<path d="M7 3h7l3 3v4H7z"/><path d="M9 10v8a2 2 0 0 0 4 0v-2"/>') + '</button>' +
-      '    <button type="button" class="por-iconbtn" id="por-set-default" title="Set as default for new shapes" aria-label="Set as default">' +
-            svgIcon('<path d="M12 3l2.2 4.5 5 .7-3.6 3.5.9 5.1L12 14.8 7.5 16.8l.9-5.1L4.8 8.2l5-.7z"/>') + '</button>' +
+      '    </div>' +
+      '    <span class="por-ribbon__label">Clipboard</span>' +
       '  </div>' +
-      '  <div class="por-toolbar__group por-toolbar__text" id="por-text-format" hidden role="group" aria-label="Text formatting">' +
-      '    <select id="por-font-family" class="por-font-select" aria-label="Font">' +
-      '      <option value="Calibri, Arial, sans-serif">Calibri</option>' +
-      '      <option value="Arial, sans-serif">Arial</option>' +
-      '      <option value="Georgia, serif">Georgia</option>' +
-      '      <option value="Times New Roman, serif">Times</option>' +
-      '      <option value="Courier New, monospace">Courier</option>' +
-      '    </select>' +
-      '    <input type="number" id="por-font-size" class="por-font-size" min="8" max="96" value="18" aria-label="Font size">' +
-      '    <button type="button" class="por-iconbtn" id="por-font-grow" title="Grow font" aria-label="Grow font">A+</button>' +
-      '    <button type="button" class="por-iconbtn" id="por-font-shrink" title="Shrink font" aria-label="Shrink font">A−</button>' +
-      '    <button type="button" class="por-iconbtn" data-por-text="bold" title="Bold" aria-label="Bold"><b>B</b></button>' +
-      '    <button type="button" class="por-iconbtn" data-por-text="italic" title="Italic" aria-label="Italic"><i>I</i></button>' +
-      '    <button type="button" class="por-iconbtn" data-por-text="underline" title="Underline" aria-label="Underline"><u>U</u></button>' +
-      '    <button type="button" class="por-iconbtn" data-por-text="strike" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>' +
-      '    <button type="button" class="por-iconbtn" data-por-align="left" title="Align left" aria-label="Align left">⫷</button>' +
-      '    <button type="button" class="por-iconbtn" data-por-align="center" title="Align center" aria-label="Align center">☰</button>' +
-      '    <button type="button" class="por-iconbtn" data-por-align="right" title="Align right" aria-label="Align right">⫸</button>' +
-      '    <button type="button" class="por-iconbtn" data-por-text="bullet" title="Bullets" aria-label="Bullets">•</button>' +
+      '  <div class="por-ribbon__sep" aria-hidden="true"></div>' +
+      '  <div class="por-ribbon__group por-toolbar__text" id="por-text-format" role="group" aria-label="Font">' +
+      '    <div class="por-ribbon__row por-ribbon__row--wrap">' +
+      '      <select id="por-font-family" class="por-font-select" title="Font" aria-label="Font">' +
+      '        <option value="Calibri, Arial, sans-serif">Calibri</option>' +
+      '        <option value="Arial, sans-serif">Arial</option>' +
+      '        <option value="Georgia, serif">Georgia</option>' +
+      '        <option value="Times New Roman, serif">Times</option>' +
+      '        <option value="Courier New, monospace">Courier</option>' +
+      '      </select>' +
+      '      <input type="number" id="por-font-size" class="por-font-size" min="8" max="96" value="18" title="Font size" aria-label="Font size">' +
+      '      <button type="button" class="por-iconbtn" id="por-font-grow" title="Increase Font Size" aria-label="Grow font">A+</button>' +
+      '      <button type="button" class="por-iconbtn" id="por-font-shrink" title="Decrease Font Size" aria-label="Shrink font">A−</button>' +
+      '      <button type="button" class="por-iconbtn" data-por-text="bold" title="Bold" aria-label="Bold"><b>B</b></button>' +
+      '      <button type="button" class="por-iconbtn" data-por-text="italic" title="Italic" aria-label="Italic"><i>I</i></button>' +
+      '      <button type="button" class="por-iconbtn" data-por-text="underline" title="Underline" aria-label="Underline"><u>U</u></button>' +
+      '      <button type="button" class="por-iconbtn" data-por-text="strike" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>' +
+      '      <div class="por-picker" data-por-picker="font-color">' +
+      '        <button type="button" class="por-picker__btn por-picker__btn--font" id="por-font-color-btn" title="Font Color" aria-label="Font colour" aria-haspopup="true" aria-expanded="false">' +
+      '          <span class="por-font-color__glyph">A</span><span class="por-picker__chip" id="por-font-color-chip"></span>' +
+      '        </button>' +
+      '        <div class="por-picker__pop por-picker__pop--colors" id="por-font-color-pop" hidden role="listbox" aria-label="Font colours">' +
+              colorGrid('data-por-font-color') +
+      '        </div>' +
+      '      </div>' +
+      '    </div>' +
+      '    <span class="por-ribbon__label">Font</span>' +
       '  </div>' +
-      '  <div class="por-toolbar__group" role="group" aria-label="Arrange">' +
-      '    <button type="button" class="por-iconbtn" data-por-align-marks="left" title="Align left" aria-label="Align left">⫷</button>' +
-      '    <button type="button" class="por-iconbtn" data-por-align-marks="center" title="Align center" aria-label="Align center">☰</button>' +
-      '    <button type="button" class="por-iconbtn" data-por-align-marks="right" title="Align right" aria-label="Align right">⫸</button>' +
-      '    <button type="button" class="por-iconbtn" data-por-align-marks="top" title="Align top" aria-label="Align top">⬆</button>' +
-      '    <button type="button" class="por-iconbtn" data-por-align-marks="middle" title="Align middle" aria-label="Align middle">↕</button>' +
-      '    <button type="button" class="por-iconbtn" data-por-align-marks="bottom" title="Align bottom" aria-label="Align bottom">⬇</button>' +
-      '    <button type="button" class="por-iconbtn" data-por-distribute="h" title="Distribute horizontally" aria-label="Distribute horizontally"> ↔ </button>' +
-      '    <button type="button" class="por-iconbtn" data-por-distribute="v" title="Distribute vertically" aria-label="Distribute vertically"> ↕ </button>' +
-      '    <button type="button" class="por-iconbtn" id="por-toggle-grid" title="Show grid" aria-label="Show grid" aria-pressed="false">▦</button>' +
-      '    <button type="button" class="por-iconbtn" id="por-toggle-rulers" title="Show rulers" aria-label="Show rulers" aria-pressed="false">▤</button>' +
-      '    <button type="button" class="por-iconbtn" id="por-hand" title="Hand / pan sheet (Space)" aria-label="Hand tool" aria-pressed="false">' +
-            svgIcon('<path d="M8 11V6.5a1.5 1.5 0 0 1 3 0V11"/><path d="M11 10V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M14 10.5V7a1.5 1.5 0 0 1 3 0v8.5a4.5 4.5 0 0 1-4.5 4.5H12a5 5 0 0 1-5-5V11a1.5 1.5 0 0 1 3 0"/>') + '</button>' +
+      '  <div class="por-ribbon__sep" aria-hidden="true"></div>' +
+      '  <div class="por-ribbon__group" role="group" aria-label="Paragraph">' +
+      '    <div class="por-ribbon__row">' +
+      '      <button type="button" class="por-iconbtn" data-por-align="left" title="Align Left" aria-label="Align left">⫷</button>' +
+      '      <button type="button" class="por-iconbtn" data-por-align="center" title="Center" aria-label="Align center">☰</button>' +
+      '      <button type="button" class="por-iconbtn" data-por-align="right" title="Align Right" aria-label="Align right">⫸</button>' +
+      '      <button type="button" class="por-iconbtn" data-por-text="bullet" title="Bullets" aria-label="Bullets">•</button>' +
+      '      <button type="button" class="por-iconbtn" id="por-line-spacing" title="Line Spacing" aria-label="Line spacing" disabled>≡</button>' +
+      '    </div>' +
+      '    <span class="por-ribbon__label">Paragraph</span>' +
       '  </div>' +
-      '  <div class="por-toolbar__spacer"></div>' +
-      '  <div class="por-toolbar__view" role="group" aria-label="Page view">' +
-      '    <button type="button" id="por-zoom-out" class="por-iconbtn" aria-label="Zoom out" title="Zoom out">−</button>' +
-      '    <input type="range" id="por-zoom-slider" class="por-zoom-slider" min="35" max="240" value="100" aria-label="Zoom">' +
-      '    <button type="button" id="por-zoom-level" class="por-zoom-level" title="Fit page">Fit</button>' +
-      '    <button type="button" id="por-zoom-in" class="por-iconbtn" aria-label="Zoom in" title="Zoom in">+</button>' +
+      '  <div class="por-ribbon__sep" aria-hidden="true"></div>' +
+      '  <div class="por-ribbon__group" role="group" aria-label="Drawing">' +
+      '    <div class="por-ribbon__row">' +
+      '      <div class="por-picker por-shapes" data-por-picker="shapes">' +
+      '        <button type="button" class="por-picker__btn por-shapes__btn" id="por-shapes-btn" title="Shapes" aria-label="Shapes" aria-haspopup="true" aria-expanded="false">' +
+                ICONS.rect + '<span class="por-shapes__chev">▾</span>' +
+      '        </button>' +
+      '        <div class="por-picker__pop por-shapes__pop" id="por-shapes-pop" hidden role="menu" aria-label="Shapes">' +
+      '          <div class="por-shapes__grid por-toolbar__tools">' +
+      '            <button type="button" class="por-iconbtn is-on" data-por-tool="select" title="Select" aria-label="Select">' + ICONS.select + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="line" title="Line" aria-label="Line">' +
+                      svgIcon('<path d="M5 19 19 5"/>') + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="arrow" title="Arrow" aria-label="Arrow">' + ICONS.arrow + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="rect" title="Rectangle" aria-label="Rectangle">' + ICONS.rect + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="roundRect" title="Rounded Rectangle" aria-label="Rounded rectangle">' +
+                      svgIcon('<rect x="3.5" y="5.5" width="17" height="13" rx="4"/>') + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="circle" title="Oval" aria-label="Circle">' + ICONS.circle + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="triangle" title="Triangle" aria-label="Triangle">' +
+                      svgIcon('<path d="M12 4 20 19H4z"/>') + '</button>' +
+      '            <button type="button" class="por-iconbtn" id="por-insert-text" title="Text Box" aria-label="Text">' + ICONS.text + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="pencil" title="Freeform" aria-label="Pencil">' + ICONS.pencil + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="eraser" title="Eraser" aria-label="Eraser">' + ICONS.eraser + '</button>' +
+      '            <button type="button" class="por-iconbtn" id="por-keep-tool" title="Keep tool on for many marks" aria-label="Keep tool on" aria-pressed="false">' +
+                      svgIcon('<path d="M7 7h10v10H7z"/><path d="M9 3v2M15 3v2M9 19v2M15 19v2M3 9h2M3 15h2M19 9h2M19 15h2"/>') + '</button>' +
+      '          </div>' +
+      '        </div>' +
+      '      </div>' +
+      '      <div class="por-picker" data-por-picker="arrange">' +
+      '        <button type="button" class="por-picker__btn por-picker__btn--label" id="por-arrange-btn" title="Arrange" aria-label="Arrange" aria-haspopup="true" aria-expanded="false">' +
+      '          Arrange <span class="por-shapes__chev">▾</span>' +
+      '        </button>' +
+      '        <div class="por-picker__pop por-arrange__pop" id="por-arrange-pop" hidden role="menu" aria-label="Arrange">' +
+      '          <button type="button" class="por-menu-item" data-por-stack="front" title="Bring to Front">Bring to Front</button>' +
+      '          <button type="button" class="por-menu-item" data-por-stack="forward" title="Bring Forward">Bring Forward</button>' +
+      '          <button type="button" class="por-menu-item" data-por-stack="backward" title="Send Backward">Send Backward</button>' +
+      '          <button type="button" class="por-menu-item" data-por-stack="back" title="Send to Back">Send to Back</button>' +
+      '          <div class="por-stackmenu__sep"></div>' +
+      '          <button type="button" class="por-menu-item" data-por-align-marks="left" title="Align Left">Align Left</button>' +
+      '          <button type="button" class="por-menu-item" data-por-align-marks="center" title="Align Center">Align Center</button>' +
+      '          <button type="button" class="por-menu-item" data-por-align-marks="right" title="Align Right">Align Right</button>' +
+      '          <button type="button" class="por-menu-item" data-por-align-marks="top" title="Align Top">Align Top</button>' +
+      '          <button type="button" class="por-menu-item" data-por-align-marks="middle" title="Align Middle">Align Middle</button>' +
+      '          <button type="button" class="por-menu-item" data-por-align-marks="bottom" title="Align Bottom">Align Bottom</button>' +
+      '          <div class="por-stackmenu__sep"></div>' +
+      '          <button type="button" class="por-menu-item" data-por-distribute="h" title="Distribute Horizontally">Distribute Horizontally</button>' +
+      '          <button type="button" class="por-menu-item" data-por-distribute="v" title="Distribute Vertically">Distribute Vertically</button>' +
+      '          <div class="por-stackmenu__sep"></div>' +
+      '          <button type="button" class="por-menu-item" id="por-group-btn" title="Group">Group</button>' +
+      '          <button type="button" class="por-menu-item" id="por-ungroup-btn" title="Ungroup">Ungroup</button>' +
+      '        </div>' +
+      '      </div>' +
+      '      <label class="por-fill-toggle por-fill-toggle--tool" title="Fill shapes"><input type="checkbox" id="por-fill" aria-label="Fill shapes"></label>' +
+      '      <div class="por-picker" data-por-picker="fill">' +
+      '        <button type="button" class="por-picker__btn por-picker__btn--shape" id="por-fill-btn" title="Shape Fill" aria-label="Fill colour" aria-haspopup="true" aria-expanded="false">' +
+      '          <span class="por-shape-fill__icon" aria-hidden="true">' + ICONS.fillBucket + '</span>' +
+      '          <span class="por-picker__chip" id="por-fill-chip"></span>' +
+      '          <span class="por-shapes__chev">▾</span>' +
+      '        </button>' +
+      '        <div class="por-picker__pop por-picker__pop--colors" id="por-fill-pop" hidden role="listbox" aria-label="Fill colours">' +
+              colorGrid('data-por-fill') +
+      '          <div class="por-picker__extras">' +
+      '            <label class="por-picker__custom">Custom <input type="color" id="por-fill-custom" value="#eab308"></label>' +
+      '            <div class="por-picker__recent" id="por-fill-recent" aria-label="Recent fill colours"></div>' +
+      '          </div>' +
+      '        </div>' +
+      '      </div>' +
+      '      <div class="por-picker" data-por-picker="outline">' +
+      '        <button type="button" class="por-picker__btn por-picker__btn--shape" id="por-outline-btn" title="Shape Outline" aria-label="Outline colour" aria-haspopup="true" aria-expanded="false">' +
+      '          <span class="por-shape-outline__icon" aria-hidden="true">' + ICONS.outlinePen + '</span>' +
+      '          <span class="por-picker__chip" id="por-outline-chip"></span>' +
+      '          <span class="por-shapes__chev">▾</span>' +
+      '        </button>' +
+      '        <div class="por-picker__pop por-picker__pop--colors" id="por-outline-pop" hidden role="listbox" aria-label="Outline colours">' +
+              colorGrid('data-por-outline') +
+      '          <div class="por-picker__extras">' +
+      '            <label class="por-picker__custom">Custom <input type="color" id="por-outline-custom" value="#1d4ed8"></label>' +
+      '            <div class="por-picker__recent" id="por-outline-recent" aria-label="Recent outline colours"></div>' +
+      '          </div>' +
+      '        </div>' +
+      '      </div>' +
+      '      <div class="por-picker" data-por-picker="weight">' +
+      '        <button type="button" class="por-picker__btn por-picker__btn--icon" id="por-weight-btn" title="Weight" aria-label="Line weight" aria-haspopup="true" aria-expanded="false">' +
+                ICONS.weight + '</button>' +
+      '        <div class="por-picker__pop por-picker__pop--weight" id="por-weight-pop" hidden role="listbox" aria-label="Line weight">' +
+      '          <button type="button" class="por-weight" data-por-pt="0.75" data-por-thick="1" title="0.75 pt" aria-label="0.75 pt"><span class="por-weight__bar" style="height:1.5px"></span><span class="por-weight__label">0.75</span></button>' +
+      '          <button type="button" class="por-weight" data-por-pt="1.5" data-por-thick="2" title="1.5 pt" aria-label="1.5 pt"><span class="por-weight__bar" style="height:3px"></span><span class="por-weight__label">1.5</span></button>' +
+      '          <button type="button" class="por-weight" data-por-pt="3" data-por-thick="3" title="3 pt" aria-label="3 pt"><span class="por-weight__bar" style="height:5px"></span><span class="por-weight__label">3</span></button>' +
+      '          <button type="button" class="por-weight" data-por-pt="4.5" data-por-thick="3" title="4.5 pt" aria-label="4.5 pt"><span class="por-weight__bar" style="height:7px"></span><span class="por-weight__label">4.5</span></button>' +
+      '        </div>' +
+      '      </div>' +
+      '      <div class="por-picker" data-por-picker="dash">' +
+      '        <button type="button" class="por-picker__btn por-picker__btn--icon" id="por-dash-btn" title="Dashes" aria-label="Dash style" aria-haspopup="true" aria-expanded="false">' +
+                svgIcon('<path d="M4 12h3M10 12h3M16 12h4"/>') + '</button>' +
+      '        <div class="por-picker__pop" id="por-dash-pop" hidden role="listbox" aria-label="Dash styles">' +
+      '          <button type="button" class="por-dash" data-por-dash="solid" title="Solid">────</button>' +
+      '          <button type="button" class="por-dash" data-por-dash="dashed" title="Dashed">- - -</button>' +
+      '          <button type="button" class="por-dash" data-por-dash="dotted" title="Dotted">· · ·</button>' +
+      '        </div>' +
+      '      </div>' +
+      '      <label class="por-opacity" title="Transparency"><span>T</span><input type="range" id="por-opacity" min="0" max="100" value="100" aria-label="Opacity"></label>' +
+      '      <button type="button" class="por-iconbtn" id="por-set-default" title="Set as Default" aria-label="Set as default">' +
+              svgIcon('<path d="M12 3l2.2 4.5 5 .7-3.6 3.5.9 5.1L12 14.8 7.5 16.8l.9-5.1L4.8 8.2l5-.7z"/>') + '</button>' +
+      '    </div>' +
+      '    <span class="por-ribbon__label">Drawing</span>' +
       '  </div>' +
-      '  <div class="por-toolbar__out" role="group" aria-label="Drawing output">' +
-      '    <button type="button" id="por-print" class="btn btn--secondary rb-print-btn">Print / PDF</button>' +
+      '  <div class="por-ribbon__sep" aria-hidden="true"></div>' +
+      '  <div class="por-ribbon__group" role="group" aria-label="Editing">' +
+      '    <div class="por-ribbon__row">' +
+      '      <div class="por-picker" data-por-picker="select-menu">' +
+      '        <button type="button" class="por-picker__btn por-picker__btn--label" id="por-select-menu-btn" title="Select" aria-label="Select menu" aria-haspopup="true" aria-expanded="false">' +
+                  ICONS.select + ' Select <span class="por-shapes__chev">▾</span>' +
+      '        </button>' +
+      '        <div class="por-picker__pop" id="por-select-menu-pop" hidden role="menu" aria-label="Select">' +
+      '          <button type="button" class="por-menu-item" id="por-select-all" title="Select All">Select All</button>' +
+      '          <button type="button" class="por-menu-item" id="por-open-selpane" title="Selection Pane">Selection Pane…</button>' +
+      '        </div>' +
+      '      </div>' +
+      '      <button type="button" class="por-iconbtn" id="por-undo" title="Undo (Ctrl+Z)" aria-label="Undo">' + ICONS.undo + '</button>' +
+      '      <button type="button" class="por-iconbtn" id="por-redo" title="Redo" aria-label="Redo">' + ICONS.redo + '</button>' +
+      '      <button type="button" class="por-iconbtn" id="por-toggle-grid" title="Show Grid" aria-label="Show grid" aria-pressed="false">▦</button>' +
+      '      <button type="button" class="por-iconbtn" id="por-toggle-rulers" title="Show Rulers" aria-label="Show rulers" aria-pressed="false">▤</button>' +
+      '      <button type="button" class="por-iconbtn" id="por-hand" title="Hand / Pan (Space)" aria-label="Hand tool" aria-pressed="false">' +
+              svgIcon('<path d="M8 11V6.5a1.5 1.5 0 0 1 3 0V11"/><path d="M11 10V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M14 10.5V7a1.5 1.5 0 0 1 3 0v8.5a4.5 4.5 0 0 1-4.5 4.5H12a5 5 0 0 1-5-5V11a1.5 1.5 0 0 1 3 0"/>') + '</button>' +
+      '    </div>' +
+      '    <span class="por-ribbon__label">Editing</span>' +
+      '  </div>' +
+      '  <div class="por-ribbon__sep" aria-hidden="true"></div>' +
+      '  <div class="por-ribbon__group" role="group" aria-label="Insert">' +
+      '    <div class="por-ribbon__row">' +
+      '      <div class="por-picker" data-por-picker="insert">' +
+      '        <button type="button" class="por-picker__btn por-picker__btn--label" id="por-insert-btn" title="Insert" aria-label="Insert" aria-haspopup="true" aria-expanded="false">' +
+      '          Insert <span class="por-shapes__chev">▾</span>' +
+      '        </button>' +
+      '        <div class="por-picker__pop por-insert__pop por-bg-actions" id="por-insert-pop" hidden role="menu" aria-label="Insert">' +
+      '          <button type="button" class="por-menu-item por-linkbtn" id="por-bring-plan" title="Floor plan">Floor plan</button>' +
+      '          <button type="button" class="por-menu-item por-linkbtn" id="por-bring-contour" title="Contour">Contour</button>' +
+      '          <button type="button" class="por-menu-item por-linkbtn" id="por-import-bg" title="Import drawing">Import drawing</button>' +
+      '          <button type="button" class="por-menu-item por-linkbtn" id="por-clear-bg" title="Blank">Blank</button>' +
+      '          <input type="file" id="por-import-file" accept="image/*" hidden>' +
+      '          <button type="button" class="por-menu-item por-linkbtn" id="por-insert-pic" title="Picture">Picture</button>' +
+      '          <input type="file" id="por-pic-file" accept="image/*" hidden>' +
+      '          <button type="button" class="por-menu-item por-linkbtn" id="por-add-view" title="Detail view">Detail view</button>' +
+      '          <button type="button" class="por-menu-item por-linkbtn" id="por-remove-view" title="Remove detail">Remove detail</button>' +
+      '          <button type="button" class="por-menu-item por-linkbtn" id="por-export-selection" title="Save selection as picture">Save selection</button>' +
+      '          <button type="button" class="por-menu-item por-linkbtn" id="por-export-page" title="Save page as picture">Save page</button>' +
+      '          <div class="por-stackmenu__sep"></div>' +
+      '          <label class="por-menu-item por-insert__level">Level <select id="por-canvas" class="por-bg-select por-bg-select--inline" title="Level" aria-label="Level or canvas"></select></label>' +
+      '          <label class="por-fill-toggle por-fill-toggle--compact por-menu-item" title="SandiaGEO note"><input type="checkbox" id="por-sandia"> SandiaGEO</label>' +
+      '        </div>' +
+      '      </div>' +
+      '    </div>' +
+      '    <span class="por-ribbon__label">Insert</span>' +
       '  </div>' +
       '</div>' +
-      '<div class="rb-workspace">' +
+      '  <div class="por-toolbar__spacer"></div>' +
+      '  <div class="por-toolbar__out" role="group" aria-label="Drawing output">' +
+      '    <button type="button" id="por-print" class="btn btn--secondary rb-print-btn" title="Print / PDF">Print / PDF</button>' +
+      '  </div>' +
+      '</div>' +
+      '<div class="rb-workspace por-workspace">' +
       '  <aside class="rb-ws" aria-label="Drawing pages">' +
       '    <div class="rb-rail__head">' +
-      '      <p class="eyebrow">Pages</p>' +
-      '      <strong>Drawing sheets</strong>' +
+      '      <p class="eyebrow">Slides</p>' +
+      '      <strong>Pages</strong>' +
       '      <span id="por-save-status">…</span>' +
       '    </div>' +
       '    <div class="rb-rail__list" id="por-page-list"></div>' +
       '    <div class="rb-rail__actions">' +
-      '      <button type="button" id="por-add-page" class="btn btn--secondary">Add page</button>' +
-      '      <button type="button" id="por-dup-page" class="btn btn--quiet">Duplicate</button>' +
-      '      <button type="button" id="por-remove-page" class="btn btn--quiet">Remove</button>' +
+      '      <button type="button" id="por-add-page" class="btn btn--secondary" title="New page">New</button>' +
+      '      <button type="button" id="por-dup-page" class="btn btn--quiet" title="Duplicate page">Duplicate</button>' +
+      '      <button type="button" id="por-remove-page" class="btn btn--quiet" title="Delete page">Delete</button>' +
       '    </div>' +
       '  </aside>' +
       '  <div class="rb-stage" id="por-stage">' +
@@ -465,65 +563,67 @@
       '      <article class="rb-sheet por-sheet" id="por-sheet" aria-label="11 by 17 inch landscape drawing sheet"></article>' +
       '    </div>' +
       '  </div>' +
-      '  <aside class="rb-panel por-panel" aria-label="Toolbox">' +
-      '    <p class="eyebrow">Toolbox</p>' +
-      '    <h2 class="por-panel__title">Drawing</h2>' +
-      '    <label class="por-panel__label" for="por-canvas">Level</label>' +
-      '    <select id="por-canvas" class="por-bg-select" aria-label="Level or canvas"></select>' +
-      '    <div class="por-bg-actions" role="group" aria-label="Background">' +
-      '      <button type="button" class="por-linkbtn" id="por-bring-plan">Floor plan</button>' +
-      '      <button type="button" class="por-linkbtn" id="por-bring-contour">Contour</button>' +
-      '      <button type="button" class="por-linkbtn" id="por-import-bg">Import drawing</button>' +
-      '      <button type="button" class="por-linkbtn" id="por-clear-bg">Blank</button>' +
-      '      <input type="file" id="por-import-file" accept="image/*" hidden>' +
-      '      <button type="button" class="por-linkbtn" id="por-insert-pic">Insert picture</button>' +
-      '      <input type="file" id="por-pic-file" accept="image/*" hidden>' +
-      '      <button type="button" class="por-linkbtn" id="por-export-selection">Save selection as picture</button>' +
-      '      <button type="button" class="por-linkbtn" id="por-export-page">Save page as picture</button>' +
+      '  <aside class="rb-panel por-panel por-panel--flyout" id="por-panel" hidden aria-label="Format pane">' +
+      '    <div class="por-panel__chrome">' +
+      '      <h2 class="por-panel__title" id="por-panel-title">Format Shape</h2>' +
+      '      <button type="button" class="por-panel__close" id="por-panel-close" title="Close" aria-label="Close pane">×</button>' +
       '    </div>' +
-      '    <div class="por-bg-actions" role="group" aria-label="Views on this sheet">' +
-      '      <button type="button" class="por-linkbtn" id="por-add-view">Add detail view</button>' +
-      '      <button type="button" class="por-linkbtn" id="por-remove-view">Remove detail</button>' +
-      '    </div>' +
-      '    <label class="por-fill-toggle por-fill-toggle--compact"><input type="checkbox" id="por-sandia"> SandiaGEO note</label>' +
-      '    <div class="por-selpane" id="por-selpane">' +
+      '    <div class="por-selpane" id="por-selpane" hidden>' +
       '      <h3 class="por-inspector__heading">Selection</h3>' +
       '      <ul class="por-selpane__list" id="por-selpane-list" aria-label="Marks on this sheet"></ul>' +
       '    </div>' +
       '    <div class="por-inspector" id="por-inspector" hidden>' +
-      '      <h3 id="por-inspector-title" class="por-inspector__heading">Format Shape</h3>' +
-      '      <div class="por-inspector__line">' +
-      '        <label class="por-fill-toggle por-fill-toggle--compact"><input type="checkbox" id="por-shape-fill"> Fill</label>' +
-      '        <div class="por-inspector__swatches" id="por-fill-swatches" aria-label="Fill colour"></div>' +
-      '      </div>' +
-      '      <div class="por-inspector__line">' +
-      '        <span class="por-inspector__tag">Line</span>' +
-      '        <div class="por-inspector__swatches" id="por-outline-swatches" aria-label="Outline colour"></div>' +
-      '      </div>' +
-      '      <div class="por-inspector__line">' +
-      '        <span class="por-inspector__tag">Weight</span>' +
-      '        <div class="por-seg" id="por-outline-weights" role="group" aria-label="Outline weight">' +
-      '          <button type="button" class="por-seg__btn" data-por-thick="1" title="Thin">1</button>' +
-      '          <button type="button" class="por-seg__btn" data-por-thick="2" title="Medium">2</button>' +
-      '          <button type="button" class="por-seg__btn" data-por-thick="3" title="Thick">3</button>' +
+      '      <details class="por-inspector__section" open>' +
+      '        <summary class="por-inspector__heading" id="por-inspector-title">Fill</summary>' +
+      '        <div class="por-inspector__line">' +
+      '          <label class="por-fill-toggle por-fill-toggle--compact"><input type="checkbox" id="por-shape-fill"> Fill</label>' +
+      '          <div class="por-inspector__swatches" id="por-fill-swatches" aria-label="Fill colour"></div>' +
       '        </div>' +
-      '      </div>' +
-      '      <h3 class="por-inspector__heading">Size &amp; Position</h3>' +
-      '      <div class="por-inspector__size" aria-label="Size and position in inches">' +
-      '        <label class="por-inspector__field"><span>X</span><input type="number" id="por-size-x" step="0.05" min="0" max="17"></label>' +
-      '        <label class="por-inspector__field"><span>Y</span><input type="number" id="por-size-y" step="0.05" min="0" max="11"></label>' +
-      '        <label class="por-inspector__field"><span>W</span><input type="number" id="por-size-w" step="0.05" min="0.1" max="17"></label>' +
-      '        <label class="por-inspector__field"><span>H</span><input type="number" id="por-size-h" step="0.05" min="0.1" max="11"></label>' +
-      '      </div>' +
-      '      <div class="por-stack" role="group" aria-label="Arrange">' +
-      '        <button type="button" class="por-stack__btn" id="por-stack-front" title="Bring to Front">Front</button>' +
-      '        <button type="button" class="por-stack__btn" id="por-stack-forward" title="Bring Forward">Forward</button>' +
-      '        <button type="button" class="por-stack__btn" id="por-stack-backward" title="Send Backward">Back</button>' +
-      '        <button type="button" class="por-stack__btn" id="por-stack-back" title="Send to Back">Bottom</button>' +
-      '      </div>' +
+      '      </details>' +
+      '      <details class="por-inspector__section" open>' +
+      '        <summary class="por-inspector__heading">Line</summary>' +
+      '        <div class="por-inspector__line">' +
+      '          <span class="por-inspector__tag">Colour</span>' +
+      '          <div class="por-inspector__swatches" id="por-outline-swatches" aria-label="Outline colour"></div>' +
+      '        </div>' +
+      '        <div class="por-inspector__line">' +
+      '          <span class="por-inspector__tag">Weight</span>' +
+      '          <div class="por-seg" id="por-outline-weights" role="group" aria-label="Outline weight">' +
+      '            <button type="button" class="por-seg__btn" data-por-thick="1" title="Thin">1</button>' +
+      '            <button type="button" class="por-seg__btn" data-por-thick="2" title="Medium">2</button>' +
+      '            <button type="button" class="por-seg__btn" data-por-thick="3" title="Thick">3</button>' +
+      '          </div>' +
+      '        </div>' +
+      '      </details>' +
+      '      <details class="por-inspector__section" open>' +
+      '        <summary class="por-inspector__heading">Size</summary>' +
+      '        <div class="por-inspector__size" aria-label="Size and position in inches">' +
+      '          <label class="por-inspector__field"><span>X</span><input type="number" id="por-size-x" step="0.05" min="0" max="17"></label>' +
+      '          <label class="por-inspector__field"><span>Y</span><input type="number" id="por-size-y" step="0.05" min="0" max="11"></label>' +
+      '          <label class="por-inspector__field"><span>W</span><input type="number" id="por-size-w" step="0.05" min="0.1" max="17"></label>' +
+      '          <label class="por-inspector__field"><span>H</span><input type="number" id="por-size-h" step="0.05" min="0.1" max="11"></label>' +
+      '        </div>' +
+      '        <div class="por-stack" role="group" aria-label="Arrange">' +
+      '          <button type="button" class="por-stack__btn" id="por-stack-front" title="Bring to Front">Front</button>' +
+      '          <button type="button" class="por-stack__btn" id="por-stack-forward" title="Bring Forward">Forward</button>' +
+      '          <button type="button" class="por-stack__btn" id="por-stack-backward" title="Send Backward">Back</button>' +
+      '          <button type="button" class="por-stack__btn" id="por-stack-back" title="Send to Back">Bottom</button>' +
+      '        </div>' +
+      '      </details>' +
       '    </div>' +
       '  </aside>' +
+      '</div>' +
+      '<div class="por-statusbar" role="status" aria-label="Status bar">' +
+      '  <span class="por-statusbar__page" id="por-page-indicator">1 of 1</span>' +
+      '  <div class="por-statusbar__zoom" role="group" aria-label="Zoom">' +
+      '    <button type="button" id="por-zoom-out" class="por-iconbtn" aria-label="Zoom out" title="Zoom out">−</button>' +
+      '    <input type="range" id="por-zoom-slider" class="por-zoom-slider" min="35" max="240" value="100" aria-label="Zoom">' +
+      '    <span class="por-statusbar__pct" id="por-zoom-pct">100%</span>' +
+      '    <button type="button" id="por-zoom-level" class="por-zoom-level" title="Fit page">Fit</button>' +
+      '    <button type="button" id="por-zoom-in" class="por-iconbtn" aria-label="Zoom in" title="Zoom in">+</button>' +
+      '  </div>' +
       '</div>';
+
 
     var state = {
       record: null,
@@ -626,10 +726,47 @@
       if (outlineChip) outlineChip.style.background = state.inkColor;
       var fillChip = root.querySelector('#por-fill-chip');
       if (fillChip) fillChip.style.background = state.fillColor;
+      var fontChip = root.querySelector('#por-font-color-chip');
+      if (fontChip) fontChip.style.background = state.inkColor;
+      // PowerPoint Font group stays visible; text controls apply when a text mark
+      // is selected or being edited.
       var textStrip = root.querySelector('#por-text-format');
-      if (textStrip) {
-        var showText = state.editingText || (selectedItem() && selectedItem().kind === 'text');
-        textStrip.hidden = !showText;
+      if (textStrip) textStrip.hidden = false;
+      syncStatusBar();
+      syncSheetCursor();
+    }
+
+    function syncStatusBar() {
+      var ind = root.querySelector('#por-page-indicator');
+      if (ind && state.doc && Array.isArray(state.doc.pages)) {
+        var idx = Math.max(0, state.doc.pages.findIndex(function (p) {
+          return p.id === state.doc.activePageId;
+        }));
+        ind.textContent = (idx + 1) + ' of ' + state.doc.pages.length;
+      }
+      var pct = root.querySelector('#por-zoom-pct');
+      if (pct) {
+        var slider = root.querySelector('#por-zoom-slider');
+        var n = slider ? Number(slider.value) : Math.round((state.userScale || 1) * 100);
+        if (!isFinite(n)) n = 100;
+        pct.textContent = Math.round(n) + '%';
+      }
+    }
+
+    function syncSheetCursor() {
+      if (!sheetEl || !stageEl) return;
+      stageEl.classList.toggle('por-stage--draw', !!state.inkTool && state.inkTool !== 'eraser');
+      stageEl.classList.toggle('por-stage--erase', state.inkTool === 'eraser');
+      stageEl.classList.toggle('por-stage--text', state.inkTool === 'text' || state.editingText);
+      if (state.fabricCanvas) {
+        var cursor = 'default';
+        if (state.handTool || state.spaceDown) cursor = 'grab';
+        else if (state.editingText) cursor = 'text';
+        else if (state.inkTool === 'eraser') cursor = 'cell';
+        else if (state.inkTool) cursor = 'crosshair';
+        state.fabricCanvas.defaultCursor = cursor;
+        state.fabricCanvas.hoverCursor = state.inkTool ? cursor : 'move';
+        state.fabricCanvas.freeDrawingCursor = 'crosshair';
       }
     }
 
@@ -1000,7 +1137,12 @@
     }
 
     function syncAndSave() {
-      if (syncOverlaysFromFabric()) scheduleSave();
+      var page = activePage();
+      if (page) delete page._thumbDataUrl;
+      if (syncOverlaysFromFabric()) {
+        scheduleSave();
+        setTimeout(function () { refreshActivePageThumb(); }, 30);
+      }
     }
 
     function wireFabricEvents(canvas) {
@@ -1784,11 +1926,13 @@
         paper.style.height = (PAPER_H * scale) + 'px';
       }
       var level = root.querySelector('#por-zoom-level');
-      if (level) level.textContent = state.zoomMode === 'fit' ? 'Fit' : Math.round(scale * 100) + '%';
+      if (level) level.textContent = 'Fit';
       var slider = root.querySelector('#por-zoom-slider');
       if (slider && document.activeElement !== slider) {
         slider.value = String(Math.round(scale * 100));
       }
+      var pct = root.querySelector('#por-zoom-pct');
+      if (pct) pct.textContent = Math.round(scale * 100) + '%';
     }
 
     function zoomAtPointer(factor, clientX, clientY) {
@@ -1983,17 +2127,84 @@
     }
 
     function pageThumbDataUrl(page) {
-      if (!PorFab || !PorFab.ready() || !page) return '';
+      if (!page) return '';
+      if (page._thumbDataUrl) return page._thumbDataUrl;
+      if (!PorFab || !PorFab.ready()) return '';
       try {
-        var tmp = document.createElement('canvas');
-        var c = PorFab.createCanvas(tmp, { width: 204, height: 132, readOnly: true });
-        PorFab.overlaysToCanvas(c, overlayList(page), { readOnly: true });
-        var url = c.toDataURL({ format: 'png', multiplier: 0.25 });
-        try { c.dispose(); } catch (_) {}
+        var tw = 204;
+        var th = 132;
+        var out = document.createElement('canvas');
+        out.width = tw;
+        out.height = th;
+        var ctx = out.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, tw, th);
+        if (page.id === state.doc.activePageId) {
+          var bgImg = sheetEl && sheetEl.querySelector('.por-sheet-bg img');
+          if (bgImg && bgImg.naturalWidth) ctx.drawImage(bgImg, 0, 0, tw, th);
+        }
+        var thumbEl = document.createElement('canvas');
+        thumbEl.width = tw;
+        thumbEl.height = th;
+        thumbEl.style.cssText = 'position:fixed;left:-99999px;top:0;opacity:0;pointer-events:none;';
+        document.body.appendChild(thumbEl);
+        var fc = PorFab.createCanvas(thumbEl, { width: tw, height: th, readOnly: true });
+        fc.backgroundColor = 'rgba(0,0,0,0)';
+        PorFab.overlaysToCanvas(fc, overlayList(page), { readOnly: true });
+        if (typeof fc.renderAll === 'function') fc.renderAll();
+        var markCanvas = (typeof fc.toCanvasElement === 'function') ? fc.toCanvasElement() : thumbEl;
+        ctx.drawImage(markCanvas, 0, 0, tw, th);
+        try { fc.dispose(); } catch (_) {}
+        if (thumbEl.parentNode) thumbEl.parentNode.removeChild(thumbEl);
+        var url = out.toDataURL('image/png');
+        page._thumbDataUrl = url;
         return url;
       } catch (_) {
         return '';
       }
+    }
+
+    function refreshActivePageThumb() {
+      var page = activePage();
+      if (!page) return;
+      try {
+        delete page._thumbDataUrl;
+        var tw = 204;
+        var th = 132;
+        var out = document.createElement('canvas');
+        out.width = tw;
+        out.height = th;
+        var ctx = out.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, tw, th);
+        var bgImg = sheetEl && sheetEl.querySelector('.por-sheet-bg img');
+        if (bgImg && bgImg.naturalWidth) ctx.drawImage(bgImg, 0, 0, tw, th);
+        function paintMarks(markCanvas) {
+          if (markCanvas) ctx.drawImage(markCanvas, 0, 0, tw, th);
+          page._thumbDataUrl = out.toDataURL('image/png');
+          var thumb = root.querySelector('.por-page.is-active .por-page__thumb');
+          if (thumb) {
+            thumb.src = page._thumbDataUrl;
+            thumb.classList.remove('is-empty');
+          }
+        }
+        if (state.fabricCanvas && typeof state.fabricCanvas.toCanvasElement === 'function') {
+          paintMarks(state.fabricCanvas.toCanvasElement());
+          return;
+        }
+        if (state.fabricCanvas) {
+          var data = state.fabricCanvas.toDataURL({
+            format: 'png',
+            multiplier: tw / PAPER_W,
+            enableRetinaScaling: false,
+          });
+          var img = new Image();
+          img.onload = function () { paintMarks(img); };
+          img.src = data;
+          return;
+        }
+        pageThumbDataUrl(page);
+      } catch (_) {}
     }
 
     function reorderPages(fromId, toId) {
@@ -2013,6 +2224,43 @@
       renderPageList();
     }
 
+    function openPageThumbMenu(event, pageId) {
+      closeShapeMenu();
+      var wrap = document.createElement('div');
+      wrap.className = 'por-ctx por-ctx--page';
+      wrap.setAttribute('data-por-shapemenu', '1');
+      var menu = document.createElement('div');
+      menu.className = 'rb-stackmenu por-ctx__menu';
+      menuItem(menu, 'New', function () {
+        root.querySelector('#por-add-page').click();
+      }, state.readOnly);
+      menuItem(menu, 'Duplicate', function () {
+        if (pageId && pageId !== state.doc.activePageId) {
+          state.doc.activePageId = pageId;
+        }
+        root.querySelector('#por-dup-page').click();
+      }, state.readOnly);
+      menuItem(menu, 'Delete', function () {
+        if (pageId && pageId !== state.doc.activePageId) {
+          state.doc.activePageId = pageId;
+          renderPageList();
+        }
+        root.querySelector('#por-remove-page').click();
+      }, state.readOnly || state.doc.pages.length <= 1);
+      wrap.appendChild(menu);
+      wrap.style.left = Math.round(event.clientX) + 'px';
+      wrap.style.top = Math.round(event.clientY) + 'px';
+      document.body.appendChild(wrap);
+      state.shapeMenu = wrap;
+      setTimeout(function () {
+        document.addEventListener('pointerdown', function away(ev) {
+          if (ev.target.closest && ev.target.closest('[data-por-shapemenu]')) return;
+          closeShapeMenu();
+          document.removeEventListener('pointerdown', away, true);
+        }, true);
+      }, 0);
+    }
+
     function renderPageList() {
       var list = root.querySelector('#por-page-list');
       list.innerHTML = '';
@@ -2022,15 +2270,19 @@
         btn.className = 'rb-rail__page por-page' + (page.id === state.doc.activePageId ? ' is-active' : '');
         btn.draggable = !state.readOnly;
         btn.setAttribute('data-por-page', page.id);
+        var num = document.createElement('span');
+        num.className = 'por-page__num';
+        num.textContent = String(index + 1);
         var thumb = document.createElement('img');
         thumb.className = 'por-page__thumb';
-        thumb.alt = '';
+        thumb.alt = 'Page ' + (index + 1);
         var dataUrl = pageThumbDataUrl(page);
         if (dataUrl) thumb.src = dataUrl;
         else thumb.classList.add('is-empty');
         var label = document.createElement('span');
         label.className = 'por-page__label';
-        label.textContent = (index + 1) + '. ' + (page.title || 'Drawing');
+        label.textContent = page.title || 'Drawing';
+        btn.appendChild(num);
         btn.appendChild(thumb);
         btn.appendChild(label);
         btn.addEventListener('click', function () {
@@ -2039,6 +2291,11 @@
           state.selectedId = null;
           loadBackground().then(renderSheet);
           renderPageList();
+          syncStatusBar();
+        });
+        btn.addEventListener('contextmenu', function (ev) {
+          ev.preventDefault();
+          openPageThumbMenu(ev, page.id);
         });
         btn.addEventListener('dragstart', function (ev) {
           if (state.readOnly) return;
@@ -2065,6 +2322,7 @@
         });
         list.appendChild(btn);
       });
+      syncStatusBar();
     }
 
     function renderCanvasOptions() {
@@ -2298,6 +2556,10 @@
       applySheetScale();
       wireRailEdits(page);
       syncInspector();
+      syncStatusBar();
+      syncSheetCursor();
+      // Refresh the active page's slide thumb after marks land.
+      setTimeout(function () { refreshActivePageThumb(); }, 40);
     }
 
     function wireRailEdits(page) {
@@ -2566,9 +2828,40 @@
       };
     }
 
+    function openPanel(which) {
+      var panel = root.querySelector('#por-panel');
+      var selpane = root.querySelector('#por-selpane');
+      if (!panel) return;
+      panel.hidden = false;
+      if (which === 'selection') {
+        if (selpane) selpane.hidden = false;
+        if (inspectorEl) inspectorEl.hidden = true;
+        var pt = root.querySelector('#por-panel-title');
+        if (pt) pt.textContent = 'Selection';
+        syncSelectionPane();
+      } else {
+        if (selpane) selpane.hidden = true;
+        openInspector(which === 'size' ? 'size' : 'format');
+      }
+    }
+
+    function closePanel() {
+      var panel = root.querySelector('#por-panel');
+      var selpane = root.querySelector('#por-selpane');
+      if (panel) panel.hidden = true;
+      if (selpane) selpane.hidden = true;
+      closeInspector();
+    }
+
     function openInspector(mode) {
       state.inspectorMode = mode || 'format';
       state.inspectorOpen = true;
+      var panel = root.querySelector('#por-panel');
+      var selpane = root.querySelector('#por-selpane');
+      if (panel) panel.hidden = false;
+      if (selpane) selpane.hidden = true;
+      var pt = root.querySelector('#por-panel-title');
+      if (pt) pt.textContent = mode === 'size' ? 'Size and Position' : 'Format Shape';
       syncInspector();
       if (inspectorEl) inspectorEl.scrollIntoView({ block: 'nearest' });
     }
@@ -2587,7 +2880,9 @@
       }
       inspectorEl.hidden = false;
       var title = root.querySelector('#por-inspector-title');
-      if (title) {
+      if (title && title.tagName === 'SUMMARY') {
+        /* Fill section keeps its own label */
+      } else if (title) {
         title.textContent = state.inspectorMode === 'size' ? 'Size and Position' : 'Format Shape';
       }
       var canFill = item.kind === 'rect' || item.kind === 'circle' || item.kind === 'roundRect' ||
@@ -2973,11 +3268,20 @@
       state.shapeMenu = null;
     }
 
-    function menuItem(menu, label, action, disabled) {
+    function menuItem(menu, label, action, disabled, iconHtml) {
       var btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'rb-stackmenu__item';
-      btn.textContent = label;
+      btn.className = 'rb-stackmenu__item por-ctx__item';
+      if (iconHtml) {
+        var ic = document.createElement('span');
+        ic.className = 'por-ctx__icon';
+        ic.innerHTML = iconHtml;
+        btn.appendChild(ic);
+      }
+      var lab = document.createElement('span');
+      lab.className = 'por-ctx__label';
+      lab.textContent = label;
+      btn.appendChild(lab);
       if (disabled) {
         btn.disabled = true;
         btn.setAttribute('aria-disabled', 'true');
@@ -2998,6 +3302,44 @@
       menu.appendChild(sep);
     }
 
+    function menuSub(menu, label, iconHtml, entries) {
+      var wrap = document.createElement('div');
+      wrap.className = 'por-ctx__subwrap';
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'rb-stackmenu__item por-ctx__item por-ctx__item--sub';
+      if (iconHtml) {
+        var ic = document.createElement('span');
+        ic.className = 'por-ctx__icon';
+        ic.innerHTML = iconHtml;
+        btn.appendChild(ic);
+      }
+      var lab = document.createElement('span');
+      lab.className = 'por-ctx__label';
+      lab.textContent = label;
+      btn.appendChild(lab);
+      var chev = document.createElement('span');
+      chev.className = 'por-ctx__chev';
+      chev.textContent = '▸';
+      btn.appendChild(chev);
+      var fly = document.createElement('div');
+      fly.className = 'por-ctx__submenu';
+      fly.hidden = true;
+      entries.forEach(function (entry) {
+        menuItem(fly, entry.label, entry.action, entry.disabled, entry.icon);
+      });
+      btn.addEventListener('mouseenter', function () { fly.hidden = false; });
+      wrap.addEventListener('mouseleave', function () { fly.hidden = true; });
+      btn.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        fly.hidden = !fly.hidden;
+      });
+      wrap.appendChild(btn);
+      wrap.appendChild(fly);
+      menu.appendChild(wrap);
+      return wrap;
+    }
+
     function openShapeMenu(event, id) {
       closeShapeMenu();
       state.selectedId = id;
@@ -3006,16 +3348,45 @@
       wrap.className = 'por-ctx';
       wrap.setAttribute('data-por-shapemenu', '1');
 
+      var fillColor = state.fillColor || '#eab308';
+      var outlineColor = state.inkColor || '#1d4ed8';
+      var active = fabricActive();
+      if (active) {
+        if (active.fill && active.fill !== 'transparent') fillColor = active.fill;
+        if (active.stroke) outlineColor = active.stroke;
+      }
+
       var mini = document.createElement('div');
       mini.className = 'por-mini';
       mini.setAttribute('role', 'toolbar');
       mini.setAttribute('aria-label', 'Quick format');
-      function miniBtn(label, title, fn) {
+
+      function miniIconBtn(key, title, iconHtml, colorBar, fn) {
         var b = document.createElement('button');
         b.type = 'button';
-        b.className = 'por-mini__btn';
-        b.textContent = label;
+        b.className = 'por-mini__btn por-mini__btn--icon';
         b.title = title;
+        b.setAttribute('aria-label', key);
+        // Keep a text node for tests that read textContent (Style/Fill/Outline).
+        var sr = document.createElement('span');
+        sr.className = 'por-sr-only';
+        sr.textContent = key;
+        b.appendChild(sr);
+        var ic = document.createElement('span');
+        ic.className = 'por-mini__glyph';
+        ic.innerHTML = iconHtml;
+        b.appendChild(ic);
+        if (colorBar) {
+          var bar = document.createElement('span');
+          bar.className = 'por-mini__bar';
+          bar.style.background = colorBar;
+          bar.setAttribute('data-por-mini-swatch', key.toLowerCase());
+          b.appendChild(bar);
+        }
+        var chev = document.createElement('span');
+        chev.className = 'por-mini__chev';
+        chev.textContent = '▾';
+        b.appendChild(chev);
         b.addEventListener('click', function (ev) {
           ev.preventDefault();
           closeShapeMenu();
@@ -3023,29 +3394,35 @@
         });
         mini.appendChild(b);
       }
-      miniBtn('Style', 'Format Painter from this mark', function () {
+
+      miniIconBtn('Style', 'Style', ICONS.styleBrush, null, function () {
         var t = fabricActive();
         state.formatPainter = captureStyleFromTarget(t);
         setStatus(state.formatPainter ? 'Format Painter ready — click a mark' : 'Nothing to copy');
         syncHistoryButtons();
       });
-      miniBtn('Fill', 'Fill colour', function () {
+      miniIconBtn('Fill', 'Fill', ICONS.fillBucket, fillColor, function () {
         openInspector('format');
-        root.querySelector('#por-fill-btn').click();
+        setTimeout(function () {
+          var btn = root.querySelector('#por-fill-btn');
+          if (btn) btn.click();
+        }, 0);
       });
-      miniBtn('Outline', 'Outline colour', function () {
+      miniIconBtn('Outline', 'Outline', ICONS.outlinePen, outlineColor, function () {
         openInspector('format');
-        root.querySelector('#por-outline-btn').click();
+        setTimeout(function () {
+          var btn = root.querySelector('#por-outline-btn');
+          if (btn) btn.click();
+        }, 0);
       });
       wrap.appendChild(mini);
 
       var menu = document.createElement('div');
       menu.className = 'rb-stackmenu por-ctx__menu';
-      menuItem(menu, 'Cut', function () { cutSelected(); }, state.readOnly);
-      menuItem(menu, 'Copy', function () { copySelected(); });
-      menuItem(menu, 'Paste', function () { pasteClipboard(); }, state.readOnly || !state.clipboard);
+      menuItem(menu, 'Cut', function () { cutSelected(); }, state.readOnly, ICONS.cut);
+      menuItem(menu, 'Copy', function () { copySelected(); }, false, ICONS.copy);
+      menuItem(menu, 'Paste', function () { pasteClipboard(); }, state.readOnly || !state.clipboard, ICONS.paste);
       menuSep(menu);
-      var active = fabricActive();
       var isText = !!(active && (active.type === 'textbox' || active.type === 'i-text' || active.porKind === 'text'));
       var isGroup = !!(active && active.type === 'group');
       var isMulti = !!(active && active.type === 'activeSelection');
@@ -3059,25 +3436,31 @@
         } else {
           setStatus('Select a text box to edit');
         }
-      }, state.readOnly || !isText);
-      menuItem(menu, 'Group', function () { groupSelection(); }, state.readOnly || !isMulti);
-      menuItem(menu, 'Ungroup', function () { ungroupSelection(); }, state.readOnly || !isGroup);
+      }, state.readOnly || !isText, ICONS.text);
+      menuSub(menu, 'Group', svgIcon('<rect x="4" y="4" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/><path d="M11 8h2v8h-2z"/>'), [
+        { label: 'Group', action: function () { groupSelection(); }, disabled: state.readOnly || !isMulti },
+        { label: 'Ungroup', action: function () { ungroupSelection(); }, disabled: state.readOnly || !isGroup },
+      ]);
       menuSep(menu);
-      menuItem(menu, 'Bring to Front', function () { reorderSelected('front'); }, state.readOnly);
-      menuItem(menu, 'Bring Forward', function () { reorderSelected('forward'); }, state.readOnly);
-      menuItem(menu, 'Send Backward', function () { reorderSelected('backward'); }, state.readOnly);
-      menuItem(menu, 'Send to Back', function () { reorderSelected('back'); }, state.readOnly);
+      menuSub(menu, 'Bring to Front', svgIcon('<path d="M5 16h14M7 12h10M9 8h6"/>'), [
+        { label: 'Bring to Front', action: function () { reorderSelected('front'); }, disabled: state.readOnly },
+        { label: 'Bring Forward', action: function () { reorderSelected('forward'); }, disabled: state.readOnly },
+      ]);
+      menuSub(menu, 'Send to Back', svgIcon('<path d="M5 8h14M7 12h10M9 16h6"/>'), [
+        { label: 'Send to Back', action: function () { reorderSelected('back'); }, disabled: state.readOnly },
+        { label: 'Send Backward', action: function () { reorderSelected('backward'); }, disabled: state.readOnly },
+      ]);
       menuSep(menu);
       menuItem(menu, 'Size and Position…', function () {
         openInspector('size');
         root.querySelector('#por-size-w').focus();
-      });
+      }, false, svgIcon('<path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/>'));
       menuItem(menu, 'Format Shape…', function () {
         openInspector('format');
-        shapeFillInput.focus();
-      });
+        if (shapeFillInput) shapeFillInput.focus();
+      }, false, ICONS.rect);
       menuSep(menu);
-      menuItem(menu, 'Delete', function () { deleteSelected(); }, state.readOnly);
+      menuItem(menu, 'Delete', function () { deleteSelected(); }, state.readOnly, svgIcon('<path d="M5 7h14M9 7V5h6v2M8 7l1 12h6l1-12"/>'));
       wrap.appendChild(menu);
 
       wrap.style.left = Math.round(event.clientX) + 'px';
@@ -3744,6 +4127,110 @@
       dashBtn.addEventListener('click', function (event) {
         event.stopPropagation();
         togglePicker('dash');
+      });
+    }
+    // PowerPoint ribbon: shape gallery, Arrange, Select, Clipboard, Format pane.
+    ['shapes', 'arrange', 'select-menu', 'font-color', 'insert'].forEach(function (which) {
+      var b = root.querySelector('#por-' + which + '-btn');
+      if (!b) return;
+      b.addEventListener('click', function (event) {
+        event.stopPropagation();
+        togglePicker(which);
+      });
+    });
+    // Dismiss Insert menu after choosing an action.
+    root.querySelectorAll('#por-insert-pop .por-linkbtn').forEach(function (btn) {
+      btn.addEventListener('click', function () { closePickers(); });
+    });
+    root.querySelectorAll('[data-rb-tool], [data-por-tool="select"], #por-insert-text').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        // Close the shapes gallery after picking a tool (PowerPoint dismisses it).
+        var shapesPop = root.querySelector('#por-shapes-pop');
+        if (shapesPop && !shapesPop.hidden && btn.closest && btn.closest('#por-shapes-pop')) {
+          closePickers();
+        }
+      });
+    });
+    var pasteBtn = root.querySelector('#por-paste');
+    if (pasteBtn) pasteBtn.addEventListener('click', function () { pasteClipboard(); });
+    var cutBtn = root.querySelector('#por-cut');
+    if (cutBtn) cutBtn.addEventListener('click', function () { cutSelected(); });
+    var copyBtn = root.querySelector('#por-copy');
+    if (copyBtn) copyBtn.addEventListener('click', function () { copySelected(); });
+    var groupBtn = root.querySelector('#por-group-btn');
+    if (groupBtn) groupBtn.addEventListener('click', function () {
+      closePickers();
+      groupSelection();
+    });
+    var ungroupBtn = root.querySelector('#por-ungroup-btn');
+    if (ungroupBtn) ungroupBtn.addEventListener('click', function () {
+      closePickers();
+      ungroupSelection();
+    });
+    root.querySelectorAll('#por-arrange-pop [data-por-stack]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        closePickers();
+        reorderSelected(btn.getAttribute('data-por-stack'));
+      });
+    });
+    root.querySelectorAll('#por-arrange-pop [data-por-align-marks]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        closePickers();
+        alignMarks(btn.getAttribute('data-por-align-marks'));
+      });
+    });
+    root.querySelectorAll('#por-arrange-pop [data-por-distribute]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        closePickers();
+        distributeMarks(btn.getAttribute('data-por-distribute'));
+      });
+    });
+    var selectAllBtn = root.querySelector('#por-select-all');
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener('click', function () {
+        closePickers();
+        if (!state.fabricCanvas) return;
+        var objs = state.fabricCanvas.getObjects().filter(function (o) {
+          return !o.excludeFromExport && o.selectable !== false;
+        });
+        if (!objs.length) return;
+        state.fabricCanvas.discardActiveObject();
+        if (objs.length === 1) state.fabricCanvas.setActiveObject(objs[0]);
+        else {
+          var sel = new window.fabric.ActiveSelection(objs, { canvas: state.fabricCanvas });
+          state.fabricCanvas.setActiveObject(sel);
+        }
+        state.fabricCanvas.requestRenderAll();
+        syncHistoryButtons();
+      });
+    }
+    var openSelpaneBtn = root.querySelector('#por-open-selpane');
+    if (openSelpaneBtn) {
+      openSelpaneBtn.addEventListener('click', function () {
+        closePickers();
+        openPanel('selection');
+      });
+    }
+    var panelClose = root.querySelector('#por-panel-close');
+    if (panelClose) {
+      panelClose.addEventListener('click', function () { closePanel(); });
+    }
+    var fontColorPop = root.querySelector('#por-font-color-pop');
+    if (fontColorPop) {
+      fontColorPop.addEventListener('click', function (event) {
+        var sw = event.target.closest && event.target.closest('[data-por-font-color]');
+        if (!sw) return;
+        var color = sw.getAttribute('data-por-font-color');
+        var active = styleTarget() || fabricActive();
+        if (active && (active.type === 'textbox' || active.type === 'i-text' || active.porKind === 'text')) {
+          pushHistory();
+          active.set('fill', color);
+          state.fabricCanvas.requestRenderAll();
+          syncAndSave();
+        }
+        state.inkColor = color;
+        syncHistoryButtons();
+        closePickers();
       });
     }
     function previewColor(role, color) {

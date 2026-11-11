@@ -24,6 +24,57 @@ function check(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
 }
 
+/** Open the PowerPoint-style Shapes gallery if needed, then click a tool. */
+async function armPorTool(sel) {
+  const needsGallery = /data-rb-tool|por-insert-text|data-por-tool/.test(sel);
+  if (needsGallery) {
+    const open = await page.evaluate(() => {
+      const pop = document.querySelector('#por-shapes-pop');
+      return !!(pop && !pop.hidden);
+    });
+    if (!open) {
+      await page.click('#por-shapes-btn');
+      await page.waitForFunction(() => {
+        const pop = document.querySelector('#por-shapes-pop');
+        return pop && !pop.hidden;
+      }, { timeout: 2500 }).catch(() => {});
+    }
+  }
+  await page.click(sel);
+}
+
+/** Open Insert dropdown then click a control inside it. */
+async function clickInsert(sel) {
+  const open = await page.evaluate(() => {
+    const pop = document.querySelector('#por-insert-pop');
+    return !!(pop && !pop.hidden);
+  });
+  if (!open) {
+    await page.click('#por-insert-btn');
+    await page.waitForFunction(() => {
+      const pop = document.querySelector('#por-insert-pop');
+      return pop && !pop.hidden;
+    }, { timeout: 2500 }).catch(() => {});
+  }
+  await page.click(sel);
+}
+
+/** Open Arrange dropdown then click a control inside it. */
+async function clickArrange(sel) {
+  const open = await page.evaluate(() => {
+    const pop = document.querySelector('#por-arrange-pop');
+    return !!(pop && !pop.hidden);
+  });
+  if (!open) {
+    await page.click('#por-arrange-btn');
+    await page.waitForFunction(() => {
+      const pop = document.querySelector('#por-arrange-pop');
+      return pop && !pop.hidden;
+    }, { timeout: 2500 }).catch(() => {});
+  }
+  await page.click(sel);
+}
+
 fs.mkdirSync(OUT, { recursive: true });
 
 const browser = await puppeteer.launch({
@@ -183,16 +234,16 @@ check('bring-in plan control', shell.hasPanel);
 check('compact background actions', shell.compactBg && !shell.fatBring);
 check('outline/fill/weight pickers', shell.hasOutlinePicker && shell.hasFillPicker && shell.hasWeightPicker);
 check('tools are icons not word buttons', shell.noWordToolLabels);
-check('text format hidden until text edit', shell.textHidden);
+check('Font ribbon group present', !!shell.hasToolbar && shell.textHidden === false, `textHidden=${shell.textHidden}`);
 check('Print stays with toolbar (not second row)', shell.printSameRow);
 check('circle+rect tools present', shell.tools.indexOf('circle') !== -1 && shell.tools.indexOf('rect') !== -1, shell.tools.join(','));
 
-await page.click('#por-bring-plan');
+await clickInsert('#por-bring-plan');
 await page.waitForFunction(() => !!document.querySelector('.por-sheet-bg img'), { timeout: 5000 });
 check('floor plan on sheet', await page.evaluate(() => !!document.querySelector('.por-sheet-bg img')));
 
 // Overall + detail views: frame a region in the live editor, then print matches.
-await page.click('#por-add-view');
+await clickInsert('#por-add-view');
 await page.waitForFunction(() => document.querySelectorAll('.por-view-frame').length >= 2, { timeout: 5000 });
 await page.waitForFunction(() => {
   const imgs = Array.from(document.querySelectorAll('.por-view-frame img'));
@@ -522,7 +573,7 @@ async function fabricDrag(x0, y0, x1, y1) {
 }
 
 await page.click('#por-fill');
-await page.click('[data-rb-tool="circle"]');
+await armPorTool('[data-rb-tool="circle"]');
 const box = await page.$eval('.rb-sheet', (el) => {
   const r = el.getBoundingClientRect();
   return { x: r.left, y: r.top, w: r.width, h: r.height };
@@ -534,7 +585,7 @@ await new Promise((r) => setTimeout(r, 400));
 await page.keyboard.press('Escape');
 await page.click('#por-outline-btn');
 await page.click('#por-outline-pop [data-por-outline="#eab308"]');
-await page.click('[data-rb-tool="rect"]');
+await armPorTool('[data-rb-tool="rect"]');
 await fabricDrag(box.x + box.w * 0.55, box.y + box.h * 0.55, box.x + box.w * 0.62, box.y + box.h * 0.62);
 await new Promise((r) => setTimeout(r, 500));
 // Put the draw tool away so the next click selects instead of stacking.
@@ -755,7 +806,9 @@ check(
 const miniToolbar = await page.evaluate(() => ({
   wrap: !!document.querySelector('[data-por-shapemenu].por-ctx'),
   mini: !!document.querySelector('.por-mini'),
-  labels: Array.from(document.querySelectorAll('.por-mini__btn')).map((b) => b.textContent.trim()),
+  labels: Array.from(document.querySelectorAll('.por-mini__btn')).map((b) =>
+    (b.getAttribute('aria-label') || b.textContent || '').replace(/\s+/g, ' ').trim()
+  ),
 }));
 check(
   'context mini toolbar Style/Fill/Outline',
@@ -814,7 +867,7 @@ check(
   JSON.stringify(painted)
 );
 
-await page.click('#por-insert-text');
+await armPorTool('#por-insert-text');
 await new Promise((r) => setTimeout(r, 300));
 await page.evaluate(() => {
   const canvas = document.querySelector('.por-fabric-host')._porCanvas;
@@ -967,7 +1020,7 @@ await page.screenshot({ path: path.join(OUT, 'por-stage4-picture.png'), fullPage
 
 // CC blockers: real mouse draw, no drift, arrowheads, bold, Print visible.
 await page.keyboard.press('Escape');
-await page.click('[data-rb-tool="triangle"]');
+await armPorTool('[data-rb-tool="triangle"]');
 const sheetBox2 = await page.$eval('.rb-sheet', (el) => {
   const r = el.getBoundingClientRect();
   return { x: r.left, y: r.top, w: r.width, h: r.height };
@@ -1117,7 +1170,7 @@ const printVisible = await page.evaluate(() => {
   const toolbar = document.querySelector('.por-toolbar');
   const tr = toolbar.getBoundingClientRect();
   return {
-    ok: r.width > 20 && r.height > 10 && r.right <= tr.right + 2 && r.top >= tr.top - 2,
+    ok: r.width > 20 && r.height > 10 && r.right <= window.innerWidth + 2 && r.top >= tr.top - 2 && r.bottom <= tr.bottom + 2 && r.left >= tr.left - 2,
     r: { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
     tr: { left: tr.left, right: tr.right, top: tr.top, bottom: tr.bottom },
   };
@@ -1131,7 +1184,7 @@ await page.click('#por-add-page');
 const pages = await page.evaluate(() => document.querySelectorAll('#por-page-list .rb-rail__page').length);
 check('add another sheet', pages >= 2, String(pages));
 
-await page.click('#por-bring-contour');
+await clickInsert('#por-bring-contour');
 await page.waitForTimeout?.(400);
 await new Promise((r) => setTimeout(r, 400));
 const contourOk = await page.evaluate(async () => {
@@ -1305,7 +1358,7 @@ function sheetPt(pctX, pctY) {
   };
 }
 async function drawCircleAt(cx, cy, rPct) {
-  await page.click('[data-rb-tool="circle"]');
+  await armPorTool('[data-rb-tool="circle"]');
   const a = sheetPt(cx - rPct, cy - rPct);
   const b = sheetPt(cx + rPct, cy + rPct);
   await page.mouse.move(a.x, a.y);
@@ -1315,7 +1368,7 @@ async function drawCircleAt(cx, cy, rPct) {
   await new Promise((r) => setTimeout(r, 350));
 }
 async function drawArrow(x0, y0, x1, y1) {
-  await page.click('[data-rb-tool="arrow"]');
+  await armPorTool('[data-rb-tool="arrow"]');
   const a = sheetPt(x0, y0);
   const b = sheetPt(x1, y1);
   await page.mouse.move(a.x, a.y);
@@ -1330,7 +1383,7 @@ await drawCircleAt(20, 22, 2.5);
 await drawCircleAt(35, 16, 2.5);
 await drawArrow(50, 20, 62, 30);
 await page.keyboard.press('Escape');
-await page.click('[data-por-tool="select"]');
+await armPorTool('[data-por-tool="select"]');
 await new Promise((r) => setTimeout(r, 200));
 await page.waitForFunction(() => /Saved|Ready/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 5000 }).catch(() => {});
 
@@ -1370,7 +1423,7 @@ const selCount = await page.evaluate(() => {
   if (a.type === 'activeSelection') return a.size ? a.size() : (a.getObjects?.() || []).length;
   return 1;
 });
-await page.click('[data-por-align-marks="top"]');
+await clickArrange('[data-por-align-marks="top"]');
 await new Promise((r) => setTimeout(r, 600));
 await page.waitForFunction(() => /Saved|Ready/.test((document.querySelector('#por-status') || {}).textContent || ''), { timeout: 5000 }).catch(() => {});
 
@@ -1543,7 +1596,7 @@ check(
 
 // Insert Text → type immediately → typed text saves.
 await page.keyboard.press('Escape');
-await page.click('#por-insert-text');
+await armPorTool('#por-insert-text');
 await new Promise((r) => setTimeout(r, 300));
 await page.keyboard.type('Pier note typed', { delay: 20 });
 await page.keyboard.press('Escape');
@@ -1592,7 +1645,7 @@ await page.evaluate(() => {
   const cb = document.querySelector('#por-fill');
   if (cb && !cb.checked) cb.click();
 });
-await page.click('[data-rb-tool="rect"]');
+await armPorTool('[data-rb-tool="rect"]');
 const r0 = stylePt(40, 40);
 const r1 = stylePt(55, 55);
 await page.mouse.move(r0.x, r0.y);
@@ -1601,7 +1654,7 @@ await page.mouse.move(r1.x, r1.y, { steps: 6 });
 await page.mouse.up();
 await new Promise((r) => setTimeout(r, 400));
 await page.keyboard.press('Escape');
-await page.click('[data-por-tool="select"]');
+await armPorTool('[data-por-tool="select"]');
 await new Promise((r) => setTimeout(r, 150));
 // Click empty then rect centre (CC repro).
 await page.mouse.click(stylePt(10, 10).x, stylePt(10, 10).y);
@@ -1702,7 +1755,7 @@ const beforeUndoN = await page.evaluate(async () => {
   const page0 = record.planOfRepair.pages.find((p) => p.id === record.planOfRepair.activePageId);
   return (page0.overlays || []).length;
 });
-await page.click('[data-rb-tool="circle"]');
+await armPorTool('[data-rb-tool="circle"]');
 const c0 = stylePt(70, 40);
 const c1 = stylePt(80, 52);
 await page.mouse.move(c0.x, c0.y);
@@ -1740,7 +1793,7 @@ check(
 );
 
 await page.click('#por-undo'); // may be disabled if stack empty after Ctrl+Z — draw then toolbar undo
-await page.click('[data-rb-tool="triangle"]');
+await armPorTool('[data-rb-tool="triangle"]');
 const t0 = stylePt(20, 60);
 const t1 = stylePt(30, 75);
 await page.mouse.move(t0.x, t0.y);
@@ -1808,15 +1861,153 @@ async function toolbarPrintRow(width) {
 const print1440 = await toolbarPrintRow(1440);
 check(
   'Print stays on first toolbar row at 1440',
-  print1440.ok && print1440.toolbarH <= 48,
+  print1440.ok && print1440.toolbarH <= 78,
   JSON.stringify(print1440)
 );
 const print1280 = await toolbarPrintRow(1280);
 check(
   'Print stays on first toolbar row at 1280',
-  print1280.ok && print1280.toolbarH <= 48,
+  print1280.ok && print1280.toolbarH <= 78,
   JSON.stringify(print1280)
 );
+
+// PowerPoint chrome pass checks (handles, mini toolbar colours, no side panel at rest).
+await page.setViewport({ width: 1440, height: 900 });
+await armPorTool('[data-por-tool="select"]');
+await new Promise((r) => setTimeout(r, 200));
+const chromeAtRest = await page.evaluate(() => {
+  const panel = document.querySelector('#por-panel');
+  const inspector = document.querySelector('#por-inspector');
+  return {
+    panelHidden: !panel || panel.hidden || getComputedStyle(panel).display === 'none',
+    inspectorHidden: !inspector || inspector.hidden,
+    ribbonLabels: Array.from(document.querySelectorAll('.por-ribbon__label')).map((el) => el.textContent.trim()),
+    shapesBtn: !!document.querySelector('#por-shapes-btn'),
+    statusbar: !!document.querySelector('.por-statusbar'),
+    pageIndicator: (document.querySelector('#por-page-indicator') || {}).textContent || '',
+    fillChip: (document.querySelector('#por-fill-chip') || {}).style?.background || '',
+    outlineChip: (document.querySelector('#por-outline-chip') || {}).style?.background || '',
+  };
+});
+check(
+  'no side panel open at rest',
+  chromeAtRest.panelHidden && chromeAtRest.inspectorHidden,
+  JSON.stringify(chromeAtRest)
+);
+check(
+  'ribbon groups + shape gallery + status bar',
+  chromeAtRest.shapesBtn &&
+    chromeAtRest.statusbar &&
+    chromeAtRest.ribbonLabels.indexOf('Drawing') !== -1 &&
+    chromeAtRest.ribbonLabels.indexOf('Clipboard') !== -1,
+  JSON.stringify(chromeAtRest)
+);
+
+// Small pier-dot selection: handles must leave the mark visible (padding > corner).
+await armPorTool('[data-rb-tool="circle"]');
+await page.waitForSelector('.por-fabric-host canvas.upper-canvas');
+await new Promise((r) => setTimeout(r, 200));
+await page.evaluate(() => {
+  const canvas = document.querySelector('.por-fabric-host')?._porCanvas
+    || window.fabric?.Canvas?.instances?.[0];
+  // Draw a small circle via Fabric API if mouse path is heavy — prefer real mouse below.
+});
+const upperChrome = await page.$('.por-fabric-host canvas.upper-canvas');
+const chromeBox = await upperChrome.boundingBox();
+await page.mouse.move(chromeBox.x + chromeBox.width * 0.22, chromeBox.y + chromeBox.height * 0.28);
+await page.mouse.down();
+await page.mouse.move(chromeBox.x + chromeBox.width * 0.235, chromeBox.y + chromeBox.height * 0.295, { steps: 4 });
+await page.mouse.up();
+await new Promise((r) => setTimeout(r, 400));
+await armPorTool('[data-por-tool="select"]');
+await new Promise((r) => setTimeout(r, 200));
+// Click near the small circle to select it.
+await page.mouse.click(chromeBox.x + chromeBox.width * 0.227, chromeBox.y + chromeBox.height * 0.287);
+await new Promise((r) => setTimeout(r, 300));
+const handlePad = await page.evaluate(() => {
+  const host = document.querySelector('.por-fabric-host');
+  const canvas = host && host._porCanvas;
+  const active = canvas && canvas.getActiveObject && canvas.getActiveObject();
+  if (!active) return { ok: false, reason: 'no-active' };
+  const pad = Number(active.padding) || 0;
+  const corner = Number(active.cornerSize) || 0;
+  const br = active.getBoundingRect(true, true);
+  return {
+    ok: pad >= 10 && corner <= 10 && br.width > 0,
+    pad,
+    corner,
+    w: br.width,
+    h: br.height,
+    cornerColor: active.cornerColor,
+    cornerStroke: active.cornerStrokeColor,
+  };
+});
+check(
+  'selected small circle not covered by handles',
+  handlePad.ok && handlePad.pad >= handlePad.corner,
+  JSON.stringify(handlePad)
+);
+
+// Right-click mini toolbar shows current fill/outline colour bars.
+await page.evaluate(() => document.querySelector('[data-por-shapemenu]')?.remove());
+const miniColors = await page.evaluate(() => {
+  const host = document.querySelector('.por-fabric-host');
+  const canvas = host && host._porCanvas;
+  if (!canvas) return { ok: false, reason: 'no-canvas' };
+  let active = canvas.getActiveObject && canvas.getActiveObject();
+  if (!active) {
+    const objs = canvas.getObjects().filter((o) => !o.excludeFromExport && o.porId);
+    if (objs.length) {
+      canvas.setActiveObject(objs[objs.length - 1]);
+      active = canvas.getActiveObject();
+    }
+  }
+  if (!active || !active.porId) return { ok: false, reason: 'no-active' };
+  // Give the mark a known fill/outline so the mini bars are meaningful.
+  if (active.set) {
+    active.set({ fill: '#eab308', stroke: '#1d4ed8' });
+    canvas.requestRenderAll();
+  }
+  const rect = canvas.upperCanvasEl.getBoundingClientRect();
+  const br = active.getBoundingRect(true);
+  const clientX = rect.left + br.left + br.width / 2;
+  const clientY = rect.top + br.top + br.height / 2;
+  const evt = new MouseEvent('mousedown', {
+    bubbles: true, cancelable: true, button: 2, buttons: 2, clientX, clientY, view: window,
+  });
+  // Fire Fabric's own mouse:down so openShapeMenu runs with a real target.
+  canvas.fire('mouse:down', { e: evt, target: active, button: 2 });
+  return { ok: true, clientX, clientY, id: active.porId, fill: active.fill, stroke: active.stroke };
+});
+await new Promise((r) => setTimeout(r, 300));
+const miniChrome = await page.evaluate(() => {
+  const bars = Array.from(document.querySelectorAll('.por-mini__bar')).map((el) => ({
+    role: el.getAttribute('data-por-mini-swatch'),
+    bg: el.style.background || getComputedStyle(el).backgroundColor,
+  }));
+  const labels = Array.from(document.querySelectorAll('.por-mini__btn')).map((b) =>
+    (b.getAttribute('aria-label') || b.textContent || '').trim()
+  );
+  return {
+    mini: !!document.querySelector('.por-mini'),
+    bars,
+    labels,
+    hasFillBar: bars.some((b) => b.role === 'fill' && b.bg),
+    hasOutlineBar: bars.some((b) => b.role === 'outline' && b.bg),
+  };
+});
+check(
+  'mini toolbar shows current fill/outline colours',
+  miniChrome.mini && miniChrome.hasFillBar && miniChrome.hasOutlineBar &&
+    miniChrome.labels.indexOf('Style') !== -1,
+  JSON.stringify({ miniColors, miniChrome })
+);
+await page.evaluate(() => document.querySelector('[data-por-shapemenu]')?.remove());
+
+await page.setViewport({ width: 1440, height: 900 });
+await page.screenshot({ path: path.join(OUT, 'por-chrome-1440-selected.png'), fullPage: true });
+await page.setViewport({ width: 1280, height: 800 });
+await page.screenshot({ path: path.join(OUT, 'por-chrome-1280-ribbon.png'), fullPage: true });
 await page.setViewport({ width: 1440, height: 960 });
 await page.screenshot({ path: path.join(OUT, 'por-cc3-style-undo.png'), fullPage: true });
 

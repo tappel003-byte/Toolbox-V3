@@ -77,15 +77,21 @@
 
   function styleControls(obj) {
     if (!obj) return obj;
+    // PowerPoint-like: small white circles with thin grey outline, fixed pixel
+    // size (does not grow on tiny marks), padding so a pier-dot stays visible,
+    // thin selection border, rotate handle on a short stem above.
     obj.set({
       cornerStyle: 'circle',
-      cornerColor: '#2563eb',
-      cornerStrokeColor: '#ffffff',
-      borderColor: '#2563eb',
+      cornerColor: '#ffffff',
+      cornerStrokeColor: '#8a8a8a',
+      borderColor: '#5b9bd5',
+      borderScaleFactor: 1,
       transparentCorners: false,
-      cornerSize: 12,
-      padding: 4,
-      rotatingPointOffset: 28,
+      cornerSize: 8,
+      padding: 14,
+      rotatingPointOffset: 22,
+      hoverCursor: 'move',
+      moveCursor: 'move',
     });
     return obj;
   }
@@ -645,15 +651,20 @@
       // Allow programmatic / automation pointer streams (Puppeteer) to drive tools.
       allowTouchScrolling: false,
     });
-    // PowerPoint-ish round handles on all future objects.
+    // PowerPoint-like round handles on all future objects (fixed 8px; padding
+    // keeps small pier dots fully visible outside the handle ring).
     window.fabric.Object.prototype.set({
       cornerStyle: 'circle',
-      cornerColor: '#2563eb',
-      cornerStrokeColor: '#ffffff',
-      borderColor: '#2563eb',
+      cornerColor: '#ffffff',
+      cornerStrokeColor: '#8a8a8a',
+      borderColor: '#5b9bd5',
+      borderScaleFactor: 1,
       transparentCorners: false,
-      cornerSize: 12,
-      rotatingPointOffset: 28,
+      cornerSize: 8,
+      padding: 14,
+      rotatingPointOffset: 22,
+      hoverCursor: 'move',
+      moveCursor: 'move',
     });
     // Re-decorate arrows after canvas load / enliven.
     canvas.on('object:added', function (opt) {
