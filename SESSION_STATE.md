@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 11, 2026** (America/Denver)  
-Updated by: Cursor — POR PowerPoint icon visual match (no strip). Ball → Tim.
+Updated by: Cursor — POR PowerPoint icon visual match (no strip). Ball → Tim. (Workers Builds trigger.)
 
 ---
 
