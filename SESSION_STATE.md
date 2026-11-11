@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 11, 2026** (America/Denver)  
-Updated by: Cursor — merge-everything into integration (Initial Visit + clear-red). Ball → Tim.
+Updated by: Cursor — Initial Visit schedule on integration. POR icons discussion open; no icon strip. Ball → Tim.
 
 ---
 
@@ -19,12 +19,12 @@ Updated by: Cursor — merge-everything into integration (Initial Visit + clear-
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — merge-everything landed on `claude/milestone-1-customer-file-qv5ybf`. Promote when ready. Not on `main`.
-| Integration tip | `a373a59` (`a373a596c84693a28c08bd04394473de108d505a`) |
+| **Has the ball** | **Tim** — Initial Visit schedule on `claude/milestone-1-customer-file-qv5ybf`. POR icons talk next; nothing stripped. Not on `main`. |
+| Integration tip | filled after merge |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Shell | `toolbox-shell-v461` |
-| Not done | Do not merge to `main`. Do not deploy Sync Worker. Do not promote. |
+| Shell | `toolbox-shell-v462` |
+| Not done | Do not merge to `main`. Do not deploy Sync Worker. Do not promote. Do not strip POR/Report Builder controls. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -99,6 +99,10 @@ Authorized by Tim: "do the thing we added to the to-do list today." Merged into 
 3. No gap above the Visits heading
 4. Wording of the offline cause
 
+**Schedule reminder (Nov 11, Tim):** Visits are also appointments. Create + visit card have Date and Time; Visits list shows calendar/clock for the scheduled slot (not `updatedAt`). Editable anytime on the visit. Initial Visit tile removed from TLS Customer File home — Visits live on Toolbox home only. Shell `v462`.
+
+**POR / PowerPoint icons (Nov 11, Tim):** Screenshots are the look Tim wants. Add Shape Format capabilities he named (Arrange forward/back, Selection Pane, rotate, text box, more shapes) — **do not strip existing POR or Report Builder controls**. An agent started stripping/narrowing icons from a scope aside; that was wrong and was reverted. Icons stay discussion until Tim says exactly what to change.
+
 ---
 
 ## Clear-red suites A (Nov 11, 2026)
@@ -117,11 +121,11 @@ Merged `cursor/clear-red-suites-2ac5` into integration this turn. Triage A clear
 
 ## Outstanding — open only
 
-1. **Initial Visit CC polish** — four small defects (new branch after merge-everything).
-2. **Red suites** — 16 remaining after clear-red A clears of trash + cross-record (floor-survey / report-floor / report-highlow / sizing / sw-update-ready).
-3. **Sync Worker** — Tim's browser check of `/health` + one Sync Now. Redeploy later if Cabinet Explorer needs Worker `copyIdentity` status passthrough.
-4. **App promote** — Tim only. Not `main` unless Tim asks promote-prep.
-5. **Plan of Repair look check** vs MS Paint / PowerPoint (Tim’s screenshots).
+1. **Initial Visit CC polish** — four small defects + schedule look check after Tim reviews `v462`.
+2. **POR PowerPoint icons** — Tim’s screenshots; add missing capabilities; never strip existing controls. Waiting on Tim’s exact go.
+3. **Red suites** — 16 remaining after clear-red A clears of trash + cross-record (floor-survey / report-floor / report-highlow / sizing / sw-update-ready).
+4. **Sync Worker** — Tim's browser check of `/health` + one Sync Now. Redeploy later if Cabinet Explorer needs Worker `copyIdentity` status passthrough.
+5. **App promote** — Tim only. Not `main` unless Tim asks promote-prep.
 6. **Open against `main` (not merged):** #97 / #86 / #85 — leave until Tim asks promote-prep.
 
 ---

@@ -99,6 +99,7 @@
         notes: [],
         videos: [],
         visitDate: todayIsoDate(),
+        visitTime: '',
         followUpDate: '',
         outcomes: {
           noProblems: false,
@@ -110,6 +111,83 @@
       },
     };
     return record;
+  }
+
+  /** Scheduled appointment on an Initial Visit (date + optional time of day). */
+  function visitSchedule(record) {
+    const walk = record && record.distress && record.distress.jobWalk &&
+      typeof record.distress.jobWalk === 'object'
+      ? record.distress.jobWalk
+      : null;
+    return {
+      date: walk && typeof walk.visitDate === 'string' ? walk.visitDate : '',
+      time: walk && typeof walk.visitTime === 'string' ? walk.visitTime : '',
+    };
+  }
+
+  function formatVisitScheduleDate(isoDate) {
+    if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return '';
+    const d = new Date(isoDate + 'T12:00:00');
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
+  function formatVisitScheduleTime(hhmm) {
+    if (!hhmm || !/^\d{1,2}:\d{2}$/.test(hhmm)) return '';
+    const parts = hhmm.split(':');
+    const h = Number(parts[0]);
+    const m = Number(parts[1]);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return '';
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function visitScheduleSortKey(record) {
+    const s = visitSchedule(record);
+    const date = s.date || '9999-12-31';
+    const time = s.time || '99:99';
+    return date + 'T' + time;
+  }
+
+  function fillVisitScheduleMeta(metaEl, record) {
+    metaEl.textContent = '';
+    metaEl.classList.add('cabinet-row__schedule');
+    const s = visitSchedule(record);
+    const dateLabel = formatVisitScheduleDate(s.date);
+    const timeLabel = formatVisitScheduleTime(s.time);
+    if (dateLabel) {
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'cabinet-row__when cabinet-row__when--date';
+      dateSpan.innerHTML =
+        '<span class="cabinet-row__when-ico" aria-hidden="true">' +
+        '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" ' +
+        'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="2" y="3.5" width="12" height="10.5" rx="1.5"/>' +
+        '<path d="M5 2v2.5M11 2v2.5M2 7h12"/></svg></span>';
+      const dateText = document.createElement('span');
+      dateText.textContent = dateLabel;
+      dateSpan.appendChild(dateText);
+      metaEl.appendChild(dateSpan);
+    }
+    if (timeLabel) {
+      if (dateLabel) metaEl.appendChild(document.createTextNode(' · '));
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'cabinet-row__when cabinet-row__when--time';
+      timeSpan.innerHTML =
+        '<span class="cabinet-row__when-ico" aria-hidden="true">' +
+        '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" ' +
+        'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2L10.2 10"/></svg></span>';
+      const timeText = document.createElement('span');
+      timeText.textContent = timeLabel;
+      timeSpan.appendChild(timeText);
+      metaEl.appendChild(timeSpan);
+    }
+    if (!dateLabel && !timeLabel) {
+      metaEl.textContent = 'Set schedule';
+      metaEl.classList.add('is-unset');
+    }
   }
 
   function displayName(record) {
@@ -804,7 +882,9 @@
         listEl.innerHTML = '';
         if (visitsEl) visitsEl.innerHTML = '';
         const jobs = records.filter(function (r) { return !isVisitRecord(r); });
-        const visits = records.filter(isVisitRecord);
+        const visits = records.filter(isVisitRecord).sort(function (a, b) {
+          return visitScheduleSortKey(a).localeCompare(visitScheduleSortKey(b));
+        });
         if (jobs.length === 0) {
           const p = document.createElement('p');
           p.className = 'cabinet-empty';
@@ -1456,18 +1536,24 @@
     overlay.innerHTML =
       '<form class="iv-dialog__panel" id="iv-form">' +
       '  <h2 class="iv-dialog__title">Initial Visit</h2>' +
-      '  <p class="iv-dialog__lead">Name, phone, and address — then photos and notes. No plan required.</p>' +
+      '  <p class="iv-dialog__lead">Name, phone, address, and when you are going. No plan required.</p>' +
       '  <label class="iv-field"><span>First name</span><input type="text" id="iv-first" autocomplete="given-name"></label>' +
       '  <label class="iv-field"><span>Last name</span><input type="text" id="iv-last" autocomplete="family-name"></label>' +
       '  <label class="iv-field"><span>Phone</span><input type="tel" id="iv-phone" autocomplete="tel"></label>' +
       '  <label class="iv-field"><span>Address</span>' +
       '    <textarea id="iv-address" rows="2" placeholder="Street address, city, state, ZIP" autocomplete="street-address"></textarea>' +
       '  </label>' +
+      '  <div class="iv-schedule-fields">' +
+      '    <label class="iv-field"><span>Date</span><input type="date" id="iv-date"></label>' +
+      '    <label class="iv-field"><span>Time</span><input type="time" id="iv-time" step="300"></label>' +
+      '  </div>' +
       '  <div class="iv-dialog__actions">' +
       '    <button type="button" class="btn btn--quiet" id="iv-cancel">Cancel</button>' +
       '    <button type="submit" class="btn btn--accent" id="iv-start">Start visit</button>' +
       '  </div>' +
       '</form>';
+    const dateInput = overlay.querySelector('#iv-date');
+    if (dateInput) dateInput.value = todayIsoDate();
     document.body.appendChild(overlay);
     const first = overlay.querySelector('#iv-first');
     if (first) first.focus();
@@ -1484,6 +1570,10 @@
       record.lastName = (overlay.querySelector('#iv-last').value || '').trim();
       record.cellPhone = (overlay.querySelector('#iv-phone').value || '').trim();
       record.propertyAddress = (overlay.querySelector('#iv-address').value || '').trim();
+      const schedDate = (overlay.querySelector('#iv-date').value || '').trim() || todayIsoDate();
+      const schedTime = (overlay.querySelector('#iv-time').value || '').trim();
+      record.distress.jobWalk.visitDate = schedDate;
+      record.distress.jobWalk.visitTime = schedTime;
       record.customerUpdatedAt = new Date().toISOString();
       record.updatedAt = record.customerUpdatedAt;
       if (window.ToolboxPlanSetup) window.ToolboxPlanSetup.ensurePlanSetup(record);
@@ -1557,7 +1647,11 @@
         : 'Plan needed';
     }
     const updated = document.createElement('span');
-    updated.textContent = formatUpdated(record.updatedAt);
+    if (isVisitRecord(record)) {
+      fillVisitScheduleMeta(updated, record);
+    } else {
+      updated.textContent = formatUpdated(record.updatedAt);
+    }
     meta.appendChild(planState);
     meta.appendChild(updated);
 
@@ -2188,18 +2282,13 @@
       '  <div class="cf-home__section-head">' +
       '    <div>' +
       '      <p class="eyebrow">' + (tls ? 'TLS workspaces' : 'Workspaces') + '</p>' +
-      '      <h2>' + (tls ? 'Initial Visit and Plan of Repair' : 'Choose where to work') + '</h2>' +
+      '      <h2>' + (tls ? 'Plan of Repair' : 'Choose where to work') + '</h2>' +
       '    </div>' +
       '    <span class="cf-home__meta" id="home-card-meta"></span>' +
       '  </div>' +
       '  <div class="cf-home__apps" id="home-apps">' +
       (tls
-        ? (
-          // Tile filled after record load: hide Initial Visit once a plan exists
-          // unless prior Job Walk / visit capture data must still open.
-          '<div id="home-tls-visit-slot"></div>' +
-          tlsAppTileHtml('repair', 'Plan of Repair', 'Flexible desktop drawing for preliminary repair sheets')
-        )
+        ? tlsAppTileHtml('repair', 'Plan of Repair', 'Flexible desktop drawing for preliminary repair sheets')
         : (
           appTileHtml('distress') +
           appTileHtml('floor') +
@@ -2209,7 +2298,7 @@
       '  </div>' +
       '  <p class="cf-home__hint">' +
       (tls
-        ? 'TLS tools use this Customer File. Initial Visit is for the walk-around before a plan; Distress Survey takes over once a plan is in.'
+        ? 'TLS tools use this Customer File. Initial Visit lives on the Toolbox home Visits list — not here.'
         : 'Each workspace opens with this Customer File. They are independent—not required steps.') +
       '</p>' +
       '  <div class="cf-home__file-actions">' +
@@ -2432,34 +2521,11 @@
       contactBadge.classList.toggle('is-ready', hasName && hasAddress);
       planBadge.textContent = readiness.hasPlan
         ? planSummaryText(record)
-        : (tls ? 'No floor plan yet — Initial Visit still works' : 'Floor plan required');
+        : (tls ? 'No floor plan yet — Plan of Repair still works' : 'Floor plan required');
       planBadge.classList.toggle('is-ready', readiness.hasPlan);
-      // Geo field apps need a plan; TLS Initial Visit / POR do not.
+      // Geo field apps need a plan; TLS Plan of Repair does not.
       planCallout.hidden = tls || readiness.hasPlan;
       cardMeta.textContent = record.updatedAt ? 'Updated ' + formatUpdated(record.updatedAt) : '';
-      if (tls) {
-        const slot = app.querySelector('#home-tls-visit-slot');
-        if (slot) {
-          const walk = record.distress && record.distress.jobWalk;
-          const hasWalkData = !!(walk && (
-            (Array.isArray(walk.notes) && walk.notes.length) ||
-            (Array.isArray(walk.videos) && walk.videos.length)
-          ));
-          const hasVisitPhotos = !!(record.distress && Array.isArray(record.distress.quickCapture) &&
-            record.distress.quickCapture.some(function (item) {
-              return item && item.folder === 'Job Walk';
-            }));
-          // Once a plan is in, Distress Survey is the capture tool — keep the
-          // tile only when prior Job Walk / visit material must still open.
-          const showVisit = !readiness.hasPlan || hasWalkData || hasVisitPhotos || isVisitRecord(record);
-          slot.innerHTML = showVisit
-            ? tlsAppTileHtml('job-walk', 'Initial Visit',
-              readiness.hasPlan
-                ? 'Open prior visit photos and notes'
-                : 'Photos, descriptions, and visit notes — no plan required')
-            : '';
-        }
-      }
       app.querySelectorAll('.cf-app-btn[data-app]').forEach(function (btn) {
         const state = btn.querySelector('.cf-app-btn__state');
         btn.classList.toggle('is-locked', !readiness.hasPlan);

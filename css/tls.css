@@ -390,9 +390,17 @@ body.job-walk-open #app-view {
   margin-bottom: 12px;
 }
 
+.jw-visit-fields .jw-field:nth-child(3) {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 560px) {
   .jw-visit-fields {
     grid-template-columns: 1fr;
+  }
+
+  .jw-visit-fields .jw-field:nth-child(3) {
+    grid-column: auto;
   }
 }
 
@@ -405,7 +413,8 @@ body.job-walk-open #app-view {
   color: #5b6470;
 }
 
-.jw-field input[type="date"] {
+.jw-field input[type="date"],
+.jw-field input[type="time"] {
   font: inherit;
   min-height: 36px;
   padding: 4px 8px;
