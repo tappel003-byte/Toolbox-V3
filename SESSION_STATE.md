@@ -91,6 +91,19 @@ Tests: `node tests/plan-of-repair.mjs` → **93/93** (full ribbon+status reachab
 
 ---
 
+### CC recheck of chrome layout `e423a01` (Nov 11, 2026) — PASSES
+
+Real mouse at 1280×800 and 1440×900: every ribbon and status-bar control reachable
+(`elementFromPoint`), page height equals window height, Insert → Floor plan works, Format Shape
+makes the sheet re-fit, outline chip follows the selection, real page thumbnails, draw / restyle /
+move / undo / redo / arrow / reopen identical. `tests/plan-of-repair.mjs` 86/86.
+
+Full suite on `e423a01`: 142 suites, 18 red, **all 18 red on the base branch `da63c08` too**
+(not caused by Plan of Repair): the 16 floor-survey / report-floor / report-highlow / sizing /
+sw-update-ready suites, plus `customer-file-trash` (menu now has Open in TLS and Delete) and
+`customer-file-cross-record` (30 s timeout in `openInspectionDate`), both re-run alone on tip and
+on base with identical results. Triage is open (see Cursor's red-suite prompt).
+
 ## Sync Worker deploy — done Nov 10, 2026
 
 - Deployed by Claude Code with Tim's Cloudflare API token (saved as a network secret on Tim's Default cloud environment).
