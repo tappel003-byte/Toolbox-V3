@@ -19,7 +19,7 @@ Updated by: Cursor — triage+clear `customer-file-trash` and `customer-file-cro
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** — check red-suite A fixes on `cursor/clear-red-suites-2ac5` (tip filled after push). |
+| **Has the ball** | **Claude Code** — check red-suite A fixes on `cursor/clear-red-suites-2ac5` (`3939207`). |
 | Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (unchanged; not merged). |
 | Feature branch | `cursor/clear-red-suites-2ac5` — stale-test updates for trash menu + cross-record Floor Survey path. |
 | Not done | Remaining **16** red suites (floor-survey / report-floor / report-highlow / sizing / sw-update-ready). CC check of these two A clears. |
