@@ -252,6 +252,12 @@ await page.click('#iv-phone');
 await page.keyboard.type('555-0142', { delay: 15 });
 await page.click('#iv-address');
 await page.keyboard.type('12 Yard Lane\nAlbuquerque, NM 87101', { delay: 10 });
+await page.evaluate(() => {
+  const d = document.querySelector('#iv-date');
+  const t = document.querySelector('#iv-time');
+  if (d) d.value = '2026-11-12';
+  if (t) t.value = '09:30';
+});
 
 const startBtn = await page.$('#iv-start');
 const startBox = await startBtn.boundingBox();
@@ -267,6 +273,18 @@ const visitId = await page.evaluate(() => {
 check('Offline create opens Initial Visit card', !!visitId && !!(await page.$('.jw-shell')));
 check('Visit meta (date/outcomes/Make CF) visible on visit card',
   !!(await page.$('#jw-make-cf')) && !!(await page.$('[data-jw-outcome="callBack"]')));
+const scheduleOnCard = await page.evaluate(() => {
+  const dateEl = document.querySelector('#jw-visit-date');
+  const timeEl = document.querySelector('#jw-visit-time');
+  return {
+    date: dateEl ? dateEl.value : '',
+    time: timeEl ? timeEl.value : '',
+    hasTimeInput: !!timeEl,
+  };
+});
+check('Visit card shows scheduled date and time',
+  scheduleOnCard.date === '2026-11-12' && scheduleOnCard.time === '09:30' && scheduleOnCard.hasTimeInput,
+  JSON.stringify(scheduleOnCard));
 
 await page.screenshot({ path: `${OUT}/initial-visit-card-phone.png`, fullPage: true });
 
@@ -388,6 +406,22 @@ check('Visit appears under Visits, not under Customer Files jobs',
 check('Ordinary file without visit mark stays a job row',
   lists.jobRows.includes('cf-ordinary-1') && !lists.visitRows.includes('cf-ordinary-1'),
   JSON.stringify(lists));
+
+const scheduleOnList = await page.evaluate((id) => {
+  const row = document.querySelector('#cabinet-visits-list [data-customer-file-id="' + id + '"]');
+  const schedule = row && row.querySelector('.cabinet-row__schedule');
+  const text = schedule ? schedule.textContent.replace(/\s+/g, ' ').trim() : '';
+  return {
+    hasSchedule: !!schedule,
+    hasDateIco: !!(schedule && schedule.querySelector('.cabinet-row__when--date')),
+    hasTimeIco: !!(schedule && schedule.querySelector('.cabinet-row__when--time')),
+    text,
+  };
+}, visitId);
+check('Visits list card shows calendar/clock schedule reminder',
+  scheduleOnList.hasSchedule && scheduleOnList.hasDateIco && scheduleOnList.hasTimeIco &&
+  /9:30/.test(scheduleOnList.text) && /Nov/.test(scheduleOnList.text),
+  JSON.stringify(scheduleOnList));
 
 await page.screenshot({ path: `${OUT}/initial-visit-visits-list-phone.png`, fullPage: true });
 

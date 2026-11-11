@@ -68,6 +68,7 @@
     if (typeof walk.visitDate !== 'string' || !walk.visitDate) {
       walk.visitDate = todayIsoDate();
     }
+    if (typeof walk.visitTime !== 'string') walk.visitTime = '';
     if (typeof walk.followUpDate !== 'string') walk.followUpDate = '';
     return record.distress;
   }
@@ -230,10 +231,12 @@
       '</div>' +
       '<div class="jw-body">' +
       '  <section class="jw-panel jw-panel--visit" id="jw-visit-meta" hidden>' +
-      '    <h2 class="jw-panel__title">Visit</h2>' +
+      '    <h2 class="jw-panel__title">Schedule</h2>' +
       '    <div class="jw-visit-fields">' +
-      '      <label class="jw-field"><span>Date of visit</span>' +
+      '      <label class="jw-field"><span>Date</span>' +
       '        <input type="date" id="jw-visit-date"></label>' +
+      '      <label class="jw-field"><span>Time</span>' +
+      '        <input type="time" id="jw-visit-time" step="300"></label>' +
       '      <label class="jw-field"><span>Follow-up date</span>' +
       '        <input type="date" id="jw-follow-up"></label>' +
       '    </div>' +
@@ -636,8 +639,10 @@
       if (!visit) return;
       var walk = ensureDistress(state.record).jobWalk;
       var dateEl = root.querySelector('#jw-visit-date');
+      var timeEl = root.querySelector('#jw-visit-time');
       var followEl = root.querySelector('#jw-follow-up');
       if (dateEl) dateEl.value = walk.visitDate || todayIsoDate();
+      if (timeEl) timeEl.value = walk.visitTime || '';
       if (followEl) followEl.value = walk.followUpDate || '';
       root.querySelectorAll('[data-jw-outcome]').forEach(function (input) {
         var key = input.getAttribute('data-jw-outcome');
@@ -645,6 +650,7 @@
         input.disabled = state.readOnly;
       });
       if (dateEl) dateEl.disabled = state.readOnly;
+      if (timeEl) timeEl.disabled = state.readOnly;
       if (followEl) followEl.disabled = state.readOnly;
       var makeBtn = root.querySelector('#jw-make-cf');
       if (makeBtn) makeBtn.disabled = state.readOnly;
@@ -915,6 +921,14 @@
       visitDateEl.addEventListener('change', function () {
         if (!state.record || state.readOnly) return;
         ensureDistress(state.record).jobWalk.visitDate = visitDateEl.value || todayIsoDate();
+        persist();
+      });
+    }
+    var visitTimeEl = root.querySelector('#jw-visit-time');
+    if (visitTimeEl) {
+      visitTimeEl.addEventListener('change', function () {
+        if (!state.record || state.readOnly) return;
+        ensureDistress(state.record).jobWalk.visitTime = visitTimeEl.value || '';
         persist();
       });
     }

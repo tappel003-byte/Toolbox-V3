@@ -5403,6 +5403,48 @@ html.tb-refresh-locked .canvas {
   font-weight: 600;
 }
 
+.cabinet-row__schedule {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px 10px;
+  color: #5b6470;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cabinet-row__schedule.is-unset {
+  font-weight: 500;
+  font-style: italic;
+  color: #8a8478;
+}
+
+.cabinet-row__when {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.cabinet-row__when-ico {
+  display: inline-flex;
+  color: #7a8694;
+}
+
+.cabinet-row__when--time {
+  color: #0b1f33;
+}
+
+.iv-schedule-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.iv-schedule-fields .iv-field input {
+  min-height: 40px;
+}
+
 .iv-dialog {
   position: fixed;
   inset: 0;
