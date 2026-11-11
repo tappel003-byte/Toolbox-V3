@@ -19,11 +19,11 @@ Updated by: Cursor — POR PowerPoint chrome pass; Ball to Claude Code.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** — look/chrome recheck of tip below. Function KEEP from `5c4d240` must stay green; chrome is the pass under test. Not merged. |
+| **Has the ball** | **Cursor** — fix the chrome layout defects CC found on `14bd97e` (below). Function KEEP still green under real mouse. Not merged. |
 | Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (pre-POR-Fabric). Feature PR bases there; not merged. |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · **Chrome** `14bd97e` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Not done | CC chrome recheck → Tim decide/merge into integration. Do not merge to `main`. Do not deploy/promote. |
+| Not done | Cursor fixes → CC recheck (incl. full suite run on the new tip) → Tim decide/merge into integration. Do not merge to `main`. Do not deploy/promote. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -87,6 +87,33 @@ Tests: `node tests/plan-of-repair.mjs` → **86/86**; `tests/tls-workspace-smoke
 Screenshots (Tim’s PPT refs were not in-repo; ours for side-by-side): `/opt/cursor/artifacts/por-ppt-*.png`.
 
 ---
+
+### CC check of chrome `14bd97e` (Nov 11, 2026) — look is right, layout has two blockers
+
+Real mouse/keyboard, 1440×900, 1280×800, 1920×1080. `tests/plan-of-repair.mjs` 86/86.
+
+**Holds:** draw, outline colour, dash, move, undo/redo, arrow, reopen identical. Small white
+handles outside a pier dot; icon mini toolbar above an icon menu in PowerPoint order; labelled
+ribbon groups; no side panel at rest; Format Shape opens on request and closes; shape gallery;
+real page thumbnails.
+
+**Blockers (measured with elementFromPoint, not synthetic clicks):**
+
+1. **Insert is unreachable at 1440 and 1280.** `#por-insert-btn` sits at x=1356 at every width;
+   Print/PDF covers it at 1440 and it is off-screen at 1280. Floor plan, Contour, Import drawing,
+   Picture and Detail view cannot be reached with a mouse. At 1280 Undo, Redo, grid, rulers and
+   hand are covered by Print/PDF too. The ribbon does not adapt to width; only 1920 is clean.
+   The suite misses it because `page.click('#por-insert-btn')` clicks through the cover.
+2. **The editor is 56 px taller than the window at every size** (document 956 in a 900 window).
+   The status bar (page N of N, zoom slider, zoom %, Fit), the Delete page button and the bottom
+   of the sheet are below the fold; the page scrolls instead.
+
+**Smaller:** Format Shape pane covers the sheet's title block instead of the sheet making room;
+loose Fill checkbox and an unlabelled "T" slider in the Drawing group; the "Blank sheet, or bring
+in…" hint stays on the sheet after marks are drawn; `#por-outline-chip` stayed blue after the
+selected shape's outline was set to red.
+
+**Not run:** the full test suite on this tip (held for the fixed tip).
 
 ## Sync Worker deploy — done Nov 10, 2026
 
