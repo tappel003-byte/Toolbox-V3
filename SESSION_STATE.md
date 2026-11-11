@@ -19,7 +19,7 @@ Updated by: Cursor — Claude Code handoff prompt after IV reorder + POR chrome.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** — check tip below (IV schedule + panel order + POR PPT chrome/icons). Report what matches Tim’s PowerPoint screenshots and what still does not. Do not strip. Not on `main`. |
+| **Has the ball** | **Tim** — CC check of integration tip `fb3db3b` done (findings below). Nothing stripped. Fixes need Tim's go; then Cursor. Not on `main`. |
 | Integration tip | `f1ba197` (`f1ba19763e13fff81ee80aca7d9ff01ecaa5bfc3`) |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
@@ -147,6 +147,37 @@ If Tim later authorizes icon/capability fixes from your findings: add or restyle
 Merged `cursor/clear-red-suites-2ac5` into integration this turn. Triage A clears: `tests/customer-file-trash.mjs` + `tests/customer-file-cross-record.mjs` (Floor Survey path). CC checked the A tip; remaining 16 red suites are still open (floor-survey / report-floor / report-highlow / sizing / sw-update-ready).
 
 ---
+
+### CC check of integration tip `fb3db3b` (shell v464) — Nov 11, 2026
+
+Phone width 390 and desktop 1440, real clicks and typing. `tests/initial-visit.mjs` **25/25**,
+`tests/plan-of-repair.mjs` **93/93**. Nothing was removed or edited; findings only.
+
+**Initial Visit — works, three defects**
+- Panel order is right: Schedule → Visit Notes → Take Photos → Videos → Outcome + Make Customer File.
+  Date and Time are on create and on the card; time edits save.
+- **Schedule is invisible on a phone.** The Visits row does draw the calendar/clock line
+  ("Sat, Nov 14 · 2:15 PM") but `.cabinet-row__meta { display: none }` at phone width
+  (`css/styles.css` ~3852) hides it. The reminder only shows on desktop.
+- **Home button order unchanged:** "+ New Customer File" (primary) is still last, under Import and
+  Initial Visit.
+- **Phone and address are still not on the visit card** (header shows the name only).
+- Initial Visit is gone from the TLS tile list (tiles empty on the TLS home).
+
+**Plan of Repair — function holds; look does NOT match Tim's PowerPoint screenshots**
+Matches: small white handles outside a pier dot, icon mini toolbar (Style / Fill / Outline) above an
+icon menu in PowerPoint order, Format Shape pane on request, real page thumbnails, status bar.
+Does not match (PowerPoint → here):
+1. Tall ribbon with large labelled buttons (Paste, Arrange, Quick Styles, Select) → one short row of
+   small grey icons, no large buttons.
+2. Font controls always visible (font, size, grow/shrink, B I U S, colours) → folded into a plain
+   "Font ▾" word at 1440, so Bold / Italic / Underline are hidden.
+3. Shapes gallery in rows, plus Shape Fill / Outline / Effects → one small "▭ ▾" button, a loose Fill
+   checkbox, a "Transp." slider and a star.
+4. Tab row (Home, Insert, Draw …) → none; Insert is a plain button at the far right.
+5. Coloured consistent icons → small flat grey, mixed style. Notes say "Fluent" but no Fluent icon
+   set is vendored (`js/vendor` = fabric, jspdf, jszip), so they are hand-made.
+Per Tim's rule: add or restyle only, never strip.
 
 ## Sync Worker deploy — done Nov 10, 2026
 
