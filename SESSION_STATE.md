@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 11, 2026** (America/Denver)  
-Updated by: Cursor — POR PowerPoint chrome pass; Ball to Claude Code.
+Updated by: Cursor — POR chrome layout blockers (Insert + window height); Ball to Claude Code.
 
 ---
 
@@ -19,11 +19,11 @@ Updated by: Cursor — POR PowerPoint chrome pass; Ball to Claude Code.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Cursor** — fix the chrome layout defects CC found on `14bd97e` (below). Function KEEP still green under real mouse. Not merged. |
+| **Has the ball** | **Claude Code** — recheck chrome layout fix tip below (Insert reachable at 1440/1280 via elementFromPoint; editor fits under app-bar). Function KEEP must stay green. Not merged. |
 | Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (pre-POR-Fabric). Feature PR bases there; not merged. |
-| Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · **Chrome** `14bd97e` |
+| Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · **Chrome-layout** `56787b2` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Not done | Cursor fixes → CC recheck (incl. full suite run on the new tip) → Tim decide/merge into integration. Do not merge to `main`. Do not deploy/promote. |
+| Not done | CC recheck (incl. full suite) → Tim decide/merge into integration. Do not merge to `main`. Do not deploy/promote. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -69,51 +69,22 @@ Branch: `cursor/por-fabric-stages-2ac5` → PR #210 into `claude/milestone-1-cus
 | CC fix | `63584a9` | Real mouse draw; rect/circle no drift; arrowheads; bold flag; Print visible |
 | CC2 | `ab7e903` | Absolute multi-select save; arrow pin; rich bold; Insert Text typing; arrowhead pixels |
 | CC3 | `5c4d240` | Style save; undo/redo; Print first row; colour pop hit-testing |
-| **Chrome** | `14bd97e` | PowerPoint look-and-feel: handles, mini toolbar icons, ribbon, shape gallery, request-only panes, page thumbs, status bar, cursors |
+| Chrome | `14bd97e` | PowerPoint look-and-feel pass |
+| **Chrome-layout** | `56787b2` | Insert+Print pinned; app-view fits under 56px app-bar; Format pane gets a column; outline chip tracks selection |
 
-**Chrome pass (Tim, Nov 11 — look only; saved format / sync / print / tool behaviour unchanged):**
-1. Selection handles — small white circles, thin grey outline, padding 14 so pier dots stay visible, fixed 8px corner size, rotate stem.
-2. Right-click mini toolbar — Style / Fill / Outline icon buttons with colour bars + chevrons (not plain words).
-3. Right-click menu — icons, PowerPoint order/wording, Group and Bring/Send submenus, disabled items greyed.
-4. Ribbon — Clipboard / Font / Paragraph / Drawing / Editing / Insert labels; Shape Fill/Outline show current colour; Print pinned; groups scroll if needed at 1280.
-5. Shape gallery grid instead of a permanent tool row.
-6. Format Shape + Selection panes open on request only (X to close); Insert dropdown holds Floor plan / Contour / etc.
-7. Page thumbs render a small picture of the sheet; numbered; current outlined; thumb context menu New/Duplicate/Delete.
-8. Status bar — “N of M” left; zoom slider / % / Fit right.
-9. Cursors — move on selected, crosshair when drawing, text I-beam when editing text.
+### CC check of chrome `14bd97e` (Nov 11) — look right; two layout blockers → Cursor fixed
 
-Tests: `node tests/plan-of-repair.mjs` → **86/86**; `tests/tls-workspace-smoke.mjs` → **33/33**; `tests/sync-client-through-worker.mjs` → **50/50**.
+**Held:** draw, outline, dash, move, undo/redo, handles, mini toolbar, ribbon labels, shape gallery, request-only Format Shape, page thumbs.
 
-Screenshots (Tim’s PPT refs were not in-repo; ours for side-by-side): `/opt/cursor/artifacts/por-ppt-*.png`.
+**Blockers fixed this tip:**
+1. Insert unreachable at 1440/1280 — Insert+Print now pinned in `.por-ribbon__end` outside the scroll; `elementFromPoint` hits `#por-insert-btn`; Insert sits left of Print.
+2. Editor 56px taller than the window — `#app-view` is `calc(100dvh - 56px)` under the app-bar; status bar bottom equals `innerHeight`.
+
+**Smaller also touched:** Format Shape pane takes a real grid column when open; Fill labeled; Transparency labeled; blank-sheet hint hides once marks exist; outline chip follows applied outline colour.
+
+Tests: `node tests/plan-of-repair.mjs` → **88/88** (includes Insert reachable + no overflow at 1440/1280 via elementFromPoint).
 
 ---
-
-### CC check of chrome `14bd97e` (Nov 11, 2026) — look is right, layout has two blockers
-
-Real mouse/keyboard, 1440×900, 1280×800, 1920×1080. `tests/plan-of-repair.mjs` 86/86.
-
-**Holds:** draw, outline colour, dash, move, undo/redo, arrow, reopen identical. Small white
-handles outside a pier dot; icon mini toolbar above an icon menu in PowerPoint order; labelled
-ribbon groups; no side panel at rest; Format Shape opens on request and closes; shape gallery;
-real page thumbnails.
-
-**Blockers (measured with elementFromPoint, not synthetic clicks):**
-
-1. **Insert is unreachable at 1440 and 1280.** `#por-insert-btn` sits at x=1356 at every width;
-   Print/PDF covers it at 1440 and it is off-screen at 1280. Floor plan, Contour, Import drawing,
-   Picture and Detail view cannot be reached with a mouse. At 1280 Undo, Redo, grid, rulers and
-   hand are covered by Print/PDF too. The ribbon does not adapt to width; only 1920 is clean.
-   The suite misses it because `page.click('#por-insert-btn')` clicks through the cover.
-2. **The editor is 56 px taller than the window at every size** (document 956 in a 900 window).
-   The status bar (page N of N, zoom slider, zoom %, Fit), the Delete page button and the bottom
-   of the sheet are below the fold; the page scrolls instead.
-
-**Smaller:** Format Shape pane covers the sheet's title block instead of the sheet making room;
-loose Fill checkbox and an unlabelled "T" slider in the Drawing group; the "Blank sheet, or bring
-in…" hint stays on the sheet after marks are drawn; `#por-outline-chip` stayed blue after the
-selected shape's outline was set to red.
-
-**Not run:** the full test suite on this tip (held for the fixed tip).
 
 ## Sync Worker deploy — done Nov 10, 2026
 
