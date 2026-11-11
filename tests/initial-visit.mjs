@@ -209,12 +209,17 @@ await page.screenshot({ path: `${OUT}/initial-visit-home-phone.png`, fullPage: t
 const homePhone = await page.evaluate(() => {
   const visit = document.querySelector('#cabinet-visit');
   const neu = document.querySelector('#cabinet-new');
+  const imp = document.querySelector('#cabinet-import');
   const visitBox = visit && visit.getBoundingClientRect();
   const newBox = neu && neu.getBoundingClientRect();
+  const impBox = imp && imp.getBoundingClientRect();
   return {
     visitLabel: visit && visit.textContent.trim(),
     newLabel: neu && neu.textContent.trim(),
-    sideBySide: !!(visitBox && newBox && Math.abs(visitBox.top - newBox.top) < 40),
+    importLabel: imp && imp.textContent.trim(),
+    orderTops: [newBox && newBox.top, visitBox && visitBox.top, impBox && impBox.top],
+    newFirst: !!(newBox && visitBox && impBox &&
+      newBox.top <= visitBox.top + 1 && visitBox.top <= impBox.top + 1),
     overlap: !!(visitBox && newBox &&
       visitBox.left < newBox.right && visitBox.right > newBox.left &&
       visitBox.top < newBox.bottom && visitBox.bottom > newBox.top &&
@@ -223,6 +228,9 @@ const homePhone = await page.evaluate(() => {
 });
 check('Home shows + Initial Visit beside New Customer File',
   homePhone.visitLabel === '+ Initial Visit' && homePhone.newLabel === '+ New Customer File',
+  JSON.stringify(homePhone));
+check('Home button order New → Initial Visit → Import at phone width',
+  homePhone.newFirst && /Import/i.test(homePhone.importLabel || ''),
   JSON.stringify(homePhone));
 check('Home Initial Visit button does not overlap New Customer File',
   !homePhone.overlap, JSON.stringify(homePhone));
@@ -282,13 +290,31 @@ const panelOrder = await page.evaluate(() => {
     return (title && title.textContent.trim()) || panel.id || '';
   });
 });
-check('Visit panels ordered Schedule → Notes → Photos → Videos → Outcome',
-  panelOrder[0] === 'Schedule' &&
-  panelOrder[1] === 'Visit Notes' &&
-  panelOrder[2] === 'Take Photos' &&
-  panelOrder[3] === 'Videos' &&
-  panelOrder[4] === 'Outcome',
+check('Visit panels ordered Contact → Schedule → Notes → Photos → Videos → Outcome',
+  panelOrder[0] === 'jw-visit-contact' &&
+  panelOrder[1] === 'Schedule' &&
+  panelOrder[2] === 'Visit Notes' &&
+  panelOrder[3] === 'Take Photos' &&
+  panelOrder[4] === 'Videos' &&
+  panelOrder[5] === 'Outcome',
   JSON.stringify(panelOrder));
+const contactOnCard = await page.evaluate(() => {
+  const phone = document.querySelector('#jw-phone');
+  const address = document.querySelector('#jw-address');
+  const contact = document.querySelector('#jw-visit-contact');
+  return {
+    visible: !!(contact && !contact.hidden),
+    phone: phone ? phone.textContent.trim() : '',
+    phoneHref: phone ? (phone.getAttribute('href') || '') : '',
+    address: address ? address.textContent.replace(/\s+/g, ' ').trim() : '',
+  };
+});
+check('Visit card shows phone (tap to call) and address near top',
+  contactOnCard.visible &&
+  contactOnCard.phone === '555-0142' &&
+  /^tel:/.test(contactOnCard.phoneHref) &&
+  /12 Yard Lane/.test(contactOnCard.address),
+  JSON.stringify(contactOnCard));
 const scheduleOnCard = await page.evaluate(() => {
   const dateEl = document.querySelector('#jw-visit-date');
   const timeEl = document.querySelector('#jw-visit-time');

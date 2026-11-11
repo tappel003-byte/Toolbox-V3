@@ -230,6 +230,13 @@
       '  <span class="file-status" id="jw-status">Loading…</span>' +
       '</div>' +
       '<div class="jw-body">' +
+      // Contact (phone tap-to-call + address) sits above Schedule (CC check Nov 11).
+      '  <section class="jw-panel jw-panel--contact" id="jw-visit-contact" hidden>' +
+      '    <p class="jw-contact__phone">' +
+      '      <a id="jw-phone" class="jw-contact__phone-link" href="#"></a>' +
+      '    </p>' +
+      '    <p class="jw-contact__address" id="jw-address"></p>' +
+      '  </section>' +
       // Order (Tim Nov 11): Schedule → homeowner/visit notes → photos/video/record → Outcome at bottom.
       '  <section class="jw-panel jw-panel--visit" id="jw-visit-meta" hidden>' +
       '    <h2 class="jw-panel__title">Schedule</h2>' +
@@ -638,11 +645,31 @@
       var visit = isVisitRecord(state.record);
       var meta = root.querySelector('#jw-visit-meta');
       var outcome = root.querySelector('#jw-visit-outcome');
+      var contact = root.querySelector('#jw-visit-contact');
       var title = root.querySelector('#jw-title');
       if (title) title.textContent = 'Initial Visit';
       if (meta) meta.hidden = !visit;
       if (outcome) outcome.hidden = !visit;
+      if (contact) contact.hidden = !visit;
       if (!visit) return;
+      var phone = ((state.record && state.record.cellPhone) || '').trim();
+      var address = ((state.record && state.record.propertyAddress) || '').trim();
+      var phoneEl = root.querySelector('#jw-phone');
+      var addressEl = root.querySelector('#jw-address');
+      if (phoneEl) {
+        phoneEl.textContent = phone || 'No phone on file';
+        if (phone) {
+          phoneEl.href = 'tel:' + phone.replace(/[^\d+]/g, '');
+          phoneEl.classList.remove('is-empty');
+        } else {
+          phoneEl.removeAttribute('href');
+          phoneEl.classList.add('is-empty');
+        }
+      }
+      if (addressEl) {
+        addressEl.textContent = address || 'No address on file';
+        addressEl.classList.toggle('is-empty', !address);
+      }
       var walk = ensureDistress(state.record).jobWalk;
       var dateEl = root.querySelector('#jw-visit-date');
       var timeEl = root.querySelector('#jw-visit-time');

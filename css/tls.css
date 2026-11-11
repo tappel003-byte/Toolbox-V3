@@ -383,6 +383,38 @@ body.job-walk-open #app-view {
 
 /* ---- Initial Visit card extras ---- */
 
+.jw-panel--contact {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.jw-contact__phone,
+.jw-contact__address {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: #0b1f33;
+}
+
+.jw-contact__phone + .jw-contact__address {
+  margin-top: 6px;
+}
+
+.jw-contact__phone-link {
+  color: #0b4a8f;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.jw-contact__phone-link.is-empty,
+.jw-contact__address.is-empty {
+  color: #8a8478;
+  font-weight: 500;
+  font-style: italic;
+  text-decoration: none;
+}
+
 .jw-sr-only {
   position: absolute;
   width: 1px;

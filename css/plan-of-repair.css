@@ -7,6 +7,40 @@
   height: 100%;
 }
 
+/* Tab row above the tall ribbon (Home / Insert / …). */
+.por-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  gap: 0;
+  padding: 0 8px;
+  background: #f3f2f1;
+  border-bottom: 1px solid #c8c6c4;
+}
+
+.por-tabs__tab {
+  appearance: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #323130;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px 6px;
+  cursor: pointer;
+}
+
+.por-tabs__tab.is-active {
+  color: #c43e1c;
+  border-bottom-color: #c43e1c;
+}
+
+.por-tabs__tab:disabled {
+  color: #a19f9d;
+  cursor: default;
+}
+
 .por-toolbar,
 .por-ribbon {
   flex: 0 0 auto;
@@ -16,6 +50,7 @@
   gap: 0;
   width: 100%;
   min-width: 0;
+  min-height: 72px;
   padding: 4px 8px 2px;
   /* PowerPoint ribbon: flat cool gray, not warm cream */
   background: #f3f2f1;
@@ -25,6 +60,175 @@
   position: relative;
   z-index: 200;
   isolation: isolate;
+}
+
+/* Tall labelled ribbon commands (Paste / Arrange / Quick Styles / Select). */
+.por-ribbon__large {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 48px;
+  min-height: 56px;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #0b1f33;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.por-ribbon__large:hover {
+  border-color: #c8c6c4;
+  background: #edebe9;
+}
+
+.por-ribbon__large-label {
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.por-ribbon__stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+}
+
+.por-ribbon__stack--labelled {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.por-ribbon__stack--extras {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  max-width: 120px;
+}
+
+.por-ribbon__stack--shape-style {
+  max-height: 78px;
+}
+
+.por-ribbon__stack--shape-style .por-picker__btn--labelled {
+  justify-content: flex-start;
+  min-width: 118px;
+  min-height: 24px;
+  height: 24px;
+  gap: 4px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+
+.por-ribbon__stack--shape-style .fluent-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.por-ribbon__row--drawing {
+  max-height: 88px;
+  overflow: visible;
+}
+
+.por-fill-toggle--tool,
+.por-opacity {
+  min-height: 22px;
+  font-size: 11px;
+}
+
+.por-opacity input[type="range"] {
+  width: 72px;
+  height: 16px;
+}
+
+.por-picker__text {
+  flex: 1 1 auto;
+  text-align: left;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.por-ribbon__font {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+
+.por-ribbon__row--clipboard,
+.por-ribbon__row--drawing {
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/* Docked PowerPoint-style shapes gallery (always visible in the ribbon). */
+.por-shapes--docked {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.por-shapes__btn-label {
+  font-size: 12px;
+}
+
+.por-shapes__pop--docked {
+  position: static !important;
+  left: auto !important;
+  top: auto !important;
+  right: auto !important;
+  z-index: 1 !important;
+  display: block;
+  min-width: 132px;
+  max-width: 160px;
+  max-height: 72px;
+  overflow: auto;
+  padding: 2px;
+  border: 1px solid #c8c6c4;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.por-shapes__pop--docked .por-shapes__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 26px);
+  gap: 1px;
+  justify-content: start;
+}
+
+.por-shapes__pop--docked .por-iconbtn {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 2px;
+}
+
+.fluent-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.fluent-icon--paste { color: #c43e1c; }
+.fluent-icon--fill { color: #c19c00; }
+.fluent-icon--outline { color: #1d4ed8; }
+.fluent-icon--style { color: #8764b8; }
+.fluent-icon--arrange { color: #ca5010; }
+.fluent-icon--effects { color: #0078d4; }
+.fluent-icon--star { color: #ca5010; }
+.fluent-icon--accent { color: #323130; }
+
+.por-ribbon__large .fluent-icon {
+  width: 28px;
+  height: 28px;
 }
 
 .por-ribbon__scroll {
