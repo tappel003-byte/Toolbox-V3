@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 11, 2026** (America/Denver)  
-Updated by: Cursor — POR chrome layout blockers (Insert + window height); Ball to Claude Code.
+Updated by: Cursor — POR chrome ribbon collapse + height fit; Ball to Claude Code.
 
 ---
 
@@ -19,9 +19,9 @@ Updated by: Cursor — POR chrome layout blockers (Insert + window height); Ball
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** — recheck chrome layout fix tip below (Insert reachable at 1440/1280 via elementFromPoint; editor fits under app-bar). Function KEEP must stay green. Not merged. |
+| **Has the ball** | **Claude Code** — recheck chrome layout tip below (every visible ribbon/status control reachable via `elementFromPoint` at 1280/1440/1920; `document` height = window height; Insert→Floor plan via `page.mouse` at 1280). Function KEEP must stay green. Not merged. |
 | Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (pre-POR-Fabric). Feature PR bases there; not merged. |
-| Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · **Chrome-layout** `56787b2` |
+| Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Not done | CC recheck (incl. full suite) → Tim decide/merge into integration. Do not merge to `main`. Do not deploy/promote. |
 
@@ -70,19 +70,24 @@ Branch: `cursor/por-fabric-stages-2ac5` → PR #210 into `claude/milestone-1-cus
 | CC2 | `ab7e903` | Absolute multi-select save; arrow pin; rich bold; Insert Text typing; arrowhead pixels |
 | CC3 | `5c4d240` | Style save; undo/redo; Print first row; colour pop hit-testing |
 | Chrome | `14bd97e` | PowerPoint look-and-feel pass |
-| **Chrome-layout** | `56787b2` | Insert+Print pinned; app-view fits under 56px app-bar; Format pane gets a column; outline chip tracks selection |
+| Chrome-layout | `56787b2` | Insert+Print pinned; app-view under app-bar |
+| **Chrome-collapse** | `e423a01` | PPT ribbon group collapse; Editing+Insert+Print pinned; height fit; chip sync; reachability tests |
 
-### CC check of chrome `14bd97e` (Nov 11) — look right; two layout blockers → Cursor fixed
+### CC check of chrome `14bd97e` (Nov 11) — look right; layout blockers → Cursor fixed (this tip)
 
-**Held:** draw, outline, dash, move, undo/redo, handles, mini toolbar, ribbon labels, shape gallery, request-only Format Shape, page thumbs.
+**Held:** look direction; draw, outline, dash, move, undo/redo, handles, mini toolbar, shape gallery, request-only Format Shape, page thumbs.
 
 **Blockers fixed this tip:**
-1. Insert unreachable at 1440/1280 — Insert+Print now pinned in `.por-ribbon__end` outside the scroll; `elementFromPoint` hits `#por-insert-btn`; Insert sits left of Print.
-2. Editor 56px taller than the window — `#app-view` is `calc(100dvh - 56px)` under the app-bar; status bar bottom equals `innerHeight`.
+1. Ribbon fits the window — Clipboard/Font/Paragraph/Drawing are collapsible; `fitRibbon()` collapses Font → Paragraph → Clipboard → Drawing until scroll fits. Editing + Insert (own labelled group) + Print stay pinned in `.por-ribbon__end`. Every visible ribbon/status control is top-at-centre via `elementFromPoint` at 1280×800, 1440×900, 1920×1080.
+2. Editor fits the window height — `#app-view` is `calc(100dvh - 56px)`; html/body overflow hidden; Fabric IText body `<textarea>` parked when idle so it cannot inflate `document.scrollHeight`. Status bar pinned; Fit shows the whole sheet; `docH === winH`.
 
-**Smaller also touched:** Format Shape pane takes a real grid column when open; Fill labeled; Transparency labeled; blank-sheet hint hides once marks exist; outline chip follows applied outline colour.
+**Smaller:**
+3. Format Shape pane gets a real grid column; sheet re-fits (`applySheetScale`) on open/close.
+4. Fill checkbox labeled “Fill”; Transparency labeled “Transp.” with tooltip.
+5. Blank-sheet hint only when no marks and no background; never in print DOM / `@media print`.
+6. `#por-outline-chip` / `#por-fill-chip` follow the selected shape’s stroke/fill.
 
-Tests: `node tests/plan-of-repair.mjs` → **88/88** (includes Insert reachable + no overflow at 1440/1280 via elementFromPoint).
+Tests: `node tests/plan-of-repair.mjs` → **93/93** (full ribbon+status reachability at three sizes; Insert→Floor plan via `page.mouse` at 1280; outline chip sync).
 
 ---
 
