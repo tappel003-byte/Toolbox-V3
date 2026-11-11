@@ -105,7 +105,7 @@ Authorized by Tim: "do the thing we added to the to-do list today." Merged into 
 
 **Phone Visits schedule (Nov 11, Tim — on tip):** Schedule under the address in `.cabinet-row__main` (meta stays hidden on phone).
 
-**CC-check fixes (Nov 11, Tim authorized — on tip `77dfb6f` / shell v466):**
+**CC-check fixes (Nov 11, Tim authorized — on tip `089869b` / shell v466):**
 1. Home buttons at 390: **+ New Customer File** → **+ Initial Visit** → **Import**.
 2. Visits list schedule visible on phone (main column).
 3. Visit card shows phone (`tel:`) + address read-only above Schedule.
