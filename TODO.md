@@ -61,6 +61,61 @@ to use it."
 - **Stats pill size**, behind the sliders icon in Topo.
 - **Send to File Cabinet and Check In**, inside the three-dot menu.
 
+## Initial Visit — a house before it is a job
+
+Talked through with Tim, Nov 11, 2026, looking at the Customer Files screen on
+his phone. Design agreed in conversation; **not authorized to build.** The
+name is not settled (see the end).
+
+**What it is.** Tim often goes to a house with only a name, a phone number and
+an address, walks around, and tells the owner to call back for a survey. Maybe
+they call, maybe not. Today that visit leaves no record in Toolbox. Tim: "it
+might be good to have a record... it's not really in my ecosystem." He called
+it "a CRM entry": an initial visit, a couple of pictures, a couple of notes,
+maybe boxes to check.
+
+**How it works.**
+
+- **A button on the Customer Files screen**, beside New Customer File. It asks
+  for name, phone and address only, then goes straight to notes and photos. No
+  plan, no setup.
+- **One card per visit:** contact, date of the visit, a few photos, a notes
+  box, outcome check boxes (for example: no problems seen, recommended a floor
+  survey, recommended a distress survey, wants a repair quote, told them to
+  call back), and a follow-up date if there is one.
+- **Its own folder.** Visits sit in a separate Visits folder in the File
+  Cabinet, and under their own heading on the device, so walk-arounds do not
+  crowd real jobs. File Explorer shows them too, as it shows everything on the
+  server.
+- **Underneath it is the same container as a Customer File**, marked as a
+  visit. That gets it the File Cabinet, offline and sync without a second kind
+  of record. Visit photos follow the Quick Capture rule: they live in the File
+  Cabinet and are not pulled down on Check Out.
+- **When the visit becomes a paying customer: one button on the card, and the
+  visit becomes the Customer File. Move, not copy** (Tim, Nov 11: "Agreed move
+  not create another"). One record per house. Name, address, notes and photos
+  are already in it; the visit stays inside as the first entry in the job's
+  history. Nothing is retyped.
+
+**Where Job Walk fits.** Job Walk is the same kind of work: walk the house,
+notes and photos, no plan needed. So it is the front door to a house, ahead of
+both the Sandia Geo side and the TLS side, not a TLS-only tool. Toolbox stays
+one app with one Customer File; a separate TLS sign-in is only a question on
+the day someone other than Tim and Lee needs in, and is not part of this.
+
+**Keep it a card and a folder.** No pipeline, reminders, email or calendar.
+The follow-up date becoming a reminder is a separate decision if it comes up.
+
+**Open.**
+
+- The name. Tim leaned to "Initial Visit" over "Quick Visit", then left it
+  open. Also open: whether Job Walk keeps its own name inside a file or takes
+  the same name.
+- Job Walk did not work offline for Tim on Nov 10. `js/job-walk.js` is in the
+  offline shell list, so the cause is not a missing file. Not yet tested with
+  the network off. This has to hold before a visit card can be trusted in a
+  yard.
+
 ## The File Explorer list
 
 Decided with Tim, Oct 18, 2026, looking at an opened job on his phone. The
