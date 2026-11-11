@@ -436,7 +436,7 @@
       '          <button type="button" class="por-menu-item" id="por-ungroup-btn" title="Ungroup">Ungroup</button>' +
       '        </div>' +
       '      </div>' +
-      '      <label class="por-fill-toggle por-fill-toggle--tool" title="Fill shapes"><input type="checkbox" id="por-fill" aria-label="Fill shapes"></label>' +
+      '      <label class="por-fill-toggle por-fill-toggle--tool" title="Fill shapes when drawing"><input type="checkbox" id="por-fill" aria-label="Fill shapes"><span class="por-fill-toggle__text">Fill</span></label>' +
       '      <div class="por-picker" data-por-picker="fill">' +
       '        <button type="button" class="por-picker__btn por-picker__btn--shape" id="por-fill-btn" title="Shape Fill" aria-label="Fill colour" aria-haspopup="true" aria-expanded="false">' +
       '          <span class="por-shape-fill__icon" aria-hidden="true">' + ICONS.fillBucket + '</span>' +
@@ -484,7 +484,7 @@
       '          <button type="button" class="por-dash" data-por-dash="dotted" title="Dotted">· · ·</button>' +
       '        </div>' +
       '      </div>' +
-      '      <label class="por-opacity" title="Transparency"><span>T</span><input type="range" id="por-opacity" min="0" max="100" value="100" aria-label="Opacity"></label>' +
+      '      <label class="por-opacity" title="Transparency"><span class="por-opacity__label">Transp.</span><input type="range" id="por-opacity" min="0" max="100" value="100" aria-label="Transparency"></label>' +
       '      <button type="button" class="por-iconbtn" id="por-set-default" title="Set as Default" aria-label="Set as default">' +
               svgIcon('<path d="M12 3l2.2 4.5 5 .7-3.6 3.5.9 5.1L12 14.8 7.5 16.8l.9-5.1L4.8 8.2l5-.7z"/>') + '</button>' +
       '    </div>' +
@@ -511,37 +511,39 @@
       '    </div>' +
       '    <span class="por-ribbon__label">Editing</span>' +
       '  </div>' +
-      '  <div class="por-ribbon__sep" aria-hidden="true"></div>' +
-      '  <div class="por-ribbon__group" role="group" aria-label="Insert">' +
-      '    <div class="por-ribbon__row">' +
-      '      <div class="por-picker" data-por-picker="insert">' +
-      '        <button type="button" class="por-picker__btn por-picker__btn--label" id="por-insert-btn" title="Insert" aria-label="Insert" aria-haspopup="true" aria-expanded="false">' +
-      '          Insert <span class="por-shapes__chev">▾</span>' +
-      '        </button>' +
-      '        <div class="por-picker__pop por-insert__pop por-bg-actions" id="por-insert-pop" hidden role="menu" aria-label="Insert">' +
-      '          <button type="button" class="por-menu-item por-linkbtn" id="por-bring-plan" title="Floor plan">Floor plan</button>' +
-      '          <button type="button" class="por-menu-item por-linkbtn" id="por-bring-contour" title="Contour">Contour</button>' +
-      '          <button type="button" class="por-menu-item por-linkbtn" id="por-import-bg" title="Import drawing">Import drawing</button>' +
-      '          <button type="button" class="por-menu-item por-linkbtn" id="por-clear-bg" title="Blank">Blank</button>' +
-      '          <input type="file" id="por-import-file" accept="image/*" hidden>' +
-      '          <button type="button" class="por-menu-item por-linkbtn" id="por-insert-pic" title="Picture">Picture</button>' +
-      '          <input type="file" id="por-pic-file" accept="image/*" hidden>' +
-      '          <button type="button" class="por-menu-item por-linkbtn" id="por-add-view" title="Detail view">Detail view</button>' +
-      '          <button type="button" class="por-menu-item por-linkbtn" id="por-remove-view" title="Remove detail">Remove detail</button>' +
-      '          <button type="button" class="por-menu-item por-linkbtn" id="por-export-selection" title="Save selection as picture">Save selection</button>' +
-      '          <button type="button" class="por-menu-item por-linkbtn" id="por-export-page" title="Save page as picture">Save page</button>' +
-      '          <div class="por-stackmenu__sep"></div>' +
-      '          <label class="por-menu-item por-insert__level">Level <select id="por-canvas" class="por-bg-select por-bg-select--inline" title="Level" aria-label="Level or canvas"></select></label>' +
-      '          <label class="por-fill-toggle por-fill-toggle--compact por-menu-item" title="SandiaGEO note"><input type="checkbox" id="por-sandia"> SandiaGEO</label>' +
+      '</div>' +
+      // Insert + Print stay pinned outside the scroll so Floor plan / Contour
+      // remain reachable at 1440 and 1280 (CC: Insert was under Print / off-screen).
+      '  <div class="por-ribbon__end" role="group" aria-label="Insert and output">' +
+      '    <div class="por-ribbon__group" role="group" aria-label="Insert">' +
+      '      <div class="por-ribbon__row">' +
+      '        <div class="por-picker" data-por-picker="insert">' +
+      '          <button type="button" class="por-picker__btn por-picker__btn--label" id="por-insert-btn" title="Insert" aria-label="Insert" aria-haspopup="true" aria-expanded="false">' +
+      '            Insert <span class="por-shapes__chev">▾</span>' +
+      '          </button>' +
+      '          <div class="por-picker__pop por-insert__pop por-bg-actions" id="por-insert-pop" hidden role="menu" aria-label="Insert">' +
+      '            <button type="button" class="por-menu-item por-linkbtn" id="por-bring-plan" title="Floor plan">Floor plan</button>' +
+      '            <button type="button" class="por-menu-item por-linkbtn" id="por-bring-contour" title="Contour">Contour</button>' +
+      '            <button type="button" class="por-menu-item por-linkbtn" id="por-import-bg" title="Import drawing">Import drawing</button>' +
+      '            <button type="button" class="por-menu-item por-linkbtn" id="por-clear-bg" title="Blank">Blank</button>' +
+      '            <input type="file" id="por-import-file" accept="image/*" hidden>' +
+      '            <button type="button" class="por-menu-item por-linkbtn" id="por-insert-pic" title="Picture">Picture</button>' +
+      '            <input type="file" id="por-pic-file" accept="image/*" hidden>' +
+      '            <button type="button" class="por-menu-item por-linkbtn" id="por-add-view" title="Detail view">Detail view</button>' +
+      '            <button type="button" class="por-menu-item por-linkbtn" id="por-remove-view" title="Remove detail">Remove detail</button>' +
+      '            <button type="button" class="por-menu-item por-linkbtn" id="por-export-selection" title="Save selection as picture">Save selection</button>' +
+      '            <button type="button" class="por-menu-item por-linkbtn" id="por-export-page" title="Save page as picture">Save page</button>' +
+      '            <div class="por-stackmenu__sep"></div>' +
+      '            <label class="por-menu-item por-insert__level">Level <select id="por-canvas" class="por-bg-select por-bg-select--inline" title="Level" aria-label="Level or canvas"></select></label>' +
+      '            <label class="por-fill-toggle por-fill-toggle--compact por-menu-item" title="SandiaGEO note"><input type="checkbox" id="por-sandia"> SandiaGEO</label>' +
+      '          </div>' +
       '        </div>' +
       '      </div>' +
+      '      <span class="por-ribbon__label">Insert</span>' +
       '    </div>' +
-      '    <span class="por-ribbon__label">Insert</span>' +
-      '  </div>' +
-      '</div>' +
-      '  <div class="por-toolbar__spacer"></div>' +
-      '  <div class="por-toolbar__out" role="group" aria-label="Drawing output">' +
-      '    <button type="button" id="por-print" class="btn btn--secondary rb-print-btn" title="Print / PDF">Print / PDF</button>' +
+      '    <div class="por-toolbar__out" role="group" aria-label="Drawing output">' +
+      '      <button type="button" id="por-print" class="btn btn--secondary rb-print-btn" title="Print / PDF">Print / PDF</button>' +
+      '    </div>' +
       '  </div>' +
       '</div>' +
       '<div class="rb-workspace por-workspace">' +
@@ -847,6 +849,9 @@
       if (!color) return;
       rememberColor(color);
       var hex = (PorFab && PorFab.toHexColor ? PorFab.toHexColor(color) : null) || color;
+      // Always drive the Shape Outline colour bar from the colour just applied
+      // (CC: chip stayed blue after a selected shape was set to red).
+      state.inkColor = hex;
       if (state.fabricCanvas && !state.readOnly) {
         var active = styleTarget();
         if (active) {
@@ -889,7 +894,6 @@
         syncHistoryButtons();
         return;
       }
-      state.inkColor = hex;
       syncHistoryButtons();
       applyFabricToolMode();
     }
@@ -2459,12 +2463,15 @@
           : (page.background && page.background.kind === 'import' ? 'Imported drawing' : 'Floor plan');
         bg.appendChild(img);
       } else if (!state.printMode) {
-        var empty = document.createElement('p');
-        empty.className = 'por-sheet-bg__empty';
-        empty.textContent = state.bgMissing
-          ? 'Referenced background is missing — review before print.'
-          : 'Blank sheet, or bring in a floor plan, contour, or imported drawing.';
-        bg.appendChild(empty);
+        var hasMarks = overlayList(page).length > 0;
+        if (state.bgMissing || !hasMarks) {
+          var empty = document.createElement('p');
+          empty.className = 'por-sheet-bg__empty';
+          empty.textContent = state.bgMissing
+            ? 'Referenced background is missing — review before print.'
+            : 'Blank sheet, or bring in a floor plan, contour, or imported drawing.';
+          bg.appendChild(empty);
+        }
       }
       sheetEl.appendChild(bg);
 

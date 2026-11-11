@@ -1903,6 +1903,51 @@ check(
   JSON.stringify(chromeAtRest)
 );
 
+// CC chrome blockers: Insert must be mouse-reachable (elementFromPoint) at 1440/1280;
+// status bar must sit in the window (no document overflow under the app-bar).
+async function layoutReachable(width, height) {
+  await page.setViewport({ width, height });
+  await new Promise((r) => setTimeout(r, 250));
+  // Close any open pops so elementFromPoint is clean.
+  await page.evaluate(() => {
+    document.querySelectorAll('.por-picker__pop').forEach((p) => { p.hidden = true; });
+    document.querySelector('[data-por-shapemenu]')?.remove();
+  });
+  return page.evaluate(() => {
+    const insert = document.querySelector('#por-insert-btn');
+    const print = document.querySelector('#por-print');
+    const status = document.querySelector('.por-statusbar');
+    const app = document.querySelector('#app-view');
+    if (!insert || !print || !status || !app) return { ok: false, reason: 'missing' };
+    const ir = insert.getBoundingClientRect();
+    const pr = print.getBoundingClientRect();
+    const sr = status.getBoundingClientRect();
+    const ar = app.getBoundingClientRect();
+    const hit = document.elementFromPoint(ir.left + ir.width / 2, ir.top + ir.height / 2);
+    const insertOk = !!(hit && (hit.id === 'por-insert-btn' || hit.closest?.('#por-insert-btn')));
+    // Status bar and app-view bottom must sit in the window (CC: 56px taller than window).
+    const statusOk = sr.bottom <= window.innerHeight + 1 && ar.bottom <= window.innerHeight + 1;
+    return {
+      ok: insertOk && statusOk && ir.right <= pr.left + 2,
+      insertOk,
+      statusOk,
+      insertRight: Math.round(ir.right),
+      printLeft: Math.round(pr.left),
+      statusBottom: Math.round(sr.bottom),
+      appBottom: Math.round(ar.bottom),
+      vh: window.innerHeight,
+      hit: hit && (hit.id || hit.className),
+      width: window.innerWidth,
+    };
+  });
+}
+const layout1440 = await layoutReachable(1440, 900);
+check('Insert reachable + no overflow at 1440', layout1440.ok, JSON.stringify(layout1440));
+const layout1280 = await layoutReachable(1280, 800);
+check('Insert reachable + no overflow at 1280', layout1280.ok, JSON.stringify(layout1280));
+await page.setViewport({ width: 1440, height: 900 });
+await new Promise((r) => setTimeout(r, 200));
+
 // Small pier-dot selection: handles must leave the mark visible (padding > corner).
 await armPorTool('[data-rb-tool="circle"]');
 await page.waitForSelector('.por-fabric-host canvas.upper-canvas');
