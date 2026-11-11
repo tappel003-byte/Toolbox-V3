@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 11, 2026** (America/Denver)  
-Updated by: Cursor — Initial Visit schedule on integration. POR icons discussion open; no icon strip. Ball → Tim.
+Updated by: Cursor — POR PowerPoint icon visual match (no strip). Ball → Tim.
 
 ---
 
@@ -19,11 +19,11 @@ Updated by: Cursor — Initial Visit schedule on integration. POR icons discussi
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — Initial Visit schedule on `claude/milestone-1-customer-file-qv5ybf`. POR icons talk next; nothing stripped. Not on `main`. |
+| **Has the ball** | **Tim** — POR icon visual match on integration for look. Nothing stripped. Not on `main`. |
 | Integration tip | `258cc3b` (`258cc3b272c2f94bd181d8ddcc60f71788d24009`) |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Shell | `toolbox-shell-v462` |
+| Shell | `toolbox-shell-v463` |
 | Not done | Do not merge to `main`. Do not deploy Sync Worker. Do not promote. Do not strip POR/Report Builder controls. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
@@ -101,7 +101,7 @@ Authorized by Tim: "do the thing we added to the to-do list today." Merged into 
 
 **Schedule reminder (Nov 11, Tim):** Visits are also appointments. Create + visit card have Date and Time; Visits list shows calendar/clock for the scheduled slot (not `updatedAt`). Editable anytime on the visit. Initial Visit tile removed from TLS Customer File home — Visits live on Toolbox home only. Shell `v462`.
 
-**POR / PowerPoint icons (Nov 11, Tim):** Screenshots are the look Tim wants. Add Shape Format capabilities he named (Arrange forward/back, Selection Pane, rotate, text box, more shapes) — **do not strip existing POR or Report Builder controls**. An agent started stripping/narrowing icons from a scope aside; that was wrong and was reverted. Icons stay discussion until Tim says exactly what to change.
+**POR / PowerPoint icons (Nov 11, Tim):** Visual match pass on Plan of Repair icons only (Fluent thin-line + Office accent colours on Fill/Arrange). **No controls removed.** Report Builder untouched. Further Shape Format capabilities still open. Initial Visit reorder still waiting on Tim’s go.
 
 ---
 

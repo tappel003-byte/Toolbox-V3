@@ -269,29 +269,72 @@
     var inkColors = (window.ToolboxReportOverlay && window.ToolboxReportOverlay.COLORS) ||
       ['#c14a2b', '#111111', '#1d4ed8', '#16a34a', '#ea7317', '#eab308'];
 
+    // PowerPoint / Fluent thin-line look (Tim screenshots Nov 11). Visual match only —
+    // do not remove toolbar/menu controls when editing these paths.
     function svgIcon(body) {
       return '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" ' +
-        'stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
+        'stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' +
         body + '</svg>';
     }
 
     var ICONS = {
-      select: svgIcon('<path d="M5 3l6 16 2-6 6-2z"/>'),
-      undo: svgIcon('<path d="M8 9h7.5a4.5 4.5 0 1 1 0 9H10"/><path d="M11 5.5 7 9l4 3.5"/>'),
-      redo: svgIcon('<path d="M16 9H8.5a4.5 4.5 0 1 0 0 9H14"/><path d="M13 5.5 17 9l-4 3.5"/>'),
-      pencil: svgIcon('<path d="M4 20l1-4.2L15.2 5.6a2 2 0 0 1 2.8 0l1.4 1.4a2 2 0 0 1 0 2.8L9.2 19.8 5 21z"/><path d="M13.6 7.2l3.2 3.2"/>'),
-      arrow: svgIcon('<path d="M5 19 18.5 5.5"/><path d="M11.5 5.5h7v7"/>'),
-      rect: svgIcon('<rect x="3.5" y="5.5" width="17" height="13" rx="1"/>'),
-      circle: svgIcon('<circle cx="12" cy="12" r="8.5"/>'),
-      text: svgIcon('<path d="M5 6h14M12 6v12M8 18h8"/>'),
-      eraser: svgIcon('<path d="M8.6 19.5H5.4a1.6 1.6 0 0 1-1.1-2.7L13.9 7a2 2 0 0 1 2.8 0l3 3a2 2 0 0 1 0 2.8l-6.6 6.6z"/><path d="M8.6 19.5h11.9"/>'),
-      weight: svgIcon('<path d="M4 8h16M4 12h16M4 16h16" stroke-width="1.2"/><path d="M4 12h16" stroke-width="3"/>'),
-      cut: svgIcon('<path d="M8 8a2.5 2.5 0 1 1-3.5 3.5"/><path d="M8 16a2.5 2.5 0 1 0-3.5-3.5"/><path d="M6.5 9.5 19 4"/><path d="M6.5 14.5 19 20"/>'),
-      copy: svgIcon('<rect x="8" y="8" width="11" height="12" rx="1"/><path d="M5 15V5a1 1 0 0 1 1-1h9"/>'),
-      paste: svgIcon('<path d="M9 4h6v3H9z"/><rect x="6" y="6" width="12" height="14" rx="1"/><path d="M9 12h6M9 15h6"/>'),
-      fillBucket: svgIcon('<path d="M4 14l7-7 5 5-7 7H4z"/><path d="M14 9l3.5-3.5a2 2 0 0 1 2.8 2.8L17 11"/><path d="M3 20h8"/>'),
-      outlinePen: svgIcon('<path d="M4 20l1.2-4.4L15 5.8a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8L9.4 17.8 5 19z"/><path d="M13.5 7.2l3.3 3.3"/>'),
-      styleBrush: svgIcon('<path d="M7 3h7l3 3v4H7z"/><path d="M9 10v8a2 2 0 0 0 4 0v-2"/>'),
+      select: svgIcon('<path d="M5.5 3.5 11.2 20l2-6.2L19.5 11.8z"/>'),
+      undo: svgIcon('<path d="M8.5 9.5h7a4 4 0 1 1 0 8H11"/><path d="M11.5 6.5 8 9.5l3.5 3"/>'),
+      redo: svgIcon('<path d="M15.5 9.5h-7a4 4 0 1 0 0 8H13"/><path d="M12.5 6.5 16 9.5l-3.5 3"/>'),
+      pencil: svgIcon('<path d="M4.5 19.5 5.8 15.2 15.5 5.5a1.8 1.8 0 0 1 2.5 0l.5.5a1.8 1.8 0 0 1 0 2.5L9.3 17.7 4.5 19.5z"/><path d="M14 7l3 3"/>'),
+      arrow: svgIcon('<path d="M5 19 18 6"/><path d="M11 6h7v7"/>'),
+      rect: svgIcon('<rect x="4" y="6" width="16" height="12" rx="1"/>'),
+      circle: svgIcon('<circle cx="12" cy="12" r="7.5"/>'),
+      text: svgIcon('<path d="M5.5 6.5h13M12 6.5v11M8.5 17.5h7"/>'),
+      eraser: svgIcon('<path d="M8.2 19H5.6a1.4 1.4 0 0 1-1-2.4L14 7.2a1.8 1.8 0 0 1 2.5 0l2.2 2.2a1.8 1.8 0 0 1 0 2.5L12.2 18.4"/><path d="M8.2 19h10.3"/>'),
+      weight: svgIcon('<path d="M4 8.5h16M4 12h16M4 15.5h16" stroke-width="1.1"/><path d="M4 12h16" stroke-width="2.6"/>'),
+      cut: svgIcon('<circle cx="6.2" cy="7.2" r="2.2"/><circle cx="6.2" cy="16.8" r="2.2"/><path d="M7.8 8.6 18.5 4.2"/><path d="M7.8 15.4 18.5 19.8"/>'),
+      copy: svgIcon('<rect x="8.5" y="7.5" width="10" height="12" rx="1"/><path d="M5.5 14.5V5.5a1 1 0 0 1 1-1h8"/>'),
+      paste: svgIcon('<path d="M9 3.8h6v2.6H9z"/><rect x="6" y="5.5" width="12" height="14.2" rx="1.2"/><path d="M9.5 11.5h5M9.5 14.5h5"/>'),
+      // Shape Fill — paint bucket + orange drip (Office mini-toolbar)
+      fillBucket: svgIcon(
+        '<path d="M4.5 13.5 12 6l5.5 5.5-7.5 7.5H4.5z"/>' +
+        '<path d="M14.2 8.8 17 6a1.6 1.6 0 0 1 2.2 2.2l-2.6 2.6"/>' +
+        '<path d="M9.2 20.2c0 0 1.4 1.6 2.6 0s-1.2-2.4-1.2-2.4" fill="#d87d31" stroke="#d87d31"/>'
+      ),
+      // Shape Outline — pen + colour underline
+      outlinePen: svgIcon(
+        '<path d="M4.5 19.5 5.8 15.2 15.6 5.4a1.7 1.7 0 0 1 2.4 0l.5.5a1.7 1.7 0 0 1 0 2.4L9.3 17.7 4.5 19.5z"/>' +
+        '<path d="M14 7.2l3 3"/>' +
+        '<path d="M5 21h9" stroke="#1d4ed8" stroke-width="2"/>'
+      ),
+      // Style / Format Painter brush
+      styleBrush: svgIcon(
+        '<path d="M7.5 3.5h6.5l2.8 2.8v3.4H7.5z"/>' +
+        '<path d="M9.5 9.7v7.2a2 2 0 0 0 4 0v-1.6"/>'
+      ),
+      // Arrange group (PPT orange/tan overlapping squares)
+      bringForward: svgIcon(
+        '<rect x="8.5" y="4.5" width="10" height="10" rx="1" fill="#f0c48a" stroke="#5b6470"/>' +
+        '<rect x="4.5" y="8.5" width="10" height="10" rx="1" fill="#d87d31" stroke="#5b6470"/>' +
+        '<path d="M7.2 16.8 10.5 13.5" stroke="#5b6470"/><path d="M8.8 13.5h1.7v1.7" stroke="#5b6470"/>'
+      ),
+      sendBackward: svgIcon(
+        '<rect x="4.5" y="8.5" width="10" height="10" rx="1" fill="#d87d31" stroke="#5b6470"/>' +
+        '<rect x="8.5" y="4.5" width="10" height="10" rx="1" fill="#f0c48a" stroke="#5b6470"/>' +
+        '<path d="M15.5 7.2 12.2 10.5" stroke="#5b6470"/><path d="M12.2 8.8v1.7h1.7" stroke="#5b6470"/>'
+      ),
+      selectionPane: svgIcon(
+        '<rect x="5" y="5" width="10" height="10" rx="1" fill="#fff" stroke="#5b6470"/>' +
+        '<rect x="9" y="9" width="10" height="10" rx="1" fill="#d87d31" stroke="#5b6470"/>' +
+        '<path d="M7.5 8.5 10 14l1.2-3.2L14.5 9.5z" fill="#5b6470" stroke="none"/>'
+      ),
+      align: svgIcon('<path d="M5 5.5v13"/><path d="M8 7.5h10M8 12h7M8 16.5h10"/>'),
+      group: svgIcon(
+        '<rect x="4.5" y="4.5" width="9" height="9" rx="1" stroke-dasharray="2 1.5"/>' +
+        '<rect x="10.5" y="10.5" width="9" height="9" rx="1" stroke-dasharray="2 1.5"/>'
+      ),
+      rotate: svgIcon(
+        '<path d="M7 16.5 16.5 7"/><path d="M7 7v9.5h9.5"/>' +
+        '<path d="M14.5 5.5a7 7 0 0 1 4 9.2" stroke="#1d4ed8"/>' +
+        '<path d="M17.2 5.2h2.2v2.2" stroke="#1d4ed8"/>'
+      ),
+      textBox: svgIcon('<rect x="4" y="6" width="16" height="12" rx="1"/><path d="M8 10h8M8 14h5"/>'),
     };
 
     function shadeHex(hex, factor) {
@@ -342,7 +385,7 @@
       '      <button type="button" class="por-iconbtn" id="por-cut" title="Cut (Ctrl+X)" aria-label="Cut">' + ICONS.cut + '</button>' +
       '      <button type="button" class="por-iconbtn" id="por-copy" title="Copy (Ctrl+C)" aria-label="Copy">' + ICONS.copy + '</button>' +
       '      <button type="button" class="por-iconbtn" id="por-format-painter" title="Format Painter" aria-label="Format Painter">' +
-            svgIcon('<path d="M7 3h7l3 3v4H7z"/><path d="M9 10v8a2 2 0 0 0 4 0v-2"/>') + '</button>' +
+            ICONS.styleBrush + '</button>' +
       '    </div>' +
       '    <span class="por-ribbon__label">Clipboard</span>' +
       '  </div>' +
@@ -404,7 +447,7 @@
       '            <button type="button" class="por-iconbtn" data-rb-tool="circle" title="Oval" aria-label="Circle">' + ICONS.circle + '</button>' +
       '            <button type="button" class="por-iconbtn" data-rb-tool="triangle" title="Triangle" aria-label="Triangle">' +
                       svgIcon('<path d="M12 4 20 19H4z"/>') + '</button>' +
-      '            <button type="button" class="por-iconbtn" id="por-insert-text" title="Text Box" aria-label="Text">' + ICONS.text + '</button>' +
+      '            <button type="button" class="por-iconbtn" id="por-insert-text" title="Text Box" aria-label="Text">' + ICONS.textBox + '</button>' +
       '            <button type="button" class="por-iconbtn" data-rb-tool="pencil" title="Freeform" aria-label="Pencil">' + ICONS.pencil + '</button>' +
       '            <button type="button" class="por-iconbtn" data-rb-tool="eraser" title="Eraser" aria-label="Eraser">' + ICONS.eraser + '</button>' +
       '            <button type="button" class="por-iconbtn" id="por-keep-tool" title="Keep tool on for many marks" aria-label="Keep tool on" aria-pressed="false">' +
@@ -414,26 +457,40 @@
       '      </div>' +
       '      <div class="por-picker" data-por-picker="arrange">' +
       '        <button type="button" class="por-picker__btn por-picker__btn--label" id="por-arrange-btn" title="Arrange" aria-label="Arrange" aria-haspopup="true" aria-expanded="false">' +
-      '          Arrange <span class="por-shapes__chev">▾</span>' +
+                ICONS.bringForward + ' Arrange <span class="por-shapes__chev">▾</span>' +
       '        </button>' +
       '        <div class="por-picker__pop por-arrange__pop" id="por-arrange-pop" hidden role="menu" aria-label="Arrange">' +
-      '          <button type="button" class="por-menu-item" data-por-stack="front" title="Bring to Front">Bring to Front</button>' +
-      '          <button type="button" class="por-menu-item" data-por-stack="forward" title="Bring Forward">Bring Forward</button>' +
-      '          <button type="button" class="por-menu-item" data-por-stack="backward" title="Send Backward">Send Backward</button>' +
-      '          <button type="button" class="por-menu-item" data-por-stack="back" title="Send to Back">Send to Back</button>' +
+      '          <button type="button" class="por-menu-item" data-por-stack="front" title="Bring to Front">' +
+                  ICONS.bringForward + '<span>Bring to Front</span></button>' +
+      '          <button type="button" class="por-menu-item" data-por-stack="forward" title="Bring Forward">' +
+                  ICONS.bringForward + '<span>Bring Forward</span></button>' +
+      '          <button type="button" class="por-menu-item" data-por-stack="backward" title="Send Backward">' +
+                  ICONS.sendBackward + '<span>Send Backward</span></button>' +
+      '          <button type="button" class="por-menu-item" data-por-stack="back" title="Send to Back">' +
+                  ICONS.sendBackward + '<span>Send to Back</span></button>' +
       '          <div class="por-stackmenu__sep"></div>' +
-      '          <button type="button" class="por-menu-item" data-por-align-marks="left" title="Align Left">Align Left</button>' +
-      '          <button type="button" class="por-menu-item" data-por-align-marks="center" title="Align Center">Align Center</button>' +
-      '          <button type="button" class="por-menu-item" data-por-align-marks="right" title="Align Right">Align Right</button>' +
-      '          <button type="button" class="por-menu-item" data-por-align-marks="top" title="Align Top">Align Top</button>' +
-      '          <button type="button" class="por-menu-item" data-por-align-marks="middle" title="Align Middle">Align Middle</button>' +
-      '          <button type="button" class="por-menu-item" data-por-align-marks="bottom" title="Align Bottom">Align Bottom</button>' +
+      '          <button type="button" class="por-menu-item" data-por-align-marks="left" title="Align Left">' +
+                  ICONS.align + '<span>Align Left</span></button>' +
+      '          <button type="button" class="por-menu-item" data-por-align-marks="center" title="Align Center">' +
+                  ICONS.align + '<span>Align Center</span></button>' +
+      '          <button type="button" class="por-menu-item" data-por-align-marks="right" title="Align Right">' +
+                  ICONS.align + '<span>Align Right</span></button>' +
+      '          <button type="button" class="por-menu-item" data-por-align-marks="top" title="Align Top">' +
+                  ICONS.align + '<span>Align Top</span></button>' +
+      '          <button type="button" class="por-menu-item" data-por-align-marks="middle" title="Align Middle">' +
+                  ICONS.align + '<span>Align Middle</span></button>' +
+      '          <button type="button" class="por-menu-item" data-por-align-marks="bottom" title="Align Bottom">' +
+                  ICONS.align + '<span>Align Bottom</span></button>' +
       '          <div class="por-stackmenu__sep"></div>' +
-      '          <button type="button" class="por-menu-item" data-por-distribute="h" title="Distribute Horizontally">Distribute Horizontally</button>' +
-      '          <button type="button" class="por-menu-item" data-por-distribute="v" title="Distribute Vertically">Distribute Vertically</button>' +
+      '          <button type="button" class="por-menu-item" data-por-distribute="h" title="Distribute Horizontally">' +
+                  ICONS.align + '<span>Distribute Horizontally</span></button>' +
+      '          <button type="button" class="por-menu-item" data-por-distribute="v" title="Distribute Vertically">' +
+                  ICONS.align + '<span>Distribute Vertically</span></button>' +
       '          <div class="por-stackmenu__sep"></div>' +
-      '          <button type="button" class="por-menu-item" id="por-group-btn" title="Group">Group</button>' +
-      '          <button type="button" class="por-menu-item" id="por-ungroup-btn" title="Ungroup">Ungroup</button>' +
+      '          <button type="button" class="por-menu-item" id="por-group-btn" title="Group">' +
+                  ICONS.group + '<span>Group</span></button>' +
+      '          <button type="button" class="por-menu-item" id="por-ungroup-btn" title="Ungroup">' +
+                  ICONS.group + '<span>Ungroup</span></button>' +
       '        </div>' +
       '      </div>' +
       '      <label class="por-fill-toggle por-fill-toggle--tool" title="Fill shapes when drawing"><input type="checkbox" id="por-fill" aria-label="Fill shapes"><span class="por-fill-toggle__text">Fill</span></label>' +
@@ -504,7 +561,8 @@
       '          </button>' +
       '          <div class="por-picker__pop" id="por-select-menu-pop" hidden role="menu" aria-label="Select">' +
       '            <button type="button" class="por-menu-item" id="por-select-all" title="Select All">Select All</button>' +
-      '            <button type="button" class="por-menu-item" id="por-open-selpane" title="Selection Pane">Selection Pane…</button>' +
+      '            <button type="button" class="por-menu-item" id="por-open-selpane" title="Selection Pane">' +
+                    ICONS.selectionPane + '<span>Selection Pane…</span></button>' +
       '          </div>' +
       '        </div>' +
       '        <button type="button" class="por-iconbtn" id="por-undo" title="Undo (Ctrl+Z)" aria-label="Undo">' + ICONS.undo + '</button>' +
