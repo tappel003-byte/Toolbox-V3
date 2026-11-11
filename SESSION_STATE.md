@@ -20,7 +20,7 @@ Updated by: Cursor — merge-everything into integration (Initial Visit + clear-
 | Field | Value |
 |-------|--------|
 | **Has the ball** | **Tim** — merge-everything landed on `claude/milestone-1-customer-file-qv5ybf`. Promote when ready. Not on `main`.
-| Integration tip | `3914199` (`39141995be23495e492ddc556d2153280f6f224f`) |
+| Integration tip | `a373a59` (`a373a596c84693a28c08bd04394473de108d505a`) |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Shell | `toolbox-shell-v461` |
