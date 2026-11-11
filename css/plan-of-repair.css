@@ -285,7 +285,9 @@
 }
 
 .por-menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   text-align: left;
   padding: 6px 12px;
@@ -295,6 +297,12 @@
   font-size: 12px;
   color: #0b1f33;
   cursor: pointer;
+}
+
+.por-menu-item > svg {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
 }
 
 .por-menu-item:hover:not(:disabled) {
