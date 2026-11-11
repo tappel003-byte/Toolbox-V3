@@ -20,7 +20,7 @@ Updated by: Cursor — CC-check fixes merged (IV phone + POR Fluent ribbon). Bal
 | Field | Value |
 |-------|--------|
 | **Has the ball** | **Claude Code** — re-check tip below vs Tim’s PowerPoint screenshots and IV phone cards. Nothing stripped. Not on `main`. |
-| Integration tip | `c9a22de` (`c9a22de82c1c53d1dd86d0e7821c3426ad5149ce`) |
+| Integration tip | `77dfb6f` (`77dfb6f3fa720bd21d1086617cee96050c15287a`) |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Shell | `toolbox-shell-v466` |
@@ -105,7 +105,7 @@ Authorized by Tim: "do the thing we added to the to-do list today." Merged into 
 
 **Phone Visits schedule (Nov 11, Tim — on tip):** Schedule under the address in `.cabinet-row__main` (meta stays hidden on phone).
 
-**CC-check fixes (Nov 11, Tim authorized — on tip `e3702c5` / shell v466):**
+**CC-check fixes (Nov 11, Tim authorized — on tip `77dfb6f` / shell v466):**
 1. Home buttons at 390: **+ New Customer File** → **+ Initial Visit** → **Import**.
 2. Visits list schedule visible on phone (main column).
 3. Visit card shows phone (`tel:`) + address read-only above Schedule.
@@ -166,7 +166,7 @@ Merged `cursor/clear-red-suites-2ac5` into integration this turn. Triage A clear
 
 ## Outstanding — open only
 
-1. **Claude Code re-check** of tip `v466` / `e3702c5` — IV phone order/schedule/contact + POR Fluent ribbon vs Tim’s screenshots (remaining diffs noted in agent artifacts).
+1. **Claude Code re-check** of tip `v466` / `77dfb6f` — IV phone order/schedule/contact + POR Fluent ribbon vs Tim’s screenshots (remaining diffs noted in agent artifacts).
 2. **Initial Visit polish left** — Visits heading gap + offline wording (button order / phone-on-card / schedule-on-phone done this tip).
 3. **POR Shape Format capabilities** — continue adding what Tim named from remaining diffs (never strip).
 4. **Red suites** — 16 remaining (floor-survey / report-floor / report-highlow / sizing / sw-update-ready).
