@@ -105,7 +105,7 @@ Authorized by Tim: "do the thing we added to the to-do list today." Merged into 
 
 **Phone Visits schedule (Nov 11, Tim — on tip):** Schedule under the address in `.cabinet-row__main` (meta stays hidden on phone).
 
-**CC-check fixes (Nov 11, Tim authorized — on tip `c9a22de` / shell v466):**
+**CC-check fixes (Nov 11, Tim authorized — on tip `e3702c5` / shell v466):**
 1. Home buttons at 390: **+ New Customer File** → **+ Initial Visit** → **Import**.
 2. Visits list schedule visible on phone (main column).
 3. Visit card shows phone (`tel:`) + address read-only above Schedule.
@@ -166,7 +166,7 @@ Merged `cursor/clear-red-suites-2ac5` into integration this turn. Triage A clear
 
 ## Outstanding — open only
 
-1. **Claude Code re-check** of tip `v466` / `c9a22de` — IV phone order/schedule/contact + POR Fluent ribbon vs Tim’s screenshots (remaining diffs noted in agent artifacts).
+1. **Claude Code re-check** of tip `v466` / `e3702c5` — IV phone order/schedule/contact + POR Fluent ribbon vs Tim’s screenshots (remaining diffs noted in agent artifacts).
 2. **Initial Visit polish left** — Visits heading gap + offline wording (button order / phone-on-card / schedule-on-phone done this tip).
 3. **POR Shape Format capabilities** — continue adding what Tim named from remaining diffs (never strip).
 4. **Red suites** — 16 remaining (floor-survey / report-floor / report-highlow / sizing / sw-update-ready).
