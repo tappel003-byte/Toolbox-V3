@@ -1631,6 +1631,13 @@
 
     main.appendChild(name);
     main.appendChild(addr);
+    // Visit schedule lives in main (not meta): phone CSS hides .cabinet-row__meta,
+    // and Tim needs the date/time reminder visible on the Visits list.
+    if (isVisitRecord(record)) {
+      const schedule = document.createElement('span');
+      fillVisitScheduleMeta(schedule, record);
+      main.appendChild(schedule);
+    }
     appendLocationStatus(main, customerFileLocationLabel('localWorking', record));
 
     const meta = document.createElement('span');
@@ -1647,13 +1654,13 @@
         : 'Plan needed';
     }
     const updated = document.createElement('span');
-    if (isVisitRecord(record)) {
-      fillVisitScheduleMeta(updated, record);
-    } else {
+    if (!isVisitRecord(record)) {
       updated.textContent = formatUpdated(record.updatedAt);
+      meta.appendChild(planState);
+      meta.appendChild(updated);
+    } else {
+      meta.appendChild(planState);
     }
-    meta.appendChild(planState);
-    meta.appendChild(updated);
 
     const chevron = document.createElement('span');
     chevron.className = 'cabinet-row__chevron';
