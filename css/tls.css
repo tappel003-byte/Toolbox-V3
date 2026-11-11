@@ -380,3 +380,73 @@ body.job-walk-open #app-view {
   font-weight: 700;
   color: #5b6470;
 }
+
+/* ---- Initial Visit card extras ---- */
+
+.jw-visit-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 560px) {
+  .jw-visit-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+.jw-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #5b6470;
+}
+
+.jw-field input[type="date"] {
+  font: inherit;
+  min-height: 36px;
+  padding: 4px 8px;
+  border: 1px solid rgba(11, 31, 51, 0.18);
+  border-radius: 4px;
+}
+
+.jw-outcomes {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(11, 31, 51, 0.12);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.jw-outcomes legend {
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0b1f33;
+}
+
+.jw-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 6px 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #0b1f33;
+}
+
+.jw-check input {
+  margin-top: 3px;
+}
+
+.jw-visit-actions {
+  display: grid;
+  gap: 6px;
+}
+
+.jw-visit-actions .btn {
+  justify-self: start;
+}

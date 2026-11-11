@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 11, 2026** (America/Denver)  
-Updated by: Cursor — Workers Builds for integration tip after POR merge.
+Updated by: Cursor — merge Initial Visit + clear-red into integration (in progress).
 
 ---
 
@@ -19,11 +19,12 @@ Updated by: Cursor — Workers Builds for integration tip after POR merge.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — integration tip `6caf460` has Workers Builds success; promote from Deployments when ready. Not on `main`.
-| Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `6caf460` (POR Fabric merged; Workers Builds green).
+| **Has the ball** | **Tim** — merge-everything in progress; tip filled when merges finish. Not on `main`. |
+| Integration tip | `claude/milestone-1-customer-file-qv5ybf` — POR already in; Initial Visit merging; clear-red next. |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Not done | Merge into integration when Tim asks (shell version will clash with Initial Visit `v455`: second merge bumps). Do not merge to `main`. Do not deploy/promote. |
+| Shell | `toolbox-shell-v461` |
+| Not done | Do not merge to `main`. Do not deploy Sync Worker. Do not promote. |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -58,7 +59,7 @@ Hard fact: merge to `main` can publish live. Do not merge to `main` unless Tim a
 
 Tim decided: rebuild Plan of Repair drawing on vendored Fabric.js 5.3.0 (MIT), PowerPoint-style. Scope: Plan of Repair only — Report Builder / `js/report-overlay.js` untouched.
 
-Branch: `cursor/por-fabric-stages-2ac5` → PR #210 into `claude/milestone-1-customer-file-qv5ybf`.
+Merged: `cursor/por-fabric-stages-2ac5` → integration (Nov 11).
 
 | Stage | SHA | What |
 |-------|-----|------|
@@ -73,36 +74,28 @@ Branch: `cursor/por-fabric-stages-2ac5` → PR #210 into `claude/milestone-1-cus
 | Chrome-layout | `56787b2` | Insert+Print pinned; app-view under app-bar |
 | **Chrome-collapse** | `e423a01` | PPT ribbon group collapse; Editing+Insert+Print pinned; height fit; chip sync; reachability tests |
 
-### CC check of chrome `14bd97e` (Nov 11) — look right; layout blockers → Cursor fixed (this tip)
+### CC recheck of chrome layout `e423a01` (Nov 11, 2026) — PASSES
 
-**Held:** look direction; draw, outline, dash, move, undo/redo, handles, mini toolbar, shape gallery, request-only Format Shape, page thumbs.
-
-**Blockers fixed this tip:**
-1. Ribbon fits the window — Clipboard/Font/Paragraph/Drawing are collapsible; `fitRibbon()` collapses Font → Paragraph → Clipboard → Drawing until scroll fits. Editing + Insert (own labelled group) + Print stay pinned in `.por-ribbon__end`. Every visible ribbon/status control is top-at-centre via `elementFromPoint` at 1280×800, 1440×900, 1920×1080.
-2. Editor fits the window height — `#app-view` is `calc(100dvh - 56px)`; html/body overflow hidden; Fabric IText body `<textarea>` parked when idle so it cannot inflate `document.scrollHeight`. Status bar pinned; Fit shows the whole sheet; `docH === winH`.
-
-**Smaller:**
-3. Format Shape pane gets a real grid column; sheet re-fits (`applySheetScale`) on open/close.
-4. Fill checkbox labeled “Fill”; Transparency labeled “Transp.” with tooltip.
-5. Blank-sheet hint only when no marks and no background; never in print DOM / `@media print`.
-6. `#por-outline-chip` / `#por-fill-chip` follow the selected shape’s stroke/fill.
-
-Tests: `node tests/plan-of-repair.mjs` → **93/93** (full ribbon+status reachability at three sizes; Insert→Floor plan via `page.mouse` at 1280; outline chip sync).
+Real mouse at 1280×800 and 1440×900: every ribbon and status-bar control reachable. `tests/plan-of-repair.mjs` green on that tip.
 
 ---
 
-### CC recheck of chrome layout `e423a01` (Nov 11, 2026) — PASSES
+## Initial Visit (Nov 11, 2026)
 
-Real mouse at 1280×800 and 1440×900: every ribbon and status-bar control reachable
-(`elementFromPoint`), page height equals window height, Insert → Floor plan works, Format Shape
-makes the sheet re-fit, outline chip follows the selection, real page thumbnails, draw / restyle /
-move / undo / redo / arrow / reopen identical. `tests/plan-of-repair.mjs` 86/86.
+Authorized by Tim: "do the thing we added to the to-do list today." Merging into integration this turn.
 
-Full suite on `e423a01`: 142 suites, 18 red, **all 18 red on the base branch `da63c08` too**
-(not caused by Plan of Repair): the 16 floor-survey / report-floor / report-highlow / sizing /
-sw-update-ready suites, plus `customer-file-trash` (menu now has Open in TLS and Delete) and
-`customer-file-cross-record` (30 s timeout in `openInspectionDate`), both re-run alone on tip and
-on base with identical results. Triage is open (see Cursor's red-suite prompt).
+- Same Customer File container with `status: 'visit'` (absent on ordinary files).
+- Home `+ Initial Visit` → name/phone/address → visit card (`js/job-walk.js` UI renamed).
+- Visits lists: device heading, File Cabinet group, File Explorer Visits folder.
+- Make Customer File: MOVE same id; landing floor / distress / home from outcomes.
+- Offline: SW mirrors `/` as well as `/index.html` (PWA `start_url`); shell `v461` after merge.
+- Tests: `tests/initial-visit.mjs`.
+
+**Offline root cause (Nov 10 Job Walk):** PWA `start_url` is `/`, but the shell only cached `/index.html`. Cold offline open of `/` waited on network-first navigate and had no `/` cache mirror, so the yard open failed even though `js/job-walk.js` was in `STATIC_SHELL`.
+
+**CC found four small defects (fix after this merge on a new branch):** button order on the home screen; phone not on the card; no gap above the Visits heading; wording of the offline cause.
+
+---
 
 ## Sync Worker deploy — done Nov 10, 2026
 
@@ -114,4 +107,17 @@ on base with identical results. Triage is open (see Cursor's red-suite prompt).
 
 ## Outstanding — open only
 
-(unchanged from prior handoff unless Tim says otherwise)
+1. **Initial Visit CC polish** — four small defects (new branch after merge-everything).
+2. **Red suites** — 16 remaining after clear-red A clears of trash + cross-record (floor-survey / report-floor / report-highlow / sizing / sw-update-ready).
+3. **Sync Worker** — Tim's browser check of `/health` + one Sync Now. Redeploy later if Cabinet Explorer needs Worker `copyIdentity` status passthrough.
+4. **App promote** — Tim only. Not `main` unless Tim asks promote-prep.
+5. **Plan of Repair look check** vs MS Paint / PowerPoint (Tim’s screenshots).
+6. **Open against `main` (not merged):** #97 / #86 / #85 — leave until Tim asks promote-prep.
+
+---
+
+## How any new agent should start
+
+1. Read `VISION.md` → `AGENTS.md` → `MILESTONE.md` → `DECISIONS.md` → **`SESSION_STATE.md`**.
+2. Branch from `claude/milestone-1-customer-file-qv5ybf`.
+3. PRs base = that branch. Merge there when Tim asks. Do not promote. Do not deploy Sync Worker without Tim’s go.

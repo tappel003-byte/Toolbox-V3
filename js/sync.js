@@ -489,7 +489,7 @@
   }
 
   function pickCustomerFields(record) {
-    return {
+    const fields = {
       firstName: record.firstName || '',
       lastName: record.lastName || '',
       propertyAddress: record.propertyAddress || '',
@@ -508,6 +508,10 @@
       propertyAddressLon: record.propertyAddressLon == null ? null : record.propertyAddressLon,
       customerUpdatedAt: record.customerUpdatedAt || record.updatedAt || '',
     };
+    // Initial Visit mark (Tim, Nov 11, 2026). Absent on ordinary Customer Files.
+    if (record && record.status === 'visit') fields.status = 'visit';
+    else fields.status = '';
+    return fields;
   }
 
   function applyCustomerFields(record, customer) {
@@ -518,6 +522,11 @@
         record[key] = customer[key];
       }
     });
+    // Empty string clears a former visit mark after Make Customer File syncs.
+    if (Object.prototype.hasOwnProperty.call(customer, 'status')) {
+      if (customer.status === 'visit') record.status = 'visit';
+      else delete record.status;
+    }
     if (customer.customerUpdatedAt) record.customerUpdatedAt = customer.customerUpdatedAt;
   }
 
@@ -663,6 +672,7 @@
       displayName: displayNameFromRecord(record),
       propertyAddress: trimStr(record.propertyAddress),
     };
+    if (record.status === 'visit') index.status = 'visit';
     const surveyDate = fieldWorkSurveyDate(record);
     if (surveyDate) index.fieldWorkDate = surveyDate;
     // Where the property is, so File Explorer's map can place the job from
@@ -1905,6 +1915,9 @@
         presence: presence,
         availability: availability,
         local: !!local,
+        status: (local && local.status === 'visit')
+          ? 'visit'
+          : (index.status === 'visit' ? 'visit' : ''),
       };
       CABINET_SEARCH_FIELDS.forEach(function (key) {
         const fromIndex = trimStr(index[key]);
@@ -2992,6 +3005,7 @@
     if (survey) row.fieldWorkDate = survey;
     if (created) row.createdAt = created;
     if (trimStr(index.deletedAt)) row.deletedAt = trimStr(index.deletedAt);
+    if (index.status === 'visit') row.status = 'visit';
     const place = indexPlace(index);
     if (place) {
       row.propertyAddressLat = place.lat;
