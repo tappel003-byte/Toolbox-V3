@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 11, 2026** (America/Denver)  
-Updated by: Cursor — Claude Code handoff prompt after IV reorder + POR chrome. Ball → Claude Code.
+Updated by: Cursor — phone Visits schedule visible; tip ready for Tim / Claude Code prompt.
 
 ---
 
@@ -19,11 +19,11 @@ Updated by: Cursor — Claude Code handoff prompt after IV reorder + POR chrome.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** — check tip below (IV schedule + panel order + POR PPT chrome/icons). Report what matches Tim’s PowerPoint screenshots and what still does not. Do not strip. Not on `main`. |
-| Integration tip | `f1ba197` (`f1ba19763e13fff81ee80aca7d9ff01ecaa5bfc3`) |
+| **Has the ball** | **Tim** — tip has phone Visits schedule fix; waiting on his Claude Code prompt. Not on `main`. |
+| Integration tip | `f6510f5` (`f6510f5f7e2ebf2fabe4c54599352ff2d130d457`) |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Shell | `toolbox-shell-v464` |
+| Shell | `toolbox-shell-v465` |
 | Not done | Do not merge to `main`. Do not deploy Sync Worker. Do not promote. **Do not strip POR or Report Builder controls or icons.** |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
@@ -103,6 +103,8 @@ Authorized by Tim: "do the thing we added to the to-do list today." Merged into 
 
 **Schedule reminder (Nov 11, Tim — done on tip):** Visits are also appointments. Create + visit card have Date and Time; Visits list shows calendar/clock for the scheduled slot (not `updatedAt`). Editable anytime on the visit. Initial Visit tile removed from TLS Customer File home — Visits live on Toolbox home only.
 
+**Phone Visits schedule (Nov 11, Tim — on tip `f6510f5` / shell v465):** Schedule lived in `.cabinet-row__meta`, which phone CSS hides — so Martin’s date/time did not show. Schedule now sits under the address in `.cabinet-row__main`. `tests/initial-visit.mjs` 26/26 including phone-visible assertion.
+
 **POR / PowerPoint chrome + icons (Nov 11, Tim — on tip, needs CC eye):** Plan of Repair ribbon cool-gray Office look + Fluent/PPT-style icon glyphs (Fill drip, Outline bar, Arrange orange/tan). **No controls removed. Report Builder untouched.** Tim’s rule: match PowerPoint look/feel; **add** Shape Format capabilities he named; **never strip** existing icons or functionality. An earlier agent pass that narrowed/stripped from a “scope honesty” aside was wrong and was reverted — that must not happen again.
 
 ### Working agreement with Tim (Nov 11, 2026) — read before acting
@@ -121,11 +123,11 @@ Authorized by Tim: "do the thing we added to the to-do list today." Merged into 
 Toolbox-V3 — Claude Code check (Tim, Nov 11, 2026)
 
 Read VISION.md → AGENTS.md → MILESTONE.md → DECISIONS.md → SESSION_STATE.md.
-Work from integration tip of claude/milestone-1-customer-file-qv5ybf (shell toolbox-shell-v464).
+Work from integration tip of claude/milestone-1-customer-file-qv5ybf (shell toolbox-shell-v465, tip f6510f5).
 Do NOT merge to main. Do NOT deploy Sync Worker. Do NOT promote. Do NOT strip any Plan of Repair or Report Builder controls or icons.
 
 What landed for Tim to look at (Cursor today):
-1) Initial Visit as scheduling: date+time on create and visit card; Visits list shows calendar/clock for the scheduled slot (not updatedAt); editable on the visit; Initial Visit removed from TLS Customer File home.
+1) Initial Visit as scheduling: date+time on create and visit card; Visits list shows calendar/clock for the scheduled slot (not updatedAt); editable on the visit; Initial Visit removed from TLS Customer File home. **Phone fix:** schedule is under the address in main (not meta), so iPhone Visits cards show date/time.
 2) Initial Visit panel order: Schedule → Visit Notes → Take Photos / Videos → Outcome + Make Customer File at bottom.
 3) Plan of Repair: PowerPoint-equivalent icon glyphs + cool-gray ribbon chrome. Same buttons/menus as before — visual match only. Report Builder not touched.
 
@@ -158,7 +160,7 @@ Merged `cursor/clear-red-suites-2ac5` into integration this turn. Triage A clear
 
 ## Outstanding — open only
 
-1. **Claude Code check** of tip `v464` — IV schedule/order + POR PPT chrome/icons vs Tim’s screenshots (prompt in this file).
+1. **Claude Code check** of tip `v465` / `f6510f5` — IV schedule/order (incl. phone Visits reminder) + POR PPT chrome/icons vs Tim’s screenshots (prompt in this file; Tim may replace with a fixed CC prompt).
 2. **Initial Visit CC polish** — four small defects (button order, phone on card, Visits heading gap, offline wording) still open after check.
 3. **POR Shape Format capabilities** — add what Tim named (never strip). After CC says what still fails the look.
 4. **Red suites** — 16 remaining (floor-survey / report-floor / report-highlow / sizing / sw-update-ready).
