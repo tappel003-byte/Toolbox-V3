@@ -7,6 +7,12 @@ Durable decisions already established in `VISION.md`, recorded here for quick re
 - **Toolbox** is the product name. "V3" is the repository/development-generation name only and must never become product branding.
 - The **Customer File** is the central organizing object inside Toolbox — the cabinet metaphor's "file."
 
+## Plan of Repair drawing surface (DECIDED Tim, Nov 10, 2026)
+
+- Plan of Repair should work like PowerPoint for drawing: select, move, format, group, align, text.
+- Rebuild the Plan of Repair **drawing surface** on a pinned, vendored **Fabric.js 5.3.0** (MIT) release in-repo (`js/vendor/fabric.min.js`) — not a CDN, and offline via `sw.js` `STATIC_SHELL`. Scope is Plan of Repair only; Report Builder and `js/report-overlay.js` are not changed.
+- Existing Plan of Repair drawings convert automatically to the Fabric-backed format without loss. Keep the original overlay data until the converted drawing has saved successfully.
+
 ## ONLY Tim promotes (DECIDED Tim, Nov 1, 2026)
 
 - **Only Tim** may put any build in front of live users (Cloudflare Promote / Production Active / 100% traffic).
