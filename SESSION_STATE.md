@@ -19,7 +19,7 @@ Updated by: Cursor — Initial Visit build on `cursor/initial-visit-2ac5`; Ball 
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** — check Initial Visit on `cursor/initial-visit-2ac5` @ `a2c040c` (shell `v455`). |
+| **Has the ball** | **Claude Code** — check Initial Visit on `cursor/initial-visit-2ac5` @ `7e29d9c` (shell `v455`). |
 | Integration tip | `claude/milestone-1-customer-file-qv5ybf` @ `da63c08` (unchanged; not merged). |
 | Feature branch | `cursor/initial-visit-2ac5` — Initial Visit (Job Walk rename + visit mark + Visits lists + Make CF move + offline `/` shell). |
 | Not done | CC check → Tim decide merge. Do **not** merge, promote, or deploy Sync Worker from this branch unless Tim asks. |
