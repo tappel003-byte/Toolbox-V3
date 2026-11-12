@@ -20,7 +20,7 @@ Updated by: Cursor — merged CF section label (Customer Files). Ball stays Curs
 | Field | Value |
 |-------|--------|
 | **Has the ball** | **Cursor** — Tim handed the ball back. Waiting on Tim / next build ask. Not on `main`. |
-| Integration tip |  () — CF section label merged; shell v467 |
+| Integration tip | `817711b` (`817711b531a36c36cd42506e8a5124872c0d39d3`) — CF section label merged; shell v467 |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Shell | `toolbox-shell-v467` |
