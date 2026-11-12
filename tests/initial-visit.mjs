@@ -567,6 +567,39 @@ check('Name tap opens the visit, not maps',
   mapsHit.ok && !mapsHit.mapsAfterName &&
   String(mapsHit.hashAfterName || '').indexOf('/job-walk') !== -1,
   JSON.stringify(mapsHit));
+
+await page.goto(`${base}#/`, { waitUntil: 'networkidle0' });
+await page.waitForSelector('#cabinet-list .cabinet-row__address.is-maps-link, #cabinet-visits-list .cabinet-row__address.is-maps-link');
+
+// iPhone: Apple Maps must use maps: (not https + _blank) or Safari leaves a blank sheet.
+const iosMapsScheme = await page.evaluate((id) => {
+  try { localStorage.setItem('toolbox.mapsPreference', 'apple'); } catch (_) {}
+  Object.defineProperty(navigator, 'userAgent', {
+    configurable: true,
+    get: function () { return 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15'; },
+  });
+  let href = '';
+  const proto = HTMLAnchorElement.prototype;
+  const prev = proto.click;
+  proto.click = function () {
+    href = this.getAttribute('href') || this.href || '';
+  };
+  try {
+    const row = document.querySelector('#cabinet-list [data-customer-file-id="cf-ordinary-1"]') ||
+      document.querySelector('#cabinet-visits-list [data-customer-file-id="' + id + '"]');
+    const addr = row && row.querySelector('.cabinet-row__address.is-maps-link');
+    if (!addr) return { hasLink: false, href };
+    addr.click();
+    return { hasLink: true, href: href };
+  } finally {
+    proto.click = prev;
+    try { localStorage.removeItem('toolbox.mapsPreference'); } catch (_) {}
+  }
+}, visitId);
+check('iPhone Apple Maps uses maps: scheme (no blank Safari sheet)',
+  iosMapsScheme.hasLink && /^maps:\?daddr=/.test(iosMapsScheme.href),
+  JSON.stringify(iosMapsScheme));
+
 await page.goto(`${base}#/`, { waitUntil: 'networkidle0' });
 await page.waitForSelector('#cabinet-visits-list');
 
