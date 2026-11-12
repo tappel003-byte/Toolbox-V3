@@ -342,7 +342,9 @@ await page.click('#home-visit-notes');
 await page.waitForSelector('#visit-notes-reader .jw-note__text');
 const geoNote = await page.$eval('#visit-notes-reader .jw-note__text', (el) => ('value' in el && el.value !== undefined ? el.value : el.textContent));
 check('Geo side can read Job Walk visit notes', /front door sticks/.test(geoNote), geoNote);
-await page.click('#visit-notes-reader .btn');
+// Each note now has its own Save button ahead of Close, so find Close by its label.
+await page.evaluate(() => [...document.querySelectorAll('#visit-notes-reader .btn')].find((b) => b.textContent.trim() === 'Close')?.click());
+await page.waitForFunction(() => !document.querySelector('#visit-notes-reader'), { timeout: 5000 });
 
 await page.waitForSelector('#home-photo-folders');
 await page.click('#home-photo-folders');
