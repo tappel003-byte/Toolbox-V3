@@ -20,7 +20,7 @@ Updated by: Cursor — iPhone maps blank-sheet fix. Ball → Tim (promote).
 | Field | Value |
 |-------|--------|
 | **Has the ball** | **Tim** — tip ready to promote. Maps address hit target + no blank Safari sheet on tip. Not merged to `main` by the agent. |
-| Integration tip | `5bd5bf4` (`5bd5bf4d94ee3d2505dcf8ce8ac357334b4e5e2b`) — iPhone maps: scheme; shell v471 |
+| Integration tip | `936f556` (`936f556c3ea8f58fd94ca947e2485aa1817c67c6`) — iPhone maps: scheme; shell v471 |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Shell | `toolbox-shell-v471` |
