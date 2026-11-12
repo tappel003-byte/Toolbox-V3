@@ -517,14 +517,44 @@
     }
   }
 
+  function isIosDevice() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent || '') ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+
+  /**
+   * Open directions in the chosen maps app.
+   * On iPhone, https://maps.apple.com + window.open(_blank) hands off to Maps
+   * but leaves an empty Safari sheet that covers Toolbox on return (Tim, Nov 12).
+   * Use the maps: / comgooglemaps: schemes there so the OS opens the app only.
+   */
   function openMapsUrl(kind, address) {
     const encoded = encodeURIComponent(String(address || '').trim());
     if (!encoded) return;
+    const ios = isIosDevice();
+    let url;
+    let newTab = false;
     if (kind === 'apple') {
-      window.open('https://maps.apple.com/?daddr=' + encoded, '_blank', 'noopener');
+      url = ios
+        ? ('maps:?daddr=' + encoded)
+        : ('https://maps.apple.com/?daddr=' + encoded);
+      newTab = !ios;
+    } else if (ios) {
+      url = 'comgooglemaps://?daddr=' + encoded + '&directionsmode=driving';
+    } else {
+      url = 'https://www.google.com/maps/dir/?api=1&destination=' + encoded;
+      newTab = true;
+    }
+    if (newTab) {
+      window.open(url, '_blank', 'noopener');
       return;
     }
-    window.open('https://www.google.com/maps/dir/?api=1&destination=' + encoded, '_blank', 'noopener');
+    const link = document.createElement('a');
+    link.href = url;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 
   function openVisitNotesReader(record) {
@@ -609,7 +639,7 @@
     document.body.appendChild(overlay);
   }
 
-  /** Must run inside the user tap — no async before window.open (iPhone Safari). */
+  /** Must run inside the user tap — no async before opening maps (iPhone Safari). */
   function openPropertyDirections(address) {
     const dest = String(address || '').trim();
     if (!dest) return;

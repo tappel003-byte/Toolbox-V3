@@ -2249,17 +2249,25 @@ button.local-trash-recovery[hidden] {
   overflow-wrap: anywhere;
 }
 
+/* Hit target = text only. Block .address-line children would otherwise
+   stretch this across the whole row and steal taps meant for the file. */
 .cabinet-row__address.is-maps-link,
 .cabinet-index__address.is-maps-link {
-  display: inline-block;
+  display: block;
+  width: max-content;
   max-width: 100%;
-  padding: 4px 0;
+  padding: 0;
   color: #0b4a8f;
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
   -webkit-user-select: none;
   user-select: none;
+}
+
+.cabinet-row__address.is-maps-link .address-line {
+  width: max-content;
+  max-width: 100%;
 }
 
 .cabinet-row__location {
