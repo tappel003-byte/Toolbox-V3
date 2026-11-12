@@ -93,11 +93,7 @@ Authorized by Tim: "do the thing we added to the to-do list today." Merged into 
 
 **Offline root cause (Nov 10 Job Walk):** PWA `start_url` is `/`, but the shell only cached `/index.html`. Cold offline open of `/` waited on network-first navigate and had no `/` cache mirror, so the yard open failed even though `js/job-walk.js` was in `STATIC_SHELL`.
 
-**CC found four small defects (fix on a new branch off integration — do not hold this merge):**
-1. Button order on the home screen
-2. Phone not on the card
-3. No gap above the Visits heading
-4. Wording of the offline cause
+**CC found four small defects (cleared):** button order, phone on card, Visits heading gap, offline stub wording.
 
 **IV panel order (Nov 11, Tim — done on tip):** Schedule → Visit Notes → Take Photos / Videos / record → Outcome + Make Customer File at bottom.
 
@@ -167,7 +163,7 @@ Merged `cursor/clear-red-suites-2ac5` into integration this turn. Triage A clear
 ## Outstanding — open only
 
 1. **Claude Code re-check** of tip `v466` /  — IV phone order/schedule/contact + POR Fluent ribbon vs Tim’s screenshots (remaining diffs noted in agent artifacts).
-2. **Initial Visit polish left** — Visits heading gap + offline wording (button order / phone-on-card / schedule-on-phone done this tip).
+2. **Initial Visit CC polish** — all four cleared (button order, phone on card, Visits heading gap, offline stub wording).
 3. **POR Shape Format capabilities** — continue adding what Tim named from remaining diffs (never strip).
 4. **Red suites** — 16 remaining (floor-survey / report-floor / report-highlow / sizing / sw-update-ready).
 5. **Sync Worker** — Tim's browser check of `/health` + one Sync Now.

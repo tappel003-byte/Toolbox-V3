@@ -427,20 +427,29 @@ const lists = await page.evaluate(() => {
   const visitsTitle = document.querySelector('#cabinet-visits-title');
   const visitsList = document.querySelector('#cabinet-visits-list');
   const deviceList = document.querySelector('#cabinet-list');
+  const jobsTitle = document.querySelector('#cabinet-jobs-title');
   const visitRows = [...(visitsList?.querySelectorAll('[data-customer-file-id]') || [])]
     .map((el) => el.getAttribute('data-customer-file-id'));
   const jobRows = [...(deviceList?.querySelectorAll('[data-customer-file-id]') || [])]
     .map((el) => el.getAttribute('data-customer-file-id'));
+  const lastJob = deviceList && deviceList.querySelector('[data-customer-file-id]:last-of-type');
+  const gapPx = (visitsTitle && lastJob)
+    ? (visitsTitle.getBoundingClientRect().top - lastJob.getBoundingClientRect().bottom)
+    : 0;
   return {
     visitsHeading: visitsTitle && !visitsTitle.hidden && visitsTitle.textContent.trim(),
+    jobsHeading: jobsTitle && jobsTitle.textContent.trim(),
     visitRows,
     jobRows,
     visitLabels: [...(visitsList?.querySelectorAll('.cabinet-row__plan-state') || [])]
       .map((el) => el.textContent.trim()),
+    gapPx,
   };
 });
 check('Visits heading shown under Customer Files',
-  lists.visitsHeading === 'Visits', JSON.stringify(lists));
+  lists.visitsHeading === 'Visits' && lists.jobsHeading === 'Customer Files', JSON.stringify(lists));
+check('Air above the Visits heading',
+  lists.gapPx >= 16, JSON.stringify(lists));
 check('Visit appears under Visits, not under Customer Files jobs',
   lists.visitRows.includes(visitId) && !lists.jobRows.includes(visitId) &&
   lists.jobRows.includes('cf-ordinary-1'),
@@ -448,6 +457,15 @@ check('Visit appears under Visits, not under Customer Files jobs',
 check('Ordinary file without visit mark stays a job row',
   lists.jobRows.includes('cf-ordinary-1') && !lists.visitRows.includes('cf-ordinary-1'),
   JSON.stringify(lists));
+// Offline stub copy must stay investigator-plain (CC: wording of the offline cause).
+const appSrc = await page.evaluate(async () => {
+  const res = await fetch('/js/app.js');
+  return await res.text();
+});
+check('Initial Visit offline stub uses plain wording',
+  /Initial Visit isn’t ready on this phone yet/.test(appSrc) &&
+  !/offline shell can install/.test(appSrc),
+  'stub wording');
 
 const scheduleOnList = await page.evaluate((id) => {
   const row = document.querySelector('#cabinet-visits-list [data-customer-file-id="' + id + '"]');
