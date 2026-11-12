@@ -10,8 +10,8 @@ This does **not** replace authority docs. Read order for rules and vision:
 4. `DECISIONS.md`
 5. **This file** — current working picture
 
-Last updated: **Nov 11, 2026** (America/Denver)  
-Updated by: Cursor — IV polish done. Ball → Claude Code.
+Last updated: **Nov 12, 2026** (America/Denver)  
+Updated by: Cursor — list address → maps chooser merged to tip. Ball → Tim (promote).
 
 ---
 
@@ -19,12 +19,12 @@ Updated by: Cursor — IV polish done. Ball → Claude Code.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** — re-check tip (CF section label + IV polish gap/offline stub + prior CC-fix POR/IV). Nothing stripped. Not on `main`. |
-| Integration tip | `5047396` (`5047396f267abcfa4504150542ff106bf15214ed`) — IV polish gap+offline; shell v468 |
+| **Has the ball** | **Tim** — tip ready to promote when he chooses. List address maps on tip. Not merged to `main` by the agent. |
+| Integration tip | `845c99e` (`845c99e60400004e3c8de1f6ccfc7bbcefffbd0a`) — list address → maps chooser; shell v469 |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Shell | `toolbox-shell-v468` |
-| Not done | Do not merge to `main`. Do not deploy Sync Worker. Do not promote. **Do not strip POR or Report Builder controls or icons.** |
+| Shell | `toolbox-shell-v469` |
+| Not done | Do not merge to `main` unless Tim promotes. Do not deploy Sync Worker. **Do not strip POR or Report Builder controls or icons.** |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
