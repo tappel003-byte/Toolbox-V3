@@ -334,16 +334,57 @@ body.job-walk-open #app-view {
   white-space: pre-wrap;
 }
 
+textarea.jw-note__edit {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  border: 1px solid rgba(11, 31, 51, 0.18);
+  border-radius: 4px;
+  background: #fff;
+  resize: vertical;
+  min-height: 4.5em;
+}
+
+textarea.jw-note__edit:disabled {
+  color: inherit;
+  opacity: 1;
+  background: #f7f8fa;
+}
+
+.jw-note__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.jw-note__save {
+  min-height: 30px;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
 .jw-note__audio {
   width: 100%;
   margin-top: 6px;
 }
 
 .jw-note .jw-delete {
-  margin-top: 8px;
+  margin-top: 0;
   min-height: 30px;
   padding: 4px 10px;
   font-size: 12px;
+}
+
+.maps-choice__card--notes {
+  max-height: min(80vh, 640px);
+  overflow: auto;
 }
 
 .jw-empty {
