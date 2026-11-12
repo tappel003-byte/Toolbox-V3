@@ -372,12 +372,12 @@
       '  <span class="file-status" id="por-status">Loading…</span>' +
       '</div>' +
       '<div class="por-tabs" role="tablist" aria-label="Plan of Repair tabs">' +
-      '  <button type="button" class="por-tabs__tab" data-por-tab="file" disabled>File</button>' +
+      '  <button type="button" class="por-tabs__tab" data-por-tab="file" disabled hidden>File</button>' +
       '  <button type="button" class="por-tabs__tab is-active" data-por-tab="home" aria-selected="true">Home</button>' +
       '  <button type="button" class="por-tabs__tab" data-por-tab="insert" id="por-tab-insert">Insert</button>' +
-      '  <button type="button" class="por-tabs__tab" data-por-tab="draw" disabled>Draw</button>' +
-      '  <button type="button" class="por-tabs__tab" data-por-tab="design" disabled>Design</button>' +
-      '  <button type="button" class="por-tabs__tab" data-por-tab="view" disabled>View</button>' +
+      '  <button type="button" class="por-tabs__tab" data-por-tab="draw" disabled hidden>Draw</button>' +
+      '  <button type="button" class="por-tabs__tab" data-por-tab="design" disabled hidden>Design</button>' +
+      '  <button type="button" class="por-tabs__tab" data-por-tab="view" disabled hidden>View</button>' +
       '</div>' +
       '<div class="por-toolbar por-ribbon" role="toolbar" aria-label="Drawing tools">' +
       '<div class="por-ribbon__scroll">' +

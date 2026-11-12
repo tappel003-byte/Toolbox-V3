@@ -2318,6 +2318,21 @@ const dCy = dropped ? (dropped.y0 + dropped.y1) / 2 : 0;
 check('A bare click with Oval armed drops one default dot centred on the click',
   !!dropped && dW > 0.8 && dW < 2.2 && Math.abs(dCx - 60) < 0.8 && Math.abs(dCy - 75) < 1.2,
   dropped ? `width ${dW.toFixed(2)}%, centre ${dCx.toFixed(1)}%,${dCy.toFixed(1)}%` : 'none');
+// Arrow-key nudge with real keys: 4px (0.25% of the sheet) per press, 16px with Shift.
+// Autosave is debounced, so wait before reading the stored position.
+await page.keyboard.press('Escape');
+await page.mouse.click(sheet.x + sheet.w * 0.55, sheet.y + sheet.h * 0.90); await nap(300);
+await realClickEl('[data-rb-tool="circle"]');
+await dragMouse(sheet.x + sheet.w * 0.30, sheet.y + sheet.h * 0.62, sheet.x + sheet.w * 0.30 + 16, sheet.y + sheet.h * 0.62 + 16);
+const nudgeRead = async () => { await nap(1300); const l = (await lastPageOverlays()).filter((o) => o.kind === 'circle'); return l[l.length - 1]; };
+const n0 = await nudgeRead();
+await page.keyboard.press('ArrowRight');
+const n1 = await nudgeRead();
+await page.keyboard.down('Shift'); await page.keyboard.press('ArrowRight'); await page.keyboard.up('Shift');
+const n2 = await nudgeRead();
+check('Arrow key nudges the selected shape about 0.25% (4px)', Math.abs((n1.x0 - n0.x0) - 0.25) < 0.1, `${(n1.x0 - n0.x0).toFixed(2)}%`);
+check('Shift + arrow nudges about 1% (16px)', Math.abs((n2.x0 - n1.x0) - 0.98) < 0.2, `${(n2.x0 - n1.x0).toFixed(2)}%`);
+check('No greyed-out placeholder tabs are shown', await page.$$eval('.por-tabs__tab', (t) => t.filter((b) => b.disabled && b.offsetParent !== null).length === 0));
 // Contour toggle
 await realClickEl('#por-insert-btn');
 await realClickEl('#por-bring-plan');

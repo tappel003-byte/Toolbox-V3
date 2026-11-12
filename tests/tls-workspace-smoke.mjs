@@ -76,14 +76,24 @@ check(
 await page.click('#home-side-tls');
 await page.waitForSelector('.cf-home--tls');
 check('TLS side class on body', await page.evaluate(() => document.body.classList.contains('tls-side')));
-check('TLS Job Walk card', !!(await page.$('[data-tls-app="job-walk"]')));
+// Job Walk is now Initial Visit and lives on the Customer Files home, not on the TLS tiles.
+check('TLS home has no Job Walk tile', !(await page.$('[data-tls-app="job-walk"]')));
+check('TLS home has no Initial Visit tile', !(await page.$('[data-tls-app="initial-visit"]')));
+
 check('TLS Plan of Repair card', !!(await page.$('[data-tls-app="repair"]')));
 check('Directions visible with address', await page.$eval('#home-directions', (el) => !el.hidden));
 
 await page.screenshot({ path: `${OUT}/tls-home.png`, fullPage: true });
 
-await page.click('[data-tls-app="job-walk"]');
+// The same capture screen (js/job-walk.js) is reached by route; it is titled Initial Visit.
+async function openInitialVisit() {
+  await page.evaluate(() => { window.location.hash = '#/file/tls-smoke-1/job-walk'; });
+}
+
+
+await openInitialVisit();
 await page.waitForSelector('.jw-shell');
+check('Capture screen is titled Initial Visit', (await page.$eval('#jw-title', (el) => el.textContent.trim())) === 'Initial Visit');
 await page.type('#jw-note-text', 'Homeowner said the front door sticks.');
 await page.select('#jw-speaker', 'homeowner');
 await page.click('#jw-note-save');
@@ -127,7 +137,7 @@ const photoSeed = await page.evaluate(async () => {
 });
 check('Job Walk photo stored as JPEG data URL', photoSeed.isDataUrl, JSON.stringify(photoSeed));
 
-await page.click('[data-tls-app="job-walk"]');
+await openInitialVisit();
 await page.waitForSelector('.jw-note__text');
 const noteText = await page.$eval('.jw-note__text', (el) => el.textContent);
 check('Job Walk note survives reopen', /front door sticks/.test(noteText));
@@ -197,7 +207,7 @@ const videoSeed = await page.evaluate(async () => {
   await window.ToolboxDB.saveCustomerFile(rec);
   return id;
 });
-await page.click('[data-tls-app="job-walk"]');
+await openInitialVisit();
 await page.waitForSelector('.jw-card--video');
 check('Job Walk video card renders', !!(await page.$('.jw-card--video video')));
 check('Job Walk video has Delete control', !!(await page.$('.jw-card--video .jw-delete')));

@@ -2094,3 +2094,8 @@ body.is-por-printing .por-print {
 .por-ribbon .por-shapes__pop--docked .por-iconbtn {
   width: 25px;
 }
+
+/* Tabs with nothing behind them yet stay hidden (File, Draw, Design, View); a greyed tab reads as broken. */
+.por-tabs__tab[hidden] {
+  display: none;
+}

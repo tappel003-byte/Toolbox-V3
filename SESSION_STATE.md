@@ -177,11 +177,18 @@ Built at Tim's go ("go, continue building all three"). Branch = ribbon polish + 
    plan multiplied over it, same extent, marks on top, also in each detail view and in Print / PDF. Saved as
    `page.background.contourOn` on a floor-plan page. Disabled when the page is not a floor plan or the level has no contour.
    The Insert menu's Floor plan / Contour choices are unchanged.
-`tests/plan-of-repair.mjs` **105/105** (9 new checks, real mouse). Ribbon still fits at 1440 with nothing collapsed
+`tests/plan-of-repair.mjs` was 105/105 at first build (9 new checks, real mouse). Ribbon still fits at 1440 with nothing collapsed
 (icon buttons 32 -> 29 px, Contour button added). One suite fixture has a deliberately missing import, so Print asks to
 confirm; the new print check accepts it.
-Open, not part of this: Draw / Design / View / File tabs are still greyed placeholders; nudge with ArrowRight looked
-inconsistent in one probe (not confirmed); `tests/tls-workspace-smoke.mjs` still expects the removed Job Walk tile.
+Follow-up on the three loose ends (Tim: "fix the rest of those three issues"):
+- **Tabs:** File / Draw / Design / View were greyed placeholders with nothing behind them. They are now hidden (still in the markup,
+  `hidden`), so the tab row shows Home and Insert only. Build them out when there is something to put there (View could hold
+  zoom / grid / rulers, File could hold Print / Save).
+- **Arrow-key nudge:** checked with real keys and waited for the debounced autosave: 0.24 % (4 px) per press, 0.98 % (16 px) with
+  Shift. It was my probe reading before the save landed, not a bug. Now a test.
+- **`tests/tls-workspace-smoke.mjs`:** updated for Initial Visit (Job Walk no longer exists as a TLS tile). It now checks there is no
+  Job Walk / Initial Visit tile on the TLS home, reaches the same capture screen by route, and checks it is titled Initial Visit. 35/35.
+`tests/plan-of-repair.mjs` now **108/108**.
 
 ## Sync Worker deploy — done Nov 10, 2026
 
