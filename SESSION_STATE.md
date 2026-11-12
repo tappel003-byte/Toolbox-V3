@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 12, 2026** (America/Denver)  
-Updated by: Cursor — address maps hit target tightened. Ball → Tim (promote).
+Updated by: Cursor — iPhone maps blank-sheet fix. Ball → Tim (promote).
 
 ---
 
@@ -19,11 +19,11 @@ Updated by: Cursor — address maps hit target tightened. Ball → Tim (promote)
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — tip ready to promote when he chooses. List address maps + tight hit target on tip. Not merged to `main` by the agent. |
-| Integration tip | `1f72d4a` (`1f72d4a2ae3c7102e1e2a39073bbadfacaa2ae0f`) — address maps hit target = text only; shell v470 |
+| **Has the ball** | **Tim** — tip ready to promote. Maps address hit target + no blank Safari sheet on tip. Not merged to `main` by the agent. |
+| Integration tip | `5bd5bf4` (`5bd5bf4d94ee3d2505dcf8ce8ac357334b4e5e2b`) — iPhone maps: scheme; shell v471 |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Shell | `toolbox-shell-v470` |
+| Shell | `toolbox-shell-v471` |
 | Not done | Do not merge to `main` unless Tim promotes. Do not deploy Sync Worker. **Do not strip POR or Report Builder controls or icons.** |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
