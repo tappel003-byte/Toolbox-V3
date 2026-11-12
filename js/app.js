@@ -558,23 +558,33 @@
   }
 
   function openVisitNotesReader(record) {
+    const fileId = record && record.id;
     const notes = record && record.distress && record.distress.jobWalk &&
       Array.isArray(record.distress.jobWalk.notes)
       ? record.distress.jobWalk.notes.slice().reverse()
       : [];
+    const locked = !!(record && window.ToolboxSync &&
+      typeof window.ToolboxSync.heldElsewhere === 'function' &&
+      window.ToolboxSync.heldElsewhere(record));
     const existing = document.getElementById('visit-notes-reader');
     if (existing) existing.parentNode.removeChild(existing);
     const overlay = document.createElement('div');
     overlay.id = 'visit-notes-reader';
     overlay.className = 'maps-choice';
     const card = document.createElement('div');
-    card.className = 'maps-choice__card';
+    card.className = 'maps-choice__card maps-choice__card--notes';
     card.setAttribute('role', 'dialog');
     card.setAttribute('aria-label', 'Visit notes');
     const title = document.createElement('p');
     title.className = 'maps-choice__title';
     title.textContent = 'Visit notes';
     card.appendChild(title);
+    if (locked) {
+      const lock = document.createElement('p');
+      lock.className = 'jw-empty';
+      lock.textContent = 'Checked out elsewhere — view only.';
+      card.appendChild(lock);
+    }
     const list = document.createElement('div');
     list.className = 'jw-notes';
     if (!notes.length) {
@@ -592,12 +602,13 @@
         const when = note.at ? new Date(note.at).toLocaleString() : '';
         head.textContent = who + (when ? ' · ' + when : '');
         article.appendChild(head);
-        if (note.text) {
-          const text = document.createElement('p');
-          text.className = 'jw-note__text';
-          text.textContent = note.text;
-          article.appendChild(text);
-        }
+        const text = document.createElement('textarea');
+        text.className = 'jw-note__text jw-note__edit';
+        text.rows = Math.min(14, Math.max(3, String(note.text || '').split('\n').length + 1));
+        text.value = note.text || '';
+        text.setAttribute('aria-label', 'Visit note text');
+        text.disabled = locked;
+        article.appendChild(text);
         if (note.audioId) {
           const audio = document.createElement('audio');
           audio.controls = true;
@@ -617,6 +628,40 @@
             }).catch(function () {});
           }
           article.appendChild(audio);
+        }
+        if (!locked) {
+          const saveBtn = document.createElement('button');
+          saveBtn.type = 'button';
+          saveBtn.className = 'btn btn--secondary jw-note__save';
+          saveBtn.textContent = 'Save';
+          saveBtn.addEventListener('click', function () {
+            saveBtn.disabled = true;
+            window.ToolboxDB.getCustomerFile(fileId).then(function (fresh) {
+              if (!fresh || !fresh.distress || !fresh.distress.jobWalk ||
+                  !Array.isArray(fresh.distress.jobWalk.notes)) {
+                throw new Error('Missing notes');
+              }
+              const idx = fresh.distress.jobWalk.notes.findIndex(function (entry) {
+                return entry && entry.id === note.id;
+              });
+              if (idx < 0) throw new Error('Note not found');
+              fresh.distress.jobWalk.notes[idx].text = text.value;
+              const now = new Date().toISOString();
+              fresh.distress.jobWalk.updatedAt = now;
+              fresh.distress.updatedAt = now;
+              fresh.updatedAt = now;
+              return window.ToolboxDB.saveCustomerFile(fresh);
+            }).then(function () {
+              saveBtn.textContent = 'Saved';
+              setTimeout(function () { saveBtn.textContent = 'Save'; }, 1200);
+            }).catch(function (err) {
+              console.error(err);
+              saveBtn.textContent = 'Could not save';
+            }).then(function () {
+              saveBtn.disabled = false;
+            });
+          });
+          article.appendChild(saveBtn);
         }
         list.appendChild(article);
       });

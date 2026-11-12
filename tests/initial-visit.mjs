@@ -345,9 +345,34 @@ const noteSave = await page.$('#jw-note-save');
 const noteBox = await noteSave.boundingBox();
 await page.mouse.click(noteBox.x + noteBox.width / 2, noteBox.y + noteBox.height / 2);
 await page.waitForFunction(
-  () => /Crack at front left corner/.test(document.querySelector('#jw-notes')?.textContent || ''),
+  () => {
+    const area = document.querySelector('#jw-notes textarea.jw-note__edit');
+    return !!(area && /Crack at front left corner/.test(area.value || ''));
+  },
   { timeout: 10000 }
 );
+
+// Edit saved note in place (copy/paste / Grok round-trip).
+const noteEdited = await page.evaluate(async () => {
+  const area = document.querySelector('#jw-notes textarea.jw-note__edit');
+  const save = document.querySelector('#jw-notes .jw-note__save');
+  if (!area || !save) return { ok: false, reason: 'missing edit controls' };
+  area.value = 'Organized: fascia brick cracks; irrigation leak; foundation movement.';
+  save.click();
+  await new Promise((r) => setTimeout(r, 500));
+  const id = (location.hash.match(/#\/file\/([^/]+)/) || [])[1];
+  const rec = id ? await window.ToolboxDB.getCustomerFile(decodeURIComponent(id)) : null;
+  const texts = (((rec || {}).distress || {}).jobWalk || {}).notes || [];
+  return {
+    ok: true,
+    hasEdit: true,
+    saved: texts.some((n) => /Organized: fascia brick/.test(n.text || '')),
+    texts: texts.map((n) => n.text),
+  };
+});
+check('Visit note is editable and Save persists the paste-back text',
+  noteEdited.ok && noteEdited.saved,
+  JSON.stringify(noteEdited));
 
 // Outcomes + follow-up
 await page.click('#jw-out-floor');
@@ -374,7 +399,7 @@ const beforeReload = await page.evaluate(async (id) => {
 check('Offline photo+note+outcomes saved before reload',
   beforeReload.status === 'visit' &&
   beforeReload.photos >= 1 &&
-  beforeReload.notes.some((t) => /Crack at front left/.test(t)) &&
+  beforeReload.notes.some((t) => /Organized: fascia brick/.test(t)) &&
   beforeReload.outcomes.recommendFloor === true &&
   beforeReload.outcomes.callBack === true &&
   beforeReload.followUpDate === '2026-11-20',
@@ -389,7 +414,10 @@ await page.goto(`${rootUrl}index.html#/file/${encodeURIComponent(visitId)}/job-w
 });
 await page.waitForSelector('.jw-shell', { timeout: 20000 });
 await page.waitForFunction(
-  () => /Crack at front left/.test(document.querySelector('#jw-notes')?.textContent || ''),
+  () => {
+    const area = document.querySelector('#jw-notes textarea.jw-note__edit');
+    return !!(area && /Organized: fascia brick/.test(area.value || ''));
+  },
   { timeout: 15000 }
 );
 
@@ -399,7 +427,7 @@ const afterReload = await page.evaluate(async (id) => {
   return {
     status: rec.status,
     photos: (rec.distress.quickCapture || []).length,
-    noteOk: (walk.notes || []).some((n) => /Crack at front left/.test(n.text || '')),
+    noteOk: (walk.notes || []).some((n) => /Organized: fascia brick/.test(n.text || '')),
     floor: !!(walk.outcomes && walk.outcomes.recommendFloor),
     callBack: !!(walk.outcomes && walk.outcomes.callBack),
     followUpDate: walk.followUpDate,
@@ -704,7 +732,7 @@ const afterMake = await page.evaluate(async (id) => {
     count: all.length,
     status: rec && rec.status,
     hasStatusKey: !!(rec && Object.prototype.hasOwnProperty.call(rec, 'status')),
-    noteOk: !!(walk && (walk.notes || []).some((n) => /Crack at front left/.test(n.text || ''))),
+    noteOk: !!(walk && (walk.notes || []).some((n) => /Organized: fascia brick/.test(n.text || ''))),
     photos: (rec.distress.quickCapture || []).length,
     hash: location.hash,
     recommendFloor: !!(walk && walk.outcomes && walk.outcomes.recommendFloor),
@@ -717,6 +745,34 @@ check('Make Customer File clears visit mark on same id',
   afterMake.status !== 'visit' && !afterMake.hasStatusKey, JSON.stringify(afterMake));
 check('Make Customer File preserves notes and photos',
   afterMake.noteOk && afterMake.photos >= 1, JSON.stringify(afterMake));
+
+// Home Visit notes reader: edit + save (same paste-back path as Job Walk).
+await page.goto(`${base}#/file/${encodeURIComponent(visitId)}/tls`, { waitUntil: 'networkidle0' });
+await page.waitForSelector('#home-visit-notes:not([hidden])', { timeout: 10000 });
+await page.click('#home-visit-notes');
+await page.waitForSelector('#visit-notes-reader textarea.jw-note__edit');
+const readerEdit = await page.evaluate(async (id) => {
+  const area = document.querySelector('#visit-notes-reader textarea.jw-note__edit');
+  const save = document.querySelector('#visit-notes-reader .jw-note__save');
+  if (!area || !save) return { ok: false };
+  area.value = 'Reader paste-back: organized visit notes for Martin.';
+  save.click();
+  await new Promise((r) => setTimeout(r, 700));
+  const rec = await window.ToolboxDB.getCustomerFile(id);
+  const texts = ((((rec || {}).distress || {}).jobWalk || {}).notes || []).map((n) => n.text || '');
+  return {
+    ok: true,
+    saved: texts.some((t) => /Reader paste-back/.test(t)),
+    texts,
+  };
+}, visitId);
+check('Home Visit notes reader edits and saves',
+  readerEdit.ok && readerEdit.saved, JSON.stringify(readerEdit));
+await page.screenshot({ path: `${OUT}/visit-notes-reader-edit.png`, fullPage: true });
+await page.evaluate(() => {
+  const el = document.querySelector('#visit-notes-reader');
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+});
 check('Make Customer File lands on Floor Survey when recommended',
   afterMake.hash === `#/file/${encodeURIComponent(visitId)}/floor` ||
   afterMake.hash === `#/file/${visitId}/floor`,
@@ -759,9 +815,10 @@ check('Moved file appears under Customer Files jobs, not Visits',
 await page.goto(`${base}#/file/cf-ordinary-1/job-walk`, { waitUntil: 'networkidle0' });
 await page.waitForSelector('.jw-shell', { timeout: 15000 });
 const legacy = await page.evaluate(() => {
+  const area = document.querySelector('#jw-notes textarea.jw-note__edit');
   return {
     title: document.querySelector('#jw-title')?.textContent.trim(),
-    note: document.querySelector('#jw-notes')?.textContent || '',
+    note: area ? area.value : (document.querySelector('#jw-notes')?.textContent || ''),
     makeHiddenMeta: !!document.querySelector('#jw-visit-meta')?.hidden,
   };
 });
