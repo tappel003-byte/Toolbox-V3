@@ -20,7 +20,7 @@ Updated by: Cursor — address maps hit target tightened. Ball → Tim (promote)
 | Field | Value |
 |-------|--------|
 | **Has the ball** | **Tim** — tip ready to promote when he chooses. List address maps + tight hit target on tip. Not merged to `main` by the agent. |
-| Integration tip | `10fc829` (`10fc8297c1e4c713982a8076482469fa78f8e565`) — address maps hit target = text only; shell v470 |
+| Integration tip | `1f72d4a` (`1f72d4a2ae3c7102e1e2a39073bbadfacaa2ae0f`) — address maps hit target = text only; shell v470 |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Shell | `toolbox-shell-v470` |
