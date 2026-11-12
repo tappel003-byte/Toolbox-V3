@@ -2255,6 +2255,133 @@ check('Shape Fill / Outline / Effects do not overlap and their labels fit', !rib
 check('Shapes gallery shows every shape inside its box, clear of Arrange', ribbonLayout.insidePop && ribbonLayout.tools >= 11 && ribbonLayout.galleryClearOfArrange, JSON.stringify(ribbonLayout));
 check('No ribbon group collapses at 1440 wide', ribbonLayout.collapsed === 0, JSON.stringify(ribbonLayout));
 
+// Draw tools, bare click and the Contour toggle (Nov 12, 2026), all with real mouse input.
+await page.setViewport({ width: 1440, height: 900 });
+await page.goto(BASE + '#/file/por-draw/repair', { waitUntil: 'networkidle0' });
+await page.waitForSelector('.por-shell .rb-sheet');
+await new Promise((r) => setTimeout(r, 1500));
+const nap = (ms) => new Promise((r) => setTimeout(r, ms));
+async function realClickEl(sel) {
+  const el = await page.$(sel);
+  if (!el) return false;
+  const bb = await el.boundingBox();
+  if (!bb || !bb.width) return false;
+  await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2);
+  await nap(250);
+  return true;
+}
+const sheetBox = () => page.$eval('.por-shell .rb-sheet', (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+const lastPageOverlays = () => page.evaluate(async () => {
+  const r = await ToolboxDB.getCustomerFile('por-draw');
+  const pages = r.planOfRepair.pages;
+  return pages[pages.length - 1].overlays || [];
+});
+await realClickEl('#por-add-page');
+await nap(1200);
+const sheet = await sheetBox();
+async function dragMouse(ax, ay, bx, by) {
+  await page.mouse.move(ax, ay); await page.mouse.down();
+  await page.mouse.move(bx, by, { steps: 3 }); await page.mouse.up();
+}
+const dotsBefore = (await lastPageOverlays()).filter((o) => o.kind === 'circle').length;
+await realClickEl('#por-fill');
+await realClickEl('#por-keep-tool');
+await realClickEl('[data-rb-tool="circle"]');
+const rowY = sheet.y + sheet.h * 0.30;
+for (let i = 0; i < 20; i += 1) { const x = sheet.x + 60 + i * 22; await dragMouse(x, rowY, x + 14, rowY + 14); }
+await nap(900);
+const denseDots = (await lastPageOverlays()).filter((o) => o.kind === 'circle').length - dotsBefore;
+check('20 dots 22px apart with the tool kept on all draw (handles do not swallow drags)', denseDots === 20, `${denseDots} of 20`);
+await realClickEl('#por-keep-tool');
+await realClickEl('[data-por-tool="select"]');
+// A square around the dot just drawn (the dot is still selected)
+await realClickEl('[data-rb-tool="circle"]');
+await dragMouse(sheet.x + 200, sheet.y + sheet.h * 0.55, sheet.x + 216, sheet.y + sheet.h * 0.55 + 16);
+const beforeSq = (await lastPageOverlays()).filter((o) => o.kind === 'rect').length;
+await realClickEl('[data-rb-tool="rect"]');
+await dragMouse(sheet.x + 190, sheet.y + sheet.h * 0.55 - 10, sheet.x + 228, sheet.y + sheet.h * 0.55 + 28);
+await nap(700);
+const afterSq = (await lastPageOverlays()).filter((o) => o.kind === 'rect').length;
+check('A square drawn around the dot just placed (still selected) is created', afterSq - beforeSq === 1, `${afterSq - beforeSq} created`);
+// Bare click with a circle armed drops a default pier dot centred on the click
+await page.keyboard.press('Escape');
+await page.mouse.click(sheet.x + sheet.w * 0.55, sheet.y + sheet.h * 0.90); await nap(300);
+const beforeClick = (await lastPageOverlays()).filter((o) => o.kind === 'circle');
+await realClickEl('[data-rb-tool="circle"]');
+const cx = sheet.x + sheet.w * 0.60; const cy = sheet.y + sheet.h * 0.75;
+await page.mouse.click(cx, cy); await nap(800);
+const afterClick = (await lastPageOverlays()).filter((o) => o.kind === 'circle');
+const dropped = afterClick.length - beforeClick.length === 1 ? afterClick[afterClick.length - 1] : null;
+const dW = dropped ? dropped.x1 - dropped.x0 : 0;
+const dCx = dropped ? (dropped.x0 + dropped.x1) / 2 : 0;
+const dCy = dropped ? (dropped.y0 + dropped.y1) / 2 : 0;
+check('A bare click with Oval armed drops one default dot centred on the click',
+  !!dropped && dW > 0.8 && dW < 2.2 && Math.abs(dCx - 60) < 0.8 && Math.abs(dCy - 75) < 1.2,
+  dropped ? `width ${dW.toFixed(2)}%, centre ${dCx.toFixed(1)}%,${dCy.toFixed(1)}%` : 'none');
+// Contour toggle
+await realClickEl('#por-insert-btn');
+await realClickEl('#por-bring-plan');
+await nap(1500);
+const toggleDisabledOff = await page.$eval('#por-contour-toggle', (b) => b.disabled);
+const imgsOff = await page.$$eval('.por-sheet-bg img', (n) => n.length);
+check('Floor plan alone: Contour toggle is available and the sheet shows one image', !toggleDisabledOff && imgsOff === 1, `disabled=${toggleDisabledOff} images=${imgsOff}`);
+await realClickEl('#por-contour-toggle');
+await nap(1500);
+const stackInfo = await page.evaluate(() => {
+  const stack = document.querySelector('.por-sheet-bg .por-bg-stack');
+  const imgs = stack ? [...stack.querySelectorAll('img')] : [];
+  const btn = document.querySelector('#por-contour-toggle');
+  const plan = imgs.find((i) => i.classList.contains('por-bg-plan--over'));
+  const contour = imgs.find((i) => i.classList.contains('por-bg-contour'));
+  const pr = plan && plan.getBoundingClientRect(); const cr = contour && contour.getBoundingClientRect();
+  return {
+    count: imgs.length,
+    contourFirst: imgs[0] && imgs[0].classList.contains('por-bg-contour'),
+    multiply: plan ? getComputedStyle(plan).mixBlendMode : '',
+    sameExtent: !!(pr && cr && Math.abs(pr.width - cr.width) < 2 && Math.abs(pr.height - cr.height) < 2 && Math.abs(pr.left - cr.left) < 2 && Math.abs(pr.top - cr.top) < 2),
+    pressed: btn.getAttribute('aria-pressed'),
+  };
+});
+check('Contour on: contour sits under the floor plan, same extent, plan multiplied over it',
+  stackInfo.count === 2 && stackInfo.contourFirst && stackInfo.multiply === 'multiply' && stackInfo.sameExtent && stackInfo.pressed === 'true', JSON.stringify(stackInfo));
+const savedOn = await page.evaluate(async () => { const r = await ToolboxDB.getCustomerFile('por-draw'); const pg = r.planOfRepair.pages; const b = pg[pg.length - 1].background; return b && b.kind === 'plan' && b.contourOn === true; });
+check('Contour on is saved on the page and the page is still a floor plan page', savedOn);
+// Toggle off again
+await realClickEl('#por-contour-toggle');
+await nap(1500);
+const imgsAfterOff = await page.$$eval('.por-sheet-bg img', (n) => n.length);
+check('Contour off returns to the plain floor plan', imgsAfterOff === 1, `images=${imgsAfterOff}`);
+// A contour-only page has nothing to toggle
+await realClickEl('#por-insert-btn');
+await realClickEl('#por-bring-contour');
+await nap(1500);
+const disabledOnContourPage = await page.$eval('#por-contour-toggle', (b) => b.disabled);
+check('On a contour-only page the Contour toggle is disabled', disabledOnContourPage === true);
+// Print keeps both layers (last: the print flow leaves the page in print mode).
+// Read two booleans inside the print hook: the deck itself is huge on a many-page file.
+// This file has a sheet with a deliberately missing import; Print asks to confirm. Accept it.
+page.once('dialog', async (d) => { await d.accept(); });
+await realClickEl('#por-insert-btn');
+await realClickEl('#por-bring-plan');
+await nap(1500);
+await realClickEl('#por-contour-toggle');
+await nap(1500);
+await page.evaluate(() => {
+  window.__printed = false;
+  window.__printLayers = false;
+  window.print = () => {
+    const d = document.querySelector('.por-print');
+    window.__printLayers = !!(d && d.querySelector('.por-bg-contour') && d.querySelector('.por-bg-plan--over'));
+    window.__printed = true;
+  };
+});
+await realClickEl('#por-print');
+await page.waitForFunction(() => window.__printed === true, { timeout: 60000 }).catch(() => {});
+const printHasContour = await page.evaluate(() => window.__printLayers === true);
+check('Print / PDF carries the contour under the plan', printHasContour);
+await nap(1500);
+await page.goto(BASE + '#/file/por-draw/repair', { waitUntil: 'networkidle0' });
+
 await page.setViewport({ width: 390, height: 844 });
 await page.goto(BASE + '#/file/por-draw', { waitUntil: 'networkidle0' });
 await page.waitForSelector('#home-repair-top');

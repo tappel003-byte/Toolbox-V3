@@ -1993,3 +1993,104 @@ body.is-por-printing .por-print {
   height: 25px;
   min-height: 25px;
 }
+
+/* Contour on the floor plan (Nov 12, 2026): contour is the base, the plan is
+   multiplied over it, both at the plan's extent. */
+.por-bg-stack {
+  position: relative;
+  display: flex;
+  max-width: 100%;
+  max-height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.por-bg-stack > .por-bg-contour {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+  z-index: 0;
+}
+
+.por-bg-stack > .por-bg-plan--over {
+  position: relative;
+  z-index: 1;
+}
+
+.por-bg-plan--over {
+  mix-blend-mode: multiply;
+}
+
+.por-view-frame > .por-bg-contour,
+.por-view-frame > .por-bg-plan--over {
+  mix-blend-mode: normal;
+}
+
+.por-view-frame > .por-bg-plan--over {
+  mix-blend-mode: multiply;
+}
+
+.por-contour-toggle {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 52px;
+  min-height: 52px;
+  padding: 2px 6px;
+  margin-right: 4px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #0b1f33;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.por-contour-toggle:hover:not(:disabled) {
+  border-color: #c8c6c4;
+  background: #edebe9;
+}
+
+.por-contour-toggle.is-on {
+  border-color: #8a8886;
+  background: #d2e3f6;
+  color: #004578;
+}
+
+.por-contour-toggle:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Make room for the Contour button at 1440 wide. */
+.por-contour-toggle {
+  min-width: 46px;
+  margin-right: 0;
+  padding: 2px 4px;
+}
+
+.por-ribbon__large {
+  min-width: 44px;
+  padding: 2px 4px;
+}
+
+.por-ribbon__stack--extras .por-opacity input[type="range"] {
+  width: 44px;
+}
+
+/* Ribbon icon buttons 32 -> 29px so the whole ribbon fits at 1440 wide. */
+.por-ribbon__group .por-iconbtn {
+  width: 29px;
+}
+
+.por-ribbon .por-shapes__grid .por-iconbtn,
+.por-ribbon .por-shapes__pop--docked .por-iconbtn {
+  width: 25px;
+}

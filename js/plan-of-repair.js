@@ -199,6 +199,8 @@
               sourceStatus: p.background.sourceStatus === 'changed' || p.background.sourceStatus === 'accepted'
                 ? p.background.sourceStatus
                 : null,
+              // Contour switched on over the floor plan (plan multiplied over it).
+              contourOn: p.background.kind === 'plan' && p.background.contourOn === true,
             }
           : { kind: null, canvasId: '', mediaId: '', source: null, sourceStatus: null };
         page.meta = p && p.meta && typeof p.meta === 'object' ? Object.assign({}, p.meta) : {};
@@ -285,6 +287,8 @@
       }
       return '';
     }
+
+    var SHAPE_TOOLS = ['line', 'arrow', 'rect', 'roundRect', 'circle', 'triangle'];
 
     var ICONS = {
       select: fluentIcon('cursor', 'fluent-icon--accent') || svgIcon('<path d="M5.5 3.5 11.2 20l2-6.2L19.5 11.8z"/>'),
@@ -614,6 +618,10 @@
       '    </div>' +
       '    <div class="por-ribbon__group" role="group" aria-label="Insert">' +
       '      <div class="por-ribbon__row">' +
+      '        <button type="button" class="por-contour-toggle" id="por-contour-toggle" aria-pressed="false" title="Show the contour under the floor plan">' +
+      '          <svg class="por-contour-toggle__icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 15c3-7 8-9 13-6 2 1 4 3 5 6"/><path d="M6 17c2-4 5-5 8-3 1 .6 2 1.6 3 3"/><path d="M10 19c1-1.5 2-2 3.4-1.4"/></svg>' +
+      '          <span class="por-contour-toggle__label">Contour</span>' +
+      '        </button>' +
       '        <div class="por-picker" data-por-picker="insert">' +
       '          <button type="button" class="por-picker__btn por-picker__btn--label" id="por-insert-btn" title="Insert" aria-label="Insert" aria-haspopup="true" aria-expanded="false">' +
       '            Insert <span class="por-shapes__chev">▾</span>' +
@@ -742,6 +750,7 @@
       lastStyleTargetId: null,
       clipboard: null,
       bgUrl: '',
+      contourUrl: '',
       bgMissing: false,
       bgMissingByPageId: {},
       printMode: false,
@@ -1555,8 +1564,12 @@
         if (d.obj) canvas.remove(d.obj);
         var pointer = canvas.getPointer(opt.e);
         var shift = !!(opt.e && opt.e.shiftKey) || d.shift;
-        if (Math.abs(pointer.x - d.x) < 3 && Math.abs(pointer.y - d.y) < 3) return;
-        var shape = makeDraftShape(d.tool, d.x, d.y, pointer.x, pointer.y, shift);
+        var box = [d.x, d.y, pointer.x, pointer.y];
+        if (Math.abs(pointer.x - d.x) < 3 && Math.abs(pointer.y - d.y) < 3) {
+          box = defaultShapeBox(d.tool, d.x, d.y);
+          shift = false;
+        }
+        var shape = makeDraftShape(d.tool, box[0], box[1], box[2], box[3], shift);
         if (!shape) return;
         PorFab.styleControls(shape);
         shape.set({
@@ -1608,6 +1621,19 @@
         canvas.requestRenderAll();
         openShapeMenu(opt.e, id);
       });
+    }
+
+    /** A bare click with a shape tool armed drops a default shape centred on the click
+        (PowerPoint places one too). Sizes are a share of the sheet so they read the same
+        at any zoom: pier dot 1.4 %, square 4 %, rectangle 6 x 4 %, line / arrow 8 %. */
+    function defaultShapeBox(tool, x, y) {
+      var u = PorFab && typeof PorFab.pctToX === 'function' ? PorFab.pctToX(1) : 9;
+      var half;
+      if (tool === 'line' || tool === 'arrow') { half = u * 4; return [x - half, y, x + half, y]; }
+      if (tool === 'circle') { half = u * 0.7; return [x - half, y - half, x + half, y + half]; }
+      if (tool === 'rect' || tool === 'roundRect') { return [x - u * 3, y - u * 2, x + u * 3, y + u * 2]; }
+      half = u * 2;
+      return [x - half, y - half, x + half, y + half];
     }
 
     function makeDraftShape(tool, x0, y0, x1, y1, shift) {
@@ -1791,6 +1817,10 @@
       var tool = state.inkTool;
       canvas.isDrawingMode = tool === 'pencil' && !state.readOnly;
       canvas.selection = !tool || tool === null;
+      // A shape tool is armed: a drag must always draw, never grab the handles
+      // (or body) of the shape just drawn. Eraser and pencil keep hit-testing.
+      canvas.skipTargetFind = SHAPE_TOOLS.indexOf(tool) !== -1;
+      if (canvas.skipTargetFind) canvas.discardActiveObject();
       canvas.defaultCursor = tool && tool !== 'eraser' ? 'crosshair' : 'default';
       canvas.forEachObject(function (o) {
         o.selectable = !tool || tool === 'eraser';
@@ -2252,8 +2282,32 @@
       if (page && page.id) state.bgMissingByPageId[page.id] = !!missing;
     }
 
+    /** The level's contour picture, when the floor plan page has Contour switched on. */
+    function resolveContourMediaId(page) {
+      var bg = page && page.background;
+      if (!bg || bg.kind !== 'plan' || !bg.contourOn || !bg.canvasId || !state.record) return null;
+      var canvas = window.ToolboxPlanSetup && window.ToolboxPlanSetup.canvasById
+        ? window.ToolboxPlanSetup.canvasById(state.record, bg.canvasId)
+        : null;
+      if (!canvas) return null;
+      var layer = window.ToolboxPlanSetup.contourLayer
+        ? window.ToolboxPlanSetup.contourLayer(canvas)
+        : (canvas.contourLayer || null);
+      return layer && layer.id ? layer.id : null;
+    }
+
+    function loadContourOverlay(page) {
+      state.contourUrl = '';
+      var mediaId = resolveContourMediaId(page);
+      if (!mediaId || !window.ToolboxDB || !window.ToolboxDB.getMedia) return Promise.resolve();
+      return window.ToolboxDB.getMedia(mediaId).then(function (url) {
+        if (acceptBgUrl(url)) state.contourUrl = url;
+      }).catch(function () { state.contourUrl = ''; });
+    }
+
     function loadBackground() {
       state.bgUrl = '';
+      state.contourUrl = '';
       state.bgMissing = false;
       var page = activePage();
       var bg = page && page.background;
@@ -2270,7 +2324,9 @@
         if (acceptBgUrl(url)) {
           state.bgUrl = url;
           markBgMissing(page, false);
-          return applySourceProbe(page, mediaId, url);
+          return applySourceProbe(page, mediaId, url).then(function () {
+            return loadContourOverlay(page);
+          });
         }
         markBgMissing(page, true);
       }).catch(function () { markBgMissing(page, true); });
@@ -2665,6 +2721,16 @@
           img.src = state.bgUrl;
           img.alt = 'View ' + (vi + 1);
           img.draggable = false;
+          var contourImg = null;
+          if (state.contourUrl) {
+            contourImg = document.createElement('img');
+            contourImg.src = state.contourUrl;
+            contourImg.alt = 'Contour';
+            contourImg.className = 'por-bg-contour';
+            contourImg.draggable = false;
+            img.classList.add('por-bg-plan--over');
+            host.appendChild(contourImg);
+          }
           host.appendChild(img);
           var label = document.createElement('span');
           label.className = 'por-view-frame__label';
@@ -2688,6 +2754,7 @@
           }
           bg.appendChild(host);
           applyViewCamera(img, host, viewCamera(view));
+          if (contourImg) applyViewCamera(contourImg, host, viewCamera(view));
         });
       } else if (state.bgUrl) {
         var img = document.createElement('img');
@@ -2695,7 +2762,23 @@
         img.alt = page.background && page.background.kind === 'contour'
           ? 'Contour'
           : (page.background && page.background.kind === 'import' ? 'Imported drawing' : 'Floor plan');
-        bg.appendChild(img);
+        if (state.contourUrl && page.background && page.background.kind === 'plan') {
+          // Contour switched on: contour is the base, the plan is multiplied over it,
+          // both at the plan's extent (the same order the Topo tab and report use).
+          var stack = document.createElement('div');
+          stack.className = 'por-bg-stack';
+          var contourBase = document.createElement('img');
+          contourBase.src = state.contourUrl;
+          contourBase.alt = 'Contour';
+          contourBase.className = 'por-bg-contour';
+          contourBase.draggable = false;
+          img.classList.add('por-bg-plan--over');
+          stack.appendChild(contourBase);
+          stack.appendChild(img);
+          bg.appendChild(stack);
+        } else {
+          bg.appendChild(img);
+        }
       } else if (!state.printMode) {
         // Hint only on a truly blank sheet (no marks). Missing-bg warning stays
         // until a background resolves; never enter the print DOM (printMode).
@@ -2714,6 +2797,7 @@
         }
       }
       sheetEl.appendChild(bg);
+      syncContourToggle();
 
       if (!state.printMode) {
         var guides = document.createElement('div');
@@ -4110,6 +4194,42 @@
       }
     }
 
+    /** Contour toggle: on only for a floor-plan page whose level has a contour. */
+    function syncContourToggle() {
+      var btn = root.querySelector('#por-contour-toggle');
+      if (!btn) return;
+      var page = activePage();
+      var bg = page && page.background;
+      var onPlan = !!(bg && bg.kind === 'plan' && bg.canvasId);
+      var hasContour = false;
+      if (onPlan && state.record && window.ToolboxPlanSetup && window.ToolboxPlanSetup.canvasById) {
+        var cv = window.ToolboxPlanSetup.canvasById(state.record, bg.canvasId);
+        hasContour = !!(cv && window.ToolboxPlanSetup.contourLayer && window.ToolboxPlanSetup.contourLayer(cv));
+      }
+      var on = onPlan && hasContour && bg.contourOn === true;
+      btn.classList.toggle('is-on', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      btn.disabled = state.readOnly || !onPlan || !hasContour;
+      btn.title = !onPlan
+        ? 'Contour sits on a floor plan: put a floor plan on this sheet first'
+        : (!hasContour ? 'No contour on this level yet' : (on ? 'Contour is on: click to hide it' : 'Show the contour under the floor plan'));
+    }
+
+    function toggleContour() {
+      if (state.readOnly) return;
+      var page = activePage();
+      var bg = page && page.background;
+      if (!bg || bg.kind !== 'plan' || !bg.canvasId) return;
+      pushHistory();
+      bg.contourOn = !bg.contourOn;
+      scheduleSave();
+      loadBackground().then(function () {
+        scheduleSave();
+        renderSheet();
+      });
+      setStatus(bg.contourOn ? 'Contour on the floor plan' : 'Contour hidden');
+    }
+
     function bringBackground(kind) {
       if (state.readOnly) return;
       var canvasId = canvasSelect.value;
@@ -4861,6 +4981,7 @@
       renderAll();
     });
     root.querySelector('#por-bring-plan').addEventListener('click', function () { bringBackground('plan'); });
+    root.querySelector('#por-contour-toggle').addEventListener('click', toggleContour);
     root.querySelector('#por-bring-contour').addEventListener('click', function () { bringBackground('contour'); });
     root.querySelector('#por-import-bg').addEventListener('click', function () {
       if (state.readOnly) return;

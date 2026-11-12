@@ -19,7 +19,7 @@ Updated by: Cursor — iPhone maps blank-sheet fix. Ball → Tim (promote).
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — Plan of Repair ribbon polish by Claude Code on `claude/por-ribbon-polish-2ac5` (below). Not merged; Tim decides. Not on `main`. |
+| **Has the ball** | **Tim** — Plan of Repair draw fixes + Contour toggle by Claude Code on `claude/por-draw-contour-2ac5` (includes the ribbon polish). Ready to merge into integration when Tim asks. Not on `main`. |
 | Integration tip | `936f556` (`936f556c3ea8f58fd94ca947e2485aa1817c67c6`) — iPhone maps: scheme; shell v471 |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
@@ -165,6 +165,23 @@ Shell `v469`. `tests/plan-of-repair.mjs` 96/96 (3 new layout checks). Fluent ico
 (`js/vendor/fluent-icons.js`); CC's earlier note that they were not was wrong.
 Stale test, not mine: `tests/tls-workspace-smoke.mjs` still clicks the Job Walk tile that Initial Visit
 removed from the TLS home; it fails on the integration tip.
+
+### Claude Code: Plan of Repair draw fixes + Contour toggle (Nov 12, 2026) — branch `claude/por-draw-contour-2ac5`
+
+Built at Tim's go ("go, continue building all three"). Branch = ribbon polish + integration tip `d485948` + this work; shell **v472**.
+1. **Draw tools no longer swallow drags.** A shape tool armed (line, arrow, rect, rounded rect, oval, triangle)
+   sets `canvas.skipTargetFind`, so a drag always draws and the selected shape's handles cannot grab it.
+   20 dots 22 px apart now draw 20 of 20 (was 10); a square around the dot just drawn is created (was 0).
+2. **Bare click drops a default shape** centred on the click: dot 1.4 %, square 4 %, rectangle 6x4 %, line/arrow 8 % of the sheet.
+3. **Contour toggle** (ribbon, Insert group): floor plan stays the base; Contour on puts the level's contour under it,
+   plan multiplied over it, same extent, marks on top, also in each detail view and in Print / PDF. Saved as
+   `page.background.contourOn` on a floor-plan page. Disabled when the page is not a floor plan or the level has no contour.
+   The Insert menu's Floor plan / Contour choices are unchanged.
+`tests/plan-of-repair.mjs` **105/105** (9 new checks, real mouse). Ribbon still fits at 1440 with nothing collapsed
+(icon buttons 32 -> 29 px, Contour button added). One suite fixture has a deliberately missing import, so Print asks to
+confirm; the new print check accepts it.
+Open, not part of this: Draw / Design / View / File tabs are still greyed placeholders; nudge with ArrowRight looked
+inconsistent in one probe (not confirmed); `tests/tls-workspace-smoke.mjs` still expects the removed Job Walk tile.
 
 ## Sync Worker deploy — done Nov 10, 2026
 
