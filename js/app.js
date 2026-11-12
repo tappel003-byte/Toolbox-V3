@@ -2330,10 +2330,11 @@
     return canvases.length + ' levels · ' + withPlan.length + ' with plans';
   }
 
-  function tlsAppTileHtml(key, label, detail) {
+  /** `art` is a full-tile picture (rounded, own background) that fills the tile; without it the TLS Foundations logo sits inside it. */
+  function tlsAppTileHtml(key, label, detail, art) {
     return (
       '<button type="button" class="cf-app-btn" data-tls-app="' + key + '" aria-label="' + label + '">' +
-      '  <span class="cf-app-btn__art"><img src="brand/tls-foundations.jpg" alt="" loading="eager"></span>' +
+      '  <span class="cf-app-btn__art' + (art ? ' cf-app-btn__art--full' : '') + '"><img src="' + (art || 'brand/tls-foundations.jpg') + '" alt="" loading="eager"></span>' +
       '  <span class="cf-app-btn__copy">' +
       '    <span class="cf-app-btn__name">' + label + '</span>' +
       '    <span class="cf-app-btn__sub">' + detail + '</span>' +
@@ -2395,7 +2396,7 @@
       '  </div>' +
       '  <div class="cf-home__apps" id="home-apps">' +
       (tls
-        ? tlsAppTileHtml('repair', 'Plan of Repair', 'Flexible desktop drawing for preliminary repair sheets')
+        ? tlsAppTileHtml('repair', 'Plan of Repair', 'Flexible desktop drawing for preliminary repair sheets', 'brand/plan-of-repair.webp')
         : (
           appTileHtml('distress') +
           appTileHtml('floor') +

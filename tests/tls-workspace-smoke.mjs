@@ -81,6 +81,13 @@ check('TLS home has no Job Walk tile', !(await page.$('[data-tls-app="job-walk"]
 check('TLS home has no Initial Visit tile', !(await page.$('[data-tls-app="initial-visit"]')));
 
 check('TLS Plan of Repair card', !!(await page.$('[data-tls-app="repair"]')));
+const repairArt = await page.$eval('[data-tls-app="repair"] img', (img) => ({
+  src: img.getAttribute('src'),
+  loaded: img.complete && img.naturalWidth > 0,
+  full: !!img.closest('.cf-app-btn__art--full'),
+})).catch(() => null);
+check('Plan of Repair tile shows its own artwork, filled to the tile and loaded',
+  !!repairArt && /plan-of-repair\.webp$/.test(repairArt.src || '') && repairArt.loaded && repairArt.full, JSON.stringify(repairArt));
 check('Directions visible with address', await page.$eval('#home-directions', (el) => !el.hidden));
 
 await page.screenshot({ path: `${OUT}/tls-home.png`, fullPage: true });
@@ -139,7 +146,7 @@ check('Job Walk photo stored as JPEG data URL', photoSeed.isDataUrl, JSON.string
 
 await openInitialVisit();
 await page.waitForSelector('.jw-note__text');
-const noteText = await page.$eval('.jw-note__text', (el) => el.textContent);
+const noteText = await page.$eval('.jw-note__text', (el) => ('value' in el && el.value !== undefined ? el.value : el.textContent));
 check('Job Walk note survives reopen', /front door sticks/.test(noteText));
 await page.waitForSelector('.jw-card__img');
 const jwImgOk = await page.waitForFunction(() => {
@@ -333,7 +340,7 @@ await page.waitForSelector('#home-visit-notes:not([hidden])');
 check('Geo Visit notes control present', !!(await page.$('#home-visit-notes:not([hidden])')));
 await page.click('#home-visit-notes');
 await page.waitForSelector('#visit-notes-reader .jw-note__text');
-const geoNote = await page.$eval('#visit-notes-reader .jw-note__text', (el) => el.textContent);
+const geoNote = await page.$eval('#visit-notes-reader .jw-note__text', (el) => ('value' in el && el.value !== undefined ? el.value : el.textContent));
 check('Geo side can read Job Walk visit notes', /front door sticks/.test(geoNote), geoNote);
 await page.click('#visit-notes-reader .btn');
 

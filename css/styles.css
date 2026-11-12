@@ -5561,3 +5561,15 @@ html.tb-refresh-locked .canvas {
     width: 100%;
   }
 }
+
+/* Full-tile artwork (Plan of Repair, Nov 12, 2026): the picture is already a rounded tile,
+   so it fills the button instead of sitting at 72% inside a white one. */
+.cf-app-btn__art.cf-app-btn__art--full {
+  background: transparent;
+}
+
+.cf-app-btn__art.cf-app-btn__art--full img {
+  width: 100%;
+  height: 100%;
+  border-radius: 14px;
+}
