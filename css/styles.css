@@ -1836,6 +1836,11 @@ body:not(.floor-survey-open):not(.distress-survey-open) {
   letter-spacing: 0.02em;
 }
 
+/* Visits sits under the Customer Files list — leave air above the heading (CC). */
+.customer-files #cabinet-visits-title {
+  margin-top: 1.35rem;
+}
+
 .customer-files .cabinet-list {
   flex: 0 0 auto;
   width: 100%;

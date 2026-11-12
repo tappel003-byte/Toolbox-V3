@@ -2951,7 +2951,7 @@
       app.innerHTML =
         '<div class="cf-stub">' +
         '  <h2 class="cf-stub__title">Initial Visit</h2>' +
-        '  <p class="cf-stub__msg">Initial Visit failed to load. Reopen Toolbox while online once so the offline shell can install.</p>' +
+        '  <p class="cf-stub__msg">Initial Visit isn’t ready on this phone yet. Open Toolbox once while you’re online, then come back offline.</p>' +
         '  <button type="button" id="jw-fail-back" class="btn btn--accent">Back to TLS</button>' +
         '</div>';
       app.querySelector('#jw-fail-back').addEventListener('click', leave);
