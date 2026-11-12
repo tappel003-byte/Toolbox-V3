@@ -1887,3 +1887,109 @@ body.is-por-printing .por-print {
   justify-self: stretch;
   box-shadow: none;
 }
+
+/* Ribbon polish (Nov 12, 2026) — look only, nothing removed.
+   1) Shape Fill / Outline / Effects: the mini-toolbar rule .por-picker__btn--shape
+      (column, 36px wide) was also hitting the ribbon's labelled buttons, so icon,
+      label and chip stacked and overflowed each other. Lay them out as one row.
+   2) Shapes gallery: 6 columns x 2 rows so every shape shows without a clipped row.
+   3) A collapsed group reads as icon + name + chevron, like PowerPoint's. */
+.por-ribbon__stack--shape-style .por-picker {
+  display: flex;
+  width: 100%;
+}
+
+.por-ribbon__stack--shape-style .por-picker__btn--labelled {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 124px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 6px;
+  gap: 5px;
+  overflow: hidden;
+  line-height: 1;
+}
+
+.por-ribbon__stack--shape-style .por-picker__btn--labelled .por-picker__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.por-ribbon__stack--shape-style .por-picker__btn--labelled .por-picker__chip {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 8px;
+  margin: 0;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 2px;
+}
+
+.por-ribbon__stack--shape-style .por-picker__btn--labelled .por-shapes__chev {
+  margin-left: auto;
+}
+
+.por-shapes__pop--docked {
+  min-width: 0;
+  max-width: none;
+  max-height: none;
+  overflow: visible;
+}
+
+.por-shapes__pop--docked .por-shapes__grid {
+  grid-template-columns: repeat(6, 26px);
+}
+
+.por-shapes--docked .por-shapes__btn {
+  min-height: 22px;
+}
+
+.por-ribbon__group--collapsible.is-collapsed > .por-ribbon__collapse-btn {
+  flex-direction: column;
+  justify-content: center;
+  min-width: 60px;
+  min-height: 58px;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.por-ribbon__group--collapsible.is-collapsed > .por-ribbon__collapse-btn .fluent-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.por-shapes--docked {
+  min-width: 164px;
+}
+
+.por-shapes--docked .por-shapes__pop--docked {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Trim ~30px so the whole ribbon (Paragraph included) fits at 1440 wide. */
+.por-ribbon__stack--shape-style .por-picker__btn--labelled {
+  min-width: 116px;
+}
+
+.por-ribbon__stack--extras .por-opacity input[type="range"] {
+  width: 58px;
+}
+
+.por-ribbon__group {
+  padding-left: 3px;
+  padding-right: 3px;
+}
+
+/* 6 x 25px + gaps + padding fits the 164px docked gallery with no spill. */
+.por-shapes__pop--docked .por-shapes__grid {
+  grid-template-columns: repeat(6, 25px);
+}
+
+.por-shapes__pop--docked .por-iconbtn {
+  width: 25px;
+  height: 25px;
+  min-height: 25px;
+}

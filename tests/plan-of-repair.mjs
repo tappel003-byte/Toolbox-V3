@@ -2228,6 +2228,33 @@ await page.pdf({
 });
 check('11x17 PDF written', fs.existsSync(path.join(OUT, 'por-drawing-evidence.pdf')) && fs.statSync(path.join(OUT, 'por-drawing-evidence.pdf')).size > 800);
 
+// Ribbon layout (Nov 12, 2026): Shape Fill / Outline / Effects must not overlap, the
+// shapes gallery must show every shape, and nothing collapses at 1440 wide.
+await page.setViewport({ width: 1440, height: 900 });
+await page.goto(BASE + '#/file/por-draw/repair', { waitUntil: 'networkidle0' });
+await page.waitForSelector('.por-shell .rb-sheet');
+await new Promise((r) => setTimeout(r, 1500));
+const ribbonLayout = await page.evaluate(() => {
+  const box = (el) => { const r = el.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; };
+  const styleBtns = ['#por-fill-btn', '#por-outline-btn', '#por-effects-btn'].map((s) => document.querySelector(s));
+  const boxes = styleBtns.map((b) => (b ? box(b) : null));
+  let overlap = false;
+  for (let i = 0; i < boxes.length; i += 1) for (let j = i + 1; j < boxes.length; j += 1) {
+    if (boxes[i] && boxes[j] && boxes[i].l < boxes[j].r && boxes[j].l < boxes[i].r && boxes[i].t < boxes[j].b - 1 && boxes[j].t < boxes[i].b - 1) overlap = true;
+  }
+  const textFits = styleBtns.every((b) => { const t = b && b.querySelector('.por-picker__text'); if (!t) return false; const br = b.getBoundingClientRect(); const tr = t.getBoundingClientRect(); return tr.bottom <= br.bottom + 1 && tr.top >= br.top - 1 && t.scrollWidth <= t.clientWidth + 1; });
+  const pop = document.querySelector('#por-shapes-pop');
+  const pb = pop.getBoundingClientRect();
+  const tools = [...pop.querySelectorAll('.por-iconbtn')];
+  const insidePop = tools.every((t) => { const r = t.getBoundingClientRect(); return r.right <= pb.right + 1 && r.bottom <= pb.bottom + 1 && r.left >= pb.left - 1 && r.top >= pb.top - 1; });
+  const arrange = document.querySelector('#por-arrange-btn').getBoundingClientRect();
+  const galleryClearOfArrange = pb.right <= arrange.left + 1;
+  return { overlap, textFits, insidePop, tools: tools.length, galleryClearOfArrange, collapsed: document.querySelectorAll('.por-ribbon__group--collapsible.is-collapsed').length };
+});
+check('Shape Fill / Outline / Effects do not overlap and their labels fit', !ribbonLayout.overlap && ribbonLayout.textFits, JSON.stringify(ribbonLayout));
+check('Shapes gallery shows every shape inside its box, clear of Arrange', ribbonLayout.insidePop && ribbonLayout.tools >= 11 && ribbonLayout.galleryClearOfArrange, JSON.stringify(ribbonLayout));
+check('No ribbon group collapses at 1440 wide', ribbonLayout.collapsed === 0, JSON.stringify(ribbonLayout));
+
 await page.setViewport({ width: 390, height: 844 });
 await page.goto(BASE + '#/file/por-draw', { waitUntil: 'networkidle0' });
 await page.waitForSelector('#home-repair-top');

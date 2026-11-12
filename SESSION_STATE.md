@@ -19,7 +19,7 @@ Updated by: Cursor — IV polish done. Ball → Claude Code.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Claude Code** — re-check tip (CF section label + IV polish gap/offline stub + prior CC-fix POR/IV). Nothing stripped. Not on `main`. |
+| **Has the ball** | **Tim** — Plan of Repair ribbon polish by Claude Code on `claude/por-ribbon-polish-2ac5` (below). Not merged; Tim decides. Not on `main`. |
 | Integration tip | `5047396` (`5047396f267abcfa4504150542ff106bf15214ed`) — IV polish gap+offline; shell v468 |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
@@ -151,6 +151,20 @@ If Tim later authorizes icon/capability fixes from your findings: add or restyle
 Merged `cursor/clear-red-suites-2ac5` into integration this turn. Triage A clears: `tests/customer-file-trash.mjs` + `tests/customer-file-cross-record.mjs` (Floor Survey path). CC checked the A tip; remaining 16 red suites are still open (floor-survey / report-floor / report-highlow / sizing / sw-update-ready).
 
 ---
+
+### Claude Code: Plan of Repair ribbon polish (Nov 12, 2026) — branch `claude/por-ribbon-polish-2ac5`
+
+Look only; nothing removed. Fixes the five defects in the CC re-check of `089869b`:
+1. Shape Fill / Outline / Effects no longer overlap: the mini-toolbar rule `.por-picker__btn--shape`
+   (column, 36px) was also hitting the ribbon's labelled buttons. Now one row each, with a colour chip.
+2. Shapes gallery is 6 columns x 2 rows, every shape visible inside its box, clear of Arrange.
+3. At 1440 wide nothing collapses (Paragraph stays open). At 1366 only Paragraph collapses.
+4. Collapsed groups at 1280 show icon + name + chevron instead of a bare word over an empty band.
+5. Draw / Design / View / File tabs are still greyed placeholders: left for Tim to decide (hide or build).
+Shell `v469`. `tests/plan-of-repair.mjs` 96/96 (3 new layout checks). Fluent icons ARE vendored
+(`js/vendor/fluent-icons.js`); CC's earlier note that they were not was wrong.
+Stale test, not mine: `tests/tls-workspace-smoke.mjs` still clicks the Job Walk tile that Initial Visit
+removed from the TLS home; it fails on the integration tip.
 
 ## Sync Worker deploy — done Nov 10, 2026
 

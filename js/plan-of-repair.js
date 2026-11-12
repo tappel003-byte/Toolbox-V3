@@ -912,7 +912,12 @@
         btn.setAttribute('aria-expanded', 'false');
         btn.setAttribute('aria-label', label);
         btn.title = label;
-        btn.innerHTML = label + ' <span class="por-shapes__chev">▾</span>';
+        var collapseKey = group.getAttribute('data-por-collapse') || '';
+        var collapseIcon = collapseKey === 'clipboard' ? ICONS.paste
+          : collapseKey === 'font' ? ICONS.fontColor
+          : collapseKey === 'paragraph' ? ICONS.align
+          : collapseKey === 'drawing' ? ICONS.shapes : '';
+        btn.innerHTML = (collapseIcon || '') + '<span>' + label + ' <span class="por-shapes__chev">▾</span></span>';
         btn.addEventListener('click', function (ev) {
           ev.preventDefault();
           ev.stopPropagation();
