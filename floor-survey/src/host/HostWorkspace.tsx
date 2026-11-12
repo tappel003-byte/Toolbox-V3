@@ -22,7 +22,8 @@ import { SetupTab } from "@/components/tabs/SetupTab";
 import { FieldTab } from "@/components/tabs/FieldTab";
 import { ReviewTab } from "@/components/tabs/ReviewTab";
 import { TopoTab } from "@/components/tabs/TopoTab";
-import { AppTopBar } from "@/components/chrome/AppTopBar";
+import { AppTopBar, isRealSurveyDate } from "@/components/chrome/AppTopBar";
+import { SurveyDateBar } from "@/components/chrome/SurveyDateBar";
 import { ModeToggle } from "@/components/chrome/ModeToggle";
 import { DataPointsPanel } from "@/components/DataPointsPanel";
 import { StatsChip } from "@/components/chrome/StatsChip";
@@ -414,6 +415,18 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
     [handleFloorChange],
   );
 
+  /** The date the survey was taken: one place, any time (⋯ → Survey date, or the amber bar). */
+  const handleSetSurveyDate = useCallback(
+    async (isoDate: string) => {
+      if (!project || !isRealSurveyDate(isoDate)) return;
+      const next = { ...project, inspectionDate: isoDate };
+      await saveProject(next);
+      setProject(next);
+      showSaveStatus("Survey date saved", "ok");
+    },
+    [project, showSaveStatus],
+  );
+
   const handleAddCustomSurface = useCallback(async (name: string) => {
     const clean = name.trim();
     if (!clean) return;
@@ -464,6 +477,8 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
         onOpenSetup={() => setMode("setup")}
         setupMenuLabel="Boundary & exclusions"
         onOpenReview={() => setMode("review")}
+        surveyDate={project.inspectionDate || ""}
+        onSetSurveyDate={handleSetSurveyDate}
         onOpenTransitions={() => setTransitionsSheetOpen(true)}
         onOpenDiagnosticPoints={
           mode === "topo" ? () => setTopoDiagOpen(true) : undefined
@@ -477,6 +492,11 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
         saveStatus={saveStatus}
         saveTone={saveTone}
       />
+
+      {/* Survey date still empty once the first point is down: one slim line, until it is set. */}
+      {!project.inspectionDate && points.length > 0 && (
+        <SurveyDateBar onPick={(iso) => void handleSetSurveyDate(iso)} />
+      )}
 
       {/* Customer File levels. A topo boundary is drawn inside one level and is not a level. */}
       {floors.length > 1 && (

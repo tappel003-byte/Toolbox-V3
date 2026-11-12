@@ -19,7 +19,7 @@ Updated by: Cursor — iPhone maps blank-sheet fix. Ball → Tim (promote).
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — Plan of Repair draw fixes + Contour toggle by Claude Code on `claude/por-draw-contour-2ac5` (includes the ribbon polish). Ready to merge into integration when Tim asks. Not on `main`. |
+| **Has the ball** | **Tim** — pill gestures + survey date + Plan of Repair work by Claude Code on `claude/por-draw-contour-2ac5`. Ready to merge into integration when Tim asks. Not on `main`. |
 | Integration tip | `936f556` (`936f556c3ea8f58fd94ca947e2485aa1817c67c6`) — iPhone maps: scheme; shell v471 |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
@@ -189,6 +189,21 @@ Follow-up on the three loose ends (Tim: "fix the rest of those three issues"):
 - **`tests/tls-workspace-smoke.mjs`:** updated for Initial Visit (Job Walk no longer exists as a TLS tile). It now checks there is no
   Job Walk / Initial Visit tile on the TLS home, reaches the same capture screen by route, and checks it is titled Initial Visit. 35/35.
 `tests/plan-of-repair.mjs` now **108/108**.
+
+### Claude Code: H/L/Δ pill gestures + survey date (Nov 12, 2026) — same branch `claude/por-draw-contour-2ac5`
+
+Tim: "go, fix the pill and add the survey date ... I'm working on a report and I need the date in it."
+- **Pill / Legend (`js/report-builder.js`):** reproduced with a real mouse first (slow press opened the −/+ box and killed the drag; plain
+  click did nothing; zoomed slide would not move it). Now: mouse/pen drag moves at once, a plain click opens the −/+ box and a second click
+  closes it, touch keeps press-and-hold, and both move while zoomed. `tests/report-pill-gesture.mjs` 16/16 (was 9/16).
+- **Survey date (Floor Survey source `floor-survey/src`, bundle rebuilt into `js/floor-survey/`):** ⋯ → **Survey date** is the first item in
+  every mode (value or amber "not set", date field + Today); amber dot on ⋯ while empty; slim "Survey date not set" bar once the first point
+  is down, until a date is set; nothing sets today silently; typed dates commit when typing pauses. The report title block reads it live
+  (checked: "SURVEY DATE September 30, 2026"). `tests/survey-date-menu.mjs` 12/12. Recorded in `DECISIONS.md` as the capture-app rules require.
+  A rebuild of the unmodified source reproduced the committed bundle byte for byte before I changed anything.
+- **Not changed:** the "Inspection date" control on Boundary & exclusions; `tests/floor-survey-date.mjs` still 10/11 (its reopen check
+  looks for that control on a screen that no longer shows it once a boundary exists; the new ⋯ item is the way in after the fact).
+- **Next for Tim:** merge into integration when asked. Customer Files list ••• could also get a "Survey date" item (not built).
 
 ## Sync Worker deploy — done Nov 10, 2026
 

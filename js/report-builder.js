@@ -3706,6 +3706,9 @@
       if (!chromeSizeHud) return;
       var t = event.target;
       if (t && t.closest && t.closest('[data-accessory-size-hud]')) return;
+      // A press on the same box that opened it toggles it (the box's own handler closes it).
+      var sameBox = t && t.closest && t.closest('[data-rb-floor-kind="' + chromeSizeHud.kind + '"]');
+      if (sameBox) return;
       dismissChromeSizeHud();
     }, true);
 
@@ -7541,7 +7544,9 @@
       // The x is a button, not a grab handle.
       if (event.target.closest('[data-rb-floor-overview]')) return;
       // Zoomed: prefer canvas scroll over frame-body drag; resize grips still work.
-      if (!resize && root.querySelector('.rb-stage--zoomed')) return;
+      // The small legend / H/L/Δ boxes are not "the canvas": they move zoomed too.
+      if (!resize && dragKind !== 'legend' && dragKind !== 'pill' &&
+          root.querySelector('.rb-stage--zoomed')) return;
       var stage = stageRect('[data-rb-floor-stage]');
       if (!stage || stage.width < 8 || stage.height < 8) return;
       event.preventDefault();
@@ -7565,7 +7570,14 @@
       }
       // Legend / H/L/Δ: press-and-move to place; press-and-hold opens size −/+.
       // Corner resize stays immediate. Topo / overview keep immediate drag.
-      var holdForSize = !resize && (kind === 'legend' || kind === 'pill');
+      // Mouse and pen: a drag moves the box at once (a slow press included), a plain
+      // click opens the size box and a second click closes it. Touch has no click
+      // that is not also a press, so it keeps press-and-hold.
+      var isAccessory = !resize && (kind === 'legend' || kind === 'pill');
+      var isTouchPress = event.pointerType === 'touch';
+      var holdForSize = isAccessory && isTouchPress;
+      var clickForSize = isAccessory && !isTouchPress;
+      var hudWasOpen = !!(chromeSizeHud && chromeSizeHud.kind === kind);
       dismissChromeSizeHud();
       clearFloorHold();
       floorDrag = {
@@ -7582,6 +7594,9 @@
         layout: layout,
         viewFrame: viewFrame,
         holdForSize: holdForSize,
+        clickForSize: clickForSize,
+        clickMoved: false,
+        hudWasOpen: hudWasOpen,
         active: !holdForSize,
         pointerId: event.pointerId,
       };
@@ -7716,6 +7731,14 @@
       if (!floorDrag) return;
       var current = activePage();
       if (!current || current.type !== 'floor') return;
+      // Mouse click-vs-drag: up to 4 screen pixels of jitter is still a click.
+      if (floorDrag.clickForSize && !floorDrag.clickMoved) {
+        if (Math.hypot(event.clientX - floorDrag.startX, event.clientY - floorDrag.startY) > 4) {
+          floorDrag.clickMoved = true;
+        } else {
+          return;
+        }
+      }
       // Accessory hold-vs-drag uses SCREEN pixels so zoom does not change feel.
       if (floorDrag.holdForSize && !floorDrag.active) {
         var finger = Math.hypot(
@@ -7937,6 +7960,23 @@
         return;
       }
       if (!floorDrag) return;
+      // Mouse click on the legend / pill that never moved: size box on (or off, when
+      // it was already open for this box). No position write, no dirty.
+      if (floorDrag.clickForSize && !floorDrag.clickMoved) {
+        var clickKind = floorDrag.kind;
+        var clickX = floorDrag.startX;
+        var clickY = floorDrag.startY;
+        var reopen = !floorDrag.hudWasOpen;
+        try {
+          if (floorDrag.grabbed && typeof floorDrag.grabbed.releasePointerCapture === 'function' &&
+              floorDrag.pointerId != null) {
+            floorDrag.grabbed.releasePointerCapture(floorDrag.pointerId);
+          }
+        } catch (_) {}
+        floorDrag = null;
+        if (reopen) showChromeSizeHud(clickKind, clickX, clickY);
+        return;
+      }
       // Hold armed but never moved: no position write, no dirty.
       if (floorDrag.holdForSize && !floorDrag.active) {
         floorDrag = null;

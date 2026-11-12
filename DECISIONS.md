@@ -619,6 +619,33 @@ Found by tracing Check In and Check Out end to end after a Check Out failed repe
 
 ---
 
+## Survey date: always reachable, never silent (DECIDED Tim, Nov 12, 2026)
+
+Tim: "Being able to add a survey date and making it very easy to do that is a very important thing... if we miss it in the field... I think I've probably missed it in the field numerous times... I'm working on a report and I need the date in it." The date could only be set on the Boundary & exclusions screen and was not shown again once a boundary existed, so it could not be added afterwards.
+
+Capture-app changes named for approval (`floor-survey/AGENTS.md`) and approved by Tim in the same message:
+
+- **⋯ → Survey date is the first item**, in every mode. It shows the saved date, or "not set" in amber, and opens a date field with a **Today** button. Any time, after the fact included.
+- **An amber dot on ⋯** while the date is empty, so the way to set it is visible without opening anything.
+- **One slim bar under the top bar — "Survey date not set" with a date field and Today — once the first point is down and the date is still empty.** It does not block capture and has no dismiss: it goes when a date is set. It is not shown before the first point (protect the canvas).
+- **Nothing sets "today" silently.** Opening a survey never fills the date; Today is a tap. (Unchanged: `tests/floor-survey-date.mjs`, "Brand-new survey has NO silent today date".)
+- **A date typed by hand is saved after typing pauses,** and half-typed years are ignored; a date picked from the calendar lands at once.
+- Unchanged: the "Inspection date" control on Boundary & exclusions. It is the same value, `floorSurvey.inspectionDate`; the report title block reads it live.
+
+Tests: `tests/survey-date-menu.mjs` (⋯ item, amber flag, bar, typed dates, change afterwards, Today, and the date appearing on the report sheet).
+
+## Report Builder: Legend and H/L/Δ pill gestures (DECIDED Tim, Nov 12, 2026)
+
+Tim: "When I click it, that opens up and I can't move it around. Sometimes you can't move it around, sometimes you can, sometimes that little plus or minus shows up." Cause: press-and-hold for the size − / + box cancelled the drag, so a slow mouse press opened the box instead of moving the piece, a plain click did nothing, and a zoomed slide switched dragging off.
+
+- **Mouse and pen:** a drag moves the piece at once, a slow press included. A plain click (about 4 px of jitter allowed) opens the size − / + box; clicking the same piece again closes it.
+- **Touch keeps press-and-hold** for the size box.
+- **The Legend and the H/L/Δ pill move while the slide is zoomed.**
+
+Tests: `tests/report-pill-gesture.mjs`.
+
+---
+
 ## Closeout
 
 - The final PDF is the durable closeout record.

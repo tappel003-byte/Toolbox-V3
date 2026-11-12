@@ -16,6 +16,10 @@ type Props = {
   /** Topo: exclude points from contour math (session-only). Parked in ⋯ — not a corner pill. */
   onOpenDiagnosticPoints?: () => void;
   
+  /** ISO date the survey was taken ("" when never set). Shown first in ⋯ so it is never buried. */
+  surveyDate?: string;
+  /** When given, ⋯ offers "Survey date" at any time and flags it while it is empty. */
+  onSetSurveyDate?: (isoDate: string) => void | Promise<void>;
   undoEnabled?: boolean;
   redoEnabled?: boolean;
   onSave?: () => void | Promise<void>;
@@ -46,6 +50,8 @@ export function AppTopBar({
   onOpenTransitions,
   onOpen3D,
   onOpenDiagnosticPoints,
+  surveyDate = "",
+  onSetSurveyDate,
 
   undoEnabled = true,
   redoEnabled = true,
@@ -197,17 +203,33 @@ export function AppTopBar({
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
-            className="inline-flex items-center justify-center h-8 w-8 rounded text-muted-foreground hover:text-foreground hover:bg-accent"
+            className="relative inline-flex items-center justify-center h-8 w-8 rounded text-muted-foreground hover:text-foreground hover:bg-accent"
             aria-label="More"
             aria-expanded={menuOpen}
+            data-survey-date-missing={onSetSurveyDate && !surveyDate ? "true" : undefined}
           >
             <MoreHorizontal className="h-4 w-4" />
+            {onSetSurveyDate && !surveyDate && (
+              <span
+                aria-hidden="true"
+                className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-amber-500 ring-1 ring-background"
+              />
+            )}
           </button>
           {menuOpen && (
             <div
               role="menu"
               className="absolute right-0 top-full mt-1 min-w-[10rem] rounded-md border bg-popover shadow-lg z-50 py-1 text-sm"
             >
+              {onSetSurveyDate && (
+                <SurveyDateMenuItem
+                  surveyDate={surveyDate}
+                  onPick={(iso) => {
+                    setMenuOpen(false);
+                    void onSetSurveyDate(iso);
+                  }}
+                />
+              )}
               <MenuItem
                 label="Review"
                 onClick={() => {
@@ -286,5 +308,86 @@ function MenuItem({
     >
       {label}
     </button>
+  );
+}
+
+export function isRealSurveyDate(v: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const year = Number(v.slice(0, 4));
+  return year >= 1990 && year <= 2100;
+}
+
+function todayIso(): string {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function prettyDate(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+/**
+ * First item in ⋯: the date the survey was taken. Tim, Nov 12, 2026: it has been
+ * missed in the field and could not be added afterwards, so it is always here,
+ * says "not set" in amber while empty, and takes a date (or "Today") in one step.
+ */
+function SurveyDateMenuItem({
+  surveyDate,
+  onPick,
+}: {
+  surveyDate: string;
+  onPick: (isoDate: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const pending = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (pending.current) window.clearTimeout(pending.current);
+  }, []);
+  return (
+    <div role="none" data-fs-survey-date-menu>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="w-full text-left px-3 py-1.5 hover:bg-accent flex items-center justify-between gap-3"
+      >
+        <span>Survey date</span>
+        <span className={surveyDate ? "text-xs text-muted-foreground" : "text-xs font-semibold text-amber-700"}>
+          {surveyDate ? prettyDate(surveyDate) : "not set"}
+        </span>
+      </button>
+      {open && (
+        <div className="flex items-center gap-2 px-3 pb-2">
+          <input
+            id="fs-survey-date-menu"
+            type="date"
+            aria-label="Survey date"
+            className="h-8 min-w-[9.5rem] rounded border bg-background px-1 text-xs"
+            defaultValue={surveyDate}
+            onChange={(e) => {
+              // Typing passes through half-typed dates (year 0002, month 1 before 10).
+              // Commit once the field has been still for a moment; a picked date lands at once.
+              const v = e.target.value;
+              if (pending.current) window.clearTimeout(pending.current);
+              if (!isRealSurveyDate(v)) return;
+              pending.current = window.setTimeout(() => onPick(v), 900);
+            }}
+          />
+          <button
+            type="button"
+            className="h-8 rounded border px-2 text-xs font-semibold hover:bg-accent"
+            onClick={() => onPick(todayIso())}
+          >
+            Today
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
