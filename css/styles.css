@@ -2249,6 +2249,19 @@ button.local-trash-recovery[hidden] {
   overflow-wrap: anywhere;
 }
 
+.cabinet-row__address.is-maps-link,
+.cabinet-index__address.is-maps-link {
+  display: inline-block;
+  max-width: 100%;
+  padding: 4px 0;
+  color: #0b4a8f;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .cabinet-row__location {
   display: block;
   margin-top: 5px;

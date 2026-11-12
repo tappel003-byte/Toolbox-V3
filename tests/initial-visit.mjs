@@ -495,6 +495,51 @@ check('Visit schedule stays in main column so phone can see it',
   scheduleOnList.scheduleDisplay !== 'none' && scheduleOnList.metaDisplay === 'none',
   JSON.stringify(scheduleOnList));
 
+// Address tap → maps chooser (same as TLS); must not navigate into the visit.
+const mapsFromList = await page.evaluate((id) => {
+  try { localStorage.removeItem('toolbox.mapsPreference'); } catch (_) {}
+  const row = document.querySelector('#cabinet-visits-list [data-customer-file-id="' + id + '"]');
+  const addr = row && row.querySelector('.cabinet-row__address.is-maps-link');
+  if (!addr) return { hasLink: false };
+  addr.click();
+  const choice = document.querySelector('#maps-choice');
+  return {
+    hasLink: true,
+    choiceOpen: !!(choice && choice.querySelector('[data-maps="apple"]') && choice.querySelector('[data-maps="google"]')),
+    hash: location.hash,
+  };
+}, visitId);
+check('Visits address opens maps chooser without opening the file',
+  mapsFromList.hasLink && mapsFromList.choiceOpen &&
+  (mapsFromList.hash === '#/' || mapsFromList.hash === ''),
+  JSON.stringify(mapsFromList));
+await page.evaluate(() => {
+  const choice = document.querySelector('#maps-choice');
+  if (choice && choice.parentNode) choice.parentNode.removeChild(choice);
+});
+
+const mapsFromJob = await page.evaluate(() => {
+  try { localStorage.removeItem('toolbox.mapsPreference'); } catch (_) {}
+  const row = document.querySelector('#cabinet-list [data-customer-file-id="cf-ordinary-1"]');
+  const addr = row && row.querySelector('.cabinet-row__address.is-maps-link');
+  if (!addr) return { hasLink: false };
+  addr.click();
+  const choice = document.querySelector('#maps-choice');
+  return {
+    hasLink: true,
+    choiceOpen: !!(choice && choice.querySelector('[data-maps="apple"]')),
+    hash: location.hash,
+  };
+});
+check('Customer Files address opens maps chooser',
+  mapsFromJob.hasLink && mapsFromJob.choiceOpen &&
+  (mapsFromJob.hash === '#/' || mapsFromJob.hash === ''),
+  JSON.stringify(mapsFromJob));
+await page.evaluate(() => {
+  const choice = document.querySelector('#maps-choice');
+  if (choice && choice.parentNode) choice.parentNode.removeChild(choice);
+});
+
 await page.screenshot({ path: `${OUT}/initial-visit-visits-list-phone.png`, fullPage: true });
 
 // File Cabinet Visits group — mock browseCabinet so paintList shows headings.
