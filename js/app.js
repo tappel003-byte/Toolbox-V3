@@ -235,6 +235,28 @@
     });
   }
 
+  /** Tap address → same Apple/Google chooser as TLS (must stay sync with the tap). */
+  function bindAddressMapsTap(el, address) {
+    const dest = String(address || '').trim();
+    if (!el || !dest) return;
+    el.classList.add('is-maps-link');
+    el.setAttribute('role', 'link');
+    el.tabIndex = 0;
+    el.title = 'Open directions';
+    el.setAttribute('aria-label', 'Open directions to ' + dest);
+    function openMaps(event) {
+      // Capture + stop so the parent cabinet-row <button> does not open the file.
+      event.preventDefault();
+      event.stopPropagation();
+      openPropertyDirections(dest);
+    }
+    el.addEventListener('click', openMaps, true);
+    el.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      openMaps(event);
+    });
+  }
+
   function formatUpdated(iso) {
     if (!iso) return '';
     const d = new Date(iso);
@@ -495,14 +517,44 @@
     }
   }
 
+  function isIosDevice() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent || '') ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+
+  /**
+   * Open directions in the chosen maps app.
+   * On iPhone, https://maps.apple.com + window.open(_blank) hands off to Maps
+   * but leaves an empty Safari sheet that covers Toolbox on return (Tim, Nov 12).
+   * Use the maps: / comgooglemaps: schemes there so the OS opens the app only.
+   */
   function openMapsUrl(kind, address) {
     const encoded = encodeURIComponent(String(address || '').trim());
     if (!encoded) return;
+    const ios = isIosDevice();
+    let url;
+    let newTab = false;
     if (kind === 'apple') {
-      window.open('https://maps.apple.com/?daddr=' + encoded, '_blank', 'noopener');
+      url = ios
+        ? ('maps:?daddr=' + encoded)
+        : ('https://maps.apple.com/?daddr=' + encoded);
+      newTab = !ios;
+    } else if (ios) {
+      url = 'comgooglemaps://?daddr=' + encoded + '&directionsmode=driving';
+    } else {
+      url = 'https://www.google.com/maps/dir/?api=1&destination=' + encoded;
+      newTab = true;
+    }
+    if (newTab) {
+      window.open(url, '_blank', 'noopener');
       return;
     }
-    window.open('https://www.google.com/maps/dir/?api=1&destination=' + encoded, '_blank', 'noopener');
+    const link = document.createElement('a');
+    link.href = url;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 
   function openVisitNotesReader(record) {
@@ -587,7 +639,7 @@
     document.body.appendChild(overlay);
   }
 
-  /** Must run inside the user tap — no async before window.open (iPhone Safari). */
+  /** Must run inside the user tap — no async before opening maps (iPhone Safari). */
   function openPropertyDirections(address) {
     const dest = String(address || '').trim();
     if (!dest) return;
@@ -1224,6 +1276,7 @@
     const address = document.createElement('span');
     address.className = 'cabinet-index__address';
     address.textContent = cabinetIndexAddress(entry);
+    bindAddressMapsTap(address, entry.propertyAddress);
 
     const meta = document.createElement('span');
     meta.className = 'cabinet-index__meta';
@@ -1610,7 +1663,8 @@
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'cabinet-row';
-    row.addEventListener('click', function () {
+    row.addEventListener('click', function (event) {
+      if (event.target.closest('.is-maps-link')) return;
       if (isVisitRecord(record)) {
         window.location.hash = '#/file/' + encodeURIComponent(record.id) + '/job-walk';
         return;
@@ -1628,6 +1682,7 @@
     const addr = document.createElement('span');
     addr.className = 'cabinet-row__address';
     fillAddress(addr, record);
+    bindAddressMapsTap(addr, record.propertyAddress);
 
     main.appendChild(name);
     main.appendChild(addr);

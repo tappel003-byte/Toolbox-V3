@@ -10,8 +10,8 @@ This does **not** replace authority docs. Read order for rules and vision:
 4. `DECISIONS.md`
 5. **This file** — current working picture
 
-Last updated: **Nov 11, 2026** (America/Denver)  
-Updated by: Cursor — IV polish done. Ball → Claude Code.
+Last updated: **Nov 12, 2026** (America/Denver)  
+Updated by: Cursor — iPhone maps blank-sheet fix. Ball → Tim (promote).
 
 ---
 
@@ -20,11 +20,11 @@ Updated by: Cursor — IV polish done. Ball → Claude Code.
 | Field | Value |
 |-------|--------|
 | **Has the ball** | **Tim** — Plan of Repair ribbon polish by Claude Code on `claude/por-ribbon-polish-2ac5` (below). Not merged; Tim decides. Not on `main`. |
-| Integration tip | `5047396` (`5047396f267abcfa4504150542ff106bf15214ed`) — IV polish gap+offline; shell v468 |
+| Integration tip | `936f556` (`936f556c3ea8f58fd94ca947e2485aa1817c67c6`) — iPhone maps: scheme; shell v471 |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Shell | `toolbox-shell-v468` |
-| Not done | Do not merge to `main`. Do not deploy Sync Worker. Do not promote. **Do not strip POR or Report Builder controls or icons.** |
+| Shell | `toolbox-shell-v471` |
+| Not done | Do not merge to `main` unless Tim promotes. Do not deploy Sync Worker. **Do not strip POR or Report Builder controls or icons.** |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 

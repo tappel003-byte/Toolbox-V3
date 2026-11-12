@@ -495,6 +495,114 @@ check('Visit schedule stays in main column so phone can see it',
   scheduleOnList.scheduleDisplay !== 'none' && scheduleOnList.metaDisplay === 'none',
   JSON.stringify(scheduleOnList));
 
+// Address tap → maps chooser (same as TLS); must not navigate into the visit.
+const mapsFromList = await page.evaluate((id) => {
+  try { localStorage.removeItem('toolbox.mapsPreference'); } catch (_) {}
+  const row = document.querySelector('#cabinet-visits-list [data-customer-file-id="' + id + '"]');
+  const addr = row && row.querySelector('.cabinet-row__address.is-maps-link');
+  if (!addr) return { hasLink: false };
+  addr.click();
+  const choice = document.querySelector('#maps-choice');
+  return {
+    hasLink: true,
+    choiceOpen: !!(choice && choice.querySelector('[data-maps="apple"]') && choice.querySelector('[data-maps="google"]')),
+    hash: location.hash,
+  };
+}, visitId);
+check('Visits address opens maps chooser without opening the file',
+  mapsFromList.hasLink && mapsFromList.choiceOpen &&
+  (mapsFromList.hash === '#/' || mapsFromList.hash === ''),
+  JSON.stringify(mapsFromList));
+await page.evaluate(() => {
+  const choice = document.querySelector('#maps-choice');
+  if (choice && choice.parentNode) choice.parentNode.removeChild(choice);
+});
+
+const mapsFromJob = await page.evaluate(() => {
+  try { localStorage.removeItem('toolbox.mapsPreference'); } catch (_) {}
+  const row = document.querySelector('#cabinet-list [data-customer-file-id="cf-ordinary-1"]');
+  const addr = row && row.querySelector('.cabinet-row__address.is-maps-link');
+  if (!addr) return { hasLink: false };
+  addr.click();
+  const choice = document.querySelector('#maps-choice');
+  return {
+    hasLink: true,
+    choiceOpen: !!(choice && choice.querySelector('[data-maps="apple"]')),
+    hash: location.hash,
+  };
+});
+check('Customer Files address opens maps chooser',
+  mapsFromJob.hasLink && mapsFromJob.choiceOpen &&
+  (mapsFromJob.hash === '#/' || mapsFromJob.hash === ''),
+  JSON.stringify(mapsFromJob));
+await page.evaluate(() => {
+  const choice = document.querySelector('#maps-choice');
+  if (choice && choice.parentNode) choice.parentNode.removeChild(choice);
+});
+
+// Address maps hit target must stay text-sized — full-row stretch steals open taps.
+const mapsHit = await page.evaluate((id) => {
+  const shell = document.querySelector('#cabinet-visits-list [data-customer-file-id="' + id + '"]');
+  const row = shell && shell.querySelector('.cabinet-row');
+  const addr = shell && shell.querySelector('.cabinet-row__address.is-maps-link');
+  const name = shell && shell.querySelector('.cabinet-row__name');
+  if (!row || !addr || !name) return { ok: false };
+  const rowW = row.getBoundingClientRect().width;
+  const addrW = addr.getBoundingClientRect().width;
+  try { localStorage.removeItem('toolbox.mapsPreference'); } catch (_) {}
+  name.click();
+  return {
+    ok: true,
+    rowW,
+    addrW,
+    tight: addrW < rowW * 0.85,
+    hashAfterName: location.hash,
+    mapsAfterName: !!document.querySelector('#maps-choice'),
+  };
+}, visitId);
+check('Address maps hit target stays narrower than the row',
+  mapsHit.ok && mapsHit.tight,
+  JSON.stringify(mapsHit));
+check('Name tap opens the visit, not maps',
+  mapsHit.ok && !mapsHit.mapsAfterName &&
+  String(mapsHit.hashAfterName || '').indexOf('/job-walk') !== -1,
+  JSON.stringify(mapsHit));
+
+await page.goto(`${base}#/`, { waitUntil: 'networkidle0' });
+await page.waitForSelector('#cabinet-list .cabinet-row__address.is-maps-link, #cabinet-visits-list .cabinet-row__address.is-maps-link');
+
+// iPhone: Apple Maps must use maps: (not https + _blank) or Safari leaves a blank sheet.
+const iosMapsScheme = await page.evaluate((id) => {
+  try { localStorage.setItem('toolbox.mapsPreference', 'apple'); } catch (_) {}
+  Object.defineProperty(navigator, 'userAgent', {
+    configurable: true,
+    get: function () { return 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15'; },
+  });
+  let href = '';
+  const proto = HTMLAnchorElement.prototype;
+  const prev = proto.click;
+  proto.click = function () {
+    href = this.getAttribute('href') || this.href || '';
+  };
+  try {
+    const row = document.querySelector('#cabinet-list [data-customer-file-id="cf-ordinary-1"]') ||
+      document.querySelector('#cabinet-visits-list [data-customer-file-id="' + id + '"]');
+    const addr = row && row.querySelector('.cabinet-row__address.is-maps-link');
+    if (!addr) return { hasLink: false, href };
+    addr.click();
+    return { hasLink: true, href: href };
+  } finally {
+    proto.click = prev;
+    try { localStorage.removeItem('toolbox.mapsPreference'); } catch (_) {}
+  }
+}, visitId);
+check('iPhone Apple Maps uses maps: scheme (no blank Safari sheet)',
+  iosMapsScheme.hasLink && /^maps:\?daddr=/.test(iosMapsScheme.href),
+  JSON.stringify(iosMapsScheme));
+
+await page.goto(`${base}#/`, { waitUntil: 'networkidle0' });
+await page.waitForSelector('#cabinet-visits-list');
+
 await page.screenshot({ path: `${OUT}/initial-visit-visits-list-phone.png`, fullPage: true });
 
 // File Cabinet Visits group — mock browseCabinet so paintList shows headings.
