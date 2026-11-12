@@ -2285,10 +2285,11 @@
     return canvases.length + ' levels · ' + withPlan.length + ' with plans';
   }
 
-  function tlsAppTileHtml(key, label, detail) {
+  function tlsAppTileHtml(key, label, detail, icon) {
+    const src = icon || 'brand/tls-foundations.jpg';
     return (
       '<button type="button" class="cf-app-btn" data-tls-app="' + key + '" aria-label="' + label + '">' +
-      '  <span class="cf-app-btn__art"><img src="brand/tls-foundations.jpg" alt="" loading="eager"></span>' +
+      '  <span class="cf-app-btn__art"><img src="' + src + '" alt="" loading="eager"></span>' +
       '  <span class="cf-app-btn__copy">' +
       '    <span class="cf-app-btn__name">' + label + '</span>' +
       '    <span class="cf-app-btn__sub">' + detail + '</span>' +
@@ -2350,7 +2351,12 @@
       '  </div>' +
       '  <div class="cf-home__apps" id="home-apps">' +
       (tls
-        ? tlsAppTileHtml('repair', 'Plan of Repair', 'Flexible desktop drawing for preliminary repair sheets')
+        ? tlsAppTileHtml(
+          'repair',
+          'Plan of Repair',
+          'Flexible desktop drawing for preliminary repair sheets',
+          'icons/Plan%20of%20Repair.png'
+        )
         : (
           appTileHtml('distress') +
           appTileHtml('floor') +

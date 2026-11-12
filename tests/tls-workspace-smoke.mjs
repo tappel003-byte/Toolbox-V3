@@ -78,9 +78,19 @@ await page.waitForSelector('.cf-home--tls');
 check('TLS side class on body', await page.evaluate(() => document.body.classList.contains('tls-side')));
 check('TLS Job Walk card', !!(await page.$('[data-tls-app="job-walk"]')));
 check('TLS Plan of Repair card', !!(await page.$('[data-tls-app="repair"]')));
+const porIcon = await page.$eval(
+  '[data-tls-app="repair"] .cf-app-btn__art img',
+  (img) => img.getAttribute('src') || ''
+);
+check(
+  'TLS Plan of Repair workspace icon',
+  /Plan%20of%20Repair\.png|Plan of Repair\.png/.test(porIcon),
+  porIcon
+);
 check('Directions visible with address', await page.$eval('#home-directions', (el) => !el.hidden));
 
 await page.screenshot({ path: `${OUT}/tls-home.png`, fullPage: true });
+await page.screenshot({ path: `${OUT}/tls-por-workspace-icon.png` });
 
 await page.click('[data-tls-app="job-walk"]');
 await page.waitForSelector('.jw-shell');
