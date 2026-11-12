@@ -20,7 +20,7 @@ Updated by: Cursor — editable visit notes. Ball → Tim (promote).
 | Field | Value |
 |-------|--------|
 | **Has the ball** | **Tim** — tip ready to promote. Editable visit notes on tip. Not merged to `main` by the agent. |
-| Integration tip | `46df5be` (`46df5beddeffbf227e631e08a4285cc4756f18f2`) — editable visit notes; shell v472 |
+| Integration tip | `ecaea0a` (`ecaea0a85db9cfd2a25683a34939621bc068a3cb`) — editable visit notes; shell v472 |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Shell | `toolbox-shell-v472` |
