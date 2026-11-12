@@ -235,6 +235,28 @@
     });
   }
 
+  /** Tap address → same Apple/Google chooser as TLS (must stay sync with the tap). */
+  function bindAddressMapsTap(el, address) {
+    const dest = String(address || '').trim();
+    if (!el || !dest) return;
+    el.classList.add('is-maps-link');
+    el.setAttribute('role', 'link');
+    el.tabIndex = 0;
+    el.title = 'Open directions';
+    el.setAttribute('aria-label', 'Open directions to ' + dest);
+    function openMaps(event) {
+      // Capture + stop so the parent cabinet-row <button> does not open the file.
+      event.preventDefault();
+      event.stopPropagation();
+      openPropertyDirections(dest);
+    }
+    el.addEventListener('click', openMaps, true);
+    el.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      openMaps(event);
+    });
+  }
+
   function formatUpdated(iso) {
     if (!iso) return '';
     const d = new Date(iso);
@@ -1224,6 +1246,7 @@
     const address = document.createElement('span');
     address.className = 'cabinet-index__address';
     address.textContent = cabinetIndexAddress(entry);
+    bindAddressMapsTap(address, entry.propertyAddress);
 
     const meta = document.createElement('span');
     meta.className = 'cabinet-index__meta';
@@ -1610,7 +1633,8 @@
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'cabinet-row';
-    row.addEventListener('click', function () {
+    row.addEventListener('click', function (event) {
+      if (event.target.closest('.is-maps-link')) return;
       if (isVisitRecord(record)) {
         window.location.hash = '#/file/' + encodeURIComponent(record.id) + '/job-walk';
         return;
@@ -1628,6 +1652,7 @@
     const addr = document.createElement('span');
     addr.className = 'cabinet-row__address';
     fillAddress(addr, record);
+    bindAddressMapsTap(addr, record.propertyAddress);
 
     main.appendChild(name);
     main.appendChild(addr);
