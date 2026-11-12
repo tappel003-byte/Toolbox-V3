@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 11, 2026** (America/Denver)  
-Updated by: Cursor — IV polish (Visits gap + offline stub). Ball stays Cursor.
+Updated by: Cursor — IV polish done. Ball → Claude Code.
 
 ---
 
@@ -19,7 +19,7 @@ Updated by: Cursor — IV polish (Visits gap + offline stub). Ball stays Cursor.
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Cursor** — Tim handed the ball back. Waiting on Tim / next build ask. Not on `main`. |
+| **Has the ball** | **Claude Code** — re-check tip (CF section label + IV polish gap/offline stub + prior CC-fix POR/IV). Nothing stripped. Not on `main`. |
 | Integration tip | `5047396` (`5047396f267abcfa4504150542ff106bf15214ed`) — IV polish gap+offline; shell v468 |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
