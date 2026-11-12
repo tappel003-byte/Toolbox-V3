@@ -600,12 +600,14 @@
         var when = note.at ? new Date(note.at).toLocaleString() : '';
         head.textContent = who + (when ? ' · ' + when : '');
         row.appendChild(head);
-        if (note.text) {
-          var body = document.createElement('p');
-          body.className = 'jw-note__text';
-          body.textContent = note.text;
-          row.appendChild(body);
-        }
+        // Editable so Tim can copy out → organize elsewhere → paste back.
+        var body = document.createElement('textarea');
+        body.className = 'jw-note__text jw-note__edit';
+        body.rows = Math.min(12, Math.max(3, String(note.text || '').split('\n').length + 1));
+        body.value = note.text || '';
+        body.setAttribute('aria-label', 'Visit note text');
+        body.disabled = !!state.readOnly;
+        row.appendChild(body);
         if (note.audioId) {
           var audio = document.createElement('audio');
           audio.controls = true;
@@ -618,7 +620,27 @@
           }).catch(function () {});
           row.appendChild(audio);
         }
-        row.appendChild(makeDeleteButton(
+        var noteActions = document.createElement('div');
+        noteActions.className = 'jw-note__actions';
+        if (!state.readOnly) {
+          var saveBtn = document.createElement('button');
+          saveBtn.type = 'button';
+          saveBtn.className = 'btn btn--secondary jw-note__save';
+          saveBtn.textContent = 'Save';
+          saveBtn.addEventListener('click', function () {
+            var list = ensureDistress(state.record).jobWalk.notes;
+            var idx = list.findIndex(function (entry) {
+              return entry && entry.id === note.id;
+            });
+            if (idx < 0) return;
+            list[idx].text = body.value;
+            persist().then(function () {
+              setStatus('Note saved');
+            });
+          });
+          noteActions.appendChild(saveBtn);
+        }
+        noteActions.appendChild(makeDeleteButton(
           note.audioId ? 'Delete audio note' : 'Delete note',
           function () {
             var label = note.audioId ? 'Delete this audio clip?' : 'Delete this note?';
@@ -637,6 +659,7 @@
             });
           }
         ));
+        row.appendChild(noteActions);
         notesEl.appendChild(row);
       });
     }
