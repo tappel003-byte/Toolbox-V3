@@ -335,9 +335,8 @@ try {
     window.location.hash = '#/';
     await new Promise((r) => setTimeout(r, 120));
     report.homeEyebrow = (document.querySelector('.cabinet-hero .eyebrow') || {}).textContent || '';
-    report.homeHasOnDevice = !!document.querySelector('.cabinet-section-title') &&
-      Array.from(document.querySelectorAll('.cabinet-section-title'))
-        .some((el) => /On this device/i.test(el.textContent || ''));
+    report.homeHasCustomerFilesSection = !!document.querySelector('#cabinet-jobs-title') &&
+      /Customer Files/i.test((document.querySelector('#cabinet-jobs-title') || {}).textContent || '');
     report.homeNoCloudList = !document.querySelector('#cabinet-cloud-list');
     report.homeClosedEntry = !!document.querySelector('#open-file-cabinet');
     report.homeCta = (document.querySelector('#open-file-cabinet .file-cabinet-entry__cta') || {}).textContent || '';
@@ -611,7 +610,7 @@ try {
     });
   }
 
-  check('#/ has On this device', out.homeHasOnDevice, JSON.stringify(out));
+  check('#/ has Customer Files section', out.homeHasCustomerFilesSection, JSON.stringify(out));
   check('#/ eyebrow is Toolbox', /Toolbox/i.test(out.homeEyebrow) && !/file cabinet/i.test(out.homeEyebrow), out.homeEyebrow);
   check('#/ has no cloud inventory list', out.homeNoCloudList && out.homeNoCloudRows, JSON.stringify(out));
   check('#/ has closed File Cabinet entry', out.homeClosedEntry && /Open File Cabinet/i.test(out.homeCta), out.homeCta);
@@ -637,7 +636,7 @@ try {
   check('normal File Cabinet cards have no Delete chip', out.cardDeleteButtons === 0 && out.cardDeleteLabel === false, JSON.stringify(out));
   check('File Cabinet has no separate move-to-Trash control', out.noCabinetManage, JSON.stringify(out));
   check('Check Out returns to #/ with confirmation', out.afterCheckoutHash === '#/' && /Gamma.*checked out to this device/i.test(out.afterCheckoutNotice), JSON.stringify(out));
-  check('Check Out materializes and shows under On this device', out.afterCheckoutLocal && out.afterCheckoutOnDeviceVisible && out.materializeHadComponents, JSON.stringify(out));
+  check('Check Out materializes and shows under Customer Files', out.afterCheckoutLocal && out.afterCheckoutOnDeviceVisible && out.materializeHadComponents, JSON.stringify(out));
   check('selective-local Sync leaves remote-only remote', out.syncOk && out.syncSkippedRemote && out.alphaStillRemote, JSON.stringify(out));
   check('Customer Files has no Trash destination or count', out.homeTrashButton === false && out.homeTrashCount === false, JSON.stringify(out));
   check('File Cabinet Trash has no count badge', out.trashHash === '#/cabinet/trash' && out.trashHeading && out.cabinetTrashLabel === 'Trash' && out.trashCountInHeading === false, JSON.stringify(out));

@@ -814,7 +814,7 @@
       '  <p class="cabinet-hero__lead">Open a job or create a file. Customer details and plans stay together.</p>' +
       '</section>' +
       '<p class="cabinet-notice" id="cabinet-notice" hidden></p>' +
-      '<h2 class="cabinet-section-title">On this device</h2>' +
+      '<h2 class="cabinet-section-title" id="cabinet-jobs-title">Customer Files</h2>' +
       '<div class="cabinet-list" id="cabinet-list"></div>' +
       '<h2 class="cabinet-section-title" id="cabinet-visits-title" hidden>Visits</h2>' +
       '<div class="cabinet-list" id="cabinet-visits-list" hidden></div>' +
