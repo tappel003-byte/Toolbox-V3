@@ -540,6 +540,36 @@ await page.evaluate(() => {
   if (choice && choice.parentNode) choice.parentNode.removeChild(choice);
 });
 
+// Address maps hit target must stay text-sized — full-row stretch steals open taps.
+const mapsHit = await page.evaluate((id) => {
+  const shell = document.querySelector('#cabinet-visits-list [data-customer-file-id="' + id + '"]');
+  const row = shell && shell.querySelector('.cabinet-row');
+  const addr = shell && shell.querySelector('.cabinet-row__address.is-maps-link');
+  const name = shell && shell.querySelector('.cabinet-row__name');
+  if (!row || !addr || !name) return { ok: false };
+  const rowW = row.getBoundingClientRect().width;
+  const addrW = addr.getBoundingClientRect().width;
+  try { localStorage.removeItem('toolbox.mapsPreference'); } catch (_) {}
+  name.click();
+  return {
+    ok: true,
+    rowW,
+    addrW,
+    tight: addrW < rowW * 0.85,
+    hashAfterName: location.hash,
+    mapsAfterName: !!document.querySelector('#maps-choice'),
+  };
+}, visitId);
+check('Address maps hit target stays narrower than the row',
+  mapsHit.ok && mapsHit.tight,
+  JSON.stringify(mapsHit));
+check('Name tap opens the visit, not maps',
+  mapsHit.ok && !mapsHit.mapsAfterName &&
+  String(mapsHit.hashAfterName || '').indexOf('/job-walk') !== -1,
+  JSON.stringify(mapsHit));
+await page.goto(`${base}#/`, { waitUntil: 'networkidle0' });
+await page.waitForSelector('#cabinet-visits-list');
+
 await page.screenshot({ path: `${OUT}/initial-visit-visits-list-phone.png`, fullPage: true });
 
 // File Cabinet Visits group — mock browseCabinet so paintList shows headings.
