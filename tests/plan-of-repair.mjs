@@ -199,13 +199,18 @@ await page.click('#home-side-tls');
 await page.waitForSelector('.cf-home--tls [data-tls-app="repair"]');
 const tlsHome = await page.evaluate(() => {
   const tlsBtn = document.querySelector('.cf-home--tls [data-tls-app="repair"]');
+  const img = tlsBtn && tlsBtn.querySelector('.cf-app-btn__art img');
   return {
     label: tlsBtn
       ? ((tlsBtn.querySelector('.cf-app-btn__name') || tlsBtn).textContent || '').trim()
       : '',
+    icon: img ? (img.getAttribute('src') || '') : '',
   };
 });
 check('Plan of Repair on TLS side', tlsHome.label === 'Plan of Repair', tlsHome.label);
+check('Plan of Repair uses workspace-style icon',
+  /Plan%20of%20Repair\.png|Plan of Repair\.png/.test(tlsHome.icon),
+  tlsHome.icon);
 
 await page.click('.cf-home--tls [data-tls-app="repair"]');
 await page.waitForSelector('.por-shell .rb-sheet');
