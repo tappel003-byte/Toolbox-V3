@@ -383,7 +383,7 @@ function ProjectWorkspace() {
         </div>
       )}
 
-      <main className="flex-1 min-h-0 overflow-hidden relative">
+      <main data-plan-area className="flex-1 min-h-0 overflow-hidden relative">
         {mode === "setup" && (
           <SetupTab
             project={project}

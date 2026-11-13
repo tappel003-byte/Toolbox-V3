@@ -228,6 +228,13 @@ Personal | Business with a company, a contact person and a title. See `DECISIONS
 Shell v476. Tests: `customer-type-and-new-file` 22/22, `sync-client-through-worker` 54/54, `edit-listener-isolation` 11/11.
 Not done: `sync-worker/src/job-text.js` does not read the contact title (needs a Worker deploy, which was not made).
 
+### Claude Code: Floor Survey H/L/Δ pill pins to the plan (Nov 13, 2026) — branch `claude/pill-pin-2ac5`
+
+Tim: the pill drifted when the phone/tablet turned. Position is now saved as a share of the plan area (`fx`,`fy`), so a corner stays a corner.
+See `DECISIONS.md` ("Floor Survey H/L/Δ pill keeps its place"). `StatsChip.tsx`, `HostWorkspace.tsx`, `projects.$id.tsx`, rebuilt `js/floor-survey/*`.
+Shell v477. Test: `pill-pin-rotation` 15/15. Worker source now reads the contact title in `job-text.js` (tests pass); **Worker still not deployed**
+(pending with it: Visits support in `explore.js`). Tim promotes.
+
 ## Sync Worker deploy — done Nov 10, 2026
 
 - Deployed by Claude Code with Tim's Cloudflare API token (saved as a network secret on Tim's Default cloud environment).

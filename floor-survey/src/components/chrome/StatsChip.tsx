@@ -88,6 +88,77 @@ interface Props {
   decimals?: number;
 }
 
+interface PlanArea {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The plan area the chip lives over: the <main data-plan-area> the host puts the plan in, so
+ * the chip is placed against the plan and not against the screen. Falls back to the viewport
+ * below the top chrome when there is no such element (older hosts).
+ */
+function planArea(): PlanArea {
+  if (typeof document !== "undefined") {
+    const el = document.querySelector("[data-plan-area]");
+    if (el) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) {
+        return { left: r.left, top: r.top, width: r.width, height: r.height };
+      }
+    }
+  }
+  const top = topChromeHeight();
+  return { left: 0, top, width: window.innerWidth, height: Math.max(0, window.innerHeight - top) };
+}
+
+/**
+ * Where the chip sits, as a share of the room it has to move in: 0 is hard against the left /
+ * top of the plan area and 1 is hard against the right / bottom, whatever the chip's size and
+ * whatever shape the plan area is. A corner stays a corner when the screen turns.
+ */
+interface ChipAnchor {
+  fx: number;
+  fy: number;
+}
+
+const clamp01 = (n: number) => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.5);
+
+function anchorToPx(a: ChipAnchor, area: PlanArea, w: number, h: number) {
+  const roomX = Math.max(0, area.width - w);
+  const roomY = Math.max(0, area.height - h);
+  return { x: area.left + clamp01(a.fx) * roomX, y: area.top + clamp01(a.fy) * roomY };
+}
+
+function pxToAnchor(x: number, y: number, area: PlanArea, w: number, h: number): ChipAnchor {
+  const roomX = Math.max(0, area.width - w);
+  const roomY = Math.max(0, area.height - h);
+  return {
+    fx: roomX > 0 ? clamp01((x - area.left) / roomX) : 0,
+    fy: roomY > 0 ? clamp01((y - area.top) / roomY) : 0,
+  };
+}
+
+/** Saved position: new shape {fx, fy}; an older pixel {x, y} is read once and converted. */
+function readSavedAnchor(key: string): { anchor: ChipAnchor | null; legacyPx: { x: number; y: number } | null } {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return { anchor: null, legacyPx: null };
+    const v = JSON.parse(raw);
+    if (v && typeof v.fx === "number" && typeof v.fy === "number") {
+      return { anchor: { fx: clamp01(v.fx), fy: clamp01(v.fy) }, legacyPx: null };
+    }
+    if (v && typeof v.x === "number" && typeof v.y === "number") {
+      return { anchor: null, legacyPx: { x: v.x, y: v.y } };
+    }
+  } catch {
+    /* ignore */
+  }
+  return { anchor: null, legacyPx: null };
+}
+
 /** Height in px of the top chrome (header + optional floor selector) plus a gap. */
 function topChromeHeight() {
   const header = document.querySelector("header");
@@ -108,7 +179,11 @@ function topChromeHeight() {
  * - Size is the one set in Control panel → Readings → Accessories, kept per
  *   Customer File on this device; plan pills use the same size. Tap opens a
  *   blue −/+ way above this chip (press-and-move still only moves).
- * - Position persists per storageKey and clamps to viewport on resize/rotate.
+ * - Position persists per storageKey and is pinned to the PLAN AREA: saved as a share of the room
+ *   the chip has to move in, so where you put it (a corner, the middle of an edge) is where it
+ *   stays when the screen turns or the window changes shape. Turning the screen only changes
+ *   where it is drawn; it never rewrites what was saved. (Tim, Nov 13, 2026: "I just wanted to
+ *   stay wherever I move it. If I move it to lower left corner it needs to pin.")
  */
 export function StatsChip({
   points,
@@ -130,15 +205,9 @@ export function StatsChip({
   }, [points]);
 
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) return JSON.parse(raw);
-    } catch {
-      /* ignore */
-    }
-    return null;
-  });
+  const [anchor, setAnchor] = useState<ChipAnchor | null>(() => readSavedAnchor(storageKey).anchor);
+  // Bumped whenever the plan area changes shape or place, so the chip is drawn against the new one.
+  const [, setLayoutTick] = useState(0);
 
   // Size last set for this Customer File on this device. Window resize must
   // not change it; only the Control panel stepper does.
@@ -177,36 +246,62 @@ export function StatsChip({
   const fontPx = Math.round(statsPillFont(height));
   const padPx = Math.round(statsPillPad(height));
 
-  // Default: bottom center, above the bottom pill row. Persisted position wins.
+  // The chip is drawn once it has stats and a place; until then there is nothing to measure. When it
+  // appears (and whenever its own size changes, e.g. the size − / +), redraw against its real size so
+  // a corner is exactly a corner.
+  const chipReady = !!stats && !!anchor;
   useEffect(() => {
-    if (pos) return;
+    const el = ref.current;
+    if (!el || !chipReady || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setLayoutTick((n) => n + 1));
+    ro.observe(el);
+    setLayoutTick((n) => n + 1);
+    return () => ro.disconnect();
+  }, [chipReady]);
+
+  // First placement: an older saved pixel position is converted once; otherwise the default,
+  // bottom centre above the bottom pill row. A saved position always wins.
+  useEffect(() => {
+    if (anchor) return;
     const w = ref.current?.offsetWidth ?? 180;
     const h = ref.current?.offsetHeight ?? 24;
-    const top = topChromeHeight();
-    setPos({
-      x: Math.max(8, window.innerWidth / 2 - w / 2),
-      y: Math.max(top, window.innerHeight - h - 80),
-    });
-  }, [pos]);
+    const area = planArea();
+    const legacy = readSavedAnchor(storageKey).legacyPx;
+    let next: ChipAnchor;
+    if (legacy) {
+      next = pxToAnchor(legacy.x, legacy.y, area, w, h);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+    } else {
+      const roomY = Math.max(1, area.height - h);
+      next = { fx: 0.5, fy: clamp01((area.height - h - 80) / roomY) };
+    }
+    setAnchor(next);
+  }, [anchor, storageKey]);
 
-  // Clamp on resize / rotation.
+  // The plan area changes shape (rotation, window size, the floor selector appearing): redraw the
+  // chip against it. This never changes the saved position.
   useEffect(() => {
-    const clamp = () => {
-      setPos((p) => {
-        if (!p || !ref.current) return p;
-        const w = ref.current.offsetWidth;
-        const h = ref.current.offsetHeight;
-        const top = topChromeHeight();
-        const x = Math.min(Math.max(4, p.x), window.innerWidth - w - 4);
-        const y = Math.min(Math.max(top, p.y), window.innerHeight - h - 60);
-        return x === p.x && y === p.y ? p : { x, y };
-      });
-    };
-    window.addEventListener("resize", clamp);
-    window.addEventListener("orientationchange", clamp);
+    const redraw = () => setLayoutTick((n) => n + 1);
+    window.addEventListener("resize", redraw);
+    window.addEventListener("orientationchange", redraw);
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", redraw);
+    const el = typeof document !== "undefined" ? document.querySelector("[data-plan-area]") : null;
+    let ro: ResizeObserver | null = null;
+    if (el && typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(redraw);
+      ro.observe(el);
+    }
+    redraw();
     return () => {
-      window.removeEventListener("resize", clamp);
-      window.removeEventListener("orientationchange", clamp);
+      window.removeEventListener("resize", redraw);
+      window.removeEventListener("orientationchange", redraw);
+      vv?.removeEventListener("resize", redraw);
+      ro?.disconnect();
     };
   }, []);
 
@@ -233,25 +328,32 @@ export function StatsChip({
     moved: boolean;
   } | null>(null);
 
+  /** The chip's top-left in screen pixels, from where it is saved against the plan area now. */
+  function currentPx() {
+    const w = ref.current?.offsetWidth ?? 0;
+    const h = ref.current?.offsetHeight ?? 0;
+    return anchor ? anchorToPx(anchor, planArea(), w, h) : null;
+  }
+
   const onPointerDown = (e: React.PointerEvent) => {
-    if (!pos) return;
+    const px = currentPx();
+    if (!px) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     drag.current = {
       startX: e.clientX,
       startY: e.clientY,
-      originX: pos.x,
-      originY: pos.y,
+      originX: px.x,
+      originY: px.y,
       pointerId: e.pointerId,
       moved: false,
     };
   };
-  function clampChipPos(originX: number, originY: number, clientX: number, clientY: number, startX: number, startY: number) {
+
+  /** Where a drag puts the chip, kept inside the plan area, as an anchor. */
+  function anchorFromDrag(d: NonNullable<typeof drag.current>, clientX: number, clientY: number): ChipAnchor {
     const w = ref.current?.offsetWidth ?? 0;
     const h = ref.current?.offsetHeight ?? 0;
-    const top = topChromeHeight();
-    const x = Math.min(Math.max(4, originX + (clientX - startX)), window.innerWidth - w - 4);
-    const y = Math.min(Math.max(top, originY + (clientY - startY)), window.innerHeight - h - 4);
-    return { x, y };
+    return pxToAnchor(d.originX + (clientX - d.startX), d.originY + (clientY - d.startY), planArea(), w, h);
   }
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -262,7 +364,7 @@ export function StatsChip({
     if (!d.moved && Math.hypot(dx, dy) < 5) return;
     d.moved = true;
     setSizeHud(false);
-    setPos(clampChipPos(d.originX, d.originY, e.clientX, e.clientY, d.startX, d.startY));
+    setAnchor(anchorFromDrag(d, e.clientX, e.clientY));
   };
   const endDrag = (e: React.PointerEvent) => {
     const d = drag.current;
@@ -273,11 +375,11 @@ export function StatsChip({
       setSizeHud(true);
       return;
     }
-    // Persist from the pointer + drag origin — not React `pos`, which can still
-    // be the pre-drag value when pointerup races the last setPos (chip then
-    // snaps back on Clean / Data↔Topo remount).
-    const next = clampChipPos(d.originX, d.originY, e.clientX, e.clientY, d.startX, d.startY);
-    setPos(next);
+    // Persist from the pointer + drag origin — not React state, which can still be the
+    // pre-drag value when pointerup races the last setAnchor (chip then snaps back on
+    // Clean / Data↔Topo remount).
+    const next = anchorFromDrag(d, e.clientX, e.clientY);
+    setAnchor(next);
     try {
       localStorage.setItem(storageKey, JSON.stringify(next));
     } catch {
@@ -285,7 +387,8 @@ export function StatsChip({
     }
   };
 
-  if (!stats || !pos) {
+  const px = currentPx();
+  if (!stats || !anchor || !px) {
     return (
       <div
         ref={ref}
@@ -295,14 +398,14 @@ export function StatsChip({
     );
   }
 
-  const chipTop = pos.y + stackIndex * (height + 6);
+  const chipTop = px.y + stackIndex * (height + 6);
   return (
     <>
       <div
         ref={ref}
-        className="fixed z-40 flex items-stretch rounded-full bg-white/95 backdrop-blur shadow-sm border border-gray-300 overflow-hidden font-medium select-none touch-none cursor-grab active:cursor-grabbing"
+        className="fixed z-40 flex w-max whitespace-nowrap items-stretch rounded-full bg-white/95 backdrop-blur shadow-sm border border-gray-300 overflow-hidden font-medium select-none touch-none cursor-grab active:cursor-grabbing"
         style={{
-          left: pos.x,
+          left: px.x,
           top: chipTop,
           height,
           fontSize: fontPx,
@@ -350,7 +453,7 @@ export function StatsChip({
           data-accessory-size-hud=""
           className="fixed z-50 flex h-7 items-stretch overflow-hidden rounded-full border shadow-md"
           style={{
-            left: Math.min(Math.max(8, pos.x), window.innerWidth - 88),
+            left: Math.min(Math.max(8, px.x), window.innerWidth - 88),
             top: Math.max(8, chipTop - SIZE_HUD_ABOVE_PX),
             background: "#07283d",
             borderColor: "#07283d",

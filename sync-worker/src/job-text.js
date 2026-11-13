@@ -103,6 +103,7 @@ function customerLines(customer, index) {
   if (name) out.push('Name: ' + name);
   if (trim(c.spouseName)) out.push('Also: ' + trim(c.spouseName));
   if (trim(c.companyName)) out.push('Company: ' + trim(c.companyName));
+  if (trim(c.contactTitle)) out.push('Title: ' + trim(c.contactTitle));
   const property = trim(c.propertyAddress) || trim(idx.propertyAddress);
   if (property) out.push('Property: ' + property);
   if (!c.mailingSameAsProperty && trim(c.mailingAddress)) out.push('Mailing: ' + trim(c.mailingAddress));

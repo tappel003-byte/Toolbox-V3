@@ -659,6 +659,18 @@ Tests: `tests/customer-type-and-new-file.mjs` (22), and a Business block in `tes
 
 ---
 
+## Floor Survey H/L/Δ pill keeps its place on the plan (DECIDED Tim, Nov 13, 2026)
+
+Tim: "If I move it to lower left corner basically it needs to pin. Its relation to the plan." A capture-app behavior change, named and approved.
+
+- The pill's position is saved as a **share of the room it can move in** over the plan area (`{fx, fy}`, 0 to 1), not as screen pixels. A corner stays a corner and bottom-middle stays bottom-middle through portrait/landscape turns, on phone and tablet. Saved per level, as before.
+- An old pixel position is converted once and re-saved in the new form. Tap-for-size and drag behavior are unchanged.
+- The plan area is marked `data-plan-area` in `HostWorkspace.tsx` and the project route.
+
+Test: `tests/pill-pin-rotation.mjs` (15, real mouse, 390x844 and 844x390).
+
+---
+
 ## Closeout
 
 - The final PDF is the durable closeout record.
