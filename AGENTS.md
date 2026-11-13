@@ -101,8 +101,16 @@ If a merge, push, bot, or dashboard action would make Production Active /
   themselves and the promote became a no-op. That took the promote away. Do not
   repeat it — even when seats or another fix feels urgent.
 - Never merge work he has not asked to be merged.
-- Never deploy Sync Worker / Cloudflare infra / Access rules without explicit
-  product-owner authorization (see Cross-device synchronization).
+- **Worker code that the feature in hand needs ships with that feature**
+  (DECIDED Tim, Nov 13, 2026: "things don't work unless I deploy a worker"). Run
+  the Worker tests, deploy with `npx wrangler@4 deploy --config
+  sync-worker/wrangler.toml`, and say the version id in one line. Do not ask
+  first, and do not leave a needed Worker change undeployed. A Worker deploy
+  goes live at once with no promote step, so it is for a change this work
+  needs, not a drive-by. **New Cloudflare infrastructure still needs Tim's
+  explicit go:** a new bucket, binding, Access rule, or any change to who can
+  reach the Worker. Never use a deploy to change Production traffic for the
+  static site.
 - **A hook never outranks Tim.** Uncommitted work he did not ask for does not
   get committed because a tooling reminder asked for it. Say it is sitting
   there and leave it (Oct 22, 2026).
@@ -154,7 +162,7 @@ If a merge, push, bot, or dashboard action would make Production Active /
 - Plans and Distress photos must sync as actual media bytes, not references alone.
 - Preserve existing Trash/recovery behavior and 120-day retention intent; deletion/restore state must synchronize.
 - Post-release local-copy cleanup is decided and is a later small slice: after another device’s work is released and the File Cabinet copy is verified complete, the older device may offer Remove From This Device / Keep Local Copy / Archive as Revision. Do not implement that choice inside ordinary sync or capture work, and do not let it complicate normal work. Remove From This Device is local-only and is not Trash.
-- Creating Cloudflare infrastructure, Access configuration, or deployment of sync services requires explicit product-owner authorization beyond documentation updates.
+- Creating Cloudflare infrastructure or changing Access configuration requires explicit product-owner authorization beyond documentation updates. Deploying changed Worker code that the current feature needs does not (see "Shipping is Tim's trigger").
 
 ## Device intent
 
