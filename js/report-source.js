@@ -39,7 +39,9 @@
 
   function customerName(record) {
     var name = (text(record && record.firstName) + ' ' + text(record && record.lastName)).trim();
-    return name || 'New Customer File';
+    var company = text(record && record.companyName);
+    if (record && record.customerType === 'business' && company) return company;
+    return name || company || 'New Customer File';
   }
 
   function propertyAddress(record) {

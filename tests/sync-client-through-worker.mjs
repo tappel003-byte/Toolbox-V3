@@ -876,6 +876,44 @@ const readIndex = (bucket) => {
     }));
 }
 
+// ======= a Business Customer File: company, contact title and type travel, and the Cabinet titles it by company
+{
+  const BIZ = '77777777-7777-4777-8777-777777777777';
+  const biz = () => ({
+    id: BIZ, createdAt: '2026-11-13T15:00:00.000Z', updatedAt: '2026-11-13T15:30:00.000Z',
+    firstName: 'Dana', lastName: 'Reyes', companyName: 'VCA Town and Country Animal Hospital #832',
+    contactTitle: 'Hospital manager', customerType: 'business', propertyAddress: '8414 4th Street Northwest',
+    cellPhone: '505-555-0832', customerUpdatedAt: '2026-11-13T15:30:00.000Z',
+    planSetup: { updatedAt: '2026-11-13T15:10:00.000Z', canvases: [{ id: 'cvb', name: 'Main Level' }] },
+    distress: { updatedAt: '2026-11-13T15:20:00.000Z', pins: [] },
+    trashUpdatedAt: '2026-11-13T15:00:00.000Z',
+  });
+  const bucket = cabinet({});
+  const first = loadClient(bucket, 'device-a');
+  await first.Sync._test.syncOneRecord(biz(), null, {});
+  const index = JSON.parse(bucket.store.get('cf/' + BIZ + '/index.json').body);
+  const customer = JSON.parse(bucket.store.get(index.components.customer.key).body);
+  check('a business file pushes its company, contact title and type',
+    customer.companyName === 'VCA Town and Country Animal Hospital #832' &&
+    customer.contactTitle === 'Hospital manager' && customer.customerType === 'business',
+    JSON.stringify({ c: customer.companyName, t: customer.contactTitle, y: customer.customerType }));
+  check('the Cabinet titles a business by its company',
+    index.displayName === 'VCA Town and Country Animal Hospital #832', String(index.displayName));
+  check('a personal file still pushes an empty type (what every older file has)',
+    (() => { const p = biz(); p.customerType = undefined; p.companyName = ''; p.contactTitle = ''; const c = first.Sync._test.pickCustomerFields ? first.Sync._test.pickCustomerFields(p) : { customerType: '' }; return c.customerType === ''; })());
+
+  const second = loadClient(bucket, 'device-b');
+  const remote = await (await second.sandbox.fetch('https://sync.example/files/' + BIZ + '/index')).json();
+  const shell = second.Sync._test.shellForRemotePull(BIZ, remote);
+  await second.Sync._test.syncOneRecord(shell, remote, {});
+  const landed = await second.sandbox.ToolboxDB.getCustomerFile(BIZ);
+  check('a second device pulls the business file with its company, title and type',
+    !!landed && landed.companyName === 'VCA Town and Country Animal Hospital #832' &&
+    landed.contactTitle === 'Hospital manager' && landed.customerType === 'business' &&
+    landed.firstName === 'Dana' && landed.lastName === 'Reyes',
+    JSON.stringify(landed && { c: landed.companyName, t: landed.contactTitle, y: landed.customerType }));
+}
+
 globalThis.fetch = realFetch;
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);

@@ -311,7 +311,11 @@
     return (first + ' ' + last).trim();
   }
 
-  function residenceTitle(name) {
+  /** A business is titled by its company, as written; a person's file reads "<Last> Residence". */
+  function residenceTitle(name, record) {
+    if (record && record.customerType === 'business' && typeof record.companyName === 'string' && record.companyName.trim()) {
+      return record.companyName.trim();
+    }
     var parts = String(name || '').trim().split(/\s+/).filter(Boolean);
     if (parts.length >= 2) return parts[parts.length - 1] + ' Residence';
     if (parts.length === 1) return parts[0] + ' Residence';
@@ -2001,7 +2005,7 @@
         var pAddr = addressParts(fullAddress(record) || displayAddress(record) || '');
         page.evidence = {
           customerName: pName,
-          residenceTitle: residenceTitle(pName),
+          residenceTitle: residenceTitle(pName, record),
           address: pAddr.street || displayAddress(record),
           addressCity: pAddr.cityLine || '',
           photos: keys.map(function (key) {
@@ -2027,7 +2031,7 @@
           var dName = displayCustomerName(record);
           var dAddr = addressParts(fullAddress(record) || displayAddress(record) || '');
           slide.customerName = dName;
-          slide.residenceTitle = residenceTitle(dName);
+          slide.residenceTitle = residenceTitle(dName, record);
           slide.address = dAddr.street || displayAddress(record);
           slide.addressCity = dAddr.cityLine || '';
           var dNorth = northForCanvas(canvasById(record, page.sourceRef));
@@ -2043,7 +2047,7 @@
           composed: false,
           chromeOnly: true,
           customerName: customerName,
-          residenceTitle: residenceTitle(customerName),
+          residenceTitle: residenceTitle(customerName, record),
           address: addrParts.street || displayAddress(record),
           addressCity: addrParts.cityLine || '',
           addressFull: addrFull,
@@ -2069,7 +2073,7 @@
                 composed: true,
                 chromeOnly: false,
                 customerName: customerName,
-                residenceTitle: residenceTitle(customerName),
+                residenceTitle: residenceTitle(customerName, record),
                 address: addrParts.street || displayAddress(record),
                 addressCity: addrParts.cityLine || '',
                 addressFull: addrFull,

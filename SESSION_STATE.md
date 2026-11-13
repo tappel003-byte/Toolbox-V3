@@ -219,6 +219,15 @@ Shell v475. `tests/edit-listener-isolation.mjs` **11/11** with the fix, **3/11**
 Known limit: a plan still being processed when the editor is left by browser Back (not the Back / Done buttons, which wait for it) is not
 saved afterwards; a late save from a left editor is the bug itself. Not built: a screen to restore an earlier Cabinet version of a part.
 
+### Claude Code: new-file save rule + Personal | Business (Nov 13, 2026) — branch `claude/customer-type-2ac5`
+
+Tim: blank "New Customer File" entries were piling up in the Cabinet (tapping New saved a blank file, mirrored 1.2 s later); asked for
+Personal | Business with a company, a contact person and a title. See `DECISIONS.md` ("New Customer File saves only once it names the job").
+`js/app.js` (switch, save rule, `displayName` / `contactLine`, list row), `js/sync.js` (customer component fields, Cabinet title),
+`js/ai-export.js`, `js/job-walk.js`, `js/plan-of-repair.js`, `js/report-source.js`, `js/report-builder.js` (`residenceTitle`), `css/styles.css`.
+Shell v476. Tests: `customer-type-and-new-file` 22/22, `sync-client-through-worker` 54/54, `edit-listener-isolation` 11/11.
+Not done: `sync-worker/src/job-text.js` does not read the contact title (needs a Worker deploy, which was not made).
+
 ## Sync Worker deploy — done Nov 10, 2026
 
 - Deployed by Claude Code with Tim's Cloudflare API token (saved as a network secret on Tim's Default cloud environment).

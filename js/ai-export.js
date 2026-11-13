@@ -24,7 +24,7 @@
 
   var CONTACT_KEYS = [
     'firstName', 'lastName', 'propertyAddress', 'cellPhone', 'homePhone', 'email', 'notes',
-    'companyName', 'spouseName', 'spouseCellPhone', 'spouseHomePhone', 'spouseEmail',
+    'companyName', 'contactTitle', 'customerType', 'spouseName', 'spouseCellPhone', 'spouseHomePhone', 'spouseEmail',
     'mailingSameAsProperty', 'mailingAddress', 'propertyAddressLat', 'propertyAddressLon',
   ];
 
@@ -57,7 +57,9 @@
 
   function displayName(record) {
     var name = [trim(record && record.firstName), trim(record && record.lastName)].filter(Boolean).join(' ');
-    return name || 'New Customer File';
+    var company = trim(record && record.companyName);
+    if (record && record.customerType === 'business' && company) return company;
+    return name || company || 'New Customer File';
   }
 
   function omitKey(key) {

@@ -105,7 +105,11 @@
   function displayNameFromRecord(record) {
     if (!record) return 'New Customer File';
     const name = [trimStr(record.firstName), trimStr(record.lastName)].filter(Boolean).join(' ');
-    return name || 'New Customer File';
+    const company = trimStr(record.companyName);
+    // A business is titled by its company (Tim, Nov 13, 2026); a company with no
+    // contact name is still a real file.
+    if (record.customerType === 'business' && company) return company;
+    return name || company || 'New Customer File';
   }
 
   function checkoutOwnerMatches(checkout, email, deviceId) {
@@ -498,6 +502,9 @@
       email: record.email || '',
       notes: record.notes || '',
       companyName: record.companyName || '',
+      contactTitle: record.contactTitle || '',
+      // '' is personal (and what every older file has); only a business says so.
+      customerType: record.customerType === 'business' ? 'business' : '',
       spouseName: record.spouseName || '',
       spouseCellPhone: record.spouseCellPhone || '',
       spouseHomePhone: record.spouseHomePhone || '',
@@ -978,6 +985,7 @@
     if (trimStr(fields.propertyAddress) || trimStr(fields.mailingAddress)) return false;
     if (trimStr(fields.cellPhone) || trimStr(fields.homePhone) || trimStr(fields.email)) return false;
     if (trimStr(fields.notes) || trimStr(fields.companyName) || trimStr(fields.spouseName)) return false;
+    if (trimStr(fields.contactTitle)) return false;
     if (trimStr(fields.spouseCellPhone) || trimStr(fields.spouseHomePhone) || trimStr(fields.spouseEmail)) return false;
     if (fields.mailingSameAsProperty) return false;
     if (fields.propertyAddressLat != null || fields.propertyAddressLon != null) return false;

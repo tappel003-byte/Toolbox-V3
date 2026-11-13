@@ -5573,3 +5573,38 @@ html.tb-refresh-locked .canvas {
   height: 100%;
   border-radius: 14px;
 }
+
+/* Personal | Business switch on the Customer & property form (Nov 13, 2026). */
+.cf-type-switch {
+  display: inline-flex;
+  margin: 0 0 12px;
+  border: 1px solid var(--line, #c9c2b4);
+  border-radius: 999px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.cf-type-switch__btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 8px 18px;
+  min-height: 38px;
+  cursor: pointer;
+}
+
+.cf-type-switch__btn.is-active {
+  background: #0b1f33;
+  color: #fff;
+}
+
+.cabinet-row__contact {
+  display: block;
+  font-size: 13px;
+  color: #5b6b78;
+  margin-top: 1px;
+}

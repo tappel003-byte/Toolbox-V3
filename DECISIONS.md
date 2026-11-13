@@ -646,6 +646,19 @@ Tests: `tests/report-pill-gesture.mjs`.
 
 ---
 
+## New Customer File saves only once it names the job; Personal or Business (DECIDED Tim, Nov 13, 2026)
+
+Tim: "There's a lot of new customer files in this... there's no information in there." Tapping + New Customer File saved a blank file at once and the quiet mirror uploaded it 1.2 seconds later, so every abandoned tap left an empty entry in the File Cabinet.
+
+- **A new file is not saved, and so not synced, until it has a name (first or last), a company, an address or a floor plan.** Phone is not required: a business, a walk-in or an address-only job may not have one. Until then the screen says "Not saved yet — add a name, company or address". Opening it and walking away, or Back / Done on it, leaves nothing. After the first save, autosave works as before.
+- **Personal | Business switch on Customer & property.** One record, two views of the same fields. Personal is today's form. Business puts Company first, makes first / last name the contact person ("Contact first name", "Contact last name"), and adds Contact title / role, with the phone and email labelled as the contact's. A business has no home phone or spouse / partner fields in view. Switching only changes what is shown: nothing typed is ever cleared. Stored as `customerType: 'business'` (absent or '' is personal, which is every older file) and `contactTitle`.
+- **A business is titled by its company** in the Customer Files list (contact person and title underneath), the File Cabinet and Explorer title, Job Walk / Initial Visit and Plan of Repair headers, the AI export, and the report (the report cover and rail read the company as written, not "<Word> Residence").
+- The new fields travel in the `customer` component through sync. The Worker accepts them unchanged; its searchable text file (`sync-worker/src/job-text.js`) does not yet read the title (a Worker deploy, not made).
+
+Tests: `tests/customer-type-and-new-file.mjs` (22), and a Business block in `tests/sync-client-through-worker.mjs`.
+
+---
+
 ## Closeout
 
 - The final PDF is the durable closeout record.

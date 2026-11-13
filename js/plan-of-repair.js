@@ -31,6 +31,11 @@
   }
 
   function displayName(record) {
+    var identity = window.ToolboxApp && window.ToolboxApp.customerIdentity;
+    if (identity && typeof identity.displayName === 'function') {
+      var named = identity.displayName(record || {});
+      if (named && named !== 'New Customer File') return named;
+    }
     var first = ((record && record.firstName) || '').trim();
     var last = ((record && record.lastName) || '').trim();
     var company = ((record && record.companyName) || '').trim();

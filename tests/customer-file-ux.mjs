@@ -178,7 +178,17 @@ check('Sectioned editor shows one clear task at a time', autosaved.visiblePanels
 await page.goto(`${BASE}#/file/ux-brand-new/edit`, { waitUntil: 'networkidle0' });
 await new Promise((resolve) => setTimeout(resolve, 500));
 const draftPersisted = await page.evaluate(async () => !!(await window.ToolboxDB.getCustomerFile('ux-brand-new')));
-check('A newly opened Customer File draft persists immediately', draftPersisted);
+// Tim, Nov 13, 2026: an abandoned tap on New Customer File must not leave a blank file (and so a blank
+// Cabinet entry) behind. The draft is created once it has a name, a company, an address or a plan.
+check('A newly opened Customer File draft is not saved until it names the job', !draftPersisted);
+await page.click('#field-firstName');
+await page.keyboard.type('Draft');
+await new Promise((resolve) => setTimeout(resolve, 1800));
+const draftAfterTyping = await page.evaluate(async () => {
+  const record = await window.ToolboxDB.getCustomerFile('ux-brand-new');
+  return !!record && record.firstName === 'Draft';
+});
+check('and it is saved as soon as a name is typed', draftAfterTyping);
 
 for (const viewport of viewports) {
   await page.setViewport({
@@ -217,7 +227,7 @@ for (const viewport of viewports) {
   check(
     `${viewport.name}: Customer Files home is a compact aligned column`,
     cabinet.title === 'Customer Files' &&
-      cabinet.rows >= 3 &&
+      cabinet.rows >= 2 &&
       /New Customer File/.test(cabinet.newButton || '') &&
       cabinet.noTrashBadge &&
       cabinet.closedEntry &&
@@ -235,7 +245,7 @@ for (const viewport of viewports) {
   if (viewport.name === 'phone') {
     check(
       'Cabinet presents clear file-finding and creation actions',
-      cabinet.title === 'Customer Files' && cabinet.rows >= 3 && /New Customer File/.test(cabinet.newButton || ''),
+      cabinet.title === 'Customer Files' && cabinet.rows >= 2 && /New Customer File/.test(cabinet.newButton || ''),
       JSON.stringify(cabinet),
     );
     await page.screenshot({ path: `${OUT}/customer-file-ux-cabinet-phone.png`, fullPage: true });

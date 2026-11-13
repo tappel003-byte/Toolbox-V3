@@ -47,6 +47,7 @@
     ],
     additional: [
       { id: 'companyName', label: 'Company / organization', type: 'text', full: true },
+      { id: 'contactTitle', label: 'Contact title / role', type: 'text', full: true },
       { id: 'spouseName', label: 'Spouse / partner name', type: 'text', full: true },
       { id: 'spouseCellPhone', label: 'Spouse / partner cell phone', type: 'tel' },
       { id: 'spouseHomePhone', label: 'Spouse / partner home phone', type: 'tel' },
@@ -82,6 +83,7 @@
       email: '',
       notes: '',
       companyName: '',
+      contactTitle: '',
       spouseName: '',
       spouseCellPhone: '',
       spouseHomePhone: '',
@@ -208,10 +210,32 @@
     }
   }
 
+  /** Business customers (Tim, Nov 13, 2026): `customerType === 'business'`; absent or anything else is personal. */
+  function isBusinessRecord(record) {
+    return !!(record && record.customerType === 'business');
+  }
+
+  function contactPerson(record) {
+    return ((record.firstName || '') + ' ' + (record.lastName || '')).trim();
+  }
+
+  /** A business is titled by its company, with the contact person underneath. */
   function displayName(record) {
-    const name = ((record.firstName || '') + ' ' + (record.lastName || '')).trim();
-    if (name) return name;
+    const person = contactPerson(record);
+    const company = (record.companyName || '').trim();
+    if (isBusinessRecord(record) && company) return company;
+    if (person) return person;
+    if (company) return company;
     return isVisitRecord(record) ? 'New Initial Visit' : 'New Customer File';
+  }
+
+  /** "Jane Doe · Manager" for a business file that has both a company and a contact; else ''. */
+  function contactLine(record) {
+    if (!isBusinessRecord(record) || !(record.companyName || '').trim()) return '';
+    const person = contactPerson(record);
+    if (!person) return '';
+    const title = (record.contactTitle || '').trim();
+    return title ? person + ' · ' + title : person;
   }
 
   function displayAddress(record) {
@@ -388,7 +412,7 @@
     if (planReadiness(record).hasPlan) return false;
     const textKeys = [
       'firstName', 'lastName', 'propertyAddress', 'mailingAddress',
-      'cellPhone', 'homePhone', 'email', 'notes', 'companyName',
+      'cellPhone', 'homePhone', 'email', 'notes', 'companyName', 'contactTitle',
       'spouseName', 'spouseCellPhone', 'spouseHomePhone', 'spouseEmail',
     ];
     for (let i = 0; i < textKeys.length; i++) {
@@ -1111,7 +1135,7 @@
     const keys = [
       'displayName', 'displayNameSearch',
       'propertyAddress', 'propertyAddressSearch',
-      'mailingAddress', 'companyName', 'spouseName',
+      'mailingAddress', 'companyName', 'contactTitle', 'spouseName',
       'email', 'spouseEmail',
       'cellPhone', 'homePhone', 'spouseCellPhone', 'spouseHomePhone',
       'firstName', 'lastName',
@@ -1750,6 +1774,13 @@
     bindAddressMapsTap(addr, record.propertyAddress);
 
     main.appendChild(name);
+    const contactText = contactLine(record);
+    if (contactText) {
+      const contact = document.createElement('span');
+      contact.className = 'cabinet-row__contact';
+      contact.textContent = contactText;
+      main.appendChild(contact);
+    }
     main.appendChild(addr);
     // Visit schedule lives in main (not meta): phone CSS hides .cabinet-row__meta,
     // and Tim needs the date/time reminder visible on the Visits list.
@@ -3202,6 +3233,10 @@
       '  </nav>' +
       '  <div class="file-form-wrap">' +
       '    <section class="cf-editor-panel" data-edit-panel="customer">' +
+      '      <div class="cf-type-switch" role="group" aria-label="Customer type">' +
+      '        <button type="button" class="cf-type-switch__btn is-active" data-customer-type="personal" aria-pressed="true">Personal</button>' +
+      '        <button type="button" class="cf-type-switch__btn" data-customer-type="business" aria-pressed="false">Business</button>' +
+      '      </div>' +
       '      <div class="customer-form" id="customer-form">' +
       customerFields.map(fieldRowHtml).join('') +
       '      </div>' +
@@ -3301,11 +3336,87 @@
       return app.querySelector('#field-' + fieldId);
     }
 
+    // ---- Personal | Business. One record, two views of the same fields: switching
+    // only changes which fields are shown and how they are labelled; nothing typed is
+    // ever cleared. A business contact is the existing first / last name, plus a title.
+    const typeButtons = app.querySelectorAll('[data-customer-type]');
+    const fieldHomes = {};
+    ['companyName', 'contactTitle'].forEach(function (fid) {
+      const row = app.querySelector('#field-' + fid) && app.querySelector('#field-' + fid).closest('.field');
+      if (row) fieldHomes[fid] = { row: row, parent: row.parentNode, next: row.nextSibling };
+    });
+    const PERSONAL_LABELS = {
+      firstName: 'First name', lastName: 'Last name', cellPhone: 'Cell phone', email: 'Email',
+    };
+    const BUSINESS_LABELS = {
+      firstName: 'Contact first name', lastName: 'Contact last name', cellPhone: 'Contact phone', email: 'Contact email',
+    };
+
+    function setFieldLabel(fid, text) {
+      const el = fieldEl(fid);
+      if (!el) return;
+      const row = el.closest('.field');
+      const label = row && row.querySelector('label');
+      if (label) label.textContent = text;
+      if (el.tagName === 'INPUT' && el.getAttribute('placeholder') !== null) el.setAttribute('placeholder', text);
+    }
+
+    function applyCustomerType(type) {
+      const biz = type === 'business';
+      typeButtons.forEach(function (btn) {
+        const on = btn.getAttribute('data-customer-type') === (biz ? 'business' : 'personal');
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      const editor = app.querySelector('.cf-editor');
+      if (editor) editor.setAttribute('data-cf-type', biz ? 'business' : 'personal');
+      const customerForm = app.querySelector('#customer-form');
+      const company = fieldHomes.companyName;
+      const title = fieldHomes.contactTitle;
+      if (biz && customerForm) {
+        if (company) customerForm.insertBefore(company.row, customerForm.firstChild);
+        const lastRow = fieldEl('lastName') && fieldEl('lastName').closest('.field');
+        if (title && lastRow && lastRow.parentNode === customerForm) {
+          customerForm.insertBefore(title.row, lastRow.nextSibling);
+        }
+        if (title) title.row.hidden = false;
+      } else {
+        if (company && company.parent) company.parent.insertBefore(company.row, company.next && company.next.parentNode === company.parent ? company.next : null);
+        if (title && title.parent) {
+          title.parent.insertBefore(title.row, title.next && title.next.parentNode === title.parent ? title.next : null);
+          title.row.hidden = true;
+        }
+      }
+      const labels = biz ? BUSINESS_LABELS : PERSONAL_LABELS;
+      Object.keys(labels).forEach(function (fid) { setFieldLabel(fid, labels[fid]); });
+      // A business has no home phone or spouse: hidden, never cleared.
+      ['homePhone', 'spouseName', 'spouseCellPhone', 'spouseHomePhone', 'spouseEmail'].forEach(function (fid) {
+        const el = fieldEl(fid);
+        const row = el && el.closest('.field');
+        if (row) row.hidden = biz;
+      });
+    }
+
+    typeButtons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (!record) return;
+        const next = btn.getAttribute('data-customer-type') === 'business' ? 'business' : 'personal';
+        const current = record.customerType === 'business' ? 'business' : 'personal';
+        if (next === current) return;
+        record.customerType = next === 'business' ? 'business' : '';
+        applyCustomerType(next);
+        pendingCustomerBump = true;
+        scheduleSave();
+        updateIdentityBar();
+      });
+    });
+
     function populateForm(rec) {
       FIELD_DEFS.primary.concat(FIELD_DEFS.additional).forEach(function (f) {
         const el = fieldEl(f.id);
         if (el) el.value = rec[f.id] || '';
       });
+      applyCustomerType(rec.customerType === 'business' ? 'business' : 'personal');
       sameAddressCheckbox.checked = !!rec.mailingSameAsProperty;
       mailingTextarea.value = rec.mailingAddress || '';
       updateMailingVisibility();
@@ -3504,6 +3615,16 @@
       );
     });
 
+    function hasIdentity() {
+      const typed = ['firstName', 'lastName', 'companyName', 'propertyAddress'].some(function (fid) {
+        const el = fieldEl(fid);
+        return !!(el && (el.value || '').trim());
+      });
+      if (typed) return true;
+      const canvases = (record && record.planSetup && record.planSetup.canvases) || [];
+      return canvases.some(function (c) { return c && c.plan && c.plan.id; });
+    }
+
     function updateIdentityBar() {
       identityName.textContent = displayName(record);
       identityAddress.textContent = displayAddress(record);
@@ -3568,6 +3689,13 @@
       if (!dirty || !record) return Promise.resolve();
       if (plansApi) plansApi.commitPending();
       collectFormIntoRecord();
+      // A brand-new file is not saved (and so not synced) until it has something that
+      // names the job: a name, a company, an address, or a floor plan. Opening New
+      // Customer File and walking away leaves nothing behind. (Tim, Nov 13, 2026.)
+      if (isNewFile && !hasIdentity()) {
+        setStatus('Not saved yet — add a name, company or address');
+        return Promise.resolve();
+      }
       // Taken AFTER the form is read, because reading it is this save's
       // snapshot: an edit made before here is in the record, one made after
       // is not.
@@ -3630,7 +3758,8 @@
       idle.then(function () {
         return flushSave();
       }).then(function () {
-        window.location.hash = '#/file/' + encodeURIComponent(id);
+        // A new file that never got a name, company, address or plan was never created.
+        window.location.hash = isNewFile ? '#/' : '#/file/' + encodeURIComponent(id);
       }).catch(function () {});
     }
 
@@ -3728,9 +3857,10 @@
       backBtn.textContent = isNewFile ? '‹ Cabinet' : '‹ Customer File';
       return plansApi.syncFromRecord().then(function () {
         refreshEditorProgress();
-        if (!existing) noteEdit();
         if (dirty) return flushSave();
-        setStatus('Saved ' + formatUpdated(record.updatedAt));
+        setStatus(isNewFile
+          ? 'Not saved yet — add a name, company or address'
+          : 'Saved ' + formatUpdated(record.updatedAt));
       });
     }).catch(function (err) {
       console.error('Failed to load Customer File:', err);
@@ -4088,6 +4218,8 @@
     customerFileLocationLabel: customerFileLocationLabel,
     customerIdentity: {
       displayName: displayName,
+      isBusiness: isBusinessRecord,
+      contactLine: contactLine,
       displayAddress: displayAddress,
       formatUpdated: formatUpdated,
     },
