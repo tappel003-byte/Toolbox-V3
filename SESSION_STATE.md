@@ -235,6 +235,11 @@ See `DECISIONS.md` ("Floor Survey H/L/Δ pill keeps its place"). `StatsChip.tsx`
 Shell v477. Test: `pill-pin-rotation` 15/15. Worker source now reads the contact title in `job-text.js` (tests pass); **Worker still not deployed**
 (pending with it: Visits support in `explore.js`). Tim promotes.
 
+### Claude Code: Explorer map, Satellite + search (Nov 13, 2026) — branch `claude/explorer-map-2ac5` (NOT merged; Tim said build only)
+
+`js/explorer-map.js`, `css/styles.css`, shell v478. See `DECISIONS.md` ("Explorer map: Satellite look, place search, smooth zoom").
+Tests: `explorer-map-places` 35/35, `explorer-map-ui` 28/28. Not verified: real Esri tiles (this sandbox cannot reach Esri), so the first look at live imagery is Tim's.
+
 ## Sync Worker deploy — done Nov 10, 2026
 
 - Deployed by Claude Code with Tim's Cloudflare API token (saved as a network secret on Tim's Default cloud environment).

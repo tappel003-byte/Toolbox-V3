@@ -671,6 +671,20 @@ Test: `tests/pill-pin-rotation.mjs` (15, real mouse, 390x844 and 844x390).
 
 ---
 
+## Explorer map: Satellite look, place search, smooth zoom (DECIDED Tim, Nov 13, 2026)
+
+Tim: the Explorer map is for "I did a job in this area and I can't remember the job name." It was glitchy, bad on a phone, and zoomed on forever with no house to see. Desktop tool first, phone must look right.
+
+- **Map | Satellite.** Map is the existing Geoapify street map. Satellite is Esri World Imagery with Esri place names over it. The choice is remembered on this device. Esri needs no key from us today (the public imagery service); an optional `esriApiKey` in `js/config.js` switches to the keyed service.
+- **Search box** (top left of the map): a town or street, US only, leaning on New Mexico (Geoapify autocomplete, the key already in use). It moves the view and drops a marker. It never changes a job.
+- **Zoom is continuous** for pinch and wheel (the tiles scale under the fingers; the sharper level loads in behind, so there is no blank flash). The + / − buttons and a double tap still step a whole level. Zoom stops at level 18.
+- A lone pin carries its job's name from level 14 in (a label that would sit on another is left off).
+- Unchanged: pins, clustering, year chips, the list under the map, how jobs get coordinates, the Worker.
+
+Tests: `tests/explorer-map-places.mjs` (35, real mouse, keyboard and multi-touch), `tests/explorer-map-ui.mjs` (28, unchanged).
+
+---
+
 ## Closeout
 
 - The final PDF is the durable closeout record.

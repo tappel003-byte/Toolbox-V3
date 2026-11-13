@@ -4203,9 +4203,136 @@ button.cf-home__delete[hidden] {
 }
 
 .explorer-map__tiles,
-.explorer-map__pins {
+.explorer-map__pins,
+.explorer-map__labels {
   position: absolute;
   inset: 0;
+}
+
+.explorer-map__labels {
+  pointer-events: none;
+}
+
+.explorer-map__label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #10202e;
+  font: 700 12px/20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 2px #fff;
+}
+
+.explorer-map[data-style="satellite"] .explorer-map__label {
+  color: #fff;
+  text-shadow: 0 0 3px #000, 0 0 3px #000, 0 1px 2px #000;
+}
+
+.explorer-map__foundpin {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border: 3px solid #ffd23f;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px rgba(8, 32, 54, 0.7), inset 0 0 0 1.5px rgba(8, 32, 54, 0.7);
+  pointer-events: none;
+}
+
+.explorer-map__find {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 64px;
+  max-width: 22rem;
+  z-index: 3;
+}
+
+.explorer-map__findinput {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  box-shadow: 0 1px 4px rgba(8, 32, 54, 0.2);
+}
+
+.explorer-map__found {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(8, 32, 54, 0.25);
+}
+
+.explorer-map__found button {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 12px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.explorer-map__found li:first-child button {
+  border-top: 0;
+}
+
+.explorer-map__found-none {
+  padding: 10px 12px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.explorer-map__style {
+  position: absolute;
+  left: 10px;
+  bottom: 30px;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(8, 32, 54, 0.2);
+}
+
+.explorer-map__style button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 0;
+  background: #fff;
+  color: var(--navy);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.explorer-map__style button + button {
+  border-left: 1px solid var(--line);
+}
+
+.explorer-map__style button.is-on {
+  background: var(--navy);
+  color: #fff;
 }
 
 .explorer-map__tile {
@@ -4273,10 +4400,18 @@ button.cf-home__delete[hidden] {
   cursor: default;
 }
 
+@media (pointer: coarse) {
+  .explorer-map__zoom button {
+    width: 46px;
+    height: 46px;
+  }
+}
+
 .explorer-map__credit {
   position: absolute;
   right: 0;
   bottom: 0;
+  max-width: 100%;
   margin: 0;
   padding: 2px 6px;
   border-top-left-radius: 6px;
@@ -4291,9 +4426,9 @@ button.cf-home__delete[hidden] {
 
 .explorer-map__say {
   position: absolute;
-  top: 10px;
+  top: 60px;
   left: 10px;
-  right: 60px;
+  right: 64px;
   margin: 0;
   padding: 8px 10px;
   border-radius: 8px;
