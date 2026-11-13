@@ -205,6 +205,20 @@ Tim: "go, fix the pill and add the survey date ... I'm working on a report and I
   looks for that control on a screen that no longer shows it once a boundary exists; the new ⋯ item is the way in after the fact).
 - **Next for Tim:** merge into integration when asked. Customer Files list ••• could also get a "Survey date" item (not built).
 
+### Claude Code: Customer File editor saved into the wrong file (found Nov 12, fixed Nov 13, 2026)
+
+Tim: opened Jim Thomas 294, then typed a new file's contact information; "VCA Town and Country Animal Hospital" appeared on a file that
+carried the Thomas plan and 7 pins. Cause (reproduced with a real mouse, also on the week-old `main`): `renderFileEdit` added an `input`
+listener to the shared `app-view` container and never removed it. An editor that had been left kept reading whichever Edit customer form
+was on screen and saved it, with its own stale copy of the file, into its own record. Result: contact fields overwritten, and newer
+pins / survey points reverted to the stale copy (12 pins -> 3, 6 survey points -> 0 in the test).
+Fix (`js/app.js`): `render()` first winds up the view being left (`registerViewCleanup` / `runViewCleanup`); the editor saves what is
+typed and not yet saved (the form is read synchronously, while it is still on screen), then is `disposed`: it removes its listener,
+clears its timer, and `scheduleSave` / `flushSave` do nothing. The input handler also ignores any field that is not inside its own form.
+Shell v475. `tests/edit-listener-isolation.mjs` **11/11** with the fix, **3/11** on the integration tip without it.
+Known limit: a plan still being processed when the editor is left by browser Back (not the Back / Done buttons, which wait for it) is not
+saved afterwards; a late save from a left editor is the bug itself. Not built: a screen to restore an earlier Cabinet version of a part.
+
 ## Sync Worker deploy — done Nov 10, 2026
 
 - Deployed by Claude Code with Tim's Cloudflare API token (saved as a network secret on Tim's Default cloud environment).

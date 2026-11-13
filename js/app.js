@@ -17,6 +17,24 @@
     activeFileFlush = fn;
   }
 
+  /**
+   * A view that keeps state of its own (the Customer File editor) registers how to
+   * wind itself up. render() runs it before the next view is drawn, so a screen that
+   * is no longer on show can never act on whatever is on screen next.
+   * (Nov 13, 2026: an earlier file's editor kept listening on the shared container and
+   * saved what was typed into a later file's form into the earlier file.)
+   */
+  let activeViewCleanup = null;
+  function registerViewCleanup(fn) {
+    activeViewCleanup = fn;
+  }
+  function runViewCleanup() {
+    const fn = activeViewCleanup;
+    activeViewCleanup = null;
+    if (!fn) return;
+    try { fn(); } catch (err) { console.error('View cleanup failed:', err); }
+  }
+
   const FIELD_DEFS = {
     primary: [
       { id: 'firstName', label: 'First name', type: 'text' },
@@ -774,6 +792,8 @@
   function render() {
     const app = document.getElementById('app-view');
     if (!app) return;
+    // The view being left saves what it holds and goes quiet before anything new is drawn.
+    runViewCleanup();
     const route = parseRoute();
     if (route.id && isMutatingRoute(route.view) &&
         window.ToolboxSync && typeof window.ToolboxSync.isCheckedOutElsewhere === 'function' &&
@@ -3246,6 +3266,9 @@
     let pendingPlansBump = false;
     let isNewFile = false;
     let plansApi = null;
+    // True once this editor has been left. A disposed editor never reads the form on
+    // screen and never saves: that form belongs to whatever view came next.
+    let disposed = false;
 
     const ADDRESS_MIN_CHARS = 3;
     const ADDRESS_DEBOUNCE_MS = 150;
@@ -3526,6 +3549,7 @@
     }
 
     function scheduleSave() {
+      if (disposed) return;
       noteEdit();
       setStatus('Unsaved changes…');
       refreshEditorProgress();
@@ -3536,6 +3560,7 @@
     }
 
     function flushSave(opts) {
+      if (disposed) return Promise.resolve();
       if (saveTimer) {
         clearTimeout(saveTimer);
         saveTimer = null;
@@ -3636,14 +3661,29 @@
       pendingCustomerBump = true;
       syncMailingIfSame();
     });
-    app.addEventListener('input', function (e) {
-      if (e.target && e.target.id && e.target.id.indexOf('field-') === 0) {
-        pendingCustomerBump = true;
-        scheduleSave();
-      }
-    });
+    function onFieldInput(e) {
+      if (disposed) return;
+      // Only this editor's own form: a field of some other screen is not ours.
+      if (!e.target || !e.target.id || e.target.id.indexOf('field-') !== 0) return;
+      if (!formRoot || !formRoot.contains(e.target)) return;
+      pendingCustomerBump = true;
+      scheduleSave();
+    }
+    const formRoot = app.querySelector('.cf-editor');
+    app.addEventListener('input', onFieldInput);
 
     registerActiveFlush(flushSave);
+    registerViewCleanup(function () {
+      // Anything typed and not yet saved goes out first. flushSave reads the form
+      // synchronously, while it is still on screen, before the next view replaces it.
+      if (dirty && record && !disposed) {
+        flushSave().catch(function () {});
+      }
+      disposed = true;
+      if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+      app.removeEventListener('input', onFieldInput);
+      if (activeFileFlush === flushSave) activeFileFlush = null;
+    });
 
     plansApi = window.ToolboxPlanSetup.mountPlansPanel(plansPanel, {
       getRecord: function () { return record; },
