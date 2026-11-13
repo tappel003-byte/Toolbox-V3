@@ -10,7 +10,7 @@ import { readingText } from "@/lib/reading";
  * with the live pan/zoom left untouched.
  */
 import type { Floor, SurveyPoint } from "./types";
-import { zoneOfXY } from "./exclusions";
+import { zoneOfPoint } from "./exclusions";
 import { formatDelta, transitionDelta } from "./transitions";
 import { canvasToPdfBlob } from "./pdf";
 
@@ -198,7 +198,7 @@ export async function renderFloorSurveyRecoveryCanvas(options: {
       size.planWidth,
       size.planHeight,
     );
-    const zone = zoneOfXY(point.x, point.y, floor.exclusions);
+    const zone = zoneOfPoint(point, floor.exclusions);
     if (zone?.label) {
       ctx.font = `${Math.max(9, fontPx * 0.72)}px sans-serif`;
       ctx.fillStyle = "rgba(75,85,99,0.95)";

@@ -15,13 +15,18 @@ export interface SurfaceOption {
   delta: number; // signed, relative to root anchor (0 for root)
 }
 
+/** What the keypad's special-case menu said about this reading. */
+export interface SubmitExtra {
+  isDrain: boolean;
+}
+
 interface Props {
   open: boolean;
   initialValue?: number;
   repeatValue?: number;
   title?: string;
   subtitle?: string;
-  onSubmit: (value: number) => void;
+  onSubmit: (value: number, extra: SubmitExtra) => void;
   onClose: () => void;
   onDelete?: () => void;
   onAddTransition?: () => void;
@@ -30,7 +35,11 @@ interface Props {
   /** When ≥2, replaces the single Enter button with a horizontal row of surface-choice buttons. */
   surfaceOptions?: SurfaceOption[];
   /** Required when surfaceOptions is provided. Submits value + chosen surface. */
-  onSubmitWithOption?: (value: number, opt: SurfaceOption) => void;
+  onSubmitWithOption?: (value: number, opt: SurfaceOption, extra: SubmitExtra) => void;
+  /** Shows the small "Reading ▾" menu in the upper left, with Drain in it. */
+  allowDrain?: boolean;
+  /** The point being edited is already a drain reading. */
+  initialDrain?: boolean;
   /** Highlights the currently-selected option (e.g. the transition id this point is already tagged with). */
   selectedSurfaceId?: string | null;
   onUndo?: () => void;
@@ -58,6 +67,8 @@ export function NumericKeypad({
   onRemoveTransition,
   surfaceOptions,
   onSubmitWithOption,
+  allowDrain,
+  initialDrain,
   selectedSurfaceId,
   onUndo,
   canUndo,
@@ -70,10 +81,17 @@ export function NumericKeypad({
 
 
   const [text, setText] = useState<string>("");
+  // The special-case menu starts on a normal reading every time the keypad opens,
+  // so a drain is chosen for the one point and never has to be switched off.
+  const [drain, setDrain] = useState(false);
+  const extra: SubmitExtra = { isDrain: !!allowDrain && drain };
 
   useEffect(() => {
-    if (open) setText(initialValue != null ? String(initialValue) : "");
-  }, [open, initialValue]);
+    if (open) {
+      setText(initialValue != null ? String(initialValue) : "");
+      setDrain(!!initialDrain);
+    }
+  }, [open, initialValue, initialDrain]);
 
   function push(ch: string) {
     setText((cur) => {
@@ -92,10 +110,10 @@ export function NumericKeypad({
   }
   function submit() {
     const n = parseFloat(text);
-    if (isFinite(n)) onSubmit(n);
+    if (isFinite(n)) onSubmit(n, extra);
   }
   function repeatLast() {
-    if (repeatValue != null && isFinite(repeatValue)) onSubmit(repeatValue);
+    if (repeatValue != null && isFinite(repeatValue)) onSubmit(repeatValue, extra);
   }
 
   // Hardware keyboard support (desktop numpad + main row)
@@ -126,8 +144,8 @@ export function NumericKeypad({
       if (k === "Enter" || k === "=") {
         e.preventDefault();
         const n = parseFloat(text);
-        if (isFinite(n)) onSubmit(n);
-        else if (repeatValue != null && isFinite(repeatValue)) onSubmit(repeatValue);
+        if (isFinite(n)) onSubmit(n, extra);
+        else if (repeatValue != null && isFinite(repeatValue)) onSubmit(repeatValue, extra);
         return;
       }
       if (k === "Escape") {
@@ -138,13 +156,13 @@ export function NumericKeypad({
       if (k === "r" || k === "R") {
         if (repeatValue != null && isFinite(repeatValue)) {
           e.preventDefault();
-          onSubmit(repeatValue);
+          onSubmit(repeatValue, extra);
         }
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, text, repeatValue, onSubmit, onClose]);
+  }, [open, text, repeatValue, onSubmit, onClose, drain, allowDrain]);
 
   if (!open) return null;
 
@@ -164,6 +182,21 @@ export function NumericKeypad({
       >
         <div className="flex items-center justify-between gap-1 mb-2">
           <div className="flex items-center gap-1">
+            {allowDrain && (
+              <select
+                value={drain ? "drain" : "reading"}
+                onChange={(e) => setDrain(e.target.value === "drain")}
+                aria-label="Kind of reading"
+                data-keypad-kind
+                className={
+                  "h-9 rounded-md border bg-background px-2 text-sm font-medium " +
+                  (drain ? "border-amber-400 text-amber-700" : "text-muted-foreground")
+                }
+              >
+                <option value="reading">Reading</option>
+                <option value="drain">Drain</option>
+              </select>
+            )}
             {onUndo && (
               <Button
                 variant="ghost"
@@ -291,7 +324,7 @@ export function NumericKeypad({
                     key={opt.id ?? "root"}
                     onClick={() => {
                       const n = parseFloat(text);
-                      if (isFinite(n)) onSubmitWithOption?.(n, opt);
+                      if (isFinite(n)) onSubmitWithOption?.(n, opt, extra);
                     }}
                     disabled={disabled}
                     className={

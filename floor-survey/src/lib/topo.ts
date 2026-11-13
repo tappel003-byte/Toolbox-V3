@@ -147,10 +147,12 @@ export function buildGrid(
   // they must not influence the interpolated surface. Points outside the
   // boundary still render on the plan; they just don't pull the contours.
   const excl = exclusions?.filter((p) => p.length >= 3) ?? [];
+  // Drain readings are cast low on purpose and never pull the surface.
+  const surfacePoints = points.filter((p) => !p.isDrain);
   const insideBoundary =
     boundary.length >= 3
-      ? points.filter((p) => pointInPolygon(p.x, p.y, boundary))
-      : points;
+      ? surfacePoints.filter((p) => pointInPolygon(p.x, p.y, boundary))
+      : surfacePoints;
   const activePoints = excl.length
     ? insideBoundary.filter((p) => !excl.some((poly) => pointInPolygon(p.x, p.y, poly)))
     : insideBoundary;

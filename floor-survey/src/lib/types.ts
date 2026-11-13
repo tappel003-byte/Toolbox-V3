@@ -176,6 +176,10 @@ export interface SurveyPoint {
   //   where delta = readingA − readingB.
   transitionId?: string;
   isTransitionAnchor?: boolean;
+  // A reading taken at a floor drain. Drains are cast low on purpose, so the
+  // reading is kept, numbered and shown, but it is left out of the contours,
+  // the High / Low and the readings statistics. Tim, Nov 13, 2026.
+  isDrain?: boolean;
 }
 
 

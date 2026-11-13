@@ -36,27 +36,37 @@ export function zoneOfXY(
   return null;
 }
 
-/** Map from point id → zone (for points inside any exclusion). */
+/** Stands in for a zone on a reading tagged as a floor drain (no polygon). */
+export const DRAIN_ZONE: Exclusion = { id: "drain", label: "Drain", polygon: [], createdAt: 0 };
+
+/** Why a reading is kept out of the surface: a drain tag, or the zone it sits in. */
+export function zoneOfPoint(
+  p: Pick<SurveyPoint, "x" | "y" | "isDrain">,
+  exclusions: Exclusion[] | undefined,
+): Exclusion | null {
+  if (p.isDrain) return DRAIN_ZONE;
+  return zoneOfXY(p.x, p.y, exclusions);
+}
+
+/** Map from point id → zone (for points inside any exclusion, or tagged as a drain). */
 export function computeExclusionMap(
   points: SurveyPoint[],
   exclusions: Exclusion[] | undefined,
 ): Map<string, Exclusion> {
   const m = new Map<string, Exclusion>();
-  if (!exclusions?.length) return m;
   for (const p of points) {
-    const z = zoneOfXY(p.x, p.y, exclusions);
+    const z = zoneOfPoint(p, exclusions);
     if (z) m.set(p.id, z);
   }
   return m;
 }
 
-/** Points not inside any exclusion. */
+/** Points not inside any exclusion and not tagged as a drain. */
 export function pointsOutsideExclusions(
   points: SurveyPoint[],
   exclusions: Exclusion[] | undefined,
 ): SurveyPoint[] {
-  if (!exclusions?.length) return points;
-  return points.filter((p) => !zoneOfXY(p.x, p.y, exclusions));
+  return points.filter((p) => !zoneOfPoint(p, exclusions));
 }
 
 /** Draw an exclusion polygon as a clean white hole with a visible outline.

@@ -14,7 +14,7 @@ import type { Bp1Gps, Floor, NotePin, SurveyPoint, Transition } from "@/lib/type
 import { defaultRenderSettings } from "@/lib/types";
 import { savePoint, deletePoint, reindexFloorPoints, saveFloor, saveBp1Gps, uid } from "@/lib/db";
 import { transitionDelta, formatDelta, getChainBaselineSurface } from "@/lib/transitions";
-import { drawExclusionShape, zoneOfXY } from "@/lib/exclusions";
+import { drawExclusionShape, zoneOfPoint } from "@/lib/exclusions";
 import type { FloorSnapshot } from "@/lib/useFloorHistory";
 import { planLongSide, planProportionalSize } from "@/lib/screen-size";
 
@@ -318,10 +318,11 @@ export function FieldTab({
     if (isBasePointCapture) setBpPromptOpen(true);
   }
 
-  async function submitValue(v: number, overrideTransitionId?: string | null) {
+  async function submitValue(v: number, overrideTransitionId?: string | null, isDrain?: boolean) {
     // overrideTransitionId: string = tag with this; null = force no tag (root anchor surface); undefined = use activeTransitionId
     if (editingPoint) {
       const updated: SurveyPoint = { ...editingPoint, value: v };
+      if (isDrain !== undefined && !editingPoint.isBasePoint) updated.isDrain = isDrain || undefined;
       if (overrideTransitionId !== undefined && !editingPoint.isTransitionAnchor) {
         updated.transitionId = overrideTransitionId ?? undefined;
       }
@@ -350,6 +351,7 @@ export function FieldTab({
       label: isBP ? "BP1" : undefined,
       createdAt: Date.now(),
       transitionId: tagId,
+      ...(isDrain && !isBP ? { isDrain: true } : {}),
     };
     await savePoint(point);
     const nextPts = [...points, point];
@@ -1172,7 +1174,7 @@ export function FieldTab({
               ctx.fillText(label, lx + tm.width / 2, ly - padY + (lblFontPx + padY * 2) / 2);
 
               // Zone tag for excluded points — small muted label below the pin
-              const zone = zoneOfXY(p.x, p.y, floor.exclusions);
+              const zone = zoneOfPoint(p, floor.exclusions);
               if (zone && zone.label) {
                 ctx.font = `${Math.max(9, labelFontSize - 2) * k}px sans-serif`;
                 ctx.fillStyle = "rgba(75,85,99,0.9)";
@@ -1262,8 +1264,10 @@ export function FieldTab({
           setPending(null);
           setEditingPoint(null);
         }}
-        onSubmit={(v) => submitValue(v)}
-        onSubmitWithOption={(v, opt) => submitValue(v, opt.id)}
+        onSubmit={(v, extra) => submitValue(v, undefined, extra.isDrain)}
+        onSubmitWithOption={(v, opt, extra) => submitValue(v, opt.id, extra.isDrain)}
+        allowDrain={editingPoint ? !editingPoint.isBasePoint && !editingPoint.isTransitionAnchor : !isBasePointCapture}
+        initialDrain={!!editingPoint?.isDrain}
         surfaceOptions={(() => {
           // Show surface-choice row when:
           //  (a) placing a NEW point while a chain is active, OR

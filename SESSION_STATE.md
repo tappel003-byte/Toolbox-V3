@@ -240,6 +240,11 @@ Shell v477. Test: `pill-pin-rotation` 15/15. Worker source now reads the contact
 `js/explorer-map.js`, `css/styles.css`, shell v478. See `DECISIONS.md` ("Explorer map: Satellite look, place search, smooth zoom").
 Tests: `explorer-map-places` 35/35, `explorer-map-ui` 28/28. Not verified: real Esri tiles (this sandbox cannot reach Esri), so the first look at live imagery is Tim's.
 
+### Claude Code: Floor Survey drain readings (Nov 13, 2026) — branch `claude/drain-point-2ac5`
+
+Keypad "Reading ▾ / Drain" menu; drain points are shown but left out of contours, High / Low and range. See `DECISIONS.md` ("a reading can be tagged as a floor drain").
+`NumericKeypad.tsx`, `FieldTab.tsx`, `lib/exclusions.ts`, `lib/topo.ts`, `TopoTab.tsx`, `js/diagnostics.js`, `js/explorer-summary.js`, rebuilt `js/floor-survey/*`. Shell v479. Test: `floor-survey-drain` 19/19. No Worker change.
+
 ## Sync Worker deploy — done Nov 10, 2026
 
 - Deployed by Claude Code with Tim's Cloudflare API token (saved as a network secret on Tim's Default cloud environment).

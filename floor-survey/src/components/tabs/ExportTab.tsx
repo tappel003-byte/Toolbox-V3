@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Download } from "lucide-react";
 import type { Floor, ProjectMeta, RenderSettings, SurveyPoint } from "@/lib/types";
-import { zoneOfXY } from "@/lib/exclusions";
+import { zoneOfPoint } from "@/lib/exclusions";
 import { buildAreaTopos, renderTopo, resolveSettings } from "./TopoTab";
 import { canvasToPdfBlob } from "@/lib/pdf";
 
@@ -112,7 +112,7 @@ export function ExportTab({ project, floor, points, settings }: Props) {
     rows.push(["index", "label", "x", "y", "value", "role", "zone", "notes"].join(","));
     for (const p of points) {
       const role = p.isBasePoint ? "base-point" : "normal";
-      const zone = zoneOfXY(p.x, p.y, floor.exclusions);
+      const zone = zoneOfPoint(p, floor.exclusions);
       const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
       rows.push(
         [

@@ -171,7 +171,7 @@
    */
   function elevationSpread(layer) {
     const raw = isObject(layer) && Array.isArray(layer.points)
-      ? layer.points.filter(function (p) { return isObject(p) && typeof p.value === 'number' && isFinite(p.value); })
+      ? layer.points.filter(function (p) { return isObject(p) && p.isDrain !== true && typeof p.value === 'number' && isFinite(p.value); })
       : [];
     if (!raw.length) return { high: null, low: null, corrected: false };
     const api = (typeof window !== 'undefined' && window.ToolboxFloorSurvey) || null;

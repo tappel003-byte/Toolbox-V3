@@ -685,6 +685,20 @@ Tests: `tests/explorer-map-places.mjs` (35, real mouse, keyboard and multi-touch
 
 ---
 
+## Floor Survey: a reading can be tagged as a floor drain (DECIDED Tim, Nov 13, 2026)
+
+Tim, on a four-level vet clinic: floor drains are cast low on purpose, so a reading taken at one skews the topo. "Show the number but don't topo."
+
+- The Floor Survey keypad has a small **Reading ▾** menu in its upper-left. Its only special case is **Drain**. It starts on Reading every time the keypad opens, so a drain is picked for that one point and never has to be switched off. Tapping a saved point reopens the keypad on its own setting, so a drain can be fixed or turned back into an ordinary reading.
+- A drain reading (`isDrain` on the point) keeps its number and value on the plan, labelled **Drain** under the number (capture plan, topo, report figure, recovery PDF). It is left out of the contours, the High / Low and the range: the capture pill, Review, the report figure, Diagnostics, the Explorer summary, and the 3D surface. Review and the readings CSV list it as "Drain".
+- It is a per-point tag, not a zone. The drawn exclusion zones are unchanged and still work for areas.
+- Unchanged: how readings are taken, numbered and renumbered, base points, transitions. Not offered on base points or transition anchors.
+- The tag travels in the `floor` component like any other point field; no Worker change.
+
+Test: `tests/floor-survey-drain.mjs` (19, real mouse and keyboard on a phone-size screen).
+
+---
+
 ## Closeout
 
 - The final PDF is the durable closeout record.

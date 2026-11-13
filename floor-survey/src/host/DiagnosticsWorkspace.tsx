@@ -315,6 +315,7 @@ export function DiagnosticsWorkspace({
           value: point.value,
           rawValue: raw ? raw.value : point.value,
           isBasePoint: !!(raw && raw.isBasePoint),
+          isDrain: !!(raw && raw.isDrain),
           label: raw && raw.label ? raw.label : "",
         };
       }),

@@ -3381,6 +3381,14 @@ export function renderTopoTop(
         ctx.fillStyle = color;
         ctx.fillText(text, cx, cy);
       }
+      // A drain reading says so under its number: it is shown but not contoured.
+      if (p.isDrain) {
+        ctx.font = `600 ${Math.max(6, fontPx * 0.72)}px sans-serif`;
+        ctx.fillStyle = "rgba(75,85,99,0.95)";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillText("Drain", cx, ty - padY + pillH + fontPx * 0.1);
+      }
     }
     ctx.globalAlpha = 1;
   } else if (highlightId) {
