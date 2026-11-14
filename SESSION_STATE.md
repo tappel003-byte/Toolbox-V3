@@ -265,6 +265,10 @@ Shell v482. Test: `floor-survey-drain` 32/32. No Worker change.
 Report Builder → Share files → a 14-day link to a plain Sandia Geo download page (report PDF, a zip of the report's photographs, other files). New: `sync-worker/src/drop.js` + routes in `sync-worker/src/index.js`, `js/drop-box.js`, `js/sync.js` (drop* calls), `js/report-builder.js` and `js/app.js` (buttons). Also: drag-and-drop zone, "Share files" on the Customer File page (no report needed), floor plans from the Customer File. Shell v484. Tests: `drop-box-worker` 40/40, `drop-box-ui` 43/43. See `DECISIONS.md`.
 **The Worker must be deployed with the client** (the new routes are what the dialog calls). Not tested against a real R2 bucket.
 
+### Claude Code: Share lookbook button removed (Nov 14, 2026) — branch `claude/remove-share-lookbook-2ac5`
+
+Tim, after the drop box worked on the first real use: "Let's get rid of share lookbook." Button and handler removed from `js/report-builder.js`; the module and Worker lookbook routes stay (the drop box uses them). Shell v485.
+
 ## Sync Worker deploy — done Nov 10, 2026
 
 - Deployed by Claude Code with Tim's Cloudflare API token (saved as a network secret on Tim's Default cloud environment).
