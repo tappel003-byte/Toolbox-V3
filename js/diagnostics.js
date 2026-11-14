@@ -115,9 +115,9 @@
         references.push({ label: label, value: roundHundredth(raw), unit: 'in' });
       }
       if (corrected == null) return;
-      // A reading tagged as a floor drain is kept out the same way a point in
-      // an exclusion zone is: shown, never counted in high, low or range.
-      var insideExclusion = point.isDrain === true || exclusionPolys.some(function (poly) {
+      // A reading kept off the surface (a drain, a monitor reading) is left out the same way a
+      // point in an exclusion zone is: shown, never counted in high, low or range.
+      var insideExclusion = point.offSurface === true || point.isDrain === true || exclusionPolys.some(function (poly) {
         return pointInPolygon(point.x, point.y, poly);
       });
       if (insideExclusion) {

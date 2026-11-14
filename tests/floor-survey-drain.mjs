@@ -79,6 +79,16 @@ const kindMenu = () => page.$('[data-keypad-kind]');
 const chipText = () => page.evaluate(() => document.querySelector('[aria-label^="Elevation stats"]').innerText.replace(/\s+/g, ' '));
 
 await openSurvey();
+// Record what the canvases draw (text, outlined text, dashed lines) for the checks below.
+await page.evaluate(() => {
+  window.__txt = []; window.__dash = 0; window.__halo = [];
+  const f = CanvasRenderingContext2D.prototype.fillText;
+  CanvasRenderingContext2D.prototype.fillText = function (t, ...r) { window.__txt.push(String(t)); return f.call(this, t, ...r); };
+  const st = CanvasRenderingContext2D.prototype.strokeText;
+  CanvasRenderingContext2D.prototype.strokeText = function (t, ...r) { window.__halo.push(String(t)); return st.call(this, t, ...r); };
+  const d = CanvasRenderingContext2D.prototype.setLineDash;
+  CanvasRenderingContext2D.prototype.setLineDash = function (arr) { if (arr && arr.length) window.__dash += 1; return d.call(this, arr); };
+});
 
 // ---- a normal reading: the menu is there, on Reading
 await tapPlan(0.45, 0.5);
@@ -89,11 +99,11 @@ const padBox = await page.evaluate(() => { const r = document.querySelector('.ro
 check('and it sits in the keypad\'s upper-left, above the number', firstBox && firstBox.x < padBox.l + padBox.w / 2 && firstBox.y < padBox.t + 70, JSON.stringify({ firstBox, padBox }));
 check('It starts on "Reading"', await page.$eval('[data-keypad-kind]', (el) => el.value === 'reading'));
 const optionNames = await page.$$eval('[data-keypad-kind] option', (o) => o.map((x) => x.textContent));
-check('Its only special case is Drain', JSON.stringify(optionNames) === JSON.stringify(['Reading', 'Drain']), JSON.stringify(optionNames));
+check('Its special cases are Drain and Monitor', JSON.stringify(optionNames) === JSON.stringify(['Reading', 'Drain', 'Monitor']), JSON.stringify(optionNames));
 await page.keyboard.type('5.9'); await page.keyboard.press('Enter'); await wait(800);
 let s = await stored();
 const normal = s.points.find((p) => p.index === 8);
-check('A normal reading saves as before, not a drain', normal && normal.value === 5.9 && !normal.isDrain, JSON.stringify(normal));
+check('A normal reading saves as before, not a drain', normal && normal.value === 5.9 && !normal.special && !normal.isDrain, JSON.stringify(normal));
 
 // ---- a drain reading, far lower than the floor
 await tapPlan(0.3, 0.7);
@@ -103,7 +113,7 @@ await page.evaluate(() => document.querySelector('.font-mono')?.click());
 await page.keyboard.type('-4.0'); await page.keyboard.press('Enter'); await wait(900);
 s = await stored();
 const drain = s.points.find((p) => p.index === 9);
-check('A drain reading is saved with its value and the drain tag', drain && drain.value === -4 && drain.isDrain === true, JSON.stringify(drain));
+check('A drain reading is saved with its value and the drain tag', drain && drain.value === -4 && drain.special === 'drain', JSON.stringify(drain));
 check('The drain has its own number like any reading', !!drain && drain.index === 9);
 const afterChip = await chipText();
 check('The High / Low pill ignores the drain (no -4 in it)', !/-4|−4/.test(afterChip) && /6\.2/.test(afterChip) && /5\.3/.test(afterChip), afterChip);
@@ -113,7 +123,7 @@ await tapPlan(0.7, 0.8);
 check('The next reading opens on "Reading" again', await page.$eval('[data-keypad-kind]', (el) => el.value === 'reading'));
 await page.keyboard.type('5.5'); await page.keyboard.press('Enter'); await wait(800);
 s = await stored();
-check('and is a normal reading', s.points.find((p) => p.index === 10)?.isDrain !== true);
+check('and is a normal reading', !s.points.find((p) => p.index === 10)?.special);
 
 // ---- the drain shows its number and says Drain on the plan; fixing a drain keeps the tag
 await page.screenshot({ path: new URL('./review-artifacts/floor-survey-drain-plan.png', import.meta.url).pathname }).catch(() => {});
@@ -133,7 +143,7 @@ if (editMenu) {
   await page.keyboard.type('-4.5'); await page.keyboard.press('Enter'); await wait(800);
   s = await stored();
   const fixed = s.points.find((p) => p.index === 9);
-  check('Correcting a drain keeps it a drain', fixed && fixed.isDrain === true && fixed.value === -4.5, JSON.stringify(fixed));
+  check('Correcting a drain keeps it a drain', fixed && fixed.special === 'drain' && fixed.value === -4.5, JSON.stringify(fixed));
   // and a drain can be turned back into an ordinary reading
   await page.mouse.click(planPt.l + planPt.w * (240 / 800), planPt.t + planPt.h * (420 / 600));
   await wait(500);
@@ -142,7 +152,7 @@ if (editMenu) {
   await page.keyboard.type('5.2'); await page.keyboard.press('Enter'); await wait(800);
   s = await stored();
   const back = s.points.find((p) => p.index === 9);
-  check('Switching it back to Reading makes it an ordinary reading', back && !back.isDrain && back.value === 5.2, JSON.stringify(back));
+  check('Switching it back to Reading makes it an ordinary reading', back && !back.special && back.value === 5.2, JSON.stringify(back));
   // put it back as a drain for the surface checks
   await page.mouse.click(planPt.l + planPt.w * (240 / 800), planPt.t + planPt.h * (420 / 600));
   await wait(500);
@@ -152,6 +162,60 @@ if (editMenu) {
 } else {
   check('Tapping the drain again opens its keypad', false, 'no keypad');
 }
+
+// ---- A Monitor reading from the keypad: kept, shown, not on the surface, named on the plan
+await page.mouse.click(planPt.l + planPt.w * (560 / 800), planPt.t + planPt.h * (200 / 600));
+await wait(500);
+await page.select('[data-keypad-kind]', 'monitor');
+check('Choosing Monitor changes the menu', await page.$eval('[data-keypad-kind]', (el) => el.value === 'monitor'));
+await page.keyboard.type('9.8'); await page.keyboard.press('Enter'); await wait(900);
+s = await stored();
+const monitor = s.points.find((p) => p.special === 'monitor');
+check('A Monitor reading is saved with its value and the monitor kind', monitor && monitor.value === 9.8 && !monitor.isDrain, JSON.stringify(monitor));
+const chipAfterMonitor = await chipText();
+check('The High / Low pill ignores the Monitor reading too (9.8 is above every real reading)', !/9\.8/.test(chipAfterMonitor) && /6\.2/.test(chipAfterMonitor), chipAfterMonitor);
+// the note names what the level has
+const noteFor = (pts) => page.evaluate(async (canvasId, id, only) => {
+  const r = await ToolboxDB.getCustomerFile(id);
+  const layer = r.floorSurvey.byCanvasId[canvasId];
+  const floor = { id: canvasId, name: 'Main Level', boundary: layer.boundary, areas: layer.areas, exclusions: [], transitions: [], notes: [], createdAt: 1 };
+  window.__halo = [];
+  const keep = layer.points.filter((p) => !only || only(p));
+  await window.ToolboxFloorSurvey.composeReportTopoFigure({ floor, points: keep.map((p) => ({ ...p })), areaId: 'all' });
+  return window.__halo.filter((t) => /^\( \)/.test(t));
+}, s.canvasId, FILE, pts);
+const nBoth = await noteFor(null);
+check('Under the map: both kinds are named when the level has both', JSON.stringify(nBoth) === JSON.stringify(['( ) Drain and monitor readings, not included in the topo']), JSON.stringify(nBoth));
+await page.evaluate(() => {});
+// (monitor only, drain only) are computed from the figure with the other kind taken out
+const monOnly = await page.evaluate(async (canvasId, id) => {
+  const r = await ToolboxDB.getCustomerFile(id);
+  const layer = r.floorSurvey.byCanvasId[canvasId];
+  const floor = { id: canvasId, name: 'Main Level', boundary: layer.boundary, areas: layer.areas, exclusions: [], transitions: [], notes: [], createdAt: 1 };
+  window.__halo = [];
+  await window.ToolboxFloorSurvey.composeReportTopoFigure({ floor, points: layer.points.filter((p) => !p.isDrain && p.special !== 'drain').map((p) => ({ ...p })), areaId: 'all' });
+  return window.__halo.filter((t) => /^\( \)/.test(t));
+}, s.canvasId, FILE);
+check('Under the map: only monitor readings are named when that is all it has', JSON.stringify(monOnly) === JSON.stringify(['( ) Monitor readings, not included in the topo']), JSON.stringify(monOnly));
+// a drain saved by the earlier build (isDrain) still counts
+await page.evaluate(async (id) => {
+  const r = await ToolboxDB.getCustomerFile(id);
+  const layer = Object.values(r.floorSurvey.byCanvasId)[0];
+  const d = layer.points.find((p) => p.special === 'drain');
+  delete d.special; d.isDrain = true;
+  await ToolboxDB.saveCustomerFile(r);
+}, FILE);
+s = await stored();
+const legacy = await page.evaluate(async (canvasId, id) => {
+  const r = await ToolboxDB.getCustomerFile(id);
+  const layer = r.floorSurvey.byCanvasId[canvasId];
+  const floor = { id: canvasId, name: 'Main Level', boundary: layer.boundary, areas: layer.areas, exclusions: [], transitions: [], notes: [], createdAt: 1 };
+  window.__halo = [];
+  const out = await window.ToolboxFloorSurvey.composeReportTopoFigure({ floor, points: layer.points.map((p) => ({ ...p })), areaId: 'all' });
+  return { halo: window.__halo.filter((t) => /^\( \)|^\(-?\d/.test(t)), hi: out.stats[0].hi, lo: out.stats[0].lo };
+}, s.canvasId, FILE);
+check('A drain saved by the earlier build (isDrain) is still a drain: ghosted, named, left out of High and Low',
+  legacy.halo.includes('( ) Drain and monitor readings, not included in the topo') && legacy.hi < 9 && legacy.lo > 5, JSON.stringify(legacy));
 
 // ---- Review lists it as a drain, not counted
 s = await stored();
@@ -164,18 +228,12 @@ const reviewText = await page.evaluate(() => document.body.innerText);
 check('Review labels the drain reading "Drain"', /Drain/.test(reviewText));
 
 // ---- The drain is drawn as a ghost: in parentheses, dashed outline, with its tag (capture screen)
-await page.evaluate(() => {
-  window.__txt = []; window.__dash = 0;
-  const f = CanvasRenderingContext2D.prototype.fillText;
-  CanvasRenderingContext2D.prototype.fillText = function (t, ...r) { window.__txt.push(String(t)); return f.call(this, t, ...r); };
-  const d = CanvasRenderingContext2D.prototype.setLineDash;
-  CanvasRenderingContext2D.prototype.setLineDash = function (arr) { if (arr && arr.length) window.__dash += 1; return d.call(this, arr); };
-});
+await page.evaluate(() => { window.__txt = []; window.__dash = 0; window.__halo = []; });
 await page.setViewport({ width: 380, height: 840, isMobile: true, hasTouch: false }); await wait(700);
 await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: false }); await wait(900);
-const cap = await page.evaluate(() => ({ txt: window.__txt.slice(), dash: window.__dash }));
+const cap = await page.evaluate(() => ({ txt: window.__txt.slice(), dash: window.__dash, halo: window.__halo.slice() }));
 check('Capture plan: the drain reading is written in parentheses, with "Drain" under it', cap.txt.some((t) => /^\(-?\d+(\.\d+)?\)$/.test(t)) && cap.txt.includes('Drain'), JSON.stringify(cap.txt.slice(0, 14)));
-check('Capture plan: its box is a dashed outline (drawn as a ghost)', cap.dash > 0, String(cap.dash));
+check('Capture plan: it has no box (no dashed outline), only type with a white outline', cap.dash === 0 && cap.halo.some((t) => /^\(-?\d/.test(t)), JSON.stringify({ dash: cap.dash, halo: cap.halo.slice(0, 4) }));
 check('Capture plan: ordinary readings are not in parentheses', cap.txt.filter((t) => /^-?\d+(\.\d+)?$/.test(t)).length >= 5);
 
 // ---- Report figure: the surface and the report High / Low leave the drain out
@@ -184,7 +242,7 @@ const rep = await page.evaluate(async (canvasId, id) => {
   const layer = r.floorSurvey.byCanvasId[canvasId];
   const floor = { id: canvasId, name: 'Main Level', boundary: layer.boundary, areas: layer.areas, exclusions: [], transitions: [], notes: [], createdAt: 1 };
   const withDrain = layer.points.filter((p) => p.index !== 10);
-  const noDrain = withDrain.filter((p) => !p.isDrain);
+  const noDrain = withDrain.filter((p) => !(p.special || p.isDrain));
   const one = async (points) => {
     const out = await window.ToolboxFloorSurvey.composeReportTopoFigure({ floor, points: points.map((p) => ({ ...p })), areaId: 'all' });
     return out ? out.stats : null;
@@ -198,18 +256,18 @@ const figTxt = await page.evaluate(async (canvasId, id) => {
   const layer = r.floorSurvey.byCanvasId[canvasId];
   const floor = { id: canvasId, name: 'Main Level', boundary: layer.boundary, areas: layer.areas, exclusions: [], transitions: [], notes: [], createdAt: 1 };
   const run = async (points) => {
-    window.__txt = []; window.__dash = 0;
+    window.__txt = []; window.__dash = 0; window.__halo = [];
     await window.ToolboxFloorSurvey.composeReportTopoFigure({ floor, points: points.map((p) => ({ ...p })), areaId: 'all' });
-    return { txt: window.__txt.slice(), dash: window.__dash };
+    return { txt: window.__txt.slice(), dash: window.__dash, halo: window.__halo.slice() };
   };
   const all = layer.points.filter((p) => p.index !== 10);
-  return { withDrain: await run(all), noDrain: await run(all.filter((p) => !p.isDrain)) };
+  return { withDrain: await run(all), noDrain: await run(all.filter((p) => !(p.special || p.isDrain))) };
 }, s.canvasId, FILE);
-check('Report figure: the drain is in parentheses with "Drain" under it, as a dashed ghost box',
-  figTxt.withDrain.txt.some((t) => /^\(-?\d+(\.\d+)?\)$/.test(t)) && figTxt.withDrain.txt.includes('Drain') && figTxt.withDrain.dash > 0, JSON.stringify(figTxt.withDrain.txt.slice(0, 12)));
-check('Report figure: one line under the map says what the parentheses mean', figTxt.withDrain.txt.filter((t) => /^\( \) Drain reading, not included in the topo$/.test(t)).length === 1);
+check('Report figure: the drain is in parentheses with "Drain" under it, no box, type with a white outline',
+  figTxt.withDrain.halo.some((t) => /^\(-?\d+(\.\d+)?\)$/.test(t)) && figTxt.withDrain.halo.includes('Drain') && figTxt.withDrain.dash === 0, JSON.stringify(figTxt.withDrain.txt.slice(0, 12)));
+check('Report figure: one line under the map says what the parentheses mean', figTxt.withDrain.halo.filter((t) => t === '( ) Drain and monitor readings, not included in the topo').length === 1);
 check('Report figure: a level with no drain has no note and no ghost box',
-  !figTxt.noDrain.txt.some((t) => /Drain/.test(t)) && figTxt.noDrain.dash === 0, JSON.stringify(figTxt.noDrain.txt.filter((t) => /Drain|\(/.test(t))));
+  !figTxt.noDrain.halo.length && !figTxt.noDrain.txt.some((t) => /Drain|Monitor/.test(t)) && figTxt.noDrain.dash === 0, JSON.stringify(figTxt.noDrain.halo));
 
 // (The pins' place on the picture can shift because the drain, drawn outside the walls here, widens the frame.)
 const same = (k) => JSON.stringify(rep.withDrain[0][k]) === JSON.stringify(rep.noDrain[0][k]);
@@ -222,27 +280,28 @@ const recLabel = await page.evaluate(() => {
   const fl = { transitions: [] };
   return {
     drain: window.ToolboxFloorSurvey.recoveryReadingLabel({ id: 'd', value: 5.3, isDrain: true }, fl),
+    monitor: window.ToolboxFloorSurvey.recoveryReadingLabel({ id: 'm', value: 5.3, special: 'monitor' }, fl),
     normal: window.ToolboxFloorSurvey.recoveryReadingLabel({ id: 'n', value: 5.3 }, fl),
   };
 });
-check('The recovery sheet writes a drain reading in parentheses and an ordinary one plain', /^\(.*5\.3.*\)$/.test(recLabel.drain) && !/\(/.test(recLabel.normal), JSON.stringify(recLabel));
+check('The recovery sheet writes a drain (old or new) and a monitor reading in parentheses and an ordinary one plain', /^\(.*5\.3.*\)$/.test(recLabel.drain) && /^\(.*5\.3.*\)$/.test(recLabel.monitor) && !/\(/.test(recLabel.normal), JSON.stringify(recLabel));
 
 // ---- Diagnostics reading summary leaves the drain out of high / low
 const diag = await page.evaluate(() => {
   const pts = [
     { id: 'a', x: 100, y: 100, value: 5.5, rawValue: 5.5 }, { id: 'b', x: 200, y: 100, value: 6.1, rawValue: 6.1 },
-    { id: 'c', x: 300, y: 100, value: 5.9, rawValue: 5.9 }, { id: 'd', x: 400, y: 100, value: -4, rawValue: -4, isDrain: true },
+    { id: 'c', x: 300, y: 100, value: 5.9, rawValue: 5.9 }, { id: 'd', x: 400, y: 100, value: -4, rawValue: -4, isDrain: true }, { id: 'e', x: 500, y: 100, value: 12, rawValue: 12, offSurface: true },
   ];
   const out = window.ToolboxDiagnostics.summarizeReadings({ levelName: 'L', points: pts, boundary: [], exclusions: [] });
   return { low: out.low, high: out.high, excluded: out.excludedPointCount };
 });
-check('Diagnostics leaves the drain out of Low and counts it as excluded', diag.low === 5.5 && diag.high === 6.1 && diag.excluded === 1, JSON.stringify(diag));
+check('Diagnostics leaves a drain and an off-surface reading out of High and Low and counts them as excluded', diag.low === 5.5 && diag.high === 6.1 && diag.excluded === 2, JSON.stringify(diag));
 
 // ---- Explorer elevation spread
 const spread = await page.evaluate(() => {
   const S = window.ToolboxExplorerSummary;
   if (!S || typeof S.elevationSpread !== 'function') return null;
-  return S.elevationSpread({ points: [{ value: 6 }, { value: 5.5 }, { value: -4, isDrain: true }] });
+  return S.elevationSpread({ points: [{ value: 6 }, { value: 5.5 }, { value: -4, isDrain: true }, { value: 12, special: 'monitor' }] });
 });
 if (spread) check('Explorer\'s high / low for a level leaves the drain out', spread.low === 5.5 && spread.high === 6, JSON.stringify(spread));
 

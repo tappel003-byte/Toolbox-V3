@@ -62,6 +62,7 @@ import {
   saveFloor,
 } from "@/lib/db";
 import { pointsOutsideExclusions } from "@/lib/exclusions";
+import { SPECIAL_LABELS, isOffSurface, specialKindOf, specialNote } from "@/lib/special-points";
 import {
   areaCentroid,
   closedAreas,
@@ -3223,8 +3224,20 @@ function renderTopoBaseLayer(
   }
 }
 
-/** Gray ink for a drain reading's ghost label, its "Drain" tag and the note under the map. */
-const DRAIN_INK = "#374151";
+/** Gray ink for an off-surface reading's label, its tag word and the note under the map. */
+const SPECIAL_INK = "#374151";
+
+/** Type with a thin white outline, so it reads on any contour colour without a box behind it. */
+function haloText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, ink: string, haloPx: number) {
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineWidth = haloPx;
+  ctx.strokeStyle = "rgba(255,255,255,0.95)";
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = ink;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
 
 // Top pass: points, point labels, high/low pins, legend. Meant to sit OVER the wall plan.
 export function renderTopoTop(
@@ -3292,10 +3305,11 @@ export function renderTopoTop(
     // Dots always draw when points are on. Labels obey showLabels (Readings pill
     // and Control panel → Readings → Show).
     ctx.font = `${weight} ${fontPx}px sans-serif`;
-    // A drain reading is written in parentheses, the way a value noted but not used is.
+    // A reading kept off the surface (drain, monitor) is written in parentheses, the way a value
+    // noted but not used is.
     const labelTextOf = (p: SurveyPoint) => {
       const t = p.value.toFixed(resolved.decimalPlaces);
-      return p.isDrain ? `(${t})` : t;
+      return isOffSurface(p) ? `(${t})` : t;
     };
     const offsetOf = (p: SurveyPoint, isLive: boolean) => {
       if (isLive) return { dx: live!.dx, dy: live!.dy };
@@ -3375,36 +3389,38 @@ export function renderTopoTop(
         ctx.fillStyle = "#ffffff";
         ctx.fillText(text, cx, cy);
       } else {
-        // A drain reading is a ghost: no fill, a dashed outline and gray type, so it is clearly
-        // not a data point on the surface (Tim, Nov 14, 2026).
-        const ghost = !!p.isDrain;
-        if (!ghost && resolved.pointLabelBackground === "white") {
-          ctx.fillStyle = "rgba(255,255,255,0.92)";
-          roundRectPath(ctx, tx - padX, ty - padY, pillW, pillH, radius);
-          ctx.fill();
+        // An off-surface reading (drain, monitor) has no box at all: gray type with a thin white outline,
+        // in parentheses, so it is plainly not a data point on the surface (Tim, Nov 14, 2026).
+        if (isOffSurface(p)) {
+          haloText(ctx, text, cx, cy, SPECIAL_INK, 3 * chromeK);
+        } else {
+          if (resolved.pointLabelBackground === "white") {
+            ctx.fillStyle = "rgba(255,255,255,0.92)";
+            roundRectPath(ctx, tx - padX, ty - padY, pillW, pillH, radius);
+            ctx.fill();
+          }
+          if (resolved.pointLabelBackground !== "plain") {
+            ctx.lineWidth = 0.8 * chromeK;
+            ctx.strokeStyle = color;
+            roundRectPath(ctx, tx - padX, ty - padY, pillW, pillH, radius);
+            ctx.stroke();
+          }
+          ctx.fillStyle = color;
+          ctx.fillText(text, cx, cy);
         }
-        if (ghost || resolved.pointLabelBackground !== "plain") {
-          ctx.lineWidth = 0.8 * chromeK;
-          ctx.strokeStyle = ghost ? DRAIN_INK : color;
-          if (ghost) ctx.setLineDash([3 * chromeK, 2 * chromeK]);
-          roundRectPath(ctx, tx - padX, ty - padY, pillW, pillH, radius);
-          ctx.stroke();
-          if (ghost) ctx.setLineDash([]);
-        }
-        ctx.fillStyle = ghost ? DRAIN_INK : color;
-        ctx.fillText(text, cx, cy);
       }
-      // A drain reading says so under its number: it is shown but not contoured.
-      if (p.isDrain) {
+      // The word for what it is goes under the number (Drain, Monitor).
+      const kind = specialKindOf(p);
+      if (kind) {
         ctx.font = `600 ${Math.max(6, fontPx * 0.72)}px sans-serif`;
-        ctx.fillStyle = DRAIN_INK;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
-        ctx.fillText("Drain", cx, ty - padY + pillH + fontPx * 0.1);
+        haloText(ctx, SPECIAL_LABELS[kind], cx, ty - padY + pillH + fontPx * 0.1, SPECIAL_INK, 2.5 * chromeK);
       }
     }
-    // One line under the map says what the parentheses mean, only when a level has a drain.
-    if (resolved.showLabels && points.some((p) => p.isDrain) && areaTopos.length) {
+    // One line under the map says what the parentheses mean, naming only what the level has.
+    const noteText = resolved.showLabels ? specialNote(points) : null;
+    if (noteText && areaTopos.length) {
       let minX = Infinity;
       let maxY = -Infinity;
       for (const at of areaTopos) {
@@ -3415,10 +3431,9 @@ export function renderTopoTop(
       }
       if (Number.isFinite(minX) && Number.isFinite(maxY)) {
         ctx.font = `600 ${fontPx}px sans-serif`;
-        ctx.fillStyle = DRAIN_INK;
         ctx.textAlign = "left";
         ctx.textBaseline = "top";
-        ctx.fillText("( ) Drain reading, not included in the topo", minX, maxY + fontPx * 0.7);
+        haloText(ctx, noteText, minX, maxY + fontPx * 0.7, SPECIAL_INK, 3 * chromeK);
       }
     }
     ctx.globalAlpha = 1;

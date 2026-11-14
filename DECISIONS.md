@@ -723,6 +723,21 @@ Test: `tests/floor-survey-drain.mjs` (26).
 
 ---
 
+## Monitor readings, and an off-surface reading has no box (DECIDED Tim, Nov 14, 2026)
+
+Tim, on slab curl: a slab that has curled up in one place is a real reading that should not be contoured (it would drag a bulge into the topo), and one worth monitoring over time. He also dropped the dashed box from the drain: "all of them do point the fact that [they are] not meant to be on there."
+
+- The keypad menu is **Reading / Drain / Monitor**. **"Monitor" is a working name**; the word lives in one place (`SPECIAL_LABELS` in `floor-survey/src/lib/special-points.ts`) so a better word is a one-line change.
+- A Drain or a Monitor reading is kept, numbered and shown, and is left out of the contours, the High / Low and the range (capture pill, Review, report figure, Diagnostics, Explorer summary, 3D). Saved on the point as `special: "drain" | "monitor"`. A drain saved by the Nov 13 build (`isDrain`) reads as a drain.
+- **No box.** The number is in parentheses, gray, with a thin white outline so it reads on any contour colour, and the kind word under it ("Drain", "Monitor"). Capture plan, topo screen, report figure, recovery sheet.
+- The line under the map names only the kinds the level has: "( ) Drain readings, not included in the topo", "( ) Monitor readings, ...", "( ) Drain and monitor readings, ...".
+- Kept so a later survey can find and compare the same spots; no comparison is built.
+- The readings export has a `specialKind` column (replaces `isDrain`). No Worker change: the field travels in the `floor` component.
+
+Test: `tests/floor-survey-drain.mjs` (32).
+
+---
+
 ## Closeout
 
 - The final PDF is the durable closeout record.

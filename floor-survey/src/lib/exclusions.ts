@@ -3,6 +3,7 @@
 // interpolator input. Readings are still shown on the plan and in Review.
 
 import type { Exclusion, SurveyPoint } from "./types";
+import { SPECIAL_LABELS, specialKindOf, type SpecialKind } from "./special-points";
 
 export function pointInPolygon(
   px: number,
@@ -36,15 +37,19 @@ export function zoneOfXY(
   return null;
 }
 
-/** Stands in for a zone on a reading tagged as a floor drain (no polygon). */
-export const DRAIN_ZONE: Exclusion = { id: "drain", label: "Drain", polygon: [], createdAt: 0 };
+/** Stands in for a zone on a reading tagged as off the surface (a drain, a monitor reading): no polygon. */
+const SPECIAL_ZONES: Record<SpecialKind, Exclusion> = {
+  drain: { id: "drain", label: SPECIAL_LABELS.drain, polygon: [], createdAt: 0 },
+  monitor: { id: "monitor", label: SPECIAL_LABELS.monitor, polygon: [], createdAt: 0 },
+};
 
-/** Why a reading is kept out of the surface: a drain tag, or the zone it sits in. */
+/** Why a reading is kept out of the surface: its tag (drain, monitor), or the zone it sits in. */
 export function zoneOfPoint(
-  p: Pick<SurveyPoint, "x" | "y" | "isDrain">,
+  p: Pick<SurveyPoint, "x" | "y" | "special" | "isDrain">,
   exclusions: Exclusion[] | undefined,
 ): Exclusion | null {
-  if (p.isDrain) return DRAIN_ZONE;
+  const kind = specialKindOf(p);
+  if (kind) return SPECIAL_ZONES[kind];
   return zoneOfXY(p.x, p.y, exclusions);
 }
 
@@ -61,7 +66,7 @@ export function computeExclusionMap(
   return m;
 }
 
-/** Points not inside any exclusion and not tagged as a drain. */
+/** Points not inside any exclusion and not tagged as a drain or monitor reading. */
 export function pointsOutsideExclusions(
   points: SurveyPoint[],
   exclusions: Exclusion[] | undefined,

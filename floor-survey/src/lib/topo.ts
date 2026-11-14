@@ -7,6 +7,7 @@
 
 import { contours } from "d3-contour";
 import type { SurveyPoint } from "./types";
+import { isOffSurface } from "./special-points";
 
 export const TOPO_GRID_TARGET_COLS = 320;
 
@@ -147,8 +148,8 @@ export function buildGrid(
   // they must not influence the interpolated surface. Points outside the
   // boundary still render on the plan; they just don't pull the contours.
   const excl = exclusions?.filter((p) => p.length >= 3) ?? [];
-  // Drain readings are cast low on purpose and never pull the surface.
-  const surfacePoints = points.filter((p) => !p.isDrain);
+  // Drain and monitor readings are kept off the surface and never pull it.
+  const surfacePoints = points.filter((p) => !isOffSurface(p));
   const insideBoundary =
     boundary.length >= 3
       ? surfacePoints.filter((p) => pointInPolygon(p.x, p.y, boundary))

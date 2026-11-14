@@ -9,6 +9,7 @@ import { getProject, listFloors, listPoints, setHostCustomerFileId } from "@/lib
 import type { Floor, SurveyPoint } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
 import { withCorrectedValues } from "@/lib/transitions";
+import { isOffSurface } from "@/lib/special-points";
 import type { DiagnosticCapture, DiagnosticReadingSummary } from "@/components/ThreeDTab";
 
 const ThreeDTab = lazy(() =>
@@ -315,7 +316,7 @@ export function DiagnosticsWorkspace({
           value: point.value,
           rawValue: raw ? raw.value : point.value,
           isBasePoint: !!(raw && raw.isBasePoint),
-          isDrain: !!(raw && raw.isDrain),
+          offSurface: isOffSurface(raw),
           label: raw && raw.label ? raw.label : "",
         };
       }),

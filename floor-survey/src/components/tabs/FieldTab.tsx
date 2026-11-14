@@ -15,6 +15,7 @@ import { defaultRenderSettings } from "@/lib/types";
 import { savePoint, deletePoint, reindexFloorPoints, saveFloor, saveBp1Gps, uid } from "@/lib/db";
 import { transitionDelta, formatDelta, getChainBaselineSurface } from "@/lib/transitions";
 import { drawExclusionShape, zoneOfPoint } from "@/lib/exclusions";
+import { isOffSurface, specialKindOf, type SpecialKind } from "@/lib/special-points";
 import type { FloorSnapshot } from "@/lib/useFloorHistory";
 import { planLongSide, planProportionalSize } from "@/lib/screen-size";
 
@@ -318,11 +319,14 @@ export function FieldTab({
     if (isBasePointCapture) setBpPromptOpen(true);
   }
 
-  async function submitValue(v: number, overrideTransitionId?: string | null, isDrain?: boolean) {
+  async function submitValue(v: number, overrideTransitionId?: string | null, special?: SpecialKind | null) {
     // overrideTransitionId: string = tag with this; null = force no tag (root anchor surface); undefined = use activeTransitionId
     if (editingPoint) {
       const updated: SurveyPoint = { ...editingPoint, value: v };
-      if (isDrain !== undefined && !editingPoint.isBasePoint) updated.isDrain = isDrain || undefined;
+      if (special !== undefined && !editingPoint.isBasePoint) {
+        updated.special = special || undefined;
+        delete updated.isDrain; // an older drain is re-saved as a kind
+      }
       if (overrideTransitionId !== undefined && !editingPoint.isTransitionAnchor) {
         updated.transitionId = overrideTransitionId ?? undefined;
       }
@@ -351,7 +355,7 @@ export function FieldTab({
       label: isBP ? "BP1" : undefined,
       createdAt: Date.now(),
       transitionId: tagId,
-      ...(isDrain && !isBP ? { isDrain: true } : {}),
+      ...(special && !isBP ? { special } : {}),
     };
     await savePoint(point);
     const nextPts = [...points, point];
@@ -1153,7 +1157,7 @@ export function FieldTab({
                 ? `${readingText(p.value)}${formatDelta(transitionDelta(linkedT!, floor.transitionGroupAverages))}`
                 : readingText(p.value);
               // A drain reading is written in parentheses and drawn as a ghost (no fill, dashed outline).
-              const ghost = !!p.isDrain;
+              const ghost = isOffSurface(p);
               const label = ghost ? `(${baseLabel})` : baseLabel;
               const markerHalo = isAnchor ? Math.max(markerR + 3, 6) : markerR;
               const lx = p.x + markerHalo + 4 * k;
@@ -1164,21 +1168,31 @@ export function FieldTab({
               const padY = lblPadY;
               ctx.beginPath();
               ctx.roundRect(lx - padX, ly - padY, tm.width + padX * 2, lblFontPx + padY * 2, 3 * chromeK);
+              // A reading kept off the surface (drain, monitor) has no box: gray type with a thin white
+              // outline, in parentheses. Everything else keeps its white box.
               if (!ghost) {
                 ctx.fillStyle = "#ffffff";
                 ctx.fill();
               }
+              if (!ghost || isHighlighted) {
+                ctx.strokeStyle = isHighlighted ? TRANSITION_COLOR : "#111827";
+                ctx.lineWidth = (isHighlighted ? 1.5 : 1) * k;
+                ctx.stroke();
+              }
 
-              ctx.strokeStyle = isHighlighted ? TRANSITION_COLOR : ghost ? "#374151" : "#111827";
-              ctx.lineWidth = (isHighlighted ? 1.5 : 1) * k;
-              if (ghost) ctx.setLineDash([3 * k, 2 * k]);
-              ctx.stroke();
-              if (ghost) ctx.setLineDash([]);
-
-              ctx.fillStyle = ghost ? "#374151" : "#111827";
               ctx.textAlign = "center";
               ctx.textBaseline = "middle";
-              ctx.fillText(label, lx + tm.width / 2, ly - padY + (lblFontPx + padY * 2) / 2);
+              const labelY = ly - padY + (lblFontPx + padY * 2) / 2;
+              if (ghost) {
+                ctx.save();
+                ctx.lineJoin = "round";
+                ctx.lineWidth = 3 * k;
+                ctx.strokeStyle = "rgba(255,255,255,0.95)";
+                ctx.strokeText(label, lx + tm.width / 2, labelY);
+                ctx.restore();
+              }
+              ctx.fillStyle = ghost ? "#374151" : "#111827";
+              ctx.fillText(label, lx + tm.width / 2, labelY);
 
               // Zone tag for excluded points — small muted label below the pin
               const zone = zoneOfPoint(p, floor.exclusions);
@@ -1187,6 +1201,14 @@ export function FieldTab({
                 ctx.fillStyle = "rgba(75,85,99,0.9)";
                 ctx.textAlign = "left";
                 ctx.textBaseline = "top";
+                if (ghost) {
+                  ctx.save();
+                  ctx.lineJoin = "round";
+                  ctx.lineWidth = 2.5 * k;
+                  ctx.strokeStyle = "rgba(255,255,255,0.95)";
+                  ctx.strokeText(zone.label, lx, ly + lblFontPx + padY * 2 + 2 * k);
+                  ctx.restore();
+                }
                 ctx.fillText(zone.label, lx, ly + lblFontPx + padY * 2 + 2 * k);
               }
             }
@@ -1271,10 +1293,10 @@ export function FieldTab({
           setPending(null);
           setEditingPoint(null);
         }}
-        onSubmit={(v, extra) => submitValue(v, undefined, extra.isDrain)}
-        onSubmitWithOption={(v, opt, extra) => submitValue(v, opt.id, extra.isDrain)}
-        allowDrain={editingPoint ? !editingPoint.isBasePoint && !editingPoint.isTransitionAnchor : !isBasePointCapture}
-        initialDrain={!!editingPoint?.isDrain}
+        onSubmit={(v, extra) => submitValue(v, undefined, extra.special)}
+        onSubmitWithOption={(v, opt, extra) => submitValue(v, opt.id, extra.special)}
+        allowSpecial={editingPoint ? !editingPoint.isBasePoint && !editingPoint.isTransitionAnchor : !isBasePointCapture}
+        initialSpecial={specialKindOf(editingPoint) ?? null}
         surfaceOptions={(() => {
           // Show surface-choice row when:
           //  (a) placing a NEW point while a chain is active, OR

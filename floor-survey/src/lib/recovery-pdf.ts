@@ -11,6 +11,7 @@ import { readingText } from "@/lib/reading";
  */
 import type { Floor, SurveyPoint } from "./types";
 import { zoneOfPoint } from "./exclusions";
+import { isOffSurface } from "./special-points";
 import { formatDelta, transitionDelta } from "./transitions";
 import { canvasToPdfBlob } from "./pdf";
 
@@ -49,8 +50,8 @@ export function recoveryReadingLabel(point: SurveyPoint, floor: Floor): string {
     transition && !point.isTransitionAnchor
       ? `${valueText}${formatDelta(transitionDelta(transition, floor.transitionGroupAverages))}`
       : valueText;
-  // A drain reading is written in parentheses (and drawn as a ghost below).
-  return point.isDrain ? `(${text})` : text;
+  // A reading kept off the surface (drain, monitor) is written in parentheses (and drawn without a box below).
+  return isOffSurface(point) ? `(${text})` : text;
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -122,19 +123,26 @@ function drawLabel(
   if (x < 2) x = 2;
   if (y < 2) y = 2;
   if (y + boxH > imgH - 2) y = Math.max(2, imgH - 2 - boxH);
-  roundRect(ctx, x, y, boxW, boxH, Math.max(2, fontPx * 0.18));
+  // A reading kept off the surface has no box: gray type with a thin white outline.
   if (!ghost) {
+    roundRect(ctx, x, y, boxW, boxH, Math.max(2, fontPx * 0.18));
     ctx.fillStyle = "#ffffff";
     ctx.fill();
+    ctx.strokeStyle = "#111827";
+    ctx.lineWidth = Math.max(1, fontPx * 0.06);
+    ctx.stroke();
   }
-  ctx.strokeStyle = ghost ? "#374151" : "#111827";
-  ctx.lineWidth = Math.max(1, fontPx * 0.06);
-  if (ghost) ctx.setLineDash([fontPx * 0.2, fontPx * 0.14]);
-  ctx.stroke();
-  if (ghost) ctx.setLineDash([]);
-  ctx.fillStyle = ghost ? "#374151" : "#111827";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+  if (ghost) {
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineWidth = Math.max(2, fontPx * 0.16);
+    ctx.strokeStyle = "rgba(255,255,255,0.95)";
+    ctx.strokeText(text, x + boxW / 2, y + boxH / 2);
+    ctx.restore();
+  }
+  ctx.fillStyle = ghost ? "#374151" : "#111827";
   ctx.fillText(text, x + boxW / 2, y + boxH / 2);
   return { x, y, boxW, boxH };
 }
@@ -204,7 +212,7 @@ export async function renderFloorSurveyRecoveryCanvas(options: {
       fontPx,
       size.planWidth,
       size.planHeight,
-      !!point.isDrain,
+      isOffSurface(point),
     );
     const zone = zoneOfPoint(point, floor.exclusions);
     if (zone?.label) {

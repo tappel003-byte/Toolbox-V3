@@ -255,6 +255,11 @@ H/L/Δ pill saved as a distance from the nearest corner (so it stays beside the 
 Drain reading = dashed no-fill box, gray, "(5.3)", "Drain" under it; one note line under the map. See `DECISIONS.md`.
 `FieldTab.tsx`, `TopoTab.tsx`, `recovery-pdf.ts`, rebuilt `js/floor-survey/*`. Shell v481. Test: `floor-survey-drain` 26/26. No Worker change.
 
+### Claude Code: Monitor readings; no box on off-surface readings (Nov 14, 2026) — branch `claude/monitor-point-2ac5`
+
+Keypad menu Reading / Drain / Monitor ("Monitor" is a working name: `SPECIAL_LABELS`, `lib/special-points.ts`). Off-surface readings drawn without a box, with a white-outlined gray number in parentheses and the kind word under it; the note under the map names the kinds present. See `DECISIONS.md`.
+Shell v482. Test: `floor-survey-drain` 32/32. No Worker change.
+
 ## Sync Worker deploy — done Nov 10, 2026
 
 - Deployed by Claude Code with Tim's Cloudflare API token (saved as a network secret on Tim's Default cloud environment).

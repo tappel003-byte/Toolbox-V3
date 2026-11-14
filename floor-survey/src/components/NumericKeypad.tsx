@@ -1,4 +1,5 @@
 import { readingText } from "@/lib/reading";
+import { SPECIAL_KINDS, SPECIAL_LABELS, type SpecialKind } from "@/lib/special-points";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Delete, Check, X, Repeat2, Trash2, ArrowLeftRight, Undo2 } from "lucide-react";
@@ -17,7 +18,8 @@ export interface SurfaceOption {
 
 /** What the keypad's special-case menu said about this reading. */
 export interface SubmitExtra {
-  isDrain: boolean;
+  /** Set when the menu says this reading is kept off the surface (a drain, a monitor reading). */
+  special: SpecialKind | null;
 }
 
 interface Props {
@@ -36,10 +38,10 @@ interface Props {
   surfaceOptions?: SurfaceOption[];
   /** Required when surfaceOptions is provided. Submits value + chosen surface. */
   onSubmitWithOption?: (value: number, opt: SurfaceOption, extra: SubmitExtra) => void;
-  /** Shows the small "Reading ▾" menu in the upper left, with Drain in it. */
-  allowDrain?: boolean;
-  /** The point being edited is already a drain reading. */
-  initialDrain?: boolean;
+  /** Shows the small "Reading ▾" menu in the upper left, with Drain and Monitor in it. */
+  allowSpecial?: boolean;
+  /** The point being edited already has one of these kinds. */
+  initialSpecial?: SpecialKind | null;
   /** Highlights the currently-selected option (e.g. the transition id this point is already tagged with). */
   selectedSurfaceId?: string | null;
   onUndo?: () => void;
@@ -67,8 +69,8 @@ export function NumericKeypad({
   onRemoveTransition,
   surfaceOptions,
   onSubmitWithOption,
-  allowDrain,
-  initialDrain,
+  allowSpecial,
+  initialSpecial,
   selectedSurfaceId,
   onUndo,
   canUndo,
@@ -81,17 +83,17 @@ export function NumericKeypad({
 
 
   const [text, setText] = useState<string>("");
-  // The special-case menu starts on a normal reading every time the keypad opens,
-  // so a drain is chosen for the one point and never has to be switched off.
-  const [drain, setDrain] = useState(false);
-  const extra: SubmitExtra = { isDrain: !!allowDrain && drain };
+  // The special-case menu starts on a normal reading every time the keypad opens, so a drain or a
+  // monitor reading is chosen for the one point and never has to be switched off.
+  const [special, setSpecial] = useState<SpecialKind | null>(null);
+  const extra: SubmitExtra = { special: allowSpecial ? special : null };
 
   useEffect(() => {
     if (open) {
       setText(initialValue != null ? String(initialValue) : "");
-      setDrain(!!initialDrain);
+      setSpecial(initialSpecial ?? null);
     }
-  }, [open, initialValue, initialDrain]);
+  }, [open, initialValue, initialSpecial]);
 
   function push(ch: string) {
     setText((cur) => {
@@ -162,7 +164,7 @@ export function NumericKeypad({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, text, repeatValue, onSubmit, onClose, drain, allowDrain]);
+  }, [open, text, repeatValue, onSubmit, onClose, special, allowSpecial]);
 
   if (!open) return null;
 
@@ -182,19 +184,23 @@ export function NumericKeypad({
       >
         <div className="flex items-center justify-between gap-1 mb-2">
           <div className="flex items-center gap-1">
-            {allowDrain && (
+            {allowSpecial && (
               <select
-                value={drain ? "drain" : "reading"}
-                onChange={(e) => setDrain(e.target.value === "drain")}
+                value={special ?? "reading"}
+                onChange={(e) => setSpecial(e.target.value === "reading" ? null : (e.target.value as SpecialKind))}
                 aria-label="Kind of reading"
                 data-keypad-kind
                 className={
                   "h-9 rounded-md border bg-background px-2 text-sm font-medium " +
-                  (drain ? "border-amber-400 text-amber-700" : "text-muted-foreground")
+                  (special ? "border-amber-400 text-amber-700" : "text-muted-foreground")
                 }
               >
                 <option value="reading">Reading</option>
-                <option value="drain">Drain</option>
+                {SPECIAL_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {SPECIAL_LABELS[k]}
+                  </option>
+                ))}
               </select>
             )}
             {onUndo && (

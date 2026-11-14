@@ -355,7 +355,7 @@
             notes: point && point.notes || '',
             transitionId: point && point.transitionId || '',
             isTransitionAnchor: !!(point && point.isTransitionAnchor),
-            isDrain: !!(point && point.isDrain),
+            specialKind: (point && point.special) || (point && point.isDrain ? 'drain' : ''),
             createdAt: point && point.createdAt != null ? point.createdAt : '',
           };
         });
@@ -386,7 +386,7 @@
           path: base + '/readings.csv',
           text: toCsv([
             'epochId', 'surveyDate', 'levelId', 'levelName', 'pointId', 'index', 'x', 'y',
-            'rawReadingInches', 'isBasePoint', 'label', 'notes', 'transitionId', 'isTransitionAnchor', 'isDrain', 'createdAt',
+            'rawReadingInches', 'isBasePoint', 'label', 'notes', 'transitionId', 'isTransitionAnchor', 'specialKind', 'createdAt',
           ], pointRows),
         });
         files.push({
