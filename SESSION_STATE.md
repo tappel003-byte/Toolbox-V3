@@ -250,6 +250,11 @@ Keypad "Reading ▾ / Drain" menu; drain points are shown but left out of contou
 H/L/Δ pill saved as a distance from the nearest corner (so it stays beside the Data / Topo pill); Data button stays upper-left in landscape. See `DECISIONS.md`.
 `StatsChip.tsx`, `DataPointsPanel.tsx`, rebuilt `js/floor-survey/*`. Shell v480. Test: `pill-pin-rotation` 25/25. No Worker change.
 
+### Claude Code: drain readings drawn as ghosts (Nov 14, 2026) — branch `claude/drain-ghost-2ac5`
+
+Drain reading = dashed no-fill box, gray, "(5.3)", "Drain" under it; one note line under the map. See `DECISIONS.md`.
+`FieldTab.tsx`, `TopoTab.tsx`, `recovery-pdf.ts`, rebuilt `js/floor-survey/*`. Shell v481. Test: `floor-survey-drain` 26/26. No Worker change.
+
 ## Sync Worker deploy — done Nov 10, 2026
 
 - Deployed by Claude Code with Tim's Cloudflare API token (saved as a network secret on Tim's Default cloud environment).

@@ -45,10 +45,12 @@ export function recoveryReadingLabel(point: SurveyPoint, floor: Floor): string {
   const transition = point.transitionId
     ? floor.transitions?.find((item) => item.id === point.transitionId)
     : undefined;
-  if (transition && !point.isTransitionAnchor) {
-    return `${valueText}${formatDelta(transitionDelta(transition, floor.transitionGroupAverages))}`;
-  }
-  return valueText;
+  const text =
+    transition && !point.isTransitionAnchor
+      ? `${valueText}${formatDelta(transitionDelta(transition, floor.transitionGroupAverages))}`
+      : valueText;
+  // A drain reading is written in parentheses (and drawn as a ghost below).
+  return point.isDrain ? `(${text})` : text;
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -107,6 +109,7 @@ function drawLabel(
   fontPx: number,
   imgW: number,
   imgH: number,
+  ghost = false,
 ) {
   ctx.font = `bold ${fontPx}px sans-serif`;
   const padX = fontPx * 0.28;
@@ -119,13 +122,17 @@ function drawLabel(
   if (x < 2) x = 2;
   if (y < 2) y = 2;
   if (y + boxH > imgH - 2) y = Math.max(2, imgH - 2 - boxH);
-  ctx.fillStyle = "#ffffff";
   roundRect(ctx, x, y, boxW, boxH, Math.max(2, fontPx * 0.18));
-  ctx.fill();
-  ctx.strokeStyle = "#111827";
+  if (!ghost) {
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+  }
+  ctx.strokeStyle = ghost ? "#374151" : "#111827";
   ctx.lineWidth = Math.max(1, fontPx * 0.06);
+  if (ghost) ctx.setLineDash([fontPx * 0.2, fontPx * 0.14]);
   ctx.stroke();
-  ctx.fillStyle = "#111827";
+  if (ghost) ctx.setLineDash([]);
+  ctx.fillStyle = ghost ? "#374151" : "#111827";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(text, x + boxW / 2, y + boxH / 2);
@@ -197,6 +204,7 @@ export async function renderFloorSurveyRecoveryCanvas(options: {
       fontPx,
       size.planWidth,
       size.planHeight,
+      !!point.isDrain,
     );
     const zone = zoneOfPoint(point, floor.exclusions);
     if (zone?.label) {

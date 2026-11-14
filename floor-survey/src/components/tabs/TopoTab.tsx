@@ -3223,6 +3223,9 @@ function renderTopoBaseLayer(
   }
 }
 
+/** Gray ink for a drain reading's ghost label, its "Drain" tag and the note under the map. */
+const DRAIN_INK = "#374151";
+
 // Top pass: points, point labels, high/low pins, legend. Meant to sit OVER the wall plan.
 export function renderTopoTop(
   ctx: CanvasRenderingContext2D,
@@ -3289,15 +3292,20 @@ export function renderTopoTop(
     // Dots always draw when points are on. Labels obey showLabels (Readings pill
     // and Control panel → Readings → Show).
     ctx.font = `${weight} ${fontPx}px sans-serif`;
+    // A drain reading is written in parentheses, the way a value noted but not used is.
+    const labelTextOf = (p: SurveyPoint) => {
+      const t = p.value.toFixed(resolved.decimalPlaces);
+      return p.isDrain ? `(${t})` : t;
+    };
     const offsetOf = (p: SurveyPoint, isLive: boolean) => {
       if (isLive) return { dx: live!.dx, dy: live!.dy };
-      const text = p.value.toFixed(resolved.decimalPlaces);
+      const text = labelTextOf(p);
       return labelOffsetFor(p, text, fontPx, weight);
     };
     const rectFor = (p: SurveyPoint) => {
       const isLive = !!(live && live.id === p.id);
       const { dx, dy } = offsetOf(p, isLive);
-      const w = ctx.measureText(p.value.toFixed(resolved.decimalPlaces)).width + padX * 2;
+      const w = ctx.measureText(labelTextOf(p)).width + padX * 2;
       return { x: p.x + dx - padX, y: p.y + dy - padY, w, h: fontPx + padY * 2 };
     };
     const visibleLabelIds = new Set<string>();
@@ -3340,7 +3348,7 @@ export function renderTopoTop(
 
       // label
       if (!resolved.showLabels || !visibleLabelIds.has(p.id)) continue;
-      const text = p.value.toFixed(resolved.decimalPlaces);
+      const text = labelTextOf(p);
       ctx.font = `${weight} ${fontPx}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -3367,27 +3375,50 @@ export function renderTopoTop(
         ctx.fillStyle = "#ffffff";
         ctx.fillText(text, cx, cy);
       } else {
-        if (resolved.pointLabelBackground === "white") {
+        // A drain reading is a ghost: no fill, a dashed outline and gray type, so it is clearly
+        // not a data point on the surface (Tim, Nov 14, 2026).
+        const ghost = !!p.isDrain;
+        if (!ghost && resolved.pointLabelBackground === "white") {
           ctx.fillStyle = "rgba(255,255,255,0.92)";
           roundRectPath(ctx, tx - padX, ty - padY, pillW, pillH, radius);
           ctx.fill();
         }
-        if (resolved.pointLabelBackground !== "plain") {
+        if (ghost || resolved.pointLabelBackground !== "plain") {
           ctx.lineWidth = 0.8 * chromeK;
-          ctx.strokeStyle = color;
+          ctx.strokeStyle = ghost ? DRAIN_INK : color;
+          if (ghost) ctx.setLineDash([3 * chromeK, 2 * chromeK]);
           roundRectPath(ctx, tx - padX, ty - padY, pillW, pillH, radius);
           ctx.stroke();
+          if (ghost) ctx.setLineDash([]);
         }
-        ctx.fillStyle = color;
+        ctx.fillStyle = ghost ? DRAIN_INK : color;
         ctx.fillText(text, cx, cy);
       }
       // A drain reading says so under its number: it is shown but not contoured.
       if (p.isDrain) {
         ctx.font = `600 ${Math.max(6, fontPx * 0.72)}px sans-serif`;
-        ctx.fillStyle = "rgba(75,85,99,0.95)";
+        ctx.fillStyle = DRAIN_INK;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         ctx.fillText("Drain", cx, ty - padY + pillH + fontPx * 0.1);
+      }
+    }
+    // One line under the map says what the parentheses mean, only when a level has a drain.
+    if (resolved.showLabels && points.some((p) => p.isDrain) && areaTopos.length) {
+      let minX = Infinity;
+      let maxY = -Infinity;
+      for (const at of areaTopos) {
+        for (const v of at.area.polygon) {
+          if (v.x < minX) minX = v.x;
+          if (v.y > maxY) maxY = v.y;
+        }
+      }
+      if (Number.isFinite(minX) && Number.isFinite(maxY)) {
+        ctx.font = `600 ${fontPx}px sans-serif`;
+        ctx.fillStyle = DRAIN_INK;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.fillText("( ) Drain reading, not included in the topo", minX, maxY + fontPx * 0.7);
       }
     }
     ctx.globalAlpha = 1;

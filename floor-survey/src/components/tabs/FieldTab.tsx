@@ -1149,9 +1149,12 @@ export function FieldTab({
 
             // Label — anchors show only the raw reading, downstream points show `raw+delta`.
             if (visibleLabelIds.has(p.id)) {
-              const label = isDownstream
+              const baseLabel = isDownstream
                 ? `${readingText(p.value)}${formatDelta(transitionDelta(linkedT!, floor.transitionGroupAverages))}`
                 : readingText(p.value);
+              // A drain reading is written in parentheses and drawn as a ghost (no fill, dashed outline).
+              const ghost = !!p.isDrain;
+              const label = ghost ? `(${baseLabel})` : baseLabel;
               const markerHalo = isAnchor ? Math.max(markerR + 3, 6) : markerR;
               const lx = p.x + markerHalo + 4 * k;
               const ly = p.y + markerHalo + 3 * k;
@@ -1159,16 +1162,20 @@ export function FieldTab({
               const tm = ctx.measureText(label);
               const padX = lblPadX;
               const padY = lblPadY;
-              ctx.fillStyle = "#ffffff";
               ctx.beginPath();
               ctx.roundRect(lx - padX, ly - padY, tm.width + padX * 2, lblFontPx + padY * 2, 3 * chromeK);
-              ctx.fill();
+              if (!ghost) {
+                ctx.fillStyle = "#ffffff";
+                ctx.fill();
+              }
 
-              ctx.strokeStyle = isHighlighted ? TRANSITION_COLOR : "#111827";
+              ctx.strokeStyle = isHighlighted ? TRANSITION_COLOR : ghost ? "#374151" : "#111827";
               ctx.lineWidth = (isHighlighted ? 1.5 : 1) * k;
+              if (ghost) ctx.setLineDash([3 * k, 2 * k]);
               ctx.stroke();
+              if (ghost) ctx.setLineDash([]);
 
-              ctx.fillStyle = "#111827";
+              ctx.fillStyle = ghost ? "#374151" : "#111827";
               ctx.textAlign = "center";
               ctx.textBaseline = "middle";
               ctx.fillText(label, lx + tm.width / 2, ly - padY + (lblFontPx + padY * 2) / 2);

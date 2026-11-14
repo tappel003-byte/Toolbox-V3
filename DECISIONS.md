@@ -711,6 +711,18 @@ Test: `tests/pill-pin-rotation.mjs` (25, real mouse, portrait and landscape).
 
 ---
 
+## A drain reading is a ghost: parentheses, dashed box, a note under the map (DECIDED Tim, Nov 14, 2026)
+
+Tim, looking at the first drain on a real job (VCA): the drain needed to stand out as "not a data point". He weighed a yellow box and an asterisk, then chose the opposite: make it step back. "What if I drop the reading or make them transparent? ... Drain stays noted."
+
+- A drain reading is drawn as a **ghost**: no fill, a dashed outline, gray type, the number in **parentheses** like "(5.3)", and the small word **Drain** under it. On the capture plan, the topo screen, the report figure and the recovery sheet.
+- Under the map, **one line** when a level has a drain: "( ) Drain reading, not included in the topo". Topo screen and report figure only, since only there is there a topo to be left out of.
+- Unchanged: a drain is still left out of the contours, the High / Low and the range; the keypad menu; the number is still shown (not dropped).
+
+Test: `tests/floor-survey-drain.mjs` (26).
+
+---
+
 ## Closeout
 
 - The final PDF is the durable closeout record.

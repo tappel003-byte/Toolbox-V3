@@ -163,6 +163,21 @@ await wait(700);
 const reviewText = await page.evaluate(() => document.body.innerText);
 check('Review labels the drain reading "Drain"', /Drain/.test(reviewText));
 
+// ---- The drain is drawn as a ghost: in parentheses, dashed outline, with its tag (capture screen)
+await page.evaluate(() => {
+  window.__txt = []; window.__dash = 0;
+  const f = CanvasRenderingContext2D.prototype.fillText;
+  CanvasRenderingContext2D.prototype.fillText = function (t, ...r) { window.__txt.push(String(t)); return f.call(this, t, ...r); };
+  const d = CanvasRenderingContext2D.prototype.setLineDash;
+  CanvasRenderingContext2D.prototype.setLineDash = function (arr) { if (arr && arr.length) window.__dash += 1; return d.call(this, arr); };
+});
+await page.setViewport({ width: 380, height: 840, isMobile: true, hasTouch: false }); await wait(700);
+await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: false }); await wait(900);
+const cap = await page.evaluate(() => ({ txt: window.__txt.slice(), dash: window.__dash }));
+check('Capture plan: the drain reading is written in parentheses, with "Drain" under it', cap.txt.some((t) => /^\(-?\d+(\.\d+)?\)$/.test(t)) && cap.txt.includes('Drain'), JSON.stringify(cap.txt.slice(0, 14)));
+check('Capture plan: its box is a dashed outline (drawn as a ghost)', cap.dash > 0, String(cap.dash));
+check('Capture plan: ordinary readings are not in parentheses', cap.txt.filter((t) => /^-?\d+(\.\d+)?$/.test(t)).length >= 5);
+
 // ---- Report figure: the surface and the report High / Low leave the drain out
 const rep = await page.evaluate(async (canvasId, id) => {
   const r = await ToolboxDB.getCustomerFile(id);
@@ -177,11 +192,40 @@ const rep = await page.evaluate(async (canvasId, id) => {
   return { withDrain: await one(withDrain), noDrain: await one(noDrain), nWith: withDrain.length, nWithout: noDrain.length };
 }, s.canvasId, FILE);
 check('The report figure builds with the drain among the readings', !!rep.withDrain && !!rep.noDrain, JSON.stringify(rep).slice(0, 300));
+// what the figure itself draws, with and without a drain
+const figTxt = await page.evaluate(async (canvasId, id) => {
+  const r = await ToolboxDB.getCustomerFile(id);
+  const layer = r.floorSurvey.byCanvasId[canvasId];
+  const floor = { id: canvasId, name: 'Main Level', boundary: layer.boundary, areas: layer.areas, exclusions: [], transitions: [], notes: [], createdAt: 1 };
+  const run = async (points) => {
+    window.__txt = []; window.__dash = 0;
+    await window.ToolboxFloorSurvey.composeReportTopoFigure({ floor, points: points.map((p) => ({ ...p })), areaId: 'all' });
+    return { txt: window.__txt.slice(), dash: window.__dash };
+  };
+  const all = layer.points.filter((p) => p.index !== 10);
+  return { withDrain: await run(all), noDrain: await run(all.filter((p) => !p.isDrain)) };
+}, s.canvasId, FILE);
+check('Report figure: the drain is in parentheses with "Drain" under it, as a dashed ghost box',
+  figTxt.withDrain.txt.some((t) => /^\(-?\d+(\.\d+)?\)$/.test(t)) && figTxt.withDrain.txt.includes('Drain') && figTxt.withDrain.dash > 0, JSON.stringify(figTxt.withDrain.txt.slice(0, 12)));
+check('Report figure: one line under the map says what the parentheses mean', figTxt.withDrain.txt.filter((t) => /^\( \) Drain reading, not included in the topo$/.test(t)).length === 1);
+check('Report figure: a level with no drain has no note and no ghost box',
+  !figTxt.noDrain.txt.some((t) => /Drain/.test(t)) && figTxt.noDrain.dash === 0, JSON.stringify(figTxt.noDrain.txt.filter((t) => /Drain|\(/.test(t))));
+
 // (The pins' place on the picture can shift because the drain, drawn outside the walls here, widens the frame.)
 const same = (k) => JSON.stringify(rep.withDrain[0][k]) === JSON.stringify(rep.noDrain[0][k]);
 check('Its High, Low, range and colour legend are identical with and without the drain',
   rep.withDrain && rep.noDrain && ['hi', 'lo', 'delta', 'legend'].every(same) && rep.withDrain[0].hi === 6.2 && rep.withDrain[0].lo === 5.3,
   JSON.stringify({ hi: rep.withDrain[0].hi, lo: rep.withDrain[0].lo }));
+
+// ---- Recovery sheet label
+const recLabel = await page.evaluate(() => {
+  const fl = { transitions: [] };
+  return {
+    drain: window.ToolboxFloorSurvey.recoveryReadingLabel({ id: 'd', value: 5.3, isDrain: true }, fl),
+    normal: window.ToolboxFloorSurvey.recoveryReadingLabel({ id: 'n', value: 5.3 }, fl),
+  };
+});
+check('The recovery sheet writes a drain reading in parentheses and an ordinary one plain', /^\(.*5\.3.*\)$/.test(recLabel.drain) && !/\(/.test(recLabel.normal), JSON.stringify(recLabel));
 
 // ---- Diagnostics reading summary leaves the drain out of high / low
 const diag = await page.evaluate(() => {
