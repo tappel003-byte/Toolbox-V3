@@ -262,7 +262,7 @@ Shell v482. Test: `floor-survey-drain` 32/32. No Worker change.
 
 ### Claude Code: Sandia Geo Drop Box (Nov 14, 2026) — branch `claude/drop-box-2ac5` (NOT merged; Worker NOT yet deployed)
 
-Report Builder → Share files → a 14-day link to a plain Sandia Geo download page (report PDF, a zip of the report's photographs, other files). New: `sync-worker/src/drop.js` + routes in `sync-worker/src/index.js`, `js/drop-box.js`, `js/sync.js` (drop* calls), `js/report-builder.js` (button). Shell v483. Tests: `drop-box-worker` 40/40, `drop-box-ui` 28/28. See `DECISIONS.md`.
+Report Builder → Share files → a 14-day link to a plain Sandia Geo download page (report PDF, a zip of the report's photographs, other files). New: `sync-worker/src/drop.js` + routes in `sync-worker/src/index.js`, `js/drop-box.js`, `js/sync.js` (drop* calls), `js/report-builder.js` and `js/app.js` (buttons). Also: drag-and-drop zone, "Share files" on the Customer File page (no report needed), floor plans from the Customer File. Shell v484. Tests: `drop-box-worker` 40/40, `drop-box-ui` 43/43. See `DECISIONS.md`.
 **The Worker must be deployed with the client** (the new routes are what the dialog calls). Not tested against a real R2 bucket.
 
 ## Sync Worker deploy — done Nov 10, 2026

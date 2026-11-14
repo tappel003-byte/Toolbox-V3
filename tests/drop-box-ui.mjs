@@ -264,6 +264,80 @@ check('and the half-made drop was removed (nothing is left behind)', calls.some(
   [...store.keys()].filter((k) => !k.includes(token2)).join(', '));
 check('and the buttons work again', await page.evaluate(() => !document.querySelector('[data-db-create]').disabled));
 
+
+// ================= from the Customer File: drag and drop, and the floor plans =================
+await page.evaluate(() => { document.querySelectorAll('[data-drop-box]').forEach((n) => n.remove()); });
+await page.goto(`${BASE}#/file/${FILE}`, { waitUntil: 'networkidle0' });
+await page.waitForSelector('#home-share-files', { timeout: 20000 });
+await wait(800);
+check('The Customer File page has a Share files button', !!(await page.$('#home-share-files')));
+await page.click('#home-share-files');
+await page.waitForSelector('[data-drop-box]', { timeout: 8000 });
+const fileCtx = await page.evaluate(() => {
+  const photos = document.querySelector('[data-db-photos]'); const plans = document.querySelector('[data-db-plans]');
+  return { photosOff: photos.disabled && !photos.checked, photosText: photos.closest('label').innerText,
+    plansOn: !plans.disabled, plansText: plans.closest('label').innerText, zone: !!document.querySelector('[data-db-zone]'),
+    zoneText: document.querySelector('[data-db-zone]').innerText };
+});
+check('Opened from the Customer File, it needs no report', fileCtx.zone && /Drop files here/.test(fileCtx.zoneText));
+check('The floor plans choice counts the levels and names them', fileCtx.plansOn && /1 level: Main Level/.test(fileCtx.plansText), fileCtx.plansText.replace(/\n/g, ' '));
+check('The photo choice is the Distress Survey\'s, and off when there are none', fileCtx.photosOff && /Distress Survey photographs/.test(fileCtx.photosText) && /no Distress Survey photographs/i.test(fileCtx.photosText), fileCtx.photosText.replace(/\n/g, ' '));
+
+// drag and drop (a synthetic drop with real File objects, the way the browser delivers one)
+const drag = await page.evaluate(() => {
+  const zone = document.querySelector('[data-db-zone]'); const card = document.querySelector('.db-card');
+  const mk = (type, files) => { const dt = new DataTransfer(); (files || []).forEach((f) => dt.items.add(f)); return new DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true }); };
+  const textOver = new DragEvent('dragover', { dataTransfer: (() => { const dt = new DataTransfer(); dt.setData('text/plain', 'x'); return dt; })(), bubbles: true, cancelable: true });
+  zone.dispatchEvent(textOver);
+  const textIgnored = !textOver.defaultPrevented && !card.classList.contains('is-over');
+  const over = mk('dragover', [new File(['hi'], 'a.txt')]);
+  zone.dispatchEvent(over);
+  const lit = card.classList.contains('is-over') && over.defaultPrevented;
+  const drop = mk('drop', [new File(['hello'], 'notes.txt', { type: 'text/plain' }), new File(['abc'], 'notes.txt', { type: 'text/plain' }), new File([], 'Some Folder')]);
+  zone.dispatchEvent(drop);
+  return { textIgnored, lit, unlit: !card.classList.contains('is-over'), prevented: drop.defaultPrevented,
+    list: document.querySelector('[data-db-picked]').innerText };
+});
+check('A drag of something that is not a file is ignored', drag.textIgnored);
+check('Dragging files over the dialog lights it up and the browser is told not to open them', drag.lit && drag.prevented);
+check('Dropping adds the files to the list and clears the highlight', drag.unlit && /notes\.txt/.test(drag.list) && (drag.list.match(/notes\.txt/g) || []).length === 2, drag.list.replace(/\n/g, ' | '));
+check('A folder (an empty "file") is skipped, and the dialog says so', /Not added/.test(drag.list) && /Some Folder/.test(drag.list));
+
+// more than 40 files: refused before anything is sent
+await page.evaluate(() => {
+  const zone = document.querySelector('[data-db-zone]'); const dt = new DataTransfer();
+  for (let i = 0; i < 40; i += 1) dt.items.add(new File(['x' + i], 'extra-' + i + '.txt'));
+  zone.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+});
+calls.length = 0;
+await page.click('[data-db-plans]');
+await page.click('[data-db-create]');
+await page.waitForFunction(() => { const s = document.querySelector('[data-db-status]'); return s && s.hasAttribute('data-error'); }, { timeout: 20000 });
+check('More than 40 files is refused with a clear message, and nothing was sent', await page.evaluate(() => /up to 40/.test(document.querySelector('[data-db-status]').textContent)) && calls.length === 0);
+// take the 40 off again: remove them one by one from the list
+for (let i = 0; i < 40; i += 1) { await page.evaluate(() => { const b = [...document.querySelectorAll('[data-db-picked] button')].pop(); b && b.click(); }); }
+check('Each file can be taken off the list', await page.evaluate(() => (document.querySelector('[data-db-picked]').innerText.match(/notes\.txt/g) || []).length === 2 && !/extra-/.test(document.querySelector('[data-db-picked]').innerText)));
+
+calls.length = 0;
+failPart = { part: 0, times: 0 };
+await page.click('[data-db-create]');
+await page.waitForSelector('[data-db-url]', { timeout: 60000 });
+const url3 = await page.$eval('[data-db-url]', (i) => i.value);
+const token3 = /lookbook\/([a-f0-9]{36})\//.exec(url3)[1];
+const keys3 = [...store.keys()].filter((k) => k.startsWith(`lookbooks/${token3}/files/`)).map((k) => k.split('/files/')[1]).sort();
+check('The floor plan and both dropped files were sent, the second "notes.txt" renamed so neither is lost',
+  JSON.stringify(keys3) === JSON.stringify(['Main-Level-plan.jpg', 'notes-2.txt', 'notes.txt']), JSON.stringify(keys3));
+const planDataUrl = await page.evaluate(async () => await ToolboxDB.getMedia('plan-drop'));
+const planBytes2 = Buffer.from(planDataUrl.split(',')[1], 'base64');
+check('The floor plan sent is the image stored in the Customer File, byte for byte',
+  Buffer.compare(Buffer.from(store.get(`lookbooks/${token3}/files/Main-Level-plan.jpg`).bytes), planBytes2) === 0);
+check('Each dropped file arrived with its own contents',
+  new TextDecoder().decode(store.get(`lookbooks/${token3}/files/notes.txt`).bytes) === 'hello' && new TextDecoder().decode(store.get(`lookbooks/${token3}/files/notes-2.txt`).bytes) === 'abc');
+const page3 = await (await worker.fetch(new Request(`https://sync.example/lookbook/${token3}/`), Object.assign({ CABINET: bucket }, env))).text();
+check('The client page lists the floor plan by level and the dropped files',
+  page3.includes('Floor plan — Main Level') && page3.includes('notes.txt') && page3.includes('notes-2.txt'), '');
+check('The page is headed with the job\'s address', page3.includes('15 Rabbitbrush, Santa Fe, NM'));
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
 await browser.close();

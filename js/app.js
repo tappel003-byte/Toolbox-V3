@@ -2461,6 +2461,7 @@
         : 'Each workspace opens with this Customer File. They are independent—not required steps.') +
       '</p>' +
       '  <div class="cf-home__file-actions">' +
+      '    <button type="button" id="home-share-files" class="btn btn--secondary">Share files</button>' +
       '    <button type="button" id="home-import" class="btn btn--secondary">Import standalone export</button>' +
       '    <button type="button" id="home-delete" class="btn btn--secondary cf-home__delete" hidden>Delete this Customer File</button>' +
       '  </div>' +
@@ -2557,6 +2558,21 @@
       if (homeLocked) return;
       window.location.hash = '#/file/' + encodeURIComponent(id) + '/import';
     });
+    // Sandia Geo Drop Box: drop any files for this job (and its floor plans) and make a 14-day link.
+    const shareFilesBtn = app.querySelector('#home-share-files');
+    if (shareFilesBtn) {
+      shareFilesBtn.addEventListener('click', function () {
+        if (!currentRecord || !window.ToolboxDropBox) return;
+        window.ToolboxDropBox.open({
+          context: 'file',
+          record: currentRecord,
+          pages: [],
+          customerFileId: id,
+          residence: contactPerson(currentRecord),
+          address: (currentRecord.propertyAddress || '').trim().replace(/\s*\n+\s*/g, ', '),
+        });
+      });
+    }
     editTopBtn.addEventListener('click', function () { editFile('customer'); });
     if (repairTopBtn) {
       repairTopBtn.addEventListener('click', function () {

@@ -7,8 +7,9 @@
 //
 // What goes in: the report PDF (made with Print / PDF and chosen here, since the browser's own print
 // dialog does not hand the file back), a zip of the photographs that are in the report (built here from
-// the stored originals), and any other files added by hand (a floor plan, a drawing). Nothing here edits
-// the Customer File. Report Builder is a desk tool, so this is a desktop dialog.
+// the stored originals), the floor plans already in the Customer File (one image per level), and any
+// other files added by hand -- dragged in, or chosen. It opens from Report Builder ("Share files") and
+// from the Customer File itself, where no report is needed. Nothing here edits the Customer File.
 
 (function () {
   'use strict';
@@ -26,6 +27,37 @@
 
   function slug(value) {
     return trim(value).replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'Job';
+  }
+
+  /** The name the Worker will store a file under (mirrors sanitizeDropFileName in the Worker). */
+  function safeName(name) {
+    const raw = String(name == null ? '' : name).split(/[\\/]/).pop();
+    let clean = raw.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9._-]+/g, '').replace(/-{2,}/g, '-').replace(/^[.-]+/, '');
+    if (clean.length > 120) {
+      const dot = clean.lastIndexOf('.');
+      const ext = dot > 0 && clean.length - dot <= 12 ? clean.slice(dot) : '';
+      clean = clean.slice(0, 120 - ext.length) + ext;
+    }
+    return /[a-zA-Z0-9]/.test(clean) ? clean : 'file';
+  }
+
+  /** Two files that would be stored under one name get -2, -3 ... so neither replaces the other. */
+  function uniqueNames(entries) {
+    const taken = Object.create(null);
+    return entries.map(function (entry) {
+      let name = safeName(entry.file.name);
+      const dot = name.lastIndexOf('.');
+      const stem = dot > 0 ? name.slice(0, dot) : name;
+      const ext = dot > 0 ? name.slice(dot) : '';
+      let n = 1;
+      while (taken[name.toLowerCase()] || name === 'index.html' || name === 'manifest.json') {
+        n += 1;
+        name = stem + '-' + n + ext;
+      }
+      taken[name.toLowerCase()] = true;
+      const file = name === entry.file.name ? entry.file : new File([entry.file], name, { type: entry.file.type });
+      return { file: file, label: entry.label };
+    });
   }
 
   function humanBytes(n) {
@@ -106,6 +138,27 @@
     return list.filter(function (p) { return p && p.dataUrl && String(p.dataUrl).indexOf('data:image/') === 0; });
   }
 
+  /** One image per level that has a plan, as stored in the Customer File. */
+  async function levelPlans(record) {
+    const plan = record && record.planSetup;
+    const canvases = plan && Array.isArray(plan.canvases) ? plan.canvases : [];
+    const getMedia = window.ToolboxDB && typeof window.ToolboxDB.getMedia === 'function'
+      ? window.ToolboxDB.getMedia.bind(window.ToolboxDB) : null;
+    const out = [];
+    if (!getMedia) return out;
+    for (let i = 0; i < canvases.length; i += 1) {
+      const canvas = canvases[i];
+      const mediaId = canvas && canvas.plan && canvas.plan.id;
+      if (!mediaId) continue;
+      let dataUrl = '';
+      try { dataUrl = await getMedia(mediaId); } catch (_) {}
+      if (!dataUrl || String(dataUrl).indexOf('data:image/') !== 0) continue;
+      const level = trim(canvas.name) || ('Level ' + (i + 1));
+      out.push({ level: level, dataUrl: dataUrl, ext: extFor(dataUrl) });
+    }
+    return out;
+  }
+
   async function buildPhotosZip(photos, name, onProgress) {
     if (typeof window.JSZip !== 'function') throw new Error('Zip support is not available in this session.');
     const zip = new window.JSZip();
@@ -137,6 +190,9 @@
       '.db-row strong{display:block;font-size:14px}' +
       '.db-row span,.db-hint{font-size:12px;color:#6b7280}' +
       '.db-row input[type=file]{margin-top:6px;max-width:100%;font-size:13px}' +
+      '.db-zone{display:flex;align-items:center;justify-content:center;text-align:center;min-height:64px;margin-top:6px;padding:10px;border:2px dashed #9ca3af;border-radius:8px;color:#4b5563;font-size:13px;cursor:pointer;background:#f9fafb}' +
+      '.db-zone input{display:none}' +
+      '.db-zone.is-over,.db-card.is-over .db-zone{border-color:#0b2233;background:#e8eef2;color:#0b2233}' +
       '.db-picked{display:flex;flex-direction:column;gap:4px;margin-top:6px}' +
       '.db-picked div{display:flex;gap:8px;align-items:center;font-size:13px}' +
       '.db-picked button{border:0;background:none;color:#b91c1c;cursor:pointer;font-size:16px;line-height:1}' +
@@ -200,6 +256,9 @@
     const residence = trim(opts.residence);
     const address = trim(opts.address);
     const pageTitle = address || residence || 'Your files';
+    // From Report Builder the photographs are "in the report" and on by default; from the Customer File
+    // they are the Distress Survey's and start off.
+    const inReport = opts.context !== 'file';
 
     const root = el('div', { class: 'db-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Sandia Geo Drop Box', 'data-drop-box': '' });
     const card = el('div', { class: 'db-card' });
@@ -210,8 +269,10 @@
 
     let photos = [];
     try { photos = await reportPhotos(record, opts.pages); } catch (_) { photos = []; }
+    let plans = [];
+    try { plans = await levelPlans(record); } catch (_) { plans = []; }
 
-    const state = { pdf: null, extras: [], busy: false };
+    const state = { pdf: null, extras: [], busy: false, note: '' };
 
     function paintForm() {
       card.innerHTML = '';
@@ -232,30 +293,79 @@
 
       // Photographs
       const photosBox = el('input', { type: 'checkbox', 'data-db-photos': '' });
-      photosBox.checked = photos.length > 0;
+      photosBox.checked = inReport && photos.length > 0;
       photosBox.disabled = photos.length === 0;
       card.appendChild(el('label', { class: 'db-row' }, [
         photosBox,
         el('div', {}, [
-          el('strong', { text: 'Photographs in the report (zip)' }),
+          el('strong', { text: inReport ? 'Photographs in the report (zip)' : 'Distress Survey photographs (zip)' }),
           el('span', { text: photos.length
-            ? photos.length + ' photograph' + (photos.length === 1 ? '' : 's') + ', full size, numbered like the report.'
-            : 'There are no photographs in the report.' }),
+            ? photos.length + ' photograph' + (photos.length === 1 ? '' : 's') + ', full size, numbered ' + (inReport ? 'like the report.' : 'in order.')
+            : (inReport ? 'There are no photographs in the report.' : 'There are no Distress Survey photographs on this job.') }),
+        ]),
+      ]));
+
+      // Floor plans from the Customer File
+      const plansBox = el('input', { type: 'checkbox', 'data-db-plans': '' });
+      plansBox.checked = false;
+      plansBox.disabled = plans.length === 0;
+      card.appendChild(el('label', { class: 'db-row' }, [
+        plansBox,
+        el('div', {}, [
+          el('strong', { text: 'Floor plans from this Customer File' }),
+          el('span', { text: plans.length
+            ? plans.length + ' level' + (plans.length === 1 ? '' : 's') + ': ' + plans.map(function (p) { return p.level; }).join(', ') + '. One image per level.'
+            : 'There are no floor plans on this Customer File.' }),
         ]),
       ]));
 
       // Other files
+      function addFiles(list) {
+        const skipped = [];
+        Array.prototype.forEach.call(list || [], function (f) {
+          // A folder arrives as an empty "file"; it cannot be sent as it is.
+          if (!f || !f.size) { skipped.push(f && f.name ? f.name : 'a folder'); return; }
+          state.extras.push(f);
+        });
+        state.note = skipped.length
+          ? 'Not added (empty, or a folder \u2014 zip a folder first): ' + skipped.join(', ')
+          : '';
+        paintPicked();
+      }
       const extraInput = el('input', { type: 'file', multiple: '', 'data-db-extra': '' });
       extraInput.addEventListener('change', function () {
-        Array.prototype.forEach.call(extraInput.files || [], function (f) { state.extras.push(f); });
+        addFiles(extraInput.files);
         extraInput.value = '';
-        paintPicked();
       });
+      const zone = el('label', { class: 'db-zone', 'data-db-zone': '' }, [
+        document.createTextNode('Drop files here, or click to choose'),
+        extraInput,
+      ]);
       const picked = el('div', { class: 'db-picked', 'data-db-picked': '' });
       card.appendChild(el('div', { class: 'db-row' }, [
-        el('div', {}, [el('strong', { text: 'Other files' }),
-          el('span', { text: 'A floor plan, a drawing, anything else for this job.' }), extraInput, picked]),
+        el('div', { style: 'flex:1;min-width:0' }, [el('strong', { text: 'Other files' }),
+          el('span', { text: 'A floor plan, a drawing, anything else for this job.' }), zone, picked]),
       ]));
+      // Dropping anywhere on the dialog works; the browser must not open the file instead.
+      function hasFiles(e) {
+        const types = e.dataTransfer && e.dataTransfer.types;
+        return !!types && Array.prototype.indexOf.call(types, 'Files') !== -1;
+      }
+      card.ondragenter = card.ondragover = function (e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        card.classList.add('is-over');
+      };
+      card.ondragleave = function (e) {
+        if (e.relatedTarget && card.contains(e.relatedTarget)) return;
+        card.classList.remove('is-over');
+      };
+      card.ondrop = function (e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        card.classList.remove('is-over');
+        if (!state.busy) addFiles(e.dataTransfer.files);
+      };
 
       function paintPicked() {
         picked.innerHTML = '';
@@ -264,6 +374,7 @@
           remove.addEventListener('click', function () { state.extras.splice(i, 1); paintPicked(); });
           picked.appendChild(el('div', {}, [el('span', { text: file.name + ' · ' + humanBytes(file.size) }), remove]));
         });
+        if (state.note) picked.appendChild(el('div', { 'data-db-note': '' }, [el('span', { text: state.note })]));
         pdfNote.textContent = state.pdf
           ? state.pdf.name + ' · ' + humanBytes(state.pdf.size)
           : 'Make it with Print / PDF → Save as PDF, then choose the file here.';
@@ -280,7 +391,8 @@
       create.addEventListener('click', function () {
         if (state.busy) return;
         const wantsPhotos = photosBox.checked && photos.length > 0;
-        if (!state.pdf && !wantsPhotos && !state.extras.length) {
+        const wantsPlans = plansBox.checked && plans.length > 0;
+        if (!state.pdf && !wantsPhotos && !wantsPlans && !state.extras.length) {
           status.setAttribute('data-error', '');
           status.textContent = 'Choose at least one file.';
           return;
@@ -289,7 +401,7 @@
         state.busy = true;
         create.disabled = true;
         cancel.disabled = true;
-        run(wantsPhotos, function (msg) { status.textContent = msg; }).catch(function (err) {
+        run(wantsPhotos, wantsPlans, function (msg) { status.textContent = msg; }).catch(function (err) {
           state.busy = false;
           create.disabled = false;
           cancel.disabled = false;
@@ -332,18 +444,30 @@
       }
     }
 
-    async function run(wantsPhotos, say) {
+    async function run(wantsPhotos, wantsPlans, say) {
       const sync = window.ToolboxSync;
       if (!sync || typeof sync.dropCreate !== 'function') throw new Error('Sync is not available in this session.');
       if (!sync.syncApiBase || !sync.syncApiBase()) throw new Error('Sync is not configured yet.');
 
-      const files = [];
+      let files = [];
       if (state.pdf) files.push({ file: state.pdf, label: 'Report (PDF)' });
       if (wantsPhotos) {
         const zipFile = await buildPhotosZip(photos, 'Photos-' + slug(address || residence) + '.zip', say);
-        files.push({ file: zipFile, label: 'Photographs in the report (ZIP)' });
+        files.push({ file: zipFile, label: inReport ? 'Photographs in the report (ZIP)' : 'Distress Survey photographs (ZIP)' });
+      }
+      if (wantsPlans) {
+        for (let i = 0; i < plans.length; i += 1) {
+          const blob = await fetch(plans[i].dataUrl).then(function (res) { return res.blob(); });
+          files.push({
+            file: new File([blob], slug(plans[i].level) + '-plan.' + plans[i].ext, { type: blob.type || 'image/' + plans[i].ext }),
+            label: 'Floor plan \u2014 ' + plans[i].level,
+          });
+        }
       }
       state.extras.forEach(function (f) { files.push({ file: f, label: f.name }); });
+      if (files.length > 40) throw new Error('That is ' + files.length + ' files; a link holds up to 40. Zip some of them together.');
+      // Two files with one name would replace each other: number the second.
+      files = uniqueNames(files);
 
       say('Creating the link…');
       const created = await sync.dropCreate({
