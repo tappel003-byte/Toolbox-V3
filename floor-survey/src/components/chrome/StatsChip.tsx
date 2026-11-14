@@ -115,48 +115,85 @@ function planArea(): PlanArea {
 }
 
 /**
- * Where the chip sits, as a share of the room it has to move in: 0 is hard against the left /
- * top of the plan area and 1 is hard against the right / bottom, whatever the chip's size and
- * whatever shape the plan area is. A corner stays a corner when the screen turns.
+ * Where the chip sits, kept as a distance from the nearest side and the nearest top or bottom of
+ * the plan area, in pixels. A chip put 190 px in from the left and 20 px up from the bottom is
+ * still 190 px in and 20 px up after the screen turns, so a corner stays a corner and a chip put
+ * beside a fixed control (the Data / Topo pill, in the lower left) stays beside it.
+ *   h: "l" = from the left, "r" = from the right, "c" = from the middle (a chip put in the middle
+ *      of the screen stays in the middle). v: "t" = from the top, "b" = from the bottom.
+ * (Tim, Nov 14, 2026: "The H/L/Δ pill I had moved next to the Data/Topo pill. It moved.")
  */
 interface ChipAnchor {
-  fx: number;
-  fy: number;
+  h: "l" | "c" | "r";
+  dx: number;
+  v: "t" | "b";
+  dy: number;
 }
 
-const clamp01 = (n: number) => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.5);
+/** A chip whose middle is within this share of the plan width of its middle counts as centred. */
+const CENTER_BAND = 0.08;
+/** A chip whose left edge is left of this share of the plan width hangs from the left. */
+const LEFT_SIDE = 0.55;
+
+const num = (n: unknown, fallback = 0) => (typeof n === "number" && Number.isFinite(n) ? n : fallback);
+const clampTo = (n: number, lo: number, hi: number) => Math.min(Math.max(n, lo), Math.max(lo, hi));
 
 function anchorToPx(a: ChipAnchor, area: PlanArea, w: number, h: number) {
   const roomX = Math.max(0, area.width - w);
   const roomY = Math.max(0, area.height - h);
-  return { x: area.left + clamp01(a.fx) * roomX, y: area.top + clamp01(a.fy) * roomY };
+  const x = a.h === "l" ? a.dx : a.h === "r" ? roomX - a.dx : roomX / 2 + a.dx;
+  const y = a.v === "t" ? a.dy : roomY - a.dy;
+  return { x: area.left + clampTo(x, 0, roomX), y: area.top + clampTo(y, 0, roomY) };
 }
 
 function pxToAnchor(x: number, y: number, area: PlanArea, w: number, h: number): ChipAnchor {
   const roomX = Math.max(0, area.width - w);
   const roomY = Math.max(0, area.height - h);
-  return {
-    fx: roomX > 0 ? clamp01((x - area.left) / roomX) : 0,
-    fy: roomY > 0 ? clamp01((y - area.top) / roomY) : 0,
-  };
+  const relX = clampTo(x - area.left, 0, roomX);
+  const relY = clampTo(y - area.top, 0, roomY);
+  const round = (n: number) => Math.round(n * 10) / 10;
+  let hh: ChipAnchor["h"];
+  let dx: number;
+  if (Math.abs(relX + w / 2 - area.width / 2) <= area.width * CENTER_BAND) {
+    hh = "c";
+    dx = relX - roomX / 2;
+  } else if (relX < area.width * LEFT_SIDE) {
+    hh = "l";
+    dx = relX;
+  } else {
+    hh = "r";
+    dx = roomX - relX;
+  }
+  const top = relY + h / 2 < area.height / 2;
+  return { h: hh, dx: round(dx), v: top ? "t" : "b", dy: round(top ? relY : roomY - relY) };
 }
 
-/** Saved position: new shape {fx, fy}; an older pixel {x, y} is read once and converted. */
-function readSavedAnchor(key: string): { anchor: ChipAnchor | null; legacyPx: { x: number; y: number } | null } {
+type Saved = {
+  anchor: ChipAnchor | null;
+  /** An older save: pixels, or a share of the plan area. Read once and converted. */
+  legacyPx: { x: number; y: number } | null;
+  legacyShare: { fx: number; fy: number } | null;
+};
+
+function readSavedAnchor(key: string): Saved {
+  const none: Saved = { anchor: null, legacyPx: null, legacyShare: null };
   try {
     const raw = localStorage.getItem(key);
-    if (!raw) return { anchor: null, legacyPx: null };
+    if (!raw) return none;
     const v = JSON.parse(raw);
+    if (v && (v.h === "l" || v.h === "c" || v.h === "r") && (v.v === "t" || v.v === "b")) {
+      return { ...none, anchor: { h: v.h, dx: num(v.dx), v: v.v, dy: num(v.dy) } };
+    }
     if (v && typeof v.fx === "number" && typeof v.fy === "number") {
-      return { anchor: { fx: clamp01(v.fx), fy: clamp01(v.fy) }, legacyPx: null };
+      return { ...none, legacyShare: { fx: v.fx, fy: v.fy } };
     }
     if (v && typeof v.x === "number" && typeof v.y === "number") {
-      return { anchor: null, legacyPx: { x: v.x, y: v.y } };
+      return { ...none, legacyPx: { x: v.x, y: v.y } };
     }
   } catch {
     /* ignore */
   }
-  return { anchor: null, legacyPx: null };
+  return none;
 }
 
 /** Height in px of the top chrome (header + optional floor selector) plus a gap. */
@@ -179,11 +216,12 @@ function topChromeHeight() {
  * - Size is the one set in Control panel → Readings → Accessories, kept per
  *   Customer File on this device; plan pills use the same size. Tap opens a
  *   blue −/+ way above this chip (press-and-move still only moves).
- * - Position persists per storageKey and is pinned to the PLAN AREA: saved as a share of the room
- *   the chip has to move in, so where you put it (a corner, the middle of an edge) is where it
- *   stays when the screen turns or the window changes shape. Turning the screen only changes
- *   where it is drawn; it never rewrites what was saved. (Tim, Nov 13, 2026: "I just wanted to
- *   stay wherever I move it. If I move it to lower left corner it needs to pin.")
+ * - Position persists per storageKey and is pinned to the PLAN AREA as a distance from the nearest
+ *   side and the nearest top or bottom, so where you put it (a corner, beside the Data / Topo pill)
+ *   is where it stays when the screen turns or the window changes shape. Turning the screen only
+ *   changes where it is drawn; it never rewrites what was saved. (Tim, Nov 13, 2026: "I just wanted
+ *   to stay wherever I move it. If I move it to lower left corner it needs to pin." Nov 14: "I had
+ *   moved it next to the Data/Topo pill. It moved.")
  */
 export function StatsChip({
   points,
@@ -259,25 +297,29 @@ export function StatsChip({
     return () => ro.disconnect();
   }, [chipReady]);
 
-  // First placement: an older saved pixel position is converted once; otherwise the default,
-  // bottom centre above the bottom pill row. A saved position always wins.
+  // First placement: an older saved position (pixels, or a share of the plan area) is converted once;
+  // otherwise the default, bottom centre above the bottom pill row. A saved position always wins.
   useEffect(() => {
     if (anchor) return;
     const w = ref.current?.offsetWidth ?? 180;
     const h = ref.current?.offsetHeight ?? 24;
     const area = planArea();
-    const legacy = readSavedAnchor(storageKey).legacyPx;
+    const saved = readSavedAnchor(storageKey);
     let next: ChipAnchor;
-    if (legacy) {
-      next = pxToAnchor(legacy.x, legacy.y, area, w, h);
+    if (saved.legacyShare || saved.legacyPx) {
+      const roomX = Math.max(0, area.width - w);
+      const roomY = Math.max(0, area.height - h);
+      const px = saved.legacyShare
+        ? { x: area.left + Math.min(1, Math.max(0, saved.legacyShare.fx)) * roomX, y: area.top + Math.min(1, Math.max(0, saved.legacyShare.fy)) * roomY }
+        : saved.legacyPx!;
+      next = pxToAnchor(px.x, px.y, area, w, h);
       try {
         localStorage.setItem(storageKey, JSON.stringify(next));
       } catch {
         /* ignore */
       }
     } else {
-      const roomY = Math.max(1, area.height - h);
-      next = { fx: 0.5, fy: clamp01((area.height - h - 80) / roomY) };
+      next = { h: "c", dx: 0, v: "b", dy: 80 };
     }
     setAnchor(next);
   }, [anchor, storageKey]);

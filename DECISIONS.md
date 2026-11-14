@@ -699,6 +699,18 @@ Test: `tests/floor-survey-drain.mjs` (19, real mouse and keyboard on a phone-siz
 
 ---
 
+## H/L/Δ pill: kept as a distance from the corner; Data button stays upper-left (DECIDED Tim, Nov 14, 2026)
+
+Tim, on a phone: he put the H/L/Δ pill beside the Data / Topo pill, turned the phone, and "it moved"; the Data (database) button jumped to the bottom-centre in landscape, on top of the pill. "The data stays put in the upper left."
+
+- The pill's place is saved against the plan area as a **distance in pixels from the nearest side and the nearest top or bottom** (or from the middle, for a chip put in the middle). It replaces the share-of-width form of Nov 13, which slid the pill away from fixed controls when the screen got wider. A corner stays a corner, and beside the Data / Topo pill stays beside it. Positions saved by earlier builds are converted once.
+- The Data button stays in the upper left in both orientations, under the top bar. In landscape its panel opens under it on the left (it opened bottom-right, above the old bottom-centre button).
+- Unchanged: dragging, tap for the size − / +, the panel's contents, portrait behaviour.
+
+Test: `tests/pill-pin-rotation.mjs` (25, real mouse, portrait and landscape).
+
+---
+
 ## Closeout
 
 - The final PDF is the durable closeout record.

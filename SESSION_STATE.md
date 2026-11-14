@@ -245,6 +245,11 @@ Tests: `explorer-map-places` 35/35, `explorer-map-ui` 28/28. Not verified: real 
 Keypad "Reading ▾ / Drain" menu; drain points are shown but left out of contours, High / Low and range. See `DECISIONS.md` ("a reading can be tagged as a floor drain").
 `NumericKeypad.tsx`, `FieldTab.tsx`, `lib/exclusions.ts`, `lib/topo.ts`, `TopoTab.tsx`, `js/diagnostics.js`, `js/explorer-summary.js`, rebuilt `js/floor-survey/*`. Shell v479. Test: `floor-survey-drain` 19/19. No Worker change.
 
+### Claude Code: pill anchor + Data button (Nov 14, 2026) — branch `claude/pill-anchor-2ac5`
+
+H/L/Δ pill saved as a distance from the nearest corner (so it stays beside the Data / Topo pill); Data button stays upper-left in landscape. See `DECISIONS.md`.
+`StatsChip.tsx`, `DataPointsPanel.tsx`, rebuilt `js/floor-survey/*`. Shell v480. Test: `pill-pin-rotation` 25/25. No Worker change.
+
 ## Sync Worker deploy — done Nov 10, 2026
 
 - Deployed by Claude Code with Tim's Cloudflare API token (saved as a network secret on Tim's Default cloud environment).

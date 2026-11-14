@@ -173,7 +173,7 @@ export function DataPointsPanel({
     return (
       <button
         onClick={() => setState((s) => ({ ...s, hidden: false }))}
-        className="fixed top-[calc(env(safe-area-inset-top)+2.75rem+var(--fs-offset,0rem))] left-[calc(env(safe-area-inset-left)+0.5rem)] landscape-short:top-auto landscape-short:left-1/2 landscape-short:-translate-x-1/2 landscape-short:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-40 rounded-full bg-white/95 backdrop-blur border border-gray-300 shadow-md h-9 px-3 flex items-center gap-1 text-[11px] font-medium"
+        className="fixed top-[calc(env(safe-area-inset-top)+2.75rem+var(--fs-offset,0rem))] left-[calc(env(safe-area-inset-left)+0.5rem)] landscape-short:top-[calc(env(safe-area-inset-top)+3.75rem)] z-40 rounded-full bg-white/95 backdrop-blur border border-gray-300 shadow-md h-9 px-3 flex items-center gap-1 text-[11px] font-medium"
         style={{ ["--fs-offset" as any]: hasFloorSelector ? "1.75rem" : "0rem" }}
         aria-label="Show data points"
       >
@@ -183,14 +183,15 @@ export function DataPointsPanel({
   }
 
   const width = 150;
-  // In landscape-short, anchor to bottom-right so the panel opens directly
-  // above the Database chip and never hides behind the top chrome.
+  // In landscape-short, anchor to the top-left, under the Database chip, which
+  // stays in the upper left in both orientations (Tim, Nov 14, 2026: "The data
+  // stays put in the upper left"). Never behind the top chrome.
   // In portrait, use the user's stored drag position.
   const posStyle = isLandscapeShort
     ? {
         maxHeight: state.collapsed
           ? undefined
-          : "calc(100dvh - max(env(safe-area-inset-top), 1.5rem) - env(safe-area-inset-bottom) - 6rem)",
+          : "calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 8rem)",
       }
     : { left: state.x, top: state.y, maxHeight: state.collapsed ? undefined : "38dvh" };
 
@@ -200,7 +201,7 @@ export function DataPointsPanel({
         className={
           "fixed z-40 bg-background border rounded-lg shadow-xl flex flex-col " +
           (isLandscapeShort
-            ? "bottom-[calc(env(safe-area-inset-bottom)+3.5rem)] right-[calc(env(safe-area-inset-right)+0.5rem)]"
+            ? "top-[calc(env(safe-area-inset-top)+6.5rem)] left-[calc(env(safe-area-inset-left)+0.5rem)]"
             : "")
         }
         style={{ width, ...posStyle }}

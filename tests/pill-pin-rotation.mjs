@@ -4,7 +4,9 @@
  * Tim, Nov 13, 2026: "High low delta pill does not lock in place when you move between portrait and
  * landscape on a phone or a tablet... If I move it to lower left corner basically it needs to pin. Its
  * relation to the plan." The position was saved as screen pixels and re-clamped on every rotation, so it
- * drifted. It is now saved as a share of the room the chip has to move in over the plan area.
+ * drifted. It is saved against the plan area as a distance from the nearest side and top/bottom.
+ * Nov 14: "I had moved it next to the Data/Topo pill. It moved." (a share of the width slid it away from
+ * that pill; a distance from the corner keeps it beside it). The Data button also stays upper-left.
  *
  * Run: node tests/pill-pin-rotation.mjs  (static server on 8765). Real mouse throughout.
  */
@@ -113,8 +115,8 @@ const saved = await page.evaluate(() => {
   const key = Object.keys(localStorage).find((k) => k.startsWith('stats-chip-pos:'));
   return key ? { key, value: JSON.parse(localStorage.getItem(key)) } : null;
 });
-check('The saved position is a share of the plan area, not pixels',
-  !!saved && typeof saved.value.fx === 'number' && typeof saved.value.fy === 'number' && !('x' in saved.value) && near(saved.value.fx, 0, 0.03) && near(saved.value.fy, 1, 0.03), JSON.stringify(saved));
+check('The saved position is a distance from the lower-left corner of the plan area, not screen pixels',
+  !!saved && saved.value.h === 'l' && saved.value.v === 'b' && near(saved.value.dx, 0) && near(saved.value.dy, 0) && !('x' in saved.value), JSON.stringify(saved));
 
 // ---- survives a reload
 await open();
@@ -156,7 +158,69 @@ const converted = await page.evaluate(() => {
   const key = Object.keys(localStorage).find((k) => k.startsWith('stats-chip-pos:'));
   return JSON.parse(localStorage.getItem(key));
 });
-check('and it is saved in the new form from then on', typeof converted.fx === 'number' && typeof converted.fy === 'number', JSON.stringify(converted));
+check('and it is saved in the new form from then on', !!converted.h && !!converted.v && typeof converted.dx === 'number' && typeof converted.dy === 'number', JSON.stringify(converted));
+// the share-of-width form saved by the previous build is converted too, to where it was drawn
+await page.evaluate(() => {
+  const key = Object.keys(localStorage).find((k) => k.startsWith('stats-chip-pos:'));
+  localStorage.setItem(key, JSON.stringify({ fx: 0, fy: 1 }));
+});
+await open();
+g = await geom();
+check('A position saved as a share by the last build opens in the same corner', !!g && near(g.left) && near(g.bottom) && g.inside, JSON.stringify(g));
+
+
+// ---- Tim's case: put beside the Data / Topo pill, then turn the phone
+const toggleRect = () => page.evaluate(() => {
+  const b = [...document.querySelectorAll('button')].filter((x) => /^(Data|Topo)$/.test((x.textContent || '').trim()));
+  if (!b.length) return null;
+  const rs = b.map((x) => x.getBoundingClientRect());
+  return { l: Math.min(...rs.map((r) => r.left)), r: Math.max(...rs.map((r) => r.right)), t: Math.min(...rs.map((r) => r.top)), b: Math.max(...rs.map((r) => r.bottom)) };
+});
+const chipRect = () => page.evaluate((sel) => { const r = document.querySelector(sel).getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height }; }, chipSel);
+async function dragChipBy(dx, dy) {
+  const c = await chipRect();
+  const x = c.l + c.w / 2; const y = c.t + c.h / 2;
+  await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + dx / 2, y + dy / 2, { steps: 6 }); await page.mouse.move(x + dx, y + dy, { steps: 6 }); await page.mouse.up();
+  await wait(700);
+}
+await page.setViewport(PORTRAIT); await open();
+await dragChipTo('lower-left'); // start from a known corner
+let tg = await toggleRect(); let cr = await chipRect();
+check('The Data / Topo pill is on the capture screen', !!tg, JSON.stringify(tg));
+// move the chip so its left edge sits 10 px to the right of the toggle and it shares the toggle's row
+await dragChipBy((tg.r + 10) - cr.l, ((tg.t + tg.b) / 2 - (cr.t + cr.b) / 2));
+cr = await chipRect(); tg = await toggleRect();
+const gapPortrait = +(cr.l - tg.r).toFixed(1);
+const rowPortrait = +(((cr.t + cr.b) / 2) - ((tg.t + tg.b) / 2)).toFixed(1);
+check('Put beside the Data / Topo pill (portrait)', Math.abs(gapPortrait - 10) <= 3 && Math.abs(rowPortrait) <= 4, JSON.stringify({ gapPortrait, rowPortrait }));
+await page.setViewport(LANDSCAPE); await wait(1000);
+cr = await chipRect(); tg = await toggleRect();
+const gapLand = +(cr.l - tg.r).toFixed(1);
+const rowLand = +(((cr.t + cr.b) / 2) - ((tg.t + tg.b) / 2)).toFixed(1);
+check('Turned to landscape it is still beside the Data / Topo pill, same gap', Math.abs(gapLand - gapPortrait) <= 3 && Math.abs(rowLand - rowPortrait) <= 4, JSON.stringify({ gapLand, rowLand }));
+await page.setViewport(PORTRAIT); await wait(1000);
+cr = await chipRect(); tg = await toggleRect();
+check('and back to portrait, still beside it', Math.abs((cr.l - tg.r) - gapPortrait) <= 3, JSON.stringify({ gap: +(cr.l - tg.r).toFixed(1) }));
+
+// ---- The Data button (database icon) stays in the upper left through a turn and never sits on the pill
+const dataBtn = () => page.evaluate(() => {
+  const b = document.querySelector('button[aria-label="Show data points"]');
+  if (!b) return null; const r = b.getBoundingClientRect();
+  return { l: r.left, t: r.top, r: r.right, b: r.bottom };
+});
+const area0 = () => page.evaluate(() => { const r = document.querySelector('[data-plan-area]').getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; });
+await page.setViewport(PORTRAIT); await wait(800);
+let d1 = await dataBtn(); let a1 = await area0();
+check('The Data button is in the upper left of the screen (portrait)', !!d1 && d1.l < 60 && d1.t < a1.t + 70, JSON.stringify({ d1, a1 }));
+await page.setViewport(LANDSCAPE); await wait(1000);
+let d2 = await dataBtn(); const c2 = await chipRect();
+check('Turned to landscape the Data button is still in the upper left, not at the bottom', !!d2 && d2.l < 60 && d2.t < 140, JSON.stringify(d2));
+check('and it is not on top of the H/L/Δ pill', !(d2.l < c2.r && d2.r > c2.l && d2.t < c2.b && d2.b > c2.t));
+check('and it is not under the top bar', !!d2 && d2.t >= (await page.evaluate(() => document.querySelector('header')?.getBoundingClientRect().bottom ?? 0)) - 2);
+await page.mouse.click((d2.l + d2.r) / 2, (d2.t + d2.b) / 2); await wait(500);
+const panelL = await page.evaluate(() => { const h = document.querySelector('div.cursor-move'); const p = h ? h.parentElement : null; if (!p) return null; const r = p.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, vh: window.innerHeight }; });
+check('Opened in landscape, the Data panel sits under the button on the left, on screen', !!panelL && panelL.l < 60 && panelL.t >= d2.b - 2 && panelL.b <= panelL.vh, JSON.stringify(panelL));
+await page.setViewport(PORTRAIT); await wait(800);
 
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
