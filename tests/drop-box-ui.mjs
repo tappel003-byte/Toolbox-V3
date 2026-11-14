@@ -338,6 +338,54 @@ check('The client page lists the floor plan by level and the dropped files',
   page3.includes('Floor plan — Main Level') && page3.includes('notes.txt') && page3.includes('notes-2.txt'), '');
 check('The page is headed with the job\'s address', page3.includes('15 Rabbitbrush, Santa Fe, NM'));
 
+
+// ================= the Report PDF has its own drop area =================
+await page.evaluate(() => { document.querySelectorAll('[data-drop-box]').forEach((n) => n.remove()); });
+await page.evaluate(() => window.ToolboxDropBox.open({ record: { id: 'drop-ui-3' }, pages: [], residence: 'Z', address: 'Zed Lane' }));
+const dropOn = (sel, files, type = 'drop') => page.evaluate((selector, specs, kind) => {
+  const target = document.querySelector(selector); const dt = new DataTransfer();
+  specs.forEach(([name, body, mime]) => dt.items.add(new File([body], name, { type: mime || '' })));
+  const ev = new DragEvent(kind, { dataTransfer: dt, bubbles: true, cancelable: true });
+  target.dispatchEvent(ev);
+  return { prevented: ev.defaultPrevented };
+}, sel, files, type);
+const dialogText = () => page.evaluate(() => document.querySelector('[data-drop-box]').innerText);
+check('The Report PDF row has its own drop area', await page.evaluate(() => /Drop the report PDF here/.test(document.querySelector('[data-db-pdf-zone]').innerText)));
+const over = await dropOn('[data-db-pdf-zone]', [['x.pdf', 'x', 'application/pdf']], 'dragover');
+check('Dragging a file over it lights that area only', over.prevented && await page.evaluate(() => document.querySelector('[data-db-pdf-zone]').classList.contains('is-over') && !document.querySelector('.db-card').classList.contains('is-over')));
+await dropOn('[data-db-pdf-zone]', [['Fensterer report.pdf', 'PDFDATA-1', 'application/pdf']]);
+const afterPdf = await page.evaluate(() => ({ pdf: document.querySelector('[data-db-pdf-picked]').innerText, extras: document.querySelector('[data-db-picked]').innerText, lit: document.querySelector('[data-db-pdf-zone]').classList.contains('is-over') }));
+check('A PDF dropped there becomes the report, shown with its name and size', /Fensterer report\.pdf · 9 B/.test(afterPdf.pdf) && !afterPdf.lit, JSON.stringify(afterPdf));
+check('and it is not also added to Other files', !/Fensterer/.test(afterPdf.extras));
+await dropOn('[data-db-pdf-zone]', [['Second report.pdf', 'PDFDATA-22', 'application/pdf']]);
+check('A second drop there replaces the first', await page.evaluate(() => /Second report\.pdf/.test(document.querySelector('[data-db-pdf-picked]').innerText) && !/Fensterer/.test(document.querySelector('[data-drop-box]').innerText)));
+await dropOn('[data-db-pdf-zone]', [['photo.jpg', 'JPG', 'image/jpeg']]);
+check('Something that is not a PDF is refused there, with a note, and the report stays', await page.evaluate(() => /not a PDF/.test(document.querySelector('[data-db-pdf-problem]').textContent) && /Second report\.pdf/.test(document.querySelector('[data-db-pdf-picked]').innerText)));
+await dropOn('[data-db-zone]', [['CubiCasa plan.pdf', 'CUBI', 'application/pdf']]);
+const both = await page.evaluate(() => ({ pdf: document.querySelector('[data-db-pdf-picked]').innerText, extras: document.querySelector('[data-db-picked]').innerText }));
+check('A PDF dropped on Other files stays an other file; the report is unchanged', /Second report\.pdf/.test(both.pdf) && /CubiCasa plan\.pdf/.test(both.extras) && !/CubiCasa/.test(both.pdf), JSON.stringify(both));
+await dropOn('.db-card', [['notes2.txt', 'N2', 'text/plain']]);
+check('A drop elsewhere on the dialog goes to Other files', await page.evaluate(() => /notes2\.txt/.test(document.querySelector('[data-db-picked]').innerText)));
+calls.length = 0;
+failPart = { part: 0, times: 0 };
+await page.click('[data-db-create]');
+await page.waitForSelector('[data-db-url]', { timeout: 60000 });
+const url4 = await page.$eval('[data-db-url]', (i) => i.value);
+const token4 = /lookbook\/([a-f0-9]{36})\//.exec(url4)[1];
+const keys4 = [...store.keys()].filter((k) => k.startsWith(`lookbooks/${token4}/files/`)).map((k) => k.split('/files/')[1]).sort();
+check('The dropped report PDF is sent under its name, with the others', JSON.stringify(keys4) === JSON.stringify(['CubiCasa-plan.pdf', 'Second-report.pdf', 'notes2.txt']), JSON.stringify(keys4));
+check('and its contents are the file that was dropped', new TextDecoder().decode(store.get(`lookbooks/${token4}/files/Second-report.pdf`).bytes) === 'PDFDATA-22');
+const page4 = await (await worker.fetch(new Request(`https://sync.example/lookbook/${token4}/`), Object.assign({ CABINET: bucket }, env))).text();
+check('The client page labels it "Report (PDF)"', page4.includes('Report (PDF)') && page4.includes('Second-report.pdf'));
+// remove the report PDF with its ×
+await page.evaluate(() => { document.querySelectorAll('[data-drop-box]').forEach((n) => n.remove()); });
+await page.evaluate(() => window.ToolboxDropBox.open({ record: { id: 'drop-ui-4' }, pages: [], residence: 'Z', address: 'Zed Lane' }));
+await dropOn('[data-db-pdf-zone]', [['Report.pdf', 'R', 'application/pdf']]);
+await page.click('[data-db-pdf-picked] button');
+check('The × takes the report PDF off again', await page.evaluate(() => !/Report\.pdf/.test(document.querySelector('[data-db-pdf-picked]').innerText)));
+await (await page.$('[data-db-pdf]')).uploadFile(pdfPath);
+check('Clicking the area to choose a file still works', await page.evaluate(() => /15 Rabbitbrush Report \(final\)\.pdf/.test(document.querySelector('[data-db-pdf-picked]').innerText)));
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
 await browser.close();

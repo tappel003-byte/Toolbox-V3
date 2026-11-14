@@ -192,7 +192,10 @@
       '.db-row input[type=file]{margin-top:6px;max-width:100%;font-size:13px}' +
       '.db-zone{display:flex;align-items:center;justify-content:center;text-align:center;min-height:64px;margin-top:6px;padding:10px;border:2px dashed #9ca3af;border-radius:8px;color:#4b5563;font-size:13px;cursor:pointer;background:#f9fafb}' +
       '.db-zone input{display:none}' +
-      '.db-zone.is-over,.db-card.is-over .db-zone{border-color:#0b2233;background:#e8eef2;color:#0b2233}' +
+      '.db-zone.is-over,.db-card.is-over .db-zone--extra{border-color:#0b2233;background:#e8eef2;color:#0b2233}' +
+      '.db-zone--pdf{min-height:56px}' +
+      '.db-pdf-picked{display:flex;gap:8px;align-items:center;margin-top:6px;font-size:13px}' +
+      '.db-pdf-picked button{border:0;background:none;color:#b91c1c;cursor:pointer;font-size:16px;line-height:1}' +
       '.db-picked{display:flex;flex-direction:column;gap:4px;margin-top:6px}' +
       '.db-picked div{display:flex;gap:8px;align-items:center;font-size:13px}' +
       '.db-picked button{border:0;background:none;color:#b91c1c;cursor:pointer;font-size:16px;line-height:1}' +
@@ -280,15 +283,60 @@
       card.appendChild(el('p', { text: 'Make a link that holds this job’s files. It works for ' + TTL_DAYS +
         ' days, then the link and its copies are deleted. Your originals stay in the Customer File.' }));
 
-      // Report PDF
+      // Report PDF: its own drop area, one file. A drop here becomes the report; a drop anywhere
+      // else on the dialog goes to Other files (a second PDF is not guessed to be the report).
       const pdfInput = el('input', { type: 'file', accept: 'application/pdf,.pdf', 'data-db-pdf': '' });
-      pdfInput.addEventListener('change', function () {
-        state.pdf = pdfInput.files && pdfInput.files[0] ? pdfInput.files[0] : null;
+      const pdfZone = el('label', { class: 'db-zone db-zone--pdf', 'data-db-pdf-zone': '' }, [
+        document.createTextNode('Drop the report PDF here, or click to choose'),
+        pdfInput,
+      ]);
+      const pdfPicked = el('div', { class: 'db-pdf-picked', 'data-db-pdf-picked': '' });
+      const pdfProblem = el('span', { 'data-db-pdf-problem': '' });
+      function isPdf(f) {
+        return !!f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name || ''));
+      }
+      function setPdf(f) {
+        if (!f) return;
+        if (!isPdf(f)) {
+          pdfProblem.textContent = (f.name || 'That file') + ' is not a PDF. Drop it under Other files instead.';
+          paintPicked();
+          return;
+        }
+        pdfProblem.textContent = '';
+        state.pdf = f;
         paintPicked();
+      }
+      pdfInput.addEventListener('change', function () {
+        setPdf(pdfInput.files && pdfInput.files[0] ? pdfInput.files[0] : null);
+        pdfInput.value = '';
       });
-      const pdfNote = el('span', { 'data-db-pdf-note': '', text: 'Make it with Print / PDF → Save as PDF, then choose the file here.' });
+      function overFiles(e) {
+        const types = e.dataTransfer && e.dataTransfer.types;
+        return !!types && Array.prototype.indexOf.call(types, 'Files') !== -1;
+      }
+      // Stop the card from also treating this drop as "Other files".
+      pdfZone.addEventListener('dragenter', function (e) { if (overFiles(e)) { e.preventDefault(); e.stopPropagation(); pdfZone.classList.add('is-over'); } });
+      pdfZone.addEventListener('dragover', function (e) { if (overFiles(e)) { e.preventDefault(); e.stopPropagation(); pdfZone.classList.add('is-over'); } });
+      pdfZone.addEventListener('dragleave', function (e) {
+        if (e.relatedTarget && pdfZone.contains(e.relatedTarget)) return;
+        pdfZone.classList.remove('is-over');
+      });
+      pdfZone.addEventListener('drop', function (e) {
+        if (!overFiles(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        pdfZone.classList.remove('is-over');
+        card.classList.remove('is-over');
+        if (state.busy) return;
+        const files = Array.prototype.filter.call(e.dataTransfer.files || [], function (f) { return f && f.size; });
+        if (files.length) setPdf(files[0]);
+      });
       card.appendChild(el('div', { class: 'db-row' }, [
-        el('div', {}, [el('strong', { text: 'Report PDF' }), pdfNote, pdfInput]),
+        el('div', { style: 'flex:1;min-width:0' }, [
+          el('strong', { text: 'Report PDF' }),
+          el('span', { 'data-db-pdf-note': '', text: 'Make it with Print / PDF \u2192 Save as PDF, then drop the file here.' }),
+          pdfZone, pdfPicked, el('div', { class: 'db-picked' }, [pdfProblem]),
+        ]),
       ]));
 
       // Photographs
@@ -337,7 +385,7 @@
         addFiles(extraInput.files);
         extraInput.value = '';
       });
-      const zone = el('label', { class: 'db-zone', 'data-db-zone': '' }, [
+      const zone = el('label', { class: 'db-zone db-zone--extra', 'data-db-zone': '' }, [
         document.createTextNode('Drop files here, or click to choose'),
         extraInput,
       ]);
@@ -375,9 +423,13 @@
           picked.appendChild(el('div', {}, [el('span', { text: file.name + ' · ' + humanBytes(file.size) }), remove]));
         });
         if (state.note) picked.appendChild(el('div', { 'data-db-note': '' }, [el('span', { text: state.note })]));
-        pdfNote.textContent = state.pdf
-          ? state.pdf.name + ' · ' + humanBytes(state.pdf.size)
-          : 'Make it with Print / PDF → Save as PDF, then choose the file here.';
+        pdfPicked.innerHTML = '';
+        if (state.pdf) {
+          const removePdf = el('button', { type: 'button', 'aria-label': 'Remove ' + state.pdf.name, text: '\u00d7' });
+          removePdf.addEventListener('click', function () { state.pdf = null; paintPicked(); });
+          pdfPicked.appendChild(el('span', { text: state.pdf.name + ' \u00b7 ' + humanBytes(state.pdf.size) }));
+          pdfPicked.appendChild(removePdf);
+        }
       }
       paintPicked();
 
