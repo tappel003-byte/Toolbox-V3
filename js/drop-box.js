@@ -130,11 +130,83 @@
     return 'jpg';
   }
 
+  /**
+   * The photographs in the report: those placed on its Pictures pages (with their captions), then the
+   * Distress Survey's, each once, with the stored original loaded from the Customer File's media.
+   */
+  function collectPhotoEntries(record, pages) {
+    const byKey = Object.create(null);
+    const list = [];
+
+    function add(entry) {
+      if (!entry) return;
+      const key = entry.id || entry.key || (entry.dataUrl && entry.dataUrl.slice(0, 64));
+      if (!key) return;
+      if (byKey[key]) {
+        if (!byKey[key].dataUrl && entry.dataUrl) byKey[key].dataUrl = entry.dataUrl;
+        return;
+      }
+      const row = {
+        id: entry.id || entry.key || ('photo-' + list.length),
+        title: entry.title || ('Photo ' + (entry.displayNumber || (list.length + 1))),
+        dataUrl: entry.dataUrl || '',
+        mediaId: entry.id || entry.mediaId || '',
+      };
+      byKey[key] = row;
+      list.push(row);
+    }
+
+    (pages || []).forEach(function (page) {
+      if (!page || page.type !== 'pictures') return;
+      const captions = (page.reportText && page.reportText.captions) || {};
+      const photos = (page.evidence && Array.isArray(page.evidence.photos)) ? page.evidence.photos : [];
+      photos.forEach(function (photo) {
+        if (!photo) return;
+        const key = photo.key || photo.id || '';
+        const caption = typeof captions[key] === 'string' ? captions[key] : '';
+        add({
+          id: key || photo.id,
+          key: key,
+          title: caption || ('Photo ' + (photo.displayNumber || '')),
+          displayNumber: photo.displayNumber,
+          dataUrl: photo.dataUrl,
+        });
+      });
+    });
+
+    if (window.ToolboxReportEvidence && typeof window.ToolboxReportEvidence.listDistressPhotos === 'function') {
+      (window.ToolboxReportEvidence.listDistressPhotos(record) || []).forEach(function (photo) {
+        add({
+          id: photo.id || photo.key || ('distress-' + photo.displayNumber),
+          key: photo.key,
+          title: 'Photo ' + (photo.displayNumber || ''),
+          displayNumber: photo.displayNumber,
+          dataUrl: photo.dataUrl,
+        });
+      });
+    }
+    return list;
+  }
+
+  /** Load each photograph's stored original where the report only carried a reference. */
+  async function hydratePhotoBytes(list) {
+    const getMedia = window.ToolboxDB && typeof window.ToolboxDB.getMedia === 'function'
+      ? window.ToolboxDB.getMedia.bind(window.ToolboxDB)
+      : null;
+    for (let i = 0; i < list.length; i += 1) {
+      const photo = list[i];
+      if (photo.dataUrl && photo.dataUrl.indexOf('data:image/') === 0) continue;
+      if (!photo.mediaId || !getMedia) continue;
+      try {
+        const url = await getMedia(photo.mediaId);
+        if (url && String(url).indexOf('data:image/') === 0) photo.dataUrl = url;
+      } catch (_) {}
+    }
+    return list;
+  }
+
   async function reportPhotos(record, pages) {
-    const api = window.ToolboxReportLookbook;
-    if (!api || typeof api.collectPhotoEntries !== 'function') return [];
-    let list = api.collectPhotoEntries(record || {}, pages || []);
-    if (typeof api.hydratePhotoBytes === 'function') list = await api.hydratePhotoBytes(list);
+    const list = await hydratePhotoBytes(collectPhotoEntries(record || {}, pages || []));
     return list.filter(function (p) { return p && p.dataUrl && String(p.dataUrl).indexOf('data:image/') === 0; });
   }
 

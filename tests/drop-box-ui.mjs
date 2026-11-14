@@ -386,6 +386,19 @@ check('The × takes the report PDF off again', await page.evaluate(() => !/Repor
 await (await page.$('[data-db-pdf]')).uploadFile(pdfPath);
 check('Clicking the area to choose a file still works', await page.evaluate(() => /15 Rabbitbrush Report \(final\)\.pdf/.test(document.querySelector('[data-db-pdf-picked]').innerText)));
 
+
+// ================= photographs the report only references are loaded from the file's media =================
+await page.evaluate(() => { document.querySelectorAll('[data-drop-box]').forEach((n) => n.remove()); });
+const hydrated = await page.evaluate(async () => {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 48; const x = c.getContext('2d'); x.fillStyle = '#8e44ad'; x.fillRect(0, 0, 64, 48);
+  await ToolboxDB.putMedia('ref-photo-1', c.toDataURL('image/jpeg', 0.9));
+  const pages = [{ type: 'pictures', reportText: { captions: {} }, evidence: { photos: [{ key: 'ref-photo-1', id: 'ref-photo-1', displayNumber: 4 }, { key: 'gone', id: 'gone-media', displayNumber: 5 }] } }];
+  await window.ToolboxDropBox.open({ record: { id: 'drop-ui-5' }, pages, residence: 'Q', address: 'Q Lane' });
+  return document.querySelector('[data-db-photos]').closest('label').innerText;
+});
+check('A photograph the report only refers to is loaded from the file; one whose original is missing is left out', /1 photograph,/.test(hydrated), hydrated.replace(/\n/g, ' '));
+check('The drop box no longer depends on the old lookbook file', await page.evaluate(() => typeof window.ToolboxReportLookbook === 'undefined'));
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
 await browser.close();

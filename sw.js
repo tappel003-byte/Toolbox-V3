@@ -15,7 +15,7 @@
 // sw.js file's own bytes change; a precached static asset edited without
 // bumping this stays served from the stale cache indefinitely on already
 // installed devices, invisibly, no matter how many times it's redeployed.
-const CACHE_NAME = 'toolbox-shell-v486';
+const CACHE_NAME = 'toolbox-shell-v487';
 const OFFLINE_DOCUMENT = '/index.html';
 /** PWA start_url is "/" — must resolve offline to the same shell as index.html. */
 const OFFLINE_ROOT = '/';
@@ -71,7 +71,6 @@ const STATIC_SHELL = [
   '/js/report-rail.js',
   '/js/report-cover-layout.js',
   '/js/pen-log.js',
-  '/js/report-lookbook.js',
   '/js/drop-box.js',
   '/js/report-builder.js',
   '/js/vendor/fabric.min.js',

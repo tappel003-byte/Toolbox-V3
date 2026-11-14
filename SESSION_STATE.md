@@ -269,6 +269,10 @@ Report Builder → Share files → a 14-day link to a plain Sandia Geo download 
 
 Tim, after the drop box worked on the first real use: "Let's get rid of share lookbook." Button and handler removed from `js/report-builder.js`; the module and Worker lookbook routes stay (the drop box uses them). Also: the Report PDF row of the drop box has its own drop area (`js/drop-box.js`). Shell v486. Test: `drop-box-ui` 56/56.
 
+### Claude Code: drop box made standalone (Nov 14, 2026) — branch `claude/drop-box-standalone-2ac5`
+
+`js/report-lookbook.js` and `tests/report-lookbook.mjs` deleted; the photo helpers moved into `js/drop-box.js`. Worker unchanged (still serves under `lookbook/<token>/`). Shell v487. Test: `drop-box-ui` 58/58.
+
 ## Sync Worker deploy — done Nov 10, 2026
 
 - Deployed by Claude Code with Tim's Cloudflare API token (saved as a network secret on Tim's Default cloud environment).
