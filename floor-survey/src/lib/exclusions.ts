@@ -37,13 +37,13 @@ export function zoneOfXY(
   return null;
 }
 
-/** Stands in for a zone on a reading tagged as off the surface (a drain, a monitor reading): no polygon. */
+/** Stands in for a zone on a reading tagged as off the surface (a drain, a watch reading): no polygon. */
 const SPECIAL_ZONES: Record<SpecialKind, Exclusion> = {
   drain: { id: "drain", label: SPECIAL_LABELS.drain, polygon: [], createdAt: 0 },
-  monitor: { id: "monitor", label: SPECIAL_LABELS.monitor, polygon: [], createdAt: 0 },
+  watch: { id: "watch", label: SPECIAL_LABELS.watch, polygon: [], createdAt: 0 },
 };
 
-/** Why a reading is kept out of the surface: its tag (drain, monitor), or the zone it sits in. */
+/** Why a reading is kept out of the surface: its tag (drain, watch), or the zone it sits in. */
 export function zoneOfPoint(
   p: Pick<SurveyPoint, "x" | "y" | "special" | "isDrain">,
   exclusions: Exclusion[] | undefined,
@@ -66,7 +66,7 @@ export function computeExclusionMap(
   return m;
 }
 
-/** Points not inside any exclusion and not tagged as a drain or monitor reading. */
+/** Points not inside any exclusion and not tagged as a drain or watch reading. */
 export function pointsOutsideExclusions(
   points: SurveyPoint[],
   exclusions: Exclusion[] | undefined,

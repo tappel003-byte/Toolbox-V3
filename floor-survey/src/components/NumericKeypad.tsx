@@ -18,7 +18,7 @@ export interface SurfaceOption {
 
 /** What the keypad's special-case menu said about this reading. */
 export interface SubmitExtra {
-  /** Set when the menu says this reading is kept off the surface (a drain, a monitor reading). */
+  /** Set when the menu says this reading is kept off the surface (a drain, a watch reading). */
   special: SpecialKind | null;
 }
 
@@ -38,7 +38,7 @@ interface Props {
   surfaceOptions?: SurfaceOption[];
   /** Required when surfaceOptions is provided. Submits value + chosen surface. */
   onSubmitWithOption?: (value: number, opt: SurfaceOption, extra: SubmitExtra) => void;
-  /** Shows the small "Reading ▾" menu in the upper left, with Drain and Monitor in it. */
+  /** Shows the small "Reading ▾" menu in the upper left, with Drain and Watch in it. */
   allowSpecial?: boolean;
   /** The point being edited already has one of these kinds. */
   initialSpecial?: SpecialKind | null;
@@ -84,7 +84,7 @@ export function NumericKeypad({
 
   const [text, setText] = useState<string>("");
   // The special-case menu starts on a normal reading every time the keypad opens, so a drain or a
-  // monitor reading is chosen for the one point and never has to be switched off.
+  // watch reading is chosen for the one point and never has to be switched off.
   const [special, setSpecial] = useState<SpecialKind | null>(null);
   const extra: SubmitExtra = { special: allowSpecial ? special : null };
 

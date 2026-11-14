@@ -3305,7 +3305,7 @@ export function renderTopoTop(
     // Dots always draw when points are on. Labels obey showLabels (Readings pill
     // and Control panel → Readings → Show).
     ctx.font = `${weight} ${fontPx}px sans-serif`;
-    // A reading kept off the surface (drain, monitor) is written in parentheses, the way a value
+    // A reading kept off the surface (drain, watch) is written in parentheses, the way a value
     // noted but not used is.
     const labelTextOf = (p: SurveyPoint) => {
       const t = p.value.toFixed(resolved.decimalPlaces);
@@ -3389,7 +3389,7 @@ export function renderTopoTop(
         ctx.fillStyle = "#ffffff";
         ctx.fillText(text, cx, cy);
       } else {
-        // An off-surface reading (drain, monitor) has no box at all: gray type with a thin white outline,
+        // An off-surface reading (drain, watch) has no box at all: gray type with a thin white outline,
         // in parentheses, so it is plainly not a data point on the surface (Tim, Nov 14, 2026).
         if (isOffSurface(p)) {
           haloText(ctx, text, cx, cy, SPECIAL_INK, 3 * chromeK);
@@ -3409,7 +3409,7 @@ export function renderTopoTop(
           ctx.fillText(text, cx, cy);
         }
       }
-      // The word for what it is goes under the number (Drain, Monitor).
+      // The word for what it is goes under the number (Drain, Watch).
       const kind = specialKindOf(p);
       if (kind) {
         ctx.font = `600 ${Math.max(6, fontPx * 0.72)}px sans-serif`;

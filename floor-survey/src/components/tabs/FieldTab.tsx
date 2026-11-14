@@ -1168,7 +1168,7 @@ export function FieldTab({
               const padY = lblPadY;
               ctx.beginPath();
               ctx.roundRect(lx - padX, ly - padY, tm.width + padX * 2, lblFontPx + padY * 2, 3 * chromeK);
-              // A reading kept off the surface (drain, monitor) has no box: gray type with a thin white
+              // A reading kept off the surface (drain, watch) has no box: gray type with a thin white
               // outline, in parentheses. Everything else keeps its white box.
               if (!ghost) {
                 ctx.fillStyle = "#ffffff";

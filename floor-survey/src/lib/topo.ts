@@ -148,7 +148,7 @@ export function buildGrid(
   // they must not influence the interpolated surface. Points outside the
   // boundary still render on the plan; they just don't pull the contours.
   const excl = exclusions?.filter((p) => p.length >= 3) ?? [];
-  // Drain and monitor readings are kept off the surface and never pull it.
+  // Drain and watch readings are kept off the surface and never pull it.
   const surfacePoints = points.filter((p) => !isOffSurface(p));
   const insideBoundary =
     boundary.length >= 3

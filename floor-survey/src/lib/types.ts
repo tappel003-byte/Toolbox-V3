@@ -177,9 +177,9 @@ export interface SurveyPoint {
   transitionId?: string;
   isTransitionAnchor?: boolean;
   // A reading kept and shown but not part of the floor surface: "drain" (cast low on purpose) or
-  // "monitor" (a spot to watch over time). Left out of the contours, the High / Low and the range.
+  // "watch" (a spot to watch over time). Left out of the contours, the High / Low and the range.
   // See lib/special-points.ts. Tim, Nov 13-14, 2026.
-  special?: "drain" | "monitor";
+  special?: "drain" | "watch";
   /** How drains were saved before kinds existed. Read as special: "drain". */
   isDrain?: boolean;
 }

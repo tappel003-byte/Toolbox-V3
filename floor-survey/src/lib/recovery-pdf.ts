@@ -50,7 +50,7 @@ export function recoveryReadingLabel(point: SurveyPoint, floor: Floor): string {
     transition && !point.isTransitionAnchor
       ? `${valueText}${formatDelta(transitionDelta(transition, floor.transitionGroupAverages))}`
       : valueText;
-  // A reading kept off the surface (drain, monitor) is written in parentheses (and drawn without a box below).
+  // A reading kept off the surface (drain, watch) is written in parentheses (and drawn without a box below).
   return isOffSurface(point) ? `(${text})` : text;
 }
 
