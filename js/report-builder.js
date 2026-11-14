@@ -9462,6 +9462,35 @@
       });
     });
 
+    // Sandia Geo Drop Box: a 14-day download link for the report PDF, the report's photographs and
+    // any other files for this job.
+    var shareFilesBtn = root.querySelector('#rb-share-files');
+    if (shareFilesBtn) {
+      shareFilesBtn.addEventListener('click', function () {
+        if (!window.ToolboxDropBox || typeof window.ToolboxDropBox.open !== 'function') {
+          setSaveStatus('Sharing files is not available in this session.');
+          return;
+        }
+        var residence = '';
+        var address = '';
+        try {
+          residence = workingRecord
+            ? ((workingRecord.firstName || '') + ' ' + (workingRecord.lastName || '')).trim()
+            : '';
+          address = fullAddress(workingRecord || {}) || '';
+        } catch (_) {}
+        flushSave().catch(function () {}).then(function () {
+          return window.ToolboxDropBox.open({
+            record: workingRecord || {},
+            pages: pages.slice(),
+            customerFileId: workingRecord && workingRecord.id,
+            residence: residence,
+            address: address,
+          });
+        });
+      });
+    }
+
     var shareLookbookBtn = root.querySelector('#rb-share-lookbook');
     if (shareLookbookBtn) {
       shareLookbookBtn.addEventListener('click', function () {
@@ -9878,6 +9907,8 @@
       '    <div class="rb-toolbar__out" role="group" aria-label="Report output">' +
       '      <button type="button" id="rb-draft" class="btn btn--quiet rb-draft-btn" aria-pressed="false">Draft stamp</button>' +
       '      <button type="button" id="rb-print" class="btn btn--secondary rb-print-btn">Print / PDF</button>' +
+      '      <button type="button" id="rb-share-files" class="btn btn--secondary rb-share-lookbook-btn"' +
+      ' title="Make a 14-day download link for this job\'s files">Share files</button>' +
       '      <button type="button" id="rb-share-lookbook" class="btn btn--secondary rb-share-lookbook-btn"' +
       ' title="Create a 30-day engineer lookbook link">Share lookbook</button>' +
       '      <button type="button" id="rb-export-ai" class="btn btn--accent rb-export">Export for AI</button>' +

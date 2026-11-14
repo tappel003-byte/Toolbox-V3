@@ -1325,7 +1325,7 @@
         headers: headers,
         credentials: 'include',
         redirect: 'manual',
-      }));
+      }), opts.timeoutMs);
     };
 
     let response;
@@ -4108,6 +4108,78 @@
     return response.json();
   }
 
+  /**
+   * Sandia Geo Drop Box -- a 14-day download page for a job's files. Access-gated create, upload,
+   * finalize and remove; the public page is served without sign-in under lookbook/{token}/.
+   * A file goes up in fixed-size parts (R2 multipart) so one that is bigger than a single request
+   * can carry still arrives whole. Each part is retried a few times before the whole send fails.
+   */
+  async function dropCreate(meta) {
+    const body = Object.assign({}, meta || {}, { kind: 'drop' });
+    const response = await apiFetch('/lookbook', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return response.json();
+  }
+
+  async function dropUploadFile(token, name, blob, contentType, onProgress) {
+    const base = '/lookbook/' + encodeURIComponent(token) + '/uploads/' + encodeURIComponent(name);
+    const startRes = await apiFetch(base, {
+      method: 'POST',
+      headers: { 'content-type': contentType || blob.type || 'application/octet-stream' },
+    });
+    const started = await startRes.json();
+    const partBytes = started.partBytes || 8 * 1024 * 1024;
+    const total = blob.size;
+    const parts = [];
+    let sent = 0;
+    for (let at = 0, n = 1; at < total; at += partBytes, n += 1) {
+      const chunk = blob.slice(at, Math.min(total, at + partBytes));
+      let part = null;
+      for (let attempt = 1; attempt <= 3 && !part; attempt += 1) {
+        try {
+          const res = await apiFetch(base + '?uploadId=' + encodeURIComponent(started.uploadId) + '&part=' + n, {
+            method: 'PUT',
+            headers: { 'content-type': 'application/octet-stream' },
+            body: chunk,
+            timeoutMs: 180000,
+          });
+          part = await res.json();
+        } catch (err) {
+          if (attempt === 3 || (err && (err.code === 'auth' || err.code === 'config'))) throw err;
+          await new Promise(function (resolve) { setTimeout(resolve, 600 * attempt); });
+        }
+      }
+      parts.push({ partNumber: part.partNumber, etag: part.etag });
+      sent += chunk.size;
+      if (typeof onProgress === 'function') onProgress(sent, total);
+    }
+    if (!parts.length) throw new SyncError('input', 'The file is empty.');
+    const doneRes = await apiFetch(base + '/complete', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ uploadId: started.uploadId, parts: parts }),
+    });
+    const done = await doneRes.json();
+    return { name: started.name, bytes: done.bytes };
+  }
+
+  async function dropFinalize(token, payload) {
+    const response = await apiFetch('/lookbook/' + encodeURIComponent(token) + '/finalize', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload || {}),
+    });
+    return response.json();
+  }
+
+  async function dropRemove(token) {
+    const response = await apiFetch('/lookbook/' + encodeURIComponent(token), { method: 'DELETE' });
+    return response.json();
+  }
+
   window.ToolboxSync = {
     COMPONENTS: COMPONENTS,
     REMOTE_PULL_EPOCH: REMOTE_PULL_EPOCH,
@@ -4197,6 +4269,10 @@
     createLookbook: createLookbook,
     uploadLookbookFile: uploadLookbookFile,
     finalizeLookbook: finalizeLookbook,
+    dropCreate: dropCreate,
+    dropUploadFile: dropUploadFile,
+    dropFinalize: dropFinalize,
+    dropRemove: dropRemove,
     deleteRemoteCustomerFile: deleteRemoteCustomerFile,
     exploreListFiles: exploreListFiles,
     exploreListCustomerFile: exploreListCustomerFile,

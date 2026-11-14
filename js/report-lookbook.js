@@ -809,6 +809,7 @@
     shareFromReport: shareFromReport,
     lookbookIndexHtml: lookbookIndexHtml,
     collectPhotoEntries: collectPhotoEntries,
+    hydratePhotoBytes: hydratePhotoBytes,
     // Test hooks for capture markup (no DOM rasterize).
     buildForeignObjectSvg: buildForeignObjectSvg,
   };

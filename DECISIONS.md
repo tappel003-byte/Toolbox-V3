@@ -738,6 +738,22 @@ Test: `tests/floor-survey-drain.mjs` (32).
 
 ---
 
+## Sandia Geo Drop Box: a 14-day download page for a job's files (DECIDED Tim, Nov 14, 2026)
+
+Tim: send a client or an engineer a link instead of a big email, and have the copies go away on their own. The lookbook (a hosted re-drawing of the report) was incomplete, so the drop box never re-draws anything: it stores finished files as they are.
+
+- **Report Builder → Share files.** The dialog takes the report PDF (made with Print / PDF and chosen here; the browser's print dialog does not hand the file back), a **zip of the photographs that are in the report** (built from the stored originals, numbered Photo-01, Photo-02, ...), and any **other files** added by hand (a floor plan, a drawing, a DWG). Create link, then Copy link / Copy message ("Your report is ready. Download it here: ... The link works until ..."), and Remove now.
+- **The client's page** is plain and branded (Sandia Geo logo, the job, "Available until ..."), with a Download button for each file. No script, no sign-in.
+- **14 days.** Then the link says it has expired and the files are deleted: when anyone asks for an expired link, and whenever a new drop is made (a few at a time). No scheduled task. "Remove now" deletes at once. A drop that was never finished runs out the same way.
+- **Large files.** A file goes up in 8 MiB parts (R2 multipart), each retried, so one bigger than a single request can carry still arrives whole. A failed send takes the half-made drop down.
+- **Originals are never touched.** A drop holds copies; nothing in it is the only copy of anything. Not built: the photographs as a click-to-enlarge grid (the zip is the delivery), and links inside the PDF.
+- **Where it lives.** Same R2 bucket, same Worker, and the **same public path as the engineer lookbook (`lookbook/<token>/`)**, so the Cloudflare Access bypass that already exists covers it and Access did not change. The link therefore says "lookbook" in it; a `drop/` path would need an Access bypass added. Create, upload, finalize and remove stay Access-gated. A drop is told apart by `manifest.kind === 'drop'`; engineer lookbooks are unchanged.
+- **Not yet proven:** the Worker tests use an R2 mock that follows R2's multipart contract; it has not met a real bucket. The first real upload is the real test.
+
+Tests: `tests/drop-box-worker.mjs` (40), `tests/drop-box-ui.mjs` (28, the real button and dialog through the real Worker code), `tests/lookbook-worker.mjs` (22) and `tests/report-lookbook.mjs` (6) unchanged.
+
+---
+
 ## Closeout
 
 - The final PDF is the durable closeout record.

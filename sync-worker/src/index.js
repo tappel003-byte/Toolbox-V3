@@ -41,6 +41,15 @@ import {
   lookbookContentType,
 } from './lookbook.js';
 import { LOOKBOOK_STATIC_CSS, LOOKBOOK_STATIC_JS } from './lookbook-assets.js';
+import {
+  DROP_MAX_FILES,
+  DROP_MAX_FILE_BYTES,
+  DROP_PART_BYTES,
+  DROP_TTL_DAYS,
+  buildDropManifest,
+  dropIndexHtml,
+  sanitizeDropFileName,
+} from './drop.js';
 
 /** PWA origin only — Access cookie sync uses credentials:include (no *). */
 const ALLOWED_ORIGINS = {
@@ -1495,6 +1504,23 @@ export default {
       return finalizeLookbook(request, env, decodeURIComponent(match[1]));
     }
 
+    // ---- Sandia Geo Drop Box: multipart upload of one file, and "Remove now" (Access-gated) ----
+    match = /^lookbook\/([^/]+)\/uploads\/([^/]+)\/complete$/.exec(path);
+    if (match && request.method === 'POST') {
+      return completeDropUpload(request, env, decodeURIComponent(match[1]), decodeURIComponent(match[2]));
+    }
+    match = /^lookbook\/([^/]+)\/uploads\/([^/]+)$/.exec(path);
+    if (match && request.method === 'POST') {
+      return startDropUpload(request, env, decodeURIComponent(match[1]), decodeURIComponent(match[2]));
+    }
+    if (match && request.method === 'PUT') {
+      return putDropPart(request, env, decodeURIComponent(match[1]), decodeURIComponent(match[2]));
+    }
+    match = /^lookbook\/([a-f0-9]{36})$/.exec(path);
+    if (match && request.method === 'DELETE') {
+      return removeDrop(request, env, match[1]);
+    }
+
     return notFound(request);
   },
 };
@@ -1536,7 +1562,15 @@ async function servePublicLookbook(request, env, path) {
   if (!manifest) return notFound(request);
   if (manifest.status !== 'live') return notFound(request);
   if (isExpired(manifest)) {
+    // A drop's files are removed once its days are up; an expired link says so either way.
+    if (manifest.kind === 'drop') {
+      try { await deleteDropObjects(env, token); } catch (_) {}
+    }
     return text(request, 'This lookbook link has expired.', 410);
+  }
+  const isDrop = manifest.kind === 'drop';
+  if (isDrop && relative !== 'index.html' && relative.indexOf('files/') !== 0) {
+    return notFound(request);
   }
 
   // Never serve the raw draft/live manifest JSON publicly under a guessable
@@ -1551,10 +1585,178 @@ async function servePublicLookbook(request, env, path) {
   headers['content-type'] = (got.httpMetadata && got.httpMetadata.contentType) || lookbookContentType(relative);
   headers['cache-control'] = 'private, max-age=300';
   headers['x-robots-tag'] = 'noindex, nofollow';
+  if (isDrop && relative.indexOf('files/') === 0) {
+    // A file in a drop is a download, saved under its own name.
+    const fileName = relative.slice('files/'.length);
+    headers['content-disposition'] = 'attachment; filename="' + fileName.replace(/"/g, '') + '"';
+    headers['cache-control'] = 'private, no-store';
+    if (typeof got.size === 'number') headers['content-length'] = String(got.size);
+  }
   if (request.method === 'HEAD') {
     return new Response(null, { status: 200, headers: headers });
   }
   return new Response(got.body, { status: 200, headers: headers });
+}
+
+// ---- Sandia Geo Drop Box ----
+
+/** Every object under a token (files, page, manifest), deleted in batches. */
+async function deleteDropObjects(env, token) {
+  const prefix = lookbookRoot(token);
+  let cursor;
+  for (let guard = 0; guard < 50; guard += 1) {
+    const listed = await env.CABINET.list({ prefix: prefix, limit: 1000, cursor: cursor });
+    const keys = (listed.objects || []).map(function (o) { return o.key; });
+    if (keys.length) await env.CABINET.delete(keys);
+    if (!listed.truncated) break;
+    cursor = listed.cursor;
+  }
+}
+
+/** Remove drops whose days are up (a few per call, so creating a link never gets slow). */
+async function sweepExpiredDrops(env) {
+  try {
+    const listed = await env.CABINET.list({ prefix: 'lookbooks/', delimiter: '/', limit: 200 });
+    const prefixes = listed.delimitedPrefixes || [];
+    let removed = 0;
+    for (let i = 0; i < prefixes.length && removed < 10; i += 1) {
+      const match = /^lookbooks\/([a-f0-9]{36})\/$/.exec(prefixes[i]);
+      if (!match) continue;
+      const manifest = await readLookbookManifest(env, match[1]);
+      if (manifest && manifest.kind === 'drop' && isExpired(manifest)) {
+        await deleteDropObjects(env, match[1]);
+        removed += 1;
+      }
+    }
+  } catch (_) { /* clearing out old drops must never stop a new one */ }
+}
+
+async function readDraftDrop(request, env, token) {
+  if (!LOOKBOOK_TOKEN_RE.test(token)) return { error: badRequest(request, 'Invalid drop token') };
+  const manifest = await readLookbookManifest(env, token);
+  if (!manifest || manifest.kind !== 'drop') return { error: notFound(request) };
+  if (manifest.status === 'live') return { error: conflict(request, 'This drop is already finalized') };
+  if (isExpired(manifest)) return { error: text(request, 'This drop has expired.', 410) };
+  return { manifest: manifest };
+}
+
+function dropFileKey(token, name) {
+  return lookbookObjectKey(token, 'files/' + name);
+}
+
+async function startDropUpload(request, env, token, rawName) {
+  const identityResult = await requireIdentity(request, env);
+  if (identityResult.errorResponse) return identityResult.errorResponse;
+  const draft = await readDraftDrop(request, env, token);
+  if (draft.error) return draft.error;
+  const name = sanitizeDropFileName(rawName);
+  if (!name) return badRequest(request, 'Invalid file name');
+  const contentType = request.headers.get('content-type') || lookbookContentType(name);
+  const upload = await env.CABINET.createMultipartUpload(dropFileKey(token, name), {
+    httpMetadata: { contentType: contentType },
+  });
+  return json(request, { ok: true, name: name, uploadId: upload.uploadId, partBytes: DROP_PART_BYTES });
+}
+
+async function putDropPart(request, env, token, rawName) {
+  const identityResult = await requireIdentity(request, env);
+  if (identityResult.errorResponse) return identityResult.errorResponse;
+  const draft = await readDraftDrop(request, env, token);
+  if (draft.error) return draft.error;
+  const name = sanitizeDropFileName(rawName);
+  if (!name) return badRequest(request, 'Invalid file name');
+  const url = new URL(request.url);
+  const uploadId = url.searchParams.get('uploadId') || '';
+  const partNumber = parseInt(url.searchParams.get('part') || '', 10);
+  if (!uploadId || !(partNumber >= 1 && partNumber <= 10000)) return badRequest(request, 'Invalid part');
+  const bytes = await request.arrayBuffer();
+  if (!bytes || bytes.byteLength === 0) return badRequest(request, 'Empty part');
+  if (bytes.byteLength > DROP_PART_BYTES) return badRequest(request, 'Part exceeds size limit');
+  const upload = env.CABINET.resumeMultipartUpload(dropFileKey(token, name), uploadId);
+  const part = await upload.uploadPart(partNumber, bytes);
+  return json(request, { ok: true, partNumber: part.partNumber, etag: part.etag, bytes: bytes.byteLength });
+}
+
+async function completeDropUpload(request, env, token, rawName) {
+  const identityResult = await requireIdentity(request, env);
+  if (identityResult.errorResponse) return identityResult.errorResponse;
+  const draft = await readDraftDrop(request, env, token);
+  if (draft.error) return draft.error;
+  const name = sanitizeDropFileName(rawName);
+  if (!name) return badRequest(request, 'Invalid file name');
+  let body;
+  try {
+    body = await request.json();
+  } catch (_) {
+    return badRequest(request, 'Invalid JSON');
+  }
+  const uploadId = trimStr(body && body.uploadId);
+  const parts = Array.isArray(body && body.parts) ? body.parts : [];
+  if (!uploadId || !parts.length) return badRequest(request, 'Missing parts');
+  const upload = env.CABINET.resumeMultipartUpload(dropFileKey(token, name), uploadId);
+  const done = await upload.complete(parts.map(function (p) {
+    return { partNumber: Number(p.partNumber), etag: String(p.etag) };
+  }));
+  const size = done && typeof done.size === 'number' ? done.size : 0;
+  if (size > DROP_MAX_FILE_BYTES) {
+    await env.CABINET.delete(dropFileKey(token, name));
+    return badRequest(request, 'File is too large');
+  }
+  return json(request, { ok: true, name: name, bytes: size });
+}
+
+async function finalizeDrop(request, env, token, existing, body, identityResult) {
+  const asked = Array.isArray(body && body.files) ? body.files : [];
+  if (!asked.length) return badRequest(request, 'A drop needs at least one file');
+  if (asked.length > DROP_MAX_FILES) return badRequest(request, 'Too many files');
+  const files = [];
+  for (let i = 0; i < asked.length; i += 1) {
+    const name = sanitizeDropFileName(asked[i] && asked[i].name);
+    if (!name) return badRequest(request, 'Invalid file name');
+    // The size on the page is what is actually stored, not what the browser said.
+    const head = await env.CABINET.head(dropFileKey(token, name));
+    if (!head) return badRequest(request, 'File was not uploaded: ' + name);
+    files.push({
+      name: name,
+      label: trimStr(asked[i].label) || name,
+      size: typeof head.size === 'number' ? head.size : Number(asked[i].size) || 0,
+    });
+  }
+  const manifest = Object.assign({}, existing, {
+    status: 'live',
+    title: trimStr(body && body.title) || existing.title || 'Your files',
+    residence: trimStr(body && body.residence) || existing.residence || '',
+    address: trimStr(body && body.address) || existing.address || '',
+    files: files,
+    finalizedAt: new Date().toISOString(),
+    finalizedBy: identityResult.email || '',
+  });
+  await env.CABINET.put(lookbookObjectKey(token, 'index.html'), dropIndexHtml(manifest), {
+    httpMetadata: { contentType: 'text/html; charset=utf-8' },
+  });
+  await env.CABINET.put(lookbookManifestKey(token), JSON.stringify(manifest), {
+    httpMetadata: { contentType: 'application/json; charset=utf-8' },
+  });
+  return json(request, {
+    ok: true,
+    kind: 'drop',
+    token: token,
+    expiresAt: manifest.expiresAt,
+    ttlDays: DROP_TTL_DAYS,
+    url: lookbookPublicUrl(request, token),
+    fileCount: files.length,
+  });
+}
+
+/** "Remove now": the link stops working and its files are deleted. Drops only. */
+async function removeDrop(request, env, token) {
+  const identityResult = await requireIdentity(request, env);
+  if (identityResult.errorResponse) return identityResult.errorResponse;
+  const manifest = await readLookbookManifest(env, token);
+  if (!manifest) return json(request, { ok: true, removed: false });
+  if (manifest.kind !== 'drop') return conflict(request, 'Only a drop can be removed here');
+  await deleteDropObjects(env, token);
+  return json(request, { ok: true, removed: true });
 }
 
 async function createLookbook(request, env) {
@@ -1569,6 +1771,31 @@ async function createLookbook(request, env) {
   const token = newLookbookToken();
   if (!LOOKBOOK_TOKEN_RE.test(token)) {
     return text(request, 'Could not allocate lookbook token', 500);
+  }
+  if (body && body.kind === 'drop') {
+    // Clear out any drop that has run its 14 days before making room for a new one.
+    await sweepExpiredDrops(env);
+    const drop = buildDropManifest({
+      token: token,
+      status: 'draft',
+      customerFileId: trimStr(body.customerFileId),
+      title: trimStr(body.title) || 'Your files',
+      residence: trimStr(body.residence),
+      address: trimStr(body.address),
+      createdBy: identityResult.email || '',
+    });
+    await env.CABINET.put(lookbookManifestKey(token), JSON.stringify(drop), {
+      httpMetadata: { contentType: 'application/json; charset=utf-8' },
+    });
+    return json(request, {
+      ok: true,
+      kind: 'drop',
+      token: token,
+      expiresAt: drop.expiresAt,
+      ttlDays: DROP_TTL_DAYS,
+      partBytes: DROP_PART_BYTES,
+      url: lookbookPublicUrl(request, token),
+    });
   }
   const manifest = buildManifest({
     token: token,
@@ -1645,6 +1872,9 @@ async function finalizeLookbook(request, env, token) {
     });
   }
   if (isExpired(existing)) return text(request, 'This lookbook draft has expired.', 410);
+  if (existing.kind === 'drop') {
+    return finalizeDrop(request, env, token, existing, body, identityResult);
+  }
 
   const pages = Array.isArray(body && body.pages) ? body.pages : [];
   const photos = Array.isArray(body && body.photos) ? body.photos : [];
