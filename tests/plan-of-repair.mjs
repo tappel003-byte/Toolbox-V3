@@ -232,7 +232,7 @@ const shell = await page.evaluate(() => {
   if (toolbar && printBtn) {
     const t = toolbar.getBoundingClientRect();
     const p = printBtn.getBoundingClientRect();
-    const undo = document.querySelector('#por-toggle-grid')?.getBoundingClientRect();
+    const undo = document.querySelector('#por-select-menu-btn')?.getBoundingClientRect();
     // Tall PowerPoint ribbon: Print stays inside the toolbar band beside Editing.
     printSameRow = p.top >= t.top - 2 && p.bottom <= t.bottom + 2 &&
       (undo ? p.top < undo.bottom + 10 : p.top < t.top + 80);
@@ -1904,7 +1904,7 @@ async function toolbarPrintRow(width) {
     if (!toolbar || !printBtn) return { ok: false };
     const tr = toolbar.getBoundingClientRect();
     const pr = printBtn.getBoundingClientRect();
-    const undo = document.querySelector('#por-toggle-grid')?.getBoundingClientRect();
+    const undo = document.querySelector('#por-select-menu-btn')?.getBoundingClientRect();
     return {
       ok: pr.top < (undo ? undo.bottom + 8 : tr.top + 40) && pr.bottom <= tr.bottom + 1,
       toolbarH: tr.height,
@@ -2031,8 +2031,7 @@ async function layoutReachable(width, height) {
       'por-paste', 'por-cut', 'por-copy', 'por-format-painter',
       'por-shapes-btn', 'por-fill', 'por-fill-btn', 'por-outline-btn',
       'por-weight-btn', 'por-dash-btn', 'por-opacity', 'por-set-default',
-      'por-select-menu-btn', 'por-undo', 'por-redo', 'por-toggle-grid',
-      'por-toggle-rulers', 'por-hand', 'por-insert-btn', 'por-print',
+      'por-select-menu-btn', 'por-undo', 'por-redo', 'por-insert-btn', 'por-print',
       'por-arrange-btn',
     ];
     ribbonIds.forEach((id) => checkEl(document.getElementById(id), id));

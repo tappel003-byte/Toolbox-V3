@@ -277,6 +277,10 @@ Tim, after the drop box worked on the first real use: "Let's get rid of share lo
 
 Shapes take text (double-click / Enter / F2 / type); the Text button arms a tool and places the box where you click or drag. `js/por-fabric.js`, `js/plan-of-repair.js`. Shell v488. Tests: `por-shape-text` 23/23, `plan-of-repair` 108/108. See `DECISIONS.md`.
 
+### Claude Code: Plan of Repair round B — block shapes + View tab (Nov 17, 2026) — branch `claude/por-round-b-2ac5` (NOT merged)
+
+Round A merged into integration at a540c2d (Tim asked). Round B built on it: eight block shapes in the gallery (3 rows of 7), View tab with Grid / Rulers / Hand. `por-round-b` 13/13, `plan-of-repair` 108/108 (grid/rulers/hand dropped from the Home visibility list; row proxy now the Select button), `por-round-a` 21/21, `por-shape-text` 23/23, `por-format-shortcuts` 20/20, `tls-workspace-smoke` 36/36. Shell v491. Waiting on Tim to say merge.
+
 ### Claude Code: Plan of Repair round A — line spacing, highlight, numbering/indent, sub/superscript, Slides group, Undo/Redo to top bar, slide Move up/down (Nov 17, 2026) — branch `claude/por-round-a-2ac5` (NOT merged)
 
 Built on integration tip 4ae8b8d. `tests/por-round-a.mjs` 21/21; `plan-of-repair` 108/108 (Print-row check now measures against the grid button since Undo left that group); `por-shape-text` 23/23; `por-format-shortcuts` 20/20; `tls-workspace-smoke` 36/36. Ribbon still fits uncollapsed at 1440. Shell v490. Not merged; waiting on Tim. Round B (View/File/Draw tab panes, wider shape gallery) not started.

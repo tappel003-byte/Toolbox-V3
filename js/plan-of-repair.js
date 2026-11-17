@@ -136,6 +136,7 @@
   var POR_OVERLAY_KINDS = {
     path: 1, rect: 1, roundRect: 1, circle: 1, triangle: 1,
     line: 1, arrow: 1, text: 1, image: 1, group: 1, ellipse: 1,
+    diamond: 1, pentagon: 1, hexagon: 1, star: 1, blockArrow: 1, chevron: 1, callout: 1, cross: 1,
   };
 
   function normalizePorOverlays(list) {
@@ -293,7 +294,8 @@
       return '';
     }
 
-    var SHAPE_TOOLS = ['line', 'arrow', 'rect', 'roundRect', 'circle', 'triangle', 'text'];
+    var SHAPE_TOOLS = ['line', 'arrow', 'rect', 'roundRect', 'circle', 'triangle', 'text',
+      'diamond', 'pentagon', 'hexagon', 'star', 'blockArrow', 'chevron', 'callout', 'cross'];
 
     var ICONS = {
       select: fluentIcon('cursor', 'fluent-icon--accent') || svgIcon('<path d="M5.5 3.5 11.2 20l2-6.2L19.5 11.8z"/>'),
@@ -388,7 +390,7 @@
       '  <button type="button" class="por-tabs__tab" data-por-tab="insert" id="por-tab-insert">Insert</button>' +
       '  <button type="button" class="por-tabs__tab" data-por-tab="draw" disabled hidden>Draw</button>' +
       '  <button type="button" class="por-tabs__tab" data-por-tab="design" disabled hidden>Design</button>' +
-      '  <button type="button" class="por-tabs__tab" data-por-tab="view" disabled hidden>View</button>' +
+      '  <button type="button" class="por-tabs__tab" data-por-tab="view" id="por-tab-view">View</button>' +
       '</div>' +
       '<div class="por-toolbar por-ribbon" role="toolbar" aria-label="Drawing tools">' +
       '<div class="por-ribbon__scroll">' +
@@ -502,6 +504,14 @@
                       (fluentIcon('square') || svgIcon('<rect x="3.5" y="5.5" width="17" height="13" rx="4"/>')) + '</button>' +
       '            <button type="button" class="por-iconbtn" data-rb-tool="circle" title="Oval" aria-label="Circle">' + ICONS.circle + '</button>' +
       '            <button type="button" class="por-iconbtn" data-rb-tool="triangle" title="Triangle" aria-label="Triangle">' + ICONS.triangle + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="diamond" title="Diamond" aria-label="Diamond">' + svgIcon('<path d="M12.0 3.5 L20.5 12.0 L12.0 20.5 L3.5 12.0z"/>') + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="pentagon" title="Pentagon" aria-label="Pentagon">' + svgIcon('<path d="M12.0 3.5 L20.5 10.0 L17.3 20.5 L6.7 20.5 L3.5 10.0z"/>') + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="hexagon" title="Hexagon" aria-label="Hexagon">' + svgIcon('<path d="M7.8 3.5 L16.2 3.5 L20.5 12.0 L16.2 20.5 L7.8 20.5 L3.5 12.0z"/>') + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="star" title="Star" aria-label="Star">' + svgIcon('<path d="M12.0 3.5 L14.0 9.6 L20.5 10.0 L15.2 13.7 L17.3 20.5 L12.0 16.4 L6.7 20.5 L8.8 13.7 L3.5 10.0 L10.0 9.6z"/>') + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="blockArrow" title="Block Arrow" aria-label="Block Arrow">' + svgIcon('<path d="M3.5 8.6 L13.7 8.6 L13.7 3.5 L20.5 12.0 L13.7 20.5 L13.7 15.4 L3.5 15.4z"/>') + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="chevron" title="Chevron" aria-label="Chevron">' + svgIcon('<path d="M3.5 3.5 L15.4 3.5 L20.5 12.0 L15.4 20.5 L3.5 20.5 L8.6 12.0z"/>') + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="callout" title="Callout" aria-label="Callout">' + svgIcon('<path d="M3.5 3.5 L20.5 3.5 L20.5 16.2 L10.3 16.2 L6.9 20.5 L7.8 16.2 L3.5 16.2z"/>') + '</button>' +
+      '            <button type="button" class="por-iconbtn" data-rb-tool="cross" title="Cross" aria-label="Cross">' + svgIcon('<path d="M9.1 3.5 L14.9 3.5 L14.9 9.1 L20.5 9.1 L20.5 14.9 L14.9 14.9 L14.9 20.5 L9.1 20.5 L9.1 14.9 L3.5 14.9 L3.5 9.1 L9.1 9.1z"/>') + '</button>' +
       '            <button type="button" class="por-iconbtn" id="por-insert-text" title="Text Box" aria-label="Text">' + ICONS.textBox + '</button>' +
       '            <button type="button" class="por-iconbtn" data-rb-tool="pencil" title="Freeform" aria-label="Pencil">' + ICONS.pencil + '</button>' +
       '            <button type="button" class="por-iconbtn" data-rb-tool="eraser" title="Eraser" aria-label="Eraser">' + ICONS.eraser + '</button>' +
@@ -653,10 +663,6 @@
                     ICONS.selectionPane + '<span>Selection Pane…</span></button>' +
       '          </div>' +
       '        </div>' +
-      '        <button type="button" class="por-iconbtn" id="por-toggle-grid" title="Show Grid" aria-label="Show grid" aria-pressed="false">▦</button>' +
-      '        <button type="button" class="por-iconbtn" id="por-toggle-rulers" title="Show Rulers" aria-label="Show rulers" aria-pressed="false">▤</button>' +
-      '        <button type="button" class="por-iconbtn" id="por-hand" title="Hand / Pan (Space)" aria-label="Hand tool" aria-pressed="false">' +
-                svgIcon('<path d="M8 11V6.5a1.5 1.5 0 0 1 3 0V11"/><path d="M11 10V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M14 10.5V7a1.5 1.5 0 0 1 3 0v8.5a4.5 4.5 0 0 1-4.5 4.5H12a5 5 0 0 1-5-5V11a1.5 1.5 0 0 1 3 0"/>') + '</button>' +
       '      </div>' +
       '      <span class="por-ribbon__label">Editing</span>' +
       '    </div>' +
@@ -692,6 +698,17 @@
       '    </div>' +
       '    <div class="por-toolbar__out" role="group" aria-label="Drawing output">' +
       '      <button type="button" id="por-print" class="btn btn--secondary rb-print-btn" title="Print / PDF">Print / PDF</button>' +
+      '    </div>' +
+      '  </div>' +
+      '  <div class="por-ribbon__scroll por-ribbon__pane" data-por-pane="view" hidden>' +
+      '    <div class="por-ribbon__group" role="group" aria-label="Show">' +
+      '      <div class="por-ribbon__row">' +
+      '        <button type="button" class="por-iconbtn" id="por-toggle-grid" title="Show Grid" aria-label="Show grid" aria-pressed="false">▦</button>' +
+      '        <button type="button" class="por-iconbtn" id="por-toggle-rulers" title="Show Rulers" aria-label="Show rulers" aria-pressed="false">▤</button>' +
+      '        <button type="button" class="por-iconbtn" id="por-hand" title="Hand / Pan (Space)" aria-label="Hand tool" aria-pressed="false">' +
+                svgIcon('<path d="M8 11V6.5a1.5 1.5 0 0 1 3 0V11"/><path d="M11 10V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M14 10.5V7a1.5 1.5 0 0 1 3 0v8.5a4.5 4.5 0 0 1-4.5 4.5H12a5 5 0 0 1-5-5V11a1.5 1.5 0 0 1 3 0"/>') + '</button>' +
+      '      </div>' +
+      '      <span class="por-ribbon__label">Show &amp; Pan</span>' +
       '    </div>' +
       '  </div>' +
       '</div>' +
@@ -1196,8 +1213,7 @@
         }
       }
       var item = selectedItem();
-      if (item && !state.readOnly && (item.kind === 'rect' || item.kind === 'circle' ||
-          item.kind === 'roundRect' || item.kind === 'triangle')) {
+      if (item && !state.readOnly && isFillKind(item.kind)) {
         pushHistory();
         item.fill = true;
         item.fillColor = hex;
@@ -1763,9 +1779,14 @@
       return tb;
     }
 
+    function isFillKind(kind) {
+      return kind === 'rect' || kind === 'circle' || kind === 'roundRect' || kind === 'triangle' || kind === 'ellipse' ||
+        !!(PorFab && PorFab.POLY_KINDS && PorFab.POLY_KINDS[kind]);
+    }
+
     function labelable(obj) {
       if (!obj || obj.excludeFromExport || obj.porTemp) return false;
-      if (!(obj.type === 'rect' || obj.type === 'ellipse' || obj.type === 'triangle')) return false;
+      if (!(obj.type === 'rect' || obj.type === 'ellipse' || obj.type === 'triangle' || obj.type === 'polygon')) return false;
       return !!(PorFab && PorFab.LABEL_KINDS && PorFab.LABEL_KINDS[obj.porKind || '']);
     }
 
@@ -1911,6 +1932,9 @@
           left: left, top: top,
           rx: Math.max(1, w / 2), ry: Math.max(1, (shift ? w : h) / 2),
         }, common));
+      }
+      if (PorFab.POLY_KINDS && PorFab.POLY_KINDS[tool]) {
+        return PorFab.makePolyShape(tool, left, top, w, h, common);
       }
       if (tool === 'triangle') {
         return new f.Triangle(Object.assign({
@@ -3296,8 +3320,7 @@
         return false;
       }
       var item = list[index];
-      var canFill = item.kind === 'rect' || item.kind === 'circle' || item.kind === 'roundRect' ||
-        item.kind === 'triangle';
+      var canFill = isFillKind(item.kind);
       pushHistory();
       list = overlayList(activePage());
       item = null;
@@ -3458,8 +3481,7 @@
       } else if (title) {
         title.textContent = state.inspectorMode === 'size' ? 'Size and Position' : 'Format Shape';
       }
-      var canFill = item.kind === 'rect' || item.kind === 'circle' || item.kind === 'roundRect' ||
-        item.kind === 'triangle' || item.kind === 'ellipse';
+      var canFill = isFillKind(item.kind);
       shapeFillInput.disabled = !canFill || state.readOnly;
       shapeFillInput.checked = !!(item.fill && canFill);
       var fillColor = item.fillColor || item.color || state.fillColor;
@@ -3637,7 +3659,7 @@
         color: state.inkColor,
         thick: state.inkThick,
       };
-      if (state.inkFill && (item.kind === 'rect' || item.kind === 'circle')) {
+      if (state.inkFill && (item.kind === 'rect' || item.kind === 'circle' || (PorFab && PorFab.POLY_KINDS && PorFab.POLY_KINDS[item.kind]))) {
         item.fill = true;
         item.fillColor = state.fillColor || state.inkColor;
       }
@@ -4843,28 +4865,35 @@
         closePickers();
       });
     });
+    function showRibbonTab(name) {
+      root.querySelectorAll('.por-tabs__tab').forEach(function (t) {
+        var on = t.getAttribute('data-por-tab') === name;
+        t.classList.toggle('is-active', on);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      var viewPane = root.querySelector('[data-por-pane="view"]');
+      var homeScroll = root.querySelector('.por-ribbon__scroll:not(.por-ribbon__pane)');
+      var homeEnd = root.querySelector('.por-ribbon__end');
+      var isView = name === 'view';
+      if (viewPane) viewPane.hidden = !isView;
+      if (homeScroll) homeScroll.hidden = isView;
+      if (homeEnd) homeEnd.hidden = isView;
+      closePickers();
+      closeRibbonCollapsePops();
+      if (!isView) fitRibbon();
+    }
     var tabInsert = root.querySelector('#por-tab-insert');
     if (tabInsert) {
       tabInsert.addEventListener('click', function () {
-        root.querySelectorAll('.por-tabs__tab').forEach(function (t) {
-          t.classList.toggle('is-active', t === tabInsert);
-          t.setAttribute('aria-selected', t === tabInsert ? 'true' : 'false');
-        });
+        showRibbonTab('insert');
         var insertBtn = root.querySelector('#por-insert-btn');
         if (insertBtn) insertBtn.click();
       });
     }
     var tabHome = root.querySelector('.por-tabs__tab[data-por-tab="home"]');
-    if (tabHome) {
-      tabHome.addEventListener('click', function () {
-        root.querySelectorAll('.por-tabs__tab').forEach(function (t) {
-          var on = t.getAttribute('data-por-tab') === 'home';
-          t.classList.toggle('is-active', on);
-          t.setAttribute('aria-selected', on ? 'true' : 'false');
-        });
-        closePickers();
-      });
-    }
+    if (tabHome) tabHome.addEventListener('click', function () { showRibbonTab('home'); });
+    var tabView = root.querySelector('#por-tab-view');
+    if (tabView) tabView.addEventListener('click', function () { showRibbonTab('view'); });
     // Dismiss Insert menu after choosing an action.
     root.querySelectorAll('#por-insert-pop .por-linkbtn').forEach(function (btn) {
       btn.addEventListener('click', function () { closePickers(); });

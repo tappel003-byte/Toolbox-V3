@@ -56,7 +56,29 @@
   // carries an optional label {text, fontSize, fontFamily, bold, italic, underline, strike, align, color}
   // (Tim, Nov 17, 2026). It is drawn inside the shape's own render, so it moves, scales, rotates, copies and
   // saves with the shape, and a shape with no label draws exactly as before.
-  var LABEL_KINDS = { rect: true, roundRect: true, circle: true, ellipse: true, triangle: true };
+  // Block shapes (round B): each is a Fabric Polygon built from unit points (0..1) stretched to the box.
+  var POLY_KINDS = {
+    diamond: [[0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]],
+    pentagon: [[0.5, 0], [1, 0.38], [0.81, 1], [0.19, 1], [0, 0.38]],
+    hexagon: [[0.25, 0], [0.75, 0], [1, 0.5], [0.75, 1], [0.25, 1], [0, 0.5]],
+    star: [[0.5, 0], [0.62, 0.36], [1, 0.38], [0.69, 0.6], [0.81, 1], [0.5, 0.76], [0.19, 1], [0.31, 0.6], [0, 0.38], [0.38, 0.36]],
+    blockArrow: [[0, 0.3], [0.6, 0.3], [0.6, 0], [1, 0.5], [0.6, 1], [0.6, 0.7], [0, 0.7]],
+    chevron: [[0, 0], [0.7, 0], [1, 0.5], [0.7, 1], [0, 1], [0.3, 0.5]],
+    callout: [[0, 0], [1, 0], [1, 0.75], [0.4, 0.75], [0.2, 1], [0.25, 0.75], [0, 0.75]],
+    cross: [[0.33, 0], [0.67, 0], [0.67, 0.33], [1, 0.33], [1, 0.67], [0.67, 0.67], [0.67, 1], [0.33, 1], [0.33, 0.67], [0, 0.67], [0, 0.33], [0.33, 0.33]],
+  };
+
+  function makePolyShape(kind, left, top, w, h, extra) {
+    var f = window.fabric;
+    var unit = POLY_KINDS[kind];
+    if (!f || !unit) return null;
+    var W = Math.max(2, w); var H = Math.max(2, h);
+    var pts = unit.map(function (u) { return { x: u[0] * W, y: u[1] * H }; });
+    return new f.Polygon(pts, Object.assign({ left: left, top: top, objectCaching: false }, extra || {}));
+  }
+
+  var LABEL_KINDS = { rect: true, roundRect: true, circle: true, ellipse: true, triangle: true,
+    diamond: true, pentagon: true, hexagon: true, star: true, blockArrow: true, chevron: true, callout: true, cross: true };
   var LABEL_DEFAULTS = {
     fontSize: 18, fontFamily: 'Calibri, Arial, sans-serif',
     bold: false, italic: false, underline: false, strike: false, align: 'center', color: '#111111',
@@ -155,7 +177,7 @@
   function patchShapeRenders() {
     var f = window.fabric;
     if (!f || f.__porLabelPatched) return;
-    ['Rect', 'Ellipse', 'Triangle'].forEach(function (name) {
+    ['Rect', 'Ellipse', 'Triangle', 'Polygon'].forEach(function (name) {
       var C = f[name];
       if (!C || !C.prototype || typeof C.prototype._render !== 'function') return;
       var orig = C.prototype._render;
@@ -259,6 +281,10 @@
         width: Math.max(2, pctToX(tw)),
         height: Math.max(2, pctToY(th)),
       });
+      applyCommon(obj, item);
+    } else if (POLY_KINDS[item.kind]) {
+      var px0 = Math.min(item.x0, item.x1); var py0 = Math.min(item.y0, item.y1);
+      obj = makePolyShape(item.kind, pctToX(px0), pctToY(py0), pctToX(Math.abs(item.x1 - item.x0)), pctToY(Math.abs(item.y1 - item.y0)));
       applyCommon(obj, item);
     } else if (item.kind === 'arrow' || item.kind === 'line') {
       var lx0 = pctToX(item.x0); var ly0 = pctToY(item.y0);
@@ -862,6 +888,8 @@
     strokeWidthFromThick: strokeWidthFromThick,
     LABEL_KINDS: LABEL_KINDS,
     LABEL_DEFAULTS: LABEL_DEFAULTS,
+    POLY_KINDS: POLY_KINDS,
+    makePolyShape: makePolyShape,
     applyTextScript: applyTextScript,
     normalizeLabel: normalizeLabel,
     drawShapeLabel: drawShapeLabel,

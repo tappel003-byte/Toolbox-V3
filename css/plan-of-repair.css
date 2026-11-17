@@ -1939,7 +1939,7 @@ body.is-por-printing .por-print {
 }
 
 .por-shapes__pop--docked .por-shapes__grid {
-  grid-template-columns: repeat(6, 26px);
+  grid-template-columns: repeat(7, 26px);
 }
 
 .por-shapes--docked .por-shapes__btn {
@@ -2106,3 +2106,13 @@ body.is-por-printing .por-print {
 .por-swatch--none { grid-column: 1 / -1; width: auto; font-size: 12px; background: #fff; }
 .por-slide-plus { font-size: 18px; line-height: 1; }
 .por-weight[data-por-line-height] { min-width: 44px; text-align: center; }
+
+/* Round B: View tab swaps the ribbon body; [hidden] must beat the flex display. */
+.por-ribbon__pane[hidden],
+.por-ribbon__scroll[hidden],
+.por-ribbon__end[hidden] { display: none !important; }
+
+/* Round B: 19 gallery tools in three rows of seven, same footprint as before. */
+.por-shapes__pop--docked .por-shapes__grid { grid-template-columns: repeat(7, 21px); gap: 0; }
+.por-shapes__pop--docked { padding: 1px; }
+.por-shapes__pop--docked .por-iconbtn { width: 21px; height: 20px; min-height: 20px; padding: 1px; }
