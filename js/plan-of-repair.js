@@ -1399,6 +1399,43 @@
         pushAndSync();
         syncSelectionPane();
       });
+      // Ctrl (Cmd) + drag copies the mark: a copy stays where the mark was picked up and the mark
+      // itself goes with the pointer (PowerPoint). Only once the drag really starts, so a Ctrl+click
+      // never leaves a copy behind.
+      canvas.on('mouse:down', function (opt) {
+        state.ctrlDrag = null;
+        if (state.readOnly || state.printMode || state.inkTool || !opt || !opt.e || !opt.target) return;
+        if (opt.e.button === 2 || !(opt.e.ctrlKey || opt.e.metaKey)) return;
+        var t = opt.target;
+        if (t.excludeFromExport || t.porTemp || t.type === 'line' || t.porKind === 'line' || t.porKind === 'arrow') return;
+        state.ctrlDrag = { target: t, left: t.left, top: t.top, copied: false };
+      });
+      canvas.on('object:moving', function (opt) {
+        var cd = state.ctrlDrag;
+        if (cd && !cd.copied && opt && opt.target === cd.target) {
+          cd.copied = true;
+          var src = cd.target;
+          pushHistory();
+          var onCopy = function (copy) {
+            if (!copy) return;
+            copy.set({ left: cd.left, top: cd.top, porId: PorFab.uid('ov') });
+            PorFab.styleControls(copy);
+            canvas.add(copy);
+            // Sit just below the mark being dragged, so the dragged one stays on top.
+            try { canvas.moveTo(copy, Math.max(0, canvas.getObjects().indexOf(src))); } catch (_) {}
+            copy.setCoords();
+            canvas.requestRenderAll();
+          };
+          try {
+            src.clone(onCopy, ['porId', 'porKind', 'porArrow', 'porLabel', 'porMediaId', 'porName']);
+          } catch (_) { /* a mark that cannot be cloned is just moved */ }
+        }
+      });
+      canvas.on('mouse:up', function () {
+        var cd = state.ctrlDrag;
+        state.ctrlDrag = null;
+        if (cd && cd.copied) setStatus('Copied');
+      });
       canvas.on('object:moving', function (opt) {
         if (opt && opt.target) snapMovingObject(opt.target);
       });
@@ -4265,6 +4302,37 @@
       }
       if (typing) return;
       var mod = event.metaKey || event.ctrlKey;
+      // Ctrl+M: a new slide (PowerPoint).
+      if (mod && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'm') {
+        event.preventDefault();
+        var addBtn = root.querySelector('#por-add-page');
+        if (addBtn && !state.readOnly && !state.shapeEdit) addBtn.click();
+        return;
+      }
+      // Tab / Shift+Tab: select the next / previous mark on the slide (PowerPoint). Only when the sheet has
+      // the keyboard, so Tab still walks the ribbon controls when one of them has focus.
+      if (event.key === 'Tab' && !mod && !event.altKey && state.fabricCanvas && !state.shapeEdit) {
+        var focused = document.activeElement;
+        var sheetHasKeys = !focused || focused === document.body || focused === document.documentElement ||
+          (sheetEl && sheetEl.contains(focused));
+        if (sheetHasKeys) {
+          var marks = state.fabricCanvas.getObjects().filter(function (o) {
+            return o.selectable !== false && !o.excludeFromExport && !o.porTemp && o.visible !== false;
+          });
+          if (marks.length) {
+            event.preventDefault();
+            var current = state.fabricCanvas.getActiveObject();
+            var at = marks.indexOf(current);
+            var next = event.shiftKey
+              ? (at <= 0 ? marks.length - 1 : at - 1)
+              : (at === -1 || at === marks.length - 1 ? 0 : at + 1);
+            state.fabricCanvas.setActiveObject(marks[next]);
+            state.fabricCanvas.requestRenderAll();
+            syncSelectionPane();
+            return;
+          }
+        }
+      }
       // PowerPoint: select a shape and press Enter / F2, or just start typing, to put text in it.
       if (!mod && !event.altKey && !state.readOnly && !state.inkTool && state.fabricCanvas) {
         var labelTarget = state.fabricCanvas.getActiveObject();
@@ -4846,6 +4914,14 @@
           active.set('fill', color);
           state.fabricCanvas.requestRenderAll();
           syncAndSave();
+        } else if (active && labelable(active) && active.porLabel && active.porLabel.text) {
+          // The colour of the text inside a shape; the shape's own fill and outline are left alone.
+          pushHistory();
+          var recolor = labelProxy(active);
+          recolor.set('fill', color);
+          recolor.commit();
+          state.fabricCanvas.requestRenderAll();
+          syncAndSave();
         }
         state.inkColor = color;
         syncHistoryButtons();
@@ -5038,20 +5114,70 @@
         syncHistoryButtons();
       });
     }
+    /** A stand-in with a text box's properties for the text inside a shape, so every ribbon font control
+        (bold, size, family, alignment...) works on it unchanged; commit() writes it back to the shape. */
+    function labelProxy(shape) {
+      var L = Object.assign({}, PorFab.LABEL_DEFAULTS, shape.porLabel || {});
+      return {
+        isLabelProxy: true,
+        shape: shape,
+        type: 'textbox',
+        text: L.text,
+        fontSize: L.fontSize,
+        fontFamily: L.fontFamily,
+        fontWeight: L.bold ? 'bold' : 'normal',
+        fontStyle: L.italic ? 'italic' : 'normal',
+        underline: !!L.underline,
+        linethrough: !!L.strike,
+        textAlign: L.align,
+        fill: L.color,
+        set: function (k, v) {
+          if (k && typeof k === 'object') Object.assign(this, k); else this[k] = v;
+          return this;
+        },
+        commit: function () {
+          shape.set({
+            porLabel: PorFab.normalizeLabel({
+              text: this.text,
+              fontSize: this.fontSize,
+              fontFamily: this.fontFamily,
+              bold: this.fontWeight === 'bold' || this.fontWeight === 700,
+              italic: this.fontStyle === 'italic',
+              underline: !!this.underline,
+              strike: !!this.linethrough,
+              align: this.textAlign,
+              color: PorFab.toHexColor(this.fill) || '#111111',
+            }),
+          });
+          shape.dirty = true;
+        },
+      };
+    }
+
     function applyTextProp(mutator) {
       var active = fabricActive();
       if (!active || state.readOnly) return;
       var targets = [];
-      if (active.type === 'activeSelection') {
-        active.forEachObject(function (o) {
-          if (o.type === 'textbox' || o.type === 'i-text') targets.push(o);
-        });
-      } else if (active.type === 'textbox' || active.type === 'i-text') {
-        targets.push(active);
+      var members = active.type === 'activeSelection'
+        ? (typeof active.getObjects === 'function' ? active.getObjects() : (active._objects || []))
+        : [active];
+      var emptyShape = false;
+      members.forEach(function (o) {
+        if (o.type === 'textbox' || o.type === 'i-text') targets.push(o);
+        else if (labelable(o)) {
+          if (o.porLabel && o.porLabel.text) targets.push(labelProxy(o));
+          else emptyShape = true;
+        }
+      });
+      if (!targets.length) {
+        if (emptyShape) setStatus('Type some text in the shape first');
+        return;
       }
-      if (!targets.length) return;
       pushHistory();
-      targets.forEach(mutator);
+      targets.forEach(function (t) {
+        mutator(t);
+        if (t.isLabelProxy) t.commit();
+      });
       state.fabricCanvas.requestRenderAll();
       syncOverlaysFromFabric();
       scheduleSave();
