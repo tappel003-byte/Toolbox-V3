@@ -845,3 +845,7 @@ Tim: the company was filled in and the title block still read "RVT Residence" (t
 ## The aerial view can sit in the title block, above the figure number (Nov 17, 2026)
 
 Tim: put the Google (satellite) view in the title block, right above Figure 1. On a Floor Survey page the aerial's hover buttons now include "Title block"; pressed, the aerial leaves the drawing and sits in the title block above the figure number, and a small x there sends it back onto the drawing. It is the book's one layout setting (`layout.overview.rail`), like where the aerial sits, so every Floor Survey page follows it; the x that removes the aerial from one page still wins on that page. The buttons never print and never show on thumbnails. Only Floor Survey pages carry the aerial.
+
+## Crop and Restore on the report's plan (Nov 17, 2026)
+
+Tim: Floor Survey brings the whole plan in, white margin included, so no data is lost; once it is on the sheet he wants to crop the white away. Right-click the plan: **Crop** and **Restore**, beside Bring to front and Send to back. Crop frames the drawing (the plan image's inked area plus every reading and boundary, with a small margin) by setting the report's one camera, so every Floor Survey slide -- colour, readings only, black and white -- follows it, the way they already share placement. Restore sets the camera back to the whole plan. The plan image, the readings and the frame box are never changed.

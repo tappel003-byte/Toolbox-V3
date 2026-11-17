@@ -8355,6 +8355,123 @@
       flushSave().catch(function () {});
     }
 
+    /**
+     * Crop and Restore, from the right-click menu on the plan (Tim, Nov 17, 2026).
+     *
+     * Floor Survey brings the whole plan in, white margin and all, so no data is lost. Crop frames the
+     * drawing and the readings instead: it sets the book's one camera (centre and zoom against fit) so the
+     * frame shows just that, and every Floor Survey slide -- colour, readings only, black and white --
+     * follows it, because they all share that camera. Restore puts the whole plan back. Nothing in the
+     * plan image or the readings is changed.
+     */
+    function planInkBounds(dataUrl) {
+      return new Promise(function (resolve) {
+        if (!dataUrl) { resolve(null); return; }
+        var img = new Image();
+        img.onload = function () {
+          try {
+            var max = 900;
+            var k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+            var w = Math.max(1, Math.round(img.naturalWidth * k));
+            var h = Math.max(1, Math.round(img.naturalHeight * k));
+            var c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            var cx = c.getContext('2d');
+            cx.drawImage(img, 0, 0, w, h);
+            var px = cx.getImageData(0, 0, w, h).data;
+            var cols = new Uint16Array(w);
+            var rows = new Uint16Array(h);
+            for (var y = 0; y < h; y += 1) {
+              for (var x = 0; x < w; x += 1) {
+                var i = (y * w + x) * 4;
+                if (px[i + 3] > 16 && (px[i] < 236 || px[i + 1] < 236 || px[i + 2] < 236)) {
+                  cols[x] += 1; rows[y] += 1;
+                }
+              }
+            }
+            // A column or row needs a couple of marks, so a stray speck does not hold the frame open.
+            var x0 = -1; var x1 = -1; var y0 = -1; var y1 = -1;
+            for (var a = 0; a < w; a += 1) if (cols[a] >= 2) { if (x0 < 0) x0 = a; x1 = a; }
+            for (var b = 0; b < h; b += 1) if (rows[b] >= 2) { if (y0 < 0) y0 = b; y1 = b; }
+            if (x0 < 0 || y0 < 0) { resolve(null); return; }
+            resolve({ x0: x0 / w, y0: y0 / h, x1: (x1 + 1) / w, y1: (y1 + 1) / h });
+          } catch (err) { resolve(null); }
+        };
+        img.onerror = function () { resolve(null); };
+        img.src = dataUrl;
+      });
+    }
+
+    function cropFloorPlan(restore) {
+      var page = activePage();
+      if (!page || page.type !== 'floor' || !workingRecord) return Promise.resolve();
+      var slot = floorSlot(page);
+      var host = topoHosts[slot] || topoHosts[0];
+      var view = floorViewSpec(page, slot);
+      var canvasId = (view && view.canvasId) || (page.meta && page.meta.canvasId) || '';
+      var canvas = canvasById(workingRecord, canvasId);
+      var apply = function (cam, message) {
+        floorCamera = cam;
+        var viewsApi = window.ToolboxReportFloorViews;
+        var list = viewsApi ? viewsApi.viewsFor(page) : [];
+        var slots = list.length ? list.map(function (v, i) { return i; }) : [0];
+        slots.forEach(function (si) {
+          if (!viewUsesSharedBookCamera(page, si)) return;
+          var target = list[si];
+          if (target) target.camera = { cx: cam.cx, cy: cam.cy, zoom: cam.zoom, rel: true };
+          var h = topoHosts[si];
+          if (h && h.api && typeof h.api.update === 'function') h.api.update({ camera: cam });
+        });
+        noteEdit();
+        setSaveStatus(message);
+        flushSave().catch(function () {});
+      };
+      if (restore) {
+        apply({ cx: 0.5, cy: 0.5, zoom: 1, rel: true }, 'Restored the whole plan.');
+        return Promise.resolve();
+      }
+      if (!host || !host.el || !canvas || !canvas.plan || !canvas.plan.id) {
+        setSaveStatus('Nothing to crop to yet.');
+        return Promise.resolve();
+      }
+      var getMedia = window.ToolboxDB && window.ToolboxDB.getMedia ? window.ToolboxDB.getMedia.bind(window.ToolboxDB) : null;
+      if (!getMedia) return Promise.resolve();
+      return getMedia(canvas.plan.id).then(planInkBounds).then(function (ink) {
+        var pw = Number(canvas.plan.width) || 0;
+        var ph = Number(canvas.plan.height) || 0;
+        var box = ink ? { x0: ink.x0, y0: ink.y0, x1: ink.x1, y1: ink.y1 } : null;
+        // The readings and boundaries count too, so nothing the survey drew is cut off.
+        var layer = workingRecord.floorSurvey && workingRecord.floorSurvey.byCanvasId
+          ? workingRecord.floorSurvey.byCanvasId[canvasId] : null;
+        var take = function (x, y) {
+          if (!(pw > 0 && ph > 0) || !isFinite(x) || !isFinite(y)) return;
+          var fx = x / pw; var fy = y / ph;
+          if (!box) box = { x0: fx, y0: fy, x1: fx, y1: fy };
+          box.x0 = Math.min(box.x0, fx); box.y0 = Math.min(box.y0, fy);
+          box.x1 = Math.max(box.x1, fx); box.y1 = Math.max(box.y1, fy);
+        };
+        if (layer) {
+          (layer.points || []).forEach(function (p) { take(Number(p.x), Number(p.y)); });
+          (layer.areas || []).forEach(function (a) {
+            (a.polygon || []).forEach(function (v) { take(Number(v.x), Number(v.y)); });
+          });
+        }
+        var W = host.el.clientWidth; var H = host.el.clientHeight;
+        if (!box || !(W > 0 && H > 0) || !(pw > 0 && ph > 0)) {
+          setSaveStatus('Nothing to crop to yet.');
+          return;
+        }
+        var pad = 0.02;
+        var bx0 = Math.max(0, box.x0 - pad); var by0 = Math.max(0, box.y0 - pad);
+        var bx1 = Math.min(1, box.x1 + pad); var by1 = Math.min(1, box.y1 + pad);
+        var bw = Math.max(0.05, bx1 - bx0) * pw;
+        var bh = Math.max(0.05, by1 - by0) * ph;
+        var fit = Math.min(W / pw, H / ph);
+        var zoom = Math.max(1, Math.min(W / bw, H / bh) / fit);
+        apply({ cx: (bx0 + bx1) / 2, cy: (by0 + by1) / 2, zoom: zoom, rel: true }, 'Cropped to the drawing.');
+      });
+    }
+
     function restackPenLogPiece(box, toFront) {
       var penApi = window.ToolboxPenLog;
       if (!penApi || !isPenLogPage(activePage())) return;
@@ -8373,12 +8490,24 @@
       flushSave().catch(function () {});
     }
 
-    function openStackMenu(event, onPick) {
+    function openStackMenu(event, onPick, extras) {
       event.preventDefault();
       closeStackMenu();
       stackMenu = document.createElement('div');
       stackMenu.className = 'rb-stackmenu';
       stackMenu.setAttribute('data-rb-stackmenu', '1');
+      (extras || []).forEach(function (extra) {
+        var xi = document.createElement('button');
+        xi.type = 'button';
+        xi.className = 'rb-stackmenu__item';
+        xi.setAttribute('data-rb-menu', extra.key);
+        xi.textContent = extra.label;
+        xi.addEventListener('click', function () {
+          closeStackMenu();
+          extra.run();
+        });
+        stackMenu.appendChild(xi);
+      });
       [['Bring to front', true], ['Send to back', false]].forEach(function (choice) {
         var item = document.createElement('button');
         item.type = 'button';
@@ -8408,9 +8537,15 @@
         var page = activePage();
         var flApi = window.ToolboxReportFloorLayout;
         if (!page || page.type !== 'floor' || !flApi) return;
+        var planExtras = floorBox.getAttribute('data-rb-floor-kind') === 'topo'
+          ? [
+            { key: 'crop', label: 'Crop', run: function () { cropFloorPlan(false); } },
+            { key: 'restore', label: 'Restore', run: function () { cropFloorPlan(true); } },
+          ]
+          : null;
         openStackMenu(event, function (toFront) {
           restackFloorPiece(floorBox, toFront);
-        });
+        }, planExtras);
         return;
       }
       var penBox = event.target.closest('[data-rb-penlog-box]');

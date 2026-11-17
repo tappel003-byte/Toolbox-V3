@@ -277,6 +277,10 @@ Tim, after the drop box worked on the first real use: "Let's get rid of share lo
 
 Shapes take text (double-click / Enter / F2 / type); the Text button arms a tool and places the box where you click or drag. `js/por-fabric.js`, `js/plan-of-repair.js`. Shell v488. Tests: `por-shape-text` 23/23, `plan-of-repair` 108/108. See `DECISIONS.md`.
 
+### Claude Code: Crop / Restore on the report's plan (Nov 17, 2026) — branch `claude/rb-crop-2ac5`
+
+Right-click the plan -> Crop / Restore; sets the book's shared camera. `tests/report-plan-crop.mjs` 7/7; aerial 8/8 + 11/11, topo-figure-pages 28/28, rail-editable 9/9. Shell v495. Merged into integration at Tim's ask.
+
 ### Claude Code: aerial view in the title block (Nov 17, 2026) — branch `claude/title-block-map-2ac5` (NOT merged)
 
 `layout.overview.rail` + rail `siteViewUrl`. `tests/report-aerial-title-block.mjs` 11/11; `report-aerial-resizable` 8/8, `report-rail-editable` 9/9, `report-topo-figure-pages` 28/28; `report-builder-skeleton` has one failure ("Unlock layout puts it back") identical on the unchanged baseline. Shell v494.
