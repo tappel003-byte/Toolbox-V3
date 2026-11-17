@@ -38,6 +38,19 @@ async function ensureRibbonControl(sel) {
   await new Promise((r) => setTimeout(r, 80));
 }
 
+
+/** Text Box tool (PowerPoint): arm it, then click on the sheet; the box appears there, ready to type. */
+async function placeTextBoxAt(fx = 0.2, fy = 0.7) {
+  await armPorTool('#por-insert-text');
+  const at = await page.evaluate((a, b) => {
+    const el = document.querySelector('canvas.upper-canvas');
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width * a, y: r.top + r.height * b };
+  }, fx, fy);
+  await page.mouse.click(at.x, at.y);
+  await new Promise((r) => setTimeout(r, 400));
+}
+
 /** Open the PowerPoint-style Shapes gallery if needed, then click a tool. */
 async function armPorTool(sel) {
   const needsGallery = /data-rb-tool|por-insert-text|data-por-tool/.test(sel);
@@ -887,12 +900,11 @@ check(
   JSON.stringify(painted)
 );
 
-await armPorTool('#por-insert-text');
-await new Promise((r) => setTimeout(r, 300));
+await placeTextBoxAt(0.2, 0.7);
 await page.evaluate(() => {
   const canvas = document.querySelector('.por-fabric-host')._porCanvas;
   const tb = canvas.getActiveObject();
-  if (tb && typeof tb.enterEditing === 'function') tb.enterEditing();
+  if (tb && typeof tb.enterEditing === 'function' && !tb.isEditing) tb.enterEditing();
 });
 await ensureRibbonControl('[data-por-text="bold"]');
 await page.click('[data-por-text="bold"]');
@@ -1618,8 +1630,7 @@ check(
 
 // Insert Text → type immediately → typed text saves.
 await page.keyboard.press('Escape');
-await armPorTool('#por-insert-text');
-await new Promise((r) => setTimeout(r, 300));
+await placeTextBoxAt(0.45, 0.8);
 await page.keyboard.type('Pier note typed', { delay: 20 });
 await page.keyboard.press('Escape');
 await new Promise((r) => setTimeout(r, 600));

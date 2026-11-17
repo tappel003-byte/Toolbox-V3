@@ -293,7 +293,7 @@
       return '';
     }
 
-    var SHAPE_TOOLS = ['line', 'arrow', 'rect', 'roundRect', 'circle', 'triangle'];
+    var SHAPE_TOOLS = ['line', 'arrow', 'rect', 'roundRect', 'circle', 'triangle', 'text'];
 
     var ICONS = {
       select: fluentIcon('cursor', 'fluent-icon--accent') || svgIcon('<path d="M5.5 3.5 11.2 20l2-6.2L19.5 11.8z"/>'),
@@ -1530,7 +1530,6 @@
         if (!tool || tool === 'pencil' || tool === 'eraser') return;
         if (opt.target && tool !== 'eraser') return;
         var pointer = canvas.getPointer(opt.e);
-        if (tool === 'text') return;
         state.shapeDraft = {
           tool: tool,
           x: pointer.x,
@@ -1574,6 +1573,11 @@
           box = defaultShapeBox(d.tool, d.x, d.y);
           shift = false;
         }
+        if (d.tool === 'text') {
+          placeTextBox(box);
+          if (!state.keepTool) setInkTool(null);
+          return;
+        }
         var shape = makeDraftShape(d.tool, box[0], box[1], box[2], box[3], shift);
         if (!shape) return;
         PorFab.styleControls(shape);
@@ -1609,11 +1613,27 @@
         syncAndSave();
         syncHistoryButtons();
       });
+      // Two quick clicks on one shape also count as a double-click (the browser's own dblclick event
+      // is not sent by every pointer source), the way a text box has always entered editing.
+      canvas.on('mouse:up', function (opt) {
+        if (state.readOnly || state.printMode || state.inkTool || !opt || !opt.target || !opt.e) return;
+        if (opt.e.button === 2) return;
+        var t = opt.target;
+        var now = Date.now();
+        var last = state.lastShapeClick;
+        state.lastShapeClick = { target: t, at: now, x: opt.e.clientX, y: opt.e.clientY };
+        if (!last || last.target !== t || now - last.at > 450) return;
+        if (Math.abs(opt.e.clientX - last.x) > 6 || Math.abs(opt.e.clientY - last.y) > 6) return;
+        state.lastShapeClick = null;
+        if (labelable(t) && !state.shapeEdit) beginShapeTextEdit(t);
+      });
       canvas.on('mouse:dblclick', function (opt) {
         if (opt.target && (opt.target.type === 'textbox' || opt.target.type === 'i-text')) {
           state.editingText = true;
           syncHistoryButtons();
+          return;
         }
+        if (opt.target && !state.inkTool && labelable(opt.target)) beginShapeTextEdit(opt.target);
       });
       canvas.on('mouse:down', function (opt) {
         if (!opt.e || opt.e.button !== 2) return;
@@ -1628,12 +1648,140 @@
       });
     }
 
+    // ---- Text inside a shape (PowerPoint: every closed shape takes text) -------------------------
+    // Double-click a rectangle, rounded rectangle, circle or triangle, or select it and press Enter, F2
+    // or just start typing. A temporary text box sits over the shape while you type; on exit its text and
+    // formatting become the shape's own label, drawn inside the shape (see por-fabric.js).
+    /** The Text Box tool: click or drag on the sheet and a text box appears there, ready to type
+        (PowerPoint). "Text" is selected so the first keystroke replaces it; clearing the box and
+        clicking away removes it. */
+    function placeTextBox(box) {
+      var canvas = state.fabricCanvas;
+      if (!canvas || !window.fabric || state.readOnly) return null;
+      var left = Math.min(box[0], box[2]);
+      var top = Math.min(box[1], box[3]);
+      var width = Math.max(60, Math.abs(box[2] - box[0]));
+      pushHistory();
+      var tb = new window.fabric.Textbox('Text', {
+        left: left,
+        top: top,
+        width: width,
+        fontSize: 18,
+        fontFamily: 'Calibri, Arial, sans-serif',
+        fill: '#111111',
+        porId: PorFab.uid('ov'),
+        porKind: 'text',
+      });
+      PorFab.styleControls(tb);
+      canvas.add(tb);
+      canvas.setActiveObject(tb);
+      state.editingText = true;
+      tb.on('editing:exited', function () {
+        if (!String(tb.text || '').trim()) {
+          try { canvas.remove(tb); } catch (_) {}
+          syncAndSave();
+        }
+      });
+      try {
+        tb.enterEditing();
+        tb.selectAll();
+      } catch (_) {}
+      canvas.requestRenderAll();
+      syncAndSave();
+      syncHistoryButtons();
+      return tb;
+    }
+
+    function labelable(obj) {
+      if (!obj || obj.excludeFromExport || obj.porTemp) return false;
+      if (!(obj.type === 'rect' || obj.type === 'ellipse' || obj.type === 'triangle')) return false;
+      return !!(PorFab && PorFab.LABEL_KINDS && PorFab.LABEL_KINDS[obj.porKind || '']);
+    }
+
+    function finishShapeTextEdit() {
+      var e = state.shapeEdit;
+      if (!e || e.done) return;
+      e.done = true;
+      state.shapeEdit = null;
+      var canvas = state.fabricCanvas;
+      var tb = e.tb;
+      var shape = e.shape;
+      var text = String(tb.text || '').replace(/\s+$/, '');
+      var before = shape.porLabel && shape.porLabel.text ? shape.porLabel : null;
+      var next = null;
+      if (text) {
+        next = PorFab.normalizeLabel({
+          text: text,
+          fontSize: tb.fontSize,
+          fontFamily: tb.fontFamily,
+          bold: tb.fontWeight === 'bold' || tb.fontWeight === 700,
+          italic: tb.fontStyle === 'italic',
+          underline: !!tb.underline,
+          strike: !!tb.linethrough,
+          align: tb.textAlign,
+          color: PorFab.toHexColor(tb.fill) || '#111111',
+        });
+      }
+      var changed = JSON.stringify(before) !== JSON.stringify(next);
+      if (changed) pushHistory();
+      shape.set({ porLabel: next, porEditingLabel: false });
+      shape.dirty = true;
+      try { canvas.remove(tb); } catch (_) {}
+      state.editingText = false;
+      canvas.requestRenderAll();
+      if (changed) syncAndSave();
+      syncHistoryButtons();
+    }
+
+    function beginShapeTextEdit(shape, firstChar) {
+      var canvas = state.fabricCanvas;
+      if (!canvas || state.readOnly || state.printMode || !window.fabric || !labelable(shape)) return false;
+      if (state.shapeEdit) finishShapeTextEdit();
+      var f = window.fabric;
+      var L = Object.assign({}, PorFab.LABEL_DEFAULTS, shape.porLabel || {});
+      var sw = shape.getScaledWidth();
+      var sh = shape.getScaledHeight();
+      var tri = shape.type === 'triangle';
+      var c = shape.getCenterPoint();
+      var at = new f.Point(c.x, c.y + (tri ? sh * 0.17 : 0));
+      if (shape.angle) at = f.util.rotatePoint(at, c, f.util.degreesToRadians(shape.angle));
+      var start = String(shape.porLabel && shape.porLabel.text || '') + (firstChar || '');
+      var tb = new f.Textbox(start, {
+        originX: 'center', originY: 'center', left: at.x, top: at.y,
+        width: Math.max(40, (tri ? sw * 0.5 : sw) - 16),
+        angle: shape.angle || 0,
+        fontSize: L.fontSize, fontFamily: L.fontFamily,
+        fontWeight: L.bold ? 'bold' : 'normal', fontStyle: L.italic ? 'italic' : 'normal',
+        underline: !!L.underline, linethrough: !!L.strike, textAlign: L.align, fill: L.color,
+        hasControls: false, hasBorders: false, lockMovementX: true, lockMovementY: true,
+        excludeFromExport: true, porTemp: true, objectCaching: false,
+      });
+      shape.set({ porEditingLabel: true });
+      shape.dirty = true;
+      state.shapeEdit = { shape: shape, tb: tb, done: false };
+      canvas.add(tb);
+      canvas.setActiveObject(tb);
+      state.editingText = true;
+      tb.on('editing:exited', finishShapeTextEdit);
+      try {
+        tb.enterEditing();
+        var len = (tb.text || '').length;
+        tb.selectionStart = len;
+        tb.selectionEnd = len;
+        if (typeof tb._updateTextarea === 'function') tb._updateTextarea();
+      } catch (_) {}
+      canvas.requestRenderAll();
+      syncHistoryButtons();
+      return true;
+    }
+
     /** A bare click with a shape tool armed drops a default shape centred on the click
         (PowerPoint places one too). Sizes are a share of the sheet so they read the same
         at any zoom: pier dot 1.4 %, square 4 %, rectangle 6 x 4 %, line / arrow 8 %. */
     function defaultShapeBox(tool, x, y) {
       var u = PorFab && typeof PorFab.pctToX === 'function' ? PorFab.pctToX(1) : 9;
       var half;
+      if (tool === 'text') return [x, y, x + PAPER_W * 0.22, y + 24];
       if (tool === 'line' || tool === 'arrow') { half = u * 4; return [x - half, y, x + half, y]; }
       if (tool === 'circle') { half = u * 0.7; return [x - half, y - half, x + half, y + half]; }
       if (tool === 'rect' || tool === 'roundRect') { return [x - u * 3, y - u * 2, x + u * 3, y + u * 2]; }
@@ -1674,6 +1822,13 @@
       var dash = dashArrayFor(state.inkDash, state.inkThick);
       if (defs.strokeDashArray) dash = defs.strokeDashArray;
       var common = { stroke: stroke, strokeWidth: sw, fill: fill, opacity: opacity, strokeDashArray: dash };
+      if (tool === 'text') {
+        // The Text Box tool shows a thin dashed frame while you drag the box out.
+        return new f.Rect({
+          left: left, top: top, width: Math.max(2, w), height: Math.max(2, h),
+          fill: 'rgba(0,0,0,0)', stroke: '#5b9bd5', strokeWidth: 1, strokeDashArray: [5, 3],
+        });
+      }
       if (tool === 'rect' || tool === 'roundRect') {
         return new f.Rect(Object.assign({
           left: left, top: top, width: Math.max(2, w), height: Math.max(2, h),
@@ -3378,6 +3533,11 @@
 
     function setInkTool(name) {
       state.inkTool = name || null;
+      var textBtn = root.querySelector('#por-insert-text');
+      if (textBtn) {
+        textBtn.classList.toggle('is-on', state.inkTool === 'text');
+        textBtn.setAttribute('aria-pressed', state.inkTool === 'text' ? 'true' : 'false');
+      }
       sheetEl.classList.toggle('rb-sheet--inking', !!state.inkTool);
       sheetEl.classList.toggle('rb-sheet--erasing', state.inkTool === 'eraser');
       if (state.fabricCanvas) applyFabricToolMode();
@@ -3514,7 +3674,7 @@
         var active = state.fabricCanvas.getActiveObject();
         if (!active) return false;
         state.clipboard = active.toObject([
-          'porId', 'porKind', 'porArrow',
+          'porId', 'porKind', 'porArrow', 'porLabel',
         ]);
         setStatus('Shape copied');
         return true;
@@ -3766,6 +3926,7 @@
       var isText = !!(active && (active.type === 'textbox' || active.type === 'i-text' || active.porKind === 'text'));
       var isGroup = !!(active && active.type === 'group');
       var isMulti = !!(active && active.type === 'activeSelection');
+      var isLabelShape = labelable(active);
       menuItem(menu, 'Edit Text', function () {
         if (!active || state.readOnly) return;
         if (isText && typeof active.enterEditing === 'function') {
@@ -3773,10 +3934,12 @@
           active.selectAll();
           state.editingText = true;
           syncHistoryButtons();
+        } else if (isLabelShape) {
+          beginShapeTextEdit(active);
         } else {
-          setStatus('Select a text box to edit');
+          setStatus('Select a text box or a shape to edit');
         }
-      }, state.readOnly || !isText, ICONS.text);
+      }, state.readOnly || !(isText || isLabelShape), ICONS.text);
       menuSub(menu, 'Group', svgIcon('<rect x="4" y="4" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/><path d="M11 8h2v8h-2z"/>'), [
         { label: 'Group', action: function () { groupSelection(); }, disabled: state.readOnly || !isMulti },
         { label: 'Ungroup', action: function () { ungroupSelection(); }, disabled: state.readOnly || !isGroup },
@@ -4102,6 +4265,19 @@
       }
       if (typing) return;
       var mod = event.metaKey || event.ctrlKey;
+      // PowerPoint: select a shape and press Enter / F2, or just start typing, to put text in it.
+      if (!mod && !event.altKey && !state.readOnly && !state.inkTool && state.fabricCanvas) {
+        var labelTarget = state.fabricCanvas.getActiveObject();
+        if (labelable(labelTarget) && !state.shapeEdit) {
+          var isEnter = event.key === 'Enter' || event.key === 'F2';
+          var isChar = event.key && event.key.length === 1 && event.code !== 'Space';
+          if (isEnter || isChar) {
+            event.preventDefault();
+            beginShapeTextEdit(labelTarget, isChar ? event.key : '');
+            return;
+          }
+        }
+      }
       if (mod && event.key.toLowerCase() === 'z') {
         event.preventDefault();
         if (event.shiftKey) redo(); else undo();
@@ -4436,6 +4612,11 @@
     root.querySelector('#por-insert-text').addEventListener('click', function () {
       if (state.readOnly) return;
       closePickers();
+      if (state.fabricCanvas && window.fabric) {
+        // Arm the tool (click it again to put it down); the box is placed where you click or drag.
+        setInkTool(state.inkTool === 'text' ? null : 'text');
+        return;
+      }
       setInkTool(null);
       if (state.fabricCanvas && window.fabric) {
         pushHistory();

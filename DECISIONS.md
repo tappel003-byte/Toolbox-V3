@@ -759,6 +759,19 @@ Tests: `tests/drop-box-worker.mjs` (40), `tests/drop-box-ui.mjs` (58, the real b
 
 ---
 
+## Plan of Repair: text inside shapes, and the Text Box tool places where you click (DECIDED Tim, Nov 17, 2026)
+
+From an audit of Plan of Repair against PowerPoint: a shape could not hold text, and the Text button dropped a box at a fixed spot.
+
+- **A closed shape takes text** (rectangle, rounded rectangle, circle, triangle), as in PowerPoint. Double-click it, or select it and press Enter or F2, or just start typing; right-click → Edit Text also works (it was greyed out for shapes). Esc or clicking away keeps the text. The text is centred in the shape (lower in a triangle), wraps to the shape's width, stays the same size when the shape is resized, turns with it when rotated, and is copied, pasted, undone and saved with it. A shape with no text is unchanged.
+- **Stored as** `label: {text, fontSize, fontFamily, bold, italic, underline, strike, align, color}` on the shape overlay (`por-fabric.js`); the typing happens in a temporary text box over the shape and is not saved as a mark of its own. Default 18 px Calibri, black.
+- **The Text button arms the tool** (it shows as on): click or drag on the sheet and a box appears there, with "Text" selected so the first keystroke replaces it. The tool puts itself down after one box unless Keep tool on is set. A box emptied and clicked away from is removed. (Before, the button dropped a box at a fixed bottom-left spot.)
+- **Not done:** the ribbon's font controls on a *selected shape* (they work while typing in it, and on text boxes); sub/superscript, numbering, indent, line spacing.
+
+Tests: `tests/por-shape-text.mjs` (23, real mouse and keyboard), `tests/plan-of-repair.mjs` (108; two checks updated to place the text box by clicking).
+
+---
+
 ## Closeout
 
 - The final PDF is the durable closeout record.

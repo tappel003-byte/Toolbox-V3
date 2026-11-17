@@ -273,6 +273,10 @@ Tim, after the drop box worked on the first real use: "Let's get rid of share lo
 
 `js/report-lookbook.js` and `tests/report-lookbook.mjs` deleted; the photo helpers moved into `js/drop-box.js`. Worker unchanged (still serves under `lookbook/<token>/`). Shell v487. Test: `drop-box-ui` 58/58.
 
+### Claude Code: Plan of Repair shape text + Text Box tool (Nov 17, 2026) — branch `claude/por-shape-text-2ac5` (NOT merged)
+
+Shapes take text (double-click / Enter / F2 / type); the Text button arms a tool and places the box where you click or drag. `js/por-fabric.js`, `js/plan-of-repair.js`. Shell v488. Tests: `por-shape-text` 23/23, `plan-of-repair` 108/108. See `DECISIONS.md`.
+
 ## Sync Worker deploy — done Nov 10, 2026
 
 - Deployed by Claude Code with Tim's Cloudflare API token (saved as a network secret on Tim's Default cloud environment).

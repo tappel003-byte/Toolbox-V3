@@ -51,6 +51,93 @@
     return 'solid';
   }
 
+  // ---- Text inside a shape --------------------------------------------------
+  // PowerPoint lets every closed shape hold text. A rectangle, rounded rectangle, circle or triangle here
+  // carries an optional label {text, fontSize, fontFamily, bold, italic, underline, strike, align, color}
+  // (Tim, Nov 17, 2026). It is drawn inside the shape's own render, so it moves, scales, rotates, copies and
+  // saves with the shape, and a shape with no label draws exactly as before.
+  var LABEL_KINDS = { rect: true, roundRect: true, circle: true, ellipse: true, triangle: true };
+  var LABEL_DEFAULTS = {
+    fontSize: 18, fontFamily: 'Calibri, Arial, sans-serif',
+    bold: false, italic: false, underline: false, strike: false, align: 'center', color: '#111111',
+  };
+
+  function normalizeLabel(raw) {
+    if (!raw || typeof raw.text !== 'string' || !raw.text.trim()) return null;
+    var out = Object.assign({}, LABEL_DEFAULTS, raw);
+    out.fontSize = Math.max(6, Math.min(200, Number(out.fontSize) || LABEL_DEFAULTS.fontSize));
+    if (!HEX.test(String(out.color || ''))) out.color = LABEL_DEFAULTS.color;
+    if (['left', 'center', 'right'].indexOf(out.align) === -1) out.align = 'center';
+    out.bold = !!out.bold; out.italic = !!out.italic; out.underline = !!out.underline; out.strike = !!out.strike;
+    return out;
+  }
+
+  function wrapLabel(ctx, text, maxW) {
+    var lines = [];
+    String(text).split('\n').forEach(function (para) {
+      var words = para.split(' ');
+      var line = '';
+      words.forEach(function (word) {
+        var test = line ? line + ' ' + word : word;
+        if (line && ctx.measureText(test).width > maxW) { lines.push(line); line = word; }
+        else line = test;
+      });
+      lines.push(line);
+    });
+    return lines;
+  }
+
+  /** Draw a shape's label inside its own render (ctx is already at the shape's centre, rotated and scaled). */
+  function drawShapeLabel(obj, ctx) {
+    var L = obj.porLabel;
+    if (!L || !L.text || obj.porEditingLabel) return;
+    var sx = Math.abs(Number(obj.scaleX)) || 1;
+    var sy = Math.abs(Number(obj.scaleY)) || 1;
+    var w = (Number(obj.width) || 0) * sx;
+    var h = (Number(obj.height) || 0) * sy;
+    var tri = obj.type === 'triangle';
+    var maxW = Math.max(10, (tri ? w * 0.5 : w) - 16);
+    var fs = Number(L.fontSize) || LABEL_DEFAULTS.fontSize;
+    ctx.save();
+    // Undo the shape's own stretch so a resized shape does not stretch its letters.
+    ctx.scale(1 / sx, 1 / sy);
+    ctx.font = (L.italic ? 'italic ' : '') + (L.bold ? 'bold ' : '') + fs + 'px ' + (L.fontFamily || LABEL_DEFAULTS.fontFamily);
+    ctx.fillStyle = L.color || LABEL_DEFAULTS.color;
+    ctx.strokeStyle = L.color || LABEL_DEFAULTS.color;
+    ctx.lineWidth = Math.max(1, fs / 14);
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = L.align === 'left' ? 'left' : (L.align === 'right' ? 'right' : 'center');
+    var lines = wrapLabel(ctx, L.text, maxW);
+    var lh = fs * 1.2;
+    var cy = tri ? h * 0.17 : 0;
+    var y = cy - (lines.length * lh) / 2 + lh / 2;
+    var x = L.align === 'left' ? -maxW / 2 : (L.align === 'right' ? maxW / 2 : 0);
+    lines.forEach(function (line) {
+      ctx.fillText(line, x, y);
+      var tw = ctx.measureText(line).width;
+      var x0 = L.align === 'left' ? x : (L.align === 'right' ? x - tw : x - tw / 2);
+      if (L.underline) { ctx.beginPath(); ctx.moveTo(x0, y + fs * 0.55); ctx.lineTo(x0 + tw, y + fs * 0.55); ctx.stroke(); }
+      if (L.strike) { ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + tw, y); ctx.stroke(); }
+      y += lh;
+    });
+    ctx.restore();
+  }
+
+  function patchShapeRenders() {
+    var f = window.fabric;
+    if (!f || f.__porLabelPatched) return;
+    ['Rect', 'Ellipse', 'Triangle'].forEach(function (name) {
+      var C = f[name];
+      if (!C || !C.prototype || typeof C.prototype._render !== 'function') return;
+      var orig = C.prototype._render;
+      C.prototype._render = function (ctx) {
+        orig.call(this, ctx);
+        if (this.porLabel && this.porLabel.text) drawShapeLabel(this, ctx);
+      };
+    });
+    f.__porLabelPatched = true;
+  }
+
   function applyCommon(obj, item) {
     obj.set({
       porId: item.id || uid('ov'),
@@ -72,6 +159,11 @@
         : (Array.isArray(item.strokeDashArray) ? item.strokeDashArray : null),
     });
     if (item.lockUniScaling) obj.set({ lockUniScaling: true });
+    if (item.label && LABEL_KINDS[item.kind || '']) {
+      patchShapeRenders();
+      var lb = normalizeLabel(item.label);
+      if (lb) obj.set({ porLabel: lb });
+    }
     return obj;
   }
 
@@ -375,6 +467,10 @@
     var dashName = dashNameFromArray(obj.strokeDashArray);
     if (dashName && dashName !== 'solid') item.dash = dashName;
     if (obj.visible === false) item.hidden = true;
+    if (obj.porLabel && obj.porLabel.text && LABEL_KINDS[item.kind]) {
+      var savedLabel = normalizeLabel(obj.porLabel);
+      if (savedLabel) item.label = savedLabel;
+    }
     if (item.kind === 'image' || obj.porKind === 'image') {
       item.kind = 'image';
       item.mediaId = obj.porMediaId || item.mediaId || '';
@@ -637,6 +733,7 @@
   function createCanvas(el, opts) {
     opts = opts || {};
     if (!fabricReady()) throw new Error('Fabric.js ' + FABRIC_VERSION + ' not loaded');
+    patchShapeRenders();
     var canvas = new window.fabric.Canvas(el, {
       width: opts.width || PAPER_W,
       height: opts.height || PAPER_H,
@@ -724,5 +821,9 @@
     xToPct: xToPct,
     yToPct: yToPct,
     strokeWidthFromThick: strokeWidthFromThick,
+    LABEL_KINDS: LABEL_KINDS,
+    LABEL_DEFAULTS: LABEL_DEFAULTS,
+    normalizeLabel: normalizeLabel,
+    drawShapeLabel: drawShapeLabel,
   };
 })();
