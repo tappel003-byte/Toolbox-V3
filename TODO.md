@@ -10,6 +10,10 @@ the product, `MILESTONE.md` is what is allowed to be worked on now, and
 it exists, and nothing on it is approved to build until the product owner says
 so.
 
+**Open product discussions** (prompts, forks, “talk this through with me”) live
+in `DISCUSSION.md`, not here. This file stays short reminders; that file keeps
+the full talk so Cursor and Claude Code can join without re-litigating chat.
+
 ---
 
 ## Waiting on a word from Tim
@@ -164,6 +168,11 @@ none of it is approved to build.
   distances on the ground.
 
 ## Where the Cabinet is heading
+
+**Nov 17, 2026 — live discussion parked in `DISCUSSION.md` (D-001).** Scale
+(~50–100 jobs/year), close-out vs organize/filter, reopen. Discussion only;
+TLS has the ball. Do not build from that entry until Tim says go. The older
+Explorer/Cabinet notes below remain useful background.
 
 Raised by Tim, Oct 18, 2026, alongside the File Explorer decisions. Neither is
 in the current milestone; both are written down so they do not evaporate.
