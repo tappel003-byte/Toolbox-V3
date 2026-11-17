@@ -4513,3 +4513,28 @@ body.is-presenting { overflow: hidden; }
   border-radius: 6px;
   background: #fff;
 }
+
+/* The aerial view in the title block, above the figure number (Tim, Nov 17, 2026). */
+.rb-rail__siteview { position: relative; width: 100%; }
+.rb-rail__siteview-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 17cqh;
+  object-fit: cover;
+  border: 1px solid #c9c2b4;
+}
+.rb-rail__siteview-back {
+  position: absolute; top: 0; right: 0; width: 1.8cqh; height: 1.8cqh; min-width: 14px; min-height: 14px;
+  padding: 0; line-height: 1; border: 0; background: rgba(255, 255, 255, 0.9); color: #333; cursor: pointer;
+}
+.rb-sheet--print .rb-rail__siteview-back, .rb-sheet--thumb .rb-rail__siteview-back { display: none; }
+.rb-floor-overview__rail {
+  position: absolute; left: 4px; bottom: 4px; padding: 2px 6px; font-size: 11px; line-height: 1.3;
+  border: 1px solid #c9c2b4; border-radius: 3px; background: rgba(255, 255, 255, 0.92); color: #222; cursor: pointer;
+}
+.rb-floor-overview__rail { z-index: 7; opacity: 0; transition: opacity 120ms ease; }
+.rb-floor-box--overview:hover .rb-floor-overview__rail,
+.rb-floor-overview__rail:focus-visible { opacity: 1; }
+.rb-sheet--thumb .rb-floor-overview__rail { display: none; }
+@media print { .rb-floor-overview__rail, .rb-rail__siteview-back { display: none; } }

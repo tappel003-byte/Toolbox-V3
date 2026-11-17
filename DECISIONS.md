@@ -841,3 +841,7 @@ The contour layer is a picture made when Done (or Send) is pressed, so a drain m
 ## The report's title block names the company whenever one is filled in (Nov 17, 2026)
 
 Tim: the company was filled in and the title block still read "RVT Residence" (the last word of "Javier Arguello, RVT"). The title block now uses the company as written for any file that has one, Business type or not; with no company it is still "<Last> Residence". Only the report's title block changed -- the Cabinet and file names still follow the file's type.
+
+## The aerial view can sit in the title block, above the figure number (Nov 17, 2026)
+
+Tim: put the Google (satellite) view in the title block, right above Figure 1. On a Floor Survey page the aerial's hover buttons now include "Title block"; pressed, the aerial leaves the drawing and sits in the title block above the figure number, and a small x there sends it back onto the drawing. It is the book's one layout setting (`layout.overview.rail`), like where the aerial sits, so every Floor Survey page follows it; the x that removes the aerial from one page still wins on that page. The buttons never print and never show on thumbnails. Only Floor Survey pages carry the aerial.

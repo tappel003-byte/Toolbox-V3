@@ -287,6 +287,27 @@
     root.appendChild(body);
 
     var foot = el('footer', 'rb-rail__foot');
+    // The aerial view of the property, when the investigator has put it in the title block.
+    if (o.siteViewUrl) {
+      var site = el('div', 'rb-rail__siteview');
+      var siteImg = document.createElement('img');
+      siteImg.className = 'rb-rail__siteview-image';
+      siteImg.src = o.siteViewUrl;
+      siteImg.alt = 'Site overview';
+      siteImg.setAttribute('draggable', 'false');
+      site.appendChild(siteImg);
+      if (o.siteViewControl) {
+        var back = document.createElement('button');
+        back.type = 'button';
+        back.className = 'rb-rail__siteview-back';
+        back.setAttribute('data-rb-floor-overview', 'sheet');
+        back.setAttribute('aria-label', 'Move the site overview back onto the drawing');
+        back.title = 'Back onto the drawing';
+        back.textContent = '\u00d7';
+        site.appendChild(back);
+      }
+      foot.appendChild(site);
+    }
     var figureEl = block('p', 'rb-rail__figure', [String(o.figureLabel || '').toUpperCase()], o,
       'figure', 'Figure number');
     if (figureEl) foot.appendChild(figureEl);

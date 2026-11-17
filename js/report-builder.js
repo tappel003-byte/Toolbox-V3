@@ -2745,7 +2745,13 @@
     }
     var rawDate = page._surveyDate || meta.surveyDate || ev.surveyDate || '';
     var dateText = formatSurveyDate(rawDate, true);
+    var siteLayout = page._bookFloorLayout;
+    var siteInRail = page.type === 'floor' && meta.imported && !meta.hideOverview && !!page._overviewUrl &&
+      !!(siteLayout && siteLayout.overview && siteLayout.overview.rail);
     return api.render({
+      // The aerial view, when it has been put in the title block above the figure number.
+      siteViewUrl: siteInRail ? page._overviewUrl : '',
+      siteViewControl: !!(opts && opts.noteEditable),
       // A compass belongs on a drawing of the building. A sheet of
       // photographs, or of property details, is not oriented to anything.
       north: page.type === 'floor' || page.type === 'distress',
@@ -7315,6 +7321,20 @@
         event.preventDefault();
         var overviewPage = activePage();
         if (!overviewPage || overviewPage.type !== 'floor') return;
+        var overviewAct = overviewBtn.getAttribute('data-rb-floor-overview');
+        if (overviewAct === 'rail' || overviewAct === 'sheet') {
+          // Title block or drawing: the book's one layout, like where the aerial sits.
+          var flOver = window.ToolboxReportFloorLayout;
+          if (!flOver || typeof overviewPage._putFloorLayout !== 'function') return;
+          var nextLay = flOver.cloneLayout(overviewPage._bookFloorLayout);
+          nextLay.overview.rail = overviewAct === 'rail';
+          overviewPage._putFloorLayout(nextLay);
+          noteEdit();
+          setSaveStatus('Saving…');
+          renderPages();
+          flushSave().catch(function () {});
+          return;
+        }
         overviewPage.meta = overviewPage.meta || {};
         overviewPage.meta.hideOverview = true;
         noteEdit();

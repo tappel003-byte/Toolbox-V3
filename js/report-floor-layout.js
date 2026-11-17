@@ -231,6 +231,8 @@
         y: clamp(over.y, -300, 300),
         w: clamp(over.w, MIN_OVERVIEW_W, 300),
         h: clamp(over.h, MIN_OVERVIEW_H, 300),
+        // In the title block, above the figure number, instead of on the drawing.
+        rail: !!over.rail,
       },
       overlays: [],
     };
@@ -450,6 +452,8 @@
   function renderOverview(options, layout, locked) {
     var url = options && options.overviewUrl;
     if (!url || (options && options.overviewHidden)) return null;
+    // In the title block it is drawn by the rail, not here.
+    if (layout.overview && layout.overview.rail) return null;
     var box = boxShell('overview', 'overview', locked);
     box.style.left = layout.overview.x + '%';
     box.style.top = layout.overview.y + '%';
@@ -470,6 +474,15 @@
       remove.setAttribute('aria-label', 'Remove the site overview from this page');
       remove.textContent = '\u00d7';
       box.appendChild(remove);
+      // Put it in the title block, above the figure number (Tim, Nov 17, 2026).
+      var toRail = document.createElement('button');
+      toRail.type = 'button';
+      toRail.className = 'rb-floor-overview__rail';
+      toRail.setAttribute('data-rb-floor-overview', 'rail');
+      toRail.setAttribute('aria-label', 'Put the site overview in the title block');
+      toRail.title = 'Put in the title block';
+      toRail.textContent = '\u25b8 Title block';
+      box.appendChild(toRail);
     }
     return box;
   }
