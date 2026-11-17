@@ -277,6 +277,10 @@ Tim, after the drop box worked on the first real use: "Let's get rid of share lo
 
 Shapes take text (double-click / Enter / F2 / type); the Text button arms a tool and places the box where you click or drag. `js/por-fabric.js`, `js/plan-of-repair.js`. Shell v488. Tests: `por-shape-text` 23/23, `plan-of-repair` 108/108. See `DECISIONS.md`.
 
+### Claude Code: Plan of Repair round A — line spacing, highlight, numbering/indent, sub/superscript, Slides group, Undo/Redo to top bar, slide Move up/down (Nov 17, 2026) — branch `claude/por-round-a-2ac5` (NOT merged)
+
+Built on integration tip 4ae8b8d. `tests/por-round-a.mjs` 21/21; `plan-of-repair` 108/108 (Print-row check now measures against the grid button since Undo left that group); `por-shape-text` 23/23; `por-format-shortcuts` 20/20; `tls-workspace-smoke` 36/36. Ribbon still fits uncollapsed at 1440. Shell v490. Not merged; waiting on Tim. Round B (View/File/Draw tab panes, wider shape gallery) not started.
+
 ### Claude Code: Plan of Repair formatting on shape text + Ctrl+drag copy + Tab + Ctrl+M (Nov 17, 2026) — branch `claude/por-format-shortcuts-2ac5` (NOT merged)
 
 Builds on the merged shape-text work. `js/plan-of-repair.js`. Shell v489. Tests: `por-format-shortcuts` 20/20, `por-shape-text` 23/23, `plan-of-repair` 108/108. See `DECISIONS.md`.

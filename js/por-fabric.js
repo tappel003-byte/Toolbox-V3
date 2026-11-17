@@ -60,6 +60,7 @@
   var LABEL_DEFAULTS = {
     fontSize: 18, fontFamily: 'Calibri, Arial, sans-serif',
     bold: false, italic: false, underline: false, strike: false, align: 'center', color: '#111111',
+    lineHeight: 1.2, highlight: '', script: '',
   };
 
   function normalizeLabel(raw) {
@@ -68,8 +69,32 @@
     out.fontSize = Math.max(6, Math.min(200, Number(out.fontSize) || LABEL_DEFAULTS.fontSize));
     if (!HEX.test(String(out.color || ''))) out.color = LABEL_DEFAULTS.color;
     if (['left', 'center', 'right'].indexOf(out.align) === -1) out.align = 'center';
+    out.lineHeight = Math.max(0.8, Math.min(3, Number(out.lineHeight) || LABEL_DEFAULTS.lineHeight));
+    if (!HEX.test(String(out.highlight || ''))) out.highlight = '';
+    if (out.script !== 'sub' && out.script !== 'sup') out.script = '';
     out.bold = !!out.bold; out.italic = !!out.italic; out.underline = !!out.underline; out.strike = !!out.strike;
     return out;
+  }
+
+  /** Sub/superscript for a whole text box: every character gets a smaller size and a vertical shift. */
+  function applyTextScript(obj) {
+    if (!obj) return;
+    var mode = obj.porScript;
+    if (!mode) {
+      if (obj._porScripted) { obj.styles = {}; obj._porScripted = false; obj.dirty = true; }
+      return;
+    }
+    var fs = Number(obj.fontSize) || 18;
+    var styles = {};
+    String(obj.text || '').split('\n').forEach(function (line, i) {
+      var row = {};
+      for (var c = 0; c < line.length; c++) row[c] = { fontSize: Math.round(fs * 0.65), deltaY: mode === 'sub' ? fs * 0.2 : -fs * 0.3 };
+      styles[i] = row;
+    });
+    obj.styles = styles;
+    obj._porScripted = true;
+    obj.dirty = true;
+    if (typeof obj.initDimensions === 'function') obj.initDimensions();
   }
 
   function wrapLabel(ctx, text, maxW) {
@@ -98,6 +123,8 @@
     var tri = obj.type === 'triangle';
     var maxW = Math.max(10, (tri ? w * 0.5 : w) - 16);
     var fs = Number(L.fontSize) || LABEL_DEFAULTS.fontSize;
+    var baseFs = fs;
+    if (L.script) fs = Math.round(fs * 0.65);
     ctx.save();
     // Undo the shape's own stretch so a resized shape does not stretch its letters.
     ctx.scale(1 / sx, 1 / sy);
@@ -108,14 +135,16 @@
     ctx.textBaseline = 'middle';
     ctx.textAlign = L.align === 'left' ? 'left' : (L.align === 'right' ? 'right' : 'center');
     var lines = wrapLabel(ctx, L.text, maxW);
-    var lh = fs * 1.2;
+    var lh = baseFs * (Number(L.lineHeight) || LABEL_DEFAULTS.lineHeight);
     var cy = tri ? h * 0.17 : 0;
     var y = cy - (lines.length * lh) / 2 + lh / 2;
     var x = L.align === 'left' ? -maxW / 2 : (L.align === 'right' ? maxW / 2 : 0);
+    var yShift = L.script === 'sub' ? baseFs * 0.2 : (L.script === 'sup' ? -baseFs * 0.3 : 0);
     lines.forEach(function (line) {
-      ctx.fillText(line, x, y);
       var tw = ctx.measureText(line).width;
       var x0 = L.align === 'left' ? x : (L.align === 'right' ? x - tw : x - tw / 2);
+      if (L.highlight && line) { ctx.fillStyle = L.highlight; ctx.fillRect(x0 - 1, y - lh / 2, tw + 2, lh); ctx.fillStyle = L.color || LABEL_DEFAULTS.color; }
+      ctx.fillText(line, x, y + yShift);
       if (L.underline) { ctx.beginPath(); ctx.moveTo(x0, y + fs * 0.55); ctx.lineTo(x0 + tw, y + fs * 0.55); ctx.stroke(); }
       if (L.strike) { ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + tw, y); ctx.stroke(); }
       y += lh;
@@ -274,10 +303,14 @@
         linethrough: !!rich.strike,
         textAlign: item.align || 'left',
         fill: HEX.test(String(item.color || '')) ? item.color : '#111111',
+        lineHeight: Math.max(0.8, Math.min(3, Number(item.lineHeight) || 1.16)),
+        textBackgroundColor: HEX.test(String(item.highlight || '')) ? item.highlight : '',
+        porScript: item.script === 'sub' || item.script === 'sup' ? item.script : '',
         porId: item.id || uid('ov'),
         porKind: 'text',
         objectCaching: false,
       });
+      applyTextScript(obj);
       styleControls(obj);
       return obj;
     } else if (item.kind === 'image') {
@@ -522,6 +555,9 @@
       itemT.strike = !!child.linethrough;
       itemT.align = child.textAlign || 'left';
       itemT.color = toHexColor(child.fill) || '#111111';
+      itemT.lineHeight = Math.round((child.lineHeight || 1.16) * 100) / 100;
+      itemT.highlight = HEX.test(String(child.textBackgroundColor || '')) ? child.textBackgroundColor : '';
+      itemT.script = child.porScript || '';
       return itemT;
     }
     var boxB = boxFromObject(child);
@@ -578,6 +614,9 @@
       item.strike = !!obj.linethrough;
       item.align = obj.textAlign || 'left';
       item.color = toHexColor(obj.fill) || '#111111';
+      item.lineHeight = Math.round((obj.lineHeight || 1.16) * 100) / 100;
+      item.highlight = HEX.test(String(obj.textBackgroundColor || '')) ? obj.textBackgroundColor : '';
+      item.script = obj.porScript || '';
       return item;
     }
     if (item.kind === 'path') {
@@ -823,6 +862,7 @@
     strokeWidthFromThick: strokeWidthFromThick,
     LABEL_KINDS: LABEL_KINDS,
     LABEL_DEFAULTS: LABEL_DEFAULTS,
+    applyTextScript: applyTextScript,
     normalizeLabel: normalizeLabel,
     drawShapeLabel: drawShapeLabel,
   };

@@ -329,6 +329,8 @@
       fontColor: fluentIcon('text_color') || '<span class="por-font-color__glyph">A</span>',
       fontGrow: fluentIcon('text_font_size') || 'A+',
       bullet: fluentIcon('bullet_list') || '•',
+      addPage: '<span class="por-slide-plus" aria-hidden="true">＋</span>',
+      trash: '🗑',
       grid: fluentIcon('grid') || '▦',
       hand: fluentIcon('hand') || svgIcon('<path d="M8 11V6.5a1.5 1.5 0 0 1 3 0V11"/>'),
       triangle: fluentIcon('triangle') || svgIcon('<path d="M12 4 20 19H4z"/>'),
@@ -374,6 +376,10 @@
       '    <span class="file-identity__name">Plan of Repair</span>' +
       '    <span class="file-identity__address" id="por-file-label"></span>' +
       '  </div>' +
+      '  <div class="por-quick" role="group" aria-label="Quick access">' +
+      '    <button type="button" class="por-iconbtn" id="por-undo" title="Undo (Ctrl+Z)" aria-label="Undo">' + ICONS.undo + '</button>' +
+      '    <button type="button" class="por-iconbtn" id="por-redo" title="Redo (Ctrl+Y)" aria-label="Redo">' + ICONS.redo + '</button>' +
+      '  </div>' +
       '  <span class="file-status" id="por-status">Loading…</span>' +
       '</div>' +
       '<div class="por-tabs" role="tablist" aria-label="Plan of Repair tabs">' +
@@ -386,6 +392,17 @@
       '</div>' +
       '<div class="por-toolbar por-ribbon" role="toolbar" aria-label="Drawing tools">' +
       '<div class="por-ribbon__scroll">' +
+      '  <div class="por-ribbon__group por-ribbon__group--collapsible" data-por-collapse="slides" role="group" aria-label="Slides">' +
+      '    <div class="por-ribbon__row">' +
+      '      <div class="por-ribbon__stack">' +
+      '        <button type="button" id="por-add-page" class="por-iconbtn" title="New Slide (Ctrl+M)" aria-label="New slide">' + ICONS.addPage + '</button>' +
+      '        <button type="button" id="por-dup-page" class="por-iconbtn" title="Duplicate Slide" aria-label="Duplicate slide">' + ICONS.copy + '</button>' +
+      '        <button type="button" id="por-remove-page" class="por-iconbtn" title="Delete Slide" aria-label="Delete slide">' + ICONS.trash + '</button>' +
+      '      </div>' +
+      '    </div>' +
+      '    <span class="por-ribbon__label">Slides</span>' +
+      '  </div>' +
+      '  <div class="por-ribbon__sep" aria-hidden="true"></div>' +
       '  <div class="por-ribbon__group por-ribbon__group--collapsible" data-por-collapse="clipboard" role="group" aria-label="Clipboard">' +
       '    <div class="por-ribbon__row por-ribbon__row--clipboard">' +
       '      <button type="button" class="por-ribbon__large" id="por-paste" title="Paste (Ctrl+V)" aria-label="Paste">' +
@@ -419,6 +436,17 @@
       '        <button type="button" class="por-iconbtn" data-por-text="italic" title="Italic" aria-label="Italic">' + ICONS.italic + '</button>' +
       '        <button type="button" class="por-iconbtn" data-por-text="underline" title="Underline" aria-label="Underline">' + ICONS.underline + '</button>' +
       '        <button type="button" class="por-iconbtn" data-por-text="strike" title="Strikethrough" aria-label="Strikethrough">' + ICONS.strike + '</button>' +
+      '        <button type="button" class="por-iconbtn" data-por-text="sub" title="Subscript" aria-label="Subscript">x<sub>2</sub></button>' +
+      '        <button type="button" class="por-iconbtn" data-por-text="sup" title="Superscript" aria-label="Superscript">x<sup>2</sup></button>' +
+      '        <div class="por-picker" data-por-picker="highlight">' +
+      '          <button type="button" class="por-picker__btn por-picker__btn--font" id="por-highlight-btn" title="Text Highlight Color" aria-label="Text highlight colour" aria-haspopup="true" aria-expanded="false">' +
+      '            <span class="por-hl-glyph">ab</span><span class="por-picker__chip" id="por-highlight-chip" style="background:#ffe600"></span>' +
+      '          </button>' +
+      '          <div class="por-picker__pop por-picker__pop--colors" id="por-highlight-pop" hidden role="listbox" aria-label="Highlight colours">' +
+      '            <button type="button" class="por-swatch por-swatch--none" data-por-highlight="" title="No highlight" aria-label="No highlight">∅</button>' +
+                colorGrid('data-por-highlight') +
+      '          </div>' +
+      '        </div>' +
       '        <div class="por-picker" data-por-picker="font-color">' +
       '          <button type="button" class="por-picker__btn por-picker__btn--font" id="por-font-color-btn" title="Font Color" aria-label="Font colour" aria-haspopup="true" aria-expanded="false">' +
       '            ' + ICONS.fontColor + '<span class="por-picker__chip" id="por-font-color-chip"></span>' +
@@ -437,8 +465,21 @@
       '      <button type="button" class="por-iconbtn" data-por-align="left" title="Align Left" aria-label="Align left">' + (fluentIcon('align_left') || '⫷') + '</button>' +
       '      <button type="button" class="por-iconbtn" data-por-align="center" title="Center" aria-label="Align center">' + (fluentIcon('align_center') || '☰') + '</button>' +
       '      <button type="button" class="por-iconbtn" data-por-align="right" title="Align Right" aria-label="Align right">' + (fluentIcon('align_right') || '⫸') + '</button>' +
+      '      <div class="por-picker" data-por-picker="line-spacing">' +
+      '        <button type="button" class="por-picker__btn por-picker__btn--icon" id="por-line-spacing-btn" title="Line Spacing" aria-label="Line spacing" aria-haspopup="true" aria-expanded="false">≡</button>' +
+      '        <div class="por-picker__pop por-picker__pop--weight" id="por-line-spacing-pop" hidden role="listbox" aria-label="Line spacing">' +
+      '          <button type="button" class="por-weight" data-por-line-height="1" aria-label="Line spacing 1.0">1.0</button>' +
+      '          <button type="button" class="por-weight" data-por-line-height="1.15" aria-label="Line spacing 1.15">1.15</button>' +
+      '          <button type="button" class="por-weight" data-por-line-height="1.5" aria-label="Line spacing 1.5">1.5</button>' +
+      '          <button type="button" class="por-weight" data-por-line-height="2" aria-label="Line spacing 2.0">2.0</button>' +
+      '        </div>' +
+      '      </div>' +
+      '    </div>' +
+      '    <div class="por-ribbon__row">' +
       '      <button type="button" class="por-iconbtn" data-por-text="bullet" title="Bullets" aria-label="Bullets">' + ICONS.bullet + '</button>' +
-      '      <button type="button" class="por-iconbtn" id="por-line-spacing" title="Line Spacing" aria-label="Line spacing" disabled>≡</button>' +
+      '      <button type="button" class="por-iconbtn" data-por-text="number" title="Numbering" aria-label="Numbering">1.</button>' +
+      '      <button type="button" class="por-iconbtn" data-por-text="outdent" title="Decrease Indent" aria-label="Decrease indent">⇤</button>' +
+      '      <button type="button" class="por-iconbtn" data-por-text="indent" title="Increase Indent" aria-label="Increase indent">⇥</button>' +
       '    </div>' +
       '    <span class="por-ribbon__label">Paragraph</span>' +
       '  </div>' +
@@ -612,8 +653,6 @@
                     ICONS.selectionPane + '<span>Selection Pane…</span></button>' +
       '          </div>' +
       '        </div>' +
-      '        <button type="button" class="por-iconbtn" id="por-undo" title="Undo (Ctrl+Z)" aria-label="Undo">' + ICONS.undo + '</button>' +
-      '        <button type="button" class="por-iconbtn" id="por-redo" title="Redo" aria-label="Redo">' + ICONS.redo + '</button>' +
       '        <button type="button" class="por-iconbtn" id="por-toggle-grid" title="Show Grid" aria-label="Show grid" aria-pressed="false">▦</button>' +
       '        <button type="button" class="por-iconbtn" id="por-toggle-rulers" title="Show Rulers" aria-label="Show rulers" aria-pressed="false">▤</button>' +
       '        <button type="button" class="por-iconbtn" id="por-hand" title="Hand / Pan (Space)" aria-label="Hand tool" aria-pressed="false">' +
@@ -664,11 +703,6 @@
       '      <span id="por-save-status">…</span>' +
       '    </div>' +
       '    <div class="rb-rail__list" id="por-page-list"></div>' +
-      '    <div class="rb-rail__actions">' +
-      '      <button type="button" id="por-add-page" class="btn btn--secondary" title="New page">New</button>' +
-      '      <button type="button" id="por-dup-page" class="btn btn--quiet" title="Duplicate page">Duplicate</button>' +
-      '      <button type="button" id="por-remove-page" class="btn btn--quiet" title="Delete page">Delete</button>' +
-      '    </div>' +
       '  </aside>' +
       '  <div class="rb-stage" id="por-stage">' +
       '    <div class="rb-stage__paper">' +
@@ -2731,6 +2765,13 @@
         }
         root.querySelector('#por-dup-page').click();
       }, state.readOnly);
+      var pageIdx = state.doc.pages.map(function (p) { return p.id; }).indexOf(pageId);
+      menuItem(menu, 'Move up', function () {
+        if (pageIdx > 0) reorderPages(pageId, state.doc.pages[pageIdx - 1].id);
+      }, state.readOnly || pageIdx <= 0);
+      menuItem(menu, 'Move down', function () {
+        if (pageIdx >= 0 && pageIdx < state.doc.pages.length - 1) reorderPages(pageId, state.doc.pages[pageIdx + 1].id);
+      }, state.readOnly || pageIdx < 0 || pageIdx >= state.doc.pages.length - 1);
       menuItem(menu, 'Delete', function () {
         if (pageId && pageId !== state.doc.activePageId) {
           state.doc.activePageId = pageId;
@@ -4755,7 +4796,7 @@
       });
     }
     // PowerPoint ribbon: shape gallery, Arrange, Select, Clipboard, Format pane.
-    ['shapes', 'arrange', 'select-menu', 'font-color', 'insert', 'styles', 'effects'].forEach(function (which) {
+    ['shapes', 'arrange', 'select-menu', 'font-color', 'highlight', 'line-spacing', 'insert', 'styles', 'effects'].forEach(function (which) {
       var b = root.querySelector('#por-' + which + '-btn');
       if (!b) return;
       b.addEventListener('click', function (event) {
@@ -4925,6 +4966,28 @@
         }
         state.inkColor = color;
         syncHistoryButtons();
+        closePickers();
+      });
+    }
+    var highlightPop = root.querySelector('#por-highlight-pop');
+    if (highlightPop) {
+      highlightPop.addEventListener('click', function (event) {
+        var sw = event.target.closest && event.target.closest('[data-por-highlight]');
+        if (!sw) return;
+        var color = sw.getAttribute('data-por-highlight');
+        applyTextProp(function (t) { t.set('textBackgroundColor', color); });
+        var chip = root.querySelector('#por-highlight-chip');
+        if (chip && color) chip.style.background = color;
+        closePickers();
+      });
+    }
+    var lineSpacingPop = root.querySelector('#por-line-spacing-pop');
+    if (lineSpacingPop) {
+      lineSpacingPop.addEventListener('click', function (event) {
+        var b = event.target.closest && event.target.closest('[data-por-line-height]');
+        if (!b) return;
+        var lh = Number(b.getAttribute('data-por-line-height'));
+        applyTextProp(function (t) { t.set('lineHeight', lh); });
         closePickers();
       });
     }
@@ -5131,6 +5194,9 @@
         linethrough: !!L.strike,
         textAlign: L.align,
         fill: L.color,
+        lineHeight: L.lineHeight,
+        textBackgroundColor: L.highlight,
+        porScript: L.script,
         set: function (k, v) {
           if (k && typeof k === 'object') Object.assign(this, k); else this[k] = v;
           return this;
@@ -5147,6 +5213,9 @@
               strike: !!this.linethrough,
               align: this.textAlign,
               color: PorFab.toHexColor(this.fill) || '#111111',
+              lineHeight: this.lineHeight,
+              highlight: this.textBackgroundColor || '',
+              script: this.porScript || '',
             }),
           });
           shape.dirty = true;
@@ -5176,7 +5245,7 @@
       pushHistory();
       targets.forEach(function (t) {
         mutator(t);
-        if (t.isLabelProxy) t.commit();
+        if (t.isLabelProxy) t.commit(); else PorFab.applyTextScript(t);
       });
       state.fabricCanvas.requestRenderAll();
       syncOverlaysFromFabric();
@@ -5199,9 +5268,27 @@
               return /^\s*•\s/.test(line) ? line.replace(/^\s*•\s/, '') : ('• ' + line);
             });
             t.set('text', lines.join('\n'));
+          } else if (cmd === 'number') {
+            var rows = String(t.text || '').split('\n');
+            var numbered = rows.every(function (line) { return !line.trim() || /^\s*\d+\.\s/.test(line); });
+            var n = 0;
+            t.set('text', rows.map(function (line) {
+              if (numbered) return line.replace(/^(\s*)\d+\.\s/, '$1');
+              if (!line.trim()) return line;
+              n += 1;
+              return n + '. ' + line.replace(/^(\s*)(•|\d+\.)\s/, '$1');
+            }).join('\n'));
+          } else if (cmd === 'indent') {
+            t.set('text', String(t.text || '').split('\n').map(function (line) { return line.trim() ? '    ' + line : line; }).join('\n'));
+          } else if (cmd === 'outdent') {
+            t.set('text', String(t.text || '').split('\n').map(function (line) { return line.replace(/^( {1,4}|\t)/, ''); }).join('\n'));
+          } else if (cmd === 'sub' || cmd === 'sup') {
+            t.set('porScript', t.porScript === cmd ? '' : cmd);
           }
         });
-        try { document.execCommand(cmd === 'strike' ? 'strikeThrough' : cmd, false, null); } catch (err) { /* ignore */ }
+        if (['bold', 'italic', 'underline', 'strike'].indexOf(cmd) !== -1) {
+          try { document.execCommand(cmd === 'strike' ? 'strikeThrough' : cmd, false, null); } catch (err) { /* ignore */ }
+        }
       });
     });
     root.querySelectorAll('[data-por-align]').forEach(function (btn) {

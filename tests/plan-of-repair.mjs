@@ -232,7 +232,7 @@ const shell = await page.evaluate(() => {
   if (toolbar && printBtn) {
     const t = toolbar.getBoundingClientRect();
     const p = printBtn.getBoundingClientRect();
-    const undo = document.querySelector('#por-undo')?.getBoundingClientRect();
+    const undo = document.querySelector('#por-toggle-grid')?.getBoundingClientRect();
     // Tall PowerPoint ribbon: Print stays inside the toolbar band beside Editing.
     printSameRow = p.top >= t.top - 2 && p.bottom <= t.bottom + 2 &&
       (undo ? p.top < undo.bottom + 10 : p.top < t.top + 80);
@@ -1904,7 +1904,7 @@ async function toolbarPrintRow(width) {
     if (!toolbar || !printBtn) return { ok: false };
     const tr = toolbar.getBoundingClientRect();
     const pr = printBtn.getBoundingClientRect();
-    const undo = document.querySelector('#por-undo')?.getBoundingClientRect();
+    const undo = document.querySelector('#por-toggle-grid')?.getBoundingClientRect();
     return {
       ok: pr.top < (undo ? undo.bottom + 8 : tr.top + 40) && pr.bottom <= tr.bottom + 1,
       toolbarH: tr.height,

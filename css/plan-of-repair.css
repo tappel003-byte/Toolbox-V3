@@ -2099,3 +2099,10 @@ body.is-por-printing .por-print {
 .por-tabs__tab[hidden] {
   display: none;
 }
+
+/* Round A (Nov 17, 2026): quick-access undo/redo, highlight glyph, Slides group */
+.por-quick { display: inline-flex; gap: 2px; margin-left: auto; margin-right: 8px; }
+.por-hl-glyph { font: 700 13px Calibri, Arial, sans-serif; line-height: 1; }
+.por-swatch--none { grid-column: 1 / -1; width: auto; font-size: 12px; background: #fff; }
+.por-slide-plus { font-size: 18px; line-height: 1; }
+.por-weight[data-por-line-height] { min-width: 44px; text-align: center; }
