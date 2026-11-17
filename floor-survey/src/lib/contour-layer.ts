@@ -24,7 +24,25 @@
  * See DECISIONS.md "Layers and levels".
  */
 import { composeReportTopoFigure } from "./report-topo-figure";
+import { isOffSurface } from "./special-points";
 import type { Floor, RenderSettings, SurveyPoint } from "./types";
+
+/**
+ * What a contour was drawn from: the readings that shape the surface, so a
+ * layer can be told apart from the survey as it stands now. A drain or watch
+ * reading is off the surface, so marking one changes this; a changed value or
+ * position does too. Short hash, not a record -- it only has to differ.
+ */
+export function contourSurfaceSignature(points: SurveyPoint[]): string {
+  const rows = (Array.isArray(points) ? points : [])
+    .filter((p) => p && !isOffSurface(p))
+    .map((p) => `${p.id}|${Math.round(p.x)}|${Math.round(p.y)}|${p.value}|${p.transitionId || ""}`)
+    .sort();
+  let h = 5381;
+  const text = rows.join(";");
+  for (let i = 0; i < text.length; i += 1) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  return `${rows.length}:${h.toString(36)}`;
+}
 
 export type ContourLayerResult = {
   dataUrl: string;
@@ -37,6 +55,7 @@ export type ContourLayerResult = {
    *  it is what gets stored on the level. */
   extent: { x: number; y: number; w: number; h: number };
   pointCount: number;
+  surfaceSig?: string;
   /** The boundary this covers, or "Combined" — so the field can see what it
    *  is looking at instead of inferring it from the shape. */
   areaName: string;
@@ -114,6 +133,7 @@ export async function composeContourLayer(options: {
     height: composed.height,
     extent: composed.extent,
     pointCount: points.length,
+    surfaceSig: contourSurfaceSignature(points),
     areaName: composed.title || "Combined",
   };
 }

@@ -833,3 +833,7 @@ device or is look-only from then on.
 ## Process
 
 - Build one vertical slice at a time; the repository has one current milestone.
+
+## A sent contour is redrawn on Save when the readings changed (Nov 17, 2026)
+
+The contour layer is a picture made when Done (or Send) is pressed, so a drain marked, or a reading corrected, afterwards left Distress and the report's Picture Locations sheet showing the old surface -- drain rings in the contour while the Floor Level Survey sheet, which is drawn live, left them out (Tim, same job). Each layer now records a short signature of the readings that shape the surface (`surfaceSig`; drain and watch readings are off the surface so they are not in it). Save compares it and redraws a layer that no longer matches, keeping the same boundary. Save never creates a layer -- Done still decides when a level first gets one -- and a layer saved before this change has no signature, so its first Save redraws it.

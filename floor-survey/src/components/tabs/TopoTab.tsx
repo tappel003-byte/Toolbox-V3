@@ -1806,6 +1806,7 @@ export function TopoTab({
                                   width: drawn.extent.w,
                                   height: drawn.extent.h,
                                   pointCount: drawn.pointCount,
+                                  surfaceSig: drawn.surfaceSig,
                                 });
                                 setLayerState("done");
                                 setLayerMessage(

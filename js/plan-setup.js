@@ -454,6 +454,9 @@
       // sloped to drain is not the house -- so the field has to be able to see
       // which one is on screen.
       areaName: typeof layer.areaName === 'string' ? layer.areaName : '',
+      // What the readings looked like when it was drawn, so a layer that no
+      // longer matches the survey can be told apart and redrawn.
+      surfaceSig: typeof layer.surfaceSig === 'string' ? layer.surfaceSig : '',
     };
     if (!contourLayer(canvas)) {
       canvas.contourLayer = previous || null;

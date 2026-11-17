@@ -334,10 +334,46 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
       saveLock.current = false;
       return;
     }
-    showSaveStatus("Saved · Recovery PDF updated.", "ok");
+    // A contour already sent from this level is a picture of the readings as
+    // they were then. Marking a drain, or correcting a reading, after that
+    // leaves Distress and the report's Picture sheets showing the old surface.
+    // So Save redraws a layer that no longer matches -- never creates one;
+    // Done still decides when a level first gets one.
+    let redrawn = false;
+    try {
+      const [{ composeContourLayer, contourSurfaceSignature }, { persistContourLayer, readContourLayer }] =
+        await Promise.all([import("@/lib/contour-layer"), import("@/lib/db")]);
+      const held = await readContourLayer(activeFloor.id).catch(() => null);
+      if (held && held.surfaceSig !== contourSurfaceSignature(points)) {
+        const areas = Array.isArray(activeFloor.areas) ? activeFloor.areas : [];
+        const keptArea = held.areaName ? areas.find((a) => a && a.name === held.areaName) : null;
+        const drawn = await composeContourLayer({
+          floor: activeFloor,
+          points,
+          settings,
+          areaId: keptArea ? keptArea.id : null,
+        });
+        if (drawn) {
+          await persistContourLayer(activeFloor.id, drawn.dataUrl, {
+            areaName: drawn.areaName,
+            width: drawn.extent.w,
+            height: drawn.extent.h,
+            pointCount: drawn.pointCount,
+            surfaceSig: drawn.surfaceSig,
+          });
+          redrawn = true;
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    showSaveStatus(
+      redrawn ? "Saved · Recovery PDF updated · Contour redrawn." : "Saved · Recovery PDF updated.",
+      "ok",
+    );
     setSaving(false);
     saveLock.current = false;
-  }, [activeFloor, points, showSaveStatus]);
+  }, [activeFloor, points, settings, showSaveStatus]);
 
   /**
    * Done taking points.
@@ -394,6 +430,7 @@ export function HostWorkspace({ customerFileId, onBack, onReturnToReport }: Host
         width: drawn.extent.w,
         height: drawn.extent.h,
         pointCount: drawn.pointCount,
+        surfaceSig: drawn.surfaceSig,
       });
       showSaveStatus(`Done · ${drawn.areaName} contour sent.`, "ok");
     } catch (err) {

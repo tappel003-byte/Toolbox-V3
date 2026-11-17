@@ -518,7 +518,7 @@ export async function persistFloorSurveyRecoveryPdf(canvasId: string, dataUrl: s
 export async function persistContourLayer(
   canvasId: string,
   dataUrl: string,
-  meta: { width: number; height: number; pointCount?: number; areaName?: string },
+  meta: { width: number; height: number; pointCount?: number; areaName?: string; surfaceSig?: string },
 ) {
   if (!dataUrl || !dataUrl.startsWith("data:image/")) {
     throw new Error("Contour layer was not produced");
@@ -542,6 +542,7 @@ export async function persistContourLayer(
     surveyDate: (record.floorSurvey && record.floorSurvey.inspectionDate) || null,
     pointCount: meta.pointCount ?? 0,
     areaName: meta.areaName || "",
+    surfaceSig: meta.surfaceSig || "",
   });
   if (!applied) {
     await window.ToolboxDB.deleteMedia(mediaId);
