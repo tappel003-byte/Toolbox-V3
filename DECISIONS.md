@@ -837,3 +837,7 @@ device or is look-only from then on.
 ## A sent contour is redrawn on Save when the readings changed (Nov 17, 2026)
 
 The contour layer is a picture made when Done (or Send) is pressed, so a drain marked, or a reading corrected, afterwards left Distress and the report's Picture Locations sheet showing the old surface -- drain rings in the contour while the Floor Level Survey sheet, which is drawn live, left them out (Tim, same job). Each layer now records a short signature of the readings that shape the surface (`surfaceSig`; drain and watch readings are off the surface so they are not in it). Save compares it and redraws a layer that no longer matches, keeping the same boundary. Save never creates a layer -- Done still decides when a level first gets one -- and a layer saved before this change has no signature, so its first Save redraws it.
+
+## The report's title block names the company whenever one is filled in (Nov 17, 2026)
+
+Tim: the company was filled in and the title block still read "RVT Residence" (the last word of "Javier Arguello, RVT"). The title block now uses the company as written for any file that has one, Business type or not; with no company it is still "<Last> Residence". Only the report's title block changed -- the Cabinet and file names still follow the file's type.

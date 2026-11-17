@@ -277,6 +277,10 @@ Tim, after the drop box worked on the first real use: "Let's get rid of share lo
 
 Shapes take text (double-click / Enter / F2 / type); the Text button arms a tool and places the box where you click or drag. `js/por-fabric.js`, `js/plan-of-repair.js`. Shell v488. Tests: `por-shape-text` 23/23, `plan-of-repair` 108/108. See `DECISIONS.md`.
 
+### Claude Code: title block names the company (Nov 17, 2026) — branch `claude/title-block-company-2ac5` (NOT merged; includes the stale-contour fix below)
+
+`residenceTitle` uses `companyName` whenever filled, any file type. `customer-type-and-new-file` 23/23 (new case fails without the change). Shell v493.
+
 ### Claude Code: stale contour layer (drains in Picture Locations topo) (Nov 17, 2026) — branch `claude/drain-picture-topo-2ac5` (NOT merged)
 
 Cause: the contour layer is a snapshot taken at Done/Send; drains marked afterwards were not in it. Fix: layer carries `surfaceSig`; Save redraws a mismatched layer (never creates one). `tests/contour-layer-refresh.mjs` 10/10; `contour-layer` 49/49; `floor-survey-drain` 32/32. Bundle rebuilt. Shell v492. Tim's job needs one Save in Floor Survey to refresh its existing layer.

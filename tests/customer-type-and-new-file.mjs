@@ -237,6 +237,35 @@ check('The report sheet titles the business by its company, not "<Word> Residenc
   /VCA Hospital 832/i.test(sheetText) && !/832\s+Residence/i.test(sheetText) && !/Reyes\s+Residence/i.test(sheetText),
   JSON.stringify(sheetText.replace(/\s+/g, ' ').slice(0, 400)));
 
+// ===== 10. A personal-type file with a company filled in is titled by the company too (Tim, Nov 17, 2026)
+await clearAll();
+await page.evaluate(async () => {
+  const c = document.createElement('canvas'); c.width = 800; c.height = 600; const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, 800, 600); x.strokeStyle = '#111'; x.strokeRect(20, 20, 760, 560);
+  await ToolboxDB.putMedia('plan-biz2', c.toDataURL('image/jpeg', 0.9));
+  const rec = ToolboxApp.blankCustomerFile('biz-personal'); ToolboxPlanSetup.ensurePlanSetup(rec);
+  rec.firstName = 'Javier'; rec.lastName = 'Arguello, RVT'; rec.companyName = 'VCA Hospital 832';
+  rec.propertyAddress = '8414 4th Street Northwest, Albuquerque, NM 87114';
+  const cv = rec.planSetup.canvases[0]; cv.name = 'Main Level'; cv.plan = { id: 'plan-biz2', width: 800, height: 600 };
+  const poly = [{ x: 40, y: 40 }, { x: 760, y: 40 }, { x: 760, y: 560 }, { x: 40, y: 560 }];
+  rec.floorSurvey = { id: 'fs-b', inspectionDate: '2026-11-13', byCanvasId: { [cv.id]: { canvasId: cv.id, points: [1, 2, 3, 4, 5, 6].map((n) => ({ id: 'p' + n, floorId: cv.id, index: n, x: 100 + n * 90, y: 200, value: 5 + n * 0.3 })), areas: [{ id: 'a1', name: 'Main Level', polygon: poly, createdAt: 1 }], boundary: poly } } };
+  await ToolboxDB.saveCustomerFile(rec);
+});
+await page.goto(BASE + '#/file/biz-personal/report', { waitUntil: 'networkidle0' });
+await page.waitForFunction(() => !!document.querySelector('.rb-sheet'), { timeout: 40000 });
+await wait(4500);
+await page.evaluate(() => {
+  const t = [...document.querySelectorAll('.rb-thumb[data-page-id^="floor-"]')].find((el) => !/reserved/i.test(el.getAttribute('data-page-id') || '')) || document.querySelector('.rb-thumb[data-page-id^="floor-"]');
+  t?.click();
+});
+await page.waitForFunction(() => !!document.querySelector('[data-rb-floor-import]') || !!document.querySelector('[data-rb-floor-box^="topo"]'), { timeout: 25000 });
+await page.evaluate(() => document.querySelector('[data-rb-floor-import]')?.click());
+await wait(3500);
+const sheetText2 = (await page.evaluate(() => document.querySelector('.rb-sheet:not(.rb-sheet--thumb)')?.innerText || '')).replace(/\s+/g, ' ');
+check('A personal-type file with a company is titled by the company, not "RVT Residence"',
+  /VCA Hospital 832/i.test(sheetText2) && !/832\s+Residence/i.test(sheetText2) && !/RVT\s+Residence/i.test(sheetText2),
+  JSON.stringify(sheetText2.replace(/\s+/g, ' ').slice(0, 400)));
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
 await browser.close();

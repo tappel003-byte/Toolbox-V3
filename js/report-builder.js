@@ -311,9 +311,10 @@
     return (first + ' ' + last).trim();
   }
 
-  /** A business is titled by its company, as written; a person's file reads "<Last> Residence". */
+  /** A file with a company is titled by that company, as written, whatever its type (Tim, Nov 17, 2026: the
+   *  company was filled in and the title block still read "RVT Residence"); otherwise "<Last> Residence". */
   function residenceTitle(name, record) {
-    if (record && record.customerType === 'business' && typeof record.companyName === 'string' && record.companyName.trim()) {
+    if (record && typeof record.companyName === 'string' && record.companyName.trim()) {
       return record.companyName.trim();
     }
     var parts = String(name || '').trim().split(/\s+/).filter(Boolean);
