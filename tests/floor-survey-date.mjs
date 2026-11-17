@@ -247,12 +247,12 @@ const reopened = await page.evaluate(async (cfId, canvasId) => {
   if (more) more.click();
   await new Promise((r) => setTimeout(r, 200));
   const setup = [...document.querySelectorAll('[role=menuitem]')].find((b) =>
-    /^Setup$/i.test((b.textContent || '').trim()),
+    /^Boundary & exclusions$/i.test((b.textContent || '').trim()),
   );
   if (setup) setup.click();
   await new Promise((r) => setTimeout(r, 500));
   const areasTab = [...document.querySelectorAll('button')].find(
-    (b) => (b.textContent || '').trim() === '3. Topo boundary',
+    (b) => (b.textContent || '').trim() === '1. Topo boundary',
   );
   areasTab?.click();
   await new Promise((r) => setTimeout(r, 400));

@@ -188,21 +188,15 @@ async function clickCpTab(text) {
   await new Promise((r) => setTimeout(r, 150));
 }
 
+// The H/L/Δ pill size is a − / + stepper under Readings > Accessories (since Oct 30).
 async function bumpStatsPillPlus() {
   return page.evaluate(() => {
     const body = document.querySelector('[data-fs-cp-section-body]');
     if (!body) return { ok: false, reason: 'no body' };
-    const rows = [...body.querySelectorAll('div')].filter((d) =>
-      /Stats pill size/i.test(d.textContent || ''),
-    );
-    const row = rows[0];
-    if (!row) return { ok: false, reason: 'no stepper', text: body.innerText };
-    const buttons = [...row.querySelectorAll('button')];
-    const inc = buttons[buttons.length - 1];
-    if (!inc) return { ok: false, reason: 'no plus' };
+    const inc = body.querySelector('button[aria-label="Increase H/L/Δ size"]');
+    if (!inc) return { ok: false, reason: 'no stepper', text: body.innerText };
     for (let i = 0; i < 4; i++) inc.click();
-    const val = row.querySelector('input')?.value || row.innerText;
-    return { ok: true, val };
+    return { ok: true };
   });
 }
 
@@ -243,10 +237,9 @@ async function openLegendHlRail() {
     document.querySelector('[data-rb-floor-task="topo"]')?.click();
   });
   await new Promise((r) => setTimeout(r, 500));
-  await page.evaluate(() => {
-    document.querySelector('[data-rb-rail-tab="legendhl"]')?.click() ||
-      document.querySelector('[data-rb-topo-group="legendhl"]')?.click();
-  });
+  await page.evaluate(() => document.querySelector('[data-rb-rail-tab="readings"]')?.click());
+  await new Promise((r) => setTimeout(r, 400));
+  await page.evaluate(() => document.querySelector('#fs-cp-section-accessories')?.click());
   await new Promise((r) => setTimeout(r, 600));
 }
 
@@ -255,28 +248,10 @@ async function bumpRailStatsPill() {
     const host = document.querySelector('.rb-ws__controls') ||
       document.querySelector('#rb-rail') ||
       document.body;
-    const label = [...host.querySelectorAll('*')].find((el) => {
-      const t = (el.textContent || '').trim();
-      return t === 'Stats pill size' || /^Stats pill size/i.test(t);
-    });
-    if (!label) {
-      return {
-        ok: false,
-        reason: 'no stepper',
-        text: (host.innerText || '').slice(0, 500),
-      };
-    }
-    let row = label;
-    for (let i = 0; i < 6 && row; i++) {
-      if (row.querySelectorAll('button').length >= 2) break;
-      row = row.parentElement;
-    }
-    const buttons = [...(row?.querySelectorAll('button') || [])];
-    const inc = buttons[buttons.length - 1];
-    if (!inc) return { ok: false, reason: 'no plus' };
-    const before = row?.querySelector('input')?.value || '';
+    const inc = host.querySelector('button[aria-label="Increase H/L/Δ size"]');
+    if (!inc) return { ok: false, reason: 'no stepper', text: (host.innerText || '').slice(0, 500) };
     for (let i = 0; i < 3; i++) inc.click();
-    return { ok: true, before, after: row?.querySelector('input')?.value || '' };
+    return { ok: true };
   });
 }
 
@@ -326,7 +301,8 @@ const beforeReport = await page.evaluate(async (id) => {
 await reachTopo(a.id);
 await openControlPanel();
 await clickCpTab('Readings');
-await clickCpTab('High / Low');
+await page.evaluate(() => document.querySelector('#fs-cp-section-accessories')?.click());
+await new Promise((r) => setTimeout(r, 300));
 const bumped = await bumpStatsPillPlus();
 check('Capture Control panel opened Stats pill stepper', bumped.ok, JSON.stringify(bumped));
 

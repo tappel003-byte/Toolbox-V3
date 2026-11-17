@@ -95,7 +95,8 @@ await page.evaluate(async (id) => {
   // An aerial on the cover. Every Floor Survey sheet is handed it, and it is
   // the piece that was not being held across slides -- without one here the
   // fixture could not see the fault at all.
-  const aerialId = 'report-cover-overview-migrate';
+  // Named for this job: an aerial that names another job is dropped on open.
+  const aerialId = 'report-cover-overview-' + id;
   await window.ToolboxDB.putMedia(aerialId, plan);
   rec.reportBuilder = rec.reportBuilder || {};
   rec.reportBuilder.coverLayout = rec.reportBuilder.coverLayout || {};
@@ -203,7 +204,10 @@ const rewritten = await page.evaluate(async (id) => {
     p.meta.layout = JSON.parse(JSON.stringify(arrangedLayout));
     p.meta.floorView = Object.assign({}, p.meta.floorView || {}, { legendScale: n === 1 ? 1 : 1.6 });
   });
-  rb.floorLayout = window.ToolboxReportFloorLayout.defaultLayout();
+  // A report from before the book record has no floorLayout at all. (Since Nov 5 a book record that exists
+  // wins over a slide's copy -- tests/report-floor-legacy-vs-book.mjs -- so a default one here would be the
+  // book's answer, not a stale copy.)
+  delete rb.floorLayout;
   await window.ToolboxDB.saveCustomerFile(rec);
   return { floorPages: n, bookIsDefault: true };
 }, FILE);

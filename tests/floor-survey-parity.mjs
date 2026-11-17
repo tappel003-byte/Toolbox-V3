@@ -114,8 +114,8 @@ const launch = await page.evaluate(() => {
   const hostDetails = (document.body.innerText || '').includes('Customer and plan come from the Customer File');
   const surveyDateWizard = (document.body.innerText || '').includes('1. Survey date');
   const provenSteps =
-    (document.body.innerText || '').includes('1. Details') &&
-    (document.body.innerText || '').includes('3. Topo boundary');
+    (document.body.innerText || '').includes('1. Topo boundary') &&
+    (document.body.innerText || '').includes('2. Excluded');
   const cs = getComputedStyle(document.querySelector('.floor-survey-host') || document.body);
   const bg = cs.backgroundColor;
   const rootBg = getComputedStyle(document.documentElement).getPropertyValue('--background').trim();
@@ -135,8 +135,8 @@ const launch = await page.evaluate(() => {
 });
 
 check('Launch lands on proven Setup (not invented Survey-date wizard)', !launch.surveyDateWizard && !launch.hostDetails, JSON.stringify({ surveyDateWizard: launch.surveyDateWizard, hostDetails: launch.hostDetails }));
-check('Proven Setup step labels present', launch.provenSteps, launch.tabs.join(' | '));
-check('Active step is Topo boundary', launch.activeTab === '3. Topo boundary', String(launch.activeTab));
+check('Setup steps are Topo boundary then Excluded (Setup was trimmed to these on Oct 30; Details and Plan steps are gone)', launch.provenSteps, launch.tabs.join(' | '));
+check('Active step is Topo boundary', launch.activeTab === '1. Topo boundary', String(launch.activeTab));
 check('Boundary-ready hint shown', launch.hint);
 check('Plan canvas present for boundary drawing', launch.hasCanvas);
 check(
@@ -147,26 +147,16 @@ check(
 
 await page.screenshot({ path: `${OUT}/fs_parity_launch_topo_boundary_desktop.png` });
 
-// Click Plan step — must NOT offer upload when planLocked
-await page.evaluate(() => {
-  const btn = [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === '2. Plan');
-  btn?.click();
-});
-await new Promise((r) => setTimeout(r, 400));
-const planStep = await page.evaluate(() => {
+// The Customer File owns the plan: Setup offers no way to upload, replace or add a plan.
+const planOffers = await page.evaluate(() => {
   const t = document.body.innerText || '';
-  return {
-    upload: /Upload plan|Replace plan/.test(t),
-    addFloor: /Add floor/.test(t),
-    fromCf: /Customer File/.test(t),
-  };
+  return { upload: /Upload plan|Replace plan/.test(t), addFloor: /Add floor/.test(t) };
 });
-check('Plan step does not offer upload/replace (CF owns plan)', !planStep.upload && !planStep.addFloor, JSON.stringify(planStep));
-check('Plan step acknowledges Customer File plan', planStep.fromCf);
+check('Setup does not offer upload/replace (Customer File owns the plan)', !planOffers.upload && !planOffers.addFloor, JSON.stringify(planOffers));
 
 // Back to areas and draw a simple boundary via taps on canvas
 await page.evaluate(() => {
-  const btn = [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === '3. Topo boundary');
+  const btn = [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === '1. Topo boundary');
   btn?.click();
 });
 await new Promise((r) => setTimeout(r, 400));

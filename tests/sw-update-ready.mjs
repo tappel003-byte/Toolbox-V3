@@ -20,7 +20,8 @@ catch { puppeteer = require('/tmp/node_modules/puppeteer-core'); }
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = '/opt/cursor/artifacts';
-const SHELL = 'toolbox-shell-v379';
+// Whatever shell version sw.js carries now; the test makes shell A and shell B out of it.
+const SHELL = (await readFile(path.join(ROOT, 'sw.js'), 'utf8')).match(/CACHE_NAME = '([^']+)'/)[1];
 const results = [];
 function check(name, ok, detail = '') {
   results.push({ name, ok: !!ok, detail });
@@ -270,9 +271,9 @@ await mkdir(OUT, { recursive: true });
   const port = 8791;
   let serveB = false;
   const swA = (await readFile(path.join(ROOT, 'sw.js'), 'utf8'))
-    .replace(new RegExp(SHELL, 'g'), 'toolbox-shell-v378-testA');
+    .replace(new RegExp(SHELL, 'g'), SHELL + '-testA');
   const swB = (await readFile(path.join(ROOT, 'sw.js'), 'utf8'))
-    .replace(new RegExp(SHELL, 'g'), 'toolbox-shell-v379-testB');
+    .replace(new RegExp(SHELL, 'g'), SHELL + '-testB');
 
   const server = createServer(async (req, res) => {
     try {
@@ -415,7 +416,7 @@ await mkdir(OUT, { recursive: true });
       ready: !!(window.ToolboxUpdate && window.ToolboxUpdate.isAvailable && window.ToolboxUpdate.isAvailable()),
       text: btn ? btn.textContent.trim() : null,
       keys,
-      hasB: keys.some((k) => /v379-testB/.test(k)),
+      hasB: keys.some((k) => /-testB$/.test(k)),
       hasA: keys.some((k) => /v378-testA/.test(k)),
     };
   });
@@ -449,7 +450,7 @@ await mkdir(OUT, { recursive: true });
         ready: window.ToolboxUpdate.isAvailable(),
         text: btn.textContent.trim(),
         updating: /Updating/i.test(btn.textContent || ''),
-        hasB: keys.some((k) => /v379-testB/.test(k)),
+        hasB: keys.some((k) => /-testB$/.test(k)),
       };
     });
     check('Refresh while not red still reloads once into current shell',

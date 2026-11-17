@@ -147,8 +147,8 @@ const fieldChrome = await page.evaluate(() => {
   };
 });
 check(
-  'Floor Survey menu keeps Review, Setup, and Transitions',
-  fieldChrome.items.includes('Review') && fieldChrome.items.includes('Setup') && fieldChrome.items.includes('Transitions'),
+  'Floor Survey menu keeps Review, Boundary & exclusions (Setup, renamed Oct 30), and Transitions',
+  fieldChrome.items.includes('Review') && fieldChrome.items.includes('Boundary & exclusions') && fieldChrome.items.includes('Transitions'),
   fieldChrome.items.join(', '),
 );
 check(

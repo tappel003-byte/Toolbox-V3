@@ -306,6 +306,9 @@ await p.evaluate(async () => {
   await new Promise((r) => setTimeout(r, 400));
   document.querySelector('[data-rb-rail-tab="readings"]')?.click();
   await new Promise((r) => setTimeout(r, 600));
+  // Since Oct 30 the Readings group is Show / Format / Accessories; the reset button is under Format.
+  document.querySelector('#fs-cp-section-format')?.click();
+  await new Promise((r) => setTimeout(r, 500));
   document.querySelectorAll('details').forEach((d) => { d.open = true; });
 });
 await new Promise((r) => setTimeout(r, 1500));
@@ -383,6 +386,8 @@ const delayed = await p.evaluate(async (f, cid) => {
   await new Promise((r) => setTimeout(r, 400));
   document.querySelector('[data-rb-rail-tab="readings"]')?.click();
   await new Promise((r) => setTimeout(r, 600));
+  document.querySelector('#fs-cp-section-format')?.click();
+  await new Promise((r) => setTimeout(r, 500));
   document.querySelectorAll('details').forEach((d) => { d.open = true; });
   await new Promise((r) => setTimeout(r, 400));
   const btn = [...document.querySelectorAll('button')]
@@ -459,6 +464,8 @@ const stale = await p.evaluate(async (f, cid) => {
   await new Promise((r) => setTimeout(r, 400));
   document.querySelector('[data-rb-rail-tab="readings"]')?.click();
   await new Promise((r) => setTimeout(r, 600));
+  document.querySelector('#fs-cp-section-format')?.click();
+  await new Promise((r) => setTimeout(r, 500));
   document.querySelectorAll('details').forEach((d) => { d.open = true; });
   await new Promise((r) => setTimeout(r, 400));
   const btn = [...document.querySelectorAll('button')]

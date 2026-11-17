@@ -226,9 +226,9 @@ check('Control panel pill opens the panel', opened.ok, opened.text?.slice(0, 200
 
 let rows = await tabLabels();
 check(
-  'Phone Contours shows Legend Display Colors Lines, Legend first and selected',
+  'Phone Contours shows Display Colors Lines, Display first and selected (the Legend switch lives under Display since Oct 30)',
   rows[0]?.map((t) => t.text).join('|') === 'Contours|Readings' &&
-    rows[1]?.map((t) => t.text).join('|') === 'Legend|Display|Colors|Lines' &&
+    rows[1]?.map((t) => t.text).join('|') === 'Display|Colors|Lines' &&
     rows[1]?.[0]?.selected === true,
   JSON.stringify(rows),
 );
@@ -268,8 +268,8 @@ await page.screenshot({ path: `${OUT}/fs-cp-phone-contours-lines.png` });
 check('Readings parent opens', await clickTab('Readings'));
 rows = await tabLabels();
 check(
-  'Readings children are Show, Format, and High / Low',
-  rows[1]?.map((t) => t.text).join('|') === 'Show|Format|High / Low' && rows[1][0].selected,
+  'Readings children are Show, Format, and Accessories (High / Low sits under Accessories since Oct 30)',
+  rows[1]?.map((t) => t.text).join('|') === 'Show|Format|Accessories' && rows[1][0].selected,
   JSON.stringify(rows[1]),
 );
 lay = await layout();
@@ -300,11 +300,11 @@ check(
 );
 await page.screenshot({ path: `${OUT}/fs-cp-phone-readings-format.png` });
 
-check('High / Low tab opens', await clickTab('High / Low'));
+check('Accessories tab opens', await clickTab('Accessories'));
 const hl = await bodyText();
 check(
-  'High / Low has the marker switch, marker size, and stats pill size',
-  /High \/ low/.test(hl) && /Marker size/.test(hl) && /Stats pill size/.test(hl),
+  'Accessories has the High / Low marker switch, marker size, and stats pill size',
+  /High \/ low/.test(hl) && /High\/Low size/.test(hl) && /H\/L\/Δ size/.test(hl),
   hl.replace(/\n/g, ' | '),
 );
 check('Capture panel does not invent a stats-pill visibility switch', !/H\/L\/Δ pill/.test(hl) || !hl.includes('H/L/Δ pill\n'), hl.replace(/\n/g, ' | '));
@@ -336,13 +336,13 @@ const legendNow = await page.evaluate(() => {
   };
 });
 check(
-  'Reopen returns to Readings / High / Low',
-  legendNow.child === 'highlow' && legendNow.parents.find((p) => p.t === 'Readings')?.on === 'true',
+  'Reopen returns to Readings, on the section that was last open',
+  legendNow.child === 'accessories' && legendNow.parents.find((p) => p.t === 'Readings')?.on === 'true',
   JSON.stringify(legendNow),
 );
 
 await clickTab('Contours');
-await clickTab('Legend');
+await clickTab('Display');
 await new Promise((r) => setTimeout(r, 200));
 const legendKept = await page.evaluate(() => {
   const switches = [...document.querySelectorAll('[data-fs-cp-section-body] [role="switch"]')].map((s) => ({

@@ -277,6 +277,10 @@ Tim, after the drop box worked on the first real use: "Let's get rid of share lo
 
 Shapes take text (double-click / Enter / F2 / type); the Text button arms a tool and places the box where you click or drag. `js/por-fabric.js`, `js/plan-of-repair.js`. Shell v488. Tests: `por-shape-text` 23/23, `plan-of-repair` 108/108. See `DECISIONS.md`.
 
+### Claude Code: eleven out-of-date test suites brought in step (Nov 17, 2026) — branch `claude/tests-in-step-2ac5` (tests only; NOT merged)
+
+Each suite was checking an older screen: Control panel regrouped Oct 30 (Legend under Display; High/Low + pill size under Accessories), Setup trimmed to Topo boundary / Excluded (Oct 30), the chip's tap-to-size HUD, shell names hard-coded in sw-update-ready, Nov 5 book-layout-wins rule, aerial named per job. No product code changed; every suite now passes: control-panel 27, correction-in-report 26, date 11, diagnostics 31, parity 21, topo-legend 35, report-highlow-output 19, sizing-ownership 11, sw-update-ready 26, floor-layout-migration 10. report-builder-skeleton failed once and passed 53/53 on rerun (flaky).
+
 ### Claude Code: Crop / Restore on the report's plan (Nov 17, 2026) — branch `claude/rb-crop-2ac5`
 
 Right-click the plan -> Crop / Restore; sets the book's shared camera. `tests/report-plan-crop.mjs` 7/7; aerial 8/8 + 11/11, topo-figure-pages 28/28, rail-editable 9/9. Shell v495. Merged into integration at Tim's ask.

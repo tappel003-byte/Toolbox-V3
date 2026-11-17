@@ -60,8 +60,11 @@ check(
 );
 check(
   'Boundary H/L/Δ pills drag immediately without a long-press',
-  topoSrc.includes('const immediate = hit.kind === "pill"') &&
-    topoSrc.includes('active: immediate'),
+  // Since Oct 30 every accessory (the pill, the legend, the High/Low pins) drags as soon as it moves past a
+  // small threshold; only a point label still waits for a long-press.
+  topoSrc.includes('const accessory = hit.kind !== "label"') &&
+    topoSrc.includes('if (!accessory) {') &&
+    topoSrc.includes('ACCESSORY_MOVE_PX'),
 );
 check(
   'Topo boundary selector pill is draggable',
@@ -314,7 +317,7 @@ function sampleLegend(page, legendOrigin = { x: 24, y: 24 }, scaleHint = 1.5) {
 
 function readChip(page) {
   return page.evaluate(() => {
-    const el = document.querySelector('[aria-label="Elevation stats — drag to move"]');
+    const el = document.querySelector('[aria-label^="Elevation stats"]');
     if (!el) return { present: false, text: '' };
     const style = getComputedStyle(el);
     const text = (el.textContent || '').replace(/\s+/g, '');
@@ -328,7 +331,7 @@ function readChip(page) {
 }
 
 async function legendSwitchState(page) {
-  await page.click('[aria-label="Labels & layers"]');
+  await page.click('[aria-label="Control panel"]');
   await new Promise((r) => setTimeout(r, 300));
   return page.evaluate(() => {
     const label = [...document.querySelectorAll('label')].find((n) => (n.textContent || '').trim() === 'Legend');
@@ -576,7 +579,7 @@ function readLevelChrome(page) {
     const text = document.body.innerText || '';
     const floorSel = document.querySelector('[data-floor-selector]');
     const boundarySel = document.querySelector('select[aria-label="Topo boundary"]');
-    const stats = document.querySelector('[aria-label="Elevation stats — drag to move"]');
+    const stats = document.querySelector('[aria-label^="Elevation stats"]');
     const box = stats ? stats.getBoundingClientRect() : null;
     const style = stats ? getComputedStyle(stats) : null;
     const visible = !!(
@@ -614,7 +617,7 @@ function chipClearOfModeToggle(page) {
       if (!a || !b) return false;
       return !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y);
     }
-    const stats = box(document.querySelector('[aria-label="Elevation stats — drag to move"]'));
+    const stats = box(document.querySelector('[aria-label^="Elevation stats"]'));
     const data = box([...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Data'));
     const topo = box([...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Topo'));
     return {
@@ -668,7 +671,7 @@ const oneChipDesktop = await page.evaluate(() => {
     const z = viewScale || 1;
     return Math.min(base * 4, Math.max(base * 0.5, base * Math.pow(z, 0.5)));
   }
-  const chips = [...document.querySelectorAll('[aria-label="Elevation stats — drag to move"]')].filter((el) => {
+  const chips = [...document.querySelectorAll('[aria-label^="Elevation stats"]')].filter((el) => {
     const box = el.getBoundingClientRect();
     const style = getComputedStyle(el);
     return box.width > 40 && Number(style.opacity) > 0.5;
@@ -741,7 +744,7 @@ await page.screenshot({ path: path.join(OUT, 'topo-zoomed-out-labels-desktop.png
 // Restore a normal fit so later legend sampling can find the plan markers.
 await openLevels(['Main Level']);
 
-await page.click('[aria-label="Labels & layers"]');
+await page.click('[aria-label="Control panel"]');
 await new Promise((r) => setTimeout(r, 300));
 await page.evaluate(() => {
   localStorage.setItem('stats-chip-size', '44');
@@ -752,7 +755,7 @@ await new Promise((r) => setTimeout(r, 200));
 await page.evaluate(() => {
   [...document.querySelectorAll('button[aria-label="Close"]')].forEach((b) => b.click());
 });
-await page.click('[aria-label="Labels & layers"]');
+await page.click('[aria-label="Control panel"]');
 await new Promise((r) => setTimeout(r, 300));
 // The size set is the size kept, and there is no Auto to fall back to. Tim:
 // "I don't think I'll ever use that setting because it's always wrong -- you
@@ -764,7 +767,7 @@ const sizedUi = await page.evaluate(() => {
     /Use Auto size/i.test(b.textContent || ''),
   );
   const output = document.querySelector('[aria-label^="Stats pill size:"]');
-  const chip = document.querySelector('[aria-label="Elevation stats — drag to move"]');
+  const chip = document.querySelector('[aria-label^="Elevation stats"]');
   return {
     hasAuto: !!autoBtn,
     label: output ? (output.getAttribute('aria-label') || output.textContent || '') : '',
@@ -774,7 +777,7 @@ const sizedUi = await page.evaluate(() => {
 });
 check(
   'the stats pill is the size it was set to, with no Auto to undo it',
-  !sizedUi.hasAuto && /44px/.test(sizedUi.label) && !/Auto/i.test(sizedUi.label) &&
+  !sizedUi.hasAuto && !/Auto/i.test(sizedUi.label) &&
     sizedUi.chipHeight === 44 && sizedUi.stored === '44',
   JSON.stringify(sizedUi),
 );
@@ -783,6 +786,14 @@ check(
 // minus greyed out at the old floor of 20: "I do not need to be limited to
 // change the pill size to the size that I want." A dense plan wants a smaller
 // pill than a sparse one, so the ends are wide and the choice is his.
+// The size HUD (tap the chip): minus / plus step by 2 and run from 8 to 120.
+await page.evaluate(() => document.querySelector('[aria-label^="Elevation stats"]')?.scrollIntoView());
+const chipBox = await page.evaluate(() => {
+  const r = document.querySelector('[aria-label^="Elevation stats"]').getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+});
+await page.mouse.click(chipBox.x, chipBox.y);
+await new Promise((r) => setTimeout(r, 400));
 const pressSize = async (which, times) => {
   for (let i = 0; i < times; i += 1) {
     await page.evaluate((aria) => document.querySelector(`[aria-label="${aria}"]`)?.click(), which);
@@ -790,19 +801,23 @@ const pressSize = async (which, times) => {
   }
 };
 const sizeNow = () => page.evaluate(() => ({
-  shown: document.querySelector('[aria-label^="Stats pill size:"]')?.textContent.trim(),
-  stored: localStorage.getItem('stats-chip-size'),
+  hud: !!document.querySelector('[aria-label="H/L/Δ size"]'),
+  height: Math.round(document.querySelector('[aria-label^="Elevation stats"]')?.getBoundingClientRect().height || 0),
 }));
-await pressSize('Decrease Stats pill size', 30);
+await pressSize('Decrease H/L/Δ size', 40);
 const smallest = await sizeNow();
-await pressSize('Increase Stats pill size', 90);
+await pressSize('Increase H/L/Δ size', 80);
 const largest = await sizeNow();
 check(
   'the pill size is not held at the old floor of 20 or ceiling of 56',
-  smallest.shown === '8px' && smallest.stored === '8' &&
-    largest.shown === '120px' && largest.stored === '120',
+  smallest.hud && smallest.height === 8 && largest.height === 120,
   JSON.stringify({ smallest, largest }),
 );
+// Put it back at the size the rest of this suite expects.
+await pressSize('Decrease H/L/Δ size', 38);
+await page.evaluate(() => {
+  [...document.querySelectorAll('button[aria-label="Close size"]')].forEach((b) => b.click());
+});
 // One size setting, every pill. The floating chip used to hold its type at
 // 9px and its padding at 4px however small the pill was set, so a level set
 // small showed pills on the plan that had shrunk and a chip that had not.
@@ -813,7 +828,7 @@ await page.evaluate(() => {
 });
 await new Promise((r) => setTimeout(r, 300));
 const smallChip = await page.evaluate(() => {
-  const el = document.querySelector('[aria-label="Elevation stats — drag to move"]');
+  const el = document.querySelector('[aria-label^="Elevation stats"]');
   if (!el) return null;
   const seg = el.children[el.children.length - 1];
   return {
@@ -836,7 +851,7 @@ const planPixels = () => page.evaluate(() =>
   ':' + [...document.querySelectorAll('canvas')].map((c) => c.toDataURL().slice(-40)).join('|'));
 const beforeTap = await planPixels();
 const tapTarget = await page.evaluate(() => {
-  const el = document.querySelector('[aria-label="Elevation stats — drag to move"]');
+  const el = document.querySelector('[aria-label^="Elevation stats"]');
   const seg = [...el.children].find((n) => /^H/.test(n.textContent.trim()));
   const r = seg.getBoundingClientRect();
   return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
@@ -870,7 +885,7 @@ check(
   legendOff.ok && legendOff.legendVisible !== true && legendOff.whiteRatio < 0.05,
   JSON.stringify(legendOff),
 );
-await page.click('[aria-label="Labels & layers"]');
+await page.click('[aria-label="Control panel"]');
 await new Promise((r) => setTimeout(r, 300));
 await page.evaluate(() => {
   const label = [...document.querySelectorAll('label')].find((n) => (n.textContent || '').trim() === 'Legend');
