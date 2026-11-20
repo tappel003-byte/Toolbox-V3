@@ -5743,3 +5743,9 @@ html.tb-refresh-locked .canvas {
   color: #5b6b78;
   margin-top: 1px;
 }
+
+/* Diagnostics home tiles (Tim, Nov 20, 2026) */
+.cf-dx-art svg { width: 72%; height: 72%; display: block; }
+.cf-dx-tile.is-soon { opacity: 0.62; cursor: default; }
+.cf-dx-tile.is-soon:hover { transform: none; box-shadow: var(--shadow-sm); border-color: var(--line); }
+.cf-dx-tile.is-soon .cf-app-btn__state { color: #8a6d1d; }

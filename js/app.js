@@ -776,7 +776,7 @@
     const exploreMatch = hash.match(/^#\/explore\/([^/]+)$/);
     if (exploreMatch) return { view: 'explore', id: decodeURIComponent(exploreMatch[1]) };
     if (hash === '#/import') return { view: 'import', id: null, allowDestinationChoice: true };
-    const match = hash.match(/^#\/file\/([^/]+)(?:\/(edit|plan|import|distress|floor|diagnostics|report|repair|tls|job-walk))?(?:\/(customer|contacts|plans))?$/);
+    const match = hash.match(/^#\/file\/([^/]+)(?:\/(edit|plan|import|distress|floor|diagnostics|report|repair|tls|job-walk))?(?:\/(customer|contacts|plans|3d))?$/);
     if (match) {
       const id = decodeURIComponent(match[1]);
       const sub = match[2] || null;
@@ -805,7 +805,9 @@
         return { view: 'home', id: id, side: 'tls' };
       }
       if (sub === 'diagnostics') {
-        return { view: 'diagnostics', id: id };
+        // Diagnostics opens on a page of tools; 3D is the first of them (Tim, Nov 20, 2026).
+        if (section === '3d') return { view: 'diagnostics', id: id };
+        return { view: 'diagnostics-home', id: id };
       }
       // Normal open is always Sandia Geo. TLS is only via /tls or Open in TLS.
       return { view: 'home', id: id, side: 'geo' };
@@ -915,6 +917,8 @@
       renderPlanOfRepair(app, route.id);
     } else if (route.view === 'diagnostics') {
       renderDiagnostics(app, route.id);
+    } else if (route.view === 'diagnostics-home') {
+      renderDiagnosticsHome(app, route.id);
     } else if (route.view === 'app-stub') {
       renderAppStub(app, route.id, route.app);
     } else if (route.view === 'local-trash') {
@@ -1095,7 +1099,7 @@
   function isMutatingRoute(view) {
     return view === 'edit' || view === 'floor' || view === 'distress' ||
       view === 'import' || view === 'report' || view === 'repair' ||
-      view === 'diagnostics' || view === 'app-stub' || view === 'job-walk';
+      view === 'diagnostics' || view === 'diagnostics-home' || view === 'app-stub' || view === 'job-walk';
   }
 
   function customerFileLocationLabel(kind, record) {
@@ -2910,6 +2914,72 @@
     });
   }
 
+  // ---- Diagnostics home: a page of tools (Tim, Nov 20, 2026) -------------------
+  //
+  // Clicking Diagnostics opens tiles, one per technique, the way the Customer File opens tiles, so each tool
+  // gets a whole screen of its own instead of competing for room in one workspace. 3D and Epoch are live; the
+  // other two are named and marked as coming.
+
+  const DX_ART = {
+    '3d': '<svg viewBox="0 0 96 96" aria-hidden="true"><path d="M10 56 48 36 86 56 48 76z" fill="#fff" stroke="#0b1f33" stroke-width="3" stroke-linejoin="round"/><path d="M10 56 48 76 48 88 10 68z" fill="#0b1f33"/><path d="M48 76 86 56 86 68 48 88z" fill="#1f4f78"/><path d="M22 52c8-14 18-18 26-8s16 8 26-2" fill="none" stroke="#c14a2b" stroke-width="4" stroke-linecap="round"/><circle cx="48" cy="38" r="4" fill="#c14a2b"/></svg>',
+    'epoch': '<svg viewBox="0 0 96 96" aria-hidden="true"><ellipse cx="38" cy="48" rx="26" ry="20" fill="#cfe0f2" stroke="#1f4f78" stroke-width="3"/><ellipse cx="58" cy="48" rx="26" ry="20" fill="#f6d9cd" fill-opacity=".75" stroke="#c14a2b" stroke-width="3"/><path d="M30 80h36M60 74l7 6-7 6" fill="none" stroke="#0b1f33" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    'highlow': '<svg viewBox="0 0 96 96" aria-hidden="true"><path d="M48 14 66 40H30z" fill="#c14a2b"/><path d="M48 82 30 56h36z" fill="#1f4f78"/><path d="M14 48h68" stroke="#0b1f33" stroke-width="4" stroke-dasharray="7 6" stroke-linecap="round"/></svg>',
+    'tilt': '<svg viewBox="0 0 96 96" aria-hidden="true"><path d="M12 64 84 40" stroke="#0b1f33" stroke-width="5" stroke-linecap="round"/><path d="M12 64h72" stroke="#9aa5ad" stroke-width="3" stroke-dasharray="5 5"/><path d="M58 64a22 22 0 0 0-5-14" fill="none" stroke="#c14a2b" stroke-width="4" stroke-linecap="round"/><path d="M22 60c12 12 24 12 36 0s24-12 24-12" fill="none" stroke="#1f4f78" stroke-width="3" stroke-linecap="round"/></svg>',
+  };
+
+  const DX_TOOLS = [
+    { key: '3d', label: '3D', detail: 'See the floor as a surface', live: true },
+    { key: 'epoch', label: 'Epoch', detail: 'How the floor changed between surveys', live: true },
+    { key: 'highlow', label: 'Remove High/Low', detail: 'Take out the extremes and see what is left', live: false },
+    { key: 'tilt', label: 'Tilt & Deflection', detail: 'The lean and the sag across the floor', live: false },
+  ];
+
+  function renderDiagnosticsHome(app, id) {
+    registerActiveFlush(null);
+    document.body.classList.remove('floor-survey-open', 'diagnostics-open', 'distress-survey-open', 'report-builder-open');
+    app.classList.remove('canvas--floor-survey', 'canvas--distress-survey');
+    if (window.ToolboxFloorSurvey && typeof window.ToolboxFloorSurvey.unmount === 'function') {
+      window.ToolboxFloorSurvey.unmount();
+    }
+    const tiles = DX_TOOLS.map(function (tool) {
+      return (
+        '<button type="button" class="cf-app-btn cf-dx-tile' + (tool.live ? '' : ' is-soon') + '" data-dx-tool="' + tool.key + '"' +
+        (tool.live ? '' : ' aria-disabled="true"') + ' aria-label="' + tool.label + (tool.live ? '' : ' (coming)') + '">' +
+        '  <span class="cf-app-btn__art cf-dx-art">' + DX_ART[tool.key] + '</span>' +
+        '  <span class="cf-app-btn__copy">' +
+        '    <span class="cf-app-btn__name">' + tool.label + '</span>' +
+        '    <span class="cf-app-btn__sub">' + tool.detail + '</span>' +
+        '    <span class="cf-app-btn__state">' + (tool.live ? '' : 'Coming') + '</span>' +
+        '  </span>' +
+        '</button>'
+      );
+    }).join('');
+    app.innerHTML =
+      '<div class="view-bar view-bar--file">' +
+      '  <button type="button" id="dx-home-back" class="btn btn--ghost">‹ Customer File</button>' +
+      '  <div class="file-identity"><span class="file-identity__name">Diagnostics</span></div>' +
+      '  <span class="file-status"></span>' +
+      '</div>' +
+      '<div class="cf-home cf-dx-home">' +
+      '  <div class="cf-home__section-head">' +
+      '    <div><p class="eyebrow">Diagnostics</p><h2>Choose a tool</h2></div>' +
+      '  </div>' +
+      '  <div class="cf-home__apps" id="dx-apps">' + tiles + '</div>' +
+      '  <p class="cf-home__hint">Each tool opens on its own screen with this Customer File.</p>' +
+      '</div>';
+    app.querySelector('#dx-home-back').addEventListener('click', function () { goCustomerFileHome(id); });
+    app.querySelectorAll('[data-dx-tool]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const key = btn.getAttribute('data-dx-tool');
+        if (key === '3d') {
+          window.location.hash = '#/file/' + encodeURIComponent(id) + '/diagnostics/3d';
+        } else if (key === 'epoch') {
+          if (window.ToolboxSurveyCompare) window.ToolboxSurveyCompare.open();
+        }
+      });
+    });
+  }
+
   function renderDiagnostics(app, id) {
     registerActiveFlush(null);
     if (window.ToolboxDistress && typeof window.ToolboxDistress.unmount === 'function') {
@@ -2930,7 +3000,8 @@
       }
       document.body.classList.remove('floor-survey-open', 'diagnostics-open');
       app.classList.remove('canvas--floor-survey');
-      goCustomerFileHome(id);
+      // Back to the page of Diagnostics tools it was opened from.
+      window.location.hash = '#/file/' + encodeURIComponent(id) + '/diagnostics';
     }
 
     var returnToReport = reportReturnContext(id)

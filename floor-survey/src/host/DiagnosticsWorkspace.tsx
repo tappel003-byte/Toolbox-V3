@@ -435,7 +435,7 @@ export function DiagnosticsWorkspace({
           data-diagnostics-back
           onClick={onBack}
         >
-          ‹ Customer File
+          ‹ Diagnostics
         </button>
         {onReturnToReport ? (
           <button

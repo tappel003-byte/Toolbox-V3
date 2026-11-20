@@ -159,7 +159,7 @@ check(
 check('Floor Survey still offers Data and Topo', fieldChrome.hasData && fieldChrome.hasTopo);
 await page.screenshot({ path: OUT + '/diagnostics-field-menu-desktop.png' });
 
-await page.goto(BASE + '#/file/dx-3d-1/diagnostics', { waitUntil: 'networkidle0' });
+await page.goto(BASE + '#/file/dx-3d-1/diagnostics/3d', { waitUntil: 'networkidle0' });
 await new Promise((r) => setTimeout(r, 1800));
 
 const opened = await page.evaluate(() => {
@@ -211,8 +211,8 @@ check(
   ribbon.groups.join(','),
 );
 check(
-  'Back path is labeled Customer File',
-  ribbon.back === '‹ Customer File',
+  'Back path is labeled Diagnostics (it returns to the page of tools)',
+  ribbon.back === '‹ Diagnostics',
   ribbon.back,
 );
 check('3D is the current view', ribbon.viewPressed === 'true');
@@ -559,12 +559,12 @@ const home = await page.evaluate(() => ({
   still3d: !!document.querySelector('[aria-label="Close 3D view"]'),
 }));
 check(
-  'Close returns to this Customer File',
-  home.hash === '#/file/dx-3d-1' && home.apps.join(',') === 'distress,floor,diagnostics,report' && !home.still3d,
+  'Close returns to the page of Diagnostics tools (since Nov 20, Diagnostics opens on tiles)',
+  home.hash === '#/file/dx-3d-1/diagnostics' && !home.still3d,
   JSON.stringify(home),
 );
 
-await page.goto(BASE + '#/file/dx-3d-1/diagnostics', { waitUntil: 'networkidle0' });
+await page.goto(BASE + '#/file/dx-3d-1/diagnostics/3d', { waitUntil: 'networkidle0' });
 await new Promise((r) => setTimeout(r, 800));
 await page.click('[data-diagnostics-back]');
 await new Promise((r) => setTimeout(r, 700));
@@ -574,13 +574,13 @@ const ribbonHome = await page.evaluate(() => ({
   apps: [...document.querySelectorAll('[data-app]')].map((el) => el.getAttribute('data-app')).join(','),
 }));
 check(
-  'Ribbon Customer File returns to this Customer File',
-  ribbonHome.hash === '#/file/dx-3d-1' && !ribbonHome.ribbon && ribbonHome.apps === 'distress,floor,diagnostics,report',
+  'Ribbon Diagnostics button returns to the page of Diagnostics tools',
+  ribbonHome.hash === '#/file/dx-3d-1/diagnostics' && !ribbonHome.ribbon,
   JSON.stringify(ribbonHome),
 );
 
 await page.setViewport({ width: 768, height: 1024, deviceScaleFactor: 2 });
-await page.goto(BASE + '#/file/dx-3d-1/diagnostics', { waitUntil: 'networkidle0' });
+await page.goto(BASE + '#/file/dx-3d-1/diagnostics/3d', { waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
   const canvas = document.querySelector('canvas');
   const text = document.body.innerText || '';
@@ -639,7 +639,7 @@ check(
 await page.screenshot({ path: OUT + '/diagnostics-3d-ipad.png' });
 
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
-await page.goto(BASE + '#/file/dx-3d-1/diagnostics', { waitUntil: 'networkidle0' });
+await page.goto(BASE + '#/file/dx-3d-1/diagnostics/3d', { waitUntil: 'networkidle0' });
 await page.waitForFunction(() => {
   const canvas = document.querySelector('canvas');
   const text = document.body.innerText || '';

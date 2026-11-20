@@ -277,6 +277,10 @@ Tim, after the drop box worked on the first real use: "Let's get rid of share lo
 
 Shapes take text (double-click / Enter / F2 / type); the Text button arms a tool and places the box where you click or drag. `js/por-fabric.js`, `js/plan-of-repair.js`. Shell v488. Tests: `por-shape-text` 23/23, `plan-of-repair` 108/108. See `DECISIONS.md`.
 
+### Claude Code: Diagnostics tile page (Nov 20, 2026) — branch `claude/diagnostics-tiles-2ac5` (NOT merged; built on the Compare branch)
+
+`#/file/:id/diagnostics` is now four tiles (3D, Epoch live; Remove High/Low, Tilt & Deflection coming); 3D moved to `/diagnostics/3d`, Epoch opens Compare. `tests/diagnostics-tiles.mjs` 11/11; `floor-survey-diagnostics` 31/31 after updating its three back/label checks to the new flow; compare 15/15, publish 28/28, update 26/26, TLS smoke 36/36. Bundle rebuilt (3D back label). Shell v497. Merging this brings in the Compare branch too.
+
 ### Claude Code: Compare two surveys (Nov 20, 2026) — branch `claude/survey-compare-2ac5` (NOT merged)
 
 Cabinet button -> dialog (Load / Legend / Align / Result). `js/survey-compare.js` (+ `css/survey-compare.css`, vendored pdf.js lazy-loaded), reads each survey picture from its own legend colours, auto-aligns walls, median-zero signed difference. `tests/survey-compare.mjs` 15/15 (synthetic bowl recovered: shift 0.27 of 0.3, core -0.57 of -0.8, edges 0.03); `pwa-publish` 28/28. Tried on Tim's two Rain Lily PDFs: runs end to end; result mostly within the 0.2 in neutral band with small cool patches at the core and a SE garage corner that may be a plan-geometry mismatch. Shell v496. Point-based Customer File epochs and tap-a-point not built.
