@@ -36,15 +36,6 @@ type CaptureApi = {
 
 const EMPTY_POINTS: SurveyPoint[] = [];
 
-const PLACEHOLDERS: Array<{ group: string; id: string; label: string }> = [
-  { group: "View", id: "plan", label: "Plan" },
-  { group: "View", id: "section", label: "Section" },
-  { group: "Imaging", id: "levels", label: "Levels" },
-  { group: "Imaging", id: "palette", label: "Palette" },
-  { group: "Plots", id: "profile", label: "Profile" },
-  { group: "Epochs", id: "compare", label: "Compare" },
-];
-
 const WORKBENCH_CSS = `
 .dx-workbench {
   flex: 1 1 auto;
@@ -55,8 +46,8 @@ const WORKBENCH_CSS = `
   height: 100%;
   min-height: 0;
   min-width: 0;
-  background: #0b0b0b;
-  color: #f4f0e8;
+  background: #ffffff;
+  color: #1c1915;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 .dx-ribbon {
@@ -67,8 +58,8 @@ const WORKBENCH_CSS = `
   max-width: 100%;
   min-width: 0;
   min-height: 52px;
-  background: #161616;
-  border-bottom: 1px solid rgba(255,255,255,0.12);
+  background: #f3f1ec;
+  border-bottom: 1px solid #d4d0c8;
   flex-wrap: wrap;
   overflow: hidden;
 }
@@ -78,9 +69,9 @@ const WORKBENCH_CSS = `
   align-self: stretch;
   margin: 0;
   border: 0;
-  border-right: 1px solid rgba(255,255,255,0.14);
-  background: #161616;
-  color: #fff;
+  border-right: 1px solid #d4d0c8;
+  background: #f3f1ec;
+  color: #14263a;
   font: inherit;
   font-size: 13px;
   font-weight: 700;
@@ -93,9 +84,9 @@ const WORKBENCH_CSS = `
   align-self: stretch;
   margin: 0;
   border: 0;
-  border-right: 1px solid rgba(255,255,255,0.14);
-  background: #161616;
-  color: #f3b38a;
+  border-right: 1px solid #d4d0c8;
+  background: #f3f1ec;
+  color: #b4491f;
   font: inherit;
   font-size: 12px;
   font-weight: 700;
@@ -110,14 +101,14 @@ const WORKBENCH_CSS = `
   justify-content: center;
   gap: 3px;
   padding: 4px 10px 5px;
-  border-right: 1px solid rgba(255,255,255,0.12);
+  border-right: 1px solid #d4d0c8;
 }
 .dx-ribbon__label {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.46);
+  color: #7a7468;
 }
 .dx-ribbon__tools {
   display: flex;
@@ -128,9 +119,9 @@ const WORKBENCH_CSS = `
   min-height: 28px;
   padding: 2px 8px;
   border-radius: 4px;
-  border: 1px solid rgba(255,255,255,0.2);
-  background: rgba(255,255,255,0.06);
-  color: #fff;
+  border: 1px solid #c9c4b8;
+  background: #fff;
+  color: #14263a;
   font: inherit;
   font-size: 12px;
   font-weight: 650;
@@ -139,9 +130,9 @@ const WORKBENCH_CSS = `
   white-space: nowrap;
 }
 .dx-ribbon__btn[aria-pressed="true"] {
-  background: #f4f0e8;
-  border-color: #f4f0e8;
-  color: #111;
+  background: #14263a;
+  border-color: #14263a;
+  color: #fff;
 }
 .dx-ribbon__btn:disabled {
   opacity: 0.38;
@@ -158,9 +149,9 @@ const WORKBENCH_CSS = `
   padding: 4px 12px 5px;
   font-size: 12px;
   line-height: 1.35;
-  color: rgba(255,255,255,0.72);
-  background: #111;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  color: #5a554b;
+  background: #faf9f6;
+  border-bottom: 1px solid #e3dfd6;
 }
 .dx-stage {
   position: relative;
@@ -178,8 +169,15 @@ const WORKBENCH_CSS = `
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255,255,255,0.6);
+  color: #7a7468;
   font-size: 13px;
+}
+.dx-ribbon__title {
+  align-self: center;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #14263a;
 }
 `;
 
@@ -220,7 +218,7 @@ export function DiagnosticsWorkspace({
   const [viewReady, setViewReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(
-    "3D elevation is the current view. Other tools are not available yet.",
+    "3D view. Settings are in the list on the left.",
   );
 
   useEffect(() => {
@@ -382,7 +380,7 @@ export function DiagnosticsWorkspace({
 
   if (loading) {
     return (
-      <div className="fixed inset-0 z-[60] bg-neutral-950 text-white/60 flex items-center justify-center text-sm">
+      <div className="fixed inset-0 z-[60] bg-white text-neutral-500 flex items-center justify-center text-sm">
         Loading 3D…
       </div>
     );
@@ -411,20 +409,6 @@ export function DiagnosticsWorkspace({
     );
   }
 
-  const placeholders = (group: string) =>
-    PLACEHOLDERS.filter((item) => item.group === group).map((item) => (
-      <button
-        key={item.id}
-        type="button"
-        className="dx-ribbon__btn"
-        disabled
-        data-diagnostics-placeholder={item.id}
-        title="Not available yet"
-      >
-        {item.label}
-      </button>
-    ));
-
   return (
     <div className="dx-workbench" data-diagnostics-workbench>
       <style>{WORKBENCH_CSS}</style>
@@ -447,18 +431,7 @@ export function DiagnosticsWorkspace({
             Back to Report Builder
           </button>
         ) : null}
-        <RibbonGroup label="View">
-          <button
-            type="button"
-            className="dx-ribbon__btn"
-            data-diagnostics-view="3d"
-            aria-pressed="true"
-            title="Current view"
-          >
-            3D
-          </button>
-          {placeholders("View")}
-        </RibbonGroup>
+        <span className="dx-ribbon__title" data-diagnostics-view="3d">3D</span>
         <RibbonGroup label="Capture">
           <button
             type="button"
@@ -475,9 +448,6 @@ export function DiagnosticsWorkspace({
             {saving ? "Adding…" : "Add to Report"}
           </button>
         </RibbonGroup>
-        <RibbonGroup label="Imaging">{placeholders("Imaging")}</RibbonGroup>
-        <RibbonGroup label="Plots">{placeholders("Plots")}</RibbonGroup>
-        <RibbonGroup label="Epochs">{placeholders("Epochs")}</RibbonGroup>
       </div>
       <p className="dx-status" data-diagnostics-status aria-live="polite">
         {status}

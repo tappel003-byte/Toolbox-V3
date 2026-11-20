@@ -277,6 +277,10 @@ Tim, after the drop box worked on the first real use: "Let's get rid of share lo
 
 Shapes take text (double-click / Enter / F2 / type); the Text button arms a tool and places the box where you click or drag. `js/por-fabric.js`, `js/plan-of-repair.js`. Shell v488. Tests: `por-shape-text` 23/23, `plan-of-repair` 108/108. See `DECISIONS.md`.
 
+### Claude Code: 3D view on a white canvas with a settings list (Nov 20, 2026) — branch `claude/diagnostics-3d-2ac5` (NOT merged)
+
+`floor-survey/src/components/ThreeDTab.tsx` rewritten around the 3DField layout; workspace made light, placeholder ribbon groups removed. `tests/diagnostics-3d-controls.mjs` 15/15; `floor-survey-diagnostics` 31/31 (ribbon checks updated). Bundle rebuilt. Shell v498. Slices, ortho, XY aspect not built.
+
 ### Claude Code: Diagnostics tile page (Nov 20, 2026) — branch `claude/diagnostics-tiles-2ac5` (NOT merged; built on the Compare branch)
 
 `#/file/:id/diagnostics` is now four tiles (3D, Epoch live; Remove High/Low, Tilt & Deflection coming); 3D moved to `/diagnostics/3d`, Epoch opens Compare. `tests/diagnostics-tiles.mjs` 11/11; `floor-survey-diagnostics` 31/31 after updating its three back/label checks to the new flow; compare 15/15, publish 28/28, update 26/26, TLS smoke 36/36. Bundle rebuilt (3D back label). Shell v497. Merging this brings in the Compare branch too.

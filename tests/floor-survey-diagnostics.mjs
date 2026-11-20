@@ -199,15 +199,15 @@ const ribbon = await page.evaluate(() => {
   return {
     bar: !!bar,
     back: back ? (back.textContent || '').trim() : '',
-    viewPressed: view ? view.getAttribute('aria-pressed') : '',
+    viewLabel: view ? (view.textContent || '').trim() : '',
     add: !!add,
     placeholders,
     groups,
   };
 });
 check(
-  'Workbench ribbon has View, Capture, Imaging, Plots, and Epochs',
-  ribbon.bar && ribbon.groups.join(',') === 'View,Capture,Imaging,Plots,Epochs',
+  'Workbench ribbon has Capture (the other tools are tiles on the page of tools)',
+  ribbon.bar && ribbon.groups.join(',') === 'Capture',
   ribbon.groups.join(','),
 );
 check(
@@ -215,10 +215,10 @@ check(
   ribbon.back === '‹ Diagnostics',
   ribbon.back,
 );
-check('3D is the current view', ribbon.viewPressed === 'true');
-const placeholderOk = ribbon.placeholders.length === 6 && ribbon.placeholders.every((item) => item.disabled && item.title === 'Not available yet');
+check('3D is the current view', ribbon.viewLabel === '3D');
+const placeholderOk = ribbon.placeholders.length === 0;
 check(
-  'Unimplemented ribbon controls are disabled',
+  'No placeholder buttons are left on the ribbon (the tools are tiles now)',
   placeholderOk,
   JSON.stringify(ribbon.placeholders),
 );
