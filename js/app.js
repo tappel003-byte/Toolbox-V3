@@ -951,6 +951,7 @@
       '    <button type="button" id="cabinet-new" class="btn btn--accent cabinet-new">+ New Customer File</button>' +
       '    <button type="button" id="cabinet-visit" class="btn btn--secondary cabinet-visit">+ Initial Visit</button>' +
       '    <button type="button" id="cabinet-import" class="btn btn--secondary">Import standalone export</button>' +
+      '    <button type="button" id="cabinet-compare" class="btn btn--secondary">Compare surveys</button>' +
       '  </div>' +
       '  <p class="cabinet-hero__lead">Open a job or create a file. Customer details and plans stay together.</p>' +
       '</section>' +
@@ -974,6 +975,13 @@
     const visitsTitle = app.querySelector('#cabinet-visits-title');
     const newBtn = app.querySelector('#cabinet-new');
     const visitBtn = app.querySelector('#cabinet-visit');
+    // Back door (Tim, Nov 20, 2026): compare two floor level surveys that are not Customer Files here.
+    const compareBtn = app.querySelector('#cabinet-compare');
+    if (compareBtn) {
+      compareBtn.addEventListener('click', function () {
+        if (window.ToolboxSurveyCompare) window.ToolboxSurveyCompare.open();
+      });
+    }
     const importBtn = app.querySelector('#cabinet-import');
     const localTrashLink = app.querySelector('#local-trash-recovery');
     const notice = app.querySelector('#cabinet-notice');

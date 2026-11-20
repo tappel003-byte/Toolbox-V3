@@ -849,3 +849,13 @@ Tim: put the Google (satellite) view in the title block, right above Figure 1. O
 ## Crop and Restore on the report's plan (Nov 17, 2026)
 
 Tim: Floor Survey brings the whole plan in, white margin included, so no data is lost; once it is on the sheet he wants to crop the white away. Right-click the plan: **Crop** and **Restore**, beside Bring to front and Send to back. Crop frames the drawing (the plan image's inked area plus every reading and boundary, with a small margin) by setting the report's one camera, so every Floor Survey slide -- colour, readings only, black and white -- follows it, the way they already share placement. Restore sets the camera back to the whole plan. The plan image, the readings and the frame box are never changed.
+
+## Compare two surveys: relative movement with no held point (Nov 20, 2026)
+
+Tim: wants to see what is moving between two floor level surveys of one floor without assuming which points are stable; the surveys he needs it for are PGG jobs, not his own Customer Files. So the first build is a back door that works on surveys Toolbox never held. A "Compare surveys" button on the Cabinet opens a dialog: two files (a PDF page or an image each), a box dragged around each legend with its top and bottom values, an automatic (or two-click) alignment, and the result.
+
+How it reads: the printed reading labels on those PDFs are artwork, not text, so each map is read back from its own colours against its own legend (about one legend band, roughly 0.2 in, is the limit), the later is laid over the earlier, and the difference is taken wherever both have a reading. Nothing is held fixed: the zero is the median change (the crowd of points that agree), so unchanged ground reads neutral and the places that moved read plus or minus in inches, on a diverging scale with a neutral band (default 0.2 in). Optional: raw difference, smoothing, removal of an overall tilt. "Save picture" downloads a PNG. Nothing is written to any Customer File.
+
+Why not the average of absolute pairwise changes: the change between points i and j is d_i - d_j (d = later minus earlier at a point), so the pairwise matrix holds nothing the subtractive does not; its absolute-value summary loses the sign (settlement against heave) and depends on where readings were taken. The signed, median-zeroed form keeps what is useful in it.
+
+Not built yet: comparing two epochs of a Customer File's own readings (point-based, finer than a legend band), the tap-a-point view, and an Add-to-Report path from Diagnostics. The pdf.js library (Apache-2.0) is vendored under js/vendor/pdfjs/ and loaded only when a PDF is opened; it is published but not in the service-worker shell.

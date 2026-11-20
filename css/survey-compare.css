@@ -1,0 +1,30 @@
+/* Compare two surveys (Tim, Nov 20, 2026). Desktop-first; opens over the whole app. */
+.sc { position: fixed; inset: 0; z-index: 10050; background: #f6f3ec; display: flex; flex-direction: column; color: #1a1a1a; }
+.sc__head { display: flex; align-items: center; gap: 16px; padding: 10px 18px; background: #fff; border-bottom: 1px solid #d9d2c2; }
+.sc__title { font-size: 17px; }
+.sc__steps { display: flex; gap: 6px; flex: 1; }
+.sc__step { border: 1px solid #d9d2c2; background: #fff; border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 13px; cursor: pointer; }
+.sc__step.is-on { background: #0b1f33; color: #fff; border-color: #0b1f33; }
+.sc__step:disabled { opacity: 0.45; cursor: default; }
+.sc__body { flex: 1; overflow: auto; padding: 18px; }
+.sc__note { max-width: 880px; margin: 0 0 14px; line-height: 1.45; }
+.sc__err { color: #b03a1e; font-weight: 600; }
+.sc__slots { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+.sc__slot { background: #fff; border: 1px solid #d9d2c2; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sc__h { margin: 0; font-size: 14px; }
+.sc__drop { border: 2px dashed #c9c2b4; border-radius: 8px; padding: 14px; text-align: center; color: #6b655a; font-size: 13px; }
+.sc__drop.is-over { border-color: #c14a2b; background: #fbeee9; }
+.sc__thumb, .sc-canvas { width: 100%; height: auto; max-height: 62vh; object-fit: contain; border: 1px solid #e3dccb; background: #fff; }
+.sc-canvas { cursor: crosshair; touch-action: none; }
+.sc__vals { display: flex; gap: 14px; flex-wrap: wrap; }
+.sc__val input, .sc__ctl input[type=number] { width: 80px; padding: 4px 6px; }
+.sc__row { margin-top: 14px; display: flex; gap: 10px; }
+.sc__result { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+.sc__stage { background: #fff; border: 1px solid #d9d2c2; border-radius: 8px; padding: 8px; }
+.sc__out { width: 100%; height: auto; max-height: calc(100vh - 150px); object-fit: contain; display: block; margin: 0 auto; }
+.sc__side { display: flex; flex-direction: column; gap: 12px; }
+.sc__ctl { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.sc__ctl select { padding: 5px; }
+.sc__info { font-size: 13px; line-height: 1.4; margin: 0; }
+.sc__fine { font-size: 12px; color: #6b655a; line-height: 1.4; margin: 0; }
+@media (max-width: 900px) { .sc__slots, .sc__result { grid-template-columns: 1fr; } }

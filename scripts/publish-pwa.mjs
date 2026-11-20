@@ -74,6 +74,9 @@ export function publishFileSet(root = repoRoot) {
   }
   for (const urlPath of shell) add(urlPath, urlPath.slice(1));
   add('/icon-192.png', ICON_ALIAS['/icon-192.png']);
+  // Loaded only when Compare surveys opens a PDF, so they stay out of the service-worker shell.
+  add('/js/vendor/pdfjs/pdf.min.js', 'js/vendor/pdfjs/pdf.min.js');
+  add('/js/vendor/pdfjs/pdf.worker.min.js', 'js/vendor/pdfjs/pdf.worker.min.js');
 
   const pending = ['/index.html', '/distress-survey/survey.html', '/css/styles.css', '/css/report-builder.css', '/js/floor-survey/floor-survey.css', '/manifest.webmanifest'];
   const scanned = new Set();

@@ -277,6 +277,10 @@ Tim, after the drop box worked on the first real use: "Let's get rid of share lo
 
 Shapes take text (double-click / Enter / F2 / type); the Text button arms a tool and places the box where you click or drag. `js/por-fabric.js`, `js/plan-of-repair.js`. Shell v488. Tests: `por-shape-text` 23/23, `plan-of-repair` 108/108. See `DECISIONS.md`.
 
+### Claude Code: Compare two surveys (Nov 20, 2026) — branch `claude/survey-compare-2ac5` (NOT merged)
+
+Cabinet button -> dialog (Load / Legend / Align / Result). `js/survey-compare.js` (+ `css/survey-compare.css`, vendored pdf.js lazy-loaded), reads each survey picture from its own legend colours, auto-aligns walls, median-zero signed difference. `tests/survey-compare.mjs` 15/15 (synthetic bowl recovered: shift 0.27 of 0.3, core -0.57 of -0.8, edges 0.03); `pwa-publish` 28/28. Tried on Tim's two Rain Lily PDFs: runs end to end; result mostly within the 0.2 in neutral band with small cool patches at the core and a SE garage corner that may be a plan-geometry mismatch. Shell v496. Point-based Customer File epochs and tap-a-point not built.
+
 ### Claude Code: eleven out-of-date test suites brought in step (Nov 17, 2026) — branch `claude/tests-in-step-2ac5` (tests only; NOT merged)
 
 Each suite was checking an older screen: Control panel regrouped Oct 30 (Legend under Display; High/Low + pill size under Accessories), Setup trimmed to Topo boundary / Excluded (Oct 30), the chip's tap-to-size HUD, shell names hard-coded in sw-update-ready, Nov 5 book-layout-wins rule, aerial named per job. No product code changed; every suite now passes: control-panel 27, correction-in-report 26, date 11, diagnostics 31, parity 21, topo-legend 35, report-highlow-output 19, sizing-ownership 11, sw-update-ready 26, floor-layout-migration 10. report-builder-skeleton failed once and passed 53/53 on rerun (flaky).
