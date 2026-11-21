@@ -326,9 +326,9 @@ check(
     readout.legendHigh === '1.2' &&
     readout.palette === 'brown' &&
     readout.colors.startsWith('rgb(130,90,55)') &&
-    readout.exaggeration === '3.0' &&
-    readout.heightLabel === '3.0' &&
-    readout.text.includes('Vertical exaggeration 3.0×') &&
+    Math.abs(Number(readout.exaggeration) - 3) < 0.05 &&
+    readout.heightLabel === readout.exaggeration &&
+    readout.text.includes('Vertical exaggeration ' + readout.exaggeration + '×') &&
     readout.notice &&
     readout.evidence.includes('does not infer heave, settlement, cause, or repair'),
   JSON.stringify(readout),
@@ -400,13 +400,13 @@ check(
     captured.context.low === 0.1 &&
     captured.context.range === 1.1 &&
     captured.context.reference === null &&
-    captured.context.exaggeration === 3 &&
+    Math.abs(captured.context.exaggeration - 3) < 0.05 &&
     captured.context.legendLow === 0.1 &&
     captured.context.legendHigh === 1.2 &&
     captured.context.palette === 'brown' &&
     Array.isArray(captured.context.lines) &&
     captured.context.lines.join('\n').includes('Vertical exaggeration. Visualization is not to scale.') &&
-    captured.context.lines.join('\n').includes('Vertical exaggeration 3.0×'),
+    /Vertical exaggeration 3\.0\d×/.test(captured.context.lines.join('\n')),
   JSON.stringify({ status: captured.status, context: captured.context, count: captured.count }),
 );
 
@@ -530,7 +530,7 @@ const exaggerated = await page.evaluate(() => {
 });
 check(
   'Current exaggeration stays tied to the height control',
-  sliderMoved && exaggerated.exaggeration === '3.1' && exaggerated.heightLabel === '3.1' && exaggerated.line,
+  sliderMoved && Number(exaggerated.exaggeration) > 3 && exaggerated.heightLabel === exaggerated.exaggeration && exaggerated.line,
   JSON.stringify(exaggerated),
 );
 

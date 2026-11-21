@@ -277,6 +277,10 @@ Tim, after the drop box worked on the first real use: "Let's get rid of share lo
 
 Shapes take text (double-click / Enter / F2 / type); the Text button arms a tool and places the box where you click or drag. `js/por-fabric.js`, `js/plan-of-repair.js`. Shell v488. Tests: `por-shape-text` 23/23, `plan-of-repair` 108/108. See `DECISIONS.md`.
 
+### Claude Code: 3D zoom/pan and Z slider range (Nov 21, 2026) — branch `claude/3d-zoom-slider-2ac5` (NOT merged)
+
+Z slider 0.1-10x log scale (two decimals), zoom to cursor, limits, touch-action none, + / - / Fit buttons. `diagnostics-3d-controls` 28/28 (real two-finger pinch, pan, one-finger orbit, wheel, buttons; slider range by keyboard), `floor-survey-diagnostics` 31/31, `diagnostics-context` 14/14, `diagnostics-tiles` 11/11. Shell v499. Tested with synthetic touch events in headless Chrome, not on an iPad.
+
 ### Claude Code: 3D view on a white canvas with a settings list (Nov 20, 2026) — branch `claude/diagnostics-3d-2ac5` (NOT merged)
 
 `floor-survey/src/components/ThreeDTab.tsx` rewritten around the 3DField layout; workspace made light, placeholder ribbon groups removed. `tests/diagnostics-3d-controls.mjs` 15/15; `floor-survey-diagnostics` 31/31 (ribbon checks updated). Bundle rebuilt. Shell v498. Slices, ortho, XY aspect not built.

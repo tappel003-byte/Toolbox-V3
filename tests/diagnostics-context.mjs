@@ -171,7 +171,7 @@ check(
   joined.includes('Basement') &&
     joined.includes('Survey date 2026-04-18') &&
     joined.includes('High 9.40 in · Low 8.35 in · Range 1.05 in') &&
-    joined.includes('Vertical exaggeration 3.0×') &&
+    joined.includes('Vertical exaggeration 3.00×') &&
     joined.includes('Vertical exaggeration. Visualization is not to scale.') &&
     joined.includes('Measured readings are evidence. This view does not infer heave, settlement, cause, or repair.'),
   joined,
@@ -197,10 +197,10 @@ check(
     captured.low === 8.35 &&
     captured.legendLow === 8.35 &&
     captured.legendHigh === 9.4 &&
-    captured.exaggeration === 4.2 &&
+    captured.exaggeration === 4.24 &&
     captured.palette === 'brown' &&
     captured.legendColors.length === 2 &&
-    captured.lines.includes('Vertical exaggeration 4.2×'),
+    captured.lines.includes('Vertical exaggeration 4.24×'),
   JSON.stringify({ exaggeration: captured.exaggeration, legend: [captured.legendLow, captured.legendHigh] }),
 );
 

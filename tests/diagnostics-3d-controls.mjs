@@ -120,6 +120,80 @@ await wait(500);
 const ex2 = await page.evaluate(() => document.querySelector('[data-diagnostics-readout]').getAttribute('data-exaggeration'));
 check('The Z scale slider still changes the height exaggeration', Number(ex2) > Number(ex), `${ex} -> ${ex2}`);
 
+// ---- slider range: single digits, with fine steps under 1 ----
+const setZ = async (presses, key) => { await page.focus('[data-diagnostics-height] [role="slider"]'); for (let i = 0; i < presses; i += 1) { await page.keyboard.press(key); await wait(6); } await wait(300); };
+const exNow = () => page.evaluate(() => Number(document.querySelector('[data-diagnostics-readout]').getAttribute('data-exaggeration')));
+await setZ(260, 'ArrowRight');
+check('The Z slider tops out in single digits (10x), not the twenties', (await exNow()) <= 10.001 && (await exNow()) > 8, String(await exNow()));
+await setZ(520, 'ArrowLeft');
+const low = await exNow();
+check('and goes down to a tenth', low >= 0.1 && low < 0.15, String(low));
+const lowLabel = await page.evaluate(() => /Height exaggeration · ([0-9.]+)×/.exec(document.body.innerText)[1]);
+check('Under 1 it is shown to two decimals', /^0\.\d\d$/.test(lowLabel), lowLabel);
+await setZ(40, 'ArrowRight');
+const mid = await exNow();
+check('Ten key presses from the bottom moves it in small steps (still under 1)', mid > low && mid < 1, String(mid));
+await setZ(60, 'ArrowRight'); await setZ(30, 'ArrowLeft');
+await setZ(0, 'ArrowLeft');
+// back near 3 for the pictures that follow
+await page.evaluate(() => {});
+
+// ---- pinch and two-finger pan, with real touch events ----
+const cdp = await page.createCDPSession();
+const box = await page.evaluate(() => { const r = document.querySelector('[data-dx3-canvas]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+const camNow = () => page.evaluate(() => { const m = document.querySelector('[data-dx3-canvas]'); return { d: Number(m.dataset.camDist), t: m.dataset.camTarget.split(',').map(Number), p: m.dataset.camPos.split(',').map(Number) }; });
+async function touch(type, points) {
+  await cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points.map((p, i) => ({ x: p.x, y: p.y, id: i + 1 })) });
+}
+const before = await camNow();
+// two fingers spread apart (a pinch out) = zoom in
+await touch('touchStart', [{ x: box.x - 40, y: box.y }, { x: box.x + 40, y: box.y }]);
+for (let i = 1; i <= 12; i += 1) { await touch('touchMove', [{ x: box.x - 40 - i * 10, y: box.y }, { x: box.x + 40 + i * 10, y: box.y }]); await wait(25); }
+await touch('touchEnd', []);
+await wait(600);
+const zoomed = await camNow();
+check('Spreading two fingers zooms in', zoomed.d < before.d * 0.85, JSON.stringify({ before: before.d, after: zoomed.d }));
+// two fingers pinching in = zoom out
+await touch('touchStart', [{ x: box.x - 160, y: box.y }, { x: box.x + 160, y: box.y }]);
+for (let i = 1; i <= 12; i += 1) { await touch('touchMove', [{ x: box.x - 160 + i * 10, y: box.y }, { x: box.x + 160 - i * 10, y: box.y }]); await wait(25); }
+await touch('touchEnd', []);
+await wait(600);
+const out = await camNow();
+check('Bringing them together zooms out', out.d > zoomed.d * 1.15, JSON.stringify({ zoomed: zoomed.d, after: out.d }));
+// two fingers sliding together without changing their spacing = pan
+const preMove = await camNow();
+await touch('touchStart', [{ x: box.x - 50, y: box.y }, { x: box.x + 50, y: box.y }]);
+for (let i = 1; i <= 12; i += 1) { await touch('touchMove', [{ x: box.x - 50 + i * 12, y: box.y + i * 4 }, { x: box.x + 50 + i * 12, y: box.y + i * 4 }]); await wait(25); }
+await touch('touchEnd', []);
+await wait(600);
+const panned = await camNow();
+const shift = Math.hypot(panned.t[0] - preMove.t[0], panned.t[1] - preMove.t[1], panned.t[2] - preMove.t[2]);
+check('Sliding two fingers together pans the view', shift > 0.03, JSON.stringify({ shift: shift.toFixed(3) }));
+check('and that slide does not also zoom', Math.abs(panned.d - preMove.d) / preMove.d < 0.12, JSON.stringify({ before: preMove.d, after: panned.d }));
+// one finger rotates
+const rotBefore = await camNow();
+await touch('touchStart', [{ x: box.x - 100, y: box.y }]);
+for (let i = 1; i <= 12; i += 1) { await touch('touchMove', [{ x: box.x - 100 + i * 12, y: box.y - i * 3 }]); await wait(25); }
+await touch('touchEnd', []);
+await wait(600);
+const rotAfter = await camNow();
+check('One finger still orbits', Math.hypot(rotAfter.p[0] - rotBefore.p[0], rotAfter.p[1] - rotBefore.p[1], rotAfter.p[2] - rotBefore.p[2]) > 0.05 && Math.abs(rotAfter.d - rotBefore.d) / rotBefore.d < 0.05, JSON.stringify({ before: rotBefore.p, after: rotAfter.p }));
+// the buttons
+const d0 = (await camNow()).d;
+await page.click('button[aria-label="Zoom in"]'); await wait(400);
+const d1 = (await camNow()).d;
+check('The + button zooms in', d1 < d0, `${d0} -> ${d1}`);
+await page.click('button[aria-label="Zoom out"]'); await wait(300); await page.click('button[aria-label="Zoom out"]'); await wait(400);
+check('The − button zooms out', (await camNow()).d > d1);
+await page.click('button[aria-label="Fit"]'); await wait(500);
+const fit = await camNow();
+check('Fit brings the whole view back', fit.d > 0.5 && fit.d < 3, JSON.stringify(fit));
+// wheel zoom (a laptop's pinch arrives as ctrl + wheel)
+await page.mouse.move(box.x, box.y);
+const w0 = (await camNow()).d;
+await page.keyboard.down('Control'); await page.mouse.wheel({ deltaY: -400 }); await page.keyboard.up('Control'); await wait(600);
+check('A trackpad pinch (ctrl + wheel) zooms in', (await camNow()).d < w0);
+
 // Add to Report still captures (with the title in the band)
 await page.click('[data-diagnostics-add-report]'); await wait(2500);
 check('Add to Report still works', /Added to Report/.test(await page.$eval('[data-diagnostics-status]', (e) => e.textContent)), await page.$eval('[data-diagnostics-status]', (e) => e.textContent));

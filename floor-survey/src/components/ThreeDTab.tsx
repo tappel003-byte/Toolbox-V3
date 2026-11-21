@@ -233,6 +233,9 @@ const READOUT_CSS = `
   font-size: 16px; font-weight: 700; color: #14263a; text-align: center; pointer-events: none;
 }
 .dx3-toggle { display: none; }
+.dx3-zoom { position: absolute; z-index: 3; right: 10px; bottom: 10px; display: flex; gap: 6px; }
+.dx3-zoom button { min-width: 36px; height: 36px; padding: 0 10px; border: 1px solid #c9c4b8; border-radius: 6px; background: rgba(255,255,255,0.95); font-size: 16px; font-weight: 700; color: #14263a; cursor: pointer; }
+.dx3-zoom button:hover { background: #eef2f6; }
 @media (max-width: 900px) {
   .dx3-side { position: absolute; z-index: 5; left: 0; top: 0; bottom: 0; box-shadow: 4px 0 14px rgba(0,0,0,0.18); }
   .dx3-side.is-closed { display: none; }
@@ -292,6 +295,20 @@ function Toggle({ label, on, set }: { label: string; on: boolean; set: (v: boole
       <Switch checked={on} onCheckedChange={set} />
     </div>
   );
+}
+
+// The height exaggeration is mostly wanted small -- single digits, and often under 1 -- so the slider is
+// logarithmic from 0.1x to 10x: half its travel covers 0.1 to 1, half covers 1 to 10 (Tim, Nov 21, 2026).
+const EX_MIN = 0.1;
+const EX_MAX = 10;
+const EX_STEPS = 1000;
+function exToPos(v: number) {
+  const c = Math.min(EX_MAX, Math.max(EX_MIN, v));
+  return Math.round((Math.log(c / EX_MIN) / Math.log(EX_MAX / EX_MIN)) * EX_STEPS);
+}
+function exFromPos(pos: number) {
+  const v = EX_MIN * Math.pow(EX_MAX / EX_MIN, pos / EX_STEPS);
+  return Math.round(v * 100) / 100;
 }
 
 function niceStep(range: number, target: number) {
@@ -370,7 +387,9 @@ export function ThreeDTab({
   const geomRef = useRef<THREE.BufferGeometry | null>(null);
   const metaRef = useRef<{ zScale: number; zRange: number; planScale: number; cx: number; cy: number; step: number; minValue: number; maxValue: number; halfW: number; halfH: number } | null>(null);
 
-  const [exaggeration, setExaggeration] = useState<number>(3);
+  // Kept as the slider's own position, so stepping it never rounds its way back onto the same place.
+  const [exPos, setExPos] = useState<number>(740); // about 3x (3.02)
+  const exaggeration = exFromPos(exPos);
   const [showPoints, setShowPoints] = useState<boolean>(false);
   const [pointSize, setPointSize] = useState<number>(1);
   const [surfaceOn, setSurfaceOn] = useState(true);
@@ -461,7 +480,21 @@ export function ThreeDTab({
     controls.maxPolarAngle = Math.PI;
     controls.enablePan = true;
     controls.screenSpacePanning = true;
+    // A floor is a thing you move over, not a ball you spin: zoom toward the point under the pointer or
+    // fingers, with limits so it can neither be lost far away nor pushed through the surface.
+    controls.zoomToCursor = true;
+    controls.zoomSpeed = 1;
+    controls.rotateSpeed = 0.8;
+    controls.panSpeed = 1;
+    controls.minDistance = 0.05;
+    controls.maxDistance = 8;
+    controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
     controlsRef.current = controls;
+    // The page must not take the pinch for itself (iPad Safari zooms the whole page otherwise).
+    renderer.domElement.style.touchAction = "none";
+    const stopGesture = (e: Event) => e.preventDefault();
+    mount.addEventListener("gesturestart", stopGesture as EventListener);
+    mount.addEventListener("gesturechange", stopGesture as EventListener);
 
     const hemi = new THREE.HemisphereLight(0xffffff, 0xb8b8c4, 1.15);
     const key = new THREE.DirectionalLight(0xffffff, 0.9);
@@ -474,6 +507,10 @@ export function ThreeDTab({
     const animate = () => {
       controls.update();
       renderer.render(scene, camera);
+      // Read by tests: how far the camera is, and where it is looking.
+      mount.dataset.camDist = camera.position.distanceTo(controls.target).toFixed(3);
+      mount.dataset.camPos = `${camera.position.x.toFixed(3)},${camera.position.y.toFixed(3)},${camera.position.z.toFixed(3)}`;
+      mount.dataset.camTarget = `${controls.target.x.toFixed(3)},${controls.target.y.toFixed(3)},${controls.target.z.toFixed(3)}`;
       raf = requestAnimationFrame(animate);
     };
     animate();
@@ -491,6 +528,8 @@ export function ThreeDTab({
     ro.observe(mount);
 
     return () => {
+      mount.removeEventListener("gesturestart", stopGesture as EventListener);
+      mount.removeEventListener("gesturechange", stopGesture as EventListener);
       cancelAnimationFrame(raf);
       ro.disconnect();
       controls.dispose();
@@ -886,6 +925,17 @@ export function ThreeDTab({
     camera.updateProjectionMatrix();
   }, [fov]);
 
+  function zoomBy(factor: number) {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    const offset = camera.position.clone().sub(controls.target);
+    const d = Math.min(controls.maxDistance, Math.max(controls.minDistance, offset.length() * factor));
+    offset.setLength(d);
+    camera.position.copy(controls.target).add(offset);
+    controls.update();
+  }
+
   function viewPreset(kind: "top" | "front" | "side" | "angled") {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
@@ -1034,8 +1084,8 @@ export function ThreeDTab({
         <div className={`dx3-side${sideClosed ? " is-closed" : ""}`} data-dx3-panel>
           <div className="dx3-quick" data-diagnostics-height>
             <div className="dx3-field">
-              <span>Height exaggeration · {exaggeration.toFixed(1)}×</span>
-              <Slider min={0.5} max={20} step={0.1} value={[exaggeration]} onValueChange={([v]) => setExaggeration(v)} />
+              <span>Height exaggeration · {exaggeration.toFixed(2)}×</span>
+              <Slider min={0} max={EX_STEPS} step={2} value={[exPos]} onValueChange={([v]) => setExPos(v)} />
             </div>
             <div className="dx3-row" style={{ marginTop: 8 }}>
               <Label className="text-xs">Show survey points</Label>
@@ -1117,7 +1167,12 @@ export function ThreeDTab({
           <button type="button" className="dx3-toggle" onClick={() => setSideClosed(!sideClosed)} aria-label="Settings">
             <SlidersHorizontal className="h-3.5 w-3.5" /> Settings
           </button>
-          <div ref={mountRef} className="absolute inset-0" />
+          <div ref={mountRef} className="absolute inset-0" data-dx3-canvas />
+          <div className="dx3-zoom" role="group" aria-label="Zoom">
+            <button type="button" aria-label="Zoom in" onClick={() => zoomBy(0.75)}>+</button>
+            <button type="button" aria-label="Zoom out" onClick={() => zoomBy(1.33)}>−</button>
+            <button type="button" aria-label="Fit" onClick={() => viewPreset("angled")}>Fit</button>
+          </div>
           {title.trim() && <div className="dx3-title">{title.trim()}</div>}
 
           {!meshReady && !error && (
@@ -1136,7 +1191,7 @@ export function ThreeDTab({
               className="dx-readout"
               data-diagnostics-readout
               data-surface={readingSummary?.surface || ""}
-              data-exaggeration={exaggeration.toFixed(1)}
+              data-exaggeration={exaggeration.toFixed(2)}
             >
               <div className="dx-readout__body">
                 {readingSummary && readoutLines ? (

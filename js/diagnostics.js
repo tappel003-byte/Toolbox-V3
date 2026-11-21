@@ -219,7 +219,7 @@
     }
     if (summary.referenceMessage) lines.push(summary.referenceMessage);
     var factor = Number(exaggeration);
-    if (isFinite(factor)) lines.push('Vertical exaggeration ' + factor.toFixed(1) + '×');
+    if (isFinite(factor)) lines.push('Vertical exaggeration ' + factor.toFixed(2) + '×');
     lines.push(summary.scaleNotice || SCALE_NOTICE);
     lines.push(summary.evidenceMessage || EVIDENCE_MESSAGE);
     return lines;
@@ -229,7 +229,7 @@
     extras = extras || {};
     summary = summary || {};
     var factor = Number(extras.exaggeration);
-    var exaggeration = isFinite(factor) ? Math.round(factor * 10) / 10 : null;
+    var exaggeration = isFinite(factor) ? Math.round(factor * 100) / 100 : null;
     return {
       levelName: summary.levelName || '',
       canvasId: extras.canvasId || '',
