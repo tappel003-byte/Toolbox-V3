@@ -349,6 +349,21 @@
   }
 
   /**
+   * Photo / # keep a fixed share; Notes takes the rest and may shrink to
+   * nothing (`minmax(0, …fr)`). Without the zero floor, the grid refused to
+   * go narrower than the longest note line, so corner-drag could not make the
+   * schedule skinnier even when the text was ready to wrap (Tim, Nov 23, 2026).
+   */
+  function applyScheduleColumns(grid, scheduleBox) {
+    if (!grid) return;
+    var width = (scheduleBox && scheduleBox.w) || LAYOUT.schedule.w;
+    var notesWidth = Math.max(1, width - COL_PHOTO - COL_PIN);
+    grid.style.gridTemplateColumns = [COL_PHOTO, COL_PIN, notesWidth].map(function (col) {
+      return 'minmax(0, ' + col + 'fr)';
+    }).join(' ');
+  }
+
+  /**
    * Fit a note field to its own text.
    *
    * The row is as tall as what is written in it, and a textarea will not do
@@ -361,6 +376,20 @@
     if (!note) return;
     note.style.height = 'auto';
     note.style.height = note.scrollHeight + 'px';
+  }
+
+  /**
+   * After the schedule box changes width (live corner-drag), retarget the
+   * column shares and grow each note to its wrapped height so the box can
+   * go skinny without clipping the writing.
+   */
+  function layoutSchedule(scheduleEl, scheduleBox) {
+    if (!scheduleEl) return;
+    var grid = scheduleEl.querySelector
+      ? scheduleEl.querySelector('.rb-penlog__grid')
+      : null;
+    applyScheduleColumns(grid, scheduleBox);
+    autosizeNotes(scheduleEl);
   }
 
   /**
@@ -511,11 +540,7 @@
     // Photo and # keep their width; the notes column takes what is left, so
     // a schedule the investigator has widened gives the room to the writing
     // rather than to the two narrow columns beside it.
-    var width = (scheduleBox && scheduleBox.w) || LAYOUT.schedule.w;
-    var notesWidth = Math.max(1, width - COL_PHOTO - COL_PIN);
-    grid.style.gridTemplateColumns = [COL_PHOTO, COL_PIN, notesWidth].map(function (width) {
-      return width + 'fr';
-    }).join(' ');
+    applyScheduleColumns(grid, scheduleBox);
 
     COLUMNS.forEach(function (label, index) {
       var head = cell('rb-penlog__cell--head' + (index >= 2 ? ' is-left' : ''), '');
@@ -904,6 +929,7 @@
     renderPage: renderPage,
     layoutPlans: layoutPlans,
     buildSchedule: buildSchedule,
+    layoutSchedule: layoutSchedule,
     fitCount: fitCount,
     saveNotes: saveNotes,
     normalizeLayout: normalizeLayout,

@@ -2679,6 +2679,9 @@ body.report-builder-open .canvas {
      starts from before the first measurement. */
   height: auto;
   min-height: 0;
+  /* Let the Notes column shrink with the schedule box. Default textarea
+     min-content kept the grid as wide as the longest line (Tim, Nov 23). */
+  min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
@@ -2688,6 +2691,9 @@ body.report-builder-open .canvas {
   color: inherit;
   font: inherit;
   line-height: 1.15;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Print / Present: room + note as ordinary flowing text. Absolute room +
