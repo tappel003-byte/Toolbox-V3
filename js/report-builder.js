@@ -2486,12 +2486,22 @@
     return { canvasId: canvasId, scope: scope, areaId: areaId, settings: settings };
   }
 
+  /** True once this key has been attempted (hit or empty miss). */
+  function legendKnown(key) {
+    return Object.prototype.hasOwnProperty.call(legendImages, key);
+  }
+
   /**
    * Make sure every colour scale these pages need has been painted.
    *
    * Called from renderPages, and it draws the pages again once pictures have
    * arrived. The cache is what stops that from going round for ever: the
    * second pass finds every scale already painted and asks for nothing.
+   *
+   * A failed or empty paint must still be recorded. Leaving the key absent
+   * made ensureFloorLegends re-queue the same jobs on every redraw → hundreds
+   * of empty-list rebuilds per open (Tim, Nov 23, 2026: pages rail snap /
+   * unselectable thumbs while legends thrashed).
    *
    * Multi-view sheets paint one legend set per view source/settings (GPT-027).
    */
@@ -2517,7 +2527,7 @@
           for (var i = 0; i < count; i += 1) {
             var key = legendKey(src.canvasId, src.areaId, src.scope, i, src.settings);
             urls.push(legendImages[key] || '');
-            if (!legendImages[key] && !legendPainting[key]) {
+            if (!legendKnown(key) && !legendPainting[key]) {
               wanted.push({
                 page: page, index: i, key: key, slot: vi,
                 canvasId: src.canvasId, areaId: src.areaId, settings: src.settings,
@@ -2539,7 +2549,7 @@
       for (var j = 0; j < countOne; j += 1) {
         var keyOne = legendKey(srcOne.canvasId, srcOne.areaId, srcOne.scope, j, srcOne.settings);
         urlsOne.push(legendImages[keyOne] || '');
-        if (!legendImages[keyOne] && !legendPainting[keyOne]) {
+        if (!legendKnown(keyOne) && !legendPainting[keyOne]) {
           wanted.push({
             page: page, index: j, key: keyOne, slot: 0,
             canvasId: srcOne.canvasId, areaId: srcOne.areaId, settings: srcOne.settings,
@@ -2560,12 +2570,15 @@
         settings: job.settings || null,
       }).then(function (painted) {
         delete legendPainting[job.key];
-        if (painted && painted.dataUrl) legendImages[job.key] = painted.dataUrl;
+        // Record the attempt even when empty so the next pass does not re-queue.
+        legendImages[job.key] = (painted && painted.dataUrl) || '';
       }).catch(function () {
         delete legendPainting[job.key];
+        legendImages[job.key] = '';
       });
     })).then(function () {
-      if (typeof redraw === 'function') redraw();
+      var gained = wanted.some(function (job) { return !!legendImages[job.key]; });
+      if (gained && typeof redraw === 'function') redraw();
     });
   }
 
@@ -2879,7 +2892,11 @@
       if (page.meta && page.meta.imported) margin.classList.add('rb-sheet__margin--topo-bleed');
       var fl = window.ToolboxReportFloorLayout;
       if (fl && typeof fl.renderPage === 'function') {
-        var imported = !!(page.meta && page.meta.imported && page.evidence && page.evidence.figure);
+        // Editor import state is meta.imported. The live Floor Survey host
+        // draws the slide; a static evidence.figure PNG is optional (print
+        // stills / thumbs). Requiring the PNG here showed the Import stub
+        // whenever one-shot compose failed, even after auto-import.
+        var imported = !!(page.meta && page.meta.imported);
         // ONE layout record for the whole report. The slide used to keep a
         // copy of its own, with the book's behind it and a factory default
         // behind that -- three places holding one answer, and whichever was
@@ -4346,6 +4363,12 @@
       }
       lastRenderedId = activeId;
       var current = pages[index];
+      // Keep the pages list where the investigator left it. renderPages used
+      // to empty #rb-page-list on every pass (legend paint, autosave, thumb
+      // click, Fit…), which resets scrollTop to 0 — so the scrollbar arrow
+      // looked broken ("goes down, then jumps to the top") and lower slides
+      // could not be kept in view long enough to select (Tim, Nov 23, 2026).
+      var listScrollTop = listEl ? listEl.scrollTop : 0;
       listEl.textContent = '';
       pages.forEach(function (item, pageIndex) {
         var button = document.createElement('button');
@@ -4378,6 +4401,17 @@
         });
         listEl.appendChild(button);
       });
+      listEl.scrollTop = listScrollTop;
+      // If the active thumb sat outside the restored viewport (Earlier/Later,
+      // or a jump), bring it into view without yanking the list to the top.
+      var activeBtn = listEl.querySelector('.rb-thumb.is-active');
+      if (activeBtn && typeof activeBtn.scrollIntoView === 'function') {
+        var listRect = listEl.getBoundingClientRect();
+        var btnRect = activeBtn.getBoundingClientRect();
+        if (btnRect.top < listRect.top - 1 || btnRect.bottom > listRect.bottom + 1) {
+          activeBtn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+      }
 
       if (current && current.type === 'floor') {
         var curOwn = current.meta && current.meta.ownLayout;
@@ -7145,6 +7179,14 @@
         delete page.meta.autoImported;
         var figure = page.evidence && page.evidence.figure;
         if (figure) return;
+        // The editor draws Floor Survey live (_mountTopo). A missing one-shot
+        // PNG from composeReportTopoFigureForPage is not "nothing to draw" —
+        // that compose is flaky under load and fails for some multi-boundary
+        // slides while the live host still mounts. Keep the import whenever
+        // Floor Survey can compose live; only show Import when it cannot.
+        // Tim, Nov 23, 2026: Floor slides opened on the Import stub after
+        // auto-import had already marked them.
+        if (meta.compose && window.ToolboxFloorSurvey) return;
         page.meta.imported = false;
         changed = true;
       });

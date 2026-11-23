@@ -258,6 +258,13 @@
       } else if (closed.length === 1) {
         var only = closed[0];
         var onlyName = text(only.name) || levelName;
+        // A whole-level legacy boundary is not a named room. Using "Boundary 1"
+        // made every single-boundary level read the same in the rail and in
+        // CONTENTS ("Floor · Boundary 1" × N), which looked like the table of
+        // contents listing the same thing twice (Tim, Nov 23, 2026).
+        if (only.id === 'legacy' || /^boundary\s*\d+$/i.test(onlyName)) {
+          onlyName = levelName;
+        }
         figures.push(Object.assign({}, base, {
           id: epoch.id + '::' + canvasId + '::' + (only.id || 'area'),
           name: onlyName,
