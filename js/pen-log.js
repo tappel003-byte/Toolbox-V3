@@ -107,6 +107,69 @@
   var PLAN_PIN_PAD = 0.06;
 
   /**
+   * Camera for the plan box — same idea as Floor Survey (Tim, Nov 17 / Nov 23).
+   * Centre and zoom are against fit (fractions of the plan image), so the
+   * framing holds from the editor to Present and the PDF. One camera per
+   * Distress level/canvas: each level has its own plan.
+   */
+  function normalizeCamera(raw) {
+    var src = raw && typeof raw === 'object' ? raw : {};
+    function num(v, dflt, lo, hi) {
+      var n = typeof v === 'number' && isFinite(v) ? v : dflt;
+      return Math.max(lo, Math.min(hi, n));
+    }
+    return {
+      cx: Math.round(num(src.cx, 0.5, 0, 1) * 10000) / 10000,
+      cy: Math.round(num(src.cy, 0.5, 0, 1) * 10000) / 10000,
+      zoom: Math.round(num(src.zoom, 1, 1, 12) * 1000) / 1000,
+      rel: true,
+    };
+  }
+
+  function isDefaultCamera(raw) {
+    var cam = normalizeCamera(raw);
+    return Math.abs(cam.cx - 0.5) < 1e-4 &&
+      Math.abs(cam.cy - 0.5) < 1e-4 &&
+      Math.abs(cam.zoom - 1) < 1e-4;
+  }
+
+  /**
+   * Place the fitted plan under a camera. zoom 1 + centre 0.5,0.5 is the
+   * ordinary contained fit; Crop raises zoom and recentres on the drawing.
+   */
+  function cameraFrame(frameWidth, frameHeight, imageWidth, imageHeight, camera) {
+    var frameW = Number(frameWidth);
+    var frameH = Number(frameHeight);
+    var imageW = Number(imageWidth);
+    var imageH = Number(imageHeight);
+    var cam = normalizeCamera(camera);
+    if (!(frameW > 0) || !(frameH > 0)) {
+      return { x: 0, y: 0, width: 0, height: 0, scale: 1, camera: cam };
+    }
+    if (!(imageW > 0) || !(imageH > 0)) {
+      return { x: 0, y: 0, width: frameW, height: frameH, scale: 1, camera: cam };
+    }
+    var fit = Math.min(frameW / imageW, frameH / imageH);
+    if (!(fit > 0)) {
+      return { x: 0, y: 0, width: frameW, height: frameH, scale: 1, camera: cam };
+    }
+    var scale = cam.zoom * fit;
+    var width = imageW * scale;
+    var height = imageH * scale;
+    var x = frameW / 2 - cam.cx * imageW * scale;
+    var y = frameH / 2 - cam.cy * imageH * scale;
+    // A stored crop that throws the whole plan off the sheet is not a crop —
+    // fall back to fit so the page never opens on blank paper.
+    var onScreen = x < frameW && y < frameH && x + width > 0 && y + height > 0;
+    if (!onScreen) {
+      var fitRect = containedFrame(frameW, frameH, imageW, imageH);
+      fitRect.camera = normalizeCamera(null);
+      return fitRect;
+    }
+    return { x: x, y: y, width: width, height: height, scale: scale, camera: cam };
+  }
+
+  /**
    * Size the plan box to the plan's own proportion inside a max slot.
    *
    * The default slot is tall (half the sheet by nearly full height). A
@@ -328,16 +391,22 @@
     var frame = root.querySelector('.rb-penlog__plan');
     var fit = root.querySelector('.rb-penlog__fit');
     if (!frame || !fit) return;
-    var rect = containedFrame(
+    var camera = root._penLogCamera || null;
+    var rect = cameraFrame(
       frame.clientWidth,
       frame.clientHeight,
       frame.getAttribute('data-plan-width'),
-      frame.getAttribute('data-plan-height')
+      frame.getAttribute('data-plan-height'),
+      camera
     );
     fit.style.left = rect.x + 'px';
     fit.style.top = rect.y + 'px';
     fit.style.width = Math.max(0, rect.width) + 'px';
     fit.style.height = Math.max(0, rect.height) + 'px';
+    var zoom = rect.camera ? rect.camera.zoom : 1;
+    frame.setAttribute('data-rb-camera-zoom', String(zoom));
+    if (zoom > 1.001) frame.classList.add('is-cropped');
+    else frame.classList.remove('is-cropped');
     publishPinSize(root, rect);
   }
 
@@ -615,6 +684,8 @@
     var frame = document.createElement('div');
     frame.className = 'rb-penlog__plan';
     frame.setAttribute('data-rb-penlog-box', 'plan');
+    // Camera is per level/canvas — Crop/Restore writes it; layoutPlans applies it.
+    root._penLogCamera = normalizeCamera(model.camera);
     place(frame, placement.plan);
     if (planWidth > 0 && planHeight > 0) {
       frame.setAttribute('data-plan-width', String(planWidth));
@@ -795,6 +866,9 @@
     PIN_SCALE_MAX: PIN_SCALE_MAX,
     clampPinScale: clampPinScale,
     containedFrame: containedFrame,
+    cameraFrame: cameraFrame,
+    normalizeCamera: normalizeCamera,
+    isDefaultCamera: isDefaultCamera,
     pinPoint: pinPoint,
     assignPinNumbers: assignPinNumbers,
     photoRange: photoRange,

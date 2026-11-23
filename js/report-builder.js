@@ -30,6 +30,8 @@
     layout: null,
     /** Report-owned Picture Locations pin scale (never capture prefs). */
     pinScale: 1,
+    /** Per Distress canvasId: { cx, cy, zoom, rel } for Crop/Restore. */
+    cameras: {},
   };
   var fitObserver = null;
   var formatToolbar = null;
@@ -2329,6 +2331,14 @@
       pinScale: (typeof penLogUi.pinScale === 'number' && penLogUi.pinScale > 0)
         ? penLogUi.pinScale
         : 1,
+      // Per-level camera (Crop/Restore). Picture Locations carry the canvas
+      // on sourceRef (Floor Survey uses meta.canvasId). Continuation sheets
+      // share sourceRef, so they share the crop.
+      camera: (function () {
+        var cid = (page && page.sourceRef) || (page.meta && page.meta.canvasId) || '';
+        if (!cid || !penLogUi.cameras || typeof penLogUi.cameras !== 'object') return null;
+        return penLogUi.cameras[cid] || null;
+      })(),
       selectedPinId: penLogUi.selectedPinId,
       onNote: function (id, value, source) {
         if (typeof penLogUi.onNote === 'function') penLogUi.onNote(id, value, source);
@@ -3052,7 +3062,7 @@
   }
 
   function persistableDocument(pages, activePageId, prior, floorLayout, coverLayout, brandBox,
-    floorCamera, floorView, floorFramed, discussionBox, penLogLayout, northRotation, draft) {
+    floorCamera, floorView, floorFramed, discussionBox, penLogLayout, northRotation, draft, penLogCameras) {
     var notes = collectPenLogNotes(pages);
     if ((!notes || !Object.keys(notes).length) && prior && prior.penLog && prior.penLog.notes) {
       notes = prior.penLog.notes;
@@ -3071,6 +3081,21 @@
         schemaVersion: 1,
         notes: notes,
       };
+    }
+    var cameras = penLogCameras || (prior && prior.penLogCameras);
+    if (cameras && typeof cameras === 'object') {
+      var cleaned = {};
+      var penApiCam = window.ToolboxPenLog;
+      Object.keys(cameras).forEach(function (cid) {
+        if (!cid) return;
+        var cam = penApiCam && penApiCam.normalizeCamera
+          ? penApiCam.normalizeCamera(cameras[cid])
+          : cameras[cid];
+        if (!cam) return;
+        if (penApiCam && penApiCam.isDefaultCamera && penApiCam.isDefaultCamera(cam)) return;
+        cleaned[cid] = cam;
+      });
+      if (Object.keys(cleaned).length) doc.penLogCameras = cleaned;
     }
     var flApi = window.ToolboxReportFloorLayout;
     if (floorLayout && flApi) {
@@ -3281,6 +3306,9 @@
     // never read capture ds-capture-sizes. Default 1 = proven 11×17 diameter.
     var penLogPinScale = 1;
     var penLogPinScaleSeeded = false;
+    // Crop/Restore camera per Distress level (canvasId). Unlike Floor Survey's
+    // one book camera, each Picture Locations level has its own plan image.
+    var penLogCameras = {};
     // Set on open when the cover held another job's aerial and it was dropped.
     var coverOverviewDropped = false;
     // One camera for every Floor Survey slide: the same part of the plan at the
@@ -3832,7 +3860,8 @@
         discussionBox,
         penLogBoxLayout,
         reportNorth,
-        draftStamp
+        draftStamp,
+        penLogCameras
       );
       // Keep notes and pinScale together on reportBuilder.penLog.
       // Use this mount's own penLogPinScale / priorDoc only — never the shared
@@ -3858,6 +3887,7 @@
       // a previous Customer File) must not overwrite the live job's scale.
       if (token === mountGeneration) {
         penLogUi.pinScale = doc.penLog.pinScale;
+        penLogUi.cameras = penLogCameras || {};
       }
       workingRecord.reportBuilder = doc;
       workingRecord.updatedAt = doc.updatedAt;
@@ -8472,6 +8502,102 @@
       });
     }
 
+    /**
+     * Crop and Restore on a Picture Locations plan (Tim, Nov 23, 2026).
+     *
+     * Same idea as Floor Survey: the plan comes in with its white margin;
+     * Crop frames the drawing (ink + pin marks) by setting that level's
+     * camera; Restore puts the whole plan back. The plan image and the pins
+     * are not rewritten — only the camera. Stored per canvasId because each
+     * Distress level has its own plan.
+     */
+    function cropPenLogPlan(restore) {
+      var page = activePage();
+      var penApi = window.ToolboxPenLog;
+      if (!page || !isPenLogPage(page) || !workingRecord || !penApi) return Promise.resolve();
+      // Picture Locations carry the canvas on sourceRef (see northForPage).
+      var canvasId = (page.sourceRef) || (page.meta && page.meta.canvasId) || '';
+      if (!canvasId) {
+        setSaveStatus('Nothing to crop to yet.');
+        return Promise.resolve();
+      }
+      var apply = function (cam, message) {
+        var next = penApi.normalizeCamera(cam);
+        if (penApi.isDefaultCamera(next)) {
+          delete penLogCameras[canvasId];
+        } else {
+          penLogCameras[canvasId] = next;
+        }
+        penLogUi.cameras = penLogCameras;
+        noteEdit();
+        renderPages();
+        setSaveStatus(message);
+        flushSave().catch(function () {});
+      };
+      if (restore) {
+        apply({ cx: 0.5, cy: 0.5, zoom: 1, rel: true }, 'Restored the whole plan.');
+        return Promise.resolve();
+      }
+      var host = sheetEl.querySelector('.rb-stage .rb-sheet:not(.rb-sheet--thumb) .rb-penlog__plan') ||
+        sheetEl.querySelector('.rb-penlog__plan');
+      var plan = (page.evidence && page.evidence.plan) || {};
+      var dataUrl = typeof plan.dataUrl === 'string' ? plan.dataUrl : '';
+      var pw = Number(plan.width) || Number(host && host.getAttribute('data-plan-width')) || 0;
+      var ph = Number(plan.height) || Number(host && host.getAttribute('data-plan-height')) || 0;
+      if (!host || !(pw > 0 && ph > 0)) {
+        setSaveStatus('Nothing to crop to yet.');
+        return Promise.resolve();
+      }
+      var finish = function (ink) {
+        var box = ink ? { x0: ink.x0, y0: ink.y0, x1: ink.x1, y1: ink.y1 } : null;
+        var takeNorm = function (nx, ny) {
+          if (!isFinite(nx) || !isFinite(ny)) return;
+          var fx = Math.max(0, Math.min(1, nx));
+          var fy = Math.max(0, Math.min(1, ny));
+          if (!box) box = { x0: fx, y0: fy, x1: fx, y1: fy };
+          box.x0 = Math.min(box.x0, fx); box.y0 = Math.min(box.y0, fy);
+          box.x1 = Math.max(box.x1, fx); box.y1 = Math.max(box.y1, fy);
+        };
+        // Pins count too — a crop must not cut off a numbered mark.
+        var notes = penLogNoteMap(page, penLogUi.noteMap);
+        var pins = penLogPinsForPage(page, notes, penLogOffsetMap(page));
+        (pins || []).forEach(function (pin) {
+          if (typeof pin.x !== 'number' || typeof pin.y !== 'number') return;
+          takeNorm(pin.x + (pin.dx || 0) / 100, pin.y + (pin.dy || 0) / 100);
+          takeNorm(pin.x, pin.y);
+        });
+        var W = host.clientWidth; var H = host.clientHeight;
+        if (!box || !(W > 0 && H > 0)) {
+          setSaveStatus('Nothing to crop to yet.');
+          return;
+        }
+        var pad = 0.02;
+        var bx0 = Math.max(0, box.x0 - pad); var by0 = Math.max(0, box.y0 - pad);
+        var bx1 = Math.min(1, box.x1 + pad); var by1 = Math.min(1, box.y1 + pad);
+        var bw = Math.max(0.05, bx1 - bx0) * pw;
+        var bh = Math.max(0.05, by1 - by0) * ph;
+        var fit = Math.min(W / pw, H / ph);
+        var zoom = Math.max(1, Math.min(W / bw, H / bh) / fit);
+        apply({
+          cx: (bx0 + bx1) / 2,
+          cy: (by0 + by1) / 2,
+          zoom: zoom,
+          rel: true,
+        }, 'Cropped to the drawing.');
+      };
+      if (dataUrl) return planInkBounds(dataUrl).then(finish);
+      // Live evidence may not carry a dataUrl — load the plan the same way Floor Survey Crop does.
+      var canvas = canvasById(workingRecord, canvasId);
+      var getMedia = window.ToolboxDB && window.ToolboxDB.getMedia
+        ? window.ToolboxDB.getMedia.bind(window.ToolboxDB) : null;
+      if (canvas && canvas.plan && canvas.plan.id && getMedia) {
+        if (!(pw > 0)) pw = Number(canvas.plan.width) || pw;
+        if (!(ph > 0)) ph = Number(canvas.plan.height) || ph;
+        return getMedia(canvas.plan.id).then(planInkBounds).then(finish);
+      }
+      return Promise.resolve(finish(null));
+    }
+
     function restackPenLogPiece(box, toFront) {
       var penApi = window.ToolboxPenLog;
       if (!penApi || !isPenLogPage(activePage())) return;
@@ -8551,9 +8677,15 @@
       var penBox = event.target.closest('[data-rb-penlog-box]');
       if (penBox) {
         if (!isPenLogPage(activePage()) || !window.ToolboxPenLog) return;
+        var penExtras = penBox.getAttribute('data-rb-penlog-box') === 'plan'
+          ? [
+            { key: 'crop', label: 'Crop', run: function () { cropPenLogPlan(false); } },
+            { key: 'restore', label: 'Restore', run: function () { cropPenLogPlan(true); } },
+          ]
+          : null;
         openStackMenu(event, function (toFront) {
           restackPenLogPiece(penBox, toFront);
-        });
+        }, penExtras);
         return;
       }
       closeStackMenu();
@@ -9799,6 +9931,17 @@
         penLogPinScaleSeeded = false;
       }
       penLogUi.pinScale = penLogPinScale;
+      var camSeed = (savedDoc && savedDoc.penLogCameras) || template.penLogCameras || {};
+      penLogCameras = {};
+      if (camSeed && typeof camSeed === 'object') {
+        Object.keys(camSeed).forEach(function (cid) {
+          if (!cid) return;
+          penLogCameras[cid] = window.ToolboxPenLog && window.ToolboxPenLog.normalizeCamera
+            ? window.ToolboxPenLog.normalizeCamera(camSeed[cid])
+            : camSeed[cid];
+        });
+      }
+      penLogUi.cameras = penLogCameras;
       var cameraSeed = (savedDoc && savedDoc.floorCamera) || template.floorCamera;
       if (cameraSeed) {
         floorCamera = JSON.parse(JSON.stringify(cameraSeed));

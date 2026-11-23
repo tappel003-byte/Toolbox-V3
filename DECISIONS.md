@@ -850,6 +850,10 @@ Tim: put the Google (satellite) view in the title block, right above Figure 1. O
 
 Tim: Floor Survey brings the whole plan in, white margin included, so no data is lost; once it is on the sheet he wants to crop the white away. Right-click the plan: **Crop** and **Restore**, beside Bring to front and Send to back. Crop frames the drawing (the plan image's inked area plus every reading and boundary, with a small margin) by setting the report's one camera, so every Floor Survey slide -- colour, readings only, black and white -- follows it, the way they already share placement. Restore sets the camera back to the whole plan. The plan image, the readings and the frame box are never changed.
 
+## Crop and Restore on Picture/Damage Locations (Nov 23, 2026)
+
+Tim: the same crop on the Picture Locations plan ("I need to be able to crop this picture as well. Very similar to what we did with the floor survey."). Right-click the plan: **Crop** and **Restore**, beside Bring to front and Send to back. Crop frames the plan ink plus the numbered pin marks by setting a camera for that Distress level (`reportBuilder.penLogCameras[canvasId]`); Restore puts the whole plan back. Unlike Floor Survey's one book camera, each Picture Locations level has its own plan, so the camera is per canvas. The plan image, pins, contour layer and the plan/schedule boxes are never rewritten — only the camera. Present and PDF read the same camera.
+
 ## Compare two surveys: relative movement with no held point (Nov 20, 2026)
 
 Tim: wants to see what is moving between two floor level surveys of one floor without assuming which points are stable; the surveys he needs it for are PGG jobs, not his own Customer Files. So the first build is a back door that works on surveys Toolbox never held. A "Compare surveys" button on the Cabinet opens a dialog: two files (a PDF page or an image each), a box dragged around each legend with its top and bottom values, an automatic (or two-click) alignment, and the result.

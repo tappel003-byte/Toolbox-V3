@@ -2360,6 +2360,13 @@ body.report-builder-open .canvas {
   box-sizing: border-box;
 }
 
+/* Crop zooms the plan inside the box — clip the white margin the camera
+   framed out. Uncropped plans stay overflow:visible so a pin dragged just
+   off the plan can still sit on the sheet white (the pin-pad rule). */
+.rb-penlog__plan.is-cropped {
+  overflow: hidden;
+}
+
 .rb-penlog__fit {
   position: absolute;
 }
