@@ -7787,6 +7787,12 @@
             var penRoot = livePen.closest('.rb-penlog');
             if (penRoot) window.ToolboxPenLog.layoutPlans(penRoot);
           }
+          // Schedule width changed: Notes wrap and rows grow so corner-drag
+          // can make the box skinnier without clipping (Tim, Nov 23, 2026).
+          if (penDrag.which === 'schedule' && window.ToolboxPenLog &&
+              typeof window.ToolboxPenLog.layoutSchedule === 'function') {
+            window.ToolboxPenLog.layoutSchedule(livePen, b);
+          }
         }
         return;
       }
