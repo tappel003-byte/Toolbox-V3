@@ -9,9 +9,11 @@ This does **not** replace authority docs. Read order for rules and vision:
 3. `MILESTONE.md`
 4. `DECISIONS.md`
 5. **This file** — current working picture
+6. `TODO.md` — parked reminders (not authorization)
+7. `DISCUSSION.md` — parked product discussions / paste-ready prompts (not authorization)
 
-Last updated: **Nov 12, 2026** (America/Denver)  
-Updated by: Cursor — editable visit notes. Ball → Tim (promote).
+Last updated: **Nov 17, 2026** (America/Denver)  
+Updated by: Cursor — added `DISCUSSION.md` (Cabinet close-out parked). Ball → Tim on TLS.
 
 ---
 
@@ -19,12 +21,12 @@ Updated by: Cursor — editable visit notes. Ball → Tim (promote).
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — pill gestures + survey date + Plan of Repair work by Claude Code on `claude/por-draw-contour-2ac5`. Ready to merge into integration when Tim asks. Not on `main`. |
-| Integration tip | `ecaea0a` (`ecaea0a85db9cfd2a25683a34939621bc068a3cb`) — editable visit notes; shell v472 |
-| Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
+| **Has the ball** | **Tim** — working on **TLS / Plan of Repair**. Do not steal this ball for Cabinet close-out. |
+| Integration tip | `a540c2d` — POR round A (line spacing, highlight, numbering, Slides, Undo/Redo, slide move); shell v490 |
+| Parked discussion | **`DISCUSSION.md` D-001** — File Cabinet at ~50–100 jobs/year (close-out vs organize). Discussion only; Tim may take it to Claude Code. No build until Tim says go. |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Shell | `toolbox-shell-v472` |
-| Not done | Do not merge to `main` unless Tim promotes. Do not deploy Sync Worker. **Do not strip POR or Report Builder controls or icons.** |
+| Shell | `toolbox-shell-v490` |
+| Not done | Do not merge to `main` unless Tim promotes. Do not deploy Sync Worker without Tim’s go. **Do not strip POR or Report Builder controls or icons.** |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
 
@@ -347,6 +349,6 @@ Builds on the merged shape-text work. `js/plan-of-repair.js`. Shell v489. Tests:
 
 ## How any new agent should start
 
-1. Read `VISION.md` → `AGENTS.md` → `MILESTONE.md` → `DECISIONS.md` → **`SESSION_STATE.md`**.
+1. Read `VISION.md` → `AGENTS.md` → `MILESTONE.md` → `DECISIONS.md` → **`SESSION_STATE.md`**. Check `DISCUSSION.md` for parked talks (not build authorization). Check `TODO.md` for parked reminders.
 2. Branch from `claude/milestone-1-customer-file-qv5ybf`.
 3. PRs base = that branch. Merge there when Tim asks. Do not promote. Do not deploy Sync Worker without Tim’s go.
