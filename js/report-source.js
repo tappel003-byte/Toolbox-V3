@@ -265,11 +265,15 @@
         if (only.id === 'legacy' || /^boundary\s*\d+$/i.test(onlyName)) {
           onlyName = levelName;
         }
+        // A synthetic whole-level boundary is the layer, not a named room in
+        // layer.areas. Emit scope "all" so Present/Print preflight and compose
+        // resolve the same way as a no-area level (legacy id is not in areas).
+        var wholeLevel = only.id === 'legacy' || /^boundary\s*\d+$/i.test(text(only.name) || '');
         figures.push(Object.assign({}, base, {
           id: epoch.id + '::' + canvasId + '::' + (only.id || 'area'),
           name: onlyName,
-          scope: 'area',
-          areaId: only.id || null,
+          scope: wholeLevel ? 'all' : 'area',
+          areaId: wholeLevel ? null : (only.id || null),
         }));
       } else {
         figures.push(Object.assign({}, base, {

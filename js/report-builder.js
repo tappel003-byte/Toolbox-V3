@@ -7753,12 +7753,22 @@
           moving.h = penNextH;
           moving.x = penWest ? originPen.x + (originPen.w - penNextW) : originPen.x;
           moving.y = penNorth ? originPen.y + (originPen.h - penNextH) : originPen.y;
+          penLogBoxLayout = penApi2 && penApi2.normalizeLayout
+            ? penApi2.normalizeLayout(nextPen) : nextPen;
         } else {
+          // Body drag moves only. Never let clampBox shrink w/h at the sheet
+          // edge — that read as "drag right and it gets smaller" after Crop
+          // (Tim, Nov 23, 2026).
           moving.x = originPen.x + pdx;
           moving.y = originPen.y + pdy;
+          if (penApi2 && typeof penApi2.placeBoxOnSheet === 'function') {
+            nextPen[penDrag.which] = penApi2.placeBoxOnSheet(moving, originPen);
+            penLogBoxLayout = nextPen;
+          } else {
+            penLogBoxLayout = penApi2 && penApi2.normalizeLayout
+              ? penApi2.normalizeLayout(nextPen) : nextPen;
+          }
         }
-        penLogBoxLayout = penApi2 && penApi2.normalizeLayout
-          ? penApi2.normalizeLayout(nextPen) : nextPen;
         // Moved live; the split waits for the pointer to come up, because
         // re-measuring the whole level sixty times a second would rebuild
         // every sheet of it.
@@ -8618,6 +8628,39 @@
         var bx1 = Math.min(1, box.x1 + pad); var by1 = Math.min(1, box.y1 + pad);
         var bw = Math.max(0.05, bx1 - bx0) * pw;
         var bh = Math.max(0.05, by1 - by0) * ph;
+        // Match the plan box to the crop aspect first so contain-fit fills the
+        // frame with no letterboxed empty band Tim then tried to "move into"
+        // (Nov 23, 2026 — empty left gap after Crop was inside a taller box).
+        var boxes = penLogBoxes();
+        var planBox = boxes && boxes.plan;
+        if (planBox && penApi.placeBoxOnSheet && bw > 0 && bh > 0) {
+          var aspect = bw / bh;
+          var nextW = planBox.w;
+          var nextH = planBox.h;
+          if (planBox.w / planBox.h > aspect) {
+            nextW = planBox.h * aspect;
+          } else {
+            nextH = planBox.w / aspect;
+          }
+          boxes.plan = penApi.placeBoxOnSheet({
+            x: planBox.x, y: planBox.y, w: nextW, h: nextH, z: planBox.z,
+          }, planBox);
+          if (boxes.schedule && penApi.normalizeLayout) {
+            // schedule unchanged; re-clamp plan only through placeBoxOnSheet
+          }
+          penLogBoxLayout = {
+            plan: boxes.plan,
+            schedule: boxes.schedule,
+          };
+          // Host may still be the pre-tighten size; use the new box inches for zoom.
+          var sheet = host.closest('.rb-sheet');
+          var sheetW = sheet ? sheet.clientWidth : 0;
+          var sheetH = sheet ? sheet.clientHeight : 0;
+          if (sheetW > 0 && sheetH > 0) {
+            W = boxes.plan.w / 17 * sheetW;
+            H = boxes.plan.h / 11 * sheetH;
+          }
+        }
         var fit = Math.min(W / pw, H / ph);
         var zoom = Math.max(1, Math.min(W / bw, H / bh) / fit);
         apply({
@@ -9214,6 +9257,14 @@
         if (spec.scope === 'area' && spec.areaId) {
           var areas = Array.isArray(layer.areas) ? layer.areas : [];
           var found = areas.some(function (area) { return area && area.id === spec.areaId; });
+          // Whole-level outer boundary is synthesized as id "legacy" when the
+          // layer has a boundary polygon but no named areas — it is not in
+          // layer.areas. Rejecting it blocked Present/Print on real jobs
+          // (Tim, Nov 23, 2026: "cannot do Presentation view").
+          if (!found && String(spec.areaId) === 'legacy') {
+            var boundary = layer.boundary;
+            found = Array.isArray(boundary) && boundary.length >= 3;
+          }
           if (!found) {
             failures.push(describeFloorOutputFailure(job, 'boundary id is not on this Floor Survey layer'));
           }

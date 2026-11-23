@@ -80,6 +80,31 @@
     return box;
   }
 
+  /**
+   * Move a box without changing its size. clampBox used to shrink w/h when
+   * x+w crossed the sheet edge, so a body-drag to the right looked like a
+   * resize (Tim, Nov 23, 2026: "moving it right makes it smaller").
+   */
+  function placeBoxOnSheet(raw, fallback) {
+    var fb = fallback || LAYOUT.plan;
+    var src = raw && typeof raw === 'object' ? raw : {};
+    var w = typeof src.w === 'number' && isFinite(src.w) ? src.w : fb.w;
+    var h = typeof src.h === 'number' && isFinite(src.h) ? src.h : fb.h;
+    w = Math.max(1.5, Math.min(SHEET_W, w));
+    h = Math.max(1.5, Math.min(SHEET_H, h));
+    var x = typeof src.x === 'number' && isFinite(src.x) ? src.x : fb.x;
+    var y = typeof src.y === 'number' && isFinite(src.y) ? src.y : fb.y;
+    x = Math.max(0, Math.min(SHEET_W - w, x));
+    y = Math.max(0, Math.min(SHEET_H - h, y));
+    return {
+      x: Math.round(x * 1000) / 1000,
+      y: Math.round(y * 1000) / 1000,
+      w: Math.round(w * 1000) / 1000,
+      h: Math.round(h * 1000) / 1000,
+      z: clampStack(src.z, fb.z),
+    };
+  }
+
   /** One placement for every Picture Locations sheet in the report, the way
    *  the Floor Survey layout is the report's rather than the slide's. */
   function normalizeLayout(raw) {
@@ -885,6 +910,7 @@
     defaultLayout: defaultLayout,
     isDefaultLayout: isDefaultLayout,
     tightPlanBox: tightPlanBox,
+    placeBoxOnSheet: placeBoxOnSheet,
     resolveLayout: resolveLayout,
     MIN_STACK: MIN_STACK,
     MAX_STACK: MAX_STACK,
