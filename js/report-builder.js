@@ -10149,7 +10149,13 @@
       '    <p class="rb-ai-status" id="rb-ai-status" aria-live="polite"></p>' +
       '  </div>' +
       '  <div class="rb-workspace">' +
-      '    <aside class="rb-ws" aria-label="Report pages">' +
+      // Pages rail must stay .rb-rail (overflow:hidden + column flex + the
+      // phone/iPad row layout). d1b32be renamed the RIGHT Toolbox workspace
+      // off .rb-rail onto .rb-ws so Labels & layers could scroll, and the
+      // same edit accidentally gave the LEFT pages list .rb-ws too — so the
+      // pages rail lost its own layout rules (Tim, Nov 23, 2026 screenshots:
+      // thumbs hard to select, scrollbar awkward, stage looking shifted).
+      '    <aside class="rb-rail" aria-label="Report pages">' +
       '      <div class="rb-rail__head">' +
       '        <p class="eyebrow">Pages</p>' +
       '        <strong>Report sheets</strong>' +
