@@ -20,7 +20,7 @@ Updated by: Cursor — editable visit notes. Ball → Tim (promote).
 | Field | Value |
 |-------|--------|
 | **Has the ball** | **Tim** — pill gestures + survey date + Plan of Repair work by Claude Code on `claude/por-draw-contour-2ac5`. Ready to merge into integration when Tim asks. Not on `main`. |
-| Integration tip | `b6309a8` (`b6309a811cf2ab6f2699949f22e0358deca5e7a1`) — Compare off Cabinet; toolbox-shell-v507 |
+| Integration tip | `8bdaa5a` (`8bdaa5a20004404cb65b6c3543783dc2bcd6929a`) — Print legacy Floor stills; toolbox-shell-v508 |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
 | Shell | `toolbox-shell-v472` |
