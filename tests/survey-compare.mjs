@@ -3,7 +3,8 @@
  *
  * Builds two synthetic survey maps in the page -- the same house, the second drawn a little shifted and larger,
  * with one core area lowered 0.8 in and the whole survey 0.3 in higher -- then goes through the real dialog:
- * Cabinet button, two files, a legend box dragged with the mouse, automatic alignment, and the result.
+ * Diagnostics → Epoch (same as ToolboxSurveyCompare.open), two files, a legend box
+ * dragged with the mouse, automatic alignment, and the result.
  * It checks that the zero is set from the crowd (the 0.3 in is removed), the core reads lower, the edges
  * read neutral, and nothing is written to any Customer File.
  *
@@ -77,10 +78,22 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-'));
 fs.writeFileSync(path.join(dir, 'earlier.png'), Buffer.from(made.a.split(',')[1], 'base64'));
 fs.writeFileSync(path.join(dir, 'later.png'), Buffer.from(made.b.split(',')[1], 'base64'));
 
-// ---- the dialog ----
-check('The Cabinet has a Compare surveys button', !!(await page.$('#cabinet-compare')));
-await page.click('#cabinet-compare'); await wait(400);
-check('It opens the dialog', !!(await page.$('.sc')));
+// ---- the dialog (Epoch door, not the Customer Files homepage) ----
+check('Customer Files does not show Compare surveys', !(await page.$('#cabinet-compare')));
+
+// Seed a file so Diagnostics → Epoch can open the same tool.
+const FILE = 'sc-epoch-door';
+await page.evaluate(async (id) => {
+  const rec = ToolboxApp.blankCustomerFile(id);
+  ToolboxPlanSetup.ensurePlanSetup(rec);
+  rec.firstName = 'Ada'; rec.lastName = 'Compare';
+  await ToolboxDB.saveCustomerFile(rec);
+}, FILE);
+await page.goto(`${BASE}#/file/${FILE}/diagnostics`, { waitUntil: 'networkidle0' });
+await wait(800);
+check('Diagnostics home shows an Epoch tile', !!(await page.$('[data-dx-tool="epoch"]')));
+await page.click('[data-dx-tool="epoch"]'); await wait(400);
+check('Epoch opens the Compare surveys dialog', !!(await page.$('.sc')));
 await (await page.$('#sc-file-0')).uploadFile(path.join(dir, 'earlier.png')); await wait(900);
 await (await page.$('#sc-file-1')).uploadFile(path.join(dir, 'later.png')); await wait(900);
 check('Both surveys loaded', await page.evaluate(() => window.ToolboxSurveyCompare._state().slots.every((s) => !!s.src)));
@@ -142,9 +155,19 @@ check('Raw difference can be chosen', /not set/.test(await page.$eval('#sc-info'
 await page.select('#sc-zero', 'median'); await wait(300);
 check('Save picture is offered', !!(await page.$('#sc-save')));
 
-// Nothing written
-const stored = await page.evaluate(async () => { try { const list = await window.ToolboxDB.getAllCustomerFiles(); return list.length; } catch (e) { return -1; } });
-check('No Customer File was created or changed', stored === 0, String(stored));
+// Compare still writes nothing — only the seed file we opened Diagnostics from.
+const stored = await page.evaluate(async (id) => {
+  try {
+    const list = await window.ToolboxDB.getAllCustomerFiles();
+    return {
+      count: list.length,
+      onlySeed: list.length === 1 && list[0] && list[0].id === id,
+      updatedAt: list[0] && list[0].updatedAt,
+    };
+  } catch (e) { return { count: -1 }; }
+}, FILE);
+check('Compare does not create or change a Customer File',
+  stored.onlySeed === true, JSON.stringify(stored));
 
 // Escape closes
 await page.keyboard.press('Escape'); await wait(300);
@@ -152,7 +175,8 @@ check('Escape closes it', !(await page.$('.sc')));
 
 
 // ---- a PDF goes through the same door (the surveys people hand us are PDFs) ----
-await page.click('#cabinet-compare'); await wait(300);
+await page.evaluate(() => { if (window.ToolboxSurveyCompare) window.ToolboxSurveyCompare.open(); });
+await wait(300);
 const pdfB64 = await page.evaluate(async (png) => {
   if (!window.jspdf) {
     await new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = '/js/vendor/jspdf.umd.min.js'; sc.onload = res; sc.onerror = rej; document.head.appendChild(sc); });
