@@ -2063,11 +2063,17 @@
         if (meta.imported && meta.compose && window.ToolboxFloorSurvey &&
             typeof window.ToolboxFloorSurvey.composeReportTopoFigureForPage === 'function') {
           try {
+            var attachScope = meta.scope || 'all';
+            var attachArea = meta.areaId || null;
+            if (attachArea && String(attachArea) === 'legacy') {
+              attachScope = 'all';
+              attachArea = null;
+            }
             var composed = await window.ToolboxFloorSurvey.composeReportTopoFigureForPage(record, {
               canvasId: meta.canvasId,
               epochId: meta.epochId,
-              areaId: meta.areaId || null,
-              scope: meta.scope || 'all',
+              areaId: attachArea,
+              scope: attachScope,
             }, window.ToolboxDB && window.ToolboxDB.getMedia
               ? window.ToolboxDB.getMedia.bind(window.ToolboxDB)
               : null);
@@ -2918,8 +2924,19 @@
           // What a slide draws when the live view is on another slide. Only
           // the printed deck has one, and only for the slides that need it.
           stillTopo: thumb ? null : function (p, slot) {
+            var at = Number(slot) || 0;
             var shots = p && p._printTopo;
-            return shots ? (shots[Number(slot) || 0] || '') : '';
+            var url = shots ? (shots[at] || '') : '';
+            if (url) return url;
+            // Live editor can keep meta.imported without a one-shot PNG
+            // (auto-import). Print usually fills _printTopo; if a slot was
+            // missed, prefer the stored evidence figure over the unavailable
+            // note (Tim, Nov 24, 2026 — blank Floor slides with legend/pill).
+            if (at === 0 && p && p.evidence && p.evidence.figure &&
+                typeof p.evidence.figure.dataUrl === 'string') {
+              return p.evidence.figure.dataUrl;
+            }
+            return '';
           },
           topoSlots: thumb ? 1 : floorSlotsForPage(page),
           topoActiveSlot: thumb ? 0 : floorActiveSlotForPage(page),
@@ -3224,6 +3241,35 @@
       console.info('Report Builder: restored Floor Survey chrome suppressed by an earlier build.');
     }
     return next;
+  }
+
+  /**
+   * Whole-level synthetic boundary id "legacy" is not in layer.areas. Saved
+   * pages from before report-source emitted scope:all still carry
+   * scope:area + areaId:legacy; compose cannot find that id when the layer
+   * has named areas (or when getAreas skips inventing legacy). Rewrite to
+   * scope:all so Print/Present stills match the live host (Tim, Nov 24, 2026).
+   */
+  function migrateLegacyFloorAreaPages(pageList) {
+    var changed = false;
+    (pageList || []).forEach(function (page) {
+      if (!page || page.type !== 'floor' || !page.meta) return;
+      var meta = page.meta;
+      if (meta.areaId && String(meta.areaId) === 'legacy') {
+        meta.scope = 'all';
+        meta.areaId = null;
+        changed = true;
+      }
+      if (Array.isArray(meta.views)) {
+        meta.views.forEach(function (view) {
+          if (!view || !view.areaId || String(view.areaId) !== 'legacy') return;
+          view.scope = 'all';
+          view.areaId = null;
+          changed = true;
+        });
+      }
+    });
+    return changed;
   }
 
   function savedReportPages(record) {
@@ -9217,6 +9263,18 @@
       var areaId = scope === 'all'
         ? null
         : ((view && view.areaId) || meta.areaId || null);
+      // Synthetic whole-level id "legacy" is not a named room in layer.areas.
+      // Prefight used to accept it whenever a boundary polygon existed, but
+      // composeReportTopoFigureForPage filters closedAreas by id — and when
+      // the layer has ANY named areas, getAreas never invents "legacy", so
+      // compose returned null. Print then either blocked or (with live stats
+      // already on the page) drew Import-era chrome with no still:
+      // "Floor Survey level is not available for this slide."
+      // Tim, Nov 24, 2026: Haddow Main Floor / 3 Car Garage blank in PDF.
+      if (areaId && String(areaId) === 'legacy') {
+        scope = 'all';
+        areaId = null;
+      }
       return {
         canvasId: canvasId,
         epochId: epochId,
@@ -9327,14 +9385,32 @@
               : Promise.resolve(null);
             return extentPromise.then(function (extent) {
               fallbackExtent = extent || null;
-              return api.composeReportTopoFigureForPage(workingRecord, {
+              var composeSpec = {
                 canvasId: spec.canvasId,
                 epochId: spec.epochId,
                 areaId: spec.areaId,
                 scope: spec.scope,
                 settings: floorViewFor(job.page, job.slot) || null,
                 extent: cameraExtentFor(job.page, fallbackExtent, job.slot),
-              }, getMedia).then(function (composed) {
+              };
+              return api.composeReportTopoFigureForPage(workingRecord, composeSpec, getMedia)
+                .then(function (composed) {
+                // Stale area ids (including "legacy" when named areas exist)
+                // compose to null. Retry once as the whole level before failing
+                // the deck — same remap floorOutputJobSpec applies up front.
+                if ((!composed || !composed.dataUrl) &&
+                    composeSpec.scope === 'area' && composeSpec.areaId) {
+                  return api.composeReportTopoFigureForPage(workingRecord, {
+                    canvasId: composeSpec.canvasId,
+                    epochId: composeSpec.epochId,
+                    areaId: null,
+                    scope: 'all',
+                    settings: composeSpec.settings,
+                    extent: composeSpec.extent,
+                  }, getMedia);
+                }
+                return composed;
+              }).then(function (composed) {
                 if (!composed || !composed.dataUrl) {
                   var miss = new Error(describeFloorOutputFailure(job, 'compose returned no drawing'));
                   miss.floorOutputFailures = [miss.message];
@@ -10090,6 +10166,7 @@
           floorSurveyId: floorSurveyId,
           record: record,
         });
+        var migratedLegacy = migrateLegacyFloorAreaPages(pages);
         var after = pages.map(function (page) {
           return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',') +
             ':' + !!(page.meta && page.meta.imported) +
@@ -10105,12 +10182,13 @@
         lastSavedAt = saved.updatedAt || '';
         return {
           assembledFresh: false,
-          reconciled: before !== after || remappedEpoch,
+          reconciled: before !== after || remappedEpoch || migratedLegacy,
           migratedFloorLayout: floorOpen.migratedFloorLayout,
           stripSlideFloorLayouts: floorOpen.stripSlideFloorLayouts,
         };
       }
       pages = freshPages;
+      migrateLegacyFloorAreaPages(pages);
       activeId = pages[0] ? pages[0].id : '';
       pageSeq = pages.length;
       restoreReturnPage();
