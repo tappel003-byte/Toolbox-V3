@@ -8,6 +8,7 @@
 import { reportPointStyle } from "./point-style";
 import { DEFAULT_LABEL_SEAT, labelSeatOffset } from "@/lib/label-seat";
 import { closedAreas, pointsInArea } from "@/lib/areas";
+import { specialNote } from "./special-points";
 import { withCorrectedValues } from "@/lib/transitions";
 import type { Floor, RenderSettings, SurveyPoint, TopoArea } from "@/lib/types";
 import { defaultRenderSettings } from "@/lib/types";
@@ -75,6 +76,11 @@ export type ReportTopoComposeResult = {
   title: string;
   stats: ReportTopoStats[];
   readingsRebuilt: true;
+  /**
+   * Drain/watch wording for the figure rail. Presentation compose leaves this
+   * line off the PNG; Report Builder prints it in the title block.
+   */
+  specialNote: string | null;
 };
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -422,6 +428,8 @@ export async function composeReportTopoFigure(options: {
     title,
     stats: statsFromTopos(areaTopos, settings, extent),
     readingsRebuilt: true,
+    // Presentation leaves this off the PNG; the figure rail prints it.
+    specialNote: settings.showLabels ? specialNote(points) : null,
   };
 }
 

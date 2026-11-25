@@ -255,6 +255,19 @@
       body.appendChild(readings);
     }
 
+    // Drain / Watch: same wording Field Topo used under the map, now in the
+    // title block so the plan stays clear (Tim: best in the title block).
+    var special = String(o.specialNote || '').trim();
+    if (special) {
+      var specialEl = block('p', 'rb-rail__note rb-rail__note--special', [special], o,
+        'special', 'Drain and watch note');
+      if (specialEl) {
+        var specialSection = el('section', 'rb-rail__section');
+        specialSection.appendChild(specialEl);
+        body.appendChild(specialSection);
+      }
+    }
+
     // A line the investigator writes, for pages whose rail would otherwise be
     // mostly empty. Tim: "For the times the information is sparse, like
     // pictures, we might use that to have a little bit of report detail --

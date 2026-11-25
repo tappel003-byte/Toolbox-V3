@@ -174,29 +174,36 @@ const watch = s.points.find((p) => p.special === 'watch');
 check('A Watch reading is saved with its value and the watch kind', watch && watch.value === 9.8 && !watch.isDrain, JSON.stringify(watch));
 const chipAfterWatch = await chipText();
 check('The High / Low pill ignores the Watch reading too (9.8 is above every real reading)', !/9\.8/.test(chipAfterWatch) && /6\.2/.test(chipAfterWatch), chipAfterWatch);
-// the note names what the level has
+// Wording for drain/watch: report compose returns specialNote for the rail;
+// the PNG no longer draws the under-map line (presentation).
 const noteFor = (pts) => page.evaluate(async (canvasId, id, only) => {
   const r = await ToolboxDB.getCustomerFile(id);
   const layer = r.floorSurvey.byCanvasId[canvasId];
   const floor = { id: canvasId, name: 'Main Level', boundary: layer.boundary, areas: layer.areas, exclusions: [], transitions: [], notes: [], createdAt: 1 };
   window.__halo = [];
   const keep = layer.points.filter((p) => !only || only(p));
-  await window.ToolboxFloorSurvey.composeReportTopoFigure({ floor, points: keep.map((p) => ({ ...p })), areaId: 'all' });
-  return window.__halo.filter((t) => /^\( \)/.test(t));
+  const out = await window.ToolboxFloorSurvey.composeReportTopoFigure({ floor, points: keep.map((p) => ({ ...p })), areaId: 'all' });
+  return {
+    note: out && out.specialNote,
+    halo: window.__halo.filter((t) => /^\( \)/.test(t)),
+  };
 }, s.canvasId, FILE, pts);
 const nBoth = await noteFor(null);
-check('Under the map: both kinds are named when the level has both', JSON.stringify(nBoth) === JSON.stringify(['( ) Drain and watch readings, not included in the topo']), JSON.stringify(nBoth));
-await page.evaluate(() => {});
+check('Rail note: both kinds are named when the level has both',
+  nBoth.note === '( ) Drain and watch readings, not included in the topo', JSON.stringify(nBoth));
+check('Report PNG: the drain/watch line is not drawn under the map',
+  Array.isArray(nBoth.halo) && nBoth.halo.length === 0, JSON.stringify(nBoth.halo));
 // (watch only, drain only) are computed from the figure with the other kind taken out
 const monOnly = await page.evaluate(async (canvasId, id) => {
   const r = await ToolboxDB.getCustomerFile(id);
   const layer = r.floorSurvey.byCanvasId[canvasId];
   const floor = { id: canvasId, name: 'Main Level', boundary: layer.boundary, areas: layer.areas, exclusions: [], transitions: [], notes: [], createdAt: 1 };
   window.__halo = [];
-  await window.ToolboxFloorSurvey.composeReportTopoFigure({ floor, points: layer.points.filter((p) => !p.isDrain && p.special !== 'drain').map((p) => ({ ...p })), areaId: 'all' });
-  return window.__halo.filter((t) => /^\( \)/.test(t));
+  const out = await window.ToolboxFloorSurvey.composeReportTopoFigure({ floor, points: layer.points.filter((p) => !p.isDrain && p.special !== 'drain').map((p) => ({ ...p })), areaId: 'all' });
+  return { note: out && out.specialNote, halo: window.__halo.filter((t) => /^\( \)/.test(t)) };
 }, s.canvasId, FILE);
-check('Under the map: only watch readings are named when that is all it has', JSON.stringify(monOnly) === JSON.stringify(['( ) Watch readings, not included in the topo']), JSON.stringify(monOnly));
+check('Rail note: only watch readings are named when that is all it has',
+  monOnly.note === '( ) Watch readings, not included in the topo', JSON.stringify(monOnly));
 // a drain saved by the earlier build (isDrain) still counts
 await page.evaluate(async (id) => {
   const r = await ToolboxDB.getCustomerFile(id);
@@ -212,11 +219,37 @@ const legacy = await page.evaluate(async (canvasId, id) => {
   const floor = { id: canvasId, name: 'Main Level', boundary: layer.boundary, areas: layer.areas, exclusions: [], transitions: [], notes: [], createdAt: 1 };
   window.__halo = [];
   const out = await window.ToolboxFloorSurvey.composeReportTopoFigure({ floor, points: layer.points.map((p) => ({ ...p })), areaId: 'all' });
-  return { halo: window.__halo.filter((t) => /^\( \)|^\(-?\d/.test(t)), hi: out.stats[0].hi, lo: out.stats[0].lo };
+  return {
+    note: out && out.specialNote,
+    halo: window.__halo.filter((t) => /^\( \)|^\(-?\d/.test(t)),
+    hi: out.stats[0].hi,
+    lo: out.stats[0].lo,
+  };
 }, s.canvasId, FILE);
 check('A drain saved by the earlier build (isDrain) is still a drain: ghosted, named, left out of High and Low',
-  legacy.halo.includes('( ) Drain and watch readings, not included in the topo') && legacy.hi < 9 && legacy.lo > 5, JSON.stringify(legacy));
-
+  legacy.note === '( ) Drain and watch readings, not included in the topo' &&
+    legacy.halo.some((t) => /^\(-?\d/.test(t)) && legacy.hi < 9 && legacy.lo > 5,
+  JSON.stringify(legacy));
+// Title-block rail prints the same wording.
+const railNote = await page.evaluate(() => {
+  const api = window.ToolboxReportRail;
+  if (!api || typeof api.render !== 'function') return { ok: false, reason: 'no rail api' };
+  const el = api.render({
+    north: false,
+    residence: 'Drain Test',
+    address: '1 Kennel Way',
+    title: 'Floor Level Survey\nMain Level',
+    surveyDate: 'November 13, 2026',
+    correctedNote: 'Corrected for flooring differences',
+    stats: [{ areaId: 'a1', name: 'Main Level', hi: 6.2, lo: 5.3, delta: 0.9, decimalPlaces: 1 }],
+    specialNote: '( ) Drain and watch readings, not included in the topo',
+    figureLabel: 'Figure 1',
+  });
+  return { ok: true, text: (el && el.textContent) || '' };
+});
+check('Figure rail carries the drain/watch note in the title block',
+  railNote.ok && /Drain and watch readings, not included in the topo/.test(railNote.text),
+  JSON.stringify(railNote).slice(0, 240));
 // ---- Review lists it as a drain, not counted
 s = await stored();
 await page.evaluate(() => {
@@ -235,6 +268,21 @@ const cap = await page.evaluate(() => ({ txt: window.__txt.slice(), dash: window
 check('Capture plan: the drain reading is written in parentheses, with "Drain" under it', cap.txt.some((t) => /^\(-?\d+(\.\d+)?\)$/.test(t)) && cap.txt.includes('Drain'), JSON.stringify(cap.txt.slice(0, 14)));
 check('Capture plan: it has no box (no dashed outline), only type with a white outline', cap.dash === 0 && cap.halo.some((t) => /^\(-?\d/.test(t)), JSON.stringify({ dash: cap.dash, halo: cap.halo.slice(0, 4) }));
 check('Capture plan: ordinary readings are not in parentheses', cap.txt.filter((t) => /^-?\d+(\.\d+)?$/.test(t)).length >= 5);
+
+// Field Topo still draws the explanatory line under the map (report moves it to the rail).
+await page.evaluate(() => {
+  window.__halo = [];
+  [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Topo')?.click();
+});
+await wait(1200);
+const fieldTopo = await page.evaluate(() => window.__halo.filter((t) => /^\( \)/.test(t)));
+check('Field Topo: one line under the map says what the parentheses mean',
+  fieldTopo.some((t) => t === '( ) Drain and watch readings, not included in the topo'),
+  JSON.stringify(fieldTopo.slice(0, 4)));
+await page.evaluate(() => {
+  [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Data')?.click();
+});
+await wait(400);
 
 // ---- Report figure: the surface and the report High / Low leave the drain out
 const rep = await page.evaluate(async (canvasId, id) => {
@@ -265,7 +313,8 @@ const figTxt = await page.evaluate(async (canvasId, id) => {
 }, s.canvasId, FILE);
 check('Report figure: the drain is in parentheses with "Drain" under it, no box, type with a white outline',
   figTxt.withDrain.halo.some((t) => /^\(-?\d+(\.\d+)?\)$/.test(t)) && figTxt.withDrain.halo.includes('Drain') && figTxt.withDrain.dash === 0, JSON.stringify(figTxt.withDrain.txt.slice(0, 12)));
-check('Report figure: one line under the map says what the parentheses mean', figTxt.withDrain.halo.filter((t) => t === '( ) Drain and watch readings, not included in the topo').length === 1);
+check('Report figure: drain/watch wording is for the rail, not drawn under the map',
+  figTxt.withDrain.halo.filter((t) => t === '( ) Drain and watch readings, not included in the topo').length === 0);
 check('Report figure: a level with no drain has no note and no ghost box',
   !figTxt.noDrain.halo.length && !figTxt.noDrain.txt.some((t) => /Drain|Watch/.test(t)) && figTxt.noDrain.dash === 0, JSON.stringify(figTxt.noDrain.halo));
 

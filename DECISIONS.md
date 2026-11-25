@@ -351,7 +351,7 @@ Authorized by Tim after the design was talked through: "It might be best to star
   - **Figure N stays in the upper left of the drawing area**; the drawing title there goes, because the rail carries it.
   - **The north arrow lives at the top of the rail, and stays rotatable (DECIDED Tim, Oct 8, 2026).** It is reference matter like everything else in the rail, and moving it there clears the last floating object off the drawing. Rotation stays because north is not always up.
   - **The north mark is variation F** (DECIDED Tim, Oct 8, 2026): a slim two-tone north point inside one open ring, with the N standing above it. Chosen over G, whose pointer breaks the ring, because that overhang sweeps outside the circle as the mark turns and needs clearance the rail has not got.
-  - **Order in the rail, top to bottom:** compass rose with N above it, residence and address, drawing title, survey date and "corrected for flooring differences", relative readings per level, and the Sandia Geo mark alone at the foot.
+  - **Order in the rail, top to bottom:** compass rose with N above it, residence and address, drawing title, survey date and "corrected for flooring differences", relative readings per level, the drain/watch explanatory line when the figure has those readings (same wording as Field Topo’s under-map note), and the Sandia Geo mark alone at the foot.
   - **Figure N is in the rail, and nowhere else (DECIDED Tim, Oct 21, 2026).** Tim: it "does not need to be in the upper left-hand corner anymore now that we have the title block — the title block solved lots of problems." Nothing is left in the drawing's upper left; the rail carries the number once, above the mark.
     - This settles two bullets written the same day that said opposite things — one that Figure N is in the upper left and only there, one that it appears twice deliberately. Both are superseded by the line above.
     - On an imported sheet the upper-left number had already stopped drawing: that code only ran on a sheet before Import. So this removes a number from a placeholder and a contradiction from the record.
@@ -716,10 +716,10 @@ Test: `tests/pill-pin-rotation.mjs` (25, real mouse, portrait and landscape).
 Tim, looking at the first drain on a real job (VCA): the drain needed to stand out as "not a data point". He weighed a yellow box and an asterisk, then chose the opposite: make it step back. "What if I drop the reading or make them transparent? ... Drain stays noted."
 
 - A drain reading is drawn as a **ghost**: no fill, a dashed outline, gray type, the number in **parentheses** like "(5.3)", and the small word **Drain** under it. On the capture plan, the topo screen, the report figure and the recovery sheet.
-- Under the map, **one line** when a level has a drain: "( ) Drain reading, not included in the topo". Topo screen and report figure only, since only there is there a topo to be left out of.
+- **Where the explanatory line lives (CHANGED by Tim, Nov 2026).** Field Topo keeps **one line under the map** when a level has a drain/watch: "( ) Drain reading, not included in the topo". On a report figure (composed still and live Report Builder slide) that same wording sits in the **title-block rail**, not on the plan — Tim: best in the title block. Presentation compose leaves it off the PNG and returns it as `specialNote` for the rail.
 - Unchanged: a drain is still left out of the contours, the High / Low and the range; the keypad menu; the number is still shown (not dropped).
 
-Test: `tests/floor-survey-drain.mjs` (26).
+Test: `tests/floor-survey-drain.mjs`.
 
 ---
 
@@ -730,11 +730,11 @@ Tim, on slab curl: a slab that has curled up in one place is a real reading that
 - The keypad menu is **Reading / Drain / Watch**. The word was chosen from many ("Watch", "Watch", "Flag", "Marker" were the finalists; Watch is short, neutral, and says "look at this again"). It lives in one place (`SPECIAL_LABELS` in `floor-survey/src/lib/special-points.ts`), so a change is a one-line edit.
 - A Drain or a Watch reading is kept, numbered and shown, and is left out of the contours, the High / Low and the range (capture pill, Review, report figure, Diagnostics, Explorer summary, 3D). Saved on the point as `special: "drain" | "watch"`. A drain saved by the Nov 13 build (`isDrain`) reads as a drain.
 - **No box.** The number is in parentheses, gray, with a thin white outline so it reads on any contour colour, and the kind word under it ("Drain", "Watch"). Capture plan, topo screen, report figure, recovery sheet.
-- The line under the map names only the kinds the level has: "( ) Drain readings, not included in the topo", "( ) Watch readings, ...", "( ) Drain and watch readings, ...".
+- The explanatory line names only the kinds the level has: "( ) Drain readings, not included in the topo", "( ) Watch readings, ...", "( ) Drain and watch readings, ...". Field Topo draws it under the map; report figures put it in the title-block rail (see drain note location above).
 - Kept so a later survey can find and compare the same spots; no comparison is built.
 - The readings export has a `specialKind` column (replaces `isDrain`). No Worker change: the field travels in the `floor` component.
 
-Test: `tests/floor-survey-drain.mjs` (32).
+Test: `tests/floor-survey-drain.mjs`.
 
 ---
 

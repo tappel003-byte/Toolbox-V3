@@ -179,16 +179,19 @@ interface Props {
    *
    * Reporting only. Nothing here changes what is drawn.
    */
-  onStats?: (stats: Array<{
-    areaId: string;
-    name: string;
-    hi: number;
-    lo: number;
-    delta: number;
-    decimalPlaces: number;
-    /** The colour scale's bands, low to high, for a page that draws its own. */
-    bands?: string[];
-  }>) => void;
+  onStats?: (
+    stats: Array<{
+      areaId: string;
+      name: string;
+      hi: number;
+      lo: number;
+      delta: number;
+      decimalPlaces: number;
+      /** The colour scale's bands, low to high, for a page that draws its own. */
+      bands?: string[];
+    }>,
+    info?: { specialNote: string | null },
+  ) => void;
   /** null = "All areas". Owned by the route so the stats pills stay in sync. */
   selectedAreaId?: string | null;
   onSelectedAreaIdChange?: (id: string | null) => void;
@@ -921,8 +924,11 @@ export function TopoTab({
         decimalPlaces: resolved.decimalPlaces ?? 2,
         bands: bands.slice(),
       })),
+      // Report presentation leaves the drain/watch line off the plan; the
+      // title-block rail prints the same wording the field topo used to.
+      { specialNote: resolved.showLabels ? specialNote(points) : null },
     );
-  }, [areaTopos, resolved.decimalPlaces, resolved.palette, resolved.reversePalette]);
+  }, [areaTopos, points, resolved.decimalPlaces, resolved.palette, resolved.reversePalette, resolved.showLabels]);
 
   const canRender = areaTopos.length > 0;
   // Single-surface view (focused area, or only one area exists).
@@ -3419,8 +3425,13 @@ export function renderTopoTop(
         haloText(ctx, SPECIAL_LABELS[kind], cx, ty - padY + pillH + fontPx * 0.1, SPECIAL_INK, 2.5 * chromeK);
       }
     }
-    // One line under the map says what the parentheses mean, naming only what the level has.
-    const noteText = resolved.showLabels ? specialNote(points) : null;
+    // One line under the map says what the parentheses mean, naming only what
+    // the level has. Field Topo keeps it on the drawing. A report figure /
+    // live Report Builder slide is presentation: the same line lives in the
+    // title-block rail so it does not sit on the plan (Tim, Nov 2026).
+    const noteText = resolved.showLabels && !overlay?.presentation
+      ? specialNote(points)
+      : null;
     if (noteText && areaTopos.length) {
       let minX = Infinity;
       let maxY = -Infinity;

@@ -2026,6 +2026,12 @@ body.report-builder-open .canvas {
   line-height: 1.5cqh;
 }
 
+/* Drain/Watch explanatory line — quiet, after the readings. */
+.rb-rail__note--special {
+  margin-top: 1.1cqh;
+  max-width: 10.3cqw;
+}
+
 /* The note the investigator writes into the rail. It is a writing field, so
    it shows where it is when the pointer is over it or the caret is in it,
    and it is invisible otherwise -- an empty box ruled on every figure would

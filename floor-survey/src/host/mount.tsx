@@ -20,6 +20,7 @@ import { renderTopoLegendImage, topoLegendShape } from "@/lib/topo-legend-image"
 // changes by naming these here: they are the same pure functions the topo and
 // the report already call.
 import { transitionDelta, transitionLabel, withCorrectedValues } from "@/lib/transitions";
+import { specialNote } from "@/lib/special-points";
 import {
   composeReportTopoFigure,
   composeReportTopoFigureForPage,
@@ -53,15 +54,18 @@ export type MountOptions = {
   onCameraChange?: (camera: PlanCamera) => void;
   onSettingsChange?: (settings: RenderSettings) => void;
   /** The High, Low and difference the slide is drawing, per boundary. */
-  onStats?: (stats: Array<{
-    areaId: string;
-    name: string;
-    hi: number;
-    lo: number;
-    delta: number;
-    decimalPlaces: number;
-    bands?: string[];
-  }>) => void;
+  onStats?: (
+    stats: Array<{
+      areaId: string;
+      name: string;
+      hi: number;
+      lo: number;
+      delta: number;
+      decimalPlaces: number;
+      bands?: string[];
+    }>,
+    info?: { specialNote: string | null },
+  ) => void;
   onReady?: (info: {
     levelName: string;
     areaCount: number;
@@ -205,6 +209,7 @@ declare global {
       withCorrectedValues: typeof withCorrectedValues;
       transitionDelta: typeof transitionDelta;
       transitionLabel: typeof transitionLabel;
+      specialNote: typeof specialNote;
     };
     ToolboxDB?: {
       getMedia?: (id: string) => Promise<string | null>;
@@ -231,6 +236,7 @@ window.ToolboxFloorSurvey = {
   withCorrectedValues,
   transitionDelta,
   transitionLabel,
+  specialNote,
 };
 
 // Vite's IIFE assigns this module's exports onto the ToolboxFloorSurvey global
@@ -252,4 +258,5 @@ export {
   withCorrectedValues,
   transitionDelta,
   transitionLabel,
+  specialNote,
 };

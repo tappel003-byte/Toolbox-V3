@@ -2647,8 +2647,8 @@
       onSettingsChange: function (next) {
         if (host.hooks && host.hooks.onSettingsChange) host.hooks.onSettingsChange(next, n);
       },
-      onStats: function (stats) {
-        if (host.hooks && host.hooks.onStats) host.hooks.onStats(stats, n);
+      onStats: function (stats, info) {
+        if (host.hooks && host.hooks.onStats) host.hooks.onStats(stats, n, info);
       },
       onReady: function (info) {
         if (host.hooks && host.hooks.onReady) host.hooks.onReady(info, n);
@@ -2804,6 +2804,8 @@
         (page.type === 'floor' ? '\u2014' : ''),
       correctedNote: page.type === 'floor' ? 'Corrected for flooring differences' : '',
       stats: stats,
+      // Drain/watch line: title block, not on the plan (presentation compose).
+      specialNote: page.type === 'floor' ? (page._specialNote || '') : '',
       note: text.railNote || '',
       noteEditable: !!(opts && opts.noteEditable),
       // Tim: "All text on the rail needs to be editable by the user." Every
@@ -4643,16 +4645,23 @@
             // numbers, so they come from the same place: whatever the drawing
             // is drawing right now. Read from evidence stored at import, the
             // rail said 9.40 / 8.10 beside a pill reading 9.80 / 8.20.
-            onStats: function (stats, from) {
+            onStats: function (stats, from, info) {
               var live = Array.isArray(stats) ? stats : [];
               page._viewStats = page._viewStats || {};
               // Keep the boundary array; layout picks the stats object for the pill.
               page._viewStats[Number(from) || 0] = live;
               // Rail quotes the selected view.
               if ((Number(from) || 0) !== floorSlot(page)) return;
+              // Drain/watch wording for the title-block rail (off the plan in
+              // presentation). Same string Field Topo used to draw under the map.
+              var nextNote = info && Object.prototype.hasOwnProperty.call(info, 'specialNote')
+                ? (info.specialNote || null)
+                : (page._specialNote || null);
               var before = JSON.stringify(page._liveStats || null);
-              if (before === JSON.stringify(live)) return;
+              var noteBefore = page._specialNote || null;
+              if (before === JSON.stringify(live) && nextNote === noteBefore) return;
               page._liveStats = live;
+              page._specialNote = nextNote;
               var railEl = sheetEl && sheetEl.querySelector('.rb-rail__rail');
               var next = railForPage(page, { noteEditable: true });
               if (railEl && next) sheetEl.replaceChild(next, railEl);
@@ -9425,8 +9434,14 @@
                 job.page._viewStats[job.slot] = liveStats;
                 if (job.slot === 0 || floorSlotsForPage(job.page) === 1) {
                   job.page._liveStats = liveStats;
+                  if (Object.prototype.hasOwnProperty.call(composed, 'specialNote')) {
+                    job.page._specialNote = composed.specialNote || null;
+                  }
                 } else if (job.slot === floorActiveSlotForPage(job.page)) {
                   job.page._liveStats = liveStats;
+                  if (Object.prototype.hasOwnProperty.call(composed, 'specialNote')) {
+                    job.page._specialNote = composed.specialNote || null;
+                  }
                 }
                 painted += 1;
               }).catch(function (err) {

@@ -62,15 +62,18 @@ export type ReportTopoWorkspaceProps = {
   onCameraChange?: (camera: PlanCamera) => void;
   onSettingsChange?: (settings: RenderSettings) => void;
   /** The High, Low and difference this slide is drawing, per boundary. */
-  onStats?: (stats: Array<{
-    areaId: string;
-    name: string;
-    hi: number;
-    lo: number;
-    delta: number;
-    decimalPlaces: number;
-    bands?: string[];
-  }>) => void;
+  onStats?: (
+    stats: Array<{
+      areaId: string;
+      name: string;
+      hi: number;
+      lo: number;
+      delta: number;
+      decimalPlaces: number;
+      bands?: string[];
+    }>,
+    info?: { specialNote: string | null },
+  ) => void;
   onReady?: (info: {
     levelName: string;
     areaCount: number;
