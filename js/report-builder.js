@@ -4876,11 +4876,21 @@
               var before = JSON.stringify(page._liveStats || null);
               var noteBefore = page._specialNote || null;
               if (before === JSON.stringify(live) && nextNote === noteBefore) return;
+              // How many boundaries the drawing now reports decides which colour scales and H/L/delta pills the
+              // sheet carries (one pair per boundary, none on a Combined sheet). The rail below is redrawn on every
+              // report, but the pieces on the plan are drawn with the sheet, so a change of source from Combined to
+              // one boundary left every boundary's scale and pill standing (Tim, Nov 25, 2026).
+              var countBefore = Array.isArray(page._liveStats) ? page._liveStats.length : -1;
               page._liveStats = live;
               page._specialNote = nextNote;
               var railEl = sheetEl && sheetEl.querySelector('.rb-rail__rail');
               var next = railForPage(page, { noteEditable: true });
               if (railEl && next) sheetEl.replaceChild(next, railEl);
+              if (countBefore !== live.length && activePage() === page) {
+                window.setTimeout(function () {
+                  if (activePage() === page) renderPages();
+                }, 0);
+              }
             },
             onReady: function (info) {
               // The frame takes the plan's own proportion the first time a
@@ -5781,6 +5791,11 @@
             sp.tocTitle = sp.title;
           }
         }
+        // What the old source reported is not what the new one will: start with none, so no pieces are drawn
+        // for boundaries this sheet no longer shows. The drawing reports its own as soon as it is up.
+        sp._liveStats = null;
+        sp._viewStats = null;
+        if (sp.evidence && Array.isArray(sp.evidence.stats)) sp.evidence.stats = [];
         releaseTopoHosts();
         markDirty();
         renderPages();
