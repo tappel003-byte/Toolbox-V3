@@ -120,7 +120,24 @@ await wait(500);
 const ex2 = await page.evaluate(() => document.querySelector('[data-diagnostics-readout]').getAttribute('data-exaggeration'));
 check('The Z scale slider still changes the height exaggeration', Number(ex2) > Number(ex), `${ex} -> ${ex2}`);
 
+// A palette change redraws everything (it used to leave the view empty), and Reset puts the settings back
+{
+  await open('color');
+  const ink = () => page.evaluate(() => new Promise((res) => requestAnimationFrame(() => { const s = document.querySelector('.dx3-stage canvas'); const c = document.createElement('canvas'); c.width = 96; c.height = 64; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 96, 64); x.drawImage(s, 0, 0, 96, 64); const d = x.getImageData(0, 0, 96, 64).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] < 240 || d[i + 1] < 240) n++; res(n); })));
+  const before = await ink();
+  for (const v of ['rainbow', 'sunset']) { await page.select('select[aria-label="Palette"]', v); await wait(1100); const now = await ink(); check(`Palette ${v}: the surface, contours and base are still drawn`, now > before * 0.5, `${before} -> ${now}`); }
+  const dark0 = (await page.$eval('[data-dx3-canvas]', (e) => e.dataset.buildId));
+  await page.click('[data-dx3-reset]'); await wait(1200);
+  const pal = await page.$eval('select[aria-label="Palette"]', (e) => e.value);
+  const exr = await page.evaluate(() => document.querySelector('[data-diagnostics-readout]').getAttribute('data-exaggeration'));
+  check('Reset to default brings back the opening palette and height', pal === 'brown' && Number(exr) === 3.02, `${pal} ${exr}`);
+  check('and the picture is still drawn', (await ink()) > before * 0.5);
+}
+
 // ---- slider range: single digits, with fine steps under 1 ----
+// The software renderer in the test browser is slow on a full scene, so the long key runs below use a light one.
+const off = async (k, idx = 0) => { await open(k); await page.evaluate((key, n) => { const b = document.querySelectorAll(`[data-dx3-page="${key}"] button[role=switch]`)[n]; if (b && b.getAttribute('aria-checked') === 'true') b.click(); }, k, idx); await wait(200); };
+await off('format'); await off('contours', 0); await off('contours', 1); await off('base'); await off('axes'); await off('texture'); await wait(800);
 const setZ = async (presses, key) => { await page.focus('[data-diagnostics-height] [role="slider"]'); for (let i = 0; i < presses; i += 1) { await page.keyboard.press(key); await wait(6); } await wait(300); };
 const exNow = () => page.evaluate(() => Number(document.querySelector('[data-diagnostics-readout]').getAttribute('data-exaggeration')));
 await setZ(260, 'ArrowRight');
@@ -194,21 +211,22 @@ const w0 = (await camNow()).d;
 await page.keyboard.down('Control'); await page.mouse.wheel({ deltaY: -400 }); await page.keyboard.up('Control'); await wait(600);
 check('A trackpad pinch (ctrl + wheel) zooms in', (await camNow()).d < w0);
 
-// Move mode: a plain left-button drag slides the view; without it the same drag only orbits
+// Moving and pivoting the view
 {
-  const b = await camNow();
-  const r = await page.$eval('[data-dx3-canvas] canvas', (e) => { const q = e.getBoundingClientRect(); return { x: q.x + q.width / 2, y: q.y + q.height / 2 }; });
-  const drag = async () => { await page.mouse.move(r.x, r.y); await page.mouse.down(); for (let i = 1; i <= 12; i++) await page.mouse.move(r.x + i * 14, r.y + i * 6); await page.mouse.up(); await wait(500); };
-  await drag();
-  const orbited = await camNow();
-  check('Without Move, a left drag orbits and does not slide the view', Math.hypot(orbited.t[0] - b.t[0], orbited.t[1] - b.t[1], orbited.t[2] - b.t[2]) < 0.01, JSON.stringify({ b: b.t, a: orbited.t }));
-  await page.click('[aria-label="Move the view"]'); await wait(200);
-  await drag();
-  const slid = await camNow();
-  check('With Move on, a left drag slides the view', Math.hypot(slid.t[0] - orbited.t[0], slid.t[1] - orbited.t[1], slid.t[2] - orbited.t[2]) > 0.05, JSON.stringify({ a: orbited.t, s: slid.t }));
-  await page.click('[aria-label="Move the view"]'); await wait(200);
-  await open('contours');
-  check('Contours page has a Line weight control', /Line weight/.test(await page.$eval('[data-dx3-page="contours"]', (e) => e.textContent)));
+  const dist = (a, b) => Math.hypot(a.t[0] - b.t[0], a.t[1] - b.t[1], a.t[2] - b.t[2]);
+  const r = await page.$eval('.dx3-stage canvas', (e) => { const q = e.getBoundingClientRect(); return { x: q.x + q.width / 2, y: q.y + q.height / 2 }; });
+  check('There is no Move button any more', !(await page.$('[aria-label="Move the view"]')));
+  const b0 = await camNow();
+  await page.mouse.click(r.x - 120, r.y + 20); await wait(500);          // a press on the surface
+  const pivot = await camNow();
+  check('Pressing on the surface makes that spot the pivot', dist(b0, pivot) > 0.02, JSON.stringify({ before: b0.t, after: pivot.t }));
+  const slide = async (opts, btn) => { await page.mouse.move(r.x, r.y); if (opts.shift) await page.keyboard.down('Shift'); await page.mouse.down({ button: btn }); for (let i = 1; i <= 12; i++) await page.mouse.move(r.x + i * 14, r.y + i * 6); await page.mouse.up({ button: btn }); if (opts.shift) await page.keyboard.up('Shift'); await wait(500); };
+  const m0 = await camNow(); await slide({}, 'middle'); const m1 = await camNow();
+  check('Middle-button drag slides the view', dist(m0, m1) > 0.05, JSON.stringify({ a: m0.t, b: m1.t }));
+  const s0 = await camNow(); await slide({ shift: true }, 'left'); const s1 = await camNow();
+  check('Shift + left drag slides the view', dist(s0, s1) > 0.05, JSON.stringify({ a: s0.t, b: s1.t }));
+  const o0 = await camNow(); await slide({}, 'right'); const o1 = await camNow();
+  check('Right-button drag slides the view', dist(o0, o1) > 0.05);
 }
 
 // Add to Report still captures (with the title in the band)
