@@ -194,6 +194,23 @@ const w0 = (await camNow()).d;
 await page.keyboard.down('Control'); await page.mouse.wheel({ deltaY: -400 }); await page.keyboard.up('Control'); await wait(600);
 check('A trackpad pinch (ctrl + wheel) zooms in', (await camNow()).d < w0);
 
+// Move mode: a plain left-button drag slides the view; without it the same drag only orbits
+{
+  const b = await camNow();
+  const r = await page.$eval('[data-dx3-canvas] canvas', (e) => { const q = e.getBoundingClientRect(); return { x: q.x + q.width / 2, y: q.y + q.height / 2 }; });
+  const drag = async () => { await page.mouse.move(r.x, r.y); await page.mouse.down(); for (let i = 1; i <= 12; i++) await page.mouse.move(r.x + i * 14, r.y + i * 6); await page.mouse.up(); await wait(500); };
+  await drag();
+  const orbited = await camNow();
+  check('Without Move, a left drag orbits and does not slide the view', Math.hypot(orbited.t[0] - b.t[0], orbited.t[1] - b.t[1], orbited.t[2] - b.t[2]) < 0.01, JSON.stringify({ b: b.t, a: orbited.t }));
+  await page.click('[aria-label="Move the view"]'); await wait(200);
+  await drag();
+  const slid = await camNow();
+  check('With Move on, a left drag slides the view', Math.hypot(slid.t[0] - orbited.t[0], slid.t[1] - orbited.t[1], slid.t[2] - orbited.t[2]) > 0.05, JSON.stringify({ a: orbited.t, s: slid.t }));
+  await page.click('[aria-label="Move the view"]'); await wait(200);
+  await open('contours');
+  check('Contours page has a Line weight control', /Line weight/.test(await page.$eval('[data-dx3-page="contours"]', (e) => e.textContent)));
+}
+
 // Add to Report still captures (with the title in the band)
 await page.click('[data-diagnostics-add-report]'); await wait(2500);
 check('Add to Report still works', /Added to Report/.test(await page.$eval('[data-diagnostics-status]', (e) => e.textContent)), await page.$eval('[data-diagnostics-status]', (e) => e.textContent));

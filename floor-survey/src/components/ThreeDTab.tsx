@@ -2,6 +2,9 @@ import { readingText } from "@/lib/reading";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { X, Camera, Loader2, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -235,6 +238,7 @@ const READOUT_CSS = `
 .dx3-toggle { display: none; }
 .dx3-zoom { position: absolute; z-index: 3; right: 10px; bottom: 10px; display: flex; gap: 6px; }
 .dx3-zoom button { min-width: 36px; height: 36px; padding: 0 10px; border: 1px solid #c9c4b8; border-radius: 6px; background: rgba(255,255,255,0.95); font-size: 16px; font-weight: 700; color: #14263a; cursor: pointer; }
+.dx3-zoom button.is-on { background: #14263a; color: #fff; border-color: #14263a; }
 .dx3-zoom button:hover { background: #eef2f6; }
 @media (max-width: 900px) {
   .dx3-side { position: absolute; z-index: 5; left: 0; top: 0; bottom: 0; box-shadow: 4px 0 14px rgba(0,0,0,0.18); }
@@ -396,6 +400,11 @@ export function ThreeDTab({
   const [plain, setPlain] = useState(false);
   const [meshLines, setMeshLines] = useState(false);
   const [contoursOn, setContoursOn] = useState(true);
+  // Contour line weight in screen pixels (a plain GL line is always 1 device pixel, which looks heavy on a
+  // sharp screen), and "Move" mode, where a one-finger or left-button drag slides the view instead of orbiting.
+  const [contourWidth, setContourWidth] = useState(0.8);
+  const [moveMode, setMoveMode] = useState(false);
+  const contourMatRef = useRef<LineMaterial | null>(null);
   const [interval, setIntervalValue] = useState<number>(0.2);
   const [labelsOn, setLabelsOn] = useState(true);
   const [labelSize, setLabelSize] = useState(1);
@@ -520,6 +529,7 @@ export function ThreeDTab({
       const h = mount.clientHeight;
       if (w === 0 || h === 0) return;
       renderer.setSize(w, h, false);
+      contourMatRef.current?.resolution.set(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
     };
@@ -700,7 +710,13 @@ export function ThreeDTab({
       }
       const lg = new THREE.BufferGeometry();
       lg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(seg), 3));
-      setPart("contours", new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x1a1a1a })), "z");
+      const cg = new LineSegmentsGeometry();
+      cg.setPositions(seg);
+      const cm = new LineMaterial({ color: 0x1a1a1a, linewidth: contourWidth });
+      const mnt = mountRef.current;
+      if (mnt) cm.resolution.set(mnt.clientWidth || 1, mnt.clientHeight || 1);
+      contourMatRef.current = cm;
+      setPart("contours", new LineSegments2(cg, cm), "z");
 
       if (labelsOn) {
         const group = new THREE.Group();
@@ -925,6 +941,22 @@ export function ThreeDTab({
     camera.updateProjectionMatrix();
   }, [fov]);
 
+  useEffect(() => {
+    if (contourMatRef.current) contourMatRef.current.linewidth = contourWidth;
+  }, [contourWidth]);
+
+  // Move mode: left button / one finger slides the view. Right button or two fingers always slide it too.
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    controls.mouseButtons = {
+      LEFT: moveMode ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: moveMode ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN,
+    };
+    controls.touches = { ONE: moveMode ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+  }, [moveMode]);
+
   function zoomBy(factor: number) {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
@@ -1092,7 +1124,7 @@ export function ThreeDTab({
               <Switch checked={showPoints} onCheckedChange={setShowPoints} />
             </div>
             <div className="text-[10px] text-neutral-500 leading-snug mt-2">
-              Drag to orbit · pinch / scroll to zoom · two-finger drag to pan
+              Drag to orbit · right-drag or two-finger drag to move · Move button slides with one finger · pinch / scroll to zoom
             </div>
           </div>
 
@@ -1126,6 +1158,7 @@ export function ThreeDTab({
                 ))}
               </select>
             </div>
+            <Slide label="Line weight" value={contourWidth} min={0.4} max={3} step={0.1} onChange={setContourWidth} fmt={(v) => `${v.toFixed(1)} px`} />
             <Toggle label="Value labels" on={labelsOn} set={setLabelsOn} />
             <Slide label="Label size" value={labelSize} min={0.5} max={2.5} step={0.1} onChange={setLabelSize} fmt={(v) => `${v.toFixed(1)}×`} />
           </Page>
@@ -1169,6 +1202,7 @@ export function ThreeDTab({
           </button>
           <div ref={mountRef} className="absolute inset-0" data-dx3-canvas />
           <div className="dx3-zoom" role="group" aria-label="Zoom">
+            <button type="button" aria-label="Move the view" aria-pressed={moveMode} className={moveMode ? "is-on" : ""} onClick={() => setMoveMode((v) => !v)}>Move</button>
             <button type="button" aria-label="Zoom in" onClick={() => zoomBy(0.75)}>+</button>
             <button type="button" aria-label="Zoom out" onClick={() => zoomBy(1.33)}>−</button>
             <button type="button" aria-label="Fit" onClick={() => viewPreset("angled")}>Fit</button>
