@@ -752,6 +752,18 @@ Tests: `tests/report-main-floor-not-combined.mjs`, `tests/report-print-legacy-st
 
 ---
 
+## Combined View source sticks (CHANGED Tim, Nov 25, 2026)
+
+A Combined View page could keep `scopeTitle: Combined View` / `scope: all` while its sole `views[0]` sat on a named boundary (e.g. Main Floor). Tim had to pick Combined in View source every open; it did not stay.
+
+- On open, a Combined View page with one view is healed back to `scope: all` / `areaId: null` on both meta and that view.
+- Changing View source on a single-view sheet also writes page meta (and title/rail) so the choice survives reopen.
+- Multi-view Combined sheets still keep per-view sources.
+
+Test: `tests/report-combined-source-sticks.mjs`.
+
+---
+
 ## Sandia Geo Drop Box: a 14-day download page for a job's files (DECIDED Tim, Nov 14, 2026)
 
 Tim: send a client or an engineer a link instead of a big email, and have the copies go away on their own. The lookbook (a hosted re-drawing of the report) was incomplete, so the drop box never re-draws anything: it stores finished files as they are.
