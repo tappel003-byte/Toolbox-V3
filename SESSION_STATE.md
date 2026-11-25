@@ -10,8 +10,8 @@ This does **not** replace authority docs. Read order for rules and vision:
 4. `DECISIONS.md`
 5. **This file** — current working picture
 
-Last updated: **Nov 12, 2026** (America/Denver)  
-Updated by: Cursor — editable visit notes. Ball → Tim (promote).
+Last updated: **Nov 25, 2026** (America/Denver)  
+Updated by: Cursor — Distress annotate host persist merged to tip. Ball → Tim (promote).
 
 ---
 
@@ -19,11 +19,11 @@ Updated by: Cursor — editable visit notes. Ball → Tim (promote).
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — pill gestures + survey date + Plan of Repair work by Claude Code on `claude/por-draw-contour-2ac5`. Ready to merge into integration when Tim asks. Not on `main`. |
-| Integration tip | `3167e6f` (`3167e6f6ada5bd8d87f9f78af32d506f207d1148`) — cover identity from CF; toolbox-shell-v513 |
+| **Has the ball** | **Tim** — tip has Distress annotate→RB host persist (`b22d92c`, shell **v514**). Promote for traffic. Active at 0% does not serve. Not on `main`. |
+| Integration tip | `b22d92c` (`b22d92c7ef2fbdadd9429e3395aaf262d97f9ae3`) — host persist before return to Report Builder; toolbox-shell-v514 |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Shell | `toolbox-shell-v472` |
+| Shell | `toolbox-shell-v514` |
 | Not done | Do not merge to `main` unless Tim promotes. Do not deploy Sync Worker. **Do not strip POR or Report Builder controls or icons.** |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
