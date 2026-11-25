@@ -567,7 +567,7 @@
   // wording each caption was copied from, so a caption nobody has typed in is still the pin's text and
   // follows it when the pin is corrected in Distress (Tim, Nov 25, 2026: "I fixed it directly in the DS
   // app"), while a caption somebody edited in Report Builder is never overwritten.
-  function captionsFromPhotos(photos, prior, seeds) {
+  function captionsFromPhotos(photos, prior, seeds, backup) {
     var captions = prior && typeof prior === 'object' ? Object.assign({}, prior) : {};
     seeds = seeds || {};
     (photos || []).forEach(function (photo) {
@@ -582,9 +582,14 @@
           captions[key] = seed;
           seeds[key] = seed;
         }
-      } else if (captions[key] === seed) {
-        // From before seeds were kept: in step with the pin now, so follow it from here on. A caption that
-        // differs cannot be told from one that was typed, so it is left alone.
+      } else {
+        // From before seeds were kept. It follows the pin from here on, which is what Distress is for (Tim, Nov 25,
+        // 2026: change it in DS and it should be in Report Builder). Wording that differs may have been typed in
+        // Report Builder, so it is kept in `backup` rather than thrown away.
+        if (captions[key] !== seed) {
+          if (backup && typeof backup[key] !== 'string') backup[key] = captions[key];
+          captions[key] = seed;
+        }
         seeds[key] = seed;
       }
     });
@@ -594,8 +599,10 @@
   function refreshCaptions(page, photos) {
     page.reportText = page.reportText || {};
     var seeds = Object.assign({}, page.reportText.captionSeeds || {});
-    page.reportText.captions = captionsFromPhotos(photos, page.reportText.captions, seeds);
+    var backup = Object.assign({}, page.reportText.captionBackup || {});
+    page.reportText.captions = captionsFromPhotos(photos, page.reportText.captions, seeds, backup);
     page.reportText.captionSeeds = seeds;
+    if (Object.keys(backup).length) page.reportText.captionBackup = backup;
   }
 
   function buildPicturesPage(photos, figureNumber, pageId) {
