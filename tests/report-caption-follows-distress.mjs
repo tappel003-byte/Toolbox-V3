@@ -78,8 +78,7 @@ check('A caption nobody typed in follows the corrected pin text', db.caps['ph-f-
 check('A caption typed in Report Builder is left alone', db.caps['ph-f-3'] === 'Typed in the report', db.caps['ph-f-3']);
 check('An untouched pin is unchanged', db.caps['ph-f-1'] === 'Original text 1');
 
-// a report saved before seeds were kept: a caption in step with its pin starts following it, one that differs
-// cannot be told from typed text and is kept as written
+// a report saved before seeds were kept: its captions follow the pins from then on; differing wording is kept aside
 await page.evaluate(async () => {
   const rec = await window.ToolboxDB.getCustomerFile('rb-follow');
   const p = rec.reportBuilder.pages.find((x) => x.type === 'pictures');
@@ -97,7 +96,9 @@ await page.evaluate(async () => {
 await openReport();
 db = await captionsInDb();
 check('Without remembered seeds, a caption in step with its pin follows it from then on', db.caps['ph-f-1'] === 'Pin one changed again', db.caps['ph-f-1']);
-check('and one that differs is kept as written', db.caps['ph-f-2'] === 'Some older wording', db.caps['ph-f-2']);
+check('and older wording that differs is replaced by the pin text', db.caps['ph-f-2'] === 'Pin two changed again', db.caps['ph-f-2']);
+const bk = await page.evaluate(async () => { const r = await window.ToolboxDB.getCustomerFile('rb-follow'); return r.reportBuilder.pages.find((x) => x.type === 'pictures').reportText.captionBackup || {}; });
+check('nothing is lost: the replaced wording is kept in captionBackup', bk['ph-f-2'] === 'Some older wording', JSON.stringify(bk));
 check('No JavaScript errors', errors.length === 0, errors.join(' | ').slice(0, 300));
 
 const failed = results.filter((r) => !r.ok);
