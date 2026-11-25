@@ -19,11 +19,11 @@ Updated by: Cursor — Combined View source sticks merged to tip. Ball → Tim (
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — tip has Combined View sole-view heal (`26e36f9`, shell **v515**). Promote for traffic. Active at 0% does not serve. Not on `main`. |
-| Integration tip | `26e36f9` (`26e36f98a411dfb7f140718989362cf61bae596e`) — Combined View source sticks; toolbox-shell-v515 |
+| **Has the ball** | **Tim** — tip has Combined View sole-view heal (`26e36f9`, shell **v516**). Promote for traffic. Active at 0% does not serve. Not on `main`. |
+| Integration tip | `26e36f9` (`26e36f98a411dfb7f140718989362cf61bae596e`) — Combined View source sticks; toolbox-shell-v516 |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Shell | `toolbox-shell-v515` |
+| Shell | `toolbox-shell-v516` |
 | Not done | Do not merge to `main` unless Tim promotes. Do not deploy Sync Worker. **Do not strip POR or Report Builder controls or icons.** |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.
