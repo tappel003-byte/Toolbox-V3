@@ -764,6 +764,18 @@ Test: `tests/report-combined-source-sticks.mjs`.
 
 ---
 
+## Floor sheet source: editor and Print agree (CHANGED Tim, Nov 25, 2026)
+
+Haddow Figure 1: started Combined, View source → Main Floor looked correct and Saved, reopen put View source back on Combined while the title still said Main Floor; Print/Present/Share drew Combined (all boundaries, no scale/pill) under that Main Floor title.
+
+- Sheet identity prefers an explicit `meta.scope=area` + areaId, then a title/rail that names a boundary, then Combined `scopeTitle`. Sole view is synced to that identity on open.
+- Print/Present compose uses page meta for sole-view sheets (not a drifted `views[0].scope=all`).
+- Area compose failure fails closed — never retries as whole-level Combined under a boundary title.
+
+Tests: `tests/report-main-floor-source-sticks.mjs`, plus neighbouring floor source suites.
+
+---
+
 ## Sandia Geo Drop Box: a 14-day download page for a job's files (DECIDED Tim, Nov 14, 2026)
 
 Tim: send a client or an engineer a link instead of a big email, and have the copies go away on their own. The lookbook (a hosted re-drawing of the report) was incomplete, so the drop box never re-draws anything: it stores finished files as they are.

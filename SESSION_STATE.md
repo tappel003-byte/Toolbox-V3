@@ -11,7 +11,7 @@ This does **not** replace authority docs. Read order for rules and vision:
 5. **This file** — current working picture
 
 Last updated: **Nov 25, 2026** (America/Denver)  
-Updated by: Cursor — Combined View source sticks merged to tip. Ball → Tim (promote).
+Updated by: Cursor — Haddow Figure 1 Main Floor source sticks on PR branch. Ball → Tim (merge when ready).
 
 ---
 
@@ -19,11 +19,11 @@ Updated by: Cursor — Combined View source sticks merged to tip. Ball → Tim (
 
 | Field | Value |
 |-------|--------|
-| **Has the ball** | **Tim** — tip has Combined View sole-view heal (`26e36f9`, shell **v516**). Promote for traffic. Active at 0% does not serve. Not on `main`. |
-| Integration tip | `26e36f9` (`26e36f98a411dfb7f140718989362cf61bae596e`) — Combined View source sticks; toolbox-shell-v516 |
+| **Has the ball** | **Tim** — `cursor/main-floor-view-sticks-2ac5` (shell **v517**) fixes Haddow Figure 1 Main Floor persist + Print fail-closed. Not merged. Not on `main`. |
+| Integration tip | `e5e25d0` — shell v516 until Tim merges the Main Floor source PR |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Shell | `toolbox-shell-v516` |
+| Shell | `toolbox-shell-v517` (PR branch) |
 | Not done | Do not merge to `main` unless Tim promotes. Do not deploy Sync Worker. **Do not strip POR or Report Builder controls or icons.** |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.

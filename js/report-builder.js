@@ -3389,6 +3389,30 @@
     return /^combined(\s+view)?$/i.test(String(title || '').trim());
   }
 
+  function floorTitleAreaName(page) {
+    var raw = '';
+    if (page && typeof page.title === 'string') raw = page.title;
+    else if (page && typeof page.tocTitle === 'string') raw = page.tocTitle;
+    raw = String(raw || '').replace(/^Floor Level Survey\s*[—–-]\s*/i, '').trim();
+    if (raw && !isCombinedScopeTitle(raw)) return raw;
+    var rail = page && typeof page.railLabel === 'string' ? page.railLabel : '';
+    // "Floor · Main Floor" or "Floor · Floor Plan · Combined"
+    var parts = String(rail || '').split('·').map(function (p) { return p.trim(); });
+    if (parts.length >= 2) {
+      var last = parts[parts.length - 1];
+      if (last && !isCombinedScopeTitle(last) && !/^floor$/i.test(last)) return last;
+    }
+    return '';
+  }
+
+  function areaById(areas, id) {
+    if (!id) return null;
+    for (var i = 0; i < (areas || []).length; i += 1) {
+      if (areas[i] && String(areas[i].id) === String(id)) return areas[i];
+    }
+    return null;
+  }
+
   /**
    * Resolve synthetic areaId "legacy" (or a Combined page that still carries a
    * named-boundary title) onto the right scope.
@@ -3433,10 +3457,13 @@
    * Migrate / repair Floor pages whose source still says synthetic "legacy"
    * or that were wrongly collapsed to Combined while keeping a boundary title.
    *
-   * Also heal a Combined View page whose sole view drifted onto a named
-   * boundary (Main Floor, Garage, …). Meta stayed Combined; the view did not —
-   * Tim had to pick Combined in View source every open and it still fell back
-   * (Nov 25, 2026). Multi-view Combined sheets keep per-view sources.
+   * Haddow (Tim, Nov 25, 2026): Figure 1 started Combined; View source → Main
+   * Floor looked saved, then reopen put View source back on Combined while the
+   * sheet title still said Main Floor. Combined-only heal on scopeTitle fought
+   * the title and left meta.scope=all under a boundary name. Prefer an explicit
+   * areaId, then a title/rail that names a boundary, then Combined scopeTitle.
+   * Sole view must match that resolved sheet identity. Multi-view keeps per-view
+   * sources.
    */
   function migrateLegacyFloorAreaPages(pageList, record) {
     var changed = false;
@@ -3445,22 +3472,42 @@
       var meta = page.meta;
       var areas = namedClosedAreasForCanvas(record, meta.canvasId, meta.epochId);
       var next = null;
-      if (isCombinedScopeTitle(meta.scopeTitle)) {
-        next = { scope: 'all', areaId: null };
+      var namedFromTitle = matchNamedAreaByTitle(areas, floorTitleAreaName(page));
+      var namedFromScope = matchNamedAreaByTitle(areas, meta.scopeTitle);
+      var explicitArea = (meta.scope === 'area' && meta.areaId && areaById(areas, meta.areaId))
+        ? areaById(areas, meta.areaId)
+        : null;
+
+      if (explicitArea) {
+        next = { scope: 'area', areaId: explicitArea.id };
+        if (isCombinedScopeTitle(meta.scopeTitle) || !meta.scopeTitle) {
+          meta.scopeTitle = explicitArea.name || meta.scopeTitle;
+          changed = true;
+        }
       } else if (meta.areaId && String(meta.areaId) === 'legacy') {
         next = resolveLegacyFloorScope(meta, record);
+      } else if (namedFromScope) {
+        next = { scope: 'area', areaId: namedFromScope.id };
+      } else if (namedFromTitle) {
+        // Title/rail says Main Floor (etc.) while scopeTitle still says Combined
+        // View — keep the boundary the investigator already named on the sheet.
+        next = { scope: 'area', areaId: namedFromTitle.id };
+        meta.scopeTitle = namedFromTitle.name;
+        changed = true;
+      } else if (isCombinedScopeTitle(meta.scopeTitle)) {
+        next = { scope: 'all', areaId: null };
       } else if ((meta.scope || 'all') === 'all' && !meta.areaId &&
-                 areas.length && matchNamedAreaByTitle(areas, meta.scopeTitle)) {
-        // Already remapped to Combined by the blunt Nov 24 migrate, title kept.
-        next = {
-          scope: 'area',
-          areaId: matchNamedAreaByTitle(areas, meta.scopeTitle).id,
-        };
+                 areas.length && namedFromScope) {
+        next = { scope: 'area', areaId: namedFromScope.id };
       }
       if (next && applyFloorScope(meta, next)) changed = true;
 
       if (Array.isArray(meta.views)) {
         var soleView = meta.views.length === 1;
+        var sheetScope = {
+          scope: (meta.scope || 'all') === 'area' ? 'area' : 'all',
+          areaId: (meta.scope || 'all') === 'area' ? (meta.areaId || null) : null,
+        };
         meta.views.forEach(function (view) {
           if (!view) return;
           var viewNext = null;
@@ -3471,17 +3518,9 @@
               scopeTitle: meta.scopeTitle,
               levelName: meta.levelName,
             }, record);
-          } else if (next && next.scope === 'all' && !next.areaId && soleView &&
-                     ((view.scope || 'all') !== 'all' || view.areaId)) {
-            // Combined View page, one view — pull the drifted boundary source
-            // back to Combined so it sticks without re-selecting.
-            viewNext = { scope: 'all', areaId: null };
-          } else if (next && next.scope === 'area' && next.areaId &&
-                     (view.scope || 'all') === 'all' && !view.areaId &&
-                     String(view.canvasId || meta.canvasId || '') ===
-                       String(meta.canvasId || '')) {
-            // Sole (or same-canvas) view left on Combined after meta repair.
-            viewNext = { scope: 'area', areaId: next.areaId };
+          } else if (soleView) {
+            // One view on the sheet — it is the sheet identity.
+            viewNext = sheetScope;
           }
           if (viewNext && applyFloorScope(view, viewNext)) changed = true;
         });
@@ -5776,8 +5815,18 @@
             : pickedLabel;
           if (sv.scope === 'all') {
             sp.meta.scopeTitle = 'Combined View';
-          } else if (scopeLabel) {
-            sp.meta.scopeTitle = scopeLabel;
+          } else {
+            // Prefer the area's real name from the layer (not only the option
+            // label) so scopeTitle cannot stay "Combined View" under a Main
+            // Floor title after the picker change.
+            var areaName = scopeLabel;
+            try {
+              var layerAreas = namedClosedAreasForCanvas(
+                workingRecord, sv.canvasId, sv.epochId);
+              var hitArea = areaById(layerAreas, sv.areaId);
+              if (hitArea && hitArea.name) areaName = String(hitArea.name);
+            } catch (_) { /* keep label */ }
+            if (areaName) sp.meta.scopeTitle = areaName;
           }
           if (sp.meta.scopeTitle) {
             var levelBit = sp.meta.levelName ? String(sp.meta.levelName) : '';
@@ -9544,17 +9593,33 @@
         floorSurveyId,
         floorLayerResolves(workingRecord, canvasId)
       );
-      var scope = (view && view.scope) || meta.scope || 'all';
-      var areaId = scope === 'all'
-        ? null
-        : ((view && view.areaId) || meta.areaId || null);
+      // Sole-view sheets: page meta is the sheet identity (Tim, Nov 25, 2026 —
+      // Haddow Figure 1 printed Combined under a Main Floor title when a drifted
+      // view.scope=all won over meta.scope=area). Multi-view uses the view.
+      var views = Array.isArray(meta.views) ? meta.views : null;
+      var sole = !views || views.length <= 1;
+      var scope;
+      var areaId;
+      if (sole && (meta.scope || 'all') === 'area' && meta.areaId) {
+        scope = 'area';
+        areaId = meta.areaId;
+      } else if (sole && (meta.scope || 'all') === 'all' && !meta.areaId) {
+        scope = 'all';
+        areaId = null;
+      } else {
+        scope = (view && view.scope) || meta.scope || 'all';
+        areaId = scope === 'all'
+          ? null
+          : ((view && view.areaId) || meta.areaId || null);
+      }
       // Synthetic whole-level id "legacy" is not a named room in layer.areas.
       // Prefight used to accept it whenever a boundary polygon existed, but
       // compose filters named areas by id and never invents "legacy" when
       // areas[] is non-empty — so compose returned null (Tim, Nov 24, 2026).
       // Resolve to the matching named boundary when the page title says one;
       // only fall back to Combined for true whole-level legacy (Tim, Nov 25:
-      // Main Floor must not become Combined).
+      // Main Floor must not become Combined). Never silently print Combined
+      // under a boundary title.
       if (areaId && String(areaId) === 'legacy') {
         var resolved = resolveLegacyFloorScope({
           canvasId: canvasId,
@@ -9685,24 +9750,14 @@
               };
               return api.composeReportTopoFigureForPage(workingRecord, composeSpec, getMedia)
                 .then(function (composed) {
-                // Stale area ids (including "legacy" when named areas exist)
-                // compose to null. Retry once as the whole level before failing
-                // the deck — same remap floorOutputJobSpec applies up front.
-                if ((!composed || !composed.dataUrl) &&
-                    composeSpec.scope === 'area' && composeSpec.areaId) {
-                  return api.composeReportTopoFigureForPage(workingRecord, {
-                    canvasId: composeSpec.canvasId,
-                    epochId: composeSpec.epochId,
-                    areaId: null,
-                    scope: 'all',
-                    settings: composeSpec.settings,
-                    extent: composeSpec.extent,
-                  }, getMedia);
-                }
-                return composed;
-              }).then(function (composed) {
+                // Fail closed: never retry as Combined / whole level under a
+                // boundary title (Tim, Nov 25, 2026 — Haddow Figure 1 printed
+                // all three boundaries while the sheet still said Main Floor).
                 if (!composed || !composed.dataUrl) {
-                  var miss = new Error(describeFloorOutputFailure(job, 'compose returned no drawing'));
+                  var miss = new Error(describeFloorOutputFailure(job,
+                    composeSpec.scope === 'area' && composeSpec.areaId
+                      ? ('boundary "' + composeSpec.areaId + '" could not be composed')
+                      : 'compose returned no drawing'));
                   miss.floorOutputFailures = [miss.message];
                   throw miss;
                 }
