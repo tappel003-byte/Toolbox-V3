@@ -3351,12 +3351,18 @@
 
   function matchNamedAreaByTitle(areas, title) {
     var want = String(title || '').trim().toLowerCase();
-    if (!want || want === 'combined' || /^boundary\s*\d+$/i.test(want)) return null;
+    if (!want || /^combined(\s+view)?$/i.test(want) || /^boundary\s*\d+$/i.test(want)) {
+      return null;
+    }
     for (var i = 0; i < areas.length; i += 1) {
       var name = String((areas[i] && areas[i].name) || '').trim().toLowerCase();
       if (name && name === want) return areas[i];
     }
     return null;
+  }
+
+  function isCombinedScopeTitle(title) {
+    return /^combined(\s+view)?$/i.test(String(title || '').trim());
   }
 
   /**
@@ -3380,7 +3386,7 @@
       return { scope: 'all', areaId: null };
     }
     var scopeTitle = meta && meta.scopeTitle;
-    if (scopeTitle && /^combined(\s+view)?$/i.test(String(scopeTitle).trim())) {
+    if (isCombinedScopeTitle(scopeTitle)) {
       return { scope: 'all', areaId: null };
     }
     var hit = matchNamedAreaByTitle(areas, scopeTitle);
@@ -3402,6 +3408,11 @@
   /**
    * Migrate / repair Floor pages whose source still says synthetic "legacy"
    * or that were wrongly collapsed to Combined while keeping a boundary title.
+   *
+   * Also heal a Combined View page whose sole view drifted onto a named
+   * boundary (Main Floor, Garage, …). Meta stayed Combined; the view did not —
+   * Tim had to pick Combined in View source every open and it still fell back
+   * (Nov 25, 2026). Multi-view Combined sheets keep per-view sources.
    */
   function migrateLegacyFloorAreaPages(pageList, record) {
     var changed = false;
@@ -3410,7 +3421,9 @@
       var meta = page.meta;
       var areas = namedClosedAreasForCanvas(record, meta.canvasId, meta.epochId);
       var next = null;
-      if (meta.areaId && String(meta.areaId) === 'legacy') {
+      if (isCombinedScopeTitle(meta.scopeTitle)) {
+        next = { scope: 'all', areaId: null };
+      } else if (meta.areaId && String(meta.areaId) === 'legacy') {
         next = resolveLegacyFloorScope(meta, record);
       } else if ((meta.scope || 'all') === 'all' && !meta.areaId &&
                  areas.length && matchNamedAreaByTitle(areas, meta.scopeTitle)) {
@@ -3423,6 +3436,7 @@
       if (next && applyFloorScope(meta, next)) changed = true;
 
       if (Array.isArray(meta.views)) {
+        var soleView = meta.views.length === 1;
         meta.views.forEach(function (view) {
           if (!view) return;
           var viewNext = null;
@@ -3433,6 +3447,11 @@
               scopeTitle: meta.scopeTitle,
               levelName: meta.levelName,
             }, record);
+          } else if (next && next.scope === 'all' && !next.areaId && soleView &&
+                     ((view.scope || 'all') !== 'all' || view.areaId)) {
+            // Combined View page, one view — pull the drifted boundary source
+            // back to Combined so it sticks without re-selecting.
+            viewNext = { scope: 'all', areaId: null };
           } else if (next && next.scope === 'area' && next.areaId &&
                      (view.scope || 'all') === 'all' && !view.areaId &&
                      String(view.canvasId || meta.canvasId || '') ===
@@ -5699,6 +5718,45 @@
         // Drop a stale independent camera so the new level opens framed, not
         // at the previous floor's pan. Linked same-source broadcast is N/A here.
         sv.camera = null;
+        // Single-view sheets: page meta is the sheet identity. Keep it in
+        // lockstep with View source so Combined (or a boundary) survives
+        // reopen instead of healing back to the old title every time.
+        if (listNow.length <= 1) {
+          sp.meta = sp.meta || {};
+          sp.meta.canvasId = sv.canvasId || sp.meta.canvasId;
+          if (sv.epochId != null) sp.meta.epochId = sv.epochId;
+          applyFloorScope(sp.meta, {
+            scope: sv.scope || 'all',
+            areaId: sv.scope === 'all' ? null : sv.areaId,
+          });
+          var pickedLabel = '';
+          try {
+            pickedLabel = String(
+              (srcSel.options[srcSel.selectedIndex] &&
+                srcSel.options[srcSel.selectedIndex].textContent) || ''
+            ).trim();
+          } catch (_) { pickedLabel = ''; }
+          var dash = pickedLabel.indexOf('—');
+          var scopeLabel = dash >= 0
+            ? pickedLabel.slice(dash + 1).trim()
+            : pickedLabel;
+          if (sv.scope === 'all') {
+            sp.meta.scopeTitle = 'Combined View';
+          } else if (scopeLabel) {
+            sp.meta.scopeTitle = scopeLabel;
+          }
+          if (sp.meta.scopeTitle) {
+            var levelBit = sp.meta.levelName ? String(sp.meta.levelName) : '';
+            sp.title = 'Floor Level Survey — ' + sp.meta.scopeTitle;
+            if (sv.scope === 'all' && levelBit &&
+                levelBit !== sp.meta.scopeTitle) {
+              sp.railLabel = 'Floor · ' + levelBit + ' · Combined';
+            } else {
+              sp.railLabel = 'Floor · ' + sp.meta.scopeTitle;
+            }
+            sp.tocTitle = sp.title;
+          }
+        }
         releaseTopoHosts();
         markDirty();
         renderPages();
