@@ -2066,8 +2066,9 @@
             var attachScope = meta.scope || 'all';
             var attachArea = meta.areaId || null;
             if (attachArea && String(attachArea) === 'legacy') {
-              attachScope = 'all';
-              attachArea = null;
+              var attachResolved = resolveLegacyFloorScope(meta, record);
+              attachScope = attachResolved.scope;
+              attachArea = attachResolved.areaId;
             }
             var composed = await window.ToolboxFloorSurvey.composeReportTopoFigureForPage(record, {
               canvasId: meta.canvasId,
@@ -3246,28 +3247,133 @@
   }
 
   /**
-   * Whole-level synthetic boundary id "legacy" is not in layer.areas. Saved
-   * pages from before report-source emitted scope:all still carry
-   * scope:area + areaId:legacy; compose cannot find that id when the layer
-   * has named areas (or when getAreas skips inventing legacy). Rewrite to
-   * scope:all so Print/Present stills match the live host (Tim, Nov 24, 2026).
+   * Named closed areas on a Floor Survey layer (never invents id "legacy").
    */
-  function migrateLegacyFloorAreaPages(pageList) {
+  function namedClosedAreasForCanvas(record, canvasId, epochId) {
+    if (!record || !canvasId) return [];
+    var floor = record.floorSurvey;
+    if (!floor) return [];
+    var ep = epochId == null || epochId === '' ? '' : String(epochId);
+    var layer = null;
+    if ((floor.id || 'current') === ep && floor.byCanvasId) {
+      layer = floor.byCanvasId[canvasId] || null;
+    }
+    if (!layer) {
+      var groups = ['epochs', 'sessions', 'surveys'];
+      for (var g = 0; g < groups.length && !layer; g += 1) {
+        var list = floor[groups[g]];
+        if (!Array.isArray(list)) continue;
+        for (var i = 0; i < list.length; i += 1) {
+          var entry = list[i];
+          if (!entry || entry.id !== ep) continue;
+          layer = (entry.byCanvasId && entry.byCanvasId[canvasId]) || null;
+          break;
+        }
+      }
+    }
+    if (!layer && floor.byCanvasId && floor.byCanvasId[canvasId] &&
+        (ep === 'current' || !ep || ep === String(floor.id || ''))) {
+      layer = floor.byCanvasId[canvasId];
+    }
+    if (!layer || !Array.isArray(layer.areas)) return [];
+    return layer.areas.filter(function (area) {
+      return area && area.id && String(area.id) !== 'legacy' &&
+        Array.isArray(area.polygon) && area.polygon.length >= 3;
+    });
+  }
+
+  function matchNamedAreaByTitle(areas, title) {
+    var want = String(title || '').trim().toLowerCase();
+    if (!want || want === 'combined' || /^boundary\s*\d+$/i.test(want)) return null;
+    for (var i = 0; i < areas.length; i += 1) {
+      var name = String((areas[i] && areas[i].name) || '').trim().toLowerCase();
+      if (name && name === want) return areas[i];
+    }
+    return null;
+  }
+
+  /**
+   * Resolve synthetic areaId "legacy" (or a Combined page that still carries a
+   * named-boundary title) onto the right scope.
+   *
+   * The Nov 24 Print fix remapped every legacy id to Combined so stills would
+   * compose when named areas exist. That also rewrote Main Floor / Garage
+   * boundary pages into Combined while leaving their titles alone — Tim,
+   * Nov 25, 2026: "this is combined not main floor". Prefer the named area
+   * whose name matches scopeTitle; only fall back to Combined for true
+   * whole-level legacy (no name match / no named areas).
+   */
+  function resolveLegacyFloorScope(meta, record) {
+    var areas = namedClosedAreasForCanvas(
+      record,
+      meta && meta.canvasId,
+      meta && meta.epochId
+    );
+    if (!areas.length) {
+      return { scope: 'all', areaId: null };
+    }
+    var scopeTitle = meta && meta.scopeTitle;
+    if (scopeTitle && /^combined(\s+view)?$/i.test(String(scopeTitle).trim())) {
+      return { scope: 'all', areaId: null };
+    }
+    var hit = matchNamedAreaByTitle(areas, scopeTitle);
+    if (hit) return { scope: 'area', areaId: hit.id };
+    return { scope: 'all', areaId: null };
+  }
+
+  function applyFloorScope(target, next) {
+    if (!target || !next) return false;
+    var beforeScope = target.scope || 'all';
+    var beforeArea = target.areaId == null ? '' : String(target.areaId);
+    var afterArea = next.areaId == null ? '' : String(next.areaId);
+    if (beforeScope === next.scope && beforeArea === afterArea) return false;
+    target.scope = next.scope;
+    target.areaId = next.areaId;
+    return true;
+  }
+
+  /**
+   * Migrate / repair Floor pages whose source still says synthetic "legacy"
+   * or that were wrongly collapsed to Combined while keeping a boundary title.
+   */
+  function migrateLegacyFloorAreaPages(pageList, record) {
     var changed = false;
     (pageList || []).forEach(function (page) {
       if (!page || page.type !== 'floor' || !page.meta) return;
       var meta = page.meta;
+      var areas = namedClosedAreasForCanvas(record, meta.canvasId, meta.epochId);
+      var next = null;
       if (meta.areaId && String(meta.areaId) === 'legacy') {
-        meta.scope = 'all';
-        meta.areaId = null;
-        changed = true;
+        next = resolveLegacyFloorScope(meta, record);
+      } else if ((meta.scope || 'all') === 'all' && !meta.areaId &&
+                 areas.length && matchNamedAreaByTitle(areas, meta.scopeTitle)) {
+        // Already remapped to Combined by the blunt Nov 24 migrate, title kept.
+        next = {
+          scope: 'area',
+          areaId: matchNamedAreaByTitle(areas, meta.scopeTitle).id,
+        };
       }
+      if (next && applyFloorScope(meta, next)) changed = true;
+
       if (Array.isArray(meta.views)) {
         meta.views.forEach(function (view) {
-          if (!view || !view.areaId || String(view.areaId) !== 'legacy') return;
-          view.scope = 'all';
-          view.areaId = null;
-          changed = true;
+          if (!view) return;
+          var viewNext = null;
+          if (view.areaId && String(view.areaId) === 'legacy') {
+            viewNext = resolveLegacyFloorScope({
+              canvasId: view.canvasId || meta.canvasId,
+              epochId: view.epochId != null ? view.epochId : meta.epochId,
+              scopeTitle: meta.scopeTitle,
+              levelName: meta.levelName,
+            }, record);
+          } else if (next && next.scope === 'area' && next.areaId &&
+                     (view.scope || 'all') === 'all' && !view.areaId &&
+                     String(view.canvasId || meta.canvasId || '') ===
+                       String(meta.canvasId || '')) {
+            // Sole (or same-canvas) view left on Combined after meta repair.
+            viewNext = { scope: 'area', areaId: next.areaId };
+          }
+          if (viewNext && applyFloorScope(view, viewNext)) changed = true;
         });
       }
     });
@@ -9274,15 +9380,20 @@
         : ((view && view.areaId) || meta.areaId || null);
       // Synthetic whole-level id "legacy" is not a named room in layer.areas.
       // Prefight used to accept it whenever a boundary polygon existed, but
-      // composeReportTopoFigureForPage filters closedAreas by id — and when
-      // the layer has ANY named areas, getAreas never invents "legacy", so
-      // compose returned null. Print then either blocked or (with live stats
-      // already on the page) drew Import-era chrome with no still:
-      // "Floor Survey level is not available for this slide."
-      // Tim, Nov 24, 2026: Haddow Main Floor / 3 Car Garage blank in PDF.
+      // compose filters named areas by id and never invents "legacy" when
+      // areas[] is non-empty — so compose returned null (Tim, Nov 24, 2026).
+      // Resolve to the matching named boundary when the page title says one;
+      // only fall back to Combined for true whole-level legacy (Tim, Nov 25:
+      // Main Floor must not become Combined).
       if (areaId && String(areaId) === 'legacy') {
-        scope = 'all';
-        areaId = null;
+        var resolved = resolveLegacyFloorScope({
+          canvasId: canvasId,
+          epochId: epochId,
+          scopeTitle: meta.scopeTitle,
+          levelName: meta.levelName,
+        }, workingRecord);
+        scope = resolved.scope;
+        areaId = resolved.areaId;
       }
       return {
         canvasId: canvasId,
@@ -10181,7 +10292,7 @@
           floorSurveyId: floorSurveyId,
           record: record,
         });
-        var migratedLegacy = migrateLegacyFloorAreaPages(pages);
+        var migratedLegacy = migrateLegacyFloorAreaPages(pages, record);
         var after = pages.map(function (page) {
           return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',') +
             ':' + !!(page.meta && page.meta.imported) +
@@ -10203,7 +10314,7 @@
         };
       }
       pages = freshPages;
-      migrateLegacyFloorAreaPages(pages);
+      migrateLegacyFloorAreaPages(pages, record);
       activeId = pages[0] ? pages[0].id : '';
       pageSeq = pages.length;
       restoreReturnPage();

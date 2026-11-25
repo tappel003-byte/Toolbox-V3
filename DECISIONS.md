@@ -738,6 +738,18 @@ Test: `tests/floor-survey-drain.mjs`.
 
 ---
 
+## Floor page `areaId: legacy` resolves to the named boundary, not always Combined (CHANGED Tim, Nov 25, 2026)
+
+Saved reports used synthetic `areaId: "legacy"` for whole-level slides. Compose cannot find that id when the layer has named areas, so Print went blank. The Nov 24 remaps-to-Combined fix unblocked Print, but also turned **Main Floor** (and other named-boundary) pages into Combined while leaving their titles alone — Tim, on Haddow: "this is combined not main floor."
+
+- When `areaId` is `legacy` (or a page was left as Combined with a named `scopeTitle`), match `scopeTitle` to a closed named area on that canvas and keep `scope: area` with that area's id.
+- Only fall back to Combined when there is no name match (true whole-level legacy, or `scopeTitle` is Combined / Boundary N).
+- Unchanged: Present/Print must still draw a still; blank "unavailable" slides stay a failure.
+
+Tests: `tests/report-main-floor-not-combined.mjs`, `tests/report-print-legacy-stills.mjs`.
+
+---
+
 ## Sandia Geo Drop Box: a 14-day download page for a job's files (DECIDED Tim, Nov 14, 2026)
 
 Tim: send a client or an engineer a link instead of a big email, and have the copies go away on their own. The lookbook (a hosted re-drawing of the report) was incomplete, so the drop box never re-draws anything: it stores finished files as they are.

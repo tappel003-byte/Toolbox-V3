@@ -38,7 +38,15 @@ const page = await browser.newPage();
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(String(e.message || e)));
 await page.setViewport({ width: 1600, height: 1000, deviceScaleFactor: 1 });
+await page.setCacheEnabled(false);
 await page.goto(BASE, { waitUntil: 'networkidle0' });
+await page.evaluate(async () => {
+  const regs = await navigator.serviceWorker.getRegistrations();
+  for (const r of regs) await r.unregister();
+  const keys = await caches.keys();
+  for (const k of keys) await caches.delete(k);
+});
+await page.goto(BASE + '?v=legacy-stills-fix', { waitUntil: 'networkidle0' });
 
 await page.evaluate(async (id) => {
   const img = (() => {
@@ -138,25 +146,61 @@ await page.evaluate(async () => {
   await ToolboxDB.saveCustomerFile(rec);
 });
 
-await page.goto(`${BASE}#/file/${FILE}/report`, { waitUntil: 'networkidle0' });
+await page.goto(`${BASE}?v=legacy-reopen#/file/${FILE}/report`, { waitUntil: 'networkidle0' });
 await page.waitForFunction(
   () => document.querySelector('.rb-shell')?.getAttribute('data-report-ready') === 'true',
   { timeout: 90000 },
 );
 await new Promise((r) => setTimeout(r, 3500));
+// Wait for migrate + flush: Living binds to its area; patio/garage leave legacy.
+await page.waitForFunction(async () => {
+  const rec = await ToolboxDB.getCustomerFile('rb-print-legacy-stills-fix');
+  const pages = (rec.reportBuilder && rec.reportBuilder.pages) || [];
+  const living = pages.find((p) => p.meta && p.meta.scopeTitle === 'Living');
+  const patio = pages.find((p) => p.meta && p.meta.canvasId === 'cv-patio');
+  return living && living.meta.areaId === 'living' &&
+    patio && patio.meta.scope === 'all' && !patio.meta.areaId;
+}, { timeout: 25000 });
 
 const migrated = await page.evaluate(async () => {
   const rec = await ToolboxDB.getCustomerFile('rb-print-legacy-stills-fix');
   // Migration runs on open into working pages; flushSave may have written back.
-  // Prefer live rail open: click Present which uses in-memory pages.
   return (rec.reportBuilder.pages || [])
     .filter((p) => p.type === 'floor')
     .map((p) => ({
       title: p.title,
+      rail: p.railLabel,
+      scopeTitle: p.meta && p.meta.scopeTitle,
       scope: p.meta && p.meta.scope,
       areaId: p.meta && p.meta.areaId,
+      canvasId: p.meta && p.meta.canvasId,
+      view0: p.meta && p.meta.views && p.meta.views[0]
+        ? { scope: p.meta.views[0].scope, areaId: p.meta.views[0].areaId }
+        : null,
     }));
 });
+
+const living = migrated.find((p) => p.scopeTitle === 'Living' || /Living/i.test(p.title || ''));
+const kitchen = migrated.find((p) => p.scopeTitle === 'Kitchen' || /Kitchen/i.test(p.title || ''));
+const patio = migrated.find((p) => /Covered Patio/i.test(p.title || '') || p.canvasId === 'cv-patio');
+const garage = migrated.find((p) => /Garage/i.test(p.title || '') || p.canvasId === 'cv-gar');
+const combined = migrated.find((p) => /Combined/i.test(p.scopeTitle || '') || /Combined/i.test(p.title || ''));
+
+check('Living stays a named-area page (not Combined)',
+  living && living.scope === 'area' && living.areaId === 'living',
+  JSON.stringify(living));
+check('Kitchen stays a named-area page (not Combined)',
+  kitchen && kitchen.scope === 'area' && kitchen.areaId === 'kitchen',
+  JSON.stringify(kitchen));
+check('Covered Patio whole-level legacy becomes Combined',
+  patio && patio.scope === 'all' && !patio.areaId,
+  JSON.stringify(patio));
+check('3 Car Garage whole-level legacy becomes Combined',
+  garage && garage.scope === 'all' && !garage.areaId,
+  JSON.stringify(garage));
+check('Combined View page stays Combined',
+  !combined || (combined.scope === 'all' && !combined.areaId),
+  JSON.stringify(combined));
 
 const present = await page.evaluate(async () => {
   const btn = document.querySelector('#rb-present');
