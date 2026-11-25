@@ -563,15 +563,39 @@
     return max;
   }
 
-  function captionsFromPhotos(photos, prior) {
+  // A caption starts as the Distress pin's wording and then belongs to the report. `seeds` remembers the
+  // wording each caption was copied from, so a caption nobody has typed in is still the pin's text and
+  // follows it when the pin is corrected in Distress (Tim, Nov 25, 2026: "I fixed it directly in the DS
+  // app"), while a caption somebody edited in Report Builder is never overwritten.
+  function captionsFromPhotos(photos, prior, seeds) {
     var captions = prior && typeof prior === 'object' ? Object.assign({}, prior) : {};
+    seeds = seeds || {};
     (photos || []).forEach(function (photo) {
       if (!photo || !photo.key) return;
-      if (typeof captions[photo.key] !== 'string') {
-        captions[photo.key] = photo.seedText || '';
+      var key = photo.key;
+      var seed = photo.seedText || '';
+      if (typeof captions[key] !== 'string') {
+        captions[key] = seed;
+        seeds[key] = seed;
+      } else if (typeof seeds[key] === 'string') {
+        if (captions[key] === seeds[key] && seed !== seeds[key]) {
+          captions[key] = seed;
+          seeds[key] = seed;
+        }
+      } else if (captions[key] === seed) {
+        // From before seeds were kept: in step with the pin now, so follow it from here on. A caption that
+        // differs cannot be told from one that was typed, so it is left alone.
+        seeds[key] = seed;
       }
     });
     return captions;
+  }
+
+  function refreshCaptions(page, photos) {
+    page.reportText = page.reportText || {};
+    var seeds = Object.assign({}, page.reportText.captionSeeds || {});
+    page.reportText.captions = captionsFromPhotos(photos, page.reportText.captions, seeds);
+    page.reportText.captionSeeds = seeds;
   }
 
   function buildPicturesPage(photos, figureNumber, pageId) {
@@ -592,9 +616,10 @@
         figureNumber: figureNumber,
         photoKeys: list.map(function (photo) { return photo.key; }),
       },
-      reportText: {
-        captions: captionsFromPhotos(list, null),
-      },
+      reportText: (function () {
+        var seeds = {};
+        return { captions: captionsFromPhotos(list, null, seeds), captionSeeds: seeds };
+      })(),
       evidence: null,
     };
   }
@@ -917,11 +942,7 @@
       kept.forEach(function (key) { knownKeys[key] = true; });
       page.meta = page.meta || {};
       page.meta.photoKeys = kept;
-      page.reportText = page.reportText || {};
-      page.reportText.captions = captionsFromPhotos(
-        kept.map(function (key) { return photoByKey[key]; }),
-        page.reportText.captions
-      );
+      refreshCaptions(page, kept.map(function (key) { return photoByKey[key]; }));
     });
 
     var newPhotos = photoList.filter(function (photo) {
@@ -941,11 +962,7 @@
           var fill = queue.splice(0, room);
           existingKeys = existingKeys.concat(fill.map(function (photo) { return photo.key; }));
           lastPictures.meta.photoKeys = existingKeys;
-          lastPictures.reportText = lastPictures.reportText || {};
-          lastPictures.reportText.captions = captionsFromPhotos(
-            existingKeys.map(function (key) { return photoByKey[key]; }),
-            lastPictures.reportText.captions
-          );
+          refreshCaptions(lastPictures, existingKeys.map(function (key) { return photoByKey[key]; }));
         }
       }
       if (queue.length) {
@@ -9263,10 +9280,13 @@
       if (idx[idx.length - 1] - idx[0] + 1 !== idx.length) return false;
       var keys = [];
       var captions = {};
+      var seedsAll = {};
       idx.forEach(function (i) {
         var item = pages[i];
         var pk = (item.meta && Array.isArray(item.meta.photoKeys)) ? item.meta.photoKeys : [];
         pk.forEach(function (k) { if (k && keys.indexOf(k) < 0) keys.push(k); });
+        var cs = (item.reportText && item.reportText.captionSeeds) || null;
+        if (cs) Object.keys(cs).forEach(function (k) { if (typeof seedsAll[k] !== 'string') seedsAll[k] = cs[k]; });
         var c = (item.reportText && item.reportText.captions) || null;
         if (!c) return;
         Object.keys(c).forEach(function (k) {
@@ -9290,6 +9310,9 @@
         });
         sheet.reportText = sheet.reportText || {};
         sheet.reportText.captions = keep;
+        var keepSeeds = {};
+        chunk.forEach(function (k) { if (typeof seedsAll[k] === 'string') keepSeeds[k] = seedsAll[k]; });
+        sheet.reportText.captionSeeds = keepSeeds;
         sheet.railLabel = wanted > 1 ? ('Pictures \u00b7 ' + (n + 1)) : 'Pictures';
         out.push(sheet);
       }
@@ -10352,6 +10375,7 @@
         var remappedEpoch = remapFloorEpochOnPages(saved.pages, floorSurveyId, record);
         var before = saved.pages.map(function (page) {
           return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',') +
+            ':' + JSON.stringify((page.reportText && [page.reportText.captions, page.reportText.captionSeeds]) || null) +
             ':' + !!(page.meta && page.meta.imported) +
             ':' + ((page.meta && page.meta.epochId) || '');
         }).join('|');
@@ -10363,6 +10387,7 @@
         var coverIdentitySynced = applyLiveCoverIdentity(pages, record);
         var after = pages.map(function (page) {
           return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',') +
+            ':' + JSON.stringify((page.reportText && [page.reportText.captions, page.reportText.captionSeeds]) || null) +
             ':' + !!(page.meta && page.meta.imported) +
             ':' + ((page.meta && page.meta.epochId) || '');
         }).join('|');
