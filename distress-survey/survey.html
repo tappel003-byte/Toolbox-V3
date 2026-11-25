@@ -5491,13 +5491,23 @@ function saveAnnotate() {
     delete pin.photoStrokes[entry];
   }
   saveProject();
+  // Host: wait for the Customer File write so a fast jump back to Report
+  // Builder cannot race the IndexedDB put (photoStrokes must be on the record
+  // before the iframe is torn down).
+  const after = HOST_MODE
+    ? hostPersistSurvey().catch(function (err) {
+        console.warn('Distress host persist failed', err);
+      })
+    : Promise.resolve();
   pv.annotating = false;
   pv.workingStrokes = [];
   pv.drawing = null;
   pv.undoStack = [];
   document.getElementById('pviewer').classList.remove('annotating');
   renderViewerStrokes();
-  toast('Annotations saved');
+  after.finally(function () {
+    toast('Annotations saved');
+  });
 }
 function annotateUndo() {
   if (!pv.annotating) return;
@@ -7370,14 +7380,34 @@ function hostCanReturnToReport() {
 }
 
 function hostNotifyReturnToReport() {
-  const p = hostParent();
-  if (p && typeof p.__toolboxDistressReturnToReport === 'function') {
-    p.__toolboxDistressReturnToReport();
+  // Persist before tearing down the iframe. Annotate ink lives on
+  // pin.photoStrokes in the Customer File; Report Builder rehydrates from
+  // that record. Leaving without awaiting hostPersistSurvey dropped the
+  // strokes when "Back to Report Builder" unmounted the survey mid-write
+  // (Tim, Nov 25, 2026). Same await pattern as goHome / Back to Customer File.
+  function leave() {
+    const p = hostParent();
+    if (p && typeof p.__toolboxDistressReturnToReport === 'function') {
+      p.__toolboxDistressReturnToReport();
+      return;
+    }
+    if (p) {
+      p.postMessage({ type: 'toolbox-distress-return-report' }, '*');
+    }
+  }
+  if (!HOST_MODE) {
+    leave();
     return;
   }
-  if (p) {
-    p.postMessage({ type: 'toolbox-distress-return-report' }, '*');
+  if (project) {
+    try { saveProject(); } catch (_) {}
+    hostPersistSurvey().finally(function () {
+      project = null;
+      leave();
+    });
+    return;
   }
+  leave();
 }
 
 function hostWireReturnReport() {
