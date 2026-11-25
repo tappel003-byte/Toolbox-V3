@@ -169,6 +169,7 @@ Concrete Customer File record ownership for later app plug-in. Architecture is c
   **Out of this slice:** Full field Topo tool parity in Report Builder; Picture Locations staging button (Pen Log pages may already exist from prior auth); free-form distortion; CRDT/live collaboration.
 - **Formatting rebuild — AUTHORIZED (Tim, Oct 2, 2026).** Keep plumbing; remove fake composition toolbar; rebuild sheet layouts from real report screenshots via talk-through placement. Do not reintroduce placeholder drawing tools. Page-type visual rebuilds are authorized when Tim supplies the screenshot for that page.
 - **Title page — AUTHORIZED (Tim, Oct 3, 2026).** Mitchell title layout: filled movable boxes (Prepared For, identity/address, date/corrected, CONTENTS, site overview); Google Maps link from address; paste/replace overview image; Lock on `reportBuilder.coverLayout`. No separate Contents sheet. Assemble order: Cover → Discussion → Floor figures → Picture Locations; Pictures via Put on report. Figure numbers for every slide after Discussion follow page order.
+- **Cover identity tracks Customer Information (DECIDED Tim, Nov 25, 2026).** Name, email, phone, and address on the title page re-read from the live Customer File every time Report Builder opens. They must not stay frozen on the first seed saved into `reportBuilder` cover `reportText`. Survey date, corrected note, and CONTENTS wording remain report-owned.
 
 ## Diagnostics
 

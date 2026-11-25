@@ -1625,6 +1625,71 @@
     return out.trim() || String(text == null ? '' : text).trim();
   }
 
+  /**
+   * Customer Information owns contact identity on the title page (Tim, Nov 25,
+   * 2026). The first open used to seed name/email/phone/address into
+   * page.reportText and keepRich forever preferred that copy, so later edits
+   * in Customer Information never reached Prepared For / the address block.
+   * On every Report Builder open, rewrite those fields from the live file.
+   * Survey date, corrected note, and CONTENTS lines stay report-owned.
+   */
+  function coverPlain(value) {
+    var api = window.ToolboxReportText;
+    if (api && api.isModel(value)) return String(api.toPlain(value) || '').trim();
+    return String(value == null ? '' : value).trim();
+  }
+
+  function applyLiveCoverIdentity(pages, record) {
+    if (!record || !Array.isArray(pages)) return false;
+    var name = displayCustomerName(record) || '';
+    var email = typeof record.email === 'string' ? record.email.trim() : '';
+    var phone = typeof record.cellPhone === 'string' ? record.cellPhone.trim() : '';
+    var addrFull = fullAddress(record);
+    var parts = addressParts(addrFull);
+    var street = parts.street || '';
+    var cityLine = parts.cityLine || '';
+    var changed = false;
+    pages.forEach(function (page) {
+      if (!page || page.type !== 'cover') return;
+      page.meta = page.meta || {};
+      var nextAddress = street || displayAddress(record) || '';
+      if (page.meta.customerName !== name ||
+          page.meta.email !== email ||
+          page.meta.cellPhone !== phone ||
+          page.meta.address !== nextAddress ||
+          page.meta.addressFull !== addrFull) {
+        changed = true;
+      }
+      page.meta.customerName = name;
+      page.meta.email = email;
+      page.meta.cellPhone = phone;
+      page.meta.address = nextAddress;
+      page.meta.addressFull = addrFull;
+      if (name && page.title !== name) {
+        page.title = name;
+        changed = true;
+      } else if (name) {
+        page.title = name;
+      }
+      page.reportText = page.reportText && typeof page.reportText === 'object'
+        ? page.reportText
+        : {};
+      if (coverPlain(page.reportText.name) !== name ||
+          coverPlain(page.reportText.email) !== email ||
+          coverPlain(page.reportText.phone) !== phone ||
+          coverPlain(page.reportText.street) !== street ||
+          coverPlain(page.reportText.cityLine) !== cityLine) {
+        changed = true;
+      }
+      page.reportText.name = name;
+      page.reportText.email = email;
+      page.reportText.phone = phone;
+      page.reportText.street = street;
+      page.reportText.cityLine = cityLine;
+    });
+    return changed;
+  }
+
   function seedCoverText(page, pages) {
     var meta = (page && page.meta) || {};
     var prior = (page && page.reportText) || {};
@@ -1668,6 +1733,8 @@
         isDiscussion: !!(entry.isDiscussion || entry.type === 'section'),
       };
     });
+    // Identity: live Customer File meta (applyLiveCoverIdentity on open).
+    // keepRich still protects in-session cover edits after that stamp.
     return {
       name: keepRich(prior.name, meta.customerName || page.title || ''),
       email: keepRich(prior.email, meta.email || ''),
@@ -10293,6 +10360,7 @@
           record: record,
         });
         var migratedLegacy = migrateLegacyFloorAreaPages(pages, record);
+        var coverIdentitySynced = applyLiveCoverIdentity(pages, record);
         var after = pages.map(function (page) {
           return page.id + ':' + ((page.meta && page.meta.photoKeys) || []).join(',') +
             ':' + !!(page.meta && page.meta.imported) +
@@ -10309,18 +10377,21 @@
         return {
           assembledFresh: false,
           reconciled: before !== after || remappedEpoch || migratedLegacy,
+          coverIdentitySynced: coverIdentitySynced,
           migratedFloorLayout: floorOpen.migratedFloorLayout,
           stripSlideFloorLayouts: floorOpen.stripSlideFloorLayouts,
         };
       }
       pages = freshPages;
       migrateLegacyFloorAreaPages(pages, record);
+      var freshCoverIdentity = applyLiveCoverIdentity(pages, record);
       activeId = pages[0] ? pages[0].id : '';
       pageSeq = pages.length;
       restoreReturnPage();
       return {
         assembledFresh: true,
         reconciled: false,
+        coverIdentitySynced: freshCoverIdentity,
         migratedFloorLayout: floorOpen.migratedFloorLayout,
         stripSlideFloorLayouts: floorOpen.stripSlideFloorLayouts,
       };
@@ -10355,7 +10426,8 @@
         renderPages();
         fitSheet(root);
         // Persist a missing pinScale once so reopen / other devices keep sheet default.
-        var needSave = loaded.assembledFresh || loaded.reconciled || !penLogPinScaleSeeded ||
+        var needSave = loaded.assembledFresh || loaded.reconciled || loaded.coverIdentitySynced ||
+          !penLogPinScaleSeeded ||
           coverOverviewDropped || loaded.migratedFloorLayout || loaded.stripSlideFloorLayouts;
         coverOverviewDropped = false;
         if (!penLogPinScaleSeeded) penLogPinScaleSeeded = true;
