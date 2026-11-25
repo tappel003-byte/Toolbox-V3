@@ -156,6 +156,201 @@
     }
   }
 
+  // Distress Annotate stores ink as pin.photoStrokes[photoId], not in the
+  // photo bytes. ZIP export composites those strokes; Report Builder must too
+  // when rehydrating Pictures / Distress evidence (Tim, Nov 25, 2026).
+  // Geometry and stroke kinds match distress-survey/survey.html.
+
+  function wrapTextCtx(ctx, text, maxWidth) {
+    var out = [];
+    String(text || '').split('\n').forEach(function (para) {
+      if (!para) { out.push(''); return; }
+      var words = para.split(/\s+/);
+      var line = '';
+      words.forEach(function (w) {
+        var test = line ? line + ' ' + w : w;
+        if (ctx.measureText(test).width <= maxWidth) line = test;
+        else {
+          if (line) out.push(line);
+          if (ctx.measureText(w).width > maxWidth) {
+            var chunk = '';
+            for (var ci = 0; ci < w.length; ci += 1) {
+              var t2 = chunk + w.charAt(ci);
+              if (ctx.measureText(t2).width <= maxWidth) chunk = t2;
+              else { if (chunk) out.push(chunk); chunk = w.charAt(ci); }
+            }
+            line = chunk;
+          } else line = w;
+        }
+      });
+      if (line) out.push(line);
+    });
+    return out.length ? out : [''];
+  }
+
+  function roundRectPath(ctx, x, y, w, h, r) {
+    var rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  function computeTextBox(ctx, d, W, H) {
+    var baseSw = Math.max(W, H) * 0.005;
+    var size = d.size || (d.thick === 3 ? 'lg' : 'sm');
+    var tier = size === 'lg' ? { m: 7, min: 20 }
+      : size === 'md' ? { m: 5, min: 14 }
+      : { m: 3.6, min: 11 };
+    var fontPx = Math.max(baseSw * tier.m, tier.min);
+    var pad = Math.round(fontPx * 0.4);
+    var border = Math.max(2, Math.round(fontPx * 0.08));
+    var radius = Math.round(fontPx * 0.3);
+    var defaultW = Math.max(W, H) * 0.3;
+    var minW = fontPx * 4 + pad * 2;
+    var maxW = W - d.x - 4;
+    var boxW = Math.max(minW, Math.min(maxW, d.width || defaultW));
+    ctx.save();
+    ctx.font = '600 ' + fontPx + 'px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    var lines = wrapTextCtx(ctx, d.text, boxW - pad * 2);
+    ctx.restore();
+    var boxH = (lines.length * 1.25 - 0.25) * fontPx + pad * 2;
+    return { x: d.x, y: d.y, w: boxW, h: boxH, fontPx: fontPx, pad: pad, border: border, radius: radius, lines: lines };
+  }
+
+  function drawTextBoxOnCtx(ctx, d, W, H) {
+    var tb = computeTextBox(ctx, d, W, H);
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.25)';
+    ctx.shadowBlur = tb.fontPx * 0.4;
+    ctx.shadowOffsetY = tb.fontPx * 0.08;
+    ctx.fillStyle = '#ffffff';
+    roundRectPath(ctx, tb.x, tb.y, tb.w, tb.h, tb.radius);
+    ctx.fill();
+    ctx.restore();
+    ctx.lineWidth = tb.border;
+    ctx.strokeStyle = '#000000';
+    roundRectPath(ctx, tb.x, tb.y, tb.w, tb.h, tb.radius);
+    ctx.stroke();
+    ctx.font = '600 ' + tb.fontPx + 'px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#000000';
+    tb.lines.forEach(function (ln, i) {
+      ctx.fillText(ln, tb.x + tb.pad, tb.y + tb.pad + i * tb.fontPx * 1.25);
+    });
+  }
+
+  function drawStrokesOnCtx(ctx, strokes, W, H) {
+    var baseSw = Math.max(W, H) * 0.005;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    (strokes || []).forEach(function (d) {
+      if (!d) return;
+      var mult = d.thick === 3 ? 2.4 : d.thick === 2 ? 1.5 : 0.9;
+      ctx.lineWidth = baseSw * mult;
+      ctx.strokeStyle = d.color || '#c14a2b';
+      ctx.fillStyle = 'transparent';
+      var kind = d.kind || 'path';
+      if (kind === 'path') {
+        if (!d.points || d.points.length < 2) return;
+        ctx.beginPath();
+        ctx.moveTo(d.points[0][0], d.points[0][1]);
+        for (var i = 1; i < d.points.length; i += 1) ctx.lineTo(d.points[i][0], d.points[i][1]);
+        ctx.stroke();
+      } else if (kind === 'rect') {
+        var x = Math.min(d.x0, d.x1);
+        var y = Math.min(d.y0, d.y1);
+        ctx.strokeRect(x, y, Math.abs(d.x1 - d.x0), Math.abs(d.y1 - d.y0));
+      } else if (kind === 'circle') {
+        var cx = (d.x0 + d.x1) / 2;
+        var cy = (d.y0 + d.y1) / 2;
+        var rx = Math.abs(d.x1 - d.x0) / 2;
+        var ry = Math.abs(d.y1 - d.y0) / 2;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (kind === 'arrow') {
+        var sw = ctx.lineWidth;
+        ctx.beginPath();
+        ctx.moveTo(d.x0, d.y0);
+        ctx.lineTo(d.x1, d.y1);
+        ctx.stroke();
+        var ang = Math.atan2(d.y1 - d.y0, d.x1 - d.x0);
+        var head = Math.max(sw * 4, baseSw * 3);
+        var a1 = ang + Math.PI - 0.5;
+        var a2 = ang + Math.PI + 0.5;
+        ctx.beginPath();
+        ctx.moveTo(d.x1, d.y1);
+        ctx.lineTo(d.x1 + Math.cos(a1) * head, d.y1 + Math.sin(a1) * head);
+        ctx.lineTo(d.x1 + Math.cos(a2) * head, d.y1 + Math.sin(a2) * head);
+        ctx.closePath();
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.fill();
+      } else if (kind === 'text') {
+        drawTextBoxOnCtx(ctx, d, W, H);
+      }
+    });
+  }
+
+  function strokesForPhoto(pin, photoId) {
+    if (!pin || !photoId || typeof photoId !== 'string') return [];
+    if (photoId.indexOf('ph_') !== 0) return [];
+    var map = pin.photoStrokes;
+    if (!map || typeof map !== 'object') return [];
+    var list = map[photoId];
+    return Array.isArray(list) ? list : [];
+  }
+
+  function compositePhotoWithStrokes(dataUrl, strokes) {
+    return new Promise(function (resolve) {
+      if (!dataUrl || !strokes || !strokes.length) {
+        resolve(dataUrl);
+        return;
+      }
+      if (typeof Image === 'undefined' || typeof document === 'undefined') {
+        resolve(dataUrl);
+        return;
+      }
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var c = document.createElement('canvas');
+          c.width = img.naturalWidth || img.width;
+          c.height = img.naturalHeight || img.height;
+          if (!c.width || !c.height) {
+            resolve(dataUrl);
+            return;
+          }
+          var ctx = c.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          drawStrokesOnCtx(ctx, strokes, c.width, c.height);
+          resolve(c.toDataURL('image/jpeg', 0.9));
+        } catch (err) {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = function () { resolve(dataUrl); };
+      img.src = dataUrl;
+    });
+  }
+
+  async function resolveDistressPhoto(pin, entry, deps) {
+    var ref = photoRef(entry);
+    var dataUrl = await resolveMedia(ref.id, ref.inline, deps.getDistressMedia);
+    if (!dataUrl && ref.id) dataUrl = await resolveMedia(ref.id, null, deps.getMedia);
+    if (!dataUrl) {
+      return { id: ref.id, dataUrl: null, missing: true };
+    }
+    var strokes = strokesForPhoto(pin, ref.id);
+    if (strokes.length) {
+      dataUrl = await compositePhotoWithStrokes(dataUrl, strokes);
+    }
+    return { id: ref.id, dataUrl: dataUrl, missing: !dataUrl };
+  }
+
   function layerFigure(layer) {
     if (!layer) return null;
     for (var i = 0; i < LAYER_FIGURE_KEYS.length; i += 1) {
@@ -325,14 +520,12 @@
         var photos = [];
         var entries = Array.isArray(pin.photos) ? pin.photos : [];
         for (var i = 0; i < entries.length; i += 1) {
-          var ref = photoRef(entries[i]);
-          var dataUrl = await resolveMedia(ref.id, ref.inline, deps.getDistressMedia);
-          if (!dataUrl && ref.id) dataUrl = await resolveMedia(ref.id, null, deps.getMedia);
+          var resolved = await resolveDistressPhoto(pin, entries[i], deps);
           photos.push({
-            id: ref.id,
+            id: resolved.id,
             displayNumber: item.numbering.photoNumbers[i],
-            dataUrl: dataUrl,
-            missing: !dataUrl,
+            dataUrl: resolved.dataUrl,
+            missing: resolved.missing,
           });
         }
         slidePins.push({
@@ -610,6 +803,7 @@
     listDistressPhotos: listDistressPhotos,
     listLocalQuickCapturePhotos: listLocalQuickCapturePhotos,
     readDistressMedia: readDistressMedia,
+    compositePhotoWithStrokes: compositePhotoWithStrokes,
     assemble: assemble,
   };
 })();
