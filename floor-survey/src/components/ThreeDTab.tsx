@@ -238,7 +238,8 @@ const READOUT_CSS = `
 .dx3-toggle { display: none; }
 .dx3-zoom { position: absolute; z-index: 3; right: 10px; bottom: 10px; display: flex; gap: 6px; }
 .dx3-zoom button { min-width: 36px; height: 36px; padding: 0 10px; border: 1px solid #c9c4b8; border-radius: 6px; background: rgba(255,255,255,0.95); font-size: 16px; font-weight: 700; color: #14263a; cursor: pointer; }
-.dx3-zoom button.is-on { background: #14263a; color: #fff; border-color: #14263a; }
+.dx3-reset { margin-top: 8px; width: 100%; height: 30px; border: 1px solid #c9c4b8; border-radius: 6px; background: #fff; font-size: 12px; font-weight: 700; color: #14263a; cursor: pointer; }
+.dx3-reset:hover { background: #eef2f6; }
 .dx3-zoom button:hover { background: #eef2f6; }
 @media (max-width: 900px) {
   .dx3-side { position: absolute; z-index: 5; left: 0; top: 0; bottom: 0; box-shadow: 4px 0 14px rgba(0,0,0,0.18); }
@@ -401,9 +402,8 @@ export function ThreeDTab({
   const [meshLines, setMeshLines] = useState(false);
   const [contoursOn, setContoursOn] = useState(true);
   // Contour line weight in screen pixels (a plain GL line is always 1 device pixel, which looks heavy on a
-  // sharp screen), and "Move" mode, where a one-finger or left-button drag slides the view instead of orbiting.
+  // sharp screen).
   const [contourWidth, setContourWidth] = useState(0.8);
-  const [moveMode, setMoveMode] = useState(false);
   const contourMatRef = useRef<LineMaterial | null>(null);
   const [interval, setIntervalValue] = useState<number>(0.2);
   const [labelsOn, setLabelsOn] = useState(true);
@@ -428,6 +428,11 @@ export function ThreeDTab({
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [builtFor, setBuiltFor] = useState<string | null>(null);
+  // Counts surface rebuilds. A palette or reverse change rebuilds the surface and clears the parts hung on it; the
+  // ready flag goes false and true inside one update, so the parts effects need this to know to draw them again.
+  const [buildId, setBuildId] = useState(0);
+  const initialViewRef = useRef<{ pos: THREE.Vector3; target: THREE.Vector3 } | null>(null);
+  const builtKeyRef = useRef<string | null>(null);
   const composeRef = useRef<(() => DiagnosticCapture | null) | null>(null);
   const exagRef = useRef(exaggeration);
   exagRef.current = exaggeration;
@@ -505,6 +510,31 @@ export function ThreeDTab({
     mount.addEventListener("gesturestart", stopGesture as EventListener);
     mount.addEventListener("gesturechange", stopGesture as EventListener);
 
+    // Orbit around the spot you press: a plain press on the surface makes that spot the pivot, and the view glides
+    // to centre it (the camera does not move, it turns to face it). Pressing empty space keeps the pivot.
+    const ray = new THREE.Raycaster();
+    let glide = 0;
+    const setPivot = (e: PointerEvent) => {
+      if (!e.isPrimary || e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey) return;
+      const targets = ["surface", "base"].map((n) => partsRef.current[n]).filter((o): o is THREE.Object3D => !!o);
+      if (!targets.length) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      ray.setFromCamera(new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -(((e.clientY - rect.top) / rect.height) * 2 - 1)), camera);
+      const hit = ray.intersectObjects(targets, true)[0];
+      if (!hit) return;
+      const from = controls.target.clone();
+      const to = hit.point.clone();
+      const t0 = performance.now();
+      cancelAnimationFrame(glide);
+      const step = () => {
+        const k = Math.min(1, (performance.now() - t0) / 180);
+        controls.target.lerpVectors(from, to, k * (2 - k));
+        if (k < 1) glide = requestAnimationFrame(step);
+      };
+      step();
+    };
+    renderer.domElement.addEventListener("pointerdown", setPivot, true);
+
     const hemi = new THREE.HemisphereLight(0xffffff, 0xb8b8c4, 1.15);
     const key = new THREE.DirectionalLight(0xffffff, 0.9);
     key.position.set(1, 1, 2);
@@ -540,6 +570,8 @@ export function ThreeDTab({
     return () => {
       mount.removeEventListener("gesturestart", stopGesture as EventListener);
       mount.removeEventListener("gesturechange", stopGesture as EventListener);
+      renderer.domElement.removeEventListener("pointerdown", setPivot, true);
+      cancelAnimationFrame(glide);
       cancelAnimationFrame(raf);
       ro.disconnect();
       controls.dispose();
@@ -631,12 +663,19 @@ export function ThreeDTab({
     geomRef.current = geom;
     (geom as THREE.BufferGeometry & { userData: Record<string, unknown> }).userData = { vals, plan, indices };
 
-    controls.target.set(0, 0, zRange * zScale);
-    camera.position.set(0.65, -1.2, 0.9);
+    // The view starts here for a new survey; a palette change rebuilds the surface but leaves the view where the
+    // person put it.
+    if (builtKeyRef.current !== viewKey) {
+      controls.target.set(0, 0, zRange * zScale);
+      camera.position.set(0.65, -1.2, 0.9);
+      initialViewRef.current = { pos: camera.position.clone(), target: controls.target.clone() };
+      builtKeyRef.current = viewKey;
+    }
     controls.update();
 
     setBuiltFor(viewKey);
     setReady(true);
+    setBuildId((n) => n + 1);
   }, [grid, palette, reverse, viewKey, floor.boundary]);
 
   // ---- parts that hang off the surface ----
@@ -844,7 +883,7 @@ export function ThreeDTab({
     // The part replaced above is disposed when the next one lands; the surface geometry is shared with the
     // wire and texture parts, so it is released only when the surface itself is rebuilt.
     void plan;
-  }, [meshReady, plain, surfaceOn, meshLines, contoursOn, interval, labelsOn, labelSize, baseOn, baseDepth, baseColor, axesOn, floor.scale]);
+  }, [meshReady, plain, surfaceOn, meshLines, contoursOn, interval, labelsOn, labelSize, baseOn, baseDepth, baseColor, axesOn, floor.scale, buildId]);
 
   // ---- survey points ----
   useEffect(() => {
@@ -864,7 +903,7 @@ export function ThreeDTab({
     }
     group.visible = showPoints;
     setPart("points", group, "overlay");
-  }, [meshReady, activePoints, pointSize]);
+  }, [meshReady, buildId, activePoints, pointSize]);
 
   useEffect(() => {
     const g = partsRef.current.points;
@@ -911,7 +950,7 @@ export function ThreeDTab({
       setPart("texture", new THREE.Mesh(g2, mat), "z");
     });
     return () => { cancelled = true; };
-  }, [meshReady, textureOn, textureOpacity, floor.planDataUrl, floor.planWidth, floor.planHeight]);
+  }, [meshReady, buildId, textureOn, textureOpacity, floor.planDataUrl, floor.planWidth, floor.planHeight]);
 
   // ---- exaggeration, lights, field of view ----
   useEffect(() => {
@@ -922,7 +961,7 @@ export function ThreeDTab({
         o.position.z = o.userData.baseZ * exaggeration + (typeof o.userData.lift === "number" ? o.userData.lift : 0.004);
       }
     });
-  }, [exaggeration, meshReady]);
+  }, [exaggeration, meshReady, buildId]);
 
   useEffect(() => {
     const l = lightsRef.current;
@@ -945,17 +984,32 @@ export function ThreeDTab({
     if (contourMatRef.current) contourMatRef.current.linewidth = contourWidth;
   }, [contourWidth]);
 
-  // Move mode: left button / one finger slides the view. Right button or two fingers always slide it too.
+  // Moving the view: right button, middle button, Shift + left button, or two fingers. A plain left drag or one
+  // finger orbits.
   useEffect(() => {
     const controls = controlsRef.current;
     if (!controls) return;
-    controls.mouseButtons = {
-      LEFT: moveMode ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE,
-      MIDDLE: THREE.MOUSE.DOLLY,
-      RIGHT: moveMode ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN,
-    };
-    controls.touches = { ONE: moveMode ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
-  }, [moveMode]);
+    controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
+    controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+  }, []);
+
+  // Put every 3D setting and the view back the way the view opened.
+  function resetAll() {
+    setExPos(740); setShowPoints(false); setPointSize(1); setSurfaceOn(true); setPlain(false); setMeshLines(false);
+    setContoursOn(true); setContourWidth(0.8); setIntervalValue(0.2); setLabelsOn(true); setLabelSize(1);
+    setLightLevel(1); setLightAz(40); setLightEl(55); setFov(45);
+    setPalette(settings.palette); setReverse(settings.reversePalette); setLegendOn(true);
+    setBaseOn(true); setBaseDepth(0.25); setBaseColor("#cdbba0"); setAxesOn(true);
+    setTextureOn(false); setTextureOpacity(0.8); setTitle("");
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    const v = initialViewRef.current;
+    if (camera && controls && v) {
+      camera.position.copy(v.pos);
+      controls.target.copy(v.target);
+      controls.update();
+    }
+  }
 
   function zoomBy(factor: number) {
     const camera = cameraRef.current;
@@ -1123,8 +1177,9 @@ export function ThreeDTab({
               <Label className="text-xs">Show survey points</Label>
               <Switch checked={showPoints} onCheckedChange={setShowPoints} />
             </div>
+            <button type="button" className="dx3-reset" data-dx3-reset onClick={resetAll}>Reset to default</button>
             <div className="text-[10px] text-neutral-500 leading-snug mt-2">
-              Drag to orbit · right-drag or two-finger drag to move · Move button slides with one finger · pinch / scroll to zoom
+              Drag to orbit around the spot you press · right-drag, middle-drag, Shift-drag or two-finger drag to move · pinch / scroll to zoom
             </div>
           </div>
 
@@ -1200,9 +1255,8 @@ export function ThreeDTab({
           <button type="button" className="dx3-toggle" onClick={() => setSideClosed(!sideClosed)} aria-label="Settings">
             <SlidersHorizontal className="h-3.5 w-3.5" /> Settings
           </button>
-          <div ref={mountRef} className="absolute inset-0" data-dx3-canvas />
+          <div ref={mountRef} className="absolute inset-0" data-dx3-canvas data-build-id={buildId} />
           <div className="dx3-zoom" role="group" aria-label="Zoom">
-            <button type="button" aria-label="Move the view" aria-pressed={moveMode} className={moveMode ? "is-on" : ""} onClick={() => setMoveMode((v) => !v)}>Move</button>
             <button type="button" aria-label="Zoom in" onClick={() => zoomBy(0.75)}>+</button>
             <button type="button" aria-label="Zoom out" onClick={() => zoomBy(1.33)}>−</button>
             <button type="button" aria-label="Fit" onClick={() => viewPreset("angled")}>Fit</button>
