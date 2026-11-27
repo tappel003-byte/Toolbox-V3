@@ -31,6 +31,30 @@ await page.tap('#rvDoneBtn'); await wait(300);
 check('Tapping the bottom Done closes the Rooms screen', !(await page.evaluate(() => document.getElementById('roomVerifyOverlay').classList.contains('open'))));
 await openIt(); await page.tap('#rvCloseBtn'); await wait(300);
 check('Tapping the top Done still closes it', !(await page.evaluate(() => document.getElementById('roomVerifyOverlay').classList.contains('open'))));
+// Page pinch-zoomed on the phone: the visible window is smaller than the layout viewport. Every button must
+// still be inside the part you can see (Tim, Nov 27, 2026, screenshot).
+{
+  await page.tap('#rvDoneBtn').catch(() => {}); await wait(200);
+  const cdp = await page.createCDPSession();
+  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1.4 });
+  await wait(400);
+  await openIt(); await wait(500);
+  const seen = await page.evaluate(() => {
+    const vv = window.visualViewport;
+    const win = { l: vv.offsetLeft, t: vv.offsetTop, r: vv.offsetLeft + vv.width, b: vv.offsetTop + vv.height };
+    const inside = (id) => { const r = document.getElementById(id).getBoundingClientRect(); const tol = 1.5; return r.left >= win.l - tol && r.right <= win.r + tol && r.top >= win.t - tol && r.bottom <= win.b + tol; };
+    return { scale: vv.scale, win, top: inside('rvCloseBtn'), bottom: inside('rvDoneBtn'), fd: inside('rvFdBtn') };
+  });
+  check('The page really is zoomed in this check', seen.scale > 1.2, JSON.stringify(seen));
+  check('Top Done is inside the visible window while the page is zoomed', seen.top);
+  check('Bottom Done is inside the visible window while the page is zoomed', seen.bottom);
+  check('FD is inside the visible window while the page is zoomed', seen.fd);
+  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+  await wait(400);
+  const back = await page.evaluate(() => { const o = document.getElementById('roomVerifyOverlay'); return o.style.transform === '' && o.style.width === ''; });
+  check('Back at normal zoom the overlay returns to plain full-screen', back);
+}
+
 check('No JavaScript errors', errs.length === 0, errs.join(' | '));
 const failed = results.filter((r) => !r.ok); console.log(`\n${results.length - failed.length}/${results.length} passed`);
 await browser.close(); if (failed.length) process.exit(1);

@@ -54,6 +54,10 @@
     });
     document.getElementById('rvCloseBtn').addEventListener('click', close);
     document.getElementById('rvDoneBtn').addEventListener('click', close);
+    // The pinch is for the plan. Safari would otherwise zoom the whole page with it.
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (name) {
+      overlay.addEventListener(name, function (e) { e.preventDefault(); });
+    });
     picker.addEventListener('click', function (e) {
       if (e.target === picker) picker.classList.remove('open');
     });
@@ -521,10 +525,48 @@
     if (title) title.textContent = 'Rooms — pinch zoom, drag move, tap plan to add';
     renderBadges();
     document.getElementById('roomVerifyOverlay').classList.add('open');
+    watchVisible();
+    fitToVisible();
     requestAnimationFrame(function () {
       fitToStage();
       applyTransform();
     });
+  }
+
+  /**
+   * Keep the screen, and every button on it, inside what is actually visible.
+   *
+   * A fixed overlay is laid out against the LAYOUT viewport. When the page has been pinch-zoomed or scrolled on
+   * a phone, the visible area is a smaller window inside it, and the Done button, the title and FD ended up off
+   * the edges (Tim, Nov 27, 2026, with a screenshot). The overlay is sized and placed to the visible window,
+   * and scaled back to 1:1 so the buttons keep their size. At normal zoom none of this applies.
+   */
+  function fitToVisible() {
+    const ov = document.getElementById('roomVerifyOverlay');
+    const vv = window.visualViewport;
+    if (!ov || !vv) return;
+    const s = vv.scale || 1;
+    if (Math.abs(s - 1) < 0.01 && Math.abs(vv.offsetLeft) < 1 && Math.abs(vv.offsetTop) < 1) {
+      ov.style.left = ov.style.top = ov.style.width = ov.style.height = ov.style.transform = '';
+      ov.style.right = ov.style.bottom = '';
+      return;
+    }
+    ov.style.right = 'auto';
+    ov.style.bottom = 'auto';
+    ov.style.left = vv.offsetLeft + 'px';
+    ov.style.top = vv.offsetTop + 'px';
+    ov.style.width = (vv.width * s) + 'px';
+    ov.style.height = (vv.height * s) + 'px';
+    ov.style.transformOrigin = '0 0';
+    ov.style.transform = 'scale(' + (1 / s) + ')';
+  }
+
+  function watchVisible() {
+    const vv = window.visualViewport;
+    if (!vv || watchVisible.on) return;
+    watchVisible.on = true;
+    vv.addEventListener('resize', fitToVisible);
+    vv.addEventListener('scroll', fitToVisible);
   }
 
   function close() {
