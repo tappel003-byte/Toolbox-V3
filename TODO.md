@@ -12,6 +12,54 @@ so.
 
 ---
 
+## Open inventory, Nov 27, 2026
+
+Tim, Nov 27, 2026: "look back for the last few weeks... tell me if there's anything that is undone."
+Written from this file and from the working record of the last few weeks. Each line is a reminder, not an
+approval to build.
+
+**Asked for, not finished**
+
+- **Haddow Figure 1.** Cursor's fix (Main Floor source sticks, Print fails closed, shell v517) is merged. Tim has not
+  confirmed it saves and prints as Main Floor on his real file; tests on clean fixtures never reproduced the fault.
+- **Compare two surveys inside Toolbox.** The PDF back door is built (Customer Files, Compare surveys). A native
+  compare of two epochs inside a Customer File is not: still open where the second survey comes from.
+- **Read the numbers off PGG PDFs** (OCR reader). Not built; no go given.
+- **3D contour colours.** The 3D view draws contour lines in fixed near-black; there is no colour control.
+- **Diagnostics tiles.** Remove High/Low and Tilt & Deflection are placeholders marked "coming".
+- **3D slices and orthographic views.** Not built.
+- **Distress field checkpoint.** Floor Survey has one (recovery PDF); Distress has nothing.
+- **Initial Visit video.** How a visit's video becomes part of a Customer File is not decided.
+- **Cabinet close-out (D-001).** On hold.
+
+**TLS Foundations website (TLS-Foundation repo, not Toolbox)**
+
+- Branch `claude/what-to-do-watching` (waiting-and-watching section, the survey-step closing line, and the removal of
+  the fear line beneath it) is built and pushed, not merged into the deploy branch `claude/transcript-review-uu7irt`.
+- The Ruidoso/Cloudcroft and Alamogordo city pages are parked below.
+- Send Us Photos says "usually the same day" in one place and "within 24 hours" in another.
+
+**Built, not yet confirmed by Tim**
+
+- 3D view: pivot where you press, move by right/middle/Shift/two-finger drag, Reset to default, palette change no
+  longer blanks the view.
+- Rooms screen stays inside the visible window when the page is pinch-zoomed, and has a second Done at the bottom.
+- Distress: closed sheets no longer cast a grey shadow up onto the bottom of the plan.
+- Pictures captions follow the Distress pin text until edited in Report Builder (older reports too; replaced wording
+  is kept in `reportText.captionBackup`). A "Match Distress" button was offered and not wanted.
+- Floor sheet: changing View source from Combined to one boundary leaves one scale and one pill.
+
+**Known problems**
+
+- Nothing stops a shell change shipping without a `CACHE_NAME` bump in `sw.js`. It happened once (v515, Nov 25) and
+  Refresh never turned red. A test that fails when a file in `STATIC_SHELL` changes without a bump would close it.
+- `tests/report-floor-chrome-move.mjs` and `tests/report-floor-flex-compose.mjs` fail on the integration branch
+  without any recent change (per-view legends and pills on multi-view sheets). `tests/report-builder-pictures.mjs`
+  times out at its "add a third photo" step.
+- The earlier "keeps going red" update loop cleared on its own and was never diagnosed.
+
+---
+
 ## Waiting on a word from Tim
 
 These are each a one-line answer, after which the work is small.
