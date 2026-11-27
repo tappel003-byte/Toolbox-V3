@@ -20,10 +20,10 @@ Updated by: Cursor — Haddow Figure 1 Main Floor source sticks merged to tip. B
 | Field | Value |
 |-------|--------|
 | **Has the ball** | **Tim** — tip has Haddow Figure 1 Main Floor source sticks (`6185fe3`, shell **v517**). Promote for traffic. Not on `main`. |
-| Integration tip | `6185fe3` (`6185fe309e746b0d12ea39971d058a2d5413bbbb`) — Main Floor View source sticks + Print fail-closed; toolbox-shell-v517 |
+| Integration tip | `6185fe3` (`6185fe309e746b0d12ea39971d058a2d5413bbbb`) — Main Floor View source sticks + Print fail-closed; toolbox-shell-v518 |
 | Stage tip SHAs | Stage 1 `dcf590e` · Stage 2 `60298d8` · Stage 3 `b6318df` · Stage 4 `b151d54` · CC-fix `63584a9` · CC2 `ab7e903` · CC3 `5c4d240` · Chrome `14bd97e` · Chrome-layout `56787b2` · **Chrome-collapse** `e423a01` |
 | Fabric | **5.3.0** MIT vendored at `js/vendor/fabric.min.js` (+ `STATIC_SHELL`) |
-| Shell | `toolbox-shell-v517` |
+| Shell | `toolbox-shell-v518` |
 | Not done | Do not merge to `main` unless Tim promotes. Do not deploy Sync Worker. **Do not strip POR or Report Builder controls or icons.** |
 
 When an agent finishes its turn of work, it **must** update this table to name who has the ball next. Tim can ask “who has the ball?” anytime; the answer is this row.

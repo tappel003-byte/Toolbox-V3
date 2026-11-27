@@ -32,7 +32,10 @@
       '    <img id="rvImg" alt="Floor plan" draggable="false">' +
       '  </div>' +
       '</div>' +
-      '<button type="button" class="rv-btn" id="rvFdBtn" aria-label="Place front door" title="Place FD marker · drag onto plan">FD</button>';
+      '<button type="button" class="rv-btn" id="rvFdBtn" aria-label="Place front door" title="Place FD marker · drag onto plan">FD</button>' +
+      // A second way out at the bottom, beside FD: on some phones the bar at the top is not on screen and Done
+      // was the only exit (Tim, Nov 27, 2026: "No way out of this screen").
+      '<button type="button" class="rv-btn" id="rvDoneBtn" aria-label="Done">Done</button>';
     document.body.appendChild(overlay);
 
     const picker = document.createElement('div');
@@ -50,6 +53,7 @@
       if (e.target === overlay) close();
     });
     document.getElementById('rvCloseBtn').addEventListener('click', close);
+    document.getElementById('rvDoneBtn').addEventListener('click', close);
     picker.addEventListener('click', function (e) {
       if (e.target === picker) picker.classList.remove('open');
     });
