@@ -1171,7 +1171,7 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 5;
+  z-index: 20;
   padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 12px;
   display: flex;
   align-items: center;
@@ -1212,6 +1212,23 @@ body {
   font-weight: 700;
   background: #fff;
   color: #111;
+}
+
+#rvDoneBtn {
+  position: absolute;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  left: 16px;
+  z-index: 10;
+  width: auto;
+  min-width: 92px;
+  height: 48px;
+  padding: 0 22px;
+  border-radius: 24px;
+  font-size: 16px;
+  font-weight: 700;
+  background: #fff;
+  color: #111;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 #rvFdBtn {
