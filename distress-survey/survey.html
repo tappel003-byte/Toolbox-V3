@@ -521,11 +521,13 @@
   .scrim.active{display:block}
   .sheet{position:fixed;left:0;right:0;bottom:var(--app-bottom-offset,0px);background:var(--paper);
     border-top-left-radius:18px;border-top-right-radius:18px;
-    box-shadow:0 -10px 30px rgba(0,0,0,.25);
+    /* No shadow while closed: a sheet parked below the screen still casts its shadow UP onto the bottom of the
+       plan, and four of them stacked a grey smudge across the bottom edge (Tim, Nov 27, 2026). */
+    box-shadow:none;
     transform:translateY(100%);transition:transform .25s cubic-bezier(.2,.8,.2,1);
     padding:6px 18px 22px;z-index:50;max-height:min(88vh, calc(var(--app-height,100dvh) - 18px));overflow-y:auto;
     padding-bottom:calc(22px + env(safe-area-inset-bottom))}
-  .sheet.open{transform:translateY(0)}
+  .sheet.open{transform:translateY(0);box-shadow:0 -10px 30px rgba(0,0,0,.25)}
   .grab{width:38px;height:4px;background:var(--line);border-radius:2px;margin:8px auto 14px}
   .sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
   .sheet-title{font-weight:700;font-size:18px}
